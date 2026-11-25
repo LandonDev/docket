@@ -7,7 +7,14 @@
  * over the admin key's own socket, as a phone or desktop would ask.
  * `verifyWork` reads back what the phone's presses did.
  */
+import { createHash } from 'node:crypto'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { deflateSync } from 'node:zlib'
+import type { MoneyActed, MoneyOwed } from '../../src/shared/contract-work-money'
+import type { ReviewReady } from '../../src/shared/contract-work-review'
+import { today as ledgerDay } from '../../src/shared/work/money'
+import type { TellRow } from '../../src/shared/work/tell'
 
 type Answer = { ok: boolean; result?: unknown; error?: string }
 export type WorkSeedReady = { baseUrl: string; controlUrl: string; adminKey: string }
@@ -57,6 +64,59 @@ export const WORK_MAIL_EDITED = 'Ballroom for Saturday, April 10'
 
 /** The Work thread the transcript and Results shots open (TC_TEST_THREAD). */
 export const WORK_THREAD_TITLE = 'Venue for the spring LAN'
+
+export function todaySeedRows(ids: { purdue: string; venue: string }, now: number) {
+  return {
+    tells: [
+      {
+        kind: 'routines.done', group: 'results', workspaceId: ids.purdue, sector: 'purdue',
+        title: 'Spring LAN venue recap finished', detail: 'The venue notes are ready in the thread',
+        key: 'seed:today-venue-recap', open: { thread: ids.venue }, at: now
+      },
+      {
+        kind: 'connections.ending', group: 'ending', workspaceId: null, sector: null,
+        title: 'The Microsoft sign-in ends in 3 days', detail: 'Sign in again from Connections',
+        key: 'seed:today-microsoft-ending', open: { settings: 'connections' }, at: now
+      }
+    ] satisfies Pick<TellRow, 'kind' | 'group' | 'workspaceId' | 'sector' | 'title' | 'detail' | 'key' | 'open' | 'at'>[],
+    entry: {
+      workspaceId: ids.purdue, key: 'ios-today-banner-deposit',
+      fields: { date: ledgerDay(new Date(now)), who: 'Spring LAN banner desk', what: 'Banner deposit', way: 'in', amount: 2400, status: 'Unpaid' }
+    },
+    routine: {
+      workspaceId: ids.purdue, name: 'Spring LAN weekly review', prompt: '', job: 'review.make',
+      trigger: { on: 'schedule', rrule: 'FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0', tz: 'America/New_York' },
+      ends: { kind: 'never' }
+    }
+  }
+}
+
+/** Gives Today news, an open debt, and a review on the local proof host. */
+export async function seedToday(ready: WorkSeedReady, ids: { purdue: string; venue: string }): Promise<void> {
+  const { tells, entry, routine } = todaySeedRows(ids, Date.now())
+  // Today reads waiting rows from its own day.
+  const written = await fetch(`${ready.controlUrl}/work-tells`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tells }) })
+  if (!written.ok) throw new Error(`Today seed: /work-tells answered ${written.status}: ${await written.text()}`)
+
+  const s = await socket(ready)
+  try {
+    const saved = await s.call<MoneyActed>('work.money.entry', entry)
+    const { rows } = await s.call<MoneyOwed>('work.money.owed', { workspaceId: ids.purdue })
+    if (!('ok' in saved) || saved.suggested || !rows.some((row) => row.row === saved.row && row.who === entry.fields.who && row.way === 'toHim')) {
+      throw new Error('Today seed: the Purdue ledger has no banner debt')
+    }
+
+    const { id } = await s.call<{ id: string }>('work.routines.save', routine)
+    await s.call('work.routines.runNow', { id })
+    for (let attempt = 0; attempt < 30; attempt++) {
+      if (await s.call<ReviewReady>('work.review.ready', {})) return
+      await sleep(500)
+    }
+    throw new Error('Today seed: the weekly review did not become ready in 15 seconds')
+  } finally {
+    s.close()
+  }
+}
 
 export async function seedWork(ready: WorkSeedReady, repo: string): Promise<{ purdue: string; unify: string; addonId: string; venue: string; invoices: string }> {
   const s = await socket(ready)
@@ -243,6 +303,41 @@ export async function verifyOutbox2(ready: WorkSeedReady): Promise<string[]> {
   } finally {
     s.close()
   }
+}
+
+/** The Work fold cycle (`TC_WORK_ONLY=fold`): held posts enough that the Outbox scrolls in the open Duo's 669 pt. */
+export const FOLD_HELD_COUNT = 16
+/** The held item the cycle opens beside the list (`TC_TEST_OPEN`), and the row index it scrolls to the top (`TC_TEST_PLACE_TOP`). */
+export const FOLD_OPEN_ID = 'fold-12'
+export const FOLD_TOP_INDEX = 8
+
+/**
+ * The fold cycle's held rows, as `/work-held` writes them: posts through the Purdue add-on's held `echo`, both
+ * jobs in turn so the list has two bands, every one older than milestone 46's and 47's rows (the oldest of those
+ * is 100 minutes old) so the other sets' first item is unchanged. Nothing presses them.
+ */
+export function foldHeldRows(ids: { purdue: string; unify: string; venue: string; invoices: string; addonId: string }, now = Date.now()): Record<string, unknown>[] {
+  return Array.from({ length: FOLD_HELD_COUNT }, (_, i) => {
+    const purdue = i % 2 === 0
+    const week = i + 1
+    return {
+      id: `fold-${String(week).padStart(2, '0')}`,
+      workspaceId: purdue ? ids.purdue : ids.unify,
+      sessionId: purdue ? ids.venue : ids.invoices,
+      sector: purdue ? 'purdue' : 'unify',
+      kind: 'addon.call',
+      summary: `Post the week ${week} schedule`,
+      verb: 'Post',
+      createdAt: now - (120 + i * 5) * 60_000,
+      payload: { addonId: ids.addonId, addon: 'Purdue mail', tool: 'echo', words: 'Echo', arguments: { text: `Week ${week}: practice Tuesday and Thursday at 7:00 PM.` } }
+    }
+  })
+}
+
+/** Writes the fold cycle's held rows into the hold. */
+export async function seedFoldHeld(ready: WorkSeedReady, ids: Parameters<typeof foldHeldRows>[0]): Promise<void> {
+  const res = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows: foldHeldRows(ids) }) })
+  if (!res.ok) throw new Error(`fold seed: /work-held answered ${res.status}: ${await res.text()}`)
 }
 
 /** What the host holds after the phone's presses: the mail sent as edited, and what still waits. */
@@ -911,23 +1006,37 @@ export async function verifyFilesAsk(ready: WorkSeedReady & { environmentId: str
  * folder with the same sha256. `report` is what the app wrote after the save (Documents/share-report.json). A save the
  * host refused is a line with the host's words, never a pass.
  */
-export async function verifyShare(ready: WorkSeedReady, workspaceId: string, report: { name: string; size: number; sha256: string; state: string; words?: string | null } | null): Promise<string[]> {
-  if (!report) return ['NOT RUN share: the app wrote no share-report.json']
-  if (report.state !== 'done') return [`${report.state === 'refused' ? 'REFUSED' : 'NOT SAVED'} share: "${report.name}" ended ${report.state}${report.words ? `: ${report.words}` : ''}`]
-  const { createHash } = await import('node:crypto')
-  const { existsSync, readFileSync, readdirSync } = await import('node:fs')
+export type ShareReport = { name: string; size: number; sha256: string; state: string; words?: string | null; unpicked?: boolean; workspaceId?: string | null }
+
+/** The Share proof's real save, read back: Purdue Esports' folder (`folder`, from the host) by the file's sha256. */
+export async function verifyShare(ready: WorkSeedReady, workspaceId: string, report: ShareReport | null): Promise<string[]> {
+  if (!report || report.state !== 'done' || report.workspaceId !== workspaceId) return shareLines(workspaceId, report, undefined)
   const s = await socket(ready)
   try {
     const workspaces = await s.call<{ id: string; path: string }[]>('workspace.list', {})
-    const folder = workspaces.find((w) => w.id === workspaceId)?.path
-    if (!folder) return [`FAIL share: no workspace ${workspaceId} on the host`]
-    const file = `${folder}/${report.name}`
-    if (!existsSync(file)) return [`FAIL share: ${report.name} is not in ${folder} (it holds: ${readdirSync(folder).join(', ')})`]
-    const sha = createHash('sha256').update(readFileSync(file)).digest('hex')
-    return [`${sha === report.sha256 ? 'PASS' : 'FAIL'} share: ${report.name} is in the workspace's folder, ${report.size} bytes, sha256 ${sha === report.sha256 ? 'as the phone sent it' : `${sha}, not the phone's ${report.sha256}`}`]
+    return shareLines(workspaceId, report, workspaces.find((w) => w.id === workspaceId)?.path)
   } finally {
     s.close()
   }
+}
+
+/** The Share proof's lines: the no-pick case, then the save, read from `folder` by sha256. */
+export function shareLines(workspaceId: string, report: ShareReport | null, folder: string | undefined): string[] {
+  if (!report) return ['NOT RUN share: the app wrote no share-report.json']
+  // With no job checked, Save must stay off and queue nothing (the sheet never assumes the first job).
+  const lines = [report.unpicked === true ? 'PASS share: with no job checked, Save stayed off and queued nothing' : 'FAIL share: with no job checked, Save was on or queued a file']
+  if (report.state !== 'done') return [...lines, `${report.state === 'refused' ? 'REFUSED' : 'NOT SAVED'} share: ${report.name ? `"${report.name}" ` : ''}ended ${report.state}${report.words ? `: ${report.words}` : ''}`]
+  if (report.workspaceId !== workspaceId) return [...lines, `FAIL share: the save was asked for ${report.workspaceId ?? 'no job'}, not Purdue Esports (${workspaceId})`]
+  if (!folder) return [...lines, `FAIL share: no workspace ${workspaceId} on the host`]
+  const path = `${folder}/${report.name}`
+  if (!existsSync(path)) return [...lines, `FAIL share: ${report.name} is not in Purdue Esports' folder (it holds: ${readdirSync(folder).join(', ')})`]
+  const sha = createHash('sha256').update(readFileSync(path)).digest('hex')
+  return [...lines, `${sha === report.sha256 ? 'PASS' : 'FAIL'} share: ${report.name} is in Purdue Esports' folder, ${report.size} bytes, sha256 ${sha === report.sha256 ? 'as the phone sent it' : `${sha}, not the phone's ${report.sha256}`}`]
+}
+
+/** The Share proof passed: the no-pick case held and the save was read back by its hash, nothing less. */
+export function shareProven(lines: string[]): boolean {
+  return lines.length === 2 && lines.every((line) => line.startsWith('PASS share:'))
 }
 
 /** What the phone's review presses left on the host: the memo's branch accepted, his comment posted, the budget's change set accepted. */
@@ -978,6 +1087,184 @@ export async function verifyReview(ready: WorkSeedReady, sessionId: string): Pro
       }
     }
     return lines
+  } finally {
+    s.close()
+  }
+}
+
+// The proof parts m2 to m5 (the build "All of Work on the iPhone", steps M2d, M3d, M4c and M5c): what each part needs
+// on the test server beyond seedWork's two jobs. Each builder is pure and held to the wire's own schemas by
+// scripts/ios-seeds.test.ts; each seed calls the host as a phone or desktop would. A step the server cannot take is
+// a NOT RUN line, never a stop: the part's shots still run and the report says what is missing.
+
+type Step = (what: string, run: () => Promise<unknown>) => Promise<void>
+function stepper(lines: string[], part: string): Step {
+  return async (what, run) => {
+    try {
+      await run()
+      lines.push(`OK ${part} ${what}`)
+    } catch (err) {
+      lines.push(`NOT RUN ${part} ${what}: ${String(err)}`)
+    }
+  }
+}
+
+/**
+ * m2: LifeKit's fixture day names conversations and people in the cosmic and hypixel sectors (Dana Lee, #builds,
+ * #editors, Tom Beck); a row opens only in a job of its sector, so the part adds a job for each.
+ */
+export const M2_JOBS = [
+  { name: 'CosmicGames', sector: 'cosmic' },
+  { name: 'Hypixel', sector: 'hypixel' }
+] as const
+
+export async function seedM2(ready: WorkSeedReady): Promise<{ lines: string[] }> {
+  const s = await socket(ready)
+  const lines: string[] = []
+  const step = stepper(lines, 'm2')
+  try {
+    for (const job of M2_JOBS) await step(`job ${job.name}`, () => s.call('workspace.create', { kind: 'work', ...job }))
+    return { lines }
+  } finally {
+    s.close()
+  }
+}
+
+/** A solid picture as PNG bytes, written by hand (no image library here): 8-bit RGB, one IDAT. */
+export function solidPng(width: number, height: number, rgb: [number, number, number]): Buffer {
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    return c >>> 0
+  })
+  const crc = (bytes: Buffer) => {
+    let c = 0xffffffff
+    for (const b of bytes) c = crcTable[(c ^ b) & 0xff] ^ (c >>> 8)
+    return (c ^ 0xffffffff) >>> 0
+  }
+  const chunk = (type: string, data: Buffer) => {
+    const head = Buffer.alloc(4)
+    head.writeUInt32BE(data.length)
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+    const tail = Buffer.alloc(4)
+    tail.writeUInt32BE(crc(body))
+    return Buffer.concat([head, body, tail])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr.set([8, 2, 0, 0, 0], 8)
+  const row = Buffer.alloc(1 + width * 3)
+  for (let x = 0; x < width; x++) row.set(rgb, 1 + x * 3)
+  const raw = Buffer.concat(Array.from({ length: height }, () => row))
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
+}
+
+/** m3: a folder of the Purdue job's own with a PDF and two pictures, for the folder, its grid and the open Duo's pick. */
+export const M3_FOLDER = 'Budgets'
+export const M3_PDF = 'Spring budget.pdf'
+export function m3Files(): { name: string; bytes: Buffer }[] {
+  return [
+    { name: M3_PDF, bytes: pdfOf([['Spring budget', 'Arena, travel and prizes.', 'Dummy text for the proof.'], ['Travel', 'Two vans, one night.', 'Dummy text for the proof.']]) },
+    { name: 'Arena photo.png', bytes: solidPng(1200, 800, [52, 120, 246]) },
+    { name: 'Stage photo.png', bytes: solidPng(800, 1200, [240, 140, 40]) }
+  ]
+}
+
+/** The file m3 puts in the Trash first, so the Trash lens has a row with Put Back. */
+export const M3_TRASHED = 'Old budget.pdf'
+export function m3TrashParams(purdue: string, host: string, dir: string) {
+  return { workspaceId: purdue, refs: [{ at: 'file' as const, host, path: `${dir}/${M3_TRASHED}` }], op: 'ios-m3-trash-old-budget' }
+}
+
+export async function seedFilesM3(ready: WorkSeedReady & { environmentId: string }, purdue: string): Promise<{ lines: string[] }> {
+  const { mkdirSync, writeFileSync } = await import('node:fs')
+  const s = await socket(ready)
+  const lines: string[] = []
+  const step = stepper(lines, 'm3')
+  try {
+    const workspaces = await s.call<{ id: string; path: string }[]>('workspace.list', {})
+    const dir = `${workspaces.find((w) => w.id === purdue)!.path}/${M3_FOLDER}`
+    await step(`files in ${M3_FOLDER}`, async () => {
+      mkdirSync(dir, { recursive: true })
+      for (const file of m3Files()) writeFileSync(`${dir}/${file.name}`, file.bytes)
+    })
+    await step(`${M3_TRASHED} in the Trash`, async () => {
+      writeFileSync(`${dir}/${M3_TRASHED}`, pdfOf([['Old budget', 'Last spring’s numbers.']]))
+      await s.call('work.files.trash', m3TrashParams(purdue, ready.environmentId, dir))
+    })
+    return { lines }
+  } finally {
+    s.close()
+  }
+}
+
+/** m4: Search's Recent in the Work scope, two threads he opened in two jobs, kept by the host's own `opened`. */
+export function m4RecentHits(ids: { purdue: string; unify: string; venue: string; invoices: string }, now: number) {
+  return [
+    { key: `thread:${ids.venue}`, kind: 'thread', title: WORK_THREAD_TITLE, workspaceId: ids.purdue, at: now - 30 * 60_000, open: { to: 'thread' as const, sessionId: ids.venue } },
+    { key: `thread:${ids.invoices}`, kind: 'thread', title: 'Overdue invoices', workspaceId: ids.unify, at: now - 3 * 3_600_000, open: { to: 'thread' as const, sessionId: ids.invoices } }
+  ]
+}
+
+export async function seedSearchM4(ready: WorkSeedReady, ids: Parameters<typeof m4RecentHits>[0]): Promise<{ lines: string[] }> {
+  const s = await socket(ready)
+  const lines: string[] = []
+  const step = stepper(lines, 'm4')
+  try {
+    for (const hit of m4RecentHits(ids, Date.now())) await step(`recent ${hit.title}`, () => s.call('work.search.opened', { hit }))
+    return { lines }
+  } finally {
+    s.close()
+  }
+}
+
+/**
+ * m5: the Purdue job's Money (Owed to You, You Owe, a month of paid rows past the eight the page shows, two receipts
+ * waiting: one read, with no amount, and one the host still reads) and its Plays (one takes text and a date, one a
+ * mail). Review's week and the Unpaid deposit are seedToday's, which the part also runs.
+ */
+export const M5_PAID_ROWS = 12
+export function m5MoneyRows(purdue: string, now: number) {
+  const at = new Date(now)
+  const day = (back: number) => ledgerDay(new Date(at.getFullYear(), at.getMonth(), Math.max(1, at.getDate() - back)))
+  const paid = Array.from({ length: M5_PAID_ROWS }, (_, i) => ({
+    workspaceId: purdue,
+    key: `ios-m5-paid-${String(i + 1).padStart(2, '0')}`,
+    fields: { date: day(i), who: ['Campus dining', 'Office Depot', 'Arena AV crew', 'Bus charter'][i % 4], what: `Spring LAN ${['snacks', 'printing', 'sound', 'travel'][i % 4]}`, way: 'out' as const, amount: 1250 + i * 375, status: 'Paid' as const }
+  }))
+  const entries = [
+    ...paid,
+    { workspaceId: purdue, key: 'ios-m5-reimburse', fields: { date: day(2), who: 'Office Depot', what: 'Bracket printouts', way: 'out' as const, amount: 3418, status: 'To reimburse' as const } },
+    { workspaceId: purdue, key: 'ios-m5-owe', fields: { date: day(1), who: 'Arena AV crew', what: 'Sound check', way: 'out' as const, amount: 15000, status: 'Unpaid' as const } }
+  ]
+  const picture = solidPng(60, 90, [250, 250, 245]).toString('base64')
+  const receipts = [
+    { key: 'ios-m5-receipt-read', workspaceId: purdue, name: 'Campus store receipt.png', mime: 'image/png', part: 0, parts: 1, dataBase64: picture, lines: [{ text: 'Campus Store' }, { text: 'Thank you' }], source: 'phone' as const },
+    { key: 'ios-m5-receipt-reading', workspaceId: purdue, name: 'Pizza receipt.png', mime: 'image/png', part: 0, parts: 1, dataBase64: picture, source: 'phone' as const }
+  ]
+  return { entries, receipts }
+}
+
+export function m5Plays(purdue: string) {
+  return [
+    { workspaceId: purdue, name: 'Weekly recap', instructions: 'Write the week’s recap for the staff channel from the notes he gives, for the date he picks.', takes: ['date', 'text'] as ('date' | 'text' | 'mail')[] },
+    { workspaceId: purdue, name: 'Answer a sponsor', instructions: 'Draft a reply to the sponsor mail he picks; keep it short and thank them first.', takes: ['mail'] as ('date' | 'text' | 'mail')[] }
+  ]
+}
+
+export async function seedM5(ready: WorkSeedReady, purdue: string): Promise<{ lines: string[] }> {
+  const s = await socket(ready)
+  const lines: string[] = []
+  const step = stepper(lines, 'm5')
+  try {
+    const { entries, receipts } = m5MoneyRows(purdue, Date.now())
+    await step(`${entries.length} ledger rows`, async () => {
+      for (const entry of entries) await s.call('work.money.entry', entry)
+    })
+    for (const receipt of receipts) await step(`receipt ${receipt.name}`, () => s.call('work.money.receive', receipt))
+    for (const play of m5Plays(purdue)) await step(`play ${play.name}`, () => s.call('work.routines.playSave', play))
+    return { lines }
   } finally {
     s.close()
   }

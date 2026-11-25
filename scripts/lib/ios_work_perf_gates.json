@@ -1,0 +1,15 @@
+{
+  "network-before-frame": true,
+  "rows-remade": true,
+  "first-frame": false,
+  "cached-row": false,
+  "row-hit": false,
+  "rest-ticks": true,
+  "rest-queries": true,
+  "rest-polls": true,
+  "rest-cpu": false,
+  "list-rows-built": true,
+  "list-rows-remade": true,
+  "list-offset-writes": true,
+  "editor-memory": false
+}

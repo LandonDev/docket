@@ -41,7 +41,8 @@ Sources/TempCodeClient
                 logic, tested here; the app's Design/ holds the views. MotionLoop (a repeating
                 value as keyframes, what the app hands Core Animation), TickRule (when a clock
                 on screen draws again)
-  Support/      SocketClock (SystemClock, ManualClock)
+  Support/      SocketClock (SystemClock, ManualClock), Signposts, LaunchMarks (LaunchClock, ProcessStart,
+                SocketRequests, LaunchRowLedger), WorkPerfReport (the work-perf proof's file)
 Tests/TempCodeClientTests
   fake-socket and manual-clock suites, cache and client suites, LiveServerTests (a real server)
 ```
@@ -185,7 +186,7 @@ the performance proof gates: body runs by view, refolds, row builds and the
 rows built, batches, publishes, the app's offset writes. `PerfOffMain`
 counts folds run off the main actor. Compiled in every configuration. **DiagnosticsText**
 (`Shell/`) is the words of the hidden Diagnostics screen: a late-frame
-share, a time in ms, a hitch ratio, the display line.
+share, a time in ms, a hitch ratio, the display line, a launch mark.
 `start()` paints from the cache, then connects; on each new session the open
 threads resume first (`visibleThread`, the one on screen, at the head of the
 first batch) while the shell catches up alongside in one round trip

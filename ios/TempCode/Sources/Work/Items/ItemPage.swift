@@ -14,6 +14,8 @@ struct ItemPage: View {
     let onAsk: () -> Void
     @State private var asking: ContextChip?
     @State private var sharing: CanvasItem?
+    /// The clicker on the shown deck's running show.
+    @State private var clicking: CanvasItem?
     @State private var previewing: CanvasItem?
     @State private var failure: String?
     /// Print is reading its pages: a spinner stands in More's place.
@@ -44,7 +46,7 @@ struct ItemPage: View {
                 Divider()
                 ReaderFrame(client: client, item: item, commands: commands, file: $file, sheet: $sheet) {
                     // A key that may only read has no Ask: the host would refuse its words.
-                    ItemBodyView(client: client, item: item, ask: client.work.canOperate ? { asking = $0 } : nil)
+                    ItemBodyView(client: client, item: item, ask: client.work.may(.sessionSend) ? { asking = $0 } : nil)
                         .id(item.id)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -57,9 +59,12 @@ struct ItemPage: View {
             AskSheet(client: client, target: .thread(sessionId), chip: chip) { _ in onAsk() }
         }
         .sheet(item: $sharing) { item in
-            if let source = ItemBody.guestSource(item) {
-                GuestLinkSheet(client: client, source: source, title: item.title)
+            if let source = ShareSource.of(item) {
+                ShareLinkSheet(client: client, source: source, title: item.title, purdue: client.workspaces.first { $0.id == item.workspaceId }?.sector == "purdue")
             }
+        }
+        .fullScreenCover(item: $clicking) { deck in
+            HostClicker(client: client, itemId: deck.id) { clicking = nil }
         }
         .navigationDestination(item: $previewing) { item in
             if let source = client.work.canvas.preview(for: item) { PagePreview(client: client, item: item, source: source) }
@@ -76,26 +81,47 @@ struct ItemPage: View {
         #endif
     }
 
+    /// One place up or down the thread's items; the host's answer is the order kept, its refusal said in its words.
+    private func move(_ item: CanvasItem, by: Int) {
+        guard let order = CanvasOrder.moved(items.map(\.id), item.id, by: by) else { return }
+        Task {
+            do {
+                try await client.work.canvas.reorder(sessionId, order: order)
+            } catch {
+                failure = (error as? ActionError)?.message ?? String(describing: error)
+            }
+        }
+    }
+
     private func header(_ item: CanvasItem) -> some View {
         HStack(spacing: 8) {
+            // The shown item's name is the segment's label already: the row never says it again. With several, the
+            // switch is a glyph beside More, its menu the items by name with the shown one ticked.
+            Spacer(minLength: 8)
             if items.count > 1 {
                 Menu {
                     Picker("Item", selection: Binding(get: { item.id }, set: { selected = $0 })) {
                         ForEach(items, id: \.id) { Text($0.title).tag($0.id) }
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(item.title).textStep(.title, weight: .semibold).lineLimit(1)
-                        Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(.secondary)
+                    // The thread's tab order, the desktop's tab row (`work.canvas.reorder`): the shown item moves.
+                    if client.work.may(.canvasReorder) {
+                        Section {
+                            Button("Move Up", systemImage: "arrow.up") { move(item, by: -1) }
+                                .disabled(items.first?.id == item.id)
+                            Button("Move Down", systemImage: "arrow.down") { move(item, by: 1) }
+                                .disabled(items.last?.id == item.id)
+                        }
                     }
+                } label: {
+                    Image(systemName: "square.on.square")
+                        .frame(minWidth: Layout.hitTarget, minHeight: Layout.hitTarget)
                 }
+                .accessibilityLabel("Switch item, \(items.count) open")
                 .accessibilityIdentifier("item-switch")
             }
-            // One item: its name is the segment's label already, so the row holds only its More.
-            Spacer(minLength: 8)
             if printing {
                 ProgressView()
-                    .frame(minWidth: 44, minHeight: 44)
+                    .frame(minWidth: Layout.hitTarget, minHeight: Layout.hitTarget)
                     .accessibilityLabel("Reading the pages to print")
             } else {
                 Menu {
@@ -103,7 +129,7 @@ struct ItemPage: View {
                     ReaderMoreRows(verbs: ReaderVerbs.of(item, facts(item))) { run($0, on: item) }
                 } label: {
                     Image(systemName: GlassMetrics.moreSymbol)
-                        .frame(minWidth: 44, minHeight: 44)
+                        .frame(minWidth: Layout.hitTarget, minHeight: Layout.hitTarget)
                 }
                 .accessibilityLabel("More")
                 .accessibilityIdentifier("item-more")
@@ -118,17 +144,25 @@ struct ItemPage: View {
     private func facts(_ item: CanvasItem) -> ReaderFacts {
         let file = file?.item.id == item.id ? file : nil
         return ReaderFacts(
-            canOperate: client.work.canOperate,
-            canApprove: client.work.canApprove,
+            mayClose: client.work.may(.canvasClose),
+            mayGuestLink: client.work.may(.guestsCreate),
             inThread: true,
             waiting: file?.waiting ?? 0,
             previews: client.work.canvas.preview(for: item) != nil,
-            comments: file?.takesComments ?? false
+            comments: file?.takesComments ?? false,
+            finds: commands.frame?.offers.find ?? false,
+            undo: commands.frame?.canUndo ?? false,
+            redo: commands.frame?.canRedo ?? false,
+            showing: client.work.may(.slidesShowPress) && client.work.shows.values.contains { $0.itemId == item.id },
+            mayKeep: client.work.may(.canvasKeep)
         )
     }
 
     private func run(_ verb: ReaderVerb, on item: CanvasItem) {
         switch verb {
+        case .undo: commands.frame?.run(.undo)
+        case .redo: commands.frame?.run(.redo)
+        case .clicker: clicking = item
         case .find: commands.showFind()
         case .guestLink: sharing = item
         case .close:
@@ -136,6 +170,13 @@ struct ItemPage: View {
                 do { try await client.work.canvas.close(item) } catch { failure = ActionError.wrap(error).message }
             }
         case .preview: previewing = item
+        case .keep:
+            Task {
+                do {
+                    let name = try await client.work.canvas.keep(item)
+                    FleetToastCenter.shared.post(message: MailRules.keptLine(name))
+                } catch { failure = ActionError.wrap(error).message }
+            }
         case .print:
             Task {
                 printing = true
@@ -144,7 +185,6 @@ struct ItemPage: View {
             }
         case .comments: sheet = .comments
         case .review: sheet = .review
-        case .share: break
         }
     }
 }
@@ -156,6 +196,15 @@ struct ItemBodyView: View {
     let ask: ((ContextChip) -> Void)?
 
     var body: some View {
+        // A mail's file (or a chat's) comes onto its host first; its kind reads it there.
+        if MailRules.fetches(item) {
+            FetchFirst(client: client, item: item) { kind }
+        } else {
+            kind
+        }
+    }
+
+    @ViewBuilder private var kind: some View {
         switch ItemBody.of(item) {
         case .hosted(let source):
             HostedItemView(client: client, item: item, source: source, ask: ask)
@@ -230,6 +279,7 @@ struct AskSheet: View {
                         ProgressView()
                     } else {
                         Button("Send") { Task { await send() } }
+                            .keyboardShortcut(.return, modifiers: .command)
                             .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             .accessibilityIdentifier("ask-send")
                     }

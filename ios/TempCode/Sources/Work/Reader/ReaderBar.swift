@@ -33,6 +33,8 @@ final class ReaderCommands {
     /// Comment on the words he picked in a document; nil where the file takes no comments, and the
     /// hosted page's edit menu then has no Comment.
     var comment: ((String) -> Void)?
+    /// The hosted editor's frame while one shows: More's Undo, Redo and Find ask its page.
+    var frame: HostedFrame?
 
     init(ownsAsk: Bool) {
         self.ownsAsk = ownsAsk
@@ -57,7 +59,11 @@ struct ReaderMoreRows: View {
     let run: (ReaderVerb) -> Void
 
     var body: some View {
-        ForEach(verbs.filter { $0 != .close }) { row($0) }
+        // Undo and Redo lead, as in the system's Edit menu, set apart from the file's rows.
+        let edits = verbs.filter { $0 == .undo || $0 == .redo }
+        ForEach(edits) { row($0) }
+        if !edits.isEmpty, verbs.count > edits.count { Divider() }
+        ForEach(verbs.filter { $0 != .close && !edits.contains($0) }) { row($0) }
         if verbs.contains(.close) {
             Divider()
             row(.close)

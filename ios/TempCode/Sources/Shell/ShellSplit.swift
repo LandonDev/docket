@@ -31,6 +31,8 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
     private var sidebarColumn: SidebarColumn { SidebarColumn.of(halfOpen: halfOpen, foldX: foldX) }
 
     var body: some View {
+        // Read so a stray split (`ShellNavigator.visibilityAsk`) reads its binding again.
+        let _ = navigator.visibilityAsk
         NavigationSplitView(columnVisibility: visibility, preferredCompactColumn: compactColumn) {
             NavigationStack(path: $navigator.sidebarPath) {
                 sidebar()
@@ -64,37 +66,46 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
         .onGeometryChange(for: CGFloat.self) { navigator.windowWidth / 2 - $0.frame(in: .global).minX } action: { foldX = $0 }
         .background { HingeWatch(halfOpen: $halfOpen) }
         #if DEBUG
-        // The Duo proof's notes (Home's split, where every thread shot lands): the split's own
+        // The Duo proof's notes (the split of the tab on screen, Home's or Work's): the split's own
         // width, the column the sidebar and the detail share, and the sidebar's state.
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { if probed { LayoutProbe.note("split.width", String(Int($0.rounded()))) } }
         .onChange(of: sidebarWord, initial: true) { if probed { LayoutProbe.note("sidebar", sidebarWord) } }
+        .onChange(of: chosenWord, initial: true) { if probed { LayoutProbe.note("sidebar.chosen", chosenWord) } }
         #endif
     }
 
     #if DEBUG
-    private var probed: Bool { navigator.tab == .home }
+    private var probed: Bool { navigator.focused && navigator.tab != .search }
 
     /// `stack` collapsed, `visible` tiled beside the detail, `overlay` over it, `hidden` behind the toggle.
     private var sidebarWord: String {
         switch navigator.pose {
         case .stack: "stack"
-        case .split(let mode): navigator.sidebarShown ? (mode == .tiled ? "visible" : "overlay") : "hidden"
+        case .split(let mode): navigator.sidebarVisible ? (mode == .tiled ? "visible" : "overlay") : "hidden"
         }
     }
+
+    /// His own toggle for the tab, which a wide route never writes: `shown` or `hidden`.
+    private var chosenWord: String { navigator.sidebarShown ? "shown" : "hidden" }
     #endif
 
-    /// The expanded preference: the remembered toggle, whatever the collapsed
-    /// state. The split's own writes around a fold are dropped (`ShellPose.keepsVisibilityWrite`).
+    /// The expanded preference: the remembered toggle, hidden by a wide route
+    /// unless he brought it back there (`ShellNavigator.sidebarVisible`),
+    /// whatever the collapsed state. The split's own writes around a fold are
+    /// dropped (`ShellPose.keepsVisibilityWrite`), and one made just before a
+    /// fold is held until the pose has held after it (`ShellNavigator.holdSidebarWrite`).
     private var visibility: Binding<NavigationSplitViewVisibility> {
         Binding(
-            get: { navigator.sidebarShown ? .all : .detailOnly },
+            get: { navigator.sidebarVisible ? .all : .detailOnly },
             set: { value in
                 // A fold writes the split's visibility as it collapses and expands; only the person's toggle is kept.
                 let kept = ShellPose.keepsVisibilityWrite(pose: navigator.pose, sincePoseChange: Date().timeIntervalSince(navigator.poseChangedAt))
                 #if DEBUG
                 if probed { LayoutProbe.note("sidebar.write", "\(value == .detailOnly ? "detailOnly" : "shown") \(kept ? "kept" : "dropped")") }
                 #endif
-                if kept { navigator.sidebarShown = value != .detailOnly }
+                navigator.splitWrote(value != .detailOnly, kept: kept)
+                // A write that only repeats what is shown is the split settling, not his press.
+                if kept, (value != .detailOnly) != navigator.sidebarVisible { navigator.holdSidebarWrite(value != .detailOnly) }
             }
         )
     }

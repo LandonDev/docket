@@ -64,6 +64,32 @@ import TempCodeContract
         #expect(await transport.pendingMethods.isEmpty)
     }
 
+    @Test func `a press's frame is asked again as it is released, and one stopped there never reaches the socket`() async throws {
+        let socket = FakeWebSocket()
+        let transport = transport(socket)
+        let opening = Task { try await transport.open() }
+        socket.hello()
+        _ = try await opening.value
+        // The app went to the background while the frame waited behind an earlier write.
+        let stopped = Task {
+            try await Transport.$release.withValue({ @MainActor in "Not sent: TempCode left the screen" }) {
+                try await transport.request(Methods.WorkspaceList.self, NoParams())
+            }
+        }
+        await #expect(throws: ActionError.refused(message: "Not sent: TempCode left the screen", forbidden: false)) { try await stopped.value }
+        #expect(socket.sentRequests.isEmpty)
+        #expect(await transport.pendingMethods.isEmpty)
+        // A frame the check lets go is sent as ever.
+        let goes = Task {
+            try await Transport.$release.withValue({ @MainActor in nil }) {
+                try await transport.request(Methods.WorkspaceList.self, NoParams())
+            }
+        }
+        await socket.waitForSent(1)
+        socket.answer(id: try #require(socket.sentRequests.first).id, result: "[]")
+        #expect(try await goes.value.isEmpty)
+    }
+
     @Test func `a result that is not the method's output is a decoding error`() async throws {
         let socket = FakeWebSocket()
         let transport = transport(socket)

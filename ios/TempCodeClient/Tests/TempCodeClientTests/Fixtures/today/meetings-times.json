@@ -1,0 +1,219 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "meetings-times",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-ref",
+      "sector": "ref",
+      "name": "Refereeing",
+      "path": "/w/mac/ref",
+      "open": true
+    }
+  ],
+  "sources": {
+    "meetings": {
+      "events": [
+        {
+          "_id": "past",
+          "title": "Standup",
+          "sector": "purdue",
+          "startsAt": 1795532400000,
+          "endsAt": 1795534200000,
+          "allDay": false
+        },
+        {
+          "_id": "now",
+          "title": "Planning",
+          "sector": "purdue",
+          "startsAt": 1795546800000,
+          "endsAt": 1795550400000,
+          "allDay": false
+        },
+        {
+          "_id": "soon",
+          "title": "Budget sync",
+          "sector": "purdue",
+          "startsAt": 1795550400000,
+          "endsAt": 1795554000000,
+          "allDay": false
+        },
+        {
+          "_id": "later",
+          "title": "Varsity game",
+          "sector": "ref",
+          "startsAt": 1795566600000,
+          "endsAt": 1795570200000,
+          "allDay": false,
+          "location": "Northside gym",
+          "leaveAt": 1795561800000
+        },
+        {
+          "_id": "gone",
+          "title": "Left early",
+          "sector": "ref",
+          "startsAt": 1795568400000,
+          "endsAt": 1795572000000,
+          "allDay": false,
+          "leaveAt": 1795564800000,
+          "travel": {
+            "departedAt": 1795546800000
+          }
+        },
+        {
+          "_id": "allday",
+          "title": "Tournament week",
+          "sector": "ref",
+          "startsAt": 1795500000000,
+          "endsAt": 1795586400000,
+          "allDay": true
+        },
+        {
+          "_id": "hidden",
+          "title": "Hidden",
+          "sector": "purdue",
+          "startsAt": 1795554000000,
+          "endsAt": 1795557600000,
+          "allDay": false,
+          "hidden": true
+        },
+        {
+          "_id": "nojob",
+          "title": "No job's",
+          "sector": "cosmic",
+          "startsAt": 1795554000000,
+          "endsAt": 1795557600000,
+          "allDay": false
+        }
+      ],
+      "people": {},
+      "read": {
+        "built": true
+      }
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "fold:earlier:meetings",
+        "event:allday",
+        "event:now",
+        "event:soon",
+        "event:later",
+        "event:gone"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "meetings",
+            "title": "Meetings",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No meetings today",
+            "earlier": 1,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "event:allday",
+                "section": "meetings",
+                "sector": "ref",
+                "title": "Tournament week",
+                "at": 0,
+                "when": "All day",
+                "workspace": "mac/mac-ref",
+                "opens": "agenda",
+                "acts": [
+                  "Prepare"
+                ]
+              },
+              {
+                "key": "event:now",
+                "section": "meetings",
+                "sector": "purdue",
+                "title": "Planning",
+                "at": 2,
+                "when": "1:00 PM",
+                "whenLine": "Now",
+                "workspace": "mac/mac-purdue",
+                "opens": "agenda",
+                "acts": [
+                  "Prepare"
+                ]
+              },
+              {
+                "key": "event:soon",
+                "section": "meetings",
+                "sector": "purdue",
+                "title": "Budget sync",
+                "at": 3,
+                "when": "2:00 PM",
+                "whenLine": "in 25 min",
+                "workspace": "mac/mac-purdue",
+                "opens": "agenda",
+                "acts": [
+                  "Prepare"
+                ]
+              },
+              {
+                "key": "event:later",
+                "section": "meetings",
+                "sector": "ref",
+                "title": "Varsity game",
+                "detail": "Northside gym",
+                "at": 4,
+                "when": "6:30 PM",
+                "whenLine": "Leave 5:10 PM",
+                "workspace": "mac/mac-ref",
+                "opens": "agenda",
+                "acts": [
+                  "Prepare"
+                ]
+              },
+              {
+                "key": "event:gone",
+                "section": "meetings",
+                "sector": "ref",
+                "title": "Left early",
+                "at": 5,
+                "when": "7:00 PM",
+                "workspace": "mac/mac-ref",
+                "opens": "agenda",
+                "acts": [
+                  "Prepare"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

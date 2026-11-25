@@ -29,6 +29,8 @@ public struct ComposerChrome: Sendable, Equatable {
     public var queued: StripWords?
     /// How many batch threads paused with a paused master.
     public var pausedBatch: Int
+    /// A Work thread (`scope: work`): its composer offers Work's things on `@` and holds their chips.
+    public var work: Bool
 
     public init(_ session: SessionMeta?, pausedBatch: Int = 0) {
         exists = session != nil
@@ -45,5 +47,6 @@ public struct ComposerChrome: Sendable, Equatable {
         frozen = held ? session?.frozenActiveElapsed : nil
         queued = session?.status == .queued ? session.map(StatusWords.queuedLine) : nil
         self.pausedBatch = session?.isMaster == true && session?.status == .paused ? pausedBatch : 0
+        work = session?.scope == .work
     }
 }

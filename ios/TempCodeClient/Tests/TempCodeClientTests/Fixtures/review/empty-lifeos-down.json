@@ -1,0 +1,348 @@
+{
+  "tz": "America/Chicago",
+  "opts": {
+    "home": "env-box"
+  },
+  "calendar": {
+    "at": 1795118520000,
+    "named": 1794808800000
+  },
+  "days": [
+    1794927600000,
+    1795118400000,
+    1794499200000,
+    1795417200000
+  ],
+  "name": "empty-lifeos-down",
+  "now": 1795446000000,
+  "parts": [
+    {
+      "environmentId": "env-box",
+      "body": {
+        "host": "box",
+        "from": 1794808800000,
+        "to": 1795413600000,
+        "tz": "America/Chicago",
+        "madeAt": 1795446000000,
+        "by": "routine",
+        "over": true,
+        "jobs": [
+          {
+            "workspaceId": "w-cosmic",
+            "sector": "cosmic",
+            "name": "Cosmic"
+          },
+          {
+            "workspaceId": "w-hypixel",
+            "sector": "hypixel",
+            "name": "Hypixel"
+          },
+          {
+            "workspaceId": "w-purdue",
+            "sector": "purdue",
+            "name": "Purdue"
+          },
+          {
+            "workspaceId": "w-unify",
+            "sector": "unify",
+            "name": "Unify"
+          },
+          {
+            "workspaceId": "w-side",
+            "sector": null,
+            "name": "Side work"
+          }
+        ],
+        "lifeos": null,
+        "points": [],
+        "ran": [],
+        "slipped": {
+          "at": 1795212000000,
+          "rows": []
+        },
+        "shipped": [],
+        "before": null,
+        "left": [
+          "LifeOS did not answer, so the calendar, tasks and mail are not counted."
+        ],
+        "lifeosState": "signed-out"
+      }
+    }
+  ],
+  "expect": {
+    "merged": {
+      "from": 1794808800000,
+      "to": 1795413600000,
+      "tz": "America/Chicago",
+      "madeAt": 1795446000000,
+      "by": "routine",
+      "over": true,
+      "jobs": [
+        {
+          "key": "cosmic",
+          "sector": "cosmic",
+          "name": "Cosmic",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-cosmic"
+            }
+          ]
+        },
+        {
+          "key": "hypixel",
+          "sector": "hypixel",
+          "name": "Hypixel",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-hypixel"
+            }
+          ]
+        },
+        {
+          "key": "purdue",
+          "sector": "purdue",
+          "name": "Purdue",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-purdue"
+            }
+          ]
+        },
+        {
+          "key": "unify",
+          "sector": "unify",
+          "name": "Unify",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-unify"
+            }
+          ]
+        },
+        {
+          "key": "~box:w-side",
+          "sector": null,
+          "name": "Side work",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-side"
+            }
+          ]
+        }
+      ],
+      "hours": [
+        {
+          "job": "cosmic",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "hypixel",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "purdue",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "unify",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "~box:w-side",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        }
+      ],
+      "compare": [],
+      "shipped": [],
+      "slipped": [],
+      "slippedAt": 1795212000000,
+      "answersKept": false,
+      "lifeosFrom": null,
+      "left": [
+        "LifeOS did not answer, so the calendar, tasks and mail are not counted."
+      ],
+      "lifeosDown": [
+        {
+          "environmentId": "env-box",
+          "state": "signed-out",
+          "kept": false,
+          "stale": false
+        }
+      ],
+      "known": {
+        "calendar": false,
+        "calendarCounted": false,
+        "desk": false,
+        "shipped": false,
+        "slipped": false
+      }
+    },
+    "calendar": {
+      "weekOf": {
+        "from": 1794808800000,
+        "to": 1795413600000
+      },
+      "hours": 168,
+      "prev": {
+        "from": 1794204000000,
+        "to": 1794808800000
+      },
+      "next": {
+        "from": 1795413600000,
+        "to": 1796018400000
+      },
+      "named": {
+        "from": 1794808800000,
+        "to": 1795413600000
+      },
+      "isWeek": true,
+      "isNotWeek": false,
+      "dayStart": 1795068000000,
+      "dayAfter": 1795154400000,
+      "dayBefore": 1794981600000,
+      "localDay": "2026-11-19",
+      "knownZone": true
+    },
+    "lengths": [],
+    "words": {
+      "week": "Week of Nov 16",
+      "made": "Made Fri 4:00 PM",
+      "nothing": "Not known",
+      "hostOff": "The Mac is off. Its threads and held items are not counted.",
+      "days": [
+        "Tue",
+        "Thu",
+        "Nov 12",
+        "Nov 23"
+      ],
+      "jobs": [
+        {
+          "job": "cosmic",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "hypixel",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "purdue",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "unify",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "~box:w-side",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        }
+      ],
+      "shipped": [],
+      "slipped": []
+    }
+  }
+}

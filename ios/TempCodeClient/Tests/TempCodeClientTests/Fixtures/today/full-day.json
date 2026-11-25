@@ -1,0 +1,881 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "full-day",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-ref",
+      "sector": "ref",
+      "name": "Refereeing",
+      "path": "/w/mac/ref",
+      "open": true
+    },
+    {
+      "environmentId": "box",
+      "workspaceId": "box-hypixel",
+      "sector": "hypixel",
+      "name": "Hypixel",
+      "path": "/w/box/hypixel",
+      "open": true
+    }
+  ],
+  "sources": {
+    "held": {
+      "items": [
+        {
+          "environmentId": "mac",
+          "ref": {
+            "at": "host",
+            "id": "h1"
+          },
+          "workspaceId": "mac-purdue",
+          "sessionId": null,
+          "sector": "purdue",
+          "account": null,
+          "state": "held",
+          "createdAt": 1795529520000,
+          "decidedBy": null,
+          "decidedAt": null,
+          "n": null,
+          "why": "rule",
+          "grantId": null,
+          "error": null,
+          "result": null,
+          "routineRunId": null,
+          "updatedAt": 1795532400000,
+          "kind": "mail.send",
+          "summary": "Send to Dana Lee: Travel budget for nationals",
+          "verb": "Send"
+        },
+        {
+          "environmentId": "mac",
+          "ref": {
+            "at": "host",
+            "id": "h2"
+          },
+          "workspaceId": "mac-purdue",
+          "sessionId": null,
+          "sector": "purdue",
+          "account": null,
+          "state": "failed",
+          "createdAt": 1795300800000,
+          "decidedBy": null,
+          "decidedAt": null,
+          "n": null,
+          "why": "rule",
+          "grantId": null,
+          "error": "Teams refused the post",
+          "result": null,
+          "routineRunId": null,
+          "updatedAt": 1795532400000,
+          "kind": "teams.post",
+          "summary": "Post in Teams: Roster is final",
+          "verb": "Post"
+        },
+        {
+          "environmentId": "box",
+          "ref": {
+            "at": "host",
+            "id": "h3"
+          },
+          "workspaceId": "~work",
+          "sessionId": null,
+          "sector": null,
+          "account": null,
+          "state": "held",
+          "createdAt": 1794330000000,
+          "decidedBy": null,
+          "decidedAt": null,
+          "n": null,
+          "why": "rule",
+          "grantId": null,
+          "error": null,
+          "result": null,
+          "routineRunId": null,
+          "updatedAt": 1795532400000,
+          "kind": "office.edit",
+          "summary": "Change Brief.docx in Brief.docx: 3 boxes, the title and 2 more",
+          "verb": "Change",
+          "payload": {
+            "name": "Brief.docx",
+            "edits": [
+              {},
+              {}
+            ]
+          }
+        },
+        {
+          "environmentId": "box",
+          "ref": {
+            "at": "host",
+            "id": "h4"
+          },
+          "workspaceId": null,
+          "sessionId": null,
+          "sector": null,
+          "account": null,
+          "state": "sending",
+          "createdAt": 1795525200000,
+          "decidedBy": null,
+          "decidedAt": null,
+          "n": null,
+          "why": "rule",
+          "grantId": null,
+          "error": null,
+          "result": null,
+          "routineRunId": null,
+          "updatedAt": 1795532400000,
+          "kind": "calendar.op",
+          "summary": "Decline Staff sync",
+          "verb": "Decline"
+        }
+      ],
+      "names": [
+        {
+          "environmentId": "mac",
+          "workspaceId": "mac-purdue",
+          "name": "Purdue Esports"
+        }
+      ],
+      "loaded": true,
+      "errors": []
+    },
+    "meetings": {
+      "events": [
+        {
+          "_id": "e1",
+          "title": "Budget sync",
+          "sector": "purdue",
+          "startsAt": 1795550400000,
+          "endsAt": 1795554000000,
+          "allDay": false,
+          "location": "Zoom",
+          "attendees": [
+            {
+              "address": "maya@purdue.edu"
+            }
+          ]
+        },
+        {
+          "_id": "e2",
+          "title": "Varsity, Central at Northside",
+          "sector": "ref",
+          "startsAt": 1795566600000,
+          "endsAt": 1795570200000,
+          "allDay": false,
+          "location": "Northside gym",
+          "leaveAt": 1795561800000
+        },
+        {
+          "_id": "e3",
+          "title": "Standup",
+          "sector": "purdue",
+          "startsAt": 1795532400000,
+          "endsAt": 1795533300000,
+          "allDay": false
+        },
+        {
+          "_id": "e4",
+          "title": "Render review",
+          "sector": "hypixel",
+          "startsAt": 1795557600000,
+          "endsAt": 1795561200000,
+          "allDay": false
+        }
+      ],
+      "people": {
+        "purdue": [
+          {
+            "_id": "p1",
+            "name": "Maya Chen",
+            "emails": [
+              "Maya@purdue.edu"
+            ]
+          }
+        ]
+      },
+      "read": {
+        "built": true
+      }
+    },
+    "due": {
+      "tasks": [
+        {
+          "_id": "t1",
+          "title": "Confirm bus for nationals",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795388400000
+        },
+        {
+          "_id": "t2",
+          "title": "Send Jess the trailer notes",
+          "sector": "hypixel",
+          "status": "open",
+          "dueAt": 1795561200000
+        },
+        {
+          "_id": "t3",
+          "title": "Read the new rule book",
+          "sector": "ref",
+          "status": "open",
+          "pinned": true
+        },
+        {
+          "_id": "t4",
+          "title": "Later thing",
+          "sector": "ref",
+          "status": "open",
+          "dueAt": 1795791600000
+        }
+      ],
+      "read": {
+        "built": true
+      }
+    },
+    "waiting": {
+      "waits": [
+        {
+          "_id": "m1",
+          "subject": "Travel budget for nationals",
+          "sector": "purdue",
+          "waiting": {
+            "since": 1795059000000,
+            "dueAt": 1795318200000,
+            "asked": false,
+            "to": [
+              {
+                "name": "Dana Lee",
+                "address": "dana@purdue.edu"
+              }
+            ]
+          }
+        }
+      ],
+      "read": {
+        "built": true
+      }
+    },
+    "messages": {
+      "answers": [
+        {
+          "environmentId": "box",
+          "workspaceId": "box-hypixel",
+          "value": [
+            {
+              "chatId": "c1",
+              "chat": "Builders",
+              "who": "Jess",
+              "text": "Is the trailer cut ready?",
+              "at": 1795543320000
+            },
+            {
+              "chatId": "c2",
+              "chat": "Sam",
+              "who": "Sam",
+              "text": "",
+              "at": 1795485600000
+            }
+          ]
+        }
+      ]
+    },
+    "clashes": {
+      "range": {
+        "clashes": [
+          {
+            "id": "e4-e2",
+            "kind": "drive",
+            "a": {
+              "eventId": "e4",
+              "sector": "hypixel",
+              "title": "Render review",
+              "startsAt": 1795557600000,
+              "endsAt": 1795561200000,
+              "can": [
+                "decline"
+              ]
+            },
+            "b": {
+              "eventId": "e2",
+              "sector": "ref",
+              "title": "Varsity, Central at Northside",
+              "startsAt": 1795566600000,
+              "endsAt": 1795573800000,
+              "can": [
+                "decline"
+              ]
+            },
+            "minutes": 38,
+            "measured": true,
+            "shortBy": 12
+          }
+        ],
+        "leaves": []
+      }
+    },
+    "money": {
+      "answers": [
+        {
+          "environmentId": "mac",
+          "workspaceId": "mac-purdue",
+          "value": {
+            "rows": [
+              {
+                "row": 4,
+                "who": "Purdue",
+                "what": "Bus deposit",
+                "amount": 125000,
+                "since": "2026-11-02",
+                "way": "toHim",
+                "reimburse": true
+              }
+            ],
+            "problems": []
+          }
+        }
+      ]
+    },
+    "review": {
+      "asked": [
+        "mac",
+        "box"
+      ],
+      "answered": {
+        "mac": {
+          "from": 1794808800000,
+          "madeAt": 1795212000000
+        },
+        "box": null
+      }
+    },
+    "prep": {
+      "answers": [
+        {
+          "environmentId": "mac",
+          "workspaceId": "mac-purdue",
+          "value": {
+            "meetings": [
+              {
+                "workspaceId": "mac-purdue",
+                "eventId": "e1",
+                "state": "briefed"
+              },
+              {
+                "workspaceId": "other",
+                "eventId": "e2",
+                "state": "briefed"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "msforms": {
+      "answers": [
+        {
+          "environmentId": "mac",
+          "workspaceId": "mac-purdue",
+          "value": {
+            "forms": [
+              {
+                "formId": "f1",
+                "tenant": "purdue",
+                "title": "Tryout signups",
+                "unseen": 3,
+                "lastAnswerAt": 1795536000000
+              },
+              {
+                "formId": "f2",
+                "tenant": "purdue",
+                "title": "Old form",
+                "unseen": 0,
+                "lastAnswerAt": null
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "digest": {
+      "rows": [
+        {
+          "id": "d1",
+          "host": "box",
+          "kind": "routines.result",
+          "group": "results",
+          "title": "Weekly export finished",
+          "detail": "12 rows",
+          "at": 1795523400000,
+          "how": "digest",
+          "day": "2026-11-24",
+          "open": {
+            "view": "routines",
+            "workspaceId": "box-hypixel"
+          }
+        },
+        {
+          "id": "d2",
+          "host": "box",
+          "kind": "mail.waiting",
+          "group": "people",
+          "title": "Dana has not answered",
+          "at": 1795521600000,
+          "how": "digest",
+          "day": "2026-11-24"
+        },
+        {
+          "id": "d3",
+          "host": "mac",
+          "kind": "ending.signin",
+          "group": "ending",
+          "title": "Teams sign-in ends",
+          "key": "teams-end",
+          "at": 1795525200000,
+          "by": 1795618800000,
+          "how": "waiting",
+          "day": null
+        }
+      ],
+      "loaded": true,
+      "errors": []
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [
+      {
+        "source": "clashes",
+        "key": "event:e4",
+        "note": "12 min short before Varsity, Central at Northside (Refereeing)",
+        "late": true,
+        "act": "Resolve"
+      },
+      {
+        "source": "clashes",
+        "key": "event:e2",
+        "note": "12 min short after Render review (Hypixel)",
+        "late": true,
+        "act": "Resolve"
+      },
+      {
+        "source": "prep",
+        "key": "event:e1",
+        "note": "Prep is ready",
+        "opens": "prep"
+      }
+    ],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "held:box:host:h3",
+        "held:mac:host:h2",
+        "held:mac:host:h1",
+        "fold:earlier:meetings",
+        "event:e1",
+        "event:e4",
+        "event:e2",
+        "task:t1",
+        "task:t2",
+        "task:t3",
+        "mail:m1",
+        "chat:c1:1795543320000",
+        "chat:c2:1795485600000",
+        "money:mac:mac-purdue:4:toHim",
+        "msforms:mac:mac-purdue:f1",
+        "review:1794808800000",
+        "tell:i:box:d1",
+        "tell:k:teams-end"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "held",
+            "title": "Waiting on you",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "Nothing waits on your press",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "held:box:host:h3",
+                "section": "held",
+                "sector": null,
+                "job": "Work Chats",
+                "title": "Change Brief.docx",
+                "detail": "2 changes: the title",
+                "at": 1794330000000,
+                "when": "Nov 10",
+                "lead": "glyph",
+                "opens": "held",
+                "acts": []
+              },
+              {
+                "key": "held:mac:host:h2",
+                "section": "held",
+                "sector": "purdue",
+                "job": "Purdue Esports",
+                "title": "Post in Teams",
+                "detail": "Teams refused the post",
+                "detailLate": true,
+                "at": 1795300800000,
+                "when": "Sat 4:40 PM",
+                "lead": "glyph",
+                "opens": "held",
+                "acts": []
+              },
+              {
+                "key": "held:mac:host:h1",
+                "section": "held",
+                "sector": "purdue",
+                "job": "Purdue Esports",
+                "title": "Send to Dana Lee",
+                "detail": "Travel budget for nationals",
+                "at": 1795529520000,
+                "when": "8:12 AM",
+                "lead": "glyph",
+                "opens": "held",
+                "acts": []
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "meetings",
+            "title": "Meetings",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No meetings today",
+            "earlier": 1,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "event:e1",
+                "section": "meetings",
+                "sector": "purdue",
+                "title": "Budget sync",
+                "detail": "Prep is ready",
+                "at": 1,
+                "when": "2:00 PM",
+                "whenLine": "in 25 min",
+                "workspace": "mac/mac-purdue",
+                "opens": "prep",
+                "acts": [
+                  "Prepare"
+                ]
+              },
+              {
+                "key": "event:e4",
+                "section": "meetings",
+                "sector": "hypixel",
+                "title": "Render review",
+                "detail": "12 min short before Varsity, Central at Northside (Refereeing)",
+                "detailLate": true,
+                "at": 2,
+                "when": "4:00 PM",
+                "workspace": "box/box-hypixel",
+                "opens": "agenda",
+                "acts": [
+                  "Resolve",
+                  "Prepare"
+                ]
+              },
+              {
+                "key": "event:e2",
+                "section": "meetings",
+                "sector": "ref",
+                "title": "Varsity, Central at Northside",
+                "detail": "12 min short after Render review (Hypixel)",
+                "detailLate": true,
+                "at": 3,
+                "when": "6:30 PM",
+                "whenLine": "Leave 5:10 PM",
+                "workspace": "mac/mac-ref",
+                "opens": "agenda",
+                "acts": [
+                  "Resolve",
+                  "Prepare"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "due",
+            "title": "Due",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "tick",
+            "empty": "Nothing due today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "task:t1",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Confirm bus for nationals",
+                "at": 1795388400000,
+                "when": "Nov 22",
+                "late": true,
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:t2",
+                "section": "due",
+                "sector": "hypixel",
+                "title": "Send Jess the trailer notes",
+                "at": 1795561200000,
+                "when": "5:00 PM",
+                "lead": "tick",
+                "workspace": "box/box-hypixel",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:t3",
+                "section": "due",
+                "sector": "ref",
+                "title": "Read the new rule book",
+                "lead": "tick",
+                "workspace": "mac/mac-ref",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "waiting",
+            "title": "Waiting on others",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No one owes you a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "mail:m1",
+                "section": "waiting",
+                "sector": "purdue",
+                "title": "Dana Lee",
+                "detail": "Travel budget for nationals",
+                "at": 1795059000000,
+                "when": "6 days",
+                "workspace": "mac/mac-purdue",
+                "opens": "mail",
+                "acts": [
+                  "Nudge",
+                  "Dismiss"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "messages",
+            "title": "Messages",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "empty": "No one is waiting on a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "chat:c1:1795543320000",
+                "section": "messages",
+                "sector": "hypixel",
+                "job": "Hypixel",
+                "title": "Jess in Builders",
+                "detail": "Is the trailer cut ready?",
+                "at": -1795543320000,
+                "when": "12:02 PM",
+                "lead": "glyph",
+                "opens": "messages",
+                "acts": [
+                  "Mark read"
+                ]
+              },
+              {
+                "key": "chat:c2:1795485600000",
+                "section": "messages",
+                "sector": "hypixel",
+                "job": "Hypixel",
+                "title": "Sam",
+                "at": -1795485600000,
+                "when": "Yesterday",
+                "lead": "glyph",
+                "opens": "messages",
+                "acts": [
+                  "Mark read"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "money",
+            "title": "Owed",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "empty": "",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "money:mac:mac-purdue:4:toHim",
+                "section": "money",
+                "sector": "purdue",
+                "job": "Purdue Esports",
+                "title": "Bus deposit",
+                "detail": "To be paid back $1,250.00",
+                "at": 1793642400000,
+                "when": "22 days",
+                "opens": "money",
+                "acts": []
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "msforms",
+            "title": "Responses",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "empty": "",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "msforms:mac:mac-purdue:f1",
+                "section": "msforms",
+                "sector": "purdue",
+                "job": "Purdue Esports",
+                "title": "Tryout signups",
+                "detail": "3 new responses",
+                "at": 1795536000000,
+                "opens": "msform",
+                "acts": []
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "also",
+            "title": "Also",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "empty": "",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "review:1794808800000",
+                "section": "also",
+                "sector": null,
+                "title": "Last week's review is ready",
+                "detail": "Week of Nov 16",
+                "at": 1795212000000,
+                "opens": "review",
+                "acts": []
+              },
+              {
+                "key": "tell:i:box:d1",
+                "section": "also",
+                "sector": null,
+                "title": "Weekly export finished",
+                "detail": "12 rows",
+                "at": 1795523400000,
+                "when": "6:30 AM",
+                "opens": "tell",
+                "acts": []
+              },
+              {
+                "key": "tell:k:teams-end",
+                "section": "also",
+                "sector": null,
+                "title": "Teams sign-in ends",
+                "at": 1795525200000,
+                "when": "by Nov 25, 9:00 AM",
+                "opens": "tell",
+                "acts": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

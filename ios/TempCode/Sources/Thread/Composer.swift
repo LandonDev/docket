@@ -146,6 +146,8 @@ struct ComposerBar: View {
     @State private var picking = false
     @State private var picked: [PhotosPickerItem] = []
     @State private var photoCount = 0
+    /// Work's `@` answers for this thread (a Work thread whose key may ask): made once the chrome says Work.
+    @State private var mentionAsk: MentionAsk?
     @Environment(AppModel.self) private var app
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -156,7 +158,13 @@ struct ComposerBar: View {
     /// Photos per turn.
     static let maxPhotos = 4
 
-    private var hasText: Bool { draft.hasContent }
+    /// A chip is words a send carries: alone in the box it sends, as on the desktop.
+    private var hasText: Bool { draft.hasContent || hasChips }
+    /// This thread's chips, waiting for the send (a Work thread's only: a code thread's box holds none).
+    private var chipBox: ChipBox { ComposerChips.shared.box(environmentId: client.environment.id, sessionId: sessionId) }
+    private var hasChips: Bool { chrome.work && !chipBox.chips.isEmpty }
+    /// `@` offers Work's things in a Work thread on a host whose answer this key may read (`work.canvas.mentions`).
+    private var offersMentions: Bool { chrome.work && block == nil && client.work.may(.canvasMentions) }
     /// A photo is content as text is: alone in the box mid-turn it steers.
     private var hasPhotos: Bool { !uploads.isEmpty }
 
@@ -195,6 +203,14 @@ struct ComposerBar: View {
                 AttachmentStrip(uploads: uploads, onRemove: remove, onRetry: retry)
                     .transition(Motion.appear(reduced: reduceMotion))
             }
+            if offersMentions, let mentionAsk {
+                // Draws nothing until the box ends on `@words`; it reads them itself, so this body never does.
+                MentionPanel(draft: draft, ask: mentionAsk, pick: pick)
+            }
+            if hasChips {
+                ComposerChipRow(box: chipBox)
+                    .transition(Motion.appear(reduced: reduceMotion))
+            }
             VStack(spacing: ComposerMetrics.rowGap) {
                 TCGlassContainer {
                     box
@@ -203,6 +219,7 @@ struct ComposerBar: View {
             }
         }
         .animation(reduceMotion ? nil : Motion.collapse, value: uploads.isEmpty)
+        .animation(reduceMotion ? nil : Motion.collapse, value: hasChips)
         .animation(Motion.crossFade, value: failure)
         .animation(Motion.crossFade, value: holding)
         .animation(Motion.crossFade, value: queuedNote)
@@ -219,7 +236,23 @@ struct ComposerBar: View {
         .onChange(of: turnOpen) { _, open in if !open { queuedNote = false } }
         // A hold whose text went (or whose turn ended) is no hold.
         .onChange(of: offersQueue) { _, offers in if !offers { holding = false } }
+        // An unsent draft holds the Work tab's first place of the day (WorkTab.holdsDraft).
+        .onChange(of: hasText || hasPhotos, initial: true) { _, unsent in UnsentThreads.shared.set(environmentId: client.environment.id, sessionId: sessionId, unsent: unsent) }
         .task(id: client.operateBlock) { await settleBlock() }
+        // The `@` asker, once the thread is known to be Work's: it asks this thread's host and words what it could not search.
+        .onChange(of: chrome.work, initial: true) {
+            guard chrome.work, mentionAsk == nil else { return }
+            let client = client, sessionId = sessionId
+            mentionAsk = MentionAsk(fetch: { text in
+                try await client.work.canvas.mentions(sessionId, text: text)
+            }, failWords: { kinds in
+                MentionWords.failed(kinds, lifeos: MentionWords.lifeosState(client.work.lifeos), host: client.environment.name)
+            })
+            #if DEBUG
+            // The Work fold cycle's chip: one in the box, as a pick would put it.
+            if let label = TestHooks.chip { chipBox.add(ChipWords.lifeos(.task, table: .tasks, id: "fold-chip", label: label)) }
+            #endif
+        }
         // The row under the box names the catalog's models, for every key; a host that comes up asks again.
         .task(id: CatalogChoice.trigger(client)) { await choice.load(client) }
         // A person's edit takes the refusal and the queued note away; nothing else the draft is told does.
@@ -249,11 +282,22 @@ struct ComposerBar: View {
         }
     }
 
-    /// The box, with this thread's field and button.
+    /// The box, with this thread's field and button. A Work thread's box takes a row dragged in as its chip
+    /// (`ChipDrag`: a file, a person, a held item), exactly as an `@` pick does.
     private var box: some View {
         ComposerBox(placeholder: placeholder, draft: draft, focused: focused, blocked: block.map { $0.text(now: Date().timeIntervalSince1970 * 1000) }, canAttach: canAttach, attachEnabled: uploads.count < Self.maxPhotos, onAttach: { picking = true }) {
             ComposerButton(intent: intent, enabled: enabled, offersQueue: offersQueue, holding: $holding, reduced: reduceMotion, onTap: act, onQueue: queue)
         }
+        .dropDestination(for: ChipDrag.self) { drags, _ in
+            guard chrome.work, block == nil else { return false }
+            return drags.reduce(false) { added, drag in chipBox.add(drag.chip) || added }
+        }
+    }
+
+    /// An `@` row picked: its chip goes in the box and the typed `@words` leave it; the caret stays in the field.
+    private func pick(_ chip: ContextChip) {
+        chipBox.add(chip)
+        Motion.withoutAnimation { draft.takeMention() }
     }
 
     private var placeholder: String {
@@ -345,9 +389,12 @@ struct ComposerBar: View {
     /// all three back: the sent words ahead of what was typed meanwhile
     /// (`ComposerDraft.restore`), the sent photos ahead of those picked since.
     private func submit(_ deliver: @escaping (String, TurnModel?, [Attachment]) async throws -> Void) {
-        let body = draft.trimmed
-        guard !body.isEmpty || !uploads.isEmpty, !busy, photosSettled else { return }
+        let typed = draft.trimmed
+        guard !typed.isEmpty || hasChips || !uploads.isEmpty, !busy, photosSettled else { return }
         busy = true
+        // The chips go out as their lines above his words (`ChipWords.message`, the desktop's `withContextChips`).
+        let chips = chrome.work ? chipBox.take() : []
+        let body = ChipWords.message(chips, text: typed)
         // A keyboard action never animates: the field empties at once.
         Motion.withoutAnimation { draft.clear() }
         // The click is no edit: the lines about the last message leave here.
@@ -367,7 +414,8 @@ struct ComposerBar: View {
                 // The pick went with the turn; the chips follow the thread's model again once its push lands.
                 choice.release()
             } catch {
-                draft.restore(body)
+                if !typed.isEmpty { draft.restore(typed) }
+                chipBox.restore(chips)
                 uploads = photos + uploads
                 failure = (error as? ActionError)?.message ?? String(describing: error)
             }

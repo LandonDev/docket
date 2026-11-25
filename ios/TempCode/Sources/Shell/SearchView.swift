@@ -12,7 +12,9 @@ import TempCodeContract
 /// land per host as it answers, ranked together without regard to the host,
 /// and the previous answer stays on screen until the first batch lands, so
 /// two queries' rows never mix. Tap a thread to open it, tap a hit to land
-/// on its row. Nothing here animates on a keystroke.
+/// on its row. The Work scope (`WorkSearchRows`) asks every Work host in two
+/// speeds (`WorkSearchRun`), Recent before he types. Nothing here animates
+/// on a keystroke.
 ///
 /// The rows are `CrossHostSearch.run`'s: the one loop in `run()` is the
 /// model's seam, and the view draws whatever it emits.
@@ -24,6 +26,11 @@ struct SearchView: View {
     @State private var scope = SearchScope.threads
     @State private var answer = SearchAnswer.none
     @State private var searching = false
+    /// The Work scope's run, its one kind when he took "All mail for …", and a file being seated.
+    @State private var work = WorkSearchRun()
+    @State private var workKind: String?
+    @State private var workOpening: String?
+    @State private var workFailure: String?
     /// Where a head's title starts past the text edge: the glyph column and
     /// its gap, scaled with the glyph. Hits and separators start here.
     @ScaledMetric(relativeTo: .subheadline) private var glyphEdge = Layout.glyphWidth + Layout.rowGap
@@ -36,6 +43,33 @@ struct SearchView: View {
     private var openHosts: [EnvironmentClient] { paired.filter { $0.status.transport == .open } }
     private var offersFiles: Bool { openHosts.contains { client in client.projects.contains { !$0.archived } } }
     private var severalHosts: Bool { paired.count > 1 }
+    private var workInputs: [WorkSearchHosts.Input] {
+        paired.map { client in
+            WorkSearchHosts.Input(
+                id: client.environment.id,
+                name: client.environment.name,
+                platform: client.status.lastHello?.build?.platform,
+                workOn: client.work.isOn,
+                open: client.status.transport == .open,
+                may: client.work.may(.searchQuery)
+            )
+        }
+    }
+    private var offersWork: Bool { WorkSearchHosts.offered(workInputs) }
+    /// Every Work job across the hosts: a sector's workspaces are one job.
+    private var workJobs: [String: String] {
+        var jobs: [String: String] = [:]
+        for client in paired { for space in client.workspaces where space.kind == .work { jobs[space.id] = space.sector ?? "ws:\(space.id)" } }
+        return jobs
+    }
+    private var prompt: String {
+        switch (offersFiles, offersWork) {
+        case (true, true): "Threads, files and Work"
+        case (true, false): "Threads and files"
+        case (false, true): "Threads and Work"
+        case (false, false): "Threads"
+        }
+    }
     private var hitInsets: EdgeInsets {
         EdgeInsets(top: 0, leading: Layout.textEdge + glyphEdge, bottom: 0, trailing: Layout.textEdge)
     }
@@ -48,8 +82,36 @@ struct SearchView: View {
         let hosts: [String]
     }
 
+    /// What the Work scope asks again on: his words, the kind, and the hosts it may ask.
+    nonisolated private struct WorkKey: Hashable {
+        let query: String
+        let kind: String?
+        let hosts: [WorkSearchModel.Host]
+        let offline: [String]
+    }
+
+    /// Nil while the Work scope is not shown or no host can be asked.
+    private var workKey: WorkKey? {
+        guard scope == .work else { return nil }
+        let asked = WorkSearchHosts.hosts(workInputs)
+        guard !asked.hosts.isEmpty else { return nil }
+        return WorkKey(query: trimmed, kind: workKind, hosts: asked.hosts, offline: asked.offline)
+    }
+
     var body: some View {
+        let jobs = workJobs
+        let workRows = scope == .work ? work.model.rows(jobOf: { id in id.map { jobs[$0] ?? $0 } ?? "" }) : []
         List {
+            if scope == .work {
+                WorkSearchRows(
+                    run: work,
+                    rows: workRows,
+                    mixed: WorkSearchModel.placesMix(jobs: Set(jobs.values).count, rows: workRows),
+                    narrow: { workKind = $0 },
+                    opening: $workOpening,
+                    failure: $workFailure
+                )
+            } else {
             ForEach(answer.rows) { row in
                 switch row {
                 case .threadHead(let head):
@@ -93,30 +155,63 @@ struct SearchView: View {
                     .listRowInsets(Layout.rowInsets)
                     .listRowSeparator(.hidden)
             }
+            }
         }
         .listStyle(.plain)
         .frame(maxWidth: window.horizontal == .regular ? Layout.listMeasure : .infinity)
         .frame(maxWidth: .infinity)
-        .modifier(SearchField(query: $query, prompt: offersFiles ? "Threads and files" : "Threads"))
+        .modifier(SearchField(query: $query, prompt: prompt))
         .searchPresentationToolbarBehavior(.avoidHidingContent)
-        .modifier(SearchScopes(scope: $scope, offered: offersFiles))
+        .modifier(SearchScopes(scope: $scope, files: offersFiles, work: offersWork))
+        // Return takes the first row, as the desktop's picker does.
+        .onSubmit(of: .search) { submitWork(workRows) }
         .autocorrectionDisabled()
         .textInputAutocapitalization(.never)
         .overlay(alignment: .top) {
-            status
-                .padding(.top, 24)
+            Group {
+                if scope == .work { workStatus(workRows) } else { status }
+            }
+            .padding(.top, 24)
+        }
+        .toolbar {
+            if scope == .work, workKind != nil {
+                ToolbarItem(placement: .primaryAction) {
+                    // Held to one kind: the filled filter says so, and a tap widens to every kind.
+                    Button("All Kinds", systemImage: "line.3.horizontal.decrease.circle.fill") { workKind = nil }
+                }
+            }
+        }
+        .alert("Can’t Open", isPresented: Binding(get: { workFailure != nil }, set: { if !$0 { workFailure = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(workFailure ?? "")
         }
         .navigationTitle("Search")
         .onAppear {
             if query.isEmpty, let initialQuery { query = initialQuery }
             #if DEBUG
             // The simulator proof's shot of the Files scope; nothing else reads it.
-            if ProcessInfo.processInfo.environment["TC_TEST_SEARCH_SCOPE"] == "files" { scope = .files }
+            if let asked = ProcessInfo.processInfo.environment["TC_TEST_SEARCH_SCOPE"], let shot = SearchScope(rawValue: asked), shot != .threads { scope = shot }
             #endif
         }
         .onChange(of: offersFiles) {
             if !offersFiles, scope == .files { scope = .threads }
         }
+        .onChange(of: offersWork) {
+            if !offersWork, scope == .work { scope = .threads }
+        }
+        .onChange(of: scope) {
+            workKind = nil
+            if scope != .work { work.cancel() }
+        }
+        // Every change of his words asks at once (the fast answer); the run waits 120 ms for the slow one.
+        .onChange(of: workKey, initial: true) { _, key in
+            guard let key else { return }
+            Motion.withoutAnimation {
+                work.search(key.query, kind: key.kind, hosts: key.hosts, offline: key.offline, ask: ask)
+            }
+        }
+        .onDisappear { work.cancel() }
         .task(id: SearchKey(query: trimmed, scope: scope, hosts: openHosts.map(\.environment.id))) { await run() }
     }
 
@@ -139,6 +234,45 @@ struct SearchView: View {
         }
     }
 
+    /// One calm line over an empty Work list: the hint, a spinner while the first answers are out, or nothing found.
+    @ViewBuilder private func workStatus(_ rows: [WorkSearchModel.Row]) -> some View {
+        if !rows.contains(where: { if case .hit = $0 { true } else { false } }) {
+            if WorkSearchHosts.hosts(workInputs).hosts.isEmpty {
+                SearchStatusLine("Every host with Work is offline.")
+            } else if work.model.busy {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Searching")
+            } else if rows.contains(where: { $0.id == "nothing" }) {
+                ContentUnavailableView.search(text: work.model.text)
+            } else if trimmed.isEmpty {
+                SearchStatusLine("Everything in every job.")
+            }
+        }
+    }
+
+    /// `work.search.query` on the host the run names.
+    private var ask: WorkSearchRun.Ask {
+        let registry = model.registry
+        return { host, params in
+            guard let client = registry.client(host) else { throw TransportError.notConnected }
+            return try await client.work.searchWork(params)
+        }
+    }
+
+    /// Return in the field: the first row that opens, or "All … for" narrows.
+    private func submitWork(_ rows: [WorkSearchModel.Row]) {
+        guard scope == .work, let id = work.model.active(in: rows), let row = rows.first(where: { $0.id == id }) else { return }
+        switch row {
+        case .all(_, let kind, _): workKind = kind
+        case .hit(_, let hit, let host):
+            guard let target = WorkSearchTarget.of(hit, environmentId: host), case .route(let route) = target, let client = model.registry.client(host) else { return }
+            Task { await client.work.searchOpened(hit) }
+            navigator.open(route)
+        default: break
+        }
+    }
+
     private func open(_ environmentId: String, _ sessionId: String, seq: Int?) {
         navigator.open(.thread(environmentId: environmentId, sessionId: sessionId, seq: seq))
     }
@@ -146,6 +280,8 @@ struct SearchView: View {
     private func run() async {
         let text = trimmed
         let scope = scope
+        // The Work scope runs on its own (`work`); this task asks nothing for it.
+        guard scope != .work else { return }
         // The words alone must be long enough: `host:box` by itself asks nobody.
         guard ParsedQuery.parse(text).text.count >= SearchDebounce.minimumLength else {
             answer = .none
@@ -216,17 +352,20 @@ private struct SearchField: ViewModifier {
     }
 }
 
-/// The scope buttons under the field, only where a project file search is on offer.
+/// The scope buttons under the field, only where a second scope is on offer. With Work they show as the
+/// field opens, so Recent is one tap away before he types.
 private struct SearchScopes: ViewModifier {
     @Binding var scope: SearchScope
-    let offered: Bool
+    let files: Bool
+    let work: Bool
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if offered {
-            content.searchScopes($scope, activation: .onTextEntry) {
+        if files || work {
+            content.searchScopes($scope, activation: work ? .onSearchPresentation : .onTextEntry) {
                 Text("Threads").tag(SearchScope.threads)
-                Text("Files").tag(SearchScope.files)
+                if files { Text("Files").tag(SearchScope.files) }
+                if work { Text("Work").tag(SearchScope.work) }
             }
         } else {
             content

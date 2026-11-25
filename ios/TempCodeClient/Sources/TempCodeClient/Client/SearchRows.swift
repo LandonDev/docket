@@ -11,11 +11,14 @@ import TempCodeContract
 /// `SearchRow` and the view draws it; `SearchRows.build` is the single-host
 /// shaping it grew from, kept with its suite.
 
-/// What the field searches: threads by what was said in them, or lines of
-/// a project's files. Files are offered only where an open host has a project.
+/// What the field searches: threads by what was said in them, lines of a
+/// project's files, or everything in Work (`WorkSearchRun`, its own rows).
+/// Files are offered only where an open host has a project; Work only where a
+/// host with Work on lets this key search it.
 public enum SearchScope: String, CaseIterable, Sendable {
     case threads
     case files
+    case work
 }
 
 /// One row of the list, flat, in draw order. Ids are stable across answers
@@ -292,6 +295,9 @@ public nonisolated enum SearchRows {
             guard let answer = byHost[host.id] else { continue }
             let hostName = several ? host.name : nil
             switch scope {
+            case .work:
+                // The Work scope is `WorkSearchRun`'s rows, never this builder's.
+                continue
             case .threads:
                 guard let result = answer.threads else { continue }
                 for group in ThreadHits.group(environmentId: host.id, hits: result.hits, sessions: answer.sessions) {

@@ -38,6 +38,11 @@ private struct SheetShapeModifier: ViewModifier {
             .presentationSizing(SheetSizingAdapter(sizing: shape.sizing))
             .presentationCornerRadius(Radius.sheet)
             .presentationDragIndicator(shape.dragIndicator ? .visible : .hidden)
+            #if DEBUG
+            // The Work fold check: a sheet that is up stays up through a fold (`work.sheet`, its kind, `none` once it goes).
+            .onAppear { LayoutProbe.note("work.sheet", "\(kind)") }
+            .onDisappear { LayoutProbe.note("work.sheet", "none") }
+            #endif
     }
 
     private func detents(_ shape: SheetShape) -> Set<PresentationDetent> {

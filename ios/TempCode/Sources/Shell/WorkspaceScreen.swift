@@ -94,8 +94,8 @@ struct WorkspaceScreen: View {
                     QuietNote(text: "No threads here yet.", action: ("New thread", { presenter.compose(lead.client, lead.workspace, nil) }))
                         .padding(.horizontal, Layout.textEdge)
                 } else if key == HomeSections.workChatsKey {
-                    QuietNote(text: "No Work Chats yet.", action: ("New Work Chat", { newWorkChat = true }))
-                        .padding(.horizontal, Layout.textEdge)
+                    // The system's empty state, with no button: New Work Chat is the toolbar's.
+                    ContentUnavailableView("No Work Chats", systemImage: "bubble.left.and.bubble.right")
                 } else if screen == nil {
                     ContentUnavailableView("Workspace Not Found", systemImage: "folder")
                 }
@@ -109,9 +109,9 @@ struct WorkspaceScreen: View {
         // Omitted with one entry: a menu of one is a dead chevron.
         .modifier(WorkspaceTitleMenu(key: key, entries: titleEntries))
         .toolbar {
-            if key == HomeSections.workChatsKey {
+            if key == HomeSections.workChatsKey, mayStartWorkChat {
                 ToolbarItem(placement: .primaryAction) {
-                    Button("New Work Chat", systemImage: "square.and.pencil") { newWorkChat = true }
+                    Button("New Chat", systemImage: "square.and.pencil") { newWorkChat = true }
                         .accessibilityIdentifier("new-work-chat")
                 }
                 .highVisibility()
@@ -148,6 +148,9 @@ struct WorkspaceScreen: View {
         }
     }
 
+    /// Some host's key may start a Work chat (`session.create`, operate; KeyMay).
+    private var mayStartWorkChat: Bool { model.registry.ordered.contains { $0.work.isOn && $0.work.may(.sessionCreate) } }
+
     /// The copy a new thread starts on: the first host in registry order.
     private var lead: (client: EnvironmentClient, workspace: WorkspaceMeta)? {
         guard key != HomeSections.chatsKey, key != HomeSections.workChatsKey,
@@ -156,10 +159,12 @@ struct WorkspaceScreen: View {
         return (client: client, workspace: first.workspace)
     }
 
-    /// Every entry of Home in Home's order: Chats, Work Chats, the code workspaces, then the Work ones.
+    /// What the title's menu switches between: the jobs then Work Chats on a page of the Work tab,
+    /// Home's entries on one of Home's.
     private var titleEntries: [HomeSections.Entry] {
         let home = HomeSections.home(hosts: HomeRows.inputs(model.registry.ordered))
-        return home.mainEntries + home.work.filter { $0.kind != .workChats }
+        guard home.work.contains(where: { $0.id == key }) else { return home.entries }
+        return home.work.filter { $0.kind != .workChats } + home.work.filter { $0.kind == .workChats }
     }
 
     /// A Work workspace whose host cannot reach LifeOS says so once, above its threads.
@@ -179,7 +184,7 @@ struct WorkspaceScreen: View {
     }
 }
 
-/// `toolbarTitleMenu` listing Home's entries; a pick replaces the sidebar's
+/// `toolbarTitleMenu` listing the tab's entries; a pick replaces the sidebar's
 /// path with that workspace and leaves the detail alone: the open thread
 /// stays, and the strip follows the thread, not the sidebar.
 private struct WorkspaceTitleMenu: ViewModifier {

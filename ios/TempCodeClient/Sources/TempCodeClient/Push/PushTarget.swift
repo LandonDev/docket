@@ -6,7 +6,8 @@ import TempCodeContract
 /// infra/hub sends) or the activity's `tempcode://thread/<env>/<session>?seq=`.
 /// A notice of Work's (`tc.work`, docs/agents/work-digest.md "The phone") has
 /// no thread of its own: the day's digest opens the Digest, a tell that
-/// cannot wait opens its target where the phone has a route for it.
+/// cannot wait opens its target where the phone has a route for it
+/// (`DigestModel.route`, the one rule a Digest row's press shares).
 public struct PushTarget: Sendable, Hashable {
     /// Empty for a notice of Work's that names no host.
     public var environmentId: String
@@ -18,28 +19,18 @@ public struct PushTarget: Sendable, Hashable {
     public var held: String?
     /// `tc.work` was on the notice: a notice of Work's, not a thread's.
     public var work: Bool
-    /// A Work view a tell opens (`tc.work.open.view`, one the phone draws).
-    public var view: WorkView?
+    /// Where a tell opens (`tc.work.open`): a place, a view, a held item, Settings → Work or a thread.
+    public var tell: Route?
     /// A thread's request for his press (a tell keyed `request:<id>`): the tap opens its sheet over the Outbox.
     public var request: String?
 
-    public struct WorkView: Sendable, Hashable {
-        public var workspaceId: String
-        public var view: String
-
-        public init(workspaceId: String, view: String) {
-            self.workspaceId = workspaceId
-            self.view = view
-        }
-    }
-
-    public init(environmentId: String, sessionId: String, seq: Int? = nil, held: String? = nil, work: Bool = false, view: WorkView? = nil) {
+    public init(environmentId: String, sessionId: String, seq: Int? = nil, held: String? = nil, work: Bool = false, tell: Route? = nil) {
         self.environmentId = environmentId
         self.sessionId = sessionId
         self.seq = seq
         self.held = held
         self.work = work
-        self.view = view
+        self.tell = tell
     }
 
     /// The `tc` object of a hub notification; a payload without a thread (a host down) is nil, unless it is Work's.
@@ -54,37 +45,40 @@ public struct PushTarget: Sendable, Hashable {
         self.init(environmentId: environmentId, sessionId: sessionId, seq: PushTarget.int(tc["seq"]), held: PushTarget.held(tc["held"]))
     }
 
-    /// `tc.work`: `{key, digest}` opens the Digest; `{key, tell, by?, open?}` opens a held item, a Work
-    /// view the phone draws or a thread, on the notice's host, and the Digest otherwise.
+    /// `tc.work`: `{key, digest}` opens the Digest; `{key, tell, by?, open?}` opens what the tell
+    /// names where the phone has a screen for it, and the Digest otherwise.
     private init(work: [AnyHashable: Any], environmentId: String) {
         self.init(environmentId: environmentId, sessionId: "", work: true)
-        guard let tell = work["tell"] as? String, !environmentId.isEmpty else { return }
+        guard let tell = work["tell"] as? String, !environmentId.isEmpty || !tell.hasPrefix("request:") else { return }
         // A thread's request (the tell's key `request:<id>`): its open names the thread that asked, but the sheet is
         // where he answers it, so the key wins.
         if tell.hasPrefix("request:"), tell.count > "request:".count {
             request = String(tell.dropFirst("request:".count))
             return
         }
-        guard let open = work["open"] as? [AnyHashable: Any] else { return }
-        if let held = PushTarget.held(open["held"]) {
-            self.held = held
-        } else if let view = open["view"] as? String, DigestModel.phoneViews.contains(view), let workspaceId = open["workspaceId"] as? String, !workspaceId.isEmpty {
-            self.view = WorkView(workspaceId: workspaceId, view: view)
-        } else if open["held"] == nil, let thread = open["thread"] as? String, !thread.isEmpty {
-            sessionId = thread
+        // A clash's tell (`clash:<id>`) opens the clash, whatever its open names.
+        if let clash = DigestModel.route(nil, environmentId: environmentId, key: tell) {
+            self.tell = clash
+            return
         }
+        guard let open = work["open"] as? [String: Any], JSONSerialization.isValidJSONObject(open),
+              let data = try? JSONSerialization.data(withJSONObject: open),
+              let target = try? JSONDecoder().decode(TellOpen.self, from: data) else { return }
+        self.tell = DigestModel.route(target, environmentId: environmentId, key: tell)
+        // The thread on screen shows no notice for itself (`NavigationRouter.isVisible` reads `sessionId`).
+        if case .thread(_, let thread, _)? = self.tell { sessionId = thread }
     }
 
-    /// Where the tap goes: a held item over the Outbox, the Outbox under a request's sheet, a Work view, the
-    /// thread, or for a notice of Work's with none of those, the Digest.
+    /// Where the tap goes: the Outbox under a request's sheet, what a tell names, a held item over the
+    /// Outbox, the thread, or for a notice of Work's with none of those, the Digest.
     public var route: Route {
+        if request != nil, !environmentId.isEmpty { return .place(.outbox) }
+        if let tell { return tell }
         if !environmentId.isEmpty {
-            if request != nil { return .outbox }
             if let held { return .outboxItem(environmentId: environmentId, ref: held) }
-            if let view { return .workView(environmentId: environmentId, workspaceId: view.workspaceId, view: view.view) }
             if !sessionId.isEmpty { return .thread(environmentId: environmentId, sessionId: sessionId, seq: seq) }
         }
-        return .digest
+        return .place(.digest)
     }
 
     /// `tc.held` as a held item's key; nil when absent or not a ref this build knows.

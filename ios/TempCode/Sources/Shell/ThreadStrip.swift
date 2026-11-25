@@ -30,6 +30,9 @@ struct ThreadStripView: View {
     /// The thread on screen, "<environment>:<session>".
     let thread: String?
     @State private var width: CGFloat = 0
+    /// Where each chip sits in its row's visible width, and each row's width, kept without drawing anything again:
+    /// read only to decide whether the picked chip needs a scroll at all.
+    @State private var seen = ChipsSeen()
     @ScaledMetric(relativeTo: .footnote) private var rowHeight = StripMetrics.row
     @ScaledMetric(relativeTo: .caption) private var shelfHeight = StripMetrics.shelfRow
 
@@ -78,25 +81,40 @@ struct ThreadStripView: View {
                         } else {
                             StripChipView(chip: chip, onShelf: onShelf) { open(chip, scopeKey: scopeKey) }
                                 .id(chip.id)
+                                .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(Self.rowSpace)) } action: { seen.frames[chip.id] = $0 }
                                 // The thread's menu on a long press: the rows' own.
                                 .modifier(ChipActions(chip: chip))
                         }
                     }
                 }
-                // The first chip's fill half the text edge in, so its glyph sits clear of the bar's back button.
-                .padding(.horizontal, Layout.textEdge / 2)
             }
+            // The first chip's fill half the text edge in, so its glyph sits clear of the bar's back button; as the
+            // scroll's own margin, a chip brought into view stops at it too, never under the edge.
+            .contentMargins(.horizontal, Layout.textEdge / 2, for: .scrollContent)
             .scrollIndicators(.hidden)
             .mask { EdgeFade() }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .coordinateSpace(.named(Self.rowSpace))
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { size in
+                width = size
+                seen.widths[onShelf] = size
+            }
             // The selected chip (else a send in flight) into view on a change of selection, of the
             // chips (a restore paints them whole), or of the row's width (a fold); never animated.
             .onChange(of: scrollKey(chips), initial: true) {
                 guard let target = StripModel.scrollTarget(chips) else { return }
-                Motion.withoutAnimation { proxy.scrollTo(target, anchor: nil) }
+                // A chip wholly in view stays where it is: his tap on a chip he can see never moves it from under
+                // his finger. Only one partly or wholly out of view is brought in.
+                if let frame = seen.frames[target], let row = seen.widths[onShelf], frame.minX >= 0, frame.maxX <= row { return }
+                // A later chip comes to the leading margin whole: the chips before it go off the edge rather than
+                // stay half shown there (m4's "r the spring LAN"). The first chip keeps the row at its start.
+                let anchor: UnitPoint? = chips.first?.id == target ? nil : .leading
+                Motion.withoutAnimation { proxy.scrollTo(target, anchor: anchor) }
             }
         }
     }
+
+    /// The coordinate space of a chip row's visible width: a chip's frame in it says whether it is in view.
+    private static let rowSpace = "thread-strip-row"
 
     /// New Thread after the live row, outside its scroll: the glyph, or the
     /// words while the row holds no chip.
@@ -308,4 +326,12 @@ private extension StripTitleWeight {
         case .medium: .medium
         }
     }
+}
+
+/// The chips' places in their rows and the rows' widths, written as they move and read only on a change of the pick;
+/// a class, so a write redraws nothing.
+@MainActor
+private final class ChipsSeen {
+    var frames: [String: CGRect] = [:]
+    var widths: [Bool: CGFloat] = [:]
 }

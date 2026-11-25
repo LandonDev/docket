@@ -7,7 +7,7 @@ import Testing
     @Test(arguments: DuoPose.allCases)
     func `every row round-trips through classify`(pose: DuoPose) {
         let e = pose.expected
-        let hinge: DuoPose.HingeState? = pose == .halfOpen ? .partiallyOpen : (e.width > 700 || e.height > 700 ? .fullyOpen : .closed)
+        let hinge: DuoPose.HingeState? = pose == .halfOpen || pose == .tabletop ? .partiallyOpen : (e.width > 700 || e.height > 700 ? .fullyOpen : .closed)
         #expect(DuoPose.classify(width: e.width, height: e.height, horizontal: e.horizontal, vertical: e.vertical, hinge: hinge) == pose)
         #expect(DuoPose(tag: pose.rawValue) == pose)
         #expect(DuoPose(tag: pose.alias) == pose)
@@ -15,9 +15,10 @@ import Testing
     }
 
     @Test func `the aliases are plan 3's shot vocabulary`() {
-        #expect(DuoPose.allCases.map(\.alias) == ["fp", "fl", "ul", "up", "ho"])
+        #expect(DuoPose.allCases.map(\.alias) == ["fp", "fl", "ul", "up", "ho", "tt"])
         #expect(DuoPose(tag: "fp") == .folded)
         #expect(DuoPose(tag: "up") == .unfoldedPortrait)
+        #expect(DuoPose(tag: "tt") == .tabletop)
     }
 
     @Test func `a 27.0-linked window loses the 80 pt rail and classifies as nothing`() {
@@ -32,8 +33,13 @@ import Testing
         #expect(DuoPose.classify(width: 951, height: 669, horizontal: .regular, vertical: .regular, hinge: nil) == .unfolded)
         #expect(DuoPose.classify(width: 951, height: 669, horizontal: .regular, vertical: .regular, hinge: .fullyOpen) == .unfolded)
         #expect(DuoPose.classify(width: 951, height: 669, horizontal: .regular, vertical: .regular, hinge: .partiallyOpen) == .halfOpen)
-        // Turned while half open: the inner panel's portrait window, not a pose of the table.
-        #expect(DuoPose.classify(width: 669, height: 951, horizontal: .regular, vertical: .regular, hinge: .partiallyOpen) == .unfoldedPortrait)
+    }
+
+    @Test func `tabletop is the tall open window with the hinge partly open (the simulator's 5f numbers)`() {
+        #expect(DuoPose.tabletop.expected == DuoPose.Expected(width: 669, height: 951, horizontal: .regular, vertical: .regular, panel: "LCD-1", displayId: 3))
+        #expect(DuoPose.classify(width: 669, height: 951, horizontal: .regular, vertical: .regular, hinge: .partiallyOpen) == .tabletop)
+        #expect(DuoPose.classify(width: 669, height: 951, horizontal: .regular, vertical: .regular, hinge: .fullyOpen) == .unfoldedPortrait)
+        #expect(DuoPose.classify(width: 669, height: 951, horizontal: .regular, vertical: .regular, hinge: nil) == .unfoldedPortrait)
     }
 
     @Test func `the size classes must agree with the window`() {

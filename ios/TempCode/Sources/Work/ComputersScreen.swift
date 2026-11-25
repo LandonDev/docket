@@ -27,41 +27,14 @@ enum ComputerEntries {
     }
 }
 
-/// Home's row while anything is being driven on a connected host, shaped as the Outbox row: the glyph in the mark
-/// slot and "Computers". It carries no count (the desktop's rail row carries none either).
-struct ComputersHomeRow: View {
-    @Environment(ShellNavigator.self) private var navigator
-    @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = 28
-
-    var body: some View {
-        Button { navigator.open(.computers) } label: {
-            HStack(spacing: Layout.rowGap + 2) {
-                Image(systemName: ComputersGlyph.row)
-                    .font(TextStep.title.font.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: icon, height: icon)
-                Text("Computers")
-                    .textStep(.title, weight: .medium)
-                Spacer(minLength: 8)
-            }
-            .padding(.vertical, 8)
-            .frame(minHeight: Layout.rowHeight + 8)
-            .contentShape(Rectangle())
-            .separatorAtTextEdge(icon + Layout.rowGap + 2)
-        }
-        .buttonStyle(.pressable)
-        .listRowInsets(Layout.rowInsets)
-        .accessibilityIdentifier("home-computers")
-    }
-}
-
+/// The Work list's Computers row shows while anything is being driven on a connected host (`WorkList.sections`).
 enum ComputersGlyph {
     /// a held computer act's glyph (`WorkGlyph` for `.computerAct`): the same machine
     static let row = "macwindow"
 }
 
-/// The Computers list (docs/IOS-DESIGN.md "Work on the phone"): a tile per live session, the one that acted last
-/// first: the picture at the list's width, live where the host gives a stream and one muted line where it does not;
+/// The Computers list (docs/IOS-DESIGN.md "Work on the phone"): the Windows VM a host keeps, with Wake and Sleep,
+/// then a tile per live session, the one that acted last first: the picture at the list's width, live where the host gives a stream and one muted line where it does not;
 /// the thread's title, which opens the thread; what it is doing and where it runs. A tap on the picture opens it full
 /// screen, where Take Over, Hand Back and Stop are.
 struct ComputersScreen: View {
@@ -71,7 +44,14 @@ struct ComputersScreen: View {
     var body: some View {
         let clients = model.registry.ordered
         let tiles = ComputerEntries.tiles(clients)
+        let machines = clients.filter { $0.work.isOn && WinvmWords.shows($0.work.winvm) }
         List {
+            // The Windows VM a host keeps (M5b): how it stands, and Wake or Sleep for a key that may.
+            ForEach(machines, id: \.environment.id) { client in
+                if let state = client.work.winvm {
+                    Section { WinvmRow(client: client, state: state) }
+                }
+            }
             ForEach(tiles) { tile in
                 if let client = clients.first(where: { $0.environment.id == tile.host }) {
                     Section { ComputerTileView(client: client, tile: tile) }
@@ -80,8 +60,8 @@ struct ComputersScreen: View {
         }
         .listStyle(.insetGrouped)
         .overlay {
-            if tiles.isEmpty {
-                ContentUnavailableView("Nothing Is Being Driven", systemImage: ComputersGlyph.row, description: Text("A browser or an app an agent is using shows here, live."))
+            if tiles.isEmpty, machines.isEmpty {
+                ContentUnavailableView("No Computer in Use", systemImage: ComputersGlyph.row, description: Text("A browser or an app an agent is using shows here, live."))
             }
         }
         .navigationTitle("Computers")
@@ -90,6 +70,51 @@ struct ComputersScreen: View {
         #if DEBUG
         .onChange(of: tiles.count, initial: true) { _, count in LayoutProbe.note("computerTiles", "\(count)") }
         #endif
+    }
+}
+
+/// The Windows VM: its name, how it stands in a few words (the step it is on while it moves, the last thing that went
+/// wrong in the destructive ink), and the one press it offers: Wake while it sleeps, Sleep while it is awake. The
+/// `work.winvm` push keeps the row in step while Wake waits for Windows.
+private struct WinvmRow: View {
+    let client: EnvironmentClient
+    let state: WinvmStatePhone
+    @State private var pressing = false
+    @State private var error: String?
+
+    var body: some View {
+        HStack(spacing: Layout.rowGap) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Windows VM").textStep(.title, weight: .medium)
+                Text(WinvmWords.line(state)).textStep(.meta).foregroundStyle(.secondary).lineLimit(2)
+                if let error = error ?? state.error {
+                    Text(error).textStep(.meta, tint: Tint.destructiveText).lineLimit(3)
+                }
+            }
+            Spacer(minLength: 8)
+            if pressing || WinvmWords.moving(state) {
+                ProgressView()
+            } else if let press = WinvmWords.press(state), client.work.may(press == .wake ? .winvmWake : .winvmSleep) {
+                Button(press == .wake ? "Wake" : "Sleep") { Task { await run(press) } }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                    .accessibilityIdentifier("winvm-\(press == .wake ? "wake" : "sleep")")
+            }
+        }
+        .frame(minHeight: Layout.rowHeight)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("winvm-row")
+    }
+
+    private func run(_ press: WinvmWords.Press) async {
+        pressing = true
+        error = nil
+        defer { pressing = false }
+        do {
+            _ = try await (press == .wake ? client.work.wakeWinvm() : client.work.sleepWinvm())
+        } catch {
+            self.error = ActionError.wrap(error).message
+        }
     }
 }
 

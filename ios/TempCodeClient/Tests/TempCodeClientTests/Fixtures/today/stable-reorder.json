@@ -1,0 +1,94 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "stable-reorder",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    }
+  ],
+  "sources": {},
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "stable": {
+    "before": {
+      "now": 1795546800000,
+      "tasks": [
+        {
+          "_id": "a",
+          "title": "First",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795554000000
+        },
+        {
+          "_id": "b",
+          "title": "Second",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795557600000
+        },
+        {
+          "_id": "c",
+          "title": "Third",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795548600000
+        }
+      ]
+    },
+    "after": {
+      "now": 1795550400000,
+      "tasks": [
+        {
+          "_id": "c",
+          "title": "Third",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795548600000
+        },
+        {
+          "_id": "b",
+          "title": "Second, renamed",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795557600000
+        },
+        {
+          "_id": "a",
+          "title": "First",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795554000000
+        }
+      ]
+    }
+  },
+  "expect": {
+    "stable": {
+      "keys": [
+        "task:c",
+        "task:b",
+        "task:a"
+      ],
+      "kept": [
+        "task:a"
+      ],
+      "same": false
+    }
+  }
+}

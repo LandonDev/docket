@@ -16,7 +16,7 @@ enum ShareBridge {
         let hosts = registry.ordered.compactMap { client -> ShareTargets.Host? in
             let id = client.environment.id
             guard client.hasShell else { return earlier.hosts.first { $0.id == id } }
-            guard client.work.isOn, client.work.canOperate else { return nil }
+            guard client.work.isOn, client.work.may(.filesUpload) else { return nil }
             let spaces = client.workspaces
                 .filter { $0.kind == .work }
                 .map { ShareTargets.Workspace(id: $0.id, name: $0.name, sector: $0.sector, folderName: $0.name) }
@@ -24,6 +24,38 @@ enum ShareBridge {
             return ShareTargets.Host(id: id, name: client.environment.name, environment: client.environment, workspaces: spaces)
         }
         return ShareTargets(hosts: hosts).keepingUse(from: earlier)
+    }
+
+    /// The Work workspace the app has open now, for the sheet's first check (`ShareTargets.open`): kept in the list
+    /// the extension reads, written only when it changes.
+    static func noteOpen(_ open: ShareTargets.Open?) {
+        guard let open, let root = ShareInbox.groupRoot() else { return }
+        var targets = ShareTargets.read(root: root)
+        guard targets.open != open else { return }
+        targets.open = open
+        try? targets.write(root: root)
+    }
+
+    /// The Work workspace a route of the Work tab is in: a job's place, or a thread of a Work workspace.
+    static func open(_ route: Route?, registry: ClientRegistry) -> ShareTargets.Open? {
+        switch route {
+        case .place(_, let job?)?:
+            for client in registry.ordered {
+                if let space = client.workspaces.first(where: { $0.kind == .work && ProjectPairs.key(client.environment.id, $0) == job }) {
+                    return .init(hostId: client.environment.id, workspaceId: space.id)
+                }
+            }
+            return nil
+        case let route?:
+            guard let thread = ShellPaths.thread(of: route), let client = registry.client(thread.environmentId),
+                  let session = client.session(thread.sessionId) else { return nil }
+            // A thread of a project is in its project's workspace.
+            let workspaceId = session.workspaceId ?? session.projectId.flatMap { id in client.projects.first { $0.id == id }?.workspaceId }
+            guard let workspaceId, client.workspaces.contains(where: { $0.id == workspaceId && $0.kind == .work }) else { return nil }
+            return .init(hostId: thread.environmentId, workspaceId: workspaceId)
+        case nil:
+            return nil
+        }
     }
 
     /// Writes the list and the keys for the extension. Called at launch and whenever a host's Work or its
@@ -44,7 +76,7 @@ enum ShareBridge {
         defer { draining = false }
         let inbox = ShareInbox(root: root)
         inbox.sweep()
-        for client in registry.ordered where client.work.isOn && client.work.canOperate {
+        for client in registry.ordered where client.work.isOn && client.work.may(.filesUpload) {
             let id = client.environment.id
             guard inbox.items().contains(where: { $0.hostId == id && $0.state == .queued }) else { continue }
             await ShareUploader(inbox: inbox, hostId: id, hostName: client.environment.name, request: .client(client)).drain()
@@ -56,8 +88,8 @@ enum ShareBridge {
 /// The proofs' share sheet (`TC_TEST_SHARE=<state>`): the same view the extension shows, over Home, on a
 /// queue of its own under the temporary folder so the App Group's is never touched. States: `one`,
 /// `several`, `saving`, `saved`, `waiting`, `refused`, `earlier`, `unread` (one of three not read),
-/// `unread-all`, `empty` draw the sheet with no host asked; `save` really saves a picture into the first
-/// Work workspace's folder.
+/// `unread-all`, `empty` draw the sheet with no host asked; `save` presses Save with no job checked (nothing may
+/// queue), then picks the job `TC_TEST_SHARE_JOB` names and really saves a picture into its folder.
 struct ShareProofSheet: View {
     let registry: ClientRegistry
     let state: String
@@ -102,9 +134,24 @@ struct ShareProofSheet: View {
         model = made
         if state == "save" {
             try? await Task.sleep(for: .seconds(2))
+            // A fresh phone checks no job: Save is off and queues nothing until he picks one.
+            let unpicked = made.target == nil && !made.canSave
             await made.save()
-            // What the save left, for the proof's read-back on the host (Documents/share-report.json).
-            Self.report(inbox.items().last, picks: picks)
+            let held = unpicked && made.phase == .picking && made.lastSave.isEmpty && inbox.items().isEmpty
+            // Then the seeded job the proof names (TC_TEST_SHARE_JOB), chosen as his tap would, and Save.
+            let job = ProcessInfo.processInfo.environment["TC_TEST_SHARE_JOB"].flatMap { $0.isEmpty ? nil : $0 } ?? "Purdue Esports"
+            guard let pick = made.ordered.first(where: { $0.workspace.name == job }) else {
+                return Self.report(Report(name: "", size: 0, sha256: "", state: "no-job", words: "no job named \(job) in the sheet", unpicked: held))
+            }
+            made.choose(pick)
+            await made.save()
+            // What this save left, for the proof's read-back on the host (Documents/share-report.json): `done` only
+            // for a file the host took and the sheet said Saved.
+            guard let item = made.lastSave.first else {
+                return Self.report(Report(name: "", size: 0, sha256: "", state: "not-started", words: nil, unpicked: held, workspaceId: pick.workspace.id))
+            }
+            let state = item.state == .done && made.phase == .saved ? "done" : item.state == .done ? "not-saved" : item.state.rawValue
+            Self.report(Report(name: item.name, size: item.size, sha256: item.sha256, state: state, words: item.words, unpicked: held, workspaceId: pick.workspace.id))
         }
     }
 
@@ -114,18 +161,13 @@ struct ShareProofSheet: View {
         var sha256: String
         var state: String
         var words: String?
+        /// With no job checked, Save stayed off and queued nothing.
+        var unpicked: Bool
+        /// The job the save was asked to reach.
+        var workspaceId: String?
     }
 
-    private static func report(_ item: ShareItem?, picks: [SharePick]) {
-        // A file the host took leaves the queue: its name and hash are then the pick's own.
-        let report: Report
-        if let item {
-            report = Report(name: item.name, size: item.size, sha256: item.sha256, state: item.state.rawValue, words: item.words)
-        } else if let pick = picks.first, let data = try? Data(contentsOf: pick.url) {
-            report = Report(name: pick.name, size: data.count, sha256: AttachmentUpload.sha256Hex(data), state: "done", words: nil)
-        } else {
-            return
-        }
+    private static func report(_ report: Report) {
         guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first, let data = try? JSONEncoder().encode(report) else { return }
         try? data.write(to: documents.appending(path: "share-report.json"), options: .atomic)
     }

@@ -2,7 +2,8 @@ import SwiftUI
 
 /// Press feedback on every row and button: scale 0.96 in 160 ms ease-out from
 /// the touch down, back the same way on release, interruptible either way.
-/// Touch has no hover state, so the pointer's hover effect is off too.
+/// Touch has no hover state; a pointer (a trackpad or mouse on the open Duo) gets the system's highlight, which
+/// draws under the pointer alone.
 /// Reduced motion dims instead of scaling. The label keeps its own colors.
 struct PressableStyle: ButtonStyle {
     /// Off where the scale would distract (a control inside a scrolling text
@@ -18,7 +19,7 @@ struct PressableStyle: ButtonStyle {
             .scaleEffect(pressed && scaling ? Motion.pressScale : 1)
             .opacity(pressed && !scaling ? Motion.pressDim : 1)
             .animation(Motion.press, value: pressed)
-            .hoverEffectDisabled()
+            .hoverEffect(.highlight)
     }
 }
 

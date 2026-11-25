@@ -1,0 +1,288 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "source-failed",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-ref",
+      "sector": "ref",
+      "name": "Refereeing",
+      "path": "/w/mac/ref",
+      "open": true
+    },
+    {
+      "environmentId": "box",
+      "workspaceId": "box-hypixel",
+      "sector": "hypixel",
+      "name": "Hypixel",
+      "path": "/w/box/hypixel",
+      "open": true
+    }
+  ],
+  "sources": {
+    "held": {
+      "items": [],
+      "names": [],
+      "loaded": true,
+      "errors": [
+        {
+          "environmentId": "box",
+          "error": "It did not answer in time"
+        }
+      ]
+    },
+    "meetings": {
+      "events": [
+        {
+          "_id": "e1",
+          "title": "Budget sync",
+          "sector": "purdue",
+          "startsAt": 1795550400000,
+          "endsAt": 1795554000000,
+          "allDay": false
+        }
+      ],
+      "people": {},
+      "read": {
+        "built": true,
+        "pending": true,
+        "lost": [
+          {
+            "environmentId": "box",
+            "sector": "hypixel",
+            "error": "signed out",
+            "down": "signed-out"
+          }
+        ]
+      }
+    },
+    "due": {
+      "tasks": [],
+      "read": {
+        "built": false,
+        "error": "Server error: tasks:list"
+      }
+    },
+    "waiting": {
+      "waits": [],
+      "read": {
+        "built": true,
+        "lost": [
+          {
+            "environmentId": "box",
+            "sector": "hypixel",
+            "error": "signed out",
+            "down": "signed-out"
+          },
+          {
+            "environmentId": "mac",
+            "sector": "ref",
+            "error": "No signed-in host can read this job"
+          }
+        ]
+      }
+    },
+    "clashes": {
+      "error": "Server error: clashes:range"
+    },
+    "money": {
+      "answers": [],
+      "failed": [
+        {
+          "environmentId": "box",
+          "error": "It did not answer in time"
+        }
+      ]
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "event:e1"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "held",
+            "title": "Waiting on you",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "Nothing waits on your press",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [
+              {
+                "environmentId": "box",
+                "error": "It did not answer in time",
+                "retry": true
+              }
+            ],
+            "rows": []
+          }
+        },
+        {
+          "kind": "lost",
+          "failure": {
+            "environmentId": "box",
+            "error": "signed out",
+            "said": "Hypixel's meetings and mail left out",
+            "down": "signed-out",
+            "retry": true
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "meetings",
+            "title": "Meetings",
+            "state": "rows",
+            "pending": true,
+            "partial": true,
+            "bones": "lines",
+            "empty": "No meetings today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "left": true,
+            "failed": [],
+            "rows": [
+              {
+                "key": "event:e1",
+                "section": "meetings",
+                "sector": "purdue",
+                "title": "Budget sync",
+                "at": 0,
+                "when": "2:00 PM",
+                "whenLine": "in 25 min",
+                "workspace": "mac/mac-purdue",
+                "opens": "agenda",
+                "acts": [
+                  "Prepare"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "due",
+            "title": "Due",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "tick",
+            "empty": "Nothing due today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [
+              {
+                "environmentId": "mac",
+                "error": "Server error: tasks:list",
+                "said": "LifeOS could not read tasks",
+                "retry": true
+              }
+            ],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "waiting",
+            "title": "Waiting on others",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No one owes you a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "left": true,
+            "failed": [
+              {
+                "environmentId": "mac",
+                "error": "No signed-in host can read this job",
+                "said": "No signed-in host can read Refereeing's mail"
+              }
+            ],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "money",
+            "title": "Owed",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "empty": "",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [
+              {
+                "environmentId": "box",
+                "error": "It did not answer in time",
+                "retry": true
+              }
+            ],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "also",
+            "title": "Also",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "empty": "",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [
+              {
+                "environmentId": "mac",
+                "error": "Server error: clashes:range",
+                "said": "LifeOS could not read clashes"
+              }
+            ],
+            "rows": []
+          }
+        }
+      ]
+    }
+  }
+}

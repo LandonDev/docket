@@ -5,7 +5,8 @@ import TempCodeContract
 import UniformTypeIdentifiers
 
 /// New in the folder shown (docs/IOS-DESIGN.md "Files"): a Document, a Sheet or a Folder under the name he
-/// types (the kind's "Untitled …" when he types none), and Upload from Photos or Files into the same folder.
+/// types (the kind's "Untitled …" when he types none), one made from the job's templates with its fields filled
+/// (M5b, `work.templates.make` into this folder), and Upload from Photos or Files into the same folder.
 /// Each part shows only where the place does it; what the host refuses shows its sentence under the field.
 struct FilesNewSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -19,6 +20,8 @@ struct FilesNewSheet: View {
     @State private var error: String?
     @State private var photo: PhotosPickerItem?
     @State private var importing = false
+    /// The job's shelf, read once the sheet opens (nil: reading or not offered).
+    @State private var templates: [TemplatePhone]?
 
     private var files: FilesHost { client.work.files }
     private var canMake: Bool { FilesRules.offers(place, .make, caps: files.caps) }
@@ -46,6 +49,21 @@ struct FilesNewSheet: View {
                             .accessibilityIdentifier("files-new-name")
                     } footer: {
                         if let error { Text(error).foregroundStyle(Tint.destructiveText) }
+                    }
+                }
+                if canMake, let templates, !templates.isEmpty {
+                    Section("From a Template") {
+                        ForEach(templates, id: \.id) { template in
+                            NavigationLink {
+                                TemplateFillView(work: client.work, workspaceId: workspaceId, at: at, template: template) { made in
+                                    FleetToastCenter.shared.post(message: TemplateFill.madeWords(made))
+                                    dismiss()
+                                }
+                            } label: {
+                                Label(template.name, systemImage: TemplateFill.glyph(template.kind))
+                            }
+                            .accessibilityIdentifier("files-new-template")
+                        }
                     }
                 }
                 if canUpload {
@@ -90,6 +108,10 @@ struct FilesNewSheet: View {
             }
         }
         .tcSheet(.form)
+        .task {
+            guard canMake, client.work.may(.templatesList), client.work.may(.templatesMake) else { return }
+            templates = try? await client.work.templates(workspaceId)
+        }
     }
 
     private func make() async {
@@ -134,5 +156,65 @@ struct FilesNewSheet: View {
         format.locale = Locale(identifier: "en_US_POSIX")
         format.dateFormat = "yyyyMMdd_HHmmss"
         return "IMG_\(format.string(from: now)).\(type?.preferredFilenameExtension ?? "jpg")"
+    }
+}
+
+/// A template's fields, filled before it is made into the folder (`work.templates.make`): one field a name the
+/// template asks for, each left empty stays in the file as written; Date, Name and Job fill themselves.
+private struct TemplateFillView: View {
+    let work: WorkHost
+    let workspaceId: String
+    let at: FolderRef
+    let template: TemplatePhone
+    let made: (Methods.WorkTemplatesMake.Output) -> Void
+    @State private var values: [String: String] = [:]
+    @State private var making = false
+    @State private var error: String?
+    @FocusState private var focus: String?
+
+    var body: some View {
+        Form {
+            if !template.fields.isEmpty {
+                Section {
+                    ForEach(Array(template.fields.enumerated()), id: \.element) { index, field in
+                        TextField(field, text: Binding(get: { values[field] ?? "" }, set: { values[field] = $0 }))
+                            .focused($focus, equals: field)
+                            .submitLabel(index == template.fields.count - 1 ? .done : .next)
+                            .onSubmit {
+                                if index + 1 < template.fields.count { focus = template.fields[index + 1] } else { Task { await make() } }
+                            }
+                            .accessibilityIdentifier("template-field")
+                    }
+                } footer: {
+                    if let error { Text(error).foregroundStyle(Tint.destructiveText) }
+                }
+            } else if let error {
+                Section { Text(error).foregroundStyle(Tint.destructiveText) }
+            }
+        }
+        .navigationTitle(template.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                if making {
+                    ProgressView()
+                } else {
+                    Button("Make") { Task { await make() } }
+                        .accessibilityIdentifier("template-make")
+                }
+            }
+        }
+        .onAppear { focus = template.fields.first }
+    }
+
+    private func make() async {
+        guard !making else { return }
+        making = true
+        defer { making = false }
+        do {
+            made(try await work.makeFromTemplate(workspaceId, template: template, into: at, values: values))
+        } catch {
+            self.error = ActionError.wrap(error).message
+        }
     }
 }

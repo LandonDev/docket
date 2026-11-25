@@ -28,6 +28,8 @@ rows = {
     'unfolded': (951, 669, 'regular', 'regular'),
     'unfolded-portrait': (669, 951, 'regular', 'regular'),
     'half-open': (951, 669, 'regular', 'regular'),
+    # Half open and turned: the inner panel's portrait window with the hinge partly open (M0-MAC 5f).
+    'tabletop': (669, 951, 'regular', 'regular'),
 }
 w, h, hs, vs = rows[pose]
 try:

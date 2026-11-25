@@ -1,0 +1,428 @@
+{
+  "tz": "Asia/Tokyo",
+  "opts": {},
+  "calendar": {
+    "at": 1795014000000,
+    "named": 1794808800000
+  },
+  "days": [
+    1794841200000,
+    1794668400000
+  ],
+  "name": "tokyo-named",
+  "now": 1795032000000,
+  "parts": [
+    {
+      "environmentId": "env-tokyo",
+      "body": {
+        "host": "tokyo",
+        "from": 1794754800000,
+        "to": 1795359600000,
+        "tz": "Asia/Tokyo",
+        "madeAt": 1795032000000,
+        "by": "owner",
+        "over": false,
+        "jobs": [
+          {
+            "workspaceId": "t-hypixel",
+            "sector": "hypixel",
+            "name": "Hypixel"
+          }
+        ],
+        "lifeos": {
+          "events": [
+            {
+              "id": "k1",
+              "sector": "hypixel",
+              "title": "Asia server launch",
+              "startsAt": 1794873600000,
+              "endsAt": 1794880800000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Kenji Sato"
+              ],
+              "others": 1,
+              "addresses": [
+                "kenji.sato@example.com"
+              ]
+            }
+          ],
+          "sent": [
+            {
+              "id": "km1",
+              "threadId": "t-km1",
+              "subject": "Launch checklist",
+              "to": [
+                "Kenji Sato"
+              ],
+              "addresses": [
+                "kenji.sato@example.com"
+              ],
+              "at": 1794884400000,
+              "sector": "hypixel"
+            }
+          ],
+          "done": [],
+          "answered": [],
+          "answeredSince": null
+        },
+        "points": [
+          [
+            1794963600000,
+            0,
+            "said"
+          ],
+          [
+            1794964320000,
+            0,
+            "said"
+          ],
+          [
+            1794965040000,
+            0,
+            "said"
+          ],
+          [
+            1794965760000,
+            0,
+            "said"
+          ],
+          [
+            1794966480000,
+            0,
+            "said"
+          ],
+          [
+            1794967200000,
+            0,
+            "said"
+          ],
+          [
+            1794967920000,
+            0,
+            "said"
+          ],
+          [
+            1794968640000,
+            0,
+            "said"
+          ],
+          [
+            1794969360000,
+            0,
+            "said"
+          ],
+          [
+            1794970080000,
+            0,
+            "said"
+          ],
+          [
+            1794970800000,
+            0,
+            "said"
+          ]
+        ],
+        "ran": [
+          [
+            0,
+            5400000
+          ]
+        ],
+        "slipped": {
+          "at": 1795032000000,
+          "rows": [
+            {
+              "key": "task:kt1",
+              "ref": {
+                "kind": "task",
+                "id": "kt1",
+                "dueAt": 1794992400000
+              },
+              "sector": "hypixel",
+              "workspaceId": null,
+              "title": "Translate the patch notes",
+              "at": 1794992400000,
+              "people": [],
+              "others": 0,
+              "open": true
+            },
+            {
+              "key": "meeting:k1",
+              "ref": {
+                "kind": "meeting",
+                "eventId": "k1"
+              },
+              "sector": "hypixel",
+              "workspaceId": null,
+              "title": "Asia server launch",
+              "at": 1794873600000,
+              "people": [
+                "Kenji Sato"
+              ],
+              "others": 1,
+              "open": true
+            },
+            {
+              "key": "mail:tk1:1794664800000",
+              "ref": {
+                "kind": "mail",
+                "threadId": "tk1",
+                "since": 1794664800000
+              },
+              "sector": "hypixel",
+              "workspaceId": null,
+              "title": "Region pricing",
+              "at": 1794664800000,
+              "people": [
+                "Kenji Sato",
+                "Aiko Mori"
+              ],
+              "others": 2,
+              "open": true
+            }
+          ]
+        },
+        "shipped": [],
+        "before": null,
+        "left": []
+      }
+    }
+  ],
+  "expect": {
+    "merged": {
+      "from": 1794754800000,
+      "to": 1795359600000,
+      "tz": "Asia/Tokyo",
+      "madeAt": 1795032000000,
+      "by": "owner",
+      "over": false,
+      "jobs": [
+        {
+          "key": "hypixel",
+          "sector": "hypixel",
+          "name": "Hypixel",
+          "at": [
+            {
+              "environmentId": "env-tokyo",
+              "workspaceId": "t-hypixel"
+            }
+          ]
+        }
+      ],
+      "hours": [
+        {
+          "job": "hypixel",
+          "calendarMs": 7200000,
+          "deskMs": 7800000,
+          "ranMs": 5400000,
+          "events": 1,
+          "stands": {
+            "said": 11,
+            "sent": 1,
+            "pressed": 0,
+            "edited": 0
+          }
+        }
+      ],
+      "compare": [],
+      "shipped": [
+        {
+          "key": "sent:km1",
+          "kind": "sent",
+          "sector": "hypixel",
+          "workspaceId": null,
+          "title": "Launch checklist",
+          "who": "Kenji Sato",
+          "at": 1794884400000,
+          "open": {
+            "at": "mail",
+            "threadId": "t-km1"
+          },
+          "job": "hypixel",
+          "environmentId": "env-tokyo"
+        }
+      ],
+      "slipped": [
+        {
+          "key": "task:kt1",
+          "ref": {
+            "kind": "task",
+            "id": "kt1",
+            "dueAt": 1794992400000
+          },
+          "sector": "hypixel",
+          "workspaceId": null,
+          "title": "Translate the patch notes",
+          "at": 1794992400000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "hypixel",
+          "environmentId": "env-tokyo"
+        },
+        {
+          "key": "meeting:k1",
+          "ref": {
+            "kind": "meeting",
+            "eventId": "k1"
+          },
+          "sector": "hypixel",
+          "workspaceId": null,
+          "title": "Asia server launch",
+          "at": 1794873600000,
+          "people": [
+            "Kenji Sato"
+          ],
+          "others": 1,
+          "open": true,
+          "job": "hypixel",
+          "environmentId": "env-tokyo"
+        },
+        {
+          "key": "mail:tk1:1794664800000",
+          "ref": {
+            "kind": "mail",
+            "threadId": "tk1",
+            "since": 1794664800000
+          },
+          "sector": "hypixel",
+          "workspaceId": null,
+          "title": "Region pricing",
+          "at": 1794664800000,
+          "people": [
+            "Kenji Sato",
+            "Aiko Mori"
+          ],
+          "others": 2,
+          "open": true,
+          "job": "hypixel",
+          "environmentId": "env-tokyo"
+        }
+      ],
+      "slippedAt": 1795032000000,
+      "answersKept": false,
+      "lifeosFrom": "env-tokyo",
+      "left": [],
+      "known": {
+        "calendar": true,
+        "calendarCounted": true,
+        "desk": true,
+        "shipped": true,
+        "slipped": true
+      }
+    },
+    "calendar": {
+      "weekOf": {
+        "from": 1794754800000,
+        "to": 1795359600000
+      },
+      "hours": 168,
+      "prev": {
+        "from": 1794150000000,
+        "to": 1794754800000
+      },
+      "next": {
+        "from": 1795359600000,
+        "to": 1795964400000
+      },
+      "named": {
+        "from": 1794754800000,
+        "to": 1795359600000
+      },
+      "isWeek": true,
+      "isNotWeek": false,
+      "dayStart": 1795014000000,
+      "dayAfter": 1795100400000,
+      "dayBefore": 1794927600000,
+      "localDay": "2026-11-19",
+      "knownZone": true
+    },
+    "lengths": [],
+    "words": {
+      "week": "Week of Nov 16",
+      "made": "So far, made 5:00 AM",
+      "nothing": "Nothing seen",
+      "hostOff": "The Mac is off. Its threads and held items are not counted.",
+      "days": [
+        "Tue",
+        "Nov 15"
+      ],
+      "jobs": [
+        {
+          "job": "hypixel",
+          "total": "about 4 hr 15 min",
+          "stands": "11 messages, 1 mail sent",
+          "facts": {
+            "calendar": "2 hr",
+            "calendarDetail": "1 event",
+            "desk": "about 2 hr 15 min",
+            "deskDetail": "11 messages, 1 mail sent",
+            "ran": "1 hr 30 min"
+          },
+          "compare": null,
+          "lead": [
+            "task:kt1",
+            "meeting:k1",
+            "mail:tk1:1794664800000"
+          ],
+          "older": []
+        }
+      ],
+      "shipped": [
+        {
+          "key": "sent:km1",
+          "lead": "Sent ",
+          "title": "Launch checklist",
+          "tail": " to Kenji Sato"
+        }
+      ],
+      "slipped": [
+        {
+          "key": "task:kt1",
+          "detail": "due Wed",
+          "settle": [
+            "Done",
+            "Next week",
+            "Drop"
+          ],
+          "settled": [
+            "Marked done",
+            "Moved to next week",
+            "Dropped"
+          ]
+        },
+        {
+          "key": "meeting:k1",
+          "detail": "Tue 9:00 AM with Kenji Sato, nothing sent after",
+          "settle": [
+            "Follow up",
+            "Next week",
+            "None needed"
+          ],
+          "settled": [
+            "",
+            "Put off to next week",
+            "Marked as needing nothing"
+          ]
+        },
+        {
+          "key": "mail:tk1:1794664800000",
+          "detail": "sent Nov 14 to Kenji Sato and Aiko Mori",
+          "settle": [
+            "Nudge",
+            "Next week",
+            "Stop waiting"
+          ],
+          "settled": [
+            "Drafting a nudge",
+            "Put off to next week",
+            "Stopped waiting"
+          ]
+        }
+      ]
+    }
+  }
+}

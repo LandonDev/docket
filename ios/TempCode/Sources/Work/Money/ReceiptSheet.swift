@@ -16,7 +16,8 @@ struct ReceiptSheet: View {
     @State private var scanning = false
     @State private var discarding = false
 
-    private var hosts: [any MoneyHost] { model.registry.ordered.filter(\.work.isOn).map { $0.work } }
+    /// Only a host whose key may file one (`work.money.receive`, operate).
+    private var hosts: [any MoneyHost] { model.registry.ordered.filter { $0.work.isOn && $0.work.may(.moneyReceive) }.map { $0.work } }
 
     private var title: String {
         guard receipt.pending > 1, let position = receipt.position else { return "Receipt" }
@@ -183,16 +184,14 @@ struct ReceiptSheet: View {
 }
 
 /// The scan as the photos strip draws a photo: 56 pt at the row radius with a
-/// 10 % outline in the scheme's ink, the fill step until it is drawn. A PDF
+/// hairline in the separator's ink (stronger under Increase Contrast), the fill step until it is drawn. A PDF
 /// shows its first page.
 private struct ReceiptPicture: View {
     let draft: ReceiptDraft
     let receipt: Receipt
     @State private var image: UIImage?
-    @Environment(\.colorScheme) private var scheme
-
     private var size: CGFloat { PhotoUpload.thumbnailPoints }
-    private var outline: Color { (scheme == .dark ? Color.white : Color.black).opacity(0.1) }
+    private var outline: Color { Surface.hairline }
 
     var body: some View {
         // The whole page fitted inside the box, the fill behind it: a square crop would cut the seller's name off.

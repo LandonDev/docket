@@ -5,12 +5,13 @@ import { describe, expect, it } from "vitest";
 /* The phone writes every duration, curve, font size and row height once:
  * type and lengths in Design/Tokens.swift (over the client package's
  * TranscriptScale), motion in Design/Motion.swift (over MotionValues). A
- * view under Thread, Shell or Design names a token. These counted files are
- * what the tree held when the guard landed (docs/IOS-DESIGN.md "Visual
- * system"); the counts only shrink as each slice retypes its views.
+ * view under Thread, Shell, Design or Work names a token. These counted files
+ * are what the tree held when the guard landed (docs/IOS-DESIGN.md "Visual
+ * system"; Work joined at M6 of the Work-on-the-iPhone build); the counts only
+ * shrink as each slice retypes its views.
  * IOS_LITERAL_GUARD_PRINT=1 prints the current tally. */
 const ROOT = resolve(__dirname, "../ios/TempCode/Sources");
-const DIRS = ["Thread", "Shell", "Design"];
+const DIRS = ["Thread", "Shell", "Design", "Work"];
 const HOME = new Set(["Design/Tokens.swift", "Design/Motion.swift"]);
 const ALLOWED: Record<string, number> = {
   "Design/SectionHeader.swift": 1,
@@ -46,6 +47,24 @@ const ALLOWED: Record<string, number> = {
   "Thread/ToolChip.swift": 1,
   "Thread/TranscriptRows.swift": 1,
   "Thread/TranscriptView.swift": 2,
+  "Work/Digest/DigestScreen.swift": 1,
+  "Work/Files/FilesOpen.swift": 1,
+  "Work/Files/FilesProof.swift": 2,
+  "Work/HeldInline.swift": 2,
+  "Work/Items/ItemKindViews.swift": 4,
+  "Work/Items/ItemPage.swift": 1,
+  "Work/Items/LivePicture.swift": 1,
+  "Work/Items/MediaItemView.swift": 1,
+  "Work/Items/PdfItemView.swift": 1,
+  "Work/Items/RoutinesScreen.swift": 1,
+  "Work/Money/ReceiptFixture.swift": 1,
+  "Work/Money/ReceiptScanner.swift": 1,
+  "Work/OutboxItemScreen.swift": 5,
+  "Work/OutboxPresses.swift": 2,
+  "Work/OutboxRequestSheet.swift": 3,
+  "Work/OutboxScreen.swift": 1,
+  "Work/Reader/CommentSheets.swift": 2,
+  "Work/ShareBridge.swift": 1,
 };
 
 // A literal font size, a duration or curve written in place, a fixed row height.

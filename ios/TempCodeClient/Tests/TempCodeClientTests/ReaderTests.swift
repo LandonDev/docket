@@ -214,12 +214,16 @@ struct ReaderVerbsTests {
         let pdf = try item("pdf", file)
         // A PDF and a deck show the pages that print already: Print, and no Page Preview of the same pages.
         #expect(ReaderVerbs.of(pdf, ReaderFacts()) == [.find, .print])
-        #expect(ReaderVerbs.of(pdf, ReaderFacts(canOperate: true, inThread: true, previews: true)) == [.find, .print, .close])
+        #expect(ReaderVerbs.of(pdf, ReaderFacts(mayClose: true, inThread: true, previews: true)) == [.find, .print, .close])
         #expect(ReaderVerbs.of(try item("slides", file), ReaderFacts(previews: true)) == [.find, .print])
         let document = try item("document", #"{"at":"lifeos","table":"docs","id":"d1"}"#)
-        #expect(ReaderVerbs.of(document, ReaderFacts(canOperate: true, canApprove: true, inThread: true, waiting: 3, previews: true, comments: true, shares: true)) == [.comments, .review, .preview, .share, .guestLink, .close])
+        #expect(ReaderVerbs.of(document, ReaderFacts(mayClose: true, mayGuestLink: true, inThread: true, waiting: 3, previews: true, comments: true)) == [.comments, .review, .preview, .guestLink, .close])
+        // The hosted page's own: Undo and Redo only while there is something to take back, and Find where it finds.
+        #expect(ReaderVerbs.of(document, ReaderFacts(comments: true, finds: true, undo: true)) == [.undo, .find, .comments])
+        #expect(ReaderVerbs.of(document, ReaderFacts(undo: true, redo: true)) == [.undo, .redo])
+        #expect(ReaderVerb.guestLink.title == "Share…")
         // A key that cannot approve makes no guest link, and nothing waiting shows no review.
-        #expect(ReaderVerbs.of(document, ReaderFacts(canOperate: true, inThread: true, comments: true)) == [.comments, .close])
+        #expect(ReaderVerbs.of(document, ReaderFacts(mayClose: true, inThread: true, comments: true)) == [.comments, .close])
         // A key that may only read closes nothing: the host would refuse it.
         #expect(ReaderVerbs.of(document, ReaderFacts(inThread: true, comments: true)) == [.comments])
         #expect(ReaderVerbs.of(try item("media", file), ReaderFacts()) == [])

@@ -3,32 +3,179 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// A meeting (milestone 47): its transcript, each line with who said it and when.
+/// A meeting (milestone 47, M3b): the recording's player over the tasks it yielded and its transcript. A line or a
+/// task plays from its moment. A task waits on his word: Add files it in LifeOS for the job, Drop takes it away; the
+/// bar adds every one that waits. Video stands above the fold's band on a table and beside the transcript on the
+/// open Duo.
 struct MeetingItemView: View {
     let client: EnvironmentClient
     let item: CanvasItem
 
     var body: some View {
         ItemLoad(read: { try await client.work.canvas.meeting(item.id) }) { meeting, reload in
-            if let meeting, !meeting.segments.isEmpty {
-                let names = Dictionary(meeting.speakers.map { ($0.id, $0.name ?? $0.label) }, uniquingKeysWith: { a, _ in a })
-                List(meeting.segments, id: \.id) { line in
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 8) {
-                            Text(line.speaker.flatMap { names[$0] } ?? "Someone").textStep(.meta, weight: .semibold)
-                            Text(mediaClock(line.start)).textStep(.stamp).monospacedDigit().foregroundStyle(.secondary)
-                        }
-                        Text(line.text).font(.body)
-                    }
-                    .padding(.vertical, 2)
-                }
-                .listStyle(.plain)
-                .refreshable { reload() }
+            if let meeting, !meeting.segments.isEmpty || !MeetingActions.shown(meeting).isEmpty {
+                MeetingPage(client: client, item: item, initial: meeting, reload: reload)
             } else {
-                ContentUnavailableView(meeting?.error ?? "No transcript yet", systemImage: "waveform", description: Text(meeting.map { "\($0.status.capitalized)." } ?? "Nothing has been recorded."))
+                ContentUnavailableView(meeting?.error ?? "No Transcript Yet", systemImage: "waveform", description: Text(meeting.map { "\($0.status.capitalized)." } ?? "Nothing has been recorded."))
             }
         }
         .accessibilityIdentifier("meeting-item")
+    }
+}
+
+private struct MeetingPage: View {
+    let client: EnvironmentClient
+    let item: CanvasItem
+    let initial: MeetingPhone
+    let reload: () -> Void
+    @State private var meeting: MeetingPhone?
+    @State private var player = MeetingPlayer()
+    @State private var deciding = false
+    @State private var failure: String?
+    @State private var decided = 0
+
+    private var shown: MeetingPhone { meeting ?? initial }
+    private var plays: Bool { shown.media != nil }
+    private var video: Bool { shown.media?.kind == .video }
+    private var mayDecide: Bool { client.work.may(.meetingsDecide) }
+    private var waiting: [MeetingActions.Action] { MeetingActions.waiting(shown) }
+
+    var body: some View {
+        ReaderSpread(enabled: video) {
+            if plays { MeetingPlayerBar(player: player) }
+        } with: {
+            list
+        } single: { thing, with in
+            VStack(spacing: 0) {
+                if plays {
+                    thing
+                    Divider()
+                }
+                with
+            }
+        }
+        .tcBottomBar {
+            if mayDecide, !waiting.isEmpty {
+                HStack(spacing: 8) {
+                    Spacer(minLength: 0)
+                    if deciding { ProgressView() }
+                    Button(MeetingActions.addWords(waiting.count)) { Task { await decide(waiting.map(\.id), accept: true) } }
+                        .font(.body.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .frame(minHeight: Layout.rowHeight)
+                        .buttonBorderShape(.capsule)
+                        .tcGlassButton(prominent: true)
+                        .disabled(deciding)
+                        .accessibilityIdentifier("meeting-add-all")
+                }
+                .padding(.horizontal, Layout.textEdge)
+                .padding(.vertical, 8)
+            }
+        }
+        .task(id: item.id) {
+            guard plays, client.work.may(.meetingsRecording) else { return }
+            await player.open(item.id, canvas: client.work.canvas, video: video, duration: shown.durationSec)
+        }
+        .onDisappear { player.close() }
+        .onChange(of: initial) { _, now in meeting = now }
+        .alert("Couldn’t do that", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(failure ?? "") }
+        .sensoryFeedback(.impact(weight: .light), trigger: decided)
+    }
+
+    private var list: some View {
+        let names = Dictionary(shown.speakers.map { ($0.id, $0.name ?? $0.label) }, uniquingKeysWith: { a, _ in a })
+        let tasks = MeetingActions.shown(shown)
+        return List {
+            if !tasks.isEmpty {
+                Section {
+                    ForEach(tasks, id: \.id) { action in
+                        taskRow(action)
+                    }
+                } header: {
+                    GroupHeader("Tasks")
+                }
+            }
+            if !shown.segments.isEmpty {
+                Section {
+                    ForEach(shown.segments, id: \.id) { line in
+                        Button { if player.state == .ready { player.play(from: line.start) } } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 8) {
+                                    Text(line.speaker.flatMap { names[$0] } ?? "Someone").textStep(.meta, weight: .semibold, tint: .primary)
+                                    Text(mediaClock(line.start)).textStep(.stamp).monospacedDigit().foregroundStyle(.secondary)
+                                }
+                                Text(line.text).font(.body).foregroundStyle(.primary)
+                            }
+                            .padding(.vertical, 2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(player.state == .ready ? "Plays from here" : "")
+                    }
+                } header: {
+                    if !tasks.isEmpty { GroupHeader("Transcript") }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .animation(Motion.rowLeave, value: tasks.map(\.id))
+        .refreshable { reload() }
+    }
+
+    private func taskRow(_ action: MeetingActions.Action) -> some View {
+        let open = action.state == .proposed
+        return HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Image(systemName: open ? "circle" : "checkmark.circle.fill")
+                .foregroundStyle(open ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Tint.success))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(action.text).font(.body)
+                if let due = action.due { Text("Due \(due)").textStep(.meta) }
+            }
+            Spacer(minLength: 0)
+            if let at = MeetingActions.seek(action), player.state == .ready {
+                Button(mediaClock(at)) { player.play(from: at) }
+                    .textStep(.stamp)
+                    .monospacedDigit()
+                    .buttonStyle(.pressable)
+                    .accessibilityLabel("Play from \(mediaClock(at))")
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(open ? "Task, waiting: \(action.text)" : "Task, added: \(action.text)")
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if open, mayDecide, !deciding {
+                Button("Add", systemImage: "checkmark") { Task { await decide([action.id], accept: true) } }
+                    .tint(Tint.success)
+            }
+        }
+        // No full swipe: a dropped task has no undo.
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            if open, mayDecide, !deciding {
+                Button("Drop", systemImage: "xmark") { Task { await decide([action.id], accept: false) } }
+                    .tint(Tint.quiet)
+            }
+        }
+        .rowAppearTransition()
+        .accessibilityIdentifier("meeting-task")
+    }
+
+    /// One decision at a time; the meeting the host answers replaces this one, and what LifeOS would not file is said.
+    private func decide(_ ids: [String], accept: Bool) async {
+        guard !deciding, !ids.isEmpty else { return }
+        deciding = true
+        defer { deciding = false }
+        do {
+            let answer = try await client.work.canvas.decide(meeting: item.id, actionIds: ids, accept: accept)
+            meeting = answer.meeting
+            decided += 1
+            failure = MeetingActions.failedWords(answer.failed)
+        } catch {
+            failure = ActionError.wrap(error).message
+        }
     }
 }
 
@@ -87,7 +234,7 @@ struct BrowserItemView: View {
                         if model.reading > 0 {
                             ProgressView()
                         } else {
-                            PillButton("Retry") { Task { await model.read() } }
+                            PillButton("Try Again") { Task { await model.read() } }
                         }
                     }
                     .accessibilityIdentifier("browser-reread-failed")
@@ -101,7 +248,7 @@ struct BrowserItemView: View {
             }
             Section {
                 LabeledContent(state.driver == .owner ? "You are driving" : "The agent is driving") {
-                    if client.work.canApprove {
+                    if client.work.may(.browserDrive) {
                         Button(state.driver == .owner ? "Hand Back" : "Take Over") { Task { await drive(state.driver != .owner, model: model) } }
                             .disabled(model.driving)
                             .accessibilityIdentifier("browser-drive")
@@ -207,13 +354,20 @@ struct FormItemView: View {
     }
 }
 
-/// A dashboard (milestone 47): its blocks in order: headings, words, figures, bars and tables.
+/// A dashboard (milestone 47): its blocks in order: headings, words, figures, bars and tables. Pull to refresh reads
+/// every figure again now (`work.dashboards.refresh`, M5b) for a key that may; a block whose sheet has a place on
+/// the phone opens it (`DashSource`: a LifeOS sheet in the hosted editor, a Microsoft form's answers).
 struct DashboardItemView: View {
     let client: EnvironmentClient
     let item: CanvasItem
+    /// The next read is his pull: every figure read again, not the page as last read.
+    @State private var fresh = false
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.dashboard(item.id) }) { dashboard, reload in
+        let refreshes = client.work.may(.dashboardsRefresh)
+        ItemLoad(read: { [fresh] in
+            try await (fresh && refreshes ? client.work.refreshDashboard(item.id) : client.work.canvas.dashboard(item.id))
+        }, onRead: { _ in fresh = false }) { dashboard, reload in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     if let failed = dashboard.failed {
@@ -223,15 +377,39 @@ struct DashboardItemView: View {
                             .textStep(.meta).foregroundStyle(.secondary)
                     }
                     ForEach(Array(dashboard.blocks.enumerated()), id: \.offset) { _, block in
-                        DashBlockView(block: block)
+                        if let source = DashSource.of(block), let route = route(source) {
+                            // Pushed over the dashboard, so Back returns to it.
+                            NavigationLink(value: route) {
+                                DashBlockView(block: block).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.pressable)
+                            .accessibilityHint("Opens where its numbers come from")
+                        } else {
+                            DashBlockView(block: block)
+                        }
                     }
                 }
                 .padding(Layout.textEdge)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .refreshable { reload() }
+            .refreshable {
+                fresh = true
+                reload()
+            }
         }
         .accessibilityIdentifier("dashboard-item")
+    }
+
+    /// A LifeOS sheet in the hosted editor, as a project's file opens; a form's answers on their page.
+    private func route(_ source: DashSource) -> Route? {
+        switch source {
+        case .lifeosSheet(let id, let title):
+            guard client.work.may(.guestsTicket), let workspaceId = item.workspaceId else { return nil }
+            return .file(environmentId: client.environment.id, item: LifeDocItem.item(.sheet, id: id, title: title, workspaceId: workspaceId), sessionId: nil)
+        case .msform(let workspaceId, let formId):
+            guard client.work.may(.msformsResponses) else { return nil }
+            return .msformAnswers(environmentId: client.environment.id, workspaceId: workspaceId, formId: formId)
+        }
     }
 }
 
@@ -250,7 +428,8 @@ private struct DashBlockView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(figure.value ?? "–").font(.title2.weight(.semibold)).monospacedDigit()
                         Text(figure.label).textStep(.meta).foregroundStyle(.secondary)
-                        if let sub = figure.sub { Text(sub).textStep(.stamp).foregroundStyle(.secondary) }
+                        // The figure's line under its number reads at the 4.5:1 floor (baseline w39), as the Outbox's stamps do.
+                        if let sub = figure.sub { Text(sub).textStep(.stamp) }
                     }
                 }
             }
@@ -281,7 +460,7 @@ private struct DashBlockView: View {
                             .frame(height: 8)
                         }
                         .frame(height: 8)
-                        Text(bar.value.formatted()).textStep(.stamp).monospacedDigit().foregroundStyle(.secondary)
+                        Text(bar.value.formatted()).textStep(.stamp).monospacedDigit()
                     }
                 }
             }
@@ -317,10 +496,11 @@ struct HistoryItemView: View {
     @State private var testCompare: String?
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.versions(source) }) { history, _ in
+        ItemLoad(read: { try await client.work.canvas.versions(source) }) { history, reload in
+            let ids = history.versions.map(\.id)
             List(history.versions, id: \.id) { version in
                 NavigationLink {
-                    CompareView(client: client, source: source, versionId: version.id, names: history.names)
+                    CompareView(client: client, source: source, versionId: version.id, versions: ids, names: history.names, restored: reload)
                         .navigationTitle(version.label ?? Date(timeIntervalSince1970: version.at / 1000).formatted(date: .abbreviated, time: .shortened))
                         .navigationBarTitleDisplayMode(.inline)
                 } label: {
@@ -335,7 +515,7 @@ struct HistoryItemView: View {
             }
             .listStyle(.plain)
             .navigationDestination(item: $testCompare) { versionId in
-                CompareView(client: client, source: source, versionId: versionId, names: history.names)
+                CompareView(client: client, source: source, versionId: versionId, versions: ids, names: history.names, restored: reload)
             }
             .task {
                 #if DEBUG
@@ -347,14 +527,29 @@ struct HistoryItemView: View {
     }
 }
 
+/// A version against the document as it is now, with Restore in the bar for any version but the newest. On his own
+/// document the host writes it back at once and the capsule offers Undo (back to the version cut just before); on a
+/// document others can open it waits as suggestions in Review Changes, and nothing reaches anyone until he accepts.
 private struct CompareView: View {
     let client: EnvironmentClient
     let source: CanvasSource
     let versionId: String
+    /// Every version's id, newest first.
+    let versions: [String]
     let names: [String: String]
+    /// A restore wrote a new version: the list reads again.
+    let restored: () -> Void
+    @State private var restoring = false
+    @State private var capsule: (id: Int, line: String, undo: String?)?
+    @State private var failure: String?
+    /// Reads the compare again after a restore.
+    @State private var generation = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var mayRestore: Bool { client.work.may(.historyRestore) && HistoryRestore.restores(versionId, in: versions) }
 
     var body: some View {
-        ItemLoad(read: { try await client.work.canvas.compare(source, from: versionId) }) { compare, _ in
+        ItemLoad(read: { try await client.work.canvas.compare(source, from: versionId) }) { compare, reload in
             let stats = compare.diff.stats
             List {
                 Section {
@@ -367,8 +562,56 @@ private struct CompareView: View {
             }
             .listStyle(.plain)
             .overlay { if compare.diff.rows.isEmpty { ContentUnavailableView("No Changes", systemImage: "equal") } }
+            .onChange(of: generation) { reload() }
         }
+        .toolbar {
+            if mayRestore {
+                ToolbarItem(placement: .topBarTrailing) {
+                    if restoring {
+                        ProgressView().accessibilityLabel("Restoring")
+                    } else {
+                        Button("Restore") { Task { await restore(versionId) } }
+                            .accessibilityIdentifier("history-restore")
+                    }
+                }
+            }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Group {
+                if let capsule {
+                    UndoCapsule(line: capsule.line, identifier: "history-undo", undo: capsule.undo.map { before in { Task { await restore(before, undoing: true) } } })
+                }
+            }
+            .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: Motion.travel * 3)))
+        }
+        .animation(Motion.base, value: capsule?.id)
+        .task(id: capsule?.id) {
+            guard capsule != nil else { return }
+            try? await Task.sleep(for: .seconds(FleetToastCenter.lingerSeconds))
+            guard !Task.isCancelled else { return }
+            capsule = nil
+        }
+        .alert("Couldn’t Restore", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(failure ?? "") }
+        .sensoryFeedback(.impact(weight: .light), trigger: capsule?.id)
         .accessibilityIdentifier("history-compare")
+    }
+
+    /// One restore at a time. Undo restores the version cut just before, and offers no Undo of its own.
+    private func restore(_ id: String, undoing: Bool = false) async {
+        guard !restoring else { return }
+        restoring = true
+        defer { restoring = false }
+        do {
+            let outcome = HistoryRestore.outcome(try await client.work.canvas.restore(source, versionId: id))
+            let undo: String? = if case .written(let before) = outcome, !undoing { before } else { nil }
+            capsule = ((capsule?.id ?? 0) + 1, undoing ? "Restore undone" : HistoryRestore.words(outcome), undo)
+            generation += 1
+            restored()
+        } catch {
+            failure = ActionError.wrap(error).message
+        }
     }
 
     private func changeText(_ row: HistoryComparePhone.Diff.Row) -> Text {
@@ -438,7 +681,7 @@ private struct ProposalLine: View {
             Spacer(minLength: 8)
             if added {
                 Text("Added").textStep(.meta).foregroundStyle(.secondary)
-            } else if client.work.canApprove {
+            } else if client.work.may(.rulesAdd) {
                 Button("Add Rule") {
                     Task {
                         if (try? await client.work.addRule(proposal.workspaceId, text: proposal.text, proposalId: proposal.id)) != nil { added = true }

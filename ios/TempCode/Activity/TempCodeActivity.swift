@@ -7,6 +7,8 @@ import WidgetKit
 struct TempCodeActivityBundle: WidgetBundle {
     var body: some Widget {
         ThreadActivityWidget()
+        CaptureControl()
+        VoiceNoteControl()
     }
 }
 

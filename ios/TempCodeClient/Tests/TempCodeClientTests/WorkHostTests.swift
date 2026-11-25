@@ -121,6 +121,54 @@ private func away(_ enabled: Bool, at: Int, since: Int, decided: Int = 0) -> Str
         #expect(await rig.until { fake.sentRequests.filter { $0.method == "work.digest.seen" }.count == 2 })
     }
 
+    @Test func `a thread has open items while its canvas lists one, read without observing`() async throws {
+        let rig = try WorkRig()
+        let fake = await rig.open()
+        #expect(!rig.work.canvas.hasOpenItems("s1"))
+        fake.deliver(#"{"push":"work.canvas","sessionId":"s1","items":[{"id":"i1","sessionId":"s1","workspaceId":"w1","kind":"pdf","title":"Floor plan","source":{"at":"file","host":"env_box","path":"/w/plan.pdf"},"state":"open","position":0,"rev":1,"createdAt":1,"updatedAt":1}]}"#)
+        #expect(await rig.until { rig.work.canvas.hasOpenItems("s1") })
+        #expect(!rig.work.canvas.hasOpenItems("s2"))
+        // The last item closed: the thread has none again.
+        fake.deliver(#"{"push":"work.canvas","sessionId":"s1","items":[]}"#)
+        #expect(await rig.until { !rig.work.canvas.hasOpenItems("s1") })
+    }
+
+    @Test func `M1 pushes move the counters of their own host and workspace`() async throws {
+        let rig = try WorkRig()
+        let fake = await rig.open()
+        fake.deliver(#"{"push":"work.messages","workspaceId":"w1","unread":2}"#)
+        fake.deliver(#"{"push":"work.messages","workspaceId":"w2","unread":4,"drafts":1}"#)
+        fake.deliver(#"{"push":"work.messages","workspaceId":"w1","unread":0}"#)
+        fake.deliver(#"{"push":"work.money","workspaceId":"w2","toConfirm":1}"#)
+        fake.deliver(#"{"push":"work.prep","workspaceId":"w1","eventId":"e1","rev":4}"#)
+        fake.deliver(#"{"push":"work.clashes"}"#)
+        fake.deliver(#"{"push":"work.review","from":1000,"madeAt":2000,"seen":true}"#)
+        fake.deliver(#"{"push":"work.msforms","workspaceId":"w2","formId":"f1","view":null}"#)
+        fake.deliver(#"{"push":"work.outbox.request","request":{"id":"r1","n":1,"sessionId":"s1","workspaceId":"w1","sector":"purdue","quote":"send the draft","head":"Send 1 item","state":"open","createdAt":1000,"expiresAt":2000,"answeredBy":null,"answeredAt":null,"rows":[]}}"#)
+        #expect(await rig.until { rig.work.outboxRequestsRev == 1 })
+        #expect(rig.work.messagesRev == ["w1": 2, "w2": 1])
+        #expect(rig.work.moneyRev == ["w2": 1])
+        #expect(rig.work.prepRev == ["w1": 1])
+        #expect(rig.work.clashesRev == 1)
+        #expect(rig.work.reviewRev == 1)
+        #expect(rig.work.msformsRev == ["w2": 1])
+    }
+
+    @Test func `task Done and mail Nudge use the host verbs for the named workspace`() async throws {
+        let rig = try WorkRig()
+        let fake = await rig.open()
+        let done = Task { try await rig.work.completeTask("task1", workspaceId: "w1") }
+        let doneId = try #require(await rig.request(fake, "work.tasks.done"))
+        #expect(fake.sentRequests.first { $0.id == doneId }?.params == .object(["workspaceId": .string("w1"), "taskId": .string("task1")]))
+        fake.answer(id: doneId, result: #"{"threadId":null,"nextId":"task2"}"#)
+        #expect(try await done.value.nextId == "task2")
+        let nudge = Task { try await rig.work.nudge("mail1", workspaceId: "w1") }
+        let nudgeId = try #require(await rig.request(fake, "work.mail.nudge"))
+        #expect(fake.sentRequests.first { $0.id == nudgeId }?.params == .object(["workspaceId": .string("w1"), "threadId": .string("mail1")]))
+        fake.answer(id: nudgeId, result: #"{"sessionId":"s1"}"#)
+        #expect(try await nudge.value == "s1")
+    }
+
     @Test func `a host that does not answer keeps the switch it had, from the last launch`() async throws {
         let rig = try WorkRig(knownOn: true)
         #expect(rig.work.isOn)
@@ -186,7 +234,7 @@ private func away(_ enabled: Bool, at: Int, since: Int, decided: Int = 0) -> Str
         #expect(params == .object(["ref": .object(["at": .string("host"), "id": .string("a")]), "reason": .string("Wrong date"), "via": .string("phone"), "rev": .number(42)]))
         fake.answer(id: discard, result: item("a", state: "discarded", at: 43))
         #expect(try await discarded.value.state == .discarded)
-        for (method, press) in [("work.outbox.send", { try await rig.work.send(shown) }), ("work.outbox.cancelSend", { try await rig.work.cancelSend(shown) }), ("work.outbox.sendNow", { try await rig.work.sendNow(shown) })] as [(String, () async throws -> OutboxItem)] {
+        for (method, press) in [("work.outbox.send", { try await rig.work.send(shown, again: false) }), ("work.outbox.cancelSend", { try await rig.work.cancelSend(shown) }), ("work.outbox.sendNow", { try await rig.work.sendNow(shown) })] as [(String, () async throws -> OutboxItem)] {
             let pressed = Task { try await press() }
             let id = try #require(await rig.request(fake, method))
             guard case .object(let sent)? = fake.sentRequests.first(where: { $0.id == id })?.params else { Issue.record("\(method) sent no params"); continue }
@@ -194,6 +242,34 @@ private func away(_ enabled: Bool, at: Int, since: Int, decided: Int = 0) -> Str
             fake.answer(id: id, result: item("a", at: 44))
             _ = try await pressed.value
         }
+    }
+
+    @Test func `a held item's Send is recorded until the host answers, and carries again only when the press says so`() async throws {
+        let rig = try WorkRig()
+        let fake = await rig.open()
+        #expect(await rig.until { rig.work.linked })
+        let json = item("m1b-u", state: "failed", at: 30).replacingOccurrences(of: #""updatedAt":30"#, with: #""updatedAt":30,"outcomeUnknown":true"#)
+        let unknown = try JSONDecoder().decode(OutboxItem.self, from: Data(json.utf8))
+        func again(_ id: String) -> JSONValue? {
+            guard case .object(let params)? = fake.sentRequests.first(where: { $0.id == id })?.params else { return nil }
+            return params["again"]
+        }
+        // The phone never decides `again` itself, even for an item the host says may have gone.
+        let plain = Task { try await rig.work.send(unknown, again: false) }
+        let first = try #require(await rig.request(fake, "work.outbox.send"))
+        #expect(again(first) == nil || again(first) == .null)
+        #expect(rig.work.presses.busy(host: "env_test", ref: "host:m1b-u"))
+        fake.refuse(id: first, error: "it may have gone: check first")
+        await #expect(throws: (any Error).self) { try await plain.value }
+        #expect(!rig.work.presses.busy(host: "env_test", ref: "host:m1b-u"))
+        // His own Send Again.
+        let pressed = Task { try await rig.work.send(unknown, again: true) }
+        #expect(await rig.until { fake.sentRequests.filter { $0.method == "work.outbox.send" }.count == 2 })
+        let second = try #require(fake.sentRequests.last { $0.method == "work.outbox.send" }?.id)
+        #expect(again(second) == .bool(true))
+        fake.answer(id: second, result: item("m1b-u", state: "sent", at: 31))
+        _ = try await pressed.value
+        #expect(!rig.work.presses.busy(host: "env_test", ref: "host:m1b-u"))
     }
 
     @Test func `a voice note reads the capture state, then files with its key and Unsorted as null`() async throws {

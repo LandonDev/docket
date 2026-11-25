@@ -28,6 +28,8 @@ struct ThreadScreen: View {
     @Environment(NavigationRouter.self) private var router
     @Environment(AppModel.self) private var app
     @Environment(\.shellPose) private var pose
+    /// The shell's navigator, where the screen sits in one: a Work thread with an item is a wide route (`ShellPaths.wide`).
+    @Environment(ShellNavigator.self) private var navigator: ShellNavigator?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     // The shell's split pose. Planner 1's `\.shellPose` (`isSplit`, `.stack(short: true)`)
     // replaces these two reads when it lands; the detail column's own size class
@@ -184,6 +186,9 @@ struct ThreadScreen: View {
             // A document or sheet among them: its web view is made ready before he opens it (HostedItemView.swift).
             if client.work.canvas.items(sessionId).contains(where: { if case .hosted = ItemBody.of($0) { true } else { false } }) { HostedWebPool.shared.warm() }
         }
+        // The first item open or the last closed makes this thread a wide route or an ordinary one again: the split
+        // hears it here, since the shell reads `hasItem` without observing the canvas.
+        .onChange(of: items.isEmpty) { navigator?.itemsMoved() }
         .onChange(of: client.work.canvas.opened[sessionId], initial: true) {
             guard let opened = client.work.canvas.opened[sessionId] else { return }
             client.work.canvas.tookOpened(sessionId)
@@ -282,8 +287,11 @@ struct ThreadScreen: View {
                 withAnimation(reduceMotion ? nil : Motion.drawer) { page = now }
             }
         }
-        .onChange(of: segments, initial: true) {
+        .onChange(of: segments, initial: true) { old, new in
             if landingSeq != nil { model.choose(segments.contains(.log) ? .log : .chat) }
+            // A page added before the one shown (a Work thread's first item) moves the pager's content under it: what
+            // it reports then is the layout's, not his, and the page he chose is put back.
+            if !old.isEmpty, old != new { settlePager(onChosenIn: new) }
         }
         // A second search hit in this thread keeps the screen (the shell keys it by thread) and lands on its row.
         .onChange(of: targetSeq) { old, new in
@@ -569,6 +577,17 @@ struct ThreadScreen: View {
         }
     }
 
+    /// As `settlePager(on:)`, on the segment chosen when the reassert runs (an item an agent just opened, or Chat
+    /// for words just sent here), else the page shown.
+    private func settlePager(onChosenIn segments: [ThreadSegment]) {
+        pagerSettling = true
+        Task { @MainActor in
+            let chosen = model.chosen.flatMap { segments.contains($0) ? $0 : nil }
+            if let target = chosen ?? page { await reassert(target) }
+            pagerSettling = false
+        }
+    }
+
     /// `scrollPosition(id:)` scrolls only when the id changes, so the page goes to nil for a frame and back.
     private func reassert(_ segment: ThreadSegment) async {
         Motion.withoutAnimation { page = nil }
@@ -756,6 +775,11 @@ final class ThreadScreenModel {
     }
 
     private static func key(_ id: String) -> String { "thread.segment.\(id)" }
+
+    /// A thread his words were just sent to from elsewhere (Ask from a file) opens on its Chat, as if he had chosen it.
+    static func land(_ sessionId: String, on segment: ThreadSegment) {
+        UserDefaults.standard.set(segment.rawValue, forKey: key(sessionId))
+    }
 
     func segment(in segments: [ThreadSegment], phase: ThreadPhase) -> ThreadSegment {
         SegmentRules.segment(chosen: chosen, in: segments, phase: phase)

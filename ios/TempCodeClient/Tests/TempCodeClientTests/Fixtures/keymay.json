@@ -1,0 +1,3733 @@
+{
+  "keys": {
+    "read": {
+      "caps": [
+        "read"
+      ]
+    },
+    "operate": {
+      "caps": [
+        "read",
+        "operate"
+      ]
+    },
+    "approve": {
+      "caps": [
+        "read",
+        "approve"
+      ]
+    },
+    "admin": {
+      "caps": [
+        "read",
+        "admin"
+      ]
+    },
+    "operateApprove": {
+      "caps": [
+        "read",
+        "operate",
+        "approve"
+      ]
+    },
+    "operateApproveAdmin": {
+      "caps": [
+        "read",
+        "operate",
+        "approve",
+        "admin"
+      ]
+    },
+    "device": {
+      "caps": [
+        "approve",
+        "device",
+        "operate",
+        "read"
+      ]
+    },
+    "pending": {
+      "caps": [
+        "pending"
+      ]
+    },
+    "revoked": {
+      "caps": [],
+      "revoked": true
+    }
+  },
+  "rows": [
+    {
+      "method": "work.outbox.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.get",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.results",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.grants",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.rules",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.send",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.discard",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.edit",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.undo",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.grant",
+      "word": "admin",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": false,
+        "admin": true,
+        "operateApprove": false,
+        "operateApproveAdmin": true,
+        "device": false,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.ungrant",
+      "word": "admin",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": false,
+        "admin": true,
+        "operateApprove": false,
+        "operateApproveAdmin": true,
+        "device": false,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.setRules",
+      "word": "admin",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": false,
+        "admin": true,
+        "operateApprove": false,
+        "operateApproveAdmin": true,
+        "device": false,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.decide",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.requests",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.request.get",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.request.view",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.decline",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.sendNow",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.cancelSend",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.undoSend",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.outbox.askAgain",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.get",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.set",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": false,
+        "admin": true,
+        "operateApprove": false,
+        "operateApproveAdmin": true,
+        "device": false,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.workspace.get",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.workspace.set",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": false,
+        "admin": true,
+        "operateApprove": false,
+        "operateApproveAdmin": true,
+        "device": false,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "workspace.create",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "session.create",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "session.create?permission=auto",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "session.send",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "away.get",
+      "word": null,
+      "relay": "never",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": false,
+      "relayedLocked": false
+    },
+    {
+      "method": "away.set",
+      "word": null,
+      "relay": "never",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": false,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.lifeos.status",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.lifeos.jwt",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": false,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.mail.send",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.mail.waiting",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.mail.reschedule",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.mail.sendNow",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.mail.cancel",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.mail.chat.adopt",
+      "word": "operate",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.mail.chat.find",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.capture.state",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.capture.file",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.money.state",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.money.parse",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.money.receive",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.tasks.done",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.mail.nudge",
+      "word": "operate",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.messages.unanswered",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.money.owed",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.prep.upcoming",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.review.ready",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.clashes.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.clashes.leave",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.review.week",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.review.list",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.review.settle",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.review.undo",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.review.seen",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.money.read",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.money.sums",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.money.accept",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.money.drop",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.money.picture",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.money.paid",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.messages.send",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.messages.attempt",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.messages.undo",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.messages.retry",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.messages.search",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.messages.unread",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.messages.drafts",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.messages.dropDraft",
+      "word": "operate",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.prep.page",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.prep.brief",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.prep.notes",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.prep.followUp",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.prep.decide",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.prep.people",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.clashes.miles",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.clashes.waive",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.clashes.answer",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.msforms.byPerson",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.rules.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.rules.forDraft",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.rules.add",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.rules.edit",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.rules.remove",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.rules.order",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.rules.decide",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.guests.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.guests.create",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.guests.rekey",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.guests.revoke",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.guests.ticket",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.guests.forItem",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.guests.setRole",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.guests.attempt",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.slides.show.state",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.slides.show.press",
+      "word": "operate",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.digest.get",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.digest.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.digest.seen",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.digest.set",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": false,
+        "admin": true,
+        "operateApprove": false,
+        "operateApproveAdmin": true,
+        "device": false,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.routines.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.routines.pause",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.canvas.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.canvas.open",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.canvas.close",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.canvas.fetch",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.canvas.read",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.canvas.keep",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.canvas.mentions",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.canvas.reorder",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.browser.state",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.browser.drive",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.dashboards.open",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.docs.open",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.docs.threads",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.docs.thread",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.history.branches",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.history.compare",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.history.versions",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.history.decide",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.sheets.open",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.sheets.review",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.slides.open",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.slides.read",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.slides.slide",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.slides.review",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.pdf.open",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.pdf.read",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.pdf.first",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.media.view",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.media.tile",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.media.segment",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.media.note",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.formats.preview",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.formats.previewRead",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.forms.responses",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.msforms.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.meetings.get",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.pdf.mark",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.pdf.unmark",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.pdf.setField",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.pdf.review",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.meetings.recording",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.meetings.decide",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.history.restore",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.office.live.address",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.places",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.search",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.threads",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.read",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.files.preview",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.files.open",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.seen",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.star",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.make",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.files.rename",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.files.trash",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.files.restore",
+      "word": "operate",
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.files.upload",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.files.move",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.files.copy",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.files.names",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.searches",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.across",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.files.thumbs",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "attachment.settings",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "attachment.begin",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "attachment.chunk",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "attachment.commit",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "attachment.abort",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "computer.sessions",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "computer.stop",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "computer.drive",
+      "word": null,
+      "relay": "never",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": false,
+      "relayedLocked": false
+    },
+    {
+      "method": "video.open",
+      "word": null,
+      "relay": "box",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "video.close",
+      "word": null,
+      "relay": "box",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "video.paste",
+      "word": null,
+      "relay": "never",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": false,
+      "relayedLocked": false
+    },
+    {
+      "method": "video.copy",
+      "word": null,
+      "relay": "never",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": false,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.reveal",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.search.query",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.search.opened",
+      "word": null,
+      "relay": "screen",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": false
+    },
+    {
+      "method": "work.routines.plays",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.routines.playStart",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.routines.runs",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.routines.runNow",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.templates.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.templates.make",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.dashboards.refresh",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.forms.list",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.forms.close?open=false",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.forms.close?open=true",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": false,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.msforms.get",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.msforms.responses",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.msforms.close?open=false",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.msforms.close?open=true",
+      "word": "approve",
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": false,
+        "approve": false,
+        "admin": false,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.msforms.seen",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.health",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.lapses",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.winvm.state",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": true,
+        "operate": true,
+        "approve": true,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.winvm.wake",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    },
+    {
+      "method": "work.winvm.sleep",
+      "word": null,
+      "relay": "link",
+      "allowed": {
+        "read": false,
+        "operate": true,
+        "approve": false,
+        "admin": true,
+        "operateApprove": true,
+        "operateApproveAdmin": true,
+        "device": true,
+        "pending": false,
+        "revoked": false
+      },
+      "relayed": true,
+      "relayedLocked": true
+    }
+  ]
+}

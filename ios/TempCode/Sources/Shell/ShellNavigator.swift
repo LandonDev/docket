@@ -15,14 +15,38 @@ import TempCodeClient
 final class ShellNavigator {
     let tab: AppTab
     var sidebarPath: [Route]
-    var detailRoot: Route?
+    var detailRoot: Route? {
+        // His press on the sidebar button over a wide route is that screen's alone (`SidebarVisibility`).
+        // A held write is its route's too: another route never shows it, even for the half second it waits.
+        didSet {
+            let route = ShellPaths.identity(of: detailRoot)
+            if let held = sidebarOverride, held.route != route { sidebarOverride = nil }
+            if let held = heldWrite, held.route != route { heldWrite = nil }
+        }
+    }
     var detailStack: NavigationPath
-    /// The overlay pose's toggle, remembered across folds and launches.
+    /// This tab's sidebar toggle, remembered across folds and launches. A wide route hides the
+    /// sidebar without writing it: what the split shows is `sidebarVisible`.
     var sidebarShown: Bool
+    /// His press on the sidebar button while a wide route is open, forgotten when he leaves it.
+    var sidebarOverride: SidebarVisibility.Override?
+    /// Each list's top row by its route's identity (`ShellPaths.identity`), so a list a fold or a pose
+    /// change builds again comes back at its row (`placeTop`, WorkPlaceScreen.swift). Written once per
+    /// settled scroll, never under a moving finger; read only when a list is built; never saved across
+    /// launches, and never a reason to draw.
+    @ObservationIgnored var tops: [String: String] = [:]
+    /// Whether the thread a route shows has a file open beside its chat; the root sets it. Read without observing
+    /// the canvas, so a push that leaves the answer as it was redraws nothing.
+    @ObservationIgnored var hasItem: (Route) -> Bool = { _ in false }
+    /// Moves when the shown thread's first item opens or its last closes (`itemsMoved`): the one change of `hasItem`
+    /// the split must hear, since a thread's items land after its route opens.
+    private(set) var itemsRev = 0
+    /// This tab is the one on screen: its split writes the proofs' layout notes (`ShellSplit`).
+    @ObservationIgnored var focused = false
     /// The shell's pose, set by the root: a detail opened in the overlay pose
     /// hides the overlay, the way Mail's sidebar closes on a pick.
     var pose = ShellPose.stack(short: false) {
-        didSet { if pose != oldValue { poseChangedAt = Date() } }
+        didSet { if pose != oldValue { poseChangedAt = Date(); heldWrite = nil } }
     }
     /// When the pose last changed: a write of the split's visibility inside
     /// `ShellPose.foldSettle` of it is the fold's, not the person's.
@@ -38,6 +62,76 @@ final class ShellNavigator {
         detailRoot = memory.detailRoot
         detailStack = NavigationMemory.path(memory.detailStack)
         self.sidebarShown = sidebarShown
+    }
+
+    /// The detail's root takes the whole open Duo, its two halves either side of the fold (`ShellPaths.wide`).
+    var wide: Bool {
+        _ = itemsRev
+        return ShellPaths.wide(of: detailRoot, hasItem: detailRoot.map(hasItem) ?? false)
+    }
+
+    /// The thread on screen gained its first item or lost its last: the split asks `wide` again. A fold writes
+    /// nothing here, so the sidebar it shows stays derived.
+    func itemsMoved() {
+        itemsRev &+= 1
+        // A held write is of the width it was made at (the canvas has already changed when this runs, so the write's
+        // own width is what to compare): the thread turning wide or narrow drops it at once.
+        if let held = heldWrite, held.wide != wide { heldWrite = nil }
+    }
+
+    /// A write of the split's visibility waiting out `ShellPose.foldSettle`
+    /// (`HeldVisibilityWrite`): the split shows it at once; it becomes his toggle
+    /// only if the pose holds, and a pose change drops it.
+    private(set) var heldWrite: HeldVisibilityWrite?
+
+    /// What the split shows: a held write, else his toggle, hidden by a wide route, or his own press on that route.
+    var sidebarVisible: Bool {
+        if let heldWrite { return heldWrite.shown }
+        return SidebarVisibility(preference: sidebarShown, override: sidebarOverride).shown(route: ShellPaths.identity(of: detailRoot), wide: wide)
+    }
+
+    /// His press on the sidebar button: the route's override on a wide route, his toggle otherwise.
+    func showSidebar(_ shown: Bool) {
+        var visibility = SidebarVisibility(preference: sidebarShown, override: sidebarOverride)
+        visibility.toggled(to: shown, route: ShellPaths.identity(of: detailRoot), wide: wide)
+        sidebarShown = visibility.preference
+        sidebarOverride = visibility.override
+    }
+
+    /// What the split last wrote of its own visibility, kept or not.
+    @ObservationIgnored private var splitShows: Bool?
+    /// Moves when the split shows other than `sidebarVisible` after a pose settles
+    /// (`ShellPose.splitStrays`): the split reads it, so its binding is read again.
+    private(set) var visibilityAsk = 0
+
+    /// The split wrote its visibility; a dropped write that leaves it showing other than
+    /// `sidebarVisible` is checked again once the pose has settled.
+    func splitWrote(_ shown: Bool, kept: Bool) {
+        splitShows = shown
+        guard !kept, ShellPose.splitStrays(pose: pose, splitShows: shown, shows: sidebarVisible) else { return }
+        let due = poseChangedAt.addingTimeInterval(ShellPose.foldSettle + 0.1)
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, due.timeIntervalSinceNow)))
+            guard let self, ShellPose.splitStrays(pose: self.pose, splitShows: self.splitShows, shows: self.sidebarVisible) else { return }
+            self.splitShows = self.sidebarVisible
+            self.visibilityAsk &+= 1
+        }
+    }
+
+    /// A write the split made once the pose had settled: shown at once, and his
+    /// press (`showSidebar`) only if the pose and the detail's route still hold `ShellPose.foldSettle` later.
+    func holdSidebarWrite(_ shown: Bool) {
+        let write = HeldVisibilityWrite(shown: shown, pose: pose, at: Date(), route: ShellPaths.identity(of: detailRoot), wide: wide)
+        heldWrite = write
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(ShellPose.foldSettle))
+            guard let self, self.heldWrite == write else { return }
+            self.heldWrite = nil
+            // Only over the route it was written for, as wide as it was then: never another route's preference.
+            if write.applies(pose: self.pose, poseChangedAt: self.poseChangedAt, route: ShellPaths.identity(of: self.detailRoot), wide: self.wide) {
+                self.showSidebar(write.shown)
+            }
+        }
     }
 
     /// A sidebar route pushes; a detail route replaces the detail's root and
@@ -93,15 +187,21 @@ final class ShellNavigator {
     /// The sidebar's routes, the detail's root and the detail's stack, counted.
     var depth: Int { sidebarPath.count + (detailRoot == nil ? 0 : 1) + detailStack.count }
 
-    /// A held item over the Outbox, so Back is the list. In the collapsed
-    /// split one change that pushes the sidebar and shows the detail keeps
-    /// only the detail, so the item opens once the Outbox's push has landed.
-    func openHeld(_ route: Route) async {
-        if sidebarPath.last != .outbox {
-            sidebarPath.append(.outbox)
+    /// A route over the list it belongs to, so Back is that list. In the
+    /// collapsed split one change that pushes the sidebar and shows the
+    /// detail keeps only the detail, so the route opens once the list's push
+    /// has landed.
+    func open(_ route: Route, over list: Route) async {
+        if sidebarPath.last != list {
+            sidebarPath.append(list)
             try? await Task.sleep(for: .milliseconds(400))
         }
         open(route)
+    }
+
+    /// A held item over the Outbox, so Send returns to the list and its Undo.
+    func openHeld(_ route: Route) async {
+        await open(route, over: .place(.outbox))
     }
 
     func popToRoot() {
@@ -118,6 +218,13 @@ final class ShellNavigator {
 
     /// What the memory keeps of this tab.
     var memory: ColumnMemory {
-        ColumnMemory(sidebar: sidebarPath, detailRoot: detailRoot, detailStack: NavigationMemory.encode(detailStack))
+        ColumnMemory(sidebar: sidebarPath, detailRoot: detailRoot, detailStack: NavigationMemory.encode(detailStack), sidebarShown: sidebarShown)
+    }
+
+    /// The tab as a memory has it: an old save's Work screens moved here (`NavigationSnapshot.movingWork`).
+    func restore(_ memory: ColumnMemory) {
+        sidebarPath = memory.sidebar
+        detailRoot = memory.detailRoot
+        detailStack = NavigationMemory.path(memory.detailStack)
     }
 }

@@ -20,8 +20,24 @@ extension WorkHost {
     /// The press on a saved draft from any screen: the host sends it as LifeOS holds it, only if it
     /// still says what the composer saved. A thread's draft goes through the hold (`via: hold`).
     /// A time goes with the IANA zone it was picked in (`sendZone`), so his screens can say it in both.
-    public func sendMail(draftId: String, seen: Methods.WorkMailSend.Params.Seen, sendAt: Date? = nil, sendZone: String? = nil) async throws -> Methods.WorkMailSend.Output {
-        try await socket.request(Methods.WorkMailSend.self, .init(id: draftId, sendAt: sendAt.map { Int(($0.timeIntervalSince1970 * 1000).rounded()) }, sendZone: sendAt == nil ? nil : sendZone, seen: seen))
+    /// Written to the ledger by the draft before it leaves (`PressLedger.run`): a lost answer throws
+    /// `PressLedger.Unknown`, and the draft is read back by its LifeOS status (`checkMailPresses`).
+    public func sendMail(draftId: String, seen: Methods.WorkMailSend.Params.Seen, sendAt: Date? = nil, sendZone: String? = nil, key: String? = nil) async throws -> Methods.WorkMailSend.Output {
+        let params = Methods.WorkMailSend.Params(id: draftId, sendAt: sendAt.map { Int(($0.timeIntervalSince1970 * 1000).rounded()) }, sendZone: sendAt == nil ? nil : sendZone, seen: seen)
+        return try await presses.run(.mailSend, host: environment.id, hostName: environment.name, ref: PendingPress.mailRef(draftId), rev: nil, linked: linked, key: key) { [socket] in
+            try await socket.request(Methods.WorkMailSend.self, params)
+        }
+    }
+
+    /// Each composer Send of his on this host whose answer was lost, read back by its draft's status in LifeOS
+    /// (`status` reads it on the job's own LifeOS session; nil when LifeOS has no such draft). Answers each one's state.
+    @discardableResult
+    public func checkMailPresses(status: @MainActor (String) async throws -> String?) async -> [String: PressState] {
+        let resolved = await presses.check(host: environment.id, where: { $0 == .mailSend }) { press in
+            guard let id = PendingPress.draft(ofRef: press.ref) else { return .mayHaveGone }
+            return PressTruth.mail(status: try await status(id))
+        }
+        return Dictionary(resolved.map { (PendingPress.draft(ofRef: $0.press.ref) ?? $0.press.ref, $0.state) }, uniquingKeysWith: { _, last in last })
     }
 
     /// The rule proposals a sent draft gave rise to: the line under it.

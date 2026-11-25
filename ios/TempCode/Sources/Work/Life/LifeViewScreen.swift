@@ -6,7 +6,8 @@ import TempCodeContract
 
 /// One of a Work workspace's LifeOS views (milestone 47): LifeKitUI's Mail,
 /// Tasks or Agenda, narrowed to the workspace's sector, inside the
-/// workspace's `WorkLifeHost`. The screens keep LifeOS's own type ladder
+/// workspace's `WorkLifeHost`; or one of the Work tab's places for every job
+/// (`LifePlaceScreen`), inside the every-job host. The screens keep LifeOS's own type ladder
 /// (the approved phone-life page); their sheets and Start Thread are this
 /// screen's.
 struct LifeViewScreen: View {
@@ -25,6 +26,7 @@ struct LifeViewScreen: View {
     }
 
     @Environment(ShellNavigator.self) private var navigator
+    @Environment(\.shellPose) private var pose
     @Bindable var host: WorkLifeHost
     let view: Kind
 
@@ -45,7 +47,7 @@ struct LifeViewScreen: View {
                     screen
                         .foot()
                         .lifeChrome(store: store, scene: scene)
-                        .environment(\.lifeSectors, host.sector.map { [$0] } ?? Sector.allCases)
+                        .environment(\.lifeSectors, host.sectors)
                 }
             }
         }
@@ -61,10 +63,43 @@ struct LifeViewScreen: View {
         .sheet(item: $host.starting) { chip in
             StartThreadSheet(host: host, chip: chip)
         }
+        .sheet(item: $host.asking) { draft in
+            StartThreadSheet(host: host, chip: draft.chip, ask: draft)
+        }
         .onChange(of: host.started) {
             guard let session = host.started else { return }
             host.started = nil
             navigator.open(.thread(environmentId: host.client.environment.id, sessionId: session.id, seq: nil))
+        }
+        // A nudge's thread, or the chat Ask found beside a mail.
+        .onChange(of: host.opening) {
+            guard let id = host.opening else { return }
+            host.opening = nil
+            navigator.open(.thread(environmentId: host.client.environment.id, sessionId: id, seq: nil))
+        }
+        // A project's document or sheet, in the hosted editor (M5b).
+        .onChange(of: host.openingDocument) {
+            guard let item = host.openingDocument else { return }
+            host.openingDocument = nil
+            // Pushed over the project's page in the detail, so Back returns to it.
+            navigator.detailStack.append(Route.file(environmentId: host.client.environment.id, item: item, sessionId: nil))
+        }
+        .toolbar {
+            if view == .mail, host.phase == .ready {
+                // On the open Duo, Mail's two pages share one bar, and its own items already fill the trailing edge:
+                // a fifth there is folded by the system into a second "…". Waiting On sits by the title instead.
+                ToolbarItem(placement: pose.isSplit ? .topBarLeading : .primaryAction) {
+                    Button("Waiting On", systemImage: host.waitingOn ? "hourglass.circle.fill" : Symbol.waiting) {
+                        host.waitingOn.toggle()
+                    }
+                    .accessibilityAddTraits(host.waitingOn ? .isSelected : [])
+                    .accessibilityIdentifier("mail-waiting-on")
+                }
+            }
+        }
+        // Agenda's clash lines and leave times, read again when the host's clashes move.
+        .task(id: view == .agenda ? host.client.work.clashesRev : -1) {
+            if view == .agenda { await host.loadMarks() }
         }
         .task { await host.prepare() }
         .onAppear { ShownLifeHost.shared.host = host }
@@ -73,7 +108,9 @@ struct LifeViewScreen: View {
 
     @ViewBuilder private var screen: some View {
         switch view {
-        case .mail: MailScreen()
+        case .mail:
+            // Waiting on: mail he sent that no one answered, with Nudge and Dismiss (LifeKitUI's own screen).
+            if host.waitingOn { MailWaitingScreen() } else { MailScreen() }
         case .tasks: TasksScreen()
         case .agenda: AgendaScreen()
         case .projects:
@@ -98,6 +135,8 @@ struct StartThreadSheet: View {
     @Environment(\.dismiss) private var dismiss
     let host: WorkLifeHost
     let chip: ContextChip
+    /// Ask on a mail: the first send makes the chat beside it (`mailAdopt`), else an ordinary thread.
+    var ask: AskDraft?
     @State private var text = ""
     @State private var saving = false
     @State private var error: String?
@@ -109,7 +148,7 @@ struct StartThreadSheet: View {
                 Section {
                     ItemChip(chip: chip)
                         .listRowSeparator(.hidden)
-                    TextField("What should it do?", text: $text, axis: .vertical)
+                    TextField(ask == nil ? "What should it do?" : "Ask about this mail", text: $text, axis: .vertical)
                         .lineLimit(3...12)
                         .focused($focused)
                         .accessibilityIdentifier("start-thread-text")
@@ -117,7 +156,7 @@ struct StartThreadSheet: View {
                     if let error { Text(error).foregroundStyle(Tint.destructiveText) }
                 }
             }
-            .navigationTitle("New Thread")
+            .navigationTitle(ask == nil ? "New Thread" : "Ask")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -125,7 +164,8 @@ struct StartThreadSheet: View {
                     if saving {
                         ProgressView()
                     } else {
-                        Button("Start") { Task { await start() } }
+                        Button(ask == nil ? "Start" : "Ask") { Task { await start() } }
+                            .disabled(ask != nil && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             .accessibilityIdentifier("start-thread-start")
                     }
                 }
@@ -151,7 +191,14 @@ struct StartThreadSheet: View {
         saving = true
         defer { saving = false }
         do {
-            let session = try await host.client.work.startThread(workspaceId: host.workspaceId, about: chip, text: text.trimmingCharacters(in: .whitespacesAndNewlines))
+            let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            let session: SessionMeta
+            if let ask {
+                session = try await host.client.work.startMailChat(workspaceId: ask.workspaceId, mailThreadId: ask.mailThreadId, about: chip, text: words)
+            } else {
+                guard let workspaceId = host.startIn else { return }
+                session = try await host.client.work.startThread(workspaceId: workspaceId, about: chip, text: words)
+            }
             dismiss()
             host.started = session
         } catch {
@@ -164,6 +211,9 @@ struct StartThreadSheet: View {
 struct ItemChip: View {
     let chip: ContextChip
     var onRemove: (() -> Void)?
+    /// The chip's height grows with the text, from the strip's chip at the default size.
+    @ScaledMetric(relativeTo: .footnote) private var height = StripMetrics.chip
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         HStack(spacing: 6) {
@@ -172,16 +222,20 @@ struct ItemChip: View {
                 .imageScale(.small)
             Text(chip.label)
                 .textStep(.meta)
-                .lineLimit(1)
+                .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
             if let onRemove {
+                // The × reaches 44 pt around it without making the chip taller.
                 Button("Remove", systemImage: "xmark", action: onRemove)
                     .labelStyle(.iconOnly)
                     .imageScale(.small)
                     .foregroundStyle(.secondary)
+                    // The hit shape reaches 44 pt around the glyph; the layout keeps the glyph's own size, so the ×
+                    // never overlaps the label at large sizes.
+                    .contentShape(Rectangle().inset(by: -(Layout.rowHeight - StripMetrics.glyph) / 2))
             }
         }
         .padding(.horizontal, 8)
-        .frame(height: 28)
+        .frame(minHeight: height)
         .background(Surface.fill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("item-chip")

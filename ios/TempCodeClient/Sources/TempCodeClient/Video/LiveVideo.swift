@@ -65,6 +65,7 @@ public final class LiveVideo {
     @ObservationIgnored private let open: (Ask) async throws -> Answer
     @ObservationIgnored private let close: (String) async -> Void
     @ObservationIgnored private let pasteText: (String, String) async throws -> Void
+    @ObservationIgnored private let copyText: (String) async throws -> String?
     @ObservationIgnored private let rpcURL: () -> URL
     @ObservationIgnored private let socket: VideoStreamSocketFactory
     @ObservationIgnored private let sleep: (Int) async -> Void
@@ -80,12 +81,13 @@ public final class LiveVideo {
     @ObservationIgnored private var plays = 0
 
     /// `open` asks `video.open`; `close` sends `video.close`; `paste` sends `video.paste` (a stream and the text);
-    /// `rpcURL` is the RPC socket's address.
+    /// `copy` asks `video.copy` (the far clipboard's text after his copy); `rpcURL` is the RPC socket's address.
     public init(
         threadId: String = "",
         open: @escaping (Ask) async throws -> Answer,
         close: @escaping (String) async -> Void,
         paste: @escaping (String, String) async throws -> Void = { _, _ in },
+        copy: @escaping (String) async throws -> String? = { _ in nil },
         rpcURL: @escaping () -> URL,
         socket: @escaping VideoStreamSocketFactory = URLSessionVideoSocket.factory,
         sleep: @escaping (Int) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
@@ -94,6 +96,7 @@ public final class LiveVideo {
         self.open = open
         self.close = close
         pasteText = paste
+        copyText = copy
         self.rpcURL = rpcURL
         self.socket = socket
         self.sleep = sleep
@@ -115,6 +118,10 @@ public final class LiveVideo {
             paste: { [weak client] stream, text in
                 guard let client else { return }
                 _ = try await client.request(Methods.VideoPaste.self, .init(stream: stream, text: text))
+            },
+            copy: { [weak client] stream in
+                guard let client else { return nil }
+                return try await client.request(Methods.VideoCopy.self, .init(stream: stream)).text
             },
             rpcURL: { [weak client] in client?.environment.socketURL ?? URL(string: "ws://localhost")! }
         )
@@ -169,6 +176,13 @@ public final class LiveVideo {
     public func paste(_ text: String) async throws {
         guard asked?.drive == true, let stream, !text.isEmpty else { return }
         try await pasteText(stream, text)
+    }
+
+    /// The far clipboard's text after his copy in the page he drives (`video.copy`), for his own clipboard; nil on a
+    /// stream he does not drive, or when the far clipboard holds no text.
+    public func copy() async throws -> String? {
+        guard asked?.drive == true, let stream else { return nil }
+        return try await copyText(stream)
     }
 
     private func begin(_ ask: Ask, sink: any VideoSampleSink) {

@@ -1,0 +1,284 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "clash-marks",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-ref",
+      "sector": "ref",
+      "name": "Refereeing",
+      "path": "/w/mac/ref",
+      "open": true
+    }
+  ],
+  "sources": {
+    "meetings": {
+      "events": [
+        {
+          "_id": "x",
+          "title": "Staff meeting",
+          "sector": "purdue",
+          "startsAt": 1795561200000,
+          "endsAt": 1795564800000,
+          "allDay": false
+        },
+        {
+          "_id": "y",
+          "title": "Varsity Basketball",
+          "sector": "ref",
+          "startsAt": 1795563000000,
+          "endsAt": 1795566600000,
+          "allDay": false
+        },
+        {
+          "_id": "z",
+          "title": "JV game",
+          "sector": "ref",
+          "startsAt": 1795572000000,
+          "endsAt": 1795575600000,
+          "allDay": false
+        },
+        {
+          "_id": "w",
+          "title": "Late call",
+          "sector": "purdue",
+          "startsAt": 1795669200000,
+          "endsAt": 1795672800000,
+          "allDay": false
+        }
+      ],
+      "people": {},
+      "read": {
+        "built": true
+      }
+    },
+    "clashes": {
+      "range": {
+        "clashes": [
+          {
+            "id": "x-y",
+            "kind": "overlap",
+            "a": {
+              "eventId": "x",
+              "sector": "purdue",
+              "title": "Staff meeting",
+              "startsAt": 1795561200000,
+              "endsAt": 1795564800000,
+              "can": [
+                "decline"
+              ]
+            },
+            "b": {
+              "eventId": "y",
+              "sector": "ref",
+              "title": "Varsity Basketball",
+              "startsAt": 1795563000000,
+              "endsAt": 1795568400000,
+              "can": [
+                "decline"
+              ]
+            }
+          },
+          {
+            "id": "y-z",
+            "kind": "drive",
+            "a": {
+              "eventId": "y",
+              "sector": "ref",
+              "title": "Varsity Basketball",
+              "startsAt": 1795563000000,
+              "endsAt": 1795568400000,
+              "can": [
+                "decline"
+              ]
+            },
+            "b": {
+              "eventId": "z",
+              "sector": "ref",
+              "title": "JV game",
+              "startsAt": 1795572000000,
+              "endsAt": 1795575600000,
+              "can": [
+                "decline"
+              ]
+            },
+            "minutes": 70,
+            "measured": false,
+            "shortBy": 13
+          },
+          {
+            "id": "z-w",
+            "kind": "overlap",
+            "a": {
+              "eventId": "z",
+              "sector": "ref",
+              "title": "JV game",
+              "startsAt": 1795572000000,
+              "endsAt": 1795575600000,
+              "can": [
+                "decline"
+              ]
+            },
+            "b": {
+              "eventId": "w",
+              "sector": "purdue",
+              "title": "Late call",
+              "startsAt": 1795669200000,
+              "endsAt": 1795672800000,
+              "can": [
+                "decline"
+              ]
+            }
+          }
+        ],
+        "leaves": [
+          {
+            "eventId": "z",
+            "leaveAt": 1795568700000,
+            "minutes": 40,
+            "measured": true,
+            "from": "event"
+          },
+          {
+            "eventId": "x",
+            "leaveAt": 1795543200000,
+            "minutes": 30,
+            "measured": true,
+            "from": "start"
+          }
+        ]
+      }
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [
+      {
+        "source": "clashes",
+        "key": "event:x",
+        "note": "Overlaps Varsity Basketball (Refereeing), 5:30 PM",
+        "late": true,
+        "act": "Resolve"
+      },
+      {
+        "source": "clashes",
+        "key": "event:y",
+        "note": "Overlaps Staff meeting (Purdue Esports), 5:00 PM, and 1 more",
+        "late": true,
+        "act": "Resolve"
+      },
+      {
+        "source": "clashes",
+        "key": "event:z",
+        "note": "About 15 min short after Varsity Basketball, and 1 more",
+        "whenLine": "Leave 7:05 PM",
+        "late": true,
+        "act": "Resolve"
+      },
+      {
+        "source": "clashes",
+        "key": "event:w",
+        "note": "Overlaps JV game (Refereeing), 8:00 PM",
+        "late": true,
+        "act": "Resolve"
+      }
+    ],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "event:x",
+        "event:y",
+        "event:z"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "meetings",
+            "title": "Meetings",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No meetings today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "event:x",
+                "section": "meetings",
+                "sector": "purdue",
+                "title": "Staff meeting",
+                "detail": "Overlaps Varsity Basketball (Refereeing), 5:30 PM",
+                "detailLate": true,
+                "at": 0,
+                "when": "5:00 PM",
+                "workspace": "mac/mac-purdue",
+                "opens": "agenda",
+                "acts": [
+                  "Resolve",
+                  "Prepare"
+                ]
+              },
+              {
+                "key": "event:y",
+                "section": "meetings",
+                "sector": "ref",
+                "title": "Varsity Basketball",
+                "detail": "Overlaps Staff meeting (Purdue Esports), 5:00 PM, and 1 more",
+                "detailLate": true,
+                "at": 1,
+                "when": "5:30 PM",
+                "workspace": "mac/mac-ref",
+                "opens": "agenda",
+                "acts": [
+                  "Resolve",
+                  "Prepare"
+                ]
+              },
+              {
+                "key": "event:z",
+                "section": "meetings",
+                "sector": "ref",
+                "title": "JV game",
+                "detail": "About 15 min short after Varsity Basketball, and 1 more",
+                "detailLate": true,
+                "at": 2,
+                "when": "8:00 PM",
+                "whenLine": "Leave 7:05 PM",
+                "workspace": "mac/mac-ref",
+                "opens": "agenda",
+                "acts": [
+                  "Resolve",
+                  "Prepare"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

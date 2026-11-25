@@ -21,6 +21,8 @@ struct HeldInline: View {
     @Environment(\.displayScale) private var displayScale
     @State private var open = false
     @State private var confirmDiscard: OutboxItem?
+    /// Why his last press here did not start or did not go, under the act until his next press.
+    @State private var line: String?
 
     /// The waiting item this line names (the host's number), while it waits.
     private var item: OutboxItem? { client.work.items.first { $0.n == n && OutboxModel.needsHim($0) } }
@@ -28,7 +30,13 @@ struct HeldInline: View {
 
     var body: some View {
         let presses = OutboxPresses.shared
-        let pending = entry.map { presses.pending?.id == $0.id } ?? false
+        // Counting (with Undo), waiting its turn behind another, or on its way: all are "Sending".
+        let pending = entry.map(presses.hides) ?? false
+        let counting = entry.map { presses.pending?.id == $0.id } ?? false
+        // A press of this item the background or a lost link put back: said here, as the Outbox's list says it.
+        let notice = entry.flatMap(presses.notice(for:))
+        // A press whose answer is out or lost: the line says so and offers nothing until it is read back.
+        let checking = item.map { client.work.presses.busy(host: client.environment.id, ref: OutboxModel.key($0.ref)) } ?? false
         VStack(alignment: .leading, spacing: 6) {
             // Undo sits beside the line's own button, never inside it, so VoiceOver reaches both.
             HStack(spacing: Layout.rowGap) {
@@ -41,7 +49,7 @@ struct HeldInline: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(width: Layout.markWidth)
-                        (Text(pending ? "Sending " : item == nil ? "Was held " : "Held ").foregroundStyle(.secondary) + Text(act).foregroundStyle(.primary))
+                        (Text(pending ? "Sending " : checking ? "Checking " : item == nil ? "Was held " : "Held ").foregroundStyle(.secondary) + Text(act).foregroundStyle(.primary))
                             .font(.footnote)
                             .lineLimit(open ? nil : 1)
                         Spacer(minLength: 0)
@@ -51,7 +59,7 @@ struct HeldInline: View {
                 }
                 .buttonStyle(.pressable)
                 .accessibilityHint(item == nil || pending ? "" : open ? "Closes the held act" : "Shows the held act")
-                if pending {
+                if counting {
                     Button("Undo") { presses.undo() }
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.tint)
@@ -61,7 +69,12 @@ struct HeldInline: View {
                         .buttonStyle(.pressable)
                 }
             }
-            if open, let item, let entry, !pending {
+            if let notice, !pending {
+                Text(notice)
+                    .textStep(.meta)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if open, let item, let entry, !pending, !checking {
                 frame(item, entry: entry)
                     .transition(.opacity)
             }
@@ -73,9 +86,7 @@ struct HeldInline: View {
         #endif
         .outboxDiscardPrompt($confirmDiscard) { item, reason in
             Task {
-                do { try await client.work.discard(item, reason: reason) } catch {
-                    FleetToastCenter.shared.post(message: "Not discarded: \(ActionError.wrap(error).message)")
-                }
+                line = await OutboxPresses.shared.discard(OutboxModel.Entry(environmentId: client.environment.id, item: item), reason: reason)
             }
         }
         .accessibilityIdentifier("held-inline")
@@ -99,7 +110,7 @@ struct HeldInline: View {
                     .font(.footnote)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if client.work.canApprove {
+            if client.work.may(.outboxSend) {
                 HStack(spacing: 8) {
                     Button("Discard", role: .destructive) { confirmDiscard = item }
                         .font(.footnote.weight(.medium))
@@ -121,10 +132,15 @@ struct HeldInline: View {
                         // A LifeOS reply's quote and a computer act's picture show only in the detail: the verb opens it.
                         PillButton("\(verb)…", tint: .accentColor) { Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } }
                     } else {
-                        PillButton(verb, tint: .accentColor) { OutboxPresses.shared.send(entry) }
+                        PillButton(verb, tint: .accentColor) { Task { line = await OutboxPresses.shared.send(entry, quiet: true) } }
                     }
                 }
                 .padding(.top, 2)
+                if let line {
+                    Text(line)
+                        .textStep(.meta, tint: Tint.destructiveText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .padding(inTable ? 0 : 12)

@@ -5,18 +5,43 @@ import TempCodeContract
 /// and `withContextChips` (src/renderer/src/work/canvas/chips.ts), word for word.
 public enum ChipWords {
     public static func line(_ chip: ContextChip) -> String {
-        let head = "About this \(noun(chip.kind)): \(chip.label) (\(refWords(chip.ref)))"
-        let under = (chip.kind == .selection ? chip.quote : chip.excerpt)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        // One line, whatever the label holds: a label that ran onto a second line would read as his own words.
+        let label = chip.label.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let head = "About this \(noun(chip.kind)): \(label) (\(refWords(chip)))"
+        let under = under(chip)
         guard !under.isEmpty else { return head }
         return head + "\n" + under.split(separator: "\n", omittingEmptySubsequences: false).map { "> \($0)" }.joined(separator: "\n")
     }
 
+    /// What the line quotes under it (`chipUnder`): a selection's words, else its quote or a mention's excerpt; for a
+    /// file, where it is and never a word from inside it.
+    static func under(_ chip: ContextChip) -> String {
+        if chip.kind == .file {
+            guard let w = chip.where else { return "" }
+            return "In \(w.name) (place \(w.place)) at \(w.path).\(w.shared == true ? " Others can open it." : "")"
+        }
+        return (chip.kind == .selection ? chip.quote : (chip.quote ?? chip.excerpt))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
     /// The desktop's `CHIP_NOUN` (src/shared/work/canvas.ts).
-    private static func noun(_ kind: ContextChip.Kind) -> String {
+    public static func noun(_ kind: ContextChip.Kind) -> String {
         switch kind {
         case .doc: "document"
         case .held: "held act"
+        case .chat: "conversation"
+        case .msform: "Microsoft form"
         default: kind.rawValue
+        }
+    }
+
+    /// The kind a sent line's noun names (the inverse of `noun`), for the bubble's glyph.
+    public static func kind(ofNoun noun: String) -> ContextChip.Kind {
+        switch noun {
+        case "document": .doc
+        case "held act": .held
+        case "conversation": .chat
+        case "Microsoft form": .msform
+        default: ContextChip.Kind(rawValue: noun)
         }
     }
 
@@ -28,8 +53,13 @@ public enum ChipWords {
         return text.hasPrefix("/") ? "\(text)\n\n\(lines)" : "\(lines)\n\n\(text)"
     }
 
-    private static func refWords(_ ref: ContextChip.Ref) -> String {
-        switch ref {
+    /// Where a chip points, in words a model acts on (`chipRefWords`): a file's or a form's source as JSON with its
+    /// brackets escaped, so a name with brackets in it still reads back as one chip.
+    public static func refWords(_ chip: ContextChip) -> String {
+        if chip.kind == .file || chip.kind == .msform {
+            return jsonWords(chip.ref).replacingOccurrences(of: "(", with: "\\u0028").replacingOccurrences(of: ")", with: "\\u0029")
+        }
+        switch chip.ref {
         case .object(let lifeos): return "LifeOS \(lifeos.table.rawValue) \(lifeos.id)"
         case .canvasSource(.lifeos(let source)): return "LifeOS \(source.table.rawValue) \(source.id)"
         case .canvasSource(.file(let file)): return file.path

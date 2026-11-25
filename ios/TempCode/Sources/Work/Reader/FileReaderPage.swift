@@ -23,6 +23,8 @@ struct FileReaderPage: View {
     @State private var restingTop: CGFloat = 0
     @State private var asking: ContextChip?
     @State private var sharing = false
+    /// The clicker on this deck's running show.
+    @State private var clicking = false
     @State private var previewing = false
     @State private var failure: String?
     /// Print is reading its pages: a spinner stands in More's place.
@@ -39,21 +41,29 @@ struct FileReaderPage: View {
 
     private var facts: ReaderFacts {
         ReaderFacts(
-            canOperate: client.work.canOperate,
-            canApprove: client.work.canApprove,
+            mayClose: client.work.may(.canvasClose),
+            mayGuestLink: client.work.may(.guestsCreate),
             inThread: thread != nil,
             waiting: file?.waiting ?? 0,
             previews: live.flatMap { client.work.canvas.preview(for: $0) } != nil,
-            comments: file?.takesComments ?? false
+            comments: file?.takesComments ?? false,
+            finds: commands.frame?.offers.find ?? false,
+            undo: commands.frame?.canUndo ?? false,
+            redo: commands.frame?.canRedo ?? false,
+            showing: client.work.may(.slidesShowPress) && client.work.shows.values.contains { $0.itemId == item.id },
+            mayKeep: client.work.may(.canvasKeep)
         )
     }
+
+    /// A Purdue workspace's file: its Share sheet says it is university data.
+    private var purdue: Bool { client.workspaces.first { $0.id == item.workspaceId }?.sector == "purdue" }
 
     private var verbs: [ReaderVerb] { live.map { ReaderVerbs.of($0, facts) } ?? [] }
 
     /// Where Ask sends, for a key that may act: the thread beside the file, else the file's workspace, where
     /// Ask finds or starts the thread. A key that may only read has no Ask: the host would refuse its words.
     private var askTarget: AskTarget? {
-        guard client.work.canOperate, let live else { return nil }
+        guard client.work.may(.sessionSend), let live else { return nil }
         if let thread { return .thread(thread) }
         if let workspaceId { return .file(workspaceId: workspaceId, item: live) }
         return nil
@@ -85,12 +95,21 @@ struct FileReaderPage: View {
             // The bar leaves and returns on the fade the foot takes.
             .environment(\.readerTap, ReaderVerbs.immerses(item) ? { withAnimation(Motion.base) { immersive.toggle() } } : nil)
             .environment(\.readerImmersive, immersive)
-            .navigationTitle(ReaderVerbs.title((live ?? item).title))
+            .navigationTitle(ReaderVerbs.title(of: live ?? item))
             .navigationBarTitleDisplayMode(.inline)
             .tcNavigationBar()
             .toolbar(.hidden, for: .tabBar)
             .toolbar(immersive ? .hidden : .automatic, for: .navigationBar)
             .toolbar {
+                // The name stays centred however many presses sit at the trailing end (the system moved it to the
+                // leading edge beside Ask and More), and a long one keeps its extension.
+                ToolbarItem(placement: .principal) {
+                    Text(ReaderVerbs.title(of: live ?? item))
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .accessibilityAddTraits(.isHeader)
+                }
                 if askTarget != nil {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Ask", systemImage: "bubble.left") { ask() }
@@ -120,9 +139,12 @@ struct FileReaderPage: View {
             }
             .sheet(isPresented: $sharing) {
                 // The file as the host last named it: a link to a file moved since names its new path.
-                if let live, let source = ItemBody.guestSource(live) {
-                    GuestLinkSheet(client: client, source: source, title: live.title)
+                if let source = ShareSource.of(live ?? item) {
+                    ShareLinkSheet(client: client, source: source, title: (live ?? item).title, purdue: purdue)
                 }
+            }
+            .fullScreenCover(isPresented: $clicking) {
+                HostClicker(client: client, itemId: item.id) { clicking = false }
             }
             .navigationDestination(isPresented: $previewing) {
                 if let live, let source = client.work.canvas.preview(for: live) { PagePreview(client: client, item: live, source: source) }
@@ -176,14 +198,19 @@ struct FileReaderPage: View {
         if let picked = commands.ask { picked() } else if let live { asking = ChipWords.item(live) }
     }
 
-    /// His words went to a thread: he is taken to it. It opens on its first segment, the file (Chat is one
-    /// swipe away); landing on Chat is an open finding in the landing note.
+    /// His words went to a thread: he is taken to it, on its Chat, where they are. The host's announcement that the
+    /// file opened there (a new thread's seat) selects nothing (`WorkCanvas.landOnChat`).
     private func openThread(_ thread: String) {
+        client.work.canvas.landOnChat(thread, file: (live ?? item).source)
+        ThreadScreenModel.land(thread, on: .chat)
         navigator.open(.thread(environmentId: client.environment.id, sessionId: thread, seq: nil))
     }
 
     private func run(_ verb: ReaderVerb) {
         switch verb {
+        case .undo: commands.frame?.run(.undo)
+        case .redo: commands.frame?.run(.redo)
+        case .clicker: clicking = true
         case .find: commands.showFind()
         case .print:
             Task {
@@ -202,9 +229,15 @@ struct FileReaderPage: View {
                 }
             }
         case .preview: previewing = true
+        case .keep:
+            Task {
+                do {
+                    let name = try await client.work.canvas.keep(live ?? item)
+                    FleetToastCenter.shared.post(message: MailRules.keptLine(name))
+                } catch { failure = ActionError.wrap(error).message }
+            }
         case .comments: sheet = .comments
         case .review: sheet = .review
-        case .share: break
         }
     }
 }

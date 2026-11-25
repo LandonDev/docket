@@ -1,0 +1,276 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "guest-kinds",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "box",
+      "workspaceId": "box-hypixel",
+      "sector": "hypixel",
+      "name": "Hypixel",
+      "path": "/w/box/hypixel",
+      "open": true
+    }
+  ],
+  "sources": {
+    "held": {
+      "items": [],
+      "names": [],
+      "loaded": true,
+      "errors": []
+    },
+    "meetings": {
+      "events": [],
+      "people": {},
+      "read": {
+        "built": true
+      }
+    },
+    "due": {
+      "tasks": [],
+      "read": {
+        "built": true
+      }
+    },
+    "waiting": {
+      "waits": [],
+      "read": {
+        "built": true
+      }
+    },
+    "messages": {
+      "answers": []
+    },
+    "clashes": {
+      "range": {
+        "clashes": [],
+        "leaves": []
+      }
+    },
+    "money": {
+      "answers": []
+    },
+    "review": {
+      "asked": [],
+      "answered": {}
+    },
+    "prep": {
+      "answers": []
+    },
+    "msforms": {
+      "answers": []
+    },
+    "digest": {
+      "rows": [
+        {
+          "id": "g1",
+          "host": "box",
+          "kind": "guests.edited",
+          "group": "people",
+          "title": "Jess edited Trailer notes",
+          "detail": "3 changes",
+          "at": 1795536000000,
+          "how": "digest",
+          "day": "2026-11-24"
+        },
+        {
+          "id": "g2",
+          "host": "box",
+          "kind": "guests.opened",
+          "group": "people",
+          "title": "Jess opened Trailer notes",
+          "at": 1795532400000,
+          "how": "digest",
+          "day": "2026-11-24"
+        },
+        {
+          "id": "g3",
+          "host": "mac",
+          "kind": "docs.guest",
+          "group": "people",
+          "title": "A guest edited Brief.docx",
+          "at": 1795528800000,
+          "how": "digest",
+          "day": "2026-11-24"
+        },
+        {
+          "id": "g4",
+          "host": "mac",
+          "kind": "messages.new",
+          "group": "people",
+          "title": "Not Also's",
+          "at": 1795528800000,
+          "how": "digest",
+          "day": "2026-11-24"
+        }
+      ],
+      "loaded": true,
+      "errors": []
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "tell:i:mac:g3",
+        "tell:i:box:g2",
+        "tell:i:box:g1"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "held",
+            "title": "Waiting on you",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "Nothing waits on your press",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "meetings",
+            "title": "Meetings",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No meetings today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "due",
+            "title": "Due",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "tick",
+            "empty": "Nothing due today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "waiting",
+            "title": "Waiting on others",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No one owes you a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "messages",
+            "title": "Messages",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "empty": "No one is waiting on a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "also",
+            "title": "Also",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "empty": "",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "tell:i:mac:g3",
+                "section": "also",
+                "sector": null,
+                "title": "A guest edited Brief.docx",
+                "at": 1795528800000,
+                "when": "8:00 AM",
+                "opens": "tell",
+                "acts": []
+              },
+              {
+                "key": "tell:i:box:g2",
+                "section": "also",
+                "sector": null,
+                "title": "Jess opened Trailer notes",
+                "at": 1795532400000,
+                "when": "9:00 AM",
+                "opens": "tell",
+                "acts": []
+              },
+              {
+                "key": "tell:i:box:g1",
+                "section": "also",
+                "sector": null,
+                "title": "Jess edited Trailer notes",
+                "detail": "3 changes",
+                "at": 1795536000000,
+                "when": "10:00 AM",
+                "opens": "tell",
+                "acts": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

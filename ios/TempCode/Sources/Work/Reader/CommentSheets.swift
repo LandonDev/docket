@@ -72,6 +72,9 @@ struct CommentsSheet: View {
     @Environment(\.dismiss) private var dismiss
     let comments: WorkComments
     let canWrite: Bool
+    /// The page beside a document on the open Duo or below it on a table (`ReaderBeside`): no bar, no Done, and its
+    /// name as the list's header.
+    var page = false
     @State private var replyingTo: CommentThread?
     @State private var text = ""
     @State private var sending = false
@@ -84,7 +87,35 @@ struct CommentsSheet: View {
     private var words: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
-        NavigationStack {
+        if page {
+            list
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    VStack(spacing: 0) {
+                        Text("Comments")
+                            .textStep(.title, weight: .semibold)
+                            .accessibilityAddTraits(.isHeader)
+                            .frame(maxWidth: .infinity, minHeight: Layout.rowHeight, alignment: .leading)
+                            .padding(.horizontal, Layout.textEdge)
+                        Divider()
+                    }
+                    .background(Surface.background)
+                }
+                .accessibilityIdentifier("comments-page")
+        } else {
+            NavigationStack {
+                list
+                    .navigationTitle("Comments")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+                    }
+            }
+            .tcSheet(.document)
+            .accessibilityIdentifier("comments-sheet")
+        }
+    }
+
+    private var list: some View {
             List {
                 if comments.open.isEmpty, comments.resolved.isEmpty, comments.failure == nil {
                     // A small list's empty state is one quiet line, not a whole-screen view.
@@ -120,20 +151,12 @@ struct CommentsSheet: View {
                     }
                 }
             }
-            .navigationTitle("Comments")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-            }
             .tcBottomBar { if canWrite { bar } }
             .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
-        }
-        .tcSheet(.document)
-        .accessibilityIdentifier("comments-sheet")
         #if DEBUG
         // The reader's set (`TC_TEST_ACTION=comment-post:<words>`): the words typed and sent, three seconds after the list shows.
         .task {
-            guard let action = TestHooks.action, action.hasPrefix("comment-post:") else { return }
+            guard !page, let action = TestHooks.action, action.hasPrefix("comment-post:") else { return }
             try? await Task.sleep(for: .seconds(3))
             text = String(action.dropFirst("comment-post:".count))
             await send()

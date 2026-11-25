@@ -361,7 +361,7 @@ struct PerfRunner {
     }
 
     /// One POST to the test server's control panel; nothing outside the proof.
-    private static func control(_ path: String, _ body: [String: Any]) async {
+    static func control(_ path: String, _ body: [String: Any]) async {
         guard let base = TestHooks.controlURL, let data = try? JSONSerialization.data(withJSONObject: body) else { return }
         var request = URLRequest(url: base.appending(path: path))
         request.httpMethod = "POST"

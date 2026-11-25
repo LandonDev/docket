@@ -11,6 +11,7 @@ struct ShareSheetView: View {
     let done: () -> Void
     @State private var path: [ShareFolder] = []
     @State private var saved = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -167,7 +168,7 @@ struct ShareSheetView: View {
             Image(systemName: "checkmark")
                 .fontWeight(.semibold)
                 .foregroundStyle(.tint)
-                .transition(.scale(scale: 0.25).combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .scale(scale: 0.25).combined(with: .opacity))
                 .accessibilityLabel("Saved")
                 .accessibilityIdentifier("share-saved")
         case .waiting, .refused:

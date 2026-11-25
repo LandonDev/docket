@@ -10,8 +10,12 @@ enum FilesOpen {
     @MainActor @ViewBuilder
     static func page(client: EnvironmentClient, route: FileOpenRoute) -> some View {
         let files = client.work.files
-        let place = files.places[route.workspaceId]?.value?.first { $0.id == route.placeId }
-        switch place.map({ FilesRules.opening(route.entry, place: $0, caps: files.caps) }) ?? .quickLook(.facts(host: "")) {
+        let far = files.far[route.workspaceId]?.value?.first { $0.places.contains { $0.id == route.placeId } }
+        let place = files.places[route.workspaceId]?.value?.first { $0.id == route.placeId } ?? far?.places.first { $0.id == route.placeId }
+        // A file of a computer the job's host reaches opens as the copy its host makes, with its progress
+        // (`work.files.open`, the `work.files` push's `opening`); a key that may not seat one reads its facts.
+        let opening: FilesRules.Opening = far != nil ? (files.caps.operate ? .item : .quickLook(.facts(host: far?.name ?? ""))) : place.map { FilesRules.opening(route.entry, place: $0, caps: files.caps) } ?? .quickLook(.facts(host: ""))
+        switch opening {
         case .item:
             FileItemScreen(client: client, workspaceId: route.workspaceId, entry: route.entry, place: place)
         case .quickLook(let original):
@@ -33,6 +37,9 @@ struct FileItemScreen: View {
     @State private var error: String?
     @State private var round = 0
 
+    /// How far the host's copy of a file on another computer has got, while it is made.
+    private var copied: Double? { client.work.files.opening[FilesRules.openingTag(entry.key)] }
+
     var body: some View {
         Group {
             if let item {
@@ -41,10 +48,19 @@ struct FileItemScreen: View {
             } else if let error {
                 FilesFailed(title: "Can’t Open \(entry.name)", message: error) { self.error = nil; round += 1 }
             } else if ![.pdf, .deck].contains(entry.kind) {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                if let copied {
+                    // A file of another computer copied in: the bar follows its bytes.
+                    ProgressView(value: copied)
+                        .progressViewStyle(.linear)
+                        .frame(width: ReaderMetrics.bar)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityLabel("Copying \(entry.name)")
+                } else {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else {
                 // The paper's shape at once, as the reader's own loading draws it.
-                ReaderLoading(aspect: entry.kind == .deck ? ReaderMetrics.slideAspect : ReaderMetrics.paperAspect, progress: nil)
+                ReaderLoading(aspect: entry.kind == .deck ? ReaderMetrics.slideAspect : ReaderMetrics.paperAspect, progress: copied)
                     .padding(Layout.textEdge)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Surface.chrome)
@@ -302,7 +318,7 @@ struct FileQuickLookScreen: View {
                 }
             }
         }
-        .animation(.easeOut(duration: 0.2), value: office)
+        .animation(Motion.crossFade, value: office)
         .padding(.horizontal, Layout.textEdge)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity)

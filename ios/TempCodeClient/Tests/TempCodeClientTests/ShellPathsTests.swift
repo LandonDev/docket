@@ -15,6 +15,8 @@ private let everyRoute: [Route] = [
     .archivedProjects(environmentId: "e", workspaceId: "w"),
     .settings,
     .hosts,
+    .place(.outbox),
+    .place(.mail, job: "link:w"),
     .outbox,
     .digest,
     .computers,
@@ -22,22 +24,68 @@ private let everyRoute: [Route] = [
     .workSettings,
     .houseRules(environmentId: "e", workspaceId: "w"),
     .workView(environmentId: "e", workspaceId: "w", view: "mail"),
-    .file(environmentId: "e", item: openFile, sessionId: nil)
+    .file(environmentId: "e", item: openFile, sessionId: nil),
+    .chat(environmentId: "e", workspaceId: "w", chatId: "c"),
+    .person(environmentId: "e", workspaceId: "w", personId: "p"),
+    .prep(environmentId: "e", workspaceId: "w", eventId: "ev"),
+    .clash(environmentId: "e", clashId: "a-b"),
+    .folder(environmentId: "e", workspaceId: "w", placeId: "folder", at: .file(.init(host: "box", path: "/w/Budgets")), title: "Budgets"),
+    .filesFile(environmentId: "e", workspaceId: "w", placeId: "folder", entry: FileEntry(key: "file:box:/w/A.pdf", ref: .file(.init(host: "box", path: "/w/A.pdf")), folder: nil, name: "A.pdf", kind: .pdf)),
+    .msformAnswers(environmentId: "e", workspaceId: "w", formId: "f")
 ]
 
 @Suite struct ShellPathsTests {
     @Test func `every route has a column: the lists in the sidebar, the project's shell and the screens in the detail`() {
-        #expect(everyRoute.count == 15)
+        #expect(everyRoute.count == 24)
         let sidebar = everyRoute.filter { ShellPaths.column(of: $0) == .sidebar }
         let detail = everyRoute.filter { ShellPaths.column(of: $0) == .detail }
         #expect(sidebar.count + detail.count == everyRoute.count)
-        #expect(sidebar == [.workspace(key: "w"), .archivedThreads(environmentId: "e", projectId: "p"), .archivedProjects(environmentId: "e", workspaceId: "w"), .outbox, .digest, .computers])
-        #expect(detail.count == 9)
+        #expect(sidebar == [.workspace(key: "w"), .archivedThreads(environmentId: "e", projectId: "p"), .archivedProjects(environmentId: "e", workspaceId: "w"), .place(.outbox), .outbox, .digest, .computers, everyRoute[21]])
+        // LifeOS's places carry their own lists, so they take the detail (`ShellPaths.lifePlaces`).
+        #expect(detail.count == 16)
+        #expect(detail.contains(.place(.mail, job: "link:w")))
+        // A conversation is the detail over Messages' list, which stays in the sidebar.
+        #expect(ShellPaths.column(of: .chat(environmentId: "e", workspaceId: "w", chatId: "c")) == .detail)
+        #expect(ShellPaths.column(of: .place(.messages)) == .sidebar)
+        #expect(ShellPaths.list(under: .chat(environmentId: "e", workspaceId: "w", chatId: "c")) == .place(.messages))
+        #expect(ShellPaths.tab(of: .chat(environmentId: "e", workspaceId: "w", chatId: "c"), isWork: { _ in false }) == .work)
+        // A person over People's list; a meeting's page and a clash, reached from Today, stand on Today from outside.
+        #expect(ShellPaths.list(under: .person(environmentId: "e", workspaceId: "w", personId: "p")) == .place(.people))
+        #expect(ShellPaths.list(under: .prep(environmentId: "e", workspaceId: "w", eventId: "ev")) == .place(.today))
+        #expect(ShellPaths.list(under: .clash(environmentId: "e", clashId: "a-b")) == .place(.today))
+        // A Microsoft form's answers (M5b) are a Work screen in the detail, kept through a relaunch.
+        let answers = Route.msformAnswers(environmentId: "e", workspaceId: "w", formId: "f")
+        #expect(ShellPaths.column(of: answers) == .detail)
+        #expect(ShellPaths.tab(of: answers, isWork: { _ in false }) == .work)
+        #expect(try! JSONDecoder().decode(Route.self, from: JSONEncoder().encode(answers)) == answers)
+        for route in everyRoute.dropLast(3).suffix(3) {
+            #expect(ShellPaths.column(of: route) == .detail)
+            #expect(ShellPaths.tab(of: route, isWork: { _ in false }) == .work)
+            #expect(try! JSONDecoder().decode(Route.self, from: JSONEncoder().encode(route)) == route)
+        }
         #expect(ShellPaths.column(of: .file(environmentId: "e", item: openFile, sessionId: "s1")) == .detail)
         #expect(ShellPaths.column(of: .outboxItem(environmentId: "e", ref: "host:h1")) == .detail)
         #expect(ShellPaths.column(of: .project(key: "p", thread: "e:s")) == .detail)
         #expect(ShellPaths.column(of: .settings) == .detail)
         #expect(ShellPaths.column(of: .hosts) == .detail)
+    }
+
+    @Test func `a Files folder is a sidebar route a launch restores, and a file picked in it takes the detail`() throws {
+        let folder = everyRoute[21]
+        let file = everyRoute[22]
+        #expect(ShellPaths.column(of: folder) == .sidebar)
+        #expect(ShellPaths.column(of: file) == .detail)
+        #expect(ShellPaths.tab(of: folder, isWork: { _ in false }) == .work)
+        #expect(ShellPaths.list(under: file) == .place(.files))
+        let far = Route.folder(environmentId: "e", workspaceId: "w", placeId: "pc1", at: .file(.init(host: "pc", path: "J:\\Esports")), title: "Esports", through: "pc")
+        var snapshot = NavigationSnapshot(tab: .work)
+        snapshot[.work] = ColumnMemory(sidebar: [.place(.files), folder, far], detailRoot: file)
+        let back = try JSONDecoder().decode(NavigationSnapshot.self, from: JSONEncoder().encode(snapshot))
+        #expect(back == snapshot)
+        #expect(back[.work].sidebar.last == far)
+        // A folder saved before `through` was a field reads as one of the job's own host.
+        let old = #"{"folder":{"environmentId":"e","workspaceId":"w","placeId":"folder","at":{"at":"place","id":"folder"},"title":"Dummy Esports"}}"#
+        #expect(try JSONDecoder().decode(Route.self, from: Data(old.utf8)) == .folder(environmentId: "e", workspaceId: "w", placeId: "folder", at: .place(.init(id: "folder")), title: "Dummy Esports"))
     }
 
     @Test func `an open file's page is a route a launch restores`() throws {
@@ -211,6 +259,17 @@ private let everyRoute: [Route] = [
         #expect(ShellPaths.land(key: "e:p1", current: nil, hosts: busy, remembered: .draft) == .project(key: "e:p1", thread: "e:b"))
         let here = Route.project(key: "e:p1", thread: "e:a")
         #expect(ShellPaths.land(key: "e:p1", current: here, hosts: busy, remembered: nil) == here)
+    }
+}
+
+@Suite struct ShellPathsThreadTests {
+    @Test("the thread a route shows: a thread's own, a project shell's open one, else none") func theThreadARouteShows() {
+        let own = ShellPaths.thread(of: .thread(environmentId: "env_a", sessionId: "s1", seq: 4))
+        #expect(own?.environmentId == "env_a" && own?.sessionId == "s1")
+        let shell = ShellPaths.thread(of: .project(key: "loose:env_a:w1", thread: "env_a:s2"))
+        #expect(shell?.environmentId == "env_a" && shell?.sessionId == "s2")
+        #expect(ShellPaths.thread(of: .project(key: "env_a:p1")) == nil)
+        #expect(ShellPaths.thread(of: .place(.outbox)) == nil)
     }
 }
 

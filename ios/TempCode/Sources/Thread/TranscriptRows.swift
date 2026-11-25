@@ -91,9 +91,13 @@ struct UserTurnRow: View {
 
     private static let foldLines = 6
 
+    /// The chips a Work message carried and his words around them (`SentChips`, the desktop's `sentChipsOf`); a
+    /// message with no chip lines is its text untouched, read with one prefix check.
+    private var parts: (chips: [SentChips.Chip], text: String) { SentChips.of(turn.text) }
+
     /// Long enough that the fold is worth a tap.
-    private var folds: Bool {
-        turn.text.count > 420 || turn.text.filter { $0 == "\n" }.count >= Self.foldLines
+    private func folds(_ text: String) -> Bool {
+        text.count > 420 || text.filter { $0 == "\n" }.count >= Self.foldLines
     }
 
     var body: some View {
@@ -118,12 +122,17 @@ struct UserTurnRow: View {
     }
 
     private var bubble: some View {
-        VStack(alignment: .leading, spacing: TranscriptMetrics.Gap.block) {
+        let parts = parts
+        let folds = folds(parts.text)
+        return VStack(alignment: .leading, spacing: TranscriptMetrics.Gap.block) {
             if !turn.attachments.isEmpty {
                 AttachmentWrap(attachments: turn.attachments, client: client)
             }
-            if !turn.text.isEmpty {
-                Text(turn.text)
+            if !parts.chips.isEmpty {
+                SentChipRow(chips: parts.chips)
+            }
+            if !parts.text.isEmpty {
+                Text(parts.text)
                     .transcriptType(TranscriptType.prose)
                     .textSelection(.enabled)
                     .lineLimit(folds && !expanded ? Self.foldLines : nil)

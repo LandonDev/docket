@@ -87,6 +87,24 @@ describe('scripts/ios-duo-pose.sh', { timeout: 60_000 }, () => {
     expect(calls(log)).toEqual(['hinge -d U -t 5 close', 'hinge -d U -t 5 130', 'hinge -d U -t 5 orient portrait'])
   })
 
+  it('tabletop (tt) closes first, then 130, then turns: the inner panel lit', () => {
+    const { bin, log } = rig()
+    expect(run(bin, ['U', 'tt'])).toMatchObject({ status: 0, out: 'LCD-1' })
+    expect(calls(log)).toEqual(['hinge -d U -t 5 close', 'hinge -d U -t 5 130', 'hinge -d U -t 5 orient landscape-left'])
+    expect(JSON.parse(run(bin, ['U', 'state']).out)).toEqual({ angle: 130, orientation: 'landscape-left', lit: 'LCD-1' })
+  })
+
+  it('tabletop to half-open, the same angle, still turns to portrait and closes', () => {
+    const { bin, log } = rig()
+    run(bin, ['U', 'tabletop'])
+    writeFileSync(log, '')
+    expect(run(bin, ['U', 'ho']).out).toBe('LCD-1')
+    expect(calls(log)).toEqual(['hinge -d U -t 5 orient portrait', 'hinge -d U -t 5 close', 'hinge -d U -t 5 130', 'hinge -d U -t 5 orient portrait'])
+    writeFileSync(log, '')
+    expect(run(bin, ['U', 'tabletop']).out).toBe('LCD-1')
+    expect(calls(log)).toEqual(['hinge -d U -t 5 close', 'hinge -d U -t 5 130', 'hinge -d U -t 5 orient landscape-left'])
+  })
+
   it('a turned device goes back to portrait before the angle moves: up, then fl', () => {
     const { bin, log } = rig()
     run(bin, ['U', 'up'])

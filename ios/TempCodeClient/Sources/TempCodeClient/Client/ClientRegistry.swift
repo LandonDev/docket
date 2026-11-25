@@ -28,6 +28,12 @@ public final class ClientRegistry {
         let keys = store.keys
         self.make = make ?? { environment in EnvironmentClient(environment: environment, keys: keys, cache: cache) }
         self.relayed.onChange = { [weak self] change in self?.relayedChanged(change) }
+        // A host relayed through a carrier rides the carrier's key: when the carrier refuses it, so is the host, and
+        // its rows go from screen and disk, whether or not its own lane ever tries.
+        WorkHost.carrierRefused = { [weak self] carrier in
+            guard let self else { return }
+            for host in self.relayedHosts(via: carrier) { self.clients[host.id]?.work.refused() }
+        }
     }
 
     /// Hears every session meta of every host, now and for hosts paired later.
@@ -202,8 +208,15 @@ public final class ClientRegistry {
 
     /// Forgets a paired host, and every host relayed through it.
     public func remove(_ id: String) async {
+        // Its kept Work rows go with it, and those of every host relayed through it, every scope, whether or not
+        // Work's screens ran this launch.
+        // A host paired directly keeps its own pairing and rows.
+        let carried = relayedHosts(via: id).map(\.id)
         store.remove(id)
         relayed.forget(via: id)
+        #if canImport(SQLite3)
+        for host in [id] + carried { WorkCacheStore.purge(.hostRemoved(host: host), close: true) }
+        #endif
         await sync()
     }
 

@@ -32,7 +32,7 @@ struct ReaderFrame<Content: View>: View {
     var immersive = false
     @ViewBuilder let content: Content
 
-    private var canWrite: Bool { client.work.canOperate }
+    private var canWrite: Bool { client.work.may(.docsThread) }
     /// The item as the host last pushed it: a file renamed or moved there takes its comments and changes from the new
     /// path; nil once the host's list no longer holds it, when the page keeps no comments or changes at all.
     private var live: CanvasItem? { ReaderFile.live(item, in: client.work.canvas.items[item.sessionId]) }
@@ -50,7 +50,13 @@ struct ReaderFrame<Content: View>: View {
                 DeckReviewRow(words: review.words, decides: false, open: { sheet = .review }) { _ in }
                 Divider()
             }
-            content
+            // A document with comments: beside them on the open Duo, above them on a table. The document keeps its
+            // place in the tree either way, so a fold never loads the hosted page again.
+            ReaderBeside(enabled: own?.comments != nil && !immersive) {
+                content
+            } with: {
+                if let comments = own?.comments { CommentsSheet(comments: comments, canWrite: canWrite, page: true) }
+            }
         }
         .task(id: live.map(ReaderFile.Identity.init)) {
             guard let live else { return }

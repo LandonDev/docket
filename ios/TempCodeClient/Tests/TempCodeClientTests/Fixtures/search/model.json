@@ -1,0 +1,4266 @@
+{
+  "cases": [
+    {
+      "name": "two hosts, two speeds",
+      "steps": [
+        {
+          "op": "begin",
+          "text": "  budget ",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            },
+            {
+              "id": "mac",
+              "name": "MacBook",
+              "home": false
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "tier": "instant"
+              },
+              {
+                "text": "budget",
+                "tier": "instant",
+                "own": true
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "search.thread",
+                "kind": "thread",
+                "label": "Threads",
+                "hits": [
+                  {
+                    "key": "thread:s1",
+                    "kind": "thread",
+                    "title": "Budget review",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "thread",
+                      "sessionId": "s1",
+                      "seq": 42
+                    },
+                    "snippet": "the budget is due"
+                  }
+                ],
+                "more": false
+              },
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:dana-budget",
+                    "kind": "person",
+                    "title": "Dana Budget",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-1"
+                      }
+                    }
+                  },
+                  {
+                    "key": "person:omar-budgeson",
+                    "kind": "person",
+                    "title": "Omar Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-2"
+                      }
+                    },
+                    "detail": "omar@cosmic.gg"
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [
+              {
+                "source": "lifeos.mail",
+                "kind": "mail"
+              },
+              {
+                "source": "lifeos.task",
+                "kind": "task"
+              }
+            ],
+            "quiet": [],
+            "searched": 2
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "sources": [
+                  "lifeos.mail"
+                ]
+              },
+              {
+                "text": "budget",
+                "sources": [
+                  "lifeos.task"
+                ]
+              }
+            ],
+            "ask": [
+              {
+                "source": "lifeos.mail",
+                "kind": "mail"
+              },
+              {
+                "source": "lifeos.task",
+                "kind": "task"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "mac",
+          "answer": {
+            "groups": [
+              {
+                "source": "search.thread",
+                "kind": "thread",
+                "label": "Threads",
+                "hits": [
+                  {
+                    "key": "thread:s1",
+                    "kind": "thread",
+                    "title": "Budget review",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "thread",
+                      "sessionId": "s1",
+                      "seq": 42
+                    },
+                    "snippet": "the budget is due"
+                  },
+                  {
+                    "key": "thread:s2",
+                    "kind": "thread",
+                    "title": "Budget on the Mac",
+                    "workspaceId": "w-mac",
+                    "open": {
+                      "to": "view",
+                      "view": "thread",
+                      "with": {
+                        "thread": "id-12"
+                      }
+                    }
+                  }
+                ],
+                "more": false
+              },
+              {
+                "source": "files.file",
+                "kind": "file",
+                "label": "Files",
+                "hits": [
+                  {
+                    "key": "file:abc",
+                    "kind": "file",
+                    "title": "Budget.xlsx",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "file",
+                      "ref": {
+                        "at": "place",
+                        "id": "folder",
+                        "path": "Budgets/Budget.xlsx"
+                      },
+                      "name": "Budget.xlsx"
+                    },
+                    "chip": {
+                      "kind": "file",
+                      "label": "Budget.xlsx",
+                      "ref": {
+                        "at": "file",
+                        "host": "box",
+                        "path": "/w/Budget.xlsx"
+                      }
+                    },
+                    "cloud": true
+                  }
+                ],
+                "more": false
+              },
+              {
+                "source": "mentions.held",
+                "kind": "held",
+                "label": "Outbox",
+                "hits": [
+                  {
+                    "key": "item:h1",
+                    "kind": "held",
+                    "title": "Send the budget",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "chip",
+                      "chip": {
+                        "kind": "held",
+                        "label": "Send the budget",
+                        "ref": {
+                          "at": "item",
+                          "id": "h1"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 3
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:file",
+                "label": "Files"
+              },
+              {
+                "type": "hit",
+                "id": "hit:file:abc",
+                "host": "mac",
+                "key": "file:abc"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s2",
+                "host": "mac",
+                "key": "thread:s2"
+              },
+              {
+                "type": "heading",
+                "id": "heading:held",
+                "label": "Outbox"
+              },
+              {
+                "type": "hit",
+                "id": "hit:item:h1",
+                "host": "mac",
+                "key": "item:h1"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "source",
+          "host": "box",
+          "source": "lifeos.mail",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.mail",
+                "kind": "mail",
+                "label": "Mail",
+                "hits": [
+                  {
+                    "key": "mail:budget-1",
+                    "kind": "mail",
+                    "title": "Budget 1",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-4"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000000
+                  },
+                  {
+                    "key": "mail:budget-2",
+                    "kind": "mail",
+                    "title": "Budget 2",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-5"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000001
+                  },
+                  {
+                    "key": "mail:budget-3",
+                    "kind": "mail",
+                    "title": "Budget 3",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-6"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000002
+                  },
+                  {
+                    "key": "mail:budget-4",
+                    "kind": "mail",
+                    "title": "Budget 4",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-7"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000003
+                  },
+                  {
+                    "key": "mail:budget-5",
+                    "kind": "mail",
+                    "title": "Budget 5",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-8"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000004
+                  }
+                ],
+                "more": true
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:mail",
+                "label": "Mail"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-1",
+                "host": "box",
+                "key": "mail:budget-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-2",
+                "host": "box",
+                "key": "mail:budget-2"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-3",
+                "host": "box",
+                "key": "mail:budget-3"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-4",
+                "host": "box",
+                "key": "mail:budget-4"
+              },
+              {
+                "type": "all",
+                "id": "all:mail",
+                "kind": "mail",
+                "label": "All mail for “budget”"
+              },
+              {
+                "type": "heading",
+                "id": "heading:file",
+                "label": "Files"
+              },
+              {
+                "type": "hit",
+                "id": "hit:file:abc",
+                "host": "mac",
+                "key": "file:abc"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s2",
+                "host": "mac",
+                "key": "thread:s2"
+              },
+              {
+                "type": "heading",
+                "id": "heading:held",
+                "label": "Outbox"
+              },
+              {
+                "type": "hit",
+                "id": "hit:item:h1",
+                "host": "mac",
+                "key": "item:h1"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": true,
+            "gen": 1,
+            "mix": false
+          }
+        },
+        {
+          "op": "failed",
+          "host": "box",
+          "source": {
+            "source": "lifeos.task",
+            "kind": "task"
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:mail",
+                "label": "Mail"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-1",
+                "host": "box",
+                "key": "mail:budget-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-2",
+                "host": "box",
+                "key": "mail:budget-2"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-3",
+                "host": "box",
+                "key": "mail:budget-3"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-4",
+                "host": "box",
+                "key": "mail:budget-4"
+              },
+              {
+                "type": "all",
+                "id": "all:mail",
+                "kind": "mail",
+                "label": "All mail for “budget”"
+              },
+              {
+                "type": "heading",
+                "id": "heading:file",
+                "label": "Files"
+              },
+              {
+                "type": "hit",
+                "id": "hit:file:abc",
+                "host": "mac",
+                "key": "file:abc"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s2",
+                "host": "mac",
+                "key": "thread:s2"
+              },
+              {
+                "type": "heading",
+                "id": "heading:held",
+                "label": "Outbox"
+              },
+              {
+                "type": "hit",
+                "id": "hit:item:h1",
+                "host": "mac",
+                "key": "item:h1"
+              },
+              {
+                "type": "note",
+                "id": "quiet:source:lifeos.task@box",
+                "text": "Tasks did not answer on the box.",
+                "cause": true
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": false,
+            "gen": 1,
+            "mix": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "new words keep the rows standing",
+      "steps": [
+        {
+          "op": "begin",
+          "text": "bud",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "bud",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:dana-budget",
+                    "kind": "person",
+                    "title": "Dana Budget",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-1"
+                      }
+                    }
+                  },
+                  {
+                    "key": "person:omar-budgeson",
+                    "kind": "person",
+                    "title": "Omar Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-2"
+                      }
+                    },
+                    "detail": "omar@cosmic.gg"
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": false,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "begin",
+          "text": "budgeso",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            }
+          ],
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              }
+            ],
+            "active": "hit:person:omar-budgeson",
+            "busy": true,
+            "gen": 2,
+            "mix": false,
+            "params": [
+              {
+                "text": "budgeso",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "gen": 1,
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:stale",
+                    "kind": "person",
+                    "title": "Stale",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-13"
+                      }
+                    }
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": []
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              }
+            ],
+            "active": "hit:person:omar-budgeson",
+            "busy": true,
+            "gen": 2,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:zed-budgeson",
+                    "kind": "person",
+                    "title": "Zed Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-14"
+                      }
+                    }
+                  },
+                  {
+                    "key": "person:omar-budgeson",
+                    "kind": "person",
+                    "title": "Omar Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-2"
+                      }
+                    },
+                    "detail": "omar@cosmic.gg"
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:zed-budgeson",
+                "host": "box",
+                "key": "person:zed-budgeson"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              }
+            ],
+            "active": "hit:person:zed-budgeson",
+            "busy": false,
+            "gen": 2,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "begin",
+          "text": "budgeso",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            }
+          ],
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:zed-budgeson",
+                "host": "box",
+                "key": "person:zed-budgeson"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              }
+            ],
+            "active": "hit:person:zed-budgeson",
+            "busy": true,
+            "gen": 3,
+            "mix": false,
+            "params": [
+              {
+                "text": "budgeso",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:amy-budgeson",
+                    "kind": "person",
+                    "title": "Amy Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-15"
+                      }
+                    }
+                  },
+                  {
+                    "key": "person:omar-budgeson",
+                    "kind": "person",
+                    "title": "Omar Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-2"
+                      }
+                    },
+                    "detail": "omar@cosmic.gg"
+                  },
+                  {
+                    "key": "person:zed-budgeson",
+                    "kind": "person",
+                    "title": "Zed Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-16"
+                      }
+                    }
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:zed-budgeson",
+                "host": "box",
+                "key": "person:zed-budgeson"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:amy-budgeson",
+                "host": "box",
+                "key": "person:amy-budgeson"
+              }
+            ],
+            "active": "hit:person:zed-budgeson",
+            "busy": false,
+            "gen": 3,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "nothing found, scoped",
+      "scoped": true,
+      "steps": [
+        {
+          "op": "begin",
+          "text": "zz",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true,
+              "workspaceId": "w-cosmic"
+            }
+          ],
+          "scope": "cosmic",
+          "within": [
+            "w-cosmic"
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "zz",
+                "workspaceId": "w-cosmic",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "note",
+                "id": "nothing",
+                "text": "Nothing for “zz”"
+              },
+              {
+                "type": "widen",
+                "id": "widen",
+                "label": "Search all jobs"
+              }
+            ],
+            "active": "widen",
+            "busy": false,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "nothing searched says only why",
+      "steps": [
+        {
+          "op": "begin",
+          "text": "zz",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "zz",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [],
+            "pending": [],
+            "quiet": [
+              {
+                "cause": "lifeos",
+                "line": "Not signed in to LifeOS."
+              }
+            ],
+            "searched": 0
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "note",
+                "id": "quiet:lifeos",
+                "text": "Not signed in to LifeOS on the box.",
+                "cause": true
+              }
+            ],
+            "active": null,
+            "busy": false,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "one letter asks no network",
+      "steps": [
+        {
+          "op": "begin",
+          "text": "b",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "b",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:dana-budget",
+                    "kind": "person",
+                    "title": "Dana Budget",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-1"
+                      }
+                    }
+                  },
+                  {
+                    "key": "person:omar-budgeson",
+                    "kind": "person",
+                    "title": "Omar Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-2"
+                      }
+                    },
+                    "detail": "omar@cosmic.gg"
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [
+              {
+                "source": "lifeos.mail",
+                "kind": "mail"
+              }
+            ],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": false,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "recent across hosts",
+      "jobs": {
+        "w-cosmic": "cosmic",
+        "w-cosmic-mac": "cosmic"
+      },
+      "steps": [
+        {
+          "op": "begin",
+          "text": "",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            },
+            {
+              "id": "mac",
+              "name": "MacBook",
+              "home": false
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "",
+                "tier": "instant"
+              },
+              {
+                "text": "",
+                "tier": "instant",
+                "own": true
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "search.recent",
+                "kind": "recent",
+                "label": "Recent",
+                "hits": [
+                  {
+                    "key": "mail:old-mail",
+                    "kind": "mail",
+                    "title": "Old mail",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-17"
+                      }
+                    },
+                    "openedAt": 100
+                  },
+                  {
+                    "key": "person:dana-lee",
+                    "kind": "person",
+                    "title": "Dana Lee",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-18"
+                      }
+                    },
+                    "openedAt": 300
+                  },
+                  {
+                    "key": "m1",
+                    "kind": "message",
+                    "title": "Standup",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "message",
+                      "with": {
+                        "message": "id-19"
+                      }
+                    },
+                    "openedAt": 250
+                  },
+                  {
+                    "key": "m2",
+                    "kind": "message",
+                    "title": "Standup",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "message",
+                      "with": {
+                        "message": "id-20"
+                      }
+                    },
+                    "openedAt": 260
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": []
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:recent",
+                "label": "Recent"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-lee",
+                "host": "box",
+                "key": "person:dana-lee"
+              },
+              {
+                "type": "hit",
+                "id": "hit:m2",
+                "host": "box",
+                "key": "m2"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:old-mail",
+                "host": "box",
+                "key": "mail:old-mail"
+              }
+            ],
+            "active": "hit:person:dana-lee",
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "instant",
+          "host": "mac",
+          "answer": {
+            "groups": [
+              {
+                "source": "search.recent",
+                "kind": "recent",
+                "label": "Recent",
+                "hits": [
+                  {
+                    "key": "person:dana-mac",
+                    "kind": "person",
+                    "title": "Dana Lee",
+                    "workspaceId": "w-cosmic-mac",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-21"
+                      }
+                    },
+                    "openedAt": 400
+                  },
+                  {
+                    "key": "task:task-0",
+                    "kind": "task",
+                    "title": "Task 0",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "task",
+                      "with": {
+                        "task": "id-22"
+                      }
+                    },
+                    "openedAt": 10
+                  },
+                  {
+                    "key": "task:task-1",
+                    "kind": "task",
+                    "title": "Task 1",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "task",
+                      "with": {
+                        "task": "id-23"
+                      }
+                    },
+                    "openedAt": 11
+                  },
+                  {
+                    "key": "task:task-2",
+                    "kind": "task",
+                    "title": "Task 2",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "task",
+                      "with": {
+                        "task": "id-24"
+                      }
+                    },
+                    "openedAt": 12
+                  },
+                  {
+                    "key": "task:task-3",
+                    "kind": "task",
+                    "title": "Task 3",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "task",
+                      "with": {
+                        "task": "id-25"
+                      }
+                    },
+                    "openedAt": 13
+                  },
+                  {
+                    "key": "task:task-4",
+                    "kind": "task",
+                    "title": "Task 4",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "task",
+                      "with": {
+                        "task": "id-26"
+                      }
+                    },
+                    "openedAt": 14
+                  },
+                  {
+                    "key": "task:task-5",
+                    "kind": "task",
+                    "title": "Task 5",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "task",
+                      "with": {
+                        "task": "id-27"
+                      }
+                    },
+                    "openedAt": 15
+                  },
+                  {
+                    "key": "task:task-6",
+                    "kind": "task",
+                    "title": "Task 6",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "task",
+                      "with": {
+                        "task": "id-28"
+                      }
+                    },
+                    "openedAt": 16
+                  },
+                  {
+                    "key": "task:task-7",
+                    "kind": "task",
+                    "title": "Task 7",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "task",
+                      "with": {
+                        "task": "id-29"
+                      }
+                    },
+                    "openedAt": 17
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": []
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:recent",
+                "label": "Recent"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-mac",
+                "host": "mac",
+                "key": "person:dana-mac"
+              },
+              {
+                "type": "hit",
+                "id": "hit:m2",
+                "host": "box",
+                "key": "m2"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:old-mail",
+                "host": "box",
+                "key": "mail:old-mail"
+              },
+              {
+                "type": "hit",
+                "id": "hit:task:task-7",
+                "host": "mac",
+                "key": "task:task-7"
+              },
+              {
+                "type": "hit",
+                "id": "hit:task:task-6",
+                "host": "mac",
+                "key": "task:task-6"
+              },
+              {
+                "type": "hit",
+                "id": "hit:task:task-5",
+                "host": "mac",
+                "key": "task:task-5"
+              },
+              {
+                "type": "hit",
+                "id": "hit:task:task-4",
+                "host": "mac",
+                "key": "task:task-4"
+              },
+              {
+                "type": "hit",
+                "id": "hit:task:task-3",
+                "host": "mac",
+                "key": "task:task-3"
+              }
+            ],
+            "active": "hit:person:dana-mac",
+            "busy": false,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "quiet lines",
+      "steps": [
+        {
+          "op": "begin",
+          "text": "budget",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            },
+            {
+              "id": "mac",
+              "name": "MacBook",
+              "home": false
+            }
+          ],
+          "offline": [
+            "Purdue laptop"
+          ],
+          "unsearched": "Folders on Purdue laptop were not searched.",
+          "expect": {
+            "rows": [
+              {
+                "type": "note",
+                "id": "quiet:offline:Purdue laptop",
+                "text": "Purdue laptop is offline.",
+                "cause": true
+              },
+              {
+                "type": "note",
+                "id": "quiet:unsearched",
+                "text": "Folders on Purdue laptop were not searched.",
+                "cause": true
+              }
+            ],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "tier": "instant"
+              },
+              {
+                "text": "budget",
+                "tier": "instant",
+                "own": true
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [],
+            "pending": [],
+            "quiet": [
+              {
+                "cause": "lifeos",
+                "line": "LifeOS is still connecting."
+              },
+              {
+                "cause": "files",
+                "line": "A library is asleep."
+              }
+            ],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "note",
+                "id": "quiet:offline:Purdue laptop",
+                "text": "Purdue laptop is offline.",
+                "cause": true
+              },
+              {
+                "type": "note",
+                "id": "quiet:unsearched",
+                "text": "Folders on Purdue laptop were not searched.",
+                "cause": true
+              },
+              {
+                "type": "note",
+                "id": "quiet:lifeos",
+                "text": "LifeOS is still connecting on the box.",
+                "cause": true
+              },
+              {
+                "type": "note",
+                "id": "quiet:files@box",
+                "text": "A library is asleep on the box.",
+                "cause": true
+              }
+            ],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "instant",
+          "host": "mac",
+          "answer": {
+            "groups": [],
+            "pending": [],
+            "quiet": [
+              {
+                "cause": "files",
+                "line": "A library is asleep."
+              }
+            ],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "note",
+                "id": "nothing",
+                "text": "Nothing for “budget”"
+              },
+              {
+                "type": "note",
+                "id": "quiet:offline:Purdue laptop",
+                "text": "Purdue laptop is offline.",
+                "cause": true
+              },
+              {
+                "type": "note",
+                "id": "quiet:unsearched",
+                "text": "Folders on Purdue laptop were not searched.",
+                "cause": true
+              },
+              {
+                "type": "note",
+                "id": "quiet:lifeos",
+                "text": "LifeOS is still connecting on the box.",
+                "cause": true
+              },
+              {
+                "type": "note",
+                "id": "quiet:files@box",
+                "text": "A library is asleep on the box.",
+                "cause": true
+              },
+              {
+                "type": "note",
+                "id": "quiet:files@mac",
+                "text": "A library is asleep on MacBook.",
+                "cause": true
+              }
+            ],
+            "active": null,
+            "busy": false,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "begin",
+          "text": "budget2",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            },
+            {
+              "id": "mac",
+              "name": "MacBook",
+              "home": false
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 2,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget2",
+                "tier": "instant"
+              },
+              {
+                "text": "budget2",
+                "tier": "instant",
+                "own": true
+              }
+            ]
+          }
+        },
+        {
+          "op": "failed",
+          "host": "mac",
+          "expect": {
+            "rows": [
+              {
+                "type": "note",
+                "id": "quiet:host:mac",
+                "text": "MacBook did not answer.",
+                "cause": true
+              }
+            ],
+            "active": null,
+            "busy": true,
+            "gen": 2,
+            "mix": false
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [],
+            "pending": [],
+            "quiet": [
+              {
+                "cause": "lifeos",
+                "line": "LifeOS refused this host's sign-in."
+              }
+            ],
+            "searched": 0
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "note",
+                "id": "quiet:host:mac",
+                "text": "MacBook did not answer.",
+                "cause": true
+              },
+              {
+                "type": "note",
+                "id": "quiet:lifeos",
+                "text": "LifeOS refused the box's sign-in.",
+                "cause": true
+              }
+            ],
+            "active": null,
+            "busy": false,
+            "gen": 2,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "the highlight",
+      "steps": [
+        {
+          "op": "begin",
+          "text": "budget",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:dana-budget",
+                    "kind": "person",
+                    "title": "Dana Budget",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-1"
+                      }
+                    }
+                  },
+                  {
+                    "key": "person:omar-budgeson",
+                    "kind": "person",
+                    "title": "Omar Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-2"
+                      }
+                    },
+                    "detail": "omar@cosmic.gg"
+                  }
+                ],
+                "more": false
+              },
+              {
+                "source": "search.thread",
+                "kind": "thread",
+                "label": "Threads",
+                "hits": [
+                  {
+                    "key": "thread:s1",
+                    "kind": "thread",
+                    "title": "Budget review",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "thread",
+                      "sessionId": "s1",
+                      "seq": 42
+                    },
+                    "snippet": "the budget is due"
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [
+              {
+                "source": "lifeos.mail",
+                "kind": "mail"
+              }
+            ],
+            "quiet": [],
+            "searched": 2
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "sources": [
+                  "lifeos.mail"
+                ]
+              }
+            ],
+            "ask": [
+              {
+                "source": "lifeos.mail",
+                "kind": "mail"
+              }
+            ]
+          }
+        },
+        {
+          "op": "step",
+          "by": 1,
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              }
+            ],
+            "active": "hit:person:omar-budgeson",
+            "busy": true,
+            "gen": 1,
+            "mix": false
+          }
+        },
+        {
+          "op": "step",
+          "by": 1,
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              }
+            ],
+            "active": "hit:thread:s1",
+            "busy": true,
+            "gen": 1,
+            "mix": false
+          }
+        },
+        {
+          "op": "step",
+          "by": -1,
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              }
+            ],
+            "active": "hit:person:omar-budgeson",
+            "busy": true,
+            "gen": 1,
+            "mix": false
+          }
+        },
+        {
+          "op": "point",
+          "id": "hit:thread:s1",
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              }
+            ],
+            "active": "hit:thread:s1",
+            "busy": true,
+            "gen": 1,
+            "mix": false
+          }
+        },
+        {
+          "op": "source",
+          "host": "box",
+          "source": "lifeos.mail",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.mail",
+                "kind": "mail",
+                "label": "Mail",
+                "hits": [
+                  {
+                    "key": "mail:budget-1",
+                    "kind": "mail",
+                    "title": "Budget 1",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-4"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000000
+                  },
+                  {
+                    "key": "mail:budget-2",
+                    "kind": "mail",
+                    "title": "Budget 2",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-5"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000001
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:mail",
+                "label": "Mail"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-1",
+                "host": "box",
+                "key": "mail:budget-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-2",
+                "host": "box",
+                "key": "mail:budget-2"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              }
+            ],
+            "active": "hit:thread:s1",
+            "busy": false,
+            "gen": 1,
+            "mix": false
+          }
+        },
+        {
+          "op": "step",
+          "by": 1,
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:mail",
+                "label": "Mail"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-1",
+                "host": "box",
+                "key": "mail:budget-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-2",
+                "host": "box",
+                "key": "mail:budget-2"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": false,
+            "gen": 1,
+            "mix": false
+          }
+        },
+        {
+          "op": "step",
+          "by": 1,
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:mail",
+                "label": "Mail"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-1",
+                "host": "box",
+                "key": "mail:budget-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-2",
+                "host": "box",
+                "key": "mail:budget-2"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              }
+            ],
+            "active": "hit:person:omar-budgeson",
+            "busy": false,
+            "gen": 1,
+            "mix": false
+          }
+        },
+        {
+          "op": "step",
+          "by": 1,
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              },
+              {
+                "type": "heading",
+                "id": "heading:mail",
+                "label": "Mail"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-1",
+                "host": "box",
+                "key": "mail:budget-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-2",
+                "host": "box",
+                "key": "mail:budget-2"
+              },
+              {
+                "type": "heading",
+                "id": "heading:thread",
+                "label": "Threads"
+              },
+              {
+                "type": "hit",
+                "id": "hit:thread:s1",
+                "host": "box",
+                "key": "thread:s1"
+              }
+            ],
+            "active": "hit:mail:budget-1",
+            "busy": false,
+            "gen": 1,
+            "mix": false
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:dana-budget",
+                    "kind": "person",
+                    "title": "Dana Budget",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-1"
+                      }
+                    }
+                  },
+                  {
+                    "key": "person:omar-budgeson",
+                    "kind": "person",
+                    "title": "Omar Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-2"
+                      }
+                    },
+                    "detail": "omar@cosmic.gg"
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              }
+            ],
+            "active": null,
+            "busy": false,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "a chosen row the answer took away",
+      "steps": [
+        {
+          "op": "begin",
+          "text": "budget",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:dana-budget",
+                    "kind": "person",
+                    "title": "Dana Budget",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-1"
+                      }
+                    }
+                  },
+                  {
+                    "key": "person:omar-budgeson",
+                    "kind": "person",
+                    "title": "Omar Budgeson",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-2"
+                      }
+                    },
+                    "detail": "omar@cosmic.gg"
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": false,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "point",
+          "id": "hit:person:omar-budgeson",
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              }
+            ],
+            "active": "hit:person:omar-budgeson",
+            "busy": false,
+            "gen": 1,
+            "mix": false
+          }
+        },
+        {
+          "op": "begin",
+          "text": "budget",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            }
+          ],
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:omar-budgeson",
+                "host": "box",
+                "key": "person:omar-budgeson"
+              }
+            ],
+            "active": "hit:person:omar-budgeson",
+            "busy": true,
+            "gen": 2,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:dana-budget",
+                    "kind": "person",
+                    "title": "Dana Budget",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-1"
+                      }
+                    }
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              }
+            ],
+            "active": null,
+            "busy": false,
+            "gen": 2,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "step",
+          "by": 1,
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": false,
+            "gen": 2,
+            "mix": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "one kind alone, and back out",
+      "steps": [
+        {
+          "op": "begin",
+          "text": "budget",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            },
+            {
+              "id": "mac",
+              "name": "MacBook",
+              "home": false
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "tier": "instant"
+              },
+              {
+                "text": "budget",
+                "tier": "instant",
+                "own": true
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.mail",
+                "kind": "mail",
+                "label": "Mail",
+                "hits": [
+                  {
+                    "key": "mail:budget-1",
+                    "kind": "mail",
+                    "title": "Budget 1",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-4"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000000
+                  },
+                  {
+                    "key": "mail:budget-2",
+                    "kind": "mail",
+                    "title": "Budget 2",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-5"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000001
+                  },
+                  {
+                    "key": "mail:budget-3",
+                    "kind": "mail",
+                    "title": "Budget 3",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-6"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000002
+                  },
+                  {
+                    "key": "mail:budget-4",
+                    "kind": "mail",
+                    "title": "Budget 4",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-7"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000003
+                  },
+                  {
+                    "key": "mail:budget-5",
+                    "kind": "mail",
+                    "title": "Budget 5",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-8"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000004
+                  }
+                ],
+                "more": true
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:mail",
+                "label": "Mail"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-1",
+                "host": "box",
+                "key": "mail:budget-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-2",
+                "host": "box",
+                "key": "mail:budget-2"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-3",
+                "host": "box",
+                "key": "mail:budget-3"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-4",
+                "host": "box",
+                "key": "mail:budget-4"
+              },
+              {
+                "type": "all",
+                "id": "all:mail",
+                "kind": "mail",
+                "label": "All mail for “budget”"
+              }
+            ],
+            "active": "hit:mail:budget-1",
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "begin",
+          "text": "budget",
+          "kind": "mail",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            },
+            {
+              "id": "mac",
+              "name": "MacBook",
+              "home": false
+            }
+          ],
+          "expect": {
+            "rows": [
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-1",
+                "host": "box",
+                "key": "mail:budget-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-2",
+                "host": "box",
+                "key": "mail:budget-2"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-3",
+                "host": "box",
+                "key": "mail:budget-3"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-4",
+                "host": "box",
+                "key": "mail:budget-4"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-5",
+                "host": "box",
+                "key": "mail:budget-5"
+              }
+            ],
+            "active": "hit:mail:budget-1",
+            "busy": true,
+            "gen": 2,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "tier": "instant",
+                "kind": "mail"
+              },
+              {
+                "text": "budget",
+                "tier": "instant",
+                "kind": "mail",
+                "own": true
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.mail",
+                "kind": "mail",
+                "label": "Mail",
+                "hits": [
+                  {
+                    "key": "mail:budget-1",
+                    "kind": "mail",
+                    "title": "Budget 1",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-4"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000000
+                  },
+                  {
+                    "key": "mail:budget-2",
+                    "kind": "mail",
+                    "title": "Budget 2",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-5"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000001
+                  },
+                  {
+                    "key": "mail:budget-3",
+                    "kind": "mail",
+                    "title": "Budget 3",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-6"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000002
+                  },
+                  {
+                    "key": "mail:budget-4",
+                    "kind": "mail",
+                    "title": "Budget 4",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-7"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000003
+                  },
+                  {
+                    "key": "mail:budget-5",
+                    "kind": "mail",
+                    "title": "Budget 5",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-8"
+                      }
+                    },
+                    "detail": "Dana Lee",
+                    "at": 1764000000004
+                  },
+                  {
+                    "key": "mail:more-0",
+                    "kind": "mail",
+                    "title": "More 0",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-30"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-1",
+                    "kind": "mail",
+                    "title": "More 1",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-31"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-2",
+                    "kind": "mail",
+                    "title": "More 2",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-32"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-3",
+                    "kind": "mail",
+                    "title": "More 3",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-33"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-4",
+                    "kind": "mail",
+                    "title": "More 4",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-34"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-5",
+                    "kind": "mail",
+                    "title": "More 5",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-35"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-6",
+                    "kind": "mail",
+                    "title": "More 6",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-36"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-7",
+                    "kind": "mail",
+                    "title": "More 7",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-37"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-8",
+                    "kind": "mail",
+                    "title": "More 8",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-38"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-9",
+                    "kind": "mail",
+                    "title": "More 9",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-39"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-10",
+                    "kind": "mail",
+                    "title": "More 10",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-40"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-11",
+                    "kind": "mail",
+                    "title": "More 11",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-41"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-12",
+                    "kind": "mail",
+                    "title": "More 12",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-42"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-13",
+                    "kind": "mail",
+                    "title": "More 13",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-43"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-14",
+                    "kind": "mail",
+                    "title": "More 14",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-44"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-15",
+                    "kind": "mail",
+                    "title": "More 15",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-45"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-16",
+                    "kind": "mail",
+                    "title": "More 16",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-46"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-17",
+                    "kind": "mail",
+                    "title": "More 17",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-47"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-18",
+                    "kind": "mail",
+                    "title": "More 18",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-48"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-19",
+                    "kind": "mail",
+                    "title": "More 19",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-49"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-20",
+                    "kind": "mail",
+                    "title": "More 20",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-50"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-21",
+                    "kind": "mail",
+                    "title": "More 21",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-51"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-22",
+                    "kind": "mail",
+                    "title": "More 22",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-52"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-23",
+                    "kind": "mail",
+                    "title": "More 23",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-53"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-24",
+                    "kind": "mail",
+                    "title": "More 24",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-54"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-25",
+                    "kind": "mail",
+                    "title": "More 25",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-55"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-26",
+                    "kind": "mail",
+                    "title": "More 26",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-56"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-27",
+                    "kind": "mail",
+                    "title": "More 27",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-57"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-28",
+                    "kind": "mail",
+                    "title": "More 28",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-58"
+                      }
+                    }
+                  },
+                  {
+                    "key": "mail:more-29",
+                    "kind": "mail",
+                    "title": "More 29",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "mail",
+                      "with": {
+                        "mail": "id-59"
+                      }
+                    }
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-1",
+                "host": "box",
+                "key": "mail:budget-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-2",
+                "host": "box",
+                "key": "mail:budget-2"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-3",
+                "host": "box",
+                "key": "mail:budget-3"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-4",
+                "host": "box",
+                "key": "mail:budget-4"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-5",
+                "host": "box",
+                "key": "mail:budget-5"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-0",
+                "host": "box",
+                "key": "mail:more-0"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-1",
+                "host": "box",
+                "key": "mail:more-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-2",
+                "host": "box",
+                "key": "mail:more-2"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-3",
+                "host": "box",
+                "key": "mail:more-3"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-4",
+                "host": "box",
+                "key": "mail:more-4"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-5",
+                "host": "box",
+                "key": "mail:more-5"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-6",
+                "host": "box",
+                "key": "mail:more-6"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-7",
+                "host": "box",
+                "key": "mail:more-7"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-8",
+                "host": "box",
+                "key": "mail:more-8"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-9",
+                "host": "box",
+                "key": "mail:more-9"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-10",
+                "host": "box",
+                "key": "mail:more-10"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-11",
+                "host": "box",
+                "key": "mail:more-11"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-12",
+                "host": "box",
+                "key": "mail:more-12"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-13",
+                "host": "box",
+                "key": "mail:more-13"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-14",
+                "host": "box",
+                "key": "mail:more-14"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-15",
+                "host": "box",
+                "key": "mail:more-15"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-16",
+                "host": "box",
+                "key": "mail:more-16"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-17",
+                "host": "box",
+                "key": "mail:more-17"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-18",
+                "host": "box",
+                "key": "mail:more-18"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-19",
+                "host": "box",
+                "key": "mail:more-19"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-20",
+                "host": "box",
+                "key": "mail:more-20"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-21",
+                "host": "box",
+                "key": "mail:more-21"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-22",
+                "host": "box",
+                "key": "mail:more-22"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-23",
+                "host": "box",
+                "key": "mail:more-23"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:more-24",
+                "host": "box",
+                "key": "mail:more-24"
+              }
+            ],
+            "active": "hit:mail:budget-1",
+            "busy": true,
+            "gen": 2,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "begin",
+          "text": "budget",
+          "kind": null,
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            },
+            {
+              "id": "mac",
+              "name": "MacBook",
+              "home": false
+            }
+          ],
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:mail",
+                "label": "Mail"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-1",
+                "host": "box",
+                "key": "mail:budget-1"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-2",
+                "host": "box",
+                "key": "mail:budget-2"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-3",
+                "host": "box",
+                "key": "mail:budget-3"
+              },
+              {
+                "type": "hit",
+                "id": "hit:mail:budget-4",
+                "host": "box",
+                "key": "mail:budget-4"
+              },
+              {
+                "type": "all",
+                "id": "all:mail",
+                "kind": "mail",
+                "label": "All mail for “budget”"
+              }
+            ],
+            "active": "all:mail",
+            "busy": true,
+            "gen": 3,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "tier": "instant"
+              },
+              {
+                "text": "budget",
+                "tier": "instant",
+                "own": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "narrowed to a job",
+      "steps": [
+        {
+          "op": "begin",
+          "text": "budget",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            },
+            {
+              "id": "mac",
+              "name": "MacBook",
+              "home": false
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "tier": "instant"
+              },
+              {
+                "text": "budget",
+                "tier": "instant",
+                "own": true
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "lifeos.person",
+                "kind": "person",
+                "label": "People",
+                "hits": [
+                  {
+                    "key": "person:dana-budget",
+                    "kind": "person",
+                    "title": "Dana Budget",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-1"
+                      }
+                    }
+                  },
+                  {
+                    "key": "person:hypixel-budget",
+                    "kind": "person",
+                    "title": "Hypixel Budget",
+                    "workspaceId": "w-hypixel",
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-60"
+                      }
+                    }
+                  },
+                  {
+                    "key": "person:chats-budget",
+                    "kind": "person",
+                    "title": "Chats Budget",
+                    "workspaceId": null,
+                    "open": {
+                      "to": "view",
+                      "view": "people",
+                      "with": {
+                        "person": "id-61"
+                      }
+                    }
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "searched": 1
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:hypixel-budget",
+                "host": "box",
+                "key": "person:hypixel-budget"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:chats-budget",
+                "host": "box",
+                "key": "person:chats-budget"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": true,
+            "gen": 1,
+            "mix": true,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "begin",
+          "text": "budget",
+          "scope": "cosmic",
+          "within": [
+            "w-cosmic"
+          ],
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true,
+              "workspaceId": "w-cosmic"
+            }
+          ],
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": true,
+            "gen": 2,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "workspaceId": "w-cosmic",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "begin",
+          "text": "budget",
+          "scope": null,
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            },
+            {
+              "id": "mac",
+              "name": "MacBook",
+              "home": false
+            }
+          ],
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:person",
+                "label": "People"
+              },
+              {
+                "type": "hit",
+                "id": "hit:person:dana-budget",
+                "host": "box",
+                "key": "person:dana-budget"
+              }
+            ],
+            "active": "hit:person:dana-budget",
+            "busy": true,
+            "gen": 3,
+            "mix": false,
+            "params": [
+              {
+                "text": "budget",
+                "tier": "instant"
+              },
+              {
+                "text": "budget",
+                "tier": "instant",
+                "own": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "deeper and mixed kinds",
+      "steps": [
+        {
+          "op": "begin",
+          "text": "bu",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 1,
+            "mix": false,
+            "params": [
+              {
+                "text": "bu",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "instant",
+          "host": "box",
+          "answer": {
+            "groups": [
+              {
+                "source": "money.receipt",
+                "kind": "receipt",
+                "label": "Receipts",
+                "hits": [
+                  {
+                    "key": "receipt:budget-lunch",
+                    "kind": "receipt",
+                    "title": "Budget lunch",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "receipt",
+                      "with": {
+                        "receipt": "id-62"
+                      }
+                    }
+                  }
+                ],
+                "more": false
+              },
+              {
+                "source": "lifeos.task",
+                "kind": "task",
+                "label": "Tasks",
+                "hits": [
+                  {
+                    "key": "task:budget-sign-off",
+                    "kind": "task",
+                    "title": "Budget sign-off",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "tasks",
+                      "with": {
+                        "task": "t9",
+                        "flag": true,
+                        "n": 3,
+                        "none": null,
+                        "doc": {
+                          "id": "d1",
+                          "title": "Doc"
+                        }
+                      }
+                    }
+                  }
+                ],
+                "more": false
+              },
+              {
+                "source": "mentions.card",
+                "kind": "card",
+                "label": "Cards",
+                "hits": [
+                  {
+                    "key": "card:budget-card",
+                    "kind": "card",
+                    "title": "Budget card",
+                    "workspaceId": "w-cosmic",
+                    "open": {
+                      "to": "view",
+                      "view": "card",
+                      "with": {
+                        "card": "id-63"
+                      }
+                    }
+                  }
+                ],
+                "more": false
+              }
+            ],
+            "pending": [],
+            "quiet": [],
+            "deeper": [
+              "file"
+            ],
+            "searched": 2
+          },
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:task",
+                "label": "Tasks"
+              },
+              {
+                "type": "hit",
+                "id": "hit:task:budget-sign-off",
+                "host": "box",
+                "key": "task:budget-sign-off"
+              },
+              {
+                "type": "heading",
+                "id": "heading:card",
+                "label": "Cards"
+              },
+              {
+                "type": "hit",
+                "id": "hit:card:budget-card",
+                "host": "box",
+                "key": "card:budget-card"
+              },
+              {
+                "type": "heading",
+                "id": "heading:receipt",
+                "label": "Receipts"
+              },
+              {
+                "type": "hit",
+                "id": "hit:receipt:budget-lunch",
+                "host": "box",
+                "key": "receipt:budget-lunch"
+              },
+              {
+                "type": "all",
+                "id": "all:file",
+                "kind": "file",
+                "label": "All files for “bu”"
+              }
+            ],
+            "active": "hit:task:budget-sign-off",
+            "busy": false,
+            "gen": 1,
+            "mix": false,
+            "params": [],
+            "ask": []
+          }
+        },
+        {
+          "op": "begin",
+          "text": "bud",
+          "hosts": [
+            {
+              "id": "box",
+              "name": "The box",
+              "home": true
+            }
+          ],
+          "expect": {
+            "rows": [
+              {
+                "type": "heading",
+                "id": "heading:task",
+                "label": "Tasks"
+              },
+              {
+                "type": "hit",
+                "id": "hit:task:budget-sign-off",
+                "host": "box",
+                "key": "task:budget-sign-off"
+              },
+              {
+                "type": "heading",
+                "id": "heading:card",
+                "label": "Cards"
+              },
+              {
+                "type": "hit",
+                "id": "hit:card:budget-card",
+                "host": "box",
+                "key": "card:budget-card"
+              },
+              {
+                "type": "heading",
+                "id": "heading:receipt",
+                "label": "Receipts"
+              },
+              {
+                "type": "hit",
+                "id": "hit:receipt:budget-lunch",
+                "host": "box",
+                "key": "receipt:budget-lunch"
+              },
+              {
+                "type": "all",
+                "id": "all:file",
+                "kind": "file",
+                "label": "All files for “bud”"
+              }
+            ],
+            "active": "hit:task:budget-sign-off",
+            "busy": true,
+            "gen": 2,
+            "mix": false,
+            "params": [
+              {
+                "text": "bud",
+                "tier": "instant"
+              }
+            ]
+          }
+        },
+        {
+          "op": "begin",
+          "text": "bud",
+          "hosts": [
+            {
+              "id": "mac",
+              "name": "MacBook",
+              "home": false
+            }
+          ],
+          "expect": {
+            "rows": [],
+            "active": null,
+            "busy": true,
+            "gen": 3,
+            "mix": false,
+            "params": [
+              {
+                "text": "bud",
+                "tier": "instant",
+                "own": true
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

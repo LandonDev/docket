@@ -12,6 +12,8 @@ struct ReviewSheet: View {
     let review: WorkReview
     let canDecide: Bool
     @State private var decided = 0
+    /// Every change decided: the sheet closes.
+    @State private var cleared = false
     /// Try Again's read is on its way.
     @State private var retrying = false
 
@@ -86,9 +88,9 @@ struct ReviewSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
             .tcBottomBar { if canDecide, !review.rows.isEmpty { bar } }
-            // The last change decided: there is nothing left to review.
-            .onChange(of: review.rows.isEmpty) { _, empty in if empty, decided > 0 { dismiss() } }
             .sensoryFeedback(.impact(weight: .light), trigger: decided)
+            // The last change decided closes the sheet on success's tick: what waited is taken, and the page's row goes.
+            .sensoryFeedback(.success, trigger: cleared)
         }
         .tcSheet(.document)
         .accessibilityIdentifier("review-sheet")
@@ -135,13 +137,27 @@ struct ReviewSheet: View {
 
     /// The model holds the one guard: a press while a decision runs sends nothing and changes no state here.
     private func decide(_ row: TempCodeClient.ReviewRow, accept: Bool) async {
-        if await review.decide(row, accept: accept) { decided += 1 }
+        if await review.decide(row, accept: accept) {
+            decided += 1
+            closeIfDone()
+        }
     }
 
     private func decideAll(accept: Bool) async {
         let before = review.count
         _ = await review.decideAll(accept: accept)
-        if review.count < before { decided += 1 }
+        if review.count < before {
+            decided += 1
+            closeIfDone()
+        }
+    }
+
+    /// Checked after the decision lands, never on the rows emptying alone: the list's own read can empty while the
+    /// count of his decisions has not moved yet, which left an empty sheet saying "Nothing waits".
+    private func closeIfDone() {
+        guard review.rows.isEmpty, review.failure == nil else { return }
+        cleared = true
+        dismiss()
     }
 }
 

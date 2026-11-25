@@ -15,6 +15,13 @@ public final class WorkDigest {
     /// The last read's error; nil while reading or once it answered.
     public private(set) var error: String?
 
+    /// What the phone keeps of this host's Digest (`DigestKept`): drawn read-only while `ledger` is nil.
+    @ObservationIgnored public var keeping: DigestKept? {
+        didSet { kept = keeping?.ledger }
+    }
+    /// The days kept from an earlier read, as the screen draws them before this link's answer.
+    public private(set) var kept: DigestModel.Ledger?
+
     @ObservationIgnored private let socket: TempCodeSocket
     /// Days he opened here that the host has not taken yet, with when: said again on the next socket and laid over
     /// every read until then, so a reconnect never brings back as unseen a day he saw (the desktop's `pendingSeen`).
@@ -26,16 +33,21 @@ public final class WorkDigest {
 
     /// The list and the settings, together.
     public func load() async {
+        let asked = cleared
         do {
             async let list = socket.request(Methods.WorkDigestList.self, .init())
             async let get = socket.request(Methods.WorkDigestGet.self, .init())
             let (answer, current) = try await (list, get)
+            // Work went off, or the host refused the key, while this was out: it lands nowhere and keeps nothing.
+            guard asked == cleared else { return }
             var read = DigestModel.Ledger(days: answer.days, rows: answer.rows, settings: current)
             for (day, at) in pendingSeen { read.seen(day, at: at) }
             ledger = read
             settings = current
             error = nil
+            keep()
         } catch {
+            guard asked == cleared else { return }
             self.error = ActionError.wrap(error).message
         }
     }
@@ -50,6 +62,7 @@ public final class WorkDigest {
         guard var held = ledger else { return }
         let reread = held.apply(push)
         ledger = held
+        keep()
         if reread { Task { await self.load() } }
     }
 
@@ -74,11 +87,24 @@ public final class WorkDigest {
         return next
     }
 
-    /// Work went off on the host. The ledger goes; a seen mark the host has not taken does not.
+    /// Moves on each `clear`: a read that left before it answers into nothing.
+    @ObservationIgnored private var cleared = 0
+
+    /// What this link read, kept for the next cold launch.
+    private func keep() {
+        guard let ledger, let keeping else { return }
+        keeping.keep(ledger)
+        kept = keeping.ledger
+    }
+
+    /// Work went off on the host. The ledger and its kept days go; a seen mark the host has not taken does not.
     func clear() {
+        cleared += 1
         ledger = nil
         settings = nil
         error = nil
+        keeping?.drop()
+        kept = nil
         // A day he saw that the host has not taken stays pending through Work off: said when Work is on again.
     }
 

@@ -355,6 +355,21 @@ final class ActingRig {
         await rig.client.stop()
     }
 
+    @Test func `Work draws only the presses the host allows the key`() throws {
+        // Approve never stands in for operate: Pause and Revoke are operate methods.
+        let approve = try ActingRig(caps: [.read, .approve]).client.work
+        #expect(approve.may(.outboxSend))
+        #expect(!approve.may(.routinesPause))
+        #expect(!approve.may(.guestsRevoke))
+        // Admin is not the word approve the Outbox asks; it covers operate at the door.
+        let admin = try ActingRig(caps: [.read, .admin]).client.work
+        #expect(!admin.may(.outboxSend))
+        #expect(admin.may(.outboxGrant))
+        #expect(admin.may(.routinesPause))
+        let read = try ActingRig(caps: [.read]).client.work
+        #expect(KeyMethod.allCases.filter { $0.rule.need != .read }.allSatisfy { !read.may($0) })
+    }
+
     @Test func `an approval shows its decision at once and reverts when the host refuses`() async throws {
         let rig = try ActingRig()
         let fake = try await rig.open()

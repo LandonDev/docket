@@ -95,6 +95,8 @@ targets:
         NSSpeechRecognitionUsageDescription: Your voice notes are transcribed on this iPhone and never leave it.
         # A receipt (Work/Money): the document camera, read on the phone, sent to his own host.
         NSCameraUsageDescription: TempCode uses the camera to scan a receipt you choose to file.
+        # Face ID before a Send, a Discard or another outward press (Work/PressGates.swift), on by default.
+        NSFaceIDUsageDescription: TempCode checks it is you before anything you send leaves this iPhone.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
         # Open in Word on a shared Office file (Work/Files): canOpenURL asks whether an Office app is installed.

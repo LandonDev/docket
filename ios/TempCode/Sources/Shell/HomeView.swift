@@ -2,33 +2,24 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// Home: the workspaces, the way the desktop's far-left column lists them.
+/// Home: the code workspaces, the way the desktop's far-left column lists them.
 /// One row per workspace across every paired host (linked copies are one
 /// row), with the column's one status mark: paused, needs you, unread, or
 /// the working line naming what runs. Chats outside every workspace lead as
-/// their own row. A tap pushes the workspace (WorkspaceScreen.swift). With
+/// their own row. Work has its own tab (Work/Shell/WorkListView.swift). A tap pushes the workspace (WorkspaceScreen.swift). With
 /// two or more hosts, each host is one row at the foot with its menu.
 /// Paints from the cache before any socket; nothing animates on that first
 /// paint. `slots` is what sibling threads plug in (HomeSlots.swift).
 struct HomeView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(NavigationRouter.self) private var router
     @Environment(NewThreadPresenter.self) private var presenter
     @Environment(ProjectSettingsPresenter.self) private var projectSettings
     @Environment(ShellNavigator.self) private var navigator
     var slots = HomeSlots()
     @State private var adding = false
-    /// New Work workspace, from the Work header's +.
-    @State private var addingWork = false
     /// The proofs' share sheet (`TC_TEST_SHARE`); a release build never sets it.
     @State private var sharing = false
-    /// A voice note (Work/Capture), from the microphone while any host has Work on: the note shown.
-    @State private var capturing: VoiceNote?
-    /// Made at the first press and kept, so a draft outlives the sheet.
-    @State private var voiceNote: VoiceNote?
-    /// A receipt (Work/Money), from `doc.viewfinder` beside the microphone: the camera, then its sheet.
-    @State private var receiptFlow = ReceiptFlow()
     @State private var pairingAgain: PairedEnvironment?
     @State private var launched = false
     /// The first body has been on screen: from here on, event rows animate in.
@@ -51,41 +42,15 @@ struct HomeView: View {
                     hostLines(home.hosts)
                     AwayEndNote()
                     Section {
-                        // Work (milestone 46): the Outbox leads while any host has Work on, the Digest after it; Work Chats follows Chats.
-                        if !home.work.isEmpty {
-                            OutboxHomeRow(count: OutboxEntries.count(clients))
-                            DigestHomeRow()
+                        ForEach(home.entries) { entry in
+                            WorkspaceEntryRow(entry: entry)
+                                .launchRow(entry) // the launch's first and first cached row on screen (Perf/LaunchFrames.swift)
                         }
-                        // live video: while anything is being driven on a connected host
-                        if !ComputerEntries.tiles(clients).isEmpty {
-                            ComputersHomeRow()
-                        }
-                        ForEach(home.mainEntries) { entry in
-                            WorkspaceEntryRow(entry: entry, offline: offline(entry, hosts: clients.count))
-                        }
+                        // A host whose only workspaces are Work's lists nothing here and is not empty.
                         if home.entries.isEmpty && home.work.isEmpty {
                             ForEach(home.hosts.filter(\.nothing)) { host in
                                 NothingRow(host: host)
                             }
-                        }
-                    }
-                    // The Work band while any host has Work on, its + making a new Work workspace.
-                    if !home.work.isEmpty {
-                        Section {
-                            ForEach(home.work.filter { $0.kind != .workChats }) { entry in
-                                WorkspaceEntryRow(entry: entry, offline: offline(entry, hosts: clients.count))
-                            }
-                        } header: {
-                            SectionHeader("Work") {
-                                Button("New Work Workspace", systemImage: "plus") { addingWork = true }
-                                    .labelStyle(.iconOnly)
-                                    .font(TextStep.meta.font.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .frame(minWidth: Layout.rowHeight)
-                                    .buttonStyle(.pressable)
-                                    .accessibilityIdentifier("new-work-workspace")
-                            }
-                            .listRowInsets(EdgeInsets())
                         }
                     }
                     if clients.count > 1 {
@@ -121,18 +86,6 @@ struct HomeView: View {
                     .accessibilityLabel(client.environment.name)
                 }
             }
-            if !home.work.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Voice Note", systemImage: "mic") { captureVoice() }
-                        .accessibilityIdentifier("voice-note")
-                }
-                if ReceiptFlow.available {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Receipt", systemImage: "doc.viewfinder") { receiptFlow.press() }
-                            .accessibilityIdentifier("receipt")
-                    }
-                }
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button("Settings", systemImage: "gearshape") { navigator.open(.settings) }
             }
@@ -140,27 +93,14 @@ struct HomeView: View {
         }
         .listOnScreen("home")
         .sheet(isPresented: $adding) { AddEnvironmentSheet() }
-        .sheet(isPresented: $addingWork) { NewWorkWorkspaceSheet() }
-        .sheet(item: $capturing) { VoiceNoteSheet(note: $0) }
-        .receiptFlow(receiptFlow)
         #if DEBUG
-        .task(id: model.ready) { if model.ready, TestHooks.sheet == "new-work" { try? await Task.sleep(for: .seconds(2)); addingWork = true } }
-        .task(id: model.ready) { if model.ready, TestHooks.sheet == "voice-note" { try? await Task.sleep(for: .seconds(2)); captureVoice() } }
         .task { if let state = TestHooks.clicker { clicker = ClickerFake.model(state) } }
         .fullScreenCover(item: $clicker) { shown in NavigationStack { ClickerScreen(model: shown) { clicker = nil } } }
-        .task(id: model.ready) { if model.ready, TestHooks.sheet == "receipt" { try? await Task.sleep(for: .seconds(2)); receiptFlow.openForProof() } }
         // Save to TempCode's sheet, as the share extension shows it (Work/ShareBridge.swift `ShareProofSheet`).
         .task(id: model.ready) { if model.ready, TestHooks.share != nil { try? await Task.sleep(for: .seconds(3)); sharing = true } }
         .sheet(isPresented: $sharing) { ShareProofSheet(registry: model.registry, state: TestHooks.share ?? "one") }
         #endif
         .sheet(item: $pairingAgain) { AddEnvironmentSheet(replacing: $0) }
-        .onChange(of: router.restoredSheet, initial: true) { restoreSheet() }
-        .onChange(of: model.ready) { restoreSheet() }   // the cached shell is painted by then
-    }
-
-    private func captureVoice() {
-        if voiceNote == nil { voiceNote = VoiceNote(source: OnDeviceSpeech()) }
-        capturing = voiceNote
     }
 
     /// A troubled host's status row and every host's one-off notes, at the top.
@@ -187,13 +127,6 @@ struct HomeView: View {
         }
     }
 
-    /// With two or more hosts, a row whose every host is down sits under the
-    /// offline tint, as the desktop's rail rows do.
-    private func offline(_ entry: HomeSections.Entry, hosts: Int) -> Bool {
-        guard hosts > 1 else { return false }
-        return entry.environmentIds.allSatisfy { model.registry.client($0)?.status.transport != .open }
-    }
-
     /// Changes when a status row or a note comes or goes: the one key Home animates on.
     private func eventKey(_ hosts: [HomeSections.HostLines]) -> String {
         hosts.map { "\($0.environmentId):\($0.status):\($0.notes.map(\.id).joined(separator: "|"))" }.joined(separator: ",")
@@ -203,14 +136,6 @@ struct HomeView: View {
     private struct LaunchKey: Hashable {
         let shell: Bool
         let workspaces: Int
-    }
-
-    /// The new-thread sheet the last run had up (return flow, thread 14).
-    private func restoreSheet() {
-        guard case .newThread(let environmentId, let workspaceId, let projectId)? = router.restoredSheet,
-              let client = model.registry.client(environmentId), let workspace = client.workspaces.first(where: { $0.id == workspaceId }) else { return }
-        router.restoredSheet = nil
-        presenter.compose(client, workspace, projectId.flatMap { id in client.projects.first { $0.id == id } })
     }
 
     /// DEBUG only: the proof opens the workspace's chat draft, a fleet
@@ -247,13 +172,12 @@ struct HomeView: View {
 /// One workspace row: the mark at 28 pt, the name, and its state. A busy
 /// workspace says what runs on the line under its name; any other state is
 /// the one mark at the trailing edge. The whole row pushes; a long press
-/// offers New Thread.
-private struct WorkspaceEntryRow: View {
+/// offers New Thread. Home's rows and the Work list's jobs and Work Chats.
+struct WorkspaceEntryRow: View {
     @Environment(AppModel.self) private var model
     @Environment(NewThreadPresenter.self) private var presenter
     @Environment(ShellNavigator.self) private var navigator
     let entry: HomeSections.Entry
-    let offline: Bool
     @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = 28
 
     var body: some View {
@@ -288,6 +212,13 @@ private struct WorkspaceEntryRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// With two or more hosts, a row whose every host is down sits under the
+    /// offline tint, as the desktop's rail rows do.
+    private var offline: Bool {
+        guard model.registry.ordered.count > 1 else { return false }
+        return entry.environmentIds.allSatisfy { model.registry.client($0)?.status.transport != .open }
     }
 
     private var name: String {

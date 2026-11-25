@@ -37,6 +37,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>TempCode uses the camera to scan a receipt you choose to file.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>TempCode checks it is you before anything you send leaves this iPhone.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>TempCode listens while you hold the microphone to take a voice note.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

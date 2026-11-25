@@ -30,6 +30,8 @@ public nonisolated enum SearchKind: String, CaseIterable, Sendable, Hashable {
         switch scope {
         case .threads: [.thread, .note]
         case .files: [.file, .project]
+        // Work's rows are `WorkSearchRun`'s: this search asks nothing for them.
+        case .work: []
         }
     }
 }

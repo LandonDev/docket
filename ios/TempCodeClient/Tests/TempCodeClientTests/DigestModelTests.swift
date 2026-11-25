@@ -203,12 +203,77 @@ import TempCodeContract
         #expect(DigestModel.route(TellOpen(thread: "s1", held: .host(.init(id: "h1"))), environmentId: "e") == .outboxItem(environmentId: "e", ref: "host:h1"))
         #expect(DigestModel.route(TellOpen(view: "agenda", workspaceId: "w1", at: "ev1"), environmentId: "e") == .workView(environmentId: "e", workspaceId: "w1", view: "agenda"))
         #expect(DigestModel.route(TellOpen(view: "clashes", workspaceId: "w1"), environmentId: "e") == nil)
-        #expect(DigestModel.route(TellOpen(place: "review"), environmentId: "e") == nil)
-        #expect(DigestModel.route(TellOpen(settings: "connections"), environmentId: "e") == nil)
+        #expect(DigestModel.route(TellOpen(place: "review"), environmentId: "e") == .place(.review))
+        #expect(DigestModel.reviewWeek(TellOpen(at: "1700000000000", place: "review")) == 1_700_000_000_000)
+        #expect(DigestModel.reviewWeek(TellOpen(view: "agenda", workspaceId: "w1", at: "ev1")) == nil)
+        // Connections is a place of the Work tab since M5b: a lapse's tell opens it.
+        #expect(DigestModel.route(TellOpen(settings: "connections"), environmentId: "e") == .place(.connections))
         #expect(DigestModel.route(nil, environmentId: "e") == nil)
+        // A place of the Work tab and Settings → Work are the phone's own: no host is needed.
+        #expect(DigestModel.route(TellOpen(place: "outbox"), environmentId: "") == .place(.outbox))
+        #expect(DigestModel.route(TellOpen(settings: "work"), environmentId: "") == .workSettings)
+        #expect(DigestModel.route(TellOpen(view: "outbox", workspaceId: "w1"), environmentId: "e") == .place(.outbox))
+        #expect(DigestModel.route(TellOpen(view: "files", workspaceId: "w1"), environmentId: "e") == .workView(environmentId: "e", workspaceId: "w1", view: "files"))
+        #expect(DigestModel.route(TellOpen(thread: "s1"), environmentId: "") == nil)
+    }
+
+    @Test func `a clash's tell opens the clash by its key, whatever its open names`() {
+        // clashes/watch.ts tells `clash:<id>` with the Agenda of a job as its open.
+        #expect(DigestModel.route(TellOpen(view: "agenda", workspaceId: "w1", at: "ev2"), environmentId: "e", key: "clash:ev1-ev2") == .clash(environmentId: "e", clashId: "ev1-ev2"))
+        #expect(DigestModel.route(nil, environmentId: "e", key: "clash:ev1-ev2") == .clash(environmentId: "e", clashId: "ev1-ev2"))
+        // With no host the clash cannot be read.
+        #expect(DigestModel.route(nil, environmentId: "", key: "clash:ev1-ev2") == nil)
+        #expect(DigestModel.route(TellOpen(view: "agenda", workspaceId: "w1", at: "ev2"), environmentId: "e", key: "prep:1") == .workView(environmentId: "e", workspaceId: "w1", view: "agenda"))
     }
 
     // MARK: - Settings → Work → Digest
+
+    @Test func `Mail, Tasks and Agenda for every job open as places; one not built does not`() {
+        #expect(DigestModel.route(TellOpen(place: "tasks"), environmentId: "") == .place(.tasks))
+        #expect(DigestModel.route(TellOpen(at: "ev1", place: "agenda"), environmentId: "e") == .place(.agenda))
+        #expect(DigestModel.route(TellOpen(place: "mail"), environmentId: "e") == .place(.mail))
+        #expect(DigestModel.route(TellOpen(place: "connections"), environmentId: "e") == .place(.connections))
+        #expect(DigestModel.route(TellOpen(place: "nowhere"), environmentId: "e") == nil)
+    }
+
+    /// Each `open` a host's `ctx.tell` passes today (src/main/server/work), and where the phone takes it: its
+    /// screen, or nil, which opens the Digest.
+    @Test func `every open the hosts send opens its screen or the Digest`() {
+        let view = { (name: String) in Route.workView(environmentId: "e", workspaceId: "w1", view: name) }
+        let sent: [(TellOpen, Route?)] = [
+            // outbox/requests.ts, digest/gate.ts
+            (TellOpen(thread: "s1"), .thread(environmentId: "e", sessionId: "s1", seq: nil)),
+            // outbox/tells.ts: an earned grant's offer names the held item it came from
+            (TellOpen(held: .host(.init(id: "h1"))), .outboxItem(environmentId: "e", ref: "host:h1")),
+            // digest/sources/scheduled.ts, waiting.ts
+            (TellOpen(view: "mail", workspaceId: "w1"), view("mail")),
+            // digest/sources/capture.ts
+            (TellOpen(view: "tasks", workspaceId: "w1"), view("tasks")),
+            // clashes/watch.ts: the Agenda of the job whose week holds the clash
+            (TellOpen(view: "agenda", workspaceId: "w1", at: "ev1"), view("agenda")),
+            // msforms/tell.ts
+            (TellOpen(view: "forms", workspaceId: "w1", at: "f1"), view("forms")),
+            // messages/tell.ts: the conversation that waits on him, over Messages
+            (TellOpen(view: "messages", workspaceId: "w1", at: "c1"), .chat(environmentId: "e", workspaceId: "w1", chatId: "c1")),
+            (TellOpen(view: "messages", workspaceId: "w1"), .place(.messages)),
+            // digest/sources/prep.ts: the meeting's page
+            (TellOpen(view: "prep", workspaceId: "w1", at: "ev1"), .prep(environmentId: "e", workspaceId: "w1", eventId: "ev1")),
+            // money/inbox.ts: the job's Money page
+            (TellOpen(view: "money", workspaceId: "w1"), view("money")),
+            // digest/sources/guests.ts: no screen on the phone yet
+            (TellOpen(view: "docs", workspaceId: "w1", at: "k1"), nil),
+            // review/friday.ts: Review, at the week it names (`ReviewDesk.weekNamed`)
+            (TellOpen(at: "1700000000000", place: "review"), .place(.review)),
+            // digest/sources/winvm.ts, lapses.ts
+            (TellOpen(settings: "work"), .workSettings),
+            (TellOpen(settings: "connections"), .place(.connections)),
+            // routines' plays: the job's Plays (M5b)
+            (TellOpen(view: "plays", workspaceId: "w1"), view("plays"))
+        ]
+        for (open, route) in sent {
+            #expect(DigestModel.route(open, environmentId: "e") == route, "\(open)")
+        }
+    }
 
     @Test func `every group starts at when it can't wait, in his words`() {
         // the desktop's SETTING_GROUPS, in its order
@@ -226,5 +291,55 @@ import TempCodeContract
         #expect(calendar.dateComponents([.hour, .minute], from: picked) == DateComponents(hour: 7, minute: 45))
         #expect(DigestModel.atString(picked, calendar: calendar) == "07:45")
         #expect(DigestModel.atString(DigestModel.atDate("23:05", now: now, calendar: calendar), calendar: calendar) == "23:05")
+    }
+
+    // MARK: - the kept days (Work/Digest/DigestKept.swift)
+
+    private func ledger(days: [String], rows: [TellRow]) -> DigestModel.Ledger {
+        DigestModel.Ledger(days: days.map { DigestDay(day: $0, madeAt: 1, seenAt: nil, count: 1) }, rows: rows, settings: nil)
+    }
+
+    @Test func `a host away draws what the phone kept, and its days are marked seen only once it answers`() {
+        let kept = ledger(days: ["2026-11-23"], rows: [row("r1", at: ms(23, 8), day: "2026-11-23")])
+        let screen = DigestModel.screen([
+            .init(environmentId: "env_mac", name: "Mac", ledger: nil, error: "Not connected", kept: kept),
+            .init(environmentId: "env_box", name: "The box", ledger: ledger(days: ["2026-11-23"], rows: []), error: nil),
+        ])
+        #expect(screen.entries.map(\.row.id) == ["r1"])
+        #expect(DigestModel.sections(screen.entries, days: screen.days, now: now, calendar: calendar, locale: locale).map(\.id) == ["2026-11-23"])
+        #expect(screen.silent == ["Mac"])
+        // Read-only: the kept host's day is not marked seen from the disk; the live one's is.
+        #expect(DigestModel.seenCalls(screen.days, live: ["env_box"]).map(\.environmentId) == ["env_box"])
+        // Its answer wins over what was kept.
+        let answered = DigestModel.screen([.init(environmentId: "env_mac", name: "Mac", ledger: ledger(days: [], rows: []), error: nil, kept: kept)])
+        #expect(answered.entries.isEmpty)
+    }
+
+    @Test func `what is kept: the newest days with their rows, no live rows, no settings`() {
+        let days = (1...20).map { String(format: "2026-11-%02d", $0) }
+        let rows = [row("old", at: 1, day: "2026-11-01"), row("new", at: 2, day: "2026-11-20"), row("live", at: 3)]
+        let full = DigestModel.Ledger(days: days.map { DigestDay(day: $0, madeAt: 1, seenAt: nil, count: 1) }, rows: rows, settings: DigestSettings(at: "08:00", zone: "America/Chicago", levels: [:], nextAt: 0))
+        let kept = WorkCache.digest(full)
+        #expect(kept.days.count == WorkCache.digestDaysKept)
+        #expect(kept.days.first?.day == "2026-11-20")
+        #expect(kept.rows.map(\.id) == ["new"])
+        #expect(kept.settings == nil)
+    }
+
+    @MainActor @Test func `kept days are read under the host's key, written when they change, and go with Work off`() {
+        let cache = DigestBookCache()
+        let key = WorkCache.Key(host: "env_mac", account: "k1", keyGeneration: 1, scope: .digest)
+        let one = DigestKept(cache: cache, key: key)
+        #expect(one.ledger == nil)
+        let read = ledger(days: ["2026-11-23"], rows: [row("r1", at: 1, day: "2026-11-23")])
+        one.keep(read)
+        one.keep(read)
+        #expect(cache.writes == 1)
+        // A cold launch reads them back; a replaced key reads none.
+        #expect(DigestKept(cache: cache, key: key).ledger == WorkCache.digest(read))
+        #expect(DigestKept(cache: cache, key: WorkCache.Key(host: "env_mac", account: "k2", keyGeneration: 2, scope: .digest)).ledger == nil)
+        one.drop()
+        #expect(one.ledger == nil)
+        #expect(DigestKept(cache: cache, key: key).ledger == nil)
     }
 }

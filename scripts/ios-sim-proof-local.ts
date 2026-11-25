@@ -10,7 +10,8 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { bundleNodeScript } from './lib/bundle-node-script'
-import { seedOutbox2, verifyOutbox2, seedReader, seedReview, seedVideo, seedWork, seedWorkItems, verifyFilesAsk, verifyMoney, verifyReview, verifyShare, verifyWork, verifyWorkItems, type WorkSeedReady } from './lib/ios-work-seeds'
+import { seedWorkPerfEditor } from './lib/ios-work-perf-seeds'
+import { seedFilesM3, seedFoldHeld, seedM2, seedM5, seedOutbox2, seedSearchM4, verifyOutbox2, seedReader, seedReview, seedToday, seedVideo, seedWork, seedWorkItems, verifyFilesAsk, verifyMoney, verifyReview, verifyShare, shareProven, verifyWork, verifyWorkItems, type WorkSeedReady } from './lib/ios-work-seeds'
 
 const repo = resolve(import.meta.dir, '..')
 const out = resolve(repo, 'scripts/.out/ios-client-test-server.mjs')
@@ -41,12 +42,15 @@ function workEnv(): Record<string, string> {
 }
 // The work set runs the Work service in the server's process (history and a form's answers call it); the seeds
 // read the same switch. TC_TEST_WORK_SERVICE=0 runs without it, as before milestone 49.
-if (process.env.TC_PROOF_SET === 'work' || process.env.TC_PROOF_SET === 'video') process.env.TC_TEST_WORK_SERVICE ??= '1'
+// The work-perf set measures launches onto Today, so its host has Work on with the m1 seeds (below).
+const workPerf = process.env.TC_PROOF_SET === 'work-perf'
+if (process.env.TC_PROOF_SET === 'work' || process.env.TC_PROOF_SET === 'video' || workPerf) process.env.TC_TEST_WORK_SERVICE ??= '1'
 // The perf set reads what its fixtures and the control panel write: 16,000 seeded rows more, and no CLI behind any thread.
-const perf = process.env.TC_PROOF_SET === 'perf'
+// The work-perf set launches over the same host, so its launches list as much as the perf set's.
+const perf = process.env.TC_PROOF_SET === 'perf' || process.env.TC_PROOF_SET === 'work-perf'
 // The digest set seeds between its shots (scripts/lib/ios-digest-seed.ts), on a server with Work's own dirs too.
 const digest = process.env.TC_PROOF_SET === 'digest'
-const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, TC_TEST_EXEC_BROKER: broker, ...(perf ? { TC_TEST_PERF_SEEDS: '1', TC_TEST_NO_HARNESS: '1' } : {}), ...(process.env.TC_PROOF_SET === 'work' || process.env.TC_PROOF_SET === 'video' || digest ? workEnv() : {}) } })
+const server = spawn('node', [out], { cwd: repo, stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, TC_TEST_EXEC_BROKER: broker, ...(perf ? { TC_TEST_PERF_SEEDS: '1', TC_TEST_NO_HARNESS: '1' } : {}), ...(process.env.TC_PROOF_SET === 'work' || process.env.TC_PROOF_SET === 'video' || digest || workPerf ? workEnv() : {}) } })
 const ready = await new Promise<{ baseUrl: string; controlUrl: string; environmentId: string; adminKey?: string; pairingLink: string; pairingLinkOperate: string; adminPairing?: string; second?: { pairingLink: string } }>((ok, bad) => {
   let buffer = ''
   const timer = setTimeout(() => bad(new Error('the test server did not come up in 120 s')), 120_000)
@@ -71,6 +75,8 @@ const proofDir = process.env.TC_PROOF_DIR ?? '/tmp/tc-ios-proof'
 let items: { sessionId: string; lines: string[] } | null = null
 let reader: { sessionId: string; lines: string[] } | null = null
 let review: { lines: string[] } | null = null
+// What the proof parts m2 to m5 seeded (scripts/lib/ios-work-seeds.ts), each step OK or NOT RUN, for work-report.txt.
+const partLines: string[] = []
 let unify: string | null = null
 let purdue: string | null = null
 if (work && process.env.TC_WORK_ONLY === 'outbox2') {
@@ -80,11 +86,34 @@ if (work && process.env.TC_WORK_ONLY === 'outbox2') {
   purdue = ids.purdue
   const asked = await seedOutbox2(ready as unknown as WorkSeedReady, ids)
   console.log(`ios-sim-proof-local: outbox2 seeded (${asked.sessionId}, ${asked.requestId})`)
+} else if ((work && process.env.TC_WORK_ONLY === 'm1') || workPerf) {
+  // m1, and the work-perf set: a relayed host here would be this server under another id, its Work listed again,
+  // and an asleep or unreachable one never lists, so workEnv() seeds none (TC_TEST_NO_RELAY).
+  const ids = await seedWork(ready as unknown as WorkSeedReady, repo)
+  await seedToday(ready as unknown as WorkSeedReady, ids)
+  console.log('ios-sim-proof-local: Today seeded')
+  // The work-perf set's editor run: a document of its own to open over the reader route.
+  if (workPerf) console.log((await seedWorkPerfEditor(ready as unknown as WorkSeedReady & { environmentId: string }, ids.purdue)).join('\n'))
 } else if (work) {
   const ids = await seedWork(ready as unknown as WorkSeedReady, repo)
   unify = ids.unify
   purdue = ids.purdue
   console.log(`ios-sim-proof-local: work seeded (${ids.purdue}, ${ids.unify})`)
+  const part = process.env.TC_WORK_ONLY ?? ''
+  // Today's seeds hold Review's week and the Unpaid deposit, which m5 shoots too.
+  if (!part || part === 'm5') {
+    await seedToday(ready as unknown as WorkSeedReady, ids)
+    console.log('ios-sim-proof-local: Today seeded')
+  }
+  // The proof parts m2 to m5, each under its own TC_WORK_ONLY or the whole set.
+  const withEnv = ready as unknown as WorkSeedReady & { environmentId: string }
+  if (!part || part === 'm2') partLines.push(...(await seedM2(withEnv)).lines)
+  if (!part || part === 'm3') partLines.push(...(await seedFilesM3(withEnv, ids.purdue)).lines)
+  if (!part || part === 'm4') partLines.push(...(await seedSearchM4(withEnv, ids)).lines)
+  if (!part || part === 'm5') partLines.push(...(await seedM5(withEnv, ids.purdue)).lines)
+  if (partLines.length) console.log(partLines.join('\n'))
+  // The Work fold cycle (TC_WORK_ONLY=fold): held posts enough that the Outbox scrolls beside its open item.
+  if (process.env.TC_WORK_ONLY === 'fold') await seedFoldHeld(ready as unknown as WorkSeedReady, ids)
   items = await seedWorkItems(ready as unknown as WorkSeedReady & { environmentId: string }, ids.purdue)
   console.log(items.lines.join('\n'))
   // The reader's thread (the phone-files plan): a deck with notes, a longer PDF and a picture.
@@ -102,6 +131,8 @@ if (process.env.TC_PROOF_SET === 'video') {
   const video = await seedVideo(ready as unknown as WorkSeedReady & { environmentId: string }, ids.purdue)
   console.log(`ios-sim-proof-local: video seeded (${video.sessionId})`)
 }
+/** What the run requires and the read-back did not prove: any one makes the run fail, whatever the shots did. */
+const unproven: string[] = []
 const proof = spawnSync('sh', [resolve(repo, 'scripts/ios-sim-proof.sh')], {
   cwd: repo,
   stdio: 'inherit',
@@ -132,41 +163,50 @@ const proof = spawnSync('sh', [resolve(repo, 'scripts/ios-sim-proof.sh')], {
       : {})
   }
 })
-if (work) {
+if (work && process.env.TC_WORK_ONLY !== 'm1') {
   // What the phone's presses did, read back on the host (the server is still up unless the set quit it).
   // TC_WORK_ONLY=m47 skipped milestone 46's presses, and TC_WORK_ONLY=capture (the voice note's shots alone)
   // every press, so their read-back would only say they did not happen. TC_WORK_ONLY=money is the receipt alone;
   // TC_WORK_ONLY=reader shoots neither part.
   const only = process.env.TC_WORK_ONLY
-  const skipped = only === 'm47' || only === 'capture' || only === 'money' || only === 'reader' || only === 'share' || only === 'files' || only === 'outbox2'
+  // TC_WORK_ONLY=fold presses nothing: it folds the screens and its checker reads the app's reports.
+  // The parts m2 to m5 make none of milestone 46's or 47's presses; m3 makes the reader's, Files' and share's, m5 the receipt's.
+  const part = only === 'm2' || only === 'm3' || only === 'm4' || only === 'm5'
+  const skipped = only === 'm47' || only === 'capture' || only === 'money' || only === 'reader' || only === 'share' || only === 'files' || only === 'outbox2' || only === 'fold' || part
   const lines = skipped ? [] : await verifyWork(ready as unknown as WorkSeedReady).catch((err: unknown) => [`FAIL could not read the host back: ${String(err)}`])
-  if (items && only !== 'capture' && only !== 'money' && only !== 'reader' && only !== 'share' && only !== 'files') {
+  lines.push(...partLines)
+  if (items && only !== 'capture' && only !== 'money' && only !== 'reader' && only !== 'share' && only !== 'files' && only !== 'fold' && !part) {
     lines.push(...items.lines)
     lines.push(...(await verifyWorkItems(ready as unknown as WorkSeedReady, items.sessionId).catch((err: unknown) => [`FAIL could not read the items back: ${String(err)}`])))
   }
   // The receipt's one Save (work_money), in the full set and in TC_WORK_ONLY=money.
-  if (unify && (only === undefined || only === '' || only === 'money')) {
+  if (unify && (only === undefined || only === '' || only === 'money' || only === 'm5')) {
     lines.push(...(await verifyMoney(ready as unknown as WorkSeedReady, unify).catch((err: unknown) => [`FAIL could not read the receipt back: ${String(err)}`])))
   }
   if (reader) lines.push(...reader.lines)
   // TC_WORK_ONLY=share makes none of the reader's presses either.
-  if (review && reader?.sessionId && only !== 'capture' && only !== 'money' && only !== 'share' && only !== 'files') {
+  if (review && reader?.sessionId && only !== 'capture' && only !== 'money' && only !== 'share' && only !== 'files' && only !== 'fold' && only !== 'm2' && only !== 'm4' && only !== 'm5') {
     lines.push(...review.lines)
     lines.push(...(await verifyReview(ready as unknown as WorkSeedReady, reader.sessionId).catch((err: unknown) => [`FAIL could not read the review back: ${String(err)}`])))
   }
-  // Save to TempCode's real save (the full set and TC_WORK_ONLY=share): the first Work workspace is Purdue's.
-  if (purdue && (only === undefined || only === '' || only === 'share')) {
+  // Save to TempCode's real save (the full set and TC_WORK_ONLY=share): no job checked first, then Purdue Esports by name.
+  // The run fails unless both held and the file was read back by its hash (`shareProven`): a missing report, a
+  // refusal or a mismatch is never green.
+  if (only === undefined || only === '' || only === 'share' || only === 'm3') {
     const shared = existsSync(resolve(proofDir, 'share-report.json')) ? (JSON.parse(readFileSync(resolve(proofDir, 'share-report.json'), 'utf8')) as Parameters<typeof verifyShare>[2]) : null
-    lines.push(...(await verifyShare(ready as unknown as WorkSeedReady, purdue, shared).catch((err: unknown) => [`FAIL could not read the share back: ${String(err)}`])))
+    const said = purdue ? await verifyShare(ready as unknown as WorkSeedReady, purdue, shared).catch((err: unknown) => [`FAIL could not read the share back: ${String(err)}`]) : ['FAIL share: no Purdue Esports was seeded']
+    lines.push(...said)
+    if (!shareProven(said)) unproven.push('the Share save')
   }
   // Outbox 2 (TC_WORK_ONLY=outbox2): the request's Send from the phone ran exactly the ticked rows.
   if (only === 'outbox2') lines.push(...(await verifyOutbox2(ready as unknown as WorkSeedReady).catch((err: unknown) => [`FAIL could not read the request back: ${String(err)}`])))
   // Ask from a file open in Files (the full set and TC_WORK_ONLY=files): a new thread holds the PDF.
-  if (purdue && reader?.sessionId && (only === undefined || only === '' || only === 'files')) {
+  if (purdue && reader?.sessionId && (only === undefined || only === '' || only === 'files' || only === 'm3')) {
     lines.push(...(await verifyFilesAsk(ready as unknown as WorkSeedReady & { environmentId: string }, purdue, reader.sessionId).catch((err: unknown) => [`FAIL could not read the Files ask back: ${String(err)}`])))
   }
   writeFileSync(resolve(proofDir, 'work-report.txt'), lines.join('\n') + '\n')
   console.log(lines.join('\n'))
 }
 server.kill('SIGTERM')
-process.exit(proof.status ?? 1)
+if (unproven.length > 0) console.error(`ios-sim-proof-local: not proven: ${unproven.join(', ')}`)
+process.exit(unproven.length > 0 ? 1 : (proof.status ?? 1))

@@ -313,6 +313,19 @@ actor StubFilesWire: FilesWire {
         #expect(host.known("w1").map(\.name) == ["C.pdf"])
     }
 
+    @Test func `a refused key takes every listing and place read of the host`() async throws {
+        let wire = StubFilesWire()
+        let host = FilesHost(wire: wire, environmentId: "env_box", caps: full)
+        await wire.answer("work.files.places", #"{"host":"box","places":[\#(place("folder"))],"rev":1,"sources":[]}"#)
+        await host.loadPlaces("w1")
+        await wire.answer("work.files.list", #"{"entries":[\#(entry("A.pdf"))]}"#)
+        await host.list("w1", root)
+        host.revoked()
+        #expect(host.places["w1"] == nil)
+        #expect(host.listing("w1", root) == nil)
+        #expect(host.known("w1").isEmpty)
+    }
+
     @Test func `a next page that fails keeps the rows and its cursor and says why, and Try Again appends it`() async throws {
         let wire = StubFilesWire()
         let host = FilesHost(wire: wire, environmentId: "env_box", caps: full)

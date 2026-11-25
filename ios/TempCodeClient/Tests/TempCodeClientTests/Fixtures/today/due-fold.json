@@ -1,0 +1,258 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "due-fold",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "box",
+      "workspaceId": "box-hypixel",
+      "sector": "hypixel",
+      "name": "Hypixel",
+      "path": "/w/box/hypixel",
+      "open": true
+    }
+  ],
+  "sources": {
+    "due": {
+      "tasks": [
+        {
+          "_id": "a",
+          "title": "Overdue a week",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1794927600000
+        },
+        {
+          "_id": "b",
+          "title": "Overdue yesterday",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795471200000
+        },
+        {
+          "_id": "c",
+          "title": "Due this morning",
+          "sector": "hypixel",
+          "status": "open",
+          "dueAt": 1795536000000
+        },
+        {
+          "_id": "d",
+          "title": "Due at two",
+          "sector": "hypixel",
+          "status": "open",
+          "dueAt": 1795550400000
+        },
+        {
+          "_id": "e",
+          "title": "Due at three",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795554000000
+        },
+        {
+          "_id": "f",
+          "title": "Due at four",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795557600000
+        },
+        {
+          "_id": "g",
+          "title": "Due at five",
+          "sector": "hypixel",
+          "status": "open",
+          "dueAt": 1795561200000
+        },
+        {
+          "_id": "h",
+          "title": "Due late tonight",
+          "sector": "hypixel",
+          "status": "open",
+          "dueAt": 1795584600000
+        },
+        {
+          "_id": "i",
+          "title": "Pinned, no date",
+          "sector": "purdue",
+          "status": "open",
+          "pinned": true
+        },
+        {
+          "_id": "j",
+          "title": "Tomorrow's",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795618800000
+        },
+        {
+          "_id": "k",
+          "title": "No job's",
+          "sector": "cosmic",
+          "status": "open",
+          "dueAt": 1795532400000
+        }
+      ],
+      "read": {
+        "built": true
+      }
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "task:a",
+        "task:b",
+        "task:c",
+        "task:d",
+        "task:e",
+        "task:f",
+        "task:g",
+        "fold:more:due"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "due",
+            "title": "Due",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "tick",
+            "empty": "Nothing due today",
+            "earlier": 0,
+            "more": 2,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "task:a",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Overdue a week",
+                "at": 1794927600000,
+                "when": "Nov 17",
+                "late": true,
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:b",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Overdue yesterday",
+                "at": 1795471200000,
+                "when": "Yesterday",
+                "late": true,
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:c",
+                "section": "due",
+                "sector": "hypixel",
+                "title": "Due this morning",
+                "at": 1795536000000,
+                "when": "10:00 AM",
+                "late": true,
+                "lead": "tick",
+                "workspace": "box/box-hypixel",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:d",
+                "section": "due",
+                "sector": "hypixel",
+                "title": "Due at two",
+                "at": 1795550400000,
+                "when": "2:00 PM",
+                "lead": "tick",
+                "workspace": "box/box-hypixel",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:e",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Due at three",
+                "at": 1795554000000,
+                "when": "3:00 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:f",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Due at four",
+                "at": 1795557600000,
+                "when": "4:00 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:g",
+                "section": "due",
+                "sector": "hypixel",
+                "title": "Due at five",
+                "at": 1795561200000,
+                "when": "5:00 PM",
+                "lead": "tick",
+                "workspace": "box/box-hypixel",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

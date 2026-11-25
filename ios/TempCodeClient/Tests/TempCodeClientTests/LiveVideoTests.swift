@@ -212,4 +212,11 @@ private final class Layer: VideoSampleSink {
         #expect(pasted == ["s2:hello"])
         video.stop()
     }
+
+    @Test func `Copy asks nothing of a stream he does not drive`() async throws {
+        var asked: [String] = []
+        let video = LiveVideo(open: { _ in .opened(.init(stream: "s1", ticket: "t")) }, close: { _ in }, copy: { stream in asked.append(stream); return "far" }, rpcURL: { URL(string: "ws://127.0.0.1:4123")! })
+        #expect(try await video.copy() == nil)
+        #expect(asked.isEmpty)
+    }
 }

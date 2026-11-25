@@ -65,6 +65,59 @@ public enum ShellPose: Sendable, Hashable {
     public static func keepsVisibilityWrite(pose: ShellPose, sincePoseChange: TimeInterval) -> Bool {
         pose.isSplit && sincePoseChange >= foldSettle
     }
+}
+
+/// A write of the split's visibility that `keepsVisibilityWrite` let through,
+/// held for `foldSettle` before it becomes his toggle: a fold can make the
+/// split write `.detailOnly` a few milliseconds before the root sees the new
+/// pose, so a write counts only if the pose also holds after it. The split
+/// shows the held value at once; a pose change drops it.
+public struct HeldVisibilityWrite: Sendable, Hashable {
+    /// What the split wrote: the sidebar shown, or the detail alone.
+    public var shown: Bool
+    /// The pose it was written in.
+    public var pose: ShellPose
+    /// When it was written.
+    public var at: Date
+    /// The detail's route it was written over (`ShellPaths.identity`), and whether that route was wide: a write
+    /// held over one route is never his toggle for another.
+    public var route: String
+    public var wide: Bool
+
+    public init(shown: Bool, pose: ShellPose, at: Date, route: String = "", wide: Bool = false) {
+        self.shown = shown
+        self.pose = pose
+        self.at = at
+        self.route = route
+        self.wide = wide
+    }
+
+    /// When the hold ends and the write may apply.
+    public var due: Date { at.addingTimeInterval(ShellPose.foldSettle) }
+
+    /// Whether the write becomes his toggle: the pose is still the one it was
+    /// written in and has not changed since (`poseChangedAt`, the latest change).
+    public func applies(pose now: ShellPose, poseChangedAt: Date) -> Bool {
+        now == pose && poseChangedAt <= at
+    }
+
+    /// `applies`, and the detail still shows the route it was written over, as wide as it was: a pick in the
+    /// sidebar during the hold that opened another route drops it, so it never writes that route's preference.
+    public func applies(pose now: ShellPose, poseChangedAt: Date, route: String, wide: Bool) -> Bool {
+        applies(pose: now, poseChangedAt: poseChangedAt) && route == self.route && wide == self.wide
+    }
+}
+
+extension ShellPose {
+
+    /// Whether the split, once a pose has settled, shows other than what the shell
+    /// remembers: a write it made was dropped as a fold's (a tab built in the overlay
+    /// pose hides its own column), and the binding, unchanged on our side, is never
+    /// read again. Then the shell asks the split to read it once more.
+    public static func splitStrays(pose: ShellPose, splitShows: Bool?, shows: Bool) -> Bool {
+        guard pose.isSplit, let splitShows else { return false }
+        return splitShows != shows
+    }
 
     /// Inline titles only on the short stack.
     public var titleDisplay: TitleDisplay {

@@ -8,23 +8,45 @@ import UserNotifications
 /// sorted by what he must do: held sends with their verb, what failed, each
 /// thread's decisions, then each write on his files with Undo.
 
-/// Away as a check item in the host menu, beside the fleet switches.
+/// Away as check items in the host menu, beside the fleet switches: Away for Code and Away for Work, each
+/// with the decisions its threads made this stretch under its name; one Away for a host one release behind
+/// (`AwayKinds.switches`).
 struct AwayMenuItem: View {
     let client: EnvironmentClient
 
     var body: some View {
-        if client.work.away != nil {
-            Toggle("Away", systemImage: "moon", isOn: Binding(
-                get: { client.work.awayOn },
+        let threads = client.listedSessions
+        ForEach(client.work.awaySwitches { id in threads.first { $0.id == id }?.scope }) { item in
+            Toggle(isOn: Binding(
+                get: { item.on },
                 set: { on in
                     Task {
-                        do { try await client.work.setAway(on) } catch {
+                        do { try await client.work.setAway(item.kind, on) } catch {
                             FleetToastCenter.shared.post(message: "Away not changed: \(ActionError.wrap(error).message)")
                         }
                     }
                 }
-            ))
-            .disabled(!client.work.canApprove)
+            )) {
+                // A menu draws a second line of the label as the item's subtitle.
+                Label {
+                    Text(item.title)
+                    if let tally = item.tally { Text(tally) }
+                } icon: {
+                    Image(systemName: Self.glyph(item.kind))
+                }
+            }
+            .disabled(!client.work.may(.awaySet))
+            .accessibilityIdentifier("away-\(item.id)")
+        }
+    }
+
+    /// The kind's glyph, as the tab its threads live in draws it: Home's house for Code, Work's briefcase; the
+    /// moon for an older host's one switch.
+    private static func glyph(_ kind: AwayKinds.Kind?) -> String {
+        switch kind {
+        case .code: "house"
+        case .work: "briefcase"
+        case nil: "moon"
         }
     }
 }
@@ -176,7 +198,7 @@ struct AwayReviewSheet: View {
                                 if rereading {
                                     ProgressView()
                                 } else {
-                                    PillButton("Retry") { Task { await reread(ends) } }
+                                    PillButton("Try Again") { Task { await reread(ends) } }
                                 }
                             }
                             .frame(minHeight: Layout.rowHeight)
@@ -188,6 +210,10 @@ struct AwayReviewSheet: View {
                     Text("Nothing happened while you were away.")
                         .textStep(.meta)
                         .listRowSeparator(.hidden)
+                }
+                Section {
+                } footer: {
+                    Text("Away never sends a held item.")
                 }
             }
             .listStyle(.insetGrouped)
@@ -279,8 +305,13 @@ struct AwayReviewSheet: View {
         guard let client = model.registry.client(row.environmentId) else { return }
         undoing.insert(row.result.id)
         defer { undoing.remove(row.result.id) }
+        // Undo acts outward again: the link and the owner's check first, under the key frozen before it.
+        let key = PressGates.key(client.environment, revoked: client.work.keyRevoked)
+        if let line = await PressGates.shared.pass(client, .outboxUndo, ref: row.result.id, rev: String(row.result.createdAt), reason: "Undo \(row.result.summary)") {
+            return FleetToastCenter.shared.post(message: line)
+        }
         do {
-            let undone = try await client.work.undo(row.result)
+            let undone = try await client.work.undo(row.result, key: key)
             if let index = written.firstIndex(where: { $0.result.id == undone.id }) { written[index].result = undone }
         } catch {
             FleetToastCenter.shared.post(message: "Not undone: \(ActionError.wrap(error).message)")

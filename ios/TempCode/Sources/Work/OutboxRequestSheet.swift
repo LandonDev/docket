@@ -39,11 +39,56 @@ struct OutboxRequestSheetHost: ViewModifier {
     }
 }
 
-/// The phone's one wait for a request's Send, kept outside any sheet: a sheet closed or the app gone to the
-/// background never sends a press early; it goes when its five seconds end, or never if he pressed Undo.
+/// The phone's one wait for a request's Send, kept outside any sheet, on the Outbox's rules: a sheet closed never
+/// sends a press early; the app going to the background, or the link to its host dropping, cancels it and says so;
+/// when its five seconds end the link and the key he pressed under are checked again (`check`).
 @MainActor
 enum RequestPresses {
-    static let wait = RequestPressWait(seconds: OutboxPresses.waitSeconds)
+    static let wait = RequestPressWait(seconds: OutboxPresses.Wait.seconds)
+
+    @MainActor private static var clients: (String) -> EnvironmentClient? = { _ in nil }
+
+    /// The root's registry, and the read-backs of a press whose answer was lost.
+    static func attach(_ clients: @escaping (String) -> EnvironmentClient?) {
+        self.clients = clients
+        WorkHost.requestHeard = { _, id, state, request in
+            if let request { wait.heard(request) } else { wait.heard(requestId: id, state: state) }
+        }
+    }
+
+    /// When the seconds end: why the press may not go now, or nil.
+    static func check(_ press: RequestPress) -> SendWait<RequestPress>.Why? {
+        guard let client = clients(press.environmentId) else { return .notPaired }
+        let live = SendWait<RequestPress>.Check(
+            linked: OutboxPresses.linked(client),
+            maySend: client.work.may(.outboxDecide),
+            rev: 0,
+            key: PressGates.shared.liveKey(press.environmentId)
+        )
+        return SendWait<RequestPress>.why(live, rev: 0, key: press.key)
+    }
+
+    /// Hears the link and key of each host a press waits on; a lost one cancels that host's presses.
+    static func watch() {
+        let hosts = wait.waitingHosts
+        guard !hosts.isEmpty else { return }
+        withObservationTracking {
+            for host in hosts {
+                if let client = clients(host) { _ = (OutboxPresses.linked(client), client.work.may(.outboxDecide), client.work.keyRevoked) }
+            }
+        } onChange: {
+            Task { @MainActor in
+                for host in hosts {
+                    guard let client = clients(host), OutboxPresses.linked(client) else {
+                        wait.linkLost(host: host)
+                        continue
+                    }
+                    if !client.work.may(.outboxDecide) { wait.keyLost(host: host) }
+                }
+                watch()
+            }
+        }
+    }
 }
 
 /// A thread's request for his press (Outbox 2's phone.html, "The request"): what goes in one sentence, his own
@@ -69,13 +114,19 @@ struct OutboxRequestSheet: View {
     /// Rows he opened since the sheet loaded, with the fresh receipt the host gave each.
     @State private var fresh: [String: OutboxRequestRow] = [:]
     @State private var pressError: String?
+    /// The owner's check is asking for his Send: no second one meanwhile.
+    @State private var checking = false
 
     private var wait: RequestPressWait { RequestPresses.wait }
+    /// The host refused this key: nothing of the request, its quote or a receipt, is drawn.
+    private var revoked: Bool { client.work.keyRevoked }
 
     var body: some View {
         NavigationStack {
             Group {
-                if let request {
+                if revoked {
+                    ContentUnavailableView("Not Available", systemImage: "key", description: Text(WorkHost.refusedLine(client.environment.name)))
+                } else if let request {
                     content(drawn(request))
                 } else if let loadError {
                     ContentUnavailableView {
@@ -104,12 +155,27 @@ struct OutboxRequestSheet: View {
         .task {
             guard TestHooks.action == "request-send" else { return }
             for _ in 0..<100 where request == nil { try? await Task.sleep(for: .milliseconds(100)) }
+            TestHooks.recordRequestLoaded(ticked: ticks.count)
             try? await Task.sleep(for: .seconds(2))
             press()
         }
         #endif
         // His press's answer, whenever it lands: in this sheet, or in one opened after the first was closed.
         .onChange(of: wait.outcomes[requestId], initial: true) { _, outcome in take(outcome) }
+        // A refused key: the request read under it, and every receipt opened from it, go from memory.
+        .onChange(of: revoked) {
+            guard revoked else { return }
+            request = nil
+            fresh = [:]
+            ticks = []
+        }
+        // Each push of a request (its end, another device's press): the sheet reads it again, so it follows a press it
+        // did not make.
+        .onChange(of: client.work.outboxRequestsRev) { Task { await load() } }
+        // A press the record kept from before a relaunch, settled on a link or a push: the request as it ended.
+        .onChange(of: client.work.presses.busy(host: client.environment.id, ref: PendingPress.requestRef(requestId))) { _, busy in
+            if !busy { Task { await load() } }
+        }
         .accessibilityIdentifier("outbox-request")
     }
 
@@ -128,9 +194,14 @@ struct OutboxRequestSheet: View {
         case .answered(let after)?:
             request = after
             fresh = [:]
-        case .failed(let message)?:
-            pressError = "Not sent: \(message)"
+            pressError = nil
+        case .failed(let line)?:
+            pressError = line
             Task { await load() }
+        case .checking?:
+            // Gone with no answer: never "Not sent"; the head says Checking… until the request is read back.
+            pressError = nil
+            return
         case nil:
             return
         }
@@ -142,9 +213,18 @@ struct OutboxRequestSheet: View {
         request.state == .open ? RequestSheetModel.merged(request, opened: fresh) : request
     }
 
+    /// A press of his on this request went and its end is not known: this launch's, or one the press record kept
+    /// from before a relaunch.
+    private var checkingPress: Bool {
+        // Claimed and still going, by this phone or another device: not done until its end comes.
+        request?.running == true
+            || wait.outcomes[requestId] == .checking
+            || !wait.sending.contains(requestId) && client.work.presses.busy(host: client.environment.id, ref: PendingPress.requestRef(requestId))
+    }
+
     private var phase: Phase {
         if let press = wait.pending[requestId] { return .waiting(press) }
-        if wait.sending.contains(requestId) { return .sending }
+        if wait.sending.contains(requestId) || checkingPress { return .sending }
         return request?.state == .open || request == nil ? .choosing : .done
     }
 
@@ -167,12 +247,16 @@ struct OutboxRequestSheet: View {
                             .textStep(.meta, tint: Color(.label))
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if let pressError {
+                    if checkingPress {
+                        // Not a failure: the label's ink, until the request is read back.
+                        Text(PressState.checking.line ?? "Checking…")
+                            .textStep(.meta, tint: Color(.label))
+                    } else if let pressError {
                         Text(pressError)
                             .textStep(.meta, tint: Tint.destructiveText)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if !client.work.canApprove {
+                    if !client.work.may(.outboxDecide) {
                         Text(ActionBlock.noApprove.text(now: 0))
                             .textStep(.meta, tint: Color(.label))
                     }
@@ -228,7 +312,7 @@ struct OutboxRequestSheet: View {
                 wide(RequestSheetModel.pressWord(request, ticked: held), prominent: true, identifier: "outbox-request-send", busy: phase == .sending) { press() }
                     .disabled(held.isEmpty)
             }
-            .disabled(phase == .sending || !client.work.canApprove)
+            .disabled(phase == .sending || checking || !client.work.may(.outboxDecide))
             .padding(.horizontal, Layout.textEdge)
             .padding(.vertical, 8)
         }
@@ -245,19 +329,37 @@ struct OutboxRequestSheet: View {
         }
         .buttonBorderShape(.capsule)
         .tcGlassButton(prominent: prominent)
+        // The spinner has no words: the button keeps its name and says what it is doing.
+        .accessibilityLabel(title)
+        .accessibilityValue(busy ? (checkingPress ? "Checking" : "Sending") : "")
         .accessibilityIdentifier(identifier)
     }
 
     // MARK: - the press
 
-    /// His Send: exactly the ticked receipts as drawn, frozen now; nothing reaches the host for five seconds, so Undo
-    /// is a true undo, and nothing sends it sooner.
+    /// His Send: exactly the ticked receipts as drawn, frozen now; the link and the owner's check (`PressGates`), then
+    /// nothing reaches the host for five seconds, so Undo is a true undo, and nothing sends it sooner.
     private func press() {
-        guard phase == .choosing, let request, let press = RequestSheetModel.freeze(drawn(request), ticks: ticks, environmentId: client.environment.id) else { return }
+        // One still out (this launch's, or one the record kept): no second press until it is read back.
+        guard !client.work.presses.busy(host: client.environment.id, ref: PendingPress.requestRef(requestId)) else { return }
+        guard phase == .choosing, !checking, let request, var press = RequestSheetModel.freeze(drawn(request), ticks: ticks, environmentId: client.environment.id) else { return }
+        // Frozen before the owner's check: the host and the key he presses under.
+        press.hostName = client.environment.name
+        press.key = PressGates.key(client.environment, revoked: client.work.keyRevoked)
         pressError = nil
+        checking = true
         let work = client.work
-        wait.start(press) { press in try await work.answer(press.requestId, receipts: press.receipts) }
-        AccessibilityNotification.Announcement("\(press.waitingLine). Undo for five seconds.").post()
+        Task {
+            defer { checking = false }
+            if let line = await PressGates.shared.pass(client, .outboxDecide, ref: PendingPress.requestRef(press.requestId), rev: press.rev, reason: press.head.isEmpty ? press.word : press.head) {
+                pressError = line
+                return
+            }
+            guard phase == .choosing else { return }
+            wait.start(press, check: RequestPresses.check) { press in try await work.answer(press.requestId, receipts: press.receipts, key: press.key) }
+            RequestPresses.watch()
+            AccessibilityNotification.Announcement("\(press.waitingLine). Undo for five seconds.").post()
+        }
     }
 
     private func decline() async {
@@ -284,8 +386,11 @@ private struct RequestRowView: View {
     let toggle: () -> Void
     let opened: (OutboxRequestRow) -> Void
     @ScaledMetric(relativeTo: .body) private var tickSize: CGFloat = 22
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
+        // At accessibility sizes the receipt and its result read whole (who it goes to, why it did not), as Today's rows.
+        let large = typeSize.isAccessibilitySize
         let words = RequestSheetModel.rowWords(row, closed: closed)
         let result = RequestSheetModel.resultWords(row)
         HStack(alignment: .center, spacing: Layout.rowGap) {
@@ -303,11 +408,11 @@ private struct RequestRowView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(words.title)
                         .textStep(.title)
-                        .lineLimit(1)
+                        .lineLimit(large ? 3 : 1)
                     if let text = result == nil ? words.line : RequestSheetModel.settledLine(row) {
                         Text(text)
-                            .textStep(.meta, tint: result?.ok == false ? Tint.destructiveText : nil)
-                            .lineLimit(2)
+                            .textStep(.meta, tint: Self.failed(result) ? Tint.destructiveText : nil)
+                            .lineLimit(large ? 5 : 2)
                             .contentTransition(.opacity)
                     }
                 }
@@ -322,6 +427,11 @@ private struct RequestRowView: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// Not sent, in the failure's ink and dot; "May have gone" is not a failure and reads in the meta ink.
+    private static func failed(_ result: (ok: Bool, text: String)?) -> Bool {
+        result?.ok == false && result?.text != RequestSheetModel.mayHaveGone
+    }
+
     @ViewBuilder
     private func mark(_ result: (ok: Bool, text: String)?) -> some View {
         Group {
@@ -329,8 +439,10 @@ private struct RequestRowView: View {
             case .sending:
                 ProgressView().controlSize(.small)
             case .done:
-                if result?.ok == false {
+                if Self.failed(result) {
                     Circle().fill(Tint.destructive).frame(width: Layout.dotSize, height: Layout.dotSize)
+                } else if result?.ok == false {
+                    Image(systemName: "questionmark.circle").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                 } else {
                     Image(systemName: "checkmark").font(.footnote.weight(.semibold)).foregroundStyle(.secondary)
                 }
@@ -366,7 +478,8 @@ private struct RequestRowDetail: View {
                         Text(OutboxModel.title(item))
                             .font(.title3.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
-                        if let effect = OutboxModel.effectLine(item) {
+                        // One line: a timed send's time, else the host's sentence.
+                        if let effect = OutboxModel.scheduledLine(item) ?? OutboxModel.effectLine(item) {
                             Text(effect).font(.subheadline).foregroundStyle(Color(.label)).fixedSize(horizontal: false, vertical: true)
                         }
                         if row.changed {
@@ -492,7 +605,7 @@ struct OutboxRequestInline: View {
         .padding(.horizontal, inTable ? TranscriptMetrics.tableInset : 0)
         // Not among the open ones: read it once, so the line can say how it ended (approve keys alone).
         .task(id: open == nil) {
-            guard open == nil, read == nil, target.work.canApprove else { return }
+            guard open == nil, read == nil, target.work.may(.outboxRequestGet) else { return }
             read = try? await target.work.request(id)
         }
         .accessibilityIdentifier("outbox-request-card")

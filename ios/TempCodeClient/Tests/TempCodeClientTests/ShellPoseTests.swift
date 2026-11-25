@@ -67,6 +67,30 @@ import Testing
         #expect(ShellPose.keepsVisibilityWrite(pose: tiled, sincePoseChange: 0.5))
         #expect(ShellPose.keepsVisibilityWrite(pose: .split(sidebar: .overlay), sincePoseChange: 12))
     }
+
+    @Test("a split left hiding what the shell shows is asked to read again, in a split only") func aStraySplitIsAskedAgain() {
+        // The Work tab built in the overlay pose wrote `.detailOnly`, dropped; the shell shows its sidebar.
+        #expect(ShellPose.splitStrays(pose: .split(sidebar: .overlay), splitShows: false, shows: true))
+        #expect(!ShellPose.splitStrays(pose: .split(sidebar: .overlay), splitShows: true, shows: true))
+        // A stack has no column to show; a split that wrote nothing has nothing to undo.
+        #expect(!ShellPose.splitStrays(pose: .stack(short: false), splitShows: false, shows: true))
+        #expect(!ShellPose.splitStrays(pose: .split(sidebar: .tiled), splitShows: nil, shows: true))
+    }
+
+    @Test("a held write applies only if the pose holds after it") func aHeldWriteAppliesOnlyIfThePoseHolds() {
+        let tiled = ShellPose.split(sidebar: .tiled)
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let write = HeldVisibilityWrite(shown: false, pose: tiled, at: t0)
+        #expect(write.due == t0.addingTimeInterval(ShellPose.foldSettle))
+        // His press: the pose last changed long before it and holds after it.
+        #expect(write.applies(pose: tiled, poseChangedAt: t0.addingTimeInterval(-30)))
+        // The fold race: the split writes `.detailOnly` 30 ms before the root sees the stack.
+        #expect(!write.applies(pose: .stack(short: false), poseChangedAt: t0.addingTimeInterval(0.03)))
+        // Folded and back inside the hold: the pose matches again, but it changed after the write.
+        #expect(!write.applies(pose: tiled, poseChangedAt: t0.addingTimeInterval(0.2)))
+        // Tiled to overlay (turned) inside the hold.
+        #expect(!write.applies(pose: .split(sidebar: .overlay), poseChangedAt: t0.addingTimeInterval(0.1)))
+    }
 }
 
 @Suite struct SidebarColumnTests {

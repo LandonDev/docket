@@ -1,0 +1,2536 @@
+{
+  "tz": "America/Chicago",
+  "opts": {
+    "home": "env-box"
+  },
+  "calendar": {
+    "at": 1795118520000,
+    "named": 1794808800000
+  },
+  "days": [
+    1794927600000,
+    1795118400000,
+    1794499200000,
+    1795417200000
+  ],
+  "name": "back-kept-closed",
+  "now": 1795446000000,
+  "parts": [
+    {
+      "environmentId": "env-box",
+      "body": {
+        "host": "box",
+        "from": 1794808800000,
+        "to": 1795413600000,
+        "tz": "America/Chicago",
+        "madeAt": 1795446000000,
+        "by": "routine",
+        "over": true,
+        "jobs": [
+          {
+            "workspaceId": "w-cosmic",
+            "sector": "cosmic",
+            "name": "Cosmic"
+          },
+          {
+            "workspaceId": "w-hypixel",
+            "sector": "hypixel",
+            "name": "Hypixel"
+          },
+          {
+            "workspaceId": "w-purdue",
+            "sector": "purdue",
+            "name": "Purdue"
+          },
+          {
+            "workspaceId": "w-unify",
+            "sector": "unify",
+            "name": "Unify"
+          },
+          {
+            "workspaceId": "w-side",
+            "sector": null,
+            "name": "Side work"
+          }
+        ],
+        "lifeos": {
+          "events": [
+            {
+              "id": "e1",
+              "sector": "cosmic",
+              "title": "Patch planning",
+              "startsAt": 1794841200000,
+              "endsAt": 1794844800000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Riley Okafor"
+              ],
+              "others": 1,
+              "addresses": [
+                "riley.okafor@example.com"
+              ]
+            },
+            {
+              "id": "e2",
+              "sector": "cosmic",
+              "title": "Economy review",
+              "startsAt": 1795014000000,
+              "endsAt": 1795019400000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Riley Okafor",
+                "Mina Farrow"
+              ],
+              "others": 2,
+              "addresses": [
+                "riley.okafor@example.com",
+                "mina.farrow@example.com"
+              ]
+            },
+            {
+              "id": "e3",
+              "sector": "cosmic",
+              "title": "Dev sync",
+              "startsAt": 1795015800000,
+              "endsAt": 1795019400000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Riley Okafor"
+              ],
+              "others": 1,
+              "addresses": [
+                "riley.okafor@example.com"
+              ]
+            },
+            {
+              "id": "e4",
+              "sector": "purdue",
+              "title": "Staff meeting",
+              "startsAt": 1794855600000,
+              "endsAt": 1794859200000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Dana Reyes",
+                "Sam Park",
+                "Ivy Chen"
+              ],
+              "others": 6,
+              "addresses": [
+                "dana.reyes@example.com",
+                "sam.park@example.com",
+                "ivy.chen@example.com"
+              ]
+            },
+            {
+              "id": "e5",
+              "sector": "purdue",
+              "title": "Budget review",
+              "startsAt": 1795118400000,
+              "endsAt": 1795123800000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Dana Reyes",
+                "Sam Park"
+              ],
+              "others": 4,
+              "addresses": [
+                "dana.reyes@example.com",
+                "sam.park@example.com"
+              ]
+            },
+            {
+              "id": "e6",
+              "sector": "ref",
+              "title": "Varsity doubleheader",
+              "startsAt": 1794956400000,
+              "endsAt": 1794969000000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Assigner"
+              ],
+              "others": 1,
+              "addresses": [
+                "assigner@example.com"
+              ]
+            },
+            {
+              "id": "e7",
+              "sector": "life",
+              "title": "Holiday",
+              "startsAt": 1795068000000,
+              "endsAt": 1795154400000,
+              "allDay": true,
+              "declined": false,
+              "hidden": false,
+              "people": [],
+              "others": 0,
+              "addresses": []
+            },
+            {
+              "id": "e8",
+              "sector": "hypixel",
+              "title": "Thumbnail call",
+              "startsAt": 1795035600000,
+              "endsAt": 1795039200000,
+              "allDay": false,
+              "declined": true,
+              "hidden": false,
+              "people": [
+                "Sam Lindqvist"
+              ],
+              "others": 1,
+              "addresses": [
+                "sam.lindqvist@example.com"
+              ]
+            },
+            {
+              "id": "e9",
+              "sector": "life",
+              "title": "Dentist",
+              "startsAt": 1795212000000,
+              "endsAt": 1795215600000,
+              "allDay": false,
+              "declined": false,
+              "hidden": true,
+              "people": [],
+              "others": 0,
+              "addresses": []
+            },
+            {
+              "id": "e10",
+              "sector": "unify",
+              "title": "Open-ended",
+              "startsAt": 1794924000000,
+              "endsAt": null,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [],
+              "others": 0,
+              "addresses": []
+            }
+          ],
+          "sent": [
+            {
+              "id": "m1",
+              "threadId": "t-m1",
+              "subject": "Season 12 patch notes",
+              "to": [
+                "Riley Okafor"
+              ],
+              "addresses": [
+                "riley.okafor@example.com"
+              ],
+              "at": 1794848400000,
+              "sector": "cosmic"
+            },
+            {
+              "id": "m2",
+              "threadId": "t-m2",
+              "subject": "Crate odds for the wiki",
+              "to": [
+                "Riley Okafor"
+              ],
+              "addresses": [
+                "riley.okafor@example.com"
+              ],
+              "at": 1794938400000,
+              "sector": "cosmic"
+            },
+            {
+              "id": "m3",
+              "threadId": "t-m3",
+              "subject": "Store pricing for the weekend",
+              "to": [
+                "Riley Okafor",
+                "Mina Farrow"
+              ],
+              "addresses": [
+                "riley.okafor@example.com",
+                "mina.farrow@example.com"
+              ],
+              "at": 1795107600000,
+              "sector": "cosmic"
+            },
+            {
+              "id": "m4",
+              "threadId": "t-m4",
+              "subject": "Spring travel roster",
+              "to": [
+                "Dana Reyes",
+                "Sam Park",
+                "Ivy Chen"
+              ],
+              "addresses": [
+                "dana.reyes@example.com",
+                "sam.park@example.com",
+                "ivy.chen@example.com"
+              ],
+              "at": 1795194000000,
+              "sector": "purdue"
+            },
+            {
+              "id": "m5",
+              "threadId": "t-m5",
+              "subject": "Thumbnail notes for episode 40",
+              "to": [
+                "Sam Lindqvist"
+              ],
+              "addresses": [
+                "sam.lindqvist@example.com"
+              ],
+              "at": 1795021200000,
+              "sector": "hypixel"
+            }
+          ],
+          "done": [
+            {
+              "id": "k1",
+              "title": "Fix the crate drop rates",
+              "at": 1795035600000,
+              "sector": "cosmic"
+            },
+            {
+              "id": "k2",
+              "title": "Order the new jerseys",
+              "at": 1794862800000,
+              "sector": "purdue"
+            },
+            {
+              "id": "k3",
+              "title": "Renew the car registration",
+              "at": 1794938400000,
+              "sector": "life"
+            }
+          ],
+          "answered": [
+            {
+              "threadId": "t-a1",
+              "subject": "Dev server budget",
+              "by": "Riley Okafor",
+              "at": 1794945600000,
+              "sector": "cosmic"
+            }
+          ],
+          "answeredSince": 1792216800000
+        },
+        "points": [
+          [
+            1794845700000,
+            0,
+            "said"
+          ],
+          [
+            1794846420000,
+            0,
+            "said"
+          ],
+          [
+            1794847140000,
+            0,
+            "said"
+          ],
+          [
+            1794847860000,
+            0,
+            "said"
+          ],
+          [
+            1794848580000,
+            0,
+            "said"
+          ],
+          [
+            1794849300000,
+            0,
+            "said"
+          ],
+          [
+            1794850020000,
+            0,
+            "said"
+          ],
+          [
+            1794850740000,
+            0,
+            "said"
+          ],
+          [
+            1794851460000,
+            0,
+            "said"
+          ],
+          [
+            1794852180000,
+            0,
+            "said"
+          ],
+          [
+            1794852900000,
+            0,
+            "said"
+          ],
+          [
+            1794853620000,
+            0,
+            "said"
+          ],
+          [
+            1794854340000,
+            0,
+            "said"
+          ],
+          [
+            1795012200000,
+            0,
+            "said"
+          ],
+          [
+            1795012920000,
+            0,
+            "said"
+          ],
+          [
+            1795013640000,
+            0,
+            "said"
+          ],
+          [
+            1795014360000,
+            0,
+            "said"
+          ],
+          [
+            1795015080000,
+            0,
+            "said"
+          ],
+          [
+            1795015800000,
+            0,
+            "said"
+          ],
+          [
+            1795016520000,
+            0,
+            "said"
+          ],
+          [
+            1795017240000,
+            0,
+            "said"
+          ],
+          [
+            1795017960000,
+            0,
+            "said"
+          ],
+          [
+            1795018680000,
+            0,
+            "said"
+          ],
+          [
+            1795019400000,
+            0,
+            "said"
+          ],
+          [
+            1795020120000,
+            0,
+            "said"
+          ],
+          [
+            1795136400000,
+            0,
+            "edited"
+          ],
+          [
+            1795137120000,
+            0,
+            "edited"
+          ],
+          [
+            1795137840000,
+            0,
+            "edited"
+          ],
+          [
+            1795138560000,
+            0,
+            "edited"
+          ],
+          [
+            1795139280000,
+            0,
+            "edited"
+          ],
+          [
+            1795140000000,
+            0,
+            "edited"
+          ],
+          [
+            1795140720000,
+            0,
+            "edited"
+          ],
+          [
+            1795141440000,
+            0,
+            "edited"
+          ],
+          [
+            1794943800000,
+            1,
+            "said"
+          ],
+          [
+            1794944520000,
+            1,
+            "said"
+          ],
+          [
+            1794945240000,
+            1,
+            "said"
+          ],
+          [
+            1794945960000,
+            1,
+            "said"
+          ],
+          [
+            1794946680000,
+            1,
+            "said"
+          ],
+          [
+            1794947400000,
+            1,
+            "said"
+          ],
+          [
+            1794948120000,
+            1,
+            "said"
+          ],
+          [
+            1794948840000,
+            1,
+            "said"
+          ],
+          [
+            1794949560000,
+            1,
+            "said"
+          ],
+          [
+            1794950280000,
+            1,
+            "said"
+          ],
+          [
+            1794951000000,
+            1,
+            "said"
+          ],
+          [
+            1794951720000,
+            1,
+            "said"
+          ],
+          [
+            1794952440000,
+            1,
+            "said"
+          ],
+          [
+            1794860100000,
+            2,
+            "said"
+          ],
+          [
+            1794860820000,
+            2,
+            "said"
+          ],
+          [
+            1794861540000,
+            2,
+            "said"
+          ],
+          [
+            1794862260000,
+            2,
+            "said"
+          ],
+          [
+            1794862980000,
+            2,
+            "said"
+          ],
+          [
+            1794863700000,
+            2,
+            "said"
+          ],
+          [
+            1794864420000,
+            2,
+            "said"
+          ],
+          [
+            1794865140000,
+            2,
+            "said"
+          ],
+          [
+            1794865860000,
+            2,
+            "said"
+          ],
+          [
+            1794866580000,
+            2,
+            "said"
+          ],
+          [
+            1794867300000,
+            2,
+            "said"
+          ],
+          [
+            1794868020000,
+            2,
+            "said"
+          ],
+          [
+            1794868740000,
+            2,
+            "said"
+          ],
+          [
+            1795036500000,
+            2,
+            "pressed"
+          ],
+          [
+            1795037220000,
+            2,
+            "pressed"
+          ],
+          [
+            1795037940000,
+            2,
+            "pressed"
+          ],
+          [
+            1795201200000,
+            2,
+            "said"
+          ],
+          [
+            1795201920000,
+            2,
+            "said"
+          ],
+          [
+            1795202640000,
+            2,
+            "said"
+          ],
+          [
+            1795203360000,
+            2,
+            "said"
+          ],
+          [
+            1795204080000,
+            2,
+            "said"
+          ],
+          [
+            1795204800000,
+            2,
+            "said"
+          ],
+          [
+            1795205520000,
+            2,
+            "said"
+          ],
+          [
+            1795206240000,
+            2,
+            "said"
+          ],
+          [
+            1795206960000,
+            2,
+            "said"
+          ],
+          [
+            1795207680000,
+            2,
+            "said"
+          ],
+          [
+            1795208400000,
+            2,
+            "said"
+          ],
+          [
+            1795209120000,
+            2,
+            "said"
+          ],
+          [
+            1794967200000,
+            4,
+            "said"
+          ],
+          [
+            1794967920000,
+            4,
+            "said"
+          ],
+          [
+            1794968640000,
+            4,
+            "said"
+          ],
+          [
+            1794969360000,
+            4,
+            "said"
+          ],
+          [
+            1794970080000,
+            4,
+            "said"
+          ],
+          [
+            1794970800000,
+            4,
+            "said"
+          ]
+        ],
+        "ran": [
+          [
+            0,
+            112200000
+          ],
+          [
+            2,
+            24000000
+          ],
+          [
+            1,
+            40000
+          ]
+        ],
+        "slipped": {
+          "at": 1795212000000,
+          "rows": [
+            {
+              "key": "task:s1",
+              "ref": {
+                "kind": "task",
+                "id": "s1",
+                "dueAt": 1794927600000
+              },
+              "sector": "hypixel",
+              "workspaceId": null,
+              "title": "Send the thumbnail drafts",
+              "at": 1794927600000,
+              "people": [],
+              "others": 0,
+              "open": false
+            },
+            {
+              "key": "mail:tw1:1794499200000",
+              "ref": {
+                "kind": "mail",
+                "threadId": "tw1",
+                "since": 1794499200000
+              },
+              "sector": "hypixel",
+              "workspaceId": null,
+              "title": "Winter video schedule",
+              "at": 1794499200000,
+              "people": [
+                "Sam Lindqvist"
+              ],
+              "others": 1,
+              "open": true
+            },
+            {
+              "key": "meeting:e5",
+              "ref": {
+                "kind": "meeting",
+                "eventId": "e5"
+              },
+              "sector": "purdue",
+              "workspaceId": null,
+              "title": "Budget review",
+              "at": 1795118400000,
+              "people": [
+                "Dana Reyes",
+                "Sam Park"
+              ],
+              "others": 4,
+              "open": true
+            },
+            {
+              "key": "task:s2",
+              "ref": {
+                "kind": "task",
+                "id": "s2",
+                "dueAt": 1795014000000
+              },
+              "sector": "purdue",
+              "workspaceId": null,
+              "title": "File the travel reimbursements",
+              "at": 1795014000000,
+              "people": [],
+              "others": 0,
+              "open": false
+            },
+            {
+              "key": "task:s3",
+              "ref": {
+                "kind": "task",
+                "id": "s3",
+                "dueAt": 1794063600000
+              },
+              "sector": "purdue",
+              "workspaceId": null,
+              "title": "Renew the arena booking",
+              "at": 1794063600000,
+              "people": [],
+              "others": 0,
+              "open": true
+            },
+            {
+              "key": "held:host:h1",
+              "ref": {
+                "kind": "held",
+                "ref": {
+                  "at": "host",
+                  "id": "h1"
+                }
+              },
+              "sector": "purdue",
+              "workspaceId": "w-purdue",
+              "title": "Reply to the facilities office",
+              "at": 1794931200000,
+              "people": [],
+              "others": 0,
+              "open": true
+            }
+          ]
+        },
+        "shipped": [
+          {
+            "key": "held:host:h7",
+            "kind": "approved",
+            "sector": "purdue",
+            "workspaceId": "w-purdue",
+            "title": "Post the bracket to #esports",
+            "who": null,
+            "at": 1795125600000,
+            "open": {
+              "at": "held",
+              "ref": {
+                "at": "host",
+                "id": "h7"
+              }
+            }
+          }
+        ],
+        "before": {
+          "from": 1794204000000,
+          "to": 1794808800000,
+          "lifeos": {
+            "events": [
+              {
+                "sector": "cosmic",
+                "from": 1794234600000,
+                "to": 1794240000000
+              },
+              {
+                "sector": "purdue",
+                "from": 1794250800000,
+                "to": 1794254400000
+              },
+              {
+                "sector": "purdue",
+                "from": 1794513600000,
+                "to": 1794528000000
+              },
+              {
+                "sector": "ref",
+                "from": 1794351600000,
+                "to": 1794364200000
+              }
+            ],
+            "sent": []
+          },
+          "points": [
+            [
+              1794322800000,
+              3,
+              "said"
+            ],
+            [
+              1794323520000,
+              3,
+              "said"
+            ],
+            [
+              1794324240000,
+              3,
+              "said"
+            ],
+            [
+              1794324960000,
+              3,
+              "said"
+            ],
+            [
+              1794325680000,
+              3,
+              "said"
+            ],
+            [
+              1794326400000,
+              3,
+              "said"
+            ],
+            [
+              1794327120000,
+              3,
+              "said"
+            ],
+            [
+              1794327840000,
+              3,
+              "said"
+            ],
+            [
+              1794328560000,
+              3,
+              "said"
+            ],
+            [
+              1794329280000,
+              3,
+              "said"
+            ],
+            [
+              1794330000000,
+              3,
+              "said"
+            ],
+            [
+              1794330720000,
+              3,
+              "said"
+            ],
+            [
+              1794331440000,
+              3,
+              "said"
+            ],
+            [
+              1794332160000,
+              3,
+              "said"
+            ],
+            [
+              1794332880000,
+              3,
+              "said"
+            ],
+            [
+              1794333600000,
+              3,
+              "said"
+            ],
+            [
+              1794596400000,
+              3,
+              "said"
+            ],
+            [
+              1794597120000,
+              3,
+              "said"
+            ],
+            [
+              1794597840000,
+              3,
+              "said"
+            ],
+            [
+              1794598560000,
+              3,
+              "said"
+            ],
+            [
+              1794599280000,
+              3,
+              "said"
+            ],
+            [
+              1794600000000,
+              3,
+              "said"
+            ],
+            [
+              1794600720000,
+              3,
+              "said"
+            ],
+            [
+              1794601440000,
+              3,
+              "said"
+            ],
+            [
+              1794602160000,
+              3,
+              "said"
+            ],
+            [
+              1794602880000,
+              3,
+              "said"
+            ],
+            [
+              1794603600000,
+              3,
+              "said"
+            ],
+            [
+              1794604320000,
+              3,
+              "said"
+            ],
+            [
+              1794605040000,
+              3,
+              "said"
+            ],
+            [
+              1794605760000,
+              3,
+              "said"
+            ],
+            [
+              1794606480000,
+              3,
+              "said"
+            ],
+            [
+              1794607200000,
+              3,
+              "said"
+            ],
+            [
+              1794240000000,
+              0,
+              "said"
+            ],
+            [
+              1794240720000,
+              0,
+              "said"
+            ],
+            [
+              1794241440000,
+              0,
+              "said"
+            ],
+            [
+              1794242160000,
+              0,
+              "said"
+            ],
+            [
+              1794242880000,
+              0,
+              "said"
+            ],
+            [
+              1794243600000,
+              0,
+              "said"
+            ],
+            [
+              1794244320000,
+              0,
+              "said"
+            ],
+            [
+              1794245040000,
+              0,
+              "said"
+            ],
+            [
+              1794245760000,
+              0,
+              "said"
+            ],
+            [
+              1794246480000,
+              0,
+              "said"
+            ],
+            [
+              1794247200000,
+              0,
+              "said"
+            ],
+            [
+              1794247920000,
+              0,
+              "said"
+            ],
+            [
+              1794248640000,
+              0,
+              "said"
+            ],
+            [
+              1794249360000,
+              0,
+              "said"
+            ],
+            [
+              1794250080000,
+              0,
+              "said"
+            ],
+            [
+              1794250800000,
+              0,
+              "said"
+            ],
+            [
+              1794340800000,
+              1,
+              "said"
+            ],
+            [
+              1794341520000,
+              1,
+              "said"
+            ],
+            [
+              1794342240000,
+              1,
+              "said"
+            ],
+            [
+              1794342960000,
+              1,
+              "said"
+            ],
+            [
+              1794343680000,
+              1,
+              "said"
+            ],
+            [
+              1794344400000,
+              1,
+              "said"
+            ],
+            [
+              1794345120000,
+              1,
+              "said"
+            ],
+            [
+              1794345840000,
+              1,
+              "said"
+            ],
+            [
+              1794346560000,
+              1,
+              "said"
+            ],
+            [
+              1794347280000,
+              1,
+              "said"
+            ],
+            [
+              1794348000000,
+              1,
+              "said"
+            ],
+            [
+              1794348720000,
+              1,
+              "said"
+            ],
+            [
+              1794349440000,
+              1,
+              "said"
+            ],
+            [
+              1794254400000,
+              2,
+              "said"
+            ],
+            [
+              1794255120000,
+              2,
+              "said"
+            ],
+            [
+              1794255840000,
+              2,
+              "said"
+            ],
+            [
+              1794256560000,
+              2,
+              "said"
+            ],
+            [
+              1794257280000,
+              2,
+              "said"
+            ],
+            [
+              1794258000000,
+              2,
+              "said"
+            ],
+            [
+              1794258720000,
+              2,
+              "said"
+            ],
+            [
+              1794259440000,
+              2,
+              "said"
+            ],
+            [
+              1794260160000,
+              2,
+              "said"
+            ],
+            [
+              1794260880000,
+              2,
+              "said"
+            ],
+            [
+              1794261600000,
+              2,
+              "said"
+            ],
+            [
+              1794262320000,
+              2,
+              "said"
+            ],
+            [
+              1794263040000,
+              2,
+              "said"
+            ],
+            [
+              1794263760000,
+              2,
+              "said"
+            ],
+            [
+              1794264480000,
+              2,
+              "said"
+            ],
+            [
+              1794265200000,
+              2,
+              "said"
+            ],
+            [
+              1794427200000,
+              2,
+              "said"
+            ],
+            [
+              1794427920000,
+              2,
+              "said"
+            ],
+            [
+              1794428640000,
+              2,
+              "said"
+            ],
+            [
+              1794429360000,
+              2,
+              "said"
+            ],
+            [
+              1794430080000,
+              2,
+              "said"
+            ],
+            [
+              1794430800000,
+              2,
+              "said"
+            ],
+            [
+              1794431520000,
+              2,
+              "said"
+            ],
+            [
+              1794432240000,
+              2,
+              "said"
+            ],
+            [
+              1794432960000,
+              2,
+              "said"
+            ],
+            [
+              1794433680000,
+              2,
+              "said"
+            ],
+            [
+              1794434400000,
+              2,
+              "said"
+            ],
+            [
+              1794435120000,
+              2,
+              "said"
+            ],
+            [
+              1794435840000,
+              2,
+              "said"
+            ],
+            [
+              1794436560000,
+              2,
+              "said"
+            ],
+            [
+              1794437280000,
+              2,
+              "said"
+            ],
+            [
+              1794438000000,
+              2,
+              "said"
+            ]
+          ]
+        },
+        "left": []
+      }
+    },
+    {
+      "environmentId": "env-mac",
+      "body": {
+        "host": "mac",
+        "from": 1794808800000,
+        "to": 1795413600000,
+        "tz": "America/Chicago",
+        "madeAt": 1795446000000,
+        "by": "owner",
+        "over": true,
+        "jobs": [
+          {
+            "workspaceId": "m-cosmic",
+            "sector": "cosmic",
+            "name": "Cosmic"
+          }
+        ],
+        "lifeos": {
+          "events": [
+            {
+              "id": "e1",
+              "sector": "cosmic",
+              "title": "Patch planning",
+              "startsAt": 1794841200000,
+              "endsAt": 1794844800000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Riley Okafor"
+              ],
+              "others": 1,
+              "addresses": [
+                "riley.okafor@example.com"
+              ]
+            },
+            {
+              "id": "e2",
+              "sector": "cosmic",
+              "title": "Economy review",
+              "startsAt": 1795014000000,
+              "endsAt": 1795019400000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Riley Okafor",
+                "Mina Farrow"
+              ],
+              "others": 2,
+              "addresses": [
+                "riley.okafor@example.com",
+                "mina.farrow@example.com"
+              ]
+            },
+            {
+              "id": "e3",
+              "sector": "cosmic",
+              "title": "Dev sync",
+              "startsAt": 1795015800000,
+              "endsAt": 1795019400000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Riley Okafor"
+              ],
+              "others": 1,
+              "addresses": [
+                "riley.okafor@example.com"
+              ]
+            },
+            {
+              "id": "e4",
+              "sector": "purdue",
+              "title": "Staff meeting",
+              "startsAt": 1794855600000,
+              "endsAt": 1794859200000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Dana Reyes",
+                "Sam Park",
+                "Ivy Chen"
+              ],
+              "others": 6,
+              "addresses": [
+                "dana.reyes@example.com",
+                "sam.park@example.com",
+                "ivy.chen@example.com"
+              ]
+            },
+            {
+              "id": "e5",
+              "sector": "purdue",
+              "title": "Budget review",
+              "startsAt": 1795118400000,
+              "endsAt": 1795123800000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Dana Reyes",
+                "Sam Park"
+              ],
+              "others": 4,
+              "addresses": [
+                "dana.reyes@example.com",
+                "sam.park@example.com"
+              ]
+            },
+            {
+              "id": "e6",
+              "sector": "ref",
+              "title": "Varsity doubleheader",
+              "startsAt": 1794956400000,
+              "endsAt": 1794969000000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Assigner"
+              ],
+              "others": 1,
+              "addresses": [
+                "assigner@example.com"
+              ]
+            },
+            {
+              "id": "e7",
+              "sector": "life",
+              "title": "Holiday",
+              "startsAt": 1795068000000,
+              "endsAt": 1795154400000,
+              "allDay": true,
+              "declined": false,
+              "hidden": false,
+              "people": [],
+              "others": 0,
+              "addresses": []
+            },
+            {
+              "id": "e8",
+              "sector": "hypixel",
+              "title": "Thumbnail call",
+              "startsAt": 1795035600000,
+              "endsAt": 1795039200000,
+              "allDay": false,
+              "declined": true,
+              "hidden": false,
+              "people": [
+                "Sam Lindqvist"
+              ],
+              "others": 1,
+              "addresses": [
+                "sam.lindqvist@example.com"
+              ]
+            },
+            {
+              "id": "e9",
+              "sector": "life",
+              "title": "Dentist",
+              "startsAt": 1795212000000,
+              "endsAt": 1795215600000,
+              "allDay": false,
+              "declined": false,
+              "hidden": true,
+              "people": [],
+              "others": 0,
+              "addresses": []
+            },
+            {
+              "id": "e10",
+              "sector": "unify",
+              "title": "Open-ended",
+              "startsAt": 1794924000000,
+              "endsAt": null,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [],
+              "others": 0,
+              "addresses": []
+            }
+          ],
+          "sent": [
+            {
+              "id": "m1",
+              "threadId": "t-m1",
+              "subject": "Season 12 patch notes",
+              "to": [
+                "Riley Okafor"
+              ],
+              "addresses": [
+                "riley.okafor@example.com"
+              ],
+              "at": 1794848400000,
+              "sector": "cosmic"
+            },
+            {
+              "id": "m2",
+              "threadId": "t-m2",
+              "subject": "Crate odds for the wiki",
+              "to": [
+                "Riley Okafor"
+              ],
+              "addresses": [
+                "riley.okafor@example.com"
+              ],
+              "at": 1794938400000,
+              "sector": "cosmic"
+            },
+            {
+              "id": "m3",
+              "threadId": "t-m3",
+              "subject": "Store pricing for the weekend",
+              "to": [
+                "Riley Okafor",
+                "Mina Farrow"
+              ],
+              "addresses": [
+                "riley.okafor@example.com",
+                "mina.farrow@example.com"
+              ],
+              "at": 1795107600000,
+              "sector": "cosmic"
+            },
+            {
+              "id": "m4",
+              "threadId": "t-m4",
+              "subject": "Spring travel roster",
+              "to": [
+                "Dana Reyes",
+                "Sam Park",
+                "Ivy Chen"
+              ],
+              "addresses": [
+                "dana.reyes@example.com",
+                "sam.park@example.com",
+                "ivy.chen@example.com"
+              ],
+              "at": 1795194000000,
+              "sector": "purdue"
+            },
+            {
+              "id": "m5",
+              "threadId": "t-m5",
+              "subject": "Thumbnail notes for episode 40",
+              "to": [
+                "Sam Lindqvist"
+              ],
+              "addresses": [
+                "sam.lindqvist@example.com"
+              ],
+              "at": 1795021200000,
+              "sector": "hypixel"
+            }
+          ],
+          "done": [
+            {
+              "id": "k1",
+              "title": "Fix the crate drop rates",
+              "at": 1795035600000,
+              "sector": "cosmic"
+            },
+            {
+              "id": "k2",
+              "title": "Order the new jerseys",
+              "at": 1794862800000,
+              "sector": "purdue"
+            },
+            {
+              "id": "k3",
+              "title": "Renew the car registration",
+              "at": 1794938400000,
+              "sector": "life"
+            }
+          ],
+          "answered": [
+            {
+              "threadId": "t-a1",
+              "subject": "Dev server budget",
+              "by": "Riley Okafor",
+              "at": 1794945600000,
+              "sector": "cosmic"
+            }
+          ],
+          "answeredSince": 1792216800000
+        },
+        "points": [
+          [
+            1795201200000,
+            0,
+            "said"
+          ],
+          [
+            1795201920000,
+            0,
+            "said"
+          ],
+          [
+            1795202640000,
+            0,
+            "said"
+          ],
+          [
+            1795203360000,
+            0,
+            "said"
+          ],
+          [
+            1795204080000,
+            0,
+            "said"
+          ],
+          [
+            1795204800000,
+            0,
+            "said"
+          ],
+          [
+            1795205520000,
+            0,
+            "said"
+          ],
+          [
+            1795206240000,
+            0,
+            "said"
+          ]
+        ],
+        "ran": [
+          [
+            0,
+            10800000
+          ]
+        ],
+        "slipped": {
+          "at": 1795446000000,
+          "rows": [
+            {
+              "key": "held:host:h1",
+              "ref": {
+                "kind": "held",
+                "ref": {
+                  "at": "host",
+                  "id": "h1"
+                }
+              },
+              "sector": "cosmic",
+              "workspaceId": "m-cosmic",
+              "title": "Post the patch notes",
+              "at": 1795014000000,
+              "people": [],
+              "others": 0,
+              "open": true
+            }
+          ]
+        },
+        "shipped": [],
+        "before": null,
+        "left": [],
+        "prepped": [
+          "e5"
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "merged": {
+      "from": 1794808800000,
+      "to": 1795413600000,
+      "tz": "America/Chicago",
+      "madeAt": 1795446000000,
+      "by": "routine",
+      "over": true,
+      "jobs": [
+        {
+          "key": "cosmic",
+          "sector": "cosmic",
+          "name": "Cosmic",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-cosmic"
+            },
+            {
+              "environmentId": "env-mac",
+              "workspaceId": "m-cosmic"
+            }
+          ]
+        },
+        {
+          "key": "hypixel",
+          "sector": "hypixel",
+          "name": "Hypixel",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-hypixel"
+            }
+          ]
+        },
+        {
+          "key": "purdue",
+          "sector": "purdue",
+          "name": "Purdue",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-purdue"
+            }
+          ]
+        },
+        {
+          "key": "unify",
+          "sector": "unify",
+          "name": "Unify",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-unify"
+            }
+          ]
+        },
+        {
+          "key": "~box:w-side",
+          "sector": null,
+          "name": "Side work",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-side"
+            }
+          ]
+        },
+        {
+          "key": "ref",
+          "sector": "ref",
+          "name": "ref",
+          "at": []
+        },
+        {
+          "key": "life",
+          "sector": "life",
+          "name": "life",
+          "at": []
+        }
+      ],
+      "hours": [
+        {
+          "job": "cosmic",
+          "calendarMs": 9000000,
+          "deskMs": 17700000,
+          "ranMs": 123000000,
+          "events": 3,
+          "stands": {
+            "said": 33,
+            "sent": 3,
+            "pressed": 0,
+            "edited": 8
+          }
+        },
+        {
+          "job": "hypixel",
+          "calendarMs": 0,
+          "deskMs": 10020000,
+          "ranMs": 40000,
+          "events": 0,
+          "stands": {
+            "said": 13,
+            "sent": 1,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "purdue",
+          "calendarMs": 9000000,
+          "deskMs": 19200000,
+          "ranMs": 24000000,
+          "events": 2,
+          "stands": {
+            "said": 25,
+            "sent": 1,
+            "pressed": 3,
+            "edited": 0
+          }
+        },
+        {
+          "job": "unify",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "~box:w-side",
+          "calendarMs": 0,
+          "deskMs": 1800000,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 6,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "ref",
+          "calendarMs": 12600000,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 1,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "life",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        }
+      ],
+      "compare": [
+        {
+          "job": "cosmic",
+          "words": "up from about 4 hr 30 min"
+        },
+        {
+          "job": "purdue",
+          "words": "down from about 11 hr"
+        },
+        {
+          "job": "unify",
+          "words": "about 6 hr 15 min the week before"
+        }
+      ],
+      "shipped": [
+        {
+          "key": "sent:m4",
+          "kind": "sent",
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "Spring travel roster",
+          "who": "Dana Reyes and 2 others",
+          "at": 1795194000000,
+          "open": {
+            "at": "mail",
+            "threadId": "t-m4"
+          },
+          "job": "purdue",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "env-box:held:host:h7",
+          "kind": "approved",
+          "sector": "purdue",
+          "workspaceId": "w-purdue",
+          "title": "Post the bracket to #esports",
+          "who": null,
+          "at": 1795125600000,
+          "open": {
+            "at": "held",
+            "ref": {
+              "at": "host",
+              "id": "h7"
+            }
+          },
+          "job": "purdue",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "sent:m3",
+          "kind": "sent",
+          "sector": "cosmic",
+          "workspaceId": null,
+          "title": "Store pricing for the weekend",
+          "who": "Riley Okafor and Mina Farrow",
+          "at": 1795107600000,
+          "open": {
+            "at": "mail",
+            "threadId": "t-m3"
+          },
+          "job": "cosmic",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "done:k1",
+          "kind": "finished",
+          "sector": "cosmic",
+          "workspaceId": null,
+          "title": "Fix the crate drop rates",
+          "who": null,
+          "at": 1795035600000,
+          "open": {
+            "at": "task",
+            "id": "k1"
+          },
+          "job": "cosmic",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "sent:m5",
+          "kind": "sent",
+          "sector": "hypixel",
+          "workspaceId": null,
+          "title": "Thumbnail notes for episode 40",
+          "who": "Sam Lindqvist",
+          "at": 1795021200000,
+          "open": {
+            "at": "mail",
+            "threadId": "t-m5"
+          },
+          "job": "hypixel",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "answered:t-a1:1794945600000",
+          "kind": "answered",
+          "sector": "cosmic",
+          "workspaceId": null,
+          "title": "Dev server budget",
+          "who": "Riley Okafor",
+          "at": 1794945600000,
+          "open": {
+            "at": "mail",
+            "threadId": "t-a1"
+          },
+          "job": "cosmic",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "sent:m2",
+          "kind": "sent",
+          "sector": "cosmic",
+          "workspaceId": null,
+          "title": "Crate odds for the wiki",
+          "who": "Riley Okafor",
+          "at": 1794938400000,
+          "open": {
+            "at": "mail",
+            "threadId": "t-m2"
+          },
+          "job": "cosmic",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "done:k3",
+          "kind": "finished",
+          "sector": "life",
+          "workspaceId": null,
+          "title": "Renew the car registration",
+          "who": null,
+          "at": 1794938400000,
+          "open": {
+            "at": "task",
+            "id": "k3"
+          },
+          "job": "life",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "done:k2",
+          "kind": "finished",
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "Order the new jerseys",
+          "who": null,
+          "at": 1794862800000,
+          "open": {
+            "at": "task",
+            "id": "k2"
+          },
+          "job": "purdue",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "sent:m1",
+          "kind": "sent",
+          "sector": "cosmic",
+          "workspaceId": null,
+          "title": "Season 12 patch notes",
+          "who": "Riley Okafor",
+          "at": 1794848400000,
+          "open": {
+            "at": "mail",
+            "threadId": "t-m1"
+          },
+          "job": "cosmic",
+          "environmentId": "env-box"
+        }
+      ],
+      "slipped": [
+        {
+          "key": "meeting:e5",
+          "ref": {
+            "kind": "meeting",
+            "eventId": "e5"
+          },
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "Budget review",
+          "at": 1795118400000,
+          "people": [
+            "Dana Reyes",
+            "Sam Park"
+          ],
+          "others": 4,
+          "open": false,
+          "job": "purdue",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "task:s2",
+          "ref": {
+            "kind": "task",
+            "id": "s2",
+            "dueAt": 1795014000000
+          },
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "File the travel reimbursements",
+          "at": 1795014000000,
+          "people": [],
+          "others": 0,
+          "open": false,
+          "job": "purdue",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "env-mac:held:host:h1",
+          "ref": {
+            "kind": "held",
+            "ref": {
+              "at": "host",
+              "id": "h1"
+            }
+          },
+          "sector": "cosmic",
+          "workspaceId": "m-cosmic",
+          "title": "Post the patch notes",
+          "at": 1795014000000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "cosmic",
+          "environmentId": "env-mac"
+        },
+        {
+          "key": "env-box:held:host:h1",
+          "ref": {
+            "kind": "held",
+            "ref": {
+              "at": "host",
+              "id": "h1"
+            }
+          },
+          "sector": "purdue",
+          "workspaceId": "w-purdue",
+          "title": "Reply to the facilities office",
+          "at": 1794931200000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "purdue",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "task:s1",
+          "ref": {
+            "kind": "task",
+            "id": "s1",
+            "dueAt": 1794927600000
+          },
+          "sector": "hypixel",
+          "workspaceId": null,
+          "title": "Send the thumbnail drafts",
+          "at": 1794927600000,
+          "people": [],
+          "others": 0,
+          "open": false,
+          "job": "hypixel",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "mail:tw1:1794499200000",
+          "ref": {
+            "kind": "mail",
+            "threadId": "tw1",
+            "since": 1794499200000
+          },
+          "sector": "hypixel",
+          "workspaceId": null,
+          "title": "Winter video schedule",
+          "at": 1794499200000,
+          "people": [
+            "Sam Lindqvist"
+          ],
+          "others": 1,
+          "open": true,
+          "job": "hypixel",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "task:s3",
+          "ref": {
+            "kind": "task",
+            "id": "s3",
+            "dueAt": 1794063600000
+          },
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "Renew the arena booking",
+          "at": 1794063600000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "purdue",
+          "environmentId": "env-box"
+        }
+      ],
+      "slippedAt": 1795212000000,
+      "answersKept": true,
+      "lifeosFrom": "env-box",
+      "left": [],
+      "known": {
+        "calendar": true,
+        "calendarCounted": true,
+        "desk": true,
+        "shipped": true,
+        "slipped": true
+      }
+    },
+    "calendar": {
+      "weekOf": {
+        "from": 1794808800000,
+        "to": 1795413600000
+      },
+      "hours": 168,
+      "prev": {
+        "from": 1794204000000,
+        "to": 1794808800000
+      },
+      "next": {
+        "from": 1795413600000,
+        "to": 1796018400000
+      },
+      "named": {
+        "from": 1794808800000,
+        "to": 1795413600000
+      },
+      "isWeek": true,
+      "isNotWeek": false,
+      "dayStart": 1795068000000,
+      "dayAfter": 1795154400000,
+      "dayBefore": 1794981600000,
+      "localDay": "2026-11-19",
+      "knownZone": true
+    },
+    "lengths": [],
+    "words": {
+      "week": "Week of Nov 16",
+      "made": "Made Fri 4:00 PM",
+      "nothing": "Nothing seen",
+      "hostOff": "The Mac is off. Its threads and held items are not counted.",
+      "days": [
+        "Tue",
+        "Thu",
+        "Nov 12",
+        "Nov 23"
+      ],
+      "jobs": [
+        {
+          "job": "cosmic",
+          "total": "about 7 hr 30 min",
+          "stands": "33 messages, 3 mails sent, 8 document edits",
+          "facts": {
+            "calendar": "2 hr 30 min",
+            "calendarDetail": "3 events",
+            "desk": "about 5 hr",
+            "deskDetail": "33 messages, 3 mails sent, 8 document edits",
+            "ran": "34 hr 10 min"
+          },
+          "compare": "up from about 4 hr 30 min",
+          "lead": [
+            "env-mac:held:host:h1"
+          ],
+          "older": []
+        },
+        {
+          "job": "hypixel",
+          "total": "about 2 hr 45 min",
+          "stands": "13 messages, 1 mail sent",
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": "about 2 hr 45 min",
+            "deskDetail": "13 messages, 1 mail sent",
+            "ran": null
+          },
+          "compare": null,
+          "lead": [
+            "task:s1",
+            "mail:tw1:1794499200000"
+          ],
+          "older": []
+        },
+        {
+          "job": "purdue",
+          "total": "about 7 hr 45 min",
+          "stands": "25 messages, 1 mail sent, 3 held items decided",
+          "facts": {
+            "calendar": "2 hr 30 min",
+            "calendarDetail": "2 events",
+            "desk": "about 5 hr 15 min",
+            "deskDetail": "25 messages, 1 mail sent, 3 held items decided",
+            "ran": "6 hr 40 min"
+          },
+          "compare": "down from about 11 hr",
+          "lead": [
+            "meeting:e5",
+            "task:s2",
+            "env-box:held:host:h1"
+          ],
+          "older": [
+            "task:s3"
+          ]
+        },
+        {
+          "job": "unify",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": "about 6 hr 15 min the week before",
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "~box:w-side",
+          "total": "about 30 min",
+          "stands": "6 messages",
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": "about 30 min",
+            "deskDetail": "6 messages",
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "ref",
+          "total": "3 hr 30 min",
+          "stands": null,
+          "facts": {
+            "calendar": "3 hr 30 min",
+            "calendarDetail": "1 event",
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "life",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        }
+      ],
+      "shipped": [
+        {
+          "key": "sent:m4",
+          "lead": "Sent ",
+          "title": "Spring travel roster",
+          "tail": " to Dana Reyes and 2 others"
+        },
+        {
+          "key": "env-box:held:host:h7",
+          "lead": "Approved ",
+          "title": "Post the bracket to #esports",
+          "tail": ""
+        },
+        {
+          "key": "sent:m3",
+          "lead": "Sent ",
+          "title": "Store pricing for the weekend",
+          "tail": " to Riley Okafor and Mina Farrow"
+        },
+        {
+          "key": "done:k1",
+          "lead": "Finished ",
+          "title": "Fix the crate drop rates",
+          "tail": ""
+        },
+        {
+          "key": "sent:m5",
+          "lead": "Sent ",
+          "title": "Thumbnail notes for episode 40",
+          "tail": " to Sam Lindqvist"
+        },
+        {
+          "key": "answered:t-a1:1794945600000",
+          "lead": "Riley Okafor answered ",
+          "title": "Dev server budget",
+          "tail": ""
+        },
+        {
+          "key": "sent:m2",
+          "lead": "Sent ",
+          "title": "Crate odds for the wiki",
+          "tail": " to Riley Okafor"
+        },
+        {
+          "key": "done:k3",
+          "lead": "Finished ",
+          "title": "Renew the car registration",
+          "tail": ""
+        },
+        {
+          "key": "done:k2",
+          "lead": "Finished ",
+          "title": "Order the new jerseys",
+          "tail": ""
+        },
+        {
+          "key": "sent:m1",
+          "lead": "Sent ",
+          "title": "Season 12 patch notes",
+          "tail": " to Riley Okafor"
+        }
+      ],
+      "slipped": [
+        {
+          "key": "meeting:e5",
+          "detail": "Thu 2:00 PM with Dana Reyes and 3 others, nothing sent after",
+          "settle": [
+            "Follow up",
+            "Next week",
+            "None needed"
+          ],
+          "settled": [
+            "",
+            "Put off to next week",
+            "Marked as needing nothing"
+          ]
+        },
+        {
+          "key": "task:s2",
+          "detail": "due Wed",
+          "settle": [
+            "Done",
+            "Next week",
+            "Drop"
+          ],
+          "settled": [
+            "Marked done",
+            "Moved to next week",
+            "Dropped"
+          ]
+        },
+        {
+          "key": "env-mac:held:host:h1",
+          "detail": "held since Wed",
+          "settle": [
+            "Open",
+            "Next week",
+            "Discard"
+          ],
+          "settled": [
+            "",
+            "Put off to next week",
+            "Discarded"
+          ]
+        },
+        {
+          "key": "env-box:held:host:h1",
+          "detail": "held since Tue",
+          "settle": [
+            "Open",
+            "Next week",
+            "Discard"
+          ],
+          "settled": [
+            "",
+            "Put off to next week",
+            "Discarded"
+          ]
+        },
+        {
+          "key": "task:s1",
+          "detail": "due Tue",
+          "settle": [
+            "Done",
+            "Next week",
+            "Drop"
+          ],
+          "settled": [
+            "Marked done",
+            "Moved to next week",
+            "Dropped"
+          ]
+        },
+        {
+          "key": "mail:tw1:1794499200000",
+          "detail": "sent Nov 12 to Sam Lindqvist",
+          "settle": [
+            "Nudge",
+            "Next week",
+            "Stop waiting"
+          ],
+          "settled": [
+            "Drafting a nudge",
+            "Put off to next week",
+            "Stopped waiting"
+          ]
+        },
+        {
+          "key": "task:s3",
+          "detail": "due Nov 7",
+          "settle": [
+            "Done",
+            "Next week",
+            "Drop"
+          ],
+          "settled": [
+            "Marked done",
+            "Moved to next week",
+            "Dropped"
+          ]
+        }
+      ]
+    }
+  }
+}

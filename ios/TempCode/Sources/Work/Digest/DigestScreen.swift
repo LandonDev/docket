@@ -5,42 +5,19 @@ import TempCodeContract
 /// Every host with Work on, as the digest's rules read them.
 @MainActor
 enum DigestHosts {
+    /// A host whose key was refused is not among them: no load, no seen call and no "did not answer" line for it.
     static func of(_ clients: [EnvironmentClient]) -> [EnvironmentClient] {
-        clients.filter(\.work.isOn)
+        clients.filter { $0.work.isOn && !$0.work.keyRevoked }
     }
 
     static func inputs(_ clients: [EnvironmentClient]) -> [DigestModel.HostInput] {
         of(clients).map { client in
-            DigestModel.HostInput(environmentId: client.environment.id, name: client.environment.name, ledger: client.work.digest.ledger, error: client.work.digest.error)
+            // What the phone kept of a host stands in, read-only, until it answers; never under a key it refused.
+            DigestModel.HostInput(
+                environmentId: client.environment.id, name: client.environment.name, ledger: client.work.digest.ledger, error: client.work.digest.error,
+                kept: client.work.keyRevoked ? nil : client.work.digest.kept
+            )
         }
-    }
-}
-
-/// Home's Digest row, after the Outbox while any host has Work on. No count:
-/// the day's notice says how many, and the list is the record.
-struct DigestHomeRow: View {
-    @Environment(ShellNavigator.self) private var navigator
-    @ScaledMetric(relativeTo: .subheadline) private var icon: CGFloat = 28
-
-    var body: some View {
-        Button { navigator.open(.digest) } label: {
-            HStack(spacing: Layout.rowGap + 2) {
-                Image(systemName: DigestScreen.glyph)
-                    .font(TextStep.title.font.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: icon, height: icon)
-                Text("Digest")
-                    .textStep(.title, weight: .medium)
-                Spacer(minLength: 8)
-            }
-            .padding(.vertical, 8)
-            .frame(minHeight: Layout.rowHeight + 8)
-            .contentShape(Rectangle())
-            .separatorAtTextEdge(icon + Layout.rowGap + 2)
-        }
-        .buttonStyle(.pressable)
-        .listRowInsets(Layout.rowInsets)
-        .accessibilityIdentifier("home-digest")
     }
 }
 
@@ -61,6 +38,8 @@ struct DigestScreen: View {
         let screen = DigestModel.screen(DigestHosts.inputs(model.registry.ordered))
         let now = Date.now
         let sections = DigestModel.sections(screen.entries, days: screen.days, now: now)
+        // A host whose key was refused is read for nothing, but named: one muted line each, as Today names it.
+        let refused = model.registry.ordered.filter { $0.work.isOn && $0.work.keyRevoked }.map(\.environment.name)
         List {
             if sections.isEmpty && screen.reading {
                 DigestSkeleton()
@@ -75,7 +54,7 @@ struct DigestScreen: View {
                         .listRowInsets(EdgeInsets())
                 }
             }
-            if !screen.silent.isEmpty {
+            if !screen.silent.isEmpty || !refused.isEmpty {
                 Section {
                     ForEach(screen.silent, id: \.self) { name in
                         Text(DigestModel.silentLine(name))
@@ -84,12 +63,19 @@ struct DigestScreen: View {
                             .listRowSeparator(.hidden)
                             .accessibilityIdentifier("digest-host-silent")
                     }
+                    ForEach(refused, id: \.self) { name in
+                        Text(WorkHost.refusedLine(name))
+                            .textStep(.meta)
+                            .listRowInsets(Layout.rowInsets)
+                            .listRowSeparator(.hidden)
+                            .accessibilityIdentifier("digest-host-refused")
+                    }
                 }
             }
         }
         .listStyle(.plain)
         .overlay {
-            if sections.isEmpty && !screen.reading && screen.silent.isEmpty {
+            if sections.isEmpty && !screen.reading && screen.silent.isEmpty && refused.isEmpty {
                 // One line: the title says since when, and nothing is said twice under it.
                 ContentUnavailableView(DigestModel.emptyLine(now: now), systemImage: Self.glyph)
             }
@@ -98,11 +84,13 @@ struct DigestScreen: View {
         // The first open reads every host, and a host whose Work turns on while the list is open is read then; from
         // then on the pushes keep each ledger.
         .task(id: hosts.map(\.environment.id)) { await load(hosts.filter { $0.work.digest.ledger == nil }) }
-        // What he has on screen is seen: at the open, and for a day made while he looks.
-        .task(id: screen.days.filter { $0.seenAt == nil }.map(\.day)) { await markSeen(screen.days) }
+        // What he has on screen is seen: at the open, and for a day made while he looks. A day drawn from what the
+        // phone kept is marked only once its host answers on this link.
+        .task(id: screen.days.filter { $0.seenAt == nil }.map(\.day) + live(hosts).sorted()) { await markSeen(screen.days, live: live(hosts)) }
         .navigationTitle("Digest")
         .shellTitleDisplay()
         .listOnScreen(Self.listId)
+        .clashSheet()
         .accessibilityIdentifier("digest")
     }
 
@@ -113,8 +101,13 @@ struct DigestScreen: View {
         for read in reads { await read.value }
     }
 
-    private func markSeen(_ days: [DigestModel.Day]) async {
-        for call in DigestModel.seenCalls(days) {
+    /// The hosts that answered on this link.
+    private func live(_ hosts: [EnvironmentClient]) -> Set<String> {
+        Set(hosts.filter { $0.work.digest.ledger != nil }.map(\.environment.id))
+    }
+
+    private func markSeen(_ days: [DigestModel.Day], live: Set<String>) async {
+        for call in DigestModel.seenCalls(days, live: live) {
             await model.registry.client(call.environmentId)?.work.digest.seen(call.day)
         }
     }
@@ -125,6 +118,7 @@ struct DigestScreen: View {
 /// route for is a button; one it has none for is not.
 private struct DigestRow: View {
     @Environment(ShellNavigator.self) private var navigator
+    @Environment(\.shellPose) private var pose
     let entry: DigestModel.Entry
     /// The day key of the heading the row sits under: a time told that day needs no day of its own.
     let day: String
@@ -135,8 +129,17 @@ private struct DigestRow: View {
     private var spoken: String { DigestModel.spoken(row, when: DigestModel.when(row, now: now, day: day)) }
 
     var body: some View {
-        if let route = DigestModel.route(row.open, environmentId: entry.environmentId) {
-            Button { navigator.open(route) } label: { content }
+        if let route = DigestModel.route(row.open, environmentId: entry.environmentId, key: row.key) {
+            Button {
+                // A clash is a sheet on a phone and the detail on the open Duo.
+                if case .clash(let environmentId, let clashId) = route {
+                    ClashOpen.open(environmentId: environmentId, clashId: clashId, pose: pose, navigator: navigator)
+                } else {
+                    // The review's tell names its week by its first moment: Review opens on it.
+                    if let week = DigestModel.reviewWeek(row.open) { ReviewFeed.store.show(named: week) }
+                    navigator.open(route)
+                }
+            } label: { content }
                 .buttonStyle(.pressable)
                 .listRowInsets(Layout.rowInsets)
                 .accessibilityElement(children: .combine)

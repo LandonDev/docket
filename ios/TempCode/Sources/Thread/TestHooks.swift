@@ -65,6 +65,9 @@ enum TestHooks {
     /// `stop-step` (a master's running step), `set-master` (toggles the pin; an admin key),
     /// `draft:<text>` (types the text into the composer and focuses it, sending nothing, so a
     /// fold shot proves the draft and the keyboard survive).
+    /// On the Outbox (OutboxScreen.swift): `outbox-select` turns Select on with the first three rows that take a
+    /// tick ticked, two seconds after the list has rows; `outbox-summary` does the same and opens the summary sheet
+    /// on a phone (on the open Duo the summary is the detail already). Neither presses Send.
     static let action = env["TC_TEST_ACTION"].flatMap { $0.isEmpty ? nil : $0 }
     /// `new-chat-held`: how long the draft's create is held before it goes out.
     static let draftHoldSeconds = 15.0
@@ -107,6 +110,8 @@ enum TestHooks {
     /// The Files proof (with `TC_TEST_WORK_VIEW=files`): a walk from the Files screen by names, a place first
     /// ("Dummy Esports/Budgets/Plan.pdf"), each folder pushed and a last file opened.
     static let files = env["TC_TEST_FILES"].flatMap { $0.isEmpty ? nil : $0 }
+    /// The Files proof: words typed into the Files place's own search field once it shows (`TC_TEST_FILES_QUERY`).
+    static let filesQuery = env["TC_TEST_FILES_QUERY"].flatMap { $0.isEmpty ? nil : $0 }
     /// The reader's set (`TC_TEST_ROUTE=reader`): `TC_TEST_ACTION=reader-page:<n>` takes the open PDF or deck to
     /// that page two seconds after it shows, as a swipe would; `reader-tap` is the tap that hides the bars.
     static let readerPage = action.flatMap { $0.hasPrefix("reader-page:") ? Int($0.dropFirst("reader-page:".count)) : nil }
@@ -117,6 +122,13 @@ enum TestHooks {
     /// Save to TempCode's sheet over Home, in one state (`ShareProofSheet`): `one`, `several`, `saving`, `saved`,
     /// `waiting`, `refused`, `earlier`, `empty`, or `save` for a real save into the first Work workspace's folder.
     static let share = env["TC_TEST_SHARE"].flatMap { $0.isEmpty ? nil : $0 }
+    /// The Work fold cycle: a place's list (`placeTop`, WorkPlaceScreen.swift) scrolled once it lands so its row at
+    /// this index is the top row, as a settled scroll would leave it.
+    static let placeTop = env["TC_TEST_PLACE_TOP"].flatMap(Int.init)
+    /// The Work fold cycle: a chip of this name in a Work thread's box, as an `@` pick would put it.
+    static let chip = env["TC_TEST_CHIP"].flatMap { $0.isEmpty ? nil : $0 }
+    /// The proof parts m2 to m5: the Work workspace a `place` or `work-view` route narrows to, by a part of its name.
+    static let job = env["TC_TEST_JOB"].flatMap { $0.isEmpty ? nil : $0 }
     #else
     static let segment: ThreadSegment? = nil
     static let open: String? = nil
@@ -140,10 +152,14 @@ enum TestHooks {
     static let workView: String? = nil
     static let item: String? = nil
     static let files: String? = nil
+    static let filesQuery: String? = nil
     static let readerPage: Int? = nil
     static let readerTap = false
     static let clicker: String? = nil
     static let share: String? = nil
+    static let placeTop: Int? = nil
+    static let chip: String? = nil
+    static let job: String? = nil
     #endif
     /// True once per key: a hook that several rows read fires on the first.
     static func once(_ key: String) -> Bool {
@@ -292,6 +308,25 @@ enum TestHooks {
         #if DEBUG
         guard streamDrag else { return }
         writeReport("drag-hold", fields)
+        #endif
+    }
+
+    /// Outbox 2's `request-send` run: the request sheet has its rows (Documents/request-sheet.json, its ticked
+    /// count), so the proof's looks start on the sheet and never on the relaunch's empty launch screen.
+    static func recordRequestLoaded(ticked: Int) {
+        #if DEBUG
+        guard action == "request-send" else { return }
+        writeReport("request-sheet", ["ticked": ticked])
+        #endif
+    }
+
+    /// A Work place's list has its first answer (`WorkPlaceScreen`): Documents/place-<place>.json holds its row count and
+    /// whether the read failed, rewritten as either changes. The proof's ready file for a place shot, and the count
+    /// scripts/lib/work_place_check.py holds. Written under a proof's launch route alone.
+    static func recordPlaceLoaded(_ place: String, rows: Int, failed: Bool) {
+        #if DEBUG
+        guard env["TC_TEST_ROUTE"] != nil else { return }
+        writeReport("place-\(place)", ["rows": rows, "failed": failed ? 1 : 0])
         #endif
     }
 

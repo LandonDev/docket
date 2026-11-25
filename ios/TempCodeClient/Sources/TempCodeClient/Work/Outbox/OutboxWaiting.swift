@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import TempCodeContract
 
 /// Waiting's order and the words its rows, notes and the request sheet say on the phone: the desktop's
@@ -139,13 +140,16 @@ public extension OutboxModel {
     nonisolated static func aheadTime(_ ms: Int, now: Date = .now, calendar: Calendar = .current) -> String {
         let date = Date(timeIntervalSince1970: Double(ms) / 1000)
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date)).day ?? 0
-        var clock = Date.FormatStyle(date: .omitted, time: .shortened)
+        // The calendar's locale where it names one (on the phone, `.current`'s is the phone's own), so the words
+        // never hang on the machine's settings.
+        let locale = calendar.locale ?? .current
+        var clock = Date.FormatStyle(date: .omitted, time: .shortened, locale: locale)
         clock.timeZone = calendar.timeZone
         // The clock's narrow space before AM reads as a plain one, as the desktop's clockTime writes it.
         let time = date.formatted(clock).replacingOccurrences(of: "\u{202F}", with: " ")
         if days == 0 { return time }
-        var style = Date.FormatStyle().month(.abbreviated).day()
-        if days > 0, days < 7 { style = Date.FormatStyle().weekday(.abbreviated) }
+        var style = Date.FormatStyle(locale: locale).month(.abbreviated).day()
+        if days > 0, days < 7 { style = Date.FormatStyle(locale: locale).weekday(.abbreviated) }
         style.timeZone = calendar.timeZone
         return days > 0 && days < 7 ? "\(date.formatted(style)) \(time)" : "\(date.formatted(style)), \(time)"
     }
@@ -173,10 +177,17 @@ public extension OutboxModel {
         public var id: String { kind.rawValue }
     }
 
+    /// A failed send the host could not confirm: "May have gone", its reason, and what to check first.
+    nonisolated static func mayHaveGoneLine(_ item: OutboxItem) -> String {
+        let line = failureLine(item)
+        return line.hasPrefix("It may have gone") ? line : "May have gone. \(line)"
+    }
+
     /// The notes that apply, in the desktop's order and words (HeldDetail's `changedLine` and `repliedLine`).
     nonisolated static func notes(_ item: OutboxItem, held: (Int) -> String) -> [Note] {
         var out: [Note] = []
-        if item.state == .failed { out.append(Note(kind: .failed, text: "Not sent. \(failureLine(item))")) }
+        // One that may have gone says so, with its Check Sent First line: never "Not sent" over it.
+        if item.state == .failed { out.append(Note(kind: .failed, text: item.outcomeUnknown == true ? mayHaveGoneLine(item) : "Not sent. \(failureLine(item))")) }
         if item.state == .stale {
             let why = item.error?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             out.append(Note(kind: .stale, text: "Out of date. \(why.isEmpty ? "It changed after it was made." : why)"))
@@ -218,10 +229,16 @@ public extension OutboxModel {
         rowWords(item).title
     }
 
-    /// The sentence the item screen draws under the title: the host's `effect` as it stands. It says only what the
-    /// fields under it do not, and a timed send's says "at the time you set" beside its "Scheduled for …" line.
+    /// A timed send's one line: "Scheduled for Wed 8:00 AM". Nil for an item no time holds.
+    nonisolated static func scheduledLine(_ item: OutboxItem, now: Date = .now, calendar: Calendar = .current) -> String? {
+        isScheduled(item) ? "Scheduled for \(aheadTime(scheduledAt(item), now: now, calendar: calendar))" : nil
+    }
+
+    /// The sentence the item screen draws under the title: the host's `effect` as it stands, saying only what the
+    /// fields under it do not. None for a timed send: its "Scheduled for …" line is its one line, and its From says
+    /// as whom (an older host's "as soon as you press" under a time would say the opposite).
     nonisolated static func effectLine(_ item: OutboxItem) -> String? {
-        guard let effect = item.effect?.trimmingCharacters(in: .whitespacesAndNewlines), !effect.isEmpty else { return nil }
+        guard !isScheduled(item), let effect = item.effect?.trimmingCharacters(in: .whitespacesAndNewlines), !effect.isEmpty else { return nil }
         return effect
     }
 
@@ -272,9 +289,11 @@ public extension OutboxModel {
         var order: [String] = []
         var groups: [String: (noun: (one: String, many: String, verb: String), verbs: Set<String>, items: [OutboxItem])] = [:]
         for item in items {
-            let noun = nouns[item.kind] ?? ("item", "items", "Run")
-            var key = item.kind == .mailSend || item.kind == .officeMailSend ? "mail" : item.kind.rawValue
-            if item.kind == .addonCall {
+            // An add-on's call that names its people is a mail as he reads it: one count with the held mails.
+            let mailLike = item.kind == .mailSend || item.kind == .officeMailSend || item.kind == .addonCall && !headRecipients(item).isEmpty
+            let noun = nouns[mailLike ? .mailSend : item.kind] ?? ("item", "items", "Run")
+            var key = mailLike ? "mail" : item.kind.rawValue
+            if item.kind == .addonCall, !mailLike {
                 let o: [String: JSONValue] = if case .object(let o)? = item.payload { o } else { [:] }
                 let word = { (v: JSONValue?) -> String in if case .string(let w)? = v { w } else { "undefined" } }
                 key = "addon:\(word(o["addonId"])):\(word(o["tool"]))"
@@ -290,9 +309,8 @@ public extension OutboxModel {
                 let o: [String: JSONValue] = if case .object(let o)? = g.items[0].payload { o } else { [:] }
                 let words: String = if case .string(let w)? = o["words"] { w } else if case .string(let t)? = o["tool"] { t } else { "Run" }
                 let addon: String = if case .string(let a)? = o["addon"] { " with \(a)" } else { "" }
-                // One that names its people says who it reaches, never how many times.
-                let people = Set(g.items.flatMap(headRecipients)).count
-                let part = "\(words)\(addon)\(people > 0 ? " to \(peopleWords(people))" : n > 1 ? ", \(n) times" : "")"
+                // One that names its people is counted with the mails.
+                let part = "\(words)\(addon)\(n > 1 ? ", \(n) times" : "")"
                 return i > 0 ? lowerFirst(part) : part
             }
             let verb = key.hasPrefix("addon:") ? g.noun.verb : g.verbs.count == 1 ? g.verbs.first! : g.noun.verb
@@ -443,9 +461,14 @@ public enum RequestSheetModel {
         }
     }
 
+    /// A row whose send the host could not confirm.
+    public nonisolated static var mayHaveGone: String { PressState.mayHaveGone.line ?? "May have gone" }
+
     /// A row's result once his press landed: done with its word, or not, with the reason.
     public nonisolated static func resultWords(_ row: OutboxRequestRow) -> (ok: Bool, text: String)? {
         guard let result = row.result else { return nil }
+        // The host could not confirm it (`unknown`): May have gone, never "not sent".
+        if result.unknown == true { return (false, mayHaveGone) }
         guard result.ok else { return (false, result.error ?? "Not sent") }
         switch row.do {
         case .discard: return (true, "Discarded")
@@ -463,11 +486,12 @@ public enum RequestSheetModel {
         guard !settled.isEmpty else { return nil }
         let queued = settled.filter { $0.ok && $0.text == "Queued in LifeOS" }.count
         let done = settled.filter(\.ok).count - queued
-        let failed = settled.count - done - queued
+        let unsure = settled.filter { !$0.ok && $0.text == mayHaveGone }.count
+        let failed = settled.count - done - queued - unsure
         let left = request.state == .answered ? request.rows.filter { $0.result == nil && $0.item != nil }.count : 0
         let actions = Set(request.rows.filter { $0.result != nil }.map(\.do.rawValue))
         let (yes, no) = actions == ["discard"] ? ("Discarded", "not discarded") : actions == ["later"] ? ("Scheduled", "not scheduled") : ("Sent", "not sent")
-        let line = [done > 0 ? "\(yes) \(done)" : nil, queued > 0 ? "queued \(queued) in LifeOS" : nil, failed > 0 ? "\(failed) \(no)" : nil, left > 0 ? "\(left) left out" : nil].compactMap { $0 }.joined(separator: ", ")
+        let line = [done > 0 ? "\(yes) \(done)" : nil, queued > 0 ? "queued \(queued) in LifeOS" : nil, unsure > 0 ? "\(unsure) may have gone" : nil, failed > 0 ? "\(failed) \(no)" : nil, left > 0 ? "\(left) left out" : nil].compactMap { $0 }.joined(separator: ", ")
         return line.prefix(1).uppercased() + line.dropFirst()
     }
 
@@ -491,7 +515,7 @@ public enum RequestSheetModel {
 }
 
 /// His Send on a request's sheet, frozen at the press: the host, the request, exactly the receipts he had ticked,
-/// and the words the wait shows.
+/// the key he pressed under, and the words the wait shows.
 public struct RequestPress: Sendable, Hashable {
     public var environmentId: String
     public var requestId: String
@@ -502,15 +526,24 @@ public struct RequestPress: Sendable, Hashable {
     public var lines: [String]
     /// What the ticked rows do, as the sheet's head said it at the press ("Send 2 mails to 2 people").
     public var head: String
+    /// The host's name, for the line that says why a press did not go.
+    public var hostName: String
+    /// The key he pressed under (`PressGates.key`), frozen before the owner's check; nil: not yet frozen.
+    public var key: String?
 
-    public init(environmentId: String, requestId: String, receipts: [String], word: String, lines: [String], head: String = "") {
+    public init(environmentId: String, requestId: String, receipts: [String], word: String, lines: [String], head: String = "", hostName: String = "", key: String? = nil) {
         self.environmentId = environmentId
         self.requestId = requestId
         self.receipts = receipts
         self.word = word
         self.lines = lines
         self.head = head
+        self.hostName = hostName
+        self.key = key
     }
+
+    /// The ledger's revision for this press: exactly the receipts he sent.
+    public var rev: String { receipts.sorted().joined(separator: ",") }
 
     /// The capsule's line while it waits: the head in the progressive ("Sending 2 mails to 2 people"), or for a press
     /// whose actions mix, "Approving 3".
@@ -527,15 +560,21 @@ public struct RequestPress: Sendable, Hashable {
     }
 }
 
-/// The phone's five seconds for a request's Send (Outbox 2, the review's finding 3): the press is frozen when it
-/// starts, the host hears nothing until the seconds end, Undo drops it, and nothing sends it early: the sheet
-/// closing or the app leaving the screen leaves it to wait out its own time. One press at a time per request; its
-/// answer, or why it failed, is kept by request id for the sheet that shows it (open now or opened later).
+/// The phone's five seconds for a request's Send, on the Outbox's own rules (plan "Send waits its whole five
+/// seconds"): the press is frozen when it starts, the host hears nothing until the seconds end, Undo drops it, and
+/// nothing sends it early. The app leaving the screen, or the link to its host dropping, cancels it and says so; when
+/// the seconds end the link and the key (the very key he pressed under) are checked again. The press goes through
+/// the phone's record of presses (`WorkHost.answer`): an answer that does not come is Checking, never "Not sent", and
+/// the request is read back on the next link (`heard`). One press at a time per request; its answer, or why it did
+/// not go, is kept by request id for the sheet that shows it (open now or opened later).
 @MainActor @Observable
 public final class RequestPressWait {
     public enum Outcome: Sendable, Hashable {
         case answered(OutboxRequest)
+        /// It did not go, or the host refused it: the whole line ("Not sent: TempCode left the screen").
         case failed(String)
+        /// It went and no answer came: read back on the next link, never sent again from here.
+        case checking
     }
 
     /// The presses waiting their seconds, by request id.
@@ -553,17 +592,24 @@ public final class RequestPressWait {
         self.sleep = sleep ?? { try await Task.sleep(for: .seconds(seconds)) }
     }
 
-    /// Starts the wait for a frozen press. When it ends (and only then) `answer` runs with exactly its receipts.
-    /// A second press on the same request while one waits is ignored.
-    public func start(_ press: RequestPress, answer: @escaping @MainActor (RequestPress) async throws -> OutboxRequest) {
-        guard pending[press.requestId] == nil, !sending.contains(press.requestId) else { return }
+    /// The hosts a press waits on: the app hears their links and keys while any waits.
+    public var waitingHosts: Set<String> { Set(pending.values.map(\.environmentId)) }
+
+    /// Starts the wait for a frozen press. When it ends (and only then) `check` says whether it may still go (nil:
+    /// yes), and `answer` runs with exactly its receipts. A second press on the same request while one waits is ignored.
+    public func start(
+        _ press: RequestPress,
+        check: @escaping @MainActor (RequestPress) -> SendWait<RequestPress>.Why?,
+        answer: @escaping @MainActor (RequestPress) async throws -> OutboxRequest
+    ) {
+        guard pending[press.requestId] == nil, !sending.contains(press.requestId), outcomes[press.requestId] != .checking else { return }
         outcomes[press.requestId] = nil
         pending[press.requestId] = press
         let sleep = self.sleep
         waits[press.requestId] = Task { [weak self] in
             do { try await sleep() } catch { return }
             guard !Task.isCancelled else { return }
-            await self?.commit(press, answer: answer)
+            await self?.commit(press, check: check, answer: answer)
         }
     }
 
@@ -573,21 +619,91 @@ public final class RequestPressWait {
         pending[requestId] = nil
     }
 
-    /// The sheet took in an outcome: it is not offered again.
-    public func clear(_ requestId: String) {
-        outcomes[requestId] = nil
+    /// TempCode left the screen: every press still waiting goes back, and says so.
+    public func leftScreen() {
+        cancel(.leftScreen) { _ in true }
     }
 
-    private func commit(_ press: RequestPress, answer: @MainActor (RequestPress) async throws -> OutboxRequest) async {
+    /// The link to one host dropped: its waiting presses go back.
+    public func linkLost(host: String) {
+        cancel(.linkLost) { $0.environmentId == host }
+    }
+
+    /// The key on one host lost the right to send, or another key took its place: its waiting presses go back.
+    public func keyLost(host: String) {
+        cancel(.keyLost) { $0.environmentId == host }
+    }
+
+    /// The sheet took in an outcome: it is not offered again. A press still Checking stays until it is read back.
+    public func clear(_ requestId: String) {
+        if outcomes[requestId] != .checking { outcomes[requestId] = nil }
+    }
+
+    /// The request as a later read found it, after a press whose answer was lost: answered is his press's result.
+    public func heard(_ request: OutboxRequest) {
+        // Claimed and still going: Checking until its end comes (the host's push, or the next read).
+        guard outcomes[request.id] == .checking, request.running != true else { return }
+        outcomes[request.id] = request.state == .answered ? .answered(request) : .failed(Self.line(PressState.request(request.state)))
+    }
+
+    /// What the ledger read back of a press whose answer was lost, when there is no request to show.
+    public func heard(requestId: String, state: PressState) {
+        guard outcomes[requestId] == .checking, state != .checking, state != .sending, state != .done else { return }
+        outcomes[requestId] = .failed(Self.line(state))
+    }
+
+    /// The words for a press that did not land: still open is "Not sent", over is why.
+    static func line(_ state: PressState) -> String {
+        switch state {
+        case .stillWaiting, .changed: return "Not sent"
+        case .gone: return "Not sent: it no longer waits"
+        default: return state.line ?? "Not sent"
+        }
+    }
+
+    private func cancel(_ why: SendWait<RequestPress>.Why, _ matches: (RequestPress) -> Bool) {
+        for press in pending.values where matches(press) {
+            waits.removeValue(forKey: press.requestId)?.cancel()
+            pending[press.requestId] = nil
+            outcomes[press.requestId] = .failed(SendWait<RequestPress>.line(why, hostName: press.hostName))
+        }
+    }
+
+    private func commit(
+        _ press: RequestPress,
+        check: @MainActor (RequestPress) -> SendWait<RequestPress>.Why?,
+        answer: @MainActor (RequestPress) async throws -> OutboxRequest
+    ) async {
         guard pending[press.requestId] == press else { return }
         pending[press.requestId] = nil
         waits[press.requestId] = nil
+        if let why = check(press) {
+            outcomes[press.requestId] = .failed(SendWait<RequestPress>.line(why, hostName: press.hostName))
+            return
+        }
         sending.insert(press.requestId)
         defer { sending.remove(press.requestId) }
         do {
             outcomes[press.requestId] = .answered(try await answer(press))
+        } catch is PressLedger.Unknown {
+            // Its end may have come already (the request's last push): that stands.
+            if case .answered? = outcomes[press.requestId] { return }
+            outcomes[press.requestId] = .checking
         } catch {
-            outcomes[press.requestId] = .failed(ActionError.wrap(error).message)
+            let words = ActionError.wrap(error).message
+            outcomes[press.requestId] = .failed(words.hasPrefix("Not ") ? words : "Not sent: \(words)")
+        }
+    }
+}
+
+extension PressState {
+    /// What a request's state says of a press on it that was read back.
+    static func request(_ state: OutboxRequest.State) -> PressState {
+        switch state {
+        case .answered: .done
+        case .open: .stillWaiting
+        case .declined, .void: .gone
+        case .unknown: .mayHaveGone
         }
     }
 }

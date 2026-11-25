@@ -1,0 +1,268 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "due-unfolded",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    }
+  ],
+  "folds": {
+    "more": [
+      "due"
+    ],
+    "earlier": []
+  },
+  "sources": {
+    "due": {
+      "tasks": [
+        {
+          "_id": "a",
+          "title": "Task a",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795550400000
+        },
+        {
+          "_id": "b",
+          "title": "Task b",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795551300000
+        },
+        {
+          "_id": "c",
+          "title": "Task c",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795552200000
+        },
+        {
+          "_id": "d",
+          "title": "Task d",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795553100000
+        },
+        {
+          "_id": "e",
+          "title": "Task e",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795554000000
+        },
+        {
+          "_id": "f",
+          "title": "Task f",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795554900000
+        },
+        {
+          "_id": "g",
+          "title": "Task g",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795555800000
+        },
+        {
+          "_id": "h",
+          "title": "Task h",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795556700000
+        },
+        {
+          "_id": "i",
+          "title": "Task i",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795557600000
+        }
+      ],
+      "read": {
+        "built": true
+      }
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "task:a",
+        "task:b",
+        "task:c",
+        "task:d",
+        "task:e",
+        "task:f",
+        "task:g",
+        "task:h",
+        "task:i"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "due",
+            "title": "Due",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "tick",
+            "empty": "Nothing due today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "task:a",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Task a",
+                "at": 1795550400000,
+                "when": "2:00 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:b",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Task b",
+                "at": 1795551300000,
+                "when": "2:15 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:c",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Task c",
+                "at": 1795552200000,
+                "when": "2:30 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:d",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Task d",
+                "at": 1795553100000,
+                "when": "2:45 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:e",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Task e",
+                "at": 1795554000000,
+                "when": "3:00 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:f",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Task f",
+                "at": 1795554900000,
+                "when": "3:15 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:g",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Task g",
+                "at": 1795555800000,
+                "when": "3:30 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:h",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Task h",
+                "at": 1795556700000,
+                "when": "3:45 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              },
+              {
+                "key": "task:i",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Task i",
+                "at": 1795557600000,
+                "when": "4:00 PM",
+                "lead": "tick",
+                "workspace": "mac/mac-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

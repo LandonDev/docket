@@ -24,6 +24,8 @@ let package = Package(
         .testTarget(
             name: "TempCodeClientTests",
             dependencies: ["TempCodeClient"],
+            // Data the tests read by #filePath (keymay.json, written by scripts/ios-keymay-fixture.test.ts).
+            exclude: ["Fixtures"],
             swiftSettings: [
                 .enableUpcomingFeature("NonisolatedNonsendingByDefault"),
                 .enableUpcomingFeature("InferIsolatedConformances")

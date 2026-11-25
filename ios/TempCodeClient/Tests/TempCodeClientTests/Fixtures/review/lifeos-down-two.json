@@ -1,0 +1,1258 @@
+{
+  "tz": "America/Chicago",
+  "opts": {
+    "home": "env-box",
+    "fresh": false
+  },
+  "calendar": {
+    "at": 1795118520000,
+    "named": 1794808800000
+  },
+  "days": [
+    1794927600000,
+    1795118400000,
+    1794499200000,
+    1795417200000
+  ],
+  "name": "lifeos-down-two",
+  "now": 1795446000000,
+  "parts": [
+    {
+      "environmentId": "env-box",
+      "body": {
+        "host": "box",
+        "from": 1794808800000,
+        "to": 1795413600000,
+        "tz": "America/Chicago",
+        "madeAt": 1795446000000,
+        "by": "routine",
+        "over": true,
+        "jobs": [
+          {
+            "workspaceId": "w-cosmic",
+            "sector": "cosmic",
+            "name": "Cosmic"
+          },
+          {
+            "workspaceId": "w-hypixel",
+            "sector": "hypixel",
+            "name": "Hypixel"
+          },
+          {
+            "workspaceId": "w-purdue",
+            "sector": "purdue",
+            "name": "Purdue"
+          },
+          {
+            "workspaceId": "w-unify",
+            "sector": "unify",
+            "name": "Unify"
+          },
+          {
+            "workspaceId": "w-side",
+            "sector": null,
+            "name": "Side work"
+          }
+        ],
+        "lifeos": null,
+        "points": [
+          [
+            1794845700000,
+            0,
+            "said"
+          ],
+          [
+            1794846420000,
+            0,
+            "said"
+          ],
+          [
+            1794847140000,
+            0,
+            "said"
+          ],
+          [
+            1794847860000,
+            0,
+            "said"
+          ],
+          [
+            1794848580000,
+            0,
+            "said"
+          ],
+          [
+            1794849300000,
+            0,
+            "said"
+          ],
+          [
+            1794850020000,
+            0,
+            "said"
+          ],
+          [
+            1794850740000,
+            0,
+            "said"
+          ],
+          [
+            1794851460000,
+            0,
+            "said"
+          ],
+          [
+            1794852180000,
+            0,
+            "said"
+          ],
+          [
+            1794852900000,
+            0,
+            "said"
+          ],
+          [
+            1794853620000,
+            0,
+            "said"
+          ],
+          [
+            1794854340000,
+            0,
+            "said"
+          ],
+          [
+            1795012200000,
+            0,
+            "said"
+          ],
+          [
+            1795012920000,
+            0,
+            "said"
+          ],
+          [
+            1795013640000,
+            0,
+            "said"
+          ],
+          [
+            1795014360000,
+            0,
+            "said"
+          ],
+          [
+            1795015080000,
+            0,
+            "said"
+          ],
+          [
+            1795015800000,
+            0,
+            "said"
+          ],
+          [
+            1795016520000,
+            0,
+            "said"
+          ],
+          [
+            1795017240000,
+            0,
+            "said"
+          ],
+          [
+            1795017960000,
+            0,
+            "said"
+          ],
+          [
+            1795018680000,
+            0,
+            "said"
+          ],
+          [
+            1795019400000,
+            0,
+            "said"
+          ],
+          [
+            1795020120000,
+            0,
+            "said"
+          ],
+          [
+            1795136400000,
+            0,
+            "edited"
+          ],
+          [
+            1795137120000,
+            0,
+            "edited"
+          ],
+          [
+            1795137840000,
+            0,
+            "edited"
+          ],
+          [
+            1795138560000,
+            0,
+            "edited"
+          ],
+          [
+            1795139280000,
+            0,
+            "edited"
+          ],
+          [
+            1795140000000,
+            0,
+            "edited"
+          ],
+          [
+            1795140720000,
+            0,
+            "edited"
+          ],
+          [
+            1795141440000,
+            0,
+            "edited"
+          ],
+          [
+            1794943800000,
+            1,
+            "said"
+          ],
+          [
+            1794944520000,
+            1,
+            "said"
+          ],
+          [
+            1794945240000,
+            1,
+            "said"
+          ],
+          [
+            1794945960000,
+            1,
+            "said"
+          ],
+          [
+            1794946680000,
+            1,
+            "said"
+          ],
+          [
+            1794947400000,
+            1,
+            "said"
+          ],
+          [
+            1794948120000,
+            1,
+            "said"
+          ],
+          [
+            1794948840000,
+            1,
+            "said"
+          ],
+          [
+            1794949560000,
+            1,
+            "said"
+          ],
+          [
+            1794950280000,
+            1,
+            "said"
+          ],
+          [
+            1794951000000,
+            1,
+            "said"
+          ],
+          [
+            1794951720000,
+            1,
+            "said"
+          ],
+          [
+            1794952440000,
+            1,
+            "said"
+          ],
+          [
+            1794860100000,
+            2,
+            "said"
+          ],
+          [
+            1794860820000,
+            2,
+            "said"
+          ],
+          [
+            1794861540000,
+            2,
+            "said"
+          ],
+          [
+            1794862260000,
+            2,
+            "said"
+          ],
+          [
+            1794862980000,
+            2,
+            "said"
+          ],
+          [
+            1794863700000,
+            2,
+            "said"
+          ],
+          [
+            1794864420000,
+            2,
+            "said"
+          ],
+          [
+            1794865140000,
+            2,
+            "said"
+          ],
+          [
+            1794865860000,
+            2,
+            "said"
+          ],
+          [
+            1794866580000,
+            2,
+            "said"
+          ],
+          [
+            1794867300000,
+            2,
+            "said"
+          ],
+          [
+            1794868020000,
+            2,
+            "said"
+          ],
+          [
+            1794868740000,
+            2,
+            "said"
+          ],
+          [
+            1795036500000,
+            2,
+            "pressed"
+          ],
+          [
+            1795037220000,
+            2,
+            "pressed"
+          ],
+          [
+            1795037940000,
+            2,
+            "pressed"
+          ],
+          [
+            1795201200000,
+            2,
+            "said"
+          ],
+          [
+            1795201920000,
+            2,
+            "said"
+          ],
+          [
+            1795202640000,
+            2,
+            "said"
+          ],
+          [
+            1795203360000,
+            2,
+            "said"
+          ],
+          [
+            1795204080000,
+            2,
+            "said"
+          ],
+          [
+            1795204800000,
+            2,
+            "said"
+          ],
+          [
+            1795205520000,
+            2,
+            "said"
+          ],
+          [
+            1795206240000,
+            2,
+            "said"
+          ],
+          [
+            1795206960000,
+            2,
+            "said"
+          ],
+          [
+            1795207680000,
+            2,
+            "said"
+          ],
+          [
+            1795208400000,
+            2,
+            "said"
+          ],
+          [
+            1795209120000,
+            2,
+            "said"
+          ],
+          [
+            1794967200000,
+            4,
+            "said"
+          ],
+          [
+            1794967920000,
+            4,
+            "said"
+          ],
+          [
+            1794968640000,
+            4,
+            "said"
+          ],
+          [
+            1794969360000,
+            4,
+            "said"
+          ],
+          [
+            1794970080000,
+            4,
+            "said"
+          ],
+          [
+            1794970800000,
+            4,
+            "said"
+          ]
+        ],
+        "ran": [
+          [
+            0,
+            112200000
+          ],
+          [
+            2,
+            24000000
+          ],
+          [
+            1,
+            40000
+          ]
+        ],
+        "slipped": {
+          "at": 1795212000000,
+          "rows": [
+            {
+              "key": "task:s1",
+              "ref": {
+                "kind": "task",
+                "id": "s1",
+                "dueAt": 1794927600000
+              },
+              "sector": "hypixel",
+              "workspaceId": null,
+              "title": "Send the thumbnail drafts",
+              "at": 1794927600000,
+              "people": [],
+              "others": 0,
+              "open": true
+            },
+            {
+              "key": "mail:tw1:1794499200000",
+              "ref": {
+                "kind": "mail",
+                "threadId": "tw1",
+                "since": 1794499200000
+              },
+              "sector": "hypixel",
+              "workspaceId": null,
+              "title": "Winter video schedule",
+              "at": 1794499200000,
+              "people": [
+                "Sam Lindqvist"
+              ],
+              "others": 1,
+              "open": true
+            },
+            {
+              "key": "meeting:e5",
+              "ref": {
+                "kind": "meeting",
+                "eventId": "e5"
+              },
+              "sector": "purdue",
+              "workspaceId": null,
+              "title": "Budget review",
+              "at": 1795118400000,
+              "people": [
+                "Dana Reyes",
+                "Sam Park"
+              ],
+              "others": 4,
+              "open": true
+            },
+            {
+              "key": "task:s2",
+              "ref": {
+                "kind": "task",
+                "id": "s2",
+                "dueAt": 1795014000000
+              },
+              "sector": "purdue",
+              "workspaceId": null,
+              "title": "File the travel reimbursements",
+              "at": 1795014000000,
+              "people": [],
+              "others": 0,
+              "open": true
+            },
+            {
+              "key": "task:s3",
+              "ref": {
+                "kind": "task",
+                "id": "s3",
+                "dueAt": 1794063600000
+              },
+              "sector": "purdue",
+              "workspaceId": null,
+              "title": "Renew the arena booking",
+              "at": 1794063600000,
+              "people": [],
+              "others": 0,
+              "open": true
+            },
+            {
+              "key": "held:host:h1",
+              "ref": {
+                "kind": "held",
+                "ref": {
+                  "at": "host",
+                  "id": "h1"
+                }
+              },
+              "sector": "purdue",
+              "workspaceId": "w-purdue",
+              "title": "Reply to the facilities office",
+              "at": 1794931200000,
+              "people": [],
+              "others": 0,
+              "open": true
+            }
+          ]
+        },
+        "shipped": [
+          {
+            "key": "held:host:h7",
+            "kind": "approved",
+            "sector": "purdue",
+            "workspaceId": "w-purdue",
+            "title": "Post the bracket to #esports",
+            "who": null,
+            "at": 1795125600000,
+            "open": {
+              "at": "held",
+              "ref": {
+                "at": "host",
+                "id": "h7"
+              }
+            }
+          }
+        ],
+        "before": null,
+        "left": [
+          "LifeOS did not answer, so the calendar, tasks and mail are not counted.",
+          "Held items could not be read."
+        ],
+        "lifeosState": "signed-out"
+      }
+    },
+    {
+      "environmentId": "env-mac",
+      "body": {
+        "host": "mac",
+        "from": 1794808800000,
+        "to": 1795413600000,
+        "tz": "America/Chicago",
+        "madeAt": 1795212000000,
+        "by": "owner",
+        "over": false,
+        "jobs": [
+          {
+            "workspaceId": "m-cosmic",
+            "sector": "cosmic",
+            "name": "Cosmic"
+          }
+        ],
+        "lifeos": null,
+        "points": [
+          [
+            1795201200000,
+            0,
+            "said"
+          ],
+          [
+            1795201920000,
+            0,
+            "said"
+          ],
+          [
+            1795202640000,
+            0,
+            "said"
+          ],
+          [
+            1795203360000,
+            0,
+            "said"
+          ],
+          [
+            1795204080000,
+            0,
+            "said"
+          ],
+          [
+            1795204800000,
+            0,
+            "said"
+          ],
+          [
+            1795205520000,
+            0,
+            "said"
+          ],
+          [
+            1795206240000,
+            0,
+            "said"
+          ]
+        ],
+        "ran": [
+          [
+            0,
+            10800000
+          ]
+        ],
+        "slipped": {
+          "at": 1795212000000,
+          "rows": [
+            {
+              "key": "held:host:h1",
+              "ref": {
+                "kind": "held",
+                "ref": {
+                  "at": "host",
+                  "id": "h1"
+                }
+              },
+              "sector": "cosmic",
+              "workspaceId": "m-cosmic",
+              "title": "Post the patch notes",
+              "at": 1795014000000,
+              "people": [],
+              "others": 0,
+              "open": true
+            }
+          ]
+        },
+        "shipped": [],
+        "before": null,
+        "left": [
+          "LifeOS did not answer, so what it said when last read is shown."
+        ],
+        "lifeosState": "pairing"
+      },
+      "stale": true
+    }
+  ],
+  "expect": {
+    "merged": {
+      "from": 1794808800000,
+      "to": 1795413600000,
+      "tz": "America/Chicago",
+      "madeAt": 1795446000000,
+      "by": "routine",
+      "over": true,
+      "jobs": [
+        {
+          "key": "cosmic",
+          "sector": "cosmic",
+          "name": "Cosmic",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-cosmic"
+            },
+            {
+              "environmentId": "env-mac",
+              "workspaceId": "m-cosmic"
+            }
+          ]
+        },
+        {
+          "key": "hypixel",
+          "sector": "hypixel",
+          "name": "Hypixel",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-hypixel"
+            }
+          ]
+        },
+        {
+          "key": "purdue",
+          "sector": "purdue",
+          "name": "Purdue",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-purdue"
+            }
+          ]
+        },
+        {
+          "key": "unify",
+          "sector": "unify",
+          "name": "Unify",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-unify"
+            }
+          ]
+        },
+        {
+          "key": "~box:w-side",
+          "sector": null,
+          "name": "Side work",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-side"
+            }
+          ]
+        }
+      ],
+      "hours": [
+        {
+          "job": "cosmic",
+          "calendarMs": 0,
+          "deskMs": 22500000,
+          "ranMs": 123000000,
+          "events": 0,
+          "stands": {
+            "said": 33,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 8
+          }
+        },
+        {
+          "job": "hypixel",
+          "calendarMs": 0,
+          "deskMs": 8940000,
+          "ranMs": 40000,
+          "events": 0,
+          "stands": {
+            "said": 13,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "purdue",
+          "calendarMs": 0,
+          "deskMs": 18900000,
+          "ranMs": 24000000,
+          "events": 0,
+          "stands": {
+            "said": 25,
+            "sent": 0,
+            "pressed": 3,
+            "edited": 0
+          }
+        },
+        {
+          "job": "unify",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "~box:w-side",
+          "calendarMs": 0,
+          "deskMs": 3900000,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 6,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        }
+      ],
+      "compare": [],
+      "shipped": [
+        {
+          "key": "env-box:held:host:h7",
+          "kind": "approved",
+          "sector": "purdue",
+          "workspaceId": "w-purdue",
+          "title": "Post the bracket to #esports",
+          "who": null,
+          "at": 1795125600000,
+          "open": {
+            "at": "held",
+            "ref": {
+              "at": "host",
+              "id": "h7"
+            }
+          },
+          "job": "purdue",
+          "environmentId": "env-box"
+        }
+      ],
+      "slipped": [
+        {
+          "key": "meeting:e5",
+          "ref": {
+            "kind": "meeting",
+            "eventId": "e5"
+          },
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "Budget review",
+          "at": 1795118400000,
+          "people": [
+            "Dana Reyes",
+            "Sam Park"
+          ],
+          "others": 4,
+          "open": true,
+          "job": "purdue",
+          "environmentId": "env-box",
+          "unchecked": true
+        },
+        {
+          "key": "task:s2",
+          "ref": {
+            "kind": "task",
+            "id": "s2",
+            "dueAt": 1795014000000
+          },
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "File the travel reimbursements",
+          "at": 1795014000000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "purdue",
+          "environmentId": "env-box",
+          "unchecked": true
+        },
+        {
+          "key": "env-mac:held:host:h1",
+          "ref": {
+            "kind": "held",
+            "ref": {
+              "at": "host",
+              "id": "h1"
+            }
+          },
+          "sector": "cosmic",
+          "workspaceId": "m-cosmic",
+          "title": "Post the patch notes",
+          "at": 1795014000000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "cosmic",
+          "environmentId": "env-mac",
+          "unchecked": true
+        },
+        {
+          "key": "env-box:held:host:h1",
+          "ref": {
+            "kind": "held",
+            "ref": {
+              "at": "host",
+              "id": "h1"
+            }
+          },
+          "sector": "purdue",
+          "workspaceId": "w-purdue",
+          "title": "Reply to the facilities office",
+          "at": 1794931200000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "purdue",
+          "environmentId": "env-box",
+          "unchecked": true
+        },
+        {
+          "key": "task:s1",
+          "ref": {
+            "kind": "task",
+            "id": "s1",
+            "dueAt": 1794927600000
+          },
+          "sector": "hypixel",
+          "workspaceId": null,
+          "title": "Send the thumbnail drafts",
+          "at": 1794927600000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "hypixel",
+          "environmentId": "env-box",
+          "unchecked": true
+        },
+        {
+          "key": "mail:tw1:1794499200000",
+          "ref": {
+            "kind": "mail",
+            "threadId": "tw1",
+            "since": 1794499200000
+          },
+          "sector": "hypixel",
+          "workspaceId": null,
+          "title": "Winter video schedule",
+          "at": 1794499200000,
+          "people": [
+            "Sam Lindqvist"
+          ],
+          "others": 1,
+          "open": true,
+          "job": "hypixel",
+          "environmentId": "env-box",
+          "unchecked": true
+        },
+        {
+          "key": "task:s3",
+          "ref": {
+            "kind": "task",
+            "id": "s3",
+            "dueAt": 1794063600000
+          },
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "Renew the arena booking",
+          "at": 1794063600000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "purdue",
+          "environmentId": "env-box",
+          "unchecked": true
+        }
+      ],
+      "slippedAt": 1795212000000,
+      "answersKept": false,
+      "lifeosFrom": null,
+      "left": [
+        "LifeOS did not answer, so the calendar, tasks and mail are not counted.",
+        "Held items could not be read.",
+        "LifeOS did not answer, so what it said when last read is shown."
+      ],
+      "lifeosDown": [
+        {
+          "environmentId": "env-box",
+          "state": "signed-out",
+          "kept": false,
+          "stale": false
+        },
+        {
+          "environmentId": "env-mac",
+          "state": "pairing",
+          "kept": true,
+          "stale": true
+        }
+      ],
+      "known": {
+        "calendar": false,
+        "calendarCounted": false,
+        "desk": false,
+        "shipped": false,
+        "slipped": false
+      }
+    },
+    "calendar": {
+      "weekOf": {
+        "from": 1794808800000,
+        "to": 1795413600000
+      },
+      "hours": 168,
+      "prev": {
+        "from": 1794204000000,
+        "to": 1794808800000
+      },
+      "next": {
+        "from": 1795413600000,
+        "to": 1796018400000
+      },
+      "named": {
+        "from": 1794808800000,
+        "to": 1795413600000
+      },
+      "isWeek": true,
+      "isNotWeek": false,
+      "dayStart": 1795068000000,
+      "dayAfter": 1795154400000,
+      "dayBefore": 1794981600000,
+      "localDay": "2026-11-19",
+      "knownZone": true
+    },
+    "lengths": [],
+    "words": {
+      "week": "Week of Nov 16",
+      "made": "Made Fri 4:00 PM",
+      "nothing": "Not known",
+      "hostOff": "The Mac is off. Its threads and held items are not counted.",
+      "days": [
+        "Tue",
+        "Thu",
+        "Nov 12",
+        "Nov 23"
+      ],
+      "jobs": [
+        {
+          "job": "cosmic",
+          "total": "about 6 hr 15 min",
+          "stands": "33 messages, 8 document edits",
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": "about 6 hr 15 min",
+            "deskDetail": "33 messages, 8 document edits",
+            "ran": "34 hr 10 min"
+          },
+          "compare": null,
+          "lead": [
+            "env-mac:held:host:h1"
+          ],
+          "older": []
+        },
+        {
+          "job": "hypixel",
+          "total": "about 2 hr 30 min",
+          "stands": "13 messages",
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": "about 2 hr 30 min",
+            "deskDetail": "13 messages",
+            "ran": null
+          },
+          "compare": null,
+          "lead": [
+            "task:s1",
+            "mail:tw1:1794499200000"
+          ],
+          "older": []
+        },
+        {
+          "job": "purdue",
+          "total": "about 5 hr 15 min",
+          "stands": "25 messages, 3 held items decided",
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": "about 5 hr 15 min",
+            "deskDetail": "25 messages, 3 held items decided",
+            "ran": "6 hr 40 min"
+          },
+          "compare": null,
+          "lead": [
+            "meeting:e5",
+            "task:s2",
+            "env-box:held:host:h1"
+          ],
+          "older": [
+            "task:s3"
+          ]
+        },
+        {
+          "job": "unify",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "~box:w-side",
+          "total": "about 1 hr",
+          "stands": "6 messages",
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": "about 1 hr",
+            "deskDetail": "6 messages",
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        }
+      ],
+      "shipped": [
+        {
+          "key": "env-box:held:host:h7",
+          "lead": "Approved ",
+          "title": "Post the bracket to #esports",
+          "tail": ""
+        }
+      ],
+      "slipped": [
+        {
+          "key": "meeting:e5",
+          "detail": "Thu 2:00 PM with Dana Reyes and 3 others, nothing sent after",
+          "settle": [
+            "Follow up",
+            "Next week",
+            "None needed"
+          ],
+          "settled": [
+            "",
+            "Put off to next week",
+            "Marked as needing nothing"
+          ]
+        },
+        {
+          "key": "task:s2",
+          "detail": "due Wed",
+          "settle": [
+            "Done",
+            "Next week",
+            "Drop"
+          ],
+          "settled": [
+            "Marked done",
+            "Moved to next week",
+            "Dropped"
+          ]
+        },
+        {
+          "key": "env-mac:held:host:h1",
+          "detail": "held since Wed",
+          "settle": [
+            "Open",
+            "Next week",
+            "Discard"
+          ],
+          "settled": [
+            "",
+            "Put off to next week",
+            "Discarded"
+          ]
+        },
+        {
+          "key": "env-box:held:host:h1",
+          "detail": "held since Tue",
+          "settle": [
+            "Open",
+            "Next week",
+            "Discard"
+          ],
+          "settled": [
+            "",
+            "Put off to next week",
+            "Discarded"
+          ]
+        },
+        {
+          "key": "task:s1",
+          "detail": "due Tue",
+          "settle": [
+            "Done",
+            "Next week",
+            "Drop"
+          ],
+          "settled": [
+            "Marked done",
+            "Moved to next week",
+            "Dropped"
+          ]
+        },
+        {
+          "key": "mail:tw1:1794499200000",
+          "detail": "sent Nov 12 to Sam Lindqvist",
+          "settle": [
+            "Nudge",
+            "Next week",
+            "Stop waiting"
+          ],
+          "settled": [
+            "Drafting a nudge",
+            "Put off to next week",
+            "Stopped waiting"
+          ]
+        },
+        {
+          "key": "task:s3",
+          "detail": "due Nov 7",
+          "settle": [
+            "Done",
+            "Next week",
+            "Drop"
+          ],
+          "settled": [
+            "Marked done",
+            "Moved to next week",
+            "Dropped"
+          ]
+        }
+      ]
+    }
+  }
+}

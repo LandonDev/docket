@@ -1,0 +1,84 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "signed-out",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "session-down",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    }
+  ],
+  "sessionDown": true,
+  "sources": {
+    "held": {
+      "items": [],
+      "names": [],
+      "loaded": true,
+      "errors": []
+    },
+    "meetings": {
+      "events": [],
+      "people": {},
+      "read": {
+        "built": false,
+        "error": "Not signed in"
+      }
+    },
+    "due": {
+      "tasks": [],
+      "read": {
+        "built": false,
+        "error": "Not signed in"
+      }
+    },
+    "clashes": {
+      "error": "Not signed in"
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "held",
+            "title": "Waiting on you",
+            "state": "empty",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "Nothing waits on your press",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": []
+          }
+        },
+        {
+          "kind": "lifeos",
+          "reach": "signed-out"
+        }
+      ]
+    }
+  }
+}

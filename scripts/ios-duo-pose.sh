@@ -14,6 +14,7 @@
 #   unfolded           ul     180°   portrait            LCD-1 (display 3)
 #   unfolded-portrait  up     180°   landscape-left      LCD-1 (display 3)
 #   half-open          ho     130°   portrait            LCD-1 (display 3), reached from 0°
+#   tabletop           tt     130°   landscape-left      LCD-1 (display 3), reached from 0°
 #
 # The driver is `hinge` (brew install artemnovichkov/tap/hinge, 0.2.0+): it
 # sends the Device Hub's own HID event for the angle and the orientation and
@@ -61,6 +62,7 @@ canonical() {
     unfolded|ul) echo unfolded ;;
     unfolded-portrait|up) echo unfolded-portrait ;;
     half-open|ho) echo half-open ;;
+    tabletop|tt) echo tabletop ;;
     *) return 1 ;;
   esac
 }
@@ -71,6 +73,7 @@ row() {
     unfolded) echo "180 portrait LCD-1" ;;
     unfolded-portrait) echo "180 landscape-left LCD-1" ;;
     half-open) echo "130 portrait LCD-1" ;;
+    tabletop) echo "130 landscape-left LCD-1" ;;
   esac
 }
 
@@ -115,13 +118,14 @@ case "$WHAT" in
     exit 0 ;;
 esac
 
-pose=$(canonical "$WHAT") || { echo "ios-duo-pose: unknown pose $WHAT (folded|fp, folded-landscape|fl, unfolded|ul, unfolded-portrait|up, half-open|ho)" >&2; exit 2; }
+pose=$(canonical "$WHAT") || { echo "ios-duo-pose: unknown pose $WHAT (folded|fp, folded-landscape|fl, unfolded|ul, unfolded-portrait|up, half-open|ho, tabletop|tt)" >&2; exit 2; }
 read -r angle orientation panel <<<"$(row "$pose")"
 # The angle, always from portrait: closing while the device is turned (unfolded-portrait → folded)
-# twice left the guest at 0° with the inner panel still lit. half-open goes through closed first:
-# above ~100° the lit panel depends on the way in.
+# twice left the guest at 0° with the inner panel still lit. half-open and tabletop go through closed
+# first: above ~100° the lit panel depends on the way in. So a partly open pose turns to portrait even
+# from the same angle (tabletop → half-open closes too).
 read -r now_angle now_orientation <<<"$(posture)"
-if [ "$now_angle" != "$angle" ] && [ -n "$now_orientation" ] && [ "$now_orientation" != portrait ]; then
+if { [ "$now_angle" != "$angle" ] || { [ "$angle" != 0 ] && [ "$angle" != 180 ]; }; } && [ -n "$now_orientation" ] && [ "$now_orientation" != portrait ]; then
   move orient portrait
 fi
 case "$angle" in

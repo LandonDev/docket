@@ -5,7 +5,7 @@ import TempCodeContract
 
 /// The head of a Work workspace's screen (milestone 47): Mail, Tasks,
 /// Agenda and Projects (the projects plan's milestone 8) on the Home row
-/// grid, then Files (the files pillar's F9), then Routines, then its Microsoft forms, each opening its
+/// grid, then Money (All of Work on the iPhone's M5a), then Files (the files pillar's F9), then Plays and Routines (M5b), then its forms, each opening its
 /// screen. While LifeOS is out of reach the four LifeOS rows sit at half
 /// strength.
 struct WorkViewRows: View {
@@ -19,7 +19,12 @@ struct WorkViewRows: View {
             WorkViewRow(title: view.title, symbol: view.symbol, route: route(view.rawValue), id: "work-view-\(view.rawValue)")
                 .opacity(dimmed ? 0.5 : 1)
         }
-        WorkViewRow(title: "Files", symbol: "folder", route: route("files"), id: "work-view-files")
+        // Money beside Projects: this job's ledger, a page of its own (Work/Money), never a place for every job.
+        WorkViewRow(title: "Money", symbol: "dollarsign.circle", route: route("money"), id: "work-view-money")
+        // Files narrowed to this job: the Work tab's place, so its folders push in the sidebar column.
+        WorkViewRow(title: "Files", symbol: "folder", route: .place(.files, job: ProjectPairs.key(client.environment.id, workspace)), id: "work-view-files")
+        // The job's repeated work, started with one press (M5b): his plays, then the routines that run on their own.
+        WorkViewRow(title: "Plays", symbol: "play.square.stack", route: route("plays"), id: "work-view-plays")
         WorkViewRow(title: "Routines", symbol: "clock.arrow.circlepath", route: route("routines"), id: "work-view-routines")
         WorkViewRow(title: "Forms", symbol: "checklist", route: route("forms"), id: "work-view-forms")
     }
@@ -76,8 +81,12 @@ struct WorkViewScreen: View {
                 LifeViewScreen(host: WorkLifeHost.of(client, workspace: workspace), view: kind)
             } else if view == "files" {
                 FilesScreen(client: client, workspace: workspace)
+            } else if view == "money" {
+                MoneyScreen(client: client, workspace: workspace)
             } else if view == "forms" {
-                MsFormsScreen(client: client, workspace: workspace)
+                FormsScreen(client: client, workspace: workspace)
+            } else if view == "plays" {
+                PlaysScreen(client: client, workspace: workspace)
             } else {
                 RoutinesScreen(client: client, workspace: workspace)
             }

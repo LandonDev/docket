@@ -72,6 +72,6 @@ enum ReaderPrint {
     static func run(client: EnvironmentClient, item: CanvasItem) async throws {
         guard let source = client.work.canvas.printPages(for: item) else { return }
         let pages = try await source.data()
-        PagePreview.print(pages, name: ReaderVerbs.title(item.title))
+        PagePreview.print(pages, name: ReaderVerbs.title(of: item))
     }
 }

@@ -18,6 +18,20 @@ extension View {
         self
         #endif
     }
+
+    /// The same count for a row of a Work place's list, by its own id (the Work fold check reads it).
+    @ViewBuilder
+    func rowInitProbe(work key: String) -> some View {
+        #if DEBUG
+        if LayoutProbe.off {
+            self
+        } else {
+            modifier(RowInitProbe(key: "work:\(key)"))
+        }
+        #else
+        self
+        #endif
+    }
 }
 
 #if DEBUG

@@ -55,6 +55,12 @@ describe('ios/TempCode/project.yml', () => {
     expect(plist).toContain('<key>NSCameraUsageDescription</key>')
   })
 
+  it('says why it asks for Face ID (the check before an outward press), in the yml and the checked-in plist', () => {
+    const plist = readFileSync(resolve(import.meta.dirname, '../ios/TempCode/Info.plist'), 'utf8')
+    expect(yml).toMatch(/\n\s+NSFaceIDUsageDescription: \S/)
+    expect(plist).toContain('<key>NSFaceIDUsageDescription</key>')
+  })
+
   it('builds Save to TempCode as a share extension in the app group, linking the client and the contract and never LifeKit', () => {
     const share = yml.match(/^  TempCodeShare:\n([\s\S]*?)(?=^  [A-Za-z].*:\n)/m)?.[1] ?? ''
     expect(share).toContain('type: app-extension')

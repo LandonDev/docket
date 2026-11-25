@@ -89,6 +89,8 @@ final class ShareSheetModel {
     /// Why a folder's inside could not be read.
     private(set) var folderFailure: String?
     @ObservationIgnored private var links: [String: ShareHostLink] = [:]
+    /// What the last Save left of each file as it ended (done, refused, or queued for the app), for the proofs.
+    private(set) var lastSave: [ShareItem] = []
     /// This save's items: what it refused is said in the first group, not among the earlier rows.
     @ObservationIgnored private var thisSave: Set<String> = []
 
@@ -100,8 +102,9 @@ final class ShareSheetModel {
         self.unread = unread
         name = picks.first?.name ?? ""
         targets = ShareTargets.read(root: root)
-        // The last place used leads the list and is the one checked.
-        target = targets.ordered.first
+        // The last place used, else the job open in the app, is the one checked; else none, and Save waits for his
+        // pick (`ShareTargets.preselected`).
+        target = targets.preselected
         folder = target?.workspace.folder
         readEarlier()
     }
@@ -176,6 +179,7 @@ final class ShareSheetModel {
         try? targets.write(root: root)
         let link = link(target.host)
         guard await link.open() else {
+            lastSave = queued
             phase = SharePhase.after(queued, host: target.host.name, notQueued: notQueued, total: picks.count)
             return
         }
@@ -188,6 +192,7 @@ final class ShareSheetModel {
                 self?.phase = .saving(SharePhase.share(sizes: sizes, done: done, current: share))
             })
         }
+        lastSave = results
         phase = SharePhase.after(results, host: target.host.name, notQueued: notQueued, total: picks.count)
         readEarlier()
     }

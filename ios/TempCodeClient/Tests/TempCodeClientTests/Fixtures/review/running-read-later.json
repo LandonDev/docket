@@ -1,0 +1,734 @@
+{
+  "tz": "America/Chicago",
+  "opts": {
+    "home": "env-box"
+  },
+  "calendar": {
+    "at": 1795118520000,
+    "named": 1794808800000
+  },
+  "days": [
+    1794927600000,
+    1795118400000,
+    1794499200000,
+    1795417200000
+  ],
+  "name": "running-read-later",
+  "now": 1794862800000,
+  "parts": [
+    {
+      "environmentId": "env-box",
+      "body": {
+        "host": "box",
+        "from": 1794808800000,
+        "to": 1795413600000,
+        "tz": "America/Chicago",
+        "madeAt": 1794859320000,
+        "by": "owner",
+        "over": false,
+        "jobs": [
+          {
+            "workspaceId": "w-cosmic",
+            "sector": "cosmic",
+            "name": "Cosmic"
+          },
+          {
+            "workspaceId": "w-hypixel",
+            "sector": "hypixel",
+            "name": "Hypixel"
+          },
+          {
+            "workspaceId": "w-purdue",
+            "sector": "purdue",
+            "name": "Purdue"
+          },
+          {
+            "workspaceId": "w-unify",
+            "sector": "unify",
+            "name": "Unify"
+          },
+          {
+            "workspaceId": "w-side",
+            "sector": null,
+            "name": "Side work"
+          }
+        ],
+        "lifeos": {
+          "events": [
+            {
+              "id": "r1",
+              "sector": "purdue",
+              "title": "Budget review",
+              "startsAt": 1794859200000,
+              "endsAt": 1794864600000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Dana Reyes"
+              ],
+              "others": 1,
+              "addresses": [
+                "dana.reyes@example.com"
+              ]
+            }
+          ],
+          "sent": [
+            {
+              "id": "m1",
+              "threadId": "t-m1",
+              "subject": "Season 12 patch notes",
+              "to": [
+                "Riley Okafor"
+              ],
+              "addresses": [
+                "riley.okafor@example.com"
+              ],
+              "at": 1794848400000,
+              "sector": "cosmic"
+            }
+          ],
+          "done": [],
+          "answered": [],
+          "answeredSince": 1792216800000
+        },
+        "points": [
+          [
+            1794845700000,
+            0,
+            "said"
+          ],
+          [
+            1794846420000,
+            0,
+            "said"
+          ],
+          [
+            1794847140000,
+            0,
+            "said"
+          ],
+          [
+            1794847860000,
+            0,
+            "said"
+          ],
+          [
+            1794848580000,
+            0,
+            "said"
+          ],
+          [
+            1794849300000,
+            0,
+            "said"
+          ],
+          [
+            1794850020000,
+            0,
+            "said"
+          ],
+          [
+            1794850740000,
+            0,
+            "said"
+          ],
+          [
+            1794851460000,
+            0,
+            "said"
+          ],
+          [
+            1794852180000,
+            0,
+            "said"
+          ],
+          [
+            1794852900000,
+            0,
+            "said"
+          ],
+          [
+            1794853620000,
+            0,
+            "said"
+          ],
+          [
+            1794854340000,
+            0,
+            "said"
+          ]
+        ],
+        "ran": [
+          [
+            0,
+            112200000
+          ],
+          [
+            2,
+            24000000
+          ],
+          [
+            1,
+            40000
+          ]
+        ],
+        "slipped": {
+          "at": 1794859320000,
+          "rows": [
+            {
+              "key": "mail:tw1:1794499200000",
+              "ref": {
+                "kind": "mail",
+                "threadId": "tw1",
+                "since": 1794499200000
+              },
+              "sector": "hypixel",
+              "workspaceId": null,
+              "title": "Winter video schedule",
+              "at": 1794499200000,
+              "people": [
+                "Sam Lindqvist"
+              ],
+              "others": 1,
+              "open": true
+            },
+            {
+              "key": "task:s3",
+              "ref": {
+                "kind": "task",
+                "id": "s3",
+                "dueAt": 1794063600000
+              },
+              "sector": "purdue",
+              "workspaceId": null,
+              "title": "Renew the arena booking",
+              "at": 1794063600000,
+              "people": [],
+              "others": 0,
+              "open": true
+            }
+          ]
+        },
+        "shipped": [],
+        "before": {
+          "from": 1794204000000,
+          "to": 1794254520000,
+          "lifeos": {
+            "events": [
+              {
+                "sector": "cosmic",
+                "from": 1794234600000,
+                "to": 1794240000000
+              },
+              {
+                "sector": "purdue",
+                "from": 1794250800000,
+                "to": 1794254400000
+              }
+            ],
+            "sent": []
+          },
+          "points": [
+            [
+              1794240000000,
+              0,
+              "said"
+            ],
+            [
+              1794240720000,
+              0,
+              "said"
+            ],
+            [
+              1794241440000,
+              0,
+              "said"
+            ],
+            [
+              1794242160000,
+              0,
+              "said"
+            ],
+            [
+              1794242880000,
+              0,
+              "said"
+            ],
+            [
+              1794243600000,
+              0,
+              "said"
+            ],
+            [
+              1794244320000,
+              0,
+              "said"
+            ],
+            [
+              1794245040000,
+              0,
+              "said"
+            ],
+            [
+              1794245760000,
+              0,
+              "said"
+            ],
+            [
+              1794246480000,
+              0,
+              "said"
+            ],
+            [
+              1794247200000,
+              0,
+              "said"
+            ],
+            [
+              1794247920000,
+              0,
+              "said"
+            ],
+            [
+              1794248640000,
+              0,
+              "said"
+            ],
+            [
+              1794249360000,
+              0,
+              "said"
+            ],
+            [
+              1794250080000,
+              0,
+              "said"
+            ],
+            [
+              1794250800000,
+              0,
+              "said"
+            ],
+            [
+              1794254400000,
+              2,
+              "said"
+            ]
+          ]
+        },
+        "left": []
+      }
+    },
+    {
+      "environmentId": "env-mac",
+      "body": {
+        "host": "mac",
+        "from": 1794808800000,
+        "to": 1795413600000,
+        "tz": "America/Chicago",
+        "madeAt": 1794859680000,
+        "by": "owner",
+        "over": false,
+        "jobs": [
+          {
+            "workspaceId": "m-cosmic",
+            "sector": "cosmic",
+            "name": "Cosmic"
+          }
+        ],
+        "lifeos": null,
+        "points": [
+          [
+            1794859620000,
+            0,
+            "said"
+          ]
+        ],
+        "ran": [
+          [
+            0,
+            10800000
+          ]
+        ],
+        "slipped": {
+          "at": 1794859680000,
+          "rows": []
+        },
+        "shipped": [],
+        "before": null,
+        "left": [
+          "LifeOS did not answer, so the calendar, tasks and mail are not counted."
+        ]
+      }
+    }
+  ],
+  "expect": {
+    "merged": {
+      "from": 1794808800000,
+      "to": 1795413600000,
+      "tz": "America/Chicago",
+      "madeAt": 1794859680000,
+      "by": "owner",
+      "over": false,
+      "jobs": [
+        {
+          "key": "cosmic",
+          "sector": "cosmic",
+          "name": "Cosmic",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-cosmic"
+            },
+            {
+              "environmentId": "env-mac",
+              "workspaceId": "m-cosmic"
+            }
+          ]
+        },
+        {
+          "key": "hypixel",
+          "sector": "hypixel",
+          "name": "Hypixel",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-hypixel"
+            }
+          ]
+        },
+        {
+          "key": "purdue",
+          "sector": "purdue",
+          "name": "Purdue",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-purdue"
+            }
+          ]
+        },
+        {
+          "key": "unify",
+          "sector": "unify",
+          "name": "Unify",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-unify"
+            }
+          ]
+        },
+        {
+          "key": "~box:w-side",
+          "sector": null,
+          "name": "Side work",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-side"
+            }
+          ]
+        }
+      ],
+      "hours": [
+        {
+          "job": "cosmic",
+          "calendarMs": 0,
+          "deskMs": 9240000,
+          "ranMs": 123000000,
+          "events": 0,
+          "stands": {
+            "said": 14,
+            "sent": 1,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "hypixel",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 40000,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "purdue",
+          "calendarMs": 120000,
+          "deskMs": 0,
+          "ranMs": 24000000,
+          "events": 1,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "unify",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "~box:w-side",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        }
+      ],
+      "compare": [
+        {
+          "job": "cosmic",
+          "words": "down from about 4 hr 30 min by this point last week"
+        }
+      ],
+      "shipped": [
+        {
+          "key": "sent:m1",
+          "kind": "sent",
+          "sector": "cosmic",
+          "workspaceId": null,
+          "title": "Season 12 patch notes",
+          "who": "Riley Okafor",
+          "at": 1794848400000,
+          "open": {
+            "at": "mail",
+            "threadId": "t-m1"
+          },
+          "job": "cosmic",
+          "environmentId": "env-box"
+        }
+      ],
+      "slipped": [
+        {
+          "key": "mail:tw1:1794499200000",
+          "ref": {
+            "kind": "mail",
+            "threadId": "tw1",
+            "since": 1794499200000
+          },
+          "sector": "hypixel",
+          "workspaceId": null,
+          "title": "Winter video schedule",
+          "at": 1794499200000,
+          "people": [
+            "Sam Lindqvist"
+          ],
+          "others": 1,
+          "open": true,
+          "job": "hypixel",
+          "environmentId": "env-box"
+        },
+        {
+          "key": "task:s3",
+          "ref": {
+            "kind": "task",
+            "id": "s3",
+            "dueAt": 1794063600000
+          },
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "Renew the arena booking",
+          "at": 1794063600000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "purdue",
+          "environmentId": "env-box"
+        }
+      ],
+      "slippedAt": 1794859320000,
+      "answersKept": true,
+      "lifeosFrom": "env-box",
+      "left": [],
+      "known": {
+        "calendar": false,
+        "calendarCounted": true,
+        "desk": true,
+        "shipped": true,
+        "slipped": true
+      }
+    },
+    "calendar": {
+      "weekOf": {
+        "from": 1794808800000,
+        "to": 1795413600000
+      },
+      "hours": 168,
+      "prev": {
+        "from": 1794204000000,
+        "to": 1794808800000
+      },
+      "next": {
+        "from": 1795413600000,
+        "to": 1796018400000
+      },
+      "named": {
+        "from": 1794808800000,
+        "to": 1795413600000
+      },
+      "isWeek": true,
+      "isNotWeek": false,
+      "dayStart": 1795068000000,
+      "dayAfter": 1795154400000,
+      "dayBefore": 1794981600000,
+      "localDay": "2026-11-19",
+      "knownZone": true
+    },
+    "lengths": [],
+    "words": {
+      "week": "Week of Nov 16",
+      "made": "So far, made 2:08 PM",
+      "nothing": "No desk time seen",
+      "hostOff": "The Mac is off. Its threads and held items are not counted.",
+      "days": [
+        "Tue",
+        "Thu",
+        "Nov 12",
+        "Nov 23"
+      ],
+      "jobs": [
+        {
+          "job": "cosmic",
+          "total": "about 2 hr 30 min",
+          "stands": "14 messages, 1 mail sent",
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": "about 2 hr 30 min",
+            "deskDetail": "14 messages, 1 mail sent",
+            "ran": "34 hr 10 min"
+          },
+          "compare": "down from about 4 hr 30 min by this point last week",
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "hypixel",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [
+            "mail:tw1:1794499200000"
+          ],
+          "older": []
+        },
+        {
+          "job": "purdue",
+          "total": "2 min",
+          "stands": null,
+          "facts": {
+            "calendar": "2 min",
+            "calendarDetail": "1 event",
+            "desk": null,
+            "deskDetail": null,
+            "ran": "6 hr 40 min"
+          },
+          "compare": null,
+          "lead": [],
+          "older": [
+            "task:s3"
+          ]
+        },
+        {
+          "job": "unify",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "~box:w-side",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        }
+      ],
+      "shipped": [
+        {
+          "key": "sent:m1",
+          "lead": "Sent ",
+          "title": "Season 12 patch notes",
+          "tail": " to Riley Okafor"
+        }
+      ],
+      "slipped": [
+        {
+          "key": "mail:tw1:1794499200000",
+          "detail": "sent Nov 12 to Sam Lindqvist",
+          "settle": [
+            "Nudge",
+            "Next week",
+            "Stop waiting"
+          ],
+          "settled": [
+            "Drafting a nudge",
+            "Put off to next week",
+            "Stopped waiting"
+          ]
+        },
+        {
+          "key": "task:s3",
+          "detail": "due Nov 7",
+          "settle": [
+            "Done",
+            "Next week",
+            "Drop"
+          ],
+          "settled": [
+            "Marked done",
+            "Moved to next week",
+            "Dropped"
+          ]
+        }
+      ]
+    }
+  }
+}

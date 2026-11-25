@@ -1,16 +1,17 @@
 import Foundation
 
-/// The one road to the session cache for everything a client writes. Each
-/// write is queued in the order the client applied its change and runs
-/// after the one before it, off the main actor: the push loop waits on no
-/// disk write, and a page that clears a thread's rows (`reset`) can never
-/// land after the newer rows pushed behind it.
-final class CacheWriter: Sendable {
-    typealias Write = @Sendable (SessionCache) async -> Void
+/// The one road to a cache for everything a client writes. Each write is
+/// queued in the order the client applied its change and runs after the one
+/// before it, off the main actor: the push loop waits on no disk write, and a
+/// page that clears a thread's rows (`reset`) can never land after the newer
+/// rows pushed behind it. The session cache's (`CacheWriter`) and Work's
+/// (`WorkCacheStore`) are each one of these.
+final class OrderedWriter<Target: Sendable>: Sendable {
+    typealias Write = @Sendable (Target) async -> Void
 
     private let writes: AsyncStream<Write>.Continuation
 
-    init(cache: SessionCache) {
+    init(cache: Target) {
         let (stream, writes) = AsyncStream.makeStream(of: Write.self)
         self.writes = writes
         Task {
@@ -35,3 +36,6 @@ final class CacheWriter: Sendable {
         }
     }
 }
+
+/// The session cache's writer.
+typealias CacheWriter = OrderedWriter<SessionCache>

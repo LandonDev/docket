@@ -1,0 +1,618 @@
+{
+  "now": 1795545000000,
+  "zone": "UTC",
+  "ownReplyHeld": false,
+  "replyMax": 4000,
+  "mayHaveGone": "It may have gone",
+  "sources": [
+    {
+      "source": "slack",
+      "name": "Slack",
+      "app": "Slack",
+      "route": "lifeos",
+      "replyWhere": "Reply in Slack to Dana Lee"
+    },
+    {
+      "source": "discord",
+      "name": "Discord",
+      "app": "Discord",
+      "route": "copy",
+      "replyWhere": "Reply in Discord to Dana Lee"
+    },
+    {
+      "source": "imessage",
+      "name": "iMessage",
+      "app": "Messages",
+      "route": "lifeos",
+      "replyWhere": "Reply in iMessage to Dana Lee"
+    },
+    {
+      "source": "teams",
+      "name": "Teams",
+      "app": "Teams",
+      "route": "copy",
+      "replyWhere": "Reply in Teams to Dana Lee"
+    }
+  ],
+  "firstWords": [
+    {
+      "text": "Short words",
+      "max": 60,
+      "out": "Short words"
+    },
+    {
+      "text": "  Lots   of\nspace  here  ",
+      "max": 60,
+      "out": "Lots of space here"
+    },
+    {
+      "text": "This sentence runs on for a good while past the cut so it is cut at a word",
+      "max": 40,
+      "out": "This sentence runs on for a good while…"
+    },
+    {
+      "text": "Averyveryverylongwordwithnospacesatallthatgoesonpastthecut and more",
+      "max": 20,
+      "out": "Averyveryverylongwor…"
+    },
+    {
+      "text": "Edge of the cut exactly here",
+      "max": 28,
+      "out": "Edge of the cut exactly here"
+    }
+  ],
+  "fileMarkers": [
+    {
+      "text": "See the plan [file: plan.pdf]",
+      "names": [
+        "plan.pdf"
+      ],
+      "out": "See the plan"
+    },
+    {
+      "text": "Look\nplan.pdf https://cdn.discordapp.com/a/b/plan.pdf",
+      "names": [
+        "plan.pdf"
+      ],
+      "out": "Look"
+    },
+    {
+      "text": "Sent an attachment: a.png, b.png",
+      "names": [
+        "a.png",
+        "b.png"
+      ],
+      "out": ""
+    },
+    {
+      "text": "Sent an attachment: a.png, c.png",
+      "names": [
+        "a.png",
+        "b.png"
+      ],
+      "out": "Sent an attachment: a.png, c.png"
+    },
+    {
+      "text": "[file: spec.pdf] is what I typed",
+      "names": [
+        "spec.pdf"
+      ],
+      "out": "[file: spec.pdf] is what I typed"
+    },
+    {
+      "text": "Two [file: a.txt] [file: b.txt]",
+      "names": [
+        "a.txt",
+        "b.txt"
+      ],
+      "out": "Two"
+    },
+    {
+      "text": "No files here",
+      "names": [],
+      "out": "No files here"
+    },
+    {
+      "text": "Words\n\n\n\nand more [file: x(1).png]",
+      "names": [
+        "x(1).png"
+      ],
+      "out": "Words\n\nand more"
+    }
+  ],
+  "stale": [
+    {
+      "source": {
+        "kind": "slack",
+        "label": "Slack",
+        "status": "ok",
+        "lastSyncAt": 1795544700000
+      },
+      "out": false
+    },
+    {
+      "source": {
+        "kind": "slack",
+        "label": "Slack",
+        "status": "ok",
+        "lastSyncAt": 1795543800000
+      },
+      "out": true
+    },
+    {
+      "source": {
+        "kind": "discord",
+        "label": "Discord",
+        "status": "ok",
+        "lastSyncAt": 1795285800000
+      },
+      "out": true
+    },
+    {
+      "source": {
+        "kind": "imessage",
+        "label": "iMessage",
+        "status": "ok",
+        "reportedAt": 1795401000000
+      },
+      "out": true
+    },
+    {
+      "source": {
+        "kind": "teams",
+        "label": "Teams",
+        "status": "idle"
+      },
+      "out": true
+    },
+    {
+      "source": {
+        "kind": "slack",
+        "label": "Slack",
+        "status": "error",
+        "lastSyncAt": 1795544940000,
+        "error": "token revoked"
+      },
+      "out": true
+    },
+    {
+      "source": {
+        "kind": "discord",
+        "label": "D1",
+        "status": "ok",
+        "lastSyncAt": 1795537800000
+      },
+      "out": true
+    },
+    {
+      "source": {
+        "kind": "discord",
+        "label": "D2",
+        "status": "ok",
+        "lastSyncAt": 1795544880000
+      },
+      "out": false
+    },
+    {
+      "source": {
+        "kind": "imessage",
+        "label": "iMessage",
+        "status": "ok",
+        "lastSyncAt": 1795437000000
+      },
+      "out": false
+    }
+  ],
+  "syncLine": [
+    {
+      "sources": [
+        {
+          "kind": "slack",
+          "label": "Slack",
+          "status": "ok",
+          "lastSyncAt": 1795544700000
+        }
+      ],
+      "out": null
+    },
+    {
+      "sources": [
+        {
+          "kind": "slack",
+          "label": "Slack",
+          "status": "ok",
+          "lastSyncAt": 1795543800000
+        }
+      ],
+      "out": "Slack last synced 6:10 PM"
+    },
+    {
+      "sources": [
+        {
+          "kind": "discord",
+          "label": "Discord",
+          "status": "ok",
+          "lastSyncAt": 1795285800000
+        },
+        {
+          "kind": "imessage",
+          "label": "iMessage",
+          "status": "ok",
+          "reportedAt": 1795401000000
+        }
+      ],
+      "out": "Discord last synced Nov 21, iMessage Nov 23"
+    },
+    {
+      "sources": [
+        {
+          "kind": "teams",
+          "label": "Teams",
+          "status": "idle"
+        }
+      ],
+      "out": "Teams has not synced"
+    },
+    {
+      "sources": [
+        {
+          "kind": "slack",
+          "label": "Slack",
+          "status": "error",
+          "lastSyncAt": 1795544940000,
+          "error": "token revoked"
+        }
+      ],
+      "out": "Slack last synced 6:29 PM"
+    },
+    {
+      "sources": [
+        {
+          "kind": "discord",
+          "label": "D1",
+          "status": "ok",
+          "lastSyncAt": 1795537800000
+        },
+        {
+          "kind": "discord",
+          "label": "D2",
+          "status": "ok",
+          "lastSyncAt": 1795544880000
+        }
+      ],
+      "out": null
+    },
+    {
+      "sources": [
+        {
+          "kind": "imessage",
+          "label": "iMessage",
+          "status": "ok",
+          "lastSyncAt": 1795437000000
+        }
+      ],
+      "out": null
+    }
+  ],
+  "rows": [
+    {
+      "row": {
+        "_id": "c1",
+        "source": "slack",
+        "account": "T1",
+        "channel": "D1",
+        "name": "Dana Lee",
+        "kind": "direct",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "Can you look?",
+        "lastWho": "Dana Lee",
+        "lastFromMe": false,
+        "unread": false,
+        "faces": []
+      },
+      "line": "Can you look?",
+      "fact": "Slack",
+      "wantsRead": false
+    },
+    {
+      "row": {
+        "_id": "c1",
+        "source": "slack",
+        "account": "T1",
+        "channel": "D1",
+        "name": "Dana Lee",
+        "kind": "direct",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "On it.",
+        "lastWho": "Dana Lee",
+        "lastFromMe": true,
+        "unread": false,
+        "faces": []
+      },
+      "line": "You: On it.",
+      "fact": "Slack",
+      "wantsRead": false
+    },
+    {
+      "row": {
+        "_id": "c1",
+        "source": "slack",
+        "account": "T1",
+        "channel": "D1",
+        "name": "#builds",
+        "kind": "channel",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "Shipped\n the build",
+        "lastWho": "Omar Reyes",
+        "lastFromMe": false,
+        "unread": false,
+        "faces": []
+      },
+      "line": "Omar: Shipped the build",
+      "fact": "Slack",
+      "wantsRead": false
+    },
+    {
+      "row": {
+        "_id": "c1",
+        "source": "slack",
+        "account": "T1",
+        "channel": "D1",
+        "name": "Dana Lee",
+        "kind": "group",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "hi",
+        "lastWho": "",
+        "lastFromMe": false,
+        "unread": false,
+        "faces": []
+      },
+      "line": "hi",
+      "fact": "Slack",
+      "wantsRead": false
+    },
+    {
+      "row": {
+        "_id": "c1",
+        "source": "slack",
+        "account": "T1",
+        "channel": "D1",
+        "name": "Dana Lee",
+        "kind": "direct",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "Can you look?",
+        "lastWho": "Dana Lee",
+        "lastFromMe": false,
+        "unread": false,
+        "faces": [],
+        "accountName": "CosmicGames"
+      },
+      "line": "Can you look?",
+      "fact": "Slack, CosmicGames",
+      "wantsRead": false
+    },
+    {
+      "row": {
+        "_id": "c1",
+        "source": "imessage",
+        "account": "T1",
+        "channel": "D1",
+        "name": "Dana Lee",
+        "kind": "direct",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "Can you look?",
+        "lastWho": "Dana Lee",
+        "lastFromMe": false,
+        "unread": false,
+        "faces": [],
+        "accountName": "iMessage"
+      },
+      "line": "Can you look?",
+      "fact": "iMessage",
+      "wantsRead": false
+    },
+    {
+      "row": {
+        "_id": "c1",
+        "source": "slack",
+        "account": "T1",
+        "channel": "D1",
+        "name": "Dana Lee",
+        "kind": "direct",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "Can you look?",
+        "lastWho": "Dana Lee",
+        "lastFromMe": false,
+        "unread": true,
+        "faces": []
+      },
+      "line": "Can you look?",
+      "fact": "Slack",
+      "wantsRead": true
+    },
+    {
+      "row": {
+        "_id": "c1",
+        "source": "slack",
+        "account": "T1",
+        "channel": "D1",
+        "name": "Dana Lee",
+        "kind": "direct",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "Can you look?",
+        "lastWho": "Dana Lee",
+        "lastFromMe": false,
+        "unread": false,
+        "faces": [],
+        "lastInAt": 1795545000000,
+        "readAt": 1795544940000
+      },
+      "line": "Can you look?",
+      "fact": "Slack",
+      "wantsRead": true
+    },
+    {
+      "row": {
+        "_id": "c1",
+        "source": "slack",
+        "account": "T1",
+        "channel": "D1",
+        "name": "Dana Lee",
+        "kind": "direct",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "Can you look?",
+        "lastWho": "Dana Lee",
+        "lastFromMe": false,
+        "unread": false,
+        "faces": [],
+        "lastInAt": 1795541400000,
+        "readAt": 1795544940000
+      },
+      "line": "Can you look?",
+      "fact": "Slack",
+      "wantsRead": false
+    },
+    {
+      "row": {
+        "_id": "c1",
+        "source": "slack",
+        "account": "T1",
+        "channel": "D1",
+        "name": "Dana Lee",
+        "kind": "direct",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "Can you look?",
+        "lastWho": "Dana Lee",
+        "lastFromMe": false,
+        "unread": false,
+        "faces": [],
+        "lastInAt": 1795545000000,
+        "sourceReadAt": 1795545060000
+      },
+      "line": "Can you look?",
+      "fact": "Slack",
+      "wantsRead": false
+    },
+    {
+      "row": {
+        "_id": "c1",
+        "source": "slack",
+        "account": "T1",
+        "channel": "D1",
+        "name": "Dana Lee",
+        "kind": "direct",
+        "sector": "cosmic",
+        "lastAt": 1795545000000,
+        "lastText": "Can you look?",
+        "lastWho": "Dana Lee",
+        "lastFromMe": false,
+        "unread": false,
+        "faces": [],
+        "lastInAt": 1795545000000,
+        "lastOutAt": 1795545060000
+      },
+      "line": "Can you look?",
+      "fact": "Slack",
+      "wantsRead": false
+    }
+  ],
+  "files": [
+    {
+      "name": "plan.pdf",
+      "kind": "pdf"
+    },
+    {
+      "name": "Brief.DOCX",
+      "kind": "document"
+    },
+    {
+      "name": "budget.xlsx",
+      "kind": "sheet"
+    },
+    {
+      "name": "data.csv",
+      "kind": "sheet"
+    },
+    {
+      "name": "deck.pptx",
+      "kind": "slides"
+    },
+    {
+      "name": "photo.HEIC",
+      "kind": "media"
+    },
+    {
+      "name": "clip.mov",
+      "kind": "media"
+    },
+    {
+      "name": "memo.m4a",
+      "kind": "meeting"
+    },
+    {
+      "name": "notes.md",
+      "kind": "document"
+    },
+    {
+      "name": "readme.txt",
+      "kind": "document"
+    },
+    {
+      "name": "script.py",
+      "kind": null
+    },
+    {
+      "name": "bundle.zip",
+      "kind": null
+    },
+    {
+      "name": "logo.svg",
+      "kind": null
+    },
+    {
+      "name": "macro.docm",
+      "kind": null
+    },
+    {
+      "name": "noext",
+      "type": "application/pdf",
+      "kind": "pdf"
+    },
+    {
+      "name": "noext",
+      "type": "image/png",
+      "kind": "media"
+    },
+    {
+      "name": "noext",
+      "type": "text/plain",
+      "kind": null
+    },
+    {
+      "name": "noext",
+      "kind": null
+    },
+    {
+      "name": ".hidden",
+      "kind": null
+    },
+    {
+      "name": "folder/inner.pdf",
+      "kind": "pdf"
+    },
+    {
+      "name": "odd.weird",
+      "kind": null
+    }
+  ]
+}

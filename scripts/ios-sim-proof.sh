@@ -29,6 +29,17 @@
 #           sheet on the made-up scan light and dark (w62, w63) and one Save to the Unify job (w64,
 #           $OUT/receipt-report.json); TC_WORK_ONLY=money shoots that alone. The clicker on a fake
 #           show (c01 to c12, c20 under a pose); TC_WORK_ONLY=clicker shoots it alone.
+#           TC_WORK_ONLY=m1 shoots Today, its tick and undo, and the pick on the open Duo.
+#           TC_WORK_ONLY=access shoots Today, the Outbox, Messages and Settings → Diagnostics' Work Checks at the
+#           largest text size with Reduce Motion on.
+#           TC_WORK_ONLY=m2|m3|m4|m5 shoots one of the proof steps M2d, M3d, M4c, M5c of "All of Work on the
+#           iPhone" (work_m2 to work_m5): Mail, Messages and People; Files with the reader, Files, share and
+#           clicker parts; the composer's @, Search's Work scope and Capture; Review, Money and a job's small
+#           places. A place's shot waits on the ready file its list writes (place_shot) and holds its row count
+#           with scripts/lib/work_place_check.py ($OUT/work-place-check.txt). The whole set runs them after m1.
+#           TC_WORK_ONLY=fold is the Work fold cycle alone (duo_work_fold_cycle): the Duo from folded,
+#           paired with the key that may act, each Work screen folded, unfolded and folded again live,
+#           held by scripts/lib/duo_work_fold_check.py.
 #           scripts/ios-sim-proof-local.ts then reads back on the host what went
 #           ($OUT/work-report.txt).
 #   digest  The digest (docs/agents/work-digest.md "The phone"), from bun scripts/ios-sim-proof-local.ts, which
@@ -179,15 +190,35 @@
 #           nothing; TC_PERF_BASELINE="<dir> <dir>" hands the checker the
 #           baseline's passes. Three passes are judged together by hand:
 #           python3 scripts/lib/ios_perf_check.py --cores N <pass>/perf … --baseline <pass>/perf …
+#   work-perf  The Work performance proof (docs/IOS-DESIGN.md "The Work perf proof"):
+#           the perf set's Measure build, headless, its own runs (TC_WORK_PERF_RUNS, default
+#           launch-today rest-today list-idle list-busy editor). The app runs each (TC_TEST_WORK_PERF, TC_TEST_WORK_PERF_SPLIT;
+#           ios/TempCode/Sources/Perf/LaunchFrames.swift) and adds each launch's split to
+#           Documents/work-perf/<run>.json; launch-today has three cold launches: empty (onto Today,
+#           the caches dropped), cached (onto Today, after a launch that filled them) and restored
+#           (after a launch that left a workspace open). The simulator skips locked. rest-today fills
+#           Today, then measures ten quiet seconds after a cold launch onto it. list-idle and list-busy
+#           scroll the app's 1,000-row fixture list (WorkListCheck) and count its rows; editor opens
+#           a seeded document and samples the app's footprint and the WebKit processes' memory
+#           (editor-webkit.json). The server has Work on
+#           with the work set's m1 seeds and no relayed hosts (ios-sim-proof-local.ts); Today's LifeOS
+#           part reads the fixtures. The reports land in $OUT/work-perf/ and
+#           scripts/lib/ios_work_perf_check.py judges it against
+#           scripts/lib/ios_work_perf_gates.json. Three passes are judged together by hand:
+#           python3 scripts/lib/ios_work_perf_check.py <pass>/work-perf …
 #   all     shell, threads, scroll, actions and push (the default).
 # TC_SIM="TempCode L3" picks a device by name (default iPhone 17 Pro); TC_SIM_UDID one by id.
 # TC_PROOF_HEADLESS=1 never opens Simulator.app (the perf set never does): the booted device runs with
 # no window, so a set can run while a person is at the Mac. Not for a Duo pose.
+# TC_PROOF_PRESS_GATE=off|on sets "Require Face ID to Send" (UserDefaults `work.press.gate`,
+# PressGate.settingKey; absent means on) after every install: off lets a set press Send with no
+# Face ID or passcode sheet (the simulator has no Face ID enrolled, so on, a press waits at the
+# passcode). Unset writes nothing and the app's default (on) stands.
 # TC_DUO_POSE=<pose> is the iPhone Duo axis for ANY set: the device defaults to
 # "TempCode Duo" (bun run ios:duo:check -- --create makes it; the proof never
 # does), the check runs first, the simulator is put in that pose before the
 # first shot (folded|fp, folded-landscape|fl, unfolded|ul, unfolded-portrait|up,
-# half-open|ho; scripts/ios-duo-pose.sh), every shot captures the LIT panel
+# half-open|ho, tabletop|tt; scripts/ios-duo-pose.sh), every shot captures the LIT panel
 # (`simctl io … --display=`: the default capture is the dark inner panel when
 # folded, a valid black PNG), shots land in $OUT/shots/<pose>/, each shot's
 # layout-report.json in $OUT/layout/<pose>/<name>.json, and pose_check holds
@@ -214,15 +245,26 @@ duo_canonical() {
   case "$1" in
     folded|fp) echo folded ;; folded-landscape|fl) echo folded-landscape ;;
     unfolded|ul) echo unfolded ;; unfolded-portrait|up) echo unfolded-portrait ;;
-    half-open|ho) echo half-open ;; *) return 1 ;;
+    half-open|ho) echo half-open ;; tabletop|tt) echo tabletop ;; *) return 1 ;;
   esac
 }
 # The duo set is the axis itself: it starts unfolded unless told otherwise.
 [ "${TC_PROOF_SET:-all}" = duo ] && TC_DUO_POSE=${TC_DUO_POSE:-unfolded}
+# The Work fold cycle and the parts m1 to m5 (TC_WORK_ONLY=fold|m1|…|m5) move the Duo: they start folded unless told
+# otherwise. The whole Work set keeps its device; there the open-Duo shots run only on a Duo.
+if [ "${TC_PROOF_SET:-all}" = work ]; then
+  case "${TC_WORK_ONLY:-}" in
+    fold|m1|m2|m3|m4|m5) TC_DUO_POSE=${TC_DUO_POSE:-folded} ;;
+  esac
+fi
 if [ -n "${TC_DUO_POSE:-}" ]; then
-  POSE=$(duo_canonical "$TC_DUO_POSE") || { echo "ios-sim-proof: unknown TC_DUO_POSE $TC_DUO_POSE (folded|fp, folded-landscape|fl, unfolded|ul, unfolded-portrait|up, half-open|ho)" >&2; exit 2; }
+  POSE=$(duo_canonical "$TC_DUO_POSE") || { echo "ios-sim-proof: unknown TC_DUO_POSE $TC_DUO_POSE (folded|fp, folded-landscape|fl, unfolded|ul, unfolded-portrait|up, half-open|ho, tabletop|tt)" >&2; exit 2; }
   "$here/ios-duo-check.sh" || { echo "ios-sim-proof: the Duo check failed; fix the MISSING lines above" >&2; exit 2; }
 fi
+case "${TC_PROOF_PRESS_GATE:-}" in
+  ''|on|off) ;;
+  *) echo "ios-sim-proof: TC_PROOF_PRESS_GATE is off or on, not $TC_PROOF_PRESS_GATE" >&2; exit 2 ;;
+esac
 SIM=${TC_SIM:-${POSE:+TempCode Duo}}
 SIM=${SIM:-iPhone 17 Pro}
 OUT=${TC_PROOF_DIR:-/tmp/tc-ios-proof}
@@ -233,7 +275,7 @@ DERIVED=${TC_PROOF_DERIVED_DATA:-$OUT/DerivedData}
 BUNDLE=dev.landon.tempcode.ios
 mkdir -p "$OUT"
 # Rebuild incrementally, but never carry a report or screenshot into a new pass.
-rm -rf "$OUT/shots" "$OUT/layout" "$OUT/perf" "$OUT"/*.mov
+rm -rf "$OUT/shots" "$OUT/layout" "$OUT/perf" "$OUT/work-perf" "$OUT"/*.mov
 rm -f "$OUT"/*.json "$OUT/scroll-sample.txt"
 mkdir -p "$OUT/shots"
 scrub() { sed -E -e 's#pair\#[A-Za-z0-9-]+#pair\#<code>#g' -e 's#tc_[A-Za-z0-9]+\.[A-Za-z0-9_-]+#tc_<key>#g'; }
@@ -259,7 +301,7 @@ fi
 # The perf set runs headless: the simulator's window would come in front of the person.
 # TC_PROOF_HEADLESS=1 leaves it shut for any other set too: every set drives the device with simctl and
 # shoots it with `simctl io`, so only the Duo's poses (the hinge moves the window) need it open.
-[ "$SET" = perf ] || [ "${TC_PROOF_HEADLESS:-}" = 1 ] || open -g -a "$DEVELOPER_DIR/Applications/Simulator.app" --args -CurrentDeviceUDID "$TC_SIM_UDID" 2>/dev/null || true
+[ "$SET" = perf ] || [ "$SET" = work-perf ] || [ "${TC_PROOF_HEADLESS:-}" = 1 ] || open -g -a "$DEVELOPER_DIR/Applications/Simulator.app" --args -CurrentDeviceUDID "$TC_SIM_UDID" 2>/dev/null || true
 
 if [ "$SET" = perf ] && [ -n "${TC_PERF_APP:-}" ]; then
   # A kept app (the baseline, measured in turn with a candidate): nothing is built.
@@ -275,7 +317,7 @@ else
     -destination "platform=iOS Simulator,id=$TC_SIM_UDID" \
     -derivedDataPath "$DERIVED" -quiet 2>&1 | scrub
   [ -d "$DERIVED/Build/Products/Release-iphonesimulator/TempCode.app" ] || { echo "ios-sim-proof: the Release build failed" >&2; exit 1; }
-  if [ "$SET" = perf ]; then
+  if [ "$SET" = perf ] || [ "$SET" = work-perf ]; then
     # The Measure build: what Release compiles, optimized as Release is, with the
     # launch hooks (DEBUG) in. Its own derived data, so the Release check stays what ships.
     MEASURE=${TC_PERF_DERIVED_DATA:-$DERIVED-measure}
@@ -300,8 +342,16 @@ if [ "$SET" = perf ] && [ -n "${TC_PERF_KEEP:-}" ]; then
   echo "ios-sim-proof: kept $TC_PERF_KEEP/TempCode.app"
 fi
 
+# Every install of the app, and the press gate's setting after it (TC_PROOF_PRESS_GATE): a fresh install has none.
+install_app() {
+  xcrun simctl install "$TC_SIM_UDID" "$APP"
+  case "${TC_PROOF_PRESS_GATE:-}" in
+    off) xcrun simctl spawn "$TC_SIM_UDID" defaults write "$BUNDLE" work.press.gate -bool false ;;
+    on) xcrun simctl spawn "$TC_SIM_UDID" defaults write "$BUNDLE" work.press.gate -bool true ;;
+  esac
+}
 xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
-xcrun simctl install "$TC_SIM_UDID" "$APP"
+install_app
 xcrun simctl status_bar "$TC_SIM_UDID" override --time "9:41" --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3 >/dev/null 2>&1 || true
 # A fresh simulator shows the keyboard's slide-to-type introduction the first time a field takes focus, in the keys' place.
 xcrun simctl spawn "$TC_SIM_UDID" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true >/dev/null 2>&1 || true
@@ -313,7 +363,7 @@ restore() {
   xcrun simctl ui "$TC_SIM_UDID" appearance light >/dev/null 2>&1 || true
   xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null 2>&1 || true
   # The perf set booted its device with no window: nothing is left running (TC_PERF_KEEP_BOOTED=1 keeps it for the next pass).
-  if [ "$SET" = perf ] && [ "${TC_PERF_KEEP_BOOTED:-}" != 1 ]; then xcrun simctl shutdown "$TC_SIM_UDID" >/dev/null 2>&1 || true; fi
+  if { [ "$SET" = perf ] || [ "$SET" = work-perf ]; } && [ "${TC_PERF_KEEP_BOOTED:-}" != 1 ]; then xcrun simctl shutdown "$TC_SIM_UDID" >/dev/null 2>&1 || true; fi
 }
 trap restore EXIT
 
@@ -424,12 +474,19 @@ launch_app() {
   SIMCTL_CHILD_TC_TEST_STREAM_SECONDS="${TC_STREAM_SECONDS:-}" \
   SIMCTL_CHILD_TC_TEST_GROUP_GLIDE="${TC_GROUP_GLIDE:-}" \
   SIMCTL_CHILD_TC_TEST_PERF="${TC_PERF_RUN:-}" \
+  SIMCTL_CHILD_TC_TEST_WORK_PERF="${TC_WORK_PERF_RUN:-}" \
+  SIMCTL_CHILD_TC_TEST_WORK_PERF_SPLIT="${TC_WORK_PERF_SPLIT:-}" \
   SIMCTL_CHILD_TC_TEST_WORK_VIEW="${TC_WORK_VIEW:-}" \
-  SIMCTL_CHILD_TC_TEST_LIFE_FIXTURES="${TC_LIFE_FIXTURES:-}" \
+  SIMCTL_CHILD_TC_TEST_LIFE_FIXTURES="${TC_LIFE_FIXTURES:-${TC_TEST_LIFE_FIXTURES:-}}" \
   SIMCTL_CHILD_TC_TEST_ITEM="${TC_ITEM:-}" \
   SIMCTL_CHILD_TC_TEST_CLICKER="${TC_CLICKER:-}" \
   SIMCTL_CHILD_TC_TEST_SHARE="${TC_SHARE:-}" \
+  SIMCTL_CHILD_TC_TEST_SHARE_JOB="${TC_SHARE_JOB:-}" \
   SIMCTL_CHILD_TC_TEST_FILES="${TC_FILES:-}" \
+  SIMCTL_CHILD_TC_TEST_FILES_QUERY="${TC_FILES_QUERY:-}" \
+  SIMCTL_CHILD_TC_TEST_PLACE_TOP="${TC_PLACE_TOP:-}" \
+  SIMCTL_CHILD_TC_TEST_CHIP="${TC_CHIP:-}" \
+  SIMCTL_CHILD_TC_TEST_JOB="${TC_JOB:-}" \
   SIMCTL_CHILD_TC_TEST_CONTROL_URL="${TC_PERF_RUN:+${TC_TEST_CONTROL_URL:-}}" \
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
 }
@@ -465,8 +522,10 @@ pair() {
 # The Duo set types into the composer (the keyboard shots, the fold run's draft): it pairs with the key that may act.
 # The perf set's typing runs do too.
 if { [ "$SET" = duo ] || [ "$SET" = perf ]; } && [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_OPERATE; fi
-# The work set presses Send, Edit and Away and reads Settings → Work: it pairs with the admin key.
-if [ "$SET" = work ] && [ -n "${TC_TEST_PAIR_LINK_ADMIN:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_ADMIN; fi
+# The work set presses Send, Edit and Away and reads Settings → Work: it pairs with the admin key. Its fold cycle
+# (TC_WORK_ONLY=fold) presses nothing and pairs as the duo set does, with the key that may act.
+if [ "$SET" = work ] && [ "${TC_WORK_ONLY:-}" = fold ] && [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_OPERATE
+elif [ "$SET" = work ] && [ -n "${TC_TEST_PAIR_LINK_ADMIN:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_ADMIN; fi
 # The digest set reads Settings → Work's Digest section, whose rows only an admin key may change.
 if [ "$SET" = digest ] && [ -n "${TC_TEST_PAIR_LINK_ADMIN:-}" ]; then TC_TEST_PAIR_LINK=$TC_TEST_PAIR_LINK_ADMIN; fi
 # The video set opens streams: video.open needs approve, which the acting key has.
@@ -677,7 +736,7 @@ actions_set() {
   # Then a key that may act: the app starts over and pairs again.
   xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
   xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
-  xcrun simctl install "$TC_SIM_UDID" "$APP"
+  install_app
   TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_OPERATE" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (acting)" pair || { echo "ios-sim-proof: the app did not pair with the acting key" >&2; return 3; }
   rm -f "$OUT/shots/00-pairing.png"
   control /actions/clear >/dev/null
@@ -789,7 +848,7 @@ computer_set() {
   [ "$SET" = computer ] && shot "ro-run-skip-light" thread "Save the draft in TextEdit"
   xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
   xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
-  xcrun simctl install "$TC_SIM_UDID" "$APP"
+  install_app
   TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_OPERATE" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (acting)" pair || { echo "ios-sim-proof: the app did not pair with the acting key" >&2; return 3; }
   rm -f "$OUT/shots/00-pairing.png"
   control /actions/clear >/dev/null
@@ -877,7 +936,7 @@ box_actions_set() {
   if [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then
     xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
     xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
-    xcrun simctl install "$TC_SIM_UDID" "$APP"
+    install_app
     TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_OPERATE" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (approving)" pair || { echo "ios-sim-proof: the app did not pair with the approving key" >&2; return 3; }
     rm -f "$OUT/shots/00-pairing.png"
     TC_ACTION="send:Use the Bash tool to run exactly this command and then tell me its output: echo approved-from-the-phone" shot "box-act-ask" thread "${TC_BOX_APPROVE_THREAD:-L5 approval pass}" "" "" "${TC_BOX_REPLY_WAIT:-40}"
@@ -908,7 +967,7 @@ host_extras_set() {
   # The read key: the Build row disabled, the deploy, sync and device reasons in the footers.
   shot "host-detail-activity-read" hosts "" "" host
   xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
-  xcrun simctl install "$TC_SIM_UDID" "$APP"
+  install_app
   TC_TEST_PAIR_LINK="$TC_TEST_PAIR_LINK_ADMIN" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (admin)" pair || { echo "ios-sim-proof: the app did not pair with the admin key" >&2; return 3; }
   rm -f "$OUT/shots/00-pairing.png"
   for mode in light dark; do
@@ -1057,7 +1116,7 @@ glass_set() {
   if [ -n "${TC_TEST_PAIR_LINK_OPERATE:-}" ]; then
     xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
     xcrun simctl uninstall "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
-    xcrun simctl install "$TC_SIM_UDID" "$APP"
+    install_app
     # A code lasts ten minutes from its mint and this set runs longer: ask the control panel for a fresh one.
     operate_link=$( [ -n "${TC_TEST_CONTROL_URL:-}" ] && control /pairing | python3 -c 'import json,sys; print(json.load(sys.stdin).get("link",""))' 2>/dev/null || true)
     TC_TEST_PAIR_LINK="${operate_link:-$TC_TEST_PAIR_LINK_OPERATE}" TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-} (acting)" pair || { echo "ios-sim-proof: the app did not pair with the acting key" >&2; return 3; }
@@ -1100,20 +1159,255 @@ work_set() {
   # TC_WORK_ONLY=outbox2 Outbox 2 on the phone (M6): the list, the item's notes, Discard's reason, Send later, a
   # thread's request as its sheet, from its notice and as its card in the thread, and his Send on it.
   [ "${TC_WORK_ONLY:-}" = outbox2 ] && { work_outbox2; return; }
+  # TC_WORK_ONLY=m0 the Work tab alone (the plan "All of Work on the iPhone", M0c).
+  [ "${TC_WORK_ONLY:-}" = m0 ] && { work_m0; return; }
+  # TC_WORK_ONLY=m1 shoots Today alone.
+  [ "${TC_WORK_ONLY:-}" = m1 ] && { work_m1; return; }
+  # TC_WORK_ONLY=fold the Work fold cycle alone (M0d): each Work screen folded, unfolded and folded with the app running.
+  [ "${TC_WORK_ONLY:-}" = fold ] && { duo_work_fold_cycle; return; }
+  # TC_WORK_ONLY=m2|m3|m4|m5 one proof step of "All of Work on the iPhone" alone (M2d, M3d, M4c, M5c).
+  case "${TC_WORK_ONLY:-}" in
+    m2) work_m2; places_verdict; return ;;
+    m3) work_m3; places_verdict; return ;;
+    m4) work_m4; places_verdict; return ;;
+    m5) work_m5; places_verdict; return ;;
+    access) work_access; places_verdict; return ;;
+  esac
+  [ "${TC_WORK_ONLY:-}" = m47 ] || work_m0
+  if [ -z "${TC_WORK_ONLY:-}" ]; then work_m1; work_m2; work_m3; work_m4; work_m5; fi
   [ "${TC_WORK_ONLY:-}" = m47 ] || work_m46
   work_m47
-  work_capture
-  work_money
-  work_reader
-  work_clicker
-  work_share
-  work_files
+  # The whole set shot these inside m3 (the reader, Files, share, the clicker), m4 (the voice note) and m5 (the
+  # receipt); milestone 47's hand run shoots them after its own part.
+  if [ "${TC_WORK_ONLY:-}" = m47 ]; then
+    work_capture
+    work_money
+    work_reader
+    work_clicker
+    work_share
+    work_files
+  fi
+  places_verdict
 }
+
+# The proof parts m2 to m5: a Work place's shot. One launch on TC_TEST_ROUTE=place (TC_TEST_WORK_VIEW names the place,
+# TC_JOB narrows it to one job, [open] is TC_TEST_OPEN), a wait on the ready file the place's list writes once it has
+# an answer (TestHooks.recordPlaceLoaded: Documents/place-<place>.json), a settle, the file kept as
+# $OUT/places/<name>.json and held by scripts/lib/work_place_check.py to [least] rows (or a failed read with
+# `failed`), then the capture. Its lines gather in $OUT/work-place-check.txt; places_verdict fails the set on a FAIL.
+# Places that draw on LifeKit's own screen (Mail, Tasks, Agenda) write no ready file: those use `shot`.
+#   place_shot <name> <place> [open] [least] [failed] [settle]
+# TC_WORK_ONLY=access: the largest text size with Reduce Motion on, one shot each of Today, the Outbox, Messages and
+# Settings → Diagnostics with its Work Checks (the `diagnostics` route), on whatever device the run has; both settings
+# go back after.
+work_access() (
+  export TC_TEST_LIFE_FIXTURES=1
+  appearance light
+  reduce_motion true
+  xcrun simctl ui "$TC_SIM_UDID" content_size accessibility-extra-extra-extra-large >/dev/null
+  shot ax-01-today-largest-reduce-motion today "" "" "" 12
+  shot ax-02-outbox-largest-reduce-motion outbox
+  place_shot ax-03-messages-largest-reduce-motion messages "" 4
+  shot ax-04-work-checks-largest-reduce-motion diagnostics
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  reduce_motion false
+)
+
+place_shot() {
+  local name=$1 place=$2 open=${3:-} least=${4:-0} failed=${5:-} settle=${6:-3} docs
+  docs=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  [ -n "$docs" ] && rm -f "$docs/Documents/place-$place.json" "$docs"/Documents/pose-*.json "$docs/Documents/layout-report.json"
+  ( TC_WORK_VIEW=$place launch_app place "" "" "$open" )
+  mkdir -p "$OUT/places"
+  if [ -n "$docs" ] && wait_for "$docs/Documents/place-$place.json" 40; then
+    sleep "$settle"
+    cp "$docs/Documents/place-$place.json" "$OUT/places/$name.json"
+    python3 "$here/lib/work_place_check.py" "$OUT/places/$name.json" "$name" "$least" $failed | tee -a "$OUT/work-place-check.txt" || true
+  else
+    echo "WORK PLACE FAIL ($name) the $place list never answered in 40 s" | tee -a "$OUT/work-place-check.txt"
+  fi
+  snap "$name"
+}
+# The set fails when a place's shot did not hold (the shots are all taken first).
+places_verdict() {
+  [ -f "$OUT/work-place-check.txt" ] || return 0
+  if /usr/bin/grep -q 'WORK PLACE FAIL' "$OUT/work-place-check.txt"; then
+    echo "ios-sim-proof: $(/usr/bin/grep -c 'WORK PLACE FAIL' "$OUT/work-place-check.txt") Work place shot(s) failed ($OUT/work-place-check.txt)" >&2
+    return 1
+  fi
+  echo "ios-sim-proof: Work places PASS ($(/usr/bin/grep -c PASS "$OUT/work-place-check.txt") shots)"
+}
+# Files' grid is a setting the app keeps (`files.grid`): files-grid turns it on, and each grid shot turns it off after.
+grid_off() { xcrun simctl spawn "$TC_SIM_UDID" defaults write "$BUNDLE" files.grid -bool false >/dev/null 2>&1 || true; }
+# The parts' open-Duo shots: on a Duo, unfolded for the part's last shots, then back to the pose the part started in.
+duo_open() { [ -z "${POSE:-}" ] || fold unfolded; }
+duo_back() { [ -z "$1" ] || [ "${POSE:-}" = "$1" ] || fold "$1"; }
+
+# M2d (docs/IOS-DESIGN.md "Mail", "Messages", "People"): Mail, Messages and People as places of the Work tab on LifeKit's
+# fixture day (TC_TEST_LIFE_FIXTURES: the test server has no LifeOS), for every job and for one (TC_JOB); Mail's Waiting
+# on and its Purdue thread open; Dana Lee's conversation, the Discord channel with Copy, and Dana Lee's page opened as a
+# tap on their rows (TC_TEST_OPEN=chat:|person:<sector>:<id>, in the CosmicGames and Hypixel jobs seedM2 adds); light,
+# dark and at the accessibility size; on a Duo, the three on the open Duo. The fixture rows are every sector's whatever
+# the job, so the one-job shots prove the frame (no dots, the job's title), not the narrowing.
+work_m2() (
+  export TC_TEST_LIFE_FIXTURES=1
+  local start_pose=${POSE:-}
+  appearance light
+  shot m2-01-work-list-light work "" "" "" 12
+  ( TC_WORK_VIEW=mail shot m2-02-mail-all-light place "" "" "" 12 )
+  ( TC_JOB=Purdue TC_WORK_VIEW=mail shot m2-03-mail-purdue-light place "" "" "" 12 )
+  ( TC_WORK_VIEW=mail shot m2-04-mail-waiting-light place "" "" mail-waiting 12 )
+  # The Purdue thread opens three seconds after the list, as a tap would.
+  ( TC_WORK_VIEW=mail shot m2-05-mail-thread-light place "" "" mail-thread 14 )
+  ( TC_WORK_VIEW=agenda shot m2-06-agenda-light place "" "" "" 12 )
+  place_shot m2-10-messages-all-light messages "" 4
+  ( TC_JOB=Cosmic place_shot m2-11-messages-cosmic-light messages "" 1 )
+  place_shot m2-12-chat-dana-light messages chat:cosmic:c-dana 4 "" 5
+  place_shot m2-13-chat-discord-light messages chat:hypixel:c-omar 4 "" 5
+  place_shot m2-20-people-all-light people "" 3
+  ( TC_JOB=Cosmic place_shot m2-21-people-cosmic-light people "" 1 )
+  place_shot m2-22-person-dana-light people person:cosmic:p-dana 3 "" 5
+  appearance dark
+  ( TC_WORK_VIEW=mail shot m2-30-mail-waiting-dark place "" "" mail-waiting 12 )
+  place_shot m2-31-messages-all-dark messages "" 4
+  place_shot m2-32-chat-dana-dark messages chat:cosmic:c-dana 4 "" 5
+  place_shot m2-33-person-dana-dark people person:cosmic:p-dana 3 "" 5
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  ( TC_WORK_VIEW=mail shot m2-40-mail-waiting-a11y place "" "" mail-waiting 12 )
+  place_shot m2-41-chat-dana-a11y messages chat:cosmic:c-dana 4 "" 5
+  place_shot m2-42-person-dana-a11y people person:cosmic:p-dana 3 "" 5
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  if [ -n "$start_pose" ]; then
+    duo_open
+    ( TC_WORK_VIEW=mail shot m2-50-mail-duo-open place "" "" mail-thread 14 )
+    place_shot m2-51-chat-dana-duo-open messages chat:cosmic:c-dana 4 "" 5
+    place_shot m2-52-person-dana-duo-open people person:cosmic:p-dana 3 "" 5
+    duo_back "$start_pose"
+  fi
+)
+
+# M3d (docs/IOS-DESIGN.md "Files", docs/agents/work-phone-files.md): Files as a place for every job and one, the Budgets
+# folder seedFilesM3 fills walked to by name (TC_TEST_FILES), the same folder as icons (TC_TEST_ACTION=files-grid, set
+# back to rows after), the Trash lens with its one row, Search's Files scope; dark and at the accessibility size (the
+# grid's names wrap). Then the parts that already prove the reader, a file from Files, Save to TempCode and the clicker
+# (work_reader, work_files, work_share, work_clicker); on a Duo, a PDF picked beside its folder on the open Duo.
+work_m3() (
+  local start_pose=${POSE:-} budgets="@folder/Budgets"
+  appearance light
+  shot m3-01-work-list-light work "" "" "" 12
+  place_shot m3-02-files-all-light files "" 1
+  ( TC_JOB=Purdue place_shot m3-03-files-purdue-light files "" 1 )
+  ( TC_FILES="$budgets" place_shot m3-04-files-folder-light files "" 1 "" 6 )
+  ( TC_FILES="$budgets" TC_ACTION=files-grid place_shot m3-05-files-grid-light files "" 1 "" 8 )
+  grid_off
+  ( TC_FILES=Trash TC_ACTION=files-list place_shot m3-06-files-trash-light files "" 1 "" 6 )
+  # Files' own search (the field over the Files place): it finds a file by its name in every folder of the job. The
+  # Search tab's Files scope is the code projects' search (plan "Search"); Work's files are its Work scope (m4-11).
+  ( TC_FILES_QUERY=budget place_shot m3-07-files-search-budget-light files "" 1 "" 10 )
+  appearance dark
+  place_shot m3-10-files-all-dark files "" 1
+  ( TC_FILES="$budgets" TC_ACTION=files-list place_shot m3-11-files-folder-dark files "" 1 "" 6 )
+  ( TC_FILES="$budgets" TC_ACTION=files-grid place_shot m3-12-files-grid-dark files "" 1 "" 8 )
+  grid_off
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  ( TC_FILES="$budgets" TC_ACTION=files-grid place_shot m3-13-files-grid-a11y files "" 1 "" 8 )
+  grid_off
+  # The rows, set in the app before the shot: the grid chosen for m3-13 must not carry into the folder's own shot.
+  ( TC_FILES="$budgets" TC_ACTION=files-list place_shot m3-14-files-folder-a11y files "" 1 "" 6 )
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  if [ -n "$start_pose" ]; then
+    duo_open
+    ( TC_FILES="$budgets/Spring budget.pdf" place_shot m3-20-files-pdf-duo-open files "" 1 "" 10 )
+    duo_back "$start_pose"
+  fi
+  work_reader
+  work_files
+  work_share
+  work_clicker
+)
+
+# M4c (docs/IOS-DESIGN.md "The composer's @ in a Work thread", "Search", "Capture"): the Work thread "Spring LAN
+# check-in" (seedWorkItems) with `@` and `@bud` typed (TC_TEST_ACTION=draft:, nothing sent; the test server has no
+# LifeOS, so the panel's foot names it signed out), a chip alone in the box (TC_TEST_CHIP), Search's Work scope with
+# Recent (seedSearchM4) and "budget", Capture's sheet over the Work list and Today with its plus, then the voice note
+# (work_capture); dark and at the accessibility size; on a Duo, the thread on its PDF on the open Duo and the fold
+# cycle's thread step (its checker holds the draft's 44 characters and the one chip).
+work_m4() (
+  local start_pose=${POSE:-} thread="Spring LAN check-in"
+  appearance light
+  ( TC_ACTION="draft:@" shot m4-01-mention-light thread "$thread" chat "" 14 )
+  ( TC_ACTION="draft:@bud" shot m4-02-mention-bud-light thread "$thread" chat "" 14 )
+  ( TC_CHIP="Book the ballroom" shot m4-03-chip-alone-light thread "$thread" chat "" 14 )
+  ( TC_TEST_SEARCH="" TC_TEST_SEARCH_SCOPE=work shot m4-10-search-work-recent-light search "" "" "" 12 )
+  ( TC_TEST_SEARCH=budget TC_TEST_SEARCH_SCOPE=work shot m4-11-search-work-budget-light search "" "" "" 16 )
+  ( TC_SHEET=capture shot m4-20-capture-light work "" "" "" 12 )
+  place_shot m4-21-today-plus-light today "" 0
+  appearance dark
+  ( TC_ACTION="draft:@" shot m4-30-mention-dark thread "$thread" chat "" 14 )
+  ( TC_TEST_SEARCH=budget TC_TEST_SEARCH_SCOPE=work shot m4-31-search-work-budget-dark search "" "" "" 16 )
+  ( TC_SHEET=capture shot m4-32-capture-dark work "" "" "" 12 )
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  ( TC_TEST_SEARCH=budget TC_TEST_SEARCH_SCOPE=work shot m4-40-search-work-budget-a11y search "" "" "" 16 )
+  ( TC_SHEET=capture shot m4-41-capture-a11y work "" "" "" 12 )
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  work_capture
+  if [ -n "$start_pose" ]; then
+    duo_open
+    ( TC_ITEM=pdf shot m4-50-thread-pdf-duo-open thread "$thread" item "" 16 )
+    # Not in a subshell: the cycle ends folded, and duo_back must see the pose it left.
+    TC_WORK_FOLDS=thread
+    duo_work_fold_cycle
+    duo_back "$start_pose"
+  fi
+)
+
+# M5c (docs/IOS-DESIGN.md "Review", "Money", "A job's small places"): the Work list's foot, Review on the week seedToday
+# made, the Purdue job's page and its Money (seedM5: owed each way, a month past the eight rows, two receipts
+# waiting), the Unify job's empty Money (TC_JOB), Plays (seedM5's two), Routines, Forms, Connections, Computers and
+# Settings → Work, Today with the review's row; dark and at the accessibility size; the receipt (work_money); on a
+# Duo, Review and Money on the open Duo.
+work_m5() (
+  local start_pose=${POSE:-}
+  appearance light
+  shot m5-01-work-list-light work "" "" "" 12
+  place_shot m5-02-review-light review "" 1
+  shot m5-03-workspace-light work-workspace "" "" "" 12
+  ( TC_WORK_VIEW=money shot m5-04-money-light work-view "" "" "" 14 )
+  # Before work_money's Save puts a receipt in the Unify ledger.
+  ( TC_JOB=Unify TC_WORK_VIEW=money shot m5-05-money-empty-light work-view "" "" "" 14 )
+  ( TC_WORK_VIEW=plays shot m5-06-plays-light work-view "" "" "" 12 )
+  ( TC_WORK_VIEW=routines shot m5-07-routines-light work-view "" "" "" 12 )
+  ( TC_WORK_VIEW=forms shot m5-08-forms-light work-view "" "" "" 12 )
+  place_shot m5-09-connections-light connections "" 0
+  ( TC_WORK_VIEW=computers shot m5-10-computers-light place "" "" "" 12 )
+  shot m5-11-work-settings-light work-settings
+  place_shot m5-12-today-review-row-light today "" 1
+  appearance dark
+  place_shot m5-20-review-dark review "" 1
+  ( TC_WORK_VIEW=money shot m5-21-money-dark work-view "" "" "" 14 )
+  ( TC_WORK_VIEW=plays shot m5-22-plays-dark work-view "" "" "" 12 )
+  appearance light
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  place_shot m5-30-review-a11y review "" 1
+  ( TC_WORK_VIEW=money shot m5-31-money-a11y work-view "" "" "" 14 )
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  work_money
+  if [ -n "$start_pose" ]; then
+    duo_open
+    place_shot m5-40-review-duo-open review "" 1
+    ( TC_WORK_VIEW=money shot m5-41-money-duo-open work-view "" "" "" 14 )
+    duo_back "$start_pose"
+  fi
+)
 
 # Outbox 2 on the phone (docs/IOS-DESIGN.md "Work on the phone"; scripts/lib/ios-work-seeds.ts seedOutbox2): the
 # list in prototype A's order, an out-of-date item and a timed one, Discard's question with its reason, Pick a
 # Time…, the roster thread's request as its sheet (from the Outbox and from its notice) and as its card in the
-# thread, light and dark. Last, his Send on the sheet as drawn: the five seconds with each row's line, then the
+# thread, light and dark; Select with three ticks and its summary, light, dark and at the accessibility size
+# (o15-o19). Last, his Send on the sheet as drawn: the five seconds with each row's line, then the
 # results; work-report.txt reads back on the host that exactly the two ticked rows ran (verifyOutbox2).
 work_outbox2() {
   appearance light
@@ -1130,12 +1424,27 @@ work_outbox2() {
   shot o12-request-sheet-dark outbox-request "" "" "" 14
   shot o13-thread-card-dark thread "Nationals roster" "" "" 14
   shot o14-item-stale-dark outbox-item "" "" ob2-stale 12
+  # Select (TC_TEST_ACTION=outbox-select: the first three rows that take a tick ticked, nothing pressed) and its
+  # summary (outbox-summary: the sheet on a phone; on the open Duo the summary is the detail beside the list).
+  TC_ACTION=outbox-select shot o17-select-dark outbox "" "" "" 14
+  TC_ACTION=outbox-summary shot o18-summary-dark outbox "" "" "" 14
   appearance light
-  # His Send lands two seconds after the sheet loads and waits five: a look each second across the launch and the
-  # wait (o09-NN, the ones in the wait show each row's line and the capsule), then the results.
+  TC_ACTION=outbox-select shot o15-select-light outbox "" "" "" 14
+  TC_ACTION=outbox-summary shot o16-summary-light outbox "" "" "" 14
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  TC_ACTION=outbox-select shot o19-select-a11y outbox "" "" "" 14
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  # His Send lands two seconds after the sheet loads and waits five: a look each second from the sheet's load across
+  # the wait (o09-NN, the ones in the wait show each row's line and the capsule), then the results. The looks start
+  # once the sheet says it has its rows (Documents/request-sheet.json): a look begun at the relaunch caught the
+  # system's empty launch screen, a white frame that is no state of the sheet.
+  local i container
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  [ -n "$container" ] && rm -f "$container/Documents/request-sheet.json"
   TC_ACTION=request-send launch_app outbox-request
-  local i
-  for i in 02 03 04 05 06 07 08 09 10 11 12 13 14; do sleep 1; snap "o09-$i-request-light"; done
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
+  [ -n "$container" ] && { wait_for "$container/Documents/request-sheet.json" 30 || echo "ios-sim-proof: outbox2: the request sheet never loaded" >&2; }
+  for i in 02 03 04 05 06 07 08 09 10 11 12 13 14; do snap "o09-$i-request-light"; sleep 1; done
   sleep 8; snap o10-request-done-light
 }
 
@@ -1187,8 +1496,9 @@ work_clicker() {
 }
 
 # Save to TempCode (docs/agents/work-phone-files.md): the share extension's sheet, opened over Home by the app
-# itself (TC_TEST_SHARE, ShareProofSheet) in each of its states, light and dark; then one real save of a picture
-# into the first Work workspace's folder, which work-report.txt reads back by its sha256 (verifyShare).
+# itself (TC_TEST_SHARE, ShareProofSheet) in each of its states, light and dark; then one real save of a picture.
+# The save starts with no job checked (Save stays off and queues nothing), then picks Purdue Esports by name
+# (TC_SHARE_JOB) and saves; work-report.txt reads the file back in that job's folder by its sha256 (verifyShare).
 work_share() {
   appearance light
   ( TC_SHARE=one shot s01-share-one-light home "" "" "" 10 )
@@ -1206,7 +1516,7 @@ work_share() {
   ( TC_SHARE=one shot s09-share-one-dark home "" "" "" 10 )
   ( TC_SHARE=earlier shot s10-share-earlier-dark home "" "" "" 10 )
   appearance light
-  ( TC_SHARE=save shot s11-share-real-save-light home "" "" "" 16 )
+  ( TC_SHARE=save TC_SHARE_JOB="Purdue Esports" shot s11-share-real-save-light home "" "" "" 16 )
   # What the save left on the phone's side (its name, size, sha256 and how it ended), for verifyShare.
   local container
   container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data 2>/dev/null || true)
@@ -1348,8 +1658,49 @@ work_m47() {
   ( TC_ITEM=slides shot w46-item-slides-review-light thread "$items" item "" 20 )
 }
 
+# The Work tab (M0c): the Work list at the tab's root, Home with no row of Work's, the Outbox as a place of the
+# tab, a held notice landing over it, Work Chats and Settings in the tab, the list in dark and at the
+# accessibility size. Under TC_DUO_POSE the same shots are the pose's (the list beside its pick when open).
+work_m0() {
+  appearance light
+  shot m0-work-list-light work "" "" "" 12
+  shot m0-home-code-only-light home
+  shot m0-outbox-place-light outbox
+  shot m0-held-notice-light held-notice
+  shot m0-work-chats-light work-chats
+  shot m0-work-settings-light work-settings
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  shot m0-work-list-a11y work
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  appearance dark
+  shot m0-work-list-dark work
+  shot m0-outbox-place-dark outbox
+  appearance light
+}
+
+work_m1() (
+  export TC_TEST_LIFE_FIXTURES=1
+  local start_pose=${POSE:-}
+  appearance light
+  shot m1-today-light work
+  appearance dark
+  shot m1-today-dark work
+  xcrun simctl ui "$TC_SIM_UDID" content_size "$A11Y_SIZE" >/dev/null
+  shot m1-today-a11y work
+  xcrun simctl ui "$TC_SIM_UDID" content_size large >/dev/null
+  appearance light
+  TC_ACTION=today-tick launch_app work
+  sleep 6; snap m1-today-tick-light
+  # The open Duo picks the first held row for the empty detail.
+  if [ -n "$start_pose" ]; then
+    fold unfolded
+    duo_shot m1-today-duo-open work
+    [ "$start_pose" = unfolded ] || fold "$start_pose"
+  fi
+)
+
 work_m46() {
-  shot w01-home-light home "" "" "" 12
+  shot w01-work-list-light work "" "" "" 12
   shot w02-outbox-light outbox
   shot w03-mail-light outbox-item
   TC_SHEET=outbox-edit shot w04-edit-light outbox-item
@@ -1373,7 +1724,7 @@ work_m46() {
   shot w10-home-after-away-light home
   shot w11-work-settings-light work-settings
   appearance dark
-  shot w12-home-dark home
+  shot w12-work-list-dark work
   shot w13-outbox-dark outbox
   shot w14-mail-dark outbox-item
 }
@@ -1417,7 +1768,7 @@ DUO_TYPES=(
   "orchestration|Ship the iOS thread screens|fleet"
 )
 DUO_DRAFT="Keep the toggle in the header, then rerun the settings tests"
-duo_regular() { case "$POSE" in unfolded|unfolded-portrait|half-open) return 0 ;; *) return 1 ;; esac; }
+duo_regular() { case "$POSE" in unfolded|unfolded-portrait|half-open|tabletop) return 0 ;; *) return 1 ;; esac; }
 # One thread shot of the matrix: duo_tshot <name> <kind> <title part> <segment> <shown|hidden> [draft]
 duo_tshot() {
   local name=$1 kind=$2 part=$3 segment=$4 side=$5 draft=${6:-}
@@ -1571,6 +1922,57 @@ duo_fold_run() {
   control /finish '{"sessionId":"ios-impl"}' >/dev/null
   sleep 1
   python3 "$here/lib/duo_fold_check.py" "$OUT/layout" "$run" "${#DUO_DRAFT}"
+}
+
+# The Work fold cycle (M0d; docs/IOS-DESIGN.md "Work in every pose"), TC_PROOF_SET=work TC_WORK_ONLY=fold: one launch
+# a screen, folded, then unfolded and folded again with the app running, three stops a screen, each stop's layout
+# report copied, the app's events merged every 400 ms (duo_fold_sampler.py) and its row-inits.json kept; then
+# scripts/lib/duo_work_fold_check.py holds the typed route, the picked row, the list's top row, the draft, an open
+# sheet, his chosen sidebar, the sidebar each pose allows the route, no row made twice and the hosted page not
+# loaded again. The screens that exist and are seeded: the Outbox scrolled (the fold seeds, `seedFoldHeld`) with
+# an item open, a Files folder, a Work thread on its item, and Mail with a thread open on LifeKit's fixture day.
+# Not yet: a hosted document (no seed opens the hosted editor on the test server) and a mail reply typed (no hook
+# types into LifeKitUI's composer). TC_WORK_FOLDS narrows a hand run (outbox files thread mail).
+duo_work_fold_cycle() {
+  local step
+  for step in ${TC_WORK_FOLDS:-outbox files thread mail}; do
+    case "$step" in
+      outbox) ( TC_PLACE_TOP=8 duo_work_fold_run outbox ordinary outbox-item "" "" fold-12 ) ;;
+      files) ( TC_WORK_VIEW=files TC_FILES="@folder/Nationals" duo_work_fold_run files ordinary work-view ) ;;
+      # A typed draft and a chip in the box: the checker holds the draft's length and the chip count (`typed`).
+      thread) ( TC_ITEM=pdf TC_ACTION="draft:Check the totals against the spring budget" TC_CHIP="Book the ballroom" TC_FOLD_TYPED=1 \
+                duo_work_fold_run thread wide thread "Spring LAN check-in" item ) ;;
+      mail) ( TC_LIFE_FIXTURES=1 TC_WORK_VIEW=mail duo_work_fold_run mail wide work-view "" "" mail-thread ) ;;
+      *) echo "ios-sim-proof: unknown Work fold step $step" >&2; return 2 ;;
+    esac
+  done
+  echo "ios-sim-proof: Work fold cycle PASS ($(echo ${TC_WORK_FOLDS:-outbox files thread mail} | wc -w | tr -d ' ') screens)"
+}
+#   duo_work_fold_run <step> <ordinary|wide> <route> [thread part] [segment] [open]
+duo_work_fold_run() {
+  local step=$1 kind=$2 route=$3 part=${4:-} segment=${5:-} open=${6:-} container sampler
+  local dir="$OUT/layout/wfold-$step"
+  rm -rf "$dir"; mkdir -p "$dir"
+  appearance light
+  fold fp
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+  rm -f "$container"/Documents/pose-*.json "$container/Documents/transcript-report.json" "$container/Documents/layout-report.json" "$container/Documents/row-inits.json"
+  echo "ios-sim-proof: Work fold ($step): $route, a $kind route"
+  launch_app "$route" "$part" "$segment" "$open"
+  sleep "$SETTLE"; sleep 4
+  python3 "$here/lib/duo_fold_sampler.py" "$container/Documents" "$dir" &
+  sampler=$!
+  sleep 2
+  work_stop() {
+    snap "$1" || { kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null; cp "$container/Documents/row-inits.json" "$dir/row-inits.json" 2>/dev/null; return 1; }
+  }
+  work_stop "wfold-$step-1-folded"
+  fold ul live; sleep 3; work_stop "wfold-$step-2-unfolded"
+  fold fp live; sleep 3; work_stop "wfold-$step-3-folded"
+  sleep 1
+  kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null || true
+  cp "$container/Documents/row-inits.json" "$dir/row-inits.json" 2>/dev/null || echo '{}' > "$dir/row-inits.json"
+  python3 "$here/lib/duo_work_fold_check.py" "$OUT/layout" "$step" "$kind" ${TC_FOLD_TYPED:+typed}
 }
 
 # The transcript proof (slice A3 of "The phone reads like the desktop"): the
@@ -1891,6 +2293,92 @@ perf_set() {
   python3 "$here/lib/ios_perf_check.py" --cores "$(sysctl -n hw.ncpu)" "$OUT/perf" ${TC_PERF_BASELINE:+--baseline $TC_PERF_BASELINE}
 }
 
+# The Work performance proof: each split of a run is a cold launch the app measures itself.
+#   work_perf_launch <run> <split> [route]
+# `fill` waits for the app's <run>.filled.json (what a measured launch waits for is in the caches; its note
+# says what never came); a measured split waits for the split in <run>.json, which every measured launch adds to.
+# Today's LifeOS part reads the fixtures (TC_LIFE_FIXTURES=1), as the work set's m1 does.
+work_perf_launch() {
+  local run=$1 split=$2 route=${3:-} docs="$container/Documents/work-perf" i=0
+  xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+  rm -f "$docs/$run.filled.json"
+  TC_LIFE_FIXTURES=1 TC_WORK_PERF_RUN=$run TC_WORK_PERF_SPLIT=$split launch_app "$route"
+  if [ "$split" = fill ]; then
+    if wait_for "$docs/$run.filled.json" "${TC_PERF_WAIT:-90}"; then
+      grep -q '"live":true' "$docs/$run.filled.json" || echo "ios-sim-proof: work-perf $run: the fill launch $(cat "$docs/$run.filled.json")" >&2
+    else
+      echo "ios-sim-proof: work-perf $run: the fill launch wrote nothing" >&2
+    fi
+  else
+    until python3 -c 'import json, sys; sys.exit(0 if sys.argv[2] in json.load(open(sys.argv[1])).get("splits", {}) else 1)' "$docs/$run.json" "$split" 2>/dev/null; do
+      i=$((i + 1))
+      [ "$i" -gt $(( ${TC_PERF_WAIT:-90} * 2 )) ] && { echo "ios-sim-proof: work-perf $run $split: no report" >&2; break; }
+      sleep 0.5
+    done
+  fi
+  xcrun simctl terminate "$TC_SIM_UDID" "$BUNDLE" >/dev/null 2>&1 || true
+}
+# The WebKit processes of this simulator, by pid, once a second until killed: their resident megabytes summed per
+# sample, the peak written to <file> as {"samples":N,"peakMB":X,"pids":[...]} (rss: ps cannot read another process's
+# footprint; Instruments on the phone is the figure that counts).
+work_perf_webkit() {
+  local file=$1 peak=0 samples=0 pids="" launchd
+  trap 'printf "{\"samples\":%s,\"peakMB\":%s,\"pids\":[%s]}\n" "$samples" "$peak" "$(echo "$pids" | tr " " "\n" | sort -u | grep . | paste -sd, -)" > "$file"; exit 0' TERM
+  while :; do
+    launchd=$(pgrep -f "launchd_sim.*$TC_SIM_UDID" | head -1)
+    if [ -n "$launchd" ]; then
+      local now
+      now=$(ps -A -o pid=,ppid=,rss=,command= | awk -v p="$launchd" '$2 == p && /com\.apple\.WebKit\./ { kb += $3; printf "%s ", $1 > "/dev/stderr" } END { printf "%.1f", kb / 1024 }' 2>"$file.pids")
+      pids="$pids $(cat "$file.pids" 2>/dev/null)"
+      samples=$((samples + 1))
+      peak=$(python3 -c 'import sys; print(max(float(sys.argv[1]), float(sys.argv[2])))' "$peak" "${now:-0}")
+    fi
+    sleep 1
+  done
+}
+work_perf_set() {
+  appearance light
+  mkdir -p "$OUT/work-perf"
+  local container run
+  container=$(xcrun simctl get_app_container "$TC_SIM_UDID" "$BUNDLE" data)
+  rm -rf "$container/Documents/work-perf"
+  for run in ${TC_WORK_PERF_RUNS:-launch-today rest-today list-idle list-busy editor}; do
+    case "$run" in
+      launch-today)
+        # Each measured launch comes back onto the screen the launch before it left: Today (the fill's route),
+        # so the empty one too is a cold launch onto Today, its caches dropped.
+        work_perf_launch "$run" fill today
+        work_perf_launch "$run" empty
+        work_perf_launch "$run" fill today
+        work_perf_launch "$run" cached
+        # Last: the restored launch leaves a workspace open for whatever runs next.
+        work_perf_launch "$run" fill workspace
+        work_perf_launch "$run" restored
+        ;;
+      rest-today)
+        work_perf_launch "$run" fill today
+        work_perf_launch "$run" rest
+        ;;
+      list-idle|list-busy)
+        # The app's own 1,000-row fixture list over Home (WorkListCheck); list-busy plays the server's /load through
+        # its still seconds.
+        work_perf_launch "$run" list
+        ;;
+      editor)
+        # The seeded document open over the reader route (ios-work-perf-seeds.ts); the WebKit processes sampled
+        # beside the app's own figures.
+        work_perf_webkit "$OUT/work-perf/editor-webkit.json" &
+        local sampler=$!
+        TC_TEST_THREAD="Perf editor" TC_ITEM="Perf poster" work_perf_launch "$run" open reader
+        kill "$sampler" 2>/dev/null; wait "$sampler" 2>/dev/null
+        ;;
+      *) echo "ios-sim-proof: unknown work-perf run $run" >&2; return 2 ;;
+    esac
+    cp "$container/Documents/work-perf/$run.json" "$OUT/work-perf/$run.json" 2>/dev/null || echo "ios-sim-proof: work-perf $run: no report" >&2
+  done
+  python3 "$here/lib/ios_work_perf_check.py" "$OUT/work-perf"
+}
+
 # Live video (docs/agents/live-video.md): the seeded Work thread's browser item plays the box engine's recorded
 # stream from the test server (POST /video, scripts/lib/videoLoopFeed.ts), then full screen, then Home's Computers
 # row and its list, then the list's full screen watching (Take Over and Stop) and driving (TC_TEST_OPEN=live-drive
@@ -1916,7 +2404,7 @@ video_set() {
     video_report "v1-$mode-b"
     ( TC_ITEM=browser shot "v2-full-screen-$mode" thread "$thread" item live-full 16 )
     video_report "v2-$mode"
-    ( shot "v3-home-$mode" home "" "" "" 10 )
+    ( shot "v3-work-list-$mode" work "" "" "" 10 )
     video_report "v3-$mode"
     ( shot "v4-computers-$mode" computers "" "" "" 14 )
     video_report "v4-$mode"
@@ -2027,7 +2515,7 @@ digest_set() {
   digest_seed since
   for mode in light dark; do
     appearance "$mode"
-    shot "home-$mode" home "" "" "" 12
+    shot "work-list-$mode" work "" "" "" 12
     shot "digest-list-$mode" digest
     shot "digest-settings-$mode" work-settings
     digest_push "push-digest-$mode" digest
@@ -2043,6 +2531,7 @@ case "$SET" in
   digest) digest_set ;;
   duo) duo_set ;;
   perf) perf_set ;;
+  work-perf) work_perf_set ;;
   f4) f4_set ;;
   settings) settings_set ;;
   diff) diff_set ;;

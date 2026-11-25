@@ -1,0 +1,271 @@
+{
+  "now": 1795548900000,
+  "home": "box",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "two-hosts-one-sector",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue (Mac)",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "box",
+      "workspaceId": "box-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/box/purdue",
+      "open": true
+    }
+  ],
+  "sources": {
+    "held": {
+      "items": [
+        {
+          "environmentId": "mac",
+          "ref": {
+            "at": "host",
+            "id": "a"
+          },
+          "workspaceId": "mac-purdue",
+          "sessionId": null,
+          "sector": "purdue",
+          "account": null,
+          "state": "held",
+          "createdAt": 1795532400000,
+          "decidedBy": null,
+          "decidedAt": null,
+          "n": null,
+          "why": "rule",
+          "grantId": null,
+          "error": null,
+          "result": null,
+          "routineRunId": null,
+          "updatedAt": 1795532400000,
+          "kind": "mail.send",
+          "summary": "Send: A",
+          "verb": "Send"
+        },
+        {
+          "environmentId": "box",
+          "ref": {
+            "at": "host",
+            "id": "a"
+          },
+          "workspaceId": "box-purdue",
+          "sessionId": null,
+          "sector": "purdue",
+          "account": null,
+          "state": "held",
+          "createdAt": 1795532400000,
+          "decidedBy": null,
+          "decidedAt": null,
+          "n": null,
+          "why": "rule",
+          "grantId": null,
+          "error": null,
+          "result": null,
+          "routineRunId": null,
+          "updatedAt": 1795532400000,
+          "kind": "mail.send",
+          "summary": "Send: B",
+          "verb": "Send"
+        }
+      ],
+      "names": [
+        {
+          "environmentId": "mac",
+          "workspaceId": "mac-purdue",
+          "name": "Purdue (Mac)"
+        },
+        {
+          "environmentId": "box",
+          "workspaceId": "box-purdue",
+          "name": "Purdue Esports"
+        }
+      ],
+      "loaded": true,
+      "errors": []
+    },
+    "due": {
+      "tasks": [
+        {
+          "_id": "t",
+          "title": "Book the bus",
+          "sector": "purdue",
+          "status": "open",
+          "dueAt": 1795554000000
+        }
+      ],
+      "read": {
+        "built": true
+      }
+    },
+    "messages": {
+      "answers": [
+        {
+          "environmentId": "mac",
+          "workspaceId": "mac-purdue",
+          "value": [
+            {
+              "chatId": "c",
+              "chat": "Staff",
+              "who": "Dana",
+              "text": "older",
+              "at": 1795539600000
+            }
+          ]
+        },
+        {
+          "environmentId": "box",
+          "workspaceId": "box-purdue",
+          "value": [
+            {
+              "chatId": "c",
+              "chat": "Staff",
+              "who": "Dana",
+              "text": "newer",
+              "at": 1795543200000
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "held:mac:host:a",
+        "held:box:host:a",
+        "task:t",
+        "chat:c:1795543200000"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "held",
+            "title": "Waiting on you",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "Nothing waits on your press",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "held:mac:host:a",
+                "section": "held",
+                "sector": "purdue",
+                "job": "Purdue (Mac)",
+                "title": "Send",
+                "detail": "A",
+                "at": 1795532400000,
+                "when": "9:00 AM",
+                "lead": "glyph",
+                "opens": "held",
+                "acts": []
+              },
+              {
+                "key": "held:box:host:a",
+                "section": "held",
+                "sector": "purdue",
+                "job": "Purdue Esports",
+                "title": "Send",
+                "detail": "B",
+                "at": 1795532400000,
+                "when": "9:00 AM",
+                "lead": "glyph",
+                "opens": "held",
+                "acts": []
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "due",
+            "title": "Due",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "tick",
+            "empty": "Nothing due today",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "task:t",
+                "section": "due",
+                "sector": "purdue",
+                "title": "Book the bus",
+                "at": 1795554000000,
+                "when": "3:00 PM",
+                "lead": "tick",
+                "workspace": "box/box-purdue",
+                "opens": "tasks",
+                "acts": [
+                  "Tomorrow"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "messages",
+            "title": "Messages",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "empty": "No one is waiting on a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "chat:c:1795543200000",
+                "section": "messages",
+                "sector": "purdue",
+                "job": "Purdue Esports",
+                "title": "Dana in Staff",
+                "detail": "newer",
+                "at": -1795543200000,
+                "when": "12:00 PM",
+                "lead": "glyph",
+                "opens": "messages",
+                "acts": [
+                  "Mark read"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

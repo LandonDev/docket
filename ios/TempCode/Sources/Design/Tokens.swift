@@ -21,6 +21,8 @@ enum Tint {
     static let cyan = Color(.systemCyan)
     /// A state with no urgency: the queued dot, the stopped square.
     static let quiet = Color(.systemGray2)
+    /// A glyph on a destructive fill (the voice note's listening mic): white in both modes.
+    static let onDestructive = Color(.white)
     /// Warning and destructive as small text on a group fill. In light mode
     /// they are a step darker than the system's increased-contrast orange and
     /// red, which measure 4.1:1 on `Surface.group`: these reach 4.9:1 and
@@ -181,6 +183,8 @@ enum Layout {
     static let textEdge: CGFloat = 16
     /// A row's minimum height.
     static let rowHeight: CGFloat = 44
+    /// The least a lone glyph button or a bar's text button takes for a finger: Apple's 44 pt.
+    static let hitTarget: CGFloat = 44
     /// Between the status mark, the type glyph and the text.
     static let rowGap: CGFloat = 10
     /// The status dot or spinner's column.

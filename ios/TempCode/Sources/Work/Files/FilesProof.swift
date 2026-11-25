@@ -4,34 +4,38 @@ import TempCodeContract
 
 #if DEBUG
 /// The Files proof's walk (`TC_TEST_FILES`), and its actions on the folder it ends in (`TC_TEST_ACTION`):
-/// `files-folder:<name>`, `files-document:<name>`, `files-upload` (a picture the app draws), each through the
+/// `files-folder:<name>`, `files-document:<name>`, `files-upload` (a picture the app draws), `files-list` (rows again), `files-grid` (the
+/// folder as icons), each through the
 /// calls the sheet's presses make. Debug builds only.
 @MainActor
 enum FilesProof {
-    static func walk(client: EnvironmentClient, workspace: WorkspaceMeta, navigator: ShellNavigator) async {
-        guard let path = TestHooks.files, TestHooks.once("files-walk") else { return }
+    /// Walks the first job shown by names: a place's name first ("@folder" the workspace's own folder, "From Mail"
+    /// the mail lens), each folder opened as `Route.folder` in the sidebar column, a last file as `Route.filesFile`.
+    static func walk(jobs: [FilesRoot.Job], registry: ClientRegistry, navigator: ShellNavigator) async {
+        guard let path = TestHooks.files, let job = jobs.first, let client = registry.client(job.environmentId), TestHooks.once("files-walk") else { return }
         let files = client.work.files
+        let workspaceId = job.workspaceId
         let names = path.split(separator: "/").map(String.init)
-        guard let first = names.first, let places = await settled({ files.places[workspace.id]?.value }) else { return }
+        guard let first = names.first, let places = await settled({ files.places[workspaceId]?.value }) else { return }
         let sections = FilesRules.sections(places)
-        // "@folder" is the workspace's own folder, whatever the workspace is called.
-        guard let place = first == "@folder" ? FilesRules.workspaceFolder(places) : (sections.lenses + sections.places + sections.mail).first(where: { $0.name == first || ($0.kind == .mail && first == "From Mail") }) else { return }
+        guard let place = first == "@folder" ? FilesRules.workspaceFolder(places) : (sections.lenses + sections.places + sections.mail + places.filter { $0.kind == .trash }).first(where: { $0.name == first || ($0.kind == .mail && first == "From Mail") }) else { return }
         var at = place.root
         var homeId = place.id
-        navigator.detailStack.append(FilesFolderRoute(environmentId: client.environment.id, workspaceId: workspace.id, placeId: place.id, at: at, title: place.name))
+        let env = client.environment.id
+        navigator.open(.folder(environmentId: env, workspaceId: workspaceId, placeId: place.id, at: at, title: place.kind == .mail ? "From Mail" : place.name))
         for name in names.dropFirst() {
-            await files.list(workspace.id, at)
-            guard let entry = files.listing(workspace.id, at)?.value?.entries.first(where: { $0.name == name }) else { return }
+            await files.list(workspaceId, at)
+            guard let entry = files.listing(workspaceId, at)?.value?.entries.first(where: { $0.name == name }) else { return }
             homeId = entry.where?.place ?? homeId
             if let folder = entry.folder {
                 at = folder
-                navigator.detailStack.append(FilesFolderRoute(environmentId: client.environment.id, workspaceId: workspace.id, placeId: homeId, at: folder, title: name))
+                navigator.open(.folder(environmentId: env, workspaceId: workspaceId, placeId: homeId, at: folder, title: name))
             } else {
-                navigator.detailStack.append(FileOpenRoute(environmentId: client.environment.id, workspaceId: workspace.id, placeId: homeId, entry: entry))
+                navigator.open(.filesFile(environmentId: env, workspaceId: workspaceId, placeId: homeId, entry: entry))
                 return
             }
         }
-        await act(files, workspaceId: workspace.id, at: at)
+        await act(files, workspaceId: workspaceId, at: at)
     }
 
     private static func act(_ files: FilesHost, workspaceId: String, at: FolderRef) async {
@@ -42,6 +46,12 @@ enum FilesProof {
             _ = try? await files.make(workspaceId, in: at, kind: .document, name: String(action.dropFirst("files-document:".count)))
         } else if action == "files-upload", let png = picture() {
             try? await files.upload(workspaceId, into: at, .data(png, name: "Proof picture.png"))
+        } else if action == "files-grid" {
+            UserDefaults.standard.set(true, forKey: "files.grid")
+        } else if action == "files-list" {
+            // The folder as rows again, set in the app itself: a `defaults write` from outside can lose to the app's
+            // own write of the grid when it was still running.
+            UserDefaults.standard.set(false, forKey: "files.grid")
         }
     }
 

@@ -37,7 +37,8 @@ struct NewWorkWorkspaceSheet: View {
     @State private var saving = false
     @State private var error: String?
 
-    private var hosts: [EnvironmentClient] { model.registry.ordered.filter(\.work.isOn) }
+    /// Only a host whose key may make one (`workspace.create`, operate).
+    private var hosts: [EnvironmentClient] { model.registry.ordered.filter { $0.work.isOn && $0.work.may(.workspaceCreate) } }
 
     var body: some View {
         NavigationStack {
@@ -102,7 +103,8 @@ struct NewWorkChatSheet: View {
     @State private var error: String?
     @FocusState private var focused: Bool
 
-    private var hosts: [EnvironmentClient] { model.registry.ordered.filter(\.work.isOn) }
+    /// Only a host whose key may start one (`session.create`, operate).
+    private var hosts: [EnvironmentClient] { model.registry.ordered.filter { $0.work.isOn && $0.work.may(.sessionCreate) } }
 
     var body: some View {
         NavigationStack {
@@ -117,7 +119,7 @@ struct NewWorkChatSheet: View {
                     if let error { Text(error).foregroundStyle(Tint.destructiveText) }
                 }
             }
-            .navigationTitle("New Work Chat")
+            .navigationTitle("New Chat")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }

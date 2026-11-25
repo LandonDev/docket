@@ -121,6 +121,10 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(isPresented: $showsDiagnostics) { DiagnosticsScreen() }
+        #if DEBUG
+        // The proof's `diagnostics` route (RootView): Settings opens straight onto Diagnostics and its Work Checks.
+        .task { if ProcessInfo.processInfo.environment["TC_TEST_ROUTE"] == "diagnostics" { showsDiagnostics = true } }
+        #endif
     }
 
     private var pushBinding: Binding<Bool> {

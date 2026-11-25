@@ -60,9 +60,10 @@ import TempCodeContract
         #expect(HomeSections.workspace("box:purdue", hosts: [host(workOn: true)])?.emptyNoteIsRow == false)
     }
 
-    @Test func `Work Chats follows Chats, before the code workspaces, as on the desktop rail`() {
+    @Test func `Home is code alone: Work Chats and the jobs are the Work tab's`() {
         let home = HomeSections.home(hosts: [host(workOn: true)])
-        #expect(home.mainEntries.map(\.id) == [HomeSections.chatsKey, HomeSections.workChatsKey, "box:code"])
-        #expect(HomeSections.home(hosts: [host(workOn: false)]).mainEntries.map(\.id) == [HomeSections.chatsKey, "box:code"])
+        #expect(home.entries.map(\.id) == [HomeSections.chatsKey, "box:code"])
+        #expect(home.entries == HomeSections.home(hosts: [host(workOn: false)]).entries)
+        #expect(home.work.first?.id == HomeSections.workChatsKey)
     }
 }

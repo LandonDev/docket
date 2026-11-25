@@ -13,8 +13,15 @@ public final class WorkCanvas {
     public private(set) var items: [String: [CanvasItem]] = [:]
     /// The item an open just showed, per thread: the pager selects it once.
     public private(set) var opened: [String: String] = [:]
+    /// The threads with an open item, kept apart from `items` so a reader that must not redraw on every
+    /// canvas push (the shell's wide rule) can ask without observing.
+    @ObservationIgnored private var withItems: Set<String> = []
     /// Moves on each `work.routines` push, per workspace.
     public private(set) var routinesRev: [String: Int] = [:]
+    /// A mail's file on its way to the host, by item id: the share come, nil while the store has not said the size.
+    public private(set) var fetching: [String: Double?] = [:]
+    /// The file Ask just seated in a thread, per thread: the host's announcement of that open selects nothing (`AskLanding`).
+    @ObservationIgnored private var landing: [String: CanvasSource] = [:]
 
     @ObservationIgnored let socket: TempCodeSocket
     @ObservationIgnored private let tickets = HostedTickets()
@@ -31,19 +38,38 @@ public final class WorkCanvas {
 
     public func items(_ sessionId: String) -> [CanvasItem] { items[sessionId] ?? [] }
 
+    /// Whether the thread has an open item, read without observing (`withItems`).
+    public func hasOpenItems(_ sessionId: String) -> Bool { withItems.contains(sessionId) }
+
+    private func set(_ sessionId: String, _ list: [CanvasItem]) {
+        items[sessionId] = list
+        if list.isEmpty { withItems.remove(sessionId) } else { withItems.insert(sessionId) }
+    }
+
     /// Reads a thread's items; a code thread or an older host answers nothing and keeps none.
     public func load(_ sessionId: String) async {
         guard let answer = try? await socket.request(Methods.WorkCanvasList.self, .init(sessionId: sessionId)) else { return }
-        items[sessionId] = answer.items
+        set(sessionId, answer.items)
     }
 
     func apply(_ push: ServerPush) {
         switch push {
         case .workCanvas(let value):
-            items[value.sessionId] = value.items
-            if let opened = value.opened { self.opened[value.sessionId] = opened }
+            set(value.sessionId, value.items)
+            if let opened = value.opened {
+                if let file = landing[value.sessionId], AskLanding.swallows(opened: opened, items: value.items, file: file) {
+                    landing[value.sessionId] = nil
+                } else {
+                    self.opened[value.sessionId] = opened
+                }
+            }
         case .workRoutines(let value):
             routinesRev[value.workspaceId, default: 0] += 1
+        case .workCanvasFetch(let value):
+            // Only while this phone waits on it: a push after the answer adds nothing back.
+            if fetching.keys.contains(value.itemId) {
+                fetching.updateValue(MailRules.fetchShare(received: value.received, total: value.total), forKey: value.itemId)
+            }
         default:
             break
         }
@@ -52,12 +78,58 @@ public final class WorkCanvas {
     /// The pager took the push's `opened`.
     public func tookOpened(_ sessionId: String) { opened[sessionId] = nil }
 
+    /// Ask sent his words to a thread about `file`: he lands on its Chat, so the host's announcement that the file was
+    /// opened there (already in, or still on its way) selects nothing.
+    public func landOnChat(_ sessionId: String, file: CanvasSource) {
+        if let shown = opened[sessionId], AskLanding.swallows(opened: shown, items: items(sessionId), file: file) {
+            opened[sessionId] = nil
+        } else {
+            landing[sessionId] = file
+        }
+    }
+
     /// Takes an item out of the thread's tab row (its files stay on the host).
     public func close(_ item: CanvasItem) async throws {
         _ = try await socket.request(Methods.WorkCanvasClose.self, .init(itemId: item.id))
     }
 
+    /// The composer's `@`: what the thread may be offered for the words typed (`work.canvas.mentions`, approve,
+    /// carried to a far host only while its screen is unlocked).
+    public func mentions(_ sessionId: String, text: String) async throws -> MentionAnswer {
+        try await socket.request(Methods.WorkCanvasMentions.self, .init(sessionId: sessionId, text: String(text.prefix(MentionTrigger.most))))
+    }
+
+    /// The thread's tab order (`work.canvas.reorder`): the list the host answers is kept at once; its push says the same.
+    public func reorder(_ sessionId: String, order: [String]) async throws {
+        let answer = try await socket.request(Methods.WorkCanvasReorder.self, .init(sessionId: sessionId, order: order))
+        set(sessionId, answer.items)
+    }
+
     // MARK: - each kind's reads and presses
+
+    /// A mail's file onto its host, into the item's own folder, before its kind reads it (`work.canvas.fetch`,
+    /// approve; carried to a far host only while its screen is unlocked). Its progress lands in `fetching`.
+    @discardableResult
+    public func fetch(_ item: CanvasItem) async throws -> Int {
+        fetching.updateValue(nil, forKey: item.id)
+        defer { fetching.removeValue(forKey: item.id) }
+        return Int(try await socket.request(Methods.WorkCanvasFetch.self, .init(itemId: item.id)).size)
+    }
+
+    /// A fetched file whole, read by range (`work.canvas.read`): Share and Save to Files in the reader.
+    public func fetchedData(_ item: CanvasItem, size: Int) async throws -> Data {
+        let socket = socket
+        let itemId = item.id
+        return try await ChunkedRead.all(size: size) { offset, length in
+            let part = try await socket.request(Methods.WorkCanvasRead.self, .init(itemId: itemId, offset: offset, length: length))
+            return FileBytes(data: part.data, size: part.size, rev: "")
+        }
+    }
+
+    /// Save to Workspace: a copy in the job's folder under the file's own name; answers the name it took.
+    public func keep(_ item: CanvasItem) async throws -> String {
+        try await socket.request(Methods.WorkCanvasKeep.self, .init(itemId: item.id)).name
+    }
 
     public func ticket(_ source: Methods.WorkGuestsTicket.Params.Source, title: String) async throws -> String {
         try await socket.request(Methods.WorkGuestsTicket.self, .init(source: source, title: title)).url
@@ -106,6 +178,26 @@ public final class WorkCanvas {
         guard let first = FirstPicture.firstSlide(of: deck, proposed: proposed),
               let frame = try? await socket.request(Methods.WorkSlidesSlide.self, .init(itemId: deck.itemId, which: proposed ? .proposed : .file, slide: first.id, offset: 0, length: Int(first.pic.size))) else { return nil }
         return FirstPicture.of(frame, pic: first.pic.rev, render: rev)
+    }
+
+    /// A highlight over words he picked on one page: a box per line, the words, his note. Answers the view after it.
+    public func mark(_ itemId: String, page: Int, quads: [[Double]], text: String, note: String? = nil) async throws -> PdfPhoneView {
+        let boxes = quads.map { $0.map { JSONValue.number($0) } }
+        return try await socket.request(Methods.WorkPdfMark.self, .init(itemId: itemId, page: page, quads: boxes, text: text, note: note))
+    }
+
+    public func unmark(_ itemId: String, markId: String) async throws -> PdfPhoneView {
+        try await socket.request(Methods.WorkPdfUnmark.self, .init(itemId: itemId, markId: markId))
+    }
+
+    /// His own value for a field; nil empties it.
+    public func setField(_ itemId: String, key: String, value: Methods.WorkPdfSetField.Params.Value?) async throws -> PdfPhoneView {
+        try await socket.request(Methods.WorkPdfSetField.self, .init(itemId: itemId, key: key, value: value))
+    }
+
+    /// Takes or drops an agent's values: the fields he saw, by key, never the host's "all".
+    public func reviewFields(_ itemId: String, keys: [String], accept: Bool) async throws -> PdfPhoneView {
+        try await socket.request(Methods.WorkPdfReview.self, .init(itemId: itemId, keys: .array(keys), verdict: accept ? .accept : .reject))
     }
 
     /// One frame of a PDF at a `rev`.
@@ -173,6 +265,20 @@ public final class WorkCanvas {
         try await socket.request(Methods.WorkMeetingsGet.self, .init(itemId: itemId)).meeting
     }
 
+    /// A range of a meeting's original recording, its name and whole size (`work.meetings.recording`, at most one chunk).
+    public func recording(_ itemId: String, offset: Int, length: Int) async throws -> (name: String, size: Int, data: Data) {
+        let answer = try await socket.request(Methods.WorkMeetingsRecording.self, .init(itemId: itemId, offset: offset, length: min(length, MeetingRecording.chunk)))
+        guard let data = Data(base64Encoded: answer.dataBase64) else { throw ChunkedRead.Failure.notBase64 }
+        return (answer.name, Int(answer.size), data)
+    }
+
+    /// His word on the tasks a meeting yielded: accept files each in LifeOS, reject drops it. Answers the meeting after
+    /// it, and each task LifeOS would not file with why.
+    public func decide(meeting itemId: String, actionIds: [String], accept: Bool) async throws -> (meeting: MeetingPhone, failed: [(id: String, error: String)]) {
+        let answer = try await socket.request(Methods.WorkMeetingsDecide.self, .init(itemId: itemId, actionIds: actionIds, decision: accept ? .accept : .reject))
+        return (answer.meeting, answer.failed.map { ($0.id, $0.error) })
+    }
+
     public func responses(_ itemId: String) async throws -> FormResponses {
         try await socket.request(Methods.WorkFormsResponses.self, .init(itemId: itemId))
     }
@@ -183,6 +289,11 @@ public final class WorkCanvas {
 
     public func versions(_ source: CanvasSource) async throws -> HistoryVersionsPhone {
         try await socket.request(Methods.WorkHistoryVersions.self, .init(source: source))
+    }
+
+    /// The document back to a version: written at once on his own, a branch of suggestions on one others can open.
+    public func restore(_ source: CanvasSource, versionId: String) async throws -> HistoryWritePhone {
+        try await socket.request(Methods.WorkHistoryRestore.self, .init(source: source, versionId: versionId))
     }
 
     /// A version against the item as it is now.

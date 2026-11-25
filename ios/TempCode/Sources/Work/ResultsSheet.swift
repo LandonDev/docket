@@ -67,7 +67,7 @@ struct ResultsSheet: View {
             Spacer(minLength: 8)
             if result.undoneAt != nil {
                 Text("Undone").textStep(.stamp)
-            } else if let undo = result.undo, client.work.canApprove {
+            } else if let undo = result.undo, client.work.may(.outboxUndo) {
                 Button(undo.label ?? "Undo") { Task { await run(result) } }
                     .font(.footnote.weight(.medium))
                     .foregroundStyle(.tint)
@@ -91,8 +91,14 @@ struct ResultsSheet: View {
     private func run(_ result: WorkResult) async {
         undoing.insert(result.id)
         defer { undoing.remove(result.id) }
+        // Undo acts outward again: the link and the owner's check first, under the key frozen before it; what did not go
+        // is said where a failure is.
+        let key = PressGates.key(client.environment, revoked: client.work.keyRevoked)
+        if let line = await PressGates.shared.pass(client, .outboxUndo, ref: result.id, rev: String(result.createdAt), reason: "Undo \(result.summary)") {
+            return FleetToastCenter.shared.post(message: line)
+        }
         do {
-            let undone = try await client.work.undo(result)
+            let undone = try await client.work.undo(result, key: key)
             if let index = results?.firstIndex(where: { $0.id == undone.id }) { results?[index] = undone }
         } catch {
             FleetToastCenter.shared.post(message: "Not undone: \(ActionError.wrap(error).message)")

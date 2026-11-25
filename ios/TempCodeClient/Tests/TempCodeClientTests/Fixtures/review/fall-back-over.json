@@ -1,0 +1,674 @@
+{
+  "tz": "America/Chicago",
+  "opts": {
+    "home": "env-box"
+  },
+  "calendar": {
+    "at": 1793599140000,
+    "named": 1792990800000
+  },
+  "days": [
+    1792994400000,
+    1793595600000,
+    1793602800000
+  ],
+  "name": "fall-back-over",
+  "now": 1793631600000,
+  "parts": [
+    {
+      "environmentId": "env-box",
+      "body": {
+        "host": "box",
+        "from": 1792990800000,
+        "to": 1793599200000,
+        "tz": "America/Chicago",
+        "madeAt": 1793631600000,
+        "by": "owner",
+        "over": true,
+        "jobs": [
+          {
+            "workspaceId": "w-cosmic",
+            "sector": "cosmic",
+            "name": "Cosmic"
+          },
+          {
+            "workspaceId": "w-hypixel",
+            "sector": "hypixel",
+            "name": "Hypixel"
+          },
+          {
+            "workspaceId": "w-purdue",
+            "sector": "purdue",
+            "name": "Purdue"
+          },
+          {
+            "workspaceId": "w-unify",
+            "sector": "unify",
+            "name": "Unify"
+          },
+          {
+            "workspaceId": "w-side",
+            "sector": null,
+            "name": "Side work"
+          }
+        ],
+        "lifeos": {
+          "events": [
+            {
+              "id": "f1",
+              "sector": "purdue",
+              "title": "Season kickoff",
+              "startsAt": 1793026800000,
+              "endsAt": 1793034000000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Dana Reyes"
+              ],
+              "others": 1,
+              "addresses": [
+                "dana.reyes@example.com"
+              ]
+            },
+            {
+              "id": "f2",
+              "sector": "ref",
+              "title": "Saturday tournament",
+              "startsAt": 1793451600000,
+              "endsAt": 1793480400000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Assigner"
+              ],
+              "others": 1,
+              "addresses": [
+                "assigner@example.com"
+              ]
+            },
+            {
+              "id": "f3",
+              "sector": "ref",
+              "title": "Sunday final",
+              "startsAt": 1793545200000,
+              "endsAt": 1793556000000,
+              "allDay": false,
+              "declined": false,
+              "hidden": false,
+              "people": [
+                "Assigner"
+              ],
+              "others": 1,
+              "addresses": [
+                "assigner@example.com"
+              ]
+            }
+          ],
+          "sent": [
+            {
+              "id": "fm1",
+              "threadId": "t-fm1",
+              "subject": "Kickoff notes",
+              "to": [
+                "Dana Reyes"
+              ],
+              "addresses": [
+                "dana.reyes@example.com"
+              ],
+              "at": 1793037600000,
+              "sector": "purdue"
+            }
+          ],
+          "done": [],
+          "answered": [],
+          "answeredSince": 1793077200000
+        },
+        "points": [
+          [
+            1793037600000,
+            2,
+            "said"
+          ],
+          [
+            1793038320000,
+            2,
+            "said"
+          ],
+          [
+            1793039040000,
+            2,
+            "said"
+          ],
+          [
+            1793039760000,
+            2,
+            "said"
+          ],
+          [
+            1793040480000,
+            2,
+            "said"
+          ],
+          [
+            1793041200000,
+            2,
+            "said"
+          ],
+          [
+            1793041920000,
+            2,
+            "said"
+          ],
+          [
+            1793042640000,
+            2,
+            "said"
+          ],
+          [
+            1793043360000,
+            2,
+            "said"
+          ],
+          [
+            1793044080000,
+            2,
+            "said"
+          ],
+          [
+            1793044800000,
+            2,
+            "said"
+          ],
+          [
+            1793512800000,
+            0,
+            "said"
+          ],
+          [
+            1793513520000,
+            0,
+            "said"
+          ],
+          [
+            1793514240000,
+            0,
+            "said"
+          ],
+          [
+            1793514960000,
+            0,
+            "said"
+          ],
+          [
+            1793515680000,
+            0,
+            "said"
+          ],
+          [
+            1793516400000,
+            0,
+            "said"
+          ],
+          [
+            1793517120000,
+            0,
+            "said"
+          ],
+          [
+            1793517840000,
+            0,
+            "said"
+          ]
+        ],
+        "ran": [],
+        "slipped": {
+          "at": 1793631600000,
+          "rows": [
+            {
+              "key": "task:f-t1",
+              "ref": {
+                "kind": "task",
+                "id": "f-t1",
+                "dueAt": 1793196000000
+              },
+              "sector": "purdue",
+              "workspaceId": null,
+              "title": "Book the kickoff room",
+              "at": 1793196000000,
+              "people": [],
+              "others": 0,
+              "open": true
+            }
+          ]
+        },
+        "shipped": [],
+        "before": {
+          "from": 1792386000000,
+          "to": 1792990800000,
+          "lifeos": {
+            "events": [
+              {
+                "sector": "ref",
+                "from": 1792846800000,
+                "to": 1792890000000
+              },
+              {
+                "sector": "purdue",
+                "from": 1792422000000,
+                "to": 1792425600000
+              }
+            ],
+            "sent": []
+          },
+          "points": [
+            [
+              1792908000000,
+              0,
+              "said"
+            ],
+            [
+              1792908720000,
+              0,
+              "said"
+            ],
+            [
+              1792909440000,
+              0,
+              "said"
+            ],
+            [
+              1792910160000,
+              0,
+              "said"
+            ],
+            [
+              1792910880000,
+              0,
+              "said"
+            ],
+            [
+              1792911600000,
+              0,
+              "said"
+            ],
+            [
+              1792912320000,
+              0,
+              "said"
+            ],
+            [
+              1792913040000,
+              0,
+              "said"
+            ]
+          ]
+        },
+        "left": []
+      }
+    }
+  ],
+  "expect": {
+    "merged": {
+      "from": 1792990800000,
+      "to": 1793599200000,
+      "tz": "America/Chicago",
+      "madeAt": 1793631600000,
+      "by": "owner",
+      "over": true,
+      "jobs": [
+        {
+          "key": "cosmic",
+          "sector": "cosmic",
+          "name": "Cosmic",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-cosmic"
+            }
+          ]
+        },
+        {
+          "key": "hypixel",
+          "sector": "hypixel",
+          "name": "Hypixel",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-hypixel"
+            }
+          ]
+        },
+        {
+          "key": "purdue",
+          "sector": "purdue",
+          "name": "Purdue",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-purdue"
+            }
+          ]
+        },
+        {
+          "key": "unify",
+          "sector": "unify",
+          "name": "Unify",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-unify"
+            }
+          ]
+        },
+        {
+          "key": "~box:w-side",
+          "sector": null,
+          "name": "Side work",
+          "at": [
+            {
+              "environmentId": "env-box",
+              "workspaceId": "w-side"
+            }
+          ]
+        },
+        {
+          "key": "ref",
+          "sector": "ref",
+          "name": "ref",
+          "at": []
+        }
+      ],
+      "hours": [
+        {
+          "job": "cosmic",
+          "calendarMs": 0,
+          "deskMs": 5340000,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 8,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "hypixel",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "purdue",
+          "calendarMs": 7200000,
+          "deskMs": 7500000,
+          "ranMs": 0,
+          "events": 1,
+          "stands": {
+            "said": 11,
+            "sent": 1,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "unify",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "~box:w-side",
+          "calendarMs": 0,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 0,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        },
+        {
+          "job": "ref",
+          "calendarMs": 39600000,
+          "deskMs": 0,
+          "ranMs": 0,
+          "events": 2,
+          "stands": {
+            "said": 0,
+            "sent": 0,
+            "pressed": 0,
+            "edited": 0
+          }
+        }
+      ],
+      "compare": [
+        {
+          "job": "purdue",
+          "words": "up from 1 hr"
+        }
+      ],
+      "shipped": [
+        {
+          "key": "sent:fm1",
+          "kind": "sent",
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "Kickoff notes",
+          "who": "Dana Reyes",
+          "at": 1793037600000,
+          "open": {
+            "at": "mail",
+            "threadId": "t-fm1"
+          },
+          "job": "purdue",
+          "environmentId": "env-box"
+        }
+      ],
+      "slipped": [
+        {
+          "key": "task:f-t1",
+          "ref": {
+            "kind": "task",
+            "id": "f-t1",
+            "dueAt": 1793196000000
+          },
+          "sector": "purdue",
+          "workspaceId": null,
+          "title": "Book the kickoff room",
+          "at": 1793196000000,
+          "people": [],
+          "others": 0,
+          "open": true,
+          "job": "purdue",
+          "environmentId": "env-box"
+        }
+      ],
+      "slippedAt": 1793631600000,
+      "answersKept": false,
+      "lifeosFrom": "env-box",
+      "left": [],
+      "known": {
+        "calendar": true,
+        "calendarCounted": true,
+        "desk": true,
+        "shipped": true,
+        "slipped": true
+      }
+    },
+    "calendar": {
+      "weekOf": {
+        "from": 1792990800000,
+        "to": 1793599200000
+      },
+      "hours": 169,
+      "prev": {
+        "from": 1792386000000,
+        "to": 1792990800000
+      },
+      "next": {
+        "from": 1793599200000,
+        "to": 1794204000000
+      },
+      "named": {
+        "from": 1792990800000,
+        "to": 1793599200000
+      },
+      "isWeek": true,
+      "isNotWeek": false,
+      "dayStart": 1793509200000,
+      "dayAfter": 1793599200000,
+      "dayBefore": 1793422800000,
+      "localDay": "2026-11-01",
+      "knownZone": true
+    },
+    "lengths": [],
+    "words": {
+      "week": "Week of Oct 26",
+      "made": "Not made in its week. What slipped is as of today.",
+      "nothing": "Nothing seen",
+      "hostOff": "The Mac is off. Its threads and held items are not counted.",
+      "days": [
+        "Mon",
+        "Sun",
+        "Nov 2"
+      ],
+      "jobs": [
+        {
+          "job": "cosmic",
+          "total": "about 1 hr 30 min",
+          "stands": "8 messages",
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": "about 1 hr 30 min",
+            "deskDetail": "8 messages",
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "hypixel",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "purdue",
+          "total": "about 4 hr",
+          "stands": "11 messages, 1 mail sent",
+          "facts": {
+            "calendar": "2 hr",
+            "calendarDetail": "1 event",
+            "desk": "about 2 hr",
+            "deskDetail": "11 messages, 1 mail sent",
+            "ran": null
+          },
+          "compare": "up from 1 hr",
+          "lead": [
+            "task:f-t1"
+          ],
+          "older": []
+        },
+        {
+          "job": "unify",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "~box:w-side",
+          "total": null,
+          "stands": null,
+          "facts": {
+            "calendar": "Nothing",
+            "calendarDetail": null,
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        },
+        {
+          "job": "ref",
+          "total": "11 hr",
+          "stands": null,
+          "facts": {
+            "calendar": "11 hr",
+            "calendarDetail": "2 events",
+            "desk": null,
+            "deskDetail": null,
+            "ran": null
+          },
+          "compare": null,
+          "lead": [],
+          "older": []
+        }
+      ],
+      "shipped": [
+        {
+          "key": "sent:fm1",
+          "lead": "Sent ",
+          "title": "Kickoff notes",
+          "tail": " to Dana Reyes"
+        }
+      ],
+      "slipped": [
+        {
+          "key": "task:f-t1",
+          "detail": "due Wed",
+          "settle": [
+            "Done",
+            "Next week",
+            "Drop"
+          ],
+          "settled": [
+            "Marked done",
+            "Moved to next week",
+            "Dropped"
+          ]
+        }
+      ]
+    }
+  }
+}

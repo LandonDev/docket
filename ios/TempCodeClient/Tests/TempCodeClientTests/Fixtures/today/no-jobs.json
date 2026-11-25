@@ -1,0 +1,77 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "no-jobs",
+  "jobs": [],
+  "sources": {
+    "held": {
+      "items": [],
+      "names": [],
+      "loaded": true,
+      "errors": []
+    },
+    "meetings": {
+      "events": [],
+      "people": {},
+      "read": {
+        "built": true
+      }
+    },
+    "due": {
+      "tasks": [],
+      "read": {
+        "built": true
+      }
+    },
+    "waiting": {
+      "waits": [],
+      "read": {
+        "built": true
+      }
+    },
+    "messages": {
+      "answers": []
+    },
+    "clashes": {
+      "range": {
+        "clashes": [],
+        "leaves": []
+      }
+    },
+    "money": {
+      "answers": []
+    },
+    "review": {
+      "asked": [],
+      "answered": {}
+    },
+    "prep": {
+      "answers": []
+    },
+    "msforms": {
+      "answers": []
+    },
+    "digest": {
+      "rows": [],
+      "loaded": true,
+      "errors": []
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "no-jobs"
+    }
+  }
+}

@@ -10,6 +10,7 @@ import TempCodeContract
     private var calendar: Calendar {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "America/Chicago")!
+        c.locale = Locale(identifier: "en_US")
         return c
     }
 
@@ -138,6 +139,10 @@ import TempCodeContract
         let failed = item("f", state: .failed, at: 1, error: "Gmail refused it: over 25 MB", changed: .init(at: 5, by: .you))
         #expect(OutboxModel.notes(failed, held: { _ in "8:00 AM" }).map(\.text) == ["Not sent. Gmail refused it: over 25 MB", "You changed this at 8:00 AM."])
         #expect(OutboxModel.notes(item("h", at: 1), held: { _ in "" }).isEmpty)
+        // One the host could not confirm says May have gone and what to check, never "Not sent".
+        let unsure = OutboxItem(ref: .host(.init(id: "u")), kind: .mailSend, workspaceId: "w1", sessionId: "t1", sector: "purdue", summary: "Send to u", verb: "Send", account: nil, state: .failed, payload: nil,
+                                createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .rule, grantId: nil, error: "timed out", result: nil, routineRunId: nil, outcomeUnknown: true, updatedAt: 1)
+        #expect(OutboxModel.notes(unsure, held: { _ in "" }).map(\.text) == ["May have gone. timed out. Check Sent first."])
     }
 
     @Test func sendLaterOffersAnHourTheAfternoonWhileTheMorningLastsAndTomorrowAtEight() {
@@ -186,6 +191,10 @@ import TempCodeContract
         // A LifeOS mail his press sent is queued in LifeOS (its undo time), never "sent".
         #expect(RequestSheetModel.resultsHead(done) == "Queued 1 in LifeOS, 1 not sent")
         #expect(RequestSheetModel.resultWords(done.rows[1])?.text == "Teams did not answer")
+        // A row the host could not confirm: May have gone in its line and in the head, never "not sent".
+        let unsure = request("q", rows: [row(a, result: .init(ok: true, state: "sent")), row(b, result: .init(ok: false, error: "timed out", unknown: true))], state: .answered, answeredAt: 1)
+        #expect(RequestSheetModel.resultWords(unsure.rows[1])?.text == "May have gone")
+        #expect(RequestSheetModel.resultsHead(unsure) == "Queued 1 in LifeOS, 1 may have gone")
         #expect(RequestSheetModel.closedLine(done, time: { _ in "9:41 AM" }) == "By you at 9:41 AM")
     }
 
@@ -266,8 +275,8 @@ import TempCodeContract
             if let to { arguments["to"] = to }
             return self.kinded("s", kind: .addonCall, payload: .object(["addonId": .string("m1"), "tool": .string("send_mail"), "words": .string("Send mail"), "addon": .string("Purdue mail"), "arguments": .object(arguments)]))
         }
-        #expect(OutboxModel.summaryHead([send(.string("alex@purdue.edu")), send(.array([.string("Jordan@purdue.edu")]))]) == "Send mail with Purdue mail to 2 people")
-        #expect(OutboxModel.summaryHead([send(.array([.object(["address": .string("a@x")])])), send(.string("a@x"))]) == "Send mail with Purdue mail to 1 person")
+        #expect(OutboxModel.summaryHead([send(.string("alex@purdue.edu")), send(.array([.string("Jordan@purdue.edu")]))]) == "Send 2 mails to 2 people")
+        #expect(OutboxModel.summaryHead([send(.array([.object(["address": .string("a@x")])])), send(.string("a@x"))]) == "Send 2 mails to 1 person")
         #expect(OutboxModel.summaryHead([send(.string("not an address")), send(nil)]) == "Send mail with Purdue mail, 2 times")
     }
 
@@ -300,8 +309,27 @@ import TempCodeContract
         #expect(OutboxModel.effectLine(post) == "Everyone in it sees it.")
         let timed = OutboxItem(ref: .host(.init(id: "t")), kind: .officeMailSend, workspaceId: "w1", sessionId: "t1", sector: "purdue", summary: "Send to Casey Wu", verb: "Send", account: nil, state: .scheduled,
                                payload: .object(["account": .string("landon@purdue.edu"), "to": .array([.string("cwu@purdue.edu")]), "subject": .string("Travel")]), createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .pillar, grantId: nil, error: nil, result: nil, routineRunId: nil, scheduledFor: 9_000, effect: "Sends as you.", updatedAt: 1)
-        // The host's sentence for a timed send ("Sends as you.", its time leading the item) is drawn as it stands.
-        #expect(OutboxModel.effectLine(timed) == "Sends as you.")
+        // A timed send says one line, its time: no sentence under it, whatever the host's says (an older host's
+        // "as soon as you press" under "Scheduled for …" said the opposite).
+        #expect(OutboxModel.effectLine(timed) == nil)
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "America/Chicago")!
+        cal.locale = Locale(identifier: "en_US")
+        let monday = Date(timeIntervalSince1970: 1_794_827_200) // Monday Nov 16, 2026, 5:06 AM in Chicago
+        let at = Int(cal.date(bySettingHour: 8, minute: 0, second: 0, of: cal.date(byAdding: .day, value: 2, to: monday)!)!.timeIntervalSince1970 * 1000)
+        let wednesday = OutboxItem(ref: .host(.init(id: "w")), kind: .officeMailSend, workspaceId: "w1", sessionId: "t1", sector: "purdue", summary: "Send to Casey Wu", verb: "Send", account: nil, state: .scheduled,
+                                   payload: timed.payload, createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .pillar, grantId: nil, error: nil, result: nil, routineRunId: nil, scheduledFor: at, effect: "Goes from Outlook as soon as you press.", updatedAt: 1)
+        #expect(OutboxModel.effectLine(wednesday) == nil)
+        #expect(OutboxModel.scheduledLine(wednesday, now: monday, calendar: cal) == "Scheduled for Wed 8:00 AM")
+        #expect(OutboxModel.scheduledLine(post) == nil)
+        // An add-on's mail (w05): the head is the row's act alone, never the kind's heading with the body quoted
+        // ("Send mail with Purdue mail: “Hello, I’d like…”"), which the body under it says whole.
+        let addonMail = OutboxItem(ref: .host(.init(id: "m")), kind: .addonCall, workspaceId: "w1", sessionId: "t1", sector: "purdue", summary: "Send to events booking", verb: "Send", account: nil, state: .held,
+                                   payload: .object(["addon": .string("Purdue mail"), "tool": .string("send_mail"), "words": .string("Send mail"),
+                                                     "arguments": .object(["to": .string("events@purdue.edu"), "subject": .string("Ballroom for Saturday, April 10"), "text": .string("Hello,\n\nI’d like to hold the ballroom on Saturday.")])]),
+                                   createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .rule, grantId: nil, error: nil, result: nil, routineRunId: nil, effect: "Uses Purdue mail to send mail as you.", updatedAt: 1)
+        #expect(OutboxModel.title(addonMail) == "Send to events booking")
+        #expect(!OutboxModel.title(addonMail).contains("Hello"))
         // An Outlook mail's fields run From, To, Subject, as the desktop's.
         #expect(OutboxModel.payloadView(timed.payload).fields.map(\.label) == ["From", "To", "Subject"])
     }
@@ -358,13 +386,13 @@ private actor Gate {
         let gate = Gate()
         let wait = RequestPressWait(sleep: { await gate.wait() })
         var sent: [[String]] = []
-        wait.start(press) { p in sent.append(p.receipts); return self.answered() }
+        wait.start(press, check: { _ in nil }) { p in sent.append(p.receipts); return self.answered() }
         // The sheet closing or the app leaving the screen has no way to send it early: nothing goes while it waits.
         try? await Task.sleep(for: .milliseconds(50))
         #expect(sent.isEmpty)
         #expect(wait.pending["q"] == press)
         // A second press on the same request meanwhile is ignored.
-        wait.start(RequestPress(environmentId: "box", requestId: "q", receipts: ["r-c"], word: "Send 1", lines: [])) { p in sent.append(p.receipts); return self.answered() }
+        wait.start(RequestPress(environmentId: "box", requestId: "q", receipts: ["r-c"], word: "Send 1", lines: []), check: { _ in nil }) { p in sent.append(p.receipts); return self.answered() }
         await gate.release()
         await settle { wait.outcomes["q"] != nil }
         #expect(sent == [["r-a", "r-b"]])
@@ -376,7 +404,7 @@ private actor Gate {
         let gate = Gate()
         let wait = RequestPressWait(sleep: { await gate.wait() })
         var sent = 0
-        wait.start(press) { _ in sent += 1; return self.answered() }
+        wait.start(press, check: { _ in nil }) { _ in sent += 1; return self.answered() }
         wait.undo("q")
         await gate.release()
         try? await Task.sleep(for: .milliseconds(50))
@@ -387,10 +415,88 @@ private actor Gate {
 
     @Test func aRefusalIsKeptForTheSheetThatShowsIt() async {
         let wait = RequestPressWait(sleep: {})
-        wait.start(press) { _ in throw ActionError.refused(message: "refused: that receipt is not this request's", forbidden: false) }
+        wait.start(press, check: { _ in nil }) { _ in throw ActionError.refused(message: "refused: that receipt is not this request's", forbidden: false) }
         await settle { wait.outcomes["q"] != nil }
-        #expect(wait.outcomes["q"] == .failed("refused: that receipt is not this request's"))
+        #expect(wait.outcomes["q"] == .failed("Not sent: refused: that receipt is not this request's"))
         wait.clear("q")
         #expect(wait.outcomes.isEmpty)
+    }
+
+    private var macPress: RequestPress {
+        RequestPress(environmentId: "mac", requestId: "q", receipts: ["r-a"], word: "Send 1", lines: [], hostName: "Mac", key: "k1|approve")
+    }
+
+    @Test func goingToTheBackgroundAtFourSecondsCancelsThePressAndSaysSo() async {
+        let gate = Gate()
+        let wait = RequestPressWait(sleep: { await gate.wait() })
+        var sent = 0
+        wait.start(macPress, check: { _ in nil }) { _ in sent += 1; return self.answered() }
+        wait.leftScreen()
+        await gate.release()
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(sent == 0)
+        #expect(wait.pending.isEmpty)
+        #expect(wait.outcomes["q"] == .failed("Not sent: TempCode left the screen"))
+    }
+
+    @Test func aLostLinkCancelsOnlyThatHostsPress() async {
+        let gate = Gate()
+        let wait = RequestPressWait(sleep: { await gate.wait() })
+        var sent = 0
+        wait.start(macPress, check: { _ in nil }) { _ in sent += 1; return self.answered() }
+        wait.linkLost(host: "box")
+        #expect(wait.pending["q"] != nil)
+        wait.linkLost(host: "mac")
+        await gate.release()
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(sent == 0)
+        #expect(wait.outcomes["q"] == .failed("Not sent: lost the link to Mac"))
+    }
+
+    @Test func atTheEndOfTheSecondsAnotherKeyOnTheHostSendsNothing() async {
+        let wait = RequestPressWait(sleep: {})
+        var sent = 0
+        // The client was replaced under the same capability: the check compares the key he pressed under.
+        let live = SendWait<RequestPress>.Check(linked: true, maySend: true, rev: 0, key: "k2|approve")
+        wait.start(macPress, check: { p in SendWait<RequestPress>.why(live, rev: 0, key: p.key) }) { _ in sent += 1; return self.answered() }
+        await settle { wait.outcomes["q"] != nil }
+        #expect(sent == 0)
+        #expect(wait.outcomes["q"] == .failed("Not sent: this iPhone’s key can’t send on Mac"))
+    }
+
+    @Test func aDisconnectAfterTheHostClaimedTheRequestIsCheckingAndReadBack() async {
+        let wait = RequestPressWait(sleep: {})
+        var sent = 0
+        wait.start(macPress, check: { _ in nil }) { _ in sent += 1; throw PressLedger.Unknown(host: "mac", ref: "request:q") }
+        await settle { wait.outcomes["q"] != nil }
+        #expect(wait.outcomes["q"] == .checking)
+        // Checking is never "Not sent", the sheet's clear keeps it, and no second press starts on it.
+        wait.clear("q")
+        #expect(wait.outcomes["q"] == .checking)
+        wait.start(macPress, check: { _ in nil }) { _ in sent += 1; return self.answered() }
+        #expect(wait.pending.isEmpty)
+        // The next link reads the request: the host had answered it.
+        wait.heard(answered())
+        #expect(wait.outcomes["q"] == .answered(answered()))
+        #expect(sent == 1)
+    }
+
+    @Test func aRequestStillRunningStaysCheckingUntilItsEnd() async {
+        let wait = RequestPressWait(sleep: {})
+        wait.start(macPress, check: { _ in nil }) { _ in throw PressLedger.Unknown(host: "mac", ref: "request:q") }
+        await settle { wait.outcomes["q"] != nil }
+        let running = OutboxRequest(id: "q", n: 1, sessionId: "t1", workspaceId: "w1", sector: "purdue", quote: "send them", head: "Send 2 mails", state: .answered, createdAt: 1, expiresAt: 2, answeredBy: "owner:remote", answeredAt: 3, rows: [], running: true)
+        wait.heard(running)
+        #expect(wait.outcomes["q"] == .checking)
+        wait.heard(answered())
+        #expect(wait.outcomes["q"] == .answered(answered()))
+    }
+
+    @Test func aReadBackThatFindsTheRequestStillOpenSaysNotSent() async {
+        let wait = RequestPressWait(sleep: {})
+        wait.start(macPress, check: { _ in nil }) { _ in throw PressLedger.Unknown(host: "mac", ref: "request:q") }
+        await settle { wait.outcomes["q"] != nil }
+        wait.heard(requestId: "q", state: .stillWaiting)
+        #expect(wait.outcomes["q"] == .failed("Not sent"))
     }
 }

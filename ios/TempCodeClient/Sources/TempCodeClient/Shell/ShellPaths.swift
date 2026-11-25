@@ -9,16 +9,68 @@ public enum ShellColumn: Sendable, Hashable {
 
 /// Which column each route opens in, and where a thread lives. The lists
 /// stay in the sidebar; a project's shell, a bare thread, Settings and Hosts
-/// take the detail (a 320 pt sidebar is no place for a settings form).
+/// take the detail (a 320 pt sidebar is no place for a settings form), and so
+/// do LifeOS's places (`lifePlaces`), which carry their own lists.
 /// Collapsed, both push as one stack.
 public enum ShellPaths {
     public static func column(of route: Route) -> ShellColumn {
         switch route {
-        case .workspace, .archivedThreads, .archivedProjects, .outbox, .digest, .computers:
+        case .place(let place, _):
+            return lifePlaces.contains(place) ? .detail : .sidebar
+        case .workspace, .archivedThreads, .archivedProjects, .outbox, .digest, .computers, .folder:
             return .sidebar
-        case .project, .thread, .settings, .hosts, .outboxItem, .workSettings, .houseRules, .workView, .file:
+        case .project, .thread, .settings, .hosts, .outboxItem, .workSettings, .houseRules, .workView, .file, .chat, .person, .prep, .clash, .filesFile, .msformAnswers:
             return .detail
         }
+    }
+
+    /// The tab a route opens in when something outside a tab names it (a notice, a link, a new
+    /// thread, an old save): Work's places and screens in Work, the rest on Home. A thread, a
+    /// project's shell and a workspace are Work's when the lists say so (`isWork`).
+    public static func tab(of route: Route, isWork: (Route) -> Bool) -> AppTab {
+        switch route {
+        case .place, .outbox, .digest, .computers, .outboxItem, .workSettings, .houseRules, .workView, .file, .chat, .person, .prep, .clash, .folder, .filesFile, .msformAnswers:
+            return .work
+        case .thread, .project, .workspace:
+            return isWork(route) ? .work : .home
+        case .archivedThreads, .archivedProjects, .settings, .hosts:
+            return .home
+        }
+    }
+
+    /// Whether the lists put a thread, a project's shell or a workspace in Work: a thread by its
+    /// scope, a shell by its workspace's kind, a workspace by its own. False while no host lists it.
+    public nonisolated static func isWork(_ route: Route, hosts: [HomeHostInput]) -> Bool {
+        switch route {
+        case .thread(let environmentId, let sessionId, _):
+            return hosts.first { $0.environmentId == environmentId }?.sessions.first { $0.id == sessionId }?.scope == .work
+        case .project(let key, let thread, _):
+            if let shown = thread.flatMap(split) {
+                return isWork(.thread(environmentId: shown.environmentId, sessionId: shown.sessionId, seq: nil), hosts: hosts)
+            }
+            guard let lead = ThreadStrip.scope(key: key, hosts: hosts)?.lead else { return false }
+            return hosts.first { $0.environmentId == lead.environmentId }?.workspaces.first { $0.id == lead.workspaceId }?.kind == .work
+        case .workspace(let key):
+            if key == HomeSections.workChatsKey { return true }
+            return hosts.contains { host in host.workspaces.contains { $0.kind == .work && ProjectPairs.key(host.environmentId, $0) == key } }
+        default:
+            return false
+        }
+    }
+
+    /// The list a route from outside stands on, so Back from it is that list: a held item over
+    /// the Outbox. Nil for a route that opens alone.
+    public static func list(under route: Route) -> Route? {
+        if case .outboxItem = route { return .place(.outbox) }
+        if case .chat = route { return .place(.messages) }
+        if case .person = route { return .place(.people) }
+        // A meeting's page and a clash are reached from Today's rows: from outside, Back is Today.
+        if case .prep = route { return .place(.today) }
+        if case .clash = route { return .place(.today) }
+        // A folder or a file named from outside stands on Files.
+        if case .folder = route { return .place(.files) }
+        if case .filesFile = route { return .place(.files) }
+        return nil
     }
 
     /// What a detail root is as a screen: a project's shell is the same
@@ -48,6 +100,15 @@ public enum ShellPaths {
         let env = String(thread[..<colon])
         let id = String(thread[thread.index(after: colon)...])
         return env.isEmpty || id.isEmpty ? nil : (env, id)
+    }
+
+    /// The thread a route shows: a thread's own, or the one a project's shell has open.
+    public static func thread(of route: Route) -> (environmentId: String, sessionId: String)? {
+        switch route {
+        case .thread(let environmentId, let sessionId, _): (environmentId, sessionId)
+        case .project(_, let thread?, _): split(thread)
+        default: nil
+        }
     }
 
     /// Where a route opens: the detail's root and what to push over it.
@@ -180,11 +241,36 @@ public struct ColumnMemory: Codable, Hashable, Sendable {
     public var sidebar: [Route]
     public var detailRoot: Route?
     public var detailStack: Data?
+    /// This tab's own sidebar toggle; nil in a save from before each tab kept its own.
+    public var sidebarShown: Bool?
 
-    public init(sidebar: [Route] = [], detailRoot: Route? = nil, detailStack: Data? = nil) {
+    public init(sidebar: [Route] = [], detailRoot: Route? = nil, detailStack: Data? = nil, sidebarShown: Bool? = nil) {
         self.sidebar = sidebar
         self.detailRoot = detailRoot
         self.detailStack = detailStack
+        self.sidebarShown = sidebarShown
+    }
+
+    /// Nothing open and nothing pushed: the tab at its root.
+    public var isRoot: Bool { sidebar.isEmpty && detailRoot == nil }
+
+    private enum CodingKeys: String, CodingKey { case sidebar, detailRoot, detailStack, sidebarShown }
+
+    /// A route this build cannot read (a later contract changed one of its bodies) costs only itself: the sidebar
+    /// keeps the routes before it, and a detail root it cannot read goes with what was pushed over it. The other
+    /// tabs, and the rest of this one, come back.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        var sidebar: [Route] = []
+        if var list = try? c.nestedUnkeyedContainer(forKey: .sidebar) {
+            while !list.isAtEnd, let route = try? list.decode(Route.self) { sidebar.append(route) }
+        }
+        self.sidebar = sidebar
+        let saved = c.contains(.detailRoot) && (try? c.decodeNil(forKey: .detailRoot)) == false
+        let root = try? c.decode(Route.self, forKey: .detailRoot)
+        detailRoot = saved ? root : nil
+        detailStack = saved && root == nil ? nil : (try? c.decodeIfPresent(Data.self, forKey: .detailStack)) ?? nil
+        sidebarShown = (try? c.decodeIfPresent(Bool.self, forKey: .sidebarShown)) ?? nil
     }
 }
 
@@ -208,18 +294,58 @@ public struct NavigationSnapshot: Codable, Hashable, Sendable {
             var sidebarShown: Bool?
         }
         guard let v2, let old = try? JSONDecoder().decode(Old.self, from: v2) else { return nil }
-        return NavigationSnapshot(tab: old.tab, sidebarShown: old.sidebarShown ?? true)
+        return NavigationSnapshot(tab: old.tab, sidebarShown: old.sidebarShown ?? true, hasWorkTab: nil)
     }
 
     public var tab: AppTab
     public var columns: [AppTab: ColumnMemory]
-    /// The overlay pose's sidebar toggle, remembered.
+    /// The sidebar toggle of a save from before each tab kept its own (`ColumnMemory.sidebarShown`);
+    /// still written, as Home's.
     public var sidebarShown: Bool
+    /// True in a save made with the Work tab. One without it keeps Work's screens on Home, and
+    /// `movingWork` moves them once the lists can say which are Work's.
+    public var hasWorkTab: Bool?
 
-    public init(tab: AppTab = .home, columns: [AppTab: ColumnMemory] = [:], sidebarShown: Bool = true) {
+    public init(tab: AppTab = .home, columns: [AppTab: ColumnMemory] = [:], sidebarShown: Bool = true, hasWorkTab: Bool? = true) {
         self.tab = tab
         self.columns = columns
         self.sidebarShown = sidebarShown
+        self.hasWorkTab = hasWorkTab
+    }
+
+    /// A tab's sidebar toggle: its own, else the old save's one toggle.
+    public func sidebarShown(in tab: AppTab) -> Bool { self[tab].sidebarShown ?? sidebarShown }
+
+    /// A save from before the Work tab, with what Home held of Work moved to the Work tab: the
+    /// sidebar when its first list is Work's (the Outbox, the Digest, Computers, a Work workspace,
+    /// Work Chats), the detail and what it pushed when its root is. A place saved under its old
+    /// route becomes its place. The tab follows what he was looking at: the detail when one was
+    /// open, else the sidebar. `isWork` answers for a thread, a shell and a workspace from the
+    /// lists, so the move waits for them. A save made with the Work tab comes back as it is.
+    public func movingWork(isWork: (Route) -> Bool) -> NavigationSnapshot {
+        guard hasWorkTab != true else { return self }
+        var next = self
+        next.hasWorkTab = true
+        var home = self[.home]
+        home.sidebar = home.sidebar.map(\.current)
+        func works(_ route: Route) -> Bool { ShellPaths.tab(of: route, isWork: isWork) == .work }
+        let sidebarWorks = home.sidebar.first.map(works) ?? false
+        let detailWorks = home.detailRoot.map(works) ?? false
+        var work = ColumnMemory(sidebarShown: home.sidebarShown)
+        if sidebarWorks {
+            work.sidebar = home.sidebar
+            home.sidebar = []
+        }
+        if detailWorks {
+            work.detailRoot = home.detailRoot
+            work.detailStack = home.detailStack
+            home.detailRoot = nil
+            home.detailStack = nil
+        }
+        next[.home] = home
+        if sidebarWorks || detailWorks { next[.work] = work }
+        if tab == .home, self[.home].detailRoot == nil ? sidebarWorks : detailWorks { next.tab = .work }
+        return next
     }
 
     public subscript(tab: AppTab) -> ColumnMemory {

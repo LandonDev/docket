@@ -59,10 +59,32 @@ public struct ShareTargets: Codable, Equatable, Sendable {
 
     public static let fileName = "share-targets.json"
 
-    public var hosts: [Host]
+    /// The Work workspace the app last had open (a job's place, or a thread of it), by host.
+    public struct Open: Codable, Equatable, Sendable {
+        public var hostId: String
+        public var workspaceId: String
 
-    public init(hosts: [Host] = []) {
+        public init(hostId: String, workspaceId: String) {
+            self.hostId = hostId
+            self.workspaceId = workspaceId
+        }
+    }
+
+    public var hosts: [Host]
+    /// What the app last had open in Work; nil before any.
+    public var open: Open?
+
+    public init(hosts: [Host] = [], open: Open? = nil) {
         self.hosts = hosts
+        self.open = open
+    }
+
+    /// The job the sheet checks first: the last one a save went to; else the workspace the app last had open; else
+    /// none, and Save waits for his pick, never a job that is only first in the list.
+    public var preselected: Target? {
+        if let used = ordered.first(where: { $0.workspace.lastUsedAt != nil }) { return used }
+        guard let open else { return nil }
+        return ordered.first { $0.host.id == open.hostId && $0.workspace.id == open.workspaceId }
     }
 
     /// What the app last wrote; empty when it never wrote or the file does not read.
@@ -106,6 +128,7 @@ public struct ShareTargets: Codable, Equatable, Sendable {
     /// before (the extension records a save there).
     public func keepingUse(from earlier: ShareTargets) -> ShareTargets {
         var out = self
+        out.open = out.open ?? earlier.open
         for h in out.hosts.indices {
             guard let was = earlier.hosts.first(where: { $0.id == out.hosts[h].id }) else { continue }
             for w in out.hosts[h].workspaces.indices {

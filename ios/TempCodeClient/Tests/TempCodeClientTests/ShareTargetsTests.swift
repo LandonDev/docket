@@ -73,4 +73,19 @@ import TempCodeContract
         #expect(kept.hosts[0].workspaces[0].lastUsedAt == 700)
         #expect(kept.hosts[0].workspaces[1].lastUsedAt == nil)
     }
+
+    @Test func `the job checked first is the last used, else the one open in the app, else none`() {
+        #expect(targets.preselected?.id == "box/w-cosmic")
+        var fresh = ShareTargets(hosts: [host("box", "The box", [
+            .init(id: "w-cosmic", name: "CosmicGames", sector: "cosmic", folderName: "CosmicGames"),
+            .init(id: "w-esports", name: "Purdue Esports", sector: "purdue", folderName: "Purdue Esports")
+        ])])
+        // Never used, nothing open: none is checked, never the first in the list.
+        #expect(fresh.preselected == nil)
+        fresh.open = .init(hostId: "box", workspaceId: "w-esports")
+        #expect(fresh.preselected?.id == "box/w-esports")
+        // The app's fresh list keeps what it last had open.
+        let rebuilt = ShareTargets(hosts: fresh.hosts).keepingUse(from: fresh)
+        #expect(rebuilt.open == fresh.open)
+    }
 }

@@ -21,6 +21,9 @@ struct OutboxItemScreen: View {
     @Environment(\.shellPose) private var pose
     let environmentId: String
     let refKey: String
+    /// Opened from the summary to read: no bar.
+    var readOnly = false
+    /// The item as read on this screen (`work.outbox.get`): until it comes, nothing on it can be pressed.
     @State private var fetched: OutboxItem?
     @State private var loadError: String?
     /// The whole read failed while the list's copy shows: what only it carries (a quote, a picture) did not come.
@@ -29,7 +32,12 @@ struct OutboxItemScreen: View {
     @State private var confirmDiscard: OutboxItem?
     @ScaledMetric(relativeTo: .footnote) private var noteMark: CGFloat = 16
     @State private var pickingTime = false
+    /// Reschedule's Pick a Time… on a mail he timed in Mail.
+    @State private var rescheduling = false
     @State private var busy = false
+    /// Why his last press here did not start or did not go ("Not connected to Mac", "Nothing was sent."), in
+    /// the state line's place until his next press.
+    @State private var barLine: String?
     @ScaledMetric(relativeTo: .footnote) private var labelWidth: CGFloat = 64
 
     private var client: EnvironmentClient? { model.registry.client(environmentId) }
@@ -47,12 +55,34 @@ struct OutboxItemScreen: View {
         return fetched.updatedAt >= listed.updatedAt ? fetched : nil
     }
 
-    private var item: OutboxItem? { whole ?? listed ?? fetched }
+    /// Nothing of a refused key's is drawn, the whole read with its quote and body above all.
+    private var revoked: Bool { client?.work.keyRevoked == true }
+
+    private var item: OutboxItem? { revoked ? nil : whole ?? listed ?? fetched }
 
     var body: some View {
+        if OutboxPick.isSummary(environmentId: environmentId, ref: refKey) {
+            // The open Duo's detail while he selects: the one summary of his ticks.
+            OutboxSummary(inSheet: false)
+                .task { if !OutboxSelecting.shared.on { navigator.detailRoot = nil } }
+        } else {
+            itemBody
+        }
+    }
+
+    /// The kept row this item was drawn from before its host answered: a read view, never a press.
+    private var kept: WorkCache.WaitingRow? {
+        client.flatMap { OutboxKeeping.rows($0).first { $0.ref == refKey } }
+    }
+
+    private var itemBody: some View {
         Group {
-            if let item, let client {
+            if revoked {
+                ContentUnavailableView("Not Available", systemImage: "key", description: Text(WorkHost.refusedLine(client?.environment.name ?? "The host")))
+            } else if let item, let client {
                 content(item, client: client)
+            } else if let kept {
+                KeptItemView(row: kept, error: loadError, retry: { loadError = nil; Task { await load() } })
             } else if let loadError {
                 // On a paired host the read can be tried again, as other Work item pages offer; with no host there is nothing to retry.
                 ContentUnavailableView {
@@ -69,6 +99,10 @@ struct OutboxItemScreen: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        // The host refused the key: the whole read goes from memory, not only from the list.
+        .onChange(of: revoked) { if revoked { fetched = nil } }
+        // His Send's countdown and Undo on this page when no list beside it can be seen (the Duo's sidebar hidden).
+        .outboxUndoInset(undoPlace == .item && undoHere)
         // Read whole again when the list's copy moves on, so the quote and the picture match what goes.
         .task(id: "\(refKey)-\(listed?.updatedAt ?? 0)") { await load() }
         #if DEBUG
@@ -103,6 +137,7 @@ struct OutboxItemScreen: View {
     #endif
 
     private func load() async {
+        guard !OutboxPick.isSummary(environmentId: environmentId, ref: refKey) else { return }
         guard let client, let ref = OutboxModel.ref(refKey) else {
             loadError = "This item is not on a paired host."
             return
@@ -144,19 +179,20 @@ struct OutboxItemScreen: View {
                     Text(OutboxModel.title(item))
                         .font(.title3.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
-                    if let state = stateLine(item) {
+                    if let state = stateLine(item, client: client) {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             if let glyph = state.glyph {
                                 Image(systemName: glyph).font(.caption).foregroundStyle(.secondary).frame(width: noteMark).accessibilityHidden(true)
                             }
                             Text(state.text)
-                                .textStep(.meta, tint: Color(.label))
+                                .textStep(.meta, tint: state.failed ? Tint.destructiveText : Color(.label))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.top, 2)
                         .accessibilityElement(children: .combine)
                     }
-                    // What the press does and to whom, in the host's one sentence, above the thing itself.
+                    // What the press does and to whom, in the host's one sentence, above the thing itself; none under a
+                    // timed send's time (`effectLine`).
                     if let effect = OutboxModel.effectLine(item) {
                         Text(effect)
                             .font(.subheadline)
@@ -245,16 +281,22 @@ struct OutboxItemScreen: View {
             }
         }
         .tcBottomBar {
-            if client.work.canApprove {
+            // A press whose answer is out or lost offers nothing more until it is read back ("Checking…"); each bar is
+            // drawn only for a key the host would let press it (KeyMay), only once this screen has read the item on
+            // this link, and not while its Send waits its five seconds (Undo is in the list's capsule).
+            if !readOnly, fetched != nil, !client.work.presses.busy(host: environmentId, ref: refKey),
+               !OutboxPresses.shared.hides(OutboxModel.Entry(environmentId: environmentId, item: item)) {
                 switch verbs {
-                case .press:
+                case .press where client.work.may(.outboxSend):
                     bar(item, client: client, editable: OutboxModel.editable(item.kind) && (!view.fields.filter({ $0.edit != nil }).isEmpty || view.body?.readOnly == false),
                         ready: OutboxModel.detailReady(item.kind, whole: whole) && pictureDraws(whole))
-                case .timed:
+                case .timed where client.work.may(.outboxSendNow) && client.work.may(.outboxCancelSend):
                     timedBar(item, client: client)
-                case .stale:
+                case .mailTimed(let id) where client.work.may(.mailSendNow) && client.work.may(.mailCancel) && client.work.may(.mailReschedule):
+                    mailTimedBar(item, id: id, client: client)
+                case .stale where client.work.may(.outboxDiscard) && client.work.may(.outboxAskAgain):
                     staleBar(item, client: client)
-                case .none:
+                default:
                     EmptyView()
                 }
             }
@@ -265,31 +307,47 @@ struct OutboxItemScreen: View {
         .sheet(isPresented: $pickingTime) {
             OutboxPickTimeSheet { at in later(item, at: at) }
         }
+        .sheet(isPresented: $rescheduling) {
+            if let id = MailRules.timedInMail(item) {
+                OutboxPickTimeSheet { at in Task { await reschedule(id, at: at, client: client) } }
+            }
+        }
         .outboxDiscardPrompt($confirmDiscard) { item, reason in
             Task { await discard(item, reason: reason, client: client) }
         }
     }
 
-    private enum BarKind { case press, timed, stale, none }
+    private enum BarKind {
+        case press, timed, stale, none
+        /// A mail he timed in Mail: LifeOS's time, moved, sent now or taken back through `work.mail.*`.
+        case mailTimed(String)
+    }
 
     /// Which verbs the item's bar offers: a plain press while it waits on one; Cancel Send and Send Now on a send he
-    /// timed on the host; Discard and Ask the Thread Again once it went out of date; none on its way or decided (a
-    /// LifeOS mail Mail timed is LifeOS's to cancel, in Mail).
+    /// timed on the host; Cancel Send, Reschedule and Send Now on a mail he timed in Mail (`work.mail.*`); Discard and
+    /// Ask the Thread Again once it went out of date; none on its way or decided.
     private func barKind(_ item: OutboxItem) -> BarKind {
         if item.state == .scheduled { return .timed }
+        if let id = MailRules.timedInMail(item) { return .mailTimed(id) }
         if item.state == .stale { return OutboxModel.needsHim(item) ? .stale : .none }
         return OutboxModel.needsHim(item) ? .press : .none
     }
 
-    /// Where it stands when no note says it: on its way, timed, sent, discarded, or an agent's rewrite waiting.
-    private func stateLine(_ item: OutboxItem) -> (glyph: String?, text: String)? {
+    /// Where it stands when no note says it. His own press's refusal comes first, then what a press came to
+    /// ("Checking…", "Changed"; "May have gone" is the failure note's own words), then on its way, timed, sent,
+    /// discarded, or an agent's rewrite waiting.
+    private func stateLine(_ item: OutboxItem, client: EnvironmentClient) -> (glyph: String?, text: String, failed: Bool)? {
+        if let barLine { return (nil, barLine, true) }
+        if let press = client.work.presses.state(host: environmentId, ref: refKey), press != .mayHaveGone, let line = press.line {
+            return (nil, line, false)
+        }
         // A timed send leads with its time, as a note with its glyph, before what the press does.
-        if OutboxModel.isScheduled(item) { return ("clock", "Scheduled for \(OutboxModel.aheadTime(OutboxModel.scheduledAt(item)))") }
+        if let scheduled = OutboxModel.scheduledLine(item) { return ("clock", scheduled, false) }
         switch item.state {
-        case .sending: return (nil, "Sending…")
-        case .sent: return (nil, "\(OutboxModel.pastOf(item.verb, kind: item.kind)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")")
-        case .discarded: return (nil, "Discarded")
-        default: return item.proposed == true ? (nil, "An agent’s rewrite waits in LifeOS.") : nil
+        case .sending: return (nil, "Sending…", false)
+        case .sent: return (nil, "\(OutboxModel.pastOf(item.verb, kind: item.kind)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")", false)
+        case .discarded: return (nil, "Discarded", false)
+        default: return item.proposed == true ? (nil, "An agent’s rewrite waits in LifeOS.", false) : nil
         }
     }
 
@@ -304,7 +362,7 @@ struct OutboxItemScreen: View {
         HStack(spacing: 12) {
             Text(words).textStep(.meta, tint: Tint.destructiveText).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 8)
-            PillButton("Retry") { Task { await load() } }
+            PillButton("Try Again") { Task { await load() } }
         }
     }
 
@@ -350,10 +408,7 @@ struct OutboxItemScreen: View {
                 .buttonStyle(.pressable)
                 .accessibilityIdentifier("outbox-cancel-send")
             Spacer(minLength: 0)
-            Button("\(item.verb) Now") {
-                OutboxPresses.shared.send(OutboxModel.Entry(environmentId: environmentId, item: item), press: .sendNow)
-                close()
-            }
+            Button("\(item.verb) Now") { Task { await press(item, act: .sendNow) } }
             .font(.body.weight(.semibold))
             .padding(.horizontal, 10)
             .frame(minHeight: Layout.rowHeight)
@@ -364,6 +419,72 @@ struct OutboxItemScreen: View {
         .disabled(busy)
         .padding(.horizontal, Layout.textEdge)
         .padding(.vertical, 8)
+    }
+
+    /// A mail he timed in Mail: Cancel Send takes it back to a draft and Reschedule moves its time, neither going to
+    /// anyone; Send Now is outward, so it passes the owner's check and waits its five seconds with Undo in the list.
+    private func mailTimedBar(_ item: OutboxItem, id: String, client: EnvironmentClient) -> some View {
+        HStack(spacing: 8) {
+            Button("Cancel Send") { Task { await cancelMail(id, client: client) } }
+                .font(.body)
+                .frame(minHeight: Layout.hitTarget)
+                .buttonStyle(.pressable)
+                .accessibilityIdentifier("outbox-mail-cancel")
+            Spacer(minLength: 0)
+            Menu("Reschedule") {
+                ForEach(MailRules.rescheduleChoices(item), id: \.label) { choice in
+                    Button(choice.label) { Task { await reschedule(id, at: choice.at, client: client) } }
+                }
+                Button("Pick a Time…") { rescheduling = true }
+            }
+            .font(.body.weight(.medium))
+            .padding(.horizontal, 6)
+            .frame(minHeight: Layout.rowHeight)
+            .buttonBorderShape(.capsule)
+            .tcGlassButton()
+            .accessibilityIdentifier("outbox-mail-reschedule")
+            Button("\(item.verb) Now") { Task { await press(item, act: .mailNow(id: id)) } }
+                .font(.body.weight(.semibold))
+                .padding(.horizontal, 10)
+                .frame(minHeight: Layout.rowHeight)
+                .buttonBorderShape(.capsule)
+                .tcGlassButton(prominent: true)
+                .accessibilityIdentifier("outbox-mail-send-now")
+        }
+        .disabled(busy)
+        .padding(.horizontal, Layout.textEdge)
+        .padding(.vertical, 8)
+    }
+
+    /// Takes a mail he timed back to a draft in LifeOS; it leaves the Outbox. LifeOS says when it is already on its way.
+    private func cancelMail(_ id: String, client: EnvironmentClient) async {
+        busy = true
+        defer { busy = false }
+        barLine = nil
+        do {
+            if try await client.work.cancelMail(id) {
+                await client.work.refreshOutbox()
+                close()
+            } else {
+                barLine = "Not cancelled: it is already on its way"
+            }
+        } catch {
+            barLine = OutboxPresses.line(error, prefix: "Not cancelled")
+        }
+    }
+
+    /// Moves a mail he timed to another time in his zone; the state line says the new time once the list has it.
+    private func reschedule(_ id: String, at: Int, client: EnvironmentClient) async {
+        busy = true
+        defer { busy = false }
+        barLine = nil
+        do {
+            try await client.work.rescheduleMail(id, at: at)
+            await client.work.refreshOutbox()
+            await load()
+        } catch {
+            barLine = OutboxPresses.line(error, prefix: "Not moved")
+        }
     }
 
     /// An out-of-date item: Discard (with its reason), or Ask the Thread Again, which puts it away and asks its
@@ -396,8 +517,8 @@ struct OutboxItemScreen: View {
     @ViewBuilder
     private func sendButton(_ item: OutboxItem, client: EnvironmentClient) -> some View {
         let title = OutboxModel.pressWord(item, fallback: item.verb)
-        let grant = client.work.canAdmin && item.state == .held ? OutboxModel.grantFor(item.kind, payload: item.payload) : nil
-        let later = item.later == true && item.state == .held
+        let grant = client.work.may(.outboxGrant) && item.state == .held ? OutboxModel.grantFor(item.kind, payload: item.payload) : nil
+        let later = item.later == true && item.state == .held && client.work.may(.outboxDecide)
         if grant != nil || later {
             Menu {
                 if later {
@@ -425,8 +546,17 @@ struct OutboxItemScreen: View {
             .tcGlassButton(prominent: true)
             .accessibilityIdentifier("outbox-send")
             .accessibilityHint(later ? "Touch and hold to send later" : "Touch and hold to send and stop holding acts like this one")
+            // Command-Return is the plain Send on both branches: a menu that also offers Send Later keeps it.
+            .background {
+                Button(title) { send(item) }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .opacity(0)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
         } else {
             Button(title) { send(item) }
+                .keyboardShortcut(.return, modifiers: .command)
                 .font(.body.weight(.semibold))
                 .padding(.horizontal, 10)
                 .frame(minHeight: Layout.rowHeight)
@@ -436,58 +566,91 @@ struct OutboxItemScreen: View {
         }
     }
 
-    /// The grant first (only from a held item), then this item's Send with its five seconds of Undo.
-    /// Undo takes back the Send, not the grant; Settings → Work lists the grant with Remove.
+    /// This item's Send with the grant riding it: both wait the five seconds, and the grant is made only
+    /// when they end, just before the send (`HeldPress`). Undo takes back both; Settings → Work lists the grant.
     private func sendAndGrant(_ item: OutboxItem, grant: (matcher: JSONValue, label: String), client: EnvironmentClient) async {
-        busy = true
-        defer { busy = false }
-        do {
-            _ = try await client.work.grant(item, matcher: grant.matcher, label: grant.label)
-            send(item)
-        } catch {
-            FleetToastCenter.shared.post(message: "No grant made: \(ActionError.wrap(error).message)")
-        }
+        await press(item, grant: HeldPress.Grant(matcher: grant.matcher, label: grant.label))
     }
 
     /// Back to the list, where the press waits its five seconds with Undo.
     private func send(_ item: OutboxItem) {
-        OutboxPresses.shared.send(OutboxModel.Entry(environmentId: environmentId, item: item))
-        close()
+        Task { await press(item) }
     }
 
-    /// Off screen: popped in a stack; in the split the detail's root, which `dismiss` cannot pop, is cleared.
-    private func close() {
-        if pose.isSplit, navigator.detailRoot == .outboxItem(environmentId: environmentId, ref: refKey) {
-            navigator.detailRoot = nil
+    /// The link and the owner's check first; a press that did not start stays here and says why.
+    private func press(_ item: OutboxItem, act: HeldPress.Act = .send, grant: HeldPress.Grant? = nil) async {
+        busy = true
+        defer { busy = false }
+        barLine = nil
+        if let line = await OutboxPresses.shared.send(OutboxModel.Entry(environmentId: environmentId, item: item), act: act, grant: grant, quiet: true) {
+            barLine = line
         } else {
-            dismiss()
+            close()
         }
+    }
+
+    /// Off screen: popped in a stack. In the split beside the Outbox's own list it stays: when the item leaves the
+    /// list (sent once its wait ends, discarded, scheduled) the list gives the detail the next row it waits on
+    /// (`OutboxModel.pickOrder`). Opened from anywhere else (Today's row, its pick on the open Duo, a notice) the
+    /// countdown and its Undo would be out of sight: the Outbox's list comes up with them, over where he was, so
+    /// Back returns there.
+    private func close() {
+        let root = navigator.detailRoot == .outboxItem(environmentId: environmentId, ref: refKey)
+        // The Duo's sidebar hidden: a list there is out of sight, so the item stays and wears the capsule itself.
+        if root, undoPlace == .item { return }
+        let overOutbox = if case .place(.outbox, _)? = navigator.sidebarPath.last?.current { true } else { false }
+        if overOutbox {
+            if pose.isSplit, root { return }
+            return dismiss()
+        }
+        if root { navigator.detailRoot = nil } else { dismiss() }
+        // Counting, waiting its turn or on its way: the list that shows it comes up.
+        guard let item, OutboxPresses.shared.hides(OutboxModel.Entry(environmentId: environmentId, item: item)) else { return }
+        navigator.sidebarPath.append(.place(.outbox))
+    }
+
+    /// Where this page's Send shows its countdown (`SendUndoPlace`).
+    private var undoPlace: SendUndoPlace {
+        let outboxBeside = if case .place(.outbox, _)? = navigator.sidebarPath.last?.current { true } else { false }
+        return SendUndoPlace.of(split: pose.isSplit, sidebarVisible: navigator.sidebarVisible, outboxBeside: outboxBeside)
+    }
+
+    /// A press of this page is out, or the capsule has a line for it to say.
+    private var undoHere: Bool {
+        let presses = OutboxPresses.shared
+        guard let item else { return presses.noticeLine != nil }
+        return presses.hides(OutboxModel.Entry(environmentId: environmentId, item: item)) || presses.noticeLine != nil
     }
 
     /// Send later: back to the list, where it waits its five seconds with Undo, its line naming when it goes.
     private func later(_ item: OutboxItem, at: Int) {
-        OutboxPresses.shared.send(OutboxModel.Entry(environmentId: environmentId, item: item), press: .later(at: at))
-        close()
+        Task { await press(item, act: .later(at: at)) }
     }
 
     private func discard(_ item: OutboxItem, reason: String?, client: EnvironmentClient) async {
         busy = true
         defer { busy = false }
-        do {
-            try await client.work.discard(item, reason: reason)
+        barLine = nil
+        if let line = await OutboxPresses.shared.discard(OutboxModel.Entry(environmentId: environmentId, item: item), reason: reason) {
+            barLine = line
+        } else if !client.work.presses.busy(host: environmentId, ref: refKey) {
             close()
-        } catch {
-            FleetToastCenter.shared.post(message: "Not discarded: \(ActionError.wrap(error).message)")
         }
     }
 
+    /// Cancel Send passes the link and the owner's check as Discard does; what did not go is said in the state line.
     private func cancelSend(_ item: OutboxItem, client: EnvironmentClient) async {
         busy = true
         defer { busy = false }
+        barLine = nil
+        if let line = await PressGates.shared.pass(client, .outboxCancelSend, ref: refKey, rev: String(item.updatedAt), reason: "Cancel sending \(item.summary)") {
+            barLine = line
+            return
+        }
         do {
             try await client.work.cancelSend(item)
         } catch {
-            FleetToastCenter.shared.post(message: "Not cancelled: \(ActionError.wrap(error).message)")
+            barLine = OutboxPresses.line(error, prefix: "Not cancelled")
         }
     }
 
@@ -643,10 +806,18 @@ private struct OutboxEditSheet: View {
         }
         saving = true
         defer { saving = false }
+        // Save changes what goes: the link and the owner's check first, as for Send; its key rides to the leave.
+        let key = PressGates.key(client.environment, revoked: client.work.keyRevoked)
+        if let line = await PressGates.shared.pass(client, .outboxEdit, ref: OutboxModel.key(item.ref), rev: String(item.updatedAt), reason: "Save your edit to \(item.summary)") {
+            error = line
+            return
+        }
         do {
-            try await client.work.edit(item, payload: next.payload)
+            try await client.work.edit(item, payload: next.payload, key: key)
             dismiss()
         } catch {
+            // A lost answer: the item says Checking… and is read back on the next link.
+            if error is PressLedger.Unknown { return dismiss() }
             self.error = ActionError.wrap(error).message
         }
     }
@@ -700,7 +871,7 @@ private struct KeptPictureView: View {
         HStack(spacing: 12) {
             Text("The picture did not load").textStep(.meta, tint: Tint.destructiveText)
             Spacer(minLength: 8)
-            PillButton("Retry", action: retry)
+            PillButton("Try Again", action: retry)
         }
     }
 
@@ -714,5 +885,52 @@ private struct KeptPictureView: View {
         guard case .object(let o)? = listed.payload, case .object(let p)? = o["picture"],
               case .number(let w)? = p["width"], case .number(let h)? = p["height"] else { return nil }
         return aspect(w, h)
+    }
+}
+
+/// A row kept from the host's last list, opened before the host answered on this link: what it does, what it is
+/// about, its place and when it was held, and nothing to press. The item itself replaces it once read.
+private struct KeptItemView: View {
+    let row: WorkCache.WaitingRow
+    let error: String?
+    let retry: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    if let place = row.place {
+                        Text(place).textStep(.meta, tint: Color(.label)).lineLimit(1).layoutPriority(1)
+                    }
+                    Text(HeldTime.of(row.at)).textStep(.stamp, tint: Color(.label)).fixedSize()
+                }
+                Text(row.act)
+                    .font(.title3.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+                if let about = row.about {
+                    Text(about)
+                        .font(.subheadline)
+                        .foregroundStyle(Color(.label))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                }
+                if let error {
+                    HStack(spacing: 12) {
+                        Text(error).textStep(.meta, tint: Tint.destructiveText).fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 8)
+                        PillButton("Try Again", action: retry)
+                    }
+                    .padding(.top, 12)
+                } else {
+                    ProgressView()
+                        .padding(.top, 16)
+                        .accessibilityLabel("Reading it from the host")
+                }
+            }
+            .padding(.horizontal, Layout.textEdge)
+            .padding(.top, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityIdentifier("outbox-item-kept")
     }
 }

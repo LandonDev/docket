@@ -18,6 +18,9 @@ public final class ComposerDraft {
     public private(set) var text = ""
     /// The box holds something a send would send: not empty, and not white space alone.
     public private(set) var hasContent = false
+    /// The words after an `@` the box ends on (`MentionTrigger`), nil when it ends on none: assigned only when they
+    /// change, so outside the field only the `@` list's own view runs for a key typed after the `@`.
+    public private(set) var mention: String?
     /// A person edited the text (the field's setter, and nothing else).
     @ObservationIgnored public var onEdit: (@MainActor () -> Void)?
 
@@ -46,6 +49,11 @@ public final class ComposerDraft {
         store(text)
     }
 
+    /// A pick in the `@` list: the typed `@words` leave the box, and what was typed before them stays.
+    public func takeMention() {
+        store(MentionTrigger.removing(from: text))
+    }
+
     /// What a send sends: the text with the white space around it gone.
     public var trimmed: String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -55,6 +63,8 @@ public final class ComposerDraft {
         if new != text { text = new }
         let content = Self.hasContent(new)
         if content != hasContent { hasContent = content }
+        let query = MentionTrigger.query(in: new)
+        if query != mention { mention = query }
     }
 
     /// The send's own test, stopped at the first scalar that is no white

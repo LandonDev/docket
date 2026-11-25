@@ -28,6 +28,8 @@ public enum PerfCounter: Int, CaseIterable, Sendable {
     /// Scrolls the transcript made on its own, and those made while the reader's finger moved the list.
     case offsetWrites
     case offsetWritesMoving
+    /// A place's list frame (`WorkPlaceScreen`), every place's together: one place's list is on screen at a time.
+    case workPlaceBody
 
     public var name: String { String(describing: self) }
 }

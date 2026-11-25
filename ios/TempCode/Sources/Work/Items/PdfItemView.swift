@@ -17,6 +17,8 @@ struct PdfItemView: View {
     private struct Loaded {
         var rev: String
         var data: Data
+        /// The host's view of the file, with his highlights and the form's fields; nil while painted from memory.
+        var view: PdfPhoneView?
     }
 
     private var host: String { client.environment.id }
@@ -29,15 +31,10 @@ struct PdfItemView: View {
             loading: { AnyView(ReaderLoading(progress: progress.share, picture: progress.picture)) },
             read: { try await load() }
         ) { loaded, _ in
-            PdfPages(
-                data: loaded.data,
-                filmstrip: false,
-                start: { ReaderPlaces.shared.page(host: host, file: file, pages: $0) },
-                onAsk: ask.map { ask in { (quote: String) in ask(ChipWords.selection(in: item, quote: quote)) } },
-                onPage: { ReaderPlaces.shared.keep(ReaderPlace(page: $0, rev: loaded.rev), host: host, file: file) }
-            )
-            // The same bytes read again keep their viewer; a file that changed gets a new one.
-            .id(loaded.rev)
+            PdfLayered(client: client, item: item, data: loaded.data, rev: loaded.rev, view: loaded.view, ask: ask)
+                // The same bytes read again keep their viewer; a file that changed gets a new one. A view the host
+                // answered after a paint from memory brings its layer in place.
+                .id(loaded.rev)
         }
         .accessibilityIdentifier("pdf-item")
     }
@@ -46,7 +43,7 @@ struct PdfItemView: View {
         let view = try await client.work.canvas.pdf(item.id)
         // A picture from a read before (another version, Try Again) never stands for this one.
         progress.picture = nil
-        if let data = ReaderCache.shared.data(cacheKey, rev: view.rev) { return Loaded(rev: view.rev, data: data) }
+        if let data = ReaderCache.shared.data(cacheKey, rev: view.rev) { return Loaded(rev: view.rev, data: data, view: view) }
         let canvas = client.work.canvas, key = cacheKey, progress = self.progress
         let width = FirstPicture.width(points: ReaderMetrics.measure, scale: scale)
         // One read of this version however many views open it; its first page drawn while the rest reads (M17).
@@ -58,7 +55,74 @@ struct PdfItemView: View {
             ReaderCache.shared.keep(data, for: key, rev: view.rev)
             return data
         }
-        return Loaded(rev: view.rev, data: data)
+        return Loaded(rev: view.rev, data: data, view: view)
+    }
+}
+
+/// A PDF's pages with what the host draws over them: his highlights and their notes, a form's values, and while an
+/// agent's values wait, the row that counts them with Reject All and Accept All (the values are on the page, so he
+/// decides where he reads them). A tap on a highlight or a field opens its sheet.
+private struct PdfLayered: View {
+    let client: EnvironmentClient
+    let item: CanvasItem
+    let data: Data
+    let rev: String
+    let view: PdfPhoneView?
+    let ask: ((ContextChip) -> Void)?
+    @State private var layer: PdfLayerModel?
+    @State private var picked: PdfLayerPick?
+    @State private var error: String?
+    @Environment(\.readerImmersive) private var immersive
+
+    private var host: String { client.environment.id }
+    private var file: String { ReaderPlaces.fileKey(item) }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let layer, !layer.waiting.isEmpty, !immersive {
+                DeckReviewRow(words: PdfFields.waitingWords(layer.waiting.count), busy: layer.busy, decides: layer.acts && client.work.may(.pdfReview)) { accept in
+                    Task { await reviewAll(layer, accept: accept) }
+                }
+                Divider()
+            }
+            PdfPages(
+                data: data,
+                filmstrip: false,
+                layer: layer,
+                start: { ReaderPlaces.shared.page(host: host, file: file, pages: $0) },
+                onAsk: ask.map { ask in { (quote: String) in ask(ChipWords.selection(in: item, quote: quote)) } },
+                onPage: { ReaderPlaces.shared.keep(ReaderPlace(page: $0, rev: rev), host: host, file: file) },
+                onPick: { picked = $0 }
+            )
+        }
+        .onChange(of: view, initial: true) { _, now in
+            // The host's view, once it has answered for these bytes: a paint from memory has no layer until then.
+            guard let now, now.rev == rev, layer == nil else { return }
+            layer = PdfLayerModel(view: now, canvas: client.work.canvas, acts: client.work.may(.pdfMark))
+        }
+        .sheet(item: $picked) { pick in
+            if let layer {
+                switch pick {
+                case .mark(let id):
+                    if let mark = layer.marks.first(where: { $0.id == id }) { PdfMarkSheet(layer: layer, mark: mark) }
+                case .field(let key):
+                    if let field = PdfFields.field(named: key, in: layer.fields) { PdfFieldSheet(layer: layer, field: field) }
+                }
+            }
+        }
+        .alert("Couldn’t do that", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(error ?? "") }
+        .sensoryFeedback(.impact(weight: .light), trigger: layer?.revision ?? 0)
+    }
+
+    /// The values on screen when he pressed, by key: one an agent added since is not decided unseen.
+    private func reviewAll(_ layer: PdfLayerModel, accept: Bool) async {
+        do {
+            try await layer.review(layer.waiting.map(\.key), accept: accept)
+        } catch {
+            self.error = ActionError.wrap(error).message
+        }
     }
 }
 
@@ -129,7 +193,7 @@ struct SlidesItemView: View {
         ) { loaded, reload in
             VStack(spacing: 0) {
                 // The review row only over the render its changes propose (`DeckRender`), once the host has answered.
-                if loaded.live, loaded.render == .proposed, client.work.canApprove, !immersive {
+                if loaded.live, loaded.render == .proposed, client.work.may(.slidesReview), !immersive {
                     DeckReviewRow(words: loaded.deck.changes.count == 1 ? "1 change" : "\(loaded.deck.changes.count) changes", busy: deciding) { accept in
                         Task { await decide(accept, rev: loaded.rev, reload: reload) }
                     }
@@ -229,7 +293,8 @@ struct DeckReviewRow: View {
             if let open {
                 Button(action: open) {
                     HStack(spacing: 4) {
-                        Text(words).textStep(.meta).monospacedDigit()
+                        // A press, so the label's ink: the meta step's grey read as a caption and was missed.
+                        Text(words).textStep(.meta, weight: .medium, tint: .primary).monospacedDigit()
                         Image(systemName: "chevron.right").imageScale(.small).foregroundStyle(.tertiary)
                     }
                     .frame(minHeight: Layout.rowHeight)
@@ -266,43 +331,52 @@ struct PdfPages: View {
     let filmstrip: Bool
     /// A deck's pages: the notes under the slide come from it.
     var pager: DeckPager?
+    /// A PDF's highlights and fields, once the host has answered: drawn over the pages, and Highlight in the
+    /// selection's menu for a key that may act.
+    var layer: PdfLayerModel?
     /// The page to open on, from 1, once the document says how many it has.
     var start: (_ pages: Int) -> Int? = { _ in nil }
     /// nil: no thread beside the file, so no Ask.
     let onAsk: ((String) -> Void)?
     /// Each page he lands on, from 1.
     var onPage: (_ page: Int) -> Void = { _ in }
+    /// A tap on one of his highlights or a field.
+    var onPick: (PdfLayerPick) -> Void = { _ in }
     @State private var page = 1
     @State private var pages = 1
     @State private var aspect = ReaderMetrics.slideAspect
-    @State private var view = PDFView()
+    @State private var view = ReaderPDFView()
+    /// A highlight the host refused, in its words.
+    @State private var failure: String?
     @Environment(ReaderCommands.self) private var commands: ReaderCommands?
     @Environment(\.readerTap) private var tap
     @Environment(\.readerImmersive) private var immersive
 
     var body: some View {
-        GeometryReader { proxy in
-            let layout = DeckPager.layout(width: proxy.size.width, height: proxy.size.height, aspect: aspect, filmstrip: filmstrip ? ReaderMetrics.filmstrip : 0, hasNotes: pager?.hasNotes == true)
+        // A deck with notes: on the open Duo the slide and its strip stand on the leading page and the notes on the
+        // trailing; on a table the slide stands above the band and the notes lie below (`ReaderSpread`).
+        ReaderSpread(enabled: pager?.hasNotes == true) {
             VStack(spacing: 0) {
                 viewer
-                    .frame(height: layout.slide.map { CGFloat($0) })
-                if layout.notes, let pager {
-                    // In a wide column the slide is narrower than the column: the notes start at its left edge.
-                    SlideNotes(words: pager.notes(at: page), width: layout.slide.map { min(proxy.size.width, CGFloat($0) * aspect) })
-                        .id(page)
-                        .footHidden(immersive)
-                }
-                if filmstrip {
-                    DeckFilmstrip(view: view, page: page, pages: pages, aspect: aspect, hidden: Set((pager?.pages ?? []).filter(\.hidden).map(\.page)))
-                        .frame(height: ReaderMetrics.filmstrip)
-                        .footHidden(immersive)
-                }
+                if filmstrip { strip }
             }
-            // The foot leaves and returns with the bars: a fade, nothing travels.
-            .animation(Motion.base, value: immersive)
+        } with: {
+            if let pager { SlideNotes(words: pager.notes(at: page)).id(page).footHidden(immersive) }
+        } single: { _, _ in
+            column
         }
-        .onAppear { if onAsk != nil { commands?.ask = { askNow() } } }
-        .onDisappear { commands?.ask = nil }
+        .animation(Motion.base, value: immersive)
+        .onAppear {
+            if onAsk != nil { commands?.ask = { askNow() } }
+            view.selectionActions = { [weak view] in
+                guard let view, layer?.acts == true, view.currentSelection?.string?.isEmpty == false else { return [] }
+                return [UIAction(title: "Highlight", image: UIImage(systemName: "highlighter")) { _ in highlightNow() }]
+            }
+        }
+        .onDisappear {
+            commands?.ask = nil
+            view.selectionActions = nil
+        }
         #if DEBUG
         // The reader's set: the page a swipe would reach, through the viewer's own go-to.
         .task {
@@ -315,10 +389,37 @@ struct PdfPages: View {
             let find: UIFindInteraction? = view.findInteraction
             find?.presentFindNavigator(showingReplace: false)
         }
+        .alert("Couldn’t Highlight", isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(failure ?? "") }
+    }
+
+    /// One column: the slide at the width in its own shape, its notes under it, then the strip.
+    private var column: some View {
+        GeometryReader { proxy in
+            let layout = DeckPager.layout(width: proxy.size.width, height: proxy.size.height, aspect: aspect, filmstrip: filmstrip ? ReaderMetrics.filmstrip : 0, hasNotes: pager?.hasNotes == true)
+            VStack(spacing: 0) {
+                viewer
+                    .frame(height: layout.slide.map { CGFloat($0) })
+                if layout.notes, let pager {
+                    // In a wide column the slide is narrower than the column: the notes start at its left edge.
+                    SlideNotes(words: pager.notes(at: page), width: layout.slide.map { min(proxy.size.width, CGFloat($0) * aspect) })
+                        .id(page)
+                        .footHidden(immersive)
+                }
+                if filmstrip { strip }
+            }
+        }
+    }
+
+    private var strip: some View {
+        DeckFilmstrip(view: view, page: page, pages: pages, aspect: aspect, hidden: Set((pager?.pages ?? []).filter(\.hidden).map(\.page)))
+            .frame(height: ReaderMetrics.filmstrip)
+            .footHidden(immersive)
     }
 
     private var viewer: some View {
-        PdfKitView(view: view, data: data, filmstrip: filmstrip, start: start, onTap: tap) { page, pages, aspect in
+        PdfKitView(view: view, data: data, filmstrip: filmstrip, start: start, onTap: tap, layer: layer?.view, revision: layer?.revision ?? -1, onPick: layer == nil ? nil : onPick) { page, pages, aspect in
             if page != self.page { onPage(page) }
             self.page = page
             self.pages = pages
@@ -336,10 +437,33 @@ struct PdfPages: View {
             if onAsk != nil, commands?.ownsAsk != true {
                 Button("Ask", systemImage: "bubble.left") { askNow() }
                     .labelStyle(.iconOnly)
-                    .frame(width: 44, height: 44)
-                    .glassEffect(.regular.interactive(), in: Circle())
+                    .frame(width: Layout.hitTarget, height: Layout.hitTarget)
+                    .tcGlass(in: Circle(), interactive: true)
                     .padding(12)
                     .accessibilityIdentifier("pdf-ask")
+            }
+        }
+    }
+
+    /// His highlight over the words he picked: one mark a page the selection crosses, a box per line. The view the host
+    /// answers draws it, and the selection goes.
+    private func highlightNow() {
+        guard let layer, let selection = view.currentSelection, let document = view.document else { return }
+        let lines = selection.selectionsByLine()
+        let marks: [(page: Int, quads: [[Double]], text: String)] = selection.pages.compactMap { page in
+            let onPage = lines.filter { $0.pages.contains(page) }
+            let quads = PdfBox.quads(lines: onPage.map { $0.bounds(for: page) }, page: page.bounds(for: .cropBox))
+            let text = onPage.compactMap(\.string).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !quads.isEmpty, !text.isEmpty else { return nil }
+            return (document.index(for: page) + 1, quads, text)
+        }
+        guard !marks.isEmpty else { return }
+        view.clearSelection()
+        Task {
+            do {
+                for mark in marks { try await layer.mark(page: mark.page, quads: mark.quads, text: mark.text) }
+            } catch {
+                failure = ActionError.wrap(error).message
             }
         }
     }
@@ -386,12 +510,30 @@ private struct SlideNotes: View {
     }
 }
 
+/// PDFKit's view with the reader's own rows at the head of the selection's menu (Highlight).
+final class ReaderPDFView: PDFView {
+    /// Asked each time the menu is built; empty adds nothing.
+    var selectionActions: (() -> [UIMenuElement])?
+
+    override func buildMenu(with builder: any UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        guard let actions = selectionActions?(), !actions.isEmpty else { return }
+        builder.insertSibling(UIMenu(options: .displayInline, children: actions), beforeMenu: .standardEdit)
+    }
+}
+
 private struct PdfKitView: UIViewRepresentable {
     let view: PDFView
     let data: Data
     let filmstrip: Bool
     let start: (_ pages: Int) -> Int?
     let onTap: (() -> Void)?
+    /// What the host draws over the pages; nil draws nothing of ours.
+    var layer: PdfPhoneView?
+    /// The layer's revision: a new one is drawn again.
+    var revision = -1
+    /// A tap on a highlight or a field; nil while there is no layer.
+    var onPick: ((PdfLayerPick) -> Void)?
     let onPage: (_ page: Int, _ pages: Int, _ aspect: CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(onPage: onPage) }
@@ -407,11 +549,22 @@ private struct PdfKitView: UIViewRepresentable {
         view.document = document
         context.coordinator.onTap = onTap
         context.coordinator.watch(view, start: document.flatMap { start($0.pageCount) })
+        draw(view, context.coordinator)
         return view
     }
 
     func updateUIView(_ view: PDFView, context: Context) {
         context.coordinator.onTap = onTap
+        draw(view, context.coordinator)
+    }
+
+    /// The layer drawn once per revision, never on every update.
+    private func draw(_ view: PDFView, _ coordinator: Coordinator) {
+        coordinator.onPick = onPick
+        guard let layer, coordinator.drawn != revision else { return }
+        coordinator.drawn = revision
+        coordinator.fields = Set((layer.fields ?? []).map(\.key))
+        PdfLayerDraw.apply(layer, to: view)
     }
 
     static func dismantleUIView(_ view: PDFView, coordinator: Coordinator) {
@@ -421,6 +574,11 @@ private struct PdfKitView: UIViewRepresentable {
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         let onPage: (Int, Int, CGFloat) -> Void
         var onTap: (() -> Void)?
+        var onPick: ((PdfLayerPick) -> Void)?
+        /// The layer's revision last drawn.
+        var drawn = Int.min
+        /// The form's field keys, to know a widget of the file that is one.
+        var fields: Set<String> = []
         /// The page-change observer, removed when the viewer goes.
         private var watching: (any NSObjectProtocol)?
         init(onPage: @escaping (Int, Int, CGFloat) -> Void) { self.onPage = onPage }
@@ -448,6 +606,8 @@ private struct PdfKitView: UIViewRepresentable {
                 }
                 guard let view else { return }
                 view.layoutIfNeeded()
+                // Fit to the width it now has: a fit taken before it had a size left the page past its right edge.
+                view.autoScales = true
                 if let start, let page = view.document?.page(at: start - 1) { view.go(to: page) }
                 self?.report(view)
             }
@@ -460,11 +620,27 @@ private struct PdfKitView: UIViewRepresentable {
             onPage(index + 1, max(1, document.pageCount), box.height > 0 ? box.width / box.height : ReaderMetrics.slideAspect)
         }
 
-        /// A tap on the page, not on a link and not one that drops a selection, is the reader's.
+        /// A tap on one of his highlights or a field opens it; any other tap on the page, not on a link and not one
+        /// that drops a selection, is the reader's.
         @objc private func tapped(_ tap: UITapGestureRecognizer) {
-            guard let view = tap.view as? PDFView, let onTap, view.currentSelection == nil else { return }
+            guard let view = tap.view as? PDFView else { return }
+            if let onPick, let pick = pick(at: tap.location(in: view), in: view) {
+                onPick(pick)
+                return
+            }
+            guard let onTap, view.currentSelection == nil else { return }
             if view.areaOfInterest(for: tap.location(in: view)).contains(.linkArea) { return }
             onTap()
+        }
+
+        /// The topmost highlight or field under a point, if any.
+        private func pick(at point: CGPoint, in view: PDFView) -> PdfLayerPick? {
+            guard let page = view.page(for: point, nearest: false) else { return nil }
+            let at = view.convert(point, to: page)
+            return page.annotations.reversed().lazy
+                .filter { $0.bounds.contains(at) }
+                .compactMap { PdfLayerName.pick(name: $0.userName, widget: $0.type == "Widget" ? $0.fieldName : nil, fields: self.fields) }
+                .first
         }
 
         /// The viewer's own taps keep working beside this one.
@@ -490,6 +666,7 @@ private struct DeckFilmstrip: View {
     @State private var pictures: [Int: UIImage] = [:]
     @Environment(\.displayScale) private var scale
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         GeometryReader { geometry in
@@ -508,9 +685,13 @@ private struct DeckFilmstrip: View {
                     // A short deck in a wide column sits under the slide, not at the leading edge.
                     .frame(minWidth: geometry.size.width, minHeight: geometry.size.height)
                 }
-                .onChange(of: page, initial: true) { _, now in
-                    // The slide that shows stays in view; the strip glides to it unless motion is reduced.
-                    withAnimation(reduceMotion ? nil : Motion.base) { proxy.scrollTo(now, anchor: .center) }
+                .onChange(of: page, initial: true) { old, now in
+                    // The strip opens at its start for the first slide: centring it there scrolled a lazy row past
+                    // its own leading edge and cut the first thumbnail.
+                    if old == now, now <= 1 { return }
+                    // The slide that shows stays in view; the strip glides to it unless motion is reduced. On the first
+                    // paint it is placed, not glided.
+                    withAnimation(reduceMotion || old == now ? nil : Motion.base) { proxy.scrollTo(now, anchor: .center) }
                 }
             }
         }
@@ -542,7 +723,7 @@ private struct DeckFilmstrip: View {
                     .dynamicTypeSize(...DynamicTypeSize.large)
                     .foregroundStyle(.white)
                     .padding(3)
-                    .background(Color.black.opacity(0.55), in: Circle())
+                    .background(Color.black.opacity(contrast == .increased ? 1 : 0.55), in: Circle())
                     .padding(3)
                     .accessibilityHidden(true)
             }

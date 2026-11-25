@@ -22,7 +22,7 @@ struct OutboxDiscardPrompt: ViewModifier {
                 }
                 Button("Cancel", role: .cancel) { reason = "" }
             } message: { item in
-                Text("\(OutboxModel.rowWords(item).title) will never go.")
+                Text("\(OutboxModel.rowWords(item).title) will not be sent.")
             }
     }
 }

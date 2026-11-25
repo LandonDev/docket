@@ -29,4 +29,21 @@ import Testing
         #expect(NavigationSnapshot.restore(v3: nil, v2: nil) == nil)
         #expect(NavigationSnapshot.restore(v3: Data("junk".utf8), v2: nil) == nil)
     }
+
+    @Test func `a route this build cannot read costs only itself`() throws {
+        var snapshot = NavigationSnapshot(tab: .work)
+        snapshot[.home] = ColumnMemory(sidebar: [.workspace(key: "w")], detailRoot: .project(key: "k", thread: "e:s"), detailStack: Data("[]".utf8), sidebarShown: false)
+        snapshot[.work] = ColumnMemory(sidebar: [.place(.files), .place(.today)], detailRoot: .place(.outbox), detailStack: Data("[1]".utf8))
+        snapshot[.search] = ColumnMemory(detailRoot: .settings)
+        var json = try #require(String(data: JSONEncoder().encode(snapshot), encoding: .utf8))
+        // A later build's route in Work's sidebar and at its detail's root.
+        json = json.replacingOccurrences(of: #"{"place":{"_0":"today"}}"#, with: #"{"someLaterRoute":{"x":1}}"#)
+        json = json.replacingOccurrences(of: #""detailRoot":{"place":{"_0":"outbox"}}"#, with: #""detailRoot":{"place":{"_0":"aLaterPlace"}}"#)
+        let back = try #require(NavigationSnapshot.restore(v3: Data(json.utf8), v2: nil))
+        #expect(back.tab == .work)
+        #expect(back[.home] == snapshot[.home])
+        #expect(back[.search] == snapshot[.search])
+        #expect(back[.work].sidebar == [.place(.files)])
+        #expect(back[.work].detailRoot == nil && back[.work].detailStack == nil)
+    }
 }

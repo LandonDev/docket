@@ -28,13 +28,13 @@ import UIKit
 /// from any view, a string key and value; a repeated same value is not an
 /// event. `LayoutProbe.route(...)` is RootView's and ThreadScreen's.
 ///
-/// In a performance run (`TestHooks.perf`) every entry returns at once: the
-/// run times the views, not the probe's notes and its JSON writes.
+/// In a performance run (`TestHooks.perf`, or the work-perf proof's `WorkPerfRun`)
+/// every entry returns at once: the run times the views, not the probe's notes and its JSON writes.
 @MainActor
 enum LayoutProbe {
     private static let state = State()
     /// A performance run is on: nothing is noted, counted or written.
-    static let off = TestHooks.perf != nil
+    static let off = TestHooks.perf != nil || WorkPerfRun.active
 
     /// A free-form fact for the report (`notes.<key>`), and an event when it changes.
     static func note(_ key: String, _ value: String) {

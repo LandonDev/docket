@@ -7,8 +7,12 @@ import UIKit
 /// proof uses (Sources/Perf): the scroll check moves the transcript at
 /// 3,000 pt/s up and back twice, the typing check types 120 characters into
 /// its composer and takes them out again. Each pushes that thread, runs, and
-/// comes back with what the phone measured; under them is iOS's own scroll
-/// hitch measure from MetricKit, when it has sent one. Settings' grammar:
+/// comes back with what the phone measured. Work Checks holds this launch's
+/// marks, the list check (`WorkListCheck`: 1,000 sample files in the Files
+/// place's frame, pushed, scrolled and counted, then popped), the repeating
+/// tasks alive (`TickLedger`) and the Work cache's size and protection; under
+/// them is iOS's own scroll hitch measure from MetricKit, when it has sent
+/// one. Settings' grammar:
 /// an inset grouped list, no glyphs, one sentence of footer.
 struct DiagnosticsScreen: View {
     @Environment(AppModel.self) private var model
@@ -18,6 +22,9 @@ struct DiagnosticsScreen: View {
     @State private var running: ThreadKey?
     @State private var failure: String?
     @State private var shared: URL?
+    /// The list check's fixture, pushed while it runs.
+    @State private var listing = false
+    @State private var listCheck = WorkListCheck()
     private let session = PerfSession.shared
 
     var body: some View {
@@ -67,6 +74,30 @@ struct DiagnosticsScreen: View {
             }
 
             Section {
+                LabeledContent("First Frame", value: DiagnosticsText.mark(LaunchClock.marks.firstFrameMs))
+                LabeledContent("Cached Row", value: DiagnosticsText.mark(LaunchClock.marks.cachedRowMs))
+                Button("Run List Check") { listing = true }
+                    .disabled(listCheck.running)
+                if let list = listCheck.report {
+                    if let note = list.note {
+                        InlineFieldError(message: "The check did not run: \(note).")
+                    } else {
+                        LabeledContent("Rows Built", value: DiagnosticsText.rows(list))
+                        if let misses = DiagnosticsText.listMisses(list) { LabeledContent("Rebuilt", value: misses) }
+                        LabeledContent("Late Frames", value: DiagnosticsText.late(list.late, of: list.frames))
+                        LabeledContent("Hitch Time", value: DiagnosticsText.hitch(list.hitchMsPerS))
+                    }
+                }
+                LabeledContent("Repeating Tasks", value: DiagnosticsText.clocks(TickLedger.names))
+                LabeledContent("Work Cache", value: DiagnosticsText.size(WorkCacheFile.bytes()))
+                LabeledContent("Protection", value: DiagnosticsText.protection(WorkCacheFile.protection()))
+            } header: {
+                Text("Work Checks")
+            } footer: {
+                Text("Times from this launch's start. The list check scrolls 1,000 sample files.")
+            }
+
+            Section {
                 LabeledContent("Display", value: DiagnosticsText.display(maxFramesPerSecond: screenRate, medianMs: (scroll ?? typing)?.frames.p50))
                 LabeledContent("Scroll Hitches", value: hitch.map { DiagnosticsText.hitch($0.msPerSecond) } ?? "No Report Yet")
             } header: {
@@ -90,6 +121,12 @@ struct DiagnosticsScreen: View {
             if let client = model.registry.client(key.environmentId) {
                 ThreadScreen(client: client, sessionId: key.sessionId, performsLaunchAction: false)
             }
+        }
+        .navigationDestination(isPresented: $listing) { WorkListFixture(check: listCheck) }
+        .onChange(of: listCheck.report) { _, report in
+            guard report != nil else { return }
+            listing = false
+            shared = DiagnosticsFile.write(scroll: scroll, typing: typing, list: listCheck.report, hitch: HitchMetrics.stored)
         }
         .onChange(of: session.report) { _, report in
             if let report { land(report) }
@@ -122,7 +159,7 @@ struct DiagnosticsScreen: View {
             return
         }
         if report.run == PerfRun.scrollCheck.rawValue { scroll = report } else { typing = report }
-        shared = DiagnosticsFile.write(scroll: scroll, typing: typing, hitch: HitchMetrics.stored)
+        shared = DiagnosticsFile.write(scroll: scroll, typing: typing, list: listCheck.report, hitch: HitchMetrics.stored)
     }
 
     /// A thread that never opened its transcript (it is gone from its host) takes no check.
@@ -136,7 +173,7 @@ struct DiagnosticsScreen: View {
     }
 }
 
-/// The report Share sends: both checks as they were measured, and the phone they ran on.
+/// The report Share sends: the checks as they were measured, and the phone they ran on.
 enum DiagnosticsFile {
     private struct Report: Codable {
         var app: String
@@ -144,19 +181,34 @@ enum DiagnosticsFile {
         var system: String
         var scroll: PerfReport?
         var typing: PerfReport?
+        var list: WorkListReport?
         var scrollHitch: HitchMetrics.Stored?
     }
 
-    static func write(scroll: PerfReport?, typing: PerfReport?, hitch: HitchMetrics.Stored?) -> URL? {
+    static func write(scroll: PerfReport?, typing: PerfReport?, list: WorkListReport?, hitch: HitchMetrics.Stored?) -> URL? {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "0"
         let build = info?["CFBundleVersion"] as? String ?? "0"
-        let report = Report(app: "\(version) (\(build))", device: UIDevice.current.model, system: UIDevice.current.systemVersion, scroll: scroll, typing: typing, scrollHitch: hitch)
+        let report = Report(app: "\(version) (\(build))", device: UIDevice.current.model, system: UIDevice.current.systemVersion, scroll: scroll, typing: typing, list: list, scrollHitch: hitch)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
         encoder.dateEncodingStrategy = .iso8601
         let url = FileManager.default.temporaryDirectory.appending(path: "TempCode-diagnostics.json")
         guard let data = try? encoder.encode(report), (try? data.write(to: url, options: .atomic)) != nil else { return nil }
         return url
+    }
+}
+
+/// The Work cache's file as it sits on disk: its bytes with the SQLite sidecars, and the database's protection class.
+enum WorkCacheFile {
+    static func bytes() -> Int64? {
+        let path = WorkCacheStore.defaultPath().path(percentEncoded: false)
+        let sizes = ["", "-wal", "-shm"].compactMap { (try? FileManager.default.attributesOfItem(atPath: path + $0))?[.size] as? Int64 }
+        return sizes.isEmpty ? nil : sizes.reduce(0, +)
+    }
+
+    static func protection() -> String? {
+        let path = WorkCacheStore.defaultPath().path(percentEncoded: false)
+        return ((try? FileManager.default.attributesOfItem(atPath: path))?[.protectionKey] as? FileProtectionType)?.rawValue
     }
 }

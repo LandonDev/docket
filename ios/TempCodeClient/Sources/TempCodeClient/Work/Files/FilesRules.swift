@@ -120,28 +120,123 @@ public enum FilesRules {
     }
 
     /// Why `place` does not do `verb` on `entry` (or in it, for `make` and `upload`), or nil: `refusal` of the
-    /// grammar for a change inside one place, with its sentences word for word.
-    public static func refusal(_ place: FilePlace, _ verb: FilePlace.Can, entry: FileEntry? = nil) -> Refusal? {
-        if place.kind == .mail { return Refusal("A mail's file is read only. Keep it first.", press: .keep) }
+    /// grammar, its sentences word for word. `to` is where a move or copy puts it: another place is a copy across.
+    public static func refusal(_ place: FilePlace, _ verb: FilePlace.Can, entry: FileEntry? = nil, to: FilePlace? = nil) -> Refusal? {
+        let across = to.map { $0.id != place.id } ?? false
+        if place.kind == .mail {
+            // Keep is the one thing a mail's file does: a copy into the workspace's folder.
+            if verb == .copy, across, to?.kind == .folder { return nil }
+            return Refusal("A mail's file is read only. Keep it first.", press: .keep)
+        }
         if !isHome(place.kind) { return Refusal("\(place.name) only shows files. Change one where it lives.") }
-        if place.state.state == .unreachable { return Refusal("\(place.host.isEmpty ? place.name : place.host) is out of reach.", press: .retry) }
+        for p in [place] + (across ? [to!] : []) where p.state.state == .unreachable {
+            return Refusal("\(p.host.isEmpty ? p.name : p.host) is out of reach.", press: .retry)
+        }
         if case .writing? = entry?.state, [.rename, .move, .trash].contains(verb) { return Refusal("A thread is writing in this file. Try when it is done.") }
+        if across, let to, [.move, .copy].contains(verb) {
+            if !isHome(to.kind) { return Refusal("\(to.name) only shows files. Pick a folder to put it in.") }
+            // Out of a shared place: a lasting copy of what a team holds is refused, and a move out is never offered.
+            if place.shared, place.kind != .drive { return Refusal("\(service(place)) files stay in \(service(place)).", press: .openHere) }
+            if place.kind == .lifeos { return Refusal("A LifeOS document lives in LifeOS. Export a copy instead.", press: .export) }
+            if to.kind == .lifeos { return Refusal("Only a LifeOS document lives in LifeOS. Make one there instead.") }
+            if place.kind == .drive || to.kind == .drive, place.kind != to.kind { return Refusal("A Google file lives in Google Drive. Export a copy instead.", press: .export) }
+            if place.env != to.env, (entry?.size ?? 0) > Double(copyAcrossMax) {
+                return Refusal("This file is over \(copyAcrossMax / 1024 / 1024) MB, too big to copy from \(place.host.isEmpty ? place.name : place.host).")
+            }
+            if !to.can.contains(.copy) { return cannot(to, .copy) }
+            // A move across places is a copy, a check, then the source to Trash: the source's place must take the delete.
+            if verb == .move, !place.can.contains(.trash) { return cannot(place, .move) }
+            return nil
+        }
         if [.trash, .restore, .purge].contains(verb) {
             if place.shared || entry?.shared == true, !place.can.contains(verb) { return Refusal("Delete it in \(service(place)).", press: .openWeb) }
             if place.kind == .lifeos, !place.can.contains(verb) { return Refusal("LifeOS cannot put a document back yet. Delete it in LifeOS.") }
         }
-        if !place.can.contains(verb) {
-            if place.vm == true { return Refusal("Files in the Windows VM cannot be changed from here yet. Open it there.", press: .openHere) }
-            return Refusal("Nothing can be \(words(verb)) in \(place.name) from here.")
+        if !place.can.contains(verb) { return cannot(place, verb) }
+        return nil
+    }
+
+    private static func cannot(_ place: FilePlace, _ verb: FilePlace.Can) -> Refusal {
+        // A helper in the VM that changes nothing is the VM's own sentence; one that does says what it does not.
+        if place.vm == true, place.can.isEmpty { return Refusal("Files in the Windows VM cannot be changed from here yet. Open it there.", press: .openHere) }
+        return Refusal("Nothing can be \(words(verb)) in \(place.name) from here.")
+    }
+
+    /// The most one copy across computers carries (`COPY_ACROSS_MAX`).
+    public static let copyAcrossMax = 48 * 1024 * 1024
+
+    /// What a menu offers: the place does it, and this key may ask (`operate`; `approve` too where others can
+    /// open the place or the folder it goes to, which the host's door asks of a remote key).
+    public static func offers(_ place: FilePlace, _ verb: FilePlace.Can, entry: FileEntry? = nil, to: FilePlace? = nil, caps: Caps) -> Bool {
+        guard caps.operate, refusal(place, verb, entry: entry, to: to) == nil else { return false }
+        return !(place.shared || entry?.shared == true || to?.shared == true) || caps.approve
+    }
+
+    // MARK: - the one question a change others will see asks first
+
+    /// What his press asks before a change others will see (`questionFor`), or nil: a copy or a move into a
+    /// shared place, and a delete in one. The host refuses such a change without his yes (`asked`).
+    public static func question(_ place: FilePlace, _ verb: FilePlace.Can, entry: FileEntry? = nil, to: FilePlace? = nil) -> String? {
+        if let to, to.id != place.id, [.copy, .move].contains(verb), to.shared {
+            return "\(verb == .copy ? "Copy" : "Move") to \(to.name)? \(audience(to))"
+        }
+        if verb == .trash, place.shared || entry?.shared == true { return "Delete for everyone?" }
+        return nil
+    }
+
+    /// Who else can open what is in a place (`audienceOf`), by the team or folder's own name when `named`.
+    public static func audience(_ place: FilePlace, named: Bool = false) -> String {
+        switch place.kind {
+        case .teams: named ? "Everyone in \(place.group ?? place.name) can open it." : "Everyone in that team can open it."
+        case .onedrive: named ? "Whoever you shared \(place.name) with can open it." : "Whoever you shared that folder with can open it."
+        case .drive: named ? "Whoever \(place.name) is shared with can open it." : "Whoever that folder is shared with can open it."
+        default: "Others can open it."
+        }
+    }
+
+    /// A delete's words where it asks (`deleteAsk`): a drive with no bin first, for what goes there is gone.
+    public static func deleteAsk(_ place: FilePlace, names: [String]) -> (title: String, body: String) {
+        let what = names.count == 1 ? names[0] : "\(names.count) items"
+        if place.bin == false {
+            var drive: String?
+            if case .file(let root) = place.root { drive = noBinDrive(root.path) }
+            return ("Delete \(what) for good?", "Deleted from \(drive ?? place.name) at once; \(names.count == 1 ? "it" : "they") cannot be put back.")
+        }
+        let body = audience(place, named: true)
+        guard names.count != 1, body.hasSuffix(" it.") else { return ("Delete \(what) for everyone?", body) }
+        return ("Delete \(what) for everyone?", String(body.dropLast(" it.".count)) + " them.")
+    }
+
+    /// The drive a path lies on when a delete there has no bin (`noBinDrive`): a Windows drive other than C:,
+    /// or a `\\server\share`. Nil on a path a bin takes from.
+    public static func noBinDrive(_ path: String) -> String? {
+        let chars = Array(path)
+        let slash: (Character) -> Bool = { $0 == "/" || $0 == "\\" }
+        if chars.count > 2, slash(chars[0]), slash(chars[1]), !(["?", "."].contains(chars[2]) && chars.count > 3 && slash(chars[3])) {
+            let parts = path.split(whereSeparator: slash)
+            if parts.count >= 2 { return "\\\\\(parts[0])\\\(parts[1])" }
+        }
+        if chars.count >= 2, chars[1] == ":", chars[0].isASCII, chars[0].isLetter, chars[0].lowercased() != "c", chars.count == 2 || slash(chars[2]) {
+            return "\(chars[0].uppercased()):"
         }
         return nil
     }
 
-    /// What a menu offers: the place does it, and this key may ask (`operate`; `approve` too where others can
-    /// open the place, which the host's door asks of a remote key).
-    public static func offers(_ place: FilePlace, _ verb: FilePlace.Can, entry: FileEntry? = nil, caps: Caps) -> Bool {
-        guard caps.operate, refusal(place, verb, entry: entry) == nil else { return false }
-        return !(place.shared || entry?.shared == true) || caps.approve
+    /// Whether a delete asks first: a shared place, or a drive with no bin.
+    public static func deleteAsks(_ place: FilePlace, entry: FileEntry?) -> Bool {
+        question(place, .trash, entry: entry) != nil || place.bin == false
+    }
+
+    /// The tag a `work.files` push's `opening` names a row by (`openingTag`): the row he pressed makes the same
+    /// one from its key, so only that row shows how far its copy has got.
+    public static func openingTag(_ key: String) -> String {
+        var a: UInt32 = 0x811c9dc5
+        var b: UInt32 = 0x01000193
+        for c in key.utf16 {
+            a = (a ^ UInt32(c)) &* 0x01000193
+            b = (b ^ UInt32(c)) &* 0x5bd1e995
+        }
+        return String(a, radix: 36) + String(b, radix: 36)
     }
 
     /// What the paired key may do, read once from its capabilities.
@@ -395,4 +490,158 @@ public enum FilesRules {
 
     /// A change's id: the same id again answers what the first did, so a retry after a lost answer is safe.
     public static func op() -> String { "op_" + UUID().uuidString.lowercased() }
+}
+
+// MARK: - thumbnails, the root across jobs, and search
+
+public extension FilesRules {
+    /// Whether the host may make a small picture of a row (`work.files.thumbs`): a file whose bytes it can read,
+    /// of a kind it draws. A folder, a sound, an archive or a file kept in the cloud draws its glyph.
+    static func hasThumb(_ entry: FileEntry) -> Bool {
+        guard entry.ref != nil, entry.folder == nil else { return false }
+        if case .cloud? = entry.state { return false }
+        switch entry.kind {
+        case .picture, .pdf, .deck, .document, .sheet, .video, .text: return true
+        default: return false
+        }
+    }
+
+    /// Whether a folder offers the grid: its host makes pictures (a far computer and the Windows VM answer plain
+    /// tiles) and some row could have one.
+    static func gridOffered(_ entries: [FileEntry], far: Bool, place: FilePlace?) -> Bool {
+        !far && place?.vm != true && entries.contains(where: hasThumb)
+    }
+
+    /// The grid's tile edge asked of the host: twice the points of the smallest tile (`THUMB_SIZES`).
+    static let thumbSize = 192
+}
+
+/// Files for every job at once (the Work tab's Files place): each job's places under its name, in the Work
+/// list's order of jobs, narrowed to one by the filter. Pure: the screen hands in each host's jobs and what it
+/// has read of them.
+public enum FilesRoot {
+    /// A Work workspace as the place lists it: its entry key (the filter's id), its host, its name and sector.
+    public struct Job: Hashable, Sendable, Identifiable {
+        public var id: String
+        public var environmentId: String
+        public var workspaceId: String
+        public var name: String
+        public var sector: String?
+
+        public init(id: String, environmentId: String, workspaceId: String, name: String, sector: String?) {
+            self.id = id
+            self.environmentId = environmentId
+            self.workspaceId = workspaceId
+            self.name = name
+            self.sector = sector
+        }
+    }
+
+    /// One job's band: its lenses (Recent, Starred), its places, its computers reached through its host, From
+    /// mail, and its Trash, each only when the host lists it.
+    public struct Band: Equatable, Sendable, Identifiable {
+        public var job: Job
+        public var lenses: [FilePlace]
+        public var places: [FilePlace]
+        public var far: [FilesHost.FarDesktop]
+        public var mail: [FilePlace]
+        public var trash: FilePlace?
+        public var id: String { job.id }
+        public var isEmpty: Bool { lenses.isEmpty && places.isEmpty && far.isEmpty && mail.isEmpty && trash == nil }
+    }
+
+    /// The jobs shown: every job, or the one the filter picked (a pick no longer listed shows every job).
+    public static func shown(_ jobs: [Job], pick: String?) -> [Job] {
+        guard let pick, jobs.contains(where: { $0.id == pick }) else { return jobs }
+        return jobs.filter { $0.id == pick }
+    }
+
+    /// A job's band from its host's places and its far computers. A far computer's place two computers hold is
+    /// listed once, under the computer that answers.
+    public static func band(_ job: Job, places: [FilePlace], far: [FilesHost.FarDesktop]) -> Band {
+        let sections = FilesRules.sections(places)
+        let keys = Set(sections.places.compactMap(\.key))
+        let reached = far.map { desk in
+            var desk = desk
+            desk.places = desk.places.filter { FilesRules.isHome($0.kind) && !($0.key.map(keys.contains) ?? false) }
+            return desk
+        }
+        return Band(job: job, lenses: sections.lenses, places: sections.places, far: reached, mail: sections.mail, trash: places.first { $0.kind == .trash })
+    }
+}
+
+/// A search across every job shown, as he types: the rows the phone holds that match at once, then each job's
+/// host's answer as it lands, merged by key, newest change first. An answer for words he has since changed is
+/// dropped (the next keystroke cancels the asks still out); a job whose host failed is named once, and the rest
+/// still show.
+public struct FilesFound: Equatable, Sendable {
+    public struct Row: Equatable, Sendable, Identifiable {
+        public var job: FilesRoot.Job
+        public var entry: FileEntry
+        public var id: String { "\(job.id)|\(entry.key)" }
+
+        public init(job: FilesRoot.Job, entry: FileEntry) {
+            self.job = job
+            self.entry = entry
+        }
+    }
+
+    public private(set) var query: String
+    public private(set) var rows: [Row] = []
+    /// The jobs whose host has answered this query.
+    public private(set) var answered: Set<String> = []
+    /// The jobs still asked.
+    public private(set) var waiting: Set<String> = []
+    /// The jobs whose search failed, by name.
+    public private(set) var failed: [String] = []
+
+    /// A new query over the jobs shown: the matching rows the phone already holds, while every host is asked.
+    public init(query: String, jobs: [FilesRoot.Job], local: [String: [FileEntry]]) {
+        self.query = query
+        waiting = Set(jobs.map(\.id))
+        rows = Self.sorted(jobs.flatMap { job in FilesRules.filter(local[job.id] ?? [], query: query).map { Row(job: job, entry: $0) } })
+    }
+
+    /// A host answered: its rows take the place of that job's local ones. An answer for another query is dropped.
+    public mutating func land(_ entries: [FileEntry], job: FilesRoot.Job, query: String) {
+        guard query == self.query, waiting.contains(job.id) else { return }
+        waiting.remove(job.id)
+        answered.insert(job.id)
+        var seen = Set<String>()
+        let theirs = entries.filter { seen.insert($0.key).inserted }.map { Row(job: job, entry: $0) }
+        rows = Self.sorted(rows.filter { $0.job.id != job.id } + theirs)
+    }
+
+    /// A host's search failed: the local rows of that job stay, and the job is named.
+    public mutating func fail(job: FilesRoot.Job, query: String) {
+        guard query == self.query, waiting.contains(job.id) else { return }
+        waiting.remove(job.id)
+        failed.append(job.name)
+    }
+
+    /// Nothing more is coming and nothing matched.
+    public var isEmpty: Bool { waiting.isEmpty && rows.isEmpty }
+
+    /// The one quiet line under the results when a job's host could not search.
+    public var note: String? {
+        guard !failed.isEmpty else { return nil }
+        return failed.count == 1 ? "\(failed[0]) was not searched." : "\(failed.dropLast().joined(separator: ", ")) and \(failed.last!) were not searched."
+    }
+
+    static func sorted(_ rows: [Row]) -> [Row] {
+        rows.sorted { ($0.entry.changed ?? 0, $1.entry.name) > ($1.entry.changed ?? 0, $0.entry.name) }
+    }
+}
+
+public extension FilesRoot {
+    /// A host's jobs as Files lists them: every Work workspace, keyed as the Work list keys a job (`ProjectPairs.key`).
+    /// Each job once: a job two hosts hold (one link key) is listed under the first host that names it.
+    static func unique(_ jobs: [Job]) -> [Job] {
+        var seen = Set<String>()
+        return jobs.filter { seen.insert($0.id).inserted }
+    }
+
+    static func jobs(environmentId: String, workspaces: [WorkspaceMeta]) -> [Job] {
+        workspaces.filter { $0.kind == .work }.map { Job(id: ProjectPairs.key(environmentId, $0), environmentId: environmentId, workspaceId: $0.id, name: $0.name, sector: $0.sector) }
+    }
 }

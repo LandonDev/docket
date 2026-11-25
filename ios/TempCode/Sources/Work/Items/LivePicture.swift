@@ -102,7 +102,7 @@ struct LivePicture: View {
         VStack(alignment: .leading, spacing: 8) {
             picture
             if let line = video.flatMap({ LiveWords.line($0.phase, place: place) }) {
-                QuietNote(text: line.text, action: line.retry ? (title: "Retry", run: { restart() }) : nil)
+                QuietNote(text: line.text, action: line.retry ? (title: "Try Again", run: { restart() }) : nil)
             }
         }
         .onAppear {
@@ -251,7 +251,7 @@ enum LiveWords {
 
 /// The picture full screen, on black, on the list's own stream (docs/IOS-DESIGN.md "Work on the phone"): it asks to
 /// take the box's display, and opens the stream again at the new size when he turns the phone. Its foot holds Take
-/// Over where the computer takes input and Stop; while he drives, the keyboard, Paste and Hand Back. His touches go to
+/// Over where the computer takes input and Stop; while he drives, the keyboard, Paste, Copy and Hand Back. His touches go to
 /// the computer as `PhoneDriving` maps them; a pinch zooms the picture here alone.
 private struct FullScreenLive: View {
     let client: EnvironmentClient
@@ -273,7 +273,10 @@ private struct FullScreenLive: View {
         self.place = place
         self.video = video
         self.layer = layer
+        // A paste from the keyboard (⌘V) is the Paste button's press: `video.paste` needs approve.
+        let pastes = client.work.may(.videoPaste)
         _input = State(initialValue: PhoneDriving(send: { [weak video] in video?.input($0) }, paste: { [weak video] text in
+            guard pastes else { return }
             Task { try? await video?.paste(text) }
         }))
     }
@@ -283,7 +286,6 @@ private struct FullScreenLive: View {
         ComputerTiles.find(ComputerEntries.tiles([client]), host: client.environment.id, threadId: threadId, pane: ComputerEntries.pane(of: threadId, on: client))
     }
 
-    private var canOperate: Bool { client.environment.caps.contains(.operate) || client.environment.caps.contains(.admin) }
     private var driving: Bool { tile?.driving == true && tile?.drivable == true }
 
     var body: some View {
@@ -326,23 +328,30 @@ private struct FullScreenLive: View {
             if let error {
                 Text(error).textStep(.meta, tint: Tint.destructiveText).multilineTextAlignment(.center)
             }
-            if let tile, canOperate {
+            // Each press as the host judges it (KeyMay): drive and Stop need operate, Paste approve.
+            if let tile {
                 HStack(spacing: 12) {
-                    if driving {
+                    if driving, client.work.may(.computerDrive) {
                         iconButton(surface.keyboardUp ? "keyboard.chevron.compact.down" : "keyboard", label: surface.keyboardUp ? "Hide Keyboard" : "Keyboard", id: "live-keyboard") {
                             surface.keyboard(!surface.keyboardUp)
                         }
-                        iconButton("doc.on.clipboard", label: "Paste", id: "live-paste") {
-                            if let text = UIPasteboard.general.string, !text.isEmpty { Task { try? await video.paste(text) } }
+                        if client.work.may(.videoPaste) {
+                            iconButton("doc.on.clipboard", label: "Paste", id: "live-paste") {
+                                if let text = UIPasteboard.general.string, !text.isEmpty { Task { try? await video.paste(text) } }
+                            }
+                        }
+                        // His copy in the page, onto this phone's clipboard (`video.copy`, approve; M5b).
+                        if client.work.may(.videoCopy) {
+                            iconButton("doc.on.doc", label: "Copy", id: "live-copy") { copy() }
                         }
                         Button("Hand Back") { drive(tile, owner: false) }
                             .tcGlassButton(prominent: true)
                             .accessibilityIdentifier("live-hand-back")
                     } else {
-                        if !tile.idle {
+                        if !tile.idle, client.work.may(.computerStop) {
                             iconButton("stop.fill", label: "Stop", id: "live-stop") { stop(tile) }
                         }
-                        if tile.drivable {
+                        if tile.drivable, client.work.may(.computerDrive) {
                             Button("Take Over") { drive(tile, owner: true) }
                                 .tcGlassButton()
                                 .accessibilityIdentifier("live-take-over")
@@ -393,6 +402,23 @@ private struct FullScreenLive: View {
             defer { pressing = false }
             do {
                 _ = try await client.request(Methods.ComputerDrive.self, .init(computer: tile.driveName, driver: owner ? .owner : .agent))
+            } catch {
+                self.error = ActionError.wrap(error).message
+            }
+        }
+    }
+
+    /// The far clipboard's text after his copy there, onto this phone's clipboard.
+    private func copy() {
+        error = nil
+        Task {
+            do {
+                if let text = try await video.copy(), !text.isEmpty {
+                    UIPasteboard.general.string = text
+                    FleetToastCenter.shared.post(message: "Copied")
+                } else {
+                    FleetToastCenter.shared.post(message: "Nothing to copy")
+                }
             } catch {
                 self.error = ActionError.wrap(error).message
             }

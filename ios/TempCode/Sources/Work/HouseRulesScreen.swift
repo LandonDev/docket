@@ -18,7 +18,7 @@ struct HouseRulesScreen: View {
     @State private var voice: Bool?
 
     private var client: EnvironmentClient? { model.registry.client(environmentId) }
-    private var canWrite: Bool { client?.work.canApprove == true }
+    private var canWrite: Bool { client?.work.may(.rulesAdd) == true }
 
     var body: some View {
         Group {
@@ -62,7 +62,7 @@ struct HouseRulesScreen: View {
             if let voice {
                 Section {
                     Toggle("Write in My Voice", isOn: Binding(get: { voice }, set: { on in Task { await setVoice(on, client: client) } }))
-                        .disabled(!client.work.canAdmin)
+                        .disabled(!client.work.may(.workspaceSet))
                         .accessibilityIdentifier("rules-voice")
                 }
             }
@@ -163,6 +163,7 @@ private struct ProposalRow: View {
     let add: () -> Void
     let decide: (Methods.WorkRulesDecide.Params.To) -> Void
     @State private var open = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -170,7 +171,7 @@ private struct ProposalRow: View {
                 .font(.body)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
-                withAnimation(Motion.expand) { open.toggle() }
+                withAnimation(reduceMotion ? Motion.crossFade : Motion.expand) { open.toggle() }
             } label: {
                 HStack(spacing: 4) {
                     Text(proposal.edits.count == 1 ? "From 1 edit" : "From \(proposal.edits.count) edits")
@@ -248,7 +249,7 @@ private struct RuleEditSheet: View {
                         .lineLimit(2...6)
                         .accessibilityIdentifier("rule-text")
                 } footer: {
-                    if let error { Text(error).foregroundStyle(Tint.destructiveText) } else { Text("One line, at most 300 characters.") }
+                    if let error { Text(error).foregroundStyle(Tint.destructiveText) } else if text.count >= 250 { Text("One line, at most 300 characters.") }
                 }
             }
             .navigationTitle(edit.rule == nil ? "Add Rule" : "Edit Rule")

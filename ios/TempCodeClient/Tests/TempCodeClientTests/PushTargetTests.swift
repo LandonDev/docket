@@ -37,9 +37,9 @@ struct PushTargetTests {
         let target = try #require(PushTarget(userInfo: work(["key": "digest:2026-11-24", "digest": "2026-11-24"], event: "finished")))
         #expect(target.work)
         #expect(target.sessionId.isEmpty)
-        #expect(target.route == .digest)
+        #expect(target.route == .place(.digest))
         // A notice of Work's that names no host still opens the Digest.
-        #expect(PushTarget(userInfo: work(["key": "digest:2026-11-24", "digest": "2026-11-24"], environmentId: nil))?.route == .digest)
+        #expect(PushTarget(userInfo: work(["key": "digest:2026-11-24", "digest": "2026-11-24"], environmentId: nil))?.route == .place(.digest))
     }
 
     @Test func `a tell that opens a thread opens it on the notice's host`() throws {
@@ -54,10 +54,10 @@ struct PushTargetTests {
         let made = try #require(PushTarget(userInfo: work(["key": "now", "tell": "held:h2", "open": ["held": ["at": "host", "id": "h2"], "thread": "s1"]])))
         #expect(made.route == .outboxItem(environmentId: "env_box", ref: "host:h2"))
         // A held ref this build does not know is not a thread to open: the Digest.
-        #expect(PushTarget(userInfo: work(["key": "now", "tell": "held:x", "open": ["held": ["at": "mars", "id": "x"], "thread": "s1"]])).map(\.route) == .digest)
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "held:x", "open": ["held": ["at": "mars", "id": "x"], "thread": "s1"]])).map(\.route) == .place(.digest))
     }
 
-    @Test(arguments: ["mail", "tasks", "agenda", "projects", "routines"])
+    @Test(arguments: ["mail", "tasks", "agenda", "projects", "routines", "files", "forms"])
     func `a tell that opens a view the phone draws opens that view`(view: String) throws {
         let target = try #require(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": ["view": view, "workspaceId": "w1", "at": "ev1"]])))
         #expect(target.route == .workView(environmentId: "env_box", workspaceId: "w1", view: view))
@@ -67,7 +67,7 @@ struct PushTargetTests {
         let target = try #require(PushTarget(userInfo: work(["key": "now", "tell": "request:rq_7", "by": 9_000, "open": ["thread": "s4"]])))
         #expect(target.request == "rq_7")
         #expect(target.sessionId.isEmpty)
-        #expect(target.route == .outbox)
+        #expect(target.route == .place(.outbox))
         // A tell whose key only starts alike is not a request.
         let bare = try #require(PushTarget(userInfo: work(["key": "now", "tell": "request:", "open": ["thread": "s4"]])))
         #expect(bare.request == nil)
@@ -76,16 +76,43 @@ struct PushTargetTests {
     @Test func `a tell the phone has no route for opens the Digest`() {
         let opens: [[String: Any]] = [
             ["view": "clashes", "workspaceId": "w1"],
-            ["place": "review"],
-            ["settings": "connections"],
-            ["view": "mail"]
+            ["place": "nowhere"],
+            ["settings": "nowhere"],
+            ["view": "mail"],
+            ["view": 7, "workspaceId": "w1"]
         ]
         for open in opens {
-            #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": open]))?.route == .digest)
+            #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": open]))?.route == .place(.digest))
         }
+        // Connections is a place now (M5b): a lapse's tell opens it.
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "lapse:1", "open": ["settings": "connections"]]))?.route == .place(.connections))
+        // Review is a place now (M5a): its tell opens it.
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "review:1", "open": ["place": "review", "at": "1700000000000"]]))?.route == .place(.review))
         // No `open` at all, and a host that is not named: the Digest.
-        #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1"]))?.route == .digest)
-        #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": ["thread": "s9"]], environmentId: nil))?.route == .digest)
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1"]))?.route == .place(.digest))
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": ["thread": "s9"]], environmentId: nil))?.route == .place(.digest))
+    }
+
+    @Test func `a tell that names a place of the Work tab or Settings opens it, with or without a host`() {
+        for environmentId in ["env_box", nil] as [String?] {
+            #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": ["place": "digest"]], environmentId: environmentId))?.route == .place(.digest))
+            #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": ["place": "outbox", "at": "h2"]], environmentId: environmentId))?.route == .place(.outbox))
+            #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": ["settings": "work"]], environmentId: environmentId))?.route == .workSettings)
+        }
+        // A job's view the phone draws for every job at once is that place.
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": ["view": "outbox", "workspaceId": "w1"]]))?.route == .place(.outbox))
+    }
+
+    @Test func `a tell that names Tasks or Agenda for every job opens that place in the Work tab`() {
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": ["place": "tasks"]]))?.route == .place(.tasks))
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "t1", "open": ["place": "agenda", "at": "ev1"]], environmentId: nil))?.route == .place(.agenda))
+        #expect(ShellPaths.tab(of: .place(.agenda)) { _ in false } == .work)
+        // A clash opens the clash itself, by its tell's key (clashes/watch.ts), with or without its open; a waiting
+        // receipt opens the job's Money.
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "clash:a-b", "open": ["view": "agenda", "workspaceId": "w1", "at": "ev2"]]))?.route == .clash(environmentId: "env_box", clashId: "a-b"))
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "clash:a-b"]))?.route == .clash(environmentId: "env_box", clashId: "a-b"))
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "prep:w1:ev1", "open": ["view": "prep", "workspaceId": "w1", "at": "ev1"]]))?.route == .prep(environmentId: "env_box", workspaceId: "w1", eventId: "ev1"))
+        #expect(PushTarget(userInfo: work(["key": "now", "tell": "money.confirm:r1", "open": ["view": "money", "workspaceId": "w1"]]))?.route == .workView(environmentId: "env_box", workspaceId: "w1", view: "money"))
     }
 
     @Test func `a thread's notice with no tc.work is as it was`() {

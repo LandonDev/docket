@@ -1,0 +1,194 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "same-key",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "box",
+      "workspaceId": "box-hypixel",
+      "sector": "hypixel",
+      "name": "Hypixel",
+      "path": "/w/box/hypixel",
+      "open": true
+    }
+  ],
+  "sources": {
+    "held": {
+      "items": [
+        {
+          "environmentId": "mac",
+          "ref": {
+            "at": "host",
+            "id": "h1"
+          },
+          "workspaceId": null,
+          "sessionId": null,
+          "sector": null,
+          "account": null,
+          "state": "held",
+          "createdAt": 1795528800000,
+          "decidedBy": null,
+          "decidedAt": null,
+          "n": null,
+          "why": "rule",
+          "grantId": null,
+          "error": null,
+          "result": null,
+          "routineRunId": null,
+          "updatedAt": 1795532400000,
+          "kind": "mail.send",
+          "summary": "Send to Dana: First",
+          "verb": "Send"
+        },
+        {
+          "environmentId": "mac",
+          "ref": {
+            "at": "host",
+            "id": "h1"
+          },
+          "workspaceId": null,
+          "sessionId": null,
+          "sector": null,
+          "account": null,
+          "state": "held",
+          "createdAt": 1795532400000,
+          "decidedBy": null,
+          "decidedAt": null,
+          "n": null,
+          "why": "rule",
+          "grantId": null,
+          "error": null,
+          "result": null,
+          "routineRunId": null,
+          "updatedAt": 1795532400000,
+          "kind": "mail.send",
+          "summary": "Send to Dana: Second copy",
+          "verb": "Send"
+        }
+      ],
+      "names": [],
+      "loaded": true,
+      "errors": []
+    },
+    "money": {
+      "answers": [
+        {
+          "environmentId": "mac",
+          "workspaceId": "mac-purdue",
+          "value": {
+            "rows": [],
+            "problems": [
+              "a",
+              "b"
+            ]
+          }
+        }
+      ]
+    },
+    "extra": {
+      "rows": [
+        {
+          "key": "held:mac:host:h1",
+          "section": "held",
+          "title": "A later source's copy",
+          "sector": "purdue"
+        },
+        {
+          "key": "extra:1",
+          "section": "nowhere",
+          "title": "No section"
+        }
+      ]
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "held:mac:host:h1",
+        "money:mac:mac-purdue:problem"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "held",
+            "title": "Waiting on you",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "Nothing waits on your press",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "held:mac:host:h1",
+                "section": "held",
+                "sector": null,
+                "job": "Work Chats",
+                "title": "Send to Dana",
+                "detail": "First",
+                "at": 1795528800000,
+                "when": "8:00 AM",
+                "lead": "glyph",
+                "opens": "held",
+                "acts": []
+              }
+            ]
+          }
+        },
+        {
+          "kind": "section",
+          "section": {
+            "id": "money",
+            "title": "Owed",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "empty": "",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "money:mac:mac-purdue:problem",
+                "section": "money",
+                "sector": "purdue",
+                "job": "Purdue Esports",
+                "title": "What is owed is not known",
+                "detail": "The ledger could not be read",
+                "opens": "money",
+                "acts": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -243,7 +243,7 @@ public final class WorkReview {
     static let orphanedChangeWords = "The sheet changed around this since the agent saw it: reject it."
 
     /// A row per open suggestion: pending, or one the host found in conflict or orphaned, which says so and only
-    /// Reject takes. The view names a sheet by Univer's id, not its tab's name, so an address is the cell alone.
+    /// Reject takes. An address names its tab where the rows reach more than one (`ReviewTabs`).
     /// Then a row per format or rule the agent proposed (`changes`), its words as a document's added words, decided
     /// by its own id as a cell is.
     static func rows(_ view: SheetPhoneView) -> [ReviewRow] {
@@ -262,12 +262,11 @@ public final class WorkReview {
     }
 
     private static func cellRows(_ view: SheetPhoneView) -> [ReviewRow] {
-        view.suggestions
-            .filter { $0.state == .pending || $0.state == .conflict || $0.state == .orphaned }
-            .map { suggestion in
+        let open = view.suggestions.filter { $0.state == .pending || $0.state == .conflict || $0.state == .orphaned }
+        return open.map { suggestion in
                 ReviewRow(
                     id: suggestion.id,
-                    kind: .cell(address: CellAddress.of(sheet: nil, row: suggestion.row, col: suggestion.col), old: cellWords(suggestion.base), new: cellWords(suggestion.proposed)),
+                    kind: .cell(address: CellAddress.of(sheet: ReviewTabs.name(suggestion.sheet, among: open.map(\.sheet), tabs: view.tabs), row: suggestion.row, col: suggestion.col), old: cellWords(suggestion.base), new: cellWords(suggestion.proposed)),
                     group: suggestion.changeSet,
                     reason: suggestion.reason,
                     refusal: suggestion.state == .conflict ? conflictWords : suggestion.state == .orphaned ? orphanedWords : nil,

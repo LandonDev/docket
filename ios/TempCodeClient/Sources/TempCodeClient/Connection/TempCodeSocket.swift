@@ -306,6 +306,7 @@ public actor TempCodeSocket {
     /// One request over the live session.
     public func request<M: ContractMethod>(_ method: M.Type, _ params: M.Params) async throws -> M.Output {
         guard let session else { throw TransportError.notConnected }
+        SocketRequests.began()
         return try await session.request(method, params)
     }
 
@@ -344,6 +345,7 @@ public actor TempCodeSocket {
 
         let ticket: String
         do {
+            SocketRequests.began()
             ticket = try await mint()
         } catch {
             guard generation == self.generation, !stopped else { return }
@@ -375,6 +377,7 @@ public actor TempCodeSocket {
         parts.queryItems = (parts.queryItems ?? []) + [URLQueryItem(name: "ticket", value: ticket)]
         let transport = Transport(url: parts.url ?? socketURL, connect: connect, clock: clock, helloTimeoutMs: config.helloTimeoutMs)
         do {
+            SocketRequests.began()
             let hello = try await transport.open()
             guard generation == self.generation, !stopped else {
                 await transport.close(CloseReason(kind: .local, message: "superseded"))

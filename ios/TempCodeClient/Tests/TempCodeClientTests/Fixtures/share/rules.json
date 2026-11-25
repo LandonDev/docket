@@ -1,0 +1,81 @@
+{
+  "refusals": [
+    "Guest links open TempCode documents. Save As a TempCode document to share this one.",
+    "Guest links open TempCode sheets. Save As a TempCode sheet to share this one.",
+    "This file lives in Teams. Share it from Teams.",
+    "This is a copy of a file in Teams. Share the file from Teams.",
+    "This file lives in Google Drive. Share it from Google.",
+    "This file is in a place others open. Share it from there.",
+    "That file is not there any more.",
+    "This document is saved to another file as it changes, so a guest can view it but not edit it.",
+    "That file is not the one the thread asked to share any more. Nothing was made.",
+    "Guests reach files on the box only. Keep this file in a workspace on the box to share it.",
+    "Guest links open TempCode documents and sheets only."
+  ],
+  "sources": [
+    {
+      "source": {
+        "at": "lifeos",
+        "table": "docs"
+      },
+      "table": "docs",
+      "roles": [
+        "view",
+        "comment",
+        "edit"
+      ]
+    },
+    {
+      "source": {
+        "at": "lifeos",
+        "table": "sheets"
+      },
+      "table": "sheets",
+      "roles": [
+        "view",
+        "edit"
+      ]
+    },
+    {
+      "source": {
+        "at": "lifeos",
+        "table": "projects"
+      },
+      "table": "projects",
+      "roles": [
+        "view"
+      ]
+    },
+    {
+      "source": {
+        "at": "file",
+        "path": "/w/Travel memo.tcdoc"
+      },
+      "table": "docs",
+      "roles": [
+        "view",
+        "comment",
+        "edit"
+      ]
+    },
+    {
+      "source": {
+        "at": "file",
+        "path": "/w/Budget.TCSHEET"
+      },
+      "table": "sheets",
+      "roles": [
+        "view",
+        "edit"
+      ]
+    },
+    {
+      "source": {
+        "at": "file",
+        "path": "/w/Letter.docx"
+      },
+      "table": null,
+      "roles": []
+    }
+  ]
+}

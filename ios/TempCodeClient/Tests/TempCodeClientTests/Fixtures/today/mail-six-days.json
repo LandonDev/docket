@@ -1,0 +1,220 @@
+{
+  "now": 1795548900000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "mail-six-days",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    },
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-ref",
+      "sector": "ref",
+      "name": "Refereeing",
+      "path": "/w/mac/ref",
+      "open": true
+    }
+  ],
+  "sources": {
+    "waiting": {
+      "waits": [
+        {
+          "_id": "w1",
+          "subject": "Travel budget for nationals",
+          "sector": "purdue",
+          "waiting": {
+            "since": 1795067400000,
+            "dueAt": 1795326600000,
+            "asked": false,
+            "to": [
+              {
+                "name": "Dana Lee",
+                "address": "dana@purdue.edu"
+              }
+            ]
+          }
+        },
+        {
+          "_id": "w2",
+          "subject": "",
+          "sector": "ref",
+          "waiting": {
+            "since": 1793890800000,
+            "dueAt": 1794150000000,
+            "asked": false,
+            "to": [
+              {
+                "address": "assign@ihsaa.org"
+              },
+              {
+                "name": " ",
+                "address": "crew@ihsaa.org"
+              },
+              {
+                "name": "Pat",
+                "address": "pat@x.org"
+              }
+            ]
+          }
+        },
+        {
+          "_id": "w3",
+          "subject": "Two",
+          "sector": "ref",
+          "waiting": {
+            "since": 1795446000000,
+            "dueAt": 1795705200000,
+            "asked": false,
+            "to": [
+              {
+                "name": "Ann",
+                "address": "a@x.org"
+              },
+              {
+                "name": "Bo",
+                "address": "b@x.org"
+              }
+            ]
+          }
+        },
+        {
+          "_id": "w4",
+          "subject": "Own sector",
+          "waiting": {
+            "since": 1795359600000,
+            "dueAt": 1795618800000,
+            "asked": false,
+            "to": []
+          },
+          "ownSector": "purdue"
+        },
+        {
+          "_id": "w5",
+          "subject": "No job's",
+          "sector": "cosmic",
+          "waiting": {
+            "since": 1795186800000,
+            "dueAt": 1795446000000,
+            "asked": false,
+            "to": [
+              {
+                "address": "x@y.z"
+              }
+            ]
+          }
+        }
+      ],
+      "read": {
+        "built": true
+      }
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "day",
+      "offline": [],
+      "keys": [
+        "mail:w2",
+        "mail:w1",
+        "mail:w4",
+        "mail:w3"
+      ],
+      "blocks": [
+        {
+          "kind": "section",
+          "section": {
+            "id": "waiting",
+            "title": "Waiting on others",
+            "state": "rows",
+            "pending": false,
+            "partial": false,
+            "bones": "lines",
+            "empty": "No one owes you a reply",
+            "earlier": 0,
+            "more": 0,
+            "away": false,
+            "failed": [],
+            "rows": [
+              {
+                "key": "mail:w2",
+                "section": "waiting",
+                "sector": "ref",
+                "title": "assign@ihsaa.org and 2 more",
+                "at": 1793890800000,
+                "when": "2 weeks",
+                "workspace": "mac/mac-ref",
+                "opens": "mail",
+                "acts": [
+                  "Nudge",
+                  "Dismiss"
+                ]
+              },
+              {
+                "key": "mail:w1",
+                "section": "waiting",
+                "sector": "purdue",
+                "title": "Dana Lee",
+                "detail": "Travel budget for nationals",
+                "at": 1795067400000,
+                "when": "6 days",
+                "workspace": "mac/mac-purdue",
+                "opens": "mail",
+                "acts": [
+                  "Nudge",
+                  "Dismiss"
+                ]
+              },
+              {
+                "key": "mail:w4",
+                "section": "waiting",
+                "sector": "purdue",
+                "title": "No one",
+                "detail": "Own sector",
+                "at": 1795359600000,
+                "when": "2 days",
+                "workspace": "mac/mac-purdue",
+                "opens": "mail",
+                "acts": [
+                  "Nudge",
+                  "Dismiss"
+                ]
+              },
+              {
+                "key": "mail:w3",
+                "section": "waiting",
+                "sector": "ref",
+                "title": "Ann and Bo",
+                "detail": "Two",
+                "at": 1795446000000,
+                "when": "1 day",
+                "workspace": "mac/mac-ref",
+                "opens": "mail",
+                "acts": [
+                  "Nudge",
+                  "Dismiss"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

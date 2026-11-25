@@ -8,7 +8,8 @@ public enum TransportError: Error, Hashable, Sendable {
     case closed(CloseReason)
     /// The server answered `ok: false`.
     case server(method: String, message: String)
-    /// The result did not decode as the method's output.
+    /// The host answered yes and its result did not decode as the method's output: the call may have done its work.
+    /// A request the phone could not encode never leaves and throws `ActionError.refused` instead.
     case decoding(method: String, detail: String)
     /// The calling task was cancelled while the request waited.
     case cancelled
@@ -84,16 +85,23 @@ public actor Transport {
         }
     }
 
+    /// The last word on an outward press's frame, asked when the send queue releases it to the socket, after any
+    /// earlier write it waited behind (the press record sets it for its request, `PressLedger.run`). A line: the frame
+    /// never goes, and the request fails with that refusal, a definite "never left".
+    @TaskLocal public static var release: (@Sendable @MainActor () -> String?)?
+
     /// Sends one request and reads its answer as the method's output.
     public func request<M: ContractMethod>(_ method: M.Type, _ params: M.Params) async throws -> M.Output {
         guard state == .open, let socket else { throw TransportError.notConnected }
+        let release = Self.release
         let id = String(nextId)
         nextId += 1
         let data: Data
         do {
             data = try JSONEncoder().encode(Request<M>(id: id, params: params))
         } catch {
-            throw TransportError.decoding(method: M.name, detail: "could not encode the request")
+            // Nothing left the phone: a refusal, never the unreadable answer `.decoding` is (PressLedger.reached).
+            throw ActionError.refused(message: "\(M.name): could not encode the request", forbidden: false)
         }
         let response: Response = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -101,6 +109,11 @@ public actor Transport {
                 let previous = sendTail
                 sendTail = Task { [weak self] in
                     await previous?.value
+                    // Asked here, as the frame is released, not when it was queued: the app may have left meanwhile.
+                    if let release, let why = await release() {
+                        await self?.fail(id: id, with: ActionError.refused(message: why, forbidden: false))
+                        return
+                    }
                     do {
                         try await socket.send(String(decoding: data, as: UTF8.self))
                     } catch {
@@ -199,7 +212,7 @@ public actor Transport {
         }
     }
 
-    private func fail(id: String, with error: TransportError) {
+    private func fail(id: String, with error: any Error) {
         guard let entry = pending.removeValue(forKey: id) else { return }
         entry.continuation.resume(throwing: error)
     }

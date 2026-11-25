@@ -28,6 +28,13 @@ final class AppModel: PushHandler {
 
     init() {
         let store = EnvironmentStore(directory: EnvironmentStore.defaultDirectory(), keys: KeychainKeyStore())
+        #if DEBUG
+        // The work-perf proof's `empty` launch: no cache to paint from, the threads' nor Work's (Perf/LaunchFrames.swift).
+        WorkPerfRun.dropCacheIfAsked(SessionCache.defaultPath())
+        WorkPerfRun.dropCacheIfAsked(WorkCacheStore.defaultPath())
+        #endif
+        // Nothing goes out before the first frame: each socket starts once it is on screen (LaunchFrames.rootAppeared).
+        LaunchClock.holdSockets()
         let cache = (try? SessionCache(path: SessionCache.defaultPath())) ?? (try! SessionCache.inMemory())
         registry = ClientRegistry(store: store, cache: cache)
         // A change nobody is looking at lands with animations off: rows that
@@ -56,6 +63,9 @@ final class AppModel: PushHandler {
         started = true
         PushDelegate.handler = self
         HitchMetrics.shared.start()
+        #if DEBUG
+        WorkPerfRun.begin(registry)
+        #endif
         registry.setSessionObserver { [weak self] client, metas in
             guard let self else { return }
             activities.apply(client, metas, registry: registry)

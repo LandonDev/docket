@@ -1,0 +1,112 @@
+{
+  "now": 1795572000000,
+  "home": "mac",
+  "lifeos": "ok",
+  "lifeosHost": "mac",
+  "open": [
+    "mac",
+    "box"
+  ],
+  "name": "meetings-all-over",
+  "jobs": [
+    {
+      "environmentId": "mac",
+      "workspaceId": "mac-purdue",
+      "sector": "purdue",
+      "name": "Purdue Esports",
+      "path": "/w/mac/purdue",
+      "open": true
+    }
+  ],
+  "sources": {
+    "held": {
+      "items": [],
+      "names": [],
+      "loaded": true,
+      "errors": []
+    },
+    "meetings": {
+      "events": [
+        {
+          "_id": "a",
+          "title": "Standup",
+          "sector": "purdue",
+          "startsAt": 1795532400000,
+          "endsAt": 1795536000000,
+          "allDay": false
+        },
+        {
+          "_id": "b",
+          "title": "Staff sync",
+          "sector": "purdue",
+          "startsAt": 1795620600000,
+          "endsAt": 1795624200000,
+          "allDay": false
+        },
+        {
+          "_id": "c",
+          "title": "Holiday",
+          "sector": "purdue",
+          "startsAt": 1795586400000,
+          "endsAt": 1795590000000,
+          "allDay": true
+        }
+      ],
+      "people": {},
+      "read": {
+        "built": true
+      }
+    },
+    "due": {
+      "tasks": [],
+      "read": {
+        "built": true
+      }
+    },
+    "waiting": {
+      "waits": [],
+      "read": {
+        "built": true
+      }
+    },
+    "messages": {
+      "answers": []
+    },
+    "clashes": {
+      "range": {
+        "clashes": [],
+        "leaves": []
+      }
+    },
+    "money": {
+      "answers": []
+    },
+    "review": {
+      "asked": [],
+      "answered": {}
+    },
+    "prep": {
+      "answers": []
+    },
+    "msforms": {
+      "answers": []
+    },
+    "digest": {
+      "rows": [],
+      "loaded": true,
+      "errors": []
+    }
+  },
+  "timeZone": "America/Chicago",
+  "day": {
+    "from": 1795500000000,
+    "to": 1795586400000
+  },
+  "expect": {
+    "marks": [],
+    "page": {
+      "kind": "clear",
+      "line": "Tomorrow starts at 9:30 AM with Staff sync."
+    }
+  }
+}

@@ -49,12 +49,15 @@ public enum DigestModel {
         public var ledger: Ledger?
         /// the read's error; nil while it reads or once it answered
         public var error: String?
+        /// What the phone kept of it (`DigestKept`), drawn read-only while `ledger` is nil
+        public var kept: Ledger?
 
-        public init(environmentId: String, name: String, ledger: Ledger?, error: String?) {
+        public init(environmentId: String, name: String, ledger: Ledger?, error: String?, kept: Ledger? = nil) {
             self.environmentId = environmentId
             self.name = name
             self.ledger = ledger
             self.error = error
+            self.kept = kept
         }
     }
 
@@ -133,6 +136,12 @@ public enum DigestModel {
         days.filter { $0.seenAt == nil }.flatMap { day in day.hosts.map { (environmentId: $0, day: day.day) } }
     }
 
+    /// The same, to the hosts that answered on this link alone: a day drawn from what the phone kept is read-only
+    /// until its host answers, and is marked seen then.
+    public nonisolated static func seenCalls(_ days: [Day], live: Set<String>) -> [(environmentId: String, day: String)] {
+        seenCalls(days).filter { live.contains($0.environmentId) }
+    }
+
     /// Everything the screen draws, from every host with Work on.
     public struct Screen: Sendable, Hashable {
         public var entries: [Entry]
@@ -144,7 +153,8 @@ public enum DigestModel {
     }
 
     public nonisolated static func screen(_ hosts: [HostInput]) -> Screen {
-        let read = hosts.compactMap { host in host.ledger.map { (environmentId: host.environmentId, ledger: $0) } }
+        // A host not read on this link draws what the phone kept of it.
+        let read = hosts.compactMap { host in (host.ledger ?? host.kept).map { (environmentId: host.environmentId, ledger: $0) } }
         return Screen(
             entries: mergeRows(read.map { ($0.environmentId, $0.ledger.rows) }),
             days: mergeDays(read.map { ($0.environmentId, $0.ledger.days) }),
@@ -238,23 +248,50 @@ public enum DigestModel {
 
     // MARK: - where a press goes
 
-    /// The Work views the phone has a screen for (`Route.workView`).
-    public nonisolated static let phoneViews: Set<String> = ["mail", "tasks", "agenda", "projects", "routines"]
+    /// The views of one job the phone has a screen for (`Route.workView`).
+    public nonisolated static let phoneViews: Set<String> = ["mail", "tasks", "agenda", "projects", "money", "routines", "files", "forms", "plays"]
 
-    /// A tell's target as a phone route on its host; nil where the phone has none
-    /// (a page above the workspaces, a Settings section, a view it does not draw).
-    public nonisolated static func route(_ open: TellOpen?, environmentId: String) -> Route? {
-        guard let open, !environmentId.isEmpty else { return nil }
+    /// A tell's target as a phone route; nil where the phone has no screen for it. A place of the
+    /// Work tab and Settings → Work are the phone's own and need no host; a held item, a job's
+    /// view and a thread open on the tell's host. A job's view the phone draws for every job at
+    /// once (the Outbox) opens that place. A clash's tell (its key `clash:<id>`) opens the clash itself, and a
+    /// meeting's (`{view: 'prep', at}`) its page.
+    public nonisolated static func route(_ open: TellOpen?, environmentId: String, key: String? = nil) -> Route? {
+        if let key, let clashId = ClashPress.clashId(ofRef: key), !environmentId.isEmpty {
+            return .clash(environmentId: environmentId, clashId: clashId)
+        }
+        guard let open else { return nil }
+        if let place = open.place.flatMap(place) { return .place(place) }
+        if let settings = open.settings {
+            if settings == "work" { return .workSettings }
+            return place(settings).map { .place($0) }
+        }
+        guard !environmentId.isEmpty else { return nil }
         // A held item names the thread that made it too: the item is the target.
         if let held = open.held {
             if case .unknown = held { return nil }
             return .outboxItem(environmentId: environmentId, ref: OutboxModel.key(held))
         }
-        if let view = open.view, phoneViews.contains(view), let workspaceId = open.workspaceId, !workspaceId.isEmpty {
-            return .workView(environmentId: environmentId, workspaceId: workspaceId, view: view)
+        if let view = open.view, let workspaceId = open.workspaceId, !workspaceId.isEmpty {
+            // A conversation that waits on him (`messages.new`): its own page, over Messages.
+            if view == "messages", let chat = open.at, !chat.isEmpty { return .chat(environmentId: environmentId, workspaceId: workspaceId, chatId: chat) }
+            if view == "prep", let event = open.at, !event.isEmpty { return .prep(environmentId: environmentId, workspaceId: workspaceId, eventId: event) }
+            if phoneViews.contains(view) { return .workView(environmentId: environmentId, workspaceId: workspaceId, view: view) }
+            return place(view).map { .place($0) }
         }
         if let thread = open.thread, !thread.isEmpty { return .thread(environmentId: environmentId, sessionId: thread, seq: nil) }
         return nil
+    }
+
+    /// A place by the name the hosts use for it, when this build draws it.
+    /// The week a review's tell names (`{place: 'review', at: '<from>'}`), by its first moment; nil for any other tell.
+    public nonisolated static func reviewWeek(_ open: TellOpen?) -> Double? {
+        guard let open, open.place == "review", let at = open.at else { return nil }
+        return Double(at)
+    }
+
+    private nonisolated static func place(_ name: String) -> WorkPlace? {
+        WorkPlace(rawValue: name).flatMap { WorkPlace.shipped.contains($0) ? $0 : nil }
     }
 
     // MARK: - Settings → Work → Digest

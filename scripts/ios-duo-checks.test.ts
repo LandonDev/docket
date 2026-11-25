@@ -1,5 +1,5 @@
-// The iPhone Duo proof's two checks (scripts/lib/duo_pose_check.py and
-// duo_fold_check.py, run by scripts/ios-sim-proof.sh) on hand-made reports:
+// The iPhone Duo proof's checks (scripts/lib/duo_pose_check.py, duo_fold_check.py and
+// duo_work_fold_check.py, run by scripts/ios-sim-proof.sh) on hand-made reports:
 // the shapes the app writes, at the numbers the simulator gave on 2026-11-05.
 import { spawn, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -59,7 +59,7 @@ function poseCheck(
   pose = 'unfolded'
 ): { status: number | null; out: string } {
   const dir = scratch()
-  const [w, h] = pose === 'unfolded-portrait' ? [669, 951] : [951, 669]
+  const [w, h] = pose === 'unfolded-portrait' || pose === 'tabletop' ? [669, 951] : [951, 669]
   writeFileSync(join(dir, 'shot.png'), png(w * 3, h * 3))
   writeFileSync(join(dir, 'report.json'), JSON.stringify(r))
   if (record) writeFileSync(join(dir, 'pose.json'), JSON.stringify(record))
@@ -97,6 +97,17 @@ const twoPane: Notes = {
 }
 
 describe('duo_pose_check.py', () => {
+  it('holds tabletop to 669 × 951, regular both ways, classified tabletop (hinge partly open)', () => {
+    const tabletop = { window: { w: 669, h: 951 }, classified: 'tabletop', hinge: { state: 'partiallyOpen', angle: 128 }, safeArea: { top: 82, left: 0, bottom: 34, right: 0 }, route: { tab: 'work', depth: 1 } }
+    const ok = poseCheck(report({}, tabletop), null, {}, 'tabletop')
+    expect(ok.out).toContain('tabletop/label 669×951 regular×regular png 2007×2853 classified tabletop hinge partiallyOpen ok')
+    expect(ok.status).toBe(0)
+    // The same window read as unfolded-portrait (an app that does not know the pose) is a mismatch.
+    const portrait = poseCheck(report({}, { ...tabletop, classified: 'unfolded-portrait' }), null, {}, 'tabletop')
+    expect(portrait.status).toBe(1)
+    expect(portrait.out).toContain('POSE MISMATCH')
+  })
+
   it('passes a board thread on the pager beside the sidebar iOS holds at 320', () => {
     const run = poseCheck(report(besideSidebar), poseRecord({ mode: 'pager', width: 547 }), { SHOT_KIND: 'implementation', SHOT_SIDEBAR: 'shown' })
     expect(run.out).toContain('rule: implementation pager column 547 sidebar visible 320/867')
@@ -316,5 +327,121 @@ describe('duo_fold_sampler.py', () => {
     const events = JSON.parse(readFileSync(join(out, 'events.json'), 'utf8')) as Array<{ t: number }>
     expect(events.map((e) => e.t)).toEqual([1, 2, 3])
     expect(readFileSync(join(out, 'samples.txt'), 'utf8').split('\n')[0]).toBe('40 61')
+  })
+})
+
+describe('duo_work_fold_check.py', () => {
+  type Stop = { pose: 'folded' | 'unfolded'; t: number }
+  const stops: Stop[] = [
+    { pose: 'folded', t: 10_000 },
+    { pose: 'unfolded', t: 20_000 },
+    { pose: 'folded', t: 30_000 }
+  ]
+  const route = 'place(TempCodeClient.WorkPlace.outbox, job: nil) > outboxItem(environmentId: "env", ref: "host:fold-12")'
+  // An ordinary route (the Outbox beside its item): the sidebar shown when open, the stack when folded.
+  const calm: Notes = {
+    'work.route': route,
+    'work.picked': 'env:host:fold-12',
+    'work.top': 'env:host:fold-08',
+    'sidebar.chosen': 'shown',
+    'web.instance': '7f3a',
+    'web.loads': '1'
+  }
+  const sidebars = ['stack', 'visible', 'stack']
+  const events = [
+    { t: 100, key: 'work.route', from: null, to: route },
+    { t: 15_000, key: 'sidebar', from: 'stack', to: 'visible' },
+    { t: 25_000, key: 'sidebar', from: 'visible', to: 'stack' }
+  ]
+  function workFold(
+    change: { notes?: Array<Notes | undefined>; sidebars?: string[]; events?: unknown[]; violations?: unknown[]; classified?: string } = {},
+    kind: 'ordinary' | 'wide' = 'ordinary',
+    override?: 'shown' | 'hidden',
+    extra: string[] = []
+  ): { status: number | null; out: string } {
+    const dir = scratch()
+    mkdirSync(join(dir, 'unfolded'))
+    mkdirSync(join(dir, 'folded'))
+    mkdirSync(join(dir, 'wfold-outbox'))
+    const side = change.sidebars ?? sidebars
+    stops.forEach((stop, i) => {
+      const classified = stop.pose === 'unfolded' ? (change.classified ?? 'unfolded') : 'folded'
+      const notes = { ...calm, sidebar: side[i], ...(change.notes?.[i] ?? {}) }
+      writeFileSync(join(dir, stop.pose, `wfold-outbox-${i + 1}-${stop.pose}.json`), JSON.stringify({ t: stop.t, classified, notes }))
+    })
+    writeFileSync(join(dir, 'wfold-outbox', 'events.json'), JSON.stringify(change.events ?? events))
+    writeFileSync(join(dir, 'wfold-outbox', 'row-inits.json'), JSON.stringify({ rows: { 'work:env:host:fold-08': { inits: 1, appears: 1, disappears: 0 } }, violations: change.violations ?? [] }))
+    const run = spawnSync('python3', [join(lib, 'duo_work_fold_check.py'), dir, 'outbox', kind, ...(override ? [override] : []), ...extra], { encoding: 'utf8' })
+    return { status: run.status, out: run.stdout + run.stderr }
+  }
+  const second = (notes: Notes): Array<Notes | undefined> => [undefined, notes, undefined]
+  const fails = (run: { status: number | null; out: string }, line: string): void => {
+    expect(run.status).toBe(1)
+    expect(run.out).toContain(`WORK FOLD FAIL (outbox) ${line}`)
+    expect(run.out.match(/WORK FOLD FAIL/g)).toHaveLength(1)
+  }
+
+  it('passes a run that kept the route, the pick, the top row and the page, the sidebar as allowed', () => {
+    const run = workFold()
+    expect(run.status).toBe(0)
+    expect(run.out).toContain('work fold outbox PASS')
+  })
+
+  it('fails when the route, the pick, the top row, the draft or the sheet changes', () => {
+    fails(workFold({ notes: second({ 'work.route': 'list > none' }) }), 'route changed')
+    fails(workFold({ notes: second({ 'work.picked': 'env:host:fold-01' }) }), "picked row changed: ['env:host:fold-12', 'env:host:fold-01', 'env:host:fold-12']")
+    fails(workFold({ notes: second({ 'work.top': 'env:host:fold-01' }) }), 'top row changed')
+    fails(workFold({ notes: [{ draftChars: '40' }, { draftChars: '0' }, { draftChars: '40' }] }), "draft changed: ['40', '0', '40']")
+    fails(workFold({ notes: [{ 'work.sheet': 'form' }, { 'work.sheet': 'none' }, { 'work.sheet': 'form' }] }), "sheet changed: ['form', 'none', 'form']")
+  })
+
+  it('holds the chips in a Work thread box, and a typed run must have a draft and a chip', () => {
+    fails(workFold({ notes: [{ 'work.chips': '1' }, { 'work.chips': '0' }, { 'work.chips': '1' }] }), "chips changed: ['1', '0', '1']")
+    const typed: Array<Notes | undefined> = [0, 1, 2].map(() => ({ draftChars: '44', 'work.chips': '1' }))
+    expect(workFold({ notes: typed }, 'ordinary', undefined, ['typed']).status).toBe(0)
+    const noDraft: Array<Notes | undefined> = [0, 1, 2].map(() => ({ 'work.chips': '1' }))
+    fails(workFold({ notes: noDraft }, 'ordinary', undefined, ['typed']), 'no typed draft at the first stop')
+    const noChip: Array<Notes | undefined> = [0, 1, 2].map(() => ({ draftChars: '44', 'work.chips': '0' }))
+    fails(workFold({ notes: noChip }, 'ordinary', undefined, ['typed']), 'no chip in the box at the first stop (work.chips 0)')
+  })
+
+  it('fails when an open sheet went away between stops, even if it came back', () => {
+    const up: Array<Notes | undefined> = [{ 'work.sheet': 'form' }, { 'work.sheet': 'form' }, { 'work.sheet': 'form' }]
+    expect(workFold({ notes: up }).status).toBe(0)
+    const flicker = [...events, { t: 15_000, key: 'work.sheet', from: 'form', to: 'none' }, { t: 15_200, key: 'work.sheet', from: 'none', to: 'form' }]
+    fails(workFold({ notes: up, events: flicker }), 'sheet form went away at 15000 ms')
+  })
+
+  it('fails when a fold writes his chosen sidebar', () => {
+    fails(workFold({ events: [...events, { t: 15_010, key: 'sidebar.chosen', from: 'shown', to: 'hidden' }] }), 'a fold wrote the chosen sidebar')
+  })
+
+  it('holds the sidebar to the states the route and the pose allow', () => {
+    // Ordinary: hidden where he chose shown is wrong; overlay in the tall pose is right.
+    fails(workFold({ sidebars: ['stack', 'hidden', 'stack'] }), 'stop 2 (unfolded): sidebar hidden, want visible (ordinary route)')
+    expect(workFold({ sidebars: ['stack', 'overlay', 'stack'], classified: 'unfolded-portrait' }).status).toBe(0)
+    // Tabletop is the same tall window: the sidebar over the detail, never beside it.
+    expect(workFold({ sidebars: ['stack', 'overlay', 'stack'], classified: 'tabletop' }).status).toBe(0)
+    expect(workFold({ sidebars: ['stack', 'visible', 'stack'], classified: 'tabletop' }).status).toBe(1)
+    expect(workFold({ sidebars: ['stack', 'hidden', 'stack'], notes: [{ 'sidebar.chosen': 'hidden' }, { 'sidebar.chosen': 'hidden' }, { 'sidebar.chosen': 'hidden' }] }).status).toBe(0)
+    // Folded is always the stack.
+    fails(workFold({ sidebars: ['visible', 'visible', 'stack'] }), 'stop 1 (folded): sidebar visible, want stack')
+    // Wide: hidden whatever he chose, unless his own press on that route brought it back.
+    expect(workFold({ sidebars: ['stack', 'hidden', 'stack'] }, 'wide').status).toBe(0)
+    fails(workFold({}, 'wide'), 'stop 2 (unfolded): sidebar visible, want hidden (wide route)')
+    expect(workFold({}, 'wide', 'shown').status).toBe(0)
+  })
+
+  it('fails when a row on screen made its state twice', () => {
+    fails(workFold({ violations: [{ key: 'work:env:host:fold-09', t: 21_000, inits: 2 }] }), '1 rows on screen made their state again: work:env:host:fold-09×2')
+  })
+
+  it('fails when the hosted page is a new object or loads again', () => {
+    fails(workFold({ notes: second({ 'web.instance': '9c01' }) }), "web view instance changed: ['7f3a', '9c01', '7f3a']")
+    fails(workFold({ notes: [undefined, undefined, { 'web.loads': '2' }] }), "the hosted page loaded again: ['1', '1', '2']")
+  })
+
+  it('fails when the event log no longer reaches the first stop', () => {
+    fails(workFold({ events: events.slice(1) }), 'the event log starts at 15000 ms, after the first stop at 10000 ms')
   })
 })

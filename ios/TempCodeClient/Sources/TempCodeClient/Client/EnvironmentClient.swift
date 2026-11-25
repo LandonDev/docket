@@ -535,7 +535,12 @@ public final class EnvironmentClient {
         let socket = self.socket
         loops = [
             Task { [weak self] in
-                for await status in socket.statuses { self?.status = status }
+                for await status in socket.statuses {
+                    self?.status = status
+                    // Refused holds until a link truly opens: a Retry that only starts a connect lifts nothing.
+                    if status.transport == .unauthorized { self?.work.refused() } else if status.transport == .open { self?.work.opened() }
+                    self?.work.linked = status.transport == .open
+                }
             },
             Task { [weak self] in
                 for await event in socket.sessions { await self?.handle(event) }
@@ -544,7 +549,15 @@ public final class EnvironmentClient {
                 for await push in socket.pushes { await self?.apply(push) }
             }
         ]
-        await socket.start()
+        // On a cold launch nothing goes out before the first frame (`LaunchClock.holdSockets`): the cache has
+        // painted, and the socket starts once the frame is on screen, without holding up the caller.
+        let gate = LaunchClock.sockets
+        guard !gate.isOpen else { return await socket.start() }
+        Task { [weak self] in
+            await gate.wait()
+            guard let self, self.started else { return }
+            await self.socket.start()
+        }
     }
 
     /// Stops the socket and the loops; the cache stays for the next launch.
@@ -1295,8 +1308,12 @@ public final class EnvironmentClient {
             extras.applyPush(push) // iOS 21: devices and the deploy log (Client/HostExtras.swift)
         case .batch(let value):
             applyBatch(value.state) // iOS 16: a master's batch, coalesced (Client/Batches.swift)
-        case .work, .workOutbox, .workOutboxResult, .workOutboxRequest, .workLifeos, .away, .workRules, .workGuests, .workCanvas, .workRoutines, .workFiles, .workDigest, .workDocs, .workSheets:
+        case .work, .workOutbox, .workOutboxResult, .workOutboxRequest, .workLifeos, .away, .workRules, .workGuests, .workCanvas, .workCanvasFetch, .workRoutines, .workFiles, .workDigest, .workDocs, .workSheets:
             work.applyPush(push) // milestone 46: Work on the phone (Work/Shell/WorkHost.swift)
+        case .workMessages, .workMoney, .workPrep, .workClashes, .workReview, .workMsforms, .workSlidesShow, .workRoutinesPlays, .workWinvm:
+            // Free of order: each push only marks a Work list for a fresh read, replaces a running show by its rev, or
+            // replaces the Windows VM's whole state, independent of queued thread and session rows.
+            work.applyPush(push)
         case .computer(let value):
             computerRows = value.sessions // live video: who is driven on this host (Home's Computers row)
         case .queue, .builds, .macBridgeHeld, .unknown:

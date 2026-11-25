@@ -39,6 +39,8 @@ struct ClickerScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
     @AppStorage("clicker.notesSize") private var notesSize = ClickerMetrics.notesDefault
+    /// The notes' fading foot: about one line of them, following the text size.
+    @ScaledMetric(relativeTo: .body) private var notesFade: CGFloat = 28
     /// A press sent: the light impact.
     @State private var pressed = 0
     /// A press that could do nothing: the rigid tick.
@@ -147,6 +149,14 @@ struct ClickerScreen: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .id(show.slide)
+        // The last line the room cuts at large sizes fades out rather than showing half its letters, and says the
+        // notes go on below. The fade is a line tall at any text size; short notes end above it.
+        .mask {
+            VStack(spacing: 0) {
+                Rectangle()
+                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom).frame(height: notesFade)
+            }
+        }
         .frame(maxHeight: .infinity)
         // A line the scroll cuts at large sizes stops short of the count line instead of touching it.
         .padding(.bottom, ClickerMetrics.gap)

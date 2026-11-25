@@ -18,7 +18,7 @@ struct MediaItemView: View {
     @Environment(\.readerTap) private var tap
 
     var body: some View {
-        let canRead = client.work.canAdmin
+        let canRead = client.environment.caps.contains(.admin)
         ItemLoad(read: { try await client.work.canvas.media(item.id, canRead: canRead) }) { view, reload in
             if let version = view.versions.max(by: { $0.n < $1.n }) {
                 switch version.state {
@@ -67,6 +67,7 @@ private struct Preparing: View {
         // Every two seconds until the host's answer replaces this view: a task runs once per appearance,
         // and a single reload left a proxy still being cut on this screen for good.
         .task {
+            TickLedger.begin("media.preparing"); defer { TickLedger.end("media.preparing") }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 reload()
@@ -102,7 +103,29 @@ private struct VideoVersionView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(spacing: 0) {
+        // On the open Duo the video stands on the leading page and its comments on the trailing; on a table the video
+        // stands above the band and its comments and field lie below (`ReaderSpread`).
+        ReaderSpread {
+            picture
+        } with: {
+            comments
+        } single: { picture, comments in
+            VStack(spacing: 0) {
+                picture
+                comments
+            }
+        }
+        .onAppear { notes = view.notes.filter { $0.anchor.versionId == versionId && $0.kind == .comment } }
+        .task(id: round) { await load() }
+        // The copy the player read from lasts as long as this view: nothing of the file stays on the phone.
+        .onDisappear {
+            player?.pause()
+            player = nil
+            MediaFiles.remove(MediaFiles.file(item: item.id, version: versionId))
+        }
+    }
+
+    private var picture: some View {
             Group {
                 if let failure {
                     // A download or a player that fails says why, with Try Again; the notes and the comment field stay.
@@ -137,6 +160,10 @@ private struct VideoVersionView: View {
             .aspectRatio(16 / 9, contentMode: .fit)
             .frame(maxWidth: .infinity)
             .background(Color.black)
+    }
+
+    private var comments: some View {
+        VStack(spacing: 0) {
             List {
                 ForEach(notes.sorted { ($0.anchor.frame ?? 0) < ($1.anchor.frame ?? 0) }, id: \.id) { note in
                     Button {
@@ -161,7 +188,7 @@ private struct VideoVersionView: View {
             .overlay {
                 if notes.isEmpty { Text("No comments").textStep(.meta).foregroundStyle(.secondary) }
             }
-            if client.work.canApprove {
+            if client.work.may(.mediaNote) {
                 // The steer field's shape (AgentDetailScreen): a field on the chrome step and a round send, both 44 pt to touch.
                 let empty = comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 HStack(alignment: .bottom, spacing: 8) {
@@ -199,14 +226,6 @@ private struct VideoVersionView: View {
                         .padding(.bottom, 8)
                 }
             }
-        }
-        .onAppear { notes = view.notes.filter { $0.anchor.versionId == versionId && $0.kind == .comment } }
-        .task(id: round) { await load() }
-        // The copy the player read from lasts as long as this view: nothing of the file stays on the phone.
-        .onDisappear {
-            player?.pause()
-            player = nil
-            MediaFiles.remove(MediaFiles.file(item: item.id, version: versionId))
         }
     }
 

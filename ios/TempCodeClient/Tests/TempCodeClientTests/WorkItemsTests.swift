@@ -18,8 +18,7 @@ struct WorkItemsTests {
         let sheet = ItemBody.of(row)
         #expect(sheet == .hosted(.object(.init(at: "lifeos", table: .sheets, id: "k9"))))
         #expect(!sheet.isFileKept)
-        #expect(ItemBody.guestSource(row) == .object(.init(at: "lifeos", table: .sheets, id: "k9")))
-        #expect(ItemBody.guestSource(row)?.isSheet == true)
+        #expect(ShareSource.of(row) == .lifeos(.sheets, id: "k9"))
     }
 
     @Test func aDocumentOrSheetKeptAsAFileIsAskedOfItsHostByItsItem() throws {
@@ -37,25 +36,27 @@ struct WorkItemsTests {
 
     @Test func aTcdocOrTcsheetKeptAsAFileTakesAGuestLinkByItsHostAndPathAndAWordFileNone() throws {
         let memo = try item("document", source: #"{"at":"file","host":"box","path":"/w/Travel memo.tcdoc"}"#)
-        #expect(ItemBody.guestSource(memo) == .object1(.init(at: "file", host: "box", path: "/w/Travel memo.tcdoc")))
-        #expect(ItemBody.guestSource(memo)?.isSheet == false)
+        #expect(ShareSource.of(memo) == .file(host: "box", path: "/w/Travel memo.tcdoc"))
+        #expect(ShareSource.of(memo)?.table == .docs)
         let budget = try item("sheet", source: #"{"at":"file","host":"box","path":"/w/Budget.TCSHEET"}"#)
-        #expect(ItemBody.guestSource(budget) == .object1(.init(at: "file", host: "box", path: "/w/Budget.TCSHEET")))
-        #expect(ItemBody.guestSource(budget)?.isSheet == true)
+        #expect(ShareSource.of(budget) == .file(host: "box", path: "/w/Budget.TCSHEET"))
+        #expect(ShareSource.of(budget)?.table == .sheets)
         // A Word file or a workbook is the desktop's: no row.
-        #expect(ItemBody.guestSource(try item("document", source: #"{"at":"file","host":"box","path":"/w/Letter.docx"}"#)) == nil)
-        #expect(ItemBody.guestSource(try item("sheet", source: #"{"at":"file","host":"box","path":"/w/Budget.xlsx"}"#)) == nil)
+        #expect(ShareSource.of(try item("document", source: #"{"at":"file","host":"box","path":"/w/Letter.docx"}"#)) == nil)
+        #expect(ShareSource.of(try item("sheet", source: #"{"at":"file","host":"box","path":"/w/Budget.xlsx"}"#)) == nil)
         // A PDF is no editor's.
-        #expect(ItemBody.guestSource(try item("pdf", source: #"{"at":"file","host":"box","path":"/w/a.tcdoc"}"#)) == nil)
+        #expect(ShareSource.of(try item("pdf", source: #"{"at":"file","host":"box","path":"/w/a.tcdoc"}"#)) == nil)
         // The wire's shape, as the host's GuestSourceSchema reads it.
-        let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(ItemBody.guestSource(memo))) as? [String: String]
+        let sent = try JSONSerialization.jsonObject(with: JSONEncoder().encode(try #require(ShareSource.of(memo)).createSource)) as? [String: String]
         #expect(sent == ["at": "file", "host": "box", "path": "/w/Travel memo.tcdoc"])
     }
 
-    @Test func aSheetsLinkViewsOrEditsAndStartsAtView() {
-        #expect(GuestLinkDraft.roles(sheet: true) == [.view, .edit])
-        #expect(GuestLinkDraft.roles(sheet: false) == [.view, .comment, .edit])
-        #expect(GuestLinkDraft(sheet: true).role == .view)
+    @Test func aSheetsLinkViewsOrEditsAndADocumentsAnyOfTheThree() throws {
+        let sheet = try #require(ShareSource.of(try item("sheet", source: #"{"at":"file","host":"box","path":"/w/Budget.tcsheet"}"#)))
+        #expect(sheet.roles == [.view, .edit])
+        // A `.tcdoc` kept as a file takes comments too (they go through its computer's app), as a LifeOS document does.
+        #expect(ShareSource.file(host: "box", path: "/w/Travel memo.tcdoc").roles == [.view, .comment, .edit])
+        #expect(ShareSource.lifeos(.docs, id: "d1").roles == [.view, .comment, .edit])
         #expect(GuestLinkDraft().role == .comment)
     }
 
