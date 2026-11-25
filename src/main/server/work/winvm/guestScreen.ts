@@ -81,13 +81,18 @@ export interface GuestScreenWatch {
   run: string
   /** nobody uses the machine now: no thread holds it and he does not drive */
   free: () => boolean
+  /** the device the guest runs on (`machine.json`); `vga` when not given */
+  device?: () => DisplayDevice
+  /** on virtio: the box's display set to the guest's size, live (display.ts `VmDisplay.follow`) */
+  follow?: (size: VmWindow) => Promise<void>
   log?: (line: string) => void
 }
 
 /**
- * After every wake: the guest's own size read and kept. When QEMU's display has another (a start before this
- * file existed, or the setting changed under a hibernated guest), the picture is unreadable until the next
- * start, so a machine nobody uses is put to sleep and woken once, at the size the guest has.
+ * After every wake: the guest's own size read and kept. On virtio-gpu QEMU's window follows the guest's mode by
+ * itself, so a display of another size is set to the guest's, live. On std VGA a display of another size (a start
+ * before this file existed, or the setting changed under a hibernated guest) leaves the picture unreadable until the
+ * next start, so a machine nobody uses is put to sleep and woken once, at the size the guest has.
  */
 export function watchGuestScreen(o: GuestScreenWatch): () => void {
   let busy = false
@@ -104,6 +109,7 @@ export function watchGuestScreen(o: GuestScreenWatch): () => void {
         const shown = o.shown()
         if (!shown || same(shown, guest)) return
         o.log?.(`winvm: the guest draws at ${guest.width}×${guest.height}, its display is ${shown.width}×${shown.height}`)
+        if (o.device?.() === 'virtio' && o.follow) return await o.follow(guest)
         if (!o.free()) return
         o.log?.('winvm: waking it again at the guest’s own size')
         await keeper.sleep()

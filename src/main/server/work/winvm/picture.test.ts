@@ -3,6 +3,9 @@ import { LOCAL_PRINCIPAL } from '@shared/capabilities'
 import type { ClientRequest } from '@shared/contract'
 import type { ComputerClickPush, ComputerFramePush, ComputerPreviewPush } from '@shared/contract-computer'
 import type { WinvmState } from '@shared/contract-work-winvm'
+import type { DisplayMode } from '@shared/computer/protocol'
+import { guestSizeFor } from '@shared/video/guestSize'
+import type { StreamInfo } from '../../video/relay'
 import type { EngineLease } from '../browser/box/engine'
 import { VideoRelay, type ViewerSocket } from '../../video/relay'
 import { VideoRpc } from '../../video/rpc'
@@ -21,7 +24,7 @@ function fakeLease(): EngineLease & { released: number } {
   return l
 }
 
-function setup(o: { state?: WinvmState | null; display?: boolean; missingTool?: string | null; leases?: number; holder?: string | null } = {}) {
+function setup(o: { state?: WinvmState | null; display?: boolean; missingTool?: string | null; leases?: number; holder?: string | null; device?: 'vga' | 'virtio'; sizes?: boolean } = {}) {
   let state: WinvmState | null = o.state === undefined ? awake() : o.state
   const listeners = new Set<(s: WinvmState | null) => void>()
   const viewers: number[] = []
@@ -56,14 +59,25 @@ function setup(o: { state?: WinvmState | null; display?: boolean; missingTool?: 
       return Buffer.from('png')
     },
     jpeg: async (_png, edge) => ({ data: 'anBn', width: Math.min(edge, 1280), height: Math.round(Math.min(edge, 1280) * 0.625) }),
-    holder: () => holder
+    holder: () => holder,
+    ...(o.sizes === false
+      ? {}
+      : {
+          display: {
+            set: async (mode) => (asked.push(mode), mode),
+            lease: async () => (leasedThroughDisplay++, deps.screen.engines.lease())
+          },
+          device: () => o.device ?? 'vga'
+        })
   }
+  const asked: DisplayMode[] = []
+  let leasedThroughDisplay = 0
   const picture = new VmPicture(deps)
   const set = (s: WinvmState | null): void => {
     state = s
     for (const fn of listeners) fn(s)
   }
-  return { picture, relay, viewers, leases, set, shots: () => shots, hold: (h: string | null) => (holder = h) }
+  return { picture, relay, viewers, leases, set, shots: () => shots, hold: (h: string | null) => (holder = h), asked, leasedThroughDisplay: () => leasedThroughDisplay }
 }
 
 const ask = (o: { computer?: string; thread?: string } = {}) => ({ thread: o.thread ?? VM_COMPUTER, computer: o.computer ?? VM_COMPUTER, maxEdge: 1280, take: false, drive: false, principal: LOCAL_PRINCIPAL, local: true })
@@ -156,6 +170,35 @@ describe("the Windows VM's video", () => {
     t.set(asleep)
     expect(closed).toHaveLength(1)
     expect(t.viewers.at(-1)).toBe(0)
+  })
+})
+
+describe("the Windows VM's size", () => {
+  const stream = { id: 'v1', tag: VM_COMPUTER, scope: 'drive', group: VM_COMPUTER } as StreamInfo
+  const fit = { stream: 'v1', mode: 'fit' as const, width: 1728, height: 1117, scale: 2, detail: 'sharp' as const }
+
+  it('takes his ask on virtio-gpu: the mode guestSizeFor makes of it, as the guest took it', async () => {
+    const s = setup({ device: 'virtio' })
+    const mode = guestSizeFor({ width: 1728, height: 1117 }, 2, 'sharp')
+    expect(await s.picture.size(stream, fit)).toEqual({ ok: true, ...mode })
+    expect(s.asked).toEqual([mode])
+  })
+
+  it('answers unsupported on std VGA, asleep, with no window, without a display to change, or for another stream', async () => {
+    const unsupported = { ok: false, reason: 'unsupported' }
+    expect(await setup({ device: 'vga' }).picture.size(stream, fit)).toEqual(unsupported)
+    expect(await setup({ device: 'virtio', state: asleep }).picture.size(stream, fit)).toEqual(unsupported)
+    expect(await setup({ device: 'virtio', display: false }).picture.size(stream, fit)).toEqual(unsupported)
+    expect(await setup({ sizes: false }).picture.size(stream, fit)).toEqual(unsupported)
+    const s = setup({ device: 'virtio' })
+    expect(await s.picture.size({ ...stream, tag: 'box' }, fit)).toEqual(unsupported)
+    expect(s.asked).toEqual([])
+  })
+
+  it('leases its engines through the display, so none is handed out during a change', async () => {
+    const s = setup({ device: 'virtio' })
+    expect(await s.picture.open(ask())).toMatchObject({ ok: true })
+    expect(s.leasedThroughDisplay()).toBe(1)
   })
 })
 

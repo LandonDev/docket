@@ -15,7 +15,7 @@ afterEach(() => rmSync(run, { recursive: true, force: true }))
 const awake = { state: 'awake', step: null, error: null, cannot: null, sleepAfter: 'never', since: 0 } as WinvmState
 const settle = () => new Promise((r) => setTimeout(r, 10))
 
-function rig(o: { guest: string; shown: VmWindow | null; free?: boolean }) {
+function rig(o: { guest: string; shown: VmWindow | null; free?: boolean; virtio?: boolean }) {
   let fn: ((s: WinvmState | null) => void) | null = null
   const calls: string[] = []
   const keeper = {
@@ -23,7 +23,15 @@ function rig(o: { guest: string; shown: VmWindow | null; free?: boolean }) {
     sleep: async () => void calls.push('sleep'),
     wake: async () => void calls.push('wake')
   }
-  const stop = watchGuestScreen({ onState: (f) => ((fn = f), () => (fn = null)), keeper: () => keeper, shown: () => o.shown, run, free: () => o.free ?? true })
+  const stop = watchGuestScreen({
+    onState: (f) => ((fn = f), () => (fn = null)),
+    keeper: () => keeper,
+    shown: () => o.shown,
+    run,
+    free: () => o.free ?? true,
+    device: () => (o.virtio ? 'virtio' : 'vga'),
+    follow: async (size) => void calls.push(`follow ${size.width}x${size.height}`)
+  })
   return { calls, tell: (s: WinvmState | null) => fn?.(s), stop }
 }
 
@@ -73,5 +81,23 @@ describe("the guest's own screen", () => {
     await settle()
     expect(r.calls).toEqual(['admin'])
     expect(readGuestScreen(run)).toEqual({ width: 1280, height: 800 })
+  })
+
+  it('on virtio sets the display to the guest’s size, live, with no sleep and wake, whoever uses the machine', async () => {
+    for (const free of [true, false]) {
+      const r = rig({ guest: '3456x2234', shown: { width: 1280, height: 800 }, free, virtio: true })
+      r.tell(awake)
+      await settle()
+      expect(r.calls).toEqual(['admin', 'follow 3456x2234'])
+      expect(readGuestScreen(run)).toEqual({ width: 3456, height: 2234 })
+      r.stop()
+    }
+  })
+
+  it('on virtio leaves a display that matches alone', async () => {
+    const r = rig({ guest: '2560x1600', shown: { width: 2560, height: 1600 }, virtio: true })
+    r.tell(awake)
+    await settle()
+    expect(r.calls).toEqual(['admin'])
   })
 })

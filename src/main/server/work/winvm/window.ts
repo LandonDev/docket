@@ -2,8 +2,10 @@ import { execFile } from 'node:child_process'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
-import { BoxXDisplay, type BoxDisplay } from '../browser/box/display'
+import { BoxXDisplay, DISPLAY_HZ, type BoxDisplay } from '../browser/box/display'
 import { BoxEngines, type EngineTune } from '../browser/box/engine'
+import { resizeDisplay } from '../browser/box/randr'
+import { XClient } from '../browser/box/xclient'
 import { VIDEO_TOOL, videoToolsAt, type VideoTools } from '../browser/box/videoSetting'
 import { Toolchain } from '../formats/tools'
 import { stopBlocked } from './machine/daemons'
@@ -138,6 +140,8 @@ export interface VmScreenOptions {
   loads?: (window: WindowTools) => Promise<string | null>
   /** a test's stand-in for setting the display's key codes */
   keys?: (display: BoxDisplay) => Promise<string | null>
+  /** a test's stand-in for RandR on a kept display */
+  resizeKept?: (display: BoxDisplay, size: VmWindow, hz: number) => Promise<void>
   log?: (line: string) => void
 }
 
@@ -250,6 +254,31 @@ export class VmScreen {
       if (alive(k.pid, this.config)) this.kept = k
     } catch {
       // no display was kept
+    }
+  }
+
+  /** The display at the guest's new size, live (display.ts `VmDisplay`): its own, or the one a host before kept. */
+  async resize(size: VmWindow): Promise<void> {
+    if (this.display?.env) await this.display.resize(size)
+    else if (this.kept && this.env) {
+      await (this.o.resizeKept ?? resizeDisplay)(this.kept.display, size, DISPLAY_HZ)
+      this.kept = { ...this.kept, ...size }
+    } else throw new Error('the Windows VM has no window')
+    const env = this.env
+    if (env) writeFileSync(this.keptFile, JSON.stringify({ display: env, pid: this.pid, width: size.width, height: size.height }), { mode: 0o600 })
+  }
+
+  /** QEMU's window's size now: the display's largest window on the screen (QEMU's GTK window is its one client). */
+  async windowSize(): Promise<VmWindow | null> {
+    const env = this.env
+    if (!env) return null
+    const x = await XClient.open(env)
+    try {
+      const shown = (await x.windows()).filter((w) => w.viewable && !w.overrideRedirect)
+      const top = shown.sort((a, b) => b.width * b.height - a.width * a.height)[0]
+      return top ? { width: top.width, height: top.height } : null
+    } finally {
+      x.close()
     }
   }
 

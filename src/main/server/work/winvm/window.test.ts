@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { rigConfig, rigPaths } from './machine/config'
 import { qemuCommand } from './machine/daemons'
 import { displayArgs, qemuArgs, windowArgs } from './machine/qemu'
+import { testVideoTools } from '../browser/box/testTools'
+import { XClient } from '../browser/box/xclient'
 import { pictureToolsAt, VM_ENGINE_CPUS, vmEngineTune, VmScreen, windowEnv, WINDOW_TOOL, type PictureTools } from './window'
 
 /** QEMU's window on the VM's own display: its arguments, its environment, and when the machine runs with none. */
@@ -141,4 +143,33 @@ describe("the VM's screen", () => {
     expect(vmEngineTune({ width: 2560, height: 1600 })).toEqual({ fps: 60, bitrateStart: 8_000_000, bitrateMax: 20_000_000, cpus: '26-31' })
     expect(vmEngineTune({ width: 3456, height: 2234 })).toEqual({ fps: 60, bitrateStart: 12_000_000, bitrateMax: 40_000_000, cpus: '26-31' })
   })
+
+  it('resizes no display when it has none', async () => {
+    const screen = new VmScreen({ root, tools: () => both })
+    await expect(screen.resize({ width: 2560, height: 1600 })).rejects.toThrow('has no window')
+    expect(await screen.windowSize()).toBeNull()
+  })
+
+  const tools = testVideoTools()
+  it.skipIf(!tools)('resizes its running display live, keeps the size for the next host, and reads the largest window on it', async () => {
+    const screen = new VmScreen({ root, tools: () => ({ ...both, video: tools! }), loads: async () => null, keys: async () => null })
+    expect(await screen.up({ width: 1280, height: 800 })).not.toBeNull()
+    try {
+      await screen.resize({ width: 3456, height: 2234 })
+      expect(screen.size).toEqual({ width: 3456, height: 2234 })
+      const kept = JSON.parse(readFileSync(join(root, 'display', 'kept.json'), 'utf8')) as { width: number; height: number }
+      expect([kept.width, kept.height]).toEqual([3456, 2234])
+      // no client draws on it yet
+      expect(await screen.windowSize()).toBeNull()
+      const x = await XClient.open(screen.env!)
+      try {
+        const g = await x.geometry(x.root)
+        expect([g.width, g.height]).toEqual([3456, 2234])
+      } finally {
+        x.close()
+      }
+    } finally {
+      await screen.down()
+    }
+  }, 30_000)
 })

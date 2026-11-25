@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
 import type { ComputerFramePush, ComputerPreviewStart, ComputerSessionRow } from '@shared/contract-computer'
 import { PREVIEW_MAX_EDGE, PREVIEW_MIN_EDGE } from '@shared/contract-computer'
-import { VIDEO_FPS, type VideoCopyAnswer, type VideoRefusal } from '@shared/contract-video'
+import { VIDEO_FPS, type VideoCopyAnswer, type VideoRefusal, type VideoSizeAnswer, type VideoSizeParams } from '@shared/contract-video'
+import type { GuestCaps } from '@shared/video/guestSize'
 import type { WinvmState } from '@shared/contract-work-winvm'
 import { previewRefusal, type PreviewAccess, type Viewer } from '../../computer/preview'
 import { PreviewGate } from '../../computer/previewGate'
@@ -12,6 +13,8 @@ import type { StreamInfo, VideoRelay } from '../../video/relay'
 import type { VideoAsk, VideoOpening, VideoSource } from '../../video/rpc'
 import { EngineFeed } from '../browser/box/engineFeed'
 import type { VmScreen } from './window'
+import { askedMode, type VmDisplay } from './display'
+import type { DisplayDevice } from './machine/qemu'
 
 /**
  * The Windows VM on the Computers page (docs/agents/live-video.md "The
@@ -50,6 +53,12 @@ export interface VmPictureDeps {
   jpeg(png: Buffer, maxEdge: number): Promise<{ data: string; width: number; height: number }>
   /** the thread that holds the machine now (B5's lease); null when none does */
   holder?: () => string | null
+  /** the guest's size changes and the leases that wait for one (display.ts); without it the VM takes no size */
+  display?: Pick<VmDisplay, 'set' | 'lease'>
+  /** the device the guest runs on (`run/machine.json`): only virtio-gpu changes size live */
+  device?: () => DisplayDevice
+  /** the host's caps on the guest's size; GUEST_CAPS by default */
+  caps?: () => GuestCaps
   now?: () => number
   log?: (line: string) => void
 }
@@ -171,7 +180,8 @@ export class VmPicture implements VideoSource {
     if (!this.d.screen.env || !size) return refuse(this.d.screen.missingTool ? 'no-tools' : 'unsupported')
     let lease
     try {
-      lease = await this.d.screen.engines.lease()
+      // never an engine of the size before a change (display.ts)
+      lease = await (this.d.display ? this.d.display.lease() : this.d.screen.engines.lease())
     } catch (err) {
       this.d.log?.(`winvm video: the engine did not start: ${(err as Error).message}`)
       return refuse('unsupported')
@@ -193,6 +203,17 @@ export class VmPicture implements VideoSource {
       tag: VM_COMPUTER,
       opened: (stream) => this.streams.set(stream, feed)
     }
+  }
+
+  /**
+   * His size ask (`video.size`, gated by VideoRpc): the guest at the mode `askedMode` makes of it, on virtio-gpu
+   * alone; std VGA keeps the size it booted at and answers `unsupported`. Its streams close `resized` once the new
+   * size shows (display.ts).
+   */
+  async size(stream: StreamInfo, ask: VideoSizeParams): Promise<VideoSizeAnswer> {
+    if (!isVm(stream) || !this.d.display || this.d.device?.() !== 'virtio' || this.d.state()?.state !== 'awake' || this.windowless()) return { ok: false, reason: 'unsupported' }
+    const took = await this.d.display.set(askedMode(ask, this.d.caps?.()))
+    return { ok: true, width: took.width, height: took.height, scale: took.scale }
   }
 
   /**
