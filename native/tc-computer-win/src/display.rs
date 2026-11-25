@@ -68,6 +68,18 @@ pub(crate) fn validate(ask: &DisplaySetParams) -> Result<(), &'static str> {
     Ok(())
 }
 
+/** The name viogpudo's INF gives its adapter; with Microsoft's fallback driver on the same device it reads "Microsoft Basic Display Adapter". */
+pub const VIOGPUDO_ADAPTER: &str = "Red Hat VirtIO GPU DOD controller";
+
+/**
+ * Whether the primary display runs on viogpudo: the device's service says so, or the adapter carries viogpudo's own
+ * name. On a real guest the service lookup failed while the adapter was viogpudo's (a scratch machine, Nov 25), and
+ * the name comes from the bound driver's INF, so a fallback driver on the same PCI device never matches it.
+ */
+fn drives_viogpudo<A: DisplayAdapter>(adapter: &A, primary: &Primary<A::Source>) -> bool {
+    adapter.is_viogpudo(&primary.source) || primary.mode.adapter == VIOGPUDO_ADAPTER
+}
+
 pub fn get(adapter: &impl DisplayAdapter) -> Result<DisplayGetResult, ComputerError> {
     Ok(adapter.primary()?.mode)
 }
@@ -77,7 +89,7 @@ pub fn set(
     ask: DisplaySetParams,
 ) -> Result<DisplaySetResult, ComputerError> {
     let require_virtio = |primary: &Primary<_>| {
-        if adapter.is_viogpudo(&primary.source) {
+        if drives_viogpudo(adapter, primary) {
             Ok(())
         } else {
             Err(fail(
@@ -101,7 +113,7 @@ pub fn set(
     }
     if applied && size_matches(&primary.mode) && primary.mode.scale != ask.scale {
         if let Some(relative) = primary.dpi.relative(ask.scale) {
-            if !resized || adapter.is_viogpudo(&primary.source) {
+            if !resized || drives_viogpudo(adapter, &primary) {
                 adapter.set_scale(&primary.source, relative);
                 primary = adapter.primary()?;
             }

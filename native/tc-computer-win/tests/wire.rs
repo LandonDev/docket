@@ -39,6 +39,8 @@ struct FakeDisplay {
     size: (u16, u16),
     dpi: DpiSteps,
     virtio: bool,
+    /// the device's service could not be read (the real guest's case): only the adapter's name tells
+    service_unread: bool,
     actual_size: Option<(u16, u16)>,
     refuse_size: bool,
     refuse_scale: bool,
@@ -51,6 +53,7 @@ impl Default for FakeDisplay {
             size: (1280, 800),
             dpi: DpiSteps { min: -1, current: -1, max: 5 },
             virtio: true,
+            service_unread: false,
             actual_size: None,
             refuse_size: false,
             refuse_scale: false,
@@ -80,7 +83,7 @@ impl DisplayAdapter for Fake {
     fn is_viogpudo(&self, _: &()) -> bool {
         let mut d = self.display.lock().unwrap();
         d.calls.push(DisplayCall::CheckDriver);
-        d.virtio
+        d.virtio && !d.service_unread
     }
 
     fn resize(&self, _: &mut (), width: u16, height: u16) -> Result<bool, ComputerError> {
@@ -405,6 +408,17 @@ fn display_set_uses_the_new_recommendation_and_reads_back_the_mode() {
     display.lock().unwrap().calls.clear();
     assert_eq!(w.ok("display.set", json!({ "width": 3456, "height": 2234, "scale": 100 }))["taken"], true);
     assert_eq!(display.lock().unwrap().calls, [Get, CheckDriver, Scale(-2), Get]);
+}
+
+#[test]
+fn viogpudo_is_known_by_its_adapter_name_when_the_service_cannot_be_read() {
+    let fake = Fake::default();
+    let display = fake.display.clone();
+    display.lock().unwrap().service_unread = true;
+    let mut w = Wire::start(fake);
+    init(&mut w);
+    let ask = json!({ "width": 3456, "height": 2234, "scale": 200 });
+    assert_eq!(w.ok("display.set", ask), json!({ "width": 3456, "height": 2234, "scale": 200, "adapter": VIRTIO, "taken": true }));
 }
 
 #[test]
