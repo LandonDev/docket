@@ -4,6 +4,8 @@
 @source "../../../node_modules/work-kit/src/api.ts";
 @source "../../../node_modules/work-kit/src/collab/client.ts";
 @source "../../../node_modules/work-kit/src/collab/document.ts";
+@source "../../../node_modules/work-kit/src/collab/index.ts";
+@source "../../../node_modules/work-kit/src/collab/marks.ts";
 @source "../../../node_modules/work-kit/src/collab/schema.ts";
 @source "../../../node_modules/work-kit/src/editor/adapters.tsx";
 @source "../../../node_modules/work-kit/src/editor/ask.ts";
