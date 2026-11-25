@@ -203,6 +203,20 @@ the loaded list, as work/threads.ts does for the preamble parts.
   socket itself is taken for the owner, as the window is: the shell is not
   fenced.
 
+### Which host a window's create goes to
+
+A draft's first send creates the thread on the host that holds its project
+or workspace, as the window's catalog names it (`draftHost`,
+src/renderer/src/lib/tcserver/draftHost.ts, through `linkOfSession` in
+commands.ts), never on the host the draft was made on. A draft made before a
+host's lists arrived (first paint, a return record, a kept draft) took the
+window's own host, and the create there answered `unknown workspace`. While
+the catalog does not know the place, the send waits for it
+(`DRAFT_HOST_WAIT_MS`), then refuses with a plain line; it never falls back
+to the window's host. A chat outside every workspace (a Work Chat included)
+goes where it was made. `draftHost.test.ts` lists every `session.create` the
+window sends and how each picks its host.
+
 ## The fence: no MCP server but the app's
 
 A harness is offered for Work only when every way out of the fence is shut

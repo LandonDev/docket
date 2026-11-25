@@ -54,6 +54,7 @@ const { newSession } = await import("../../lib/session");
 const { workDockPort } = await import("../../lib/workSwitch");
 const { projectDrafts } = await import("../../lib/projectDrafts");
 const { send, afterCreate } = await import("../../lib/tcserver/commands");
+const { workspaceStore } = await import("../../lib/tcserver/workspaces");
 
 const workspace = { id: "w1", environmentId: "box", path: "/w" };
 const item = { id: "it1", kind: "sheet", source: { at: "file", host: "box", path: "/w/Budget.xlsx" }, title: "Budget" } as unknown as CanvasItem;
@@ -70,6 +71,8 @@ beforeEach(() => {
   h.features = ["create.steps"];
   h.failItems = false;
   toasts.length = 0;
+  // The workspace's host, as the catalog names it: a draft's create goes there (lib/tcserver/draftHost.ts).
+  workspaceStore.hydrate([{ environmentId: "box", workspaces: [{ id: "w1", path: "/w" }], projects: [] }]);
   vi.spyOn(sessionStore, "waitIdle").mockResolvedValue(undefined);
   workDockPort.set({
     draft: (_ws, id) => ({ ...newSession("box", "claude", "/w", undefined, undefined, { projectId: null, workspaceId: "w1" }), ...(id ? { id } : {}) }),

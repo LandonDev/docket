@@ -6,6 +6,8 @@ import { policyForMode } from "./access";
 import { needsUpload, uploadAttachment } from "../attachmentUpload";
 import { registry, type Link } from "../connection";
 import { sessionStore } from "./store";
+import { workspaceStore } from "./workspaces";
+import { draftHost } from "./draftHost";
 import { chipPort } from "../contextChips";
 import type { CreateSessionReply } from "@shared/contract";
 import type {
@@ -80,9 +82,9 @@ function serverCwd(cwd: string): string | undefined {
   return cwd && cwd !== "~" ? cwd : undefined;
 }
 
-/** The link of a session the store knows; a draft's is the environment it was minted for. */
-function linkOfSession(session: Pick<Session, "id" | "environmentId">): Link {
-  return sessionStore.linkFor(session.id) ?? registry.linkOf(session.environmentId);
+/** The link of a session the store knows; a draft's is its project's or workspace's host, never the window's own (draftHost.ts). */
+async function linkOfSession(session: Pick<Session, "id" | "environmentId" | "projectId" | "workspaceId">): Promise<Link> {
+  return sessionStore.linkFor(session.id) ?? registry.linkOf(await draftHost(session, workspaceStore));
 }
 
 /** The link a known session's requests ride on. */
@@ -237,7 +239,7 @@ async function createDraft(session: Session, first?: FirstSend): Promise<{ meta:
   // A tab opened on an id whose meta has not come is a thread that exists
   // somewhere, never a draft: creating it would mint a second one.
   if (sessionStore.isProvisional(session.id)) throw new Error("This thread is still loading");
-  const link = linkOfSession(session);
+  const link = await linkOfSession(session);
   const fold = await foldOf(session, link.environmentId, first);
   // What the draft's first send was about (lib/contextChips.ts): the host links the thread to it.
   const about = chipPort.get()?.about(session.id);
@@ -302,7 +304,7 @@ export async function send(
     extra,
     extra?.newPass,
   );
-  const link = linkOfSession(session);
+  const link = await linkOfSession(session);
   const files = [...(await toServerAttachments(link.environmentId, attachments, session.id)), ...(extra?.attachments ?? [])];
   // A draft he picked no model on runs on what the host chose at the create: its first send switches nothing.
   const picked = !!sessionStore.metaOf(session.id) || !!session.modelPicked;

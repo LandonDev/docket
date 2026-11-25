@@ -51,6 +51,7 @@ const { sessionStore } = await import("../../../lib/tcserver/store");
 const { newSession } = await import("../../../lib/session");
 const { workDockPort } = await import("../../../lib/workSwitch");
 const { send } = await import("../../../lib/tcserver/commands");
+const { workspaceStore } = await import("../../../lib/tcserver/workspaces");
 const { mailDockPort } = await import("./port");
 const { IS_MAC } = await import("../../../lib/platform");
 
@@ -62,6 +63,8 @@ const ID = () => `w1`;
 beforeEach(() => {
   calls.length = 0;
   found.ids = [];
+  // The workspace's host, as the catalog names it: a draft's create goes there (lib/tcserver/draftHost.ts).
+  workspaceStore.hydrate([{ environmentId: "box", workspaces: [{ id: "w1", path: "/w" }], projects: [] }]);
   sessionStore.reset();
   resetContextChips();
   resetDocks();

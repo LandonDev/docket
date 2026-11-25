@@ -131,6 +131,7 @@ const { resetFilesStore, tabsNow } = await import("./store");
 const { applyCanvasPush, resetCanvasStore } = await import("../canvas/store");
 const { sessionStore } = await import("../../lib/tcserver/store");
 const { send } = await import("../../lib/tcserver/commands");
+const { workspaceStore } = await import("../../lib/tcserver/workspaces");
 const { chipPort } = await import("../../lib/contextChips");
 const { newSession } = await import("../../lib/session");
 const { workDockPort, workOpenPort } = await import("../../lib/workSwitch");
@@ -995,6 +996,8 @@ describe("the chat docked beside a file", () => {
     sent = [];
     widths.view = 1400;
     widths.body = 1200;
+    // The workspace's host, as the catalog names it: a draft's create goes there (lib/tcserver/draftHost.ts).
+    workspaceStore.hydrate([{ environmentId: "box", workspaces: [{ id: "w1", path: "/w" }], projects: [] }]);
     // The draft as App seeds one: the workspace's, placed nowhere.
     workDockPort.set({
       draft: (ws, id) => ({ ...newSession("box", "claude", ws.path, undefined, undefined, { projectId: null, workspaceId: ws.id }), ...(id ? { id } : {}) }),

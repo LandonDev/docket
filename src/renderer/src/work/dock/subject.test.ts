@@ -30,6 +30,7 @@ const { newSession } = await import("../../lib/session");
 const { workDockPort } = await import("../../lib/workSwitch");
 const { dockDraftKey, projectDrafts } = await import("../../lib/projectDrafts");
 const { afterCreate, ensureCreated } = await import("../../lib/tcserver/commands");
+const { workspaceStore } = await import("../../lib/tcserver/workspaces");
 import type { DockSubject } from "./subject";
 
 const workspace = { id: "w1", environmentId: "box", path: "/w" };
@@ -43,6 +44,8 @@ beforeEach(() => {
   resetContextChips();
   resetDocks();
   created.length = 0;
+  // The workspace's host, as the catalog names it: a draft's create goes there (lib/tcserver/draftHost.ts).
+  workspaceStore.hydrate([{ environmentId: "box", workspaces: [{ id: "w1", path: "/w" }], projects: [] }]);
   workDockPort.set({
     draft: (_ws, id) => ({ ...newSession("box", "claude", "/w", undefined, undefined, { projectId: null, workspaceId: "w1" }), ...(id ? { id } : {}) }),
     openFile: () => undefined,

@@ -165,14 +165,16 @@ async function createChat(): Promise<string | null> {
     projects.find((p) => p.id === lastChat()?.projectId) ??
     projects[0]
   if (!project && !selected) return null
-  const wire = await registry.primary().request<WireSessionMeta>('session.create', {
+  // A project's thread is made on the project's own host, never this window's.
+  const environmentId = project?.environmentId ?? registry.primary().environmentId
+  const wire = await registry.linkOf(environmentId).request<WireSessionMeta>('session.create', {
     threadType: 'chat',
     agentType: 'implementer',
     ...(project ? { projectId: project.id } : { cwd: selected })
   })
   // The push opens the thread behind the user's work; the drop is an
   // explicit ask, so it comes forward too.
-  const meta = { ...wire, environmentId: registry.primary().environmentId }
+  const meta = { ...wire, environmentId }
   sessionStore.adopt(meta, { created: true })
   sessionStore.requestOpen(meta.id)
   return meta.id
