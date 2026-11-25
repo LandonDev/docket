@@ -9,7 +9,7 @@ import { ROW_PRESS } from "../../components/ui/press";
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
 import { chordKey } from "../../lib/keys";
-import { openWorkView, useWorkView } from "../../lib/workSwitch";
+import { openWorkView, useWorkView, workSwitch } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { guestsCall, type GuestLinkRow } from "../guests/api";
 import { openDocInFiles, openInFiles } from "../files/openFrom";
