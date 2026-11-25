@@ -9,7 +9,7 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import { AFTER, fixtureView, TZ, WEEK } from "./fixtures";
 import { resetShown, shownWeek, showWeekNamed, useWeekTurn } from "./shown";
-import { loadRoutine, loadWeek, loadZone, makeAgain, markSeen, resetReviewStore, reviewNow, reviewZone, settleHost, settleRow, thisWeek, undoSettle, useReview } from "./store";
+import { loadRoutine, loadWeek, loadZone, makeAgain, markSeen, resetReviewStore, reviewNow, reviewZone, settleHost, settleRow, thisWeek, undoSettle, useReview, weekBy } from "./store";
 
 /**
  * The page's store: every host with Work on is asked for its part, the parts are merged by sector with LifeOS taken
@@ -70,6 +70,33 @@ afterEach(() => {
   resetReviewStore();
   localStorage.clear();
   vi.restoreAllMocks();
+});
+
+describe("what the page asks", () => {
+  it("asks the first week once a host, in the host's zone, though the window's own zone differs", async () => {
+    resetReviewStore({ now: () => AFTER, zone: null });
+    const { View } = await import("./ReviewPage");
+    const page = render(createElement(View, {} as never));
+    await act(async () => {
+      for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    });
+    for (const id of ["env-box", "env-mac"]) expect(links[id]!.calls.filter((c) => c.method === "work.review.week").length, id).toBe(1);
+    expect(links["env-box"]!.calls.find((c) => c.method === "work.review.week")!.params.tz).toBe(TZ);
+    page.unmount();
+  });
+
+  it("tells the hosts a week was seen once a run, not on every open of the page", () => {
+    markSeen(WEEK);
+    markSeen(WEEK);
+    markSeen(WEEK);
+    const seen = () => Object.values(links).flatMap((l) => l.calls.filter((c) => c.method === "work.review.seen"));
+    expect(seen().length).toBe(2);
+    markSeen(weekBy(WEEK, -1));
+    expect(seen().length).toBe(4);
+    resetReviewStore({ now: () => AFTER });
+    markSeen(WEEK);
+    expect(seen().length).toBe(6);
+  });
 });
 
 describe("the week across hosts", () => {

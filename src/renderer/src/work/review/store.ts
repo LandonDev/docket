@@ -392,8 +392,13 @@ export async function undoSettle(done: Settled, week: ReviewWeek): Promise<void>
   }
 }
 
-/** He opened the week: the hosts that made it ready hear, so Today's row and the digest's line go. */
+/** The weeks this window told the hosts he saw, this run: a week is told once, not on every open of the page. */
+const toldSeen = new Set<number>();
+
+/** He opened the week: the hosts that made it ready hear, once a week a run, so Today's row and the digest's line go. */
 export function markSeen(week: ReviewWeek): void {
+  if (toldSeen.has(week.from)) return;
+  toldSeen.add(week.from);
   for (const id of workSwitch.hosts()) if (linked(id)) void registry.linkOf(id).request("work.review.seen", { from: week.from }).catch(() => {});
 }
 
@@ -421,6 +426,7 @@ export function resetReviewStore(opts: { now?: () => number; zone?: string | nul
   loading.clear();
   zone = opts.zone ?? null;
   zoneAsked = null;
+  toldSeen.clear();
   now = opts.now ?? Date.now;
   changed();
 }

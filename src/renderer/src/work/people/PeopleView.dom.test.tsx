@@ -28,8 +28,8 @@ vi.mock("../shell/lifeos", async (original) => ({
     return { status: "loading" };
   },
 }));
-const host = vi.hoisted(() => ({ links: [] as unknown[] }));
-vi.mock("../guests/api", async (original) => ({ ...(await original<object>()), guestsCall: async () => ({ env: "box", value: host.links }) }));
+const host = vi.hoisted(() => ({ links: [] as unknown[], calls: [] as unknown[][] }));
+vi.mock("../guests/api", async (original) => ({ ...(await original<object>()), guestsCall: async (...args: unknown[]) => (host.calls.push(args), { env: "box", value: host.links }) }));
 const mail = vi.hoisted(() => ({ drafts: [] as unknown[] }));
 vi.mock("../mail/mailto", async (original) => ({ ...(await original<object>()), writeMail: (d: unknown) => void mail.drafts.push(d) }));
 const files = vi.hoisted(() => ({ docs: [] as unknown[][], opened: [] as unknown[][] }));
@@ -37,7 +37,7 @@ vi.mock("../files/openFrom", () => ({ openDocInFiles: async (...args: unknown[])
 const forms = vi.hoisted(() => ({ asked: [] as unknown[][], answered: [] as unknown[] }));
 vi.mock("../msforms/answered", () => ({ readAnswered: async (...args: unknown[]) => (forms.asked.push(args), forms.answered) }));
 
-const { View, Head, Title, placeOf, setPlace } = await import("./PeopleView");
+const { View, Head, Title, placeOf, setPlace, forgetGuestLinks } = await import("./PeopleView");
 const { openerOf } = await import("../canvas/SentChips");
 const { keepPlace } = await import("../shell/place");
 
@@ -73,6 +73,7 @@ const mount = () =>
   );
 
 beforeEach(() => {
+  forgetGuestLinks();
   vi.setSystemTime(NOW);
   started = [];
   lifeos.asked = [];
@@ -115,6 +116,24 @@ describe("the list", () => {
 });
 
 describe("a person's page", () => {
+  it("asks LifeOS for the page once, with the links in hand, and the host for the links once for two people opened one after another", async () => {
+    forgetGuestLinks();
+    host.calls.length = 0;
+    host.links = [];
+    lifeos.page = mayaPage;
+    mount();
+    fireEvent.click(screen.getByText("Maya Chen"));
+    await act(async () => {});
+    const pages = () => lifeos.asked.filter((a) => a.name === "people:page");
+    // Every render asks the stand-in again; the page is only ever asked with the links in hand, never with none first.
+    expect(pages().length).toBeGreaterThan(0);
+    expect(new Set(pages().map((a) => JSON.stringify(a.args.shared)))).toEqual(new Set(["[]"]));
+    expect(host.calls.length).toBe(1);
+    act(() => setPlace("ws", { person: "p_tom" }));
+    await act(async () => {});
+    expect(host.calls.length).toBe(1);
+  });
+
   it("opens from the list: who they are, then each kind of thing live with them, once", async () => {
     host.links = [{ id: "g1", name: "maya chen", source: { at: "lifeos", table: "docs", id: "d1" }, title: "Run of show", role: "comment", createdAt: 1, expiresAt: NOW + 86_400_000, revokedAt: null, by: "owner", lastOpenedAt: null, open: 0 }];
     mount();

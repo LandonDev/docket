@@ -116,3 +116,17 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
   `NEVER_IN_ENTRY` (scripts/check-bundle-size.ts), held on the source by scripts/entryGraph.test.ts. zod itself is still in the first paint by 17 other
   modules (listed in `.temp-code/plans/landed/PERF-work.md` "For the owner").
 
+## Small asks no one needed (M15)
+
+- **The host**: six of Work's queries are index searches (docs/box.md "Work's indexes"); the Work switch is kept in
+  memory and dropped by any write of it; `work.health` runs each check once for asks that come together and answers
+  from its report for 10 s (`{fresh: true}` is his Check again).
+- **The catalog**: every scope's thread defaults in one `defaults.list` where the host names it (3 round trips a
+  refresh, not 3 + W).
+- **Review**: the first week is asked once, after the zone is known (it was asked in the window's zone and again in
+  the host's), and a week is told seen once a run, not on every open.
+- **People**: a person's page is asked of LifeOS once, with the guest links in hand, and the host's guest links are
+  read once in `GUEST_LINKS_KEEP_MS` (30 s) a host, dropped with Work off.
+- Not done: Tasks' links in one query (needs a LifeOS function, `workLinks:byEntities`); Forms' list asked twice
+  (the Forms thread's file, in its note `.temp-code/plans/perf/FOR-msforms.md`).
+

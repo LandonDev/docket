@@ -281,13 +281,30 @@ export function PeopleList({ workspaceId, rows, faces, now = Date.now() }: { wor
 
 // ── A person's page ──
 
-/** The guest links the host keeps, read once a page; a host that cannot answer lists none. */
+/** The host's guest links as last read, by host: one read serves the people he opens one after another. */
+const guestLinksKept = new Map<string, { at: number; rows: GuestLinkRow[] }>();
+/** How long a read of the guest links serves another person's page before the host is asked again. */
+export const GUEST_LINKS_KEEP_MS = 30_000;
+
+/** The guest links the host keeps: read at most once in GUEST_LINKS_KEEP_MS a host; a host that cannot answer lists none (and is asked again next time). */
 function useGuestLinks(env: string, person: string): GuestLinkRow[] | null {
-  const [links, setLinks] = useState<{ person: string; rows: GuestLinkRow[] } | null>(null);
+  const fresh = (): GuestLinkRow[] | null => {
+    const kept = guestLinksKept.get(env);
+    return kept && Date.now() - kept.at < GUEST_LINKS_KEEP_MS ? kept.rows : null;
+  };
+  const [links, setLinks] = useState<{ person: string; rows: GuestLinkRow[] } | null>(() => {
+    const rows = fresh();
+    return rows ? { person, rows } : null;
+  });
   useEffect(() => {
+    const rows = fresh();
+    if (rows) return void setLinks((was) => (was?.person === person && was.rows === rows ? was : { person, rows }));
     let live = true;
     guestsCall<GuestLinkRow[]>(env, "work.guests.list", {}).then(
-      ({ value }) => live && setLinks({ person, rows: value }),
+      ({ value }) => {
+        guestLinksKept.set(env, { at: Date.now(), rows: value });
+        if (live) setLinks({ person, rows: value });
+      },
       () => live && setLinks({ person, rows: [] }),
     );
     return () => {
@@ -296,6 +313,15 @@ function useGuestLinks(env: string, person: string): GuestLinkRow[] | null {
   }, [env, person]);
   return links?.person === person ? links.rows : null;
 }
+
+/** Tests and Work off: nothing kept. */
+export function forgetGuestLinks(): void {
+  guestLinksKept.clear();
+}
+// Work off on every host: no guest link of any host stays kept.
+workSwitch.subscribe(() => {
+  if (!workSwitch.anyOn()) forgetGuestLinks();
+});
 
 const NO_ANSWERS: AnsweredForm[] = [];
 
@@ -325,15 +351,24 @@ function PersonPageView(props: WorkViewProps & { person: string; faces: Readonly
   const directory = useDirectory(props.lifeos, props.sector);
   const name = directory.status === "ready" ? directory.value.find((p) => p._id === props.person)?.name : undefined;
   const links = useGuestLinks(props.env, props.person);
+  // The page is asked of LifeOS once, with the links in hand: asked before them, it was asked twice (no links, then the links).
+  if (links === null) return <PageSkeleton />;
+  return <PersonPageRead {...props} directory={directory} name={name} links={links} />;
+}
+
+function PersonPageRead(
+  props: WorkViewProps & { person: string; faces: ReadonlyMap<string, string>; directory: ReturnType<typeof useDirectory>; name: string | undefined; links: GuestLinkRow[] },
+) {
+  const { directory, name, links } = props;
   // The links made for them, by the name the list knows; LifeOS keeps those of this sector and says their titles now.
-  const mine = useMemo(() => (links && name ? linksFor(links, name, Date.now()) : []), [links, name]);
+  const mine = useMemo(() => (name ? linksFor(links, name, Date.now()) : []), [links, name]);
   // LifeOS takes at most 50.
   const shared = useMemo(() => mine.slice(0, 50).map((l) => ({ table: l.source.table, id: l.source.id })), [mine]);
   const page = useLifeosQuery<PersonPage | null>(props.lifeos, "people:page", { id: props.person, sector: props.sector, shared });
   const answered = useAnswered(props.env, props.workspace.id, page.status === "ready" ? page.value?.person.emails : undefined);
   if (page.status === "failed") return <EmptyState title="This page did not load" line={page.error} />;
   // Held until the links are read too, so the page lands once rather than growing a section.
-  if (page.status === "loading" || links === null || (directory.status === "loading" && !name)) return <PageSkeleton />;
+  if (page.status === "loading" || (directory.status === "loading" && !name)) return <PageSkeleton />;
   // A page kept from a window before this one whose person is gone: the list, quietly.
   if (!page.value && keptPerson.get(props.workspace.id) === props.person) return <GoneToList workspaceId={props.workspace.id} />;
   if (!page.value)

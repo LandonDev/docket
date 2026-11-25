@@ -17,7 +17,7 @@ import { RowsSkeleton, Shipped } from "./Shipped";
 import { showWeekNamed, shownWeek, useShownFrom, useWeekTurn } from "./shown";
 import { Slipped } from "./Slipped";
 import { LifeosDownLine, lifeosLinesOf } from "./lifeosLine";
-import { loadHostWeek, loadWeek, loadZone, markSeen, settleRow, undoSettle, useReview, type ReviewView } from "./store";
+import { loadHostWeek, loadWeek, loadZone, markSeen, reviewZone, settleRow, undoSettle, useReview, type ReviewView } from "./store";
 
 /**
  * Review: one page above the workspaces that shows a week across every job
@@ -56,10 +56,15 @@ export function View(_props: WorkPlaceProps) {
     void showWeekNamed(wanted).then(() => takeWorkPlaceAt("review"));
   }, [wanted]);
 
-  // The zone weeks are cut in is asked once; the week is asked for whenever it, or the zone, changes.
-  useEffect(() => void loadZone(), []);
+  // The zone weeks are cut in is asked once, and the week only once it is known: a week cut in the window's own zone
+  // and then in the host's was two reads of the first week for him (the box is Eastern, he is Central). Once the
+  // zone has moved the page draws the right week, and this asks it.
   useEffect(() => {
-    if (!naming) void loadWeek({ from: week.from, to: week.to });
+    if (naming) return;
+    const tz = view.tz;
+    void loadZone().then(() => {
+      if (reviewZone() === tz) void loadWeek({ from: week.from, to: week.to });
+    });
   }, [naming, week.from, week.to, view.tz]);
   // He has seen the week once it has drawn: Today's row and the digest's line go.
   const mayMarkSeen = useSyncExternalStore(onRevealReadChange, mayMarkRevealRead);
