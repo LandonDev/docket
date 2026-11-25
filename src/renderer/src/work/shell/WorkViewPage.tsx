@@ -242,7 +242,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           <DownEmpty live={WAITS} environmentId={environmentId} onRetry={noRetry} />
         ) : (
           <KeptRegion value={kept.scope}>
-            <ViewBoundary label={def.label} onRetry={() => setAttempt((n) => n + 1)}>
+            <ViewBoundary label={def.label} onRetry={() => def.chunk.load().then(() => setAttempt((n) => n + 1))}>
               <Suspense fallback={<ViewSkeleton label={def.label} />}>
                 <View {...props} />
               </Suspense>
@@ -269,9 +269,12 @@ function ViewSkeleton({ label }: { label: string }) {
   );
 }
 
-/** A view that throws (a LifeOS read refused, a chunk that did not load) is the view's error with Retry, which mounts it again. */
-export class ViewBoundary extends Component<{ label: string; children: ReactNode; onRetry?: () => void }, { error: string | null; attempt: number }> {
-  override state = { error: null as string | null, attempt: 0 };
+/**
+ * A view that throws (a LifeOS read refused, a chunk that did not load) is the view's error with Retry, which mounts it
+ * again. The error stays, its Retry spinning, while what Retry asks (`onRetry`: the view's code fetched again) is out.
+ */
+export class ViewBoundary extends Component<{ label: string; children: ReactNode; onRetry?: () => void | Promise<unknown> }, { error: string | null; attempt: number; retrying: boolean }> {
+  override state = { error: null as string | null, attempt: 0, retrying: false };
   static getDerivedStateFromError(error: unknown): { error: string } {
     return { error: workErrorWords(error) };
   }
@@ -283,9 +286,12 @@ export class ViewBoundary extends Component<{ label: string; children: ReactNode
           line={this.state.error || undefined}
           action={{
             label: "Retry",
+            busy: this.state.retrying,
             onClick: () => {
-              this.props.onRetry?.();
-              this.setState((s) => ({ error: null, attempt: s.attempt + 1 }));
+              this.setState({ retrying: true });
+              void Promise.resolve(this.props.onRetry?.())
+                .catch(() => {})
+                .finally(() => this.setState((s) => ({ error: null, attempt: s.attempt + 1, retrying: false })));
             },
           }}
         />

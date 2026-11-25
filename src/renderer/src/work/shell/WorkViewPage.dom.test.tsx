@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** A Work view that throws is its own error with Retry, which mounts it again; never the window's. */
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const NOW = Date.UTC(2026, 10, 23, 17);
 import { registry } from "../../lib/connection";
@@ -225,7 +225,7 @@ describe("what stands between a view and LifeOS", () => {
 });
 
 describe("a view's boundary", () => {
-  it("shows what failed with Retry, and Retry mounts the view again", () => {
+  it("shows what failed with Retry, and Retry mounts the view again", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     let fail = true;
     function Tasks() {
@@ -241,6 +241,28 @@ describe("a view's boundary", () => {
     expect(screen.getByText("LifeOS refused the read")).toBeTruthy();
     fail = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByText("The tasks")).toBeTruthy());
+  });
+
+  /** Council round 12 (the walk): Retry keeps the error, spinning in place, while the view's code is fetched again. */
+  it("keeps its error with Retry spinning while what Retry asks is out", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    let fail = true;
+    let fetched!: () => void;
+    function Tasks() {
+      if (fail) throw new Error("LifeOS refused the read");
+      return <p>The tasks</p>;
+    }
+    render(
+      <ViewBoundary label="Tasks" onRetry={() => new Promise<void>((r) => (fetched = r))}>
+        <Tasks />
+      </ViewBoundary>,
+    );
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(screen.getByText("Tasks did not load")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
+    await act(async () => fetched());
     expect(screen.getByText("The tasks")).toBeTruthy();
   });
 
