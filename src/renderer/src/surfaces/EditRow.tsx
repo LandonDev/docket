@@ -11,6 +11,7 @@ import { resolveWorkspacePath } from '../lib/paths'
 import type { OpenFileFn } from '../lib/search'
 import type { Block } from '../lib/session'
 import { sessionStore, useLiveEdits } from '../lib/tcserver/store'
+import { isWorkThread } from '../lib/workRow'
 import { diffChunk } from './chunks'
 import { SurfaceSkeleton } from './SurfaceSkeleton'
 
@@ -35,7 +36,7 @@ import {
   type EditDiff
 } from './diffRows'
 import { RenderCache, cacheKey } from '../lib/renderCache'
-import { editModel } from './editModel'
+import { editModel, type EditModel } from './editModel'
 import { editOpenKey, usePersistedOpen } from './editOpenState'
 import { OmittedNote } from './ToolDetails'
 import { BODY_FRAME } from './transcript/ActionRow'
@@ -139,6 +140,15 @@ function useLocatedRows(
   }, [located, refresh, diff])
 }
 
+/**
+ * A Work thread's edit row leads with what happened to the file, in his words: "Changed Budget FY27.xlsx", "Made
+ * Seat map.xlsx", "Removed draft.txt". The tool's own verb stays while it runs and in a code thread.
+ */
+export function editVerb(m: Pick<EditModel, 'create' | 'remove'>, verb: string, o: { work: boolean; running: boolean }): string {
+  if (!o.work || o.running) return verb
+  return m.remove ? 'Removed' : m.create ? 'Made' : 'Changed'
+}
+
 export function EditRow({
   block,
   cwd,
@@ -154,6 +164,8 @@ export function EditRow({
   const filePath = m.path ? resolveWorkspacePath(m.path, cwd) : undefined
   const sessionId = useTranscriptSession()
   const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? hostOfCwd(filePath ?? cwd ?? '')
+  // A Work thread's row: the file and what happened lead; the line totals wait behind Show changes, and no code editor opens here.
+  const work = !!sessionId && isWorkThread(sessionStore.metaOf(sessionId))
 
   // Editing in place: which line the editor opens at, and a bump after a
   // save so the diff re-locates in the file as it is now.
@@ -204,26 +216,28 @@ export function EditRow({
     filePath && onOpenFile
       ? () => onOpenFile(filePath, startLine ? { line: startLine } : undefined, { environmentId })
       : undefined
-  const canEdit = !!filePath && !!cwd && !running && !m.remove && !omitted
+  const canEdit = !work && !!filePath && !!cwd && !running && !m.remove && !omitted
   const editHere = (line?: number): void => {
     setEditLine(line ?? startLine)
     setEditMode(true)
     setUserOpen(true)
   }
-  const label = [action.verb, action.object].filter(Boolean).join(' ')
+  const verb = editVerb(m, action.verb, { work, running })
+  const label = [verb, action.object].filter(Boolean).join(' ')
+  const counted = !work || open
 
   return (
     <div data-block={block.id} className="flex min-w-0 flex-col">
       <ActionLine
         glyph={<ToolGlyph action={action} block={block} />}
-        verb={action.verb}
+        verb={verb}
         object={action.object}
         title={action.title}
         label={label}
         onObject={openFile}
         objectLabel={openFile ? `Open ${action.object}` : undefined}
-        adds={running ? (liveRec?.adds ?? m.adds) : m.adds}
-        dels={running ? (liveRec?.dels ?? m.dels) : m.dels}
+        adds={!counted ? undefined : running ? (liveRec?.adds ?? m.adds) : m.adds}
+        dels={!counted ? undefined : running ? (liveRec?.dels ?? m.dels) : m.dels}
         ticking={running}
         open={open}
         onToggle={

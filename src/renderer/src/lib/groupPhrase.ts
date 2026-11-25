@@ -210,6 +210,7 @@ function stretchPhrases(
   cwd: string | undefined,
   live: boolean,
   titleOf: TitleOf,
+  work = false,
 ): string[] {
   switch (stretch) {
     case "read":
@@ -227,6 +228,8 @@ function stretchPhrases(
     case "run":
       // One clause per command: the line's commas join phrases, never a command's parts.
       if (blocks.length === 1) return [runClauses(blocks[0], cwd, live)[0] ?? `${live ? "Running" : "Ran"} a command`];
+      // A Work thread's line says what each did, never a count of commands; past three, "and N more" says the rest.
+      if (work) return [...new Set(blocks.map((b) => runClauses(b, cwd, live)[0] ?? `${live ? "running" : "ran"} a step`))];
       return [`${live ? "Running" : "Ran"} ${blocks.length} commands`];
     case "search":
       if (blocks.length === 1) return [toolPhrase(blocks[0], cwd, live)];
@@ -256,9 +259,10 @@ function stretchPhrases(
 /**
  * The group line's phrase. `live` puts every phrase in the present tense;
  * left out, the run is live while any call in it still runs. `titleOf`
- * names the threads the agent calls and reports are about.
+ * names the threads the agent calls and reports are about. `work`: a Work
+ * thread's line, which names what was done and never counts commands or tools.
  */
-export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean, titleOf: TitleOf = noTitles): string {
+export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean, titleOf: TitleOf = noTitles, work = false): string {
   const all = blocks.filter((b) => b.role === "tool" || b.role === "approval");
   const host = blocks.filter((b) => b.role === "system");
   if (all.length === 0 && host.length === 0) return "";
@@ -281,7 +285,7 @@ export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean, title
   let stretch: Stretch | null = null;
   let run: Block[] = [];
   const flush = (): void => {
-    if (stretch) stretchPhrases(stretch, run, cwd, running, titleOf).forEach(push);
+    if (stretch) stretchPhrases(stretch, run, cwd, running, titleOf, work).forEach(push);
     run = [];
   };
   for (const b of steps) {
@@ -294,7 +298,7 @@ export function groupPhrase(blocks: Block[], cwd?: string, live?: boolean, title
   }
   flush();
   if (phrases.length === 0) {
-    return running ? "Working" : `Ran ${all.length} ${all.length === 1 ? "tool" : "tools"}`;
+    return running ? "Working" : work ? "Worked" : `Ran ${all.length} ${all.length === 1 ? "tool" : "tools"}`;
   }
   const shown = phrases.slice(0, MAX_PHRASES).map((p, i) => trim(i === 0 ? cap(p) : lower(p)));
   const extra = phrases.length - MAX_PHRASES;

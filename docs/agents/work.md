@@ -93,7 +93,21 @@ with its six views, linking a workspace to a sector, and Settings → Work
   thread, must offer exactly the ids its Work, shared and code lists say;
   a new id fails until it is put in one. Its `KNOWN` names the code rows
   that still reach a Work thread: the menu bar's Go to Symbol… and Type
-  Hierarchy, which open the code symbol picker.
+  Hierarchy, which open the code symbol picker. Their keys do nothing with
+  a Work thread in front: ⌘J, ⌃` and ⌃⇧` reach no terminal
+  (`codeCommandRefused`, lib/nativeMenuState.ts, checked first in App's
+  command map). The transcript speaks Work too: the boot reads "Starting"
+  where a code thread reads "Starting the CLI" (`phaseLine(event, work)`,
+  sessions.ts); an edit row leads with what happened to the file, "Changed
+  Budget FY27.xlsx", "Made Seat map.xlsx", "Removed draft.txt" (`editVerb`,
+  surfaces/EditRow.tsx), its line totals shown only once Show changes opens
+  it and no Edit here; an action group's line names what each command did,
+  never "Ran 3 commands" or "Ran 4 tools", and carries no line totals
+  (`groupPhrase(…, work)`, `actionGroupOf({work})`); a file named in the
+  transcript offers Open in Files first, a tab in the job's Files place
+  (`workFilesHome`, surfaces/FileRefMenu.tsx; a Work Chat has no job and so
+  no such row); a task chip in a sent message opens that task's sheet in
+  Tasks (`openerOf`, work/canvas/SentChips.tsx).
 - While it is off: no module's `start` or `onPush` runs, nothing a part of
   the context keeps running is up, no tool is listed to any thread, and
   every pillar method answers `Work is off on this host`. `work.get` and

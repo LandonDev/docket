@@ -12,6 +12,7 @@ import { openHeld } from "../canvas/held";
 import { openInFiles } from "../files/openFrom";
 import { startThreadAbout } from "../shell/WorkColumn";
 import { tellOpened } from "./hosts";
+import { setSessionArchived } from "../../lib/sessionStore";
 
 /**
  * Return on a hit (docs/agents/work-search.md "Opening in place"): the
@@ -28,6 +29,8 @@ export interface OpenDeps {
   enter(workspace: WorkspaceMeta): void;
   view(next: OpenWorkView): void;
   thread(sessionId: string, seq?: number): void;
+  /** an archived thread back among the live ones, before it opens; a refusal is thrown */
+  restore(sessionId: string): Promise<void>;
   /** Files' own door (work/files/openFrom.ts): the file in a tab of the job, and the Files place shown unless he went elsewhere meanwhile; a refusal is thrown */
   file(workspace: WorkspaceMeta, file: { ref: CanvasSource; name: string }): Promise<void>;
   held(id: string, hostId: string): void;
@@ -52,6 +55,7 @@ const live: OpenDeps = {
     if (seq !== undefined) requestTranscriptJump(sessionId, seq);
     workOpenPort.get()?.(sessionId);
   },
+  restore: (sessionId) => setSessionArchived(sessionId, false),
   file: (workspace, file) => openInFiles(workspace, file),
   held: (id, hostId) => openHeld({ at: "host", id }, hostId),
   startThread: (chip, workspace) => startThreadAbout(chip, null, workspace.path),
@@ -96,6 +100,14 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
   d.chose();
 
   if (open.to === "thread") {
+    // An archived thread is put back first, as the archived list's Restore does; if the host refuses, nothing opens.
+    if (open.archived) {
+      try {
+        await d.restore(open.sessionId);
+      } catch {
+        return "failed";
+      }
+    }
     // A thread carries its own place: the window follows it there. Whatever lies over the threads (Today, Review,
     // the Inbox, Settings) leaves first, as for every other kind, or the thread would open under it.
     d.clear();

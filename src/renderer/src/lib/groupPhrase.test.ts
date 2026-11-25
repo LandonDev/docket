@@ -78,6 +78,14 @@ describe("groupPhrase", () => {
     expect(groupPhrase([grep("a"), grep("b")], CWD)).toBe("Ran 2 searches");
   });
 
+  it("in a Work thread says what each command did, never a count of them", () => {
+    const described = (d: string) => call("Bash", { command: "python3 x.py", description: d });
+    expect(groupPhrase([described("Convert the budget to PDF"), described("Count the seats")], CWD, false, undefined, true)).toBe("Convert the budget to PDF, counted the seats");
+    expect(groupPhrase([bash("ls"), bash("pwd"), bash("whoami")], CWD, false, undefined, true)).not.toMatch(/\d+ commands/);
+    // A code thread keeps its count.
+    expect(groupPhrase([described("Convert the budget to PDF"), described("Count the seats")], CWD)).toBe("Ran 2 commands");
+  });
+
   it("never prints a failure count or a separator dot", () => {
     const failed = call("Bash", { command: "npm test" }, { status: "failed" });
     expect(groupPhrase([failed], CWD)).toBe("Ran the tests");

@@ -8,7 +8,8 @@ import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { cn } from "../../lib/cn";
 import type { Block } from "../../lib/session";
 import type { OpenFileFn } from "../../lib/search";
-import { useLiveEdits } from "../../lib/tcserver/store";
+import { sessionStore, useLiveEdits } from "../../lib/tcserver/store";
+import { isWorkThread } from "../../lib/workRow";
 import { useTitlesOf } from "../../lib/threadMentions";
 import { DUR, SPRING_LAYOUT_CSS, STAGGER } from "../../lib/ease";
 import { useHeightGlide } from "../../lib/heightGlide";
@@ -111,10 +112,11 @@ export function ActionGroup({
   // An agent the store has not listed is named by what its spawn in this run called it.
   const names = useMemo(() => spawnedNames(blocks), [blocks]);
   const titleOf = useCallback((id: string) => storeTitle(id) ?? names.get(id)?.title, [storeTitle, names]);
+  const work = !!sessionId && isWorkThread(sessionStore.metaOf(sessionId));
   const group = useMemo(
-    () => actionGroupOf(blocks, { cwd, live, liveEdits: live ? liveEdits : undefined, titleOf }),
+    () => actionGroupOf(blocks, { cwd, live, liveEdits: live ? liveEdits : undefined, titleOf, work }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `titles` is what changes when titleOf's answers do
-    [blocks, cwd, live, liveEdits, titleOf, titles],
+    [blocks, cwd, live, liveEdits, titleOf, titles, work],
   );
   const [saved, setSaved] = usePersistedOpen(`${sessionId}:a:${blocks[0]?.id}`);
   const adds = useCountUp(group.adds, live);

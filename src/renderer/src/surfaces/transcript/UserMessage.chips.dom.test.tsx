@@ -74,7 +74,7 @@ describe("a sent message's chips", () => {
     await waitFor(() => expect(container.querySelector("[data-sent-chips]")).not.toBeNull());
     const chip = (kind: string) => container.querySelector<HTMLElement>(`[data-sent-chips] [data-chip="${kind}"]`)!;
     await act(async () => fireEvent.click(chip("task").querySelector("button")!));
-    expect(view).toEqual({ workspaceId: "ws-purdue", view: "tasks" });
+    expect(view).toEqual({ workspaceId: "ws-purdue", view: "tasks", task: "k1" });
     await act(async () => fireEvent.click(chip("held").querySelector("button")!));
     expect(opened.held).toEqual([[{ at: "host", id: "h1" }, "env_a"]]);
     await act(async () => fireEvent.click(chip("item").querySelector("button")!));

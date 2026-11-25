@@ -22,7 +22,7 @@ const WithSchema = z
 
 export const SearchOpenSchema = z.discriminatedUnion('to', [
   z.object({ to: z.literal('view'), view: z.string().min(1).max(40), with: WithSchema.optional() }),
-  z.object({ to: z.literal('thread'), sessionId: z.string().min(1).max(200), seq: z.number().int().nonnegative().optional() }),
+  z.object({ to: z.literal('thread'), sessionId: z.string().min(1).max(200), seq: z.number().int().nonnegative().optional(), archived: z.literal(true).optional() }),
   z.object({ to: z.literal('file'), ref: z.unknown(), name: z.string().max(500) }),
   z.object({ to: z.literal('chip'), chip: ContextChipSchema })
 ])

@@ -4,7 +4,7 @@ import { shellStore } from "../stores/shell";
 import { messageListFold } from "./messageListFold";
 import { awayStore, resetAwayForTest } from "./away";
 import { registry } from "./connection/registry";
-import { liveFocused, MENU_STATE_CLOCK_MS, MENU_STATE_THROTTLE_MS, menuStateOf, publishMenuState, type MenuFacts } from "./nativeMenuState";
+import { codeCommandRefused, liveFocused, MENU_STATE_CLOCK_MS, MENU_STATE_THROTTLE_MS, menuStateOf, publishMenuState, type MenuFacts } from "./nativeMenuState";
 import { rightPanel } from "./rightPanel";
 import { sessionStore } from "./tcserver/store";
 import type { SessionMeta } from "./tcserver/types";
@@ -314,5 +314,30 @@ describe("publishMenuState", () => {
     vi.advanceTimersByTime(MENU_STATE_CLOCK_MS + MENU_STATE_THROTTLE_MS);
     expect(send).toHaveBeenCalledTimes(2);
     publisher.stop();
+  });
+});
+
+describe("a code command's keys with a Work thread in front", () => {
+  afterEach(() => {
+    rightPanel.reset();
+    vi.restoreAllMocks();
+  });
+  const front = (meta: Record<string, unknown>) => {
+    rightPanel.reset();
+    rightPanel.visible(String(meta.id), true);
+    vi.spyOn(sessionStore, "get").mockReturnValue(undefined);
+    vi.spyOn(sessionStore, "metaOf").mockReturnValue(meta as never);
+    vi.spyOn(workspaceStore, "getSnapshot").mockReturnValue({ workspaces: [], projects: [] } as never);
+  };
+
+  it("do nothing: ⌘J, ⌃` and ⌃⇧` reach no terminal, Go to Symbol no picker", () => {
+    front({ id: "w", scope: "work", parentId: null });
+    for (const id of ["toggle_terminal", "new_terminal", "new_terminal_tab", "go_to_symbol", "show_hierarchy"]) expect(codeCommandRefused(id)).toBe(true);
+    expect(codeCommandRefused("new_tab")).toBe(false);
+  });
+
+  it("a code thread in front keeps every one", () => {
+    front({ id: "c", parentId: null });
+    for (const id of ["toggle_terminal", "new_terminal", "new_terminal_tab"]) expect(codeCommandRefused(id)).toBe(false);
   });
 });

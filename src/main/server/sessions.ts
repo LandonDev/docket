@@ -354,11 +354,11 @@ export function watchLine(bg: BackgroundWork | null | undefined, titleOf?: Agent
 /** The provider phase's words; past PROVIDER_WAIT_MS the seconds line takes over. */
 const WAITING_PROVIDER_LINE = 'Waiting for the provider'
 
-/** The words of a turn's phase before its first content (events.ts `phase`). */
-export function phaseLine(event: Extract<AgentEvent, { type: 'phase' }>): string | null {
+/** The words of a turn's phase before its first content (events.ts `phase`). A Work thread names no CLI (`work`). */
+export function phaseLine(event: Extract<AgentEvent, { type: 'phase' }>, work = false): string | null {
   switch (event.phase) {
     case 'cli-starting':
-      return 'Starting the CLI'
+      return work ? 'Starting' : 'Starting the CLI'
     case 'initializing':
       return 'Initializing'
     case 'waiting-provider':
@@ -378,13 +378,13 @@ export function phaseLine(event: Extract<AgentEvent, { type: 'phase' }>): string
 const THINKING_ACTIVITY: Activity = { text: 'Thinking', kind: 'think' }
 const COMPACTING_ACTIVITY: Activity = { text: COMPACTING_WORDS, kind: 'think' }
 
-function activityOf(event: AgentEvent): Activity | null | undefined {
+function activityOf(event: AgentEvent, work = false): Activity | null | undefined {
   if (event.type === 'status') {
     return event.status === 'running' ? { text: 'Thinking', kind: 'think' } : null
   }
   // A phase is the turn's own word for its wait; cleared, the turn is back to thinking.
   if (event.type === 'phase') {
-    const text = phaseLine(event)
+    const text = phaseLine(event, work)
     return { text: text ?? 'Thinking', kind: 'think' }
   }
   if (event.type === 'tool-call' && !event.partial && !event.parentCallId) {
@@ -4990,7 +4990,7 @@ export class SessionRegistry {
       // is kept for the send and shows nothing now.
       if (event.phase !== null && !(meta && PHASE_STATUSES.has(meta.status))) return
       // A phase cleared mid-compaction is back to compacting, not thinking.
-      const act = event.phase === null && this.compacting.has(sessionId) ? COMPACTING_ACTIVITY : activityOf(event)
+      const act = event.phase === null && this.compacting.has(sessionId) ? COMPACTING_ACTIVITY : activityOf(event, !!meta && sessionScopeOf(meta) === 'work')
       if (act === null) this.activities.delete(sessionId)
       else if (act) this.activities.set(sessionId, act)
       if (meta) this.notifyMeta(meta)
@@ -5144,7 +5144,7 @@ export class SessionRegistry {
         : event.type === 'status' && this.compacting.has(sessionId)
           ? COMPACTING_ACTIVITY
           : kept
-            ? activityOf(kept)
+            ? activityOf(kept, sessionScopeOf(this.row(sessionId) ?? {}) === 'work')
             : repeated
               ? undefined
               : activityOf(event)

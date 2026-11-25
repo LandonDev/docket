@@ -462,7 +462,8 @@ export function actionGroupOf(
     live = false,
     liveEdits,
     titleOf,
-  }: { cwd?: string; live?: boolean; liveEdits?: Record<string, LiveEditState>; titleOf?: TitleOf } = {},
+    work = false,
+  }: { cwd?: string; live?: boolean; liveEdits?: Record<string, LiveEditState>; titleOf?: TitleOf; work?: boolean } = {},
 ): ActionGroup {
   const tools = blocks.filter(isToolBlock);
   const steps = blocks.filter(isStepBlock);
@@ -482,12 +483,13 @@ export function actionGroupOf(
   const phrase =
     kind === "think"
       ? live ? "Thinking" : "Thought"
-      : groupPhrase(blocks, cwd, live, titleOf) || (live ? "Working" : "Worked");
+      : groupPhrase(blocks, cwd, live, titleOf, work) || (live ? "Working" : "Worked");
   return {
     kind,
     phrase,
-    adds,
-    dels,
+    // A Work thread's line carries no line totals: they wait in the edit rows, behind Show changes.
+    adds: work ? 0 : adds,
+    dels: work ? 0 : dels,
     failed:
       tools.filter((b) => toolCallState(b) === "rejected").length + steps.reduce((n, b) => n + stepFailures(b), 0),
     lone: steps.reduce((n, b) => n + stepRows(b), 0) <= 1,

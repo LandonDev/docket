@@ -308,7 +308,7 @@ import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
 import { returnOf } from "./lib/workReturn";
 import { isBareSeed, onWorkSearch, openWorkSearch, type WorkSearchSeed } from "./lib/workSearchPort";
 import { devPane, devPaneStore, useDevPane } from "./lib/devPane";
-import { useNativeMenuState } from "./lib/nativeMenuState";
+import { codeCommandRefused, useNativeMenuState } from "./lib/nativeMenuState";
 import { SurfaceSkeleton } from "./surfaces/SurfaceSkeleton";
 // Lazy surfaces (surfaces/chunks.ts): none of these is on the first-paint path.
 const DevServersPane = terminalChunk.surface("DevServersPane", <SurfaceSkeleton kind="terminal" label="Loading dev servers" />);
@@ -3247,6 +3247,8 @@ export default function App() {
   const execute = useCallback(
     (cmd: AppCommand) => {
       const a = actions.current;
+      // A code command's keys with a Work thread in front do nothing (lib/nativeMenuState.ts).
+      if (codeCommandRefused(cmd.id)) return;
       const go = (fn: () => void) =>
         run(cmd.index !== undefined ? `${cmd.id}_${cmd.index}` : cmd.id, fn);
       switch (cmd.id) {

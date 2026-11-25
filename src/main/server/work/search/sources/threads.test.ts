@@ -84,18 +84,26 @@ afterEach(async () => {
 })
 
 describe('titles', () => {
-  it('are answered at once from the Work rows, newest first, with Work Chats when the reach has them, and never a code thread, a subagent or an archived thread', async () => {
+  it('are answered at once from the Work rows, newest first, with Work Chats when the reach has them, never a code thread or a subagent, and an archived thread last, marked', async () => {
     const hits = await threadTitles.search(ask('budget'), {} as never)
     expect(threadTitles.tier).toBe('instant')
     expect(hits.map((h) => [h.key, h.workspaceId])).toEqual([
       ['thread:t-cosmic', COSMIC],
       ['thread:t-purdue', PURDUE],
-      ['thread:t-chat', null]
+      ['thread:t-chat', null],
+      ['thread:t-old', PURDUE]
     ])
     expect(hits[0]).toMatchObject({ kind: 'thread', title: 'Server budget', open: { to: 'thread', sessionId: 't-cosmic' } })
+    expect(hits[0]!.detail).toBeUndefined()
+    expect(hits[3]).toMatchObject({ title: 'Budget 2024', detail: 'Archived', open: { to: 'thread', sessionId: 't-old', archived: true } })
+  })
+  it('never let archived threads crowd out live ones under the limit', async () => {
+    for (let i = 0; i < 6; i++) thread(`t-arch-${i}`, { title: `Budget archive ${i}`, scope: 'work', workspaceId: PURDUE, archived: true, at: 100 + i })
+    const hits = await threadTitles.search(ask('budget', everywhere, 3), {} as never)
+    expect(hits.slice(0, 3).map((h) => h.key)).toEqual(['thread:t-cosmic', 'thread:t-purdue', 'thread:t-chat'])
   })
   it('stay inside one job, a thread in a project of the job among them', async () => {
-    expect((await threadTitles.search(ask('budget', onlyPurdue), {} as never)).map((h) => h.key)).toEqual(['thread:t-purdue'])
+    expect((await threadTitles.search(ask('budget', onlyPurdue), {} as never)).map((h) => h.key)).toEqual(['thread:t-purdue', 'thread:t-old'])
     expect((await threadTitles.search(ask('venue', onlyPurdue), {} as never)).map((h) => [h.key, h.workspaceId])).toEqual([['thread:t-project', PURDUE]])
     expect(await threadTitles.search(ask('venue', { workspaces: [everywhere.workspaces[1]], chats: false, sessionId: null }), {} as never)).toEqual([])
   })
@@ -111,6 +119,12 @@ describe('the words said in a thread', () => {
     expect(purdue.open).toMatchObject({ to: 'thread', sessionId: 't-purdue' })
     expect((purdue.open as { seq?: number }).seq).toBeGreaterThan(0)
     expect(hits.find((h) => h.key === 'thread:t-project')!.workspaceId).toBe(PURDUE)
+  })
+  it('find an archived thread by its words, marked, and opening it puts it back', async () => {
+    say('t-old', 'Last year the pizza ran out by noon.')
+    const hit = (await threadWords.search(ask('noon', everywhere, 10), {} as never)).find((h) => h.key === 'thread:t-old')!
+    expect(hit).toMatchObject({ detail: 'Archived', open: { to: 'thread', sessionId: 't-old', archived: true } })
+    expect(hit.snippet).toContain('noon')
   })
   it('stay inside one job, with no Work Chat', async () => {
     const hits = await threadWords.search(ask('pizza', onlyPurdue, 10), {} as never)

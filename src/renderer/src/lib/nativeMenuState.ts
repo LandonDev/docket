@@ -69,6 +69,20 @@ export type MenuFacts = {
  */
 export const CODE_ONLY_IDS = ["new_terminal", "toggle_terminal", "go_to_symbol", "show_hierarchy"] as const;
 
+/** The focused thread is a Work thread (lib/workRow.ts), by its row. */
+export function workThreadInFront(): boolean {
+  const focusedId = rightPanel.focused();
+  return !!focusedId && isWorkSession(sessionStore.get(focusedId) ?? sessionStore.metaOf(focusedId), workspaceStore.getSnapshot().workspaces);
+}
+
+/**
+ * A code command reached by its keys (⌘J, ⌃`, ⌃⇧`, Go to Symbol's) with a Work thread in front: it does nothing, as
+ * the menu bar draws no row for it. The terminal's new tab counts with the terminal.
+ */
+export function codeCommandRefused(id: string): boolean {
+  return (id === "new_terminal_tab" || (CODE_ONLY_IDS as readonly string[]).includes(id)) && workThreadInFront();
+}
+
 const FLEET_IDS: Record<BatchAction, string> = {
   pause: "pause_all_threads",
   resume: "resume_all_threads",

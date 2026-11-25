@@ -24,7 +24,7 @@ export interface WorkThread {
 }
 
 export interface SearchHost {
-  /** Every Work thread that is not archived, newest first. Never a code thread. */
+  /** Every Work thread, archived ones flagged, newest first. Never a code thread. */
   threads(): WorkThread[]
   /** One Work thread by id; null for a code thread or an unknown id. */
   thread(id: string): WorkThread | null
@@ -53,7 +53,7 @@ export function makeSearchHost(deps: SearchHostDeps): SearchHost {
     threads: () =>
       deps
         .sessions()
-        .filter((s) => sessionScopeOf(s) === 'work' && !s.archived)
+        .filter((s) => sessionScopeOf(s) === 'work')
         .map(threadOf)
         .sort((a, b) => b.updatedAt - a.updatedAt),
     thread(id) {
@@ -76,7 +76,8 @@ export const setSearchHost = (host: SearchHost | null): void => void (current = 
 export function searchHostPart(deps: WorkPartDeps): void {
   const { registry, store } = deps
   current = makeSearchHost({
-    sessions: () => registry.listRaw({ archived: false }),
+    // Archived threads too: Work Search finds them, marked, and opening one puts it back.
+    sessions: () => registry.listRaw({}),
     session: (id) => registry.get(id),
     workspaceOfProject: (id) => registry.getProject(id)?.workspaceId ?? null,
     searchEvents: (o) => store.searchEvents(o)

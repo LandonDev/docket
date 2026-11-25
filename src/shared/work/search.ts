@@ -16,7 +16,8 @@ export type SearchKind = string
 export type SearchOpen =
   /** `openWorkView({ workspaceId, view, ...with })` */
   | { to: 'view'; view: string; with?: Record<string, unknown> }
-  | { to: 'thread'; sessionId: string; seq?: number }
+  /** `archived`: the thread is archived, and opening it puts it back first */
+  | { to: 'thread'; sessionId: string; seq?: number; archived?: true }
   /** Files' own ref, handed back to `work.files.open` untouched */
   | { to: 'file'; ref: unknown; name: string }
   /** a hit that came through a mention source: opened as its chip is from a sent message */

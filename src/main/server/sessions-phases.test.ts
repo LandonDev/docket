@@ -155,6 +155,12 @@ it('a steer the turn settled on is said for the next turn, not as waiting on it'
   expect(registry.get(id)?.activity).toBe('Thinking')
 })
 
+it("a Work thread's boot names no CLI: Starting, where a code thread reads Starting the CLI", () => {
+  expect(phaseLine({ type: 'phase', phase: 'cli-starting' })).toBe('Starting the CLI')
+  expect(phaseLine({ type: 'phase', phase: 'cli-starting' }, true)).toBe('Starting')
+  expect(phaseLine({ type: 'phase', phase: 'initializing' }, true)).toBe('Initializing')
+})
+
 it('phaseLine words every phase', () => {
   expect(phaseLine({ type: 'phase', phase: 'waiting-provider' })).toBe('Waiting for the provider')
   expect(phaseLine({ type: 'phase', phase: 'retrying' })).toBe('Retrying')

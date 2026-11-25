@@ -19,28 +19,20 @@ import type { SearchSource } from '../source'
  */
 const WORDS_THREADS = 200
 
-const hitOf = (t: WorkThread, over: Partial<SearchHit> = {}): SearchHit => ({
-  key: threadKey(t.id),
-  kind: 'thread',
-  title: t.title || 'Untitled',
-  at: t.updatedAt,
-  workspaceId: t.workspaceId,
-  open: { to: 'thread', sessionId: t.id },
-  ...over
-})
+/** An archived thread's hit says so in its fact, and opening it puts the thread back (`open.archived`). */
+const hitOf = (t: WorkThread, over: Partial<SearchHit> = {}): SearchHit => {
+  const hit: SearchHit = { key: threadKey(t.id), kind: 'thread', title: t.title || 'Untitled', at: t.updatedAt, workspaceId: t.workspaceId, open: { to: 'thread', sessionId: t.id }, ...over }
+  return t.archived && hit.open.to === 'thread' ? { ...hit, detail: 'Archived', snippet: hit.snippet, open: { ...hit.open, archived: true } } : hit
+}
 
-/** Titles, from memory: newest first. A subagent's row is not listed. */
+/** Titles, from memory: newest first, live threads before archived ones. A subagent's row is not listed. */
 export const threadTitles: SearchSource = {
   kind: 'thread',
   label: 'Threads',
   tier: 'instant',
   async search(ask) {
-    const out: SearchHit[] = []
-    for (const t of searchHost()?.threads() ?? []) {
-      if (out.length > ask.limit) break
-      if (!t.child && inReach(ask.reach, t.workspaceId) && mentionMatches(ask.text, t.title)) out.push(hitOf(t))
-    }
-    return out
+    const found = (searchHost()?.threads() ?? []).filter((t) => !t.child && inReach(ask.reach, t.workspaceId) && mentionMatches(ask.text, t.title))
+    return [...found.filter((t) => !t.archived), ...found.filter((t) => t.archived)].slice(0, ask.limit + 1).map((t) => hitOf(t))
   }
 }
 
@@ -54,7 +46,7 @@ export const threadWords: SearchSource = {
     if (!host) return []
     const out: SearchHit[] = []
     const seen = new Set<string>()
-    // A subagent's thread is found by its words, so it is in the list; an archived one is not listed at all.
+    // A subagent's thread is found by its words, so it is in the list; an archived one too, marked.
     const within = host.threads().filter((t) => inReach(ask.reach, t.workspaceId)).map((t) => t.id)
     for (const row of await host.words(ask.text, WORDS_THREADS, within)) {
       if (out.length > ask.limit) break
@@ -63,7 +55,7 @@ export const threadWords: SearchSource = {
       seen.add(row.sessionId)
       const t = host.thread(row.sessionId)
       // The host's query is held to Work threads; the row's own stamp is read again here all the same.
-      if (!t || t.archived || !inReach(ask.reach, t.workspaceId)) continue
+      if (!t || !inReach(ask.reach, t.workspaceId)) continue
       out.push(hitOf(t, { snippet: row.snippet, at: row.ts, open: { to: 'thread', sessionId: t.id, ...(row.seq > 0 ? { seq: row.seq } : {}) } }))
     }
     return out

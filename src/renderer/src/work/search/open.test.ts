@@ -26,6 +26,7 @@ function rig(selected: string[] = ["purdue"], over: Partial<OpenDeps> = {}) {
     enter: (w) => void did.push(["enter", w.path]),
     view: (next) => void did.push(["view", next]),
     thread: (sessionId, seq) => void did.push(["thread", sessionId, seq]),
+    restore: async (sessionId) => void did.push(["restore", sessionId]),
     file: async (w, file) => void did.push(["file", w.id, file]),
     held: (id, hostId) => void did.push(["held", id, hostId]),
     startThread: (chip, w) => void did.push(["startThread", chip.label, w.id]),
@@ -38,6 +39,22 @@ function rig(selected: string[] = ["purdue"], over: Partial<OpenDeps> = {}) {
 }
 
 describe("opening a hit", () => {
+  it("an archived thread is put back first, then opens; a live one is never touched", async () => {
+    const r = rig(["purdue"]);
+    const archived = hit({ key: "thread:t-old", kind: "thread", detail: "Archived", open: { to: "thread", sessionId: "t-old", archived: true } });
+    expect(await openHit(archived, "box", r.deps)).toBe("opened");
+    expect(r.did.slice(0, 3)).toEqual([["restore", "t-old"], ["clear"], ["thread", "t-old", undefined]]);
+    const live = rig(["purdue"]);
+    await openHit(hit({ key: "thread:t1", kind: "thread", open: { to: "thread", sessionId: "t1" } }), "box", live.deps);
+    expect(live.did.some((d) => d[0] === "restore")).toBe(false);
+  });
+  it("an archived thread the host will not put back opens nothing", async () => {
+    const r = rig(["purdue"], { restore: async () => Promise.reject(new Error("refused")) });
+    const archived = hit({ key: "thread:t-old", kind: "thread", open: { to: "thread", sessionId: "t-old", archived: true } });
+    expect(await openHit(archived, "box", r.deps)).toBe("failed");
+    expect(r.did).toEqual([]);
+  });
+
   it("in the window's own job opens the thing in its view, without moving the window, and tells the host", async () => {
     const r = rig(["purdue"]);
     expect(await openHit(hit(), "box", r.deps)).toBe("opened");

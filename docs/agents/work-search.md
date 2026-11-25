@@ -64,7 +64,7 @@ when `reach.chats`). `open` says how the window opens the hit in place:
 | `open` | What the window does |
 |---|---|
 | `{ to: 'view', view, with? }` | `openWorkView({ workspaceId, view, ...with })` |
-| `{ to: 'thread', sessionId, seq? }` | opens the thread, at a row when `seq` is given |
+| `{ to: 'thread', sessionId, seq?, archived? }` | opens the thread, at a row when `seq` is given; an `archived` thread is put back first |
 | `{ to: 'file', ref, name }` | `work.files.open` with Files' own ref, then the Files view |
 | `{ to: 'chip', chip }` | as the chip opens from a sent message (`openerOf`) |
 
@@ -227,7 +227,12 @@ the registry's rows for titles and the FTS5 index every host keeps for
 words. Both are held to rows stamped `scope: 'work'`, the words by the
 query itself (`Store.searchEvents` takes `scope`), so a code thread is never
 answered whatever it says. A thread in a project has no `workspace_id` on
-its row; its job is its project's.
+its row; its job is its project's. An archived thread is found too, by title
+and by its words: its hit's fact reads "Archived", titles list it after every
+live one so it never takes a live thread's place, and its open carries
+`archived: true`, so Return puts the thread back first (`setSessionArchived`,
+as the archived list's Restore does) and then opens it; a refused restore
+opens nothing.
 
 **Files** are Files' to find. `search/ask.ts` finds the pillar
 that owns a method and calls its module's `handle` with the caller the
