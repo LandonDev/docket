@@ -51,7 +51,9 @@ real caller (the thread, his window, a key) and the withhold; a push about such 
   for silence, Sign in, Show the code or Open Settings where this window may,
   else who can, a muted wait while LifeOS is on its way; Refresh is not
   offered meanwhile, the figures stay as of before, and the page is read again
-  when the host says connected. With no figures to show, the body says it, as
+  when the host says connected: while that read is out the line says nothing
+  (the old failure is dropped) and the bar's spinner stands in Refresh's place
+  until the figures land. With no figures to show, the body says it, as
   any canvas item does that could not open for LifeOS (`OpenFailed`, by the
   pane's host).
 - **Stale**: `work.dashboards.open` asks each source sheet for its rev; if

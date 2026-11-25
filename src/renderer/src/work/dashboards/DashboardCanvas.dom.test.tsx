@@ -493,6 +493,29 @@ describe("a dashboard read from LifeOS sheets while LifeOS is down", () => {
     await waitFor(() => expect(dashHost.refresh).toHaveBeenCalledTimes(1));
   });
 
+  /** Council round 12 (Sol rest 2): back on connected, the line fell back to the saved failure and the bar lost its spinner. */
+  it("shows the read's own spinner in the bar once LifeOS is back, with no line, until the figures land", async () => {
+    const { setLifeosStatus } = await import("../shell/lifeos");
+    setLifeosStatus("local", st("signed-out"));
+    open(page({ failed: NOT_SIGNED_IN, lifeos: "signed-out" }));
+    await found("[data-canvas-state]");
+    let done!: () => void;
+    dashHost.refresh.mockImplementation(() => new Promise((resolve) => (done = () => resolve({ ...page(), itemId: item.id, asOf: page().asOf! + 60_000 }))));
+    act(() => setLifeosStatus("local", st("connected")));
+    await waitFor(() => expect(dashHost.refresh).toHaveBeenCalledTimes(1));
+    // Every reader has settled what it can: the bar's own status reader too, before the figures.
+    await act(async () => new Promise((settle) => setTimeout(settle, 20)));
+    expect(document.querySelector("[data-canvas-state]")).toBeNull();
+    expect(screen.queryByText("Couldn't read the figures")).toBeNull();
+    expect(screen.queryByText(NOT_SIGNED_IN)).toBeNull();
+    expect(screen.getByRole("status", { name: "Reading the figures" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    await act(async () => done());
+    await waitFor(() => expect(screen.queryByRole("status", { name: "Reading the figures" })).toBeNull());
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(document.querySelector("[data-canvas-state]")).toBeNull();
+  });
+
   it("says the host's silence red with Retry, which reads the page again", async () => {
     const { setLifeosUnanswered } = await import("../shell/lifeos");
     setLifeosUnanswered("local");

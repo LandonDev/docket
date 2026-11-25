@@ -155,7 +155,7 @@ export function Body(props: Props) {
   const lifeos = useDashLifeos(view, props.env, readAgain);
   const { press, elsewhere } = useDownPress(lifeos.down, props.env);
   const { action, dialog } = useDownAction(press, props.env, reread);
-  useFeeds(shell, host, store, view, current, setCurrent, lifeosLineOf(lifeos, props.env, action, elsewhere));
+  useFeeds(shell, host, store, view, current, setCurrent, lifeosLineOf(lifeos, props.env, action, elsewhere), !!lifeos.again);
 
   if (error) return <OpenFailed kind="dashboard" why={error} onRetry={retryOpen} />;
   if (!view) return <DashSkeleton />;
@@ -224,6 +224,8 @@ function useFeeds(
   setCurrent: (n: number) => void,
   /** the host's LifeOS session, down: said in the place of a failed read's line */
   lifeos: StatusLine | null,
+  /** LifeOS back and the figures read again (`useLiveDown`'s again): the Bar's spinner says it, never the old failure */
+  again: boolean,
 ): void {
   const has = !!view;
   useEffect(() => {
@@ -257,8 +259,9 @@ function useFeeds(
     return () => shell.review(null);
   }, [shell, host, store, proposedIds, by, current, setCurrent]);
 
-  // A failed read over figures still shown; with none, the body says it (`OpenFailed`).
-  const failed = view?.blocks.length ? view.failed : undefined;
+  // A failed read over figures still shown; with none, the body says it (`OpenFailed`). While the figures read again
+  // once LifeOS is back, the failure saved before is old: the line says nothing until the read answers.
+  const failed = view?.blocks.length && !again ? view.failed : undefined;
   // The newest press is kept in a ref: a render makes the line anew, and the line is handed up only when what it says changes.
   const down = useRef(lifeos);
   down.current = lifeos;
@@ -319,6 +322,7 @@ export function Bar(props: Props) {
   const store = storeOf(props.item.id);
   const { view, error, refreshing, missed } = useSlot(store);
   // While the host's LifeOS session is down the line has the one press: Refresh, which needs the session, is not offered.
+  // The read again on its return is the Body's (`refreshing`).
   const lifeos = useDashLifeos(view, props.env);
   if (!view) return error ? null : <Skeleton data-dash-bar-bone className="h-3 w-30" />;
   if (!view.asOf || view.blocks.some((b) => b.proposed)) return null;
@@ -339,12 +343,14 @@ export function Bar(props: Props) {
     <span data-dash-asof className="ms-auto flex shrink-0 items-center gap-1 tabular-nums">
       {view.stale || missed ? <span className="font-medium text-foreground">Out of date</span> : null}
       <span>As of {dayTime(view.asOf)}</span>
-      {/* While it reads, the spinner takes the button's own 24px place, so nothing beside it moves. */}
-      {lifeos.down || lifeos.waits ? null : refreshing ? (
+      {/* While it reads, the spinner takes the button's own 24px place, so nothing beside it moves. A read out (his Refresh,
+          or the read again once LifeOS is back) keeps it until the figures land, whatever this bar's own status reader says
+          of the cause saved before: that reader settles before the figures do. */}
+      {refreshing || lifeos.again ? (
         <span role="status" aria-label="Reading the figures" className="flex size-6 items-center justify-center text-muted-foreground">
           <Spinner className="size-3" />
         </span>
-      ) : (
+      ) : lifeos.down || lifeos.waits ? null : (
         <Tip label="Refresh">
           <Button variant="ghost" size="icon-xs" aria-label="Refresh" onClick={refresh} className="text-muted-foreground">
             <RefreshCw />
