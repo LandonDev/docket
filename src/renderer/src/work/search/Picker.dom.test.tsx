@@ -353,6 +353,41 @@ describe("Work search", () => {
     }
   });
 
+  /** Council round 12 (Sol rest 1): with nothing left out at first, a drop afterwards left the footer silent and the mail rows live. */
+  it("watches the host asked for LifeOS from the first ask: a drop holds its rows under the named line, and its return asks again", async () => {
+    const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
+    try {
+      act(() => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
+      await mount();
+      await type("budget");
+      await land(asks.length - 1, answer([group("mail", "Mail", [hit("lifeos:mailThreads:m1", "mail")]), group("thread", "Threads", [hit("thread:t1", "thread")])]));
+      const foot = () => document.querySelector("[data-work-search-causes]")?.textContent ?? null;
+      const row = (key: string) => list().querySelector<HTMLElement>(`[data-row="hit:${key}"]`)!;
+      expect(foot()).toBeNull();
+      expect(selected()).toBe("hit:lifeos:mailThreads:m1");
+      act(() => setLifeosStatus("box", { lifeos: { state: "signed-out" }, keys: [] } as never));
+      expect(foot()).toBe("Not signed in to LifeOS on the box.");
+      expect(document.querySelector("[data-work-search-causes] button")).toBeNull();
+      // The mail stays in its place, held: never lit, never taken; the highlight goes to the first row that opens.
+      expect(row("lifeos:mailThreads:m1").getAttribute("aria-disabled")).toBe("true");
+      expect(selected()).toBe("hit:thread:t1");
+      fireEvent.click(row("lifeos:mailThreads:m1"));
+      expect(opened.hits).toEqual([]);
+      act(() => setLifeosStatus("box", { lifeos: { state: "connecting" }, keys: [] } as never));
+      expect(foot()).toBe("LifeOS is still connecting on the box.");
+      expect(row("lifeos:mailThreads:m1").getAttribute("aria-disabled")).toBe("true");
+      const before = asks.length;
+      await act(async () => setLifeosStatus("box", { lifeos: { state: "connected" }, keys: [] } as never));
+      // Back: the same words asked again, the line gone and the row live again.
+      expect(asks.length).toBe(before + 1);
+      expect(asks.at(-1)!.params).toMatchObject({ text: "budget" });
+      expect(foot()).toBeNull();
+      expect(row("lifeos:mailThreads:m1").hasAttribute("aria-disabled")).toBe(false);
+    } finally {
+      resetLifeos();
+    }
+  });
+
   it("keeps the time column from his first word, whichever rows have landed: the job column never jumps when a timed kind lands", async () => {
     await mount();
     await type("dana");

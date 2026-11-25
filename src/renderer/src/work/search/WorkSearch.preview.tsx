@@ -2,18 +2,19 @@ import { createRef } from "react";
 import type { SearchAnswer, SearchGroup, SearchHit } from "@shared/work/search";
 import { PickerFrame } from "../../chrome/PickerDialog";
 import type { Job } from "./hosts";
-import { activeOf, begin, busy, emptyModel, isOption, landInstant, landSource, rowsOf, step, type SearchHost, type SearchModel } from "./model";
+import { activeOf, begin, busy, emptyModel, isOption, landInstant, landSource, rowsOf, step, withLifeosLine, type SearchHost, type SearchModel } from "./model";
 import { FieldEnd, Results } from "./Picker";
 
 /**
  * Work search in each of its states, with no dialog round it, for `bun run
  * ui:preview src/renderer/src/work/search/WorkSearch.preview.tsx#WorkSearchPreview --shot`
  * (docs/DESIGN.md "Work search"): Recent, results across jobs, one job, one
- * kind, a source still out, LifeOS signed out, nothing found. Made-up rows.
+ * kind, a source still out, LifeOS signed out, LifeOS lost after its rows
+ * landed (its rows held), nothing found. Made-up rows.
  * Rendered by nothing in the app.
  */
 
-export type PreviewState = "recent" | "across" | "moved" | "one-job" | "one-kind" | "waiting" | "lifeos" | "nothing" | "nothing-in-job";
+export type PreviewState = "recent" | "across" | "moved" | "one-job" | "one-kind" | "waiting" | "lifeos" | "lifeos-dropped" | "nothing" | "nothing-in-job";
 
 const box: SearchHost = { id: "box", name: "MacBook", home: true };
 const JOBS: Job[] = [
@@ -90,6 +91,13 @@ function modelOf(state: PreviewState): { model: SearchModel; job: Job | null } {
     case "lifeos": {
       const m = typed("budget");
       return { model: landInstant(m, m.gen, "box", answer([FILES, THREADS], [], [{ cause: "lifeos", line: "This host is not signed in to LifeOS" }])).model, job: null };
+    }
+    case "lifeos-dropped": {
+      // Found with LifeOS connected, then the host lost it: LifeOS's rows stay in place, held, under its line.
+      const fromLifeos = (g: SearchGroup): SearchGroup => ({ ...g, hits: g.hits.map((h) => ({ ...h, key: `lifeos:${g.kind}:${h.key}` })) });
+      const m = typed("budget");
+      const found = landInstant(m, m.gen, "box", answer([fromLifeos(PEOPLE), fromLifeos(MAIL), FILES, THREADS])).model;
+      return { model: withLifeosLine(found, "Not signed in to LifeOS on MacBook."), job: null };
     }
     case "nothing":
     case "nothing-in-job": {

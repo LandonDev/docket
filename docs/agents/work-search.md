@@ -144,7 +144,11 @@ them:
   session's own words, however many kinds it feeds. The window words that
   line from the host's live status as it changes (Picker.tsx, `useLiveDown`,
   `withLifeosLine`), with no press, and asks the same words again once that
-  host says connected; the line is gone while they are out.
+  host says connected; the line is gone while they are out. It watches the
+  host asked for LifeOS from the first ask of a kind LifeOS feeds, not only
+  after a line: a host that loses LifeOS after its rows landed gets the same
+  line, and those rows (`fromLifeos`) stay in place held, drawn as a
+  disabled row and never lit or taken, until the search runs again.
 - **A remote key and files.** A hit that names a file (in `open` or its
   chip) is shown to a remote key only when the key could have named the
   file itself (`ctx.reaches`).

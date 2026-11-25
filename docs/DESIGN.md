@@ -3859,7 +3859,10 @@ his hands and leaves no trace on what he was searching from.
   foot, in LifeOS's or the host's own words: "LifeOS is signed out on
   MacBook.", "The box is offline.", "Mail did not answer." (a source),
   "The box did not answer." (a host's first answer). One line for
-  LifeOS covers every kind it feeds. The lines stand under the list,
+  LifeOS covers every kind it feeds, and follows its host's live status:
+  LifeOS lost after its rows landed adds the line, and those rows stay in
+  place drawn as disabled, never lit or taken, until it is back and the
+  search runs again. The lines stand under the list,
   outside its scroller, so a list that fills its box never hides them. No button: Settings → Connections has
   the fix. A source that does not exist on a host says nothing.
 - **Return opens in place**: the picker closes, the window enters the

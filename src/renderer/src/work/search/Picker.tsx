@@ -24,7 +24,7 @@ import { liveDeps, SearchController } from "./controller";
 import { holdStill, outOfSight } from "./hold";
 import { askDesktop, DESK, deskHosts, desktopsFor, NO_DESKTOPS, unsearchedLine, type Desktops } from "./desktops";
 import { askHost, jobOfWorkspace, jobsOf, searchHosts, type Job } from "./hosts";
-import { activeOf, busy, isOption, placesMix, rowsOf, withLifeosLine, type Option, type Row } from "./model";
+import { activeOf, asksLifeos, busy, isOption, placesMix, rowsOf, withLifeosLine, type Option, type Row } from "./model";
 import { downWords } from "../shell/lifeosDown";
 import { savedOfState, useLiveDown } from "../shell/lifeosLive";
 import { connectingWords } from "../shell/lifeosWords";
@@ -144,13 +144,17 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
   const [desksAt, setDesksAt] = useState(0);
   const [controller] = useState(() => new SearchController(liveDeps((hostId, params) => (hostId.startsWith(DESK) ? askDesktop(desktops.current, hostId, params) : askHost(hostId, params)))));
   const asked = useSyncExternalStore(controller.subscribe, controller.read, controller.read);
-  // LifeOS left out on a host: its line follows that host's live status (`useLiveDown`), with no press, and the same
+  // LifeOS on the host asked for it, from the first ask that reaches it (or the host it was left out on): its line follows
+  // that host's live status (`useLiveDown`), with no press, its rows held while it is down or on its way, and the same
   // words are asked again once it says connected.
   const [reran, setReran] = useState(0);
   const left = asked.quiet.find((q) => q.lifeos)?.lifeos ?? null;
-  const live = useLiveDown(left ? savedOfState(left.state) : null, left?.host ?? null, () => setReran((n) => n + 1));
-  const liveLine = !left ? null : live.down ? `${downWords(live.down, left.name)}.` : live.waits ? `${connectingWords(left.name)}.` : null;
-  const model = useMemo(() => (left ? withLifeosLine(asked, liveLine) : asked), [asked, left, liveLine]);
+  const home = asked.hosts.find((h) => h.home);
+  const watched = left ? { id: left.host, name: left.name } : home && asksLifeos(asked.kind) ? home : null;
+  const live = useLiveDown(left ? savedOfState(left.state) : null, watched?.id ?? null, () => setReran((n) => n + 1));
+  const liveLine = !watched ? null : live.down ? `${downWords(live.down, watched.name)}.` : live.waits ? `${connectingWords(watched.name)}.` : null;
+  const watching = watched !== null;
+  const model = useMemo(() => (watching ? withLifeosLine(asked, liveLine) : asked), [asked, watching, liveLine]);
   useEffect(() => () => controller.close(), [controller]);
   useEffect(() => {
     const { hosts, offline } = searchHosts(job, { workspaces: () => workspaces });
@@ -575,6 +579,8 @@ export function Results({
             }
             const highlighted = row.id === active;
             const option = options.indexOf(row);
+            // A row only LifeOS opens while its host has lost it: drawn as a menu's disabled row, never lit or taken; the foot says why.
+            const held = row.type === "hit" && !!row.held;
             const common = {
               ref: highlighted ? activeRef : undefined,
               id: optionId(row.id),
@@ -582,8 +588,7 @@ export function Results({
               "aria-selected": highlighted,
               "data-row": row.id,
               onMouseDown: (e: { preventDefault(): void }) => e.preventDefault(),
-              onMouseEnter: () => onRowEnter(option),
-              onClick: () => onTake(row),
+              ...(held ? { "aria-disabled": true, "data-held": "" } : { onMouseEnter: () => onRowEnter(option), onClick: () => onTake(row) }),
             };
             if (row.type !== "hit") {
               return (
@@ -601,7 +606,7 @@ export function Results({
             const time = timeOf(hit, now);
             const job = mixed ? jobOf(hit) : null;
             return (
-              <div key={row.id} {...common} data-menu-id={row.id} data-kind={hit.kind} className={cn(pickerRowClass(highlighted), CLEAR_OF_FADE)}>
+              <div key={row.id} {...common} data-menu-id={held ? undefined : row.id} data-kind={hit.kind} className={cn(pickerRowClass(highlighted), CLEAR_OF_FADE, held && "pointer-events-none opacity-50")}>
                 {hit.kind === "file" ? (
                   <span className="shrink-0">
                     <FileTypeIcon name={hit.title} isDir={false} />

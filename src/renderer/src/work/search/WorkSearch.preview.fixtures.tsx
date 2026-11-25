@@ -9,6 +9,7 @@ const fixtures: { name: string; props: { state: PreviewState } }[] = [
   { name: "One kind: all mail", props: { state: "one-kind" } },
   { name: "A source still out", props: { state: "waiting" } },
   { name: "LifeOS signed out", props: { state: "lifeos" } },
+  { name: "LifeOS lost after its rows landed", props: { state: "lifeos-dropped" } },
   { name: "Nothing found", props: { state: "nothing" } },
   { name: "Nothing found in one job", props: { state: "nothing-in-job" } },
 ];

@@ -82,6 +82,8 @@ export interface SearchModel {
   /** he moved the highlight (an arrow, the pointer): it stays on `active` */
   moved: boolean;
   active: string | null;
+  /** the host asked for LifeOS has lost it since: its rows are held (`withLifeosLine`) */
+  lifeosHeld?: true;
 }
 
 export const emptyModel = (): SearchModel => ({ gen: 0, text: "", kind: null, scope: null, hosts: [], slots: [], out: new Set(), quiet: [], seen: [], order: {}, orderGen: 0, searched: false, deeper: [], moved: false, active: null });
@@ -179,15 +181,25 @@ export function quietLine(cause: string, line: string, at: SearchHost, hosts: nu
   return { key: `${cause}@${host.id}`, line: hosts > 1 ? `${said} on ${host.name}.` : `${said}.` };
 }
 
+/** The kinds LifeOS feeds (the host's sources marked `lifeos`): a search of one of them, or of every kind, asks LifeOS. */
+const LIFEOS_KINDS: ReadonlySet<string> = new Set(["person", "mail", "message", "chat", "task", "event", "doc", "project"]);
+export const asksLifeos = (kind: string | null): boolean => kind === null || LIFEOS_KINDS.has(kind);
+
+/** A row only LifeOS opens: a LifeOS thing, or a LifeOS document Files lists as a file. */
+export const fromLifeos = (hit: SearchHit): boolean => hit.key.startsWith("lifeos:") || (hit.open.to === "file" && (hit.open.ref as { at?: unknown } | null)?.at === "lifeos");
+
 /**
- * LifeOS's line as its host's live status says it now (Picker.tsx, `useLiveDown`): `words` in its place, or none while
- * the search is asked again; the same model when there is no such line or nothing changes.
+ * LifeOS as its host's live status says it now (Picker.tsx, `useLiveDown`): `words` in the place of the line the
+ * search was answered with, or one line of its own when the search reached LifeOS and the host has lost it since; none
+ * while the search is asked again. While `words` stand, every row only LifeOS opens is held: drawn, never taken. The
+ * same model when nothing changes.
  */
 export function withLifeosLine(model: SearchModel, words: string | null): SearchModel {
-  const at = model.quiet.findIndex((q) => q.lifeos);
-  if (at < 0 || model.quiet[at].line === words) return model;
-  const quiet = words === null ? model.quiet.filter((_, i) => i !== at) : model.quiet.map((q, i) => (i === at ? { ...q, line: words } : q));
-  return { ...model, quiet };
+  const at = model.quiet.findIndex((q) => q.lifeos || q.key === "lifeos");
+  const held = words !== null;
+  if ((at < 0 ? words === null : model.quiet[at].line === words) && !!model.lifeosHeld === held) return model;
+  const quiet = at < 0 ? (words === null ? model.quiet : [...model.quiet, { key: "lifeos", line: words }]) : words === null ? model.quiet.filter((_, i) => i !== at) : model.quiet.map((q, i) => (i === at ? { ...q, line: words } : q));
+  return { ...model, quiet, lifeosHeld: held || undefined };
 }
 
 function withQuiet(model: SearchModel, host: SearchHost, quiet: SearchAnswer["quiet"]): SearchModel["quiet"] {
@@ -266,7 +278,8 @@ export const busy = (model: SearchModel): boolean => model.out.size > 0;
 
 export type Row =
   | { type: "heading"; id: string; label: string }
-  | { type: "hit"; id: string; hit: SearchHit; host: string }
+  /** `held`: a row only LifeOS opens while the host asked for it has lost it, drawn and never taken */
+  | { type: "hit"; id: string; hit: SearchHit; host: string; held?: true }
   /** "All mail for …": Return narrows the picker to the kind */
   | { type: "all"; id: string; kind: string; label: string }
   /** "Search all jobs", under nothing found in one job */
@@ -276,7 +289,7 @@ export type Row =
 
 /** A row Return can take. */
 export type Option = Extract<Row, { type: "hit" | "all" | "widen" }>;
-export const isOption = (row: Row): row is Option => row.type === "hit" || row.type === "all" || row.type === "widen";
+export const isOption = (row: Row): row is Option => (row.type === "hit" && !row.held) || row.type === "all" || row.type === "widen";
 
 /** One kind's rows, every one a source holds, in the order they stand. */
 interface Group {
@@ -382,7 +395,7 @@ export function rowsOf(model: SearchModel, o: { scoped?: boolean; /** the job a 
     if (chosen >= cap) shownHits[cap - 1] = group.hits[chosen];
     // Held to one kind, the field already names it: no heading says it again. Recent's own heading says what the list is.
     if (!model.kind || kind === RECENT_KIND) rows.push({ type: "heading", id: `heading:${kind}`, label: group.label });
-    for (const { hit, host } of shownHits) rows.push({ type: "hit", id: `hit:${hit.key}`, hit, host });
+    for (const { hit, host } of shownHits) rows.push({ type: "hit", id: `hit:${hit.key}`, hit, host, ...(model.lifeosHeld && fromLifeos(hit) ? { held: true as const } : {}) });
     hits += shownHits.length;
     if (more && !model.kind && kind !== RECENT_KIND) rows.push({ type: "all", id: `all:${kind}`, kind, label: `All ${searchNoun(kind, group.label)} for “${model.text}”` });
   }
