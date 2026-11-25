@@ -287,7 +287,8 @@ export const OfficeRequestSchemas = [
   /**
    * → OfficeLiveSet: a Files tab between Edit here and Live, its item swapped in place (the tab and its key stay), the
    * mode remembered for the file. `typed`: what he typed in the live view; above 0, Edit here first waits up to 60 s for
-   * the file's version on its computer to move. His press alone: a thread is refused.
+   * the file on its computer to differ from its version as the tab went live, and is refused (the tab stays live) when
+   * it does not. To Live waits for OneDrive to upload a send of ours first. His press alone: a thread is refused.
    */
   request('work.office.live.set', z.object({ workspaceId: z.string().max(200), tabId: z.string().max(100), mode: OfficeLiveModeSchema, typed: z.number().int().min(0).max(1e9).optional(), choice: z.literal('keep-both').optional() })),
   /** A Files entry's web address (`ref` its `{at: 'file'}` source), without a tab: the phone's Open in Word. → OfficeLiveAddress */

@@ -474,6 +474,7 @@ export function FileTabView({
         set: (params) => registry.linkOf(link).request<LiveSetAnswer>("work.office.live.set", { workspaceId: workspace.id, tabId: tab.id, ...params }, { timeoutMs: 120_000, lane: "ui" }),
         flush: () => flushedItem(item.id),
         leave: () => leaveLive(item.id, name),
+        back: () => liveLayer.back(item.id),
         typed: () => liveLayer.typed(item.id),
         confirm: confirmAction,
         saveWord: () =>

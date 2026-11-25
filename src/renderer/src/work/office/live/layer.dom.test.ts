@@ -214,6 +214,25 @@ describe("the layer", () => {
     expect(guests()).toHaveLength(0);
   });
 
+  it("brings a guest it let go back where it was, once, and never over one shown again", async () => {
+    const b = bridge();
+    const layer = new LiveLayer(() => b as never);
+    const body = document.createElement("div");
+    layer.show("a", FILE, RECT, false, body);
+    await flush();
+    expect(await layer.leave("a", vi.fn(async () => true), 0)).toBe(true);
+    expect(guests()).toHaveLength(0);
+    layer.back("a");
+    await flush();
+    const [el] = guests();
+    expect(el.getAttribute("src")).toBe(FILE);
+    expect(el.style.left).toBe(`${RECT.x}px`);
+    // Asked again, or for a guest never let go: nothing more.
+    layer.back("a");
+    layer.back("b");
+    expect(guests()).toHaveLength(1);
+  });
+
   it("reads his typing from main by the guest's id", async () => {
     const b = bridge();
     const layer = new LiveLayer(() => b as never);

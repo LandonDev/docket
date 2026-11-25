@@ -10,12 +10,15 @@ import { doorPlace, filesState, reseat } from '../../files/handle'
 import type { Seat, SeatAsk } from '../../files/hooks'
 import { libraryKey } from '../../files/places/teams'
 import { locate } from '../../files/policy'
+import { uploadOwed } from '../../files/uploads'
 import { keptDoc, recordWord, wordsAllInFile, type WordRow } from '../../files/word'
+import { versionOf } from '../../files/write'
 import type { Caller, WorkCtx } from '../../modules'
 import { isGuestPath, vmStat } from '../vm/files'
+import { vmState } from '../vm/office'
 import { appOf } from './address'
 import { liveFileOf, tabFile } from './handle'
-import { modeOf, setMode } from './memory'
+import { liveBase, modeOf, setLiveBase, setMode } from './memory'
 
 /**
  * A Files tab between Edit here and Live (the plan's "Switching"): its item swapped in place, the tab and its key kept,
@@ -29,9 +32,19 @@ const OPEN = 'work.files.open'
 const DONE: OfficeLiveSet = { is: 'done' }
 /** His window: what the host itself reads a file's version as. */
 const HIS: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }
-/** How long a switch waits: for a copy's send, for OneDrive to bring Word's edits down, and between looks (a test shortens them). */
-export const liveTiming = { send: 30_000, version: 60_000, look: 1_000 }
+/**
+ * How long a switch waits: for a copy's send, for OneDrive to take that send up, for OneDrive to bring Word's edits
+ * down, and between looks (a test shortens them).
+ */
+export const liveTiming = { send: 30_000, upload: 30_000, version: 60_000, look: 1_000 }
 
+const mtimeOf = (path: string): number | null => {
+  try {
+    return statSync(path).mtimeMs
+  } catch {
+    return null
+  }
+}
 const nameOf = (path: string): string => path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)
 const liveSource = (ctx: WorkCtx, app: OfficeLiveApp, name: string, url: string): CanvasSource => ({ at: 'microsoft', app, host: ctx.host, name, ref: { kind: 'url', url } })
 const pause = (ms: number): Promise<void> =>
@@ -85,6 +98,7 @@ export async function liveSeat(ctx: WorkCtx, by: Caller, ask: SeatAsk, signal?: 
     const copyOf = far ? { copyOf: { host, path, ...(host === ctx.host ? { vm: true } : {}) } } : {}
     // Opened live, a saved document made of the Word file goes, as on a switch: a later Edit here reads the file afresh.
     if (far) await forgetKept(ctx, ask.workspaceId, { copyOf: { host, path } } as FileTab)
+    await keepBase(ctx, ask.workspaceId, key, { host, path }, signal)
     return { key, name, kind: APP_CANVAS[app], source: liveSource(ctx, app, name, of.address), file: { host, path }, ...copyOf }
   } catch {
     // Files' own open says what is wrong with it.
@@ -129,7 +143,12 @@ async function waiting(ctx: WorkCtx, by: Caller, workspaceId: string, tab: FileT
  */
 async function forgetKept(ctx: WorkCtx, workspaceId: string, tab: FileTab): Promise<void> {
   const r = tab.copyOf ? keptDoc(ctx, workspaceId, tab.copyOf.host, tab.copyOf.path) : null
-  if (!r || (await unsaved(ctx, r))) return
+  if (!r) return
+  const at = mtimeOf(r.doc!)
+  if (await unsaved(ctx, r)) return
+  // Asked again after the wait: saved, made again or written meanwhile, it stays.
+  const now = keptDoc(ctx, workspaceId, r.host, r.path)
+  if (!now || now.doc !== r.doc || now.saved_rev !== r.saved_rev || mtimeOf(r.doc!) !== at) return
   recordWord(ctx, { workspaceId, host: r.host, path: r.path, vm: !!r.vm, name: r.name, version: r.version, sha: r.sha as string })
   rmSync(r.doc!, { force: true })
 }
@@ -145,28 +164,57 @@ async function versionNow(ctx: WorkCtx, workspaceId: string, ref: { host: string
     }
     const at = locate(ctx, HIS, workspaceId, { at: 'file', host: ref.host, path: ref.path }, SET)
     if (at.in === 'library' && at.library.vm) {
+      if (vmState()?.state !== 'awake') return null
       const e = await vmStat(at.library.id, at.path, signal)
       return { word: `${e.size}:${e.modified}`, changed: e.modified }
     }
     if (at.in !== 'library' && at.in !== 'folder') return null
-    const s = statSync(at.path)
-    return { word: `${s.size}:${Math.round(s.mtimeMs)}`, changed: Math.round(s.mtimeMs) }
+    // By its bytes where this host can hash them: a new time alone (a restamp, a sync touching it) is no change.
+    const v = await versionOf(at.path)
+    return { word: v.sha256 ? `sha256:${v.sha256}` : `${v.size}:${Math.round(v.mtimeMs)}`, changed: Math.round(v.mtimeMs) }
   } catch {
     return null
   }
 }
 
-/** He typed in the live view: OneDrive brings Word's edits down to the file's computer. Waits until its version moves, 60 s at most. */
-async function versionMoved(ctx: WorkCtx, workspaceId: string, ref: { host: string; path: string }, since: number, signal?: AbortSignal): Promise<void> {
+/** The file's version as its tab goes live, kept for Edit here (memory.ts `liveBase`). */
+async function keepBase(ctx: WorkCtx, workspaceId: string, key: string, ref: { host: string; path: string }, signal?: AbortSignal): Promise<void> {
+  setLiveBase(ctx.db, workspaceId, key, (await versionNow(ctx, workspaceId, ref, signal))?.word ?? null)
+}
+
+/**
+ * He typed in the live view: OneDrive brings Word's edits down to the file's computer. Waits until the file is no longer
+ * what it was as the tab went live (`base`), 60 s at most. Answers whether it moved; when it did not, nothing proves the
+ * file holds his typing, and the live seat stays.
+ */
+async function versionMoved(ctx: WorkCtx, workspaceId: string, ref: { host: string; path: string }, base: string | null, since: number, signal?: AbortSignal): Promise<boolean> {
   const first = await versionNow(ctx, workspaceId, ref, signal)
-  // It came down already: the file changed after the live view opened (on this host's own clock alone).
-  if (first && ref.host === ctx.host && first.changed > since) return
+  if (first && base !== null && first.word !== base) return true
+  // A tab live from before its version was kept: changed after the live view opened, by this host's own clock alone
+  // (never the VM's, whose clock is its own).
+  if (first && base === null && ref.host === ctx.host && !(isGuestPath(ref.path) && process.platform !== 'win32') && first.changed > since) return true
+  const from = base ?? first?.word ?? null
   const end = Date.now() + liveTiming.version
   while (Date.now() < end && !signal?.aborted) {
     await pause(Math.min(liveTiming.look, end - Date.now()))
     const now = await versionNow(ctx, workspaceId, ref, signal)
-    if (now && (!first || now.word !== first.word)) return
+    if (now && now.word !== from) return true
   }
+  return false
+}
+
+/**
+ * Live shows the file in Teams, so a send of ours goes up first (files/uploads.ts): waits while OneDrive on the file's
+ * computer still owes it, 30 s at most. A file no send of ours wrote, or one on a computer that cannot say, waits for
+ * nothing. Answers whether nothing is owed.
+ */
+async function uploaded(workspaceId: string, ref: { host: string; path: string }, signal?: AbortSignal): Promise<boolean> {
+  const end = Date.now() + liveTiming.upload
+  while (uploadOwed(workspaceId, ref.host, ref.path)) {
+    if (Date.now() >= end || signal?.aborted) return false
+    await pause(Math.min(liveTiming.look, end - Date.now()))
+  }
+  return true
 }
 
 /** `work.office.live.set`: his press on the tab's mode. */
@@ -177,7 +225,8 @@ export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string
   const live = isLiveSource(item.source)
   if (p.mode === 'here') {
     if (live) {
-      if (p.typed) await versionMoved(ctx, p.workspaceId, ref, item.createdAt, signal)
+      if (p.typed && !(await versionMoved(ctx, p.workspaceId, ref, liveBase(ctx.db, p.workspaceId, tab.key ?? ''), item.createdAt, signal)))
+        throw new Error(`What you typed in ${nameOf(ref.path)} has not come down from OneDrive yet, so it stays live. Try again in a moment.`)
       await reseat(ctx, p.workspaceId, tab.id, by, signal)
     }
     setMode(ctx.db, p.workspaceId, tab.key ?? '', 'here')
@@ -195,9 +244,12 @@ export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string
     if (now.tab.key !== tab.key) of = await liveFileOf(ctx, by, p.workspaceId, now.ref, now.tab.key ?? '', { signal })
     if (!of.address || !of.app) throw new Error(of.why ?? 'This file has no address on the web.')
     const name = nameOf(now.ref.path)
+    // The copy's send went up to Teams, or Live would show the file without it.
+    if (!(await uploaded(p.workspaceId, now.ref, signal))) throw new Error(`Your changes to ${name} are still uploading to OneDrive. Try Live again in a moment.`)
     ctx.canvas.replace(now.item.sessionId, now.item.id, APP_CANVAS[of.app], liveSource(ctx, of.app, name, of.address), name)
     await forgetKept(ctx, p.workspaceId, now.tab)
     setMode(ctx.db, p.workspaceId, now.tab.key ?? '', 'live')
+    await keepBase(ctx, p.workspaceId, now.tab.key ?? '', now.ref, signal)
     return DONE
   }
   setMode(ctx.db, p.workspaceId, tab.key ?? '', 'live')

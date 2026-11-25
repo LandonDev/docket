@@ -7,7 +7,8 @@ import type { ConfirmRequest } from "../../../chrome/ConfirmDialog";
  *   went, did not answer or refused offers Keep Both or Cancel; a Word document whose edits are not in the Word file
  *   offers Save as Word… or Cancel. Never a quiet drop.
  * - to Edit here: the guest unloads first (Word may hold it while saving: the layer waits, then asks), and the host
- *   is told how much he typed, so it waits for OneDrive to bring Word's edits down before it opens the file.
+ *   is told how much he typed, so it waits for OneDrive to bring Word's edits down before it opens the file. When
+ *   nothing proves they came down the host keeps the tab live, and the guest comes back.
  */
 
 export type LiveMode = "here" | "live";
@@ -19,6 +20,8 @@ export interface SwitchDeps {
   flush(): Promise<boolean>;
   /** The guest unloads; false when he chose to stay (Word still saving). */
   leave(): Promise<boolean>;
+  /** The guest `leave` let go comes back in place: the host kept the tab live. */
+  back(): void;
   /** Keys he typed in the live file. */
   typed(): Promise<number>;
   confirm(request: ConfirmRequest): Promise<boolean>;
@@ -43,7 +46,13 @@ export async function switchTo(to: LiveMode, from: SwitchFrom, deps: SwitchDeps)
       const typed = await deps.typed();
       if (!(await deps.leave())) return false;
       if (typed > 0) deps.busy(`Getting the newest from ${from.service}…`);
-      return (await deps.set({ mode: "here", typed })).is === "done";
+      let done = false;
+      try {
+        done = (await deps.set({ mode: "here", typed })).is === "done";
+      } finally {
+        if (!done) deps.back();
+      }
+      return done;
     }
     if (from.sending) deps.busy("Sending your changes first…");
     // The item is replaced by the switch: an edit the kind could not send stops it, never goes with it.

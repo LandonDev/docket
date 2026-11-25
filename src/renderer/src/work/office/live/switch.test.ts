@@ -9,6 +9,7 @@ function deps(answers: LiveSetAnswer[], over: Partial<SwitchDeps> = {}) {
     set: vi.fn(async () => answers.shift() ?? { is: "done" as const }),
     flush: vi.fn(async () => true),
     leave: vi.fn(async () => true),
+    back: vi.fn(),
     typed: vi.fn(async () => 0),
     confirm: vi.fn(async () => true),
     saveWord: vi.fn(async () => true),
@@ -91,6 +92,16 @@ describe("switching to Edit here", () => {
     const { d, lines } = deps([{ is: "done" }]);
     await switchTo("here", FROM, d);
     expect(lines).toEqual([null]);
+  });
+
+  it("brings the guest back when the host keeps the tab live, and not when it switched", async () => {
+    const refused = deps([], { typed: vi.fn(async () => 2), set: vi.fn(async () => Promise.reject(new Error("What you typed in Plan.docx has not come down from OneDrive yet"))) });
+    await expect(switchTo("here", FROM, refused.d)).rejects.toThrow("has not come down");
+    expect(refused.d.back).toHaveBeenCalledTimes(1);
+    expect(refused.lines.at(-1)).toBeNull();
+    const done = deps([{ is: "done" }]);
+    expect(await switchTo("here", FROM, done.d)).toBe(true);
+    expect(done.d.back).not.toHaveBeenCalled();
   });
 
   it("stays live when he keeps Word open while it saves", async () => {

@@ -15,6 +15,7 @@ import { closeFilesState, filesHandle } from '../../files/handle'
 import { forgetLibraries } from '../../files/places/libraries'
 import { setThreadsMayWrite } from '../../files/policy'
 import { onFileSaved, saveFile, versionWord } from '../../files/save'
+import { forgetUploads, setUploadReader, uploadTiming } from '../../files/uploads'
 import { at, HOST, makeRig, thread, window, WS, type Rig } from '../../files/testkit'
 import { wordFollowed, wordImportPlace, wordRow } from '../../files/word'
 import { versionOf } from '../../files/write'
@@ -64,6 +65,7 @@ beforeEach(() => {
   setThreadsMayWrite(true)
   box.settings.set(WS, { mayUseDesktop: [MAC] })
   copyTiming.grace = 0
+  uploadTiming.every = 5
   far = []
   down = new Set()
   refused = new Set()
@@ -98,7 +100,10 @@ afterEach(() => {
   setVmCall(null)
   setThreadsMayWrite(false)
   copyTiming.grace = 3000
-  Object.assign(liveTiming, { send: 30_000, version: 60_000, look: 1_000 })
+  uploadTiming.every = 2000
+  forgetUploads()
+  setUploadReader(null)
+  Object.assign(liveTiming, { send: 30_000, upload: 30_000, version: 60_000, look: 1_000 })
   closeFilesState(box.db)
   closeFilesState(mac.db)
   mac.close()
@@ -232,6 +237,22 @@ describe('Edit here → Live', () => {
     expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
   })
 
+  it('waits for OneDrive to take his send up, and stays as it is while it has not', async () => {
+    Object.assign(liveTiming, { upload: 60, look: 5 })
+    // The Mac's OneDrive has not uploaded the bytes the send wrote.
+    let up = false
+    setUploadReader(async () => up)
+    const { copy, tabId, item } = await openFar('Roster.xlsx', 'workbook')
+    await edit(copy!, 'his edit')
+    await settled()
+    await expect(set(tabId)).rejects.toThrow('Your changes to Roster.xlsx are still uploading to OneDrive. Try Live again in a moment.')
+    expect((await itemOf(tabId)).id).toBe(item.id)
+    // Uploaded: the web shows his change, and the switch goes.
+    up = true
+    expect(await set(tabId)).toEqual({ is: 'done' })
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+  })
+
   it('asks when a send does not land within its wait', async () => {
     liveTiming.send = 30
     const { copy, tabId, item } = await openFar('Roster.xlsx', 'workbook')
@@ -324,6 +345,22 @@ describe('Edit here → Live', () => {
       expect(existsSync(doc)).toBe(false)
     })
 
+    it('keeps the document when the service cannot say what it holds, however old the file looks', async () => {
+      const { doc, tabId, item } = await imported()
+      // Made of the Word file at r1, its file untouched since: only the service knows whether he typed.
+      box.db.prepare(`UPDATE work_files_word SET base_rev = 'r1' WHERE doc = ?`).run(doc)
+      ;(box.ctx as { service: unknown }).service = {
+        internal: async (route: string) => {
+          if (route === '/internal/docs/rev') throw new Error('The Work service is not answering.')
+          return { ok: true }
+        }
+      }
+      expect(await set(tabId)).toEqual({ is: 'ask', why: 'word', words: 'Your edits to Plan.docx are not in the Word file yet.' })
+      expect(existsSync(doc)).toBe(true)
+      expect((await itemOf(tabId)).source).toMatchObject({ at: 'file', path: doc })
+      expect(item.id).toBeTruthy()
+    })
+
     it('switches once they are saved as Word, and leaves no document for a later Edit here to show', async () => {
       const { doc, tabId, path } = await imported()
       touch(doc, '{"doc":"his edit"}', 5000)
@@ -387,17 +424,19 @@ describe('Live → Edit here', () => {
     expect((await itemOf(tabId)).source).toMatchObject({ ref: { kind: 'path', path } })
   })
 
-  it('after typing, opens what is there once 60 s pass', async () => {
-    const { tabId } = await liveHere()
-    vi.useFakeTimers({ toFake: ['setTimeout', 'Date'] })
-    let done = false
-    const switching = set(tabId, { mode: 'here', typed: 3 }).then(() => (done = true))
-    await vi.advanceTimersByTimeAsync(59_000)
-    expect(done).toBe(false)
-    await vi.advanceTimersByTimeAsync(1_000)
+  it('after typing, stays live once 60 s pass with nothing come down, even over a new time on the same bytes', async () => {
+    const { path, tabId } = await liveHere()
+    Object.assign(liveTiming, { version: 80, look: 5 })
+    let failed: unknown = null
+    const switching = set(tabId, { mode: 'here', typed: 3 }).catch((err: unknown) => (failed = err))
+    // OneDrive is frozen; something restamps the file without his words.
+    shiftMtime(path, 5000)
+    await new Promise((done) => setTimeout(done, 30))
+    expect(failed).toBeNull()
     await switching
-    expect(done).toBe(true)
-    expect(isLiveSource((await itemOf(tabId)).source)).toBe(false)
+    expect(String(failed)).toContain('What you typed in Plan.docx has not come down from OneDrive yet, so it stays live.')
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+    expect(modeOf(box.db, WS, (await tabOf(tabId)).key!, null)).toBe('live')
   })
 
   it('opens a far file as its copy again', async () => {

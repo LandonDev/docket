@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ensureFilesTables } from '../files/library'
-import { ensureLiveTables, libraryDefault, modeOf, setLibraryDefault, setMode } from './memory'
+import { dropWorkspaceModes, ensureLiveTables, libraryDefault, liveBase, modeOf, setLibraryDefault, setLiveBase, setMode } from './memory'
 
 describe('remembering how a shared Office file opens', () => {
   let db: DatabaseSync
@@ -41,5 +41,18 @@ describe('remembering how a shared Office file opens', () => {
     expect(modeOf(db, 'ws', 'plan', 'far~library', 'live')).toBe('live')
     setMode(db, 'ws', 'plan', 'here')
     expect(modeOf(db, 'ws', 'plan', 'far~library', 'live')).toBe('here')
+  })
+
+  it('keeps a file’s version as it went live per workspace, pinning no mode, and drops it with the workspace', () => {
+    setLiveBase(db, 'ws', 'plan', 'sha256:aa')
+    setLiveBase(db, 'other', 'plan', 'sha256:bb')
+    expect(liveBase(db, 'ws', 'plan')).toBe('sha256:aa')
+    expect(modeOf(db, 'ws', 'plan', 'library-a')).toBe('here')
+    setLiveBase(db, 'ws', 'plan', null)
+    expect(liveBase(db, 'ws', 'plan')).toBeNull()
+    setLiveBase(db, 'ws', 'plan', 'sha256:cc')
+    dropWorkspaceModes(db, 'ws')
+    expect(liveBase(db, 'ws', 'plan')).toBeNull()
+    expect(liveBase(db, 'other', 'plan')).toBe('sha256:bb')
   })
 })

@@ -61,18 +61,21 @@ export async function liveRev(ctx: WorkCtx, doc: string): Promise<string> {
 }
 /**
  * Whether every word of a Word file's document is in the Word file, asked now and never from what the autosave saw last: the Work service's live revision, where his words are
- * as he types, against the one last written to the Word file or read from it. With no revision to compare, or no
- * service that answers, the document's file is all there is: unchanged since it was made, or since its last save.
- * A caller that deletes the document asks this first (office/live/switch.ts).
+ * as he types, against the one last written to the Word file or read from it, once what a window sent it is stored (as
+ * a close asks, `wordsLeft`). A service that does not answer proves nothing: it may still hold his words, so the
+ * answer is no. With no revision to compare (a document an older build made), the document's file is all there is:
+ * unchanged since it was made, or since its last save. A caller that deletes the document asks this first
+ * (office/live/switch.ts).
  */
 export async function wordsAllInFile(ctx: WorkCtx, r: WordRow): Promise<boolean> {
   if (!r.doc) return true
   const written = r.saved_rev ?? r.base_rev
   if (written !== null) {
     try {
+      await ctx.service.internal('/internal/docs/stored', { name: fileDocName(r.doc), fence: { sectors: 'all' } })
       return (await liveRev(ctx, r.doc)) === written
     } catch {
-      // The service does not answer: whatever it held is gone with it, and the file says the rest.
+      return false
     }
   }
   const at = r.saved_at !== null ? r.saved_doc_at : r.doc_at

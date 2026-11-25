@@ -101,13 +101,29 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
 - To Live: the window flushes the kind; the host waits up to 30 s for a copy still sending; a copy whose file
   changed, went, did not answer or refused asks Keep Both or Cancel; a Word document whose edits are not in the Word
   file asks Save to Teams as Word… or Cancel. Nothing is dropped quietly. Whether the document holds edits is asked at
-  the switch (files/word.ts `wordsAllInFile`): the Work service's live revision against the one last written to or
-  read from the Word file, else the document's file time; never what the autosave saw last, which missed words typed
-  since its last look and let the switch delete the document (master only, 2026-11-24, never released).
+  the switch (files/word.ts `wordsAllInFile`): what a window sent the Work service is stored first, then its live
+  revision is held against the one last written to or read from the Word file, as a close asks (`wordsLeft`); never
+  what the autosave saw last, which missed words typed since its last look and let the switch delete the document
+  (master only, 2026-11-24, never released). A service that does not answer proves nothing: the document is kept and
+  the switch asks. Only a document an older build made, with no revision, is judged by its file time. The document
+  goes only if, asked again after that wait, its record and file are as they were.
+- To Live, after a copy's send: the host waits up to 30 s for OneDrive on the file's computer to say it uploaded the
+  bytes our send wrote (files/uploads.ts `uploadOwed`), so the web never shows the file without them. Still owed
+  then, the switch is refused ("Your changes to Roster.xlsx are still uploading to OneDrive. Try Live again in a
+  moment.") and the tab stays as it is. A file no send of ours wrote, or one on a computer that cannot say, waits for
+  nothing.
+- The host keeps the file's version as its tab goes live (`keepBase`, in `work_office_files` beside the library
+  defaults, so it pins no mode): its sha256 where this host can hash it, else size and time (another computer, the
+  VM; the VM asleep is never woken for it, and gives none).
 - To Edit here: the window reads how much he typed (main counts keys on the guest), then unloads the guest; Word may
-  hold the unload while saving (`will-prevent-unload`), so the layer waits up to 10 s, then asks "Close Anyway". The
-  host waits up to 60 s for the file's version on its computer to move when he typed, then `reseat`s it fresh. Every
-  save back is by version, so a later OneDrive change is "changed there", never a write over Word's edits.
+  hold the unload while saving (`will-prevent-unload`), so the layer waits up to 10 s, then asks "Close Anyway". When
+  he typed, the host waits up to 60 s for the file to differ from that kept version (by its bytes, so a restamp or a
+  sync touching its time is no change), then `reseat`s it fresh. Nothing moved by then, nothing proves the file holds
+  his typing: the switch is refused ("What you typed in Plan.docx has not come down from OneDrive yet, so it stays
+  live."), the tab stays live and the layer puts the guest back where it was (`liveLayer.back`). A tab live from
+  before its version was kept falls back to the file's time after the live view opened, on this host's own clock
+  (never the VM's). Every save back is by version, so a later OneDrive change is "changed there", never a write over
+  Word's edits.
 - Closing a live tab follows the same unload rule (FilesView `closeOne`), and so does a guest let go past three: one
   Word still holds stays loaded. A switch to Live stops when the kind could not send what it held (`flushedItem`).
 - A live item names no file, so the fence asks the office module for the one behind it (`registerItemFile`,

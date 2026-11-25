@@ -98,8 +98,11 @@ export interface LiveRect {
 
 interface Guest {
   el: HTMLElement & { getWebContentsId?(): number; loadURL?(url: string): Promise<void>; focus(): void };
-  /** What it was asked for (`liveAskKey`). */
+  /** What it was asked for (`liveAskKey`), and the ask itself. */
   want: string;
+  ask: LiveTicketAsk;
+  /** Where it was last shown. */
+  rect: LiveRect | null;
   /** The address its ticket opened: the file's, or the one main made for a form. */
   url: string;
   /** The top frame's address now (`did-navigate`). */
@@ -122,6 +125,8 @@ export class LiveLayer {
   private readonly hiddenTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly states = new Map<string, LiveState>();
   private readonly listeners = new Map<string, Set<() => void>>();
+  /** Each guest let go by `leave`, as last shown: `back` puts it there again. */
+  private readonly left = new Map<string, Pick<Guest, "ask" | "rect" | "full" | "anchor">>();
   private root: HTMLElement | null = null;
   private offKey: (() => void) | null = null;
   private clock = 0;
@@ -164,6 +169,7 @@ export class LiveLayer {
    * file's web address or `{forms: {tenant, formId, page}}`, whose address main makes.
    */
   show(key: string, ask: LiveTicketAsk, rect: LiveRect, full: boolean, anchor: HTMLElement | null = null): void {
+    this.left.delete(key);
     let guest = this.guests.get(key);
     if (guest && guest.want !== liveAskKey(ask)) {
       this.drop(key);
@@ -178,6 +184,7 @@ export class LiveLayer {
     this.stopHiddenTimer(key);
     guest.anchor = anchor;
     guest.visible = rect.width > 0 && rect.height > 0;
+    guest.rect = rect;
     if (guest.full !== full) {
       guest.full = full;
       if (guest.guestId !== null) void this.bridge()?.fullWindow(guest.guestId, full);
@@ -235,6 +242,7 @@ export class LiveLayer {
     const bridge = this.bridge();
     if (!guest || !bridge || guest.guestId === null) {
       this.drop(key);
+      if (guest) this.keepLeft(key, guest);
       return true;
     }
     const until = Date.now() + waitMs;
@@ -248,7 +256,26 @@ export class LiveLayer {
       await bridge.unload(guest.guestId, true);
     }
     this.drop(key);
+    this.keepLeft(key, guest);
     return true;
+  }
+
+  /** The newest few let go alone are kept for `back`: a tab that closed asks none back. */
+  private keepLeft(key: string, guest: Guest): void {
+    this.left.delete(key);
+    this.left.set(key, { ask: guest.ask, rect: guest.rect, full: guest.full, anchor: guest.anchor });
+    for (const old of this.left.keys()) if (this.left.size > MOST_LOADED) this.left.delete(old);
+  }
+
+  /**
+   * A guest `leave` let go comes back where it was, loading the file again: the switch it left for did not go (the host
+   * could not prove the file holds what he typed). Nothing when it is shown again already, or was never shown.
+   */
+  back(key: string): void {
+    const was = this.left.get(key);
+    this.left.delete(key);
+    if (!was?.rect || this.guests.has(key)) return;
+    this.show(key, was.ask, was.rect, was.full, was.anchor);
   }
 
   /** Gone without asking (its tab closed elsewhere, the window going). */
@@ -276,7 +303,7 @@ export class LiveLayer {
     }
     if (!this.offKey) this.offKey = bridge.onKey((init) => this.replay(init));
     const el = doc.createElement("webview") as Guest["el"];
-    const guest: Guest = { el, want: liveAskKey(ask), url: liveAskUrl(ask), top: "", state: START, guestId: null, shownAt: 0, visible: false, full: false, anchor: null, timer: null };
+    const guest: Guest = { el, want: liveAskKey(ask), ask, rect: null, url: liveAskUrl(ask), top: "", state: START, guestId: null, shownAt: 0, visible: false, full: false, anchor: null, timer: null };
     this.guests.set(key, guest);
     this.states.set(key, START);
     el.setAttribute("data-office-live", key);

@@ -80,6 +80,15 @@ export function cloudOf(workspaceId: string, host: string, path: string): CloudB
 }
 
 /**
+ * Whether OneDrive still owes the cloud a write of ours to this file, as last looked (a switch to Live waits on it,
+ * office/live/switch.ts): false once it says uploaded, and where no write of ours is known or its computer cannot say.
+ */
+export function uploadOwed(workspaceId: string, host: string, path: string): boolean {
+  const u = uploads.get(keyOf(workspaceId, host, path))
+  return !!u && u.looking && u.cloud?.is !== 'uploaded'
+}
+
+/**
  * A tab of a file in a library that a save wrote before this host started (its save time on the tab): looked at once
  * more, so its line says what OneDrive did rather than Saved to Teams.
  */
