@@ -39,6 +39,13 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["`Added ${entry.name} to ${project.name}`", "answer"],
     ["Added 1 file from Drive", "answer"],
     ["`Added ${files.length} files from Drive`", "answer"],
+    // The commit's own entry: the name the host saved the file under.
+    ["`Uploaded as ${renamed[0]!.as}`", "answer"],
+    ["`Uploaded ${renamed.length} under new names`", "answer"],
+  ],
+  [`${R}/files/Page.tsx`]: [
+    // Trash's date column: when each row was deleted, its host's own record (files/trash.ts `deleted_at`).
+    ["Deleted", "read"],
   ],
   [`${R}/files/fileText.ts`]: [
     ["`Saved ${whenWords(line.at, now)}${place ? ` in ${place}` : \"\"}`", "answer"],

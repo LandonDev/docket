@@ -131,6 +131,8 @@ const acts: PageActs = {
   star: noop,
   openTab: noop,
   openApp: noop,
+  // His window on the library's own computer: its files come to it, from a row and the bulk bar.
+  download: noop,
   pickUpload: noop,
   upload: noop,
   drop: noop,
@@ -669,6 +671,11 @@ export function FilesTrash() {
     <div className="p-6">
       <Window width={900} height={420}>
         <PageView {...common} page={page} copy={trashCopy} acts={{ ...acts, place: trashCopy.place, from: trashCopy }} trail={[{ name: "Trash", at: page.at }]} listing={listing({ entries: trashed, trail: [] })} onReveal={noop} drawn={{ picked: ["Site policy draft.docx"] }} />
+      </Window>
+      {/* Empty, with libraries listed: where a library's delete went. */}
+      <div className="h-6" />
+      <Window width={900} height={300}>
+        <PageView {...common} page={page} copy={trashCopy} acts={{ ...acts, place: trashCopy.place, from: trashCopy }} trail={[{ name: "Trash", at: page.at }]} listing={listing({ entries: [], trail: [] })} onReveal={noop} libraryBins />
       </Window>
     </div>
   );
