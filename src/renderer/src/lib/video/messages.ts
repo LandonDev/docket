@@ -1,5 +1,5 @@
 import { VIDEO_PATH, VIDEO_RETRIES, videoCloseShows, type VideoCloseFace } from "@server/shared/contract-video";
-import type { InputEvent } from "@server/shared/video/nsl1";
+import type { CursorShape, InputEvent } from "@server/shared/video/nsl1";
 import type { PlayerFault } from "./player";
 
 /**
@@ -20,11 +20,21 @@ export type ToWorker =
   /** one of his input events, for a stream he drives */
   | { t: "input"; stream: number; event: InputEvent };
 
+export interface StreamReading {
+  captureMs?: number;
+  roundTripMs?: number;
+  drawMs?: number;
+  fps: number;
+  link: "good" | "poor";
+}
+
 /** Worker to window. */
 export type FromWorker =
+  | { t: "cursor"; stream: number; shape: CursorShape }
   | { t: "drawn"; stream: number; width: number; height: number }
+  | { t: "reading"; stream: number; reading: StreamReading }
   | { t: "count"; stream: number; frames: number; fps: number }
-  | { t: "closed"; stream: number; code: number; fault?: PlayerFault };
+  | { t: "closed"; stream: number; code: number; fault?: PlayerFault; link?: "good" | "poor" };
 
 /** The address of a stream's own socket on the host an RPC socket is connected to. */
 export function streamUrl(rpcUrl: string, stream: string, ticket: string): string {

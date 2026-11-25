@@ -25,7 +25,7 @@ function fakeLease(): EngineLease & { released: number } {
   return l
 }
 
-function setup(o: { state?: WinvmState | null; display?: boolean; missingTool?: string | null; leases?: number; holder?: string | null; device?: 'vga' | 'virtio'; sizes?: boolean } = {}) {
+function setup(o: { state?: WinvmState | null; display?: boolean; missingTool?: string | null; leases?: number; holder?: string | null; device?: 'vga' | 'virtio'; sizes?: boolean; hardwareCursor?: boolean } = {}) {
   let state: WinvmState | null = o.state === undefined ? awake() : o.state
   const listeners = new Set<(s: WinvmState | null) => void>()
   const viewers: number[] = []
@@ -55,6 +55,7 @@ function setup(o: { state?: WinvmState | null; display?: boolean; missingTool?: 
       } as never
     },
     relay,
+    hardwareCursor: () => o.hardwareCursor ?? true,
     screenshot: async () => {
       shots++
       return Buffer.from('png')
@@ -145,6 +146,11 @@ describe("the Windows VM's video", () => {
     const t = setup({ leases: 3 })
     for (let i = 0; i < 3; i++) expect((await t.picture.open(ask()))?.ok).toBe(true)
     expect(await t.picture.open(ask())).toEqual({ ok: false, reason: 'busy' })
+  })
+
+  it('lets the relay sample its clock and blocks X cursor records for std VGA', async () => {
+    expect(await setup({ hardwareCursor: false }).picture.open(ask())).toMatchObject({ ok: true, captureClock: true, cursor: false })
+    expect(await setup().picture.open(ask())).toMatchObject({ ok: true, captureClock: true })
   })
 
   it("sends the thread's click in desktop pixels to each joined watcher under its own video id", async () => {

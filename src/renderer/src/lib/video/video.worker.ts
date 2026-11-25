@@ -1,4 +1,6 @@
 /// <reference lib="webworker" />
+import { VIDEO_CLOSE } from "@server/shared/contract-video";
+import { LinkHealth } from "./linkHealth";
 import type { FromWorker, ToWorker } from "./messages";
 import { StreamPlayer, type PlayerDeps, type Surface } from "./player";
 
@@ -7,7 +9,7 @@ import { StreamPlayer, type PlayerDeps, type Surface } from "./player";
  * stream of a window lives here, with its socket and its decoder, and draws
  * on the canvases the window handed over, on this thread.
  * React work in the window cannot make the video stutter, and the video
- * costs the window's thread nothing but a count four times a second.
+ * reports frame counts, timing readings and cursor changes to the window.
  */
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -15,6 +17,7 @@ const post = (message: FromWorker): void => scope.postMessage(message);
 
 /** How often the counts go to the window, and stalled streams are looked for. */
 const COUNT_MS = 250;
+const READING_MS = 1000;
 
 class CanvasSurface implements Surface<VideoFrame> {
   private readonly ctx: OffscreenCanvasRenderingContext2D | null;
@@ -36,12 +39,16 @@ interface Playing {
   player: StreamPlayer<VideoFrame>;
   counted: number;
   at: number;
+  health: LinkHealth;
+  readingAt: number;
+  readingFrames: number;
   drive: boolean;
   timer?: ReturnType<typeof setTimeout>;
   deadline?: number;
 }
 
 const players = new Map<number, Playing>();
+const links = new Map<number, LinkHealth>();
 const surfaces = new Map<number, CanvasSurface>();
 
 let waking = false;
@@ -103,16 +110,24 @@ function close(stream: number): void {
 
 function open(stream: number, url: string, drive: boolean): void {
   close(stream);
+  const health = links.get(stream) ?? new LinkHealth();
+  health.restart();
+  links.set(stream, health);
   const player = new StreamPlayer<VideoFrame>(url, { ...deps, wake: () => schedule(entry) }, {
+    arrived: (at, late) => health.frame(at, late),
+    cursor: (shape) => scope.postMessage({ t: "cursor", stream, shape } satisfies FromWorker, [shape.rgba.buffer as ArrayBuffer]),
     drawn: (width, height) => post({ t: "drawn", stream, width, height }),
     closed: (code, fault) => {
       if (players.get(stream) !== entry) return;
       players.delete(stream);
       stopTimer(entry);
-      post({ t: "closed", stream, code, ...(fault ? { fault } : {}) });
+      const now = performance.now();
+      if (code === VIDEO_CLOSE.slow) health.slowClose(now);
+      post({ t: "closed", stream, code, link: health.state(now), ...(fault ? { fault } : {}) });
     },
   }, drive);
-  const entry: Playing = { player, drive, counted: 0, at: performance.now() };
+  const now = performance.now();
+  const entry: Playing = { player, drive, counted: 0, at: now, health, readingAt: now, readingFrames: 0 };
   players.set(stream, entry);
   for (const surface of surfaces.values()) if (surface.stream === stream) player.show(surface);
 }
@@ -120,7 +135,10 @@ function open(stream: number, url: string, drive: boolean): void {
 scope.onmessage = (event: MessageEvent<ToWorker>) => {
   const message = event.data;
   if (message.t === "open") open(message.stream, message.url, !!message.drive);
-  else if (message.t === "close") close(message.stream);
+  else if (message.t === "close") {
+    close(message.stream);
+    links.delete(message.stream);
+  }
   else if (message.t === "watch") {
     const entry = players.get(message.stream);
     if (!entry) return;
@@ -158,3 +176,15 @@ setInterval(() => {
     entry.at = now;
   }
 }, COUNT_MS);
+
+setInterval(() => {
+  const now = performance.now();
+  for (const [stream, entry] of players) {
+    const frames = entry.player.frames;
+    const fps = ((frames - entry.readingFrames) * 1000) / Math.max(1, now - entry.readingAt);
+    post({ t: "reading", stream, reading: { ...entry.player.timing(now), fps, link: entry.health.state(now) } });
+    entry.readingAt = now;
+    entry.readingFrames = frames;
+    entry.player.ping(now);
+  }
+}, READING_MS);

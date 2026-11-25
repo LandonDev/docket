@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { FADE_IN } from "@renderer/components/ui/reveal";
 import { StatusMark } from "@renderer/components/ui/status";
@@ -91,7 +91,7 @@ function useNow(on: boolean): number {
  * it takes the box's one display and is his to drive; a press on Take over gives the picture the keyboard at once.
  * The Windows VM's opens on the picture it last slept on, under a lighter wash, until its first frame is drawn.
  */
-function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place: Place; focusOnDrive: RefObject<boolean> }) {
+function LivePicture({ tile, place, focusOnDrive, readStage, onReading }: { tile: ComputerTile; place: Place; focusOnDrive: RefObject<boolean>; readStage: string; onReading: (key: string, reading: BarReading | null) => void }) {
   const seen = useDocumentVisible();
   const link = useHostLink(tile.entry.host);
   const linked = link.linked;
@@ -100,7 +100,7 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
   const vm = tile.computer.startsWith("vm:");
   // no stream is asked for while the host's link is down: it is asked for again, as a place shown again, when the link is back
   const full = useFullWindow();
-  const stream = useLiveStream(tile.entry, seen && linked, box, measure, { take: place.stage, drive: place.stage, room: place.stage && !full ? place.room : undefined });
+  const stream = useLiveStream(tile.entry, seen && linked, box, measure, { take: place.stage, drive: place.stage, room: place.stage && !full ? place.room : undefined, read: place.stage });
   // the stage's Hand back wears the leave chord: no toast says it again
   useDrivingInput(stream, box, drivenScreen(tile.computer), { chordShown: place.stage });
   useEffect(() => {
@@ -108,6 +108,10 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
     focusOnDrive.current = false;
     box.current?.focus();
   }, [focusOnDrive, stream.drive]);
+  const reading = stream.reading ?? null;
+  useEffect(() => {
+    if (place.stage) onReading(readStage, reading);
+  }, [onReading, place.stage, readStage, reading]);
   const { state } = stream;
   const still = useVmStill(tile.entry.host, vm, null);
   const over = state.status === "ended" || state.status === "failed";
@@ -332,6 +336,10 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, fr
   const [pick, setPick] = useState<string | null>(null);
   const [kept, setKept] = useState<string | null>(null);
   const focusOnDrive = useRef(false);
+  const [measuredReading, setMeasuredReading] = useState<{ key: string; reading: BarReading } | null>(null);
+  const onReading = useCallback((key: string, reading: BarReading | null) => {
+    setMeasuredReading((was) => reading ? { key, reading } : was?.key === key ? null : was);
+  }, []);
   const keyed = tiles.map((tile) => ({ tile, key: tileKey(tile, tiles), asking: !!tile.entry.row.asking, lastCallAt: tile.entry.row.lastCallAt }));
   // back from the pop-out: that computer has the stage, as his pick
   const asked = useStageRequest();
@@ -356,7 +364,7 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, fr
       ) : tile.shownOn ? (
         <ElsewherePicture machine={tile.shownOn} />
       ) : (
-        <LivePicture tile={tile} place={place} focusOnDrive={focusOnDrive} />
+        <LivePicture tile={tile} place={place} focusOnDrive={focusOnDrive} readStage={tileKey(tile, tiles)} onReading={onReading} />
       ));
   const pictures = new Map(keyed.map(({ tile, key }) => [key, picture(tile, key === front ? { stage: true, room: layout.room } : { stage: false })]));
   // where the stage's picture is on his screen: full screen grows it from there
@@ -372,7 +380,7 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, fr
       onOpenSession={onOpenSession}
       onTookOver={() => void (focusOnDrive.current = true)}
       pictureRect={pictureRect}
-      reading={reading}
+      reading={reading ?? (!pictureOf && !staged.vm && !staged.shownOn && measuredReading?.key === front ? measuredReading?.reading : null)}
     />
   ) : null;
   const header = <ComputersHeader {...frame} bar={bar} />;

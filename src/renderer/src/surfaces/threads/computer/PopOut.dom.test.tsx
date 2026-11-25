@@ -61,6 +61,15 @@ describe("the pop-out's body", () => {
     expect([back.mock.calls.length, close.mock.calls.length]).toEqual([1, 1]);
   });
 
+  it("opens the live delay details in the pop-out’s document", async () => {
+    const { doc } = childWindow();
+    const stream = streamOf({ status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true });
+    render(view({ stream: { ...stream, reading: { delayMs: 31, fps: 48, link: "good" } } }), { container: doc.body });
+    fireEvent.click(within(doc.body).getByRole("button", { name: "Delay 31 ms, details" }));
+    const details = await within(doc.body).findByRole("dialog", { name: "Delay" });
+    expect(within(details).getByText("48 a second")).not.toBeNull();
+  });
+
   it("fits its picture as the stage does: a screen fills the room, a window's stops at twice its pixels and is drawn crisp", () => {
     const picture = (): HTMLElement => document.querySelector<HTMLElement>('[data-slot="pop-out-picture"]')!;
     const v = render(view({ tile: tile({ computer: "vm:windows" }), room: { width: 3200, height: 1764 }, dpr: 2 }));

@@ -41,6 +41,8 @@ export type VideoOpening =
       scope: 'watch' | 'drive'
       group?: string
       tag?: string
+      captureClock?: true
+      cursor?: false
       /** told the stream's id once it is opened, for a source that keeps something beside each of its streams */
       opened?: (stream: string) => void
     }
@@ -140,6 +142,8 @@ export class VideoRpc {
         feed: opening.feed,
         group: opening.group,
         tag: opening.tag,
+        captureClock: opening.captureClock,
+        cursor: opening.cursor,
         ...(params.accepts?.length ? { accepts: [...new Set(params.accepts)] } : {})
       })
       this.origin.set(stream, source)

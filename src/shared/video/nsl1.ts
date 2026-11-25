@@ -4,9 +4,8 @@
  *
  * Ported from screen-relay 0.1.2 (github.com/vercel-labs/screen-relay,
  * `src/protocol/index.ts` and PROTOCOL.md), licensed under the Apache License,
- * Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0). Changed here: only the frame,
- * the ack and the input message are kept, errors are plain `Nsl1Error`s, and a
- * frame encoder is added for our own sources and tests. `nsl1.parity.test.ts`
+ * Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0). Changed here: errors are plain `Nsl1Error`s,
+ * and the viewer and relay have their own ping and pong. `nsl1.parity.test.ts`
  * holds this file to the pinned package byte for byte.
  */
 
@@ -22,12 +21,14 @@ export const MAX_MESSAGE_BYTES = HEADER_SIZE + FRAME_PREFIX + MAX_BYTES_IN_FLIGH
 export const SUBPROTOCOL = 'nsl1'
 
 /**
- * The message types of the wire at 0.1.2. A stream socket carries 1 to 3; 4 and
- * 5 are the engine's `/control` socket, which only the box's relay opens; 6 (the
- * remote pointer's shape) is never passed on to a viewer.
+ * Types 4 and 5 belong to the engine's `/control` socket. The viewer's
+ * socket carries 1 to 3, and 6 to 8 when the viewer asks for them.
  */
-export const MESSAGE_TYPES = { frame: 1, ack: 2, input: 3, controlReady: 4, inputResponse: 5, cursor: 6 } as const
-const LAST_TYPE = 6
+export const MESSAGE_TYPES = { frame: 1, ack: 2, input: 3, controlReady: 4, inputResponse: 5, cursor: 6, ping: 7, pong: 8 } as const
+const LAST_TYPE = MESSAGE_TYPES.pong
+const CURSOR_PREFIX = 8
+const CURSOR_MAX = 256
+const NO_CAPTURE_DELAY = 0xffffffff
 export const INPUT_TYPES = { keyDown: 1, keyUp: 2, pointerMove: 3, buttonDown: 4, buttonUp: 5, wheel: 6, releaseAll: 7, text: 8 } as const
 
 export class Nsl1Error extends Error {
@@ -157,6 +158,55 @@ export function parseFrame(bytes: Uint8Array | ArrayBuffer): Frame {
   const timestamp = view.getBigUint64(4)
   if (!width || !height || timestamp > BigInt(Number.MAX_SAFE_INTEGER)) throw new Nsl1Error('Invalid frame header')
   return { generation, sequence, keyframe: flags === 1, width, height, timestamp: Number(timestamp), data: data.subarray(HEADER_SIZE + FRAME_PREFIX) }
+}
+
+export interface CursorShape {
+  generation: number
+  width: number
+  height: number
+  hotX: number
+  hotY: number
+  rgba: Uint8Array
+}
+
+/** The engine's type 6: four big-endian uint16s followed by straight RGBA. */
+export function parseCursor(bytes: Uint8Array | ArrayBuffer): CursorShape {
+  const data = bytesOf(bytes)
+  const { type, generation, sequence, payloadLength: size } = parseHeader(data)
+  if (type !== MESSAGE_TYPES.cursor || sequence !== 0 || size < CURSOR_PREFIX) throw new Nsl1Error('Invalid cursor')
+  const view = new DataView(data.buffer, data.byteOffset + HEADER_SIZE, CURSOR_PREFIX)
+  const width = view.getUint16(0)
+  const height = view.getUint16(2)
+  const hotX = view.getUint16(4)
+  const hotY = view.getUint16(6)
+  const valid = width && height ? hotX < width && hotY < height : !(width || height || hotX || hotY)
+  if (!valid || width > CURSOR_MAX || height > CURSOR_MAX || size !== CURSOR_PREFIX + width * height * 4) throw new Nsl1Error('Invalid cursor size or hotspot')
+  return { generation, width, height, hotX, hotY, rgba: data.subarray(HEADER_SIZE + CURSOR_PREFIX) }
+}
+
+/** Ping and pong have their own sequence and do not belong to a frame generation. */
+export function encodePing(sequence: number): Uint8Array {
+  return header(MESSAGE_TYPES.ping, 1, sequence, 0)
+}
+
+export function pingSequence(bytes: Uint8Array): number | null {
+  const h = parseHeader(bytes)
+  return h.type === MESSAGE_TYPES.ping && h.generation === 1 && h.payloadLength === 0 ? h.sequence : null
+}
+
+export function encodePong(sequence: number, captureMs?: number): Uint8Array {
+  const bytes = header(MESSAGE_TYPES.pong, 1, sequence, 4)
+  const micros = captureMs === undefined ? NO_CAPTURE_DELAY : Math.min(NO_CAPTURE_DELAY - 1, Math.round(captureMs * 1000))
+  new DataView(bytes.buffer).setUint32(HEADER_SIZE, micros)
+  return bytes
+}
+
+export function parsePong(bytes: Uint8Array | ArrayBuffer): { sequence: number; captureMs?: number } {
+  const data = bytesOf(bytes)
+  const h = parseHeader(data)
+  if (h.type !== MESSAGE_TYPES.pong || h.generation !== 1 || h.payloadLength !== 4) throw new Nsl1Error('Invalid pong')
+  const micros = new DataView(data.buffer, data.byteOffset + HEADER_SIZE, 4).getUint32(0)
+  return { sequence: h.sequence, captureMs: micros === NO_CAPTURE_DELAY ? undefined : micros / 1000 }
 }
 
 /**

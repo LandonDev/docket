@@ -1,10 +1,10 @@
 import type { ServerPush } from "@server/shared/contract";
-import type { InputEvent } from "@server/shared/video/nsl1";
+import type { CursorShape, InputEvent } from "@server/shared/video/nsl1";
 import { VIDEO_MIN_EDGE, type VideoCloseFace, type VideoCopyAnswer, type VideoOpenAnswer, type VideoSizeAnswer, type VideoSizeParams } from "@server/shared/contract-video";
 import { SIZE_REST_MS, sizeAskDue } from "@server/shared/video/guestSize";
 import { registry } from "../connection/registry";
 import type { GuestSizeAsk } from "../guestSize";
-import { afterClose, streamUrl, type FromWorker, type ToWorker } from "./messages";
+import { afterClose, streamUrl, type FromWorker, type StreamReading, type ToWorker } from "./messages";
 import { REGROW, SHRINK, SHRINK_QUIET_MS } from "./support";
 
 /**
@@ -46,6 +46,10 @@ export interface StreamHandle {
   /** frames drawn since the stream opened, and the rate of the last quarter second */
   onCount(fn: (frames: number, fps: number) => void): () => void;
   /** the agent's click, as shares of the picture */
+  reading(): StreamReading | null;
+  onReading(fn: (reading: StreamReading | null) => void): () => void;
+  cursor(): CursorShape | null;
+  onCursor(fn: (shape: CursorShape | null) => void): () => void;
   onClick(fn: (x: number, y: number) => void): () => void;
   /** one of his input events; it goes nowhere unless the host gave a stream he drives */
   input(event: InputEvent): void;
@@ -101,6 +105,10 @@ interface Entry {
   round: number;
   listeners: Set<() => void>;
   counts: Set<(frames: number, fps: number) => void>;
+  reading: StreamReading | null;
+  readings: Set<(reading: StreamReading | null) => void>;
+  cursor: CursorShape | null;
+  cursors: Set<(shape: CursorShape | null) => void>;
   clicks: Set<(x: number, y: number) => void>;
   timer: ReturnType<typeof setTimeout> | null;
   linger: ReturnType<typeof setTimeout> | null;
@@ -162,7 +170,7 @@ export class VideoStreams {
     const id = keyOf(host, key);
     let entry = this.entries.get(id);
     if (!entry) {
-      entry = { id: this.nextId++, host, key, wants: new Map(), view: { status: "opening" }, opened: null, size: { places: new Map(), room: null, since: 0, asked: null, inputs: 0 }, tries: 0, round: 0, listeners: new Set(), counts: new Set(), clicks: new Set(), timer: null, linger: null, shrink: null, offs: [] };
+      entry = { id: this.nextId++, host, key, wants: new Map(), view: { status: "opening" }, opened: null, size: { places: new Map(), room: null, since: 0, asked: null, inputs: 0 }, tries: 0, round: 0, listeners: new Set(), counts: new Set(), reading: null, readings: new Set(), cursor: null, cursors: new Set(), clicks: new Set(), timer: null, linger: null, shrink: null, offs: [] };
       this.entries.set(id, entry);
       this.byId.set(entry.id, entry);
     }
@@ -184,6 +192,14 @@ export class VideoStreams {
       subscribe: (fn) => (mine.listeners.add(fn), () => void mine.listeners.delete(fn)),
       show: (canvas) => this.show(mine, canvas),
       onCount: (fn) => (mine.counts.add(fn), () => void mine.counts.delete(fn)),
+      reading: () => mine.reading,
+      onReading: (fn) => (mine.readings.add(fn), () => void mine.readings.delete(fn)),
+      cursor: () => (want.drive ? mine.cursor : null),
+      onCursor: (fn) => {
+        if (!want.drive) return () => {};
+        mine.cursors.add(fn);
+        return () => void mine.cursors.delete(fn);
+      },
       onClick: (fn) => (mine.clicks.add(fn), () => void mine.clicks.delete(fn)),
       input: (event) => {
         if (!mine.opened?.drive || mine.view.status !== "live" || !this.worker) return;
@@ -227,6 +243,7 @@ export class VideoStreams {
         // nobody drives it from here any more: the host has made it a watch stream, and the next driver asks for a new one
         if (mine.opened?.drive && !this.want(mine).drive) {
           mine.opened.drive = false;
+          this.setCursor(mine, null);
           this.post({ t: "watch", stream: mine.id });
         }
         if (mine.size.places.delete(token)) this.sizeRoom(mine);
@@ -346,10 +363,23 @@ export class VideoStreams {
 
   private set(entry: Entry, view: StreamView): void {
     entry.view = view;
+    if (view.status === "over" && entry.reading) this.setReading(entry, null);
     for (const fn of [...entry.listeners]) fn();
   }
 
+  private setReading(entry: Entry, reading: StreamReading | null): void {
+    entry.reading = reading;
+    for (const fn of [...entry.readings]) fn(reading);
+  }
+
+  private setCursor(entry: Entry, shape: CursorShape | null): void {
+    if (entry.cursor === shape) return;
+    entry.cursor = shape;
+    for (const fn of [...entry.cursors]) fn(shape);
+  }
+
   private open(entry: Entry): void {
+    this.setCursor(entry, null);
     const round = ++entry.round;
     if (entry.timer) clearTimeout(entry.timer);
     if (entry.shrink) clearTimeout(entry.shrink);
@@ -379,7 +409,7 @@ export class VideoStreams {
     const want = this.want(entry);
     link
       // a computer that outlives every thread (the Windows VM) is asked for by its name
-      .request<VideoOpenAnswer>("video.open", { threadId: entry.key, ...(entry.key.startsWith("vm:") ? { computer: entry.key } : {}), maxEdge: want.edge, ...(want.take ? { take: true } : {}), ...(want.drive ? { drive: true } : {}) })
+      .request<VideoOpenAnswer>("video.open", { threadId: entry.key, ...(entry.key.startsWith("vm:") ? { computer: entry.key } : {}), maxEdge: want.edge, ...(want.take ? { take: true } : {}), ...(want.drive ? { drive: true } : {}), accepts: want.drive ? ["cursor", "pong"] : ["pong"] })
       .then((answer) => {
         if (entry.round !== round || !this.byId.has(entry.id)) {
           if (answer.ok) void link.request("video.close", { stream: answer.stream }).catch(() => undefined);
@@ -469,6 +499,10 @@ export class VideoStreams {
   private heard(message: FromWorker): void {
     const entry = this.byId.get(message.stream);
     if (!entry) return;
+    if (message.t === "cursor") {
+      if (entry.opened?.drive) this.setCursor(entry, message.shape);
+      return;
+    }
     if (message.t === "drawn") {
       if (entry.opened && !entry.opened.ready) {
         entry.opened.ready = true;
@@ -477,12 +511,18 @@ export class VideoStreams {
       entry.tries = 0;
       return this.set(entry, { status: "live", width: message.width, height: message.height });
     }
+    if (message.t === "reading") {
+      if (entry.opened?.ready) this.setReading(entry, message.reading);
+      return;
+    }
     if (message.t === "count") {
       for (const fn of [...entry.counts]) fn(message.frames, message.fps);
       return;
     }
+    this.setCursor(entry, null);
     if (message.fault === "unsupported") return this.fail();
     if (entry.opened) entry.opened.ready = false;
+    if (entry.reading && message.link && entry.reading.link !== message.link) this.setReading(entry, { ...entry.reading, link: message.link });
     clearTimeout(entry.size.timer);
     const next = afterClose(message.code, message.fault, entry.tries);
     if (next.then === "over") {

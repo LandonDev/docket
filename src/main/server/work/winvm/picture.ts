@@ -45,6 +45,7 @@ export interface VmPictureDeps {
   onState(fn: (state: WinvmState | null) => void): () => void
   /** how many watch its picture: while any do, it does not sleep */
   setViewers(n: number): void
+  hardwareCursor?: () => boolean
   screen: Pick<VmScreen, 'env' | 'size' | 'missingTool' | 'adopt' | 'engines'>
   relay: Pick<VideoRelay, 'list' | 'onChange' | 'endWhere' | 'setDriver' | 'driving'>
   /** QMP's screenshot of the guest's screen, as PNG */
@@ -201,6 +202,8 @@ export class VmPicture implements VideoSource {
       scope,
       group: VM_COMPUTER,
       tag: VM_COMPUTER,
+      captureClock: true,
+      ...(this.d.hardwareCursor?.() === false ? { cursor: false as const } : {}),
       opened: (stream) => this.streams.set(stream, { feed, push: ask.push })
     }
   }

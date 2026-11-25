@@ -354,13 +354,14 @@ export function FullWindow({ onOpenSession, reading = null }: { onOpenSession: (
   const tile = useComputer(target?.host ?? "", target?.threadId ?? "");
   const room = useWindowSize();
   const bar = useRef<HTMLDivElement>(null);
-  const floating = useFloatingBar(bar, reading?.link === "poor");
   const vm = (target?.threadId ?? "").startsWith("vm:") ? target!.host : null;
   const vms = useVmStates();
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLDivElement>(null);
   const focusOnDrive = useRef(false);
-  const stream = useLiveStream(target ? (tile?.entry ?? null) : null, !!target, box as RefObject<HTMLElement | null>, measure, { room });
+  const stream = useLiveStream(target ? (tile?.entry ?? null) : null, !!target, box as RefObject<HTMLElement | null>, measure, { room, read: true });
+  const shownReading = reading ?? stream.reading;
+  const floating = useFloatingBar(bar, shownReading?.link === "poor");
   // its Hand back wears the leave chord: no toast says it again
   useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""), { chordShown: true, fullScreen: true });
   useDriveHold(tile ? `${tile.entry.host}\n${driveName(tile)}` : null, !!tile?.driving, () => (tile ? handBack(tile) : Promise.resolve()));
@@ -393,7 +394,7 @@ export function FullWindow({ onOpenSession, reading = null }: { onOpenSession: (
         barShown={floating.shown}
         barRef={bar}
         onMenuOpen={floating.onMenuOpen}
-        reading={reading}
+        reading={shownReading}
         rest={vm && vms[vm] ? <AsleepUnder host={vm} vm={vms[vm]!} room={room} /> : undefined}
         onPopOut={
           tile

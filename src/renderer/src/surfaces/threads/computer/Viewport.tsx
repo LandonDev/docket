@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref, type RefObject } from "react";
 import type { ComputerPreviewEndReason, HistoryPictureNone } from "@server/shared/contract-computer";
 import { Button } from "@renderer/components/ui/button";
 import { CONSOLE } from "@renderer/components/ui/console";
@@ -10,12 +10,16 @@ import { CLICK_MARK } from "../../../lib/ease";
 import { useComputerPreview, type PreviewState } from "../../../lib/computerPreview";
 import { loadToast } from "@renderer/components/ui/toaster";
 import type { Room } from "@server/shared/video/guestSize";
+import type { CursorShape } from "@server/shared/video/nsl1";
+import type { StreamReading } from "../../../lib/video/messages";
+import type { BarReading } from "./ComputerBar";
+import { CursorImages } from "../../../lib/video/cursor";
 import { useComputerVideo, type GuestSizeSetting, type VideoDrive } from "../../../lib/computerVideo";
 import { IS_MAC } from "../../../lib/platform";
 import { keyHint } from "../../../lib/keys";
 import { LEAVE_CHORD, VideoInput, attachInput, type DrivenScreen } from "../../../lib/video/videoInput";
 import { attachKeyboardHold } from "../../../lib/video/keyboardHold";
-import { sharpWidth } from "../../../lib/video/support";
+import { pixelRatioOf, sharpWidth } from "../../../lib/video/support";
 import type { ComputerEntry } from "../../../lib/computerSessions";
 import { reducedMotion } from "../../../lib/motion";
 
@@ -340,6 +344,7 @@ export interface LiveStream {
   mode: "video" | "picture";
   /** his way into the page, while he drives it from this place and its video is live; null otherwise */
   drive: VideoDrive | null;
+  reading?: BarReading | null;
 }
 
 /** How long after a copy chord the far clipboard is read: the app there takes the chord, then fills it. */
@@ -399,6 +404,54 @@ export function useDrivingInput(
   return drive !== null;
 }
 
+/** The native cursor follows the actual canvas size, including pop-outs on a different display. */
+function usePictureCursor(canvas: RefObject<HTMLCanvasElement | null>, shape: CursorShape | null, frameWidth: number | undefined): void {
+  const images = useRef<CursorImages | null>(null);
+  useLayoutEffect(() => () => {
+    images.current?.close();
+    images.current = null;
+  }, []);
+  useLayoutEffect(() => {
+    const el = canvas.current;
+    const view = el?.ownerDocument.defaultView;
+    if (!el || !view) return;
+    if (!shape || !frameWidth) {
+      el.style.cursor = "";
+      return;
+    }
+    const cache = (images.current ??= new CursorImages(el.ownerDocument));
+    let request = 0;
+    let resolution: MediaQueryList | undefined;
+    const update = () => {
+      const current = ++request;
+      const dpr = pixelRatioOf(el);
+      resolution?.removeEventListener?.("change", update);
+      resolution = view.matchMedia?.(`(resolution: ${dpr}dppx)`);
+      resolution?.addEventListener?.("change", update);
+      const width = Number.parseFloat(view.getComputedStyle(el).width) || el.clientWidth;
+      void cache.css(shape, width / frameWidth, dpr).then(
+        (cursor) => { if (request === current) el.style.cursor = cursor; },
+        () => { if (request === current) el.style.cursor = ""; },
+      );
+    };
+    const resize = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    resize?.observe(el);
+    update();
+    return () => {
+      request++;
+      resize?.disconnect();
+      resolution?.removeEventListener?.("change", update);
+    };
+  }, [canvas, frameWidth, shape]);
+}
+
+/** Estimate the relay-to-viewer leg as half the stream socket's round trip. */
+export function barReading(timing: StreamReading, picture: { width: number; height: number } | null): BarReading {
+  const { roundTripMs, captureMs, drawMs, fps, link } = timing;
+  const delayMs = roundTripMs === undefined || drawMs === undefined ? undefined : (captureMs ?? 0) + roundTripMs / 2 + drawMs;
+  return { delayMs, fps, link, picture: picture ?? undefined };
+}
+
 /**
  * The stream of `entry`'s window while `run` holds (the section shown, the
  * document visible, the section following). It is video first
@@ -420,6 +473,7 @@ export function useLiveStream(
     inset = 0,
     room,
     guestSize,
+    read = false,
   }: {
     take?: boolean;
     /** false for a place that only shows it: a tile */
@@ -428,11 +482,13 @@ export function useLiveStream(
     inset?: number;
     room?: Room;
     guestSize?: GuestSizeSetting;
+    read?: boolean;
   } = {},
 ): LiveStream {
   const pictureCanvas = useRef<HTMLCanvasElement>(null);
   const videoCanvas = useRef<HTMLCanvasElement>(null);
   const ring = useRef<HTMLDivElement>(null);
+  const [timing, setTiming] = useState<StreamReading | null>(null);
   const [boxWidth, setBoxWidth] = useState(0);
   const marks = useRef(0);
 
@@ -465,10 +521,18 @@ export function useLiveStream(
 
   const on = run && !!entry && boxWidth > 0;
   // he drives the page of a row kept for him: its stream is the one his input goes down
-  const video = useComputerVideo(entry ?? NO_ENTRY, { run: on, boxWidth, canvas: videoCanvas, box, onClick, take, drive: drive && entry?.row.driver === "owner", room, guestSize });
+  const video = useComputerVideo(entry ?? NO_ENTRY, { run: on, boxWidth, canvas: videoCanvas, box, onClick, take, drive: drive && entry?.row.driver === "owner", room, guestSize, onReading: read ? setTiming : undefined });
   const picture = useComputerPreview(entry ?? NO_ENTRY, { run: on && video.gaveWay, boxWidth, canvas: pictureCanvas, box, onClick });
+  const frame = streamSize(video.state);
+  usePictureCursor(videoCanvas, video.drive && !video.gaveWay ? video.cursor : null, frame?.width);
+  const width = frame?.width;
+  const height = frame?.height;
+  const reading = useMemo(
+    () => read && on && !video.gaveWay && timing && video.state.status === "live" ? barReading(timing, width && height ? { width, height } : null) : null,
+    [read, on, timing, video.state.status, video.gaveWay, width, height],
+  );
   if (video.gaveWay) return { state: picture.state, retry: picture.retry, canvas: pictureCanvas, ring, mode: "picture", drive: null };
-  return { state: video.state, retry: video.retry, canvas: videoCanvas, ring, mode: "video", drive: video.drive };
+  return { state: video.state, retry: video.retry, canvas: videoCanvas, ring, mode: "video", drive: video.drive, reading };
 }
 
 /** The live face from a stream: its canvas, hidden until the first frame, and the ring a click plays. */

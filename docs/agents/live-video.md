@@ -30,6 +30,9 @@ header. One WebSocket message holds one protocol message.
 | 1 frame | source to viewer | width, height, the capture time in microseconds, one H.264 Annex B access unit; the header's flag marks a keyframe |
 | 2 ack | viewer to source | the frame's generation and sequence, and how long the frame waited inside the viewer |
 | 3 input | viewer to source | one 16-byte record: a key, the pointer, a button, the wheel, release-all, or a character |
+| 6 cursor | source to opted-in viewer | width, height, hot x and hot y as big-endian 16-bit integers, then straight RGBA |
+| 7 ping | opted-in viewer to relay | a probe number in the sequence field, no payload |
+| 8 pong | relay to opted-in viewer | the same probe number and four bytes of median capture-to-relay time in microseconds, all ones when unknown |
 
 `screen-relay@0.1.2` is a devDependency used by one test,
 `nsl1.parity.test.ts`, which encodes and decodes with both. A bump that
@@ -47,8 +50,9 @@ serves these.
   `permission` or `refused`. `threadId` is the key `computer.preview.start`
   takes. `accepts` (`'cursor' | 'pong'`, `VIDEO_ACCEPTS`) names what the
   viewer reads beside frames; the relay keeps it on the stream's record
-  (`StreamInfo.accepts`). It still passes frames alone to every stream: the
-  passing of a named type is M4's.
+  (`StreamInfo.accepts`). The phone and older viewers name none and get
+  frames alone. Desktop watch streams ask for `pong`. Drive streams also
+  ask for `cursor`.
 - `video.close { stream }` ends a stream the same socket opened.
 - `video.paste { stream, text }` puts text into the page he drives. It needs
   a `drive` stream the same socket opened, while he is the driver.
@@ -210,10 +214,12 @@ and a proxy would cut an idle socket.
 
 `VideoRelay` (src/main/server/video/relay.ts) joins one viewer's socket to
 one feed. It is a pipe and never a fan-out: each viewer has its own stream and
-its own encoder, so each bitrate follows its own link. It reads a message's
-type and nothing else.
+its own encoder, so each bitrate follows its own link.
 
-- Feed to viewer: frames only, as they came.
+- Feed to viewer: frames and, if the viewer asked for them, cursor shapes.
+  The std VGA VM keeps its pointer in the picture, so the relay skips X
+  cursor shapes on that display. The relay answers pings itself and never
+  passes them to a feed.
 - Viewer to feed: acks, as they came, so the encoder sees the true link.
   Input passes only on a `drive` stream while he is the driver. The relay
   learns who drives from `setDriver`, not by a read on each record. When he
@@ -232,6 +238,26 @@ type and nothing else.
 A feed (`VideoFeed`, video/feed.ts) is one viewer's stream at its source.
 `VideoRpc` (video/rpc.ts) asks each `VideoSource` in turn; the first that
 knows the thread answers. `FakeFeed` is the feed the tests drive by hand.
+
+## Delay and frame rate
+
+The worker sends a ping once a second on the video socket. With the Windows
+VM's local engine, the relay takes the median of the last 120 capture-to-relay
+samples on the host's monotonic clock, starting over with a new encoder
+generation. For a feed without a known common clock, the pong carries no
+capture delay. The worker measures the socket round trip and takes the median
+of the last 120 arrival-to-draw samples from frames it drew. It also counts
+drawn frames over the last reporting interval, including zero on a still
+picture. These readings live on the stream handle. The bar's Delay adds the
+known capture time, half the socket round trip, and the draw wait. The
+popover also shows Frames, Picture and Link. A viewer that has yet to draw
+or hear a pong has no delay number.
+
+`LinkHealth` marks a link poor when the 95th centile of frame lateness
+reaches 120 ms over three seconds, or two `slow` closes occur within a
+minute. It keeps the slow-close history across reopens and clears after
+five seconds clean. The VM delay bench records cursor shapes separately
+from frames, along with the socket round trip and relay capture time.
 
 ## The box
 
@@ -722,6 +748,17 @@ phone's full screen ("The phone" below), and from then on:
   pointer stops. A button follows the move before it. Losing input focus
   clears pending input and releases what the far side may still hold.
   Browsers without raw updates use `pointermove`.
+- **Pointer shape.** When the engine sends a hardware cursor shape, the
+  desktop applies it as the picture's local CSS cursor. It scales the
+  bitmap to whole device pixels and scales the hotspot with the picture.
+  Until the first shape, and for a shape over 128 CSS pixels, the driver
+  sees the local arrow. An empty or fully clear shape hides it. With std
+  VGA, Windows still draws its pointer in the picture.
+- **What watchers see.** A thread's Windows clicks send the same
+  `computer-click` push as a Mac window. Each live watcher draws a ring
+  at the click's point on the VM's desktop. While he drives, a watcher
+  sees no pointer when Windows sends the hardware shape apart from the
+  picture. This includes the phone.
 - **A Mac's Command key** never crosses. ⌘C, ⌘X, ⌘A and ⌘Z go to the page
   as the Ctrl chords; every other ⌘ chord stays the app's. The Control key
   is Ctrl there. Full screen has its own map ("The keyboard in full

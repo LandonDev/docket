@@ -247,7 +247,7 @@ export function DelayButton({ reading, onFaster, onOpenChange }: { reading: BarR
       {poor ? (
         <div className="mb-2 flex flex-col gap-1">
           <span className="text-[13px] leading-5 font-medium">The link is slow</span>
-          <span className="text-xs leading-4 text-muted-foreground">Frames reach this computer late. Faster halves the picture and keeps up.</span>
+          <span className="text-xs leading-4 text-muted-foreground">Frames reach this computer late.{onFaster ? " Faster reduces the picture size." : ""}</span>
         </div>
       ) : null}
       <dl className="m-0 flex flex-col text-[13px]">
@@ -430,7 +430,7 @@ export function ComputerBar({ tile, name, onOpenSession, onTookOver, where, read
         {small ? null : <Facts parts={parts} className="flex-nowrap overflow-hidden text-xs @max-[480px]/bar:hidden leading-4 whitespace-nowrap text-muted-foreground [&>span]:min-w-0 [&>span]:truncate" />}
       </div>
       <span data-slot="computer-reads" className="flex shrink-0 items-center gap-0.5">
-        {reading && !small ? <DelayButton reading={reading} onFaster={onFaster} onOpenChange={onMenuOpen} /> : null}
+        {reading ? <DelayButton reading={reading} onFaster={onFaster} onOpenChange={onMenuOpen} /> : null}
         {tile?.driving && vmHere ? <KeysMenu tile={tile} onOpenChange={onMenuOpen} /> : null}
         {vm && tile && state && state !== "none" && state !== "setting-up" && !small ? (
           <VmMenu host={tile.entry.host} state={state} held={!!thread && !tile.driving} screen={screen} onOpenChange={onMenuOpen} />

@@ -40,7 +40,7 @@ describe('the NSL1 wire against screen-relay 0.1.2', () => {
     expect(ours.INPUT_SIZE).toBe(theirs.INPUT_SIZE)
     expect(ours.MAX_BYTES_IN_FLIGHT).toBe(theirs.MAX_BYTES_IN_FLIGHT)
     expect(ours.SUBPROTOCOL).toBe(theirs.SUBPROTOCOL)
-    expect(ours.MESSAGE_TYPES).toEqual(theirs.MESSAGE_TYPES)
+    expect(ours.MESSAGE_TYPES).toEqual({ ...theirs.MESSAGE_TYPES, ping: 7, pong: 8 })
     expect(ours.INPUT_TYPES).toEqual(theirs.INPUT_TYPES)
   })
 
@@ -99,6 +99,19 @@ describe('the NSL1 wire against screen-relay 0.1.2', () => {
     expect(theirs.parseMessage(delta)).toMatchObject({ type: 'frame', sequence: 2, keyframe: false })
   })
 
+  it('reads the engine cursor layout, including an empty shape, and rejects a bad hotspot or length', () => {
+    const cursor = ours.header(ours.MESSAGE_TYPES.cursor, 3, 0, 16)
+    cursor.set([0, 2, 0, 1, 0, 1, 0, 0, 1, 2, 3, 255, 0, 0, 0, 0], ours.HEADER_SIZE)
+    const offset = Buffer.concat([Buffer.alloc(3), cursor]).subarray(3)
+    expect(ours.parseCursor(new Uint8Array(offset.buffer, offset.byteOffset, offset.byteLength))).toEqual({ generation: 3, width: 2, height: 1, hotX: 1, hotY: 0, rgba: Uint8Array.from(offset.subarray(28)) })
+    expect(ours.parseCursor(ours.header(ours.MESSAGE_TYPES.cursor, 3, 0, 8)).rgba).toHaveLength(0)
+    cursor[25] = 2
+    expect(() => ours.parseCursor(cursor)).toThrow(ours.Nsl1Error)
+    cursor[25] = 1
+    cursor[21] = 3
+    expect(() => ours.parseCursor(cursor)).toThrow(ours.Nsl1Error)
+  })
+
   it('refuses the envelopes the package refuses', () => {
     const good = ours.encodeAck(1, 1)
     const cases: Uint8Array[] = []
@@ -110,7 +123,7 @@ describe('the NSL1 wire against screen-relay 0.1.2', () => {
     tweak(0, 0x4d) // the magic
     tweak(4, 2) // the version
     tweak(5, 0) // no such type
-    tweak(5, 7)
+    tweak(5, 9)
     tweak(7, 1) // a flag on an ack
     tweak(19, 1) // a length the message does not have
     cases.push(good.subarray(0, 19))

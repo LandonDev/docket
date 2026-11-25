@@ -1143,7 +1143,12 @@ Every computer being driven now, on every connected host, in one place
   Drawn at two or more screen pixels to each of the stream's, exactly, its
   pixels are doubled crisp (`image-rendering: pixelated`); at any other
   scale it stays smooth. It takes the box's one display and is where he
-  drives.
+  drives. When Windows sends a separate hardware cursor, the picture uses
+  that shape as the native cursor while he drives. Its size follows the
+  picture in whole device pixels and its hotspot scales with it. The Mac's
+  arrow shows before the first shape and for shapes over 128 CSS pixels.
+  A fully clear shape hides the cursor. A watcher sees the ring on a
+  thread's click and no hardware pointer while he drives.
 - **The strip.** Every other computer is a live tile beside the stage, 176
   to 240px wide, 16px from it and 16px apart: its picture, its thread's
   title (13px medium; the amber waiting mark before it while a card waits

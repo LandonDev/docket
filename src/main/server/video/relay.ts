@@ -1,15 +1,16 @@
 import { randomBytes } from 'node:crypto'
 import { VIDEO_CLOSE, type VideoAccept, type VideoCloseReason } from '@shared/contract-video'
-import { MESSAGE_TYPES, messageType } from '@shared/video/nsl1'
+import { MESSAGE_TYPES, encodePong, messageType, parseFrame, pingSequence } from '@shared/video/nsl1'
+import { VideoSamples } from '@shared/video/samples'
 import type { StreamClaim, StreamHolder, StreamScope } from '../remote/auth'
-import { isFrame, type VideoFeed } from './feed'
+import type { VideoFeed } from './feed'
 
 /**
  * Joins a viewer's socket to its feed (docs/agents/live-video.md "The
  * relay"). A pipe, never a fan-out: one stream is one viewer, one socket and
  * one feed, so each encoder follows its own viewer's link. It reads a
- * message's type and nothing else:
- *   feed → viewer   frames only, as they came
+ * message's type and samples capture time on a known clock:
+ *   feed → viewer   frames and opted-in cursor shapes, as they came
  *   viewer → feed   acks, as they came; input only on a `drive` stream while he is the driver
  * Frames never touch the RPC socket, the push coalescer or the relay's JSON
  * lane, where a 120 Hz stream would starve everything else.
@@ -43,6 +44,10 @@ export interface StreamGrant {
   tag?: string
   /** what the viewer reads beside frames (`video.open`'s `accepts`) */
   accepts?: readonly VideoAccept[]
+  /** This source captures on the relay host’s monotonic clock. */
+  captureClock?: true
+  /** Omit X cursor shapes when Windows already draws its pointer into the frame. */
+  cursor?: false
 }
 
 export interface StreamInfo {
@@ -74,7 +79,7 @@ export class VideoRelay {
   private readonly lastInput = new Map<string, { stream: string; holder: StreamHolder }>()
   private readonly listeners = new Set<() => void>()
 
-  constructor(private readonly opts: { maxUnsent?: number; unclaimedMs?: number } = {}) {}
+  constructor(private readonly opts: { maxUnsent?: number; unclaimedMs?: number; nowMicros?: () => number } = {}) {}
 
   /** A stream for one viewer, not yet joined: its id goes back with a ticket. */
   open(grant: StreamGrant): string {
@@ -101,13 +106,24 @@ export class VideoRelay {
     s.timer = null
     s.socket = socket
     const max = this.opts.maxUnsent ?? VIDEO_MAX_UNSENT
+    const pong = s.accepts?.includes('pong')
+    const cursor = s.cursor !== false && s.accepts?.includes('cursor')
+    const capture = pong && s.captureClock ? new VideoSamples() : null
+    let generation = 0
+    const send = (bytes: Uint8Array): void => {
+      if (socket.bufferedAmount > max) return this.end(s.id, 'slow')
+      socket.send(bytes)
+    }
     socket.on('message', (data, isBinary) => {
       if (!isBinary || this.streams.get(s.id) !== s) return
       const bytes = Array.isArray(data) ? Buffer.concat(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data
       const type = messageType(bytes)
       // a feed that throws ends its own stream, never the process
       this.guard(s, () => {
-        if (type === MESSAGE_TYPES.ack) s.feed.ack(bytes)
+        if (type === MESSAGE_TYPES.ping && pong) {
+          const sequence = pingSequence(bytes)
+          if (sequence !== null) send(encodePong(sequence, capture?.median()))
+        } else if (type === MESSAGE_TYPES.ack) s.feed.ack(bytes)
         else if (type === MESSAGE_TYPES.input && this.drives(s)) {
           this.lastInput.set(s.group!, { stream: s.id, holder: s.holder })
           s.feed.input(bytes)
@@ -117,11 +133,22 @@ export class VideoRelay {
     socket.on('close', () => this.remove(s))
     this.guard(s, () =>
       s.feed.start({
-        frame: (bytes) => {
-          if (this.streams.get(s.id) !== s || !isFrame(bytes)) return
-          if (socket.bufferedAmount > max) return this.end(s.id, 'slow')
-          socket.send(bytes)
-        },
+        frame: (bytes) => this.guard(s, () => {
+          if (this.streams.get(s.id) !== s) return
+          const type = messageType(bytes)
+          if (type === MESSAGE_TYPES.cursor && cursor) return send(bytes)
+          if (type !== MESSAGE_TYPES.frame) return
+          if (capture) {
+            const now = this.opts.nowMicros?.() ?? Number(process.hrtime.bigint() / 1000n)
+            const frame = parseFrame(bytes)
+            if (frame.generation !== generation) {
+              capture.clear()
+              generation = frame.generation
+            }
+            if (now >= frame.timestamp) capture.add((now - frame.timestamp) / 1000)
+          }
+          send(bytes)
+        }),
         end: (reason) => this.end(s.id, reason)
       })
     )

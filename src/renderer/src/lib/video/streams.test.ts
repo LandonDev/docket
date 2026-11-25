@@ -61,6 +61,33 @@ const drawn = { t: "drawn", stream: 1, width: 1280, height: 800 } as const;
 const input = { type: "keyDown", key: 4 } as const;
 const tick = (ms = SIZE_REST_MS) => vi.advanceTimersByTimeAsync(ms);
 
+it("keeps cursor and timing on a shared handle and clears them when control or video ends", async () => {
+  const r = rig();
+  const watch = r.streams.acquire("box", "vm:windows", { edge: 1280, take: false });
+  await settle();
+  const driver = r.streams.acquire("box", "vm:windows", drive);
+  await settle();
+  expect(r.opens().map((o) => o.accepts)).toEqual([["pong"], ["cursor", "pong"]]);
+  expect(driver.cursor()).toBeNull();
+  r.say(drawn);
+  const shape = { generation: 1, width: 1, height: 1, hotX: 0, hotY: 0, rgba: Uint8Array.of(0, 0, 0, 255) };
+  r.say({ t: "cursor", stream: 1, shape });
+  expect(driver.cursor()).toBe(shape);
+  expect(watch.cursor()).toBeNull();
+  const timing = { fps: 30, link: "good", roundTripMs: 24, drawMs: 4, captureMs: 7 } as const;
+  const heard = vi.fn();
+  watch.onReading(heard);
+  r.say({ t: "reading", stream: 1, reading: timing });
+  expect(heard).toHaveBeenCalledWith(timing);
+  expect(driver.reading()).toBe(timing);
+  driver.release();
+  expect(driver.cursor()).toBeNull();
+  r.say({ t: "closed", stream: 1, code: VIDEO_CLOSE.slow, link: "poor" });
+  expect(watch.reading()).toMatchObject({ link: "poor" });
+  r.say({ t: "closed", stream: 1, code: VIDEO_CLOSE.ended });
+  expect(watch.reading()).toBeNull();
+});
+
 describe("asking for the guest's size", () => {
   it("asks on taking the drive and never from the watch stream", async () => {
     const r = rig();
@@ -333,7 +360,7 @@ describe("the window's streams", () => {
     const r = rig();
     r.streams.acquire("box", "vm:windows", { edge: 1280, take: true });
     await settle();
-    expect(r.opens()).toEqual([{ threadId: "vm:windows", computer: "vm:windows", maxEdge: 1280, take: true }]);
+    expect(r.opens()).toEqual([{ threadId: "vm:windows", computer: "vm:windows", maxEdge: 1280, take: true, accepts: ["pong"] }]);
   });
 
   it("opens one stream for a host and thread, however many places show it, and tells the worker where its socket is", async () => {
@@ -341,7 +368,7 @@ describe("the window's streams", () => {
     const a = r.streams.acquire("box", "thread-1", { edge: 1280, take: true });
     const b = r.streams.acquire("box", "thread-1", { edge: 640, take: false });
     await settle();
-    expect(r.opens()).toEqual([{ threadId: "thread-1", maxEdge: 1280, take: true }]);
+    expect(r.opens()).toEqual([{ threadId: "thread-1", maxEdge: 1280, take: true, accepts: ["pong"] }]);
     expect(r.posted).toEqual([{ t: "open", stream: 1, url: "wss://box.example/video/s1?ticket=t1" }]);
     expect(r.workers()).toBe(1);
     // the shape is known before the first frame
@@ -354,7 +381,7 @@ describe("the window's streams", () => {
     // another thread is another stream
     r.streams.acquire("box", "thread-2", { edge: 640, take: false });
     await settle();
-    expect(r.opens()[1]).toEqual({ threadId: "thread-2", maxEdge: 640 });
+    expect(r.opens()[1]).toEqual({ threadId: "thread-2", maxEdge: 640, accepts: ["pong"] });
     expect(r.posted.at(-1)).toMatchObject({ t: "open", stream: 2 });
   });
 
@@ -367,7 +394,7 @@ describe("the window's streams", () => {
     r.say({ t: "closed", stream: 1, code: 0, fault: "behind" });
     expect(r.calls.slice(-2)).toEqual([
       { method: "video.close", params: { stream: "s1" } },
-      { method: "video.open", params: { threadId: "t1", maxEdge: 640, take: true, drive: true } },
+      { method: "video.open", params: { threadId: "t1", maxEdge: 640, take: true, drive: true, accepts: ["cursor", "pong"] } },
     ]);
     expect(h.view()).toEqual({ status: "live", width: 1280, height: 800 });
     await settle();
@@ -525,8 +552,8 @@ describe("the window's streams", () => {
     refused.streams.acquire("box", "t1", { edge: 640, take: true });
     await settle();
     expect(refused.opens()).toEqual([
-      { threadId: "t1", maxEdge: 640 },
-      { threadId: "t1", maxEdge: 640, take: true },
+      { threadId: "t1", maxEdge: 640, accepts: ["pong"] },
+      { threadId: "t1", maxEdge: 640, take: true, accepts: ["pong"] },
     ]);
     expect(a.view().status).toBe("opening");
     const old = rig([new Error("unknown method video.open")]);
@@ -569,7 +596,7 @@ describe("the window's streams", () => {
     // the full view
     mac.streams.acquire("mac", "t1", { edge: 2560, take: true });
     await settle();
-    expect(mac.opens()[1]).toEqual({ threadId: "t1", maxEdge: 2560, take: true });
+    expect(mac.opens()[1]).toEqual({ threadId: "t1", maxEdge: 2560, take: true, accepts: ["pong"] });
     expect(mac.closes()).toEqual(["m1"]);
     // the box's page is 1280 wide whatever is asked
     const box = rig();
@@ -600,7 +627,7 @@ describe("the window's streams", () => {
     expect(mac.opens()).toHaveLength(1);
     vi.advanceTimersByTime(1);
     await settle();
-    expect(mac.opens()[1]).toEqual({ threadId: "t1", maxEdge: 1280 });
+    expect(mac.opens()[1]).toEqual({ threadId: "t1", maxEdge: 1280, accepts: ["pong"] });
     expect(mac.closes()).toEqual(["m1"]);
     pop.release();
   });
@@ -703,11 +730,11 @@ describe("the window's streams", () => {
     const r = rig();
     const watching = r.streams.acquire("box", "t1", { edge: 640, take: true });
     await settle();
-    expect(r.opens()).toEqual([{ threadId: "t1", maxEdge: 640, take: true }]);
+    expect(r.opens()).toEqual([{ threadId: "t1", maxEdge: 640, take: true, accepts: ["pong"] }]);
     // he took over: a watch stream is never turned into a drive stream
     const driving = r.streams.acquire("box", "t1", { edge: 640, take: true, drive: true });
     await settle();
-    expect(r.opens()[1]).toEqual({ threadId: "t1", maxEdge: 640, take: true, drive: true });
+    expect(r.opens()[1]).toEqual({ threadId: "t1", maxEdge: 640, take: true, drive: true, accepts: ["cursor", "pong"] });
     expect(r.closes()).toEqual(["s1"]);
     // he handed back: the stream plays on as a watch stream, with no new one
     driving.release();

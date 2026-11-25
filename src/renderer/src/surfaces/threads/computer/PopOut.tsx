@@ -71,6 +71,7 @@ export function PopOutView({ tile, stream, name, boxRef, measureRef, room, dpr =
           tile={tile}
           name={name}
           small
+          reading={stream.reading}
           className="h-9 ps-2.5 pe-1.5"
           views={
             <>
@@ -208,7 +209,7 @@ function PopOutBody({ host, threadId, name, title, onBack }: { host: string; thr
   const box = useRef<HTMLDivElement>(null);
   // it is what he watches: it takes the box's display, and he may drive from it
   const room = useRoom(title.defaultView);
-  const stream = useLiveStream(tile?.entry ?? null, true, box as RefObject<HTMLElement | null>, measure, { room });
+  const stream = useLiveStream(tile?.entry ?? null, true, box as RefObject<HTMLElement | null>, measure, { room, read: true });
   useDrivingInput(stream, box as RefObject<HTMLElement | null>, drivenScreen(tile?.computer ?? ""));
   useDriveHold(tile ? `${tile.entry.host}\n${driveName(tile)}` : null, !!tile?.driving, () => (tile ? handBack(tile) : Promise.resolve()));
   const [full, setFull] = useState(false);

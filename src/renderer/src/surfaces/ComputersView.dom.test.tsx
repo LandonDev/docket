@@ -7,9 +7,10 @@ import { closePopOut, popOutTarget, requestStage } from "../lib/popOut";
 import { registry } from "../lib/connection/registry";
 import { ComputersPage, ComputersView, LOST_TRIES, lostPlate, pictureFrame, RestingVmPicture, Tile, tileLine } from "./ComputersView";
 import fixtures from "./ComputersView.fixtures";
+import type { BarReading } from "./threads/computer/ComputerBar";
 import { tile } from "./threads/computer/FullWindow.fixtures";
 
-const h = vi.hoisted(() => ({ tiles: [] as ComputerTile[], desktop: true, streams: [] as { key: string; take: boolean | undefined; run: boolean }[], ended: null as string | null, retried: 0 }));
+const h = vi.hoisted(() => ({ tiles: [] as ComputerTile[], desktop: true, streams: [] as { key: string; take: boolean | undefined; run: boolean }[], ended: null as string | null, retried: 0, readings: {} as Record<string, BarReading> }));
 vi.mock("../lib/computers", async (original) => ({ ...(await original<typeof import("../lib/computers")>()), useComputers: () => h.tiles }));
 vi.mock("../lib/computerSessions", async (original) => ({ ...(await original<typeof import("../lib/computerSessions")>()), previewContext: () => ({ desktop: h.desktop, localId: null }) }));
 vi.mock("./threads/computer/Viewport", async (original) => {
@@ -17,10 +18,10 @@ vi.mock("./threads/computer/Viewport", async (original) => {
   return {
     ...actual,
     // the stream itself is the viewport tests' business: here, what a tile asks of it
-    useLiveStream: (entry: { previewKey?: string } | null, run: boolean, _box: unknown, _measure: unknown, opts?: { take?: boolean }) => {
+    useLiveStream: (entry: { previewKey?: string } | null, run: boolean, _box: unknown, _measure: unknown, opts?: { take?: boolean; read?: boolean }) => {
       h.streams.push({ key: entry?.previewKey ?? "", take: opts?.take, run });
       const state = h.ended ? { status: "ended", reason: h.ended } : { status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true };
-      return { state, retry: () => void h.retried++, canvas: { current: null }, ring: { current: null }, mode: "video" };
+      return { state, retry: () => void h.retried++, canvas: { current: null }, ring: { current: null }, mode: "video", reading: opts?.read ? h.readings[entry?.previewKey ?? ""] : null };
     },
   };
 });
@@ -34,6 +35,7 @@ beforeEach(() => {
   h.streams.length = 0;
   h.ended = null;
   h.retried = 0;
+  h.readings = {};
 });
 afterEach(() => {
   cleanup();
@@ -74,6 +76,21 @@ describe("the Computers page", () => {
     expect(screen.getByText("You are driving")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Hand back" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+  });
+
+  it("uses the selected picture’s live readings in the stage bar", async () => {
+    const live = tile();
+    h.tiles = [live];
+    h.readings[live.entry.previewKey!] = { delayMs: 31, fps: 48, picture: { width: 1280, height: 800 }, link: "good" };
+    const page = () => <ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />;
+    const view = render(page());
+    const delay = screen.getByRole("button", { name: "Delay 31 ms, details" });
+    fireEvent.click(delay);
+    expect(await screen.findByText("48 a second")).not.toBeNull();
+    expect(screen.getByText("1280 × 800")).not.toBeNull();
+    h.readings = {};
+    view.rerender(page());
+    expect(screen.queryByRole("button", { name: "Delay 31 ms, details" })).toBeNull();
   });
 
   it("draws every fixture: a tile for each computer, or the one empty state", () => {

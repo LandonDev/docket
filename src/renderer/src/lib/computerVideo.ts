@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PreviewOptions, PreviewState } from "./computerPreview";
 import type { ComputerEntry } from "./computerSessions";
-import type { InputEvent } from "@server/shared/video/nsl1";
+import type { CursorShape, InputEvent } from "@server/shared/video/nsl1";
 import type { Room } from "@server/shared/video/guestSize";
 import { guestSizeAsk, type GuestSizeAsk, type GuestSizeSetting } from "./guestSize";
+import type { StreamReading } from "./video/messages";
 import type { StreamHandle, StreamView } from "./video/streams";
 import { REGROW_QUIET_MS, nextEdge, pixelRatioOf, videoEdge, videoSupported } from "./video/support";
 import { registry } from "./connection/registry";
@@ -31,6 +32,7 @@ export interface VideoOptions extends PreviewOptions {
   /** the whole room its picture may fill; only the places that size the guest supply it */
   room?: Room;
   guestSize?: GuestSizeSetting;
+  onReading?: (reading: StreamReading | null) => void;
 }
 
 /** His input into the page he drives, while a stream that takes it is live. */
@@ -63,12 +65,14 @@ export function videoState(view: StreamView, app: string, window: string | null)
   return { status: "ended", reason: view.retry ? "error" : "closed" };
 }
 
-export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { state: PreviewState; gaveWay: boolean; retry: () => void; drive: VideoDrive | null } {
+export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { state: PreviewState; gaveWay: boolean; retry: () => void; drive: VideoDrive | null; cursor: CursorShape | null } {
   const [state, setState] = useState<PreviewState>({ status: "starting" });
   const [gaveWay, setGaveWay] = useState(() => !videoSupported());
   const [attempt, setAttempt] = useState(0);
+  const [cursor, setCursor] = useState<CursorShape | null>(null);
   const [edge, setEdge] = useState<number | null>(null);
   const onClick = useRef(opts.onClick);
+  const onReading = useRef(opts.onReading);
   const handle = useRef<StreamHandle | null>(null);
   const handleOwner = useRef("");
   const size = useRef<{ owner: string; ask: GuestSizeAsk | null }>({ owner: "", ask: null });
@@ -87,6 +91,7 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
   if (owned !== owner) {
     setOwned(owner);
     setState({ status: "starting" });
+    setCursor(null);
     setGaveWay(!videoSupported());
   }
   const wanted = opts.run && entry.previewable && !!host && !!key && app !== "";
@@ -100,6 +105,7 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
 
   useLayoutEffect(() => {
     onClick.current = opts.onClick;
+    onReading.current = opts.onReading;
     names.current = { app, window: window_ };
     const ask = drive && opts.room ? guestSizeAsk(opts.room, box?.current ?? null, opts.guestSize) : null;
     size.current = { owner, ask };
@@ -153,8 +159,12 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
             box.current.dataset.frames = String(frames);
             box.current.dataset.fps = String(fps);
           }),
+          stream.onReading((reading) => onReading.current?.(reading)),
+          stream.onCursor(setCursor),
           stream.onClick((x, y) => onClick.current(x, y)),
         ];
+        onReading.current?.(stream.reading());
+        setCursor(stream.cursor());
         read();
         sync();
       },
@@ -168,6 +178,8 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
       shown.current = null;
       handle.current?.release();
       handle.current = null;
+      setCursor(null);
+      onReading.current?.(null);
       setState((prev) => (prev.status === "live" ? starting(prev) : prev));
     };
   }, [attempt, box, drive, edge, host, key, owner, run, sync, take]);
@@ -196,5 +208,5 @@ export function useComputerVideo(entry: ComputerEntry, opts: VideoOptions): { st
       retry();
     });
   }, [host, retry]);
-  return { state, gaveWay, retry, drive: drive && run && state.status === "live" ? driving : null };
+  return { state, gaveWay, retry, cursor, drive: drive && run && state.status === "live" ? driving : null };
 }

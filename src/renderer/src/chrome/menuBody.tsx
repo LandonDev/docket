@@ -314,7 +314,8 @@ export function PopoverBody({
   children,
   defaultOpen,
 }: LazyPopoverProps & { defaultOpen?: boolean }) {
-  const opener = trigger ? <PopoverTrigger render={trigger} /> : null;
+  const [triggerElement, setTriggerElement] = useState<HTMLElement | null>(null);
+  const opener = trigger ? <PopoverTrigger ref={setTriggerElement} render={trigger} /> : null;
   return (
     <Popover open={open} defaultOpen={open === undefined ? defaultOpen : undefined} onOpenChange={(next) => onOpenChange?.(next)}>
       {opener && tip ? (
@@ -324,7 +325,7 @@ export function PopoverBody({
       ) : (
         opener
       )}
-      <PopoverContent anchor={anchor ?? undefined} align={align} side={side} sideOffset={sideOffset} className={className} aria-label={label} initialFocus={initialFocus} finalFocus={finalFocus}>
+      <PopoverContent container={trigger ? triggerElement?.ownerDocument.body ?? null : undefined} anchor={anchor ?? undefined} align={align} side={side} sideOffset={sideOffset} className={className} aria-label={label} initialFocus={initialFocus} finalFocus={finalFocus}>
         {children}
       </PopoverContent>
     </Popover>

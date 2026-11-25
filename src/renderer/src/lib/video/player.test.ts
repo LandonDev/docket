@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeFrame, parseAck, parseHeader, parseInput } from "@server/shared/video/nsl1";
+import { encodeFrame, encodePong, header, MESSAGE_TYPES, parseAck, parseHeader, parseInput, type CursorShape } from "@server/shared/video/nsl1";
 import { MAX_PENDING, STALL_MS, StreamPlayer, type DecoderConfig, type PlayerDeps, type PlayerFault, type PlayerSocket, type Surface } from "./player";
 
 interface FakeFrame {
@@ -73,8 +73,10 @@ function rig(opts: { supported?: boolean; auto?: boolean; drive?: boolean } = {}
     wake: () => void state.wakes++,
   };
   const drawn: [number, number][] = [];
+  const shapes: CursorShape[] = [];
+  const arrived: [number, number][] = [];
   const closed: [number, PlayerFault | undefined][] = [];
-  const player = new StreamPlayer<FakeFrame>("ws://127.0.0.1:1/video/s?ticket=t", deps, { drawn: (w, h) => drawn.push([w, h]), closed: (code, fault) => closed.push([code, fault]) }, opts.drive);
+  const player = new StreamPlayer<FakeFrame>("ws://127.0.0.1:1/video/s?ticket=t", deps, { cursor: (shape) => shapes.push(shape), arrived: (at, late) => arrived.push([at, late]), drawn: (w, h) => drawn.push([w, h]), closed: (code, fault) => closed.push([code, fault]) }, opts.drive);
   const send = (sequence: number, more: { generation?: number; keyframe?: boolean; width?: number; height?: number; at?: number } = {}): void => {
     const keyframe = more.keyframe ?? sequence === 1;
     const bytes = encodeFrame({ generation: more.generation ?? 1, sequence, keyframe, width: more.width ?? 1280, height: more.height ?? 800, timestamp: (more.at ?? state.now) * 1000, data: keyframe ? KEY : DELTA });
@@ -84,10 +86,49 @@ function rig(opts: { supported?: boolean; auto?: boolean; drive?: boolean } = {}
     const drew: [number, number, number][] = [];
     return { drew, draw: (frame, width, height) => void drew.push([frame.timestamp, width, height]) };
   };
-  return { state, player, socket: () => socket, configs, decoders, frames, drawn, closed, send, surface };
+  return { state, player, socket: () => socket, configs, decoders, frames, drawn, closed, shapes, arrived, send, surface };
 }
 
 describe("a live stream in the worker", () => {
+  it("accepts cursor shape changes before and between frames while driving", () => {
+    const r = rig({ drive: true });
+    const sendCursor = (alpha: number) => {
+      const bytes = header(MESSAGE_TYPES.cursor, 1, 0, 12);
+      bytes.set([0, 1, 0, 1, 0, 0, 0, 0, 1, 2, 3, alpha], 20);
+      r.socket().onmessage?.({ data: bytes.buffer });
+    };
+    sendCursor(255);
+    r.send(1);
+    sendCursor(0);
+    r.send(2);
+    r.player.watch();
+    sendCursor(255);
+    expect(r.closed).toEqual([]);
+    expect(r.shapes.map((shape) => shape.rgba[3])).toEqual([255, 0]);
+    expect(r.player.frames).toBe(2);
+  });
+
+  it("matches pongs to its probe and reads the median arrival-to-draw time", () => {
+    const r = rig({ auto: false, drive: true });
+    r.send(1);
+    r.state.now += 4;
+    r.decoders[0].out(1);
+    r.send(2);
+    r.state.now += 8;
+    r.decoders[0].out(2);
+    r.send(3); // A frame that has not drawn is not part of the median.
+    r.player.ping(r.state.now);
+    const { sequence, type } = parseHeader(r.socket().sent.at(-1)!);
+    expect(type).toBe(MESSAGE_TYPES.ping);
+    r.socket().onmessage?.({ data: encodePong(sequence + 1, 70).buffer });
+    expect(r.player.timing(r.state.now)).toMatchObject({ drawMs: 6, roundTripMs: undefined });
+    r.state.now += 12;
+    r.socket().onmessage?.({ data: encodePong(sequence, 3.5).buffer });
+    expect(r.player.timing(r.state.now)).toEqual({ drawMs: 6, roundTripMs: 12, captureMs: 3.5 });
+    expect(r.player.timing(r.state.now + 5000).roundTripMs).toBeUndefined();
+    expect(r.arrived).toEqual([[1000, 0], [1004, 0], [1012, 0]]);
+  });
+
   it("opens its socket as nsl1 and reads bytes", () => {
     const r = rig();
     expect(r.socket().url).toBe("ws://127.0.0.1:1/video/s?ticket=t");

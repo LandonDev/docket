@@ -8,8 +8,10 @@ import { registry } from "../../../lib/connection/registry";
 import { PaneVisibilityContext, useDocumentVisible, usePaneVisible } from "../../../hooks/paneVisibility";
 import { CLICK_MARK } from "../../../lib/ease";
 import { PREVIEW_QUIET_MS, previewEdge } from "../../../lib/computerPreview";
+import * as computerVideo from "../../../lib/computerVideo";
+import { CursorImages } from "../../../lib/video/cursor";
 import type { ComputerEntry } from "../../../lib/computerSessions";
-import { ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, VIEWPORT_MAX, Viewport, ViewportLine, liveFace, streamSize, useLiveStream } from "./Viewport";
+import { ENDED_WORDS, RETRY_ENDS, VIEWPORT_INSETS, VIEWPORT_MAX, barReading, Viewport, ViewportLine, liveFace, streamSize, useLiveStream } from "./Viewport";
 
 /** A stand-in for this Mac's link: records requests in order and lets the test push. */
 class FakeLink {
@@ -154,6 +156,37 @@ function mount(e: ComputerEntry | null = entry(), props: { open?: boolean; pane?
   return { ...view, again: (o: { open?: boolean; pane?: boolean }, en: ComputerEntry | null = e) => view.rerender(tree(o, en)) };
 }
 const box = () => screen.getByRole("img");
+
+it("uses the shape on the driven canvas and falls back after handing back", async () => {
+  const send = vi.fn();
+  const drive = { send, paste: async () => {}, copy: async () => null };
+  const state = { status: "live", app: "Windows VM", window: null, width: 1280, height: 800, drawn: true } as const;
+  const shape = { generation: 1, width: 1, height: 1, hotX: 0, hotY: 0, rgba: Uint8Array.of(0, 0, 0, 255) };
+  const live = { state, drive, gaveWay: false, retry: vi.fn() };
+  const video = vi.spyOn(computerVideo, "useComputerVideo").mockReturnValue({ ...live, cursor: null });
+  vi.spyOn(CursorImages.prototype, "css").mockImplementation(async (cursor) => cursor.rgba[3] ? "crosshair" : "none");
+  const view = mount();
+  const canvas = view.container.querySelector("canvas")!;
+  expect(canvas.style.cursor).toBe("");
+  video.mockReturnValue({ ...live, cursor: shape });
+  view.again({});
+  await flush();
+  expect(canvas.style.cursor).toBe("crosshair");
+  video.mockReturnValue({ ...live, cursor: { ...shape, rgba: new Uint8Array(4) } });
+  view.again({});
+  await flush();
+  expect(canvas.style.cursor).toBe("none");
+  video.mockReturnValue({ ...live, drive: null, cursor: shape });
+  view.again({});
+  expect(canvas.style.cursor).toBe("");
+});
+
+it("adds the capture, half of the round trip, and the draw wait for the bar", () => {
+  const picture = { width: 1280, height: 800 };
+  expect(barReading({ captureMs: 8, roundTripMs: 30, drawMs: 7, fps: 60, link: "good" }, picture)).toEqual({ delayMs: 30, fps: 60, link: "good", picture });
+  expect(barReading({ roundTripMs: 20, drawMs: 0, fps: 0, link: "poor" }, picture)).toMatchObject({ delayMs: 10, fps: 0, link: "poor" });
+  expect(barReading({ fps: 40, link: "good", drawMs: 5 }, picture).delayMs).toBeUndefined();
+});
 
 describe("the live viewport", () => {
   it("starts at the box's edge in device pixels and sizes the box to the stream", async () => {

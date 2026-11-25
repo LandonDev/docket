@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { LOCAL_PRINCIPAL, type Capability, type Principal } from '@shared/capabilities'
 import { VIDEO_CLOSE } from '@shared/contract-video'
-import { MESSAGE_TYPES, encodeAck, encodeInput, header, parseFrame, parseInput } from '@shared/video/nsl1'
+import { MESSAGE_TYPES, encodeAck, encodeInput, encodePing, encodePong, header, parseFrame, parseInput, parsePong } from '@shared/video/nsl1'
 import type { StreamClaim } from '../remote/auth'
 import { FakeFeed } from './feed'
 import { VideoRelay, type StreamGrant, type ViewerSocket } from './relay'
@@ -64,6 +64,70 @@ describe('VideoRelay', () => {
     expect(socket.sent.map((b) => parseFrame(b).sequence)).toEqual([1, 2])
     expect(parseFrame(socket.sent[0])).toMatchObject({ keyframe: true, width: 1280, height: 800 })
     expect(socket.sent[0].byteLength).toBe(20 + 12 + 900)
+  })
+
+  it('sends a cursor only to viewers that ask and can use it', () => {
+    const relay = new VideoRelay()
+    const asks = joined(relay, { accepts: ['cursor'] })
+    const pong = joined(relay, { accepts: ['pong'] })
+    const phone = joined(relay)
+    const vga = joined(relay, { accepts: ['cursor'], cursor: false })
+    const shape = header(MESSAGE_TYPES.cursor, 1, 0, 8)
+    for (const { feed } of [asks, pong, phone, vga]) {
+      feed.raw(shape)
+      feed.raw(encodePong(1, 2))
+      feed.raw(header(MESSAGE_TYPES.controlReady, 1, 0, 4))
+      feed.push()
+    }
+    expect(asks.socket.sent[0]).toBe(shape)
+    expect(asks.socket.sent).toHaveLength(2)
+    for (const { socket } of [pong, phone, vga]) {
+      expect(socket.sent).toHaveLength(1)
+      expect(parseFrame(socket.sent[0]).sequence).toBe(1)
+    }
+    relay.shutdown()
+  })
+
+  it('answers pings itself with the median capture wait and never passes them to a feed', () => {
+    const relay = new VideoRelay({ nowMicros: () => 2_000_000 })
+    const drive = joined(relay, { accepts: ['pong'], captureClock: true, scope: 'drive', group: 'vm' })
+    const otherClock = joined(relay, { accepts: ['pong'] })
+    const phone = joined(relay)
+    relay.setDriver('vm', true)
+    drive.socket.say(encodePing(3))
+    expect(parsePong(drive.socket.sent.at(-1)!)).toEqual({ sequence: 3, captureMs: undefined })
+    for (const timestamp of [1_990_000, 1_996_000, 1_900_000, 1_994_000, 2_001_000]) drive.feed.push({ timestamp })
+    drive.socket.say(header(MESSAGE_TYPES.ping, 1, 4, 1))
+    expect(drive.socket.sent).toHaveLength(6)
+    drive.socket.say(encodePing(5))
+    expect(parsePong(drive.socket.sent.at(-1)!)).toEqual({ sequence: 5, captureMs: 8 })
+    drive.feed.push({ timestamp: 1_997_000, generation: 2 })
+    drive.socket.say(encodePing(6))
+    expect(parsePong(drive.socket.sent.at(-1)!)).toEqual({ sequence: 6, captureMs: 3 })
+    otherClock.feed.push({ timestamp: 1_900_000 })
+    otherClock.socket.say(encodePing(5))
+    expect(parsePong(otherClock.socket.sent.at(-1)!)).toEqual({ sequence: 5, captureMs: undefined })
+    phone.socket.say(encodePing(5))
+    expect(phone.socket.sent).toEqual([])
+    expect(drive.feed.inputs).toEqual([])
+    expect(drive.feed.acks).toEqual([])
+    relay.shutdown()
+  })
+
+  it('ends only the sampled stream if its source sends an invalid frame', () => {
+    const relay = new VideoRelay()
+    const broken = joined(relay, { accepts: ['pong'], captureClock: true })
+    const healthy = joined(relay)
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      broken.feed.raw(header(MESSAGE_TYPES.frame, 1, 1, 12))
+      expect(broken.socket.closed?.reason).toBe('error')
+      healthy.feed.push()
+      expect(healthy.socket.sent).toHaveLength(1)
+    } finally {
+      log.mockRestore()
+      relay.shutdown()
+    }
   })
 
   it('passes acks straight through, in order, with the wait they carry', () => {

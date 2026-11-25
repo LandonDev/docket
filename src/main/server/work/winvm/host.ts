@@ -54,6 +54,7 @@ export function wireVmPicture(o: {
     onState: onWinvmState,
     setViewers: (n) => winvmKeeper()?.setViewers(n),
     screen,
+    hardwareCursor: () => readMachineDevice(p.run) === 'virtio',
     relay: o.video.relay,
     screenshot: qmpScreenshot(join(o.dataDir, 'winvm', 'picture', 'shots'), async (file) => void (await qmp(p.qmp, screendump(file)))),
     jpeg: electronJpeg,

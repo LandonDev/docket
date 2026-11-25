@@ -1,15 +1,15 @@
 import type { VideoCloseReason } from '@shared/contract-video'
-import { MESSAGE_TYPES, encodeFrame, parseHeader, type Frame } from '@shared/video/nsl1'
+import { encodeFrame, parseHeader, type Frame } from '@shared/video/nsl1'
 
 /**
  * A feed is one viewer's stream at its source: the box's engine
  * (work/browser/box/engineFeed.ts), a window in tc-computer
  * (computer/videoFeed.ts), or a socket another host dialed in to publish
  * (video/published.ts). The relay joins it to the viewer's socket and reads
- * nothing but a message's type.
+ * the type and, on a known clock, the frame’s capture time.
  */
 export interface FeedSink {
-  /** one whole NSL1 frame message, passed on as it is */
+  /** one whole NSL1 source message, passed on as it is */
   frame(bytes: Uint8Array): void
   /** the source ended the stream; the viewer's socket closes with this reason */
   end(reason: VideoCloseReason): void
@@ -72,7 +72,7 @@ export class FakeFeed implements VideoFeed {
     )
     return sequence
   }
-  /** Sends bytes as they are: a message the relay must not pass on. */
+  /** Sends bytes as they are: a source message other than a frame. */
   raw(bytes: Uint8Array): void {
     this.sink?.frame(bytes)
   }
@@ -84,6 +84,3 @@ export class FakeFeed implements VideoFeed {
     return this.acks.map((bytes) => parseHeader(bytes).sequence)
   }
 }
-
-/** True for a frame message: all a relay passes to a viewer. */
-export const isFrame = (bytes: Uint8Array): boolean => bytes.byteLength > 5 && bytes[5] === MESSAGE_TYPES.frame

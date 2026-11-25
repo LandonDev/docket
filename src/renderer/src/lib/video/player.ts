@@ -1,4 +1,5 @@
-import { encodeAck, encodeInput, h264Codec, parseFrame, SUBPROTOCOL, type InputEvent } from "@server/shared/video/nsl1";
+import { encodeAck, encodeInput, encodePing, h264Codec, MESSAGE_TYPES, parseCursor, parseFrame, parseHeader, parsePong, SUBPROTOCOL, type CursorShape, type InputEvent } from "@server/shared/video/nsl1";
+import { VideoSamples } from "@server/shared/video/samples";
 import { ArrivalClock, DRIVE_HOLD_MS, Presenter, type Decoded } from "./pacing";
 
 /**
@@ -72,6 +73,8 @@ export interface PlayerDeps<F extends { timestamp: number; close(): void }> {
 export interface PlayerEvents {
   /** a frame is on the canvases, the first of its size */
   drawn(width: number, height: number): void;
+  cursor?(shape: CursorShape): void;
+  arrived?(at: number, late: number): void;
   /** the stream is over: the socket's close code, or 0 with why the player gave up */
   closed(code: number, fault?: PlayerFault): void;
 }
@@ -103,6 +106,11 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
   private sequence = 0;
   private openedAt: number;
   private over = false;
+  private readonly draws = new VideoSamples();
+  private pingSequence = 0;
+  private pingSentAt = 0;
+  private pingPending = false;
+  private pong: { at: number; roundTripMs: number; captureMs?: number } | null = null;
   private size: { width: number; height: number } | null = null;
   /** frames drawn since the stream opened */
   frames = 0;
@@ -156,6 +164,24 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
     }
   }
 
+  /** The relay's probe is independent of frames, so it also works while the picture is still. */
+  ping(now: number): void {
+    if (this.over || this.socket.readyState !== OPEN) return;
+    this.pingSequence = (this.pingSequence + 1) >>> 0;
+    this.pingSentAt = now;
+    this.pingPending = true;
+    try {
+      this.socket.send(encodePing(this.pingSequence));
+    } catch {
+      this.pingPending = false;
+    }
+  }
+
+  timing(now: number): { drawMs?: number; captureMs?: number; roundTripMs?: number } {
+    const { captureMs, roundTripMs } = this.pong && now - this.pong.at < 5000 ? this.pong : {};
+    return { drawMs: this.draws.median(), captureMs, roundTripMs };
+  }
+
   get nextDrawAt(): number | undefined {
     return this.presenter.nextDrawAt;
   }
@@ -191,6 +217,21 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
     if (this.over) return;
     try {
       if (!(data instanceof ArrayBuffer)) throw new Error("not bytes");
+      const { type } = parseHeader(data);
+      if (type === MESSAGE_TYPES.pong) {
+        const { sequence, captureMs } = parsePong(data);
+        if (!this.pingPending || sequence !== this.pingSequence) return;
+        this.pingPending = false;
+        const at = this.deps.now();
+        this.pong = { at, captureMs, roundTripMs: at - this.pingSentAt };
+        return;
+      }
+      if (type === MESSAGE_TYPES.cursor) {
+        if (!this.drive) return;
+        const shape = parseCursor(data);
+        if (shape.generation >= this.generation) this.events.cursor?.(shape);
+        return;
+      }
       const frame = parseFrame(data);
       if (this.generation && frame.generation < this.generation) throw new Error("a stale generation");
       if (frame.generation !== this.generation) {
@@ -200,13 +241,16 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
         this.behind = null;
         this.generation = frame.generation;
         this.sequence = 0;
+        this.draws.clear();
         if (!frame.keyframe || frame.sequence !== 1) throw new Error("a generation must start with a keyframe");
       }
       if (frame.sequence !== this.sequence + 1 || this.pending.size >= MAX_PENDING) throw new Error("a frame out of order");
       this.sequence = frame.sequence;
       const arrived = this.deps.now();
       if (this.drive && this.fellBehind(frame.timestamp, arrived)) return this.fail("behind");
-      const waiting: Waiting = { generation: frame.generation, sequence: frame.sequence, timestamp: frame.timestamp, arrived, base: this.clock.observe(frame.timestamp, arrived), width: frame.width, height: frame.height };
+      const base = this.clock.observe(frame.timestamp, arrived);
+      this.events.arrived?.(arrived, Math.max(0, arrived - frame.timestamp / 1000 - base - this.clock.holdMs));
+      const waiting: Waiting = { generation: frame.generation, sequence: frame.sequence, timestamp: frame.timestamp, arrived, base, width: frame.width, height: frame.height };
       if (!this.decoder) {
         const config: DecoderConfig = { codec: h264Codec(frame.data), codedWidth: frame.width, codedHeight: frame.height, optimizeForLatency: true };
         void this.deps.supported(config).then(
@@ -257,6 +301,7 @@ export class StreamPlayer<F extends { timestamp: number; close(): void }> {
     if (!size) return;
     for (const surface of this.surfaces) surface.draw(item.frame, size.width, size.height);
     this.frames++;
+    this.draws.add(Math.max(0, this.deps.now() - item.arrived));
     if (this.size?.width === size.width && this.size.height === size.height) return;
     this.size = size;
     this.events.drawn(size.width, size.height);
