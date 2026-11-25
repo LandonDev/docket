@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { actRow, coresUsed, liveAppTrouble, parseSizes, quantile, rateRow, traceStages, type SeenFrame } from './vmScreenRows'
+import { actRow, coresUsed, liveAppTrouble, RUN_MAX_MS, watchTick, parseSizes, quantile, rateRow, traceStages, type SeenFrame } from './vmScreenRows'
 
 /** Frames 16 ms apart from `from` (ms), each captured `lag` ms before it arrived. */
 const steady = (from: number, n: number, lag = 5, bytes = 1000): SeenFrame[] => Array.from({ length: n }, (_, i) => ({ us: (from + i * 16) * 1000, ts: (from + i * 16 - lag) * 1000, bytes }))
@@ -89,5 +89,17 @@ describe("the VM screen bench's rows", () => {
     expect(liveAppTrouble([slow, slow])).toContain('1200 ms twice running')
     expect(liveAppTrouble([{ appMs: null, ioSome: 0 }, { appMs: null, ioSome: 0 }])).toContain('did not answer')
     expect(liveAppTrouble([ok, { appMs: 90, ioSome: 31 }])).toContain("pressure is 31%")
+  })
+
+  it("judges each watch tick on the last two readings, and ends a run at its 30 minutes", () => {
+    const ok = { appMs: 90, ioSome: 2 }
+    const slow = { appMs: 1200, ioSome: 2 }
+    const kept: { appMs: number | null; ioSome: number }[] = []
+    expect(watchTick(kept, slow, 1000)).toBeNull()
+    expect(watchTick(kept, ok, 6000)).toBeNull()
+    expect(watchTick(kept, slow, 11000)).toBeNull()
+    expect(kept).toHaveLength(2)
+    expect(watchTick(kept, slow, 16000)).toContain('twice running')
+    expect(watchTick([], ok, RUN_MAX_MS + 1)).toContain('30 minutes')
   })
 })

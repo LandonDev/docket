@@ -25,7 +25,7 @@ import { VM_COMPUTER, VmPicture } from '../../src/main/server/work/winvm/picture
 import { SshGuest } from '../../src/main/server/work/winvm/sshGuest'
 import { StandingMachine } from '../../src/main/server/work/winvm/standing'
 import { pictureToolsAt, VmScreen } from '../../src/main/server/work/winvm/window'
-import { liveAppTrouble, WATCH_MS, type LiveReading, type SeenFrame } from '../perf/vmScreenRows'
+import { liveAppTrouble, WATCH_MS, watchTick, type LiveReading, type SeenFrame } from '../perf/vmScreenRows'
 
 /** The owner's machines' folder: the base image and the keys are read from it, never written. */
 const SHARED = '/srv/agents/win-vm'
@@ -139,14 +139,23 @@ export function scratchMachine(o: { data: string; size: [number, number]; log: (
   }
   let stopping = false
   const readings: LiveReading[] = []
-  const watch = setInterval(() => {
-    if (stopping) return
-    readings.push(liveAppReading())
-    const why = liveAppTrouble(readings.splice(0, readings.length - 2))
-    if (!why) return
+  const started = Date.now()
+  let told = 0
+  const stop = (why: string): void => {
     stopping = true
     o.log(`STOPPING: ${why}`)
     void remove().finally(() => process.exit(3))
+  }
+  const watch = setInterval(() => {
+    if (stopping) return
+    const now = liveAppReading()
+    if (Date.now() - told >= 60_000) {
+      told = Date.now()
+      o.log(`live app ${now.appMs === null ? 'silent' : `${Math.round(now.appMs)} ms`}, io ${now.ioSome}%`)
+    }
+    // the master's rules: the live app first, and no scratch machine past 30 minutes
+    const why = watchTick(readings, now, Date.now() - started)
+    if (why) stop(why)
   }, WATCH_MS)
   return {
     machine,

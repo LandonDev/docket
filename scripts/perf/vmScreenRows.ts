@@ -156,6 +156,8 @@ export const LIVE_APP_MAX_MS = 800
 export const IO_PRESSURE_MAX = 30
 /** How often a scratch machine's watch reads the app and the disk. */
 export const WATCH_MS = 5000
+/** The longest a scratch machine may live (the master's rule): it is pulled down and deleted at this. */
+export const RUN_MAX_MS = 30 * 60_000
 
 /** One reading: the live app's answer to `admission.get` in ms (null: no answer), and `/proc/pressure/io`'s some avg10. */
 export interface LiveReading {
@@ -175,4 +177,15 @@ export function liveAppTrouble(last: readonly LiveReading[]): string | null {
   const before = last.at(-2)
   if (before && slow(before) && slow(now)) return now.appMs === null ? 'the live app did not answer twice running' : `the live app answered in ${Math.round(now.appMs)} ms twice running`
   return null
+}
+
+/**
+ * One tick of a scratch machine's watch: the reading joins the last one kept (two at most), and the answer is why
+ * the machine must come down now, or null. `ranMs` is how long the machine has lived.
+ */
+export function watchTick(kept: LiveReading[], now: LiveReading, ranMs: number): string | null {
+  if (ranMs > RUN_MAX_MS) return 'the run reached its 30 minutes'
+  kept.push(now)
+  while (kept.length > 2) kept.shift()
+  return liveAppTrouble(kept)
 }
