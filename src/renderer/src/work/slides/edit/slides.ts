@@ -4,7 +4,7 @@ import type { MenuRow } from "../../../chrome/menuRows";
 import { Hidden } from "../../icons";
 import { sayError } from "../../canvas/frame";
 import type { DeckStore } from "../deck";
-import { layoutsFor, madeSlide } from "./add";
+import { layoutAfter, layoutsFor, madeSlide } from "./add";
 import type { HandSession } from "./session";
 
 /**
@@ -86,4 +86,17 @@ export function moveOp(order: readonly string[], key: string, view: DeckView): S
   const wasBefore = was === 0 ? null : view.slides[was - 1];
   if ((before?.id ?? 0) === (wasBefore?.id ?? 0)) return null;
   return { op: "move", slide: slide.id, after: before?.id ?? 0 };
+}
+
+/**
+ * A new slide after `after` (else first), on the stage once it is there: Insert → New slide and ⌘M. It takes the
+ * slide's own layout, as PowerPoint gives, unless that is a title slide; then the next of its master (`layoutAfter`).
+ */
+export function newSlideAfter(view: DeckView, after: DeckSlide | undefined, session: HandSession, store: DeckStore): void {
+  const layout = layoutAfter(view, after);
+  if (!layout) return;
+  void session.edit([{ op: "add", after: after?.id ?? 0, layout }], "Couldn't add a slide").then((next) => {
+    const made = next && madeSlide(view, next);
+    if (made) store.set({ current: made.key });
+  });
 }

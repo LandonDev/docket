@@ -356,8 +356,9 @@ describe("a Work editor holding the caret owns its keys", () => {
     expect(editorHeld(target("slides"))).toEqual(["toggle_sidebar", "open_search", "split_right"]);
   });
 
-  it("a deck he edits by hand keeps ⌘D (Duplicate); elsewhere ⌘D splits the pane", () => {
+  it("a deck he edits by hand keeps ⌘D and ⌘M (Duplicate, New slide); elsewhere ⌘D splits the pane", () => {
     expect(resolve(inEditor("d", "slides"), ctx)).toBeNull();
+    expect(resolve(inEditor("m", "slides"), ctx)).toBeNull();
     expect(resolve(inEditor("d", "read"), ctx)).toEqual({ id: "split_right" });
     expect(resolve(inEditor("d", "document"), ctx)).toEqual({ id: "split_right" });
     expect(resolve(inEditor("d", null), ctx)).toEqual({ id: "split_right" });

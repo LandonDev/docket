@@ -359,8 +359,8 @@ export function createKeyResolver(now: () => number = () => performance.now()) {
         if (styles(editor) && (k === "b" || k === "k")) return null;
         if (k === "p" && editorAnswers(target, "print")) return { id: "print" };
         if (k === "f" && editorAnswers(target, "find")) return { id: "find" };
-        // A deck he edits by hand: ⌘D duplicates the picked shape, as in PowerPoint (SlidesCanvas.tsx).
-        if (editor === "slides" && k === "d") return null;
+        // A deck he edits by hand: ⌘D duplicates the picked shape and ⌘M adds a slide, as in PowerPoint (SlidesCanvas.tsx).
+        if (editor === "slides" && (k === "d" || k === "m")) return null;
       }
     }
 

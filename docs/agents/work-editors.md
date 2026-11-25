@@ -32,7 +32,7 @@ In this order:
    | `data-editor-keys` (any value but `read` and `text`) | ⌘B and ⌘K (bold, link) |
    | any, `read` included | ⌘P once that editor answers Print…, ⌘F once it answers find |
    | `data-editor-keys="document"` | also ⌥⌘0 to ⌥⌘3 (Normal text, Heading 1 to 3) |
-   | `data-editor-keys="slides"` | also ⌘D (Duplicate: Split Right's key) |
+   | `data-editor-keys="slides"` | also ⌘D (Duplicate: Split Right's key) and ⌘M (New slide; the Window menu holds no Minimize key to give up, its submenu is the tree's own and empty) |
 
    "That editor" is the one holding the caret: its Body's root lists what it
    answers in `data-editor-answers` (`useWorkCommands` writes it,

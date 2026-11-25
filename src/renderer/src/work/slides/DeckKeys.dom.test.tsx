@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 /**
  * The deck's own keys in the real canvas pane (docs/agents/work-slides.md
- * "Copy and paste", "A picture pasted or dropped"): ⌘D on the picked shape,
- * ⌘C and ⌘V as the window's copy and paste events, a picture pasted or
- * dropped on the slide, and none of them heard in a field.
+ * "Copy and paste", "A picture pasted or dropped", "New slide"): ⌘D on the
+ * picked shape, ⌘C and ⌘V as the window's copy and paste events, a picture
+ * pasted or dropped on the slide, ⌘M, and none of them heard in a field.
  */
 import { act, cleanup, createEvent, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -164,5 +164,37 @@ describe("a picture pasted or dropped", () => {
     await t.stage(handView({ hand: undefined }));
     const stage = document.querySelector<HTMLElement>("[data-slides-stage]")!;
     expect(fireEvent.dragOver(stage, { dataTransfer: { files: [png()], items: [{ kind: "file", type: "image/png" }], types: ["Files"] } })).toBe(true);
+  });
+});
+
+describe("⌘M", () => {
+  it("adds a slide after the one on the stage, in its layout, and puts it on the stage", async () => {
+    const { layer } = await t.stage();
+    act(() => layer.focus());
+    fireEvent.keyDown(layer, mod("m"));
+    await waitFor(() => expect(t.edits()).toEqual([[{ op: "add", after: 3, layout: "Title and Content" }]]));
+    // The new slide is second in the strip, and on the stage.
+    await waitFor(() => expect(thumbs()[1].getAttribute("aria-current")).toBe("true"));
+    expect(t.host.view.slides[1].layout).toBe("Title and Content");
+  });
+
+  it("does nothing in a field or on a deck he cannot edit; says why while a suggestion waits", async () => {
+    await t.stage();
+    const field = (await t.found("[data-slide-notes-field]")) as HTMLTextAreaElement;
+    field.focus();
+    fireEvent.keyDown(field, mod("m"));
+    cleanup();
+    const read = await t.stage(handView({ hand: undefined }));
+    act(() => read.layer.focus());
+    fireEvent.keyDown(read.layer, mod("m"));
+    await new Promise((done) => setTimeout(done, 20));
+    expect(t.edits()).toEqual([]);
+    cleanup();
+    const waiting = handView();
+    const busy = await t.stage({ ...waiting, changes: [{ id: "c1", slideId: 5, kind: "changed", label: "Slide 2", edits: [] } as never], slides: waiting.slides.map((s) => (s.id === 5 ? { ...s, change: "c1" } : s)) });
+    act(() => busy.layer.focus());
+    fireEvent.keyDown(busy.layer, mod("m"));
+    await waitFor(() => expect(holder.toasts).toContain("error: Accept or reject the suggestions first"));
+    expect(t.edits()).toEqual([]);
   });
 });

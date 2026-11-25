@@ -8,8 +8,9 @@ import { Media, Shapes, Table, TextBox, Video } from "../../icons";
 import { ATTACH_PIECE, type DeckHost, type DeckStore } from "../deck";
 import type { Size } from "./drag";
 import { quadOf } from "./drag";
-import { centredAt, layoutAfter, madeShape, madeSlide, NEW_TEXT, pictureAt, PRESETS, shapeAt, tableAt, textBoxAt, type Preset } from "./add";
+import { centredAt, madeShape, NEW_TEXT, pictureAt, PRESETS, shapeAt, tableAt, textBoxAt, type Preset } from "./add";
 import type { HandSession, Start } from "./session";
+import { newSlideAfter } from "./slides";
 
 /**
  * Insert (the row's group 6, docs/DESIGN.md "The slide editor"): a new
@@ -176,15 +177,7 @@ export function useInsert({
     />
   );
   return {
-    newSlide() {
-      const after = slide ?? view.slides.find((s) => s.key === store.get().current);
-      const layout = layoutAfter(view, after);
-      if (!layout) return;
-      void session.edit([{ op: "add", after: after?.id ?? 0, layout }], "Couldn't add a slide").then((next) => {
-        const made = next && madeSlide(view, next);
-        if (made) store.set({ current: made.key });
-      });
-    },
+    newSlide: () => newSlideAfter(view, slide ?? view.slides.find((s) => s.key === store.get().current), session, store),
     text: () => void add((s) => ({ op: "insert", slide: s.id, what: "text", box: textBoxAt(size), text: NEW_TEXT }), "Couldn't add a text box", "all"),
     shape: (preset) => void add((s) => ({ op: "insert", slide: s.id, what: "shape", box: shapeAt(size, preset), preset }), "Couldn't add the shape"),
     // A table opens on its first cell; a chart is left to PowerPoint until its data can be changed here.

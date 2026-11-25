@@ -36,7 +36,7 @@ import { Prompt, TypingBox } from "./edit/TypingBox";
 import { NotesField } from "./edit/NotesField";
 import { askAnchor, groundOf, HANDLE, inkOn, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, shapeLabel, textFrameOf, type Quad } from "./geometry";
 import { SectionName } from "./edit/SectionName";
-import type { NameAsk } from "./edit/slides";
+import { newSlideAfter, sayWaits, type NameAsk } from "./edit/slides";
 import { Picture } from "./Picture";
 import { Sorter } from "./Sorter";
 import { Strip, type PictureOf, type SlideHand } from "./Strip";
@@ -478,6 +478,12 @@ export function SlidesBody({
           // With the box open (the keyboard on the row) they are the box's own.
           if (hand.box) session[dir]();
           else if (view.hand[dir]) void session.step(dir);
+          return;
+        }
+        // PowerPoint's New Slide: after the slide on the stage, in its layout (Insert → New slide's own rule).
+        if (modKey(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "m") {
+          event.preventDefault();
+          if (!sayWaits(view)) newSlideAfter(view, shown, session, store);
           return;
         }
         // PowerPoint's Duplicate on the picked shape (Split Right gives ⌘D up here: lib/appCommands.ts `editorHeld`).

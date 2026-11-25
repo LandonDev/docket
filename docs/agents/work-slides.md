@@ -1846,6 +1846,16 @@ dropped on the stage keeps its old meaning (the pane opens it, canvas/
 fileDrop.tsx), and a slide a suggestion changes, or a deck he cannot edit,
 takes nothing.
 
+### New slide
+
+⌘M (Ctrl+M off the Mac), with the keyboard in a deck he edits and not in a
+field, is Insert → New slide (`newSlideAfter`, edit/slides.ts, which both
+call): one `add` after the slide on the stage, in that slide's layout, or,
+after a title slide, the next layout of its master that holds a body, as
+PowerPoint gives; the new slide goes on the stage. While a suggestion waits
+it says "Accept or reject the suggestions first" once, as the strip does.
+The page's key resolver leaves ⌘M to the deck; the menu has no row with it.
+
 ### Find
 
 Edit → Find… and ⌘F in a deck (`DeckFind.tsx`, the matching in `find.ts`,

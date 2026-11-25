@@ -4509,6 +4509,7 @@ other picked shape is the outline alone.
   | Duplicate the picked shape (12pt down and right; again after a move, as far again) | ⌘D |
   | Copy the picked shape (its words to other apps); paste it on the slide on the stage, from this deck or another | ⌘C; ⌘V |
   | A picture on the clipboard onto the slide, in its middle; a picture or a video from the desktop, where it is let go | ⌘V; a drop on the slide |
+  | A new slide after the one on the stage, in its layout (after a title slide, the next), on the stage | ⌘M (Ctrl+M off the Mac) |
 
   A paste into the box is plain text, each line a paragraph. A picture
   pasted or dropped goes in as Insert's does, its place outlined with
