@@ -23,10 +23,17 @@ import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } 
  * it is now, and its live revision moves with each edit. Dummy files only.
  */
 
-const doc = vi.hoisted(() => ({ text: 'one', rev: 'r1', exported: [] as unknown[] }))
+const doc = vi.hoisted(() => ({ text: 'one', rev: 'r1', exported: [] as unknown[], gate: null as Promise<void> | null }))
 vi.mock('../formats/exporter', () => ({
   EXPORT_FORMATS: ['docx', 'odt', 'rtf', 'md'],
-  exportDoc: async (_ctx: unknown, _by: unknown, p: { format: string; source: unknown }) => (doc.exported.push(p.source), { name: `Plan.${p.format}`, data: Buffer.from(`${p.format} ${doc.text}`).toString('base64'), warnings: [] })
+  exportDoc: async (_ctx: unknown, _by: unknown, p: { format: string; source: unknown }) => {
+    // The next export, held until a test lets it go: its words are those he had when it started.
+    const text = doc.text
+    const gate = doc.gate
+    doc.gate = null
+    if (gate) await gate
+    return (doc.exported.push(p.source), { name: `Plan.${p.format}`, data: Buffer.from(`${p.format} ${text}`).toString('base64'), warnings: [] })
+  }
 }))
 vi.mock('../formats/preview', () => ({ fileDocumentPdf: async () => Buffer.from(`pdf ${doc.text}`) }))
 vi.mock('./word', async (real) => ({ ...(await real<typeof import('./word')>()), liveRev: vi.fn(async () => doc.rev) }))
@@ -56,6 +63,7 @@ beforeEach(() => {
   resetLinkState()
   doc.text = 'one'
   doc.rev = 'r1'
+  doc.gate = null
   far = []
   macUp = true
   beforeWrite = null
@@ -483,3 +491,88 @@ describe("the hold's race: an agent's write on its way as he links the document"
     expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx more of his words')
   })
 })
+
+describe("a link's presses and writes, one at a time (audit A5)", () => {
+  const held = () => {
+    let open!: () => void
+    doc.gate = new Promise<void>((ok) => (open = ok))
+    return () => open()
+  }
+  const tick = () => new Promise((ok) => setTimeout(ok, 20))
+
+  it('Keep Both marks the revision its export was made of: words typed as it read are written next, never said saved', async () => {
+    await save({ at: { at: 'place', id: 'folder' } })
+    writeFileSync(join(box.folder, 'Plan.docx'), 'a colleague saved')
+    await edit('two')
+    const [l] = await links()
+    // He types as the press reads the revision: the export holds those words, and the link says so.
+    vi.mocked(liveRev).mockImplementationOnce(async () => {
+      doc.text = 'three'
+      doc.rev = 'r-three'
+      return doc.rev
+    })
+    await call<DocLink[]>('work.files.linkAct', { id: l!.id, act: 'keep' })
+    await autosaveLinks(box.ctx, Date.now())
+    const now = { state: (await links())[0]!.state, text: readFileSync(join(box.folder, 'Plan 2.docx'), 'utf8') }
+    expect(now).not.toEqual({ state: 'saved', text: 'docx two' })
+    expect(now.text === 'docx three' || now.state === 'saving').toBe(true)
+  })
+
+  it('Unlink waits for a write under way, which lands; nothing is written after', async () => {
+    await save({ at: { at: 'place', id: 'folder' } })
+    const [l] = await links()
+    doc.text = 'two'
+    doc.rev = 'r-two'
+    const t = Date.now()
+    await autosaveLinks(box.ctx, t)
+    const go = held()
+    const writing = autosaveLinks(box.ctx, t + linkTiming.pause + 1)
+    await tick()
+    let unlinked = false
+    const unlinking = call('work.files.linkAct', { id: l!.id, act: 'unlink' }).then(() => (unlinked = true))
+    await tick()
+    expect(unlinked).toBe(false)
+    go()
+    await Promise.all([writing, unlinking])
+    expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx two')
+    expect(await links()).toEqual([])
+    await edit('three')
+    expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx two')
+  })
+
+  it('Keep Both waits for a write under way: the older write never lands its receipt on the file Keep Both made', async () => {
+    await save({ at: { at: 'place', id: 'folder' } })
+    const [l] = await links()
+    doc.text = 'two'
+    doc.rev = 'r-two'
+    const t = Date.now()
+    await autosaveLinks(box.ctx, t)
+    const go = held()
+    const writing = autosaveLinks(box.ctx, t + linkTiming.pause + 1)
+    await tick()
+    // He typed on: Keep Both's file holds newer words than the write under way.
+    doc.text = 'two, kept'
+    doc.rev = 'r-kept'
+    const keeping = call<DocLink[]>('work.files.linkAct', { id: l!.id, act: 'keep' })
+    await tick()
+    go()
+    await Promise.all([writing, keeping])
+    expect(await links()).toMatchObject([{ name: 'Plan 2.docx' }])
+    await edit('three')
+    expect(readFileSync(join(box.folder, 'Plan 2.docx'), 'utf8')).toBe('docx three')
+    expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx two')
+    expect(await links()).toMatchObject([{ name: 'Plan 2.docx', state: 'saved' }])
+  })
+
+  it('one link a document and a file: Save As to the same file again takes its link, never a second writer', async () => {
+    await save({ at: { at: 'place', id: 'folder' } })
+    const asked = await save({ at: { at: 'place', id: 'folder' } })
+    if (!('exists' in asked)) throw new Error('no question')
+    expect(await save({ at: { at: 'place', id: 'folder' }, exists: 'replace', version: asked.exists.version })).toMatchObject({ saved: { name: 'Plan.docx', linked: true } })
+    expect(await links()).toHaveLength(1)
+    await edit('two')
+    expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx two')
+    expect(await links()).toMatchObject([{ state: 'saved' }])
+  })
+})
+

@@ -233,14 +233,24 @@ async function saveAsReserved(
   const out = await exportBytes(ctx, source, p.format)
   const name = saveAsName(p.name?.trim() || out.name, p.format)
   const there: Spot = { workspace_id: p.workspaceId, host: at.host, path: join2(at.path, name, vm), vm: vm ? 1 : 0, name }
-  const linkTo = (made: { path: string; name: string; version: string }): void => {
+  const linkTo = async (made: { path: string; name: string; version: string }): Promise<void> => {
     if (!doc) return
-    ctx.db
-      .prepare(
-        `INSERT INTO work_files_links (id, workspace_id, doc, format, host, path, vm, name, place, computer, version, sha, saved_rev, saved_at, state, made_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?)`
+    const place = p.place?.trim() || basename(at.path.replaceAll('\\', '/'))
+    // One link a document and a file: the same file saved as again takes the link it has, in its turn, never a second writer.
+    const had = ctx.db.prepare(`SELECT id FROM work_files_links WHERE doc = ? AND host = ? AND (path = ? OR (vm = 1 AND lower(path) = lower(?)))`).get(doc, at.host, made.path, made.path) as { id: string } | undefined
+    if (had)
+      await onRow(had.id, async () =>
+        void ctx.db
+          .prepare(`UPDATE work_files_links SET format = ?, path = ?, name = ?, place = ?, computer = ?, version = ?, sha = ?, saved_rev = ?, saved_at = ?, state = 'ok', changed_at = NULL, detail = NULL, seen_version = NULL, tried_sha = NULL WHERE id = ?`)
+          .run(p.format, made.path, made.name, place, p.computer ?? null, made.version, shaOf(out.data), rev, Date.now(), had.id)
       )
-      .run(randomUUID(), p.workspaceId, doc, p.format, at.host, made.path, vm ? 1 : 0, made.name, p.place?.trim() || basename(at.path.replaceAll('\\', '/')), p.computer ?? null, made.version, shaOf(out.data), rev, Date.now(), Date.now())
+    else
+      ctx.db
+        .prepare(
+          `INSERT INTO work_files_links (id, workspace_id, doc, format, host, path, vm, name, place, computer, version, sha, saved_rev, saved_at, state, made_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'ok', ?)`
+        )
+        .run(randomUUID(), p.workspaceId, doc, p.format, at.host, made.path, vm ? 1 : 0, made.name, place, p.computer ?? null, made.version, shaOf(out.data), rev, Date.now(), Date.now())
     filesState(ctx).tabs.touch(p.workspaceId)
   }
   let made: { path: string; name: string; version: string }
@@ -256,13 +266,13 @@ async function saveAsReserved(
     const got = await putOver(ctx, { ...there, version }, out.data)
     if ('conflict' in got) return 'gone' in got.conflict ? { exists: { name } } : { exists: { name, version: got.conflict.version } }
     made = { path: there.path, name, version: got.version }
-    linkTo(made)
+    await linkTo(made)
   } else {
     // The same press again (its operation id) answers what it did: nothing is made, or linked, twice.
     made = await runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'saveAs', refs: { source: p.source, at, name, format: p.format } }, async () => {
       const got = await makeIn(ctx, by, { workspaceId: p.workspaceId, at, name, data: out.data, op: p.op, vm, linked: !!doc })
       lostOps.delete(p.op)
-      linkTo(got)
+      await linkTo(got)
       return got
     })
   }
@@ -319,11 +329,25 @@ export async function linkAct(ctx: WorkCtx, by: Caller, p: { workspaceId: string
   if (!r || r.workspace_id !== p.workspaceId) throw new Error('That file is no longer linked.')
   admitOwner(by, r)
   const source: CanvasSource = { at: 'file', host: ctx.host, path: r.doc }
+  // In the row's turn (audit A5): a write of it under way lands first, and its outcome is what this press acts on.
+  const stale = await onRow(r.id, () => actOn(ctx, r.id, p))
+  if (stale) return stale
+  filesState(ctx).tabs.touch(p.workspaceId)
+  return linksOf(ctx, by, { workspaceId: p.workspaceId, source })
+}
+
+/** His press on one link, in its row's turn; answers the links when the press found a newer change to show instead. */
+async function actOn(ctx: WorkCtx, id: string, p: { workspaceId: string; act: 'unlink' | 'retry' | 'replace' | 'keep'; version?: string }): Promise<DocLink[] | null> {
+  const r = rowOf(ctx, id)
+  // Unlinked meanwhile (his other window): nothing to act on.
+  if (!r) return null
+  const source: CanvasSource = { at: 'file', host: ctx.host, path: r.doc }
   if (p.act === 'unlink') {
     ctx.db.prepare(`DELETE FROM work_files_links WHERE id = ?`).run(r.id)
   } else if (p.act === 'keep') {
-    const out = await exportBytes(ctx, source, r.format)
+    // The revision the export is made of, read before it: an edit while it runs is written next, never marked saved.
     const rev = await liveRev(ctx, r.doc).catch(() => null)
+    const out = await exportBytes(ctx, source, r.format)
     const folder = r.path.slice(0, Math.max(r.path.lastIndexOf('/'), r.path.lastIndexOf('\\')))
     const made = await makeIn(ctx, LOCAL, { workspaceId: r.workspace_id, at: { at: 'file', host: r.host, path: folder }, name: r.name, data: out.data, op: randomUUID(), vm: r.vm === 1, linked: true })
     ctx.db
@@ -337,14 +361,27 @@ export async function linkAct(ctx: WorkCtx, by: Caller, p: { workspaceId: string
       if (p.version !== version) {
         ctx.db.prepare(`UPDATE work_files_links SET state = 'changed', seen_version = ?, changed_at = ? WHERE id = ?`).run(version, Date.now(), r.id)
         filesState(ctx).tabs.touch(p.workspaceId)
-        return linksOf(ctx, by, { workspaceId: p.workspaceId, source })
+        return linksOf(ctx, LOCAL, { workspaceId: p.workspaceId, source })
       }
       ctx.db.prepare(`UPDATE work_files_links SET version = ?, seen_version = NULL, state = 'ok', changed_at = NULL, detail = NULL WHERE id = ?`).run(version, r.id)
     } else ctx.db.prepare(`UPDATE work_files_links SET state = 'ok', detail = NULL WHERE id = ?`).run(r.id)
-    await writeLink(ctx, rowOf(ctx, r.id)!, await liveRev(ctx, r.doc).catch(() => null))
+    await writeLinkNow(ctx, r.id, await liveRev(ctx, r.doc).catch(() => null))
   }
-  filesState(ctx).tabs.touch(p.workspaceId)
-  return linksOf(ctx, by, { workspaceId: p.workspaceId, source })
+  return null
+}
+
+/**
+ * Each link row's presses and writes, one at a time (audit A5): Keep Both, Replace and Unlink wait for a write of it
+ * under way, and a write that waited reads the row as it is then, so an older write never lands its receipt on a row a
+ * press moved to another file, and Unlink answers only once a send that may have landed has.
+ */
+const rowTurns = new Map<string, Promise<unknown>>()
+function onRow<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  const run = (rowTurns.get(id) ?? Promise.resolve()).catch(() => undefined).then(fn)
+  const tail = run.catch(() => undefined)
+  rowTurns.set(id, tail)
+  void tail.then(() => rowTurns.get(id) === tail && rowTurns.delete(id))
+  return run
 }
 
 /** The version the file has there when it holds the link's own write whose answer was lost (`tried_sha`); else null. */
@@ -358,9 +395,16 @@ async function ownWriteThere(ctx: WorkCtx, r: LinkRow): Promise<string | null> {
   return shaOf(there.data) === r.tried_sha ? there.version : null
 }
 
+/** One write of a linked file, in its row's turn. */
+function writeLink(ctx: WorkCtx, r: LinkRow, rev: string | null): Promise<void> {
+  return onRow(r.id, () => writeLinkNow(ctx, r.id, rev))
+}
+
 /** One write of a linked file: the document exported now and written over the file by the version last written. */
-async function writeLink(ctx: WorkCtx, r: LinkRow, rev: string | null): Promise<void> {
-  if (inFlight.has(r.id)) return
+async function writeLinkNow(ctx: WorkCtx, id: string, rev: string | null): Promise<void> {
+  // The row as it is in this turn: unlinked, or stopped by a change made there, it is not written.
+  const r = rowOf(ctx, id)
+  if (!r || (r.state !== 'ok' && r.state !== 'waiting') || inFlight.has(r.id)) return
   inFlight.add(r.id)
   filesState(ctx).tabs.touch(r.workspace_id)
   const now = Date.now()
@@ -444,4 +488,5 @@ export async function autosaveLinks(ctx: WorkCtx, now = Date.now(), found?: (not
 export function resetLinkState(): void {
   seenRevs.clear()
   inFlight.clear()
+  rowTurns.clear()
 }

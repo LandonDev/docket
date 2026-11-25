@@ -2379,7 +2379,13 @@ picks, and stays linked to that file: each later edit is written to it.
   file lies (host, path, VM or not), the name and the folder's name the header says, the version it was last written
   at, its bytes' sha, the document's live revision written to it (`saved_rev`) and how it stands (`ok`, `waiting`,
   `changed`, `gone`, `refused`). Only a `.tcdoc` of this host links (its live revision is the Work service's); a LifeOS
-  or Google document saves as a copy. A document may have several links.
+  or Google document saves as a copy. A document may have several links, but one a file: Save As to a file the
+  document is already linked to takes that link (by host and path, case-blind in the VM), never a second writer.
+- **One at a time a link** (audit A5; saveAs.ts `onRow`). A link's presses and its writes take turns: Keep Both,
+  Replace, Retry and Unlink wait for a write of it under way, and a write that waited reads the row as it is then, so
+  an older write never lands its receipt on a row Keep Both moved to another file, and Unlink answers only once a send
+  that may have landed has; nothing is written after it. Keep Both reads the document's revision before its export,
+  so words typed while it runs are written next, never marked saved.
 - **Each later edit reaches the file.** The Work service posts the document's revision to main, which compares it
   with the one last written. Once the revision has held still for 3 s (`wordTiming.pause`), the
   host exports the format again and writes it over the file by the version last written: this host's disk and VM
