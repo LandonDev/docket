@@ -65,6 +65,7 @@ import { inputShapeOf } from './toolInput'
 import { inputProblemWords, unknownToolWords, WORK_OFF_WORDS } from './inputWords'
 import { threadsPart } from './threads'
 import { threadRecordsOf, threadRecordsPart } from './threads/record'
+import { projectsOverview } from './projects/overview'
 import { shortHostName } from '@shared/hostNames'
 import { hostLabel } from '../../hostLabel'
 
@@ -551,6 +552,9 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
         case 'work.lapses':
           if (!settings.enabled()) throw new Error('Work is off on this host')
           return handled(lapsesOf(ctx, sound))
+        case 'work.projects.overview':
+          if (!settings.enabled()) throw new Error('Work is off on this host')
+          return handled(await projectsOverview(ctx, deps.registry, req.params?.workspaceIds))
         case 'work.threads.record': {
           if (!settings.enabled()) throw new Error('Work is off on this host')
           const records = threadRecordsOf(ctx)

@@ -24,7 +24,7 @@ describe("Work's contract", () => {
   })
   it("adds the core's thirteen methods and each pillar's own, and nothing else, to the contract", () => {
     const pillarMethods = PILLAR_IDS.flatMap((id) => WORK_PILLAR_CONTRACTS[id].requests.map(methodOf))
-    const core = ['app.workCall', 'app.workCancel', 'app.workTools', 'work.desktops', 'work.get', 'work.health', 'work.lapses', 'work.project.open', 'work.reveal', 'work.set', 'work.threads.record', 'work.workspace.get', 'work.workspace.set']
+    const core = ['app.workCall', 'app.workCancel', 'app.workTools', 'work.desktops', 'work.get', 'work.health', 'work.lapses', 'work.project.open', 'work.reveal', 'work.set', 'work.projects.overview', 'work.threads.record', 'work.workspace.get', 'work.workspace.set']
     expect(WorkRequestSchemas.map(methodOf).sort()).toEqual([...core, ...pillarMethods].sort())
     // every Work method the contract speaks came through this mount, and no method is declared twice
     expect(all.filter(isWorkMethod).sort()).toEqual([...core, ...pillarMethods].sort())
@@ -42,6 +42,7 @@ describe("Work's contract", () => {
       'work.reveal': 'approve',
       'work.lapses': 'read',
       'work.threads.record': 'approve',
+      'work.projects.overview': 'approve',
       'app.workTools': 'local',
       'app.workCall': 'local',
       'app.workCancel': 'local'
