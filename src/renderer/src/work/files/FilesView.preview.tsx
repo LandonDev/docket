@@ -11,7 +11,8 @@ import type { SavedLine } from "../canvas/kind";
 import type { Busy } from "./busy";
 import { Facts } from "./FileKind";
 import { answerAs, OverFrame, usePress, useTyped } from "../kit.preview";
-import { cloudLine, copyLine, type CopyAsk, type HeaderLine } from "./fileText";
+import { cloudLine, copyLine, notSavedWords, type CopyAsk, type HeaderLine } from "./fileText";
+import { savedLine } from "../sheets/model";
 import { wordLine } from "./wordSave";
 import { FileHeader } from "./FileTabView";
 import { FileTextEditor } from "./FileTextEditor";
@@ -739,6 +740,31 @@ export function FilesCopyLines() {
           ))}
         </div>
       ))}
+    </div>
+  );
+}
+
+// Each kind's save line as its own rule makes it (canvas/calm.ts, sheets/model.ts, the deck's and the document's lines, wordSave.ts).
+const kindLines: { name: string; line: SavedLine | null }[] = [
+  { name: "Run of show.tcdoc", line: { state: "saved", at: NOW - 60_000 } },
+  { name: "Run of show.tcdoc", line: { state: "conflict", detail: notSavedWords("the document was not stored: the disk is full"), actions: [{ id: "retry", label: "Retry", run: noop }] } },
+  { name: "Notes.md", line: { state: "conflict", detail: notSavedWords("Nothing can be changed in General from here."), actions: [{ id: "retry", label: "Retry", run: noop }] } },
+  { name: "Ledger.xls", line: { ...savedLine({ name: "Ledger.xls", store: "package", imported: { format: "xls", name: "Ledger.xls" } }, null, false, NOW - 60_000), again: undefined } as SavedLine },
+  { name: "Plan.tcsheet", line: { state: "conflict", detail: notSavedWords("the sheet is protected"), actions: [{ id: "again", label: "Retry", run: noop }] } },
+  { name: "Pitch.pptx", line: { state: "conflict", detail: notSavedWords("Nothing was written: the deck could not be read."), actions: [{ id: "retry", label: "Retry", run: noop }] } },
+  { name: "Plan.docx", line: wordLine({ since: true, auto: true }, "Teams", "the Windows VM", NOW, false) },
+  { name: "Plan.docx", line: wordLine({ since: true, auto: true, at: NOW - 60_000 }, "Teams", "the Windows VM", NOW, false) },
+];
+
+/** Each kind's save line under the decision-5 rule: a document saved and refused, a text file and a sheet refused, an Excel copy saved, a deck refused, a Word file on first open and inside its pause. */
+export function FilesKindLines() {
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <div style={{ maxWidth: 720 }} className="flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background">
+        {kindLines.map((s, i) => (
+          <FileHeader key={i} name={s.name} line={s.line} where="Events" running={null} onRun={noop} onShowFolder={noop} rows={menu} onPick={noop} ask={idle} />
+        ))}
+      </div>
     </div>
   );
 }

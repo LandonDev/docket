@@ -3598,7 +3598,12 @@ others can open, "Edits stay in this tab's Excel copy until you save
 back." Where the copy cannot go back the words say why ("This file changed
 since the copy was made, so it is not saved back.", "This file holds
 macros, which an Excel copy does not keep, so it is not saved back.") and
-the press is "Save as Excel", the way that keeps his edits. The words wrap
+the press is "Save as Excel", the way that keeps his edits. The save line
+under the file's name says the copy saved ("Saved 3:04 PM in the Excel
+copy"), never the file the tab names, which is untouched until Save back. A
+save the host refused on any sheet but an opened Excel file reads "Not
+saved." with its reason and Retry, in the foreground; only a dropped link
+reads Offline. The words wrap
 to a second line in a narrow pane and are never cut, since they say what a
 save would lose. More keeps "Save back as .xls" and "Save as Excel", and
 "Discard edits and read again" only when the file changed under his edits.

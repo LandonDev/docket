@@ -286,6 +286,20 @@ describe("a text file open", () => {
     expect(h.lines.filter((l) => l?.state === "saving")).toHaveLength(1);
   });
 
+  it("says a refused save as Not saved. with the host's reason and Retry, never Offline", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    const request = h.session["host"].request.bind(h.session["host"]);
+    h.session["host"].request = (async (method: string, params: Record<string, unknown>) => {
+      if (method === "work.files.write") throw new Error("Nothing can be changed in General from here.");
+      return request(method, params);
+    }) as typeof request;
+    h.session.edit("mine\n");
+    await h.fire();
+    expect(h.words()).toBe("Not saved. Nothing can be changed in General from here.");
+    expect(h.lines.at(-1)!.actions!.map((a) => a.label)).toEqual(["Retry"]);
+  });
+
   it("sends what waits when the tab closes under the editor", async () => {
     const h = standIn("first\n");
     await h.session.load();

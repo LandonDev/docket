@@ -1,6 +1,7 @@
 import type { SheetCellJson, SheetChange as ProposedChange, SheetSuggestion, SheetView } from "@shared/contract-work-sheets";
 import type { Principal } from "@shared/work";
 import { changeRuns, type ChangeRun, type SuggestionCell } from "work-kit/sheet/suggest";
+import { linkDropped, notSavedWords } from "../files/fileText";
 
 /**
  * What the sheet canvas works out from a view, with no grid and no host:
@@ -106,6 +107,8 @@ export function holds(cell: SheetCellJson | null, put: SheetCellJson | null): bo
 export interface SavedFacts {
   state: "saved" | "saving" | "offline" | "conflict" | "readonly";
   at?: number;
+  /** where it is kept, where that is not the file the tab names: an .xls, .ods or .tsv saves to its Excel copy */
+  where?: string;
   detail?: string;
   /** the press that makes it right: Reload (the grid no longer matches the file) or Retry (the edits wait and go again) */
   again?: "Reload" | "Retry";
@@ -116,11 +119,17 @@ export interface SavedFacts {
  * press (an opened Excel file refuses for good, so its grid is loaded again; elsewhere the edits wait and are sent
  * again); edits on their way are "saving"; else everything is in the file, since his last edit when he has made one.
  */
-export function savedLine(view: Pick<SheetView, "name" | "store" | "missing" | "readOnly" | "saveError">, sendError: string | null, saving: boolean, savedAt: number | null): SavedFacts {
+export function savedLine(view: Pick<SheetView, "name" | "store" | "missing" | "readOnly" | "saveError" | "imported">, sendError: string | null, saving: boolean, savedAt: number | null): SavedFacts {
   if (view.missing) return { state: "readonly", detail: `${view.name} moved` };
   if (view.readOnly !== undefined) return { state: "readonly", detail: view.readOnly };
   const failed = sendError ?? view.saveError;
-  if (failed) return view.store === "package" ? { state: "conflict", detail: failed, again: "Reload" } : { state: "offline", detail: failed, again: "Retry" };
+  if (failed) {
+    if (view.store === "package") return { state: "conflict", detail: failed, again: "Reload" };
+    // A link that dropped: the edits wait here and go again. A refusal is no link's fault: said as not saved, with why.
+    return linkDropped(failed) ? { state: "offline", detail: failed, again: "Retry" } : { state: "conflict", detail: notSavedWords(failed), again: "Retry" };
+  }
   if (saving) return { state: "saving" };
-  return savedAt ? { state: "saved", at: savedAt } : { state: "saved" };
+  // An .xls, .ods or .tsv is untouched until Save back: what saved is its Excel copy, and the line says so.
+  const where = view.imported ? { where: "the Excel copy" } : {};
+  return savedAt ? { state: "saved", at: savedAt, ...where } : { state: "saved", ...where };
 }

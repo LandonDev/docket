@@ -4,7 +4,7 @@ import { draftFileOf, type Draft, type DraftKey } from "@shared/work/drafts";
 import { FILE_TEXT_MAX, type FileEntry } from "@shared/work/files";
 import type { SavedLine } from "../canvas/kind";
 import { savingNow } from "../canvas/calm";
-import { bytesOfBase64, decodeText, encodeText, triedAsText, whenWords, type TextFile } from "./fileText";
+import { bytesOfBase64, decodeText, encodeText, linkDropped, notSavedWords, triedAsText, whenWords, type TextFile } from "./fileText";
 
 /**
  * One file open in the `file` kind (docs/agents/work-files.md "The file kind"): read once, shown as text to edit
@@ -225,7 +225,11 @@ export class FileSession {
     }
     // A copy says nothing of its own: the frame names the computer the file is on.
     if (this.view.locked !== null) return this.host.saved(this.view.locked.startsWith("This is a copy") ? null : { state: "readonly", detail: this.view.locked });
-    if (failed !== undefined) return this.host.saved({ state: "offline", pending: this.pending, detail: failed, actions: [{ id: "retry", label: "Retry", run: () => this.flush() }] });
+    // A link that dropped: the edits wait here. A refusal (the host's own no) is not saved, with its reason: never Offline.
+    if (failed !== undefined) {
+      const retry = [{ id: "retry", label: "Retry", run: () => this.flush() }];
+      return this.host.saved(linkDropped(failed) ? { state: "offline", pending: this.pending, detail: failed, actions: retry } : { state: "conflict", detail: notSavedWords(failed), actions: retry });
+    }
     // Saved names the last save the host answered; Saving… only once a send has been out a while, or his edits waited
     // past the pause with nothing sent (calm.ts). Inside that, the last Saved line stays.
     const { saving, again } = savingNow({ edited: this.draft !== null && !this.saving ? this.editedAt : null, pause: SAVE_AFTER_MS, sent: this.saving ? this.sentAt : null }, this.now());

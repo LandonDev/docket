@@ -506,6 +506,13 @@ google/grid.test.ts, sheets/host/host.test.ts; journey J71.
 
 ## Other formats in
 
+The save line (`savedLine`, sheets/model.ts) names the Excel copy where a view is `imported` ("Saved 3:04 PM in
+the Excel copy"): the .xls, .ods or .tsv the tab names is unchanged until Save back. A failed send on a .tcsheet,
+a CSV or a LifeOS sheet is "Not saved." and the host's reason with Retry where the host refused it, and Offline
+only where the link dropped or the host did not answer (`linkDropped`, files/fileText.ts); the text file's line
+reads the same way (fileSession.ts). The pane's "Couldn't save" state line is marked `saving`, so a Files tab
+says it once, in the save line.
+
 `formatsIn.ts`, `formatsInBack.ts`, `src/shared/work/sheetFormats.ts`; tests `formatsIn.test.ts`
 (a stand-in converter, Files' dummy team library), `formatsIn.wired.test.ts`
 (through `work.sheets.*` and the tools), `formatsIn.seat.test.ts` (where

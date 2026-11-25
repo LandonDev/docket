@@ -525,7 +525,7 @@ function useFeeds(
     // Read only asks nothing of him: one muted line, as on a deck; amber is for a line that needs him.
     if (missing) shell.statusLine({ tone: "quiet", word: "Read only", detail: `${name} moved` });
     else if (readOnly !== undefined) shell.statusLine({ tone: "quiet", word: "Read only", detail: readOnly });
-    else if (saveError) shell.statusLine({ tone: "failed", word: "Couldn't save", detail: saveError, action: { label: store === "package" ? "Reload" : "Retry", run: () => sync.retry() } });
+    else if (saveError) shell.statusLine({ tone: "failed", word: "Couldn't save", detail: saveError, action: { label: store === "package" ? "Reload" : "Retry", run: () => sync.retry() }, saving: true });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
   }, [shell, sync, name, missing, readOnly, saveError, store]);

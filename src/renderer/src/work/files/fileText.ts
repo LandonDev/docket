@@ -92,6 +92,13 @@ export function savedWords(line: SavedLine, where: string | null, now = Date.now
   }
 }
 
+/**
+ * Whether a failed send's words say the link dropped or the host did not answer (the send may still come through,
+ * and the edits wait here), not that the host refused it (a refusal is "Not saved." and its reason). The bare words
+ * the link and the hosts reject with (connection/transport.ts, lib/workErrorWords.ts).
+ */
+export const linkDropped = (why: string): boolean => /^not connected\.?$|is not connected|connection closed|socket closed|^closed\.?$|no answer in \d|timed out|^timeout\b|did not answer/i.test(why.trim());
+
 /** A save that did not land, in one line: "Not saved." and the reason as its own sentence. */
 export function notSavedWords(why?: string | null): string {
   const said = why?.trim().replace(/\.$/, "");

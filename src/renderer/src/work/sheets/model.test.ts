@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { savedWords } from "../files/fileText";
 import { cellText, holds, REVIEW_IDS_MOST, reviewBatches, sheetChanges, savedLine } from "./model";
 import { suggestion } from "./testkit";
 
@@ -46,6 +47,23 @@ describe("the saved line", () => {
     expect(savedLine(view, "That cell is locked", true, null)).toEqual({ state: "conflict", detail: "That cell is locked", again: "Reload" });
     expect(savedLine({ ...view, saveError: "The disk is full" }, null, false, null)).toEqual({ state: "conflict", detail: "The disk is full", again: "Reload" });
     expect(savedLine({ name: "Plan", store: "tcsheet" }, "The host did not answer", false, null)).toEqual({ state: "offline", detail: "The host did not answer", again: "Retry" });
+  });
+
+  it("says a refusal on a .tcsheet, a CSV or a LifeOS sheet as Not saved. with its reason and Retry, never Offline; a dropped link stays offline", () => {
+    const plan = { name: "Plan", store: "tcsheet" as const };
+    const refused = savedLine(plan, "the sheet is protected", false, null);
+    expect(refused).toEqual({ state: "conflict", detail: "Not saved. The sheet is protected.", again: "Retry" });
+    expect(savedWords(refused, "Events")).toBe("Not saved. The sheet is protected.");
+    expect(savedLine(plan, "not connected", false, null).state).toBe("offline");
+    expect(savedLine(plan, "no answer in 30 s", false, null).state).toBe("offline");
+  });
+
+  it("says an .xls, .ods or .tsv saved to its Excel copy, never to the file the tab names", () => {
+    const xls = { name: "Ledger.xls", store: "package" as const, imported: { format: "xls" as const, name: "Ledger.xls" } };
+    const line = savedLine(xls, null, false, new Date(2026, 10, 25, 15, 4).getTime());
+    expect(line).toMatchObject({ state: "saved", where: "the Excel copy" });
+    expect(savedWords(line, "Spring LAN", new Date(2026, 10, 25, 16, 0).getTime())).toBe("Saved 3:04 PM in the Excel copy");
+    expect(savedWords(savedLine(xls, null, false, null), "Spring LAN")).toBe("Saved in the Excel copy");
   });
 
   it("says why a file cannot be changed here, before anything else", () => {
