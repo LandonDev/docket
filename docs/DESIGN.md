@@ -1465,8 +1465,10 @@ The kinds, each a hand-made body built from components/ui:
   is a link that scrolls the page and marks the clause with `sel-bg-paper`.
   A field the agent fills is a suggestion; signing is never the agent's.
 - **Slides.** A 96px thumbnail in a 140px strip, a 3px tint frame at 6px
-  radius round a 3px-radius slide, the stage at most 760px with a 16px
-  inset, a four-column grid at 12 by 16 gaps, a 164px outline preview.
+  radius round a 3px-radius slide, the stage on a 16px inset, filling the
+  pane at Fit (as wide as the room, short enough that the notes start on
+  screen) or the slide at 50 to 200% of its own size (100%: 96px an inch)
+  from Zoom in the bar, scrolling where it is wider; a four-column grid at 12 by 16 gaps, a 164px outline preview.
   Notes under the stage are 14/22 under a 12px medium muted "Notes": where
   he can edit the deck by hand a borderless field in the same type, "Add
   notes" when empty, kept after a 2s pause, on leaving it and on Escape,

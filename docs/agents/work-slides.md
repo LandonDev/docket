@@ -1384,8 +1384,15 @@ How it works:
   near the view and after the stage, and lets pdf.js free its page when it
   leaves. Under 400px of canvas the
   strip becomes a row under the stage.
-- **The stage** is at most 760px wide with a 16px inset, short enough that
-  the notes start on screen. The changed shapes' boxes are tinted on the
+- **The stage** fills the pane with a 16px inset at Fit (`stageWidth`: the
+  room, short enough that the notes start on screen; it was held to 760px,
+  mostly empty stage on his 3200pt display), or is the slide at 50, 75, 100,
+  150 or 200% of its own size (`ZOOMS`; 100% is 96 CSS pixels an inch, as
+  PowerPoint's) from Zoom in the bar, kept per item while the window lives
+  (`DeckState.zoom`); a zoomed slide wider than the pane scrolls from its
+  left edge. ⌘+ and ⌘− stay the window's own zoom. The loading skeleton's
+  slide takes Fit's size by container units, so nothing moves when the deck
+  lands. The changed shapes' boxes are tinted on the
   picture, in the theme the picture is in: `--add-bg-dark-pic` on a dark
   slide, `--add-bg-paper` on a light one, read from the drawn pixels
   (`toneOf`). A press on a shape with words selects it and feeds Ask

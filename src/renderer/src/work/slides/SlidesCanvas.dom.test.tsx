@@ -1096,10 +1096,14 @@ describe("slide imports and Google", () => {
 });
 
 describe("the stage's rules", () => {
-  it("is at most 760px, and short enough for the notes", () => {
-    expect(stageWidth(2000, 2000, 16 / 9)).toBe(760);
+  it("fills the pane at Fit, short enough for the notes; a zoom is the slide at a share of its own size", () => {
+    expect(stageWidth(2000, 2000, 16 / 9)).toBe(1968);
     expect(stageWidth(500, 2000, 16 / 9)).toBe(468);
     expect(stageWidth(2000, 450, 16 / 9)).toBe(533);
+    // A full Files tab on his 3200pt display: as wide as the notes allow, never 760.
+    expect(stageWidth(3200 - 140, 1700, 16 / 9)).toBe(2755);
+    expect(stageWidth(800, 700, 16 / 9, 1, 12_192_000)).toBe(1280);
+    expect(stageWidth(800, 700, 4 / 3, 0.5, 9_144_000)).toBe(480);
   });
   it("counts the current slide's change and finds a change's slide where it lands", () => {
     const view = revised();

@@ -3,9 +3,10 @@
  * His hand on the stage, in the real canvas pane (docs/agents/work-slides.md
  * "Typing on a slide"): an empty placeholder's prompt and the press that types
  * in it, a double-click that opens the box, and the box drawn at the shape's
- * own size, and the pointer's cue for moving, sizing and turning a shape.
+ * own size, the pointer's cue for moving, sizing and turning a shape, the
+ * notes he types, and the stage's Fit and zoom.
  */
-import { cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DeckShape } from "@shared/contract-work-slides";
 import { openMenus } from "../../chrome/menuRows";
@@ -207,5 +208,25 @@ describe("notes he types", () => {
     t.reset();
     await t.stage(handView({ hand: undefined }));
     expect(document.querySelector("[data-slide-notes]")).toBeNull();
+  });
+});
+
+describe("the stage's size", () => {
+  const width = (): number => Number.parseFloat(document.querySelector<HTMLElement>("[data-slides-stage]")!.style.width);
+
+  it("fills the pane at Fit, the notes still starting on screen; a zoom from the bar sets the slide's own size and scrolls", async () => {
+    await t.stage(handView(), { width: 1600, height: 900 });
+    // The pane less the strip and the band's inset, short enough that 150px of the notes show under it.
+    expect(width()).toBe(Math.floor(Math.min(1600 - 140 - 32, (900 - 150) * (16 / 9))));
+    const zoom = await t.found("[data-slides-zoom]");
+    expect(zoom.textContent).toBe("Fit");
+    fireEvent.click(zoom);
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "150%" }));
+    await waitFor(() => expect(width()).toBe(1920));
+    expect(document.querySelector("[data-slides-main]")!.className).toContain("overflow-x-auto");
+    expect((await t.found("[data-slides-zoom]")).textContent).toBe("150%");
+    fireEvent.click(await t.found("[data-slides-zoom]"));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Fit" }));
+    await waitFor(() => expect(width()).toBe(1333));
   });
 });

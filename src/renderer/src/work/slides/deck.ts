@@ -135,12 +135,15 @@ export interface DeckState {
   sheet: boolean;
   /** The sheet's tab: the picked shape's format, or the slide's animation. Kept while the window lives, so the sheet opens where he left it. */
   sheetTab: SheetTab;
+  /** The stage's zoom: `fit` fills the pane, the notes still starting on screen; a number is the slide at that share of its own size. Kept while the window lives. */
+  zoom: StageZoom;
 }
 
 export type SheetTab = "format" | "animate";
+export type StageZoom = "fit" | number;
 
 export class DeckStore {
-  private state: DeckState = { view: null, error: null, current: null, side: "tempcode", look: "slide", sheet: false, sheetTab: "format" };
+  private state: DeckState = { view: null, error: null, current: null, side: "tempcode", look: "slide", sheet: false, sheetTab: "format", zoom: "fit" };
   private listeners = new Set<() => void>();
   get = (): DeckState => this.state;
   subscribe = (listener: () => void): (() => void) => {

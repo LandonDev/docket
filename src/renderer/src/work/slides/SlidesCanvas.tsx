@@ -4,6 +4,8 @@ import type { Bbox } from "@shared/contract-work-pdf";
 import type { DeckShape, DeckSlide, DeckView, SlideChange } from "@shared/contract-work-slides";
 import { KEYNOTE_EXPORT } from "@shared/work/slideFormats";
 import { formatKeyOf } from "work-kit/format/keys";
+import { ChevronDown } from "../../chrome/icons";
+import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
@@ -19,7 +21,7 @@ import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind
 import { OpenFailed } from "../canvas/FetchState";
 import { pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { boxStyle } from "../pdf/layout";
-import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, useRender, type DeckHost, type DeckStore } from "./deck";
+import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, useRender, type DeckHost, type DeckStore, type StageZoom } from "./deck";
 import { pictureIn, useFilePictures } from "./filePictures";
 import { DeckRow, keyAct, officeTheme, targetOf, type Target } from "./edit/DeckRow";
 import { FormatSheet, SHEET_BESIDE, SHEET_WIDTH } from "./edit/FormatSheet";
@@ -115,16 +117,28 @@ function remember(at: Map<string, Map<string, number>>, view: DeckView): void {
 /** His lengths: inches where the paper is Letter, centimetres elsewhere (edit/drag.ts `unitFor`). */
 const UNIT = unitFor(typeof navigator === "undefined" ? "en-US" : navigator.language);
 export { THUMB } from "./Strip";
-export const STAGE_MAX = 760;
+/** The stage's width before the pane is measured. */
+export const STAGE_FIRST = 760;
 /** Under this the canvas itself is too narrow for a strip beside the stage: the strip becomes a row under it. */
 export const NARROW = 400;
+/** The zooms the stage offers besides Fit, as shares of the slide's own size (100%: an inch is 96 CSS pixels, as PowerPoint's 100% is). */
+export const ZOOMS = [0.5, 0.75, 1, 1.5, 2] as const;
+/** EMU in a CSS pixel at 96 to the inch. */
+const EMU_PX = 9525;
 
-/** The stage's width: the room it has, at most 760px, and short enough that the notes start on screen. */
-export function stageWidth(width: number, height: number, aspect: number): number {
+/**
+ * The stage's width. Fit: the room the pane gives it, and short enough that the notes start on screen. A zoom: the
+ * slide at that share of its own size (`emuWidth`), the stage scrolling where it is wider than the pane.
+ */
+export function stageWidth(width: number, height: number, aspect: number, zoom: StageZoom = "fit", emuWidth = 12_192_000): number {
+  if (zoom !== "fit") return Math.round((emuWidth / EMU_PX) * zoom);
   const room = Math.max(0, width - 32);
   const tall = height > 0 ? Math.max(200, (height - 150) * aspect) : room;
-  return Math.floor(Math.min(room, STAGE_MAX, tall));
+  return Math.floor(Math.min(room, tall));
 }
+
+/** A zoom in his words. */
+export const zoomWords = (zoom: StageZoom): string => (zoom === "fit" ? "Fit" : `${Math.round(zoom * 100)}%`);
 
 /** The change a slide's place on the stage belongs to, as the stepper counts them. */
 export function changeIndex(view: DeckView, key: string | null): number {
@@ -197,7 +211,7 @@ export function SlidesBody({
   mediaSize,
   dragging: firstDrag,
 }: CanvasBodyProps<SlidesState> & Omit<SlidesDeps, "host" | "engine"> & { host: DeckHost; store: DeckStore; engine: PdfEngine }) {
-  const { view, error, current, side, look, sheet, sheetTab } = useDeck(store);
+  const { view, error, current, side, look, sheet, sheetTab, zoom } = useDeck(store);
   useOpenShow(env, item.id, canPresent(view) && !error, () => startPresenting(host, store, { from: "start", mode: "full" }, engine));
   const session = handOf(item.id, host, store);
   const hand = useSyncExternalStore(session.subscribe, session.get, session.get);
@@ -447,6 +461,7 @@ export function SlidesBody({
               hand={hand}
               target={target}
               tone={tone}
+              zoom={zoom}
               under={beside ? null : formatSheet}
             />
           ) : null}
@@ -644,8 +659,11 @@ function Main({
   hand,
   target,
   tone,
+  zoom,
   under,
 }: {
+  /** Fit, or the slide at a share of its own size */
+  zoom: StageZoom;
   /** the shape picked when the stage mounts (a preview) */
   picked?: number;
   /** the box open when the stage mounts (a preview) */
@@ -685,7 +703,9 @@ function Main({
   }, [stage, onMount, onUnmount]);
   const size = doc?.size(page);
   const aspect = size ? size.width / size.height : 16 / 9;
-  const w = width > 0 ? stageWidth(width, under ? Math.round(height * 0.42) + 150 : height, aspect) : STAGE_MAX;
+  // The slide in EMU, as the outline's boxes and his edits have it.
+  const emuWidth = view.size?.width ?? (aspect < 1.5 ? 9_144_000 : 12_192_000);
+  const w = zoom !== "fit" || width > 0 ? stageWidth(width, under ? Math.round(height * 0.42) + 150 : height, aspect, zoom, emuWidth) : STAGE_FIRST;
   // The shape picked is the session's, so the row acts on it; it is let go when the stage leaves the slide.
   const picked = hand.picked?.slideKey === slide.key ? hand.picked.shapeId : null;
   useLayoutEffect(() => {
@@ -738,8 +758,6 @@ function Main({
   const buttonOf = (id: number): HTMLElement | null => layer.current?.querySelector<HTMLElement>(`[data-shape="${id}"]`) ?? null;
   const h = Math.round(w / aspect);
   const selected = shapes.find((s) => s.id === picked);
-  // The slide in EMU, as the outline's boxes and his edits have it.
-  const emuWidth = view.size?.width ?? (aspect < 1.5 ? 9_144_000 : 12_192_000);
   const emu = { width: emuWidth, height: view.size?.height ?? Math.round(emuWidth / aspect) };
   // His hand moves a shape with its own box on the slide, on a slide no suggestion changes, while no box is open.
   const canMove = (shape: DeckShape | undefined): shape is Movable => movable(shape) && session.slideRefusal(slide) === null && !hand.box;
@@ -806,8 +824,12 @@ function Main({
   const notesEdit = change?.edits.find((e) => e.where === NOTES_WHERE);
   const edits = change?.edits.filter((e) => e !== notesEdit) ?? [];
   return (
-    <div data-slides-main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain">
-      <div className="flex shrink-0 justify-center bg-(--slide-stage) px-4 pt-4 pb-(--slide-stage-inset)">
+    <div
+      data-slides-main
+      className={zoom === "fit" ? "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-contain" : "relative flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-auto overscroll-contain"}
+    >
+      {/* Centred while it fits; a zoomed slide wider than the pane starts at its left edge, so all of it can be scrolled to. */}
+      <div className="flex min-w-fit shrink-0 justify-center-safe bg-(--slide-stage) px-4 pt-4 pb-(--slide-stage-inset)">
         <div data-slides-stage className="relative shrink-0" style={{ width: w }}>
           <Picture
             doc={doc}
@@ -1124,10 +1146,10 @@ function DeckSkeleton({ row }: { row: boolean }) {
             </div>
           ))}
         </div>
-        <div className="flex min-w-0 flex-1 flex-col">
-          {/* On the stage band, as the loaded slide is (:406), so nothing moves when the deck lands. */}
+        <div className="flex min-w-0 flex-1 flex-col [container-type:size]">
+          {/* On the stage band at the size Fit gives the loaded slide (`stageWidth`: the room, short enough for the notes), so nothing moves when the deck lands. */}
           <div data-slides-skeleton-stage className="flex justify-center bg-(--slide-stage) px-4 pt-4 pb-(--slide-stage-inset)">
-            <Skeleton className="aspect-video w-full max-w-[560px]" />
+            <Skeleton className="aspect-video w-[min(calc(100cqw-32px),max(200px,calc((100cqh-150px)*16/9)))]" />
           </div>
           <div className="flex flex-col gap-2 px-5 pt-4">
             <Skeleton className="h-2.5 w-12" />
@@ -1170,7 +1192,8 @@ export function TabEnd({ item, source, env }: CanvasBodyProps<SlidesState>) {
 
 /**
  * While the deck loads the bar holds one bone where the mode will be, so the
- * body does not drop 32px when it lands. In TempCode it ends with History
+ * body does not drop 32px when it lands. In TempCode it holds the stage's Zoom
+ * while one slide is on the stage, then ends with History
  * where he can edit the deck by hand, and with Present (Present.tsx) where the
  * format row is not drawn (the row's way out is Present otherwise); in the
  * real PowerPoint the stepper is not there: how many changes wait here, and
@@ -1178,7 +1201,7 @@ export function TabEnd({ item, source, env }: CanvasBodyProps<SlidesState>) {
  */
 export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<SlidesState> & SlidesDeps) {
   const store = deckStoreOf(item.id);
-  const { view, error, side } = useDeck(store);
+  const { view, error, side, look, zoom } = useDeck(store);
   const inPowerPoint = useInPowerPoint(view, source, env);
   if (!view) return error ? null : <Skeleton className="h-3 w-30" />;
   const pending = view.changes.length;
@@ -1186,9 +1209,9 @@ export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<
   if (side !== "powerpoint") {
     // Present, at the bar's end, wherever the host has a picture of the file to show and the row does not hold it.
     const presentHere = !view.hand && canPresent(view);
-    if (!view.hand && !presentHere) return null;
     return (
       <div className="ms-auto flex shrink-0 items-center gap-1">
+        {look === "slide" ? <ZoomMenu zoom={zoom} onZoom={(next) => store.set({ zoom: next })} /> : null}
         {view.hand ? <HistoryButton host={host} session={handOf(item.id, host, store)} /> : null}
         {presentHere ? (
           <InPowerPointRow.Provider value={inPowerPoint}>
@@ -1211,5 +1234,26 @@ export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<
         Review
       </Button>
     </>
+  );
+}
+
+/** The stage's zoom, in the bar as the PDF's is: Fit fills the pane, the notes still starting on screen. Gone in the narrow bar. */
+function ZoomMenu({ zoom, onZoom }: { zoom: StageZoom; onZoom(zoom: StageZoom): void }) {
+  const rows: MenuRow[] = (["fit", ...ZOOMS] as const).map((z) => ({ kind: "item", id: String(z), label: zoomWords(z), checked: z === zoom }));
+  return (
+    <span data-narrow-hide className="@max-[560px]/bar:hidden">
+      <RowsMenu
+        label="Zoom"
+        align="end"
+        rows={rows}
+        onPick={(id) => onZoom(id === "fit" ? "fit" : Number(id))}
+        trigger={
+          <Button data-slides-zoom variant="ghost" size="xs" className="shrink-0 font-normal text-muted-foreground tabular-nums">
+            {zoomWords(zoom)}
+            <ChevronDown />
+          </Button>
+        }
+      />
+    </span>
   );
 }
