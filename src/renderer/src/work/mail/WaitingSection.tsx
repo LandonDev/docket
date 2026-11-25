@@ -12,7 +12,9 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import type { LifeosStateName } from "@shared/contract-work-lifeos";
 import { lifeosHostName, lifeosStateOf, sessionFailure, useLifeosStatus } from "../shell/lifeos";
-import { downIsSilence, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
+import { downIsSilence, downWords, useDownPress } from "../shell/lifeosDown";
+import { savedOf, savedOfState, useLiveDown, type SavedDown } from "../shell/lifeosLive";
+import { connectingWords } from "../shell/lifeosWords";
 import { useDownAction } from "../shell/DownSignIn";
 
 /**
@@ -29,7 +31,7 @@ export const WAIT_DAYS = ["1", "2", "3", "5", "7", "10"] as const;
 const DAY_CHOICES = WAIT_DAYS.map((d) => ({ value: d, label: d === "1" ? "1 working day" : `${d} working days` }));
 
 /** `failed`: the request itself failed after a value was known; the value stays, and the failure is said on the days' row. */
-type Load = { status: "loading" } | { status: "ready"; value: MailWaiting; failed?: string } | { status: "error"; error: string };
+type Load = { status: "loading" } | { status: "ready"; value: MailWaiting; failed?: string; failedAs?: SavedDown } | { status: "error"; error: string };
 
 /** The LifeOS state the host's reason for a failed days' read names, after its own "LifeOS did not answer:" whatever the cause; null for any other cause. */
 export const daysState = (error: string): LifeosStateName | null => lifeosStateOf(error.replace(/^LifeOS did not answer:\s*/i, ""));
@@ -41,12 +43,10 @@ export const daysState = (error: string): LifeosStateName | null => lifeosStateO
  */
 export function daysFailure(error: string, host?: string | null): string {
   const state = daysState(error);
-  if (state === "connecting") return "LifeOS is still connecting";
+  if (state === "connecting") return connectingWords(host);
   return state ? sessionFailure(state, false, host) : "LifeOS could not read the waiting time";
 }
 
-/** The rule's down state of a failed days' read (`lifeosDown.ts`), or null for one that is on its way or has no state. */
-const downOfDays = (state: LifeosStateName | null): LifeosDown | null => (state && state !== "connecting" && state !== "connected" ? state : null);
 
 const ask = (env: string, method: string, params: Record<string, unknown>): Promise<MailWaiting> => registry.linkOf(env).request<MailWaiting>(method, params);
 
@@ -114,7 +114,7 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
         const error = err instanceof TimeoutError ? sessionFailure("unanswered", false, host) : workErrorWords(err, host ? { host: nameInLine(host) } : {}) || sessionFailure("unanswered", false, host);
         // A Retry that failed keeps what was known, the routine's switch with it: the failure and Retry stay on the days'
         // row. Only a first read with nothing known is the whole section's error.
-        setLoad(shown.current ? { status: "ready", value: shown.current.value, failed: error } : { status: "error", error });
+        setLoad(shown.current ? { status: "ready", value: shown.current.value, failed: error, failedAs: savedOf(err) } : { status: "error", error });
       },
     ).finally(() => live && setRetrying(false));
     return () => {
@@ -122,25 +122,15 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
     };
   }, [env, workspace.id, attempt]);
 
-  // The host's LifeOS back (the sign-in approved, a Retry elsewhere, or by itself): a days' row that is down reads again,
-  // with no press, through the same numbered ask, so the switch keeps the value its last save gave it. Each fresh answer
-  // that says connected counts; a row that reads asks nothing.
-  const status = useLifeosStatus(env);
-  const back = status?.lifeos.state === "connected" ? status : null;
-  // The host's status, heard live: a sign-out (or any state that is down) while the page is open takes the days' row
-  // down at once, the last value with it, so no change is offered that would fail; the switch keeps its own way.
-  // Until it reads again, a row the status took down stays down (`dropped`), "LifeOS is still connecting" on the way back.
-  const liveDown = downOfDays(status?.lifeos.state ?? null);
-  const dropped = useRef(false);
-  if (liveDown) dropped.current = true;
-  const connecting = dropped.current && status?.lifeos.state === "connecting";
-  const isDown = useRef(false);
-  isDown.current = dropped.current || load.status === "error" || (load.status === "ready" && (!!load.failed || !!load.value.error));
-  useEffect(() => {
-    if (!back || !isDown.current) return;
-    dropped.current = false;
-    setAttempt((n) => n + 1);
-  }, [back]);
+  const value = load.status === "ready" ? load.value : null;
+  const failed = load.status === "ready" ? load.failed : undefined;
+  // What the days' row says is the host's live status's (`useLiveDown`) over the cause the last read saved: a sign-out
+  // while the page is open takes the row down at once, a sign-in begun elsewhere is Show the code, LifeOS on its way is
+  // a wait with no press; once a status heard since says connected, the row reads again with no press, through the same
+  // numbered ask, so the switch keeps the value its last save gave it. The switch keeps its own way throughout.
+  const saved: SavedDown = load.status === "ready" && failed ? (load.failedAs ?? null) : value?.error ? savedOfState(daysState(value.error)) : null;
+  const live = useLiveDown(saved, env, () => setAttempt((n) => n + 1));
+  useLifeosStatus(env);
 
   const change = async (patch: { days?: number; routine?: boolean }, failed: string): Promise<boolean> => {
     const n = ++asked.current;
@@ -155,22 +145,19 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
     }
   };
 
-  const value = load.status === "ready" ? load.value : null;
-  const failed = load.status === "ready" ? load.failed : undefined;
   const host = lifeosHostName(env);
   // A LifeOS that is signed out, refused, waiting for a sign-in or off is a state, said muted with the rule's press
   // (`useDownPress`: Sign in, Show the code, Open Settings, else who can); only silence, or a cause with no state, is
-  // the red line with Retry. The switch below keeps its own way.
-  // A Retry that failed says its own, newest cause; else the live status's state, then the last read's.
-  const down = failed ? null : (liveDown ?? downOfDays(value?.error ? daysState(value.error) : null));
+  // the red line with Retry.
+  const down = live.down;
   const stated = !!down && !downIsSilence(down);
   const { press, elsewhere } = useDownPress(stated ? down : null, env);
   const { action, dialog } = useDownAction(press, env);
-  const daysWords = failed ?? (liveDown ? downWords(liveDown, host) : connecting ? "LifeOS is still connecting" : value?.error ? daysFailure(value.error, host) : undefined);
-  // Said muted: a state, or LifeOS on its way back; silence and a failed Retry are the red line.
-  const muted = stated || (!failed && connecting);
-  // The row has no value to change: none was read, or the host's LifeOS is down now, or on its way back.
-  const noDays = value?.days === null || !!liveDown || connecting;
+  const daysWords = down ? downWords(down, host) : live.waits ? connectingWords(host) : (failed ?? (value?.error ? daysFailure(value.error, host) : undefined));
+  // Said muted: a state, or LifeOS on its way; silence and a cause with no state are the red line.
+  const muted = stated || live.waits;
+  // The row has no value to change: none was read, or the host's LifeOS is down now, or on its way.
+  const noDays = value?.days === null || !!down || live.waits;
   const retry = (
     <Button
       variant="ghost"
@@ -210,7 +197,7 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
                   {action.label}
                 </Button>
               ) : null
-            ) : noDays && (value.error || failed || liveDown) ? (
+            ) : noDays && !live.waits && (value.error || failed || down) ? (
               // Asks the whole section again; the switch below stays as it was while it is out.
               retry
             ) : value.days !== null && !noDays ? (

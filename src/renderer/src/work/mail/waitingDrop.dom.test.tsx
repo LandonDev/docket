@@ -24,6 +24,8 @@ const WORKSPACE = { id: "ws", name: "Purdue Esports", environmentId: "env_box", 
 
 let asked: string[] = [];
 let days = 3;
+let status: unknown = CONNECTED;
+let readError: string | null = null;
 const pushes = new Set<(push: { push: string; status: unknown }) => void>();
 
 function host(): void {
@@ -37,8 +39,8 @@ function host(): void {
     onOpen: () => () => {},
     request: vi.fn(async (method: string) => {
       asked.push(method);
-      if (method === "work.lifeos.status") return CONNECTED;
-      if (method === "work.mail.waiting") return { days, routine: true };
+      if (method === "work.lifeos.status") return status;
+      if (method === "work.mail.waiting") return readError ? { days: null, error: readError, routine: true } : { days, routine: true };
       return new Promise(() => {});
     }),
   } as never);
@@ -63,6 +65,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   pushes.clear();
   days = 3;
+  status = CONNECTED;
+  readError = null;
 });
 
 describe("Waiting on, the host's LifeOS dropping while the page is open", () => {
@@ -79,13 +83,35 @@ describe("Waiting on, the host's LifeOS dropping while the page is open", () => 
     expect((screen.getByRole("switch", { name: "Draft nudges by themselves" }) as HTMLButtonElement).disabled).toBe(false);
     // On the way back, the row says so and offers nothing; once connected, the days are read again.
     await push(CONNECTING);
-    expect(screen.getByText("LifeOS is still connecting")).toBeTruthy();
+    expect(screen.getByText("LifeOS is still connecting on the box")).toBeTruthy();
     expect(daysControl()).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     days = 5;
     await push(CONNECTED);
     expect(reads()).toBe(2);
     expect(daysControl()?.textContent).toContain("5 working days");
     expect(screen.queryByText("Not signed in to LifeOS on the box")).toBeNull();
+  });
+
+  /** Council round 10 (Sol Settings 2): during connecting the row still drew Retry from an older read's sign-out. */
+  it("says the one connecting line with no Retry over an older read's sign-out, Show the code while the sign-in waits, and reads again on connected", async () => {
+    status = SIGNED_OUT;
+    readError = "Not signed in to LifeOS";
+    host();
+    render(<WaitingSection workspace={WORKSPACE} />);
+    await settle();
+    expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
+    await push({ lifeos: { state: "pairing", expiresAt: Date.now() + 600_000 }, keys: [] });
+    expect(screen.getByText("The LifeOS sign-in on the box waits for your approval")).toBeTruthy();
+    await push(CONNECTING);
+    expect(screen.getByText("LifeOS is still connecting on the box")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.getByRole("switch", { name: "Draft nudges by themselves" })).toBeTruthy();
+    readError = null;
+    days = 5;
+    await push(CONNECTED);
+    expect(reads()).toBe(2);
+    expect(daysControl()?.textContent).toContain("5 working days");
   });
 
   it("says LifeOS's silence in red with Retry in the control's place, and reads again when it answers", async () => {
