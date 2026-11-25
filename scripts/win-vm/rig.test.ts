@@ -73,6 +73,23 @@ describe('a script that starts a machine', () => {
     expect(refusal({ ...scratch, WINVM_SSH_PORT: 'x' })).toContain('is not a port')
     expect(refusal({ ...scratch, WINVM_SSH_PORT: '80' })).toContain('is not a port')
   })
+
+  it("gives a throwaway rig's disk cache=unsafe when asked, so a fresh boot does not flush the box's disk", () => {
+    const c = rigConfig({ ...scratch, WINVM_DISK_CACHE: 'unsafe' }, 999)
+    expect(c.diskCache).toBe('unsafe')
+    const disk = qemuArgs(c, rigPaths(c), { disk: '/tmp/vm-scratch/run/disk.qcow2', vars: '/tmp/vm-scratch/run/OVMF_VARS.fd' }).find((a) => a.startsWith('file=/tmp/vm-scratch/run/disk.qcow2'))
+    expect(disk).toBe('file=/tmp/vm-scratch/run/disk.qcow2,if=none,id=disk0,format=qcow2,discard=unmap,cache=unsafe')
+    expect(rigConfig(scratch, 999).diskCache).toBeNull()
+  })
+
+  it("refuses cache=unsafe on the owner's rig, and never gives it to the standing machine", () => {
+    expect(() => rigConfig({ WINVM_DISK_CACHE: 'unsafe' }, 999)).toThrow(/throwaway rig: .*not set/)
+    expect(() => rigConfig({ ...scratch, WINVM_DIR: '/srv/agents/win-vm', WINVM_DISK_CACHE: 'unsafe' }, 999)).toThrow(/the owner's machines' folder/)
+    expect(() => rigConfig({ ...scratch, WINVM_DISK_CACHE: 'writeback' }, 999)).toThrow(/the one mode it takes is unsafe/)
+    const standing = rigConfig({ ...scratch, WINVM_DISK_CACHE: 'unsafe' }, 999, 'standing')
+    expect(standing.diskCache).toBeNull()
+    expect(qemuArgs(standing, rigPaths(standing), { disk: '/d.qcow2', vars: '/v.fd' }).join(' ')).not.toContain('cache=')
+  })
 })
 
 describe('two instances', () => {

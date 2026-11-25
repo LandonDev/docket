@@ -102,7 +102,7 @@ export function qemuArgs(c: RigConfig, p: RigPaths, { disk, vars, install, windo
     '-chardev', `socket,id=chrtpm,path=${p.tpmSock}`,
     '-tpmdev', 'emulator,id=tpm0,chardev=chrtpm',
     '-device', 'tpm-crb,tpmdev=tpm0',
-    '-drive', `file=${disk},if=none,id=disk0,format=qcow2,discard=unmap`,
+    '-drive', `file=${disk},if=none,id=disk0,format=qcow2,discard=unmap${c.diskCache ? `,cache=${c.diskCache}` : ''}`,
     '-device', 'ide-hd,drive=disk0,bus=ide.0,bootindex=0',
     '-netdev', `user,id=n0,${fwd.join(',')}`,
     '-device', 'e1000e,netdev=n0',

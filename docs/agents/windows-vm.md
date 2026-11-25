@@ -109,6 +109,13 @@ scripts/win-vm/down.sh                    # shut Windows down and stop the machi
   `status.sh` says whether it runs and what it was started from. A thread that finds it running and not its own
   leaves it alone. Stop it when done: it holds 16 GB of the agents slice's memory while it runs (`WINVM_MEM=8G`
   is the light option) and runs at the starting thread's nice level.
+- **A throwaway rig spares the box's disk.** Windows booting on a fresh overlay flushes hard: on 2026-11-24 a
+  scratch boot's flush storm on the box's one NVMe froze the live app for 82 s. A rig on a scratch root, TPM
+  folder and port of its own (`WINVM_DIR`, `WINVM_TPM_DIR`, `WINVM_SSH_PORT`, as `scratchMachineRefusal` holds)
+  may set `WINVM_DISK_CACHE=unsafe`: its disk's writes stay in the page cache and the guest's flushes are dropped
+  (`diskCacheOf` in machine/config.ts, `cache=unsafe` on the `-drive`). A host crash loses that disk, so the
+  owner's rig refuses it with a reason and the standing machine never reads it. Start it as
+  `ionice -c 3 nice -n 19 scripts/win-vm/up.sh` (QEMU inherits both), and delete the scratch root after.
 - **It outlives the call that starts it, on purpose.** QEMU and swtpm start with a clean environment (`daemonEnv`
   in machine/config.ts), so the host's process guard, which kills a call's leftovers by the marks in their environment,
   leaves them alone. `down.sh` is the way to stop it. On a failed `install` or `up` the scripts stop it

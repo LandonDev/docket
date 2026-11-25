@@ -59,6 +59,8 @@ export interface RigConfig {
   tpmDir: string
   ovmfCode: string
   ovmfVars: string
+  /** The disk's cache mode when not QEMU's default: `unsafe` on a throwaway rig alone (`diskCacheOf`). */
+  diskCache: 'unsafe' | null
 }
 
 export function rigConfig(env: NodeJS.ProcessEnv = process.env, uid = process.getuid?.() ?? 0, instance: Instance = 'rig'): RigConfig {
@@ -77,8 +79,25 @@ export function rigConfig(env: NodeJS.ProcessEnv = process.env, uid = process.ge
     cdpPort: instance === 'rig' ? cdp : null,
     tpmDir: env.WINVM_TPM_DIR || `/tmp/win-vm-tpm-${uid}${d.sub ? `-${d.sub}` : ''}`,
     ovmfCode: join(OVMF, 'OVMF_CODE_4M.secboot.fd'),
-    ovmfVars: join(OVMF, 'OVMF_VARS_4M.ms.fd')
+    ovmfVars: join(OVMF, 'OVMF_VARS_4M.ms.fd'),
+    diskCache: diskCacheOf(env, uid, instance)
   }
+}
+
+/**
+ * `WINVM_DISK_CACHE=unsafe`: the disk's writes stay in the host's page cache and QEMU drops the guest's
+ * flushes, so Windows booting on a fresh overlay does not storm the box's one NVMe (a scratch boot's flushes
+ * froze the live app for 82 s on 2026-11-24). A crash of the host loses that disk, so only a throwaway rig may
+ * ask: a scratch root, TPM folder and port (`scratchMachineRefusal`). The standing machine keeps its disk and
+ * never reads it.
+ */
+function diskCacheOf(env: NodeJS.ProcessEnv, uid: number, instance: Instance): 'unsafe' | null {
+  const asked = env.WINVM_DISK_CACHE
+  if (!asked || instance === 'standing') return null
+  if (asked !== 'unsafe') throw new Error(`WINVM_DISK_CACHE ${asked}: the one mode it takes is unsafe`)
+  const why = scratchMachineRefusal(env, uid)
+  if (why) throw new Error(`WINVM_DISK_CACHE=unsafe is for a throwaway rig: ${why}`)
+  return 'unsafe'
 }
 
 /**
