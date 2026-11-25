@@ -946,8 +946,9 @@ function FolderPage({
           carry: (verb, entries) => verbs.carry({ verb, entries, from: copy, start: { at: page.at, name: page.name } }),
           trash: (entries) => void trash(of, copy, entries),
           // Put Back and Delete for Good as this window's key may on the Trash's host: one it may not is not offered.
-          ...(may(copy.link, "work.files.restore") ? { restore: (entries: readonly FileEntry[]) => void restore(of, copy.link, trashIds(entries)) } : {}),
-          ...(may(copy.link, "work.files.purge") ? { purge: (entries?: readonly FileEntry[]) => void purge(of, copy.link, entries ? { ids: trashIds(entries), names: entries.map((e) => e.name) } : {}) } : {}),
+          // Each reads Trash again once the host answers, so a row put back or deleted leaves at once (its push follows).
+          ...(may(copy.link, "work.files.restore") ? { restore: (entries: readonly FileEntry[]) => void restore(of, copy.link, trashIds(entries)).then((went) => void (went && listing.retry())) } : {}),
+          ...(may(copy.link, "work.files.purge") ? { purge: (entries?: readonly FileEntry[]) => void purge(of, copy.link, entries ? { ids: trashIds(entries), names: entries.map((e) => e.name) } : {}).then((went) => void (went && listing.retry())) } : {}),
           star: (entries, on) => void star(of, entries, on).then(() => listing.retry()),
           openTab: (entry) => entry.folder && verbs.newTab({ at: entry.folder, name: entry.name }),
           ...(verbs.openSide && copy.link === workspace.environmentId && !copy.place.vm ? { openSide: (entry: FileEntry) => verbs.openSide!(entry, copy) } : {}),
@@ -1021,6 +1022,7 @@ function FolderPage({
         onOpen={(entry) => copy && onOpen(entry, copy)}
         onReveal={onReveal}
         // The Beside seat is the workspace's own host's: a file that lies there opens in it as itself.
+        libraryBins={reach.sidebar.rows.length > 0}
         seat={!team && copy && copy.wire === "files" && reach.tabs && copy.link === workspace.environmentId && !copy.place.vm ? { workspace, can: (entry) => !!entry.ref } : null}
         {...(!team && copy ? { onFetch: (entry: FileEntry) => fetchHere(entry, copy, workspace.id).then(() => listing.retry()) } : {})}
       />

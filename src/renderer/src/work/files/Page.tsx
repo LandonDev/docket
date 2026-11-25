@@ -268,7 +268,7 @@ function SortHead({ by, label, sort, onSort, className }: { by: FileSortBy; labe
 }
 
 /** The list's heads. "Last change by" is a fact of each file, not an order the host keeps: its head only names the column. */
-function Head({ sort, second, onSort }: { sort: FileSort; second: string; onSort(next: FileSort): void }) {
+function Head({ sort, second, when = "Changed", onSort }: { sort: FileSort; second: string; /** the date column's name: Trash dates a delete */ when?: string; onSort(next: FileSort): void }) {
   return (
     // The head keeps the room the list's bar takes (`scrollbar-gutter`), so Changed ends on its dates' edge.
     <div role="row" className="flex h-7 shrink-0 items-center gap-2 overflow-hidden border-b border-border px-4 text-xs text-muted-foreground [scrollbar-gutter:stable]">
@@ -277,7 +277,7 @@ function Head({ sort, second, onSort }: { sort: FileSort; second: string; onSort
       <span role="columnheader" className={COL_BY}>
         {second}
       </span>
-      <SortHead by="changed" label="Changed" sort={sort} onSort={onSort} className={COL_CHANGED} />
+      <SortHead by="changed" label={when} sort={sort} onSort={onSort} className={COL_CHANGED} />
     </div>
   );
 }
@@ -825,6 +825,7 @@ export function PageView({
   drawn,
   seat = null,
   pictures = null,
+  libraryBins = false,
   onFetch,
   onReveal,
   onBack,
@@ -866,6 +867,8 @@ export function PageView({
   seat?: BesideSeatOf | null;
   /** where the rows' pictures are asked, on a page with no one folder to list from (a search's results) */
   pictures?: PictureFrom | null;
+  /** Trash: the workspace lists a Teams or OneDrive library, whose deletes go to that library's own bin */
+  libraryBins?: boolean;
   /** Show in Its Folder, for a row of a lens or of a search's results: goes to the folder it lives in */
   onReveal?(entry: FileEntry): void;
   /** brings a file kept in the cloud onto its computer (Download and look) */
@@ -936,7 +939,8 @@ export function PageView({
   if (quick && !cursor) setQuick(false);
 
   // Columns lists each folder from its place's top, so it needs a host to ask; a page with none is drawn as the list.
-  const shape: PageShape = look.shape === "columns" && !from ? "list" : (look.shape ?? "list");
+  // Trash is a list alone: what was deleted, where it was and when.
+  const shape: PageShape = inTrash || (look.shape === "columns" && !from) ? "list" : (look.shape ?? "list");
   const tile = look.tile ?? DEFAULT_TILE;
   // A lens and a page of results list files from many places: there the rows can stand under where each lives.
   const manyPlaces = results || listed.some((e) => e.where);
@@ -944,7 +948,7 @@ export function PageView({
   const details = look.details === true && (shape === "list" || shape === "grid");
   const rows: MenuRow[] = useMemo(
     () => [
-      ...(tight
+      ...(tight && !inTrash
         ? ([{ kind: "label", label: "View" }, ...PAGE_SHAPES.map((id): MenuRow => ({ kind: "item", id: `shape:${id}`, label: SHAPE_WORDS[id], checked: shape === id, disabled: id === "columns" && !from })), { kind: "sep" }] satisfies MenuRow[])
         : []),
       ...(shape === "list"
@@ -969,7 +973,7 @@ export function PageView({
         : []),
       ...(shape === "list" || shape === "grid" ? ([{ kind: "sep" }, { kind: "item", id: "details", label: "Show Details", checked: details }] satisfies MenuRow[]) : []),
     ],
-    [compact, shape, sort.by, sort.dir, tile, group, manyPlaces, details, tight, from],
+    [compact, shape, sort.by, sort.dir, tile, group, manyPlaces, details, tight, from, inTrash],
   );
   const pickOption = (id: string): void => {
     const picked = PAGE_SHAPES.find((name) => id === `shape:${name}`);
@@ -1173,7 +1177,8 @@ export function PageView({
       down && (down.fix?.kind !== "wake" || !!slept) ? (
         <NoteEmpty note={down} fixes={noteFixes} />
       ) : inTrash ? (
-        <EmptyState title="Trash is empty" line="What you delete waits here for 30 days." />
+        // A file deleted in a library is not here: the empty Trash says where it went.
+        <EmptyState title="Trash is empty" line={libraryBins ? `What you delete waits here for 30 days. ${LIBRARY_BINS}` : "What you delete waits here for 30 days."} />
       ) : (
         <EmptyState title="This folder is empty" />
       );
@@ -1208,7 +1213,7 @@ export function PageView({
       ) : (
         // The list's columns leave by the list's own width, with the details pane beside it or not.
         <div className="@container/files-list flex min-h-0 min-w-0 flex-1 flex-col">
-          <Head sort={sort} second={inTrash ? "Was in" : manyPlaces && acts?.place.kind !== "made" ? "Where" : "Last change by"} onSort={(next) => setLook({ ...look, sort: next })} />
+          <Head sort={sort} second={inTrash ? "Was in" : manyPlaces && acts?.place.kind !== "made" ? "Where" : "Last change by"} {...(inTrash ? { when: "Deleted" } : {})} onSort={(next) => setLook({ ...look, sort: next })} />
           <FileList {...shapeProps} compact={compact} heads={heads} onParent={toParent} bulk={!!acts && chosen.length >= 2} />
         </div>
       );
@@ -1266,7 +1271,7 @@ export function PageView({
       }}
     >
       <PageBar name={page.name} trail={trail} canBack={canBack} canForward={canForward} onBack={onBack} onForward={onForward} onGo={onGo} find={find} filter={filter} onFilter={setFilter}>
-        {tight ? null : (
+        {tight || inTrash ? null : (
         <ToggleGroup
           size="sm"
           spacing={0}
@@ -1373,6 +1378,8 @@ export function PageView({
 }
 
 const NO_ENTRIES: readonly FileEntry[] = [];
+/** Where a library's delete went, as the empty Trash says it (files/trash.ts: a library's file goes to its computer's bin, and OneDrive takes it to the library's). */
+export const LIBRARY_BINS = "Files deleted in Teams or OneDrive are in their own recycle bin.";
 /** The orders a folder can be listed in, as the host sorts them, and what each direction is called. */
 const SORTS: readonly (readonly [FileSortBy, string])[] = [
   ["name", "Name"],

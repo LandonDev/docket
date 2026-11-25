@@ -2079,8 +2079,11 @@ Around the canvas:
   went in one toast with Undo, back to the folder it came from. Delete
   (⌘⌫, as in Finder; a bare ⌫ moves nothing; on a PC the Delete key)
   goes to Trash and says so in one toast with Undo;
-  Trash is a lens whose rows have Put Back and Delete for Good, with
-  Empty Trash in its bar, a ghost in muted ink that turns red under the
+  Trash is a lens, a list alone (no view switch), whose columns are Name,
+  Was in and Deleted, whose rows have Put Back and Delete for Good (the row
+  leaves as the host answers), with Empty Trash in its bar; empty, where a
+  library is listed, its line adds "Files deleted in Teams or OneDrive are
+  in their own recycle bin."; a ghost in muted ink that turns red under the
   pointer (the confirm it asks holds the red verb). **Drag**: nothing moves while a thing is
   dragged; the target (a folder row, a place or folder of the sidebar, a
   folder's tab, which comes forward after 600 ms) takes `muted`, and the

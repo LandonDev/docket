@@ -877,6 +877,16 @@ change began; a thread changes files through the `files_*` tools alone
 library's delete goes to the computer's own bin and Trash keeps only its row
 ("A delete in a library", below).
 
+The window's Trash hears its own push: each change pushes `work.files` with
+`at` Trash's place key (`changed`), and the listing's `pushKey` names Trash by
+that key, so a delete from another window, a thread or Undo shows at once
+(journey J15). Put Back and Delete for Good read Trash again once the host
+answers, so the row leaves at once. Trash is a list alone (no view switch;
+View options keeps its rows, order and grouping); its columns are Name, Was in
+and Deleted (the row's `changed` is `deleted_at`). Empty, with a Teams or
+OneDrive library listed, it says where a library's delete went ("Files deleted
+in Teams or OneDrive are in their own recycle bin.", `LIBRARY_BINS`).
+
 - **A delete** (`trash`) is journalled in `work_files_trash`. For each file
   or folder, under its lock: the row is written first, `moving`, holding the
   file's ref, its name, the place and the folder it lay in (`was_at`); then

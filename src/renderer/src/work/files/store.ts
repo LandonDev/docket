@@ -1234,9 +1234,10 @@ const deskAsks = new Map<string, Promise<DeskFound>>();
 const listingKey = (from: ListFrom, at: FolderRef, sort: FileSort): string =>
   `${from.copy.link}\u0000${from.workspaceId}\u0000${refKey(at)}\u0000${sort.by}:${sort.dir}${from.search ? `\u0000${from.search.query}\u0000${JSON.stringify(from.search.filter ?? {})}` : ""}${from.foldersOnly ? "\u0000folders" : ""}`;
 
-/** The key a host's push names a folder by: its own key as a row of its parent. */
+/** The key a host's push names a folder by: its own key as a row of its parent; Trash by its place (files/trash.ts `changed`). */
 function pushKey(copy: PlaceCopy, at: FolderRef): string | null {
   const folder = at.at === "place" ? copy.place.root : at;
+  if (folder.at === "place" && folder.id === PLACE.trash) return refKey(folder);
   if (folder.at !== "file") return null;
   const root = copy.place.root;
   return copy.place.kind === "folder" || root.at !== "file" ? refKey(folder) : refKey(folder, { key: copy.place.key ?? copy.place.id, path: root.path });

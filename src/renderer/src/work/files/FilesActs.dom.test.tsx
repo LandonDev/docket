@@ -901,6 +901,26 @@ describe("Trash", () => {
     expect(host.trashed).toEqual([]);
   });
 
+  it("hears its own push, takes a row put back away at once, dates the delete, and is a list alone (J15)", async () => {
+    await mount();
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Trash" }));
+    // Empty, it says where a library's delete went: the workspace lists Teams libraries.
+    await waitFor(() => expect(screen.getByText(/Files deleted in Teams or OneDrive are in their own recycle bin\./)).toBeTruthy());
+    // Another window deletes a file: the host's Trash push alone brings its row.
+    host.trashed.push({ id: "r-other", path: "/w/notes.txt", dir: false });
+    host.disk.delete("/w/notes.txt");
+    act(() => host.pushes.forEach((listener) => listener({ push: "work.files", workspaceId: "w1", at: refKey({ at: "place", id: "trash" }) })));
+    await waitFor(() => expect(rows()).toEqual(["notes.txt"]));
+    expect(screen.getByRole("columnheader", { name: /^Deleted/ })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: /^Changed/ })).toBeNull();
+    // No view switch: Trash is a list.
+    expect(document.querySelector("[data-files-shape]")).toBeNull();
+    fireEvent.contextMenu(row("notes.txt"));
+    fireEvent.click(await menuItem("Put Back"));
+    await waitFor(() => expect(rows()).toEqual([]));
+    expect(host.disk.has("/w/notes.txt")).toBe(true);
+  });
+
   it("offers Put Back and Delete for Good as this window's key may: a key that may operate but not approve puts back alone", async () => {
     await mount();
     fireEvent.click(row("notes.txt"));
