@@ -21,7 +21,7 @@ import { KindGlyph } from "./KindGlyph";
 import { answersWords, factOf } from "./model";
 import { FilePreviewPane } from "./Preview";
 import { mayReadText, useTextHead, useThumb, type PictureFrom } from "./previews";
-import { dragProps, howOf, NameField, onNameOf, RowState, stepHow, type ShapeProps } from "./rowParts";
+import { dragProps, heldRow, howOf, NameField, onNameOf, RowState, stepHow, type ShapeProps } from "./rowParts";
 import type { HeaderLine } from "./fileText";
 import { SaveActions, SaveLine } from "./SaveLine";
 import { thisWindow } from "./store";
@@ -56,7 +56,7 @@ const STRIP_CELL = 64;
 /** Cells mounted past each end of what the strip shows: a short scroll draws nothing new. */
 const STRIP_EXTRA = 6;
 
-export function FileGallery({ entries, picked, from, more, onPick, onOpen, onMore, onFetch }: ShapeProps & { from: PictureFrom | null; onFetch?(entry: FileEntry): Promise<void> }) {
+export function FileGallery({ entries, picked, from, more, onPick, onOpen, onMore, onFetch, sessionHeld }: ShapeProps & { from: PictureFrom | null; onFetch?(entry: FileEntry): Promise<void> }) {
   const [strip, setStrip] = useState<HTMLDivElement | null>(null);
   const [span, setSpan] = useState({ first: 0, last: 24 });
   const at = entries.findIndex((e) => e.key === picked.cursor);
@@ -116,7 +116,8 @@ export function FileGallery({ entries, picked, from, more, onPick, onOpen, onMor
         aria-label={entry.name}
         data-files-row={entry.key}
         data-menu-id={entry.key}
-        className={`absolute top-2 grid size-15 cursor-default place-items-center rounded-md p-1 ${held ? "bg-muted" : "hover:bg-foreground/5"}`}
+        {...heldRow(!!sessionHeld?.has(entry.key))}
+        className={`absolute top-2 grid size-15 cursor-default place-items-center rounded-md p-1 ${held ? "bg-muted" : "hover:bg-foreground/5"} ${sessionHeld?.has(entry.key) ? "opacity-50" : ""}`}
         style={{ left: i * STRIP_CELL + 2 }}
         onClick={(event) => onPick(entry.key, howOf(event))}
         onDoubleClick={() => onOpen(entry)}
@@ -337,6 +338,7 @@ export function FileBeside({
   onParent,
   onRenamed,
   drag,
+  sessionHeld,
   from,
   seat,
   onFetch,
@@ -452,8 +454,9 @@ export function FileBeside({
         data-files-row={entry.key}
         data-menu-id={entry.key}
         data-kind={entry.kind}
+        {...heldRow(!!sessionHeld?.has(entry.key))}
         style={{ height: BESIDE_ROW_PX }}
-        className={`flex cursor-default gap-2 rounded-md px-2 py-1.5 text-[13px] select-none ${second ? "items-start" : "items-center"} ${on || over ? "bg-muted" : "hover:bg-foreground/5"}`}
+        className={`flex cursor-default gap-2 rounded-md px-2 py-1.5 text-[13px] select-none ${second ? "items-start" : "items-center"} ${on || over ? "bg-muted" : "hover:bg-foreground/5"} ${sessionHeld?.has(entry.key) ? "opacity-50" : ""}`}
         onClick={(event) => {
           const how = howOf(event);
           onPick(entry.key, how, onNameOf(event));

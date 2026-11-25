@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import type { FilePage, FileTab, SavedFileSearch } from "@shared/contract-work-files";
 import { canvasSourcePath, filesPaneOf, type CanvasItem, type CanvasSource } from "@shared/work";
-import { chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, type FileEntry, type FolderRef } from "@shared/work/files";
+import { chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, type FileEntry, type FilePlace, type FolderRef } from "@shared/work/files";
 import { ChevronRight, Clock, Folder, Search, Star, Trash2, Users } from "../../chrome/icons";
 import { confirmAction, confirmChoice } from "../../chrome/ConfirmDialog";
 import { Button } from "../../components/ui/button";
@@ -25,7 +25,7 @@ import { closeItem, useCanvas } from "../canvas/store";
 import { Ask, Cloud, Home, Lifeos, Mail, Project } from "../icons";
 import { allowComputers } from "../shell/actions";
 import { useHostLive, useLiveDown } from "../shell/lifeosLive";
-import { searchReadsLifeos } from "./lifeosPlace";
+import { readsSession, searchReadsLifeos, sessionCopyOf, sessionFolderOf } from "./lifeosPlace";
 import { desktopsFor } from "../shell/desktops";
 import { openTemplates, workTemplatePort } from "../templates/open";
 import type { WorkViewProps } from "../views/registry";
@@ -60,6 +60,8 @@ const ShareSheet = lazy(() => import("../guests/ShareSheet"));
  */
 
 /** The page shown when no Teams place is listed: it says the one cause, with its press. */
+/** The lenses of his marks: they list LifeOS's rows beside files on disk. */
+const MARK_LENSES: ReadonlySet<FilePlace["kind"]> = new Set<FilePlace["kind"]>(["recent", "starred", "made"]);
 const TEAMS_PAGE: FilePage = { at: { at: "place", id: "teams" }, name: "Teams files" };
 
 /** Under this much room the sidebar folds itself away; its toggle brings it back over the list. */
@@ -533,6 +535,8 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   };
   /** The copy of the place a row from Go to, a search or Home lives in. */
   const copyOf = (entry: FileEntry): PlaceCopy | null => {
+    // A LifeOS row or a mail's file opens as its own place's page opens it.
+    if (readsSession(entry)) return sessionCopyOf(reach.sidebar, entry);
     const ref = entry.folder ?? entry.ref;
     if (!ref || ref.at !== "file") return null;
     const found = placeOfRef(reach.sidebar, { at: "file", host: ref.host, path: ref.path });
@@ -540,6 +544,9 @@ function Place({ workspace, reach, again, startThread }: WorkViewProps & { reach
   };
   /** Show in Its Folder: the folder a row of a lens or of a search's results lives in, in this tab. */
   const reveal = (entry: FileEntry): void => {
+    // A LifeOS row's folder is its project, else the top of LifeOS; a mail's file is in From mail.
+    const lifeosFolder = readsSession(entry) ? sessionFolderOf(reach.sidebar, entry) : null;
+    if (lifeosFolder) return go(lifeosFolder);
     const ref = entry.folder ?? entry.ref;
     if (!ref || ref.at !== "file") return say(`${entry.name} is not in a folder listed now`);
     const parent = ref.path.replace(/[\\/]+[^\\/]*$/, "");
@@ -907,6 +914,8 @@ function FolderPage({
         panelId={filesPanelId(tab.id)}
         listing={noTeams || lost ? null : listing}
         copy={team ? null : copy}
+        // A lens of his marks holds LifeOS's rows, which its host opens through its LifeOS session, for a job with a sector.
+        lifeosHost={copy && workspace.sector && MARK_LENSES.has(copy.place.kind) ? copy.link : null}
         from={team ? null : from}
         trail={trail}
         canBack={canBack}

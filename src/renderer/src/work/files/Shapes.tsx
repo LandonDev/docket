@@ -11,7 +11,7 @@ import { chordKey, modOrCtrl } from "../../lib/keys";
 import { KindGlyph } from "./KindGlyph";
 import { factOf, gridStep, samePage, tilesAcross, type Picked, type PickHow, type TileSize } from "./model";
 import type { Busy } from "./open";
-import { dragProps, howOf, NameField, onNameOf, stepHow, type RowDrag, type ShapeProps } from "./rowParts";
+import { dragProps, heldRow, howOf, NameField, onNameOf, stepHow, type RowDrag, type ShapeProps } from "./rowParts";
 import { DetailsPane, Thumb } from "./Looks";
 import { useNear, type PictureFrom } from "./previews";
 import { useListing, type ListFrom } from "./store";
@@ -42,6 +42,7 @@ function Tile({
   busy,
   renaming,
   drag,
+  sessionHeld = false,
   onPick,
   onOpen,
   onRenamed,
@@ -57,6 +58,8 @@ function Tile({
   busy: Busy;
   renaming: boolean;
   drag?: RowDrag;
+  /** only a LifeOS session that is down opens it (`heldRow`) */
+  sessionHeld?: boolean;
   onPick(key: string, how: PickHow, onName?: boolean): void;
   onOpen(entry: FileEntry): void;
   onRenamed(entry: FileEntry, name: string | null): void;
@@ -76,8 +79,9 @@ function Tile({
       data-menu-id={entry.key}
       data-kind={entry.kind}
       data-drop-over={over || undefined}
+      {...heldRow(sessionHeld)}
       style={{ width: size + TILE_PAD * 2 }}
-      className={`flex shrink-0 cursor-default flex-col gap-1.5 rounded-lg p-2 select-none ${on || over ? "bg-muted" : "hover:bg-foreground/5"}`}
+      className={`flex shrink-0 cursor-default flex-col gap-1.5 rounded-lg p-2 select-none ${on || over ? "bg-muted" : "hover:bg-foreground/5"} ${sessionHeld ? "opacity-50" : ""}`}
       onClick={(event) => onPick(entry.key, howOf(event), onNameOf(event))}
       onDoubleClick={() => onOpen(entry)}
       {...dragProps(drag, entry)}
@@ -102,7 +106,7 @@ function Tile({
   );
 }
 
-export function FileGrid({ entries, picked, size, from, busy, more, loadingMore, renaming, onPick, onOpen, onMore, onParent, onRenamed, drag }: ShapeProps & { size: TileSize; from: PictureFrom | null }) {
+export function FileGrid({ entries, picked, size, from, busy, more, loadingMore, renaming, onPick, onOpen, onMore, onParent, onRenamed, drag, sessionHeld }: ShapeProps & { size: TileSize; from: PictureFrom | null }) {
   const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
   // How many tiles a row holds follows the list's own width; four until it is measured (a page drawn with no layout).
   const [across, setAcross] = useState(4);
@@ -151,7 +155,7 @@ export function FileGrid({ entries, picked, size, from, busy, more, loadingMore,
   const row = (r: number): ReactNode => (
     <div key={r} role="presentation" className="flex" style={{ gap: TILE_GAP, height: rowPx - TILE_GAP }}>
       {entries.slice(r * across, (r + 1) * across).map((entry, i) => (
-        <Tile key={entry.key} entry={entry} index={r * across + i} size={size} from={from} root={scroller} on={picked.keys.has(entry.key)} busy={busy} renaming={renaming === entry.key} drag={drag} onPick={onPick} onOpen={onOpen} onRenamed={onRenamed} />
+        <Tile key={entry.key} entry={entry} index={r * across + i} size={size} from={from} root={scroller} on={picked.keys.has(entry.key)} busy={busy} renaming={renaming === entry.key} drag={drag} sessionHeld={!!sessionHeld?.has(entry.key)} onPick={onPick} onOpen={onOpen} onRenamed={onRenamed} />
       ))}
     </div>
   );
@@ -205,6 +209,7 @@ function Column({
   active,
   rows,
   reveal = null,
+  sessionHeld,
   onPick,
   onOpen,
   onRenamed,
@@ -226,6 +231,8 @@ function Column({
   rows?: readonly FileEntry[];
   /** the row the keys moved to, brought into view */
   reveal?: { index: number } | null;
+  /** the active column's rows only a LifeOS session that is down opens (`heldRow`) */
+  sessionHeld?: ReadonlySet<string>;
   onPick(entry: FileEntry, how: PickHow): void;
   onOpen(entry: FileEntry): void;
   onRenamed(entry: FileEntry, name: string | null): void;
@@ -260,10 +267,12 @@ function Column({
     // The folder on the way down: held in `muted`, and lighter while the keys are in the columns, which walk the column right of it.
     const holding = !on && !!held && !!entry.folder && samePage(entry.folder, held);
     const over = active && drag?.over === entry.key;
+    const shut = active && !!sessionHeld?.has(entry.key);
     return (
       <div
         key={entry.key}
         {...(active ? { id: `files-col-${index}` } : {})}
+        {...heldRow(shut)}
         role="option"
         aria-selected={on || holding}
         data-files-row={entry.key}
@@ -271,7 +280,7 @@ function Column({
         {...(active ? { "data-menu-id": entry.key } : {})}
         data-kind={entry.kind}
         style={{ height: COLUMN_ROW_PX }}
-        className={`flex cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${on || over ? "bg-muted" : holding ? "bg-muted group-focus-within/columns:bg-foreground/5" : "hover:bg-foreground/5"}`}
+        className={`flex cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${on || over ? "bg-muted" : holding ? "bg-muted group-focus-within/columns:bg-foreground/5" : "hover:bg-foreground/5"} ${shut ? "opacity-50" : ""}`}
         onClick={(event) => onPick(entry, howOf(event))}
         onDoubleClick={() => (entry.folder ? undefined : onOpen(entry))}
         {...(active ? dragProps(drag, entry) : {})}
@@ -331,6 +340,7 @@ export function FileColumns({
   picked,
   renaming,
   drag,
+  sessionHeld,
   onPick,
   onRenamed,
   onGo,
@@ -346,6 +356,7 @@ export function FileColumns({
   picked: Picked;
   renaming: string | null;
   drag?: RowDrag;
+  sessionHeld?: ReadonlySet<string>;
   onPick(key: string | null, how?: PickHow): void;
   onRenamed(entry: FileEntry, name: string | null): void;
   onGo(page: FilePage): void;
@@ -405,7 +416,7 @@ export function FileColumns({
           renaming={renaming}
           drag={drag}
           active={crumb === last}
-          {...(crumb === last ? { reveal, ...(rows ? { rows } : {}) } : {})}
+          {...(crumb === last ? { reveal, ...(rows ? { rows } : {}), ...(sessionHeld ? { sessionHeld } : {}) } : {})}
           onPick={press}
           onOpen={onOpen}
           onRenamed={onRenamed}

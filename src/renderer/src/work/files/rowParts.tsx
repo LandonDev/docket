@@ -32,7 +32,12 @@ export interface ShapeProps {
   onRenamed(entry: FileEntry, name: string | null): void;
   /** dragging rows of this folder, and dropping on its folders; absent where nothing here moves */
   drag?: RowDrag;
+  /** the rows only a LifeOS session that is down or on its way opens (the line over the list says why): greyed, and they do not open */
+  sessionHeld?: ReadonlySet<string>;
 }
+
+/** A row its LifeOS session holds (`sessionHeld`): greyed as a disabled control is, read out as unavailable, still selectable. */
+export const heldRow = (held: boolean): { "aria-disabled"?: true; "data-files-session-held"?: "" } => (held ? { "aria-disabled": true, "data-files-session-held": "" } : {});
 
 /** How a press picks: Shift takes the run, ⌘ (Ctrl elsewhere) adds or takes one, a plain press takes one. */
 export const howOf = (event: Parameters<typeof modOrCtrl>[0] & { shiftKey: boolean }): PickHow => (event.shiftKey ? "range" : modOrCtrl(event) ? "toggle" : "one");

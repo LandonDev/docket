@@ -480,6 +480,35 @@ export function FilesWaits() {
   );
 }
 
+/**
+ * His marks while the box's LifeOS is down or on its way (council round 12): Recent signed out and Starred connecting,
+ * each with one line over the list, a LifeOS row greyed and shut, the files on disk live. A folder that did not load
+ * offers no New (FilesWaits, first window).
+ */
+export function FilesMarksDown() {
+  Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+  setLifeosStatus("box-connecting", { lifeos: { state: "connecting" }, keys: [] } as never);
+  setLifeosStatus("box-out", { lifeos: { state: "signed-out" }, keys: [] } as never);
+  const brief: FileEntry = { key: "lifeos:docs:1", ref: { at: "lifeos", table: "docs", id: "1" } as never, folder: null, name: "Sponsor brief", kind: "document", changed: NOW - 2 * day, starred: true };
+  const budget: FileEntry = { key: "lifeos:sheets:2", ref: { at: "lifeos", table: "sheets", id: "2" } as never, folder: null, name: "Season budget", kind: "sheet", changed: NOW - 3 * day };
+  const files = entries.filter((e) => !e.folder).slice(0, 3);
+  const lens = (id: "recent" | "starred", name: string, host: string, rows: FileEntry[]) => {
+    const copy = { place: place({ id, kind: id, name }), link: host, host: "The box", wire: "files" as const };
+    const at = { at: "place" as const, id };
+    return <PageView {...common} copy={copy} acts={{ ...acts, place: copy.place, from: copy }} page={{ at, name }} trail={[{ name, at }]} lifeosHost={host} listing={listing({ entries: rows, trail: [] })} />;
+  };
+  return (
+    <div className="flex flex-col gap-8 p-6">
+      <Window width={720} height={300}>
+        {lens("recent", "Recent", "box-out", [brief, files[0]!, budget, files[1]!])}
+      </Window>
+      <Window width={720} height={300}>
+        {lens("starred", "Starred", "box-connecting", [brief, files[2]!])}
+      </Window>
+    </div>
+  );
+}
+
 const saveLines: { name: string; line: SavedLine | null }[] = [
   { name: "Run of show.md", line: { state: "saved", at: NOW - 13 * 60_000 } },
   { name: "Run of show.md", line: { state: "saving" } },

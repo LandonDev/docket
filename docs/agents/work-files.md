@@ -1358,7 +1358,17 @@ sector whose filter lets LifeOS's rows in (`searchReadsLifeos`,
 lifeosPlace.ts). Home claims no "Nothing here yet" meanwhile, and greys a
 Starred or Recent row only LifeOS opens (a LifeOS row, a mail's file); with
 nothing else to show while LifeOS connects, Home and the search draw their
-bones.
+bones. The Recent, Starred and Made by threads pages do as Home does: one
+`HostLine` over the list while any row there needs the session, those rows
+greyed in every shape and shut (no open, no Open, Share… or Open in its app
+in their menu; Star stays), the files on disk live, each row live again on
+return (`sessionHeld` in Page.tsx, `readsSession` in lifeosPlace.ts).
+
+A LifeOS row or a mail's file found by Home, Go to or a search opens from its
+own place (`sessionCopyOf`: LifeOS, or From mail), and Show in Its Folder goes
+to its project's folder, else the top of LifeOS, or to From mail
+(`sessionFolderOf`). A folder whose read failed with nothing listed offers no
+New.
 
 **Waiting on you and the amber count** (files/waiting.ts). A pillar that
 keeps an agent's suggestions by file registers `registerFileWaiting`

@@ -14,6 +14,7 @@ import { ViewStateLine } from "../views/ViewStateLine";
 import { HostLine } from "../shell/DownLine";
 import type { HostLive } from "../shell/lifeosLive";
 import { KindGlyph } from "./KindGlyph";
+import { readsSession } from "./lifeosPlace";
 import { homeLists, whereWords, type Sidebar } from "./model";
 import type { Busy } from "./open";
 import { RowState, RowWords } from "./rowParts";
@@ -62,9 +63,6 @@ function HomeList({ title, entries, busy, held, onOpen }: { title: string; entri
     </section>
   );
 }
-
-/** A row the host opens through its LifeOS session: a LifeOS document or sheet, a mail's file (a held change opens its Outbox item). */
-const readsSession = (entry: FileEntry): boolean => !entry.held && (entry.ref?.at === "lifeos" || entry.ref?.at === "mail");
 
 /**
  * The three lists, each file in the first it belongs to: one that waits on him is not starred again or recent again.

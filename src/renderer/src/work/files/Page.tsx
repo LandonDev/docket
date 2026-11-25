@@ -24,7 +24,7 @@ import { DownEmpty } from "../shell/DownEmpty";
 import { HostLine } from "../shell/DownLine";
 import { useHostLive, useLiveDown } from "../shell/lifeosLive";
 import { refreshLifeos } from "../shell/lifeos";
-import { readsLifeos, useLifeosPlace } from "./lifeosPlace";
+import { readsLifeos, readsSession, useLifeosPlace } from "./lifeosPlace";
 import type { UploadProgress } from "./acts";
 import { GoToField, SearchField, type GoToRow } from "./GoTo";
 import { KindGlyph } from "./KindGlyph";
@@ -63,7 +63,7 @@ import {
   type PlaceCopy,
 } from "./model";
 import type { Busy } from "./open";
-import { dragging, dragProps, dropVerb, howOf, NameField, onNameOf, ROWS_MIME, RowState, RowWords, setDragging, setDragLabel, stepHow, whenDragEnds, type RowDrag, type ShapeProps } from "./rowParts";
+import { dragging, dragProps, dropVerb, heldRow, howOf, NameField, onNameOf, ROWS_MIME, RowState, RowWords, setDragging, setDragLabel, stepHow, whenDragEnds, type RowDrag, type ShapeProps } from "./rowParts";
 import type { PictureFrom } from "./previews";
 import { QuickLook } from "./QuickLook";
 import { FileColumns, FileGrid } from "./Shapes";
@@ -292,6 +292,7 @@ const FileRow = memo(function FileRow({
   head,
   drag,
   dragFrom,
+  shut,
   live,
 }: {
   entry: FileEntry;
@@ -300,6 +301,8 @@ const FileRow = memo(function FileRow({
   over: boolean;
   height: number;
   busyWord: string | null;
+  /** only a LifeOS session that is down opens it (`heldRow`) */
+  shut: boolean;
   renaming: boolean;
   head: string | undefined;
   drag: RowDrag | undefined;
@@ -317,8 +320,9 @@ const FileRow = memo(function FileRow({
       data-menu-id={entry.key}
       data-kind={entry.kind}
       data-drop-over={over || undefined}
+      {...heldRow(shut)}
       style={{ height }}
-      className={`flex cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${on || over ? "bg-muted" : ROW_PRESS}`}
+      className={`flex cursor-default items-center gap-2 rounded-md px-2 text-[13px] select-none ${on || over ? "bg-muted" : ROW_PRESS} ${shut ? "opacity-50" : ""}`}
       onClick={(event) => live.current.onPick(entry.key, howOf(event), onNameOf(event))}
       onDoubleClick={() => live.current.onOpen(entry)}
       {...dragProps(drag, entry)}
@@ -377,6 +381,7 @@ export function FileList({
   onParent,
   onRenamed,
   drag,
+  sessionHeld,
   bulk = false,
 }: ShapeProps & {
   compact: boolean;
@@ -454,6 +459,7 @@ export function FileList({
         head={heads?.get(index)}
         drag={drag ? liveDrag : undefined}
         dragFrom={!!drag?.from}
+        shut={!!sessionHeld?.has(entry.key)}
         live={live}
       />
     );
@@ -706,6 +712,8 @@ function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(
 }
 
 /** The bar's own words for a verb, where they are shorter than the menu's: "Move", not "Move to…". */
+/** The verbs a row's LifeOS session runs: none is offered for a row that session shuts. */
+const SESSION_ACTS: ReadonlySet<EntryAct> = new Set<EntryAct>(["open", "open-form", "open-side", "open-app", "share"]);
 const BULK_WORDS: Partial<Record<EntryAct, string>> = { move: "Move", copy: "Copy" };
 
 /** With two or more selected, one bar floats at the foot of the list: how many, the verbs for them all, and Clear. */
@@ -815,7 +823,8 @@ export function PageView({
   under?: ReactNode;
   /** the rows are a search's results from many places: the second column says where each lives */
   results?: boolean;
-  /** a search's: the host whose LifeOS rows it reads (the workspace's, with LifeOS among the places searched); null where it reads none */
+  /** a search's: the host whose LifeOS rows it reads (the workspace's, with LifeOS among the places searched); a lens of his
+   * marks: the host that opens its LifeOS rows (the workspace's, for a job with a sector); null where it reads none */
   lifeosHost?: string | null;
   /** the shape and order to draw with, in place of the ones this window keeps for the folder (a preview page) */
   drawn?: PageLook & { picked?: readonly string[]; renaming?: string; quick?: boolean };
@@ -944,7 +953,16 @@ export function PageView({
     if (size) setLook({ ...look, tile: size });
   };
   // A row of Trash is no file to open: Put back is its verb.
-  const open = (entry: FileEntry): void => (inTrash ? undefined : entry.folder ? onGo({ at: entry.folder, name: entry.name }) : onOpen(entry));
+  // A search that reads LifeOS while its host's LifeOS is down or on its way leaves LifeOS's rows out: one line over
+  // the results says why, by the rule, and the search runs again once LifeOS is back. A lens of his marks keeps its
+  // LifeOS rows, greyed and shut, as Home does, under the same one line; each opens again once LifeOS is back.
+  const searchHost = results ? lifeosHost : null;
+  const hostLive = useHostLive(lifeosHost ?? "");
+  const hostSays = !!lifeosHost && (!!hostLive.down || hostLive.waits);
+  const sessionHeld = useMemo(() => (!results && hostSays ? new Set(listed.filter(readsSession).map((e) => e.key)) : null), [results, hostSays, listed]);
+  const lineSays = hostSays && (results || !!sessionHeld?.size);
+  // A row only a LifeOS session that is down opens is shut (`sessionHeld`): the line over the list says why.
+  const open = (entry: FileEntry): void => (inTrash || sessionHeld?.has(entry.key) ? undefined : entry.folder ? onGo({ at: entry.folder, name: entry.name }) : onOpen(entry));
   const pickedAt = useRef(0);
   const onPick = (key: string | null, how: PickHow = "one", onName = false): void => {
     if (key === null) return setPicked(NOTHING_PICKED);
@@ -958,7 +976,9 @@ export function PageView({
   // The verbs for what is selected: one table for a row's menu, the bar and the keys.
   // A page that only shows (a search's results) still opens a row and shows the folder it lives in.
   const plain = (on: readonly FileEntry[]): ActRow[] => (on.length === 1 ? [{ act: "open", label: "Open" }, ...(onReveal && on[0]!.where ? ([{ act: "reveal", label: "Show in Its Folder" }] satisfies ActRow[]) : [])] : []);
-  const verbs = acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, ...(acts.far ? { far: acts.far } : {}) }) : plain(chosen);
+  // A row shut by its LifeOS session offers no verb that session runs: it can still be starred, or shown in its folder.
+  const unshut = (list: ActRow[], on: readonly FileEntry[]): ActRow[] => (on.some((e) => sessionHeld?.has(e.key)) ? list.filter((row) => !SESSION_ACTS.has(row.act)) : list);
+  const verbs = unshut(acts ? actsFor(chosen, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, ...(acts.far ? { far: acts.far } : {}) }) : plain(chosen), chosen);
   const run = (act: EntryAct, on: readonly FileEntry[] = chosen): void => {
     const one = on[0];
     if (!one) return;
@@ -981,7 +1001,7 @@ export function PageView({
   };
   const menuFor = (id: string | null): MenuRow[] | null => {
     const on = id !== null && !picked.keys.has(id) ? entries.filter((e) => e.key === id) : chosen;
-    const list = acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, ...(acts.far ? { far: acts.far } : {}) }) : plain(on);
+    const list = unshut(acts ? actsFor(on, acts.place, { tabs: acts.tabs, side: !!acts.openSide, reveal: !!onReveal, projects: !!acts.projects?.length, restore: !!acts.restore, purge: !!acts.purge, app: !!acts.openApp, share: !!acts.share, ...(acts.far ? { far: acts.far } : {}) }) : plain(on), on);
     if (!list.length) return null;
     // Add to a Project lists the sector's projects, less the one the file is in, before Delete.
     const one = on.length === 1 && !on[0]!.folder ? on[0]! : null;
@@ -1016,11 +1036,6 @@ export function PageView({
   const lifeosDown = readsLifeos(copy) && (!!lifeos.down || lifeos.waits);
   // Back since its last read failed, and listing again: the list's bones, never the old cause.
   const lifeosAgain = readsLifeos(copy) && !!lifeos.again;
-  // A search that reads LifeOS while its host's LifeOS is down or on its way leaves LifeOS's rows out: one line over
-  // the results says why, by the rule, and the search runs again once LifeOS is back.
-  const searchHost = results ? lifeosHost : null;
-  const searchLive = useHostLive(searchHost ?? "");
-  const searchSays = !!searchHost && (!!searchLive.down || searchLive.waits);
   const newestListing = useRef(listing);
   newestListing.current = listing;
   useLiveDown(null, searchHost, () => newestListing.current?.retry());
@@ -1041,6 +1056,7 @@ export function PageView({
       if (name !== null && acts) void acts.rename(entry, name).then((made) => made && setPicked({ keys: new Set([made.key]), cursor: made.key, anchor: made.key }));
     },
     ...(drag ? { drag } : {}),
+    ...(sessionHeld?.size ? { sessionHeld } : {}),
   };
   // A folder in the VM says what its own answer said of the machine; rows it read live (no kept time: a host a release
   // behind says one for a kept list) put the place's older "asleep" away.
@@ -1061,7 +1077,7 @@ export function PageView({
   // so does a search with none while LifeOS, which it also reads, is on its way.
   const retrying = !!listing?.retrying;
   const pressedOn = !!listing?.error || !!gap?.fix || !!down?.fix;
-  const reading = !!listing && ((listing.loading && !(retrying && pressedOn)) || (searchSays && searchLive.waits));
+  const reading = !!listing && ((listing.loading && !(retrying && pressedOn)) || (!!searchHost && hostSays && hostLive.waits));
   let body: ReactNode;
   if (note) body = <NoteEmpty note={note} fixes={fixes} />;
   else if (lifeosDown)
@@ -1119,10 +1135,11 @@ export function PageView({
           onGo(next);
         }}
         onOpen={open}
+        {...(sessionHeld?.size ? { sessionHeld } : {})}
       />
     );
   else if (shape === "gallery") body = <FileGallery {...shapeProps} from={pics} {...(onFetch ? { onFetch } : {})} />;
-  else if (shape === "beside") body = <FileBeside {...shapeProps} from={pics} seat={inTrash ? null : seat} onParent={toParent} {...(onFetch ? { onFetch } : {})} />;
+  else if (shape === "beside") body = <FileBeside {...shapeProps} from={pics} seat={inTrash ? null : sessionHeld?.size && seat ? { ...seat, can: (entry) => !sessionHeld.has(entry.key) && seat.can(entry) } : seat} onParent={toParent} {...(onFetch ? { onFetch } : {})} />;
   else {
     const folder =
       shape === "grid" ? (
@@ -1145,9 +1162,9 @@ export function PageView({
     );
   }
   // One line over the list at most: an upload under way, the folder that did not load on a machine that is away, else what its place says.
-  const line = lifeosDown || lifeosAgain ? null : searchSays ? (
+  const line = lifeosDown || lifeosAgain ? null : lineSays ? (
     <div data-files-note className="flex min-h-8 min-w-0 shrink-0 items-center border-b border-border bg-background px-3 py-1">
-      <HostLine live={searchLive} className="min-h-6 flex-1" />
+      <HostLine live={hostLive} className="min-h-6 flex-1" />
     </div>
   ) : acts?.uploading ? (
     <UploadLine progress={acts.uploading} onCancel={acts.cancelUpload} />
@@ -1230,7 +1247,8 @@ export function PageView({
             Empty Trash
           </Button>
         ) : null}
-        {acts && !inTrash && !lifeosDown && !lifeosAgain ? <NewMenu acts={acts} name={page.name} onMade={(made) => setFresh(made.key)} /> : null}
+        {/* New makes a file in this folder: not while its session is away, nor in a folder whose read failed with nothing listed. */}
+        {acts && !inTrash && !lifeosDown && !lifeosAgain && !(listing?.error && !listed.length) ? <NewMenu acts={acts} name={page.name} onMade={(made) => setFresh(made.key)} /> : null}
       </PageBar>
       {under}
       {line}

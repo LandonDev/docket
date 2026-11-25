@@ -1937,7 +1937,9 @@ Around the canvas:
   As the bar narrows the trail gives way first (under 520px of bar it
   names the folder alone), then the view switch (under 600px of page its
   five shapes are rows of View options instead); Back, Forward, Go to,
-  Search, View options and New never leave.
+  Search, View options and New never leave. New is left out only where
+  it could make nothing: a folder whose read failed with nothing listed,
+  or a LifeOS folder while its session is away.
   The **view switch** is one segmented control of glyphs: List, Grid,
   Columns, Gallery, Beside. A folder he has not shaped is a list; one he
   has shaped keeps its shape for this window. **View options** (⋯) is one
@@ -2049,6 +2051,12 @@ Around the canvas:
   spinner and word; a row that says a state gives its date up first in a
   narrow page (under 400px), and under 360px every row's date goes and a
   state's words go with it, whole, as in a folder's list.
+  While the host's LifeOS is down or on its way, Home, Recent, Starred
+  and Made by threads say so in one line over the list, and a row only
+  that session opens (a LifeOS document, a mail's file) is greyed and
+  shut, in every shape, Star still offered; the rest stay live. Found
+  anywhere, such a row opens from its own place, and Show in Its Folder
+  goes to its project, else the top of LifeOS.
   A **file open as itself** has a 48px header: its kind's glyph in its
   tint, its name at 14px semibold, and under it one 12px muted line that
   says where it is kept ("In Events") or whose copy it is ("A copy from
