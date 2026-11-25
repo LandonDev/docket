@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { grantFor } from "../outbox/model";
-import { dayLines, opFields, opStart, whenWords, type CalendarOp, type DayEvent } from "./calendarAct";
+import { calendarWords, dayLines, opFields, opStart, whenWords, type CalendarOp, type CalendarSource, type DayEvent } from "./calendarAct";
 
 const at = (h: number, m = 0) => new Date(2026, 10, 20, h, m).getTime();
 const call: DayEvent = { _id: "ev_call", title: "Kickoff call with Northside PT", sector: "unify", startsAt: at(14), endsAt: at(14, 30), allDay: false, location: "Google Meet" };
@@ -21,6 +21,27 @@ describe("a held calendar act's words", () => {
       ["Reply", "Yes"],
       ["Calendar", "landon@unify.dev"],
     ]);
+  });
+
+  it("names a shared calendar by its synced source's name, never the provider's id, the account only to tell two apart", () => {
+    const team = "c_9f2k1@group.calendar.google.com";
+    const sources: CalendarSource[] = [
+      { kind: "gcal", channel: team, account: "landon@purdue.edu", label: "Esports Staff" },
+      { kind: "gcal", channel: "landon@purdue.edu", account: "landon@purdue.edu", label: "landon@purdue.edu" },
+      { kind: "gmail", account: "landon@purdue.edu", label: "Esports Staff" },
+    ];
+    const op: CalendarOp = { id: "op", kind: "accept", eventId: "ev_call", account: "landon@purdue.edu", calendarId: team };
+    expect(opFields(op, call, sources).find((f) => f.label === "Calendar")?.value).toBe("Esports Staff");
+    // Two synced calendars of one name: the account tells them apart.
+    const twins = [...sources, { kind: "gcal", channel: "c_other@group.calendar.google.com", account: "landon@unify.dev", label: "Esports Staff" }];
+    expect(calendarWords(op, twins)).toBe("Esports Staff, landon@purdue.edu");
+    // Not synced, or LifeOS not read yet: the account alone, never the id.
+    expect(calendarWords(op, null)).toBe("landon@purdue.edu");
+    expect(calendarWords(op, [])).toBe("landon@purdue.edu");
+    // A person's calendar is named by its address; an account's own by the account.
+    expect(calendarWords({ account: "landon@purdue.edu", calendarId: "dana@purdue.edu" }, [])).toBe("dana@purdue.edu, landon@purdue.edu");
+    expect(calendarWords({ account: "landon@purdue.edu", calendarId: "landon@purdue.edu" }, sources)).toBe("landon@purdue.edu");
+    expect(calendarWords({ account: "landon@purdue.edu" })).toBe("landon@purdue.edu");
   });
 
   it("puts a proposal on its new time", () => {

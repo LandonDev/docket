@@ -13,6 +13,8 @@ const day = vi.hoisted(() => ({
   reopened: [] as string[],
   // The day holds the event itself and nothing else.
   alone: false,
+  // The calendars LifeOS syncs.
+  sources: [] as { kind: string; channel?: string; account?: string; label?: string }[],
 }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
@@ -25,6 +27,7 @@ vi.mock("../shell/lifeos", async (original) => ({
       if (day.event === "failed") return { status: "failed", error: "Server error" };
       return { status: "ready", value: day.event === "ready" ? { _id: "ev1", title: "Kickoff call", sector: "unify", startsAt: Date.UTC(2026, 10, 21, 20), allDay: false } : null };
     }
+    if (name === "sources:list") return { status: "ready", value: day.sources };
     if (name !== "events:range") return { status: "ready", value: null };
     if (day.loading) return { status: "loading" };
     if (day.alone) return { status: "ready", value: [{ _id: "ev1", title: "Kickoff call", sector: "unify", startsAt: Date.UTC(2026, 10, 21, 20), allDay: false }] };
@@ -67,6 +70,19 @@ describe("a held reply's day", () => {
     render(<View item={{ kind: "calendar.op", payload: reply, sector: "unify" } as never} env="box" />);
     expect(screen.getByRole("region", { name: "That day" })).toBeTruthy();
     expect(screen.getByText("Scrim night")).toBeTruthy();
+  });
+});
+
+// Council round 13: Sol Outbox 1.
+describe("a held reply on a shared calendar", () => {
+  afterEach(() => void ((day.event = "none"), (day.sources = [])));
+  it("names the calendar as LifeOS syncs it, never by the provider's id", () => {
+    day.event = "ready";
+    day.sources = [{ kind: "gcal", channel: "c_9f2k1@group.calendar.google.com", account: "landon@purdue.edu", label: "Esports Staff" }];
+    render(<View item={{ kind: "calendar.op", payload: { id: "op4", kind: "accept", eventId: "ev1", account: "landon@purdue.edu", calendarId: "c_9f2k1@group.calendar.google.com" }, sector: "purdue" } as never} env="box" />);
+    const row = [...document.querySelectorAll("dt")].find((dt) => dt.textContent === "Calendar")!;
+    expect(row.nextElementSibling!.textContent).toBe("Esports Staff");
+    expect(document.body.textContent).not.toContain("c_9f2k1");
   });
 });
 

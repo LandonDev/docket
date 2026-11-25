@@ -79,7 +79,29 @@ export function whenWords(startsAt: number, endsAt: number | undefined, allDay =
  */
 export type OpField = { label: string; value: string; /** guests, for the view to draw each as a name with its address muted after it */ people?: { address: string; name?: string }[] };
 
-export function opFields(op: CalendarOp, event: DayEvent | null): OpField[] {
+/** A calendar LifeOS syncs (`sources:list`), the parts that name it: a Google one names its calendar by `channel`. */
+export type CalendarSource = { kind: string; channel?: string; account?: string; label?: string };
+
+/** A provider's id for a calendar (Google's `…@group.calendar.google.com`, or no address at all): never shown. */
+const PROVIDER_ID = /calendar\.google\.com$|^[^@]*$/i;
+
+/**
+ * The calendar an act goes on, as he knows it: an account's own by its address; another (a shared or team one) by
+ * the name its synced source has, with the account only where two calendars share that name; a person's calendar
+ * LifeOS does not sync by its address and the account; never a provider's id (then the account alone).
+ */
+export function calendarWords(op: Pick<CalendarOp, "account" | "calendarId">, sources: readonly CalendarSource[] | null = null): string | undefined {
+  const { account, calendarId } = op;
+  if (!calendarId || calendarId === account) return account;
+  const same = (a: string | undefined, b: string | undefined): boolean => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+  const synced = (sources ?? []).filter((s) => s.kind === "gcal" && s.label);
+  const own = synced.find((s) => s.channel === calendarId && (!account || same(s.account, account))) ?? synced.find((s) => s.channel === calendarId);
+  const withAccount = (name: string): string => (account ? `${name}, ${account}` : name);
+  if (own?.label) return synced.some((s) => s !== own && same(s.label, own.label)) ? withAccount(own.label) : own.label;
+  return PROVIDER_ID.test(calendarId) ? account : withAccount(calendarId);
+}
+
+export function opFields(op: CalendarOp, event: DayEvent | null, sources: readonly CalendarSource[] | null = null): OpField[] {
   const p = op.payload ?? {};
   const rows: OpField[] = [];
   const title = p.title ?? op.eventTitle ?? event?.title;
@@ -96,8 +118,7 @@ export function opFields(op: CalendarOp, event: DayEvent | null): OpField[] {
   if (reply) rows.push({ label: "Reply", value: reply });
   if (p.comment) rows.push({ label: "Note", value: p.comment });
   if (p.notes) rows.push({ label: "Details", value: p.notes });
-  // An account's own calendar is named by its address; another (a shared or team one) by its id.
-  const calendar = op.calendarId && op.calendarId !== op.account ? `${op.calendarId}, ${op.account ?? ""}`.replace(/, $/, "") : op.account;
+  const calendar = calendarWords(op, sources);
   if (calendar) rows.push({ label: "Calendar", value: calendar });
   return rows;
 }

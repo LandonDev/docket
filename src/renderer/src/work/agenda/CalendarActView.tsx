@@ -10,7 +10,7 @@ import { downOf } from "../shell/lifeosDown";
 import { DownLine, HostLine } from "../shell/DownLine";
 import { useHostLive } from "../shell/lifeosLive";
 import { useAgainKept, type AgainKept } from "../shell/againKept";
-import { dayLines, opFields, opStart, type CalendarOp, type DayEvent } from "./calendarAct";
+import { dayLines, opFields, opStart, type CalendarOp, type CalendarSource, type DayEvent } from "./calendarAct";
 
 /**
  * A held calendar act in the Outbox (prototype outbox.html, a held invite):
@@ -53,7 +53,9 @@ function EventOf({ id, again, ...props }: Props & { id: string; again: AgainKept
 function Body({ op, event, session, sector, read = "none", onRetry, retrying = false }: Props & { event: DayEvent | null; read?: EventRead; onRetry?: () => void; retrying?: boolean }) {
   const start = opStart(op, event);
   const from = start === null ? null : startOfDay(start);
-  const fields = opFields(op, event);
+  // The calendars LifeOS syncs name a shared one, as he reads it (never its id).
+  const synced = useLifeosQuery<CalendarSource[] | null>(session, "sources:list", {});
+  const fields = opFields(op, event, synced.status === "ready" ? synced.value : null);
   // The facts only the event can give: while it is read, their bones; once the read failed or found nothing, a line says so.
   const missing = (["Event", "When"] as const).filter((label) => !fields.some((f) => f.label === label));
   // A session that cannot read fails every query at once, and a query's Retry asks the same session again: the
