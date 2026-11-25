@@ -410,6 +410,8 @@ describe("council round 1: the card's words", () => {
     const act = el.querySelectorAll("[data-summary-row]")[1]!.querySelector("[data-summary-act]")!;
     expect(act.textContent).toBe("Discard Send to Jordan Patel");
     expect(act.querySelector(".text-muted-foreground")!.textContent).toBe("Send to Jordan Patel");
+    // The action is said once, where the row starts: no second "Discard" at its end.
+    expect(el.querySelectorAll("[data-summary-row]")[1]!.querySelector("[data-summary-side]")).toBeNull();
     expect(el.querySelector("h3")!.textContent).toBe("Send 1 mail to 1 person and discard 1 mail");
     expect(sendButton().textContent).toBe("Approve 2");
   });

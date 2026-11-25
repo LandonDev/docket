@@ -141,7 +141,6 @@ const rowKey = (env: string, row: Pick<Row, "ref">): string => `${env}:${row.ref
 function sideOf(row: Row): string | null {
   if (!row.open) return "No longer waiting";
   if (row.changed && !row.receipt) return "Changed since asked";
-  if (row.do === "discard") return "Discard";
   if (row.do === "later" && row.at) return `Goes ${aheadTime(row.at)}`;
   return null;
 }
