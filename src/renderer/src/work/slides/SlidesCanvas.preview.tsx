@@ -195,7 +195,7 @@ function setUp(moment: SlidesMoment): {
     return {
       view: deckView({
         mode: undefined,
-        readOnly: moment === "copy" ? { from: "ppt" } : { from: "google", offline: true },
+        readOnly: moment === "copy" ? { from: "ppt" } : { from: "google", offline: true, readAt: new Date(new Date().setHours(13, 40, 0, 0)).getTime() },
         slides: order.map((id, i) => slide(id, { number: i + 1, title: title(id), page: i + 1 })),
         renders: { file: { rev: "f", size: 1, pages: 7 }, proposed: null },
       }),

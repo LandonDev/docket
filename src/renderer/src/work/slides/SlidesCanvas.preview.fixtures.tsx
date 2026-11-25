@@ -27,7 +27,7 @@ export default [
   { name: "The Animate tab on a slide that is PowerPoint's, under the slide", props: { moment: "animateppt" } },
   { name: "The Sorter: sections, a hidden slide", props: { moment: "sorter" } },
   { name: "Loading", props: { moment: "loading" } },
-  { name: "A deck that did not open: the centred failure with Retry", props: { moment: "failed" } },
+  { name: "A deck that is not where it was: the centred failure with Show in Files", props: { moment: "failed" } },
   { name: "No picture: LibreOffice is not here", props: { moment: "nopicture" } },
   { name: "An imported .ppt: read only, with Make a copy to edit", props: { moment: "copy" } },
   { name: "An imported .ppt at 400px", props: { moment: "copy", previewWidth: 400 } },
