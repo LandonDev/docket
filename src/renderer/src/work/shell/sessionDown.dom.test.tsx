@@ -525,3 +525,25 @@ describe.each(["signed-out", "unanswered", "connecting"] as const)("a page insid
     expect(screen.queryByRole("button", { name: "Back to Projects" })).toBeNull();
   });
 });
+
+/** Council round 12 (Sol, Settings 1 P2): Settings readers on bones alone while the host's LifeOS connected. */
+describe("a settings section while the host's LifeOS is still connecting", () => {
+  const WAIT = "LifeOS is still connecting on the box";
+
+  it("LifeosLine says the wait once, the box named, with no press, in place of the section's bones", async () => {
+    host("connecting");
+    render(<OnSession sector={null}>{(session) => <LifeosLine session={session} waiting={<span data-waiting />} />}</OnSession>);
+    await waitFor(() => expect(times(WAIT)).toBe(1));
+    expect(document.querySelector("[data-waiting]")).toBeNull();
+    expect(presses()).toEqual([]);
+  });
+
+  it("Mail's settings, as Settings → Work mounts them, say the wait", async () => {
+    host("connecting");
+    const { Section } = await import("../mail/MailSettingsSection");
+    render(<Section environmentId="env_box" />);
+    await waitFor(() => expect(times(WAIT)).toBe(1));
+    expect(document.querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(presses()).toEqual([]);
+  });
+});

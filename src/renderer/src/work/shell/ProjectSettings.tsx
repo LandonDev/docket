@@ -3,7 +3,8 @@ import { makeFunctionReference } from "convex/server";
 import type { SectorKey } from "@shared/work";
 import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 import { wordCount } from "@server/shared/preamble";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
+import { Spinner } from "@renderer/components/ui/spinner";
 import { Input } from "@renderer/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
 import { Skeleton } from "@renderer/components/ui/skeleton";
@@ -22,7 +23,9 @@ import { useProjects } from "../../lib/tcserver/workspaces";
 import { useAccounts } from "../../stores/accounts";
 import { dialogsChunk } from "../../surfaces/chunks";
 import { ProjectSharing } from "../guests/Share";
-import { reopenLifeos, sessionWaits, sessionWords, useLifeosQuery, useLifeosSession } from "./lifeos";
+import { lifeosHostName, reopenLifeos, sessionWaits, sessionWords, useLifeosQuery, useLifeosSession } from "./lifeos";
+import { useHostLive } from "./lifeosLive";
+import { connectingWords } from "./lifeosWords";
 import { downAction, downOf, useDownPress } from "./lifeosDown";
 import { SignInFor } from "./DownSignIn";
 
@@ -53,10 +56,13 @@ type LifeosProject = { _id: string; name: string; status: ProjectState };
 /** Whether LifeOS can be read and written for the two fields it owns. */
 export type LifeosReach =
   | { status: "ready" }
-  /** on its way: the field holds the mirror's name and what he types; Save waits */
-  | { status: "loading" }
-  /** the two stand as plain words, never as disabled controls, and one line under them says why, with the press that can help: Retry where asking again can, Sign in where LifeOS is signed out */
-  | { status: "failed"; line: string; note?: string; press?: { label: string; run: () => void | Promise<void> } }
+  /** on its way: the field holds the mirror's name and what he types; Save waits. `waits`: the host said its LifeOS is still connecting, named under the fields with no press */
+  | { status: "loading"; waits?: string }
+  /**
+   * the two stand as plain words, never as disabled controls, and one line under them says why, with the press that can
+   * help: Retry where asking again can, Sign in where LifeOS is signed out. `busy`: his Retry is out, spinning in place
+   */
+  | { status: "failed"; line: string; note?: string; press?: { label: string; run: () => void | Promise<void> }; busy?: boolean }
   /** a project of the workspace that mirrors nothing: its name is this host's */
   | { status: "local" };
 
@@ -135,8 +141,8 @@ export function WorkProjectFields({
               {reach.note ? <span className="block">{reach.note}</span> : null}
             </span>
             {reach.press ? (
-              <Button type="button" variant="link" size="xs" className="h-auto shrink-0 px-0 text-xs" onClick={reach.press.run}>
-                {reach.press.label}
+              <Button type="button" variant="link" size="xs" className="h-auto shrink-0 px-0 text-xs" disabled={reach.busy} onClick={reach.press.run}>
+                <BusyLabel busy={!!reach.busy} label={reach.press.label} />
               </Button>
             ) : null}
           </p>
@@ -156,6 +162,12 @@ export function WorkProjectFields({
               )}
             </FieldRow>
           )}
+          {reach.status === "loading" && reach.waits ? (
+            <p data-lifeos-waits role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Spinner aria-hidden className="size-3 shrink-0" />
+              <span className="min-w-0 text-pretty">{reach.waits}</span>
+            </p>
+          ) : null}
         </div>
       )}
       <Section label="Rules for its threads">
@@ -187,7 +199,9 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
   const [known, setKnown] = useState<LifeosProject | null>(null);
   if (row && row !== known) setKnown(row);
 
-  const [retrying, setRetrying] = useState(false);
+  // The line his Retry was pressed on: it stays, its Retry spinning, until the answer replaces it.
+  const [retrying, setRetrying] = useState<Extract<LifeosReach, { status: "failed" }> | null>(null);
+  const live = useHostLive(workspace.environmentId);
   const down = useDownPress(downOf(session), workspace.environmentId);
   // Sign in and Show the code open the sign-in dialog over the sheet, as its child.
   const [signingIn, setSigningIn] = useState(false);
@@ -195,21 +209,25 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
     if (!lifeosId) return { status: "local" };
     if (row) return { status: "ready" };
     if (listed.status === "ready") return { status: "failed", line: "This project is no longer in LifeOS" };
-    if (listed.status === "loading" || sessionWaits(session) || retrying) return { status: "loading" };
+    if (retrying) return { ...retrying, busy: true };
+    // The host said its LifeOS is on its way: the wait, named, under the fields; any other wait is the State's bone alone.
+    if (sessionWaits(session) && live.waits) return { status: "loading", waits: connectingWords(lifeosHostName(workspace.environmentId)) };
+    if (listed.status === "loading" || sessionWaits(session)) return { status: "loading" };
+    let shown: Extract<LifeosReach, { status: "failed" }>;
     const retry = () => {
-      setRetrying(true);
+      setRetrying(shown);
       void reopenLifeos(workspace.environmentId, sector)
         .catch(() => {})
-        .finally(() => setRetrying(false));
+        .finally(() => setRetrying(null));
     };
-    if (session.client) return { status: "failed", line: listed.status === "failed" ? listed.error : sessionWords(session), press: { label: "Retry", run: retry } };
+    if (session.client) return (shown = { status: "failed", line: listed.status === "failed" ? listed.error : sessionWords(session), press: { label: "Retry", run: retry } });
     // A session that is down says its state once, with the press `useDownPress` gives: Retry only where LifeOS or the
     // host did not answer, never for a computer the host keeps LifeOS from; Sign in or Show the code, the sign-in dialog,
     // where this window may sign the host in; Open Settings where Work is off and it may turn it on; else who can.
     const { press, elsewhere } = down;
     const action = downAction(press, retry, () => setSigningIn(true));
-    return { status: "failed", line: sessionWords(session), ...(elsewhere ? { note: elsewhere } : {}), ...(action ? { press: action } : {}) };
-  }, [lifeosId, row, listed, session, retrying, workspace.environmentId, sector, down]);
+    return (shown = { status: "failed", line: sessionWords(session), ...(elsewhere ? { note: elsewhere } : {}), ...(action ? { press: action } : {}) });
+  }, [lifeosId, row, listed, session, retrying, live.waits, workspace.environmentId, sector, down]);
 
   // null follows what is saved, so a rename that lands from elsewhere shows until he types.
   const [nameDraft, setNameDraft] = useState<string | null>(null);

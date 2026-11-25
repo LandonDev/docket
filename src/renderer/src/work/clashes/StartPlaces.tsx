@@ -14,6 +14,9 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { sectorName } from "../shell/actions";
 import { sessionWaits, sessionWords, useLifeosQuery, useLifeosSession, type LifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
+import { useHostLive } from "../shell/lifeosLive";
+import { connectingWords } from "../shell/lifeosWords";
+import { lifeosHostName } from "../shell/lifeos";
 import { DownLine } from "../shell/DownLine";
 import { fieldsOf, formChanged, placeWords, rowLabel, sameField, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartTarget } from "./places";
 import { answered } from "./wait";
@@ -127,6 +130,8 @@ function StartPlaceDialog({
   onClose: () => void;
 }) {
   const [pending, setPending] = useState<Pending>(null);
+  // The host said its LifeOS is still connecting: the form's wait names it, the computer named, with no press.
+  const live = useHostLive(session.environmentId);
   const send = (patch: StartPatch): Promise<unknown> => (session.client ? session.client.mutation(update, patch) : Promise.reject(new Error(sessionWords(session))));
   return (
     <Modal onClose={onClose} title={title} size="sm" busy={pending !== null}>
@@ -136,6 +141,7 @@ function StartPlaceDialog({
         lookups={lookups}
         blocked={blocked}
         down={downOf(session) ? <DownLine data-start-down session={session} /> : null}
+        {...(live.waits && !session.client ? { waits: connectingWords(lifeosHostName(session.environmentId)) } : {})}
         send={send}
         onClose={onClose}
         pending={pending}
@@ -160,6 +166,7 @@ export function StartPlaceForm({
   setPending,
   blocked = null,
   down = null,
+  waits = "Waiting for LifeOS…",
   error: shownError = null,
 }: {
   target: StartTarget;
@@ -173,6 +180,8 @@ export function StartPlaceForm({
   blocked?: string | null;
   /** The LifeOS session is down: its line by the rule (`DownLine`, with its press), in the place of `blocked`'s words. */
   down?: ReactNode;
+  /** The wait's words while `blocked` is "": the host's own connecting, named ("LifeOS is still connecting on the box"), else a read that is out. */
+  waits?: string;
   /** A refusal to show from the start: the preview's seam. */
   error?: string | null;
 }) {
@@ -261,7 +270,7 @@ export function StartPlaceForm({
           {blocked === "" ? (
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
               <Spinner aria-hidden className="size-3" />
-              Waiting for LifeOS…
+              {waits}
             </span>
           ) : null}
         </div>

@@ -4,6 +4,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { registry, useEnvironmentStatus } from "../../lib/connection";
 import { useDownPress } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
+import { HostLine } from "../shell/DownLine";
 import { lifeosHostName, refreshLifeos, reopenLifeos, sessionFailure, useLifeosStatus, useLifeosUnanswered, type LifeosSession } from "../shell/lifeos";
 
 /**
@@ -16,7 +17,8 @@ import { lifeosHostName, refreshLifeos, reopenLifeos, sessionFailure, useLifeosS
  * or session ask went unanswered, "<host> did not answer" in red with Retry; a computer the host keeps LifeOS from with no press; Work off
  * with a press to Settings → Work, the switch, where this window may turn it on (named "Work", the section it opens:
  * the line is in Settings already), else who can. `onWorkPage`: the line is on Settings → Work, the switch is on the
- * page, and Work off has no press.
+ * page, and Work off has no press. While the host says its LifeOS is still connecting, the named wait, "LifeOS is
+ * still connecting on the box", with no press (`HostLine`), in place of the section's bones.
  * The line in `PageError`'s shape, so the 28px press overhangs the 16px line evenly.
  */
 export function LifeosLine({ session, waiting, onWorkPage = false }: { session: Pick<LifeosSession, "environmentId" | "sector" | "state" | "withheld" | "unanswered">; waiting: ReactNode; onWorkPage?: boolean }) {
@@ -62,6 +64,7 @@ export function LifeosLine({ session, waiting, onWorkPage = false }: { session: 
   // The host's own silence on the session's ask is said by its name, as on the status ask; LifeOS's, with the host named.
   if (state === "unreachable" || session.state === "unreachable")
     return <Failed words={session.unanswered ? `${host} did not answer` : sessionFailure("unreachable", false, named)} busy={busy} onRetry={retryWith(() => reopenLifeos(environmentId, sector))} />;
+  if (state === "connecting") return <HostLine live={{ environmentId, down: null, waits: true }} data-slot="lifeos-line" className="py-3 text-xs" />;
   return waiting;
 }
 

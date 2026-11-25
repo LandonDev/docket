@@ -73,7 +73,11 @@ beforeEach(() => {
   lifeos.failed = null;
   lifeos.silent = false;
 });
-afterEach(cleanup);
+afterEach(async () => {
+  cleanup();
+  vi.restoreAllMocks();
+  (await import("../shell/lifeos")).resetLifeos();
+});
 
 const rows = (container: HTMLElement) => [...container.querySelectorAll<HTMLElement>("[data-start]")];
 const row = (container: HTMLElement, target: string) => container.querySelector<HTMLElement>(`[data-start="${target}"]`)!;
@@ -261,6 +265,15 @@ describe("Start places", () => {
     expect(saveOff()).toBe(true);
     expect(within(screen.getByRole("dialog")).getByRole("status").textContent).toBe("Waiting for LifeOS…");
     expect(within(screen.getByRole("dialog")).getByRole("alert").textContent).toBe("");
+    // Council round 12 (Sol, Settings 1): once the host says its LifeOS is connecting, the wait names the computer.
+    const { registry } = await import("../../lib/connection");
+    const { setLifeosStatus } = await import("../shell/lifeos");
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "box", name: "The box" } as never);
+    act(() => setLifeosStatus("box", { lifeos: { state: "connecting" }, keys: [] } as never));
+    expect(within(screen.getByRole("dialog")).getByRole("status").textContent).toBe("LifeOS is still connecting on the box");
+    expect(typed()).toBe("12 Oak Ct");
+    expect(saveOff()).toBe(true);
+    act(() => setLifeosStatus("box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] } as never));
     lifeos.failed = null;
     lifeos.state = "connected";
     lifeos.loading = true;

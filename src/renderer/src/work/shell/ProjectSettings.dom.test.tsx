@@ -305,6 +305,36 @@ describe("while LifeOS cannot be reached", () => {
     expect(hostCalls.some((c) => c.method === "work.lifeos.status")).toBe(true);
   });
 
+  /** Council round 12 (the walk): Retry keeps its line, spinning in place, until the host answers. */
+  it("unreachable: Retry spins in place with the line kept while the host is asked", async () => {
+    setLifeosStatus(BOX, { lifeos: { state: "unreachable", since: 1, error: "timeout" }, keys: [] });
+    let answer: ((v: unknown) => void) | null = null;
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: BOX, connected: true, onOpen: () => () => {}, onPush: () => () => {}, request: (method: string) => (method === "work.lifeos.status" ? new Promise((r) => (answer = r)) : Promise.resolve([])) } as never);
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
+    const root = await sheet();
+    await act(async () => fireEvent.click(within(root.querySelector("[data-lifeos-line]") as HTMLElement).getByRole("button", { name: "Retry" })));
+    const line = root.querySelector("[data-lifeos-line]") as HTMLElement;
+    expect(line.textContent).toContain("LifeOS did not answer");
+    expect(line.querySelector("[data-slot=busy-label][data-busy]")).toBeTruthy();
+    expect(root.querySelector("[data-state-loading]")).toBeNull();
+    await act(async () => answer!({ lifeos: { state: "unreachable", since: 2, error: "timeout" }, keys: [] }));
+    await waitFor(() => expect(root.querySelector("[data-lifeos-line] [data-busy]")).toBeNull());
+    expect(root.querySelector("[data-lifeos-line]")!.textContent).toContain("LifeOS did not answer");
+  });
+
+  /** Council round 12 (Sol, Settings 1 P2): a mirrored project's sheet showed the State's bone alone while the host connected. */
+  it("while the host's LifeOS is still connecting: the wait named under the fields, the name his to type in, Save held", async () => {
+    vi.spyOn(registry, "environment").mockReturnValue({ id: BOX, name: "The box" } as never);
+    setLifeosStatus(BOX, { lifeos: { state: "connecting" }, keys: [] } as never);
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
+    const root = await sheet();
+    expect(root.querySelector("[data-lifeos-waits]")!.textContent).toBe("LifeOS is still connecting on the box");
+    expect(root.querySelectorAll("[data-lifeos-waits]")).toHaveLength(1);
+    expect(root.querySelector("[data-lifeos-waits] button")).toBeNull();
+    fireEvent.change(within(root).getByRole("textbox", { name: "Name" }), { target: { value: "Spring LAN 2" } });
+    expect(saveButton().disabled).toBe(true);
+  });
+
   /** Council round 5 (Sol P1, Opus P3): a computer the host keeps LifeOS from was offered a Retry that cannot help. */
   it("on a computer kept from LifeOS: the known name stands, the line names the computer, and nothing is offered to press", async () => {
     vi.spyOn(registry, "environment").mockReturnValue({ id: BOX, name: "The box" } as never);
