@@ -323,7 +323,7 @@ describe("a sent chip", () => {
   const at = { environmentId: BOX, sessionId: "th1", workspaceId: "ws" };
   const chip = (noun: string, ref: string) => ({ noun, label: "x", ref }) as Parameters<typeof openerOf>[0];
 
-  it("of a project opens its page, of a card the task's own page, and a plain task still opens Tasks", async () => {
+  it("of a project opens its page, of a card the task's own page, and a plain task opens Tasks on its sheet", async () => {
     render(<Screen {...props()} />);
     void openerOf(chip("project", "LifeOS projects p-tryouts"), at)!();
     await waitFor(() => expect(placeOf("ws")).toMatchObject({ at: "project", id: "p-tryouts" }));
@@ -335,7 +335,8 @@ describe("a sent chip", () => {
     fireEvent.click(within(head()).getByRole("button", { name: "Back to Spring LAN" }));
     expect(placeOf("ws")).toMatchObject({ at: "project", id: "p-lan" });
     void openerOf(chip("task", "LifeOS tasks t-network"), at)!();
-    expect(workViewNow()).toEqual({ workspaceId: "ws", view: "tasks" });
+    // A plain task opens Tasks on that task's sheet.
+    expect(workViewNow()).toEqual({ workspaceId: "ws", view: "tasks", task: "t-network" });
   });
 
   it("of a mail opens Mail's reader on that mail", () => {
