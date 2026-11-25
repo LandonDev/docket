@@ -635,6 +635,37 @@ export function SendSplit({ label, busy, disabled, later, grant, verb, open, ins
   );
 }
 
+/** A failure's fix as the primary press (Edit, or Open the thread), with Send again in its menu as Send later sits on Send's. */
+function FixSplit({ label, again, busy, disabled, againOff, onFix, onAgain }: {
+  label: string;
+  again: string;
+  busy: boolean;
+  disabled: boolean;
+  againOff: boolean;
+  onFix: () => void;
+  onAgain: () => void;
+}) {
+  return (
+    <span className="flex items-center">
+      <Tip label={label} shortcut={keyHint("mod+enter")}>
+        <Button size="sm" disabled={disabled} className="rounded-e-none" onClick={onFix}>
+          <BusyLabel busy={busy} label={label} />
+        </Button>
+      </Tip>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button size="icon-sm" disabled={disabled} aria-label={`More: ${again}`} className="rounded-s-none border-s border-primary-foreground/15" />}>
+          <ChevronDown />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" side="top" className="min-w-40">
+          <DropdownMenuItem disabled={againOff} onClick={onAgain}>
+            {again}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  );
+}
+
 type Busy = "send" | "discard" | "grant" | "later" | "again" | "cancel" | "now" | "save" | null;
 
 export function HeldDetail({
@@ -938,32 +969,23 @@ export function HeldDetail({
           {item.outcomeUnknown && waiting ? <span className="text-[13px] leading-5 text-muted-foreground">{checkWords(item)}</span> : null}
           {stuck ? (
             <>
-              {/* Send again steps down; the fix is the primary press. */}
-              <Button variant="secondary" size="sm" disabled={sendOff} onClick={() => void send("send")}>
-                <BusyLabel busy={busy === "send"} label={verbAgain} />
-              </Button>
-              {fix === "edit" ? (
-                <Tip label="Edit" shortcut={keyHint("mod+enter")}>
-                  <Button size="sm" disabled={busy !== null} onClick={() => setEditing(true)}>
+              {/* The fix is the primary press; Send again sits in its menu, one click away, so the bar fits a narrow window. */}
+              {fix === "thread" && editable ? (
+                <Tip label="Edit" shortcut={shortcutFor("Work", "Edit Held Item")}>
+                  <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => setEditing(true)}>
                     Edit
                   </Button>
                 </Tip>
-              ) : (
-                <>
-                  {editable ? (
-                    <Tip label="Edit" shortcut={shortcutFor("Work", "Edit Held Item")}>
-                      <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => setEditing(true)}>
-                        Edit
-                      </Button>
-                    </Tip>
-                  ) : null}
-                  <Tip label="Open the thread" shortcut={keyHint("mod+enter")}>
-                    <Button size="sm" onClick={() => onOpenSession!(item.sessionId!, item.environmentId)}>
-                      Open the thread
-                    </Button>
-                  </Tip>
-                </>
-              )}
+              ) : null}
+              <FixSplit
+                label={fix === "edit" ? "Edit" : "Open the thread"}
+                again={verbAgain}
+                busy={busy === "send"}
+                disabled={busy !== null}
+                againOff={sendOff}
+                onFix={() => (fix === "edit" ? setEditing(true) : onOpenSession!(item.sessionId!, item.environmentId))}
+                onAgain={() => void send("send")}
+              />
             </>
           ) : null}
           {!stuck && editable ? (

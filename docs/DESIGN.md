@@ -1553,7 +1553,8 @@ Around the canvas:
   and hides under 640px), and one trailing word at 12px: the event's start in
   the foreground, when it goes, "Out of date", "Changed", else when it was
   held. A tick takes the glyph's place on hover and stays on every row while
-  any is ticked. The detail, in a 688px column: the facts line (the job's dot
+  any is ticked, but a failed row keeps its red mark until it is ticked
+  itself. The detail, in a 688px column: the facts line (the job's dot
   and name, "from" the thread as a link, the time), the act as a 16px title,
   one 14px sentence of what the press does that the thing below does not say
   (a mail's From and To are its fields, so its sentence is "Goes after your
@@ -1568,7 +1569,8 @@ Around the canvas:
   before the words put in on a light accent tint. A failed item leads with
   its refusal; when the failure will repeat as it stands (too large, refused)
   the fix is the primary press, Open the thread for a refusal of its files
-  (the editor cannot change them), else Edit, and Send again steps down; a failure that may clear (a service that
+  (the editor cannot change them), else Edit, and Send again steps down into
+  the fix's menu, one click away, so the bar fits a narrow window; a failure that may clear (a service that
   did not answer) keeps Send again first. A kind's view that fails is one
   quiet line, "Its details could not be read." with Retry, no bones under it.
   Rows that share an act keep what they are about before the time. The verb bar

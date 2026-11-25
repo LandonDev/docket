@@ -157,7 +157,7 @@ const INVITE = { id: "op22", kind: "create", payload: { title: "Spring LAN walkt
 const KIND_EFFECT: Record<number, string> = {
   22: "Sends the invite as you; each guest gets it.",
   23: "Sends as you; everyone in the conversation sees it.",
-  24: "Changes files in a place others can open, the moment you press.",
+  24: "Changes a file in a place others can open, the moment you press.",
   25: "Anyone with the link opens it without signing in.",
   26: "Posts as you; everyone in the chat sees it.",
   27: "Tells the organizer you will come.",

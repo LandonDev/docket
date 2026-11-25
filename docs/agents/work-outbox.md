@@ -1100,7 +1100,8 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     stands (`clearsByItself` false: too large, refused) makes the fix primary:
     Open the thread when the refusal is about its files (`aboutFiles`; the
     editor cannot change those), else Edit, else Open the thread, with Send
-    again secondary; one that may have gone keeps "Check Sent first" and his own
+    again in the fix's menu (`FixSplit`, as Send later sits on Send's), so the
+    bar fits a 400px window; one that may have gone keeps "Check Sent first" and his own
     Send again. An out-of-date item's bar is Discard and Ask the thread again
     (`work.outbox.askAgain`). A scheduled item's is Cancel send and Send now
     (`cancelSend`, `sendNow`; a Mail-scheduled LifeOS mail from before the

@@ -1400,7 +1400,11 @@ describe("council round 2: the detail and the list", () => {
     expect(head.nextElementSibling!.textContent).toMatch(/^Not sent\./);
     const edit = within(detail).getByRole("button", { name: "Edit" });
     expect(edit.getAttribute("data-variant")).toBe("default");
-    expect(within(detail).getByRole("button", { name: "Send again" }).getAttribute("data-variant")).toBe("secondary");
+    // Send again sits in the fix's menu, one click away, so the bar fits a narrow window.
+    expect(within(detail).queryByRole("button", { name: "Send again" })).toBeNull();
+    fireEvent.click(within(detail).getByRole("button", { name: "More: Send again" }));
+    await act(async () => fireEvent.click(await screen.findByRole("menuitem", { name: "Send again" })));
+    await waitFor(() => expect(sends().length).toBe(1));
   });
 
   it("a refusal of its files makes Open the thread the primary press where the thread can fix it", async () => {
@@ -1412,9 +1416,23 @@ describe("council round 2: the detail and the list", () => {
     const thread = within(detail).getByRole("button", { name: "Open the thread" });
     expect(thread.getAttribute("data-variant")).toBe("default");
     expect(within(detail).getByRole("button", { name: "Edit" }).getAttribute("data-variant")).toBe("secondary");
-    expect(within(detail).getByRole("button", { name: "Send again" }).getAttribute("data-variant")).toBe("secondary");
+    expect(within(detail).getByRole("button", { name: "More: Send again" })).toBeTruthy();
     fireEvent.click(thread);
     expect(opened).toEqual(["s1"]);
+  });
+
+  it("while rows are ticked a failed row keeps its red mark until it is ticked itself", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget"), mail("o2", "Sam Ortiz", "Rota", { state: "failed", error: "Outlook did not answer in time" })]);
+    world.items.set("mac", []);
+    await open();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Tick Send to Dana Lee" }));
+    const failedBox = screen.getByRole("checkbox", { name: "Tick Send to Sam Ortiz" });
+    // The row's lead: the 16px box that holds its red mark.
+    const lead = (box: HTMLElement) => [...(box.closest("li")?.querySelectorAll<HTMLElement>("span.size-4") ?? [])].filter((el) => el.querySelector('[data-slot="status-glyph"]')).at(-1) ?? null;
+    await waitFor(() => expect(lead(failedBox)).not.toBeNull());
+    expect(lead(failedBox)!.classList.contains("opacity-0")).toBe(false);
+    fireEvent.click(failedBox);
+    await waitFor(() => expect(lead(failedBox)?.classList.contains("opacity-0")).toBe(true));
   });
 
   it("a failure that may clear keeps Send again as the primary press", async () => {

@@ -248,6 +248,9 @@ const HeldRow = memo(function HeldRow({
   const key = itemKey(item);
   const { act, about } = rowWords(item);
   const can = tickable(item);
+  // While rows are ticked every row shows its box, but a failed one keeps its red mark until it is ticked itself (the box
+  // under the pointer, as before any tick): the list still says what failed.
+  const boxShown = ticking && (ticked || item.state !== "failed");
   const glyph =
     item.state === "failed" ? (
       <StatusMark state="failed" word={false} />
@@ -267,10 +270,10 @@ const HeldRow = memo(function HeldRow({
       strong={strong}
       snippet={snippet}
       onPick={() => onPick(item)}
-      lead={<span className={cn("grid size-4 place-items-center", can && (ticking ? "opacity-0" : yields("row")))}>{glyph}</span>}
+      lead={<span className={cn("grid size-4 place-items-center", can && (boxShown ? "opacity-0" : yields("row")))}>{glyph}</span>}
       tick={
         can ? (
-          <span className={cn("absolute start-2 top-2 grid size-4 place-items-center", !ticking && reveal("row", { row: true, overlay: true }))}>
+          <span className={cn("absolute start-2 top-2 grid size-4 place-items-center", !boxShown && reveal("row", { row: true, overlay: true }))}>
             <Checkbox
               tabIndex={-1}
               aria-label={`Tick ${act}`}
