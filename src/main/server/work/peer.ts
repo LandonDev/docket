@@ -11,6 +11,7 @@ import { workRoot } from '../workRoot'
 import type { CtxPart } from './ctx'
 import { WORK_MODULES, type Caller, type WorkCtx, type WorkModule } from './modules'
 import { scopeFactsOf, WORK_OFF, workHomeOf, workHomeOfSession } from './scope'
+import { withRequestMemo } from '../requestMemo'
 
 /**
  * `ctx.peer(host)`: a Work tool's route to the same module on another host
@@ -81,7 +82,8 @@ export async function servePeerWork(deps: ServePeerDeps, from: string, call: Ext
   const req = (deps.parse ?? contractRequest)(method, call.args)
   if (typeof req === 'string') throw new Error(req)
   const by: Caller = { kind: 'remote', caps, peer: from }
-  const answer = module?.handle ? await module.handle(req, deps.ctx, by) : { handled: false as const }
+  // Another host's call is one request here too: a path its checks resolve is resolved once for it.
+  const answer = module?.handle ? await withRequestMemo(() => module.handle!(req, deps.ctx, by)) : { handled: false as const }
   if (!answer.handled) throw new NotBuilt(method, PILLAR_MILESTONE[call.module as PillarId])
   return answer.result
 }

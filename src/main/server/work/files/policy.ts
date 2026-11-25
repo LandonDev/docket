@@ -15,6 +15,7 @@ import { vmAllowed, vmState } from '../office/vm/office'
 import { librariesHere, vmLibrariesHere } from './places/libraries'
 import { accountsHeld } from './places/drive'
 import { isSavingCopy } from './copyKept'
+import { inRequest } from '../../requestMemo'
 
 /**
  * The one door of the Files place (docs/agents/work-files.md "One door for every change"). Every method that
@@ -44,13 +45,15 @@ export function workspaceHere(db: DatabaseSync, id: string): WorkspaceRow | null
   return row && row.kind === 'work' && row.path ? { id: row.id, name: row.name, path: row.path, sector: row.sector ?? null } : null
 }
 
-const real = (path: string): string | null => {
-  try {
-    return hostReal(path)
-  } catch {
-    return null
-  }
-}
+// Each path is resolved once a request (`inRequest`): the request's later checks of it read that answer, never one of another request.
+const real = (path: string): string | null =>
+  inRequest(`real:${path}`, () => {
+    try {
+      return hostReal(path)
+    } catch {
+      return null
+    }
+  })
 /** Whether `path` is `dir` or under it, both as given (the caller passes real paths). */
 export const within = (path: string, dir: string): boolean => {
   const r = relative(dir, path)

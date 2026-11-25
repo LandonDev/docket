@@ -10,6 +10,7 @@ import { readWindowsOneDrive, type WindowsOneDriveMount } from './oneDrive'
 import { hostReal } from '../../../remote/fence'
 import { DRIVE_FRESH_MS, driveOf, driveUp } from './reach'
 import { zipEntries } from './zip'
+import { inRequest } from '../../../requestMemo'
 
 /**
  * Teams files (docs/agents/work-teams-files.md): the Teams and SharePoint libraries the OneDrive app
@@ -235,11 +236,14 @@ export const offFolders = (db: DatabaseSync): string[] => rootsOf(db).filter((r)
 /** A path's real spelling, its drive letter kept (`hostReal`); null when it is not there, or lies on a drive not known to be there. */
 const real = (path: string): string | null => {
   if (!driveUp(path)) return null
-  try {
-    return hostReal(path)
-  } catch {
-    return null
-  }
+  // Once a request, as Files' own door resolves it (policy.ts).
+  return inRequest(`real:${path}`, () => {
+    try {
+      return hostReal(path)
+    } catch {
+      return null
+    }
+  })
 }
 
 /** A library's own folder as last resolved: asked on every call that names a file in it, and a mapped drive answers each over the link. */

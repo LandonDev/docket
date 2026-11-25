@@ -33,6 +33,7 @@ import { join } from 'node:path'
 import { loadavg } from 'node:os'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
 import type { InFlightRequest, LoopLag } from '@shared/contract'
+import { withRequestMemo } from './requestMemo'
 
 export const STALL_MS = 150
 export const TIMED_MS = 50
@@ -194,7 +195,8 @@ const requestNotes = new AsyncLocalStorage<Map<string, string>>()
 
 /** Runs one request with a place for its handler's words. */
 export function withRequestNotes<T>(fn: () => T): T {
-  return requestNotes.run(new Map(), fn)
+  // and a memo of what it worked out of the disk, for that request alone (requestMemo.ts)
+  return requestNotes.run(new Map(), () => withRequestMemo(fn))
 }
 
 /** A word for this request's stall lines: `place=vm`, `wake=13200ms`, `profile=remote`. Outside a request it is dropped. */
