@@ -308,8 +308,8 @@ const vmSetUp = (): boolean => {
   return !!s && !s.cannot && s.state !== 'none'
 }
 
-/** What the copies did, for the tests to count: each commit, and each copy read back from the disk after it was written. */
-export const copyCounts = { commits: 0, staged: 0, readBack: 0 }
+/** What the copies did, for the tests to count: each staging file made, and each commit. */
+export const copyCounts = { commits: 0, staged: 0 }
 
 /**
  * A copy being written into its folder, never through a link: the owner's folder and the source's folder must be
@@ -350,6 +350,10 @@ class Staging {
     this.hash.update(buf)
     this.parts.push(buf)
     this.size += buf.length
+  }
+  /** The SHA-256 of what came in so far, the staging hash left running. */
+  sha256(): string {
+    return this.hash.copy().digest('hex')
   }
   /** The file changed while it was read: what came in goes, and the read starts again from its first byte. */
   restart(): void {
@@ -492,6 +496,16 @@ export function bytesSink(): { write(buf: Buffer): void; restart(): void; bytes(
 type GuestPiece = { data: string; size: number; eof: boolean; version: string }
 const PIECE = 4 * 1024 * 1024
 
+/**
+ * Whether the bytes staged are the version the helper named (`size:mtime:sha256`): its size, and its SHA-256 where it
+ * gives one (a file over the helper's hash cap has none; the cap is above `BYTES_MAX`).
+ */
+function sameBytes(version: string, into: Staging): boolean {
+  const [size, , sha] = version.split(':')
+  if (Number.isFinite(Number(size)) && Number(size) !== into.size) return false
+  return !sha || !/^[0-9a-f]{64}$/.test(sha) || sha === into.sha256()
+}
+
 /** The guest's version of a file (`size:mtime:sha256`), read with one byte of it: the hash the helper makes for a version. */
 const guestVersion = async (path: string, signal?: AbortSignal): Promise<string> => ((await vmCall('files.read', { path, offset: 0, length: 1, version: true }, { signal })) as GuestPiece).version
 
@@ -525,7 +539,9 @@ async function vmVersioned(path: string, into: Staging, signal?: AbortSignal, pr
     }
     // A file of one piece was versioned with it; one whose end came on a piece that was not asked for its version is asked once.
     const end = offset <= PIECE ? first : (last ?? (await guestVersion(path, signal)))
-    if (first !== null && end === first) return first
+    // The helper may answer the end's version from the hash it made for the first piece (kept a minute while the size and
+    // change time hold), so the bytes themselves are held to it: the version's SHA-256 must be the one hashed as they came in.
+    if (first !== null && end === first && sameBytes(first, into)) return first
     if (tries) throw new Error(`${entry.name} changed while it was read. Try again.`)
   }
 }

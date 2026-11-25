@@ -2111,7 +2111,10 @@ over a file that changed there.
   bytes); a host a release behind answers none, so its copies keep their old line. A copy out of the VM is read in
   4 MB pieces with the helper's version asked with the first piece and the last (`vmVersioned`, office/files/handle.ts;
   the helper hashes the whole file for a version), each piece said as the drive's are ("Opening… 3.0 of 20 MB"); a
-  last version that differs is read once more, then refused.
+  last version that differs is read once more, then refused. The helper may answer the last version from the hash it
+  kept for the first piece (a minute, while the size and change time hold), so the bytes are held to it too: the
+  version's size and SHA-256 must be those of the bytes staged, else the copy is read once more, then refused (sol
+  review S3; `sameBytes`).
 - **One pass** (M8 of the performance pass). Each piece, from another host or the VM, is written into a staging file of
   the copy's folder as it lands (`Staging`: made new, never through a link, hashed on the way in) and the copy takes
   its place in one rename once every piece is in and its version held; a link where the copy would land is refused. A

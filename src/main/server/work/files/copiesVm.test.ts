@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { strToU8, zipSync } from 'fflate'
@@ -5,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { CopyBack, FilesOpened, FilesTabs } from '@shared/contract-work-files'
 import { canvasSourcePath } from '@shared/work'
 import type { Caller } from '../modules'
+import { copyCounts } from '../office/files/handle'
 import { setCopyAllowed } from '../office/files/library'
 import { setVmCall } from '../office/vm/link'
 import { setVmState } from '../office/vm/office'
@@ -165,6 +167,41 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
     })
     await expect(open()).rejects.toThrow('changed while it was read')
     expect(edits).toBe(2)
+  })
+
+  it("refuses bytes that are not the version the helper named, even when it answers the first piece's hash again at the end", async () => {
+    const MB = 1024 * 1024
+    const file = Buffer.alloc(9 * MB, 5)
+    // A same-size save in Teams with the same change time, between the first piece and the second: the helper keeps the
+    // hash it made for the first piece and answers it again for the last, so only the bytes can tell.
+    const edited = Buffer.alloc(9 * MB, 6)
+    const hash = createHash('sha256').update(file).digest('hex')
+    const firsts: number[] = []
+    setVmCall(async (verb, args = {}) => {
+      if (verb === 'files.stat') return { name: 'Roster.xlsx', path: ROSTER, dir: false, size: file.length, modified: 1000, local: true, link: false }
+      if (verb !== 'files.read') return guest(verb, args as Record<string, unknown>)
+      const { offset, length, version } = args as { offset: number; length: number; version?: boolean }
+      if (offset === 0) firsts.push(offset)
+      const data = (offset === 0 ? file : edited).subarray(offset, offset + length)
+      return { data: data.toString('base64'), size: file.length, eof: offset + data.length >= file.length, ...(version ? { version: `${file.length}:1000:${hash}` } : {}) }
+    })
+    const before = copyCounts.commits
+    await expect(open()).rejects.toThrow('changed while it was read')
+    // Read once more, then refused, and nothing was put in the copy's place.
+    expect(firsts).toHaveLength(2)
+    expect(copyCounts.commits).toBe(before)
+  })
+
+  it("keeps a copy whose bytes are the helper's version, hash and all", async () => {
+    const file = Buffer.from('vm workbook, hashed')
+    const hash = createHash('sha256').update(file).digest('hex')
+    setVmCall(async (verb, args = {}) => {
+      if (verb === 'files.stat') return { name: 'Roster.xlsx', path: ROSTER, dir: false, size: file.length, modified: 1000, local: true, link: false }
+      if (verb !== 'files.read') return guest(verb, args as Record<string, unknown>)
+      return { data: file.toString('base64'), size: file.length, eof: true, version: `${file.length}:1000:${hash}` }
+    })
+    const { copy } = await open()
+    expect(readFileSync(copy).equals(file)).toBe(true)
   })
 
   it("is read with the helper's version, and a save goes back by it: the guest's file changes", async () => {
