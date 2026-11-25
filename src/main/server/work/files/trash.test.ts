@@ -92,6 +92,22 @@ describe('a delete', () => {
     expect(rig.canvas.get(opened.item!.id)).toBeNull()
   })
 
+  it('keeps the tab and Go to name when the move to Trash fails after it starts: it closes only once Trash holds the file', async () => {
+    const path = join(rig.folder, 'notes.txt')
+    const opened = await call<FilesOpened>('work.files.open', { ref: at(path) })
+    // Trash's own folder cannot be made: the move fails once the row is written
+    mkdirSync(trashRoot(rig.dataDir), { recursive: true })
+    writeFileSync(join(trashRoot(rig.dataDir), WS), 'not a folder')
+    const got = await trash([path])
+    expect(got.trashed).toEqual([])
+    expect(got.refused).toHaveLength(1)
+    expect(existsSync(path)).toBe(true)
+    expect(rows()).toEqual([])
+    expect((await call<FilesTabs>('work.files.tabs', {})).tabs.some((t) => t.id === opened.tabId)).toBe(true)
+    expect(rig.canvas.get(opened.item!.id)).not.toBeNull()
+    rmSync(join(trashRoot(rig.dataDir), WS))
+  })
+
   it('closes the tabs of files inside a folder that goes', async () => {
     const opened = await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'Events', 'Spring LAN', 'Bracket.pdf')) })
     await trash([join(rig.folder, 'Events')])
@@ -513,11 +529,77 @@ describe("a delete in a library on this host's disk", () => {
     expect(tab()).toMatchObject({ copyOf })
 
     setSystemBin(bin())
-    expect(await asked([path])).toMatchObject({ trashed: [expect.any(String)], refused: [] })
+    // His question showed the copy's one write: that is what goes.
+    expect(await call<FileDone>('work.files.trash', { refs: [at(path)], op: op(), asked: true, writes: { [refKey(at(path))]: 1 } })).toMatchObject({ trashed: [expect.any(String)], refused: [] })
     expect(existsSync(path)).toBe(false)
     expect(copyRecord(rig.ctx, WS, HOST, path)).toBeNull()
     expect(existsSync(copy)).toBe(false)
     expect(tab()).toBeUndefined()
+  })
+
+  it('keeps a copy written after his press, while the bin was slow: only the writes his question showed are let go', async () => {
+    const path = join(rig.team, 'General', 'Plan.docx')
+    const copyDir = join(rig.dataDir, 'open-copy')
+    mkdirSync(copyDir)
+    const copy = join(copyDir, 'Plan.docx')
+    writeFileSync(copy, 'unsent edits')
+    const copyOf = { host: HOST, path }
+    const tabs = filesState(rig.ctx).tabs
+    const { tabId } = tabs.openFile(WS, { key: refKey(at(path)), name: 'Plan.docx', kind: 'file', source: at(copy), copyOf })
+    recordCopy(rig.ctx, { workspaceId: WS, ...copyOf, vm: false, copy, name: 'Plan.docx', kind: 'file', version: '1', sha256: 'original' })
+    rig.db.prepare("UPDATE work_files_copies SET state = 'refused', writes = 1 WHERE copy = ?").run(copy)
+    const slow = bin()
+    setSystemBin({
+      ...slow,
+      async put(p, o) {
+        // his next words land in the copy while the bin takes the file
+        writeFileSync(copy, 'unsent edits and more')
+        rig.db.prepare('UPDATE work_files_copies SET writes = 2 WHERE copy = ?').run(copy)
+        return slow.put(p, o)
+      }
+    })
+    expect(await call<FileDone>('work.files.trash', { refs: [at(path)], op: op(), asked: true, writes: { [refKey(at(path))]: 1 } })).toMatchObject({ trashed: [expect.any(String)] })
+    expect(existsSync(path)).toBe(false)
+    expect(tabs.list(WS).tabs.find((t) => t.id === tabId)).toBeUndefined()
+    // The tab closed with the file; the copy and its record stay, kept for him.
+    expect(copyRecord(rig.ctx, WS, HOST, path)).toMatchObject({ closed: 1, writes: 2 })
+    expect(readFileSync(copy, 'utf8')).toBe('unsent edits and more')
+  })
+
+  it('keeps an unsent copy no question showed: a delete with no watermark lets go of nothing he was not asked about', async () => {
+    const path = join(rig.team, 'General', 'Plan.docx')
+    const copy = join(rig.dataDir, 'Plan copy.docx')
+    writeFileSync(copy, 'unsent edits')
+    const copyOf = { host: HOST, path }
+    filesState(rig.ctx).tabs.openFile(WS, { key: refKey(at(path)), name: 'Plan.docx', kind: 'file', source: at(copy), copyOf })
+    recordCopy(rig.ctx, { workspaceId: WS, ...copyOf, vm: false, copy, name: 'Plan.docx', kind: 'file', version: '1', sha256: 'original' })
+    rig.db.prepare("UPDATE work_files_copies SET state = 'refused', writes = 1 WHERE copy = ?").run(copy)
+    expect((await asked([path])).trashed).toHaveLength(1)
+    expect(copyRecord(rig.ctx, WS, HOST, path)).toMatchObject({ closed: 1 })
+    expect(existsSync(copy)).toBe(true)
+  })
+
+  it('says a mapped drive that went away mid-delete is not known, never Deleted: no row, no closed tab, no forgotten name', async () => {
+    const plan = join(rig.team, 'General', 'Plan.docx')
+    await call<FilesOpened>('work.files.open', { ref: at(plan), op: op() })
+    const away = `${rig.team}-away`
+    setSystemBin({
+      async put() {
+        // the drive drops: its top cannot be reached, and the bin's answer never comes
+        renameSync(rig.team, away)
+        throw new Error('The network path was not found.')
+      }
+    })
+    try {
+      const done = await asked([plan])
+      expect(done.trashed).toEqual([])
+      expect(done.refused).toEqual([{ name: 'Plan.docx', text: expect.stringMatching(/stopped answering mid-delete\. Look in its folder once it is back\.$/), unknown: true }])
+      expect(rows()).toEqual([])
+      expect((await call<FilesTabs>('work.files.tabs', {})).tabs.some((t) => t.kind === 'file' && t.name === 'Plan.docx')).toBe(true)
+    } finally {
+      renameSync(away, rig.team)
+    }
+    expect(existsSync(plan)).toBe(true)
   })
 
   it('runs for a workspace another host keeps, his window asking the file\'s own host, and puts it back there', async () => {

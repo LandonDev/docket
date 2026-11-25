@@ -821,8 +821,9 @@ library's delete goes to the computer's own bin and Trash keeps only its row
   else a copy synced and read back, then the source removed; a folder over
   2 GB across disks is refused in its sentence. A file a thread is writing
   in is refused ("A thread is writing in this file. Try when it is done.").
-  A Files tab on the file, or on anything in the folder, is closed first,
-  its item with it. His window sends what such a tab still holds before it
+  A Files tab on the file, or on anything in the folder, closes once the row
+  is `held`, its item with it, and Go to forgets the name then; a move that
+  fails leaves the tab, its item and the name. His window sends what such a tab still holds before it
   asks (acts.ts `trash`, `unsavedIn` through canvas/flush.ts, the close's
   bounded wait), so Trash and Put Back keep his last words; a tab whose
   words failed or ran late asks first ("Changes to Notes.txt are not
@@ -924,11 +925,27 @@ key, or from the bar for many.
   the bin is asked, and the row is held with where the bin said it lies
   (`bin` in its ref JSON). Only once the bin has taken the thing does a
   Files tab on it, or on anything in the folder, close (by its library key
-  and by the plain key a copy's tab holds; a copy's tab through the copies'
-  own `copyClosing`, its unsent changes let go: he was asked). A bin that
-  refuses leaves no row, the file, and every tab on it with what its copy
-  had not sent; its refusal is that file's line in `refused`. No bytes are
-  kept here.
+  and by the plain key a copy's tab holds). A copy's tab closes through the
+  copies' own `copyDeleted`: his window sends `writes`, each open copy's
+  writes his question showed by the key of its file (acts.ts `writesIn`,
+  read after what the tabs held went in), and the unsent changes go only
+  where the copy has none or no more writes than that. A copy written after
+  his press (while the bin was slow), or one with unsent changes the
+  question never showed (no `writes`: an older window, a thread), is kept
+  and sent as a closed tab's is; its file gone, it waits as gone with its
+  bytes. A bin that refuses leaves no row, the file, and every tab on it
+  with what its copy had not sent; its refusal is that file's line in
+  `refused`. No bytes are kept here.
+- **Absent, away, unknown.** Only the disk's own word that the thing is gone
+  (ENOENT or ENOTDIR with the place's top still there, trash.ts
+  `presenceOf`) says a bin that failed moved it. A top that cannot be
+  reached (a mapped drive whose network went) is `away`, any other failed
+  look `unknown`: no row stands, no tab closes, no name is forgotten, and
+  the refusal carries `unknown: true` ("J: stopped answering mid-delete.
+  Look in its folder once it is back."), which his window titles "Delete
+  not confirmed", never "Nothing was deleted" nor Deleted with Undo. A
+  delete for good on a drive with no bin removes only the thing he was
+  asked about: one that took its name since (another inode) is left.
 - **Undo and Put back** (`restore`): a row with `bin` goes back from there
   to the path it had, never over anything ("Plan (restored).docx" beside one
   of its name). A Mac uses an exclusive rename for files and folders
@@ -1080,7 +1097,7 @@ asked for.
 | New | `files.create {name, mimeType, parents}`: an empty Google Doc, Sheet, Slides deck or folder, "Untitled document" then "Untitled document 2" against the names TempCode sees there. A text file and a template are refused |
 | Rename | `files.update {name}`. The id stays, so a tab, a star and a recent follow with nothing to carry |
 | Move | `files.update ?addParents=…&removeParents=…`, one call, within one account's Drive. Out of it, or into it, is the grammar's "A Google file lives in Google Drive. Export a copy instead." |
-| Delete | `files.update {trashed: true}`: Drive's own bin, which keeps it 30 days. A Trash row with `provider: 'drive'` and no bytes here; his window asks first when others can open it ("Delete for everyone?") |
+| Delete | `files.update {trashed: true}`: Drive's own bin, which keeps it 30 days. A Trash row with `provider: 'drive'` and no bytes here; his window asks first when others can open it ("Delete for everyone?"). A tab on it closes only once Drive answered: a refusal or a lost answer leaves the tab, the name and no row |
 | Put back | `files.update {trashed: false}`: back in the folder it was in |
 | Copy, upload, edit | not offered |
 
@@ -1577,7 +1594,7 @@ while its screen is unlocked.
 | `trash`, `upload` | operate, and `approve` where others can open the place | screen | located and passed through the door, then "Files cannot … yet" |
 | `restore`, `purge` | operate; approve | screen; never | the workspace's own rows; not built |
 | `make`, `rename`, `move`, `copy` | operate, and `approve` where others can open the place | screen | located and passed through the door, then "Files cannot … yet" |
-| `trash {refs, op}` | operate, and `approve` where others can open the place | screen | each ref through the door first (one refused refuses all), then to Trash ("Trash"); answers `FileDone` with `trashed`, the row ids Undo passes to `restore` |
+| `trash {refs, op, writes?}` | operate, and `approve` where others can open the place | screen | each ref through the door first (one refused refuses all), then to Trash ("Trash"); `writes`: each open copy's writes his question showed ("A delete in a library"); answers `FileDone` with `trashed`, the row ids Undo passes to `restore`, and `unknown` on a refusal whose outcome its disk did not say |
 | `restore {ids, op}`, `purge {ids?}` | operate, and `approve` where others can open what comes back; approve | screen; never | the workspace's own rows ("Trash"): `FileDone` with what came back and where; `{ purged }` |
 | `upload {at, name, size, sha256, op}` | operate, and `approve` where others can open the place | screen | `{ uploadId }`; the bytes then go as `attachment.chunk` and `attachment.commit` ("Upload") |
 | `home`, `names`, `search`, `searches`, `saveSearch`, `dropSearch`, `read`, `preview`, `thumbs` | | | declared; not built |
@@ -1982,7 +1999,7 @@ alone of the changes, named as the box names that desktop (`name`).
   (files/across.ts `trashElsewhere`, `changeElsewhere`), never refused with "That file is on another host"; its Trash
   ids come back as `far:<host>:<id>`, so a Put back asked of the box goes to that host (`restoreElsewhere`); once that
   bin took a file, the box's copy tabs of it close (`closeFarTabs`), the unsent words they held let go only after the
-  bin answered, as his confirm said. Files of two computers in one delete are refused: "Delete the files of one
+  bin answered and only as far as his confirm showed them (`writes`, `copyDeleted`). Files of two computers in one delete are refused: "Delete the files of one
   computer at a time."
 - **A drive with no bin** (a mapped drive `R:` or a `\\server\share`, `noBinDrive` in shared/work/files.ts): its place
   says `bin: false`; the window always asks, "Delete Roster.xlsx for good?" over "Deleted from R: at once; it cannot be

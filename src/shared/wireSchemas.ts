@@ -1629,7 +1629,7 @@ export const FilePreviewPhoneSchema = z.object({ png: z.string().optional(), pag
 export const FilesThumbsSchema = z.object({ thumbs: z.array(z.string().nullable()) })
 /** `work.files.open`, as the phone reads it: the item the Files pane now holds, or the thread that already shows the file. The tabs stay the desktop's. */
 export const FilesOpenedPhoneSchema = z.object({ rev: z.number(), tabId: z.string().optional(), item: CanvasItemSchema.optional(), held: z.object({ sessionId: z.string(), itemId: z.string() }).optional() })
-export const FileDoneSchema = z.object({ entries: z.array(FileEntrySchema), refused: z.array(z.object({ name: z.string(), text: z.string() })), trashed: z.array(z.string()).optional(), op: z.string() })
+export const FileDoneSchema = z.object({ entries: z.array(FileEntrySchema), refused: z.array(z.object({ name: z.string(), text: z.string(), unknown: z.boolean().optional() })), trashed: z.array(z.string()).optional(), op: z.string() })
 /** `landed`: the op's file was already made at a commit whose answer was lost (files/upload.ts): nothing more to send. */
 export const FilesUploadBegunSchema = z.object({ uploadId: z.string(), landed: z.literal(true).optional() })
 export const FilesStarredSchema = z.object({ starred: z.boolean() })

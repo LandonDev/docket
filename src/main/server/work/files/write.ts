@@ -14,7 +14,8 @@ import { driveOf } from '../office/files/reach'
  * just before it writes, and checks where the result really landed just after.
  */
 
-export type RefusedCode = 'name' | 'taken' | 'outside' | 'link' | 'gone' | 'too-big' | 'busy'
+/** `unknown`: a change whose outcome its disk did not say (a mapped drive that went away mid-delete). */
+export type RefusedCode = 'name' | 'taken' | 'outside' | 'link' | 'gone' | 'too-big' | 'busy' | 'unknown'
 
 /** A refusal a person reads: thrown for a name that is not allowed, a taken name, a path that left its root. */
 export class FileRefused extends Error {

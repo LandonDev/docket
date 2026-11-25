@@ -591,6 +591,21 @@ export function copyClosing(ctx: WorkCtx, workspaceId: string, tab: FileTab | un
   rmSync(r.dir, { recursive: true, force: true })
 }
 
+/** The copies' writes his delete question showed, by the key of each copy's file (`refKey` of its tab's `copyOf`). */
+export type ShownWrites = Readonly<Record<string, number>>
+
+/**
+ * A copy tab closes for a delete its file's bin took: what waits in it goes only as his question said, the writes it
+ * showed (`shown`) and none since. A copy written after his press, or one the question never showed with changes not
+ * sent, is kept and sent as a closed tab's is (its file gone, it waits as gone, the bytes kept for him).
+ */
+export function copyDeleted(ctx: WorkCtx, workspaceId: string, tab: FileTab, shown: ShownWrites): void {
+  const r = tab.copyOf ? copyRecord(ctx, workspaceId, tab.copyOf.host, tab.copyOf.path) : null
+  if (!r) return
+  const seen = shown[refKey({ at: 'file', host: r.host, path: r.path })]
+  copyClosing(ctx, workspaceId, tab, r.held >= r.writes || (seen !== undefined && r.writes <= seen))
+}
+
 /**
  * The folder a Files tab's copy of `file` is made in: its own (office/files/handle.ts `copyFolderOf`), or, when a live
  * copy of another file holds that one (Keep Both re-pointed its record, or its file moved and a new one took the old

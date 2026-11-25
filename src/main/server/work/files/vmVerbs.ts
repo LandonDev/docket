@@ -12,6 +12,7 @@ import { blankOf, formIn, MAKER_KIND } from './make'
 import { fileMoved } from './moved'
 import { forgetVmList, libraryEntry, libraryKey, rowOfGuest, teamsPlaces, type LibraryPlace } from './places/teams'
 import { closeTabsOn } from './trash'
+import type { ShownWrites } from './copies'
 import { dropName } from './names'
 import { workspaceHere, type DoorPlace } from './policy'
 import type { Caller } from '../modules'
@@ -245,12 +246,12 @@ async function recycleOutcome(op: string, opts?: { wake?: boolean; signal?: Abor
 }
 
 /** Called under the file's lock when the helper has confirmed the delete. */
-function keepRecycled(ctx: WorkCtx, workspaceId: string, w: VmWhere, id: string, ref: VmTrashRef, got: Recycled, discard = true): void {
+function keepRecycled(ctx: WorkCtx, workspaceId: string, w: VmWhere, id: string, ref: VmTrashRef, got: Recycled, shown: ShownWrites | false): void {
   ctx.db
     .prepare("UPDATE work_files_trash SET ref = ?, state = 'held', held_at = COALESCE(held_at, ?) WHERE id = ? AND state = 'moving'")
     .run(JSON.stringify({ ...ref, bin: got.bin || undefined }), Date.now(), id)
   const workspace = workspaceHere(ctx.db, workspaceId)
-  if (workspace) closeTabsOn(ctx, workspace, [w.key, refKey(ref)], '\\', discard)
+  if (workspace) closeTabsOn(ctx, workspace, [w.key, refKey(ref)], '\\', shown)
   dropName(ctx.db, workspaceId, w.key)
   said(ctx, workspaceId, w.library, [dirOf(w.path)])
 }
@@ -272,7 +273,7 @@ export async function settleVmRecycle(ctx: WorkCtx, workspaceId: string, w: VmWh
  * A delete in the VM goes to the Windows Recycle Bin. Keep a pending Trash row and the helper op through lost
  * replies, so a retry can settle it by that same id. Tabs and copies close only when the helper confirms the move.
  */
-export async function vmRecycle(ctx: WorkCtx, workspaceId: string, w: VmWhere, op: string, i: number): Promise<string> {
+export async function vmRecycle(ctx: WorkCtx, workspaceId: string, w: VmWhere, op: string, i: number, shown: ShownWrites = {}): Promise<string> {
   if (isTop(w)) throw new FileRefused('busy', 'A place itself cannot be deleted.')
   if (fileLocked(w.key)) throw new FileRefused('busy', WRITING)
   return withFileLocks([w.key], async () => {
@@ -305,7 +306,8 @@ export async function vmRecycle(ctx: WorkCtx, workspaceId: string, w: VmWhere, o
       if (!(err instanceof OpLost)) ctx.db.prepare("DELETE FROM work_files_trash WHERE id = ? AND state = 'moving'").run(id)
       throw err
     }
-    keepRecycled(ctx, workspaceId, w, id, ref, got)
+    // His question's watermark: a copy written while the bin was slow keeps what it took since.
+    keepRecycled(ctx, workspaceId, w, id, ref, got, shown)
     return id
   })
 }

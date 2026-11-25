@@ -9103,10 +9103,12 @@ public struct FileDone: Codable, Hashable, Sendable {
     public struct Refused: Codable, Hashable, Sendable {
         public let name: String
         public let text: String
+        public let unknown: Bool?
 
-        public init(name: String, text: String) {
+        public init(name: String, text: String, unknown: Bool? = nil) {
             self.name = name
             self.text = text
+            self.unknown = unknown
         }
     }
 

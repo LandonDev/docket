@@ -6528,14 +6528,16 @@ public enum Methods {
             public let origin: Origin?
             public let asked: Bool?
             public let forGood: Bool?
+            public let writes: [String: Int]?
 
-            public init(workspaceId: String, refs: [Ref], op: String, origin: Origin? = nil, asked: Bool? = nil, forGood: Bool? = nil) {
+            public init(workspaceId: String, refs: [Ref], op: String, origin: Origin? = nil, asked: Bool? = nil, forGood: Bool? = nil, writes: [String: Int]? = nil) {
                 self.workspaceId = workspaceId
                 self.refs = refs
                 self.op = op
                 self.origin = origin
                 self.asked = asked
                 self.forGood = forGood
+                self.writes = writes
             }
         }
 

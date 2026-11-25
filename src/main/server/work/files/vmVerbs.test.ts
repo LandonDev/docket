@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import type { FileDone, FilesOpened, FilesListing, FilesPlaces, FilesTabs } from '@shared/contract-work-files'
 import { canvasSourcePath } from '@shared/work'
+import { refKey } from '@shared/work/files'
 import { vmCanOf } from '@shared/work/filePlaces'
 import type { Caller } from '../modules'
 import { fenceRequest, FenceError } from '../../remote/fence'
@@ -48,6 +49,8 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
   let journal: Map<string, unknown>
   let lose: number
   let refuseRecycle: boolean
+  /** runs while the stand-in's Recycle Bin takes a file: his words landing in its copy meanwhile */
+  let onRecycle: (() => void) | null
   /** what the stand-in's `files.stat` says of OneDrive's upload (absent: a helper that cannot say) */
   let synced: boolean | undefined
   /** the stand-in's Recycle Bin: where each thing lies there, and the path it had */
@@ -126,6 +129,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
         }
         case 'files.recycle': {
           if (refuseRecycle) throw new Error('The Recycle Bin refused the file.')
+          onRecycle?.()
           const path = args.path as string
           const bin = `C:\\$Recycle.Bin\\S-1-5-21\\$R${journal.size}`
           recycled.set(bin, { path, f: disk.get(path.toLowerCase())! })
@@ -172,6 +176,7 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
     recycled = new Map()
     lose = 0
     refuseRecycle = false
+    onRecycle = null
     synced = undefined
     disk = new Map()
     put(`${GENERAL}\\Plan.txt`, false, 'first')
@@ -461,11 +466,30 @@ describe.skipIf(process.platform === 'win32')('the Windows VM changed through it
       expect(await tab()).toMatchObject({ copyOf: { host: HOST, path, vm: true } })
 
       refuseRecycle = false
-      expect(await remove()).toMatchObject({ trashed: [expect.any(String)], refused: [] })
+      // His question showed the copy's one write: that is what goes.
+      expect(await call<FileDone>('work.files.trash', { refs: [at(path)], op: op(), asked: true, writes: { [refKey(at(path))]: 1 } })).toMatchObject({ trashed: [expect.any(String)], refused: [] })
       expect(disk.has(path.toLowerCase())).toBe(false)
       expect(copyRecord(rig.ctx, WS, HOST, path)).toBeNull()
       expect(existsSync(copy)).toBe(false)
       expect(await tab()).toBeUndefined()
+    })
+
+    it('keeps what a copy took after his press while the Recycle Bin was slow: the tab closes, the copy stays', async () => {
+      const path = `${GENERAL}\\Plan.txt`
+      setCopyAllowed(rig.db, WS, true)
+      const opened = await call<FilesOpened>('work.files.open', { ref: at(path), name: 'Plan.txt' })
+      const copy = canvasSourcePath(opened.item!.source)!
+      writeFileSync(copy, 'unsent edits')
+      rig.db.prepare("UPDATE work_files_copies SET state = 'refused', writes = 1 WHERE copy = ?").run(copy)
+      onRecycle = () => {
+        writeFileSync(copy, 'unsent edits and one more')
+        rig.db.prepare('UPDATE work_files_copies SET writes = 2 WHERE copy = ?').run(copy)
+      }
+      expect(await call<FileDone>('work.files.trash', { refs: [at(path)], op: op(), asked: true, writes: { [refKey(at(path))]: 1 } })).toMatchObject({ trashed: [expect.any(String)] })
+      expect(disk.has(path.toLowerCase())).toBe(false)
+      expect((await call<FilesTabs>('work.files.tabs', {})).tabs.some((t) => t.id === opened.tabId)).toBe(false)
+      expect(copyRecord(rig.ctx, WS, HOST, path)).toMatchObject({ closed: 1, writes: 2 })
+      expect(readFileSync(copy, 'utf8')).toBe('unsent edits and one more')
     })
 
     it('puts a deleted folder back beside a new one of its name, and a helper without the verb says where to put it back', async () => {

@@ -346,6 +346,27 @@ describe("a held Drive change at the write", () => {
 })
 
 describe("Drive's own bin as Trash", () => {
+  it('closes a tab on the file only once Drive took it: a Drive that refused leaves the tab, its name and no row', async () => {
+    let refuse = true
+    setGoogleDeps({
+      fetch: (async (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        refuse && init?.method === 'PATCH' && String(init.body ?? '').includes('trashed') ? new Response(JSON.stringify({ error: { message: 'Backend Error' } }), { status: 500 }) : fake.fetch(input, init)) as typeof fetch,
+      tokenUrl: FAKE_TOKEN_URL,
+      blocksOf: async () => []
+    })
+    const opened = await call<FilesOpened>('work.files.open', { ref: doc('dBrief') })
+    const open = async (): Promise<boolean> => (await call<FilesTabs>('work.files.tabs', {})).tabs.some((t) => t.id === opened.tabId)
+    const refused = await call<FileDone>('work.files.trash', { refs: [doc('dBrief')], op: op() })
+    expect(refused.trashed).toEqual([])
+    expect(refused.refused).toHaveLength(1)
+    expect(fake.files.get('dBrief')!.trashed).toBe(false)
+    expect(await open()).toBe(true)
+    expect(rig.db.prepare('SELECT COUNT(*) AS n FROM work_files_trash').get()).toEqual({ n: 0 })
+    refuse = false
+    expect((await call<FileDone>('work.files.trash', { refs: [doc('dBrief')], op: op() })).trashed).toHaveLength(1)
+    expect(await open()).toBe(false)
+  })
+
   it('deletes to the bin, lists the row in Trash with where it was, and puts it back', async () => {
     const done = await call<FileDone>('work.files.trash', { refs: [doc('dBrief')], op: op() })
     expect(done.trashed).toHaveLength(1)

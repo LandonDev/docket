@@ -1,7 +1,7 @@
 import { ATTACHMENT_CHUNK_BYTES } from "@shared/contract-attachments";
 import type { FileDone, FileRef, FileTab, SavedAsWord } from "@shared/contract-work-files";
 import type { CanvasSource } from "@shared/work";
-import { deleteAsk, questionFor, refusal, type FileEntry, type FolderRef, type MakeKind } from "@shared/work/files";
+import { deleteAsk, questionFor, refKey, refusal, type FileEntry, type FolderRef, type MakeKind } from "@shared/work/files";
 import { confirmAction } from "../../chrome/ConfirmDialog";
 import { loadToast } from "../../components/ui/toaster";
 import { blobSource } from "../../lib/attachmentUpload";
@@ -207,6 +207,9 @@ export function tabsOn(tabs: readonly FileTab[], entries: readonly FileEntry[]):
 }
 /** Whether a copy among these tabs holds changes that have not reached its file. */
 export const unsentIn = (tabs: readonly FileTab[]): boolean => tabs.some((t) => !!t.back && UNSENT.has(t.back.is));
+/** The writes of each open copy among these tabs, by its file's key: what a delete's question showed, so the host lets go of no write made after his press. */
+export const writesIn = (tabs: readonly FileTab[]): Record<string, number> =>
+  Object.fromEntries(tabs.flatMap((t) => (t.copyOf && t.back?.writes !== undefined ? [[refKey({ at: "file", host: t.copyOf.host, path: t.copyOf.path }), t.back.writes] as const] : [])));
 
 /**
  * What these open tabs still hold, sent to their files first (canvas/flush.ts, as a close does): the name of one whose
@@ -227,10 +230,13 @@ export async function trash(of: ActsOf, copy: PlaceCopy, entries: readonly FileE
   const no = entries.map((entry) => refusal(copy.place, "trash", entry)).find((r) => r !== null);
   if (no) return (failed("Nothing was deleted", new Error(no.text)), false);
   const question = questionFor(copy.place, "trash", entries[0]);
+  const unsaved = await unsavedIn(tabsOn(tabsNow(of.home, of.workspaceId), entries));
+  // The tabs as the question shows them, after what they held went in.
   const open = tabsOn(tabsNow(of.home, of.workspaceId), entries);
-  const unsaved = await unsavedIn(open);
   // A drive with no bin (a mapped drive on his PC) is always asked: what goes there cannot be put back.
   const forGood = copy.place.bin === false;
+  // The copies' writes a question showed go with the delete: the host lets go of none written after his press.
+  const writes = question || forGood || unsaved ? writesIn(open) : {};
   if (question || forGood) {
     const ask = deleteAsk(copy.place, entries.map((e) => e.name));
     const lost = unsaved ? " Changes in its open tab that are not saved are lost." : unsentIn(open) ? " Changes in its open copy that have not reached it are lost." : "";
@@ -242,7 +248,7 @@ export async function trash(of: ActsOf, copy: PlaceCopy, entries: readonly FileE
       of,
       entries.map((e) => e.key),
       { word: "Deleting…" },
-      () => filesLink(copy.link).request<FileDone>("work.files.trash", { workspaceId: of.workspaceId, refs: entries.map(refOf), op: opId(), ...(question ? { asked: true } : {}), ...(forGood ? { forGood: true } : {}) }, longWait(copy)),
+      () => filesLink(copy.link).request<FileDone>("work.files.trash", { workspaceId: of.workspaceId, refs: entries.map(refOf), op: opId(), ...(question ? { asked: true } : {}), ...(forGood ? { forGood: true } : {}), ...(Object.keys(writes).length ? { writes } : {}) }, longWait(copy)),
       (out) => out.refused.length < entries.length,
     );
     const ids = done.trashed ?? [];
@@ -252,7 +258,7 @@ export async function trash(of: ActsOf, copy: PlaceCopy, entries: readonly FileE
       // A file of another computer leaves its seat here too: the workspace's own host keeps its tabs and copies.
       if (copy.link !== of.home) for (const tab of tabsOn(tabsNow(of.home, of.workspaceId), went)) void closeTab(of.home, of.workspaceId, tab.id, HOME_PAGE, true).catch(() => undefined);
       said(doneWords("Deleted", went.map((e) => e.name)), { description: leftovers(done), ...(ids.length ? { undo: () => void restore(of, copy.link, ids) } : {}) });
-    } else failed("Nothing was deleted", new Error(leftovers(done) ?? "Nothing went to Trash."));
+    } else failed(done.refused.some((r) => r.unknown) ? "Delete not confirmed" : "Nothing was deleted", new Error(leftovers(done) ?? "Nothing went to Trash."));
     return gone > 0;
   } catch (err) {
     failed("Nothing was deleted", err);

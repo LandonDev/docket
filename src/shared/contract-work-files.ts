@@ -313,7 +313,7 @@ export const FilesRequestSchemas = [
   /** → FileDone */
   request('work.files.copy', z.object({ workspaceId: Workspace, refs: z.array(FileRefSchema).min(1).max(100), to: FolderRefSchema, op: Op, origin: FileOriginSchema.optional(), asked: z.boolean().optional() })),
   /** → FileDone */
-  request('work.files.trash', z.object({ workspaceId: Workspace, refs: z.array(FileRefSchema).min(1).max(100), op: Op, origin: FileOriginSchema.optional(), asked: z.boolean().optional(), /** his yes to a delete for good, on a drive with no bin (`FilePlace.bin`) */ forGood: z.boolean().optional() })),
+  request('work.files.trash', z.object({ workspaceId: Workspace, refs: z.array(FileRefSchema).min(1).max(100), op: Op, origin: FileOriginSchema.optional(), asked: z.boolean().optional(), /** his yes to a delete for good, on a drive with no bin (`FilePlace.bin`) */ forGood: z.boolean().optional(), /** the writes his question showed of each open copy, by the key of its file: a copy written since keeps its changes */ writes: z.record(z.string(), z.number().int().nonnegative()).optional() })),
   /** → FileDone: puts Trash rows back where they were. */
   request('work.files.restore', z.object({ workspaceId: Workspace, ids: z.array(z.string().max(160)).min(1).max(100), op: Op, origin: FileOriginSchema.optional() })),
   /** → { uploadId }: a file from a desktop or a phone into a folder; its bytes then go as `attachment.chunk`, `attachment.commit` or `attachment.abort` on that id. */
@@ -562,8 +562,8 @@ export type FilePreview = { png: string; pages: number; width: number; height: n
 export interface FileDone {
   /** the things as they are now: what was made, renamed, moved or copied */
   entries: FileEntry[]
-  /** what could not be done, each with its one sentence; the rest was done */
-  refused: { name: string; text: string }[]
+  /** what could not be done, each with its one sentence; the rest was done. `unknown`: its disk did not say whether it was done (a mapped drive gone mid-delete) */
+  refused: { name: string; text: string; unknown?: boolean }[]
   /** Trash rows a delete made: Put back restores them */
   trashed?: string[]
   /** the same change again answers this, and does nothing twice */

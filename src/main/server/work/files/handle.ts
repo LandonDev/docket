@@ -20,7 +20,7 @@ import { isStay, recordStay, reopenStay, stayDiscarded, staysOf } from './copySt
 import { linkAct, linksOf, saveAs } from './saveAs'
 import { saveAsWord } from './saveAsWord'
 import { isWordFile, keptDoc, recordWord, wordAuto, wordBacksOf, wordRow, wordSave } from './word'
-import { admitOwner, backsOf, copiesMoved, copyAt, copyBack, copyClosing, copyFolderFor, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack } from './copies'
+import { admitOwner, backsOf, copiesMoved, copyAt, copyBack, copyClosing, copyDeleted, copyFolderFor, copyKeep, copyRecord, copyReload, recordCopy, reopened, writeBack, type ShownWrites } from './copies'
 import { cloudOf, seedUpload, uploadedHere } from './uploads'
 import { bodyOfAsync, keepBodyHash } from './body'
 import { isGuestPath, vmFetch, vmList, vmStat, vmVerbs } from '../office/vm/files'
@@ -1092,7 +1092,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
   // A delete, or its Put back, of files another host holds goes to that host, which keeps them in its own bin.
   if (m === 'work.files.trash' && !namesDrive(p) && !(p.refs as FileRef[]).some(isLifeosRef)) {
     const host = farHostOf(ctx, p.refs as FileRef[])
-    if (host) return handled(await trashElsewhere(ctx, by, host, p as never, (paths) => closeFarTabs(ctx, p.workspaceId, host, paths), signal))
+    if (host) return handled(await trashElsewhere(ctx, by, host, p as never, (paths) => closeFarTabs(ctx, p.workspaceId, host, paths, (p.writes as ShownWrites | undefined) ?? {}), signal))
   }
   if ((m === 'work.files.rename' || m === 'work.files.move') && !namesDrive(p)) {
     const refs = m === 'work.files.rename' ? [p.ref as FileRef] : (p.refs as FileRef[])
@@ -1335,7 +1335,7 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       if (namesDrive(p)) return handled(await driveTrash(ctx, by, ownRows(ctx, by, p.workspaceId), p.refs as FileRef[], p.op as string, p.origin as FileOrigin | undefined))
       // A library's delete may come for a workspace another host keeps (his window asks the file's own host): its row is kept here.
       binRows(ctx, by, p.workspaceId, { peer: true })
-      return handled(await trashFiles(ctx, by, p.workspaceId, p.refs as FileRef[], p.op as string, { forGood: p.forGood === true }))
+      return handled(await trashFiles(ctx, by, p.workspaceId, p.refs as FileRef[], p.op as string, { forGood: p.forGood === true, ...(p.writes ? { writes: p.writes as ShownWrites } : {}) }))
     case 'work.files.restore':
       // Admitted, the whole selection, before the LifeOS branch (`admitRestore`); another host asks it for his window.
       return handled(await restoreRows(ctx, by, binRows(ctx, by, p.workspaceId, { peer: fromHisWindow(by, p.origin as FileOrigin | undefined) }), p.ids as string[], p.op as string))
@@ -1356,13 +1356,13 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
 /** Another host of his asking for his window's press (`origin: window`), as across.ts sends a delete's Put back. */
 const fromHisWindow = (by: Caller, origin?: FileOrigin): boolean => by.kind === 'remote' && !!by.peer && origin?.from === 'window'
 
-/** A delete another host's bin took: this workspace's copy tabs of those files close, what they held let go as his confirm said. */
-function closeFarTabs(ctx: WorkCtx, workspaceId: string, host: string, paths: readonly string[]): void {
+/** A delete another host's bin took: this workspace's copy tabs of those files close, what they held let go as far as his confirm showed it (`shown`). */
+function closeFarTabs(ctx: WorkCtx, workspaceId: string, host: string, paths: readonly string[], shown: ShownWrites): void {
   const state = filesState(ctx)
   const under = (path: string): boolean => paths.some((p) => path === p || path.startsWith(`${p}/`) || path.startsWith(`${p}\\`))
   for (const tab of state.tabs.list(workspaceId).tabs) {
     if (tab.kind !== 'file' || tab.copyOf?.host !== host || !under(tab.copyOf.path)) continue
-    copyClosing(ctx, workspaceId, tab, true)
+    copyDeleted(ctx, workspaceId, tab, shown)
     state.tabs.tabClose(workspaceId, tab.id)
   }
 }
