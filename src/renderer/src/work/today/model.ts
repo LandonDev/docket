@@ -199,12 +199,14 @@ export function fold(section: MergedSection, folds: Folds = NO_FOLDS): ShownSect
 }
 
 /**
- * Whether the one LifeOS session can be read: `waiting` while it is on its way; `offline` while no host that holds a
- * job is linked; else the true state of a session that is down (`LifeosDown`), which the page's one line says.
+ * Whether the one LifeOS session can be read: `waiting` while it is on its way and its host's status is not heard yet
+ * (or its session is asked for); `connecting` while that host says its LifeOS is connecting, a wait the page's one line
+ * names; `offline` while no host that holds a job is linked; else the true state of a session that is down
+ * (`LifeosDown`), which the page's one line says.
  */
-export type LifeosReach = "ok" | "waiting" | "offline" | LifeosDown;
+export type LifeosReach = "ok" | "waiting" | "connecting" | "offline" | LifeosDown;
 
-export type Block = { kind: "section"; section: ShownSection } | { kind: "lifeos"; reach: LifeosDown } | { kind: "lost"; failure: TodayFailure };
+export type Block = { kind: "section"; section: ShownSection } | { kind: "lifeos"; reach: LifeosDown | "connecting" } | { kind: "lost"; failure: TodayFailure };
 
 export type TodayPage =
   /** No Work workspace has a sector. */
@@ -266,8 +268,9 @@ function jobsOnly(fed: readonly Fed[], jobs: readonly TodayWorkspace[]): readonl
 }
 
 /**
- * The whole page. While no host can read LifeOS, the sections that read it
- * give way to one line in the first one's place. "All clear" is said only
+ * The whole page. While no host can read LifeOS, or the host it reads
+ * through says LifeOS is connecting, the sections that read it give way to
+ * one line in the first one's place. "All clear" is said only
  * when every source answered whole, none failed, no host is offline and
  * nothing is left: a meeting that ended is not left. A source still out
  * that draws nothing while it waits (a section with no empty line, rows for
@@ -275,6 +278,7 @@ function jobsOnly(fed: readonly Fed[], jobs: readonly TodayWorkspace[]): readonl
  */
 export function page(fed: readonly Fed[], opts: { jobs: readonly TodayWorkspace[]; lifeos: LifeosReach; folds?: Folds; gone?: ReadonlySet<string>; open?: ReadonlySet<string> }): TodayPage {
   if (opts.jobs.length === 0) return { kind: "no-jobs" };
+  // A down session and a known wait alike: one line for every section that reads LifeOS.
   const down = opts.lifeos === "ok" || opts.lifeos === "waiting" || opts.lifeos === "offline" ? null : opts.lifeos;
   const { fed: apartFed, away } = opts.open ? apart(fed, opts.open) : { fed, away: [] };
   const reached = jobsOnly(apartFed, opts.jobs);

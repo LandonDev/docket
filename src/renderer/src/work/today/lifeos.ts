@@ -37,12 +37,13 @@ export const sessionDown = (session: Pick<LifeosSession, "client" | "state">): b
 /**
  * Whether the session can be read, as the page says it. No open host holds a job: `offline`, which the page's foot
  * already says. A session that is down keeps its true state (`downOf`): a computer the host keeps LifeOS from, or a
- * sign-in that waits for his approval, is never said as silence or as signed out.
+ * sign-in that waits for his approval, is never said as silence or as signed out. `connecting`: the host said its
+ * LifeOS is connecting (`useHostLive`'s wait), which the page names; a status not heard yet is `waiting`, its bones.
  */
-export function reachOf(session: Pick<LifeosSession, "client" | "state" | "withheld" | "unanswered">, host: string | null): LifeosReach {
+export function reachOf(session: Pick<LifeosSession, "client" | "state" | "withheld" | "unanswered">, host: string | null, connecting = false): LifeosReach {
   if (!host) return "offline";
   if (session.client) return "ok";
-  return downOf(session) ?? "waiting";
+  return downOf(session) ?? (connecting ? "connecting" : "waiting");
 }
 
 /** The six sectors, as fixed slots for the narrowed reads. */

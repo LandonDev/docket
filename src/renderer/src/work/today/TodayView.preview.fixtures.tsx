@@ -14,6 +14,7 @@ export const fixtures = [
   { name: "LifeOS refused the box's sign-in", props: { state: "sign-in-refused" } },
   { name: "This computer cannot read LifeOS through the box", props: { state: "withheld" } },
   { name: "The LifeOS sign-in waits for your approval", props: { state: "pairing" } },
+  { name: "LifeOS is still connecting on the box", props: { state: "connecting" } },
   { name: "All clear", props: { state: "clear" } },
   { name: "All clear, the day's meetings over", props: { state: "evening" } },
   { name: "With the other pillars' rows: clashes, Messages, Owed, the review", props: { state: "pillars" } },

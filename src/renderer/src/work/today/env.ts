@@ -6,6 +6,7 @@ import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { workHome } from "../shell/actions";
 import { reopenLifeos, useLifeosSession, useLifeosStatusHeard } from "../shell/lifeos";
+import { useHostLive } from "../shell/lifeosLive";
 import { lifeosHosts, pickHost, reachOf, sessionDown } from "./lifeos";
 import { useMinute } from "../tasks/minute";
 import { dayBounds, jobsOf, workspaceFor, type LifeosReach } from "./model";
@@ -39,6 +40,8 @@ export function useTodayEnv(): { env: TodayEnv; reach: LifeosReach; lifeosHost: 
   const host = pickHost(hosts, tried);
   const lifeos = useLifeosSession(host ?? "", null);
   const down = !!host && sessionDown(lifeos);
+  // The host said its LifeOS is connecting: the page names the wait once, in the place of the sections that read it.
+  const connecting = useHostLive(host ?? "").waits;
   // A computer tried again (below) first shows the session it was passed over on, which its own effect then asks for
   // afresh: it is judged on what that ask finds, not on the old state.
   const revived = useRef<string | null>(null);
@@ -84,7 +87,7 @@ export function useTodayEnv(): { env: TodayEnv; reach: LifeosReach; lifeosHost: 
         : undefined,
     [host],
   );
-  return { env, reach: reachOf(lifeos, host), lifeosHost: host, retryLifeos, open };
+  return { env, reach: reachOf(lifeos, host, connecting), lifeosHost: host, retryLifeos, open };
 }
 
 /** How many computers passed over Today hears again; past that many, one comes back when the hosts change. */

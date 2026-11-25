@@ -179,7 +179,9 @@ nothing.
   LifeOS on the box" or "LifeOS refused the box's sign-in" with Sign in, and
   "The LifeOS sign-in on the box waits for your approval" with Show the code
   (both open the sign-in dialog in place), where this window may sign the
-  host in; "Work is off on the box" with Open Settings where this window may
+  host in; "LifeOS is still connecting on the box" with a spinner and no
+  press while that host says it is connecting (`connecting`, from
+  `useHostLive`; a status not heard yet keeps the sections' bones); "Work is off on the box" with Open Settings where this window may
   turn Work on; else no press and who can ("Sign in from a computer that
   manages the box" for a sign-in, "Changed from a computer that manages the
   box" for the switch); a computer the host keeps LifeOS from ("This computer cannot read

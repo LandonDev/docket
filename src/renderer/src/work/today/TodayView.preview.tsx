@@ -65,7 +65,7 @@ const job = (environmentId: string, sector: TodayWorkspace["sector"], open = tru
 const JOBS = (["cosmic", "hypixel", "purdue", "ref", "unify", "life"] as const).map((sector) => job("box", sector));
 const fed = (section: TodaySection, answer: TodayAnswer): Fed => ({ source: { id: section.id, section }, answer });
 
-type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "lost-elsewhere" | "refused" | "lifeos-down" | "unanswered" | "unanswered-long" | "sign-in-refused" | "signed-out" | "withheld" | "pairing" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
+type State = "day" | "unfolded" | "bones" | "empty" | "hosts" | "lost-elsewhere" | "refused" | "lifeos-down" | "unanswered" | "unanswered-long" | "sign-in-refused" | "signed-out" | "withheld" | "pairing" | "connecting" | "clear" | "evening" | "pillars" | "long-job" | "no-jobs" | "sheet" | "sheet-next";
 
 /** A job by its workspace's name, as the rail says it. */
 
@@ -113,6 +113,9 @@ function modelOf(state: State) {
       );
     case "lifeos-down":
       return page(FULL, opts("unreachable"));
+    // The box said its LifeOS is connecting: one named wait where the sections that read it stood, no press.
+    case "connecting":
+      return page(FULL, opts("connecting"));
     case "unanswered":
     case "unanswered-long":
       return page(FULL, opts("unanswered"));

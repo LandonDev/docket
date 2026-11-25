@@ -27,6 +27,8 @@ const world = vi.hoisted(() => ({
   owed: 0,
   // workspaces whose `work.test.owed` never answers
   owedHeld: new Set<string>(),
+  // what every host says of its LifeOS
+  lifeos: "signed-out",
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -62,7 +64,7 @@ vi.mock("../../lib/connection", async (original) => {
           Object.assign(find(), { state: "sent", decidedBy: "owner", decidedAt: now, updatedAt: now });
           return find();
         case "work.lifeos.status":
-          return { lifeos: { state: "signed-out" }, keys: [] };
+          return { lifeos: { state: world.lifeos }, keys: [] };
         case "work.test.owed":
           if (world.owedHeld.has(params.workspaceId as string)) return new Promise(() => {});
           return { n: world.owed };
@@ -190,6 +192,7 @@ beforeEach(() => {
   world.open = new Set(["box", "mac"]);
   world.owed = 0;
   world.owedHeld.clear();
+  world.lifeos = "signed-out";
   forgetEach();
   moved();
   setWorkOn("box", true);
@@ -294,6 +297,42 @@ describe("Today", () => {
     fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(rowTitles()).toEqual(["Send to Marcus Bell", "Send to Northfield Parks"]));
     expect(section("held").querySelector('[data-view-state="failed"]')).toBeNull();
+  });
+
+  it("names a host's LifeOS connecting once, in the place of the sections that read it, with no press; the others stay", async () => {
+    // Council round 11 (Sol Today 1, P2): a known wait is one named line for the page's LifeOS block, never bones alone.
+    const { resetLifeos } = await import("../shell/lifeos");
+    // Statuses an earlier case heard are forgotten: each host is asked afresh.
+    resetLifeos();
+    world.lifeos = "connecting";
+    world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
+    await loadOutbox();
+    const due = { id: "due", section: { id: "due", title: "Due", order: 30, empty: "Nothing due", lifeos: true }, use: () => ({ loading: true }) };
+    const meetings = { id: "meetings", section: { id: "meetings", title: "Meetings", order: 20, empty: "No meetings", lifeos: true }, use: () => ({ loading: true }) };
+    resetToday([held, meetings, due]);
+    try {
+      render(<View onClose={() => {}} />);
+      await waitFor(() => expect(document.querySelector('[data-today-lifeos="connecting"]')).not.toBeNull());
+      const line = document.querySelector<HTMLElement>('[data-today-lifeos="connecting"]')!;
+      expect(line.textContent).toMatch(/^LifeOS is still connecting on (the box|Mac)$/);
+      expect(document.body.textContent!.split("LifeOS is still connecting").length - 1).toBe(1);
+      expect(within(line).queryAllByRole("button")).toHaveLength(0);
+      expect(line.querySelector("[aria-busy]") ?? line.querySelector('[data-view-state="waits"]')).not.toBeNull();
+      // The sections that read LifeOS gave way: no bones, no heading; the held rows stay.
+      expect(document.querySelector('[data-today-section="due"]')).toBeNull();
+      expect(document.querySelector('[data-today-section="meetings"]')).toBeNull();
+      expect(rowTitles()).toEqual(["Send to Marcus Bell"]);
+      // The wait turns down: the same place says the state with its press.
+      const { setLifeosStatus } = await import("../shell/lifeos");
+      act(() => {
+        setLifeosStatus("box", { lifeos: { state: "signed-out" }, keys: [] } as never);
+        setLifeosStatus("mac", { lifeos: { state: "signed-out" }, keys: [] } as never);
+      });
+      await waitFor(() => expect(document.querySelector('[data-today-lifeos="signed-out"]')).not.toBeNull());
+      expect(document.querySelector('[data-today-lifeos="connecting"]')).toBeNull();
+    } finally {
+      resetLifeos();
+    }
   });
 
   it("says a host's failure in Work's words: did not answer only for a wait, its plain refusal, or that it could not read this", () => {

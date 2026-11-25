@@ -18,6 +18,8 @@ import { CutDetail } from "../canvas/QuietLine";
 import { useTodayEnv } from "./env";
 import { downIsSilence, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
+import { connectingWords } from "../shell/lifeosWords";
+import { Spinner } from "../../components/ui/spinner";
 import { HeldSheet } from "./HeldSheet";
 import { foldKey, foldOf, page, type ShownSection, type TodayPage } from "./model";
 import { openAddWorkspace } from "./open";
@@ -232,7 +234,12 @@ export function TodayPageView({
           </div>
         ) : (
           <div key="lifeos" data-today-lifeos={block.reach} className="mt-6 first:mt-0">
-            <LifeosLine down={block.reach} environmentId={lifeosEnv ?? ""} host={lifeosHost} retry={onRetryLifeos} />
+            {block.reach === "connecting" ? (
+              // The host said LifeOS is on its way: its name and the wait, with no press.
+              <PageLine waits word={connectingWords(lifeosHost)} />
+            ) : (
+              <LifeosLine down={block.reach} environmentId={lifeosEnv ?? ""} host={lifeosHost} retry={onRetryLifeos} />
+            )}
           </div>
         ),
       )}
@@ -454,13 +461,14 @@ export function hostFailureWords(error: string, name: string): string {
  * line"), on the rows' own grid: 32px, the failed mark in the lead, the
  * words on the titles' edge with a muted detail, one action whose label
  * ends on the facts' edge. A fault leads with the mark; a sign-in that is
- * only missing is plain muted words.
+ * only missing is plain muted words; a wait leads with a spinner and has no
+ * press.
  */
-function PageLine({ word, detail, note, failed = false, action }: { word: string; detail?: string; note?: string | readonly (string | null | undefined)[]; failed?: boolean; action?: { label: string; run: () => void | Promise<void> } }) {
+function PageLine({ word, detail, note, failed = false, waits = false, action }: { word: string; detail?: string; note?: string | readonly (string | null | undefined)[]; failed?: boolean; waits?: boolean; action?: { label: string; run: () => void | Promise<void> } }) {
   const [running, setRunning] = useState(false);
   return (
-    <div data-view-state={failed ? "failed" : "needs"} role="status" className={cn("min-h-8 items-center px-3 py-1 leading-5", ROW_GRID)}>
-      <span className="flex h-5 items-center justify-center">{failed ? <StatusMark state="failed" word={false} aria-hidden /> : null}</span>
+    <div data-view-state={failed ? "failed" : waits ? "waits" : "needs"} role="status" aria-busy={waits || undefined} className={cn("min-h-8 items-center px-3 py-1 leading-5", ROW_GRID)}>
+      <span className="flex h-5 items-center justify-center">{failed ? <StatusMark state="failed" word={false} aria-hidden /> : waits ? <Spinner aria-hidden className="size-3.5 text-muted-foreground" /> : null}</span>
       {/* Cut on a narrow page, the detail is a Tab stop with its whole words in a tip (the canvas's `CutDetail`). A muted
           line is the state itself: it wraps, never cut, and with no press it takes the columns the press would have. */}
       {failed ? (
