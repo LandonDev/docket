@@ -626,6 +626,21 @@ describe('the review\'s holes, through the module', () => {
     expect(existsSync(first.path)).toBe(false)
     expect(readdirSync(join(canvasItemDir(dir, 't1', id), 'export'))).toHaveLength(5)
   })
+
+  it('a read that names a copy\'s revision gets that copy, while another has been made since; one no longer kept is refused', async () => {
+    const id = openItem(put('rw9.pdf', W9))
+    await call('work.pdf.setField', { itemId: id, key: NAME, value: 'First' })
+    const first = await call<{ rev: string; size: number }>('work.pdf.export', { itemId: id })
+    const firstBytes = await bytesOf(id, 'export')
+    await call('work.pdf.setField', { itemId: id, key: NAME, value: 'Second' })
+    await call('work.pdf.export', { itemId: id })
+    expect((await bytesOf(id, 'export')).equals(firstBytes)).toBe(false)
+    const read = await call<{ data: string; rev: string }>('work.pdf.read', { itemId: id, which: 'export', offset: 0, length: first.size, rev: first.rev })
+    expect(read.rev).toBe(first.rev)
+    expect(Buffer.from(read.data, 'base64').equals(firstBytes)).toBe(true)
+    for (let i = 0; i < 5; i++) await call('work.pdf.export', { itemId: id })
+    await expect(call('work.pdf.read', { itemId: id, which: 'export', offset: 0, length: 10, rev: first.rev })).rejects.toThrow('That copy is no longer kept')
+  })
 })
 
 describe('round three: the fence on every method, the push, the hash, reverts', () => {

@@ -55,9 +55,11 @@ export const pdf: WorkModule = {
       case 'work.pdf.read': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')
         if (req.params.which === 'export') {
-          const copy = lastExport(await itemDir(ctx, item, 'export'))
+          // A read that names its copy's revision gets that copy, while a second Save a Copy makes another beside it.
+          const dir = await itemDir(ctx, item, 'export')
+          const copy = lastExport(dir, req.params.rev)
+          if (!copy && req.params.rev && lastExport(dir)) throw new ItemFileError('That copy is no longer kept: save a copy again.', 'stale')
           if (!copy) throw new ItemFileError('No copy has been made of this file yet.', 'missing')
-          if (req.params.rev && req.params.rev !== copy.rev) throw new ItemFileError('A newer copy has been made since: read that one.', 'stale')
           return handled({ ...readRange(copy.path, req.params.offset, req.params.length), rev: copy.rev })
         }
         // The version the view named, never a newer one: one load reads one version.

@@ -351,6 +351,18 @@ describe("the PDF kind", () => {
     expect(exports).toEqual(["export"]);
   });
 
+  it("reads a saved copy by its own revision, so a second Save a Copy made meanwhile never lends it bytes", async () => {
+    await open(pdfView({}));
+    URL.createObjectURL ??= () => "blob:copy";
+    URL.revokeObjectURL ??= () => undefined;
+    pdfHost.export = async () => ({ name: "Ballroom contract.pdf", size: 6 * 1024 * 1024, rev: "r1", warnings: [] });
+    const reads: Array<string | undefined> = [];
+    pdfHost.read = async (which, _offset, length, rev) => (which === "export" && reads.push(rev), new Uint8Array(length));
+    fireEvent.click(await screen.findByRole("button", { name: "Save a copy" }));
+    await waitFor(() => expect(reads).toHaveLength(2));
+    expect(reads).toEqual(["r1", "r1"]);
+  });
+
   it("spins Sign and holds it while the host places a saved signature, so a second press cannot sign again", async () => {
     await open(pdfView({ hasSignature: true, fields: [field("sig", { type: "signature", origin: "overlay", state: "needs-owner" })] }));
     await pdfHost.setSignature({ width: 10, height: 10, strokes: [[[1, 1], [5, 5]]] });

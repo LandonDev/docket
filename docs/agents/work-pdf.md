@@ -176,7 +176,7 @@ and never taken off by a thread.
 | Method | Capability | Answers |
 |---|---|---|
 | `work.pdf.open` | read | `PdfView` |
-| `work.pdf.read` | read | bytes by range, of the file (the version `rev` names) or (`which: 'export'`) of the last copy |
+| `work.pdf.read` | read | bytes by range, of the file (the version `rev` names) or (`which: 'export'`) of the last copy, or the kept copy `rev` names |
 | `work.pdf.first` | read | `PdfFirstPage`: the first page as one PNG of the version `rev` names, `width` held to 1600 px and the bytes to 3 MB; drawn once a version and width and kept in the item's `first/` folder, one version at a time |
 | `work.pdf.review` | operate | `PdfView`: accept or reject suggestions, by key or all |
 | `work.pdf.setField` | operate | `PdfView`: his own value; null gives the file's back |
@@ -201,7 +201,11 @@ built").
 `canvas/<thread>/<item>/export/<time>-<id>/<the document's name>.pdf`.
 Each copy has a folder of its own, so a draft that kept an earlier copy's
 path still attaches those bytes; the newest five are kept, and
-`work.pdf.read` with `which: 'export'` reads the newest. It writes the
+`work.pdf.read` with `which: 'export'` reads the newest, or with `rev` the
+kept copy of that revision: Save a Copy names its own copy's `rev` in every
+read, so a second Save a Copy made while the first reads never lends it
+bytes, and a copy no longer kept is refused ("That copy is no longer kept").
+It writes the
 version the canvas shows (the newest kept copy), and carries the values he accepted or typed, his highlights as real
 `/Highlight` annotations named `tc:<threadId>:<markId>`, and his
 signature drawn in as ink when he signed. A value that still waits is

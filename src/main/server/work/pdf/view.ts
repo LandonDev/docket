@@ -331,11 +331,13 @@ const exportDirs = (dir: string): string[] =>
     .sort()
     .reverse()
 
-/** The copy last made of an item, if one was. */
-export function lastExport(dir: string): FileStamp | null {
+/** The copy last made of an item, if one was; with `rev`, the kept copy of that revision, newer ones made since or not. */
+export function lastExport(dir: string, rev?: string): FileStamp | null {
   for (const sub of exportDirs(dir)) {
     const name = readdirSync(join(dir, sub)).find((f) => f.toLowerCase().endsWith('.pdf'))
-    if (name) return stampOf(join(dir, sub, name), name)
+    if (!name) continue
+    const copy = stampOf(join(dir, sub, name), name)
+    if (!rev || copy.rev === rev) return copy
   }
   return null
 }

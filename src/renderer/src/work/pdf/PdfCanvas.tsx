@@ -516,7 +516,8 @@ async function saveCopy(host: PdfHost): Promise<void> {
   await fieldsWritten(host);
   const made = await host.export(true);
   const parts: Uint8Array[] = [];
-  for (let at = 0; at < made.size; at += 4 * 1024 * 1024) parts.push(await host.read("export", at, Math.min(4 * 1024 * 1024, made.size - at)));
+  // Each read names this copy's revision: a second Save a Copy made meanwhile never lends it its bytes.
+  for (let at = 0; at < made.size; at += 4 * 1024 * 1024) parts.push(await host.read("export", at, Math.min(4 * 1024 * 1024, made.size - at), made.rev));
   const url = URL.createObjectURL(new Blob(parts as BlobPart[], { type: "application/pdf" }));
   const a = document.createElement("a");
   a.href = url;

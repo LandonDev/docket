@@ -18,7 +18,8 @@ export interface PdfHost {
   signature(): Promise<PdfSignature | null>;
   setSignature(signature: PdfSignature | null): Promise<void>;
   sign(signed: boolean): Promise<PdfView>;
-  export(flatten: boolean): Promise<{ name: string; size: number; warnings: string[] }>;
+  /** `rev`: the copy's own revision, which every read of it names. */
+  export(flatten: boolean): Promise<{ name: string; size: number; rev?: string; warnings: string[] }>;
   /** The item's view as the host pushes it. */
   onView(listener: (view: PdfView) => void): () => void;
 }
