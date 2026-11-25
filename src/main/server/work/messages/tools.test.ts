@@ -193,6 +193,14 @@ describe('his presses', () => {
     await expect(t.rig.rpc('work.messages.undo', { workspaceId: 'ws-cosmic', chatId: 'c-dana', id: 'out_7' })).rejects.toThrow(/^Too late to undo$/)
   })
 
+  it('his Try Again that failed past a refusal is an unknown outcome; a refusal stays its words', async () => {
+    t.chats.messages.set('c-dana', [{ _id: 'mine', who: { name: 'Landon', me: true }, text: 'On it.', sentAt: 1, files: [], reply: { outboxId: 'out_7', status: 'failed' } }])
+    t.chats.retryFails = new Error('socket hang up')
+    await expect(t.rig.rpc('work.messages.retry', { workspaceId: 'ws-cosmic', chatId: 'c-dana', id: 'out_7' })).rejects.toThrow(/^outcome unknown: /)
+    t.chats.retryFails = FakeChats.refusal('Nothing to retry')
+    await expect(t.rig.rpc('work.messages.retry', { workspaceId: 'ws-cosmic', chatId: 'c-dana', id: 'out_7' })).rejects.toThrow(/^Nothing to retry$/)
+  })
+
   it('with OWN_REPLY_HELD his reply waits in the Outbox instead, with no thread, and the answer names it', async () => {
     const answer = await sendReply(t.rig.work.ctx, { kind: 'local', caps: ['approve'] }, { workspaceId: 'ws-cosmic', chatId: 'c-dana', text: 'On it.' }, true)
     const [item] = await t.rig.waiting()

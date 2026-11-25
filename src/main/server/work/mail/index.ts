@@ -9,6 +9,7 @@ import { mailAttachmentFetcher } from './attachment'
 import { outgoingHtml } from './outgoing'
 import { withWaited } from './waited'
 import { isRefusal } from '../messages/lifeos'
+import { OUTCOME_UNKNOWN } from '../outcome'
 import { mustBePerson } from '../outbox/person'
 import { outboxHostOf } from '../outbox/ctx'
 import { ensureWaitingTables, reportDrops, setWaiting, startNudge, waitingOf, waitingTool, type DropRow } from './waiting'
@@ -32,12 +33,8 @@ export interface MailRow {
 }
 
 export const ELSEWHERE = 'A thread on another host made this draft. Send it from that host.'
-/**
- * The start of a Send's answer when LifeOS may have taken it and the host cannot say (its reply lost on the host's own
- * link to LifeOS, or the read after it failed). The phone keeps such a press Checking and reads the draft back
- * (PressLedger.reached, `unknownPrefix`), never "not sent".
- */
-export const OUTCOME_UNKNOWN = 'outcome unknown'
+/** A Send LifeOS may have taken with the host unable to say (`../outcome`): its reply lost, or the read after it failed. */
+export { OUTCOME_UNKNOWN }
 const unknownSend = (err: unknown): Error => new Error(`${OUTCOME_UNKNOWN}: LifeOS did not say whether it took this mail (${errorText(err)}). Look in Sent before sending it again.`)
 
 export const NOT_QUEUED = 'This mail did not go: the Outbox had already recorded an earlier send of it. Open the Outbox and send it from there.'
@@ -222,7 +219,13 @@ export async function sendMailNow(ctx: WorkCtx, by: Caller, id: string, seen?: n
     const now = await owner.query<{ row: MailRow & { sendAt?: number } } | null>('compose:get', { id })
     if (now?.row?.sendAt !== seen) throw new Error(TIME_CHANGED)
   }
-  return { sendAt: await owner.mutation<number>('compose:sendNow', { id }) }
+  try {
+    return { sendAt: await owner.mutation<number>('compose:sendNow', { id }) }
+  } catch (err) {
+    // LifeOS's own no moved nothing; any other fault may have come after it took the Send Now.
+    if (isRefusal(err)) throw err
+    throw new Error(`${OUTCOME_UNKNOWN}: LifeOS did not say whether it took Send Now (${errorText(err)}). Look in Sent before pressing it again.`)
+  }
 }
 
 export function ensureMailTables(db: DatabaseSync): void {

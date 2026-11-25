@@ -1,5 +1,7 @@
 import type { Decision, DecisionResult, GrantOffer, HeldWhy, OutboxChanged, OutboxGrant, OutboxItem, OutboxReplied } from '@shared/contract-work-outbox'
 import { hasFormLink, payloadText } from '@shared/work/msforms'
+import { OUTCOME_UNKNOWN } from '../outcome'
+import { isRefusal } from '../messages/lifeos'
 import { ACT_PILLAR, errorText, needsHim, NotBuilt, PILLAR_MILESTONE, type ActKind, type ActResult, type HeldItem, type HeldRef } from '@shared/work'
 import type { ActCtx, ActKindDef, WorkCtx } from '../modules'
 import { canonical } from '../../addonStore'
@@ -567,7 +569,13 @@ export class Outbox {
       if (opts.at !== undefined && row.scheduleAt !== opts.at) throw new Error(CHANGED_SINCE)
       if (LATER[row.kind] === 'lifeos' && ref.at === 'lifeos') {
         if (!this.lifeos?.sendMailNow) throw new Error('LifeOS is not reachable from this host')
-        await this.lifeos.sendMailNow(ref.id)
+        try {
+          await this.lifeos.sendMailNow(ref.id)
+        } catch (err) {
+          // LifeOS's own no moved nothing; any other fault may have come after it took the Send Now.
+          if (isRefusal(err)) throw err
+          throw new Error(`${OUTCOME_UNKNOWN}: LifeOS did not say whether it took Send Now (${errorText(err)}). Look in Sent before pressing it again.`)
+        }
         return this.wire(this.store.reschedule(row.id, Date.now(), null) ?? row)
       }
       return this.wire(await this.fire(row, { now: true }))

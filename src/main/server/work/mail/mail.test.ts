@@ -317,6 +317,15 @@ describe('Send from TempCode', () => {
     expect((await rig.rpc<{ sendAt: number }>('work.mail.sendNow', { id, sendAt: seen + 600_000 })).sendAt).toBeGreaterThan(Date.now())
   })
 
+  it("a Send Now whose answer LifeOS lost is an unknown outcome; LifeOS's own no stays its words", async () => {
+    const id = rig.lifeos.draft()
+    const row = rig.lifeos.rows.get(id)! as Record<string, unknown>
+    Object.assign(row, { status: 'queued', scheduled: true, sendAt: Date.now() + 3_600_000 })
+    rig.lifeos.failNext.set('compose:sendNow', 'connection lost')
+    const said = await rig.rpc('work.mail.sendNow', { id }).then(() => '', (err: Error) => err.message)
+    expect(said.startsWith(`${OUTCOME_UNKNOWN}: `)).toBe(true)
+  })
+
   it('moves a scheduled mail and sends one now on his press alone', async () => {
     const id = rig.lifeos.draft()
     const row = rig.lifeos.rows.get(id)! as Record<string, unknown>

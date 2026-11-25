@@ -31,11 +31,14 @@ describe('a request\'s name', () => {
     expect(summaryHead([call, call], 0, { generic: true })).not.toMatch(/League|Echo/)
   })
 
-  it("says who an add-on's calls reach when they name their people, never how many times (council round 3)", async () => {
+  it("counts an add-on's calls that name their people as mails, with the held mails (the owner's words, iw5)", async () => {
     const { summaryHead } = await import('./outboxHead')
     const send = (to: unknown) => ({ kind: 'addon.call' as const, verb: 'Send', payload: { addonId: 'm1', tool: 'send_mail', words: 'Send mail', addon: 'Purdue mail', arguments: { to, subject: 'Travel' } } })
-    expect(summaryHead([send('alex@purdue.edu'), send(['Jordan@purdue.edu'])])).toBe('Send mail with Purdue mail to 2 people')
-    expect(summaryHead([send([{ address: 'a@x' }]), send('a@x')])).toBe('Send mail with Purdue mail to 1 person')
+    expect(summaryHead([send('alex@purdue.edu'), send(['Jordan@purdue.edu'])])).toBe('Send 2 mails to 2 people')
+    expect(summaryHead([send([{ address: 'a@x' }]), send('a@x')])).toBe('Send 2 mails to 1 person')
+    const held = { kind: 'mail.send' as const, verb: 'Send', payload: { message: { to: [{ address: 'morgan@x' }] } } }
+    expect(summaryHead([held, send('events@x')])).toBe('Send 2 mails to 2 people')
+    // A call that names no one is still said in its own words.
     expect(summaryHead([send('not an address'), send(undefined)])).toBe('Send mail with Purdue mail, 2 times')
   })
 })

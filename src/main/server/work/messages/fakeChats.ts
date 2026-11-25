@@ -26,6 +26,8 @@ export class FakeChats implements LifeosClient {
   timezone: string | undefined = undefined
   /** the next `replies:undo` throws this */
   undoFails: unknown = null
+  /** the next `replies:retry` throws this (a refusal, or a fault after LifeOS may have taken it) */
+  retryFails: unknown = null
   /** conversations whose `chats:messages` read fails */
   messagesFail = new Set<string>()
   /** the next `chats:reply` throws this */
@@ -121,6 +123,11 @@ export class FakeChats implements LifeosClient {
         this.undone.push(String(args.id))
         return (this.replies.find((r) => r.id === args.id)?.text ?? '') as T
       case 'replies:retry':
+        if (this.retryFails) {
+          const err = this.retryFails
+          this.retryFails = null
+          throw err
+        }
         this.retried.push(String(args.id))
         return null as T
       case 'sources:list':

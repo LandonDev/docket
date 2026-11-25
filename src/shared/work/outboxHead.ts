@@ -72,9 +72,12 @@ export function summaryHead(
 function groupParts(items: readonly HeadItem[], bare: boolean): string[] {
   const groups = new Map<string, { noun: [string, string]; verbs: Set<string>; fallback: string; items: HeadItem[] }>();
   for (const item of items) {
-    const [one, many, fallback] = NOUN[item.kind];
+    // An add-on's call that names its people is a mail as he reads it: one count with the held mails ("Send 2 mails
+    // to 2 people"), never the tool's and the add-on's words twice over ("Send mail with Purdue mail").
+    const mailLike = MAIL.includes(item.kind) || (item.kind === "addon.call" && recipients(item).length > 0);
+    const [one, many, fallback] = NOUN[mailLike ? "mail.send" : item.kind];
     const p = (item.payload ?? {}) as { addonId?: unknown; tool?: unknown };
-    const key = MAIL.includes(item.kind) ? "mail" : item.kind === "addon.call" ? `addon:${String(p.addonId)}:${String(p.tool)}` : `${item.kind}`;
+    const key = mailLike ? "mail" : item.kind === "addon.call" ? `addon:${String(p.addonId)}:${String(p.tool)}` : `${item.kind}`;
     const group = groups.get(key) ?? { noun: [one, many], verbs: new Set(), fallback, items: [] };
     group.verbs.add(item.verb.split(" ")[0]!);
     group.items.push(item);
@@ -83,12 +86,11 @@ function groupParts(items: readonly HeadItem[], bare: boolean): string[] {
   return [...groups].map(([key, g], i) => {
     const n = g.items.length;
     if (key.startsWith("addon:") && !bare) {
-      // An add-on's call by what it does, in the tool's and the add-on's own words: "Echo with League, 3 times"; one
-      // that names its people says who instead: "Send mail with Purdue mail to 2 people".
+      // An add-on's call by what it does, in the tool's and the add-on's own words: "Echo with League, 3 times" (one
+      // that names its people is counted with the mails).
       const p = (g.items[0]!.payload ?? {}) as { words?: unknown; tool?: unknown; addon?: unknown };
       const words = String(p.words ?? p.tool ?? "Run");
-      const people = new Set(g.items.flatMap(recipients)).size;
-      const part = `${words}${typeof p.addon === "string" ? ` with ${p.addon}` : ""}${people ? ` to ${peopleWords(people)}` : n > 1 ? `, ${n} times` : ""}`;
+      const part = `${words}${typeof p.addon === "string" ? ` with ${p.addon}` : ""}${n > 1 ? `, ${n} times` : ""}`;
       return i ? lower(part) : part;
     }
     // An add-on call's verb is its tool's own words: generic, it is the kind's ("Run 2 calls").

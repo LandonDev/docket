@@ -6,6 +6,7 @@ import type { Caller, WorkCtx } from '../modules'
 import { sendOnce } from './attempts'
 import { ChatReplySchema, pinnedReplyTo } from './held'
 import { chatIn, isRefusal, NO_CHAT, refusalWords, unread, workSector } from './lifeos'
+import { OUTCOME_UNKNOWN } from '../outcome'
 
 /**
  * His presses on a reply (docs/agents/work-messages.md "Replies"): his own
@@ -22,15 +23,6 @@ export function mustBe(by: Caller, cap: 'approve' | 'operate'): void {
   if (by.kind === 'model' || !by.caps.includes(cap)) throw new Error(NOT_A_PERSON)
   // A press that sends is the Outbox's kind of press: never another host over the link, nor an MCP client's key.
   if (cap === 'approve' && (by.peer !== undefined || (by.kind === 'remote' && by.audience !== 'client'))) throw new Error(NOT_A_PERSON)
-}
-
-/** LifeOS's answer to a reply, its refusal in its own words. */
-async function lifeosSays<T>(run: () => Promise<T>): Promise<T> {
-  try {
-    return await run()
-  } catch (err) {
-    throw new Error(refusalWords(err))
-  }
 }
 
 /**
@@ -101,7 +93,13 @@ export async function undoReply(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
 export async function retryReply(ctx: WorkCtx, by: Caller, p: { workspaceId: string; chatId: string; id: string }): Promise<Record<string, never>> {
   mustBe(by, 'approve')
   await replyOf(ctx, workSector(ctx, p.workspaceId), p.chatId, p.id)
-  await lifeosSays(() => ctx.lifeos.owner().mutation('replies:retry', { id: p.id }))
+  try {
+    await ctx.lifeos.owner().mutation('replies:retry', { id: p.id })
+  } catch (err) {
+    // LifeOS said no in its own words: nothing was retried. Any other fault may have come after it took the retry.
+    if (isRefusal(err)) throw new Error(refusalWords(err))
+    throw new Error(`${OUTCOME_UNKNOWN}: LifeOS did not say whether it took Try Again (${refusalWords(err)}).`)
+  }
   return {}
 }
 
