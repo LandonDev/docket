@@ -42,8 +42,10 @@ export { passesFilter }
  */
 
 /** The caps of one search; a test narrows them. */
-const CAPS = { dirs: 20_000, hits: 2_000, ms: 10_000, sourceMs: 20_000, textFiles: 200, textBytes: 512 * 1024, keptMs: 30_000, kept: 8 }
-export const setSearchCaps = (caps: Partial<typeof CAPS> | null): void => void Object.assign(CAPS, caps ?? { dirs: 20_000, hits: 2_000, ms: 10_000, sourceMs: 20_000, textFiles: 200, textBytes: 512 * 1024, keptMs: 30_000, kept: 8 })
+const DEFAULT_CAPS = { dirs: 20_000, hits: 2_000, ms: 10_000, sourceMs: 20_000, textFiles: 200, textBytes: 512 * 1024, keptMs: 30_000, kept: 8, firstMs: 300, partMs: 25_000 }
+/** `firstMs`: how long the first page waits for places beside the names held; `partMs`: how long an ask for the next part waits. */
+const CAPS = { ...DEFAULT_CAPS }
+export const setSearchCaps = (caps: Partial<typeof CAPS> | null): void => void Object.assign(CAPS, caps ?? DEFAULT_CAPS)
 /** What the walks did, for the tests and the bench to count. */
 export const searchCounts = { folders: 0, texts: 0, runs: 0 }
 
@@ -290,7 +292,7 @@ const librariesOfScope = (s: SearchScope, vm: boolean): TeamsLibrary[] => {
 const librarySource: PlaceSource = async (s) => {
   const libs = librariesOfScope(s, false)
   if (!libs.length) return { hits: [] }
-  const got = await bounded(s.ctx, 'the libraries', searchLibraries(libs, s.words.join(' ')), s.signal)
+  const got = await bounded(s.ctx, 'the libraries', searchLibraries(libs, s.words.join(' '), undefined, Date.now, { signal: s.signal, who: !!s.filter.who }), s.signal)
   if (!got) return { hits: [], more: true }
   const byId = new Map(libs.map((l) => [l.id, l]))
   const hits = got.entries.flatMap((e) => {
@@ -348,15 +350,42 @@ const lifeosSource: PlaceSource = async (s) => {
   return { hits: rows.filter((e) => kindOk(s.filter, e.kind)).map((entry) => ({ entry, place: PLACE.lifeos })) }
 }
 
-/** Every place's search. A later place adds its own here. */
-const SOURCES: PlaceSource[] = [namesSource, folderSource, librarySource, vmSource, lifeosSource]
+/**
+ * Every place's search, and its name on the line that says it is still being searched (none for the names this host
+ * holds, which answer at once). A later place adds its own here.
+ */
+const SOURCES: { run: PlaceSource; label: (s: SearchScope) => string | null }[] = [
+  { run: namesSource, label: () => null },
+  { run: folderSource, label: (s) => s.workspace?.name ?? null },
+  { run: librarySource, label: () => 'Teams files' },
+  { run: vmSource, label: () => 'the Windows VM' },
+  { run: lifeosSource, label: () => 'LifeOS' }
+]
 
 // ── the whole search ──────────────────────────────────────────────────
 
-interface Result {
-  hits: Hit[]
+/**
+ * One search as it runs: the rows each place has answered so far (the names this host holds first; a walk's row
+ * takes the place of the same row from the names), the places still searched, and how many have answered. Each
+ * place has its own deadline and its own stop: at its deadline its walk stops and it says it stopped short (`more`);
+ * the whole run stops when the search it belongs to is replaced, or when no one waits on it any more.
+ */
+interface Live {
+  hits: Map<string, Hit>
   more: boolean
-  asleep: string[]
+  asleep: Set<string>
+  /** the places still searched, by their index in `SOURCES` */
+  pending: Map<number, string>
+  parts: number
+  /** the names this host holds have answered */
+  named: boolean
+  done: boolean
+  finished: Promise<void>
+  controller: AbortController
+  /** told each time a place answers */
+  listeners: Set<() => void>
+  /** callers waiting on it now */
+  waiters: number
 }
 
 /** Newest change first, then the key: a total order, so a row's change and key are a cursor. */
@@ -371,22 +400,57 @@ function ownerName(ctx: Pick<WorkCtx, 'db'>): string | null {
   }
 }
 
-async function run(s: SearchScope, marks: MarkStore | null): Promise<Result> {
+function start(s: SearchScope): Live {
   searchCounts.runs++
-  const answers = await Promise.all(
-    SOURCES.map((source) =>
-      source(s).catch((err: unknown): SourceAnswer => {
-        if (err instanceof Error && err.message === CANCELLED) throw err
-        s.ctx.log(`files: a search source failed: ${err instanceof Error ? err.message : String(err)}`)
-        return { hits: [], more: true }
-      })
-    )
-  )
-  stop(s.signal)
-  const merged = new Map<string, Hit>()
-  // The names table's rows go first, so what a walk saw now takes their place.
-  for (const a of answers) for (const hit of a.hits) merged.set(hit.entry.key, hit)
-  let hits = [...merged.values()]
+  const controller = new AbortController()
+  const live: Live = { hits: new Map(), more: false, asleep: new Set(), pending: new Map(), parts: 0, named: false, done: false, finished: Promise.resolve(), controller, listeners: new Set(), waiters: 0 }
+  const tell = (): void => {
+    for (const listener of [...live.listeners]) listener()
+  }
+  const runs = SOURCES.map(async (source, i) => {
+    const label = source.label(s)
+    if (label) live.pending.set(i, label)
+    // Its own stop: at its deadline, or when the whole search stops.
+    const own = new AbortController()
+    const off = (): void => own.abort()
+    controller.signal.addEventListener('abort', off, { once: true })
+    const timer = setTimeout(() => {
+      live.more = true
+      own.abort()
+    }, CAPS.sourceMs)
+    timer.unref?.()
+    let answer: SourceAnswer | null = null
+    try {
+      answer = await source.run({ ...s, signal: own.signal })
+    } catch (err) {
+      // Stopped at its deadline, or failed: one place never fails the search.
+      if (!(err instanceof Error && err.message === CANCELLED)) s.ctx.log(`files: a search source failed: ${err instanceof Error ? err.message : String(err)}`)
+      if (!controller.signal.aborted) live.more = true
+    } finally {
+      clearTimeout(timer)
+      controller.signal.removeEventListener('abort', off)
+    }
+    if (controller.signal.aborted) return
+    if (answer) {
+      for (const hit of answer.hits) if (i !== 0 || !live.hits.has(hit.entry.key)) live.hits.set(hit.entry.key, hit)
+      if (answer.more) live.more = true
+      for (const name of answer.asleep ?? []) live.asleep.add(name)
+    }
+    if (i === 0) live.named = true
+    live.pending.delete(i)
+    live.parts++
+    tell()
+  })
+  live.finished = Promise.all(runs).then(() => {
+    live.done = true
+    tell()
+  })
+  return live
+}
+
+/** The rows as they stand: marked, held to the filter, in order. */
+async function rowsOf(s: SearchScope, live: Live, marks: MarkStore | null): Promise<Hit[]> {
+  let hits = [...live.hits.values()]
   // A file of a disk linked to a project says so, where the filter asks for one.
   if (s.filter.project && hits.length) {
     const withProject = await withProjects(s.ctx, s.workspace, hits.map((h) => h.entry))
@@ -400,12 +464,43 @@ async function run(s: SearchScope, marks: MarkStore | null): Promise<Result> {
     })
   }
   const owner = s.filter.who ? ownerName(s.ctx) : null
-  hits = hits.filter((h) => passesFilter(h.entry, h.place, s.filter, owner)).sort((a, b) => order(a.entry, b.entry))
-  return { hits, more: answers.some((a) => a.more), asleep: [...new Set(answers.flatMap((a) => a.asleep ?? []))] }
+  return hits.filter((h) => passesFilter(h.entry, h.place, s.filter, owner)).sort((a, b) => order(a.entry, b.entry))
 }
 
-/** Searches kept for the next page: 30 seconds, eight at most, the least used first. */
-const kept = new WeakMap<object, Map<string, { at: number; result: Promise<Result> }>>()
+/**
+ * Waits on a run until `ready` says so, it ends, `ms` pass, or the caller goes. A caller that goes while no one else
+ * waits stops the run, unless it has ended.
+ */
+async function waitOn(live: Live, ready: () => boolean, ms: number, signal: AbortSignal | undefined, gone: () => void): Promise<void> {
+  if (ready() || live.done) return
+  live.waiters++
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const check = (): void => {
+        if (ready() || live.done) finish()
+      }
+      const timer = ms === Infinity ? undefined : setTimeout(() => finish(), ms)
+      timer?.unref?.()
+      const aborted = (): void => finish(new Error(CANCELLED))
+      const finish = (err?: Error): void => {
+        clearTimeout(timer)
+        live.listeners.delete(check)
+        signal?.removeEventListener('abort', aborted)
+        if (err) reject(err)
+        else resolve()
+      }
+      live.listeners.add(check)
+      signal?.addEventListener('abort', aborted, { once: true })
+      if (signal?.aborted) aborted()
+    })
+  } finally {
+    live.waiters--
+    if (signal?.aborted && !live.waiters && !live.done) gone()
+  }
+}
+
+/** Searches kept for the next page and the next part: 30 seconds, eight at most, the least used first. */
+const kept = new WeakMap<object, Map<string, { at: number; live: Live; words: string; who: string }>>()
 
 interface Cursor {
   /** the search it belongs to */
@@ -437,9 +532,19 @@ const HOST_ROWS: Caller = { kind: 'local', caps: [] }
  * One page of a search (`work.files.search`): `SEARCH_PAGE` rows, newest change first, each saying where it
  * lives. The fence is the list's: his window searches every place of the workspace on this host; a thread its
  * own workspace's, the VM only where its workspace turns it on; another host of his the libraries alone; a
- * remote key only what it could name.
+ * remote key only what it could name. A caller that sends `seen` takes the search in parts: asked with 0, the first
+ * page answers once the names this host holds are in, with the places that answer within `CAPS.firstMs`, naming the
+ * rest in `pending`; asked again with the `parts` it saw, it answers once another place has. A slow or stopped place
+ * never holds the rows already found. A caller that sends none has the whole search in one answer.
  */
-export async function searchFiles(ctx: WorkCtx, by: Caller, p: { workspaceId: string; query: string; filter?: FileSearchFilter; cursor?: string }, marks: MarkStore, method: string, signal?: AbortSignal): Promise<FilesListing> {
+export async function searchFiles(
+  ctx: WorkCtx,
+  by: Caller,
+  p: { workspaceId: string; query: string; filter?: FileSearchFilter; cursor?: string; seen?: number; replaces?: string },
+  marks: MarkStore,
+  method: string,
+  signal?: AbortSignal
+): Promise<FilesListing> {
   admitCaller(ctx, by, p.workspaceId)
   const workspace = by.peer ? null : workspaceHere(ctx.db, p.workspaceId)
   let folder: string | null = null
@@ -452,57 +557,90 @@ export async function searchFiles(ctx: WorkCtx, by: Caller, p: { workspaceId: st
   }
   const filter = p.filter ?? {}
   const remoteKey = by.kind === 'remote' && !by.peer
-  const s: SearchScope = { ctx, by, rowsBy: remoteKey ? HOST_ROWS : by, workspaceId: p.workspaceId, workspace, folder, words: nameWords(p.query), filter, libraries: listedLibraries(ctx, by), signal, method }
+  const s: SearchScope = { ctx, by, rowsBy: remoteKey ? HOST_ROWS : by, workspaceId: p.workspaceId, workspace, folder, words: nameWords(p.query), filter, libraries: listedLibraries(ctx, by), method }
+  const who = `${p.workspaceId}\u0000${callerKey(s)}`
+  const words = s.words.join(' ')
   const key = JSON.stringify([p.workspaceId, callerKey(s), s.words, Object.fromEntries(Object.entries(filter).sort(([a], [b]) => a.localeCompare(b)))])
   const tag = createHash('sha1').update(key).digest('base64url').slice(0, 12)
   const from = p.cursor ? decode(p.cursor) : null
   if (p.cursor && (!from || from.h !== tag)) return { entries: [], stale: true }
 
   const cache = kept.get(ctx.db) ?? kept.set(ctx.db, new Map()).get(ctx.db)!
+  // The search this one takes the place of in the same tab: its walks stop now.
+  if (p.replaces !== undefined) {
+    const was = nameWords(p.replaces).join(' ')
+    if (was !== words) for (const [k, v] of cache) if (v.who === who && v.words === was && !v.live.done) {
+      v.live.controller.abort()
+      cache.delete(k)
+    }
+  }
   const now = Date.now()
   for (const [k, v] of cache) if (now - v.at > CAPS.keptMs) cache.delete(k)
   let entry = cache.get(key)
-  let result: Result
-  for (;;) {
-    if (!entry) {
-      entry = { at: now, result: run(s, workspace ? marks : null) }
-      cache.set(key, entry)
-      while (cache.size > CAPS.kept) cache.delete(cache.keys().next().value!)
-      const mine = entry
-      mine.result.catch(() => cache.get(key) === mine && cache.delete(key))
+  if (!entry || entry.live.controller.signal.aborted) {
+    const live = start(s)
+    entry = { at: now, live, words, who }
+    cache.set(key, entry)
+    while (cache.size > CAPS.kept) cache.delete(cache.keys().next().value!)
+    // What a walk found feeds the names table once, as a search's first page always has: names, never a new feed.
+    if (workspace)
+      void live.finished.then(() => {
+        if (live.controller.signal.aborted) return
+        // LifeOS's rows are read from LifeOS each time: the names table keeps only what lies on a disk.
+        const hits = [...live.hits.values()].filter((h) => h.place !== PLACE.lifeos)
+        if (hits.length) feedNames(ctx, p.workspaceId, (): NameRow[] => hits)
+      })
+  } else {
+    // A Map keeps insertion order: a search used again goes to the end.
+    cache.delete(key)
+    cache.set(key, entry)
+  }
+  const live = entry.live
+  const mine = entry
+  const gone = (): void => {
+    live.controller.abort()
+    if (cache.get(key) === mine) cache.delete(key)
+  }
+  // A later page is cut from the whole search, held to each place's deadline.
+  if (p.cursor) await waitOn(live, () => false, Infinity, signal, gone)
+  else {
+    if (p.seen === undefined) {
+      // A caller that takes no parts (a thread, the phone, a window a release behind) has the whole search, as before.
+      await waitOn(live, () => false, Infinity, signal, gone)
+    } else if (p.seen === 0) {
+      // The names this host holds first, with whatever places answer in a moment beside them.
+      await waitOn(live, () => live.named, Infinity, signal, gone)
+      await waitOn(live, () => !live.pending.size, CAPS.firstMs, signal, gone)
     } else {
-      // A Map keeps insertion order: a search used again goes to the end.
-      cache.delete(key)
-      cache.set(key, entry)
-    }
-    try {
-      result = await entry.result
-      break
-    } catch (err) {
-      // Another caller's search was cancelled under this one: this one runs it again.
-      if (!(err instanceof Error && err.message === CANCELLED) || signal?.aborted) throw err
-      entry = undefined
+      // Asked again: once another place has answered.
+      const seen = p.seen
+      await waitOn(live, () => live.parts > seen, CAPS.partMs, signal, gone)
     }
   }
   stop(signal)
+  if (live.controller.signal.aborted) throw new Error(CANCELLED)
 
-  if (!p.cursor && workspace && result.hits.length) {
-    // LifeOS's rows are read from LifeOS each time: the names table keeps only what lies on a disk.
-    const hits = result.hits.filter((h) => h.place !== PLACE.lifeos)
-    if (hits.length) feedNames(ctx, p.workspaceId, (): NameRow[] => hits)
-  }
+  const all = await rowsOf(s, live, workspace ? marks : null)
+  stop(signal)
   // A remote key's rows are judged again on each page: what it may name is its own.
-  const rows = remoteKey ? result.hits.filter((h) => keyMayName(ctx, by, h.entry)) : result.hits
-  let start = 0
+  const rows = remoteKey ? all.filter((h) => keyMayName(ctx, by, h.entry)) : all
+  let first = 0
   if (from) {
     const last = { changed: from.c, key: from.k } as FileEntry
-    start = rows.findIndex((h) => order(h.entry, last) > 0)
-    if (start < 0) start = rows.length
+    first = rows.findIndex((h) => order(h.entry, last) > 0)
+    if (first < 0) first = rows.length
   }
-  const page = rows.slice(start, start + SEARCH_PAGE)
+  const page = rows.slice(first, first + SEARCH_PAGE)
   const end = page.at(-1)
-  const next = start + page.length < rows.length && end ? encode({ h: tag, c: end.entry.changed ?? 0, k: end.entry.key }) : undefined
-  return { entries: page.map((h) => h.entry), ...(next ? { next } : {}), ...(result.more ? { more: true as const } : {}), ...(result.asleep.length ? { asleep: result.asleep } : {}) }
+  const next = first + page.length < rows.length && end ? encode({ h: tag, c: end.entry.changed ?? 0, k: end.entry.key }) : undefined
+  const pending = live.done ? [] : [...new Set(live.pending.values())]
+  return {
+    entries: page.map((h) => h.entry),
+    ...(next ? { next } : {}),
+    ...(live.more ? { more: true as const } : {}),
+    ...(live.asleep.size ? { asleep: [...live.asleep] } : {}),
+    ...(!p.cursor ? { parts: live.parts, ...(pending.length ? { pending } : {}) } : {})
+  }
 }
 
 const keyMayName = (ctx: WorkCtx, by: Caller, e: FileEntry): boolean => {

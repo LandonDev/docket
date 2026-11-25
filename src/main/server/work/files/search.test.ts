@@ -377,3 +377,83 @@ describe('saved searches', () => {
     await expect(call('work.files.saveSearch', { name: 'x', query: '' }, peer)).rejects.toThrow("Another host reaches only this host's libraries.")
   })
 })
+
+describe('a search in parts', () => {
+  const TOP = 'C:\\Users\\tcuser\\Dummy U\\Esports Staff - Documents'
+  let calls: { verb: string; signal?: AbortSignal }[]
+  let release: (() => void) | null
+  beforeEach(() => {
+    calls = []
+    release = null
+    rig.db.prepare(`INSERT INTO work_office_files (key, value) VALUES ('vm:status', ?)`).run(
+      JSON.stringify({ at: 1_700_000_000_000, status: { onedrive: { installed: true, running: true, account: 'a@dummy.edu' }, mounts: [{ path: TOP, type: 'team', web: null }], office: { installed: true, version: null, apps: [], account: null, licensed: null } }, tops: { [TOP]: ['Events', 'General'] } })
+    )
+    // The VM is awake, and its walk does not answer until the test lets it: a place that is slow, or stopped.
+    setVmState(() => ({ state: 'awake', cannot: null }))
+    setVmCall(async (verb, _args, opts) => {
+      calls.push({ verb, signal: (opts as { signal?: AbortSignal } | undefined)?.signal })
+      if (verb !== 'files.search') throw new Error(`unexpected ${verb}`)
+      await new Promise<void>((done) => (release = done))
+      return { hits: [{ name: 'VM budget.xlsx', path: `${TOP}\\General\\Plans\\VM budget.xlsx`, dir: false, size: 10, modified: 7_000, local: false, link: false, root: TOP }], more: false }
+    })
+    setSearchCaps({ firstMs: 100 })
+  })
+  afterEach(() => {
+    release?.()
+    setVmCall(null)
+    setVmState(null)
+  })
+  const parts = (query: string, seen: number, o: Record<string, unknown> = {}) => call<FilesListing>('work.files.search', { query, seen, ...o })
+
+  it('answers with what it has while a place does not answer, and that place joins when it does', async () => {
+    if (process.platform === 'win32') return
+    const first = await parts('budget', 0)
+    // The stopped place held nothing back: the workspace's folder and the libraries are in, the VM still out.
+    expect(calls.map((c) => c.verb)).toEqual(['files.search'])
+    expect(names(first)).toEqual(expect.arrayContaining(['Budget 2027.xlsx', 'Budget.xlsx']))
+    expect(names(first)).not.toContain('VM budget.xlsx')
+    expect(first.pending).toEqual(['the Windows VM'])
+    const asked = parts('budget', first.parts!)
+    await settle()
+    release!()
+    const second = await asked
+    expect(names(second)).toEqual([...names(first), 'VM budget.xlsx'].sort())
+    expect(second.pending).toBeUndefined()
+    // One walk of each place for the whole search.
+    expect(calls).toHaveLength(1)
+  })
+
+  it('gives a caller that takes no parts (a thread, the phone) the whole search in one answer', async () => {
+    if (process.platform === 'win32') return
+    const whole = search('budget')
+    await settle()
+    release!()
+    expect(names(await whole)).toContain('VM budget.xlsx')
+  })
+
+  it('stops the walk of the search a new one replaces: the walker reads no folder more, and the VM\'s ask is cancelled', async () => {
+    if (process.platform === 'win32') return
+    for (let i = 0; i < 400; i++) mkdirSync(join(rig.folder, 'Deep', `F${i}`), { recursive: true })
+    const before = searchCounts.folders
+    const old = parts('zzz', 0)
+    old.catch(() => undefined)
+    // He typed on: the new words name the old ones, and search LifeOS alone, so they walk nothing themselves.
+    await parts('zzzy', 0, { replaces: 'zzz', filter: { places: ['lifeos'] } })
+    await expect(old).rejects.toThrow('cancelled')
+    const walked = searchCounts.folders - before
+    for (let i = 0; i < 50; i++) await settle()
+    expect(searchCounts.folders - before).toBe(walked)
+    expect(walked).toBeLessThan(400)
+    // The VM's walk was asked, and its ask was told to stop.
+    expect(calls[0]?.signal?.aborted).toBe(true)
+  })
+
+  it('sends nothing to a sleeping VM: no door call, its places named as left out', async () => {
+    if (process.platform === 'win32') return
+    setVmState(() => ({ state: 'asleep', cannot: null }))
+    const got = await parts('budget', 0)
+    expect(calls).toEqual([])
+    expect(got.asleep).toEqual(['Events', 'General'])
+    expect(got.pending).toBeUndefined()
+  })
+})

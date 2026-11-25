@@ -293,10 +293,11 @@ export function whoOf(path: string, s: Stats): string | null {
   return who
 }
 
-export function entryOf(library: string, path: string, s: Stats = statSync(path)): TeamsEntry {
+/** `who: false`: who last saved it is not read (it is read from inside an Office file). */
+export function entryOf(library: string, path: string, s: Stats = statSync(path), who = true): TeamsEntry {
   const dir = s.isDirectory()
   const name = basename(path)
-  return { name, path, library, kind: dir ? 'folder' : teamsKindOf(name), size: dir ? 0 : s.size, modified: Math.round(s.mtimeMs), local: dir || isLocal(s), by: dir ? null : whoOf(path, s) }
+  return { name, path, library, kind: dir ? 'folder' : teamsKindOf(name), size: dir ? 0 : s.size, modified: Math.round(s.mtimeMs), local: dir || isLocal(s), by: dir || !who ? null : whoOf(path, s) }
 }
 
 /** One folder: folders first, then files, each by name. */
@@ -324,7 +325,7 @@ const SEARCH_MS = 15_000
  * folders, so a walk over a library OneDrive has not listed yet never holds the host; only the hits
  * shown are looked at closer.
  */
-export async function searchLibraries(libs: readonly TeamsLibrary[], query: string, kind?: TeamsFileKind, now = Date.now): Promise<{ entries: TeamsEntry[]; more: boolean }> {
+export async function searchLibraries(libs: readonly TeamsLibrary[], query: string, kind?: TeamsFileKind, now = Date.now, o: { signal?: AbortSignal; who?: boolean } = {}): Promise<{ entries: TeamsEntry[]; more: boolean }> {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean)
   const hits: { library: string; path: string }[] = []
   const until = now() + SEARCH_MS
@@ -333,11 +334,14 @@ export async function searchLibraries(libs: readonly TeamsLibrary[], query: stri
   walk: for (const library of libs) {
     const queue = [library.path]
     while (queue.length) {
+      // A search no one wants any more stops here, between folders: it reads nothing more.
+      if (o.signal?.aborted) throw new Error('cancelled')
       if (++dirs > SEARCH_DIRS || hits.length >= SEARCH_HITS || now() > until) {
         more = true
         break walk
       }
       const dir = queue.shift()!
+      libraryWalk.folders++
       let items
       try {
         items = await readdir(dir, { withFileTypes: true })
@@ -357,6 +361,7 @@ export async function searchLibraries(libs: readonly TeamsLibrary[], query: stri
   }
   const stated: { hit: { library: string; path: string }; s: Stats }[] = []
   for (const hit of hits) {
+    if (o.signal?.aborted) throw new Error('cancelled')
     try {
       stated.push({ hit, s: await stat(hit.path) })
     } catch {
@@ -364,8 +369,12 @@ export async function searchLibraries(libs: readonly TeamsLibrary[], query: stri
     }
   }
   stated.sort((a, b) => b.s.mtimeMs - a.s.mtimeMs)
-  return { entries: stated.slice(0, SEARCH_MAX).map(({ hit, s }) => entryOf(hit.library, hit.path, s)), more: more || stated.length > SEARCH_MAX }
+  // Who last saved a file is read from inside it: a search never asks it (`who: false`), so it opens no file.
+  return { entries: stated.slice(0, SEARCH_MAX).map(({ hit, s }) => entryOf(hit.library, hit.path, s, o.who !== false)), more: more || stated.length > SEARCH_MAX }
 }
+
+/** The folders the library walk has read (tests count a walk that stopped). */
+export const libraryWalk = { folders: 0 }
 
 export const FETCH_MS = 10 * 60_000
 

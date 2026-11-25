@@ -168,8 +168,14 @@ export const FilesRequestSchemas = [
   request('work.files.home', z.object({ workspaceId: Workspace })),
   /** → { entries: FileEntry[] }: Go to's list as he types: names this host has seen, recents first. */
   request('work.files.names', z.object({ workspaceId: Workspace, text: z.string().max(200) })),
-  /** → FilesListing: names in every place of this host, and text where a place has it. */
-  request('work.files.search', z.object({ workspaceId: Workspace, query: z.string().max(200), filter: FileSearchFilterSchema.optional(), cursor: z.string().max(4000).optional() })),
+  /**
+   * → FilesListing: names in every place of this host, and text where a place has it. The first page answers with
+   * what has come (the names this host holds at once, then each place as it answers): `pending` names the places
+   * still searched and `parts` how many have answered, for a caller that sends `seen` (0 the first time); asked again
+   * with the `parts` it saw, it answers once more have. Without `seen` the first page is the whole search.
+   * `replaces`: the words of the search this one takes the place of in the same tab, whose walks stop now.
+   */
+  request('work.files.search', z.object({ workspaceId: Workspace, query: z.string().max(200), filter: FileSearchFilterSchema.optional(), cursor: z.string().max(4000).optional(), seen: z.number().int().min(0).max(64).optional(), replaces: z.string().max(200).optional() })),
   /** → { searches: SavedFileSearch[] } */
   request('work.files.searches', z.object({ workspaceId: Workspace })),
   /** → { threads: { sessionId, itemId, source }[] }: the workspace's threads whose open items show this file, newest first. */
@@ -370,6 +376,10 @@ export interface FilesListing {
   more?: true
   /** a search left these places out, by name, because their machine sleeps and only his press wakes it (the Windows VM) */
   asleep?: string[]
+  /** a search's first page: the places still being searched, by name (their rows join as each answers) */
+  pending?: string[]
+  /** a search's first page: how many of its places have answered (`seen` on the next ask) */
+  parts?: number
   /**
    * the folder's machine sleeps (the Windows VM): the rows are what was kept (`asOf`), or none. `waking`: a wake goes on
    * (his press, this one or another), and a `work.files` push names the folder once its rows land; `asleep`: only his

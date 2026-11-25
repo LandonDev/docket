@@ -270,7 +270,8 @@ export const OfficeRequestSchemas = [
   /** one folder of a library: `source` is `{at: 'file'}` on this host */
   request('work.office.filesList', z.object({ source: CanvasSourceSchema })),
   /** files and folders whose names hold every word of `query`, in one library or all */
-  request('work.office.filesSearch', z.object({ query: z.string().min(1).max(200), library: z.string().max(200).optional(), kind: z.enum(TEAMS_FILE_KINDS).optional() })),
+  /** `replaces`: the words of this caller's earlier search, whose walk stops now (a window that typed on). */
+  request('work.office.filesSearch', z.object({ query: z.string().min(1).max(200), library: z.string().max(200).optional(), kind: z.enum(TEAMS_FILE_KINDS).optional(), replaces: z.string().max(200).optional() })),
   /** downloads a file OneDrive keeps in the cloud only, and answers it as it is now */
   request('work.office.filesFetch', z.object({ source: CanvasSourceSchema })),
   /**

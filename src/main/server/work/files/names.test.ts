@@ -6,6 +6,7 @@ import type { FilesListing, FilesPlaces } from '@shared/contract-work-files'
 import type { FileEntry } from '@shared/work/files'
 import type { Caller } from '../modules'
 import { setRoots } from '../office/files/library'
+import { setVmCall } from '../office/vm/link'
 import { closeFilesState, filesState } from './handle'
 import { files } from './index'
 import { dropName, forgetPlaceNames, putNames, renameName } from './names'
@@ -192,6 +193,22 @@ describe('the fence', () => {
 
   it('gives another host of his none: the table is the workspace’s own', async () => {
     await expect(goTo('budget', peer)).rejects.toThrow("Another host reaches only this host's libraries.")
+  })
+
+  it('asks no place for Go to (no guest, no other host, no LifeOS), and still drops a row the caller may not see', async () => {
+    const asked: string[] = []
+    setVmCall(async (verb) => (asked.push(`vm:${verb}`), null))
+    Object.assign(rig.ctx, { peer: { call: () => ({ call: async (module: string, verb: string) => (asked.push(`peer:${module}.${verb}`), null) }) } })
+    const owner = rig.ctx.lifeos.owner.bind(rig.ctx.lifeos)
+    Object.assign(rig.ctx.lifeos, { owner: (...args: Parameters<typeof owner>) => (asked.push('lifeos'), owner(...args)) })
+    try {
+      rig.roots.splice(0, rig.roots.length, join(rig.folder, 'Events'))
+      expect(await goTo('budget', phone)).toEqual([])
+      expect(await goTo('budget')).toEqual(['Budget.xlsx', 'Budgets', 'Spring budget.xlsx'])
+      expect(asked).toEqual([])
+    } finally {
+      setVmCall(null)
+    }
   })
 
   it('gives a remote key only rows it could name', async () => {

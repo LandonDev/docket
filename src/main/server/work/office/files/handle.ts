@@ -143,6 +143,32 @@ export function admitted(ctx: WorkCtx, by: Caller, method: string, source: Canva
 }
 
 /** Opens an entry in its app on this host. */
+/**
+ * The desktop searches under way, by who asked and their words: a window that typed on names the words it replaces,
+ * and that walk stops at once (the library walk between folders, the VM's ask at its door).
+ */
+const deskSearches = new Map<string, Set<{ query: string; controller: AbortController }>>()
+const deskCaller = (by: Caller): string => (by.kind === 'model' ? `model:${by.sessionId ?? ''}` : by.peer ? `peer:${by.peer}` : by.kind)
+export function deskSearchStarts(by: Caller, query: string, replaces: string | undefined, signal?: AbortSignal): { signal: AbortSignal; done(): void } {
+  const who = deskCaller(by)
+  const mine = deskSearches.get(who) ?? new Set()
+  deskSearches.set(who, mine)
+  if (replaces !== undefined) for (const run of mine) if (run.query === replaces && replaces !== query) run.controller.abort()
+  const run = { query, controller: new AbortController() }
+  mine.add(run)
+  const off = (): void => run.controller.abort()
+  signal?.addEventListener('abort', off, { once: true })
+  if (signal?.aborted) off()
+  return {
+    signal: run.controller.signal,
+    done: () => {
+      signal?.removeEventListener('abort', off)
+      mine.delete(run)
+      if (!mine.size) deskSearches.delete(who)
+    }
+  }
+}
+
 export async function openInApp(carrier: OfficeCarrier | null, entry: Pick<TeamsEntry, 'name' | 'path'>): Promise<void> {
   const app = teamsAppOf(teamsKindOf(entry.name), entry.name)
   // Outlook on the web and the add-in alone open no file on this disk.
@@ -447,9 +473,16 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       const own = libs.filter((l) => !l.vm)
       const fenced = by.kind === 'remote' && !by.peer ? own.filter((l) => ctx.reaches(by, l.path)) : own
       const inVm = libs.filter((l) => l.vm)
-      const [a, b] = await Promise.all([searchLibraries(fenced, p.query as string, p.kind as never), vmSearch(inVm, p.query as string, p.kind as never, signal)])
-      const entries = [...a.entries, ...b.entries].sort((x, y) => y.modified - x.modified)
-      return handled({ entries: entries.slice(0, SEARCH_MAX), more: a.more || b.more || entries.length > SEARCH_MAX })
+      // The walk stops when its caller goes, or when the same caller's next search names this one as the one it replaces.
+      const walk = deskSearchStarts(by, p.query as string, p.replaces as string | undefined, signal)
+      try {
+        // A search reads names, sizes and times: who last saved a file (read from inside it) is left to the row's own look.
+        const [a, b] = await Promise.all([searchLibraries(fenced, p.query as string, p.kind as never, Date.now, { signal: walk.signal, who: false }), vmSearch(inVm, p.query as string, p.kind as never, walk.signal)])
+        const entries = [...a.entries, ...b.entries].sort((x, y) => y.modified - x.modified)
+        return handled({ entries: entries.slice(0, SEARCH_MAX), more: a.more || b.more || entries.length > SEARCH_MAX })
+      } finally {
+        walk.done()
+      }
     }
     case 'work.office.filesFetch': {
       const { library, path } = admitted(ctx, by, m, p.source as CanvasSource)

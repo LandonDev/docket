@@ -5688,12 +5688,16 @@ public enum Methods {
             public let query: String
             public let filter: Filter?
             public let cursor: String?
+            public let seen: Int?
+            public let replaces: String?
 
-            public init(workspaceId: String, query: String, filter: Filter? = nil, cursor: String? = nil) {
+            public init(workspaceId: String, query: String, filter: Filter? = nil, cursor: String? = nil, seen: Int? = nil, replaces: String? = nil) {
                 self.workspaceId = workspaceId
                 self.query = query
                 self.filter = filter
                 self.cursor = cursor
+                self.seen = seen
+                self.replaces = replaces
             }
         }
 

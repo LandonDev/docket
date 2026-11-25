@@ -1605,7 +1605,9 @@ export const FilesListingSchema = z.object({
   asOf: z.number().optional(),
   more: z.literal(true).optional(),
   asleep: z.array(z.string()).optional(),
-  sleeping: z.enum(['asleep', 'waking']).optional()
+  sleeping: z.enum(['asleep', 'waking']).optional(),
+  pending: z.array(z.string()).optional(),
+  parts: z.number().optional()
 })
 export const FilesStatSchema = z.object({ entries: z.array(FileEntrySchema.nullable()) })
 export const FilesHomeSchema = z.object({ waiting: z.array(FileEntrySchema), starred: z.array(FileEntrySchema), recent: z.array(FileEntrySchema) })
