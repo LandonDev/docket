@@ -325,15 +325,22 @@ function RowsWindow({
     if (!done && range.end >= rows.length - 20) more();
   }, [done, range.end, rows.length, more]);
   // Opening notes where the keys stood, so Back can hand them back there.
-  const open = useCallback(
-    (chatId: string): void => {
-      openedFrom(workspaceId, { chatId, index: Math.max(0, rows.findIndex((row) => row._id === chatId)) });
-      onOpen(chatId);
-    },
-    [workspaceId, rows, onOpen],
-  );
-  // Mark unread on the open conversation is held from the command, so its reader does not mark it read again.
-  const markUnread = useCallback((id: string) => markUnreadHeld(data.markUnread, workspaceId, byId.get(id) ?? { _id: id }, id === openId), [data, workspaceId, byId, openId]);
+  // Opening notes where the keys stood, so Back can hand them back there. Mark unread on the open conversation is held
+  // from the command, so its reader does not mark it read again. The rows get one function each for the list's life,
+  // calling the newest: a memoised row draws again only when what it shows changed (the perf pass's M12).
+  const latest = useRef({ workspaceId, rows, onOpen, data, byId, openId });
+  useLayoutEffect(() => {
+    latest.current = { workspaceId, rows, onOpen, data, byId, openId };
+  });
+  const open = useCallback((chatId: string): void => {
+    const now = latest.current;
+    openedFrom(now.workspaceId, { chatId, index: Math.max(0, now.rows.findIndex((row) => row._id === chatId)) });
+    now.onOpen(chatId);
+  }, []);
+  const markUnread = useCallback((id: string) => {
+    const now = latest.current;
+    markUnreadHeld(now.data.markUnread, now.workspaceId, now.byId.get(id) ?? { _id: id }, id === now.openId);
+  }, []);
   const start = useStartThread();
   const menuAt = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
   const menu = (id: string | null): MenuRow[] | null => {
@@ -400,7 +407,7 @@ function RowsWindow({
         >
           <div aria-hidden style={{ height: range.start * SLOT }} />
           {rows.slice(range.start, range.end).map((row) => (
-            <ChatRowView key={row._id} row={row} open={row._id === openId} active={row._id === active} drafted={drafted.has(row._id)} now={now} onOpen={open} onRead={data.markRead} onUnread={markUnread} />
+            <ChatRowView key={row._id} row={row} open={row._id === openId} active={row._id === active} drafted={drafted.has(row._id)} time={rowTime(row.lastAt, now)} onOpen={open} onRead={data.markRead} onUnread={markUnread} />
           ))}
           <div aria-hidden style={{ height: (rows.length - range.end) * SLOT }} />
         </div>
@@ -449,7 +456,7 @@ const ChatRowView = memo(function ChatRowView({
   open,
   active,
   drafted,
-  now,
+  time,
   onOpen,
   onRead,
   onUnread,
@@ -459,12 +466,12 @@ const ChatRowView = memo(function ChatRowView({
   /** The row the list's keys stand on: it carries the ring while the list has the keyboard. */
   active: boolean;
   drafted: boolean;
-  now: number;
+  /** when its last message came, in the row's words: the minute's tick draws the row again only when they change */
+  time: string;
   onOpen: (id: string) => void;
   onRead: (id: string) => void;
   onUnread: (id: string) => void;
 }) {
-  const time = rowTime(row.lastAt, now);
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the list's keys move the open row
     <div

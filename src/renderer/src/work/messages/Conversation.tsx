@@ -346,12 +346,34 @@ const UNMEASURED = 800;
  * keeps each block's measured height (lib/transcriptWindow.ts), measured
  * upward from the foot, and holds his place when one above the foot changes.
  */
+/** `next`, each block that shows what it showed kept as the object it was; the same array when nothing moved. */
+export function keepBlocks(prev: readonly Block[], next: readonly Block[]): readonly Block[] {
+  const before = new Map(prev.map((b) => [b.id, b]));
+  const out = next.map((b) => {
+    const was = before.get(b.id);
+    return was && was.message === b.message && was.head === b.head && was.day === b.day && was.isNew === b.isNew && was.quote === b.quote ? was : b;
+  });
+  return out.length === prev.length && out.every((b, i) => b === prev[i]) ? prev : out;
+}
+
+function useKeptBlocks(blocks: Block[]): Block[] {
+  // A box of the hook's own, read and written while rendering (as today/stable.ts keeps its rows).
+  const [kept] = useState<{ handed: Block[] | null; blocks: readonly Block[] }>(() => ({ handed: null, blocks: [] }));
+  if (kept.handed !== blocks) {
+    kept.handed = blocks;
+    kept.blocks = keepBlocks(kept.blocks, blocks);
+  }
+  return kept.blocks as Block[];
+}
+
 function Column({ workspaceId, chat, since, page, onPlaced }: { workspaceId: string; chat: ChatRow; since: number | null; page: Paged<ChatMessage>; onPlaced: () => void }) {
   const data = useMessagesData();
   const now = data.useNow();
   const chatId = chat._id;
   const start = useStartThread();
-  const blocks = useMemo(() => blocksOf(page.rows, since, now, page.done), [page.rows, since, now, page.done]);
+  // The minute's tick builds the blocks again: each that says what it said stays the same object, so its memoised
+  // block does not draw (the perf pass's M12).
+  const blocks = useKeptBlocks(useMemo(() => blocksOf(page.rows, since, now, page.done), [page.rows, since, now, page.done]));
   // Newest first: index 0 sits at the foot, and offsets count up from there.
   const upward = useMemo(() => [...blocks].reverse(), [blocks]);
   const layout = useMemo(() => new RowLayout(), []);
