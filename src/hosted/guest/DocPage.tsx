@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DOCUMENT_SCHEMA } from "work-kit/collab";
-import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type DocumentPage, type DocumentPresence, type DocumentStatus, type DocumentView, type EditorAdapters, type PageZoom } from "work-kit/editor";
+import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type AnyEditor, type DocumentPage, type DocumentPresence, type DocumentStatus, type DocumentView, type EditorAdapters, type PageZoom } from "work-kit/editor";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { DOC_FONTS } from "@renderer/work/docs/fonts";
 import { Comment } from "@renderer/work/icons";
 import { openingView, openingZoom, PAGES_FROM } from "./opening";
 import { afterRevoked, watchedSocket } from "./ending";
+import type { Frame } from "./frame";
+import { bindDocument } from "./frameDoc";
 import { offlinePrefix, wipeOffline } from "./offline";
 import { commentLeft } from "./place";
 import { OpenFailed, commentsOnPage, type Opened, type Session } from "./session";
@@ -28,6 +30,9 @@ import { guestThreads } from "./threads";
  * and an Edit link's row holds the switch and the zoom. Under 640px it is
  * always Flow and the row has no switch (guest.css): a sheet fitted to a
  * phone is too small to read.
+ *
+ * In the phone's frame (`bare`, frame.ts) the app draws the format row and Find: the page draws neither, and the
+ * editor answers the app's bridge (frameDoc.ts) once it has drawn its text.
  */
 
 /** How fast the document's socket comes back: 1 s, growing a tenth a try, 5 s at most (about 30 s to reach it), with no jitter to wait on. */
@@ -69,11 +74,17 @@ export function DocPage({
   scheme,
   onGone,
   onPeople,
+  bare = false,
+  frame: bridge = null,
 }: {
   session: Session;
   opened: Opened;
   scheme: "light" | "dark";
   onGone(): void;
+  /** In the phone's frame: no format row of the page's own (the app draws one) */
+  bare?: boolean;
+  /** The phone's bridge, where its web view listens */
+  frame?: Frame | null;
   /** who else has the document open, as their carets come and go: the page's line draws their faces */
   onPeople?(people: DocumentPresence[]): void;
 }) {
@@ -163,13 +174,24 @@ export function DocPage({
   const [styled, setStyled] = useState(false);
   const [classic, setClassic] = useState(false);
   const styledNow = useRef(false);
-  const onPage = useCallback((page: DocumentPage | null) => {
-    styledNow.current = page !== null;
-    setStyled(page !== null);
-  }, []);
+  // The document's page as the editor last said it: the bridge reads its styles.
+  const pageNow = useRef<DocumentPage | null>(null);
+  const [bound, setBound] = useState<ReturnType<typeof bindDocument> | null>(null);
+  const onPage = useCallback(
+    (page: DocumentPage | null) => {
+      styledNow.current = page !== null;
+      pageNow.current = page;
+      setStyled(page !== null);
+      bound?.refresh();
+    },
+    [bound],
+  );
+  // The editor with its text in, for the phone's bridge alone.
+  const [live, setLive] = useState<AnyEditor | null>(null);
   const read = useRef(false);
   const onEditor = useCallback(
     (editor: unknown) => {
+      if (bridge) setLive(editor as AnyEditor | null);
       if (!editor || read.current) return;
       read.current = true;
       setClassic(!styledNow.current);
@@ -183,8 +205,23 @@ export function DocPage({
         // An editor with no block to stand in keeps no caret.
       }
     },
-    [opened.role],
+    [opened.role, bridge],
   );
+  const editing = opened.role === "edit";
+  useEffect(() => {
+    if (!bridge || !live) return;
+    const binding = bindDocument(bridge, live, { page: () => pageNow.current, editable: editing });
+    const unlisten = bridge.listen(window, binding.receive);
+    setBound(binding);
+    // Drawn: the text is in, and two frames have painted it.
+    let paint = requestAnimationFrame(() => (paint = requestAnimationFrame(() => bridge.drawn({ format: editing, find: true, undo: editing }))));
+    return () => {
+      cancelAnimationFrame(paint);
+      unlisten();
+      binding.stop();
+      setBound(null);
+    };
+  }, [bridge, live, editing]);
   // Sheets need 640px now, too: a tablet turned narrow, or a phone turned back upright, reads Flow until there is room again.
   const room = useWide(PAGES_FROM);
   const view = room ? (picked.view ?? (classic ? "flow" : opens.view)) : "flow";
@@ -225,7 +262,7 @@ export function DocPage({
     <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER, fonts: DOC_FONTS }}>
       <EditorAdaptersProvider adapters={adapters}>
         {/* The format row's place: the page's first row under its header, held while the text scrolls under it, as in the app's pane. */}
-        {opened.role === "edit" ? <div ref={setRowSlot} data-guest-row className="sticky top-0 z-10 w-full min-w-0 flex-none bg-background" /> : null}
+        {opened.role === "edit" && !bare ? <div ref={setRowSlot} data-guest-row className="sticky top-0 z-10 w-full min-w-0 flex-none bg-background" /> : null}
         <div ref={frame} data-guest-document={opened.role} className={`group/doc relative mx-auto w-full max-w-(--doc-column) min-w-0 px-4 pt-6 pb-10 sm:px-8 ${IN_PAGES.column}`} style={{ "--doc-column": `${MEASURE + (side ? MARGIN : 0) + 64}px`, "--doc-margin": `${side ? MARGIN : 0}px` } as React.CSSProperties}>
           {line ? (
             <div role="status" data-guest-status className={`mb-3 flex min-h-8 max-w-[672px] items-center gap-2 border-b border-border py-1 text-[13px] leading-5 ${IN_PAGES.status}`}>
@@ -248,7 +285,7 @@ export function DocPage({
               {...(onPeople ? { onPresence: onPeople } : {})}
               // An Edit link gets the format row; Comment and View get none. The page is built with the service it is
               // served by, so the schema it knows is the service's: it says so, and asks the service to raise a document.
-              formatRow={opened.role === "edit"}
+              formatRow={opened.role === "edit" && !bare}
               formatRowInto={rowSlot}
               hostSchema={DOCUMENT_SCHEMA}
               view={view}

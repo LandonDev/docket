@@ -290,6 +290,21 @@ describe('a form', () => {
     expect((await call<FormResponses>('work.forms.responses', { itemId })).rows[0][0]).toBe('Late')
   })
 
+  it('reopens only on his press with approve; an operate key may close, never reopen', async () => {
+    const { itemId } = await made()
+    await publish(itemId)
+    const operateKey = { kind: 'remote', caps: ['read', 'operate'], keyId: 'k1', audience: 'client' } as const
+    const approveKey = { kind: 'remote', caps: ['read', 'operate', 'approve'], keyId: 'k3', audience: 'client' } as const
+    const mcpKey = { kind: 'remote', caps: ['read', 'operate', 'approve'], keyId: 'k2', audience: 'mcp' } as const
+    const close = (open: boolean, principal: unknown) => work.handle(ClientRequestSchema.parse({ id: '1', method: 'work.forms.close', params: { itemId, open } }), principal as never)
+    const closed = await close(false, operateKey)
+    expect(closed.handled && (closed.result as FormView).state).toBe('closed')
+    for (const principal of [operateKey, mcpKey]) await expect(close(true, principal)).rejects.toThrow('only the owner decides')
+    expect((await call<FormView>('work.forms.open', { itemId })).state).toBe('closed')
+    const opened = await close(true, approveKey)
+    expect(opened.handled && (opened.result as FormView).state).toBe('open')
+  })
+
   it('holds a publish only for the form his canvas drew: one a thread changed since is refused', async () => {
     const { itemId } = await made()
     const view = await call<FormView>('work.forms.open', { itemId })

@@ -6,6 +6,7 @@ import { ArrowLeft, RefreshCw } from "@renderer/chrome/icons";
 import { Doc, Project, Table } from "@renderer/work/icons";
 import { Face } from "@renderer/work/mail/face";
 import { projectionLists, type GuestProjection } from "@shared/work/guestProjection";
+import { frameFor, frameOf, keptHash } from "./frame";
 import { wipeOffline } from "./offline";
 import { tellPhone } from "./phone";
 import { endWords, modeOf, OpenFailed, openWhenUp, Session, untilDay, type ChildItem, type Failure, type Opened, type Remembered } from "./session";
@@ -84,6 +85,9 @@ export function GuestApp() {
     return mode.kind === "none" ? null : new Session(mode, location.origin, renewStore, undefined, null, mode.kind === "guest" ? memoryOf(mode.id) : null);
   }, []);
   const [state, setState] = useState<{ at: "loading" } | { at: "open"; opened: Opened } | { at: "failed"; why: Failure }>(session ? { at: "loading" } : { at: "failed", why: "gone" });
+  // The phone's own frame (frame.ts): read before the open takes the ticket from the address.
+  const [chrome] = useState(() => frameOf(location.pathname, location.hash));
+  const frame = useMemo(() => frameFor(chrome, window), [chrome]);
 
   // What this browser knew of the link before this visit: read before the open writes over it.
   const [kept] = useState<Remembered | null>(() => session?.remembered() ?? null);
@@ -102,7 +106,7 @@ export function GuestApp() {
       (opened) => {
         // The owner's ticket opens once: it leaves the address as soon as it has.
         if (session.mode.kind === "owner") {
-          history.replaceState(null, "", location.pathname);
+          history.replaceState(null, "", location.pathname + keptHash(chrome));
           tellPhone({ kind: "opened" });
         }
         document.title = opened.title;
@@ -114,7 +118,7 @@ export function GuestApp() {
         else setState({ at: "failed", why });
       },
     );
-  }, [session, gone]);
+  }, [session, gone, chrome]);
   useEffect(load, [load]);
   const [people, setPeople] = useState<readonly Person[]>([]);
   // A sheet that never came: out of reach, with Retry. (One that has its sheet keeps trying under its own line.)
@@ -128,45 +132,53 @@ export function GuestApp() {
   // A document or sheet the project no longer lists is closed at the page's next read: its socket is already shut.
   const shown = useCallback((p: GuestProjection) => setChild((open) => (open && !projectionLists(p, open.table, open.id) ? null : open)), []);
 
+  // A page that will draw no editor is drawn as it is: the frame shows it at once.
+  const failed = state.at === "failed";
+  useEffect(() => {
+    if (failed) frame?.drawn({ format: false, find: false, undo: false });
+  }, [failed, frame]);
+
   if (state.at === "failed") return <Ended why={state.why} owner={session?.mode.kind === "owner"} kept={session?.remembered() ?? kept} retry={load} />;
   const opened = state.at === "open" ? state.opened : null;
   const TitleTag = opened?.kind === "doc" ? "h1" : "span";
   return (
     <div className="flex h-dvh flex-col bg-background text-foreground">
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4 text-[13px]">
-        {opened ? (
-          <>
-            {child ? (
-              <Button variant="ghost" size="icon-xs" aria-label={`Back to ${opened.title}`} className="-ms-1.5 text-muted-foreground" onClick={back}>
-                <ArrowLeft />
-              </Button>
-            ) : null}
-            {opened.kind === "project" && !child ? <span ref={setLead} data-project-lead className="flex shrink-0 items-center empty:hidden" /> : null}
-            <span className="shrink-0 text-muted-foreground">{createElement(GLYPH[child ? (child.table === "docs" ? "doc" : "sheet") : opened.kind], { className: "size-3.5" })}</span>
-            <TitleTag className="min-w-0 truncate text-sm font-semibold">{child ? child.title || "Untitled" : opened.title}</TitleTag>
-            {opened.owner ? <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{opened.owner}</span> : null}
-            {opened.kind === "project" && !child ? <span ref={setSlot} data-project-bar className="flex min-w-0 flex-1 items-center justify-between gap-2" /> : null}
-            {opened.name || people.length ? (
-              <span className="ms-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                {opened.name ? (
-                  <>
-                    <span className="hidden sm:inline">{CAN[opened.role]}</span>
-                    <span className="hidden tabular-nums sm:inline">until {untilDay(opened.expiresAt)}</span>
-                  </>
-                ) : null}
-                <Faces people={people} />
-                {opened.name ? (
-                  <span role="img" aria-label={opened.name} title={opened.name} className="grid">
-                    <Face name={opened.name} size="bar" />
-                  </span>
-                ) : null}
-              </span>
-            ) : null}
-          </>
-        ) : (
-          <Skeleton className="h-4 w-48" />
-        )}
-      </header>
+      {chrome === "full" ? (
+        <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4 text-[13px]">
+          {opened ? (
+            <>
+              {child ? (
+                <Button variant="ghost" size="icon-xs" aria-label={`Back to ${opened.title}`} className="-ms-1.5 text-muted-foreground" onClick={back}>
+                  <ArrowLeft />
+                </Button>
+              ) : null}
+              {opened.kind === "project" && !child ? <span ref={setLead} data-project-lead className="flex shrink-0 items-center empty:hidden" /> : null}
+              <span className="shrink-0 text-muted-foreground">{createElement(GLYPH[child ? (child.table === "docs" ? "doc" : "sheet") : opened.kind], { className: "size-3.5" })}</span>
+              <TitleTag className="min-w-0 truncate text-sm font-semibold">{child ? child.title || "Untitled" : opened.title}</TitleTag>
+              {opened.owner ? <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{opened.owner}</span> : null}
+              {opened.kind === "project" && !child ? <span ref={setSlot} data-project-bar className="flex min-w-0 flex-1 items-center justify-between gap-2" /> : null}
+              {opened.name || people.length ? (
+                <span className="ms-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                  {opened.name ? (
+                    <>
+                      <span className="hidden sm:inline">{CAN[opened.role]}</span>
+                      <span className="hidden tabular-nums sm:inline">until {untilDay(opened.expiresAt)}</span>
+                    </>
+                  ) : null}
+                  <Faces people={people} />
+                  {opened.name ? (
+                    <span role="img" aria-label={opened.name} title={opened.name} className="grid">
+                      <Face name={opened.name} size="bar" />
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <Skeleton className="h-4 w-48" />
+          )}
+        </header>
+      ) : null}
       {/* Where a document is drawn as sheets (DocPage.tsx), the page under the header is their stage, to its edges and its foot. */}
       <main className="relative flex min-h-0 flex-1 flex-col overflow-auto has-[.te-pages-stage]:bg-(--stage)">
         {opened ? (
@@ -177,9 +189,9 @@ export function GuestApp() {
                 {child ? <ChildPage key={`${child.table}:${child.id}`} session={session!} item={child} onBack={back} onGone={gone} /> : null}
               </>
             ) : opened.kind === "doc" ? (
-              <DocPage session={session!} opened={opened} scheme={scheme} onGone={gone} onPeople={setPeople} />
+              <DocPage session={session!} opened={opened} scheme={scheme} onGone={gone} onPeople={setPeople} bare={chrome === "none"} frame={frame} />
             ) : (
-              <SheetPage session={session!} opened={opened} onGone={gone} onDown={down} onPeople={setPeople} />
+              <SheetPage session={session!} opened={opened} onGone={gone} onDown={down} onPeople={setPeople} frame={frame} />
             )}
           </Suspense>
         ) : (

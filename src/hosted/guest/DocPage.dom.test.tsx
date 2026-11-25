@@ -387,3 +387,31 @@ describe("words typed while the line is down", () => {
     expect(narrow).toMatch(/\.te-card, \.te-margin, \.te-threads-foot\), \.te-threads-popover\) button::after \{\s*content: "";\s*position: absolute;\s*inset-block: min\(0px, calc\(\(100% - 44px\) \/ 2\)\);\s*inset-inline: min\(0px, calc\(\(100% - 44px\) \/ 2\)\);/);
   });
 });
+
+describe("a document in the phone's frame (frame.ts)", () => {
+  const owner = sessionOf({ kind: "owner", ticket: null });
+  /** The editor as the bridge reads it: nothing in its text, no focus. */
+  const madeEditor = () => ({ isFocused: () => false, onChange: () => () => {}, onSelectionChange: () => () => {}, domElement: document.createElement("div"), undo: vi.fn(), redo: vi.fn() });
+
+  it("hands the editor no format row and draws no place for one", () => {
+    const view = render(<main><DocPage session={owner} opened={opened("edit")} scheme="light" onGone={() => {}} bare /></main>);
+    expect(view.container.querySelector("[data-guest-row]")).toBeNull();
+    expect(editors.at(-1)).toMatchObject({ formatRow: false, editable: true });
+    expect(editors.at(-1)!.find).toBeUndefined();
+  });
+
+  it("says drawn once the text is in and two frames have painted it, and takes Undo from the app", async () => {
+    const { Frame } = await import("./frame");
+    const posted: { kind?: string }[] = [];
+    const frame = new Frame({ postMessage: (m) => posted.push(m as { kind?: string }) });
+    render(<main><DocPage session={owner} opened={opened("edit")} scheme="light" onGone={() => {}} bare frame={frame} /></main>);
+    expect(posted).toEqual([]);
+    const made = madeEditor();
+    act(() => editor().onEditor(made));
+    await waitFor(() => expect(posted.filter((m) => m.kind === "drawn")).toEqual([{ kind: "drawn", v: 1, offers: { format: true, find: true, undo: true } }]));
+    (window as unknown as { tcFrame: { receive(raw: unknown): void } }).tcFrame.receive({ kind: "undo" });
+    expect(made.undo).toHaveBeenCalledTimes(1);
+    cleanup();
+    expect((window as { tcFrame?: unknown }).tcFrame).toBeUndefined();
+  });
+});

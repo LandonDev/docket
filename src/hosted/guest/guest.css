@@ -91,3 +91,13 @@ main {
     inset-inline: min(0px, calc((100% - 44px) / 2));
   }
 }
+
+/* Find in the phone's frame (frameDoc.ts): the page's own highlights, washed as work-kit washes a match and the
+   one in hand. A highlight takes no outline, so the match in hand is told by the selection's tint alone. */
+::highlight(tc-find-hit) {
+  background-color: color-mix(in oklch, var(--foreground) 14%, transparent);
+}
+
+::highlight(tc-find-current) {
+  background-color: var(--sel-bg, color-mix(in oklch, var(--info) 22%, transparent));
+}

@@ -76,6 +76,8 @@ export const forms: WorkModule = {
     if (by.kind === 'model' && OWNER_ONLY.has(req.method)) throw new Error('Only the owner changes a form from the canvas.')
     if (req.method === 'work.forms.list') return handled(listForms(ctx, by, req.params.workspaceId))
     if (req.method === 'work.forms.make') return handled(await makeInFiles(ctx, by, req.params.workspaceId, req.params.title))
+    // Reopening starts a public page taking answers again: his press with approve, as a publish is. Closing stays operate.
+    if (req.method === 'work.forms.close' && req.params.open) mustBePerson(by, 'approve')
     const item = formItem(ctx, (req as { params: { itemId: string } }).params.itemId)
     switch (req.method) {
       case 'work.forms.open':

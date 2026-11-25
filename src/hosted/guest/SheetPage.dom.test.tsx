@@ -346,3 +346,28 @@ describe("the unreachable screen", () => {
     expect(screen.queryByText(/not saved|not be confirmed|Nothing you wrote is lost/)).toBeNull();
   });
 });
+
+describe("the sheet in the phone's frame (frame.ts)", () => {
+  it("says drawn once the grid is up, with Undo and nothing else to offer, and runs the app's Undo and Redo on the grid", async () => {
+    const { Frame } = await import("./frame");
+    const posted: { kind?: string }[] = [];
+    const frame = new Frame({ postMessage: (m) => posted.push(m as { kind?: string }) });
+    const handle = { undo: vi.fn(), redo: vi.fn(), onMutation: () => () => {} };
+    grid.handle = handle;
+    render(<SheetPage session={session} opened={opened} onGone={() => {}} onDown={() => {}} frame={frame} />);
+    await flush();
+    expect(posted).toEqual([]);
+    await act(async () => FakeSocket.last!.say({ t: "state", rev: 1, snapshot: { id: "u1" } }));
+    await vi.waitFor(() => expect(posted.filter((m) => m.kind === "drawn")).toEqual([{ kind: "drawn", v: 1, offers: { format: false, find: false, undo: true } }]));
+    expect(posted.find((m) => m.kind === "state")).toMatchObject({ editing: false, styles: [], undo: true, redo: true });
+    const ear = (window as unknown as { tcFrame: { receive(raw: unknown): void } }).tcFrame;
+    ear.receive({ kind: "undo" });
+    ear.receive({ kind: "redo" });
+    ear.receive({ kind: "format", what: "bold" });
+    expect(handle.undo).toHaveBeenCalledTimes(1);
+    expect(handle.redo).toHaveBeenCalledTimes(1);
+    cleanup();
+    grid.handle = null;
+    expect((window as { tcFrame?: unknown }).tcFrame).toBeUndefined();
+  });
+});

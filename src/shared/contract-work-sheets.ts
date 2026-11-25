@@ -174,6 +174,8 @@ export interface SheetView {
   shared: boolean
   /** what an agent does to it on its own idea when it is not shared */
   mode: 'suggests' | 'writes'
+  /** each tab's name by its sheet id (a suggestion names its sheet by id): a cell's address on the phone names its tab */
+  tabs?: Record<string, string>
   /** open suggestions (pending, conflict, orphaned), in sheet order */
   suggestions: SheetSuggestion[]
   /** formats and rules an agent proposed, oldest first; absent with none */

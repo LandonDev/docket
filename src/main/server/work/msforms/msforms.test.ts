@@ -253,6 +253,21 @@ describe('Collect responses, held', () => {
     const open = await call<MsFormView>('work.msforms.close', { workspaceId: 'w1', formId: view.formId, open: true })
     expect(open.state).toBe('collecting')
   })
+
+  it('reopens only on his press with approve; an operate key may close, never reopen', async () => {
+    const view = await withQuestion()
+    const { ref } = await call<{ ref: OutboxItem['ref'] }>('work.msforms.publish', { workspaceId: 'w1', formId: view.formId })
+    await call('work.outbox.send', { ref })
+    const operateKey = { kind: 'remote', caps: ['read', 'operate'], keyId: 'k1', audience: 'client' } as const
+    const approveKey = { kind: 'remote', caps: ['read', 'operate', 'approve'], keyId: 'k3', audience: 'client' } as const
+    const ask = (open: boolean) => ({ workspaceId: 'w1', formId: view.formId, open })
+    expect((await call<MsFormView>('work.msforms.close', ask(false), operateKey as never)).state).toBe('closed')
+    await expect(call('work.msforms.close', ask(true), operateKey as never)).rejects.toThrow('only the owner decides')
+    const peer = { kind: 'remote', caps: ['read', 'operate', 'approve'], peer: 'env_mac' }
+    await expect(msforms.handle!({ id: '1', method: 'work.msforms.close', params: ask(true) } as ClientRequest, work.ctx, peer as never)).rejects.toThrow('only the owner decides')
+    expect(carrier.calls.filter((c) => c.op === 'close').length).toBe(1)
+    expect((await call<MsFormView>('work.msforms.close', ask(true), approveKey as never)).state).toBe('collecting')
+  })
 })
 
 describe("an agent's make, held", () => {

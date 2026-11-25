@@ -6,6 +6,7 @@ import { GUEST_ROW, isObjectList, type RulesSetParams } from "@shared/work/sheet
 import { listChanges, listMedia, snapshotMedia } from "@renderer/work/sheets/objects";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { StatusMark } from "@renderer/components/ui/status";
+import type { Frame } from "./frame";
 import type { Opened, Session } from "./session";
 import { openSheetLine, type LineStatus, type SheetLine, type SheetPerson } from "./sheetLine";
 import { claimQueue, sheetQueue, type SheetQueue } from "./sheetQueue";
@@ -99,6 +100,7 @@ export function SheetPage({
   onGone,
   onDown,
   onPeople,
+  frame = null,
 }: {
   session: Session;
   opened: Opened;
@@ -107,6 +109,8 @@ export function SheetPage({
   onDown(): void;
   /** who else is on the sheet, as their selections come and go: the page's line draws their faces */
   onPeople?(people: { id: string; name: string; color: string }[]): void;
+  /** The phone's bridge (frame.ts): the grid says when it has drawn, and takes Undo and Redo. No format or find of the grid. */
+  frame?: Frame | null;
 }) {
   const linkId = session.mode?.kind === "guest" ? session.mode.id : null;
   const guest = opened.me.startsWith("guest:");
@@ -213,6 +217,28 @@ export function SheetPage({
   }, [session, opened, linkId, edits]);
 
   const presence = useMemo<SheetPresence[]>(() => people.map((p) => ({ id: p.id, name: p.name, hue: p.hue, range: { sheet: p.sheet, ...p.range } })), [people]);
+
+  // The phone's frame: drawn once the grid has painted; Undo and Redo from its More; the keyboard's state from the focus.
+  useEffect(() => {
+    if (!frame || !grid || !box) return;
+    const state = (editing: boolean) => frame.state({ editing: edits && editing, style: null, styles: [], bold: false, italic: false, list: null, undo: edits, redo: edits });
+    const unlisten = frame.listen(window, (m) => {
+      if (!edits) return;
+      if (m.kind === "undo") grid.undo();
+      else if (m.kind === "redo") grid.redo();
+    });
+    const focused = (): void => state(box.contains(document.activeElement));
+    box.addEventListener("focusin", focused);
+    box.addEventListener("focusout", focused);
+    state(false);
+    let paint = requestAnimationFrame(() => (paint = requestAnimationFrame(() => frame.drawn({ format: false, find: false, undo: edits }))));
+    return () => {
+      cancelAnimationFrame(paint);
+      unlisten();
+      box.removeEventListener("focusin", focused);
+      box.removeEventListener("focusout", focused);
+    };
+  }, [frame, grid, box, edits]);
 
   if (!book) return <SheetBones />;
   const offlineWords = !edits ? SHEET_OFFLINE_WORDS.reader : onDevice ? SHEET_OFFLINE_WORDS.device : SHEET_OFFLINE_WORDS.tab;

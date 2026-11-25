@@ -108,6 +108,10 @@ describe('a package in the canvas', () => {
     const view = await call<SheetView>('work.sheets.open', { itemId })
     expect(view).toMatchObject({ itemId, sessionId: 't1', name: 'Budget.xlsx', store: 'package', rev: 0, shared: false, mode: 'writes', suggestions: [] })
     expect(view.reach).toBeUndefined()
+    // Each tab's name by its sheet id, so the phone's Review Changes can name a cell's tab.
+    const book = importXlsx(new Uint8Array(readFileSync(path))).workbook
+    expect(view.tabs).toEqual(Object.fromEntries(book.sheetOrder.map((id) => [id, book.sheets[id]!.name])))
+    expect(Object.values(view.tabs ?? {})).toContain('Data')
     const size = readFileSync(path).length
     const a = await call<{ data: string; size: number; format: string }>('work.sheets.load', { itemId, rev: 0, offset: 0, length: 1000 })
     const b = await call<{ data: string }>('work.sheets.load', { itemId, rev: 0, offset: 1000, length: size })

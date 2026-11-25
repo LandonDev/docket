@@ -76,14 +76,21 @@ export interface GuestLinkRow {
 }
 
 const linkId = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/)
+/** The phone's name for one press of Create link, answered once (guests/attempts.ts). */
+const attempt = z.string().min(8).max(64)
 
 export const GuestsRequestSchemas = [
   /** Every link made on this host, live ones first; ended and revoked ones for a week. */
   request('work.guests.list', z.object({})),
   /** One item's links, for its Share sheet. */
   request('work.guests.forItem', z.object({ source: GuestSourceSchema })),
-  /** The owner's own link: shown once in the answer, kept only as a hash. */
-  request('work.guests.create', z.object({ source: GuestSourceSchema, title: GuestTitleSchema, name: GuestNameSchema, role: z.enum(GUEST_ROLES), expiresAt: z.number().int() })),
+  /**
+   * The owner's own link: shown once in the answer, kept only as a hash. `attempt` (the phone's): a repeat of the key
+   * makes no second link; it answers `GuestCreatedAgain`, the link with no address, since the address is never kept.
+   */
+  request('work.guests.create', z.object({ source: GuestSourceSchema, title: GuestTitleSchema, name: GuestNameSchema, role: z.enum(GUEST_ROLES), expiresAt: z.number().int(), attempt: attempt.optional() })),
+  /** → GuestAttemptAnswer: what became of a Create link named by its `attempt` key, read without making anything. */
+  request('work.guests.attempt', z.object({ attempt })),
   /** A new address for a live link, shown once: the one before opens nothing from now on. */
   request('work.guests.rekey', z.object({ linkId })),
   /** Revoked at once: the guest's sockets close within a second. */
@@ -105,6 +112,22 @@ export interface GuestCreated {
   url: string
 }
 
+/**
+ * A repeat of a Create link's attempt key once the first has answered: the link it made, as it stands now, and no
+ * address, which was shown once and kept only as a hash. Replace address… makes a new one.
+ */
+export interface GuestCreatedAgain {
+  link: GuestLinkRow
+  again: true
+}
+
+/** What became of a Create link by its attempt key: made (the link's id), refused, or cut off by a restart, in the host's words. */
+export interface GuestAttemptAnswer {
+  state: 'none' | 'making' | 'made' | 'refused' | 'unknown'
+  linkId?: string
+  words?: string
+}
+
 export type GuestsPush = { push: 'work.guests' }
 
 export const GUESTS_CAPS = {
@@ -113,6 +136,8 @@ export const GUESTS_CAPS = {
   // Letting someone outside in is an outward act: a key must be able to approve one.
   'work.guests.create': 'approve',
   'work.guests.rekey': 'approve',
+  // Says whether a press made a link: as much as making it may know.
+  'work.guests.attempt': 'approve',
   'work.guests.revoke': 'operate',
   // A role can widen what someone outside may do: as making the link, a key that may approve.
   'work.guests.setRole': 'approve',

@@ -127,7 +127,7 @@ export const TICKET_REFUSALS = {
   word: 'This document is a Word file. Edit it on your computer.',
   excel: 'This sheet is an Excel file. Edit it on your computer.',
   elsewhere: 'This file opens on the computer that has it.',
-  noPage: 'This computer serves no page a phone can open. Edit it on your computer.'
+  noPage: 'A phone can’t reach this computer’s editor. Edit it on your computer.'
 } as const
 
 export { SHARE_REFUSALS }

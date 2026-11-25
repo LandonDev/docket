@@ -329,6 +329,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       ...base,
       // (written into the file with his next change to that tab's charts, never before)
       ...legacyOf(st.inspected.sheets),
+      tabs: tabsOf(st.inspected.sheets),
       // A copy of another format goes by the name of the file it was made from.
       name: imported?.name ?? basename(held.path),
       ...(imported ? { imported } : {}),
@@ -365,6 +366,8 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       rev: grid.follow(s.ctx, held.ref, item.id, () => void import('./index').then((m) => m.announce(s, item))),
       shared,
       suggestions: s.suggestions.open(key),
+      // Its rows name their sheet by the tab itself.
+      tabs: tabsOf(s.suggestions.open(key).map((row) => ({ id: row.sheet, name: row.sheet }))),
       ...(written ? { written } : {}),
       reach: { parts: ['formatting', 'inserting rows and columns'], to: 'excel' }
     }
@@ -380,6 +383,8 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
       rev: grid.follow(held.ref, item.id, () => void import('./index').then((m) => m.announce(s, item))),
       shared,
       suggestions: s.suggestions.open(key),
+      // Its rows name their sheet by the tab itself.
+      tabs: tabsOf(s.suggestions.open(key).map((row) => ({ id: row.sheet, name: row.sheet }))),
       ...(written ? { written } : {}),
       reach: { parts: ['formatting', 'inserting rows and columns'], to: 'google' }
     }
@@ -389,6 +394,7 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
   return {
     ...base,
     ...(store === 'csv' ? {} : legacyOf(st.sheets)),
+    tabs: tabsOf(st.sheets),
     name: st.title,
     store,
     // The format row's controls: the ones this store keeps (rowMatrix.test.ts).
@@ -404,6 +410,9 @@ export async function viewOf(s: Sheets, item: CanvasItem): Promise<SheetView> {
     ...(st.missing ? { missing: true } : {})
   }
 }
+
+/** Each tab's name by its sheet id, so the phone's Review Changes can name a cell's tab. */
+export const tabsOf = (sheets: readonly { id: string; name: string }[]): Record<string, string> => Object.fromEntries(sheets.map((sheet) => [sheet.id, sheet.name]))
 
 /** Whether the caller is he who decides what waits on a sheet: at a screen of this host, or a key that could take it (`pressesFor`); never another host's call, which carries no press of his. */
 export const reviews = (by: Caller): boolean => pressesFor(by)

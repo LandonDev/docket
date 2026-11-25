@@ -80,6 +80,8 @@ async function route(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Hand
     }
     case 'work.msforms.close': {
       const p = paramsOf('work.msforms.close', req)
+      // Reopening starts Forms taking answers again: his press with approve. Closing stays operate.
+      if (p.open) mustBePerson(by, 'approve')
       return handled(await setOpen(ctx, formReach(ctx, by, p), p.open, 'owner', 'owner'))
     }
     case 'work.msforms.mode': {

@@ -9,6 +9,7 @@ import { serviceOf } from '../service/ctx'
 import { GuestRuntime, TICK_MS } from './links'
 import { ensureGuestTables } from './store'
 import { EDITED_TELL, OPENED_TELL } from './tells'
+import { askOf, ensureGuestAttemptsTable, guestAttemptOf, makeOnce } from './attempts'
 import { guestsHealth } from './health'
 import { hisZone } from '../clock'
 import { heldReceipt } from '../outbox/words'
@@ -143,6 +144,7 @@ export const guests: WorkModule = {
   health: guestsHealth,
   ensure(db) {
     ensureGuestTables(db)
+    ensureGuestAttemptsTable(db)
   },
   async handle(req, ctx, by) {
     if (!METHODS.has(req.method)) return NOT_HANDLED
@@ -156,8 +158,14 @@ export const guests: WorkModule = {
         await rt.servedHere(req.params.source)
         // A file is checked as Create would check it: a sheet that cannot make a link says why at once.
         return handled(await rt.list(rt.resolve(req.params.source, by, req.method)))
-      case 'work.guests.create':
-        return handled(await rt.create({ ...req.params, bySession: null, by }))
+      case 'work.guests.create': {
+        const { attempt, ...ask } = req.params
+        if (!attempt) return handled(await rt.create({ ...ask, bySession: null, by }))
+        // The phone's press, answered once by its key (attempts.ts): a repeat makes no second link.
+        return handled(await makeOnce(ctx.db, { attempt, ask: askOf(ask) }, () => rt.create({ ...ask, bySession: null, by }), async (id) => (await rt.list()).find((l) => l.id === id) ?? null))
+      }
+      case 'work.guests.attempt':
+        return handled(guestAttemptOf(ctx.db, req.params.attempt))
       case 'work.guests.setRole':
         if (!(await rt.setRole(req.params.linkId, req.params.role))) throw new Error('That link no longer opens anything.')
         return handled({ ok: true })
