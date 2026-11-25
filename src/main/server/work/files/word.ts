@@ -299,6 +299,18 @@ function knownSha(r: WordRow): string | null {
   }
 }
 const shaOf = (data: Buffer): string => createHash('sha256').update(data).digest('hex')
+/** The sha256 a version word (`size:mtime:sha`) carries: the holder's digest of the bytes of that version; null when it gives none. */
+const digestOf = (version: string): string | null => {
+  const sha = version.split(':')[2] ?? ''
+  return /^[0-9a-f]{64}$/.test(sha) ? sha : null
+}
+/**
+ * Whether bytes of this digest are the ones TempCode itself last wrote to the Word file: the export its last save
+ * wrote (`sha` once `saved_at` is set), one whose answer was lost (`tried_sha`), or our own blank New made there.
+ * Nothing of anyone's to keep is in them.
+ */
+const ourBytes = (r: WordRow, digest: string | null): boolean =>
+  digest !== null && ((digest === r.sha && (r.saved_at !== null || bornHere(digest))) || digest === r.tried_sha)
 /** When a version word (`size:mtime:sha`, the helper's and the door's alike) says the file last changed. */
 const changedOf = (version: string): number => Number(version.split(':')[1]) || Date.now()
 
@@ -341,7 +353,8 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
       if (gone(err)) return { conflict: { gone: true } }
       throw err
     }
-    const owed = !r.original && !!workspaceHere(ctx.db, r.workspace_id)?.path
+    // Owed no copy while the holder's digest for the version it names proves the file is still TempCode's own bytes.
+    const owed = !r.original && !!workspaceHere(ctx.db, r.workspace_id) && !(seen !== null && ourBytes(r, digestOf(seen)))
     let now: { data: Buffer; version: string } | null = null
     if (seen === null || seen !== r.version || owed) {
       try {
@@ -372,8 +385,8 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
     // Written over by the version just seen: the write itself is checked against it there (deliver), so a change made
     // between this look and the write is a conflict, never a silent overwrite.
     version = nowVersion
-    // A file still exactly our blank holds nothing of anyone's to keep.
-    if (now && !bornHere(shaOf(now.data))) keepOriginal(ctx, r, now.data)
+    // A file still exactly our blank, or the bytes TempCode last wrote there, holds nothing of anyone's to keep.
+    if (now && !bornHere(shaOf(now.data)) && !ourBytes(r, shaOf(now.data))) keepOriginal(ctx, r, now.data)
   }
   // The revision written is the one read before the export: an edit after it keeps the file behind, and is saved next.
   // Read after, an edit landing during the export would be marked saved with words the file never got.

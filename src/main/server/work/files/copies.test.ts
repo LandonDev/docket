@@ -125,7 +125,7 @@ const settled = async (): Promise<void> => {
 const writes = (): number => far.filter((c) => c.verb === 'writeBack').length
 
 /** A file of the Mac's team library opened in a Files tab here: its copy, its tab and its path on the Mac. */
-async function openFar(name: string, bytes: string) {
+async function openFar(name: string, bytes: string | Buffer) {
   const path = join(mac.team, 'General', name)
   writeFileSync(path, bytes)
   const opened = await call<FilesOpened>('work.files.open', { ref: { at: 'file', host: MAC, path }, name })
@@ -790,7 +790,7 @@ describe("his window on another computer of his (a key that may approve)", () =>
  */
 describe('a Word file of another computer', () => {
   /** The document kind's import of the copy, as the importer does it: where Files says, then the item's replace. */
-  async function imported(name: string, bytes: string) {
+  async function imported(name: string, bytes: string | Buffer) {
     const opened = await openFar(name, bytes)
     const folder = wordImportPlace(box.ctx, opened.copy, opened.item.id)
     const doc = join(folder ?? dirname(opened.copy), name.replace(/\.docx$/, '.tcdoc'))
@@ -849,6 +849,38 @@ describe('a Word file of another computer', () => {
     expect(await call<{ conflict?: unknown }>('work.files.wordSave', { tabId })).toMatchObject({ conflict: { changed: expect.any(Number) } })
     expect(reads()).toEqual(['version', 'bytes'])
     expect(readFileSync(path, 'utf8')).toBe('their edit')
+  })
+
+  it("keeps no backup and pulls nothing while the holder's version proves the file is still the bytes TempCode wrote", async () => {
+    const BLANK = readFileSync(join(process.cwd(), 'resources', 'work-files', 'blank', 'blank.docx'))
+    const { tabId, path } = await imported('New.docx', BLANK)
+    const store = wordStoreOf(box.ctx.dataDir, WS)
+    const backups = () => (existsSync(store) ? readdirSync(store).filter((n) => n.includes('before TempCode')) : [])
+    const reads = () => far.filter((c) => c.verb === 'filesRead').map((c) => (c.args.length === 1 ? 'version' : 'bytes'))
+    // New made it here: the holder's digest for its version is our blank's. One byte asked, nothing kept.
+    far.length = 0
+    expect((await call<{ at: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
+    expect(reads()).toEqual(['version'])
+    expect(backups()).toEqual([])
+    // Saved since: the digest is the export TempCode wrote. Still nothing pulled, nothing kept.
+    far.length = 0
+    expect((await call<{ at: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
+    expect(reads()).toEqual(['version'])
+    expect(backups()).toEqual([])
+    // A save whose answer was lost wrote TempCode's own bytes too: the next one keeps no copy of them.
+    loseReply = true
+    exported.data = Buffer.from('word export, lost answer')
+    await expect(call('work.files.wordSave', { tabId })).rejects.toThrow(/timed out/)
+    exported.data = null
+    expect((await call<{ at: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
+    expect(backups()).toEqual([])
+    // A colleague's save there: the digest is no longer ours, so his Replace keeps their file first, in the store.
+    writeFileSync(path, 'a colleague saved')
+    shiftMtime(path, 9000)
+    const clash = await call<{ conflict?: { changed: number; version: string } }>('work.files.wordSave', { tabId })
+    expect((await call<{ at?: number }>('work.files.wordSave', { tabId, replace: true, version: clash.conflict!.version })).at).toBeGreaterThan(0)
+    expect(backups()).toEqual(['New (before TempCode saved it).docx'])
+    expect(readFileSync(join(store, backups()[0]!), 'utf8')).toBe('a colleague saved')
   })
 
   it('keeps his edited document when the tab closes, and opens it again for the Word file, reading nothing over it', async () => {

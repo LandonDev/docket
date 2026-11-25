@@ -2466,7 +2466,10 @@ over a colleague's Word file but his own press.
   there, the window says when in one line ("Plan.docx changed in Teams 9:12 PM, after you opened it.") with Keep Both
   holding the focus, and Replace on his press writes over it (`replace`). Before the first write over a file its bytes
   are kept once as "Plan (before TempCode saved it).docx" in the hidden Word store (`keepOriginal`, the record's
-  `original`). A file gone there offers Keep Both alone. His own edit: his window, or a key that may approve; a
+  `original`), unless the holder proves the file is still TempCode's own bytes: the sha256 its version word carries
+  (`size:mtime:sha256`, the door's and the VM helper's alike) for the very version it names is the export TempCode's
+  last save wrote, one whose answer was lost (`tried_sha`), or the blank New made there (`ourBytes`). A holder that names no digest, or a file anyone (SharePoint's
+  rewrite included) changed since, gets its backup. A file gone there offers Keep Both alone. His own edit: his window, or a key that may approve; a
   thread and a read key are refused, as for a copy.
 - **Saving by itself** (the owner's order of 2026-11-23). The record keeps his choice for the file (`auto`: not asked,
   save by itself, ask each time). The host saves each Word file he chose, or one born here (its bytes still exactly
@@ -2478,7 +2481,7 @@ over a colleague's Word file but his own press.
   screen. The save is the same as his press, by version, never over a change made
   there. A save asks the file for its version first, with one byte of it (`freshVersion`, copies.ts), and pulls it
   whole only when it must: its version moved (its bytes tell SharePoint's touch from an edit), its host is a build
-  behind, or its original is still owed its copy beside it (the first save over it). Save As asks a far target the
+  behind, or its original is still owed its copy in the store (the first save over a file not proven TempCode's own). Save As asks a far target the
   same way, never pulling it. Such a change stops autosave for that file (`stopped`, said on the tab's `word`) until his Replace or Keep
   Both. The Work service posts the file's live revision to main. Main queues one save per document and keeps
   a newer edit pending through any export already under way. One sweep every 30 s checks for missed notices
