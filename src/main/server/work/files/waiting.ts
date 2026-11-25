@@ -1,8 +1,9 @@
 import { FileActSchema, type FileAct, type FileRef } from '@shared/contract-work-files'
 import type { CanvasSource } from '@shared/work'
-import { kindOfEntry, UNTITLED, type FileEntry } from '@shared/work/files'
+import { kindOfEntry, refKey, UNTITLED, type FileEntry } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { HELD_TABLE, PRESSABLE } from '../outbox/store'
+import type { CopyRow } from './copies'
 import { fileWaitingHooks } from './hooks'
 import { pressesFor } from './policy'
 
@@ -65,8 +66,23 @@ export function heldFileActs(ctx: Pick<WorkCtx, 'db'>, workspaceId: string, most
 }
 
 /**
+ * The copies of a workspace whose tab closed with changes its file did not take: refused there, or the file changed or
+ * went under them. They are kept (copies.ts) and sent again by no one, so his window finds them on Home; opening one
+ * shows the copy again with its own presses (Retry, Reload, Keep Both), each bound to his press and its file.
+ */
+export function unsentCopies(ctx: Pick<WorkCtx, 'db'>, workspaceId: string, most: number): CopyRow[] {
+  try {
+    return ctx.db.prepare(`SELECT * FROM work_files_copies WHERE workspace_id = ? AND closed = 1 AND state IN ('refused', 'changed', 'gone') ORDER BY at DESC LIMIT ?`).all(workspaceId, most) as unknown as CopyRow[]
+  } catch {
+    return []
+  }
+}
+
+/**
  * Home's Waiting on you, `most` rows at most: each file a held act names (as it is now, where this host can still
- * find it, else as the act named it), then the files of the workspace with suggestions waiting. `entryAt` answers a
+ * find it, else as the act named it), then the closed copies whose changes did not reach their file (`unsentCopies`,
+ * told only to a caller that presses for him, as the copy was his), then the files of the workspace with suggestions
+ * waiting. `entryAt` answers a
  * ref as the caller's row, or null for one outside the workspace or the caller's reach; it stats, and reads no file.
  * `mayName` says whether the caller could name a ref of this host now (the door's `locate`). A held act is told of
  * only to a caller that could name everything it names: his window every act; a key only an act on this host whose
@@ -93,6 +109,12 @@ export async function waitingFiles(ctx: Pick<WorkCtx, 'db' | 'host' | 'log' | 'r
       if (!ref) continue
       const now = act.host === ctx.host && ref.at === 'file' ? await entryAt(ref).catch(() => null) : null
       put(now ? { ...now, held } : { key: thing.key, ref: ref.at === 'file' ? (ref as CanvasSource) : null, folder: null, name: thing.name, kind: kindOfEntry(thing.name).kind, where, shared: true, held })
+    }
+  }
+  if (pressesFor(by)) {
+    for (const r of unsentCopies(ctx, workspaceId, most)) {
+      const ref: CanvasSource = { at: 'file', host: r.host, path: r.path }
+      put({ key: refKey(ref), ref, folder: null, name: r.name, kind: kindOfEntry(r.name).kind, shared: true, unsent: r.state as NonNullable<FileEntry['unsent']>, ...(r.changed_at ? { changed: r.changed_at } : {}) })
     }
   }
   for (const hook of fileWaitingHooks()) {

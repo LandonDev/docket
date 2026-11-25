@@ -233,6 +233,8 @@ export interface FileEntry {
   starred?: boolean
   /** Home's Waiting on you: a thread's change to it waits in the Outbox for his press (a held `file.act`); the row opens that item */
   held?: { id: string; verb: 'make' | 'rename' | 'move' | 'copy' | 'trash' }
+  /** Home's Waiting on you: a copy of it closed with changes the file did not take (refused there, or it changed or went there); the row opens the copy again */
+  unsent?: 'refused' | 'changed' | 'gone'
   /** a Microsoft form's answers workbook: the row reads "Answers to <title>", and its menu opens the form by `ref` */
   answersTo?: { title: string; ref: CanvasSource }
 }

@@ -10,6 +10,7 @@ import type { Caller } from '../modules'
 import { ensureOutboxTables, HELD_TABLE } from '../outbox/store'
 import { ensureSuggestionTables, SuggestionStore } from '../sheets/suggestions'
 import { sheetWaiting } from '../sheets/waiting'
+import { recordCopy } from './copies'
 import { closeFilesState } from './handle'
 import { registerFileWaiting } from './hooks'
 import { files } from './index'
@@ -157,6 +158,26 @@ describe("Home's Waiting on you", () => {
     ])
     // A key that may not approve hears of no held act, the name a make would give included, whatever it reaches.
     expect((await call<FilesHome>('work.files.home', {}, phone)).waiting).toEqual([])
+  })
+
+  it('lists a closed copy whose changes its file refused, or that changed there, for his press alone; a sent or open one says nothing', async () => {
+    const copy = (name: string, state: string, closed: number): void => {
+      const r = recordCopy(rig.ctx, { workspaceId: WS, host: 'env_mac', path: `/Users/l/Teams/${name}`, vm: false, copy: join(rig.folder, `.copy-${name}`), name, kind: 'file', version: 'v1', sha256: 's' })
+      rig.db.prepare(`UPDATE work_files_copies SET state = ?, closed = ?, changed_at = ? WHERE id = ?`).run(state, closed, state === 'changed' ? 1_700_000_000_000 : null, r.id)
+    }
+    copy('Roster.txt', 'refused', 1)
+    copy('Agenda.txt', 'changed', 1)
+    copy('Open.txt', 'refused', 0)
+    copy('Away.txt', 'away', 1)
+    copy('Sent.txt', 'ok', 1)
+    const home = await call<FilesHome>('work.files.home', {})
+    expect(home.waiting.map((e) => [e.name, e.unsent]).sort()).toEqual([['Agenda.txt', 'changed'], ['Roster.txt', 'refused']])
+    // The row opens the file where it lies: its copy opens again, with the copy's own presses.
+    expect(home.waiting.find((e) => e.name === 'Roster.txt')).toMatchObject({ ref: { at: 'file', host: 'env_mac', path: '/Users/l/Teams/Roster.txt' }, folder: null, shared: true })
+    expect((await call<FilesHome>('work.files.home', {}, approver)).waiting.map((e) => e.name).sort()).toEqual(['Agenda.txt', 'Roster.txt'])
+    // A key that may not press for him, and a peer, hear of none.
+    expect((await call<FilesHome>('work.files.home', {}, phone)).waiting).toEqual([])
+    await expect(call<FilesHome>('work.files.home', {}, peer)).rejects.toThrow()
   })
 
   it('counts the files Starred and Recent show too', async () => {

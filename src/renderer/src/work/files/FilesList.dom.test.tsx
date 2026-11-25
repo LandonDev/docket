@@ -338,6 +338,19 @@ describe("Home", () => {
   });
 });
 
+describe("Home, a closed copy his file did not take", () => {
+  it("says Not saved in the warning tone, and its press opens the file, whose copy comes back with its own Retry", async () => {
+    const { HomePage } = await import("./Home");
+    const unsent = { ...file("Roster.txt"), unsent: "refused" as const };
+    const onOpen = vi.fn();
+    render(<HomePage panelId="p1" home={{ waiting: [unsent], starred: [], recent: [] }} error={null} busy={null} bar={null} onRetry={() => undefined} onOpen={onOpen} />);
+    const row = document.querySelector<HTMLElement>(`[data-files-home-row="${unsent.key}"]`)!;
+    expect(row.textContent).toContain("Not saved");
+    fireEvent.click(row);
+    expect(onOpen).toHaveBeenCalledWith(unsent);
+  });
+});
+
 describe("Home, a row's state", () => {
   it("goes from sight whole under 360px of Home, as the folder's list does its progress", async () => {
     const { HomePage } = await import("./Home");

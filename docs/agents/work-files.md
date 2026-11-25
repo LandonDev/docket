@@ -1559,7 +1559,7 @@ while its screen is unlocked.
 | `restore {ids, op}`, `purge {ids?}` | operate, and `approve` where others can open what comes back; approve | screen; never | the workspace's own rows ("Trash"): `FileDone` with what came back and where; `{ purged }` |
 | `upload {at, name, size, sha256, op}` | operate, and `approve` where others can open the place | screen | `{ uploadId }`; the bytes then go as `attachment.chunk` and `attachment.commit` ("Upload") |
 | `home`, `names`, `search`, `searches`, `saveSearch`, `dropSearch`, `read`, `preview`, `thumbs` | | | declared; not built |
-| `home {workspaceId}` | read | yes | Waiting on you (held file acts and this host's files with suggestions waiting: "Agents"; then LifeOS rows with suggestions waiting and mail's files not kept, and a key without `approve` gets no mail's), Starred and Recent, 12 each. Not a thread's or a peer's |
+| `home {workspaceId}` | read | yes | Waiting on you (held file acts, closed copies whose changes their file did not take (`unsent`, to his press alone), and this host's files with suggestions waiting: "Agents"; then LifeOS rows with suggestions waiting and mail's files not kept, and a key without `approve` gets no mail's), Starred and Recent, 12 each. Not a thread's or a peer's |
 | `names {workspaceId, text}` | read | yes | Go to's list, 20 rows at most, from the database alone ("Search and Go to") |
 | `search {workspaceId, query, filter?, cursor?}` | read | yes | a page of 100 results, newest first, each with `where`; `more` where a source stopped early, `asleep` for the places of a sleeping VM |
 | `searches`, `saveSearch {id?, name, query, filter?}`, `dropSearch {id}` | read; operate | yes | saved searches, the Docs view's saved views (`work_docs_views`). Not a thread's or a peer's |
@@ -2301,7 +2301,11 @@ over a file that changed there.
   - Turning Copy Teams files off drops every copy with nothing waiting; a copy whose changes have not reached their
     file stays with its record and is sent and let go as any other (`dropCopyRecords` answers the folders kept,
     `dropCopies` leaves them).
-  Home's Waiting on you does not list a kept copy yet.
+  - Home's Waiting on you lists a closed tab's copy whose changes its file refused, or that changed or went there
+    (`unsentCopies`, files/waiting.ts; the row's `unsent`, "Not saved"), to a caller that presses for him alone
+    (`pressesFor`). Its press opens the file as any row does, which opens the kept copy again (`copyWaits`) with its
+    own line and presses: Retry over a refusal, Reload and Keep Both over a change, Keep Both over one gone; each is
+    the copy tab's own (`work.files.copyBack` and the rest), bound to his press and the tab's file.
 - **The header never reads as saved before the file holds it.** While his window's own ask is unanswered the line
   says "Saving to MacBook…"; an ask the host refused says "Not saved to MacBook." and the reason, with Retry
   (`copyLine`'s `CopyAsk`). What the host says of the file (not answering, changed there, refused) wins over it.

@@ -8891,6 +8891,31 @@ public struct FileEntry: Codable, Hashable, Sendable {
             self.verb = verb
         }
     }
+    public enum Unsent: RawRepresentable, Codable, Hashable, Sendable {
+        case refused
+        case changed
+        case gone
+        /// A value this build does not know; `rawValue` keeps it.
+        case unknown(String)
+
+        public init(rawValue: String) {
+            switch rawValue {
+            case "refused": self = .refused
+            case "changed": self = .changed
+            case "gone": self = .gone
+            default: self = .unknown(rawValue)
+            }
+        }
+
+        public var rawValue: String {
+            switch self {
+            case .refused: "refused"
+            case .changed: "changed"
+            case .gone: "gone"
+            case .unknown(let value): value
+            }
+        }
+    }
     public struct AnswersTo: Codable, Hashable, Sendable {
         public let title: String
         public let ref: CanvasSource
@@ -8919,9 +8944,10 @@ public struct FileEntry: Codable, Hashable, Sendable {
     public let fresh: Bool?
     public let starred: Bool?
     public let held: Held?
+    public let unsent: Unsent?
     public let answersTo: AnswersTo?
 
-    public init(key: String, ref: CanvasSource?, folder: FolderRef?, name: String, kind: Kind, size: Double? = nil, changed: Double? = nil, revision: String? = nil, by: String? = nil, local: Bool? = nil, shared: Bool? = nil, state: State? = nil, `where`: Where? = nil, project: Project? = nil, madeBy: String? = nil, fresh: Bool? = nil, starred: Bool? = nil, held: Held? = nil, answersTo: AnswersTo? = nil) {
+    public init(key: String, ref: CanvasSource?, folder: FolderRef?, name: String, kind: Kind, size: Double? = nil, changed: Double? = nil, revision: String? = nil, by: String? = nil, local: Bool? = nil, shared: Bool? = nil, state: State? = nil, `where`: Where? = nil, project: Project? = nil, madeBy: String? = nil, fresh: Bool? = nil, starred: Bool? = nil, held: Held? = nil, unsent: Unsent? = nil, answersTo: AnswersTo? = nil) {
         self.key = key
         self.ref = ref
         self.folder = folder
@@ -8940,11 +8966,12 @@ public struct FileEntry: Codable, Hashable, Sendable {
         self.fresh = fresh
         self.starred = starred
         self.held = held
+        self.unsent = unsent
         self.answersTo = answersTo
     }
 
     private enum CodingKeys: String, CodingKey {
-        case key, ref, folder, name, kind, size, changed, revision, by, local, shared, state, `where`, project, madeBy, fresh, starred, held, answersTo
+        case key, ref, folder, name, kind, size, changed, revision, by, local, shared, state, `where`, project, madeBy, fresh, starred, held, unsent, answersTo
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -8967,6 +8994,7 @@ public struct FileEntry: Codable, Hashable, Sendable {
         try container.encodeIfPresent(fresh, forKey: .fresh)
         try container.encodeIfPresent(starred, forKey: .starred)
         try container.encodeIfPresent(held, forKey: .held)
+        try container.encodeIfPresent(unsent, forKey: .unsent)
         try container.encodeIfPresent(answersTo, forKey: .answersTo)
     }
 }

@@ -1600,6 +1600,7 @@ export const FileEntrySchema = z.object({
   fresh: z.boolean().optional(),
   starred: z.boolean().optional(),
   held: z.object({ id: z.string(), verb: z.enum(['make', 'rename', 'move', 'copy', 'trash']) }).optional(),
+  unsent: z.enum(['refused', 'changed', 'gone']).optional(),
   answersTo: z.object({ title: z.string(), ref: CanvasSourceSchema }).optional()
 })
 /** `work.files.places`, as the phone reads it: `sources` (why a Teams place is not listed) stays the desktop's. */

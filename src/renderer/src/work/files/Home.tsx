@@ -40,7 +40,7 @@ function HomeList({ title, entries, busy, held, onOpen }: { title: string; entri
         const opening = busy?.key === entry.key;
         // Every row's date goes under 360px of Home, as Changed does in the folder's list; a row that says a state
         // gives it up first, under 400px, so the name keeps its room.
-        const stated = opening || !!entry.held || !!entry.state;
+        const stated = opening || !!entry.held || !!entry.unsent || !!entry.state;
         return (
           <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={opening || (held && readsSession(entry))} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
             <KindGlyph kind={entry.kind} />
@@ -52,6 +52,9 @@ function HomeList({ title, entries, busy, held, onOpen }: { title: string; entri
               <RowWords data-files-busy="" busy words={busy!.word} cut={CUT} />
             ) : entry.held ? (
               <RowWords tone="warning" words={`${HELD_WORDS[entry.held.verb] ?? "A change"} waits for you`} cut={CUT} />
+            ) : entry.unsent ? (
+              // A closed copy whose changes its file did not take: the row opens it again, with its own presses.
+              <RowWords tone="warning" words="Not saved" cut={CUT} />
             ) : (
               <RowState entry={entry} cut={CUT} />
             )}
