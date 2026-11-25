@@ -267,6 +267,17 @@ describe("Share", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("opens the sheet when the press's own ask is lost too, so a press never comes to nothing", async () => {
+    const { ShareButton } = await import("./Share");
+    calls.pages = {};
+    calls.addressDown = 2;
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" workspaceId="w1" />);
+    await waitFor(() => expect(calls.list.filter((c) => c.method === "work.office.live.address")).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+    expect(calls.list.filter((c) => c.method === "work.office.live.address")).toHaveLength(2);
+  });
+
   it("keeps only a real answer for a file's page: a lost one is asked again, never kept as none", async () => {
     const { filePageOf } = await import("./api");
     const src = { at: "file" as const, host: "box", path: "/w/Plan.docx" };

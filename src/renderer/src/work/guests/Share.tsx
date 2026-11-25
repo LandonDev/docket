@@ -31,14 +31,14 @@ export function ShareButton({ env, source, kind, title, itemId, workspaceId, pur
   // to share it. A press before the answer waits for it, and one after a lost answer asks again: never the sheet that
   // only says no.
   const asks = !!workspaceId && source.at === "file" && mayHavePage(source.path);
-  const [page, setPage] = useState<{ key: string; url: string | null | undefined; home?: "Teams" | "OneDrive" } | null>(null);
+  const [page, setPage] = useState<{ key: string; url: string | null | undefined; home?: "Teams" | "OneDrive"; ask: number } | null>(null);
   const [tries, setTries] = useState(0);
   const [held, setHeld] = useState(false);
   const [opens, setOpens] = useState(0);
   useEffect(() => {
     if (!asks) return;
     let live = true;
-    void fileShareOf(env, workspaceId!, source).then((got) => live && setPage({ key, url: got?.url, ...(got?.home ? { home: got.home } : {}) }));
+    void fileShareOf(env, workspaceId!, source).then((got) => live && setPage({ key, url: got?.url, ...(got?.home ? { home: got.home } : {}), ask: tries }));
     return () => void (live = false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the source by its value
   }, [asks, env, workspaceId, key, tries]);
@@ -49,6 +49,12 @@ export function ShareButton({ env, source, kind, title, itemId, workspaceId, pur
     if (known.url) void openUrl(known.url);
     else if (!known.home) setOpens((n) => n + 1);
   }, [held, known]);
+  // A press whose own ask was lost too opens the sheet: a press never comes to nothing.
+  useEffect(() => {
+    if (!held || page?.key !== key || page.url !== undefined || page.ask !== tries || tries === 0) return;
+    setHeld(false);
+    setOpens((n) => n + 1);
+  }, [held, page, key, tries]);
   if (known?.url) return <ShareInHome url={known.url} itemId={itemId} />;
   if (known?.home) return <ShareRefused home={known.home} />;
   const hold = asks && !known ? () => {
