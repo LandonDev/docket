@@ -26,6 +26,8 @@ let asked: string[] = [];
 let days = 3;
 let status: unknown = CONNECTED;
 let readError: string | null = null;
+/** Set: the days' read waits until it is called. */
+let hold: ((go: () => void) => void) | null = null;
 const pushes = new Set<(push: { push: string; status: unknown }) => void>();
 
 function host(): void {
@@ -40,7 +42,10 @@ function host(): void {
     request: vi.fn(async (method: string) => {
       asked.push(method);
       if (method === "work.lifeos.status") return status;
-      if (method === "work.mail.waiting") return readError ? { days: null, error: readError, routine: true } : { days, routine: true };
+      if (method === "work.mail.waiting") {
+        if (hold) await new Promise<void>((go) => hold!(go));
+        return readError ? { days: null, error: readError, routine: true } : { days, routine: true };
+      }
       return new Promise(() => {});
     }),
   } as never);
@@ -67,6 +72,7 @@ afterEach(() => {
   days = 3;
   status = CONNECTED;
   readError = null;
+  hold = null;
 });
 
 describe("Waiting on, the host's LifeOS dropping while the page is open", () => {
@@ -111,6 +117,29 @@ describe("Waiting on, the host's LifeOS dropping while the page is open", () => 
     days = 5;
     await push(CONNECTED);
     expect(reads()).toBe(2);
+    expect(daysControl()?.textContent).toContain("5 working days");
+  });
+
+  /** Council round 11 (Opus Files 2, the walk): under connected heard since a saved sign-out, the row said the sign-out until the read landed. */
+  it("draws the row's bone while it reads again after the host is back, never the old sign-out", async () => {
+    status = SIGNED_OUT;
+    readError = "Not signed in to LifeOS";
+    host();
+    render(<WaitingSection workspace={WORKSPACE} />);
+    await settle();
+    expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
+    let go: () => void = () => {};
+    hold = (release) => (go = release);
+    readError = null;
+    days = 5;
+    await push(CONNECTED);
+    expect(reads()).toBe(2);
+    expect(screen.queryByText("Not signed in to LifeOS on the box")).toBeNull();
+    expect(document.querySelector("[data-days-again]")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    await act(async () => go());
+    await settle();
+    expect(document.querySelector("[data-days-again]")).toBeNull();
     expect(daysControl()?.textContent).toContain("5 working days");
   });
 

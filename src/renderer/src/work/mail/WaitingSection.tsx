@@ -4,6 +4,7 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { registry, TimeoutError } from "../../lib/connection";
 import { nameInLine } from "../../lib/hostWords";
@@ -91,6 +92,8 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   const asked = useRef(0);
   const shown = useRef<Shown | null>(null);
   const shownFor = useRef(`${env}|${workspace.id}`);
+  // A read again because the host is back (`useLiveDown`'s onBack): told when that read lands.
+  const landed = useRef<(() => void) | null>(null);
   useEffect(() => {
     let live = true;
     // Another workspace's section starts from nothing.
@@ -116,7 +119,12 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
         // row. Only a first read with nothing known is the whole section's error.
         setLoad(shown.current ? { status: "ready", value: shown.current.value, failed: error, failedAs: savedOf(err) } : { status: "error", error });
       },
-    ).finally(() => live && setRetrying(false));
+    ).finally(() => {
+      if (!live) return;
+      setRetrying(false);
+      landed.current?.();
+      landed.current = null;
+    });
     return () => {
       live = false;
     };
@@ -129,7 +137,8 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   // a wait with no press; once a status heard since says connected, the row reads again with no press, through the same
   // numbered ask, so the switch keeps the value its last save gave it. The switch keeps its own way throughout.
   const saved: SavedDown = load.status === "ready" && failed ? (load.failedAs ?? null) : value?.error ? savedOfState(daysState(value.error)) : null;
-  const live = useLiveDown(saved, env, () => setAttempt((n) => n + 1));
+  // While that read is out (`again`) the row draws its bone, never the old cause.
+  const live = useLiveDown(saved, env, () => new Promise<void>((done) => ((landed.current = done), setAttempt((n) => n + 1))));
   useLifeosStatus(env);
 
   const change = async (patch: { days?: number; routine?: boolean }, failed: string): Promise<boolean> => {
@@ -153,7 +162,7 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   const stated = !!down && !downIsSilence(down);
   const { press, elsewhere } = useDownPress(stated ? down : null, env);
   const { action, dialog } = useDownAction(press, env);
-  const daysWords = down ? downWords(down, host) : live.waits ? connectingWords(host) : (failed ?? (value?.error ? daysFailure(value.error, host) : undefined));
+  const daysWords = live.again ? undefined : down ? downWords(down, host) : live.waits ? connectingWords(host) : (failed ?? (value?.error ? daysFailure(value.error, host) : undefined));
   // Said muted: a state, or LifeOS on its way; silence and a cause with no state are the red line.
   const muted = stated || live.waits;
   // The row has no value to change: none was read, or the host's LifeOS is down now, or on its way.
@@ -191,7 +200,9 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
             }
             error={muted ? undefined : daysWords}
           >
-            {noDays && stated ? (
+            {live.again ? (
+              <Skeleton data-days-again className="h-7 w-32" />
+            ) : noDays && stated ? (
               action ? (
                 <Button variant="ghost" size="sm" onClick={action.run}>
                   {action.label}
