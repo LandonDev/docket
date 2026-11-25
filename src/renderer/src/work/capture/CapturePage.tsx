@@ -131,7 +131,8 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
   };
 
   const file = (start: boolean) => {
-    if (offline) return refresh();
+    // Nothing is filed on a state that is not known to be good: the host away or silent asks again, the draft kept.
+    if (offline || silent) return refresh();
     if (refusal !== null) {
       if (refusal) setError(refusal);
       return;

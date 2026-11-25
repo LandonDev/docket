@@ -238,21 +238,33 @@ describe("the capture window", () => {
     expect((screen.getByText("Start thread").closest("button") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  /** Council round 7 (Sol, the rest 2): a state ask that failed read "Not signed in to LifeOS", with the filing presses off. */
-  it("says a state ask that failed as this computer's silence, with Retry, and keeps the draft and the presses", async () => {
+  /**
+   * Council round 7 (Sol, the rest 2): a state ask that failed read "Not signed in to LifeOS". Council round 10 (Sol
+   * rest 1): File and Start thread stayed live, and Return cleared the draft to file on the old state.
+   */
+  it("says a state ask that failed as this computer's silence, with Retry, keeps the draft, and holds File and Return until it answers", async () => {
     const real = state;
     let asks = 0;
-    const failing: CaptureHost = { ...host(), state: () => (++asks === 1 ? Promise.reject(new Error("No answer in 15 s")) : Promise.resolve(real)) };
+    const failing: CaptureHost = { ...host(), state: () => (++asks <= 2 ? Promise.reject(new Error("No answer in 15 s")) : Promise.resolve(real)) };
     render(<CapturePage host={failing} bridge={bridge} />);
     act(() => shown());
     await flush();
     fireEvent.change(field(), { target: { value: "Call the ref assigner" } });
     expect(screen.queryByText("Not signed in to LifeOS")).toBeNull();
     expect(screen.getByText(/^This (Mac|PC) did not answer$/)).toBeTruthy();
-    expect((screen.getByText("Start thread").closest("button") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByText("Start thread").closest("button") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText("File").closest("button") as HTMLButtonElement).disabled).toBe(true);
+    // Return asks again and files nothing; the draft stays and the window stays.
+    fireEvent.keyDown(field(), { key: "Enter" });
+    await flush();
+    expect(filed).toEqual([]);
+    expect(bridge.hide).not.toHaveBeenCalled();
+    expect(field().value).toBe("Call the ref assigner");
+    expect(asks).toBe(2);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await flush();
-    expect(asks).toBe(2);
+    expect(asks).toBe(3);
+    expect((screen.getByText("Start thread").closest("button") as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByText(/did not answer/)).toBeNull();
     expect(field().value).toBe("Call the ref assigner");
   });

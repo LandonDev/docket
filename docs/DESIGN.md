@@ -4266,12 +4266,12 @@ starts empty. While the host says LifeOS cannot take a capture, the line
 says why in the rule's words, this computer named ("Not signed in to LifeOS
 on this Mac", "The LifeOS sign-in on this Mac waits for your approval",
 "LifeOS refused this Mac's sign-in", "Work is off on this Mac", "LifeOS is
-still connecting"), muted with no press, and both buttons are off; "LifeOS
+still connecting on this Mac"), muted with no press, and both buttons are off; "LifeOS
 did not answer this Mac" is red with Retry. A host that names no state keeps
 "Not signed in to LifeOS". A state
 ask the host did not answer is not a sign-out: "This Mac did not answer" in
-the red line's place with Retry (the window's own refresh), the draft and
-both buttons kept. A drag of
+the red line's place with Retry (the window's own refresh), the draft kept
+and both buttons held, Return asking again and filing nothing. A drag of
 a file over it shows the drop wash of the document surface ("Drop to
 add"). It wears Work's theme and follows it.
 

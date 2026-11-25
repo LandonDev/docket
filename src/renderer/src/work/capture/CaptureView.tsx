@@ -62,7 +62,8 @@ export function captureDown(p: Pick<CaptureViewProps, "status" | "lifeos" | "hos
 }
 
 export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(function CaptureView(p, field) {
-  const off = p.status === "offline" || !p.canFile;
+  // Held while nothing can be filed: LifeOS away, or this computer's host silent (Retry stands beside them).
+  const off = p.status !== "ready" || !p.canFile;
   const down = captureDown(p);
   return (
     <div

@@ -102,13 +102,14 @@ A frame change in the main process, kept small:
   the host gave is kept in localStorage, so the window is whole the instant
   it shows. A state ask the host did not answer is not a sign-out: the line
   says "This Mac did not answer" (This PC on Windows) with Retry, the page's
-  own refresh, and keeps the draft, the last state and both presses. A LifeOS
+  own refresh, and keeps the draft and the last state; File, Start thread and
+  Return are held until it answers (Return asks again, filing nothing). A LifeOS
   that cannot take a capture is said in the rule's words with this computer
   named (`captureDown`, `lifeosDownWords` in work/shell/lifeosWords.ts, which
   keeps Convex out of this window): "Not signed in to LifeOS on this Mac",
   "The LifeOS sign-in on this Mac waits for your approval", "LifeOS refused
   this Mac's sign-in", "Work is off on this Mac", muted and with no press
-  (the fix is on Connections); "LifeOS is still connecting" while it
+  (the fix is on Connections); "LifeOS is still connecting on this Mac" while it
   connects; "LifeOS did not answer this Mac" in red with Retry. The presses
   are off and the draft stays in each. A host that names no state keeps "Not
   signed in to LifeOS". While the window shows, the host's `work.lifeos` push
