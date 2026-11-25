@@ -53,6 +53,28 @@ export function remoteDeflateOptions(): { threshold: number; concurrencyLimit: n
   return { threshold: DEFLATE_THRESHOLD, concurrencyLimit: 4 }
 }
 
+/** A string this long in a frame is a file's bytes, not words: the frame goes with no deflate (perf M9). */
+export const BYTES_UNDEFLATED = 256 * 1024
+const BASE64_HEAD = /^[A-Za-z0-9+/]{512}/
+
+/**
+ * Whether a frame carries a file's bytes: a base64 string of `BYTES_UNDEFLATED` or more anywhere in its first levels
+ * (an answer's `data`, a peer piece's, a chunk's). Such a frame goes with no permessage-deflate: the bytes are mostly
+ * zips already (.docx, .xlsx, .pptx, .pdf, pictures), so deflating their base64 bought about a quarter of their size
+ * for a pass through libuv's pool on both hosts, with the chat's frames waiting behind it. `text`: the frame's JSON, a
+ * short frame passed over before any walk.
+ */
+export function carriesBytes(frame: unknown, text?: string): boolean {
+  if (text !== undefined && text.length < BYTES_UNDEFLATED) return false
+  const walk = (value: unknown, depth: number): boolean => {
+    if (typeof value === 'string') return value.length >= BYTES_UNDEFLATED && BASE64_HEAD.test(value)
+    if (depth >= 4 || value === null || typeof value !== 'object') return false
+    for (const v of Array.isArray(value) ? value.slice(0, 8) : Object.values(value)) if (walk(v, depth + 1)) return true
+    return false
+  }
+  return walk(frame, 0)
+}
+
 /** The encoded size of a frame or a row, as the socket sends it. */
 export function encodedBytes(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value))

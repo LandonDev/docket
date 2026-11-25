@@ -352,7 +352,7 @@ import {
   resolveBuildDir
 } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
-import { eventsWindowMs, frameJson, profileFor, PushCoalescer, SocketBudget, remoteDeflateOptions, sessionEvents, sessionPage } from './wire'
+import { carriesBytes, eventsWindowMs, frameJson, profileFor, PushCoalescer, SocketBudget, remoteDeflateOptions, sessionEvents, sessionPage } from './wire'
 import { FocusSet } from './focus'
 import { bulkKey, LaneGate, laneOf, type Lane } from './lane'
 import { ListChangeLog } from './listChanges'
@@ -2662,7 +2662,10 @@ export async function startServer(
       }
       const allowed = socketBudget.filter(frame)
       if (!allowed) return
-      ws.send(frameJson(allowed))
+      // A file's bytes go with no deflate (wire.ts carriesBytes); every other frame as the socket was set up.
+      const text = frameJson(allowed)
+      if (carriesBytes(allowed, text)) ws.send(text, { compress: false })
+      else ws.send(text)
       socketBudget.poll()
       if (!backpressureLogged && ws.bufferedAmount > BACKPRESSURE_BYTES) {
         backpressureLogged = true

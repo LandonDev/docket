@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { carriesBytes } from '../wire'
 import { WebSocket } from 'ws'
 import type { PeerState } from '@shared/accounts'
 import { opensPeerLink } from '@shared/capabilities'
@@ -218,7 +219,10 @@ export class PeerLink {
       }, opts.timeoutMs ?? PEER_REQUEST_TIMEOUT_MS)
       timer.unref()
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer })
-      ws.send(JSON.stringify({ id, method, params }))
+      // A reply carrying a file's bytes (a piece of a far read) goes with no deflate (wire.ts carriesBytes).
+      const text = JSON.stringify({ id, method, params })
+      if (carriesBytes(params, text)) ws.send(text, { compress: false })
+      else ws.send(text)
     })
   }
 
