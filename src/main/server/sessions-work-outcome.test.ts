@@ -64,3 +64,21 @@ describe('the outcome in the session summary', () => {
     expect(heard.map((m) => [m.id, m.workOutcome?.words])).toEqual([[work.id, 'Mail sent']])
   })
 })
+
+describe('the list of archived Work threads', () => {
+  it('lists Work’s archived threads alone for `scope: work`, loose and in a project alike', async () => {
+    const job = join(root, 'job')
+    await mkdir(job)
+    store.insertWorkspace({ id: 'ws-job', name: 'Purdue Esports', path: job, git: false, createdAt: 2, kind: 'work', sector: 'purdue' })
+    store.insertProject({ id: 'p-lan', workspaceId: 'ws-job', name: 'Spring LAN', mode: 'local', branch: null, cwd: job, archived: false, createdAt: 2 })
+    const loose = await registry.create({ scope: 'work', threadType: 'chat', workspaceId: null, provider: 'claude' })
+    const filed = await registry.create({ projectId: 'p-lan', threadType: 'chat', provider: 'claude' })
+    const code = await registry.create({ projectId: 'p1', threadType: 'chat', provider: 'claude' })
+    const live = await registry.create({ scope: 'work', threadType: 'chat', workspaceId: null, provider: 'claude' })
+    for (const id of [loose.id, filed.id, code.id]) await registry.setArchived(id, true)
+    const ids = (list: SessionMeta[]) => list.map((m) => m.id).sort()
+    expect(ids(registry.listRaw({ archived: true, scope: 'work' }))).toEqual([loose.id, filed.id].sort())
+    expect(ids(registry.listRaw({ archived: true }))).toEqual([loose.id, filed.id, code.id].sort())
+    expect(ids(registry.listRaw({ archived: false, scope: 'work' }))).toEqual([live.id])
+  })
+})

@@ -1,5 +1,7 @@
 import { registry } from "../lib/connection";
-import { useWorkspaces } from "../lib/tcserver/workspaces";
+import { useWorkspaces, WORK_CHATS } from "../lib/tcserver/workspaces";
+import type { WorkspaceMeta } from "../lib/tcserver/types";
+import { workHome } from "../lib/workSwitch";
 import { useEffect, useRef, useState } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import type { ThreadType } from "../lib/tcserver/types";
@@ -20,6 +22,20 @@ const TUNABLE: ReadonlySet<ThreadType> = new Set(["orchestration", "research"]);
 const ThreadTune = threadTuneChunk.surface("ThreadTune");
 
 /**
+ * Where the chooser's thread starts and what it offers: a workspace's own host and kinds; Work Chats (`WORK_CHATS`,
+ * a key that names no workspace) the Work kinds on the host a Work Chat goes to (the box by default, `workHome`, as
+ * App's `environmentForContext` sends its draft); a loose thread outside every workspace this machine's code kinds.
+ * No host: no chooser (a workspace not in the catalog yet).
+ */
+export function chooserPlace(
+  workspaceId: string | null,
+  workspace: Pick<WorkspaceMeta, "kind" | "environmentId"> | undefined,
+): { work: boolean; environmentId: string | undefined } {
+  if (workspaceId === WORK_CHATS) return { work: true, environmentId: workHome(registry.environments(), registry.primaryEnvironmentId) ?? registry.primary().environmentId };
+  return { work: isWorkWorkspace(workspace), environmentId: workspaceId === null ? registry.primary().environmentId : workspace?.environmentId };
+}
+
+/**
  * The strip's Plus: a popover naming every thread type, and for the two
  * types that take per-run rules a tune view that swaps in with Back.
  */
@@ -34,10 +50,8 @@ export function NewThreadChooser({
   onStart: (threadType: ThreadType, tune: ThreadRules | null) => void;
 }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
-  // A Work workspace starts only the types Work takes.
-  const work = isWorkWorkspace(workspace);
-  // A new loose thread without a workspace belongs to this machine.
-  const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
+  // A Work workspace and Work Chats start only the types Work takes.
+  const { work, environmentId } = chooserPlace(workspaceId, workspace);
   const [open, setOpen] = useState(false);
   const [tuning, setTuning] = useState<ThreadType | null>(null);
   const [tune, setTune] = useState<ThreadRules>({});

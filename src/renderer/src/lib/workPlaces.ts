@@ -1,4 +1,4 @@
-import { Briefcase, ChartBar, Sun, type IconComponent } from "../chrome/icons";
+import { Briefcase, CalendarCheck, Sun, type IconComponent } from "../chrome/icons";
 import { workPlacesChunk } from "../surfaces/chunks";
 import { shell } from "../stores/shell";
 import { whenIdle } from "./hoverPrefetch";
@@ -26,7 +26,7 @@ export const WORK_PLACE_ROWS: WorkPlaceRow[] = [
   // Its key is the Go menu's; the row's hover reads it from the Work keybindings by this label.
   { id: "today", label: "Today", order: 10, icon: Sun },
   { id: "projects", label: "Projects", order: 15, icon: Briefcase },
-  { id: "review", label: "Review", order: 20, icon: ChartBar },
+  { id: "review", label: "Review", order: 20, icon: CalendarCheck },
 ];
 
 // The day's digest notice opens Today (work/digest reads the port); set here, so it holds before Today's chunk has loaded.

@@ -4,10 +4,10 @@ import type { MenuRow } from "../../chrome/menuRows";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { switchLine } from "../../surfaces/settings/Work";
 import { sectorName } from "./actions";
-import { columnProjects } from "./WorkColumn";
+import { columnProjects, foldRows } from "./WorkColumn";
 import { keyLine } from "./settings";
 import { addMenuRows, addMenuState, freeSectors, sectorMenuRows, sectorMenuShown } from "./WorkRailHost";
-import { rowOfView, TEMPLATES_ROW, WORK_VIEWS, workViewList, workViewRows } from "../views/registry";
+import { rowOfView, TEMPLATES_ROW, WORK_VIEWS, workColumnViews, workViewList, workViewRows } from "../views/registry";
 
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 const { GIVEN_KEY, OWNER_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
@@ -159,14 +159,15 @@ describe("the column's LifeOS projects", () => {
     const rows = columnProjects([
       { _id: "a", name: "Wrap-up", status: "done", _creationTime: 1 },
       { _id: "b", name: "Spring LAN", status: "active", _creationTime: 30 },
-      { _id: "c", name: "Nationals", status: "backlog", _creationTime: 10 },
+      { _id: "c", name: "Nationals", status: "backlog", targetDate: 1_800_000_000_000, _creationTime: 10 },
       { _id: "d", name: "Dropped", status: "dropped", _creationTime: 2 },
       { _id: "f", name: "Tryouts", status: "paused", _creationTime: 20 },
       { _id: "e", name: "Sponsors", status: "paused", _creationTime: 20 },
     ]);
     expect(rows.map((r) => r.name)).toEqual(["Nationals", "Sponsors", "Tryouts", "Spring LAN"]);
-    // Only what a card needs leaves: nothing of the order's own fields.
-    expect(rows[0]).toEqual({ id: "c", name: "Nationals" });
+    // Only what a row needs leaves (its state, which folds paused and backlog, and its target, the row's end): nothing of the order's own fields.
+    expect(rows[0]).toEqual({ id: "c", name: "Nationals", status: "backlog", targetDate: 1_800_000_000_000 });
+    expect(rows[3]).toEqual({ id: "b", name: "Spring LAN", status: "active", targetDate: null });
   });
   it("name a sector as LifeOS does, else by its key", () => {
     expect(sectorName("ref")).toBe("Ref");
@@ -182,6 +183,28 @@ describe("WORK_VIEWS", () => {
       expect(view.fact({} as WorkspaceMeta)).toBeNull();
       expect(typeof (await view.chunk.load()).View).toBe("function");
     }
+  });
+
+  it("gives the column four daily rows, Mail, Tasks, Agenda and Messages, and puts the rest in More, Projects in neither (its heading opens it)", () => {
+    const { daily, more } = workColumnViews();
+    expect(daily.map((v) => v.label)).toEqual(["Mail", "Tasks", "Agenda", "Messages"]);
+    expect(more.map((v) => v.label)).toEqual(["People", "Money", "Files", "Forms", ...(TEMPLATES_ROW ? ["Templates"] : []), "Plays", "Routines"]);
+    expect([...daily, ...more].map((v) => v.id)).not.toContain("projects");
+    expect([...daily, ...more].map((v) => v.id)).not.toContain("prep");
+  });
+
+  it("keeps the More view he last opened as a row of its own, and lists the rest under More only while it is open, never that one twice", () => {
+    const { more } = workColumnViews();
+    expect(foldRows(more, null, false)).toEqual({ kept: null, fold: [] });
+    expect(foldRows(more, null, true).fold).toEqual(more);
+    const people = foldRows(more, "people", false);
+    expect(people.kept?.id).toBe("people");
+    expect(people.fold).toEqual([]);
+    const open = foldRows(more, "people", true);
+    expect(open.fold.map((v) => v.id)).not.toContain("people");
+    expect(open.fold).toHaveLength(more.length - 1);
+    // An id More does not hold (a daily view) keeps nothing.
+    expect(foldRows(more, "mail", false).kept).toBeNull();
   });
 
   it("has every view say whether it reads LifeOS: Money, Files, Forms, Templates, Plays and Routines read the host alone, so no sign-in or LifeOS line stands over them", () => {

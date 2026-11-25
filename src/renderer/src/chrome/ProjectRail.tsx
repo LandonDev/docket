@@ -534,10 +534,29 @@ export function ProjectRail({
     chats: onOpenChats !== undefined,
     notes: onOpenNotes !== undefined,
     aliax: onOpenAccountsPage !== undefined,
-    workChats: workOn && onOpenWorkChats !== undefined,
+    // Work Chats sits under the Work heading (`workChatsRow`), never in this group.
+    workChats: false,
     // Always while Work is on: Sent and the grants are reached from it with nothing waiting.
     outbox: workOn && onOpenOutbox !== undefined,
   });
+  // Work Chats: under the Work heading, after the pages above the workspaces (Today, Projects, Review), before the jobs.
+  const workChatsRow = () => (
+    <RailRow
+      key="workChats"
+      icon={MessageMultiple}
+      label="Work Chats"
+      ariaLabel={chatsAriaLabel(busy.has(WORK_CHATS), needsYou.has(WORK_CHATS), "Work Chats")}
+      onClick={onOpenWorkChats}
+      selected={!overlayOpen && cwd === WORK_CHATS}
+      trailing={
+        needsYou.has(WORK_CHATS) ? (
+          <StatusMark state="waiting" word={false} />
+        ) : busy.has(WORK_CHATS) ? (
+          <StatusMark state="working" word={false} />
+        ) : null
+      }
+    />
+  );
   const topRow = (id: RailTopRowId) => {
     switch (id) {
       case "search":
@@ -584,23 +603,7 @@ export function ProjectRail({
           />
         );
       case "workChats":
-        return (
-          <RailRow
-            key={id}
-            icon={MessageMultiple}
-            label="Work Chats"
-            ariaLabel={chatsAriaLabel(busy.has(WORK_CHATS), needsYou.has(WORK_CHATS), "Work Chats")}
-            onClick={onOpenWorkChats}
-            selected={!overlayOpen && cwd === WORK_CHATS}
-            trailing={
-              needsYou.has(WORK_CHATS) ? (
-                <StatusMark state="waiting" word={false} />
-              ) : busy.has(WORK_CHATS) ? (
-                <StatusMark state="working" word={false} />
-              ) : null
-            }
-          />
-        );
+        return workChatsRow();
       case "read":
         return <RailRow key={id} icon={ListChecks} label="Mark all read" onClick={() => markRead(null)} />;
       case "notes":
@@ -743,8 +746,8 @@ export function ProjectRail({
                 statusKey={statusKey}
                 onAdd={workRows.length === 0 ? undefined : openWorkAdd}
                 addExpanded={menuPath === WORK_ADD_MENU}
-                // The pages above the workspaces (Today): each a row before them, selected while its page is open.
-                lead={workPlaceRows().map((place) => {
+                // The pages above the workspaces (Today, Projects, Review), each selected while its page is open, then Work Chats.
+                lead={[...workPlaceRows().map((place) => {
                   const warm = () => warmWorkPlace(place.id, "intent");
                   const shortcut = shortcutFor("Work", place.label);
                   const selected = workPlace === place.id;
@@ -761,7 +764,7 @@ export function ProjectRail({
                       tooltip={shortcut ? <Kbd>{shortcut}</Kbd> : undefined}
                     />
                   );
-                })}
+                }), ...(onOpenWorkChats ? [workChatsRow()] : [])]}
                 emptyRow={
                   workRows.length === 0 ? (
                     <RailRow icon={Plus} label="Add workspace…" ariaLabel="Add Work workspace…" onClick={(event) => openWorkAdd(event)} />

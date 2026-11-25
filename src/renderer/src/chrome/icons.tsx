@@ -87,6 +87,7 @@ import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
 import InboxIcon from "@hugeicons/core-free-icons/InboxIcon";
 import InboxUploadIcon from "@hugeicons/core-free-icons/InboxUploadIcon";
 import Briefcase01Icon from "@hugeicons/core-free-icons/Briefcase01Icon";
+import CalendarCheckIn01Icon from "@hugeicons/core-free-icons/CalendarCheckIn01Icon";
 import KeyboardIcon from "@hugeicons/core-free-icons/KeyboardIcon";
 import LayoutAlignRightIcon from "@hugeicons/core-free-icons/LayoutAlignRightIcon";
 import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
@@ -280,6 +281,8 @@ export const Inbox = wrap(InboxIcon, "Inbox");
 export const Outbox = wrap(InboxUploadIcon, "Outbox");
 /** Settings → Work. */
 export const Briefcase = wrap(Briefcase01Icon, "Briefcase");
+/** Work's weekly review (the rail's Review row). */
+export const CalendarCheck = wrap(CalendarCheckIn01Icon, "CalendarCheck");
 export const Keyboard = wrap(KeyboardIcon, "Keyboard");
 export const ListFilter = wrap(FilterIcon, "ListFilter");
 export const ListPlus = wrap(PlayListAddIcon, "ListPlus");

@@ -75,10 +75,10 @@ class FakeLink implements Link {
   request<T>(method: string, params?: unknown, options?: { retry?: boolean }): Promise<T> {
     this.calls.push({ method, params, ...(options ? { options } : {}) });
     if (method === "session.list") {
-      const p = (params ?? {}) as { archived?: boolean; projectId?: string };
+      const p = (params ?? {}) as { archived?: boolean; projectId?: string; scope?: string };
       if (!p.archived) return Promise.resolve(this.metas as T);
       return Promise.resolve(
-        this.archivedMetas.filter((m) => !p.projectId || m.projectId === p.projectId) as T,
+        this.archivedMetas.filter((m) => (!p.projectId || m.projectId === p.projectId) && (!p.scope || m.scope === p.scope)) as T,
       );
     }
     if (method === "session.events") {
@@ -1011,6 +1011,25 @@ describe("archived metas on demand", () => {
     // a resync re-lists the loaded scope and keeps it
     await sessionStore.resync(link);
     expect(sessionStore.metas().map((m) => m.id).sort()).toEqual(["live", "old1"]);
+  });
+
+  it("ensureArchivedWork fetches the archived Work threads alone, once, and a resync keeps them", async () => {
+    link.metas = [];
+    link.archivedMetas = [
+      wireMeta({ id: "loose", scope: "work", archived: true }),
+      wireMeta({ id: "filed", scope: "work", projectId: "p9", archived: true }),
+      wireMeta({ id: "code", projectId: "p1", archived: true }),
+    ];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    expect(sessionStore.archivedWorkLoaded("local")).toBe(false);
+    await sessionStore.ensureArchivedWork("local");
+    await sessionStore.ensureArchivedWork("local");
+    expect(sessionStore.archivedWorkLoaded("local")).toBe(true);
+    expect(sessionStore.metas().map((m) => m.id).sort()).toEqual(["filed", "loose"]);
+    expect(link.calls.filter((c) => c.method === "session.list" && (c.params as { scope?: string } | undefined)?.scope === "work")).toHaveLength(1);
+    await sessionStore.resync(link);
+    expect(sessionStore.metas().map((m) => m.id).sort()).toEqual(["filed", "loose"]);
   });
 
   it("ensureMeta reaches an archived thread the live list left out", async () => {

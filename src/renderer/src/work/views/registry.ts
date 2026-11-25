@@ -98,6 +98,20 @@ export const workViewList = (): WorkViewDef[] => Object.values(WORK_VIEWS).sort(
 /** The views the column draws a row for: every one that does not stand inside another, and Templates only once its row is on (`TEMPLATES_ROW`). */
 export const workViewRows = (): WorkViewDef[] => workViewList().filter((view) => !view.inside && (TEMPLATES_ROW || view.id !== "templates"));
 
+/** The column's four daily views, in their rows' order: Mail, Tasks, Agenda, Messages (docs/agents/work.md "The column"). */
+export const DAILY_VIEWS: readonly WorkViewId[] = ["mail", "tasks", "agenda", "messages"];
+
+/**
+ * The column's view rows: the four daily ones, then the rest behind its More fold (People, Money, Files, Forms,
+ * Templates, Plays, Routines), each in its `order`. Projects has no row of either: the Projects heading over the
+ * job's projects opens its view.
+ */
+export function workColumnViews(): { daily: WorkViewDef[]; more: WorkViewDef[] } {
+  const rows = workViewRows();
+  const daily = DAILY_VIEWS.map((id) => rows.find((view) => view.id === id)).filter((view): view is WorkViewDef => !!view);
+  return { daily, more: rows.filter((view) => !DAILY_VIEWS.includes(view.id) && view.id !== "projects") };
+}
+
 /** The chunks of the column's other views, in the column's order: what a shown view warms behind itself (WorkViewPage.tsx). */
 export const viewChunksAfter = (shown: WorkViewId): Chunk<object>[] => workViewRows().filter((view) => view.id !== shown).map((view) => view.chunk);
 

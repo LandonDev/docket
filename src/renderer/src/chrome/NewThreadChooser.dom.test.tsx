@@ -2,13 +2,14 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registry, type Link } from "../lib/connection";
-import { NewThreadChooser } from "./NewThreadChooser";
+import { chooserPlace, NewThreadChooser } from "./NewThreadChooser";
 import { threadTuneChunk } from "../surfaces/chunks";
+import { setWorkOn, workSwitch } from "../lib/workSwitch";
 
 // The tune view's rules come from the host; with none loaded it shows the instructions field alone.
 vi.mock("../lib/tcserver/rules", () => ({ useRulesScope: () => ({ scope: undefined, catalog: null }) }));
 const catalog = vi.hoisted(() => ({ workspaces: [] as { id: string; environmentId: string; kind?: string }[] }));
-vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => catalog.workspaces }));
+vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => catalog.workspaces, WORK_CHATS: "~work" }));
 
 beforeEach(() => {
   vi.spyOn(registry, "primary").mockReturnValue({ environmentId: "local" } as Link);
@@ -51,6 +52,22 @@ describe("NewThreadChooser", () => {
     expect([...dialog.querySelectorAll("[data-slot=item-title]")].map((t) => t.textContent)).toEqual(["Chat", "Research"]);
     expect(dialog.textContent).not.toContain("code");
     catalog.workspaces = [];
+  });
+
+  it("Work Chats starts a Work thread on the host a Work Chat goes to, though no workspace holds it (it once drew no button)", async () => {
+    vi.spyOn(registry, "environments").mockReturnValue([{ id: "local", platform: "darwin" }, { id: "box", platform: "linux" }] as never);
+    setWorkOn("local", true);
+    setWorkOn("box", true);
+    const started: string[] = [];
+    render(<NewThreadChooser workspaceId="~work" empty={false} onStart={(type) => started.push(type)} />);
+    await click(screen.getByRole("button", { name: "New thread" }));
+    const dialog = await screen.findByRole("dialog");
+    const titles = [...dialog.querySelectorAll("[data-slot=item-title]")];
+    expect(titles.map((t) => t.textContent)).toEqual(["Chat", "Research"]);
+    expect(chooserPlace("~work", undefined)).toEqual({ work: true, environmentId: "box" });
+    await click(titles[0]!.closest("button")!);
+    expect(started).toEqual(["chat"]);
+    workSwitch.reset();
   });
 
   it("draws each type's row with its type's tinted glyph", async () => {

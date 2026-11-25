@@ -87,7 +87,7 @@ import { usePlanReady } from "../hooks/usePlanReady";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog, useWorkspaces, WORK_CHATS } from "../lib/tcserver/workspaces";
 import { isWorkWorkspace } from "../lib/workRow";
-import { LIFEOS_CARD, openWorkView, useLifeosProjects, workColumnPort } from "../lib/workSwitch";
+import { LIFEOS_CARD, openWorkView, useLifeosProjects, useWorkHosts, workColumnPort } from "../lib/workSwitch";
 import { loadToast } from "../components/ui/toaster";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
 import {
@@ -98,8 +98,24 @@ import {
   type ProjectGroup,
   type ThreadRow,
 } from "../lib/workspaceSessions";
-import { dialogsChunk } from "../surfaces/chunks";
+import type { WorkColumnKind } from "../lib/sidebarRows";
+import { dialogsChunk, workShellChunk } from "../surfaces/chunks";
+import type { WorkProjectRow } from "../work/shell/columnModel";
+import { Skeleton } from "../components/ui/skeleton";
 import { RAIL_SCROLL_MARGIN_PX, RailRows } from "./railRows";
+
+// A Work job's projects and threads, and Work Chats' archived row (work/shell/WorkColumnRows.tsx): Work's chunk,
+// never the first paint's; the projects wait as row-shaped bones, the rest as nothing.
+const WorkProjectsSection = workShellChunk.surface(
+  "WorkProjectsSection",
+  <div aria-hidden className="flex flex-col gap-1">
+    {[0, 1, 2].map((i) => (
+      <Skeleton key={i} className="h-7 rounded-md" />
+    ))}
+  </div>,
+);
+const WorkThreadsSection = workShellChunk.surface("WorkThreadsSection");
+const WorkArchivedRow = workShellChunk.surface("ArchivedRow");
 
 // Opened from a project's menu; mounted only while open (chrome/dialogs.ts).
 const ProjectSettingsDialog = dialogsChunk.surface("ProjectSettingsDialog");
@@ -146,7 +162,7 @@ const MORE_PLACE = { card: "h-7 pl-13", list: "h-8 pl-9" } as const;
 /** The row behind which a windowed list keeps the rest: a row of 13px words
  *  on its list's title column (`MORE_PLACE`), the /5 hover fill at once (as
  *  the Working section's "N more"). */
-function MoreRow({ hidden, onMore, place }: { hidden: number; onMore: () => void; place: keyof typeof MORE_PLACE }) {
+export function MoreRow({ hidden, onMore, place }: { hidden: number; onMore: () => void; place: keyof typeof MORE_PLACE }) {
   return (
     <Button
       variant="ghost"
@@ -198,7 +214,7 @@ function moreTrigger(className?: string) {
  *  two never draw over each other. */
 const YIELDS = yields("row");
 
-function InlineRename({
+export function InlineRename({
   value,
   className,
   onCommit,
@@ -258,7 +274,7 @@ function InlineRename({
 
 // --- rows ------------------------------------------------------------------
 
-type RowActions = {
+export type RowActions = {
   activeSessionId?: string;
   /** The focused session's root and children: "Archive dormant" spares them. */
   focusedTree: ReadonlySet<string>;
@@ -272,7 +288,7 @@ type RowActions = {
 };
 
 /** The thread menu as the rail's rows use it: stable across renders. */
-type RailThreadMenu = {
+export type RailThreadMenu = {
   rowsFor: (id: string) => readonly MenuRow[];
   onPick: (id: string, pick: string) => void;
   onOpenChange: (id: string, open: boolean) => void;
@@ -574,12 +590,12 @@ const ChatRow = memo(function ChatRow({
 });
 
 /** A rail row's ⋯: the thread's menu from its trigger. */
-function MoreMenu({ id, menu }: { id: string; menu: RailThreadMenu }) {
+export function MoreMenu({ id, menu, className = "absolute top-1/2 right-1 -translate-y-1/2" }: { id: string; menu: RailThreadMenu; className?: string }) {
   return (
     <RowsMenu
       label="Thread actions"
       tip={{ label: "More", side: "right" }}
-      trigger={moreTrigger("absolute top-1/2 right-1 -translate-y-1/2")}
+      trigger={moreTrigger(className)}
       rows={() => menu.rowsFor(id)}
       onPick={(pick) => menu.onPick(id, pick)}
       onOpenChange={(open) => menu.onOpenChange(id, open)}
@@ -1400,9 +1416,17 @@ const estimateItem = (item: SidebarItem): number => {
     case "archived":
       return (item.spaced ? FOLD_GAP_PX : 0) + HEADING_PX;
     case "empty":
+    case "work-archived":
       return ROW_PX;
+    case "work-projects":
+      return HEADING_PX + ROW_PX * 3;
+    case "work-threads":
+      return FOLD_GAP_PX + HEADING_PX + WORK_THREAD_PX * Math.min(item.items.length, SESSION_LIST_PAGE);
   }
 };
+
+/** A Work thread's two lines (6px, 20px, 16px, 6px) and the list's 4px gap. */
+const WORK_THREAD_PX = 52;
 
 // --- root ------------------------------------------------------------------
 
@@ -1615,6 +1639,7 @@ export default function WorkspaceSessions({
     [],
   );
   const moreChats = useCallback(() => morePages("chats"), [morePages]);
+  const moreWorkThreads = useCallback(() => morePages("work-threads"), [morePages]);
 
   // The same set while the tree's members stay: every card reads it, and a new one per push re-rendered them all.
   const focused = useKept(useMemo(() => focusedTree(metas, activeSessionId), [activeSessionId, metas]), sameSet);
@@ -1654,10 +1679,29 @@ export default function WorkspaceSessions({
   // below it. (A fold's height animation is measured too: the root
   // re-renders per frame while a section opens or closes, and the memoized
   // cards sit that out.)
+  // A Work job draws its projects and threads; Work Chats its list and the archived row (lib/sidebarRows.ts).
+  const workColumn: WorkColumnKind = workWorkspace ? "job" : workspaceId === WORK_CHATS ? "chats" : null;
   const items = useMemo(
-    () => sidebarItems(groups, workspaceId === null || workspaceId === WORK_CHATS, !!workWorkspace),
-    [groups, workspaceId, workWorkspace],
+    () => sidebarItems(groups, workspaceId === null || workspaceId === WORK_CHATS, !!workWorkspace, workColumn),
+    [groups, workspaceId, workWorkspace, workColumn],
   );
+  // A project's row opens its page in the job's Projects view; one LifeOS does not hold is selected, as a card was.
+  const openWorkProject = useCallback(
+    (row: WorkProjectRow) => {
+      if (row.lifeosProjectId && workspaceId) openWorkView({ workspaceId, view: "projects", project: row.lifeosProjectId });
+      else selectProject(row.id);
+    },
+    [selectProject, workspaceId],
+  );
+  // Whose archived threads the last row lists, and the hosts asked for them: a job's copies, or every Work host.
+  const workHosts = useWorkHosts();
+  const workCopies = workspaceIds && workspaceIds.length > 1 ? workspaceIds : null;
+  const archivedScope = useMemo(() => {
+    if (workColumn === "chats") return { scope: WORK_CHATS, environmentIds: [...workHosts] };
+    if (workColumn !== "job" || !workspaceId) return null;
+    const ids = workCopies ?? [workspaceId];
+    return { scope: workCopies ?? workspaceId, environmentIds: [...new Set(workspaces.filter((w) => ids.includes(w.id)).map((w) => w.environmentId))] };
+  }, [workColumn, workCopies, workHosts, workspaceId, workspaces]);
   const estimateSize = useCallback((i: number) => estimateItem(items[i]), [items]);
   const getItemKey = useCallback((i: number) => items[i].key, [items]);
   const rowCount = useMemo(() => items.reduce((n, item) => n + estimateItem(item) / ROW_PX, 0), [items]);
@@ -1741,6 +1785,16 @@ export default function WorkspaceSessions({
             />
           </SectionGroup>
         );
+      case "work-projects":
+        return workWorkspace ? (
+          <WorkProjectsSection workspaceId={workWorkspace.id} linked={!!workWorkspace.sector} groups={groups.projects} onOpen={openWorkProject} />
+        ) : null;
+      case "work-threads":
+        return archivedScope ? (
+          <WorkThreadsSection items={item.items} actions={rows} requested={pageOf(pages, "work-threads")} onMore={moreWorkThreads} archived={archivedScope} />
+        ) : null;
+      case "work-archived":
+        return archivedScope ? <WorkArchivedRow scope={archivedScope} onOpen={openSession} /> : null;
       case "empty":
         return (
           <Button

@@ -17,7 +17,7 @@ import { SettingsNav } from "./SettingsRail";
  * The rail and the settings list with the Work switch off and on (plan
  * milestone 8, architecture §15): off, a host's Work workspace is nowhere
  * and the rows are those of a host with no Work at all; on, it sits under
- * the Work heading led by its sector's dot, Work Chats sits after Chats,
+ * the Work heading led by its sector's dot, Work Chats sits under it,
  * and only then is Work's chunk asked for.
  */
 
@@ -150,11 +150,12 @@ describe("the rail with Work on", () => {
     expect(bare.querySelector('[aria-label="Add Work workspace"]')).toBeNull();
   });
 
-  it("puts Work Chats after Chats, and draws no Outbox row with no page for it to open", async () => {
+  it("puts Today, Projects, Review and Work Chats under the Work heading, before the jobs, and draws no Outbox row with no page for it to open", async () => {
     setWorkOn("local", true);
     const root = await mountRail([CODE]);
     const names = labels(root);
-    expect(names.indexOf("Work Chats")).toBe(names.indexOf("Chats") + 1);
+    const today = names.indexOf("Today");
+    expect(names.slice(today, today + 4)).toEqual(["Today", "Projects", "Review", "Work Chats"]);
     expect(names).not.toContain("Outbox");
     // With no Work workspace yet, the heading's own row adds the first: "Add workspace…" under Work, fitting the 200px rail, named in full for a screen reader.
     expect(names).toContain("Add workspace…");
@@ -242,7 +243,7 @@ describe("the rail's rows for the pages above the Work workspaces", () => {
     WORK_PLACE_ROWS.push(PLACE);
     const names = labels(await mountRail([CODE]));
     // Every page's row leads, in its order (the probe 5, Today 10, Review 20); the last sits right over Add workspace….
-    expect(names.slice(names.indexOf("Probe place"), names.indexOf("Add workspace…") + 1)).toEqual(["Probe place", "Today", "Projects", "Review", "Add workspace…"]);
+    expect(names.slice(names.indexOf("Probe place"), names.indexOf("Add workspace…") + 1)).toEqual(["Probe place", "Today", "Projects", "Review", "Work Chats", "Add workspace…"]);
   });
 });
 
@@ -254,7 +255,7 @@ describe("Today's row in the rail", () => {
     const root = await mountRail([CODE, WORK], { onOpenOutbox: () => {} });
     const names = labels(root);
     // First of the pages above the workspaces, which come before the workspaces themselves.
-    expect(names.slice(names.indexOf("Today"), names.indexOf("Purdue Esports") + 1)).toEqual(["Today", "Projects", "Review", "Purdue Esports"]);
+    expect(names.slice(names.indexOf("Today"), names.indexOf("Purdue Esports") + 1)).toEqual(["Today", "Projects", "Review", "Work Chats", "Purdue Esports"]);
     const row = [...root.querySelectorAll("nav button")].find((b) => b.textContent?.trim() === "Today") as HTMLButtonElement;
     await probe!.act(async () => setOutboxWaiting(4));
     // The Outbox's count is beside it already: Today's row carries none.

@@ -25,7 +25,28 @@ export type SidebarItem =
    *  holds its New thread, so the list stands under it with no fold. */
   | { kind: "chats"; key: "chats"; threads: ThreadRow[]; spaced: boolean; headed: boolean }
   | { kind: "archived"; key: "archived"; groups: ProjectGroup[]; spaced: boolean }
-  | { kind: "empty"; key: "empty" };
+  | { kind: "empty"; key: "empty" }
+  /** A Work job (docs/DESIGN.md "The column"): its projects, one row each, then its threads, two lines each
+   *  (work/shell/columnModel.ts), in place of the cards and the folds. */
+  | { kind: "work-projects"; key: "work-projects" }
+  | { kind: "work-threads"; key: "work-threads"; items: WorkThreadItem[] }
+  /** Work Chats: the quiet archived row under the list. */
+  | { kind: "work-archived"; key: "work-archived" };
+
+/** One row of a Work job's Threads section: the cached row (so a memoized row skips a push that left it as it was)
+ *  and the name of its project, or null for a loose one. */
+export type WorkThreadItem = { row: ThreadRow; project: string | null };
+
+/** Every root thread of a Work job, loose and in its projects (an archived project's too), newest first. */
+export function workThreadItems(groups: WorkspaceSessionGroups): WorkThreadItem[] {
+  const items: WorkThreadItem[] = groups.chats.map((row) => ({ row, project: null }));
+  for (const group of [...groups.projects, ...groups.archived]) for (const row of group.threads) items.push({ row, project: group.project.name });
+  return items.sort((a, b) => b.row.updatedAt - a.row.updatedAt);
+}
+
+/** What a Work column draws in place of the code column's cards: a job's projects and threads, or Work Chats'
+ *  list with its archived row. */
+export type WorkColumnKind = "job" | "chats" | null;
 
 /** Cards first, then chats and archived when there are any, else the empty
  *  hint. The home has no projects, so it never shows the hint: an empty home
@@ -37,7 +58,15 @@ export function sidebarItems(
   home = false,
   /** A Work workspace: its projects are LifeOS's, so it never offers New project. */
   work = false,
+  /** A Work job or Work Chats (`WorkColumnKind`); a code workspace's column is as it was. */
+  workColumn: WorkColumnKind = null,
 ): SidebarItem[] {
+  if (workColumn === "job") {
+    return [
+      { kind: "work-projects", key: "work-projects" },
+      { kind: "work-threads", key: "work-threads", items: workThreadItems(groups) },
+    ];
+  }
   const items: SidebarItem[] = groups.projects.map((group) => ({
     kind: "project",
     key: group.project.id,
@@ -49,6 +78,7 @@ export function sidebarItems(
   if (groups.archived.length)
     items.push({ kind: "archived", key: "archived", groups: groups.archived, spaced });
   if (!items.length && !home && !work) items.push({ kind: "empty", key: "empty" });
+  if (workColumn === "chats") items.push({ kind: "work-archived", key: "work-archived" });
   return items;
 }
 
@@ -70,7 +100,11 @@ export function sessionItemIndex(items: readonly SidebarItem[], id: string): num
         return holds(item.threads, id);
       case "archived":
         return item.groups.some((g) => holds(g.threads, id));
+      case "work-threads":
+        return item.items.some((i) => i.row.id === id || holds([i.row], id));
       case "empty":
+      case "work-projects":
+      case "work-archived":
         return false;
     }
   });

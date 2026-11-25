@@ -75,6 +75,22 @@ const groups = (over: Partial<WorkspaceSessionGroups> = {}): WorkspaceSessionGro
 });
 
 describe("sidebarItems", () => {
+  it("draws a Work job as its Projects then its Threads, every root in one list (loose, in projects, an archived project's), and finds a thread there", () => {
+    const [a, b, c] = rows(3);
+    const items = sidebarItems(groups({ projects: [group("a", [a!])], chats: [b!], archived: [group("z", [c!], true)] }), false, true, "job");
+    expect(items.map((i) => i.kind)).toEqual(["work-projects", "work-threads"]);
+    const threads = items[1]!.kind === "work-threads" ? items[1]!.items.map((i) => i.row.id) : [];
+    expect(threads.sort()).toEqual(["t0", "t1", "t2"]);
+    expect(sessionItemIndex(items, "t2")).toBe(1);
+    expect(sessionItemIndex(items, "nowhere")).toBe(-1);
+  });
+
+  it("ends Work Chats' list with its archived row, and leaves a code workspace's column as it was", () => {
+    expect(sidebarItems(groups({ chats: rows(1) }), true, false, "chats").map((i) => i.kind)).toEqual(["chats", "work-archived"]);
+    expect(sidebarItems(groups(), true, false, "chats").map((i) => i.kind)).toEqual(["work-archived"]);
+    expect(sidebarItems(groups({ projects: [group("a")], chats: rows(1) }), false, false, null).map((i) => i.kind)).toEqual(["project", "chats"]);
+  });
+
   it("lists cards first, then chats, then archived, keyed by project id", () => {
     const items = sidebarItems(
       groups({

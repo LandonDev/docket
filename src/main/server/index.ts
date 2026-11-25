@@ -3855,7 +3855,7 @@ export async function startServer(
             sendFrame({ id: req.id, ok: true, result: null })
             break
           case 'session.list': {
-            const opts = { archived: req.params?.archived ?? false, projectId: req.params?.projectId }
+            const opts = { archived: req.params?.archived ?? false, projectId: req.params?.projectId, scope: req.params?.scope }
             // The remote profile pages the raw rows first and decorates the
             // page alone: a 3,000-thread host once decorated every row to
             // answer a 60-row page.

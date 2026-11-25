@@ -222,11 +222,16 @@ Settings → Work.
   name. A code workspace's row menu gains **LifeOS sector ›**
   (None and the six) while Work is on; `work.lifeos.link` writes it and
   the host's `workspaces` push tells every client. **Work Chats** sits
-  after Chats, **Outbox** after Inbox whenever Work is on, with the waiting
-  count from `setOutboxWaiting(n)` (the Outbox, milestone 14, owns its page).
+  under the Work heading after the pages above the workspaces (`workChatsRow`
+  in ProjectRail.tsx; `railTopRows` no longer lists it), **Outbox** after
+  Inbox whenever Work is on, with the waiting count from
+  `setOutboxWaiting(n)` (the Outbox, milestone 14, owns its page).
 - **The pages above the workspaces**: under the Work heading, before the
   workspaces, one row for each page that spans every job: Today
-  ([work-today.md](work-today.md)), the first. A row is `WORK_PLACE_ROWS`
+  ([work-today.md](work-today.md)), Projects (the tracker, every job's
+  projects, [work-tracker.md](work-tracker.md)) and
+  Review ([work-review.md](work-review.md), its own glyph, `CalendarCheck`),
+  then Work Chats. A row is `WORK_PLACE_ROWS`
   (lib/workPlaces.ts, first paint, plain data); its page is `WORK_PLACES`
   (work/places/registry.ts), drawn by `WorkPlacePage` on the Outbox page's
   frame and opened with `shell.openWorkPlace(id)`. With Work off there is
@@ -239,34 +244,56 @@ Settings → Work.
   workspace, so the code home never lists a Work Chat; it is never a folder
   (`looksLikeProject`). A draft there carries `scope: "work"`, which
   `ensureCreated` sends on `session.create`.
-- **The column** (chrome/Sidebar.tsx, WorkspaceSessions.tsx): a Work
-  workspace offers no New project and no Orchestration; a linked one shows
-  `WorkColumnHead` (work/shell/WorkColumn.tsx): from `WORK_VIEWS`, in
-  each view's `order`, Mail, Messages, Tasks, Projects (the project
-  screens, [work-projects.md](work-projects.md)), Agenda, People
-  ([work-people.md](work-people.md)), Money, Files (the Files place,
-  [work-files.md](work-files.md); the Docs view folded into it,
-  [work-docs.md](work-docs.md) "Where the Docs view went"), then the
-  Templates shelf (on: `TEMPLATES_ROW` in views/registry.ts,
-  [work-templates.md](work-templates.md) "The row"), Plays and Routines;
-  then the project cards. A view may stand inside another
-  and have no row of its own: `WorkViewDef.inside` names its parent (a
-  meeting's page stands inside Agenda, [work-prep.md](work-prep.md)); the
-  column draws no row for it (`workViewRows`), its parent's row reads as
-  open while it shows (`rowOfView`), and that row then leads back to the
-  parent rather than closing the view. Those cards are LifeOS's,
-  live: the head keeps `projects:list {sector}` (backlog, active, paused)
-  in `setLifeosProjects`, and `withLifeosCards` (lib/workspaceSessions.ts)
-  adds a `lifeos:<id>` card for each one no project mirrors yet; its first
-  pick or New thread calls `work.project.open`, which makes the project
-  (`projects.lifeos_project_id`) in the card's place: its mirror ("Mirrors
-  follow LifeOS" below). The cards are
-  oldest first, the order the Projects view keeps inside a state
-  (`projectOrder` from `work-kit/projects/order`), with no grouping by
-  state, whatever is picked, made or worked in; a project of the workspace that mirrors none of them follows,
-  newest first (`railOrder` in the same file). A view row opens `WorkViewSurface` over
-  the thread panes under the strip; picking a thread or the row again
-  closes it.
+- **The column** (chrome/Sidebar.tsx, WorkspaceSessions.tsx; the look is
+  docs/DESIGN.md "The column"): a Work workspace offers no New project and no
+  Orchestration. A linked one shows `WorkColumnHead`
+  (work/shell/WorkColumn.tsx): the four daily views, Mail, Tasks, Agenda and
+  Messages (`DAILY_VIEWS`, `workColumnViews` in views/registry.ts), then a
+  **More** fold (`MoreFold`) holding the rest of `WORK_VIEWS` in their
+  `order`: People ([work-people.md](work-people.md)), Money, Files (the Files
+  place, [work-files.md](work-files.md)), Forms, Templates (`TEMPLATES_ROW`,
+  [work-templates.md](work-templates.md) "The row"), Plays and Routines. The
+  More view he last opened stays as a row after Messages until he leaves the
+  job (`foldRows`; the head is keyed by the workspace). Projects
+  ([work-projects.md](work-projects.md)) has no view row: the Projects
+  heading under the views opens it. A view may stand inside another and have
+  no row of its own: `WorkViewDef.inside` names its parent (a meeting's page
+  stands inside Agenda, [work-prep.md](work-prep.md)); the column draws no
+  row for it (`workViewRows`), its parent's row reads as open while it shows
+  (`rowOfView`), and that row then leads back to the parent rather than
+  closing the view. A view row opens `WorkViewSurface` over the thread panes
+  under the strip; picking a thread or the row again closes it.
+  Under the head, a Work job's list (`sidebarItems(…, "job")`,
+  lib/sidebarRows.ts; drawn by work/shell/WorkColumnRows.tsx, Work's chunk)
+  is two sections in place of the code column's cards and folds. **Projects**
+  (`workProjectRows`, work/shell/columnModel.ts): one row a project, LifeOS's live
+  (the head keeps `projects:list {sector}`, backlog, active and paused, with
+  each one's `status` and `targetDate`: the id and name in the first
+  paint's `setLifeosProjects`, the rest in Work's chunk, `setColumnProjects`;
+  `withLifeosCards` adds a `lifeos:<id>` row for each one no project mirrors
+  yet, and its first thread calls `work.project.open`, which makes the mirror,
+  "Mirrors follow LifeOS" below), then any other project of the workspace.
+  The lead slot is the most pressing of its root threads' (`projectLead`:
+  asks, failed, held, working), the end its target date, red once passed;
+  rows sort by target, none last, so nothing moves for what threads do;
+  paused and backlog with nothing live fold into one "N paused" row. A row
+  opens the project's page in the Projects view (`openWorkView {project}`).
+  **Threads** (`workThreadItems`): every root of the job, loose and in its
+  projects, newest first, a page at a time, two lines each: `threadLead`
+  (question, failure, held, the row's own mark), title and time; then the
+  project's name and the thread's `workOutcome.words` (the host's fold,
+  "What a thread left him"), `threadLine`. No row asks a host anything. A
+  thread of the open job is never repeated in the rail's Working section
+  (`withoutOpenWork`, below). **Archived**: the last row, "3 archived",
+  opens `ThreadListPopover` with Restore over the job's archived threads,
+  loose and in projects (`archivedThreads`); Work Chats ends its list with
+  the same row (`sidebarItems(…, "chats")`). The window asks each host of
+  the scope once, in an idle slot, for its archived Work threads alone
+  (`sessionStore.ensureArchivedWork`, `session.list {archived: true, scope:
+  "work"}`; an older host ignores `scope` and answers every archived
+  thread), and the row renders again only when the scope's archived ids
+  change. Work Chats' title bar New thread starts a Work Chat on the host a
+  Work Chat goes to (`chooserPlace` in chrome/NewThreadChooser.tsx, `workHome`).
 - **A view registers** in `src/renderer/src/work/views/registry.ts`: the
   milestone fills its own `work/<pillar>/view.ts` (mail, tasks, agenda,
   docs) and nothing else. The view's chunk exports `View` and, optionally,

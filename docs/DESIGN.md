@@ -2940,7 +2940,8 @@ One page above the Work workspaces: what waits on his press, today's
 meetings, what is due, the mail no one answered and the files others
 changed, for every job (work/today/, docs/agents/work-today.md). It is the
 first row under the rail's Work heading (a sun, "Today", no count: Today is
-not a queue) and Go → Today, ⇧⌘T, which also closes it: the menu's row
+not a queue), before Projects (a briefcase: every job's projects on one page),
+Review (a calendar ticked off) and Work Chats; Go → Today, ⇧⌘T, opens it and also closes it: the menu's row
 reads "Close Today" while the page is open. Open, its rail row wears the
 workspace cards' selected fill (`sidebar-group-selected`), since an item's
 own selected fill is a card's fill at rest in light.
@@ -3130,6 +3131,34 @@ beside the page's name; no counts, no other filters, no cards.
   groups. Under the filter a job with nothing waiting goes; with nothing
   left the page says "Nothing waits on you". The page opens and closes
   with no motion.
+#### The column
+
+A Work job's column (chrome/WorkspaceSessions.tsx, work/shell/WorkColumn.tsx, work/shell/WorkColumnRows.tsx;
+docs/agents/work.md "The column") holds three groups, 16px apart, on the rail's 12px row inset. Nothing in it asks a
+host anything per row: the rows read the session summaries (`workOutcome`) and LifeOS's `projects:list`.
+
+- **Views**: Mail, Tasks, Agenda, Messages, each a 28px `RailRow` with its one muted fact, then **More**, a row of
+  the same shape (the ⋯ glyph, muted) that shows or hides the rest under it (People, Money, Files, Forms, Templates,
+  Plays, Routines): a fold, not a menu, so no fill while open. The More view he last opened stays as a row of its
+  own after Messages until he leaves the job. Projects has no view row: its heading is the row.
+- **Projects**: a 28px heading, 12px medium muted, that opens the job's Projects view (and reads as open, the
+  `muted` fill, while it shows). Then a row a project, 28px: the 16px lead slot says what is live in its threads,
+  most pressing first (the amber mark for a question, the red mark for a failure, the Outbox glyph in muted for a
+  held act, never amber; the spinner for work), else nothing; the name; the target date at the end in 12px muted
+  tabular ("Dec 12", the year only in another year), red once its day has passed. Rows sort by target, none last,
+  so a row never moves for what its threads do. Paused and backlog fold into one quiet row on the names' column,
+  "1 paused", that shows them under it; one with something live keeps its row in the list. A row opens the
+  project's page in the Projects view.
+- **Threads**: a 12px heading, then every root thread of the job, loose and in its projects, newest first, a page
+  at a time. A row is two lines, 6px top and bottom: the lead slot (the same marks, and the thread's own at-rest
+  marks: watching, paused, …), the title in 13px (medium foreground while unread) and its time at the end in 12px
+  muted tabular ("10:02 AM" today, "Tue" this week, "Nov 3" before), none while it works, since the spinner says
+  now; under them in 12px muted the project, then what it left him, one comma sentence ("Spring LAN, 1 mail to
+  send"), or nothing when it has neither. A row with neither is its first line alone. Done and idle draw no mark.
+  Right-click or ⋯ (over the time on hover) is the thread's menu; a double-click renames it.
+- **Archived**: a quiet row on the names' column at the end of Threads, "3 archived", opening the archived list
+  (`ThreadListPopover`, Restore on hover) of the job's threads, loose and in projects; a pick restores and opens
+  the thread. Work Chats ends its list with the same row. Nothing while none are archived.
 
 #### A thread's head
 

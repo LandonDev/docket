@@ -99,11 +99,13 @@ public enum Methods {
         public struct Params: Codable, Hashable, Sendable {
             public let archived: Bool?
             public let projectId: String?
+            public let scope: String?
             public let cursor: String?
 
-            public init(archived: Bool? = nil, projectId: String? = nil, cursor: String? = nil) {
+            public init(archived: Bool? = nil, projectId: String? = nil, scope: String? = nil, cursor: String? = nil) {
                 self.archived = archived
                 self.projectId = projectId
+                self.scope = scope
                 self.cursor = cursor
             }
         }

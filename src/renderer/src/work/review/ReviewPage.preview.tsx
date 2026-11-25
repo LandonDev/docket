@@ -1,5 +1,5 @@
 import { weekWords } from "@shared/work/review";
-import { ChartBar, MoreHorizontal } from "../../chrome/icons";
+import { CalendarCheck, MoreHorizontal } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
 import { fixtureView, HOST_NAMES, WEEK, type FixtureState } from "./fixtures";
@@ -29,7 +29,7 @@ export function ReviewPreview({ state = "full", peek, gone = [] }: { state?: Fix
       <PlaceFrame
         place="review"
         label="Review"
-        icon={ChartBar}
+        icon={CalendarCheck}
         besideRail
         onClose={() => {}}
         head={

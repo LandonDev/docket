@@ -651,6 +651,9 @@ export const FOREIGN_REFS_BUDGET_MS = 15_000
 export const REFRESH_SLICE = 100
 const PROVIDER_TICK_MS = 5_000
 
+/** What `session.list` narrows by: archived or not, one project, Work's threads alone (`scope: 'work'`, the Work column's archived list). */
+export type ListOptions = { archived?: boolean; projectId?: string; scope?: 'work' }
+
 export class SessionRegistry {
   private catalogListeners = new Set<(kind: 'workspaces' | 'projects') => void>()
 
@@ -1564,7 +1567,7 @@ export class SessionRegistry {
    *  with `archived: true`, all of them with `archived: undefined`. The
    *  index that decorates is always built over every row, so a child of an
    *  archived root still decorates right. */
-  list(opts: { archived?: boolean; projectId?: string } = { archived: false }): SessionMeta[] {
+  list(opts: ListOptions = { archived: false }): SessionMeta[] {
     return timed('registry.list', () => {
       const index = this.indexOf()
       return this.decorateAll(this.listRaw(opts, index), index)
@@ -1574,10 +1577,10 @@ export class SessionRegistry {
   /** The rows alone, newest first, off the maintained index: no table read,
    *  no decoration. The remote list pages these before decorating the page;
    *  the archive sweep and the port sweep read them as they are. */
-  listRaw(opts: { archived?: boolean; projectId?: string } = { archived: false }, index: SessionIndex = this.indexOf()): SessionMeta[] {
+  listRaw(opts: ListOptions = { archived: false }, index: SessionIndex = this.indexOf()): SessionMeta[] {
     const rows: SessionMeta[] = []
     for (const s of index.byId.values()) {
-      if ((opts.archived === undefined || s.archived === opts.archived) && (opts.projectId === undefined || s.projectId === opts.projectId)) rows.push(s)
+      if ((opts.archived === undefined || s.archived === opts.archived) && (opts.projectId === undefined || s.projectId === opts.projectId) && (opts.scope === undefined || s.scope === opts.scope)) rows.push(s)
     }
     return rows.sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
   }

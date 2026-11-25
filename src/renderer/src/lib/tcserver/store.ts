@@ -131,7 +131,7 @@ function shellOf(session: Session, previous: SessionShell | undefined): SessionS
 
 export type { Link };
 
-/** `env|*` or `env|proj:<id>`: which environment an archived scope belongs to. */
+/** `env|*`, `env|work` or `env|proj:<id>`: which environment an archived scope belongs to. */
 function scopeEnvironment(scope: string): string {
   return scope.slice(0, scope.indexOf("|"));
 }
@@ -913,7 +913,10 @@ class SessionStore {
 
   private archivedParams(scope: string): Record<string, unknown> {
     const what = scope.slice(scope.indexOf("|") + 1);
-    return what === "*" ? { archived: true } : { archived: true, projectId: what.slice(5) };
+    if (what === "*") return { archived: true };
+    // An older host drops the unknown key and answers every archived thread: more than asked, never less.
+    if (what === "work") return { archived: true, scope: "work" };
+    return { archived: true, projectId: what.slice(5) };
   }
 
   private isRemote(entry: Entry): boolean {
@@ -953,8 +956,23 @@ class SessionStore {
    *  once per socket. `retry: false` asks once: a socket that drops or a late
    *  answer ends it instead of the safe read's backoff. */
   ensureArchived(environmentId: string, projectId?: string, options?: { retry?: boolean }): Promise<void> {
+    return this.ensureArchivedScope(environmentId, projectId ? `proj:${projectId}` : "*", options);
+  }
+
+  /** Fetch the archived Work threads on one environment, once per socket: a Work job's archived list and Work
+   *  Chats' (work/shell/WorkColumnRows.tsx), loose threads and project threads alike, never the code threads. */
+  ensureArchivedWork(environmentId: string): Promise<void> {
+    return this.ensureArchivedScope(environmentId, "work");
+  }
+
+  /** Whether the archived Work threads of an environment are here (`ensureArchivedWork` answered, or every archived thread). */
+  archivedWorkLoaded(environmentId: string): boolean {
+    return this.archivedScopes.has(`${environmentId}|work`) || this.archivedScopes.has(`${environmentId}|*`);
+  }
+
+  private ensureArchivedScope(environmentId: string, what: string, options?: { retry?: boolean }): Promise<void> {
     const link = this.attached.get(environmentId)?.link;
-    const scope = `${environmentId}|${projectId ? `proj:${projectId}` : "*"}`;
+    const scope = `${environmentId}|${what}`;
     if (!link || this.archivedScopes.has(scope) || this.archivedScopes.has(`${environmentId}|*`))
       return Promise.resolve();
     const inFlight = this.archivedLoads.get(scope);
@@ -1095,6 +1113,7 @@ class SessionStore {
   private archivedScopeLoaded(meta: SessionMeta): boolean {
     return (
       this.archivedScopes.has(`${meta.environmentId}|*`) ||
+      (meta.scope === "work" && this.archivedScopes.has(`${meta.environmentId}|work`)) ||
       (!!meta.projectId && this.archivedScopes.has(`${meta.environmentId}|proj:${meta.projectId}`))
     );
   }

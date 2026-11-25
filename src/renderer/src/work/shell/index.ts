@@ -6,6 +6,7 @@
  */
 export { WorkRailHost } from "./WorkRailHost";
 export { WorkColumnHead } from "./WorkColumn";
+export { ArchivedRow, WorkProjectsSection, WorkThreadsSection } from "./WorkColumnRows";
 export { WorkViewSurface } from "./WorkViewPage";
 export { WorkSettingsBody, WorkWorkspacePage, CodeWorkspaceSector } from "./settings";
 export { WorkProjectSettings } from "./ProjectSettings";

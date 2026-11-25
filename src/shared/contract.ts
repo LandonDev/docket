@@ -811,7 +811,8 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     params: z.object({ path: z.string() })
   }),
   z.object({ id: z.string(), method: z.literal('session.create'), params: CreateSessionParams }),
-  // Unarchived sessions by default; `archived: true` lists the archived ones.
+  // Unarchived sessions by default; `archived: true` lists the archived ones,
+  // `scope: 'work'` Work's threads alone (the Work column's archived list).
   // A remote connection gets one page (`SessionPage` in wire.ts) and walks
   // the rest with `cursor`; a local one gets the whole array, as before.
   z.object({
@@ -821,6 +822,7 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       .object({
         archived: z.boolean().optional(),
         projectId: z.string().optional(),
+        scope: z.literal('work').optional(),
         cursor: z.string().optional()
       })
       .optional()

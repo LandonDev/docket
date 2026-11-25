@@ -66,6 +66,8 @@ export type ThreadRow = {
   createdAt: number;
   /** The host the thread lives on (the row's host badge, when the window has two or more). */
   environmentId?: string;
+  /** A Work root: what it left him, folded by the host ("1 mail to send", tone held); the Work column's second line. */
+  workOutcome?: NonNullable<SessionMeta["workOutcome"]>;
 };
 
 export type ProjectGroup = {
@@ -210,6 +212,7 @@ export function threadRow(
     projectId: meta.projectId ?? null,
     createdAt: meta.createdAt,
     environmentId: meta.environmentId,
+    ...(meta.workOutcome ? { workOutcome: meta.workOutcome } : {}),
     ...(meta.parentId
       ? { agentType: meta.agentType, provider: meta.provider, model: meta.model }
       : meta.masterId
