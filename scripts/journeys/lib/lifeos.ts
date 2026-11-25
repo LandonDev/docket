@@ -27,6 +27,8 @@ export type Sandbox = {
   mintDevice(): Promise<string>
   seedDeadline(title: string, startsAt: number): Promise<() => Promise<void>>
   query: LifeosRead
+  /** a write as the owner, for a walk that makes its own records (J63's second job's project) */
+  mutate<T>(fn: string, args?: Args): Promise<T>
   stop(): Promise<void>
 }
 
@@ -288,10 +290,11 @@ export async function startSandbox(walkFolder: string, signal?: AbortSignal, too
     const { jwt } = await owner.action(makeFunctionReference<'action'>('auth:token'), { token: await mint('Journey proof reader') }) as { jwt: string }
     owner.setAuth(jwt)
     const query: LifeosRead = (fn, args = {}) => owner.query(makeFunctionReference<'query'>(fn), args)
+    const mutate = <T>(fn: string, args: Args = {}) => owner.mutation(makeFunctionReference<'mutation'>(fn), args) as Promise<T>
     const internal = <T>(fn: string, args: Args) => admin.mutation(makeFunctionReference<'mutation'>(fn), { ...args, ownerId: OWNER }) as Promise<T>
     await seedLifeos({
       query,
-      mutate: (fn, args) => owner.mutation(makeFunctionReference<'mutation'>(fn), args),
+      mutate,
       internal,
       upload: async (body) => {
         const uploadUrl = new URL(await owner.mutation(makeFunctionReference<'mutation'>('compose:uploadUrl')) as string)
@@ -307,7 +310,7 @@ export async function startSandbox(walkFolder: string, signal?: AbortSignal, too
     })
     if (!waits.page.some(({ subject }) => subject === 'Spring LAN unanswered room request')) throw new Error('LifeOS did not list the unanswered mail')
     if (tools) mcp = await startMcp(folder, siteUrl, cliEnv, signal)
-    return { url, siteUrl, mcpUrl: mcp?.url ?? siteUrl + '/mcp', deviceToken, mintDevice, query, seedDeadline: (title, startsAt) => seedDeadline(internal, title, startsAt), stop }
+    return { url, siteUrl, mcpUrl: mcp?.url ?? siteUrl + '/mcp', deviceToken, mintDevice, query, mutate, seedDeadline: (title, startsAt) => seedDeadline(internal, title, startsAt), stop }
   } catch (error) {
     await stop()
     throw error

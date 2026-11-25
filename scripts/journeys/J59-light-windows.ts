@@ -12,6 +12,7 @@ import { settings } from './lib/settings'
 import { words } from './lib/shape'
 import { json, shown } from './lib/tierThree'
 import { Window } from './lib/window'
+import { revealView } from './lib/more'
 
 const KEY = 'monocode.colorScheme.work'
 const DECK = 'Practice theme.pptx'
@@ -77,7 +78,10 @@ async function file(context: Context, page: Window, name: string): Promise<void>
   const rail = 'nav [data-rail-path] button'
   await page.dismissPopups()
   if (!await page.centre(rail + '[aria-current="true"]', context.workspace.name)) await page.clickOn(rail, context.workspace.name)
-  if (!await page.centre('[data-files-view]')) await page.clickOn('button, a, [role="link"]', 'Files')
+  if (!await page.centre('[data-files-view]')) {
+    await revealView(page, 'button, a, [role="link"]', 'Files')
+    await page.clickOn('button, a, [role="link"]', 'Files')
+  }
   await page.clickOn('[data-files-sidebar] button', context.workspace.name)
   await openRow(page, name)
 }

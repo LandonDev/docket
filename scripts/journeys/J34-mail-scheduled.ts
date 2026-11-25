@@ -99,7 +99,7 @@ export default journey({
       const ref = { at: 'lifeos', table: 'outbox', id: queued._id }
       await pair.page.clickOn('nav [data-rail-row] > button > span.truncate', 'Outbox')
       await pair.page.press('tab', 'Waiting')
-      await pair.page.clickOn('[data-outbox-list] [data-row-title]', 'Send to Dana Lee')
+      await pair.page.clickOn('[data-outbox-list] [data-summary-act]', 'Send to Dana Lee')
       const pane = '[data-outbox-detail]'
       await pair.page.until('the scheduled held row with Cancel send', 8000, async () =>
         scheduledWords(await wordsIn(pair.page, pane), queued.sendAt) && !!await pair.page.centre(pane + ' button', 'Cancel send'))

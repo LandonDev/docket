@@ -13,6 +13,7 @@ import { relay, shapedRelay } from './relay'
 import { settingsOpen } from './settings'
 import { FIRST_MAIL, ZONE } from './lifeosSeed'
 import type { Sandbox } from './lifeos'
+import { revealView } from './more'
 
 export const SHAPES = ['A', 'B1', 'B2', 'V', 'S', 'K', 'U'] as const
 export type Shape = typeof SHAPES[number]
@@ -371,6 +372,7 @@ export class Pair {
     await page.until(workspace.name + ' selected', 15_000, () => page.centre(rail + '[aria-current="true"]', workspace.name))
     const label = '[data-rail-row] > button > span.truncate'
     if (!await page.centre('[data-rail-row] > button[aria-current="true"] > span.truncate', view)) {
+      await revealView(page, label, view)
       await page.clickOn(label, view)
     }
   }

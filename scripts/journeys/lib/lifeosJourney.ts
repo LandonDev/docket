@@ -75,7 +75,8 @@ export async function storedText(context: Context, url: string | null | undefine
 }
 
 export function sessions(context: Context): Promise<{ id: string; title: string; scope: string; workspace_id: string }[]> {
-  return hostRows(context.pair, 'SELECT id,title,scope,workspace_id FROM sessions WHERE workspace_id=? ORDER BY created_at DESC', context.workspace.id)
+  // A thread filed under one of the job's projects carries the project, not the workspace (plan-ZJ20qeO56y5o M1).
+  return hostRows(context.pair, 'SELECT id,title,scope,workspace_id FROM sessions WHERE workspace_id=? OR project_id IN (SELECT id FROM projects WHERE workspace_id=?) ORDER BY created_at DESC', context.workspace.id, context.workspace.id)
 }
 
 export async function newThread(context: Context, press: () => Promise<void>, check = (_: Awaited<ReturnType<typeof sessions>>[number]) => true): Promise<string> {
@@ -122,7 +123,8 @@ export async function heldMail(context: Context, id: string, recipient: string):
   const { pair } = context
   await pair.page.clickOn(OUTBOX, 'Outbox')
   await pair.page.press('tab', 'Waiting')
-  const rows = '[data-outbox-list] section[aria-label=' + JSON.stringify(context.workspace.name) + '] [data-row-title]'
+  // The Outbox lists held acts by thread now (SummaryList.tsx); the act's own words name the row.
+  const rows = '[data-outbox-list] [data-summary-act]'
   await pair.page.clickOn(rows, 'Send to ' + recipient)
   await pair.page.until('the matching draft in the host Outbox feed', 8000, async () =>
     (await pair.sandbox!.query<MailRow[]>('outboxHeld:held', { host: pair.box.host })).some((row) => row._id === id && row.status === 'draft'))

@@ -32,8 +32,9 @@ export default journey({
     step('end: the project page shows the thread on its task', async (context) => {
       const { pair, workspace } = context
       const { page } = pair
-      await pair.showWork(workspace, 'Projects')
-      await page.clickOn('[data-project] button', PROJECT)
+      // The column's project row opens the project's page (its Projects heading opens the list).
+      await pair.showWork(workspace, 'Tasks')
+      await page.clickOn('[data-project-row]', PROJECT)
       const mark = '[aria-label=' + JSON.stringify('Open the thread on ' + TASK) + ']'
       await page.until('the thread mark on the task', 12_000, () => page.eval(`!!document.querySelector(${JSON.stringify(mark)})`))
       evidence(context, 'page', { thread: threads.get(context), mark: true })

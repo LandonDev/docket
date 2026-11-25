@@ -5,6 +5,7 @@ import { openRow, unzip } from './lib/files'
 import { fileAt, showPlace } from './lib/place'
 import { journey, step, type Context } from './lib/record'
 import { a1Point, cellValue } from './lib/sheet'
+import { revealView } from './lib/more'
 
 const NAME = 'TempCode proof draft.txt'
 const FIRST = 'First practice note'
@@ -63,6 +64,7 @@ async function crashAndBack(context: Context, between?: () => void, name = NAME)
     pair.page.eval(`!!window.__monocode && window.__monocode.registry.has(${host}) && window.__monocode.registry.statusOf(${host}).transport === 'open'`))
   await showPlace(context).catch(async () => {
     // The pane may have kept a new thread over Files: Files is asked for once more.
+    await revealView(pair.page, 'button, a, [role="link"]', 'Files')
     await pair.page.clickOn('button, a, [role="link"]', 'Files')
     await showPlace(context)
   })

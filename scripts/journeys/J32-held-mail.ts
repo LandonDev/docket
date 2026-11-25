@@ -51,7 +51,7 @@ export default journey({
       const { pair, folder } = context
       const { page } = pair
       await page.clickOn('nav [data-rail-row] > button > span.truncate', 'Outbox')
-      await page.clickOn('[data-outbox-list] [data-row-title]', 'Send to Dana Lee')
+      await page.clickOn('[data-outbox-list] [data-summary-act]', 'Send to Dana Lee')
       await page.until('the held mail subject in Outbox', 5000, () =>
         page.eval(`document.querySelector('[data-outbox-detail]')?.innerText.includes(${JSON.stringify(SUBJECT)})`))
       await page.clickOn('[data-outbox-detail] button', 'Edit')
@@ -76,7 +76,7 @@ export default journey({
         return row.status === 'queued' && row.message.text.trim() === EDIT
       })
       await page.press('tab', 'Sent')
-      await page.clickOn('[data-outbox-list] li button span.truncate', 'Send to Dana Lee')
+      await page.clickOn('[data-outbox-list] [data-summary-act]', 'Send to Dana Lee')
       let words: string[] = []
       await page.until('the same Outbox item’s queued wording and age', 8000, async () => {
         const detail = await page.eval<string>(`document.querySelector('[data-outbox-detail]')?.innerText ?? ''`)

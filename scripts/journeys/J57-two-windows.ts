@@ -6,6 +6,7 @@ import { fileAt, showPlace } from './lib/place'
 import { journey, step, type Context } from './lib/record'
 import { settings, settingsOpen } from './lib/settings'
 import type { Window } from './lib/window'
+import { revealView } from './lib/more'
 
 const NAME = 'Shared window notes.txt'
 const BEFORE = 'Read it from either window'
@@ -49,6 +50,7 @@ export default journey({
       await other.dismissPopups()
       if (await settingsOpen(other)) await other.press('button', 'Back')
       await other.clickOn(RAIL, workspace.name)
+      await revealView(other, nav, 'Files')
       await other.clickOn(nav, 'Files')
       // Both windows see the same host tab, but each chooses which one it shows.
       await other.press('tab', NAME)
@@ -94,8 +96,8 @@ export default journey({
       await check('Workspace', () => settings(page, context.workspace.name), 'Computer use is changed from a computer that manages box',
         ['Voice', 'Waiting on', 'Computer use', 'Copy Teams files', 'Thread defaults'])
       if (await settingsOpen(page)) await page.press('button', 'Back')
-      await check('Routines', () => page.clickOn(nav, 'Routines'), 'No routines yet', ['New routine', 'Edit', 'Not now', 'Create…'])
-      await check('Plays', () => page.clickOn(nav, 'Plays'), 'No plays yet', ['New play', 'Edit', 'Proposed', 'Starters', 'Save as a play…'])
+      await check('Routines', async () => (await revealView(page, nav, 'Routines'), await page.clickOn(nav, 'Routines')), 'No routines yet', ['New routine', 'Edit', 'Not now', 'Create…'])
+      await check('Plays', async () => (await revealView(page, nav, 'Plays'), await page.clickOn(nav, 'Plays')), 'No plays yet', ['New play', 'Edit', 'Proposed', 'Starters', 'Save as a play…'])
       const outbox = () => page.clickOn('nav [data-rail-row] button > span.truncate', 'Outbox')
       await check('Outbox', outbox, 'Outbox', ['Stop holding', 'Dismiss', 'Remove grant', 'Send and stop holding'])
       writeFileSync(join(context.folder, 'unavailable-controls.json'), JSON.stringify(failures, null, 2))

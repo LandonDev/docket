@@ -6,6 +6,7 @@ import { openRow } from './lib/files'
 import { fileAt, showPlace } from './lib/place'
 import { journey, step, type Context } from './lib/record'
 import { Window } from './lib/window'
+import { revealView } from './lib/more'
 
 const NAME = 'Practice show.pptx'
 const visits = new WeakMap<Context, { show: Window; phone: Window; id: string }>()
@@ -20,6 +21,7 @@ async function clicker(context: Context, kind: 'owner' | 'read') {
   const { page } = visit
   context.evidencePage = page
   await page.clickOn('nav [data-rail-path] button', workspace.name)
+  await revealView(page, 'button, a, [role="link"]', 'Files')
   await page.clickOn('button, a, [role="link"]', 'Files')
   const row = await page.centre('[data-files-sidebar] button', workspace.name)
   if (row) await page.click(row)

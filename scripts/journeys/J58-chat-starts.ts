@@ -5,6 +5,7 @@ import { openRow, rowAt } from './lib/files'
 import { fileAt, showPlace } from './lib/place'
 import { journey, step, type Context } from './lib/record'
 import { hostRows } from './lib/thread'
+import { revealView } from './lib/more'
 
 const NAME = 'Practice search agenda.txt'
 const SECOND = 'Practice times.txt'
@@ -77,6 +78,7 @@ export default journey({
     }),
     step('Start from the rail’s New thread', (context) => start(context, 'rail', async () => {
       const { page } = context.pair
+      await revealView(page, NAV, 'Files')
       await page.clickOn(NAV, 'Files')
       await page.press('button', 'New thread')
     })),

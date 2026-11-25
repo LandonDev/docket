@@ -49,7 +49,8 @@ export default journey({
     step('end: Send from the head’s sheet queues the mail in LifeOS and the head lets it go', async (context) => {
       const { pair, folder } = context
       const { page } = pair
-      await page.clickOn(`${HEAD} [data-head-row]`, 'Send to Dana Lee')
+      // The held row is named by its press (WorkHead.tsx `Open ${act}`).
+      await page.clickOn(`${HEAD} [data-head-row]`, 'Open Send to Dana Lee')
       await see(page, '[data-work-head-held]', SUBJECT)
       await page.clickOn('[data-work-head-held] button', 'Send')
       const draft = threads.get(context)!.draft
