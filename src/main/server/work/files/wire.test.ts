@@ -8,7 +8,7 @@ import type { FileEntry } from '@shared/work/files'
 import type { Caller } from '../modules'
 import { closeFilesState, filesState } from './handle'
 import { setCopyAllowed } from '../office/files/library'
-import { SEATS_MOST } from './tabs'
+import { followedName, SEATS_MOST } from './tabs'
 import { registerFileMaker } from './hooks'
 import { files } from './index'
 import { at, HOST, makeRig, peer, phone, thread, window, WS, type Rig } from './testkit'
@@ -267,6 +267,13 @@ describe('tabs', () => {
     expect(tabs.tabs).toMatchObject([{ id: word.tabId, kind: 'file', name: 'Plan', itemId: doc.id }])
     expect((await call<FilesOpened>('work.files.open', { ref: at(join(rig.folder, 'Plan.docx')) })).tabId).toBe(word.tabId)
     expect(rig.canvas.list(filesPaneOf(WS)).map((i) => i.id)).toEqual([doc.id])
+  })
+
+  it('keeps a copy\'s name and glyph once its document takes its place: a Teams Word file stays Plan.docx', () => {
+    expect(followedName({ name: 'Plan.docx', copyOf: { host: 'env_vm', path: 'C:\\Teams\\Plan.docx' } }, 'Plan')).toBe('Plan.docx')
+    // A file of his own made a document, or a copy whose document is named otherwise, takes the item's title.
+    expect(followedName({ name: 'Plan.docx' }, 'Plan')).toBe('Plan')
+    expect(followedName({ name: 'Pitch.ppt', copyOf: { host: 'env_vm', path: 'C:\\Pitch.ppt' } }, 'Pitch.pptx')).toBe('Pitch.pptx')
   })
 
   it("never opens twice a file that took another's place in a tab: a deck's copy to edit is found by its own row too", async () => {

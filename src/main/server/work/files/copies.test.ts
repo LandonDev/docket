@@ -931,6 +931,12 @@ describe('a Word file of another computer', () => {
     expect((await tabOf(tabId))?.word).toEqual({ since: false })
   })
 
+  it('keeps its tab named Plan.docx, with its Word glyph, once it is the document (the import names the document Plan)', async () => {
+    const { tabId, next } = await imported('Plan.docx', 'word bytes')
+    expect(next.title).toBe('Plan')
+    expect((await tabOf(tabId))?.name).toBe('Plan.docx')
+  })
+
   it('Save as Word writes the export over the file by its version; later edits say they are not in it yet', async () => {
     const { doc, tabId, path } = await imported('Plan.docx', 'word bytes')
     const saved = await call<{ at: number }>('work.files.wordSave', { tabId })

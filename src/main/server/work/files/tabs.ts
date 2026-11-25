@@ -39,6 +39,14 @@ interface FilePageJson {
   side?: { itemId: string; key: string; name: string }
 }
 
+/**
+ * A tab's name once another item took its file's place: a copy's document (a Teams Word file opened as its document,
+ * named by its stem, formats/importer.ts) still is that file, so the tab keeps "Plan.docx" and the file's glyph; any
+ * other follow (a file of his own made a document, a deck's copy to edit) takes the new item's title.
+ */
+export const followedName = (page: Pick<FilePageJson, 'name' | 'copyOf'>, title: string): string =>
+  page.copyOf && page.name && page.name.replace(/\.[^.\\/]+$/, '') === title ? page.name : title
+
 const sideOf = (p: FilePageJson | undefined): FilePageJson['side'] | null => (p?.side && typeof p.side.itemId === 'string' && typeof p.side.key === 'string' && typeof p.side.name === 'string' ? p.side : null)
 
 const pageOf = (json: string): FilePageJson | undefined => {
@@ -420,7 +428,7 @@ export class TabStore {
     // The file it shows now is kept beside it, so that file's own row selects this tab too and is never opened twice.
     const shows = next.source.at === 'file' ? refKey(next.source) : ''
     const { shows: _was, ...kept } = page
-    this.db.prepare(`UPDATE work_files_tabs SET item_id = ?, page = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`).run(next.id, JSON.stringify({ ...kept, name: next.title, ...(shows && shows !== page.key ? { shows } : {}) }), Date.now(), workspaceId, row.id)
+    this.db.prepare(`UPDATE work_files_tabs SET item_id = ?, page = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`).run(next.id, JSON.stringify({ ...kept, name: followedName(page, next.title), ...(shows && shows !== page.key ? { shows } : {}) }), Date.now(), workspaceId, row.id)
     const rev = this.bump(workspaceId)
     this.changed(workspaceId, rev)
   }

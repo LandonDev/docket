@@ -2666,6 +2666,10 @@ over a colleague's Word file but his own press.
   (`work_files_word_moved`) until a later start reads the records back naming the copies; then each goes only while its
   bytes are still the ones copied. One changed since, or one whose record is gone, is his and stays.
 - **Opened again**, the Word file shows the same document (`keptDoc`): nothing is read over it from the file.
+- **Its tab keeps the file's name.** The import names the document by its stem ("Plan", formats/importer.ts); the
+  tab of a copy keeps "Plan.docx" and the Word glyph once the document takes the copy's place (`followedName`,
+  files/tabs.ts `follow`), as a reopen and Live name it. A file of his own made a document, or a deck's copy to
+  edit, takes the new item's title.
 - **His edits stay in the document.** The tab's `word` (`WordBack`) says how the Word file stands, and the header
   says it plainly: "The Word file in Teams has not changed" ("OneDrive" for his own), "Changes since 9:12 PM are not in
   the Word file", "Saved to MacBook as Word 9:12 PM": a save names the computer that holds the file, as a copy's
