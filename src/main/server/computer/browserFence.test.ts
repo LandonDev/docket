@@ -213,7 +213,7 @@ it('refuses input with an old peer list until the move is confirmed', async () =
   const stillCached = () => ({ ...origins(), linkedEndpoints: [linkedPeer] })
   const h = computerHarness({
     origins: stillCached,
-    confirmBrowserInput: async () => ({ origins: { ...stillCached(), linkedEndpointsUnknown: !confirmed }, valid: () => true }),
+    confirmBrowserInput: async () => ({ origins: { ...stillCached(), linkedEndpointsUnknown: !confirmed }, valid: () => true, expiresAt: performance.now() + BROWSER_INPUT_PROOF_MS }),
     env: { FAKE_BROWSER_URL: 'https://ordinary.test/' }
   })
   open.push(h)
@@ -229,7 +229,7 @@ it('refuses input with an old peer list until the move is confirmed', async () =
 it('refuses browser input if its peer proof expires before dispatch', async () => {
   const h = computerHarness({
     origins,
-    confirmBrowserInput: async () => ({ origins: origins(), valid: () => false }),
+    confirmBrowserInput: async () => ({ origins: origins(), valid: () => false, expiresAt: performance.now() }),
     env: { FAKE_BROWSER_URL: 'https://ordinary.test/' }
   })
   open.push(h)
@@ -237,14 +237,13 @@ it('refuses browser input if its peer proof expires before dispatch', async () =
   expect(h.requests().some(({ method }) => method === 'action.run')).toBe(false)
 })
 
-it.each([false, true])('passes the proof deadline in the service clock for browser actions (Windows VM: %s)', async (vm) => {
+it.each([false, true])('sends a relative proof on a standalone host for browser actions (Windows VM: %s)', async (vm) => {
   const url = 'https://ordinary.test/'
-  const clockMs = 5_000_000
   const h = computerHarness({
     vm,
     origins,
     confirmBrowserInput: async () => ({ origins: origins(), valid: () => true, expiresAt: performance.now() + BROWSER_INPUT_PROOF_MS }),
-    env: { FAKE_BROWSER_URL: url, FAKE_BROWSER_CLOCK_MS: String(clockMs) }
+    env: { FAKE_BROWSER_URL: url }
   })
   open.push(h)
   const target = { app: 'Webby' }
@@ -253,12 +252,16 @@ it.each([false, true])('passes the proof deadline in the service clock for brows
   expect((await h.run('computer_act', { ...target, ...key })).isError).toBe(false)
   expect((await h.run('computer_batch', { ...target, actions: [key, key] })).isError).toBe(false)
   const requests = h.requests()
-  expect(requests.find(({ method }) => method === 'state.get')?.params).not.toHaveProperty('browserDeadlineMs')
+  expect(requests.find(({ method }) => method === 'state.get')?.params).not.toHaveProperty('browserInputBudget')
   for (const method of ['action.run', 'action.batch']) {
     const params = requests.find((req) => req.method === method)?.params
     expect(params?.browserUrl).toBe(url)
-    expect(params?.browserDeadlineMs).toBeGreaterThanOrEqual(clockMs + BROWSER_INPUT_PROOF_MS)
-    expect(params?.browserDeadlineMs).toBeLessThan(clockMs + BROWSER_INPUT_PROOF_MS + 1000)
+    const budget = params?.browserInputBudget as { remainingMs: number; sampleBudgetMs: number; sample: unknown }
+    expect(budget.sample).toEqual({ elapsedUs: 5_000_000, sleepUpperUs: 20 })
+    expect(budget.remainingMs).toBeGreaterThan(0)
+    expect(budget.remainingMs).toBeLessThanOrEqual(BROWSER_INPUT_PROOF_MS)
+    expect(budget.sampleBudgetMs).toBeGreaterThanOrEqual(budget.remainingMs)
+    expect(params).not.toHaveProperty('browserDeadlineMs')
   }
 })
 
@@ -266,7 +269,7 @@ it('refuses input that needs a deadline on an older service', async () => {
   const h = computerHarness({
     origins,
     confirmBrowserInput: async () => ({ origins: origins(), valid: () => true, expiresAt: performance.now() + BROWSER_INPUT_PROOF_MS }),
-    env: { FAKE_BROWSER_URL: 'https://ordinary.test/', FAKE_BROWSER_CLOCK_MS: 'missing' }
+    env: { FAKE_BROWSER_URL: 'https://ordinary.test/', FAKE_BROWSER_CLOCK: 'missing' }
   })
   open.push(h)
   expect(await h.run('computer_act', { app: 'Webby', action: 'key', text: 'Tab' })).toMatchObject({

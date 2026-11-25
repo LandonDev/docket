@@ -1400,9 +1400,12 @@ stops on a failed lookup. When a listener changes port or public origin, it
 withholds owner pages and browser sockets until connected peers acknowledge
 the update or a short timeout ends. It also waits out the lifetime of any
 earlier proof. For a verified browser tab the host passes `browserUrl`.
-When input needs a peer proof, the host sends `browserDeadlineMs` in the
-native service's clock. The Mac and Windows services refuse an input step
-after that deadline, including after the app wait or between batch steps.
+For input the host sends the remaining proof time and the earlier native
+clock sample as `browserInputBudget`. The service sets a deadline when the
+request arrives and caps it at the deadline from that sample. Its elapsed
+clock counts time asleep. A wake invalidates pending input. Both services
+check again after the app wait and between batch steps. The proof and the
+listener hold also apply on a standalone host.
 A peer that missed the update must confirm the new list before sending
 browser input. A changed or missing
 address stops a read or a later step with `browser_refused`. The host

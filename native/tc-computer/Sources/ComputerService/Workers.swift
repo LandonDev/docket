@@ -15,6 +15,22 @@ enum MachTime {
 
     static func now() -> UInt64 { mach_absolute_time() }
 
+    /// Bracket the clock that advances in sleep with readings of the awake-only clock.
+    static func browserClock() -> (sample: BrowserProofClock, sleepFloorUs: Int) {
+        let before = mach_absolute_time()
+        let elapsed = mach_continuous_time()
+        let after = mach_absolute_time()
+        let lower = elapsed >= after ? elapsed - after : 0
+        let upper = elapsed >= before ? elapsed - before : 0
+        func microseconds(_ ticks: UInt64, rounding: FloatingPointRoundingRule) -> Int {
+            Int((Double(ticks) * Double(timebase.numer) / Double(timebase.denom) / 1_000).rounded(rounding))
+        }
+        return (
+            BrowserProofClock(elapsedUs: microseconds(elapsed, rounding: .down), sleepUpperUs: microseconds(upper, rounding: .up)),
+            microseconds(lower, rounding: .down)
+        )
+    }
+
     /// Milliseconds from `from` to `to`; negative when `to` is earlier.
     static func ms(from: UInt64, to: UInt64) -> Int {
         let delta = to >= from ? Double(to - from) : -Double(from - to)

@@ -183,8 +183,10 @@ why and the measured headline.
   including public sites. Reads still follow the address check. When a
   listener changes port or public origin, it waits for peers to acknowledge
   the new list or for a short timeout before it serves owner pages. It also
-  waits for earlier input checks to expire. The native service checks the
-  deadline again after waiting for the app and before each input step. A
+  waits for earlier input checks to expire, including on a standalone
+  host. The native service uses a clock that counts time asleep and refuses
+  pending input on wake. It checks the deadline after waiting for the app
+  and before each input step. A
   peer that missed the update must confirm the new list before it can send
   browser input. A failed lookup stops the call. The listener requires a
   known Host for the owner UI and its browser socket. The UI refuses to

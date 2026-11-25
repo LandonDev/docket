@@ -736,9 +736,9 @@ function handle({ id, method, params = {} }) {
       if (process.env.FAKE_OLD_BROWSER_SERVICE === '1') return reply(id, { code: -32601, message: 'no method browser.target' }, true)
       const ctx = target(params)
       if (ctx.app.name !== 'Webby') return reply(id, { browser: false })
-      const clockMs = process.env.FAKE_BROWSER_CLOCK_MS === 'missing' ? undefined :
-        Number(process.env.FAKE_BROWSER_CLOCK_MS ?? Date.now())
-      return reply(id, { browser: true, url: process.env.FAKE_BROWSER_URL || undefined, clockMs })
+      const proofClock = process.env.FAKE_BROWSER_CLOCK === 'missing' ? undefined :
+        { elapsedUs: 5_000_000, sleepUpperUs: 20 }
+      return reply(id, { browser: true, url: process.env.FAKE_BROWSER_URL || undefined, proofClock })
     }
     case 'state.get': case 'action.run': case 'action.batch': case 'capture.screenshot': case 'capture.stream.start': case 'capture.video.start': case 'input.probe': {
       const ctx = target(params)

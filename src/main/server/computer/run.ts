@@ -250,8 +250,8 @@ export interface ThreadComputer {
 
 export interface BrowserInputProof {
   origins: TempCodeOrigins
-  /** The host's monotonic clock. No deadline when this host has no linked peers. */
-  expiresAt?: number
+  /** Deadline in the host's monotonic clock. */
+  expiresAt: number
   valid(): boolean
 }
 
@@ -756,11 +756,11 @@ async function runChecked(
     }
   }
   /** Check a browser target without reading its content or switching tabs. The native service binds checks to its steps. */
-  async function browserGuard(target: Pick<TargetBase, 'session' | 'app' | 'window'>, input = false): Promise<{ browserUrl: string; browserDeadlineMs?: number } | undefined> {
+  async function browserGuard(target: Pick<TargetBase, 'session' | 'app' | 'window'>, input = false): Promise<Pick<ComputerParams<'action.run'>, 'browserUrl' | 'browserInputBudget'> | undefined> {
     if (!host.origins) return
     const report = await send('browser.target', { session: target.session, app: target.app, window: target.window }).catch((error: unknown) => {
       if (!(error instanceof ComputerRpcError) || error.code !== -32601) throw error
-      return { browser: resolvedApp !== undefined && knownBrowser(resolvedApp), url: undefined, clockMs: undefined }
+      return { browser: resolvedApp !== undefined && knownBrowser(resolvedApp), url: undefined, proofClock: undefined }
     })
     if (!report.browser) return
     const receivedAt = performance.now()
@@ -769,10 +769,13 @@ async function runChecked(
     if (line) throw failure(line)
     if (!report.url) return
     if (expiresAt === undefined) return { browserUrl: report.url }
-    if (report.clockMs === undefined) throw failure('refused: update the computer service to check when browser input expires.')
-    if (performance.now() >= expiresAt) throw failure(BROWSER_PROOF_EXPIRED)
-    // The service sampled its own clock before the reply reached us. Network time can only shorten the proof.
-    return { browserUrl: report.url, browserDeadlineMs: report.clockMs + Math.floor(expiresAt - receivedAt) }
+    if (!report.proofClock) throw failure('refused: update the computer service to check when browser input expires.')
+    const remainingMs = Math.floor(expiresAt - performance.now())
+    if (remainingMs <= 0) throw failure(BROWSER_PROOF_EXPIRED)
+    return {
+      browserUrl: report.url,
+      browserInputBudget: { remainingMs, sampleBudgetMs: Math.floor(expiresAt - receivedAt), sample: report.proofClock }
+    }
   }
 
   /** On the bridge, requests wait for a reader so nothing runs unread. */

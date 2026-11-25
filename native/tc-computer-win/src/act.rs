@@ -16,7 +16,7 @@ use crate::desktop::{fail, Button, Desktop, Event, KeyPhase, Win};
 use crate::generated::contract::{locks as lock_limits, service as limits};
 use crate::input::{self, in_space, parse_combo, parse_mods, pieces, to_screen, to_space, Mods, Piece};
 use crate::locks::{guard, lock_file, machine_lock_path, user_temp};
-use crate::service::{check_browser_deadline, Held, Service};
+use crate::service::{check_browser_deadline, BrowserDeadline, Held, Service};
 use crate::wire::*;
 
 /// One part of a step: an event to post, or a hold the person or a cancel cuts short.
@@ -80,7 +80,7 @@ impl<D: Desktop> Service<D> {
     }
 
     /// One pointer or key step at the first allowed event tier that can express it.
-    pub(crate) fn event_step(&self, session: &str, pid: i64, window: Option<&WindowRef>, a: &ComputerAction, tiers: &[Tier], paste_quiet_ms: Option<i64>, browser_deadline_ms: Option<i64>, cancel: &AtomicBool) -> Result<(Tier, EventDone), ComputerError> {
+    pub(crate) fn event_step(&self, session: &str, pid: i64, window: Option<&WindowRef>, a: &ComputerAction, tiers: &[Tier], paste_quiet_ms: Option<i64>, browser_deadline: Option<BrowserDeadline>, cancel: &AtomicBool) -> Result<(Tier, EventDone), ComputerError> {
         use ComputerActionName::*;
         let key = (session.to_string(), pid);
         let held = guard(&self.state).held.get(&key).cloned();
@@ -215,7 +215,7 @@ impl<D: Desktop> Service<D> {
                             })
                         }));
                     }
-                    None => return self.paste_step(session, &win, element.as_ref(), tier, &text, None, paste_quiet_ms, browser_deadline_ms),
+                    None => return self.paste_step(session, &win, element.as_ref(), tier, &text, None, paste_quiet_ms, browser_deadline),
                 }
             }
             Paste => {
@@ -226,7 +226,7 @@ impl<D: Desktop> Service<D> {
                     _ => None,
                 };
                 let plain = if a.format == Some(PasteFormat::Html) { clip::html_text(&text) } else { text };
-                return self.paste_step(session, &win, element.as_ref(), tier, &plain, html.as_deref(), paste_quiet_ms, browser_deadline_ms);
+                return self.paste_step(session, &win, element.as_ref(), tier, &plain, html.as_deref(), paste_quiet_ms, browser_deadline);
             }
             _ => return Err(fail(ComputerErrorKind::ActionUnsupported, format!("{} is not an input step", a.action.as_str()))),
         }
@@ -242,7 +242,7 @@ impl<D: Desktop> Service<D> {
             // what the step pressed and has not let go: on any failure it is let go, in reverse order
             let mut pressed: Vec<Event> = Vec::new();
             let mut go = || -> Result<(), ComputerError> {
-                check_browser_deadline(browser_deadline_ms)?;
+                check_browser_deadline(browser_deadline)?;
                 if typing && tier == Tier::Session {
                     if let Some(h) = element {
                         self.desktop.focus(h)?;
@@ -250,7 +250,7 @@ impl<D: Desktop> Service<D> {
                 }
                 for part in &events {
                     person(tier)?;
-                    check_browser_deadline(browser_deadline_ms)?;
+                    check_browser_deadline(browser_deadline)?;
                     if cancel.load(Ordering::SeqCst) {
                         return Err(fail(ComputerErrorKind::Cancelled, "cancelled"));
                     }
@@ -267,7 +267,7 @@ impl<D: Desktop> Service<D> {
                         // held for its duration, cut short when the call is cancelled or the person acts
                         Part::Hold(d) => {
                             let until = Instant::now() + *d;
-                            while Instant::now() < until && !cancel.load(Ordering::SeqCst) && person(tier).is_ok() && check_browser_deadline(browser_deadline_ms).is_ok() {
+                            while Instant::now() < until && !cancel.load(Ordering::SeqCst) && person(tier).is_ok() && check_browser_deadline(browser_deadline).is_ok() {
                                 std::thread::sleep(Duration::from_millis(10).min(until.saturating_duration_since(Instant::now())));
                             }
                         }
@@ -397,13 +397,13 @@ impl<D: Desktop> Service<D> {
     /// `paste`, and `type` past what keys take (§5.3): under the clipboard lock, the person's copy held off,
     /// every format saved, the content written, the target's paste, its change awaited, the clipboard put back.
     #[allow(clippy::too_many_arguments)]
-    fn paste_step(&self, session: &str, win: &Win, element: Option<&D::Handle>, tier: Tier, text: &str, html: Option<&str>, quiet_ms: Option<i64>, browser_deadline_ms: Option<i64>) -> Result<(Tier, EventDone), ComputerError> {
+    fn paste_step(&self, session: &str, win: &Win, element: Option<&D::Handle>, tier: Tier, text: &str, html: Option<&str>, quiet_ms: Option<i64>, browser_deadline: Option<BrowserDeadline>) -> Result<(Tier, EventDone), ComputerError> {
         let busy = |reason: Option<ErrorReason>, why: &str| ComputerError { reason, ..fail(ComputerErrorKind::ClipboardBusy, why) };
         let _lock = lock_file(&machine_lock_path(&user_temp(), "clipboard"), Duration::from_millis(lock_limits::CLIPBOARD_WAIT_MS as u64))
             .ok()
             .flatten()
             .ok_or_else(|| busy(None, "another paste holds the clipboard"))?;
-        check_browser_deadline(browser_deadline_ms)?;
+        check_browser_deadline(browser_deadline)?;
         self.clip.poll(&self.desktop);
         if let Some(q) = quiet_ms {
             if self.clip.foreign_within(q) {
@@ -428,13 +428,13 @@ impl<D: Desktop> Service<D> {
         let put = self.desktop.clip_put(text, html);
         let mine = put.is_ok().then(|| self.desktop.clip_seq());
         let run = |tier: Tier| -> Result<(), ComputerError> {
-            check_browser_deadline(browser_deadline_ms)?;
+            check_browser_deadline(browser_deadline)?;
             if tier == Tier::Session {
                 if let Some(h) = element {
                     self.desktop.focus(h)?;
                 }
             }
-            check_browser_deadline(browser_deadline_ms)?;
+            check_browser_deadline(browser_deadline)?;
             self.desktop.post(win, element, tier, &Event::Paste)
         };
         let r = put.and_then(|_| self.at_tier(session, win, tier, &run));

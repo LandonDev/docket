@@ -56,7 +56,7 @@ extension ComputerService {
     /// pop-up's, menu button's or context menu's by pressing its opener and the item by title (nil when
     /// the index is no such item, or when the item still answers, so the ordinary route runs). Answers
     /// the `on` words, `Action › New Folder`.
-    func reachClosedItem(_ target: Resolved, index: Int, browserDeadlineMs: Int? = nil) async throws -> String? {
+    func reachClosedItem(_ target: Resolved, index: Int, browserDeadline: BrowserInputDeadline? = nil) async throws -> String? {
         let key = MenuCloser.key(target)
         guard let (book, openers) = lock.withLock({ closedMenus[key] }), let way = book.reach(index: index) else { return nil }
         guard case .reopen(let openerId, let item, let on) = way, let menu = openers[openerId], menu.opener != nil else { return nil }
@@ -64,7 +64,7 @@ extension ComputerService {
             guard let opener = menu.opener else { return nil }
             // an item that still answers (a menu-bar item takes AXPress closed) runs the ordinary way
             if let reader = state.reader, (try? reader.resolve(index)) != nil { return nil }
-            try Self.checkBrowserDeadline(browserDeadlineMs)
+            try Self.checkBrowserDeadline(browserDeadline)
             AXUIElementPerformAction(opener, "AXPress" as CFString)
             let deadline = Date().addingTimeInterval(Double(MenuCloser.reopenWaitMs) / 1000)
             var pressed = false
@@ -72,9 +72,9 @@ extension ComputerService {
                 if !pressed { AXUIElementPerformAction(opener, "AXCancel" as CFString) }
             }
             while Date() < deadline {
-                try Self.checkBrowserDeadline(browserDeadlineMs)
+                try Self.checkBrowserDeadline(browserDeadline)
                 if let found = MenuCloser.item(titled: item, under: opener) {
-                    try Self.checkBrowserDeadline(browserDeadlineMs)
+                    try Self.checkBrowserDeadline(browserDeadline)
                     let err = AXUIElementPerformAction(found, "AXPress" as CFString)
                     guard err == .success else { throw ComputerError(kind: .actionUnsupported, message: "\(on) did not take the press.") }
                     pressed = true

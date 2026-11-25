@@ -162,6 +162,11 @@ function open(
     )
   })
 }
+const waitForOwnerUi = (headers: Record<string, string>, status = 200): Promise<void> =>
+  vi.waitFor(async () => {
+    expect((await call('GET', '/ui/', { headers })).status).toBe(status)
+  }, { timeout: BROWSER_INPUT_PROOF_MS + 1000 })
+
 const upgradeStatus = async (
   url: string,
   headers: Record<string, string> = {}
@@ -430,6 +435,7 @@ describe('pairing', () => {
     const paired = await call('POST', '/api/pair', { body: { code, kind: 'session' } })
     const cookie = paired.headers.get('set-cookie')!.split(';')[0]
     const wsUrl = base.replace('http', 'ws') + '/ws'
+    await waitForOwnerUi({ Cookie: cookie })
     expect(await upgradeStatus(wsUrl, { Cookie: cookie, Origin: 'https://evil.example' })).toBe(403)
     const sock = await open(wsUrl, { Cookie: cookie, Origin: base })
     const hello = await firstFrame(sock)
@@ -566,6 +572,7 @@ describe('/ui and /pair', () => {
     expect(page.status).toBe(200)
     expect(page.headers.get('content-type')).toMatch(/text\/html/)
     expect(String(page.body)).toContain('Pair this browser')
+    await waitForOwnerUi({}, 302)
     const doc = await call('GET', '/ui')
     expect(doc.status).toBe(302)
     expect(doc.headers.get('location')).toBe('/pair')
@@ -577,6 +584,7 @@ describe('/ui and /pair', () => {
   })
   it('with a cookie: /ui → /ui/, index is no-store with the host in connect-src, assets are immutable', async () => {
     const cookie = await cookieFor()
+    await waitForOwnerUi({ Cookie: cookie })
     const bare = await call('GET', '/ui', { headers: { Cookie: cookie } })
     expect(bare.status).toBe(302)
     expect(bare.headers.get('location')).toBe('/ui/')
@@ -605,6 +613,7 @@ describe('/ui and /pair', () => {
   })
   it('refuses UI and browser upgrades on an alias, including an already-paired admin cookie', async () => {
     const cookie = await cookieFor(['admin', 'approve'])
+    await waitForOwnerUi({ Cookie: cookie })
     const alias = `lan-alias.test:${server.remote!.port}`
     const hostHeaders = { Host: alias, Cookie: cookie }
     const wsUrl = base.replace('http', 'ws') + '/ws'
@@ -632,6 +641,7 @@ describe('/ui and /pair', () => {
     server.store.setSetting('remote.publicOrigin', 'https://configured.example')
     server.store.setSetting('remote.learnedOrigin', 'https://learned.example')
     try {
+      await waitForOwnerUi({ Cookie: cookie })
       const localHosts = ['127.0.0.1', 'localhost', '[::1]', name, shortHostName(name), `${shortHostName(name)}.local`, ...(lan ? [lan.address] : [])]
       for (const Host of new Set(localHosts.map((h) => `${h}:${port}`))) {
         const headers = { Cookie: cookie, Host, Origin: `http://${Host}` }
@@ -646,8 +656,34 @@ describe('/ui and /pair', () => {
     } finally {
       server.store.setSetting('remote.publicOrigin', oldPublic)
       server.store.setSetting('remote.learnedOrigin', oldLearned)
+      await waitForOwnerUi({ Cookie: cookie })
     }
-  })
+  }, 10_000)
+
+  it('holds a restored owner socket for the proof lifetime with no linked peers', async () => {
+    const previous = server.store.getSetting('remote.publicOrigin')
+    const cookie = await cookieFor(['approve'])
+    const Host = 'standalone.example'
+    const Origin = `https://${Host}`
+    const headers = { Cookie: cookie, Host, Origin, 'X-Forwarded-Proto': 'https' }
+    const socket = base.replace('http', 'ws') + '/ws'
+    try {
+      server.store.setSetting('remote.publicOrigin', Origin)
+      await waitForOwnerUi(headers)
+      expect(await upgradeStatus(socket, headers)).toBe(101)
+
+      server.store.setSetting('remote.publicOrigin', 'https://other.example')
+      await waitForOwnerUi({ Cookie: cookie })
+      expect(await upgradeStatus(socket, headers)).toBe(403)
+      server.store.setSetting('remote.publicOrigin', Origin)
+      expect(await upgradeStatus(socket, headers)).toBe(503)
+      await waitForOwnerUi(headers)
+      expect(await upgradeStatus(socket, headers)).toBe(101)
+    } finally {
+      server.store.setSetting('remote.publicOrigin', previous)
+      await waitForOwnerUi({ Cookie: cookie })
+    }
+  }, 10_000)
 
   it('traversal and missing files are 404; other methods fall through', async () => {
     const cookie = await cookieFor()
@@ -913,7 +949,7 @@ describe('remote.settings.set', () => {
     base = `http://127.0.0.1:${server.remote!.port}`
     expect((await call('GET', '/healthz')).body).toBe('ok')
     const headers = { Cookie: cookie, Origin: base }
-    expect((await call('GET', '/ui/', { headers })).status).toBe(200)
+    await waitForOwnerUi(headers)
     expect(await upgradeStatus(base.replace('http', 'ws') + '/ws', headers)).toBe(101)
     expect((await local.request('remote.status')).result).toMatchObject({
       enabled: true,
@@ -979,7 +1015,9 @@ describe('the relay (remote/relay.ts): a lane to another host through this one',
     const cookie = await cookieFor(['approve'])
     const oldHost = 'moved.example:8442'
     server.store.setSetting('remote.publicOrigin', `https://${oldHost}`)
-    const old = await open(`${wsBase()}/ws`, { Cookie: cookie, Host: oldHost, Origin: `https://${oldHost}`, 'X-Forwarded-Proto': 'https' })
+    const oldHeaders = { Cookie: cookie, Host: oldHost, Origin: `https://${oldHost}`, 'X-Forwarded-Proto': 'https' }
+    await waitForOwnerUi(oldHeaders)
+    const old = await open(`${wsBase()}/ws`, oldHeaders)
     const Host = 'moved.example:8443'
     const Origin = `https://${Host}`
     const headers = { Cookie: cookie, Host, Origin, 'X-Forwarded-Proto': 'https' }
@@ -1008,8 +1046,9 @@ describe('the relay (remote/relay.ts): a lane to another host through this one',
       peer.ws.close()
       await peer.closed
       server.store.setSetting('remote.publicOrigin', oldOrigin)
+      await waitForOwnerUi({ Cookie: cookie })
     }
-  })
+  }, 10_000)
 
   it('carries a phone to a registered host: the hello under its id, frames both ways, presence, revoke and the drop', async () => {
     // The "Mac": an admin link that registers with the relay offer and serves relay.* peer calls.

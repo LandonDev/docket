@@ -1096,10 +1096,23 @@ export const PriorSchema = z.object({
 })
 export type Prior = z.infer<typeof PriorSchema>
 
+/** A sample of the service clock. The sleep bound comes from the same sample. */
+export const BrowserProofClockSchema = z.object({
+  elapsedUs: int().nonnegative(),
+  sleepUpperUs: int().nonnegative()
+})
+
+export const BrowserInputBudgetSchema = z.object({
+  remainingMs: int().positive(),
+  /** The same deadline measured from receipt of the service's clock sample. */
+  sampleBudgetMs: int().positive(),
+  sample: BrowserProofClockSchema
+})
+
 /** The wait rows of §27.3 and the facts of §27.6, §27.7b every `action.run` and `action.batch` may carry. */
 const FewerCallsParams = {
-  /** Native clock time in Unix milliseconds. Browser input must start before it. */
-  browserDeadlineMs: int().positive().optional(),
+  /** Browser input must start before this budget expires in the native service. */
+  browserInputBudget: BrowserInputBudgetSchema.optional(),
   /** the wait after the last step when every step went in at `ax` (§27.3) */
   axWait: WaitOptionsSchema.optional(),
   /** the wait after a step that went in at `ax` and is not the last (§27.3) */
@@ -1317,7 +1330,7 @@ export const COMPUTER_METHODS = {
   'session.close': { params: SessionRefSchema, result: EmptySchema },
   'browser.target': {
     params: TargetSchema,
-    result: z.object({ browser: z.boolean(), url: z.string().min(1).optional(), clockMs: int().positive().optional() })
+    result: z.object({ browser: z.boolean(), url: z.string().min(1).optional(), proofClock: BrowserProofClockSchema.optional() })
   },
   'state.get': { params: StateGetParamsSchema, result: ObservationSchema },
   'action.run': { params: ActionRunParamsSchema, result: ActionResultSchema },

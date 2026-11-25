@@ -71,6 +71,32 @@ struct CallFacts: Sendable {
     var inputBefore: Bool { tracker.lastEffect != nil }
 }
 
+/// The elapsed deadline and sleep bound for a checked browser URL.
+struct BrowserInputDeadline: Sendable {
+    let elapsedUs: Int
+    let sleepUpperUs: Int
+
+    init?(_ budget: BrowserInputBudget) {
+        let now = MachTime.browserClock().sample
+        guard budget.remainingMs > 0, budget.sampleBudgetMs >= budget.remainingMs,
+              budget.sample.elapsedUs >= 0, budget.sample.elapsedUs <= now.elapsedUs,
+              budget.sample.sleepUpperUs >= 0 else { return nil }
+        let (remainingUs, remainingOverflow) = budget.remainingMs.multipliedReportingOverflow(by: 1_000)
+        let (sampleUs, sampleOverflow) = budget.sampleBudgetMs.multipliedReportingOverflow(by: 1_000)
+        let (fromReceipt, receiptOverflow) = now.elapsedUs.addingReportingOverflow(remainingUs)
+        let (fromSample, deadlineOverflow) = budget.sample.elapsedUs.addingReportingOverflow(sampleUs)
+        guard !remainingOverflow, !sampleOverflow, !receiptOverflow, !deadlineOverflow else { return nil }
+        // A request in transit must not buy more time than the sample allowed.
+        elapsedUs = min(fromReceipt, fromSample)
+        sleepUpperUs = budget.sample.sleepUpperUs
+    }
+
+    var expired: Bool {
+        let now = MachTime.browserClock()
+        return now.sample.elapsedUs >= elapsedUs || now.sleepFloorUs > sleepUpperUs
+    }
+}
+
 /// The call a step is in, for Input's person guard: its token, the host's person idle at its start; and its
 /// §25.9 facts: the process is Chromium, the expected focus (an epoch-checked index) and the call's actions,
 /// by which `FocusCheck.bindsExpectation` names the one step the expectation binds.
@@ -82,7 +108,7 @@ struct StepCall: Sendable {
     var actions: [ComputerAction] = []
     /// §27.6: the window the host last read; a target-less text step in another window the call did not open fails
     var textWindowId: Int?
-    var browserDeadlineMs: Int?
+    var browserDeadline: BrowserInputDeadline?
 
     /// The index the step at `index` expects focused: the call's `expectFocus` on the step it binds alone.
     func expectation(at index: Int) -> Int? {
@@ -96,7 +122,7 @@ extension ComputerService {
         // a cancelled action answers its normal result, the stopped step failed (spec §1)
         router.on("action.run", keepsResult: true) { [self] (p: Methods.ActionRun.Params, ctx) -> ActionResult in
             let result = try await runActions(
-                session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch, browserURL: p.browserUrl, browserDeadlineMs: p.browserDeadlineMs,
+                session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch, browserURL: p.browserUrl, browserDeadline: try Self.browserInputDeadline(p.browserInputBudget, required: p.browserUrl != nil),
                 actions: [p.action], tiers: p.tiers, stepWait: nil, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored,
                 tabs: p.tabs, expectFocus: p.expectFocus, axWait: p.axWait, prior: p.prior, textWindowId: p.textWindowId, ctx: ctx
             )
@@ -107,7 +133,7 @@ extension ComputerService {
         }
         router.on("action.batch", keepsResult: true) { [self] (p: Methods.ActionBatch.Params, ctx) in
             features.fit(try await runActions(
-                session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch, browserURL: p.browserUrl, browserDeadlineMs: p.browserDeadlineMs,
+                session: p.session, app: p.app, window: p.window, launch: p.launch ?? false, epoch: p.epoch, browserURL: p.browserUrl, browserDeadline: try Self.browserInputDeadline(p.browserInputBudget, required: p.browserUrl != nil),
                 actions: p.actions, tiers: p.tiers, stepWait: p.stepWait, wait: p.wait, observe: p.observe, pasteQuietMs: p.pasteQuietMs, personIdleMs: p.personIdleMs, ignored: p.ignored,
                 tabs: p.tabs, expectFocus: p.expectFocus, axWait: p.axWait, axStepWait: p.axStepWait, prior: p.prior, textWindowId: p.textWindowId, ctx: ctx
             ))
@@ -124,7 +150,7 @@ extension ComputerService {
     /// waits after steps that went in at `ax` (`WaitRows`), `prior` what the call's earlier segments did, `textWindowId`
     /// the window the host last read.
     func runActions(
-        session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, browserURL: String? = nil, browserDeadlineMs: Int? = nil, actions: [ComputerAction],
+        session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, browserURL: String? = nil, browserDeadline: BrowserInputDeadline? = nil, actions: [ComputerAction],
         tiers: [Tier], stepWait: WaitOptions?, wait: WaitOptions?, observe: ObserveOptions?, pasteQuietMs: Int? = nil, personIdleMs: Int? = nil, ignored: IgnoredRoutes? = nil,
         tabs: TabsMode? = nil, expectFocus: Int? = nil, axWait: WaitOptions? = nil, axStepWait: WaitOptions? = nil, prior: Prior? = nil, textWindowId: Int? = nil,
         ctx: RequestContext
@@ -133,7 +159,7 @@ extension ComputerService {
         do {
             let rows = WaitRows(stepWait: stepWait, wait: wait, axStepWait: axStepWait, axWait: axWait)
             let result = try await runActions(
-                session: session, app: app, window: window, launch: launch, epoch: callEpoch, browserURL: browserURL, browserDeadlineMs: browserDeadlineMs, actions: actions, tiers: tiers,
+                session: session, app: app, window: window, launch: launch, epoch: callEpoch, browserURL: browserURL, browserDeadline: browserDeadline, actions: actions, tiers: tiers,
                 rows: rows, observe: observe, pasteQuietMs: pasteQuietMs, personIdleMs: personIdleMs, ignored: ignored,
                 tabs: tabs, expectFocus: expectFocus, prior: prior, textWindowId: textWindowId, ctx: ctx, front: guarded
             )
@@ -145,7 +171,7 @@ extension ComputerService {
     }
 
     private func runActions(
-        session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, browserURL: String? = nil, browserDeadlineMs: Int? = nil, actions: [ComputerAction],
+        session: String, app: AppRef, window: WindowRef?, launch: Bool, epoch callEpoch: String?, browserURL: String? = nil, browserDeadline: BrowserInputDeadline? = nil, actions: [ComputerAction],
         tiers: [Tier], rows: WaitRows, observe: ObserveOptions?, pasteQuietMs: Int?, personIdleMs: Int?, ignored: IgnoredRoutes?,
         tabs: TabsMode?, expectFocus: Int?, prior: Prior?, textWindowId: Int?, ctx: RequestContext, front: FrontRun
     ) async throws -> BatchResult {
@@ -168,7 +194,7 @@ extension ComputerService {
         }
         defer { lease.release() }
         try await checkBrowser(target)
-        try Self.checkBrowserDeadline(browserDeadlineMs)
+        try Self.checkBrowserDeadline(browserDeadline)
         // §25.4: a ref naming a background tab selects it now, under this call's exclusive slot, which it holds
         // through the steps and the observation; `tab_in_use` and a selection that did not take are request errors
         var selection: TabSelection?
@@ -183,7 +209,7 @@ extension ComputerService {
         call.expectFocus = expectFocus
         call.actions = actions
         call.textWindowId = textWindowId
-        call.browserDeadlineMs = browserDeadlineMs
+        call.browserDeadline = browserDeadline
         if let token = call.token {
             book.noteSessionStep(session: session, pid: target.pid)
             book.beginCall(token: token, session: session, pid: target.pid)
@@ -319,14 +345,17 @@ extension ComputerService {
         }
     }
 
-    static var browserClockMs: Int { Int(Date().timeIntervalSince1970 * 1000) }
-
-    static func browserProofExpired(_ deadline: Int?) -> Bool {
-        deadline.map { browserClockMs >= $0 } ?? false
+    private static func browserInputDeadline(_ budget: BrowserInputBudget?, required: Bool) throws -> BrowserInputDeadline? {
+        guard let budget else {
+            if required { throw browserProofExpiredError }
+            return nil
+        }
+        guard let deadline = BrowserInputDeadline(budget), !deadline.expired else { throw browserProofExpiredError }
+        return deadline
     }
 
-    static func checkBrowserDeadline(_ deadline: Int?) throws {
-        if browserProofExpired(deadline) { throw browserProofExpiredError }
+    static func checkBrowserDeadline(_ deadline: BrowserInputDeadline?) throws {
+        if deadline?.expired == true { throw browserProofExpiredError }
     }
 
     private static let browserProofExpiredError = ComputerError(
@@ -407,7 +436,7 @@ extension ComputerService {
         // §26.11: an item of a pop-up, menu button or context menu this session's last call closed
         if let item = action.element, MenuCloser.pressesItem(action) {
             do {
-                if let on = try await reachClosedItem(target, index: item, browserDeadlineMs: call.browserDeadlineMs) {
+                if let on = try await reachClosedItem(target, index: item, browserDeadline: call.browserDeadline) {
                     let ok = OkStep(index: index, action: action.action, tier: .ax, effect: WaitRule.skipped().effect(thin: false),
                                     input: OkStep.Input(via: .menu, on: on))
                     return StepRun(step: .ok(ok), t0: MachTime.now(), signature0: (try? await signature(target)) ?? 0)
@@ -421,7 +450,7 @@ extension ComputerService {
                 guard let reader = state.reader, let window = state.windows[windowID] else {
                     throw ComputerError(kind: .windowNotFound, message: "The window is gone.")
                 }
-                try Self.checkBrowserDeadline(call.browserDeadlineMs)
+                try Self.checkBrowserDeadline(call.browserDeadline)
                 try Self.checkBrowser(target.browserURL, window: window, source: source)
                 // §27.9, §27.10: the step's target by its name or its menu-bar path, resolved now; Input acts on the element
                 var input = action
@@ -465,7 +494,7 @@ extension ComputerService {
                 let expectFocus = try expected.map { try reader.resolve($0) }
                 var inputTarget = InputTarget(
                     pid: pid, windowID: windowID, windowFrame: info.frame, window: window, space: space,
-                    element: element, startElement: start, cursor: cursor, cancelled: { flag.isSet || Self.browserProofExpired(call.browserDeadlineMs) }, pasteQuietMs: pasteQuietMs, ignored: ignored,
+                    element: element, startElement: start, cursor: cursor, cancelled: { flag.isSet || call.browserDeadline?.expired == true }, pasteQuietMs: pasteQuietMs, ignored: ignored,
                     callToken: call.token, personIdleMs: call.personIdleMs,
                     chromium: call.chromium, expectFocus: expectFocus, briefOf: { [reader] in reader.brief(of: $0) }
                 )
@@ -490,7 +519,7 @@ extension ComputerService {
                 reader.recordStep(index)
                 let sig0 = reader.changes.signature()
                 let startedAt = MachTime.now()
-                try Self.checkBrowserDeadline(call.browserDeadlineMs)
+                try Self.checkBrowserDeadline(call.browserDeadline)
                 let outcome = try box.input.perform(input, on: inputTarget, tiers: tiers)
                 var done = Performed(outcome: outcome, signature0: sig0, check: check, element: element?.brief, returnedAt: MachTime.now())
                 done.startedAt = startedAt
@@ -522,7 +551,7 @@ extension ComputerService {
             return run
         } catch {
             var failure = ComputerService.failure(error, or: .actionUnsupported)
-            if failure.kind == .cancelled && !ctx.cancel.isSet && Self.browserProofExpired(call.browserDeadlineMs) {
+            if failure.kind == .cancelled && !ctx.cancel.isSet && call.browserDeadline?.expired == true {
                 failure = Self.browserProofExpiredError
             }
             // once per call, whether this step or the between-calls path tells it first

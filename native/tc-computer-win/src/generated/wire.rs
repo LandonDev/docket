@@ -1289,6 +1289,23 @@ pub struct Budget {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BrowserProofClock {
+    #[serde(rename = "elapsedUs")]
+    pub elapsed_us: i64,
+    #[serde(rename = "sleepUpperUs")]
+    pub sleep_upper_us: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BrowserInputBudget {
+    #[serde(rename = "remainingMs")]
+    pub remaining_ms: i64,
+    #[serde(rename = "sampleBudgetMs")]
+    pub sample_budget_ms: i64,
+    pub sample: BrowserProofClock,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct ObserveOptions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<ObserveMode>,
@@ -2239,8 +2256,8 @@ pub struct BrowserTargetResult {
     pub browser: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
-    #[serde(rename = "clockMs", default, skip_serializing_if = "Option::is_none")]
-    pub clock_ms: Option<i64>,
+    #[serde(rename = "proofClock", default, skip_serializing_if = "Option::is_none")]
+    pub proof_clock: Option<BrowserProofClock>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -2303,8 +2320,8 @@ pub struct ActionRunParams {
     pub tabs: Option<TabsMode>,
     #[serde(rename = "expectFocus", default, skip_serializing_if = "Option::is_none")]
     pub expect_focus: Option<i64>,
-    #[serde(rename = "browserDeadlineMs", default, skip_serializing_if = "Option::is_none")]
-    pub browser_deadline_ms: Option<i64>,
+    #[serde(rename = "browserInputBudget", default, skip_serializing_if = "Option::is_none")]
+    pub browser_input_budget: Option<BrowserInputBudget>,
     #[serde(rename = "axWait", default, skip_serializing_if = "Option::is_none")]
     pub ax_wait: Option<WaitOptions>,
     #[serde(rename = "axStepWait", default, skip_serializing_if = "Option::is_none")]
@@ -2345,8 +2362,8 @@ pub struct ActionBatchParams {
     pub tabs: Option<TabsMode>,
     #[serde(rename = "expectFocus", default, skip_serializing_if = "Option::is_none")]
     pub expect_focus: Option<i64>,
-    #[serde(rename = "browserDeadlineMs", default, skip_serializing_if = "Option::is_none")]
-    pub browser_deadline_ms: Option<i64>,
+    #[serde(rename = "browserInputBudget", default, skip_serializing_if = "Option::is_none")]
+    pub browser_input_budget: Option<BrowserInputBudget>,
     #[serde(rename = "axWait", default, skip_serializing_if = "Option::is_none")]
     pub ax_wait: Option<WaitOptions>,
     #[serde(rename = "axStepWait", default, skip_serializing_if = "Option::is_none")]

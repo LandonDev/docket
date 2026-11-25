@@ -140,14 +140,80 @@ impl ClipWatch {
     }
 }
 
-pub(crate) fn check_browser_deadline(deadline: Option<i64>) -> Result<(), ComputerError> {
-    if deadline.is_some_and(|deadline| now_ms() >= deadline) {
-        return Err(ComputerError {
-            reason: Some(ErrorReason::BrowserProofExpired),
-            ..fail(ComputerErrorKind::BrowserRefused, "refused: the browser input check expired before the step ran.")
-        });
+/// An elapsed deadline plus the bound on sleep when the URL was sampled.
+#[derive(Clone, Copy)]
+pub(crate) struct BrowserDeadline {
+    elapsed_us: i64,
+    sleep_upper_us: i64,
+}
+
+fn browser_deadline(budget: Option<BrowserInputBudget>, required: bool) -> Result<Option<BrowserDeadline>, ComputerError> {
+    let Some(budget) = budget else {
+        return if required { Err(browser_proof_expired()) } else { Ok(None) };
+    };
+    let (now, sleep_floor_us) = browser_clock();
+    let deadline = BrowserDeadline::at_receipt(&budget, now.elapsed_us).ok_or_else(browser_proof_expired)?;
+    if deadline.expired(now.elapsed_us, sleep_floor_us) {
+        return Err(browser_proof_expired());
+    }
+    Ok(Some(deadline))
+}
+
+impl BrowserDeadline {
+    fn at_receipt(budget: &BrowserInputBudget, elapsed_us: i64) -> Option<Self> {
+        if budget.remaining_ms <= 0 || budget.sample_budget_ms < budget.remaining_ms ||
+            budget.sample.elapsed_us < 0 || budget.sample.elapsed_us > elapsed_us ||
+            budget.sample.sleep_upper_us < 0 {
+            return None;
+        }
+        let from_receipt = elapsed_us.checked_add(budget.remaining_ms.checked_mul(1_000)?)?;
+        let from_sample = budget.sample.elapsed_us.checked_add(budget.sample_budget_ms.checked_mul(1_000)?)?;
+        Some(Self {
+            elapsed_us: from_receipt.min(from_sample),
+            sleep_upper_us: budget.sample.sleep_upper_us,
+        })
+    }
+
+    fn expired(&self, elapsed_us: i64, sleep_floor_us: i64) -> bool {
+        elapsed_us >= self.elapsed_us || sleep_floor_us > self.sleep_upper_us
+    }
+}
+
+fn browser_proof_expired() -> ComputerError {
+    ComputerError {
+        reason: Some(ErrorReason::BrowserProofExpired),
+        ..fail(ComputerErrorKind::BrowserRefused, "refused: the browser input check expired before the step ran.")
+    }
+}
+
+pub(crate) fn check_browser_deadline(deadline: Option<BrowserDeadline>) -> Result<(), ComputerError> {
+    if let Some(deadline) = deadline {
+        let (now, sleep_floor_us) = browser_clock();
+        if deadline.expired(now.elapsed_us, sleep_floor_us) {
+            return Err(browser_proof_expired());
+        }
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn browser_clock() -> (BrowserProofClock, i64) {
+    use windows::Win32::System::WindowsProgramming::{QueryInterruptTimePrecise, QueryUnbiasedInterruptTimePrecise};
+    // Both clocks use 100 ns units. Only interrupt time advances through sleep.
+    let (before, elapsed, after) = unsafe {
+        (QueryUnbiasedInterruptTimePrecise(), QueryInterruptTimePrecise(), QueryUnbiasedInterruptTimePrecise())
+    };
+    let sleep_floor_us = (elapsed.saturating_sub(after) / 10) as i64;
+    let sleep_upper_us = elapsed.saturating_sub(before).div_ceil(10) as i64;
+    (BrowserProofClock { elapsed_us: (elapsed / 10) as i64, sleep_upper_us }, sleep_floor_us)
+}
+
+#[cfg(not(windows))]
+fn browser_clock() -> (BrowserProofClock, i64) {
+    // The Linux fake desktop has no Windows suspend clock.
+    static START: OnceLock<Instant> = OnceLock::new();
+    let elapsed_us = START.get_or_init(Instant::now).elapsed().as_micros() as i64;
+    (BrowserProofClock { elapsed_us, sleep_upper_us: 0 }, 0)
 }
 
 pub(crate) fn now_ms() -> i64 {
@@ -355,7 +421,7 @@ impl<D: Desktop> Service<D> {
                 let app = self.resolve(&p.app)?;
                 let browser = browser_app(&app);
                 let url = if browser { self.desktop.browser_url(app.pid, p.window.as_ref()) } else { None };
-                encode(BrowserTargetResult { browser, url, clock_ms: browser.then(now_ms) })
+                encode(BrowserTargetResult { browser, url, proof_clock: browser.then(|| browser_clock().0) })
             }
             "state.get" => {
                 let p: StateGetParams = decode(params)?;
@@ -370,7 +436,7 @@ impl<D: Desktop> Service<D> {
                 gate()?;
                 let target = Target { session: p.session, app: p.app, window: p.window, launch: p.launch, epoch: p.epoch, browser_url: p.browser_url };
                 let wait = p.ax_wait.or(p.wait);
-                let r = self.run_steps(&target, &[p.action], &p.tiers, None, wait, p.observe.as_ref(), p.expect_focus.is_some(), p.paste_quiet_ms, p.browser_deadline_ms, cancel)?;
+                let r = self.run_steps(&target, &[p.action], &p.tiers, None, wait, p.observe.as_ref(), p.expect_focus.is_some(), p.paste_quiet_ms, browser_deadline(p.browser_input_budget, target.browser_url.is_some())?, cancel)?;
                 encode(ActionResult { step: r.steps.into_iter().next().unwrap(), observation: r.observation, observation_error: r.observation_error, ..Default::default() })
             }
             "action.batch" => {
@@ -380,7 +446,7 @@ impl<D: Desktop> Service<D> {
                 }
                 gate()?;
                 let target = Target { session: p.session, app: p.app, window: p.window, launch: p.launch, epoch: p.epoch, browser_url: p.browser_url };
-                let r = self.run_steps(&target, &p.actions, &p.tiers, p.ax_step_wait.or(p.step_wait), p.ax_wait.or(p.wait), p.observe.as_ref(), p.expect_focus.is_some(), p.paste_quiet_ms, p.browser_deadline_ms, cancel)?;
+                let r = self.run_steps(&target, &p.actions, &p.tiers, p.ax_step_wait.or(p.step_wait), p.ax_wait.or(p.wait), p.observe.as_ref(), p.expect_focus.is_some(), p.paste_quiet_ms, browser_deadline(p.browser_input_budget, target.browser_url.is_some())?, cancel)?;
                 encode(r)
             }
             "capture.screenshot" => {
@@ -802,7 +868,7 @@ impl<D: Desktop> Service<D> {
         observe: Option<&ObserveOptions>,
         expect_focus: bool,
         paste_quiet_ms: Option<i64>,
-        browser_deadline_ms: Option<i64>,
+        browser_deadline: Option<BrowserDeadline>,
         cancel: &AtomicBool,
     ) -> Result<BatchResult, RpcError> {
         self.check_session(target)?;
@@ -834,7 +900,7 @@ impl<D: Desktop> Service<D> {
                 failed = true;
                 continue;
             }
-            match self.step(target, pid, action, tiers, observe.and_then(|o| o.max_edge), paste_quiet_ms, browser_deadline_ms, cancel) {
+            match self.step(target, pid, action, tiers, observe.and_then(|o| o.max_edge), paste_quiet_ms, browser_deadline, cancel) {
                 Ok(ok) => {
                     steps.push(StepResult::Ok(OkStep { index, ..ok }));
                     let changes_screen = !matches!(action.action, ComputerActionName::Wait | ComputerActionName::CursorPosition | ComputerActionName::Screenshot | ComputerActionName::Zoom);
@@ -898,7 +964,7 @@ impl<D: Desktop> Service<D> {
 
     /// One step: at the `ax` tier when it takes the step, else at the first allowed event tier (act.rs).
     #[allow(clippy::too_many_arguments)]
-    fn step(&self, target: &Target, pid: i64, a: &ComputerAction, tiers: &[Tier], max_edge: Option<i64>, paste_quiet_ms: Option<i64>, browser_deadline_ms: Option<i64>, cancel: &AtomicBool) -> Result<OkStep, ComputerError> {
+    fn step(&self, target: &Target, pid: i64, a: &ComputerAction, tiers: &[Tier], max_edge: Option<i64>, paste_quiet_ms: Option<i64>, browser_deadline: Option<BrowserDeadline>, cancel: &AtomicBool) -> Result<OkStep, ComputerError> {
         self.check_browser(pid, target.window.as_ref(), target.browser_url.as_deref())?;
         let ok = |tier: Option<Tier>| OkStep { action: a.action, tier, effect: StepEffect::Unknown, ..Default::default() };
         match a.action {
@@ -919,25 +985,25 @@ impl<D: Desktop> Service<D> {
             }
             _ => {}
         }
-        check_browser_deadline(browser_deadline_ms)?;
+        check_browser_deadline(browser_deadline)?;
         let ax_form = AX_VERBS.contains(&a.action) && a.element.is_some() && a.coordinate.is_none() && a.duration.is_none() && (a.action != ComputerActionName::LeftClick || a.text.is_none());
         let ax_only = matches!(a.action, ComputerActionName::SetValue | ComputerActionName::Perform | ComputerActionName::SelectText);
         let event = crate::input::event_tier(tiers, a);
         if a.action == ComputerActionName::SetValue && self.no_person && tiers.contains(&Tier::Session) {
-            if let Some(r) = self.set_value_by_keys(target, pid, a, paste_quiet_ms, browser_deadline_ms, cancel) {
+            if let Some(r) = self.set_value_by_keys(target, pid, a, paste_quiet_ms, browser_deadline, cancel) {
                 return r;
             }
         }
         if ax_form && tiers.contains(&Tier::Ax) {
-            match self.ax_step(target, pid, a, tiers, browser_deadline_ms) {
+            match self.ax_step(target, pid, a, tiers, browser_deadline) {
                 // a click or typing the element takes no other way goes on to an event tier
                 Err(e) if e.kind == ComputerErrorKind::ActionUnsupported && !ax_only && event.is_some() => {}
                 r => return r,
             }
         } else if ax_only {
-            return if tiers.contains(&Tier::Ax) { self.ax_step(target, pid, a, tiers, browser_deadline_ms) } else { Err(ComputerError { needed: Some(Tier::Ax), ..fail(ComputerErrorKind::NeedsTier, "this step runs only at the ax tier") }) };
+            return if tiers.contains(&Tier::Ax) { self.ax_step(target, pid, a, tiers, browser_deadline) } else { Err(ComputerError { needed: Some(Tier::Ax), ..fail(ComputerErrorKind::NeedsTier, "this step runs only at the ax tier") }) };
         }
-        let (tier, done) = self.event_step(&target.session, pid, target.window.as_ref(), a, tiers, paste_quiet_ms, browser_deadline_ms, cancel)?;
+        let (tier, done) = self.event_step(&target.session, pid, target.window.as_ref(), a, tiers, paste_quiet_ms, browser_deadline, cancel)?;
         let input = done.via.map(|via| OkStepInput { via, clipboard: done.clipboard, on: None });
         let element = a.element.map(|index| ElementBrief { index, line: String::new() });
         Ok(OkStep { element, input, session: done.session, cursor: done.cursor.map(|p| vec![p.0, p.1]), ..ok(Some(tier)) })
@@ -947,7 +1013,7 @@ impl<D: Desktop> Service<D> {
     /// typed (or Delete for none), then read back. A Save dialog's File name box shows a value UI Automation
     /// sets but saves the name it had, and only real keys reach the dialog itself (the box's Work run of
     /// 2026-11-22). None when the element is not a text field: the `ax` tier takes it as before.
-    fn set_value_by_keys(&self, target: &Target, pid: i64, a: &ComputerAction, paste_quiet_ms: Option<i64>, browser_deadline_ms: Option<i64>, cancel: &AtomicBool) -> Option<Result<OkStep, ComputerError>> {
+    fn set_value_by_keys(&self, target: &Target, pid: i64, a: &ComputerAction, paste_quiet_ms: Option<i64>, browser_deadline: Option<BrowserDeadline>, cancel: &AtomicBool) -> Option<Result<OkStep, ComputerError>> {
         let index = a.element?;
         let handle = self.element(&target.session, pid, index).ok()?;
         let deadline = Instant::now() + Duration::from_millis(1000);
@@ -959,13 +1025,13 @@ impl<D: Desktop> Service<D> {
             let want = a.value.clone().unwrap_or_default();
             let tiers = [Tier::Session];
             let all = ComputerAction { action: ComputerActionName::Key, element: Some(index), text: Some("ctrl+a".into()), ..Default::default() };
-            self.event_step(&target.session, pid, target.window.as_ref(), &all, &tiers, paste_quiet_ms, browser_deadline_ms, cancel)?;
+            self.event_step(&target.session, pid, target.window.as_ref(), &all, &tiers, paste_quiet_ms, browser_deadline, cancel)?;
             let put = if want.is_empty() {
                 ComputerAction { action: ComputerActionName::Key, element: Some(index), text: Some("Delete".into()), ..Default::default() }
             } else {
                 ComputerAction { action: ComputerActionName::Type, element: Some(index), text: Some(want.clone()), ..Default::default() }
             };
-            let (tier, done) = self.event_step(&target.session, pid, target.window.as_ref(), &put, &tiers, paste_quiet_ms, browser_deadline_ms, cancel)?;
+            let (tier, done) = self.event_step(&target.session, pid, target.window.as_ref(), &put, &tiers, paste_quiet_ms, browser_deadline, cancel)?;
             // the field's own value once it has taken the keys, for up to 300 ms
             let until = Instant::now() + Duration::from_millis(300);
             let mut got = None;
@@ -985,14 +1051,14 @@ impl<D: Desktop> Service<D> {
     }
 
     /// One step at the `ax` tier.
-    fn ax_step(&self, target: &Target, pid: i64, a: &ComputerAction, tiers: &[Tier], browser_deadline_ms: Option<i64>) -> Result<OkStep, ComputerError> {
+    fn ax_step(&self, target: &Target, pid: i64, a: &ComputerAction, tiers: &[Tier], browser_deadline: Option<BrowserDeadline>) -> Result<OkStep, ComputerError> {
         let ok = |tier: Option<Tier>| OkStep { action: a.action, tier, effect: StepEffect::Unknown, ..Default::default() };
         if a.action == ComputerActionName::Perform && a.name.as_deref() == Some("raise") && !tiers.contains(&Tier::Session) {
             return Err(ComputerError { needed: Some(Tier::Session), ..fail(ComputerErrorKind::NeedsTier, "raise needs the session tier") });
         }
         let index = a.element.ok_or_else(|| fail(ComputerErrorKind::ActionUnsupported, "this step needs an element"))?;
         let handle = self.element(&target.session, pid, index)?;
-        check_browser_deadline(browser_deadline_ms)?;
+        check_browser_deadline(browser_deadline)?;
         let acted = self.desktop.act(pid, &handle, a)?;
         if a.action == ComputerActionName::SetValue {
             if let (Some(want), Some(got)) = (&a.value, &acted.value) {
@@ -1057,7 +1123,32 @@ pub fn signature<H>(w: &RawWindow<H>) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::same_text;
+    use super::{same_text, BrowserDeadline};
+    use crate::wire::{BrowserInputBudget, BrowserProofClock};
+
+    #[test]
+    fn browser_proof_uses_the_earlier_deadline_when_delivery_runs_late() {
+        let mut budget = BrowserInputBudget {
+            remaining_ms: 70,
+            sample_budget_ms: 100,
+            sample: BrowserProofClock { elapsed_us: 100_000, sleep_upper_us: 0 },
+        };
+        let delayed = BrowserDeadline::at_receipt(&budget, 150_000).unwrap();
+        assert!(!delayed.expired(199_999, 0));
+        assert!(delayed.expired(200_000, 0));
+
+        budget.remaining_ms = 20;
+        let immediate = BrowserDeadline::at_receipt(&budget, 150_000).unwrap();
+        assert!(immediate.expired(170_000, 0));
+    }
+
+    #[test]
+    fn browser_proof_expires_on_resume_even_before_the_deadline() {
+        let deadline = BrowserDeadline { elapsed_us: 250_000, sleep_upper_us: 1_120 };
+        assert!(!deadline.expired(200_000, 1_120));
+        assert!(deadline.expired(200_000, 1_121));
+    }
+
 
     #[test]
     fn a_value_read_back_is_the_same_whatever_its_line_breaks() {

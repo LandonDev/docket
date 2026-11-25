@@ -473,6 +473,28 @@ public struct Budget: Codable, Hashable, Sendable {
     }
 }
 
+public struct BrowserProofClock: Codable, Hashable, Sendable {
+    public let elapsedUs: Int
+    public let sleepUpperUs: Int
+
+    public init(elapsedUs: Int, sleepUpperUs: Int) {
+        self.elapsedUs = elapsedUs
+        self.sleepUpperUs = sleepUpperUs
+    }
+}
+
+public struct BrowserInputBudget: Codable, Hashable, Sendable {
+    public let remainingMs: Int
+    public let sampleBudgetMs: Int
+    public let sample: BrowserProofClock
+
+    public init(remainingMs: Int, sampleBudgetMs: Int, sample: BrowserProofClock) {
+        self.remainingMs = remainingMs
+        self.sampleBudgetMs = sampleBudgetMs
+        self.sample = sample
+    }
+}
+
 public struct ObserveOptions: Codable, Hashable, Sendable {
     public let mode: ObserveMode?
     public let screenshot: ScreenshotPolicy?
