@@ -252,11 +252,20 @@ export async function moveToVirtio(s: Scratch, driverDir: string, log: (line: st
 /** A clean, full shutdown of Windows (no hibernate, no Fast Startup), waited for; the plug is pulled only for a scratch machine that will not stop. */
 export async function shutDown(s: Scratch, log: (line: string) => void, device?: DisplayDevice): Promise<void> {
   // /full: with Fast Startup on, a plain shutdown is a hibernate of the kernel, and the next start resumes its old mode
+  const t0 = Date.now()
   await s.guest.admin('shutdown /s /full /t 0').catch(() => '')
-  if (!(await s.machine.stopped(180_000))) {
+  // what Windows shows while it stops, kept beside the logs: a full shutdown has taken past 3 minutes
+  for (const at of [45_000, 150_000]) {
+    if (await s.machine.stopped(Math.max(0, t0 + at - Date.now()))) break
+    const file = `/tmp/vmscreen-logs/shutdown-${new Date().toISOString().slice(11, 19).replace(/:/g, '')}.png`
+    const status = await s.qmp<{ status: string }>('query-status').catch((e: Error) => ({ status: e.message }))
+    await s.qmp('screendump', { filename: file, format: 'png' }).catch(() => undefined)
+    log(`still stopping after ${Math.round((Date.now() - t0) / 1000)} s: QEMU ${status.status}, picture ${file}`)
+  }
+  if (!(await s.machine.stopped(Math.max(0, t0 + 180_000 - Date.now())))) {
     log('Windows did not stop in 3 minutes: pulling the plug')
     await s.machine.forceStop()
-  }
+  } else log(`Windows stopped in ${Math.round((Date.now() - t0) / 1000)} s`)
   await s.machine.keepTpm().catch(() => {})
   if (device) writeMachineDevice(s.machine.p.run, device)
 }
