@@ -855,6 +855,8 @@ interface DeskFound {
   rows: FileEntry[];
   unsearched: string[];
   more: boolean;
+  /** the libraries a desktop searched: its walk matches names, never the words inside (`work.office.filesSearch`) */
+  byName: string[];
 }
 
 interface ListingEntry extends Listing {
@@ -1002,6 +1004,8 @@ export interface ListFrom {
 export interface DeskSearch {
   find(): Promise<Desktops>;
   placeOf(link: string, path: string): PlaceCopy | null;
+  /** the names of the libraries a desktop's walk searches, as the sidebar lists them */
+  libraries?(link: string): string[];
 }
 
 /** A desktop's walk keeps its own cap of 15 s. */
@@ -1045,7 +1049,7 @@ export function searchReplaces(tabId: string, query: string): string | undefined
  */
 async function searchDesks(desks: DeskSearch, query: string, filter: FileSearchFilter, o: { replaces?: string; asking?(names: string[]): void } = {}): Promise<DeskFound> {
   const { linked, far } = await desks.find().catch((): Desktops => ({ linked: [], far: [] }));
-  const found: DeskFound = { rows: [], unsearched: [...far], more: false };
+  const found: DeskFound = { rows: [], unsearched: [...far], more: false, byName: [] };
   o.asking?.(linked.map((desk) => desk.name));
   await Promise.all(
     linked.map(async (desk) => {
@@ -1053,6 +1057,7 @@ async function searchDesks(desks: DeskSearch, query: string, filter: FileSearchF
         // The words this tab searched before name the desktop's walk that stops now.
         const got = await (listingSeams.desk?.(desk.link, query) ?? ask<{ entries: TeamsEntry[]; more?: boolean }>(desk.link, "work.office.filesSearch", { query, ...(o.replaces ? { replaces: o.replaces } : {}) }, { timeoutMs: DESK_MS }));
         found.rows.push(...deskRows(got.entries, (path) => desks.placeOf(desk.link, path), filter));
+        found.byName.push(...(desks.libraries?.(desk.link) ?? []));
         if (got.more) found.more = true;
       } catch {
         // Its link went down, or its walk did not answer in time: named, with Retry.
@@ -1066,6 +1071,12 @@ async function searchDesks(desks: DeskSearch, query: string, filter: FileSearchF
 
 /** A desktop's part of a search, as the listing says it. */
 const deskSays = (desk: DeskFound | undefined): Partial<Listing> => (desk ? { ...(desk.more ? { incomplete: true } : {}), ...(desk.unsearched.length ? { unsearched: desk.unsearched } : {}) } : {});
+
+/** The places the host and his desktops searched by name only, each once. */
+const namedOnly = (...lists: (readonly string[] | undefined)[]): Partial<Listing> => {
+  const all = [...new Set(lists.flatMap((list) => list ?? []))];
+  return all.length ? { byName: all } : {};
+};
 
 /** `seen`: a search's first page in parts (0 the first time, then the parts the last answer said). */
 async function fetchPage(from: ListFrom, at: FolderRef, sort: FileSort, cursor?: string, wake = false, seen?: number): Promise<FilesListing> {
@@ -1196,7 +1207,7 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
     if (!then || listingRound.get(key) !== round) return;
     const said = deskSays(found);
     const { deskPending: _, ...rest } = then;
-    putListing(key, { ...rest, entries: mergeBelow(then.entries, [...found.rows].sort(newestFirst)), searching: false, desk: found, ...said, ...(said.incomplete || then.incomplete ? { incomplete: true } : {}) });
+    putListing(key, { ...rest, entries: mergeBelow(then.entries, [...found.rows].sort(newestFirst)), searching: false, desk: found, ...said, ...(said.incomplete || then.incomplete ? { incomplete: true } : {}), ...namedOnly(then.byName, found.byName) });
   } catch (err) {
     const now = listings.get(key);
     if (!now || listingRound.get(key) !== round) return;
@@ -1230,7 +1241,7 @@ async function restOf(key: string, from: ListFrom, at: FolderRef, sort: FileSort
       pending: page.pending?.length ? page.pending : undefined,
       ...(page.more ? { incomplete: true } : {}),
       ...(page.asleep?.length ? { asleep: page.asleep } : {}),
-      ...(page.byName?.length ? { byName: page.byName } : {}),
+      ...namedOnly(cur.byName, page.byName),
     });
     if (!page.pending?.length || page.parts === undefined || page.parts <= seen) return;
     seen = page.parts;

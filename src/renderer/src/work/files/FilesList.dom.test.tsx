@@ -451,6 +451,7 @@ describe("a folder's pages", () => {
     const desks = {
       find: async () => ({ linked: [{ link: "local", host: "env_mac", name: "MacBook", workspaceId: "w1" }, { link: "pc", host: "env_pc", name: "Desk PC", workspaceId: "w1" }], far: ["Purdue laptop"] }),
       placeOf: (link: string) => (link === "local" ? LIB_COPY : null),
+      libraries: (link: string) => (link === "local" ? ["General"] : ["Esports"]),
     };
     try {
       // A folder's page asks no desktop.
@@ -470,6 +471,8 @@ describe("a folder's pages", () => {
       expect(result.current.pending).toBeUndefined();
       expect(result.current.entries.find((e) => e.name === "Roster.docx")?.where).toEqual({ place: "m1", name: "General", trail: [] });
       expect(result.current).toMatchObject({ unsearched: ["Purdue laptop", "Desk PC"], incomplete: true });
+      // The desktop that answered walked its libraries' names alone, and the gap line says so; one that did not is unsearched.
+      expect(result.current.byName).toEqual(["General"]);
       expect(asked.sort()).toEqual(["local o", "pc o"]);
     } finally {
       delete listingSeams.fetch;

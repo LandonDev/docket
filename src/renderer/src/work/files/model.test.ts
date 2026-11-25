@@ -815,9 +815,10 @@ describe("the list's rules of round 1", () => {
   it("says which places were searched by their files' names alone, the words inside them not searched", async () => {
     const { searchGap } = await import("./model");
     // Nothing to press: a fact about the list.
-    expect(searchGap({ byName: ["General"] })).toEqual({ title: "General was searched by name only" });
-    expect(searchGap({ byName: ["Events", "General"], unsearched: ["Purdue laptop"] })).toEqual({ title: "Folders on Purdue laptop were not searched", line: "Events and General were searched by name only." });
-    expect(searchGap({ byName: ["General"], incomplete: true })).toEqual({ title: "Not every place was searched", line: "General was searched by name only.", fix: { kind: "retry" } });
+    expect(searchGap({ byName: ["General"] })).toEqual({ title: "Searched by name only: General" });
+    expect(searchGap({ byName: ["Events", "General"], unsearched: ["Purdue laptop"] })).toEqual({ title: "Folders on Purdue laptop were not searched", line: "Searched by name only: Events and General." });
+    expect(searchGap({ byName: ["General"], incomplete: true })).toEqual({ title: "Not every place was searched", line: "Searched by name only: General.", fix: { kind: "retry" } });
+    expect(searchGap({ byName: ["TempCode documents and sheets"] })).toEqual({ title: "Searched by name only: TempCode documents and sheets" });
   });
 });
 

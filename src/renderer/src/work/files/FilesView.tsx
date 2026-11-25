@@ -1084,6 +1084,7 @@ function SearchTab({
   const desks: DeskSearch = {
     find: () => desktopsFor([workspace], { nameOf: (id) => registry.environment(id)?.name ?? farName(id) }),
     placeOf: (desk, path) => deskPlace(sidebar.current, desk, path),
+    libraries: (desk) => [...new Set(sidebar.current.rows.flatMap((row) => row.copies).filter((c) => c.link === desk && (c.place.kind === "teams" || c.place.kind === "onedrive")).map((c) => c.place.name))],
   };
   // New words name the ones this tab searched before: the host and his desktops stop those walks.
   const replaces = searchReplaces(tab.id, query);

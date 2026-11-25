@@ -791,7 +791,8 @@ export function searchGap(found: { incomplete?: boolean; asleep?: readonly strin
   const desks = found.unsearched ?? [];
   // A place with no content index here (a library on this disk or in the VM) was searched by its files' names alone.
   const named = found.byName ?? [];
-  const byName = named.length ? `${andList(named)} ${named.length === 1 ? "was" : "were"} searched by name only` : null;
+  // A place, or a kind of file ("TempCode documents and sheets"): the list follows the words, so either reads.
+  const byName = named.length ? `Searched by name only: ${andList(named)}` : null;
   if (asleep.length) {
     const its = asleep.length === 1 ? "Its" : "Their";
     return { title: `${andList(asleep)} ${asleep.length === 1 ? "is" : "are"} asleep`, line: desks.length ? `${its} files and folders on ${andList(desks)} were not searched.` : found.incomplete ? "Not every place was searched." : `${its} files were not searched.`, fix: { kind: "retry" } };

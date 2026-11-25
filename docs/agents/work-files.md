@@ -1939,10 +1939,16 @@ in `asleep`, for the window's line and its Wake press.
 the walk on this disk (`searchLibraries`) and the guest's in the VM
 (`vmSearch`) match names alone. Each such source names the places it searched
 in `byName` (`SourceAnswer`, the answer's optional `FilesListing.byName`), and
-the window says so in the search's line (`searchGap`): "Events and General
-were searched by name only", muted with nothing to press, over the results
-or under "Nothing found". Only the workspace folder's small text files are
-read for words.
+the window says so in the search's line (`searchGap`): "Searched by name only:
+Events and General", muted with nothing to press, over the results or under
+"Nothing found". His desktops' own walks (`work.office.filesSearch`) match
+names alone too: each desktop that answered adds its libraries (`DeskSearch.libraries`,
+the sidebar's), joined with the host's (`namedOnly`, store.ts). Only the
+workspace folder's small text files are read for words: a `.tcdoc`'s or a
+`.tcsheet`'s are never read by this search (docs/find.ts keeps its reader to
+itself), so where the folder holds one its name did not match, the folder's
+answer names "TempCode documents and sheets" in `byName` (`OWN_BY_NAME`,
+`Walked.sealed`).
 
 **His desktops' folders** are theirs to walk: a host cannot walk another
 computer's folders. So on a search of every place (his Return, or a saved

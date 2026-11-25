@@ -50,6 +50,10 @@ export const setSearchCaps = (caps: Partial<typeof CAPS> | null): void => void O
 export const searchCounts = { folders: 0, texts: 0, runs: 0 }
 
 const TEXT_FILE = /\.(md|markdown|txt|csv)$/i
+/** TempCode's own documents and sheets: their words stay with their own readers (docs/find.ts), so a search matches their names. */
+const OWN_FILE = /\.(tcdoc|tcsheet)$/i
+/** How a search names them where it searched them by name only. */
+export const OWN_BY_NAME = 'TempCode documents and sheets'
 const CANCELLED = 'cancelled'
 
 /** One row found, and the id of the place it lies in. */
@@ -136,6 +140,8 @@ interface Walked {
   /** files whose text may be read: a kind of text, not matched by name */
   texts: string[]
   more: boolean
+  /** a TempCode document or sheet not matched by name, whose words a search here never reads (`OWN_BY_NAME`) */
+  sealed: boolean
 }
 
 /**
@@ -150,6 +156,7 @@ export async function walkNames(root: string, words: readonly string[], o: { sig
   const until = Date.now() + CAPS.ms
   let dirs = 0
   let more = false
+  let sealed = false
   while (queue.length) {
     stop(o.signal)
     if (dirs >= CAPS.dirs || names.length >= CAPS.hits || Date.now() > until) {
@@ -177,13 +184,14 @@ export async function walkNames(root: string, words: readonly string[], o: { sig
         if (matchesName(d.name, words)) {
           if ((!o.kinds?.length || o.kinds.includes(kind)) && names.length < CAPS.hits) names.push({ path, row: { name: d.name, dir: isDir, kind } })
         } else if (o.texts && !isDir && TEXT_FILE.test(d.name) && texts.length < CAPS.hits) texts.push(path)
+        else if (o.texts && OWN_FILE.test(d.name)) sealed = true
       }
     } finally {
       await handle.close().catch(() => undefined)
     }
     await turn()
   }
-  return { names, texts, more }
+  return { names, texts, more, sealed }
 }
 
 /** Looks at rows closer (time, size, whether the bytes are here), 64 at a time. Never a read of a file's bytes. */
@@ -242,7 +250,11 @@ async function textHits(paths: string[], words: readonly string[], o: { signal?:
   return out
 }
 
-/** The workspace's folder: its names, and the words in his small text files. A `.tcdoc`'s text is not read here (docs/find.ts keeps its reader to itself). */
+/**
+ * The workspace's folder: its names, and the words in his small text files. A `.tcdoc`'s text is not read here (docs/find.ts
+ * keeps its reader to itself), nor a `.tcsheet`'s: where the folder holds one its name alone could not match, the answer
+ * says they were searched by name only (`OWN_BY_NAME`).
+ */
 const folderSource: PlaceSource = async (s) => {
   if (!s.workspace || !s.folder || !wants(s.filter, PLACE.folder)) return { hits: [] }
   const root = s.folder
@@ -261,7 +273,7 @@ const folderSource: PlaceSource = async (s) => {
       const by = s.filter.who && !row.dir && row.local ? whoIn(path) : null
       return { entry: { ...entry, ...(where ? { where } : {}), ...(by ? { by } : {}) }, place: PLACE.folder }
     })
-  return { hits, more: walked.more }
+  return { hits, more: walked.more, ...(walked.sealed ? { byName: [OWN_BY_NAME] } : {}) }
 }
 
 const whoIn = (path: string): string | null => {
