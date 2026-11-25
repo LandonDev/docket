@@ -4,7 +4,7 @@
  *   bun scripts/react-compiler-tally.ts
  *
  * Runs babel-plugin-react-compiler over src/renderer/src/**\/*.{ts,tsx}
- * (tests and test stubs excluded) with the build's options plus a logger,
+ * (tests, test stubs and ui:preview pages excluded) with the build's options plus a logger,
  * never writing a transformed byte, and tallies the compiler's own events:
  * CompileSuccess, CompileSkip (by reason), CompileError (by category and
  * reason) and PipelineError, per function and per file. The report lands in
@@ -47,7 +47,7 @@ function fnLine(ev: Record<string, unknown>): number {
 
 const files: string[] = []
 for await (const p of new Bun.Glob('**/*.{ts,tsx}').scan({ cwd: SRC, absolute: true })) {
-  if (/\.test\.tsx?$/.test(p) || /\.dom\.test\.tsx$/.test(p) || p.includes('/test/stubs/')) continue
+  if (/\.test\.tsx?$/.test(p) || /\.dom\.test\.tsx$/.test(p) || p.includes('/test/stubs/') || /\.preview\.tsx?$/.test(p)) continue
   files.push(p)
 }
 files.sort()
@@ -120,7 +120,7 @@ refused.sort((a, b) => b[1].skip.length + b[1].fail.length - (a[1].skip.length +
 const md = `# React Compiler tally — ${new Date().toISOString().slice(0, 10)}
 
 babel-plugin-react-compiler 1.0.0, \`target: '19'\`, \`compilationMode: 'infer'\`, \`panicThreshold: 'none'\`,
-over ${files.length} files under src/renderer/src (tests and test/stubs excluded). Nothing was written.
+over ${files.length} files under src/renderer/src (tests, test/stubs and previews excluded). Nothing was written.
 
 ## Totals
 

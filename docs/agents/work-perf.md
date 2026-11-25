@@ -151,7 +151,7 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
   dashboards, forms, slides, as PDFs and sheets already did.
 - A live Office page hidden 10 minutes with no show unloads through Word's own unload (`HIDDEN_UNLOAD_MS`,
   work/office/live/layer.ts).
-- The React Compiler's refusals under work/ only go down: `scripts/react-compiler-ratchet.json` (350 on Nov 24),
+- The React Compiler's refusals under work/ only go down: `scripts/react-compiler-ratchet.json` (321 on Nov 25; ui:preview pages are not counted),
   held by scripts/compilerRatchet.test.ts in the commit gate's guards (`bun scripts/react-compiler-tally.ts --only
   work --check`, about 13 s).
 

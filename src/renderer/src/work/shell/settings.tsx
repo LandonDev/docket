@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type FormEvent } from "react";
 import type { SectorKey, WorkDesktop, WorkspaceWorkSettings } from "@shared/work";
 import type { LifeosKeyState, LifeosState, LifeosStatus } from "@shared/contract-work-lifeos";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
@@ -223,14 +223,16 @@ export function SignInDialog({ environmentId, state, onClose }: { environmentId:
     setAsking(true);
     void ask().finally(() => mounted.current && setAsking(false));
   };
-  // The first ask, under the code's bone.
+  // The first ask, under the code's bone: once a dialog, a later ask is his press.
+  const firstAsk = useEffectEvent(() => {
+    if (!code) void ask();
+  });
   useEffect(() => {
     mounted.current = true;
-    if (!code) void ask();
+    firstAsk();
     return () => {
       mounted.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once a dialog: a later ask is his press
   }, []);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
