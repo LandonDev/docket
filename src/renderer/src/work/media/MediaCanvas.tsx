@@ -9,6 +9,7 @@ import { Progress } from "../../components/ui/progress";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Tip } from "../../components/tip";
 import { dayTime } from "../../lib/duration";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps, CanvasShell } from "../canvas/kind";
 import { Comment, History, ZoomIn, ZoomOut } from "../icons";
@@ -37,6 +38,15 @@ export interface MediaState {
 }
 
 const ZOOMS = [0.25, 0.5, 1, 2, 4];
+
+/** The scale Fit shows each item's picture at, as the stage last laid it out: Zoom in and out step from it, not from 100%. */
+const fitted = new Map<string, number>();
+
+/** The zoom a step in or out lands on, from the scale shown now (Fit's own scale while it fits); none past either end. */
+export function stepZoom(zoom: Zoom, fitScale: number | undefined, dir: 1 | -1): number | undefined {
+  const now = zoom === "fit" ? (fitScale ?? 1) : zoom;
+  return dir > 0 ? ZOOMS.find((z) => z > now + 1e-6) : [...ZOOMS].reverse().find((z) => z < now - 1e-6);
+}
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|heic|heif|bmp|tiff?|psd|svg)$/i;
 
 const tableOf = (v: MediaVersion | undefined): FrameTable | null => {
@@ -139,11 +149,12 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
   useEffect(() => {
     // A failure that leaves the body empty says so there (`OpenFailed`); the line is for one that leaves content shown.
     const failed = [shown, other].find((v) => unshowable(v) !== undefined && !(v !== undefined && v === shown && blank(v)));
+    // The host's reason in his words (`workErrorWords`): a raw line drops to the line's own word.
     shell.statusLine(
       failed
-        ? { tone: "failed", word: `${failed.name} could not be shown`, detail: unshowable(failed), action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
+        ? { tone: "failed", word: `${failed.name} could not be shown`, detail: workErrorWords(unshowable(failed)) || undefined, action: { label: "Retry", run: () => loadMedia(env, item.id, { retry: true }) } }
         : error && view
-          ? { tone: "failed", word: "Couldn't open this file", detail: error, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
+          ? { tone: "failed", word: "Couldn't open this file", detail: workErrorWords(error) || undefined, action: { label: "Retry", run: () => loadMedia(env, item.id) } }
           : pictureFailed
             ? {
                 tone: "failed",
@@ -215,7 +226,9 @@ export function Body({ item, source, env, state, shell }: CanvasBodyProps<MediaS
             shapes={currentNote?.anchor.shapes}
             selecting={!!region}
             onRegion={(r, rect) => selectRegion(r, rect)}
-            onScale={() => {}}
+            onScale={(scale) => {
+              if ((state?.zoom ?? "fit") === "fit") fitted.set(item.id, scale);
+            }}
             attempt={attempt}
             onDrawn={(ok) => setUnread((was) => (ok ? (was === shown.id ? null : was) : shown.id))}
           />
@@ -281,37 +294,32 @@ function Failed({ why, onRetry }: { why: string | undefined; onRetry(): Promise<
   );
 }
 
-/** While the host reads the file or makes what this viewer needs: the player's bones, and what is under way. */
+/** While the host reads the file or makes what this viewer needs: the player's bones, and what is under way in the frame's place. */
 function Loading({ kind, version }: { kind: "image" | "video"; version?: MediaVersion }) {
   // A failure is never bones that wait for nothing (the body draws `Failed` before it comes here).
   if (version && unshowable(version) !== undefined) return null;
-  const word = version?.state !== "preparing" || version.proxyError ? undefined : version.probe?.kind === "image" ? `Converting ${version.name}` : "Making a copy this viewer can play";
+  const word = version?.state !== "preparing" || version.proxyError ? undefined : version.probe?.kind === "image" ? `Converting ${version.name}` : "Getting it ready to play";
   if (kind === "image")
     return (
       <div data-media-loading className="grid size-full place-items-center bg-(--stage)">
-        {word ? <Preparing word={word} progress={version?.progress} /> : version && version.state !== "probing" ? null : <Skeleton className="aspect-[4/5] w-[40%] rounded-[4px]" />}
+        {word ? <Preparing word={word} progress={version?.progress} /> : version && version.state !== "probing" ? null : <Skeleton className="aspect-[4/5] w-[40%] rounded-lg" />}
       </div>
     );
   return (
     <div data-media-loading>
-      <PlayerSkeleton line={undefined} probe={version?.probe} />
-      {word ? (
-        <div className="px-3 pt-1">
-          <Preparing word={word} progress={version?.progress} />
-        </div>
-      ) : version && version.state !== "probing" ? null : (
-        <NotesSkeleton />
-      )}
+      <PlayerSkeleton line={word ? <Preparing word={word} progress={version?.progress} /> : undefined} probe={version?.probe} />
+      {word || (version && version.state !== "probing") ? null : <NotesSkeleton />}
     </div>
   );
 }
 
+/** What is under way, its share at the end of its words, over the bar that fills with it. */
 function Preparing({ word, progress }: { word: string; progress?: number }) {
   return (
-    <div className="flex w-[240px] flex-col gap-2">
-      <div className="flex text-xs text-muted-foreground">
-        <span className="truncate">{word}</span>
-        {progress !== undefined ? <span className="ms-auto tabular-nums">{Math.round(progress * 100)}%</span> : null}
+    <div data-media-preparing className="flex w-[240px] max-w-[80%] flex-col gap-2">
+      <div className="truncate text-xs text-muted-foreground">
+        {word}
+        {progress !== undefined ? <span className="tabular-nums">{` ${Math.round(progress * 100)}%`}</span> : null}
       </div>
       <Progress value={progress === undefined ? null : progress * 100} aria-label={word} />
     </div>
@@ -365,18 +373,19 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
   if (play?.via === "image" || play?.via === "tiles") {
     const zoom = state?.zoom ?? "fit";
     const step = (dir: 1 | -1): void => {
-      const now = zoom === "fit" ? 1 : zoom;
-      const next = dir > 0 ? ZOOMS.find((z) => z > now + 1e-6) : [...ZOOMS].reverse().find((z) => z < now - 1e-6);
+      const next = stepZoom(zoom, fitted.get(item.id), dir);
       if (next) set({ zoom: next });
     };
     const p = shown.probe;
+    const facts = [play.width ? `${play.width} × ${play.height}` : null, p ? (p.size >= 1e6 ? `${(p.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(p.size / 1e3))} KB`) : null].filter(Boolean).join(", ");
     return (
       <>
-        {/* The picture's facts go whole in the narrow bar, so the zoom keeps its room. */}
-        <span data-narrow-hide className="flex min-w-0 gap-2 truncate tabular-nums @max-[560px]/bar:hidden">
-          {play.width ? <span>{`${play.width} × ${play.height}`}</span> : null}
-          {p ? <span>{p.size >= 1e6 ? `${(p.size / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(p.size / 1e3))} KB`}</span> : null}
-        </span>
+        {/* The picture's facts, one comma sentence, go whole in the narrow bar, so the zoom keeps its room. */}
+        {facts ? (
+          <span data-narrow-hide data-media-facts className="min-w-0 truncate tabular-nums @max-[560px]/bar:hidden">
+            {facts}
+          </span>
+        ) : null}
         <Tip label="Zoom out">
           <Button variant="ghost" size="icon-xs" aria-label="Zoom out" className="text-muted-foreground" onClick={() => step(-1)}>
             <ZoomOut />
@@ -404,7 +413,7 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
   }
 
   if (versions.length < 2) return null;
-  // History sits at the bar's end, labelled, where every kind's History is (docs/DESIGN.md "The canvas pane").
+  // Versions sits at the bar's end, labelled, where every kind's History is (docs/DESIGN.md "The canvas pane"); its tip names it where the narrow bar keeps the glyph alone.
   return (
     <RowsMenu
       label="Versions"
@@ -412,11 +421,12 @@ export function Bar({ item, env, state, setState }: CanvasBodyProps<MediaState>)
       rows={versionRows(shown.id)}
       onPick={(id) => (id === shown.id ? undefined : set({ compare: id }))}
       trigger={
-        <Button variant="ghost" size="xs" aria-label="History" className="ms-auto">
+        <Button variant="ghost" size="xs" aria-label="Versions" className="ms-auto">
           <History />
-          <span data-narrow-hide className="@max-[560px]/bar:hidden">History</span>
+          <span data-narrow-hide className="@max-[560px]/bar:hidden">Versions</span>
         </Button>
       }
+      tip={{ label: "Versions" }}
     />
   );
 }

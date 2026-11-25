@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react";
 import { clock, frameCentre, frameCount, frameStart, tableDuration, tableFps } from "@shared/mediaFrames";
 import type { FrameTable, MediaNote, MediaRegion, MediaVersion } from "@shared/contract-work-media";
 import { RowsMenu } from "../../chrome/menuRows";
-import { Pause, Play } from "../../chrome/icons";
+import { Minimize2, Pause, Play } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
@@ -113,8 +113,13 @@ export function frameRatio(probe: MediaVersion["probe"] | undefined): number {
   return probe && probe.width && probe.height ? (turned ? probe.height / probe.width : probe.width / probe.height) : 16 / 9;
 }
 
-/** The frame's box at a shape: as wide as the player, and never taller than 58% of the window. The bones take the same box. */
-const frameStyle = (ratio: number): CSSProperties => ({ aspectRatio: String(ratio), maxWidth: `calc(58vh * ${ratio})` });
+/**
+ * The frame's box at a shape: as wide as the player, and never taller than 58% of the window. The bones take the same box.
+ * Full screen lifts the cap (`--frame-cap` on the player) to the screen less the track and the transport.
+ */
+const frameStyle = (ratio: number): CSSProperties => ({ aspectRatio: String(ratio), maxWidth: `calc(var(--frame-cap, 58vh) * ${ratio})` });
+/** The whole player full screen: the frame as large as the screen leaves room for, the track and transport under it. */
+const FULL = "[&:fullscreen]:flex [&:fullscreen]:flex-col [&:fullscreen]:justify-center [&:fullscreen]:bg-background [&:fullscreen]:px-6 [&:fullscreen]:pb-3 [&:fullscreen]:[--frame-cap:calc(100vh_-_96px)]";
 
 function Screen({ version, label, videoRef, region, selecting, stalled = false, onRegion, onClick }: { version: MediaVersion; label?: string; videoRef(el: HTMLVideoElement | null): void; region: MediaRegion | null; selecting: boolean; stalled?: boolean; onRegion?(r: MediaRegion, rect: DOMRect): void; onClick(): void }) {
   return (
@@ -192,7 +197,27 @@ export function Player({
   const [scrub, setScrub] = useState<number | null>(null);
   const seeking = useRef<Promise<void> | null>(null);
   const track = useRef<HTMLDivElement>(null);
-  const frameBox = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  // Full screen holds the whole player, so the track and the transport come with the picture.
+  const [full, setFull] = useState(false);
+  useEffect(() => {
+    const changed = (): void => setFull(!!root.current && document.fullscreenElement === root.current);
+    document.addEventListener("fullscreenchange", changed);
+    return () => document.removeEventListener("fullscreenchange", changed);
+  }, []);
+  const fullScreen = (): void => {
+    const el = root.current;
+    if (!el) return;
+    if (document.fullscreenElement === el) {
+      void document.exitFullscreen?.();
+      return;
+    }
+    // The focus moves into the player, so Space plays there instead of pressing Full screen again.
+    void el.requestFullscreen?.()?.then(
+      () => el.focus({ preventScroll: true }),
+      () => undefined,
+    );
+  };
   const table = tableOf(versions[0]);
   const total = table ? frameCount(table) : 0;
   const start = table ? frameStart(table, 0) : 0;
@@ -373,9 +398,10 @@ export function Player({
 
   return (
     <div
+      ref={root}
       data-media-player
       tabIndex={0}
-      className="focus-ring @container min-w-0 px-3 pt-3"
+      className={`focus-ring @container min-w-0 px-3 pt-3 ${FULL}`}
       onKeyDown={(e) => {
         if (!table || chordKey(e)) return;
         // A focused control keeps its own keys: Space presses the button, the arrows move in a menu.
@@ -392,7 +418,7 @@ export function Player({
       }}
     >
       {/* Two cuts sit side by side from a 600px player; narrower, one over the other, so neither shrinks to a sliver. */}
-      <div ref={frameBox} data-media-cuts={versions.length > 1 || undefined} className={versions.length > 1 ? "grid gap-2 @[600px]:grid-cols-2" : ""}>
+      <div data-media-cuts={versions.length > 1 || undefined} className={versions.length > 1 ? "grid gap-2 @[600px]:grid-cols-2" : ""}>
         {versions.map((v, i) => (
           <Screen
             key={v.id}
@@ -543,9 +569,9 @@ export function Player({
                 {muted ? <VolumeOff className="size-3.5" /> : <Volume className="size-3.5" />}
               </Button>
             </Tip>
-            <Tip label="Full screen">
-              <Button variant="ghost" size="icon-xs" aria-label="Full screen" className="text-muted-foreground" onClick={() => void frameBox.current?.requestFullscreen?.()}>
-                <FullScreen className="size-3.5" />
+            <Tip label={full ? "Leave full screen" : "Full screen"}>
+              <Button variant="ghost" size="icon-xs" aria-label={full ? "Leave full screen" : "Full screen"} className="text-muted-foreground" onClick={fullScreen}>
+                {full ? <Minimize2 className="size-3.5" /> : <FullScreen className="size-3.5" />}
               </Button>
             </Tip>
           </span>
@@ -560,11 +586,16 @@ export function Player({
  * vertical short stands tall, never 16:9 then narrow), the track and the transport as bones, each in the box and at the
  * height the player gives it, so nothing under the player moves when it lands.
  */
-export function PlayerSkeleton({ line, probe }: { line?: string; probe?: MediaVersion["probe"] }) {
+export function PlayerSkeleton({ line, probe }: { line?: ReactNode; probe?: MediaVersion["probe"] }) {
   return (
     <div className="px-3 pt-3">
-      <Skeleton data-media-frame-bone className="relative mx-auto grid w-full place-items-center rounded-lg" style={frameStyle(frameRatio(probe))}>
-        {line ? <span className="text-xs text-muted-foreground">{line}</span> : null}
+      {/* A wait with words in it (a copy being made to play) is the frame on the stage, so its bar's track shows; else the bone. */}
+      <Skeleton
+        data-media-frame-bone
+        className={`relative mx-auto grid w-full place-items-center rounded-lg ${line && typeof line !== "string" ? "bg-(--stage) outline-1 -outline-offset-1 outline-(--image-outline)" : ""}`}
+        style={frameStyle(frameRatio(probe))}
+      >
+        {line ? typeof line === "string" ? <span className="text-xs text-muted-foreground">{line}</span> : line : null}
       </Skeleton>
       <div data-media-track-bone className="mt-1.5 flex h-6 items-center">
         <Skeleton className="h-1 flex-1 rounded-[2px]" />

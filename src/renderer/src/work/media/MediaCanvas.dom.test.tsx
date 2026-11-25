@@ -61,9 +61,10 @@ vi.mock("./segments", async (original) => ({
 
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { dayTime } from "../../lib/duration";
-import { Bar, Body, selectionChip } from "./MediaCanvas";
+import { Bar, Body, selectionChip, stepZoom } from "./MediaCanvas";
 import { levelFor, scaleOf } from "./Picture";
 import { FEED_FAILED, nativeErrorWords, playWords } from "./Player";
+import { Notes } from "./Notes";
 import { resetMediaStore } from "./store";
 
 const table: FrameTable = { kind: "cfr", start: 0, rate: { num: 24, den: 1 }, count: 3216 };
@@ -413,12 +414,23 @@ describe("the media canvas", () => {
     expect(document.querySelector('[data-slot="skeleton"]')).not.toBeNull();
   });
 
-  it("puts History at the bar's end, labelled, and two cuts one over the other in a narrow player", async () => {
+  it("puts Versions at the bar's end, labelled, with its tip, and two cuts one over the other in a narrow player", async () => {
     const V2: MediaVersion = { ...V3, id: "v2", n: 2, name: "trailer v2.mp4", addedAt: 0 };
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
     await mount({ versions: [V2, V3] });
     render(<Bar item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
-    const history = screen.getByRole("button", { name: "History" });
-    expect(history.className).toContain("ms-auto");
+    const versions = screen.getByRole("button", { name: "Versions" });
+    expect(versions.className).toContain("ms-auto");
+    // In the narrow bar it is the glyph alone: the tip names it.
+    await act(async () => {
+      fireEvent.pointerEnter(versions, { pointerType: "mouse" });
+      fireEvent.mouseEnter(versions);
+      fireEvent.mouseMove(versions);
+    });
+    expect((await screen.findByText("Versions", { selector: "[data-slot=tooltip-content] *, [data-slot=tooltip-content]" })).closest("[data-slot=tooltip-content]")).toBeTruthy();
     cleanup();
     host.view = { itemId: "item1", kind: "video", versions: [V2, V3], notes: [], mode: "writes", shared: false, rev: 1 };
     render(<Body item={ITEM} source={ITEM.source} env="local" state={{ compare: "v2" }} setState={() => undefined} shell={fakeShell()} />);
@@ -428,11 +440,11 @@ describe("the media canvas", () => {
     expect(cuts.closest("[data-media-player]")!.className).toContain("@container");
   });
 
-  it("keeps every bar tool whole in a narrow bar: History's word and a picker's day go, the glyph and the version stay", async () => {
+  it("keeps every bar tool whole in a narrow bar: Versions' word and a picker's day go, the glyph and the version stay", async () => {
     const V2: MediaVersion = { ...V3, id: "v2", n: 2, name: "trailer v2.mp4", addedAt: 0 };
     await mount({ versions: [V2, V3] });
     render(<Bar item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
-    const word = within(screen.getByRole("button", { name: "History" })).getByText("History");
+    const word = within(screen.getByRole("button", { name: "Versions" })).getByText("Versions");
     expect(word.hasAttribute("data-narrow-hide")).toBe(true);
     expect(word.className).toContain("@max-[560px]/bar:hidden");
     cleanup();
@@ -468,6 +480,83 @@ describe("the media canvas", () => {
       fireEvent.mouseMove(full);
     });
     expect((await screen.findByText("Full screen", { selector: "[data-slot=tooltip-content] *, [data-slot=tooltip-content]" })).closest("[data-slot=tooltip-content]")).toBeTruthy();
+  });
+
+  it("puts the whole player full screen, the track and the transport with the frame, and gives it the focus", async () => {
+    await mount();
+    const asked: Element[] = [];
+    const before = HTMLElement.prototype.requestFullscreen;
+    HTMLElement.prototype.requestFullscreen = function (this: HTMLElement) {
+      asked.push(this);
+      Object.defineProperty(document, "fullscreenElement", { value: this, configurable: true });
+      document.dispatchEvent(new Event("fullscreenchange"));
+      return Promise.resolve();
+    };
+    try {
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Full screen" })));
+      const player = document.querySelector<HTMLElement>("[data-media-player]")!;
+      expect(asked).toEqual([player]);
+      expect(player.contains(screen.getByRole("slider", { name: "Frame" }))).toBe(true);
+      // Space plays from the player now, never presses Full screen again.
+      await waitFor(() => expect(document.activeElement).toBe(player));
+      expect(screen.getByRole("button", { name: "Leave full screen" })).toBeTruthy();
+      // Full screen lifts the frame's 58vh cap to the screen less the track and the transport.
+      expect(player.className).toContain("[&:fullscreen]:[--frame-cap:calc(100vh_-_96px)]");
+      expect(document.querySelector("[data-media-frame]")!.getAttribute("style")).toContain("var(--frame-cap, 58vh)");
+    } finally {
+      HTMLElement.prototype.requestFullscreen = before;
+      Object.defineProperty(document, "fullscreenElement", { value: null, configurable: true });
+    }
+  });
+
+  it("says a copy being made to play as getting it ready, its share at the end, in the frame's place", async () => {
+    host.view = { itemId: "item1", kind: "video", versions: [{ ...V3, state: "preparing", plays: [], progress: 0.34 }], notes: [], mode: "writes", shared: false, rev: 1 };
+    const { container } = render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+    const preparing = await waitFor(() => {
+      const el = container.querySelector<HTMLElement>("[data-media-preparing]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(preparing.textContent).toContain("Getting it ready to play 34%");
+    expect(container.textContent).not.toContain("this viewer");
+    // In the frame's bone, not under it beside the notes' bones.
+    expect(preparing.closest("[data-media-frame-bone]")).not.toBeNull();
+    expect(container.querySelectorAll("[data-media-frame-bone]")).toHaveLength(1);
+  });
+
+  it("shows a saved comment at once, before the view is read again", async () => {
+    await mount();
+    host.hold = true;
+    fireEvent.click(screen.getByRole("button", { name: "Comment at this frame" }));
+    const field = await screen.findByRole("textbox", { name: "Comment" });
+    fireEvent.change(field, { target: { value: "Logo too small" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    // The view read after it never answers here: the row comes from the note's own answer.
+    expect(await screen.findByRole("button", { name: /Logo too small/ })).toBeTruthy();
+  });
+
+  it("steps every note row's fill on a press, the waiting and the playing rows too", () => {
+    const kept: MediaNote = { ...agentNote("k1", 24), by: "owner", state: "kept" };
+    render(<Notes notes={[kept, agentNote("a1", 48), { ...kept, id: "k2", anchor: { versionId: "v3", frame: 72 } }]} table={table} current="k2" playing={null} onPick={() => undefined} />);
+    const rows = document.querySelectorAll<HTMLElement>("[data-note]");
+    for (const row of rows) {
+      expect(row.className.split(" ")).toEqual(expect.arrayContaining(["active:bg-foreground/12", "active:transition-none"]));
+      expect(row.className).not.toMatch(/active:scale/);
+    }
+    // A plain row hovers; a waiting or a current row keeps its own fill.
+    expect(rows[0].className).toContain("hover:bg-foreground/5");
+    expect(rows[1].className).toContain("bg-(--add-bg)");
+    expect(rows[2].className).toContain("bg-muted");
+  });
+
+  it("says a compare's failed version in his words, never the host's raw line", async () => {
+    const V2: MediaVersion = { ...V3, id: "v2", n: 2, name: "trailer v2.mp4", state: "failed", error: "ffprobe: /srv/work/trailer v2.mp4: Invalid data found", plays: [] };
+    host.view = { itemId: "item1", kind: "video", versions: [V2, V3], notes: [], mode: "writes", shared: false, rev: 1 };
+    const shell = fakeShell();
+    render(<Body item={ITEM} source={ITEM.source} env="local" state={{ compare: "v2" }} setState={() => undefined} shell={shell} />);
+    await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(expect.objectContaining({ tone: "failed", word: "trailer v2.mp4 could not be shown" })));
+    const line = shell.statusLine.mock.lastCall![0] as { detail?: string };
+    expect(line.detail).toBeUndefined();
   });
 
   it("hands Ask a stretch as the thread reads it, with its exact frames", () => {
@@ -532,8 +621,55 @@ describe("the media canvas", () => {
     await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(null));
   });
 
+  it("draws a picture 12px in at radius 8, and its size and bytes as one sentence in the bar", async () => {
+    const IMG: MediaVersion = { ...V3, id: "p1", name: "LAN poster.png", probe: { ...V3.probe!, kind: "image", size: 2_100_000 }, plays: [{ via: "image", url: "tempcode-asset://file/x/poster.png", width: 1600, height: 2000 }] };
+    host.view = { itemId: "item1", kind: "image", versions: [IMG], notes: [], mode: "writes", shared: false, rev: 1 };
+    const { container } = render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+    const picture = await waitFor(() => {
+      const el = container.querySelector<HTMLElement>("[data-media-picture]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const frame = picture.parentElement!;
+    expect(frame.className).toContain("rounded-lg");
+    expect(frame.parentElement!.className.split(" ")).toContain("p-3");
+    expect(frame.getAttribute("style")).toContain("100cqw - 24px");
+    render(<Bar item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+    expect(document.querySelector("[data-media-facts]")!.textContent).toBe("1600 × 2000, 2.1 MB");
+  });
+
+  it("steps the zoom from the scale Fit shows, never as if Fit were 100%", async () => {
+    expect(stepZoom("fit", 0.3, 1)).toBe(0.5);
+    expect(stepZoom("fit", 0.3, -1)).toBe(0.25);
+    expect(stepZoom("fit", undefined, 1)).toBe(2);
+    expect(stepZoom(4, undefined, 1)).toBeUndefined();
+    // In the bar: a poster fitted to a small stage at about 35% zooms in to 50%, and out to 25%, never larger.
+    const IMG: MediaVersion = { ...V3, id: "p1", name: "LAN poster.png", plays: [{ via: "image", url: "tempcode-asset://file/x/poster.png", width: 1080, height: 1350 }] };
+    host.view = { itemId: "item1", kind: "image", versions: [IMG], notes: [], mode: "writes", shared: false, rev: 1 };
+    const sizes = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-media-stage") ? 400 : 0;
+    });
+    const heights = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-media-stage") ? 500 : 0;
+    });
+    try {
+      const { container } = render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+      await waitFor(() => expect(container.querySelector("[data-media-picture]")).not.toBeNull());
+      const set = vi.fn();
+      render(<Bar item={ITEM} source={ITEM.source} env="local" state={undefined} setState={set} shell={fakeShell()} />);
+      fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+      expect(set).toHaveBeenLastCalledWith({ zoom: 0.5 });
+      fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+      expect(set).toHaveBeenLastCalledWith({ zoom: 0.25 });
+    } finally {
+      sizes.mockRestore();
+      heights.mockRestore();
+    }
+  });
+
   it("fits a picture without enlarging it, and draws a huge one from the tile level its zoom needs", () => {
-    expect(scaleOf("fit", { width: 1080, height: 1350 }, { width: 600, height: 700 })).toBeCloseTo(652 / 1350);
+    // Inside the 12px inset on each side.
+    expect(scaleOf("fit", { width: 1080, height: 1350 }, { width: 600, height: 700 })).toBeCloseTo(676 / 1350);
     expect(scaleOf("fit", { width: 200, height: 100 }, { width: 600, height: 700 })).toBe(1);
     expect(scaleOf(2, { width: 1, height: 1 }, { width: 0, height: 0 })).toBe(2);
     // 8192 px wide: levels 0 to 13 (14 of them), tiles cut from level 9 up.

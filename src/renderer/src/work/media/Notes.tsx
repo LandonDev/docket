@@ -1,12 +1,14 @@
 import { clock, frameStart } from "@shared/mediaFrames";
 import type { FrameTable, MediaNote } from "@shared/contract-work-media";
+import { ROW_PRESS } from "../../components/ui/press";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Author, authorOf } from "./parts";
 
 /**
  * The list under the frame (docs/DESIGN.md "Images and video"): comments
  * and chapters by time, rows of 32px or more on a 36/20/1fr grid. A click
- * goes to the note's frame; the row playing sits on `muted`. An agent's note
+ * goes to the note's frame; the row playing sits on `muted`. A press steps
+ * every row's fill to foreground/12 at once, as every row's does (`ROW_PRESS`). An agent's note
  * waiting for the person carries the added tint, and the one the stepper is
  * on a hairline in the same hue.
  */
@@ -42,9 +44,9 @@ export function Notes({
             data-note={n.id}
             aria-current={on || undefined}
             onClick={() => onPick(n)}
-            className={`grid w-full min-w-0 items-start gap-x-2 rounded-md px-2 py-1.5 text-start text-[13px] leading-5 text-foreground transition-[background-color] duration-(--dur-hover) ease-(--ease-out) motion-reduce:transition-none ${
+            className={`grid w-full min-w-0 items-start gap-x-2 rounded-md px-2 py-1.5 text-start text-[13px] leading-5 text-foreground ${
               timed ? "grid-cols-[36px_20px_minmax(0,1fr)]" : "grid-cols-[20px_minmax(0,1fr)]"
-            } ${waiting ? `bg-(--add-bg) ${on ? "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--success)_50%,transparent)]" : ""}` : on ? "bg-muted" : "hover:bg-foreground/5"}`}
+            } ${waiting || on ? `${STEP_PRESS} ${waiting ? `bg-(--add-bg) ${on ? "shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--success)_50%,transparent)]" : ""}` : "bg-muted"}` : ROW_PRESS}`}
           >
             {timed ? <time className={`text-xs leading-5 tabular-nums ${on ? "text-foreground" : "text-muted-foreground"}`}>{at(n)}</time> : null}
             {/* A chapter has no author: its title takes the author's column too, so it starts 8px after its time. */}
@@ -58,6 +60,9 @@ export function Notes({
     </div>
   );
 }
+
+/** A row that keeps its own fill (waiting, or the one playing): no hover wash over it, and the same step on a press. */
+const STEP_PRESS = "transition-[background-color] duration-(--dur-hover) ease-(--ease-out) active:bg-foreground/12 active:transition-none motion-reduce:transition-none";
 
 /** The list's three loading rows. */
 export function NotesSkeleton() {

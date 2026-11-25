@@ -1487,7 +1487,9 @@ The kinds, each a hand-made body built from components/ui:
   Ask on a stretch or a region chips "start to end, file" or "Region of
   file". The transport has a Comment button that notes the frame shown,
   with no selection; an image region's selection bar has Comment, not
-  Copy. Two versions compare inside the item, side by side on one
+  Copy. Full screen holds the whole player: the frame grows to the
+  screen less the track and the transport, which come with it. Two
+  versions compare inside the item, side by side on one
   transport, chosen by two pickers in the bar, never as a compare tab. A
   note for a shared review service is a suggestion here and a held "Post
   on …" in the thread, never a canvas button.

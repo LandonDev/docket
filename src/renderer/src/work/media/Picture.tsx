@@ -5,20 +5,22 @@ import type { MediaActions } from "./store";
 
 /**
  * A picture on the stage (docs/DESIGN.md "Images and video"): fitted inside
- * a 24px inset, or at a zoom the bar sets, scrolling when it is larger than
+ * a 12px inset at radius 8, as the video's frame is, or at a zoom the bar sets, scrolling when it is larger than
  * the stage. A drag on it takes a region. A picture too large to decode
  * whole is drawn from the host's Deep Zoom tiles at the level the zoom
  * needs, over its preview.
  */
 
 export type Zoom = "fit" | number;
+/** The stage's inset round the picture, each side: the video frame's 12px. */
+const INSET = 12;
 type ImagePlay = Extract<MediaPlay, { via: "image" | "tiles" }>;
 
 /** The scale a zoom means for a picture on a stage of this size: fit never enlarges past 1. */
 export function scaleOf(zoom: Zoom, picture: { width: number; height: number }, stage: { width: number; height: number }): number {
   if (zoom !== "fit") return zoom;
-  if (!picture.width || !picture.height || stage.width <= 48 || stage.height <= 48) return 1;
-  return Math.min(1, (stage.width - 48) / picture.width, (stage.height - 48) / picture.height);
+  if (!picture.width || !picture.height || stage.width <= INSET * 2 || stage.height <= INSET * 2) return 1;
+  return Math.min(1, (stage.width - INSET * 2) / picture.width, (stage.height - INSET * 2) / picture.height);
 }
 
 /** The Deep Zoom level a scale draws from; below `minLevel` the preview alone does. */
@@ -77,11 +79,11 @@ export function Picture({
   useEffect(() => onScale(scale), [scale, onScale]);
   const w = Math.round(play.width * scale);
   const h = Math.round(play.height * scale);
-  // Fit is the stage's own sizing, as the prototype's: the picture inside the 24px inset, never past its own pixels.
+  // Fit is the stage's own sizing, as the prototype's: the picture inside the 12px inset, never past its own pixels.
   const ratio = play.width / Math.max(1, play.height);
   const box =
     zoom === "fit"
-      ? { aspectRatio: String(ratio), width: `min(100cqw - 48px, (100cqh - 48px) * ${ratio.toFixed(5)}, ${play.width}px)` }
+      ? { aspectRatio: String(ratio), width: `min(100cqw - ${INSET * 2}px, (100cqh - ${INSET * 2}px) * ${ratio.toFixed(5)}, ${play.width}px)` }
       : { width: w, height: h };
   return (
     <div
@@ -90,8 +92,8 @@ export function Picture({
       className="grid size-full min-h-0 overflow-auto bg-(--stage) [container-type:size]"
       onScroll={(e) => setView({ left: e.currentTarget.scrollLeft, top: e.currentTarget.scrollTop })}
     >
-      <div className="m-auto p-6">
-        <div className="relative overflow-hidden rounded-[4px] outline-1 -outline-offset-1 outline-(--image-outline)" style={box}>
+      <div className="m-auto p-3">
+        <div className="relative overflow-hidden rounded-lg outline-1 -outline-offset-1 outline-(--image-outline)" style={box}>
           {play.via === "image" ? (
             <img
               key={`${play.url}#${attempt}`}
@@ -142,15 +144,15 @@ function Tiles({
   const factor = level === null ? 0 : 2 ** (max - level);
   const lw = level === null ? 0 : Math.ceil(play.width / factor);
   const lh = level === null ? 0 : Math.ceil(play.height / factor);
-  // A level's pixel on screen; the stage's 24px inset is outside the picture.
+  // A level's pixel on screen; the stage's inset is outside the picture.
   const px = level === null ? 0 : (play.width * scale) / lw;
   const cols = Math.ceil(lw / play.tile);
   const rows = Math.ceil(lh / play.tile);
   const t = play.tile * px;
-  const x0 = Math.max(0, Math.floor((shown.left - 24) / t));
-  const y0 = Math.max(0, Math.floor((shown.top - 24) / t));
-  const x1 = Math.min(cols - 1, Math.floor((shown.left - 24 + shown.width) / t));
-  const y1 = Math.min(rows - 1, Math.floor((shown.top - 24 + shown.height) / t));
+  const x0 = Math.max(0, Math.floor((shown.left - INSET) / t));
+  const y0 = Math.max(0, Math.floor((shown.top - INSET) / t));
+  const x1 = Math.min(cols - 1, Math.floor((shown.left - INSET + shown.width) / t));
+  const y1 = Math.min(rows - 1, Math.floor((shown.top - INSET + shown.height) / t));
   const wanted: Array<[number, number]> = [];
   if (level !== null) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) wanted.push([x, y]);
   // The preview's URL carries the file's time: a picture written again never shows its old tiles.

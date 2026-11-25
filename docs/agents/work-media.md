@@ -212,7 +212,18 @@ The body is the approved pick, the player over its comments: the frame
 head, a 2 by 6 tick per note, segments per chapter), the 32px transport
 (play, the time, a comment at this frame, speed, sound, full screen), then
 the notes by time on a 36/20/1fr grid. A click on a note goes back to its
-frame and shows its region.
+frame and shows its region. Every row hovers at foreground/5 and steps to
+foreground/12 at once on a press (`ROW_PRESS`); a waiting row and the one
+playing keep their own fill and take the same step. A comment he saves
+shows at once: the host's answer is the note, kept in the item's view
+(`keepNote`, store.ts) before the view is read again.
+
+- **Full screen** holds the whole player (`data-media-player`), so the
+  track and the transport come with the picture: the frame's 58vh cap
+  (`--frame-cap`) becomes the screen less those two rows, on the theme's
+  `background`, and the focus moves into the player, so Space plays
+  instead of pressing the button again. The button reads Leave full screen
+  there; Escape leaves too.
 
 - **Stalls and scrubbing**: a `waiting` that lasts `STALL_SHOWN_MS` (300 ms,
   lib/ease.ts) puts a 16px `Spinner` on a 32px round of `matte` at half at
@@ -231,20 +242,26 @@ frame and shows its region.
 - **Keys** on the player: Space or K plays; the arrows (or , and .) step
   a frame, Shift a second; Home and End. A focused button or menu keeps
   its own keys.
-- **Versions**: the bar's History menu lists them; picking another plays
+- **Versions**: the bar's Versions menu lists them (its tip names it where
+  the narrow bar keeps the glyph alone); picking another plays
   it beside the shown one on one transport, kept on the same frame index,
   with two pickers and a close in the bar in place of the mode. A compare
   takes no region.
-- **An image** fits the stage (`--stage`) inside a 24px inset; the bar
-  holds its size, its bytes and zoom (Fit, 25% to 400%).
+- **An image** fits the stage (`--stage`) 12px in at radius 8, as the
+  video's frame is; the bar holds its size and bytes as one sentence
+  ("1600 × 2000, 2.1 MB") and zoom (Fit, 25% to 400%). Zoom in and out
+  step from the scale Fit shows (`stepZoom`): a poster fitted at 30% goes
+  to 50% or 25%, never to 200%.
 - **States**: bones while the host reads the file, the frame at the file's
   own shape once the probe has read it (`frameRatio`, the box the player's
   frame takes) and the track and transport at their own heights, so a
-  vertical short does not land narrow and the notes do not jump; a bar with the share
-  done while a proxy or a conversion is made; when the file does not open
+  vertical short does not land narrow and the notes do not jump; while a
+  proxy is made, "Getting it ready to play 34%" over its bar in the
+  frame's place (a conversion of a picture names it: "Converting …"); when the file does not open
   or the shown version fails, the centred "Couldn't open this file" with
   its reason and Retry (`OpenFailed`); the pane's state line, with Retry,
-  only when the version beside it in a compare fails.
+  only when the version beside it in a compare fails, its reason in his
+  words (`workErrorWords`), never the host's raw line.
 
 ## Frame.io (milestone 48)
 

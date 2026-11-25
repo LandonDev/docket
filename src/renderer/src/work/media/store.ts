@@ -66,11 +66,19 @@ export function useMedia(env: string, itemId: string): MediaEntry {
 const call = <T,>(env: string, method: string, params: Record<string, unknown>): Promise<T> => registry.linkOf(env).request<T>(method, params);
 const andApply = async (p: Promise<MediaView>): Promise<void> => applyMediaView(await p);
 
+/** A note the host answered with goes into the item's view at once, in its place or added: the row shows before the view is read again. */
+export function keepNote(itemId: string, note: MediaNote): void {
+  const view = entries.get(itemId)?.view;
+  if (!view) return;
+  const notes = view.notes.some((n) => n.id === note.id) ? view.notes.map((n) => (n.id === note.id ? note : n)) : [...view.notes, note];
+  put(itemId, { view: { ...view, notes } });
+}
+
 /** What the canvas asks of the host. Each answer that is a view is applied at once; the push follows. */
 export const mediaActions = (env: string, itemId: string) => ({
-  // A note's answer is the note; the view is asked again at once rather than waiting for the push.
-  note: (anchor: MediaAnchor, body: string, kind: MediaNote["kind"] = "comment") => call<MediaNote>(env, "work.media.note", { itemId, anchor, body, kind }).then((n) => (void loadMedia(env, itemId), n)),
-  edit: (noteId: string, patch: { body?: string; resolved?: boolean }) => call<MediaNote>(env, "work.media.edit", { noteId, ...patch }).then((n) => (void loadMedia(env, itemId), n)),
+  // A note's answer is the note: kept in the view at once, then the view is asked again rather than waiting for the push.
+  note: (anchor: MediaAnchor, body: string, kind: MediaNote["kind"] = "comment") => call<MediaNote>(env, "work.media.note", { itemId, anchor, body, kind }).then((n) => (keepNote(itemId, n), void loadMedia(env, itemId), n)),
+  edit: (noteId: string, patch: { body?: string; resolved?: boolean }) => call<MediaNote>(env, "work.media.edit", { noteId, ...patch }).then((n) => (keepNote(itemId, n), void loadMedia(env, itemId), n)),
   remove: (noteId: string) => call<null>(env, "work.media.remove", { noteId }).then(() => void loadMedia(env, itemId)),
   decide: (which: string, accept: boolean) => andApply(call<MediaView>(env, "work.media.decide", { itemId, which, accept })),
   mode: (mode: MediaView["mode"]) => andApply(call<MediaView>(env, "work.media.mode", { itemId, mode })),
