@@ -301,7 +301,7 @@ state (`LIVE_RESIZE_WORDS`) and on the row:
    `C:\ProgramData\TempCode\tc-ibeam.cur`, from resources/winvm/tc-ibeam.cur, the M0 spike's file): Windows' own
    monochrome I-beam is drawn into the picture beside the last hardware shape, an alpha one is a hardware pointer
    too (liveResize.ts `stageScript`).
-3. "Restarting Windows": `shutdown /s /full /t 0`, a clean shutdown, never a hibernate and never forced. QEMU
+3. "Restarting Windows": `shutdown /s /t 0`, a clean, full shutdown (from the command line `/s` is full; `/hybrid` would be Fast Startup's, and Windows has no `/full`), never a hibernate and never forced. QEMU
    has 3 minutes to exit; past them the move is called off, nothing new is started, Windows stays on std VGA as
    it is, and the row says "An app in Windows kept it from restarting. Save your work and try again."
 4. "Saving a restore point": `keepTpm()`, then a point of the stopped machine, "Before live resize" (by the

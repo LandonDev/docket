@@ -23,6 +23,13 @@ export interface Ran {
  * no command line, so its own SSH runs nothing), and as tcuser only for the
  * one lasting connection that carries the door's forward.
  */
+/**
+ * A clean, full shutdown: from the command line `/s` is full (`/hybrid` would be Fast Startup's, a hibernate of the
+ * kernel), never `/f` (an app with his unsaved work may refuse it), and no `/full`: Windows has none, and refuses the
+ * whole line and keeps running.
+ */
+export const FULL_SHUTDOWN = 'shutdown /s /t 0'
+
 export class SshGuest implements VmGuest {
   constructor(
     private readonly c: RigConfig,
@@ -93,7 +100,7 @@ export class SshGuest implements VmGuest {
 
   async shutdown(): Promise<void> {
     // a full shutdown, not Fast Startup's hybrid one, and never /f: an app with unsaved work may say no
-    await this.ssh(ADMIN_USER, 'shutdown /s /full /t 0', '', 30_000)
+    await this.ssh(ADMIN_USER, FULL_SHUTDOWN, '', 30_000)
   }
 
   async reboot(): Promise<void> {

@@ -53,7 +53,11 @@ export interface VmGuest {
   hibernate(): Promise<void>
   /** restarts Windows and returns once it has gone down */
   reboot(): Promise<void>
-  /** a clean, full shutdown (`shutdown /s /full /t 0`): never a hibernate, never forced, so an app may refuse it */
+  /**
+   * a clean, full shutdown (`shutdown /s /t 0`): never a hibernate, never forced, so an app may refuse it. From the
+   * command line `/s` is a full shutdown already (`/hybrid` is Fast Startup's); there is no `/full`, and Windows refuses
+   * the line whole and keeps running (found on a scratch machine, Nov 25).
+   */
   shutdown(): Promise<void>
   /** sha256 of the service in the guest; null when it has none */
   serviceHash(): Promise<string | null>

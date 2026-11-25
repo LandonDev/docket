@@ -22,7 +22,7 @@ import { psQuote } from '../../src/main/server/work/winvm/machine/guest'
 import type { DisplayDevice } from '../../src/main/server/work/winvm/machine/qemu'
 import { Qmp } from '../../src/main/server/work/winvm/machine/qmp'
 import { VM_COMPUTER, VmPicture } from '../../src/main/server/work/winvm/picture'
-import { SshGuest } from '../../src/main/server/work/winvm/sshGuest'
+import { FULL_SHUTDOWN, SshGuest } from '../../src/main/server/work/winvm/sshGuest'
 import { StandingMachine } from '../../src/main/server/work/winvm/standing'
 import { pictureToolsAt, VmScreen } from '../../src/main/server/work/winvm/window'
 import { liveAppTrouble, WATCH_MS, watchTick, type LiveReading, type SeenFrame } from '../perf/vmScreenRows'
@@ -251,9 +251,9 @@ export async function moveToVirtio(s: Scratch, driverDir: string, log: (line: st
 
 /** A clean, full shutdown of Windows (no hibernate, no Fast Startup), waited for; the plug is pulled only for a scratch machine that will not stop. */
 export async function shutDown(s: Scratch, log: (line: string) => void, device?: DisplayDevice): Promise<void> {
-  // /full: with Fast Startup on, a plain shutdown is a hibernate of the kernel, and the next start resumes its old mode
+  // from the command line /s is a full shutdown (/hybrid is Fast Startup's); Windows has no /full and refuses a line with it
   const t0 = Date.now()
-  await s.guest.admin('shutdown /s /full /t 0').catch(() => '')
+  await s.guest.admin(FULL_SHUTDOWN).catch(() => '')
   // what Windows shows while it stops, kept beside the logs: a full shutdown has taken past 3 minutes
   for (const at of [45_000, 150_000]) {
     if (await s.machine.stopped(Math.max(0, t0 + at - Date.now()))) break
