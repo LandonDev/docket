@@ -83,7 +83,7 @@ export async function startNudge(ctx: WorkCtx, by: Caller, workspaceId: string, 
   mustBePerson(by, 'operate')
   const sector = workSector(ctx, workspaceId)
   const owner = ctx.lifeos.owner()
-  const got = await owner.query<{ thread: { _id: string; subject: string; sector?: string }; messages: { fromMe: boolean; sentAt: number; to?: { name?: string; address: string }[]; cc?: { name?: string; address: string }[] }[] } | null>('mail:thread', { id: threadId })
+  const got = await owner.query<{ thread: { _id: string; subject: string; sector?: string }; task?: { projectId?: string } | null; messages: { fromMe: boolean; sentAt: number; to?: { name?: string; address: string }[]; cc?: { name?: string; address: string }[] }[] } | null>('mail:thread', { id: threadId })
   if (!got) throw new Error('LifeOS has no such mail')
   if (got.thread.sector !== sector) throw new Error(OTHER_SECTOR)
   // The wait itself says when he wrote and to whom: an Outlook reply sent through a desktop is no stored message.
@@ -96,7 +96,9 @@ export async function startNudge(ctx: WorkCtx, by: Caller, workspaceId: string, 
   const people = wait?.to ?? (mine ? [...(mine.to ?? []), ...(mine.cc ?? [])] : [])
   const addresses = people.map((a) => (a.name?.trim() ? `${a.name.trim()} <${a.address}>` : a.address)).join(', ')
   const text = nudgePrompt({ id: threadId, subject: got.thread.subject, to: people.length ? who(people) : 'them', addresses: addresses || 'the people his last mail went to', since: wait?.since ?? mine?.sentAt ?? Date.now() }, hisZone(ctx))
-  const sessionId = await ctx.threads.start({ workspaceId, text, by, about: { kind: 'mail', label: got.thread.subject || '(no subject)', ref: { at: 'lifeos', table: 'mailThreads', id: threadId } } })
+  // The mail's open task, when it has one in a project, files the nudge's thread there.
+  const lifeosProjectId = got.task?.projectId
+  const sessionId = await ctx.threads.start({ workspaceId, text, by, ...(lifeosProjectId ? { lifeosProjectId } : {}), about: { kind: 'mail', label: got.thread.subject || '(no subject)', ref: { at: 'lifeos', table: 'mailThreads', id: threadId } } })
   return { sessionId }
 }
 

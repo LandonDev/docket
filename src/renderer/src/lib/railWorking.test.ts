@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WORKING_MIN, workingRows } from "./railWorking";
+import { WORKING_MIN, withoutOpenWork, workingRows } from "./railWorking";
 import type { SessionMeta } from "./tcserver/types";
 
 const meta = (id: string, extra: Partial<SessionMeta> = {}): SessionMeta =>
@@ -68,5 +68,26 @@ describe("workingRows", () => {
   it("shows the section with one live thread: nothing else in the rail names it", () => {
     expect(WORKING_MIN).toBe(1);
     expect(workingRows([meta("one", { status: "running", busySince: 1 })], NONE).length).toBeGreaterThanOrEqual(WORKING_MIN);
+  });
+});
+
+describe("withoutOpenWork", () => {
+  const rows = workingRows(
+    [
+      meta("loose", { status: "running", projectId: null, workspaceId: "w-purdue" }),
+      meta("filed", { status: "running", projectId: "p-lan", workspaceId: null }),
+      meta("other", { status: "running", projectId: null, workspaceId: "w-cosmic" }),
+      meta("chat", { status: "running", projectId: null, workspaceId: null }),
+    ],
+    NONE,
+  );
+  const projectWorkspace = (id: string) => (id === "p-lan" ? "w-purdue" : null);
+
+  it("leaves out the open Work workspace's threads, loose or under a project, and keeps every other job's and Work Chats'", () => {
+    expect(withoutOpenWork(rows, new Set(["w-purdue"]), projectWorkspace).map((r) => r.id)).toEqual(["other", "chat"]);
+  });
+
+  it("keeps every row when no Work workspace is open (a code workspace, Home)", () => {
+    expect(withoutOpenWork(rows, new Set(), projectWorkspace).map((r) => r.id)).toEqual(["loose", "filed", "other", "chat"]);
   });
 });

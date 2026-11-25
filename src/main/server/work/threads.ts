@@ -4,7 +4,8 @@ import { accessCeiling, type Capability } from '@shared/capabilities'
 import { sessionScopeOf, WORK_HOME } from '@shared/work'
 import { OWNER_PREFIX } from '../remote/crossHostThreads'
 import type { CtxPart } from './ctx'
-import { WORK_MODULES } from './modules'
+import { WORK_MODULES, type WorkCtx } from './modules'
+import { fileUnder } from './projects/mirrors'
 import { modulePreambles } from './preamble'
 
 /**
@@ -201,16 +202,31 @@ export const threadsPart: CtxPart<'threads'> = (ctx, deps) => {
     userTexts: (id) => registry.eventsAfter(id, 0).flatMap((row) => (row.event.type === 'user-text' ? [{ text: row.event.text, ...(row.event.by ? { by: row.event.by } : {}) }] : [])),
     farOwner: (id) => store.getSetting(`${OWNER_PREFIX}${id}`)
   }
+  // A thread about a task in a LifeOS project files under that project, as a window's start does (docs/agents/work.md
+  // "Threads file into their projects"); a project that is finished or out of reach starts it loose, and says why.
+  const filedUnder = async (o: Parameters<WorkCtx['threads']['start']>[0]): Promise<string | null> => {
+    const taskId = o.about?.ref.at === 'lifeos' && o.about.ref.table === 'tasks' ? o.about.ref.id : undefined
+    if (!taskId && !o.lifeosProjectId) return null
+    const workspace = registry.listWorkspaces().find((w) => w.id === o.workspaceId)
+    if (!workspace) return null
+    const filed = await fileUnder(ctx, registry, workspace, { ...(taskId ? { taskId } : {}), ...(o.lifeosProjectId ? { lifeosProjectId: o.lifeosProjectId } : {}) })
+    if (filed.projectId === null && filed.why) {
+      ctx.log(`threads: started loose in ${workspace.name}: ${filed.why}`)
+      o.onLoose?.(filed.why)
+    }
+    return filed.projectId
+  }
   return {
     threads: {
       async start(o) {
         if (!ctx.enabled()) throw new Error('Work is off on this host')
         const chat = o.workspaceId === WORK_HOME
+        const projectId = o.projectId ?? (chat ? null : await filedUnder(o))
         const thread = await registry.startWith(
           {
             scope: 'work',
             threadType: 'chat',
-            ...(o.projectId ? { projectId: o.projectId } : { workspaceId: chat ? null : o.workspaceId }),
+            ...(projectId ? { projectId } : { workspaceId: chat ? null : o.workspaceId }),
             // His Thread defaults for the workspace, the rule a window's draft takes (sessions.ts create), unless the
             // caller names a model (a routine's own); the host fits the effort to the model it resolves to.
             ...(o.model ? { model: o.model } : {}),

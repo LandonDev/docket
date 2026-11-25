@@ -44,7 +44,7 @@ takes its plays; a thread a play started stays when the play goes.
   proposal or a starter. `work.routines.playRemove` (`admin`): Delete, or Not
   now on a proposal; refused while a routine runs it ("the routine “Mondays”
   runs it; change or delete that routine first").
-- `work.routines.playStart {id, inputs}` (`operate`) → `{sessionId}`.
+- `work.routines.playStart {id, inputs}` (`operate`) → `{sessionId, loose?}`. A play on a task of a LifeOS project files its thread under the project (`ctx.threads.start`, work.md "Threads file into their projects"); `loose` is the one quiet line when that project could not take it, which the window shows as a toast.
 - `work.routines.playDraft {sessionId}` (`operate`) → `{name, instructions,
   takes}`.
 - All four writes and the draft refuse a thread's own call (`Caller.kind ===

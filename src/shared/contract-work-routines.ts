@@ -332,7 +332,7 @@ export const PlaysRequestSchemas = [
   ),
   /** → null: Delete, or Not now on a proposal. Threads it started stay. */
   request('work.routines.playRemove', z.object({ id: z.string() })),
-  /** → { sessionId }: starts the play as a new Work thread with these inputs. A person's call only. */
+  /** → { sessionId, loose? }: starts the play as a new Work thread with these inputs; `loose` says why a task's thread did not file under its project. A person's call only. */
   request('work.routines.playStart', z.object({ id: z.string(), inputs: PlayInputsSchema })),
   /** → PlayDraft: a model call, on his press only, that drafts a play from a finished Work thread. */
   request('work.routines.playDraft', z.object({ sessionId: z.string() }))

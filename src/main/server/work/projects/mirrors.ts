@@ -76,6 +76,92 @@ export async function lifeosProjectIn(
   return row
 }
 
+/** What opening a mirror asks of the registry. */
+export interface MirrorRegistry {
+  listProjects(): ProjectMeta[]
+  createProject(workspaceId: string, name: string, mode: 'local', opts: { lifeosProjectId: string }): Promise<ProjectMeta>
+}
+
+/** Mirrors being made, by workspace and LifeOS project: two asks at once (a double click, a second window, a play beside a press) make one. */
+const opening = new Map<string, Promise<ProjectMeta>>()
+
+/**
+ * The mirror that holds a Work workspace's threads about one LifeOS project,
+ * made the first time from LifeOS's own row (`work.project.open`, and a
+ * thread the host starts about a task in a project). A mirror on show is
+ * answered at once; an archived one is asked about first, since its project
+ * is over or just came back. `forSettings`: a finished project's mirror is
+ * answered too, since its settings sheet is where he reopens it.
+ */
+export async function openMirror(
+  ctx: Pick<WorkCtx, 'lifeos'>,
+  registry: MirrorRegistry,
+  workspace: WorkspaceMeta,
+  lifeosProjectId: string,
+  o: { forSettings?: boolean } = {}
+): Promise<ProjectMeta> {
+  if (workspaceKindOf(workspace) !== 'work' || !workspace.sector) throw new Error(`${workspace.name} is not a Work workspace linked to LifeOS`)
+  const mine = registry.listProjects().find((p) => p.workspaceId === workspace.id && p.lifeosProjectId === lifeosProjectId)
+  if (mine) return mine.archived && !o.forSettings ? (await lifeosProjectIn(ctx, workspace, lifeosProjectId), mine) : mine
+  const key = `${workspace.id}\0${lifeosProjectId}`
+  let making = opening.get(key)
+  if (!making) {
+    // LifeOS is asked, as the owner: the project must be one of this workspace's sector, and the mirror takes the name it has there, never a client's.
+    making = lifeosProjectIn(ctx, workspace, lifeosProjectId, o.forSettings ? { over: true } : undefined)
+      .then((project) => registry.createProject(workspace.id, project.name, 'local', { lifeosProjectId }))
+      .finally(() => opening.delete(key))
+    opening.set(key, making)
+  }
+  return making
+}
+
+/** The one quiet line of a thread that started loose: the renderer's words for the same case (work/tasks/startScope.ts `looseLine`). */
+export function looseWhy(refusal: string): string {
+  const over = /^(.+) is (done|dropped): /.exec(refusal)
+  return over ? `Not filed in ${over[1]}: it is ${over[2]}` : `Not filed in its project: ${refusal}`
+}
+
+/** How long a host start waits on LifeOS for the project it files under before it starts loose: a start is never held by LifeOS. */
+export const FILE_WAIT_MS = 5_000
+
+/**
+ * The mirror a thread the host starts files under (docs/agents/work.md
+ * "Threads file into their projects"): the one `lifeosProjectId` names, else
+ * the project of the LifeOS task `taskId`, read as the owner. Null when there
+ * is none, and when it is finished, of another sector or out of reach: the
+ * thread then starts loose in the job, and `why` is the line that says so.
+ */
+export async function fileUnder(
+  ctx: Pick<WorkCtx, 'lifeos'>,
+  registry: MirrorRegistry,
+  workspace: WorkspaceMeta,
+  about: { taskId?: string; lifeosProjectId?: string },
+  waitMs = FILE_WAIT_MS
+): Promise<{ projectId: string } | { projectId: null; why: string | null }> {
+  if (workspaceKindOf(workspace) !== 'work' || !workspace.sector) return { projectId: null, why: null }
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('LifeOS did not answer')), waitMs)
+    timer.unref?.()
+  })
+  try {
+    const find = async (): Promise<string | null> => {
+      if (about.lifeosProjectId) return about.lifeosProjectId
+      if (!about.taskId) return null
+      const got = await ctx.lifeos.owner().query<{ task: { projectId?: string | null } } | null>('tasks:get', { id: about.taskId })
+      return got?.task.projectId ?? null
+    }
+    const lifeosProjectId = await Promise.race([find(), late])
+    if (!lifeosProjectId) return { projectId: null, why: null }
+    const mirror = await Promise.race([openMirror(ctx, registry, workspace, lifeosProjectId), late])
+    return { projectId: mirror.id }
+  } catch (err) {
+    return { projectId: null, why: looseWhy(err instanceof Error ? err.message : String(err)) }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /** The code settings of one project, as the registry reads and clears them. */
 export interface CodeSettingsHost {
   workspaces(): WorkspaceMeta[]

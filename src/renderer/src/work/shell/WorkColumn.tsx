@@ -4,7 +4,7 @@ import { projectOrder } from "work-kit/projects/order";
 import { RailRow } from "../../chrome/RailRow";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { openWorkView, setLifeosProjects, useWorkView, workColumnPort, workStartPort, type LifeosProjectRow } from "../../lib/workSwitch";
-import { addContextChip, startAboutChip } from "../canvas/chips";
+import { addContextChip, contextChipsOf, startAboutChip } from "../canvas/chips";
 import { rowOfView, type WorkViewDef, workViewRows } from "../views/registry";
 import { openLifeosProject } from "./actions";
 import { HOLD, KeptRegion, useKeptRegion, useLifeosQuery, useLifeosSession } from "./lifeos";
@@ -85,8 +85,8 @@ export function startThreadAbout(about: ContextChip | readonly ContextChip[], pr
   const start = workStartPort.get();
   if (!start) return;
   openWorkView(null);
-  const id = start(projectId, cwd);
   const [first, ...rest] = Array.isArray(about) ? about : [about as ContextChip];
+  const id = start(projectId, cwd, first ? { about: first, leadOf: (draft) => contextChipsOf(draft)[0] } : undefined);
   if (!first) return;
   // The first leads, so it is what the first send says the thread is about.
   startAboutChip(id, first);

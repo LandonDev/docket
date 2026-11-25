@@ -476,6 +476,46 @@ Tests: work/projects/mirrors.test.ts (the rule, the follower on a host that
 stands in, and on the real registry with a LifeOS in memory),
 work/core.test.ts (`work.project.open`).
 
+## Threads file into their projects
+
+A thread about a task of a LifeOS project files under that project's
+mirror, made the first time (`openMirror`, the one `work.project.open`
+uses), wherever it starts, so it sits under the project in the column and
+on the project's page:
+
+- **In the window.** Every view's Start thread on a task goes through
+  `startFiled` (src/renderer/src/work/tasks/startScope.ts): Tasks' row, lead,
+  menu and sheet (which Today's Due rows open), and Mail's Start thread on a
+  mail whose open task is in a project (`projectOfMail`, LifeOS's
+  `mail:thread` answers the task). The composer opens in the mirror, as
+  Projects' own Start a thread always did.
+- **On the host.** `ctx.threads.start` with no `projectId` files a thread
+  about a task (`about`), or one told its LifeOS project
+  (`lifeosProjectId`), under the mirror (`fileUnder`, mirrors.ts): Run a
+  play on a task, Capture, a nudge on a mail with a task in a project. A
+  routine keeps its own saved project. A capture's task is new and has no
+  project, so its thread stays loose.
+- **Never blocked.** A project that is done or dropped, of another sector,
+  or out of reach (five seconds on either side) starts the thread loose in
+  the job, with one quiet line: a plain toast, "Not filed in Fall LAN: it
+  is done". A play's answer carries the host's line as `loose`; a routine
+  or a nudge only logs it.
+- **A start never takes another start's words.** A start about a thing
+  opens the scope's draft only when it holds nothing he wrote or is about
+  that thing already; otherwise it opens a draft of its own under the
+  scope's key and the thing's (`draftKeyForSource`,
+  src/renderer/src/lib/sourceDraft.ts). The old draft stays as he left it,
+  and New thread in that scope finds it again.
+- **Named once on screen.** The rail's Working section leaves out the
+  threads of the Work workspace open beside it, loose or in a project
+  (`withoutOpenWork`, lib/railWorking.ts): its column lists them. A code
+  workspace's threads stay in Working as before.
+
+Tests: work/projects/filing.test.ts (the host's starts on a real registry
+with a LifeOS in memory), routines/plays.rig.test.ts (`loose`),
+work/tasks/startScope.test.ts, tasks/TasksView.dom.test.tsx,
+lib/sourceDraft.test.ts, lib/railWorking.test.ts; journey J61.
+
 ## The core columns
 
 All defaulted, so the build before them still reads and writes the database

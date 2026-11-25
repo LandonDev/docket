@@ -53,6 +53,10 @@ vi.mock("convex/react", async (original) => ({
   },
 }));
 
+// Start thread on a task of a LifeOS project opens (or makes) its mirror on the host: here, at once.
+const mirrors = vi.hoisted(() => ({ open: vi.fn(async (_w: unknown, id: string) => ({ id: `mirror-${id}` })) }));
+vi.mock("../shell/actions", async (original) => ({ ...(await original<object>()), openLifeosProject: mirrors.open }));
+
 const { Tasks, dueMidLine } = await import("./TasksView");
 const { formatDue } = await import("work-kit/views/lib/format");
 const { newestOpenThread } = await import("./links");
@@ -121,6 +125,22 @@ describe("the Tasks view", () => {
     render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} />);
     fireEvent.click(screen.getByRole("button", { name: "Start thread" }));
     expect(startThread).toHaveBeenCalledWith({ kind: "task", label: "Book the ballroom", ref: { at: "lifeos", table: "tasks", id: "t1" } });
+  });
+
+  it("files a task of a LifeOS project under the project's mirror, from the lead and from its sheet", async () => {
+    const startThread = vi.fn();
+    const place = { id: "ws-purdue", environmentId: "box", path: "/w/Purdue" };
+    render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} place={place} />);
+    fireEvent.click(screen.getByRole("button", { name: "Start thread" }));
+    await act(async () => {});
+    const chip = { kind: "task", label: "Book the ballroom", ref: { at: "lifeos", table: "tasks", id: "t1" } };
+    expect(mirrors.open).toHaveBeenCalledWith(place, "p1", "Spring LAN");
+    expect(startThread).toHaveBeenCalledWith(chip, { cwd: "/w/Purdue", projectId: "mirror-p1" });
+    // A task with no project starts loose, as before.
+    fireEvent.click(screen.getByRole("button", { name: "Open Send Dana the budget" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Start thread" }));
+    await act(async () => {});
+    expect(startThread).toHaveBeenLastCalledWith({ kind: "task", label: "Send Dana the budget", ref: { at: "lifeos", table: "tasks", id: "t2" } });
   });
 
   it("marks a row done after its tick holds, through the client", async () => {

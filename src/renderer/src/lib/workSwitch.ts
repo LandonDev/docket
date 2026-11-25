@@ -4,6 +4,7 @@ import type { Link } from "./connection/link";
 import type { Environment } from "./connection/types";
 import type { OpenFileFn } from "./search";
 import type { Session } from "./session";
+import type { DraftSource } from "./sourceDraft";
 
 /**
  * The Work switch as this window knows it (docs/agents/work.md "The
@@ -283,8 +284,8 @@ export function useWorkView(): OpenWorkView | null {
 
 /** How Work's views start a thread (App registers it): a new thread's draft, focused, in `projectId` or none,
  *  in the window's workspace or, given `cwd`, in that workspace, which the window moves to (a task's code
- *  thread); answers the draft's id, which the caller gives its chip. */
-type StartPort = (projectId: string | null, cwd?: string) => string;
+ *  thread); answers the draft's id, which the caller gives its chip (`source`: lib/sourceDraft.ts). */
+type StartPort = (projectId: string | null, cwd?: string, source?: DraftSource) => string;
 let startPort: StartPort | null = null;
 export const workStartPort = {
   get: () => startPort,

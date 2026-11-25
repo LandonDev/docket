@@ -305,7 +305,12 @@ export interface WorkCtx {
     /** `title` names the thread, and no model is asked for one. */
     /** `by`: who pressed for it; a remote key's thread holds to the key's ceiling (no full access without approve). */
     /** His Thread defaults for the workspace decide its provider, model and effort unless `model` (a routine's own) is named; `reasoning` is fitted to the model it runs (sessions.ts `create`). */
-    start(o: { workspaceId: string; projectId?: string; text: string; model?: string; reasoning?: Reasoning; routineRunId?: string; about?: ContextChip; title?: string; by?: Caller }): Promise<string>
+    /**
+     * With no `projectId`, a thread about a LifeOS task (`about`), or one told its LifeOS project (`lifeosProjectId`: a
+     * mail's task's), files under that project's mirror, made the first time; a finished or unreachable project starts it
+     * loose in the job, and `onLoose` hears why (work/projects/mirrors.ts `fileUnder`).
+     */
+    start(o: { workspaceId: string; projectId?: string; lifeosProjectId?: string; text: string; model?: string; reasoning?: Reasoning; routineRunId?: string; about?: ContextChip; title?: string; by?: Caller; onLoose?: (why: string) => void }): Promise<string>
     resume(sessionId: string, notice: string): Promise<void>
     /**
      * whether the owner typed this quote in the thread; with `about`, in a message that also names one of those, and with

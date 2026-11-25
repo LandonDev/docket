@@ -160,6 +160,16 @@ describe('a start', () => {
     expect(started[0]!.title).toBe('Weekly sweep')
   })
 
+  it("on a task whose project could not take the thread, answers why in one line (ctx.threads.start files it)", async () => {
+    const p = await save({ name: 'Follow up', takes: ['task'] })
+    const start = rig.work.ctx.threads.start
+    rig.work.ctx.threads.start = async (o) => (o.onLoose?.('Not filed in Fall LAN: it is done'), start(o))
+    expect(await rig.rpc('work.routines.playStart', { id: p.id, inputs: { chips: [task] } })).toEqual({ sessionId: 't-run1', loose: 'Not filed in Fall LAN: it is done' })
+    rig.work.ctx.threads.start = start
+    expect(await rig.rpc('work.routines.playStart', { id: p.id, inputs: { chips: [task] } })).toEqual({ sessionId: 't-run2' })
+    expect(started[0]!.about).toEqual(task)
+  })
+
   it('refuses a date that is no day, in the host’s words', async () => {
     const p = await save({ takes: ['date'] })
     await expect(rig.rpc('work.routines.playStart', { id: p.id, inputs: { date: '2026-13-45' } })).rejects.toThrow('“Game assignment”: 2026-13-45 is not a day')

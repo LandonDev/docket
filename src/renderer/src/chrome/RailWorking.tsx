@@ -6,7 +6,9 @@ import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { cn } from "../lib/cn";
 import { duration } from "../lib/duration";
 import { liveAgentTracker } from "../lib/liveAgentTracker";
-import { WORKING_CAP, WORKING_MIN, workingRows, type WorkingRow } from "../lib/railWorking";
+import { WORKING_CAP, WORKING_MIN, withoutOpenWork, workingRows, type WorkingRow } from "../lib/railWorking";
+import { sameProjectPath } from "../lib/recents";
+import { isWorkWorkspace } from "../lib/workRow";
 import { useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { threadStatus } from "../lib/threadStripModel";
@@ -145,12 +147,20 @@ export function RailWorkingView({
 }
 
 /** The Working section wired to the session store, the catalog and the
- *  live agent tracker; the second hand runs only inside an open tooltip. */
-export function RailWorking({ activeSessionId, onSelect }: { activeSessionId?: string; onSelect?: (sessionId: string) => void }) {
+ *  live agent tracker; the second hand runs only inside an open tooltip. A Work workspace open beside the rail
+ *  (`openPath`) lists its own threads in its column, so they leave this section. */
+export function RailWorking({ activeSessionId, openPath, onSelect }: { activeSessionId?: string; openPath?: string; onSelect?: (sessionId: string) => void }) {
   const metas = useSessionMetas();
   const { projects, workspaces } = useWorkspaceCatalog();
   const unseen = useSyncExternalStore(liveAgentTracker.subscribe, liveAgentTracker.unseenIds);
-  const rows = useMemo(() => workingRows(metas, unseen), [metas, unseen]);
+  const open = useMemo(
+    () => new Set(openPath ? workspaces.filter((w) => isWorkWorkspace(w) && sameProjectPath(w.path, openPath)).map((w) => w.id) : []),
+    [openPath, workspaces],
+  );
+  const rows = useMemo(
+    () => withoutOpenWork(workingRows(metas, unseen), open, (id) => projects.find((p) => p.id === id)?.workspaceId),
+    [metas, unseen, open, projects],
+  );
   const projectOf = (row: WorkingRow): string | null =>
     projects.find((p) => p.id === row.meta.projectId)?.name ?? workspaces.find((w) => w.id === row.meta.workspaceId)?.name ?? null;
   return <RailWorkingView rows={rows} activeSessionId={activeSessionId} projectOf={projectOf} onSelect={onSelect} />;

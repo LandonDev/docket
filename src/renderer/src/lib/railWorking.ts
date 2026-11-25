@@ -40,3 +40,16 @@ export function workingRows(
       (a.state === "working" ? (a.meta.busySince ?? Infinity) - (b.meta.busySince ?? Infinity) : b.meta.updatedAt - a.meta.updatedAt),
   );
 }
+
+/**
+ * The Working rows less the threads of the Work workspace open beside the rail: its column already lists them, so a
+ * thread is never named twice on screen (docs/agents/work.md "The rail"). `open` holds that workspace's ids (one a
+ * host, a linked job on two); a code workspace's threads always stay, as before.
+ */
+export function withoutOpenWork(rows: readonly WorkingRow[], open: ReadonlySet<string>, workspaceOfProject: (projectId: string) => string | null | undefined): WorkingRow[] {
+  if (!open.size) return [...rows];
+  return rows.filter((row) => {
+    const at = row.meta.workspaceId ?? (row.meta.projectId ? workspaceOfProject(row.meta.projectId) : null);
+    return !at || !open.has(at);
+  });
+}

@@ -52,7 +52,9 @@ thread's preamble.
 - `start: true` also starts a Work thread (`ctx.threads.start`) about the
   task (a `task` chip, so the host links them): in the sector's workspace, or
   in Work Chats for an unsorted capture or a sector with no workspace here.
-  Its first message is his words and each kept file's path. He pressed for
+  The task is new and has no LifeOS project, so the thread is loose in the
+  job (a thread about a task in a project would file under it: work.md
+  "Threads file into their projects"). Its first message is his words and each kept file's path. He pressed for
   it, so it is his start; nothing else runs a model. A start that fails
   leaves the task filed and answers `threadError`.
 - **Purdue:** a file stays on the machine it was dropped on. The window files

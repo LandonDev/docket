@@ -114,7 +114,8 @@ What a row does:
   (`work.tasks.done`), so a task a thread worked completes with that
   thread's link; its toast offers Undo (`tasks:reopen`). Tomorrow snoozes it
   to the next morning (`tasks:snooze`, Undo `tasks:unsnooze`). The press
-  opens the task's sheet in its job's Tasks view.
+  opens the task's sheet in its job's Tasks view, whose Start thread files a
+  task of a LifeOS project under the project (work-tasks.md).
 - **Waiting on others.** The longest wait first. Nudge asks the job's host
   for a drafting thread (`work.mail.nudge`) and opens it; Dismiss is
   `mailWaits:dismiss` fenced by `since`, with Undo (`mailWaits:putBack`).

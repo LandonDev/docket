@@ -5,7 +5,7 @@ import { allows, LOCAL_CAPS, principalCaps, type Principal as SocketPrincipal } 
 import type { FilesTabs } from '@shared/contract-work-files'
 import type { ClientRequest, CreateSessionParams } from '@shared/contract'
 import type { WorkPush } from '@shared/contract-work'
-import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
+import type { WorkspaceMeta } from '@shared/domain'
 import type { SessionMeta } from '@shared/events'
 import {
   handled,
@@ -54,7 +54,7 @@ import { heldPart, outboxHostOf } from './outbox/ctx'
 import { reveal, type RevealWindow } from './reveal'
 import { resultsPart } from './outbox/results'
 import { peerPart } from './peer'
-import { lifeosProjectIn, mirrorsPart } from './projects/mirrors'
+import { mirrorsPart, openMirror } from './projects/mirrors'
 import { ensureWorkTables } from './schema'
 import { knownDesktops, scopePart } from './scope'
 import { routinesHostPart } from './routines/host'
@@ -435,7 +435,6 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
       return want.length === got.length && timingSafeEqual(want, got)
     }
   }
-  const openingProjects = new Map<string, Promise<ProjectMeta>>()
   const knownWorkspace = (id: string): WorkspaceMeta => {
     const workspace = deps.registry.listWorkspaces().find((w) => w.id === id)
     if (!workspace) throw new Error(`unknown workspace: ${id}`)
@@ -527,23 +526,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
         case 'work.project.open': {
           if (!settings.enabled()) throw new Error('Work is off on this host')
           const { workspaceId, lifeosProjectId, forSettings } = req.params
-          const workspace = knownWorkspace(workspaceId)
-          if (workspace.kind !== 'work' || !workspace.sector) throw new Error(`${workspace.name} is not a Work workspace linked to LifeOS`)
-          const mine = deps.registry.listProjects().find((p) => p.workspaceId === workspaceId && p.lifeosProjectId === lifeosProjectId)
-          // A mirror on show is answered at once. An archived one is asked about first: its project is over, or just came back.
-          // For its settings a finished project's mirror is answered as it is: the sheet is where he reopens it, and no thread starts there.
-          if (mine) return handled(mine.archived && !forSettings ? (await lifeosProjectIn(ctx, workspace, lifeosProjectId), mine) : mine)
-          // Two asks at once (a double click, a second window) make one project.
-          const key = `${workspaceId}\0${lifeosProjectId}`
-          let making = openingProjects.get(key)
-          if (!making) {
-            // LifeOS is asked, as the owner: the project must be one of this workspace's sector, and the mirror takes the name it has there, never a client's.
-            making = lifeosProjectIn(ctx, workspace, lifeosProjectId, forSettings ? { over: true } : undefined)
-              .then((project) => deps.registry.createProject(workspaceId, project.name, 'local', { lifeosProjectId }))
-              .finally(() => openingProjects.delete(key))
-            openingProjects.set(key, making)
-          }
-          return handled(await making)
+          return handled(await openMirror(ctx, deps.registry, knownWorkspace(workspaceId), lifeosProjectId, forSettings ? { forSettings: true } : {}))
         }
         case 'work.reveal':
           return handled(await reveal({

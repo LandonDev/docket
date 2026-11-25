@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PlayInputs, PlayRow } from "@shared/contract-work-routines";
+import { loadToast } from "../../../components/ui/toaster";
 import { registry } from "../../../lib/connection";
 import { nameInLine } from "../../../lib/hostWords";
 import { workErrorWords } from "../../../lib/workErrorWords";
@@ -78,8 +79,10 @@ export function usePlays(env: string, workspaceId: string): [Load<PlayRow[]>, ()
 /** Starts the play and opens its thread; a refusal comes back in the host's words. */
 export async function startPlay(env: string, playId: string, inputs: PlayInputs): Promise<void> {
   try {
-    const { sessionId } = await registry.linkOf(env).request<{ sessionId: string }>("work.routines.playStart", { id: playId, inputs });
+    const { sessionId, loose } = await registry.linkOf(env).request<{ sessionId: string; loose?: string }>("work.routines.playStart", { id: playId, inputs });
     workOpenPort.get()?.(sessionId);
+    // A task's project that could not take the thread (finished, out of reach): it started loose, said in one quiet line.
+    if (loose) void loadToast().then((api) => api(loose));
   } catch (err) {
     throw new Error(workErrorWords(err) || "The host did not start it");
   }

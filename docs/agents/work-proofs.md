@@ -172,6 +172,7 @@ sessions, pairings and keys before stopping the instances.
 | J51 | S | Today opens the held item, meeting, due task, waiting mail, unanswered chat, owed row, and ready weekly review. Review settles the slipped task in LifeOS. |
 | J41 | S | The New event toast follows the calendar operation. A local move changes the clash shown on Agenda. |
 | J55 | S, K | Connections agrees with the hosts. LifeOS views show the sign-in state, and the given computer sees that its key cannot read them. |
+| J61 | S | Start thread on a Spring LAN task makes a box row under that project's mirror. The column shows the project, and its page marks the task with the thread. |
 
 ### Tier-3 journeys
 

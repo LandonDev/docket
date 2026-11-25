@@ -11,6 +11,7 @@ import {
   sessionFromDraft,
   type DraftRetype,
 } from "./lib/projectDrafts";
+import { draftKeyForSource, type DraftSource } from "./lib/sourceDraft";
 import { invoke, listen, getCurrentWindow, isWebMode, listenForReveal, message } from "./lib/native";
 import { messageListFold } from "./lib/messageListFold";
 import {
@@ -745,15 +746,19 @@ export default function App() {
   const resolveProjectDraft = useCallback(
     (
       scope: { projectId?: string | null } | { cwd: string },
-      opts: { threadType?: ThreadType; threadRules?: ThreadRules | null } = {},
+      opts: { threadType?: ThreadType; threadRules?: ThreadRules | null; source?: DraftSource } = {},
     ): { kind: "focus"; id: string } | { kind: "session"; session: Session } => {
       const base = "cwd" in scope ? cwdContext(scope.cwd) : sessionContext(scope.projectId);
       const ctx = newThreadContext(base, workspaceStore.projects, currentActivePane().active);
       const catalog = workspaceStore.getSnapshot();
-      const key = draftKeyOf(
+      const scopeKey = draftKeyOf(
         { projectId: ctx.projectId, environmentId: environmentForContext(ctx), workspaceId: ctx.workspaceId, scope: ctx.scope },
         catalog,
       );
+      // A start about a thing never takes another start's unsent words: it opens a draft of its own (lib/sourceDraft.ts).
+      const key = opts.source
+        ? draftKeyForSource({ scopeKey, ...opts.source, record: (k) => projectDrafts.get(k), sent: (id) => !!sessionStore.metaOf(id) })
+        : scopeKey;
       const linkId = ctx.projectId ? catalog.projects.find((p) => p.id === ctx.projectId)?.linkId : null;
       const copies = copiesOf(catalog.projects, linkId);
       const plan = planProjectDraft({
@@ -801,6 +806,7 @@ export default function App() {
         dir?: SplitDir;
         threadType?: ThreadType;
         threadRules?: ThreadRules | null;
+        source?: DraftSource;
       },
     ): { id: string; placed: boolean } => {
       const draft = resolveProjectDraft(scope, opts);
@@ -2121,12 +2127,12 @@ export default function App() {
 
   // Work's views start a thread here: a new thread's draft in the window's workspace, or in the code workspace a task's code thread names, focused (work/shell/WorkColumn.tsx).
   useEffect(() => {
-    workStartPort.set((projectId, cwd) => {
+    workStartPort.set((projectId, cwd, source) => {
       shell.closeViews();
       if (cwd) project.enterWorkspace(normalizeProjectPath(cwd));
       project.selectProject(projectId);
       // By project, never by folder: a folder's draft would land in a local project whose cwd is the workspace's.
-      return openProjectDraft({ projectId }, { placement: "tab", focus: true }).id;
+      return openProjectDraft({ projectId }, { placement: "tab", focus: true, ...(source ? { source } : {}) }).id;
     });
     return () => workStartPort.set(null);
   }, [openProjectDraft]);

@@ -16,6 +16,8 @@ import { Mail as MailGlyph } from "../icons";
 import { placedKit } from "./files";
 import { onMailto } from "./mailto";
 import { mailChip } from "./model";
+import { makeFunctionReference } from "convex/server";
+import { projectOfMail, startFiled } from "../tasks/startScope";
 import { defineChunk } from "../../lib/lazyChunk";
 import { Button } from "../../components/ui/button";
 import { Tip } from "../../components/tip";
@@ -35,6 +37,9 @@ import { MAIL_BESIDE } from "./chat/layout";
 import type { SectorKey } from "@shared/work";
 
 /** The chat beside the mail, in a chunk of its own: it loads when he first asks. */
+/** A mail thread with its open task, whose project a Start thread files under. */
+const MAIL_THREAD = makeFunctionReference<"query", { id: string }, { task?: { projectId?: string | null } | null } | null>("mail:thread");
+
 export const mailChatChunk = defineChunk("work-mail-chat", () => import("./chat/MailDock"));
 const MailDock = mailChatChunk.surface("MailDock", <div className="min-h-0 flex-1" />);
 
@@ -88,10 +93,19 @@ export function View(props: WorkViewProps) {
   );
 }
 
-function MailPageBody({ workspace, startThread, env, sector }: WorkViewProps) {
+function MailPageBody({ workspace, startThread, env, sector, lifeos }: WorkViewProps) {
   const id = workspace.id;
   const openTask = useCallback(() => openWorkView({ workspaceId: id, view: "tasks" }), [id]);
-  const start = useCallback((mail: { id: string; subject: string }) => startThread(mailChip(mail.id, mail.subject)), [startThread]);
+  // A mail whose open task is in a LifeOS project files its thread there, as Start thread on that task would (startScope.ts).
+  const client = lifeos.client;
+  const start = useCallback(
+    (mail: { id: string; subject: string }) =>
+      void (async () => {
+        const project = client ? await projectOfMail((threadId) => client.query(MAIL_THREAD, { id: threadId }), mail.id) : null;
+        await startFiled(startThread, workspace, mailChip(mail.id, mail.subject), project);
+      })(),
+    [client, startThread, workspace],
+  );
   // A sent mail chip opens this view on its mail (`openWorkView {mail}`): taken once, then cleared.
   const wanted = useWorkView();
   const mail = wanted?.workspaceId === id && wanted.view === "mail" ? wanted.mail : undefined;

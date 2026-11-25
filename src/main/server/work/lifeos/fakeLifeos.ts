@@ -50,7 +50,7 @@ export class FakeLifeos implements LifeosTransport {
   readonly bots: FakeBot[] = []
   readonly jwts: { jwt: string; sectors?: string[] }[] = []
   readonly links: { entity: { table: string; id: string }; host: string; threadId: string; title: string; state: 'open' | 'done'; sector: string; at: number }[] = []
-  readonly tasks = new Map<string, { sector: string; done?: { reason?: string; threadLink?: unknown } }>([['task1', { sector: 'purdue' }]])
+  readonly tasks = new Map<string, { sector: string; projectId?: string; done?: { reason?: string; threadLink?: unknown } }>([['task1', { sector: 'purdue' }]])
   private pairing: { code: string; poll: string; approved: boolean; claimed: boolean } | null = null
   private conns = new Set<{ live: boolean }>()
   private timezone: string | null = null
@@ -207,6 +207,12 @@ export class FakeLifeos implements LifeosTransport {
           const task = this.tasks.get(entity.id)
           this.links.push({ entity, host: String(args.host), threadId: String(args.threadId), title: String(args.title), state: 'open', sector: task?.sector ?? 'life', at: Date.now() })
           return `link_${this.links.length}` as T
+        }
+        case 'tasks:get': {
+          const task = this.tasks.get(String(args.id))
+          if (!task) throw new Error('no such task')
+          const project = this.projects.find((p) => p._id === task.projectId) ?? null
+          return { task: { _id: String(args.id), sector: task.sector, ...(task.projectId ? { projectId: task.projectId } : {}) }, project } as T
         }
         case 'workLinks:byThread':
           return this.links.filter((l) => l.threadId === args.threadId) as T

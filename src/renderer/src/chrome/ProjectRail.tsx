@@ -791,6 +791,7 @@ export function ProjectRail({
           <RailFoot
             activeSessionId={activeSessionId}
             working
+            openPath={cwd}
             onSelectThread={onSelectAgent}
             onOpenWhatsNew={onOpenWhatsNew}
             onAddWorkspace={(environmentId) => onOpenProject(environmentId, ADD_WORKSPACE)}
@@ -1171,6 +1172,7 @@ export function railFootRows(facts: { signIn: boolean; update: boolean; hosts: n
 export function RailFoot({
   activeSessionId,
   working = false,
+  openPath,
   onSelectThread,
   onOpenWhatsNew,
   onAddWorkspace,
@@ -1178,6 +1180,8 @@ export function RailFoot({
   activeSessionId?: string;
   /** Draw the Working section above the rows. */
   working?: boolean;
+  /** The workspace open beside the rail: a Work one's threads leave Working, its column lists them. */
+  openPath?: string;
   onSelectThread?: (sessionId: string) => void;
   onOpenWhatsNew?: (version: string, markdown?: string) => void;
   onAddWorkspace: (environmentId: string) => void;
@@ -1215,7 +1219,7 @@ export function RailFoot({
   };
   return (
     <div className="flex shrink-0 flex-col border-t border-border">
-      {working ? <RailWorking activeSessionId={activeSessionId} onSelect={onSelectThread} /> : null}
+      {working ? <RailWorking activeSessionId={activeSessionId} openPath={openPath} onSelect={onSelectThread} /> : null}
       <div className="flex flex-col p-2">{ids.map(row)}</div>
       <UsageMeter sessionId={activeSessionId} />
     </div>

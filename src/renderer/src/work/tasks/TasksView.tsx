@@ -32,6 +32,7 @@ import { useLinkedThread } from "./links";
 import { TaskSheet } from "./TaskSheet";
 import { keepPlace, keptPlace } from "../shell/place";
 import { CodeThreadDialog, type CodeThreadStart } from "./CodeThreadDialog";
+import { startFiled, type StartPlace, type StartProject } from "./startScope";
 
 /**
  * A Work workspace's Tasks (prototype workspace.html, "Four rows"): its
@@ -94,7 +95,7 @@ export function View({ env, workspace, sector, lifeos, startThread }: WorkViewPr
   if (!lifeos.client) return sessionWaits(lifeos) ? <TasksSkeleton /> : null;
   return (
     <ConvexProvider client={lifeos.client}>
-      <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} openTask={openTask} onOpenTaken={taken} workspaceId={workspace.id} />
+      <Tasks client={clients.tasks} sector={sector} startThread={startThread} useThread={useLinkedThread} openTask={openTask} onOpenTaken={taken} workspaceId={workspace.id} place={workspace} />
     </ConvexProvider>
   );
 }
@@ -109,6 +110,14 @@ export type OpenRequest = { id: string };
 type Opened = { id: string; listed: boolean } | null;
 
 const chipOf = (task: Task): ContextChip => ({ kind: "task", label: task.title, ref: { at: "lifeos", table: "tasks", id: task._id } });
+
+/** A task's LifeOS project as Start thread files it: its id, and its name and state as the list read them. */
+function projectOfTask(task: Task, projects: ReadonlyMap<string, { name: string }> | undefined): StartProject | null {
+  const id = task.projectId;
+  if (!id) return null;
+  const row = projects?.get(id) as { name: string; status?: string } | undefined;
+  return { id, name: row?.name, status: row?.status };
+}
 
 /** No thread lookup (a test, a preview): every task offers Start. */
 const noThread = (): string | null => null;
@@ -133,10 +142,13 @@ export function Tasks({
   openTask,
   onOpenTaken,
   workspaceId,
+  place,
 }: {
   client: TasksClient;
   /** The workspace whose record keeps the open sheet; absent (a test, a preview), nothing is kept. */
   workspaceId?: string;
+  /** Where Start thread files a task of a LifeOS project (startScope.ts); absent (a test, a preview), every start is loose. */
+  place?: StartPlace;
   /** A task whose sheet opens when it is given (a person's page or Work Search asked for it), done tasks too. */
   openTask?: OpenRequest | undefined;
   /** Told once the sheet took `openTask`, so the request is cleared. */
@@ -155,7 +167,10 @@ export function Tasks({
   // The rows are memoised: they reach the latest start through a ref, so a new function never redraws them.
   const latest = useRef(startThread);
   latest.current = startThread;
-  const start = useMemo(() => (task: Task) => latest.current(chipOf(task)), []);
+  // Start thread on a task of a LifeOS project files the thread under it (startScope.ts), from a row, the lead, a menu or the sheet.
+  const filing = useRef({ place, projects });
+  filing.current = { place, projects };
+  const start = useMemo(() => (task: Task) => void startFiled(latest.current, filing.current.place, chipOf(task), projectOfTask(task, filing.current.projects)), []);
   const startCode = useMemo((): CodeThreadStart => (about, at) => latest.current(about, at), []);
   // The task whose sheet is open, kept in the workspace's record (lib/workReturn.ts) so coming back opens it again.
   const [opened, setOpened] = useState<Opened>(() => {
