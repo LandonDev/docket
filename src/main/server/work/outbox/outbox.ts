@@ -556,13 +556,15 @@ export class Outbox {
   }
 
   /** Send now: a scheduled item goes at once, on its own claim (a LifeOS mail after LifeOS's undo time). */
-  async sendScheduledNow(ref: HeldRef, opts: { rev?: number } = {}): Promise<OutboxItem> {
+  async sendScheduledNow(ref: HeldRef, opts: { rev?: number; at?: number } = {}): Promise<OutboxItem> {
     ref = this.canonical(ref)
     return this.serial(ref, async () => {
       const row = this.store.byRef(ref)
       if (!row || row.state !== 'scheduled') throw new Error(NOT_SCHEDULED)
-      // The time he saw: a press from an older view never takes a schedule set again since.
+      // The time he saw: a press from an older view never takes a schedule set again since (`rev` the row as he read
+      // it, `at` the time it was set for, as Mail's own Send Now names it).
       if (opts.rev !== undefined && row.updatedAt !== opts.rev) throw new Error(CHANGED_SINCE)
+      if (opts.at !== undefined && row.scheduleAt !== opts.at) throw new Error(CHANGED_SINCE)
       if (LATER[row.kind] === 'lifeos' && ref.at === 'lifeos') {
         if (!this.lifeos?.sendMailNow) throw new Error('LifeOS is not reachable from this host')
         await this.lifeos.sendMailNow(ref.id)

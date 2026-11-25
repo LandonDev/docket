@@ -6,7 +6,7 @@ import { loadWorkModules, type WorkCtx } from '../modules'
 import { outbox as outboxModule } from '../outbox'
 import { SCHEDULED_BY_HIM } from '../outbox/outbox'
 import { cast, makeRig, readKey as reader, type Rig } from '../outbox/rig'
-import { CHANGED, ELSEWHERE, ensureMailTables, mail, openDrafts, stillSeen, type MailRow } from '.'
+import { CHANGED, ELSEWHERE, ensureMailTables, mail, openDrafts, OUTCOME_UNKNOWN, stillSeen, TIME_CHANGED, type MailRow } from '.'
 import { outgoingHtml } from './outgoing'
 
 /**
@@ -218,6 +218,47 @@ describe('Send from TempCode', () => {
     expect((sends()[0]!.args.message as { html: string }).html).toBe('<p>See you</p>')
   })
 
+  it('a send whose answer LifeOS lost on the way back is an unknown outcome, never a refusal; LifeOS refusing is its own words', async () => {
+    const id = rig.lifeos.draft({ subject: 'Lunch' })
+    delete (rig.lifeos.rows.get(id)! as { origin?: unknown }).origin
+    // The host's own link to LifeOS drops after the write: no `data` on the fault, so LifeOS may have queued it.
+    rig.lifeos.failNext.set('compose:send', 'connection lost')
+    const said = await rig.rpc('work.mail.send', { id, seen: seenOf(id) }).then(() => '', (err: Error) => err.message)
+    expect(said.startsWith(`${OUTCOME_UNKNOWN}: `)).toBe(true)
+    // LifeOS's own no (a ConvexError carries `data`) queued nothing and says so as it is.
+    const refused = Object.assign(new Error('the work PC is not there to send Purdue mail'), { data: 'no' })
+    const call = rig.lifeos.mutation.bind(rig.lifeos)
+    let once = true
+    rig.lifeos.mutation = (async (fn: string, args: Record<string, unknown>) => {
+      if (fn === 'compose:send' && once) {
+        once = false
+        throw refused
+      }
+      return call(fn as never, args as never)
+    }) as typeof rig.lifeos.mutation
+    await expect(rig.rpc('work.mail.send', { id, seen: seenOf(id) })).rejects.toThrow('the work PC is not there')
+  })
+
+  it("a thread's draft the hold sent whose read after it fails is an unknown outcome", async () => {
+    const id = rig.lifeos.draft()
+    rig.lifeos.fire()
+    await settled()
+    const query = rig.lifeos.query.bind(rig.lifeos)
+    let sentYet = false
+    const mutation = rig.lifeos.mutation.bind(rig.lifeos)
+    rig.lifeos.mutation = (async (fn: string, args: Record<string, unknown>) => {
+      const out = await mutation(fn as never, args as never)
+      if (fn === 'compose:send') sentYet = true
+      return out
+    }) as typeof rig.lifeos.mutation
+    rig.lifeos.query = (async (fn: string, args: Record<string, unknown>) => {
+      if (fn === 'compose:get' && sentYet) throw new Error('LifeOS is unreachable')
+      return query(fn as never, args as never)
+    }) as typeof rig.lifeos.query
+    const said = await rig.rpc('work.mail.send', { id, seen: seenOf(id) }).then(() => '', (err: Error) => err.message)
+    expect(said.startsWith(`${OUTCOME_UNKNOWN}: `)).toBe(true)
+  })
+
   it("schedules a thread's draft on his press through the hold, with its zone and the reply tick: LifeOS is its only timer", async () => {
     const held = rig.lifeos.draft()
     rig.lifeos.fire()
@@ -262,6 +303,18 @@ describe('Send from TempCode', () => {
     const after = (await rig.rpc<{ items: OutboxItem[] }>('work.outbox.list', {})).items.find((i) => i.ref.at === 'lifeos' && i.ref.id === held)
     expect(after?.state).toBe('held')
     expect(after?.scheduledFor).toBeUndefined()
+  })
+
+  it('Send Now names the time he saw: a mail moved on another device since is not sent', async () => {
+    const id = rig.lifeos.draft()
+    const row = rig.lifeos.rows.get(id)! as Record<string, unknown>
+    const seen = Date.now() + 3_600_000
+    Object.assign(row, { status: 'queued', scheduled: true, sendAt: seen })
+    // Moved from the desktop after the phone's last read.
+    Object.assign(row, { sendAt: seen + 600_000 })
+    await expect(rig.rpc('work.mail.sendNow', { id, sendAt: seen })).rejects.toThrow(TIME_CHANGED)
+    expect(rig.lifeos.calls.some((c) => c.fn === 'compose:sendNow')).toBe(false)
+    expect((await rig.rpc<{ sendAt: number }>('work.mail.sendNow', { id, sendAt: seen + 600_000 })).sendAt).toBeGreaterThan(Date.now())
   })
 
   it('moves a scheduled mail and sends one now on his press alone', async () => {

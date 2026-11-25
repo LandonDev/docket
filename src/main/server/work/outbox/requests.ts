@@ -157,6 +157,9 @@ const byDb = new WeakMap<DatabaseSync, OutboxRequests>()
 export const requestsOf = (ctx: Pick<WorkCtx, 'db'>): OutboxRequests | null => byDb.get(ctx.db) ?? null
 
 export class OutboxRequests {
+  /** Requests claimed whose items are still going: answered, not yet finished (`running` on the wire). */
+  private readonly running = new Set<string>()
+
   constructor(private readonly deps: RequestDeps) {
     byDb.set(deps.ctx.db, this)
   }
@@ -327,6 +330,20 @@ export class OutboxRequests {
       .prepare(`UPDATE ${REQUESTS_TABLE} SET state = 'answered', answered_by = ?, answered_at = ?, answer = ? WHERE id = ? AND state = 'open' AND generation = ? AND expires_at > ?`)
       .run(by, this.now(), JSON.stringify(unique), id, row.generation, this.now())
     if (Number(claimed.changes) !== 1) return this.view(this.row(id)!)
+    // Claimed, and its items still to go: a read meanwhile says so, so a press read back now is not called done.
+    this.running.add(id)
+    try {
+      await this.run(id, row, chosen as Receipt[], asked, by)
+    } finally {
+      this.running.delete(id)
+    }
+    // Finished (or cut off): the answer and the push say the press's end.
+    this.pushed(id)
+    return this.view(this.row(id)!)
+  }
+
+  /** The claimed press's items, each through the Outbox's own decide, its results kept as each settles. */
+  private async run(id: string, row: Row, chosen: Receipt[], asked: Asked[], by: string): Promise<void> {
     const root = row.root_id
     // What became of each item is kept as it settles: a press cut off keeps what it reached, and what it never reached
     // reads as not started, never as done.
@@ -336,7 +353,7 @@ export class OutboxRequests {
       this.db.prepare(`UPDATE ${REQUESTS_TABLE} SET results = ? WHERE id = ?`).run(JSON.stringify(kept), id)
     }
     const results = await this.deps.outbox.decide(
-      chosen.map((r) => ({ ref: r!.ref, do: r!.do, rev: r!.rev, ...(r!.at !== undefined ? { at: r!.at } : {}) })),
+      chosen.map((r) => ({ ref: r.ref, do: r.do, rev: r.rev, ...(r.at !== undefined ? { at: r.at } : {}) })),
       {
         by,
         via: `request:${id}`,
@@ -352,8 +369,6 @@ export class OutboxRequests {
     const left = asked.length - chosen.length
     this.tellThread(row, answerNote(row.n, results, left))
     this.deps.ctx.tell.done(requestKey(id))
-    this.pushed(id)
-    return this.view(this.row(id)!)
   }
 
   /** Not now: the items still wait in his Outbox. */
@@ -470,7 +485,8 @@ export class OutboxRequests {
       const item = this.itemOf(a.ref)
       // A press cut off before its results were kept still says what became of each item it reached.
       const chosenHere = row.state === 'answered' && answeredRefs.has(refKey(a.ref))
-      const result = results.find((r) => refKey(r.ref) === refKey(a.ref)) ?? (chosenHere && results.length ? { ok: false, error: 'not started' } : undefined)
+      // While the press runs, an item it has not reached yet has no result: it may still go.
+      const result = results.find((r) => refKey(r.ref) === refKey(a.ref)) ?? (chosenHere && results.length && !this.running.has(row.id) ? { ok: false, error: 'not started' } : undefined)
       return { ref: a.ref, do: a.do, ...(a.at !== undefined ? { at: a.at } : {}), ...(item ? { item } : {}), changed: !!item && item.updatedAt !== a.rev, open: !!item && needsHim(item), ...(result ? { result } : {}) }
     })
     return {
@@ -488,7 +504,8 @@ export class OutboxRequests {
       expiresAt: Number(row.expires_at),
       answeredBy: row.answered_by,
       answeredAt: row.answered_at === null ? null : Number(row.answered_at),
-      rows
+      rows,
+      ...(this.running.has(row.id) ? { running: true as const } : {})
     }
   }
 

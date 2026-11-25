@@ -435,13 +435,19 @@ describe('HostRelay lanes', () => {
     expect(() => relay.onFrames('env_other', socketId, [page])).toThrow('unknown socket')
   })
 
-  it('a frame the Mac refused to take answers with the error; the link gone mid-way answers linkDown', async () => {
+  it('every failed hand-off answers linkDown, so the phone checks rather than believes; the link gone mid-way too', async () => {
     const { ws, transport, calls, now } = lane()
     await tick()
+    // The 30-second deadline: the frame may have reached the Mac and run.
     transport.frameAnswer = () => Promise.reject(new Error('the Mac did not answer relay.frame within 30 s'))
     ws.request('1', 'session.list', {})
     await tick()
-    expect(ws.answers()).toEqual([{ id: '1', ok: false, error: 'the Mac did not answer relay.frame within 30 s' }])
+    expect(ws.answers()).toEqual([{ id: '1', ok: false, error: 'linkDown: the Mac did not answer relay.frame within 30 s' }])
+    // The box's own service closing under a press.
+    transport.frameAnswer = () => Promise.reject(new Error('server closing'))
+    ws.request('1b', 'session.list', {})
+    await tick()
+    expect(ws.answers()[1]).toEqual({ id: '1b', ok: false, error: 'linkDown: server closing' })
     transport.frameAnswer = async () => {
       now.t = T0 + 120_000
       calls.drop('env_mac')
@@ -450,8 +456,8 @@ describe('HostRelay lanes', () => {
     ws.request('2', 'session.list', {})
     await tick()
     // the drop closed the lane and failed the request first; the rejection finds nothing pending
-    expect(ws.answers()[1]).toEqual({ id: '2', ok: false, error: 'linkDown: the Mac is unreachable since 09:16' })
-    expect(ws.answers()).toHaveLength(2)
+    expect(ws.answers()[2]).toEqual({ id: '2', ok: false, error: 'linkDown: the Mac is unreachable since 09:16' })
+    expect(ws.answers()).toHaveLength(3)
     expect(ws.closed).toEqual({ code: 4010, reason: 'host unreachable' })
   })
 

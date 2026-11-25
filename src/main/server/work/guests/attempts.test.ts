@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import type { GuestCreated, GuestLinkRow } from '@shared/contract-work-guests'
 import { GuestsRequestSchemas } from '@shared/contract-work-guests'
-import { ATTEMPT_CUT, ATTEMPT_GONE, ATTEMPT_KEPT_MS, ATTEMPT_OTHER, askOf, ensureGuestAttemptsTable, guestAttemptOf, makeOnce } from './attempts'
+import { ATTEMPT_CUT, ATTEMPT_GONE, ATTEMPT_KEPT_MS, ATTEMPT_OTHER, askOf, ensureGuestAttemptsTable, guestAttemptOf, makeOnce, rekeyOnce } from './attempts'
 
 const row = (id: string): GuestLinkRow => ({
   id,
@@ -127,5 +127,25 @@ describe('a Create link answered once by its attempt key', () => {
     await makeOnce(t.db, { attempt: 'press-0008', ask }, t.make, t.linkOf, then)
     expect(guestAttemptOf(t.db, 'press-0008', then + ATTEMPT_KEPT_MS - 1).state).toBe('made')
     expect(guestAttemptOf(t.db, 'press-0008', then + ATTEMPT_KEPT_MS + 1)).toEqual({ state: 'none' })
+  })
+})
+
+describe('Replace Address answered once by its attempt key', () => {
+  it('rotates once after a lost answer: the repeat says again with no address, and the key reads back as made', async () => {
+    const t = setup()
+    t.links.set('link9', row('link9'))
+    let rotations = 0
+    const rekey = async (): Promise<GuestCreated> => {
+      rotations += 1
+      return { link: row('link9'), url: `https://share.example/g/link9#k=new${rotations}` }
+    }
+    const first = await rekeyOnce(t.db, { attempt: 'press-0101', linkId: 'link9' }, rekey, t.linkOf)
+    expect(first).toEqual({ url: 'https://share.example/g/link9#k=new1' })
+    // The answer was lost; his press again with the same key rotates nothing.
+    expect(await rekeyOnce(t.db, { attempt: 'press-0101', linkId: 'link9' }, rekey, t.linkOf)).toEqual({ again: true })
+    expect(rotations).toBe(1)
+    expect(guestAttemptOf(t.db, 'press-0101')).toEqual({ state: 'made', linkId: 'link9' })
+    // The same key for another link is another press: refused.
+    await expect(rekeyOnce(t.db, { attempt: 'press-0101', linkId: 'link8' }, rekey, t.linkOf)).rejects.toThrow(ATTEMPT_OTHER)
   })
 })

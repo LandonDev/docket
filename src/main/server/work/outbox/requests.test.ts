@@ -125,6 +125,31 @@ describe('his press on the card', () => {
     expect(sent).toHaveLength(2)
   })
 
+  it('a read while the press runs says running and calls no item not started; the end says neither', async () => {
+    const { id } = await threeAsked()
+    const r = await card(id)
+    const ticked = r.rows.slice(0, 2).map((row) => row.receipt!)
+    // The first post goes; the second is held at its carrier while the phone reads the request back.
+    let release!: () => void
+    const parked = new Promise<void>((resolve) => (release = resolve))
+    const kind = pillar.acts![0]!
+    const execute = kind.execute
+    kind.execute = (async (p: { chat: string; text: string }, ...rest: unknown[]) => {
+      if (p.chat === 'Coaches') await parked
+      return (execute as (...a: unknown[]) => Promise<unknown>)(p, ...rest)
+    }) as never
+    const pressing = press(id, ticked)
+    for (let i = 0; i < 50 && sent.length < 1; i++) await new Promise((r) => setTimeout(r, 5))
+    const mid = await card(id)
+    expect(mid).toMatchObject({ state: 'answered', running: true })
+    expect(mid.rows[1]!.result).toBeUndefined()
+    release()
+    const { request } = await pressing
+    expect(request.running).toBeUndefined()
+    expect(request.rows.slice(0, 2).map((row) => row.result?.ok)).toEqual([true, true])
+    kind.execute = execute
+  })
+
   it('refuses a receipt it did not issue, a ref or action swapped in, and widening', async () => {
     const { id } = await threeAsked()
     await card(id)

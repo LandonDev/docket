@@ -5905,8 +5905,9 @@ public struct OutboxRequest: Codable, Hashable, Sendable {
     public let answeredBy: String?
     public let answeredAt: Int?
     public let rows: [OutboxRequestRow]
+    public let running: Bool?
 
-    public init(id: String, n: Int, sessionId: String, workspaceId: String?, sector: String?, quote: String, head: String, state: State, why: String? = nil, createdAt: Int, expiresAt: Int, answeredBy: String?, answeredAt: Int?, rows: [OutboxRequestRow]) {
+    public init(id: String, n: Int, sessionId: String, workspaceId: String?, sector: String?, quote: String, head: String, state: State, why: String? = nil, createdAt: Int, expiresAt: Int, answeredBy: String?, answeredAt: Int?, rows: [OutboxRequestRow], running: Bool? = nil) {
         self.id = id
         self.n = n
         self.sessionId = sessionId
@@ -5921,10 +5922,11 @@ public struct OutboxRequest: Codable, Hashable, Sendable {
         self.answeredBy = answeredBy
         self.answeredAt = answeredAt
         self.rows = rows
+        self.running = running
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, n, sessionId, workspaceId, sector, quote, head, state, why, createdAt, expiresAt, answeredBy, answeredAt, rows
+        case id, n, sessionId, workspaceId, sector, quote, head, state, why, createdAt, expiresAt, answeredBy, answeredAt, rows, running
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -5943,6 +5945,7 @@ public struct OutboxRequest: Codable, Hashable, Sendable {
         try container.encode(answeredBy, forKey: .answeredBy)
         try container.encode(answeredAt, forKey: .answeredAt)
         try container.encode(rows, forKey: .rows)
+        try container.encodeIfPresent(running, forKey: .running)
     }
 }
 

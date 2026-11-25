@@ -66,7 +66,7 @@ export const MailRequestSchemas = [
     z.object({ id: z.string().min(1).max(64), sendAt: z.number().int().positive(), sendZone: ZoneSchema.optional(), cancelIfReply: z.boolean().optional() })
   ),
   /** → { sendAt }: his press sends a scheduled mail now; it goes after LifeOS's undo time, so Undo still takes it back. */
-  request('work.mail.sendNow', z.object({ id: z.string().min(1).max(64) })),
+  request('work.mail.sendNow', z.object({ id: z.string().min(1).max(64), /** the time (ms) his screen showed it set for: a mail moved since is not sent */ sendAt: z.number().int().optional() })),
   /** → { back }: his press takes a scheduled mail back to a draft; false when it is already on its way. */
   request('work.mail.cancel', z.object({ id: z.string().min(1).max(64) })),
   /**

@@ -114,3 +114,19 @@ export function guestAttemptOf(db: DatabaseSync, attempt: string, now: number = 
       return { state: 'refused', words: row.answer ?? '' }
   }
 }
+
+/**
+ * Replace Address answered once by its key (the phone's press), on the same rows as Create's: a repeat after a lost
+ * answer rotates nothing again and answers `again` with no address, which was shown once and is never kept; the
+ * key reads back through `guestAttemptOf` (`made` is the rotation done).
+ */
+export async function rekeyOnce(
+  db: DatabaseSync,
+  p: { attempt: string; linkId: string },
+  rekey: () => Promise<GuestCreated>,
+  linkOf: (id: string) => Promise<GuestLinkRow | null>,
+  now: number = Date.now()
+): Promise<{ url: string } | { again: true }> {
+  const answer = await makeOnce(db, { attempt: p.attempt, ask: JSON.stringify(['rekey', p.linkId]) }, rekey, linkOf, now)
+  return 'url' in answer ? { url: answer.url } : { again: true }
+}

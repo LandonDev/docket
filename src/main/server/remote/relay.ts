@@ -443,8 +443,11 @@ export class HostRelay {
     lane.pending.add(req.id)
     this.transport.frame(lane.envId, lane.socketId, req).catch((err: unknown) => {
       if (!lane.pending.delete(req.id)) return
+      // Every failed hand-off leaves the frame's fate unknown (a 30-second deadline, the box's service closing, no
+      // presence row): it may have reached the Mac and run. Each is `linkDown:`, so the phone checks rather than
+      // believes; the Mac's own answers come back through the frame, never this catch.
       const row = this.presenceOf(lane.envId)
-      const error = err instanceof PeerOfflineError && row ? linkDownText(row, this.now(), this.deps.timeZone) : err instanceof Error ? err.message : String(err)
+      const error = err instanceof PeerOfflineError && row ? linkDownText(row, this.now(), this.deps.timeZone) : `linkDown: ${err instanceof Error ? err.message : String(err)}`
       this.send(lane, { id: req.id, ok: false, error })
     })
   }

@@ -251,6 +251,8 @@ export interface OutboxRequest {
   answeredBy: string | null
   answeredAt: number | null
   rows: OutboxRequestRow[]
+  /** answered and its items still going: a read now is not the press's end */
+  running?: true
 }
 export interface OutboxRequestRow {
   ref: HeldRef
@@ -293,7 +295,9 @@ export const OutboxRequestSchema = z.object({
   expiresAt: z.number().int(),
   answeredBy: z.string().nullable(),
   answeredAt: z.number().int().nullable(),
-  rows: z.array(OutboxRequestRowSchema)
+  rows: z.array(OutboxRequestRowSchema),
+  /** Answered and its items still going: a read now is not the press's end (a phone's read-back waits for it to go). */
+  running: z.literal(true).optional()
 })
 
 const ListParams = z

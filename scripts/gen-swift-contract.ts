@@ -490,7 +490,7 @@ export const SUBSET: SubsetEntry[] = [
   // guest links (milestone 31): Settings → Work lists, rekeys and revokes them
   type('GuestLinkRow', W.GuestLinkRowSchema),
   method('work.guests.list', z.array(W.GuestLinkRowSchema)),
-  method('work.guests.rekey', z.object({ url: z.string() })),
+  method('work.guests.rekey', z.object({ url: z.string().optional(), again: z.literal(true).optional() })),
   method('work.guests.revoke', z.object({ ok: z.literal(true) })),
   // Work on the phone, milestone 47: LifeOS's screens through the host's JWT, a mail's Send, a
   // thread's items and each kind the phone draws, the hosted editor's ticket, Share, routines

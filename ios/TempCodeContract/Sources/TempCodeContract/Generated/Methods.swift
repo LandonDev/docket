@@ -3392,17 +3392,21 @@ public enum Methods {
 
         public struct Params: Codable, Hashable, Sendable {
             public let linkId: String
+            public let attempt: String?
 
-            public init(linkId: String) {
+            public init(linkId: String, attempt: String? = nil) {
                 self.linkId = linkId
+                self.attempt = attempt
             }
         }
 
         public struct Output: Codable, Hashable, Sendable {
-            public let url: String
+            public let url: String?
+            public let again: Bool?
 
-            public init(url: String) {
+            public init(url: String? = nil, again: Bool? = nil) {
                 self.url = url
+                self.again = again
             }
         }
     }

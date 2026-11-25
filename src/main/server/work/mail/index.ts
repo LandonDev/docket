@@ -8,6 +8,7 @@ import { chatCallRefusal, chatHarnessDenied, chatPreambleOf, dropChats, ensureCh
 import { mailAttachmentFetcher } from './attachment'
 import { outgoingHtml } from './outgoing'
 import { withWaited } from './waited'
+import { isRefusal } from '../messages/lifeos'
 import { mustBePerson } from '../outbox/person'
 import { outboxHostOf } from '../outbox/ctx'
 import { ensureWaitingTables, reportDrops, setWaiting, startNudge, waitingOf, waitingTool, type DropRow } from './waiting'
@@ -31,6 +32,14 @@ export interface MailRow {
 }
 
 export const ELSEWHERE = 'A thread on another host made this draft. Send it from that host.'
+/**
+ * The start of a Send's answer when LifeOS may have taken it and the host cannot say (its reply lost on the host's own
+ * link to LifeOS, or the read after it failed). The phone keeps such a press Checking and reads the draft back
+ * (PressLedger.reached, `unknownPrefix`), never "not sent".
+ */
+export const OUTCOME_UNKNOWN = 'outcome unknown'
+const unknownSend = (err: unknown): Error => new Error(`${OUTCOME_UNKNOWN}: LifeOS did not say whether it took this mail (${errorText(err)}). Look in Sent before sending it again.`)
+
 export const NOT_QUEUED = 'This mail did not go: the Outbox had already recorded an earlier send of it. Open the Outbox and send it from there.'
 export const CHANGED = 'The draft changed after you pressed Send. Look at it again, then send.'
 
@@ -138,7 +147,13 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
     // The hold answers an item it had already settled as it stands, and runs nothing. So "sent" is believed only when
     // LifeOS has the mail on its way: a draft that an earlier send of the hold's left behind (it failed in LifeOS's own
     // lane, and was opened and saved again) is never called sent while it sits there unsent.
-    const after = await owner.query<{ row: MailRow } | null>('compose:get', { id })
+    let after: { row: MailRow } | null
+    try {
+      after = await owner.query<{ row: MailRow } | null>('compose:get', { id })
+    } catch (err) {
+      // The hold sent it and the read after failed: whether LifeOS holds it on its way is not known.
+      throw unknownSend(err)
+    }
     if (!after?.row || !['queued', 'sending', 'sent'].includes(String(after.row.status))) throw new Error(NOT_QUEUED)
     return { id, via: 'hold' }
   }
@@ -150,7 +165,9 @@ export async function sendMail(ctx: WorkCtx, by: Caller, id: string, seen: MailS
     await owner.mutation('compose:send', { id, message, cause: 'press', ...timeArgs(time), ...(typeof row.editedAt === 'number' ? { editedAt: row.editedAt } : {}) })
   } catch (err) {
     if (/changed since it was shown/.test(err instanceof Error ? err.message : String(err))) throw new Error(CHANGED)
-    throw err
+    // LifeOS's own no queued nothing; any other fault (its answer lost on the way back) may have.
+    if (isRefusal(err)) throw err
+    throw unknownSend(err)
   }
   return { id, via: 'owner' }
 }
@@ -188,14 +205,24 @@ export async function cancelMail(ctx: WorkCtx, by: Caller, id: string): Promise<
 }
 
 /** His press sends a scheduled mail now, after LifeOS's undo time. */
-export async function sendMailNow(ctx: WorkCtx, by: Caller, id: string): Promise<{ sendAt: number }> {
+/** Send Now named a time the mail is no longer set for: moved on another device since his screen read it. */
+export const TIME_CHANGED = 'This mail’s time changed since you saw it. Look at it again, then send.'
+
+export async function sendMailNow(ctx: WorkCtx, by: Caller, id: string, seen?: number): Promise<{ sendAt: number }> {
   mustApprove(by)
   const host = outboxHostOf(ctx)
   if (host && heldRowOf(ctx, id)?.state === 'scheduled') {
-    const item = await host.outbox.sendScheduledNow({ at: 'lifeos', table: 'outbox', id })
+    // Under the item's own lock, against the time he saw.
+    const item = await host.outbox.sendScheduledNow({ at: 'lifeos', table: 'outbox', id }, seen !== undefined ? { at: seen } : {})
     return { sendAt: item.scheduledFor ?? Date.now() }
   }
-  return { sendAt: await ctx.lifeos.owner().mutation<number>('compose:sendNow', { id }) }
+  const owner = ctx.lifeos.owner()
+  if (seen !== undefined) {
+    // LifeOS's `compose:sendNow` takes no time to check against: the row is read just before and must still say his.
+    const now = await owner.query<{ row: MailRow & { sendAt?: number } } | null>('compose:get', { id })
+    if (now?.row?.sendAt !== seen) throw new Error(TIME_CHANGED)
+  }
+  return { sendAt: await owner.mutation<number>('compose:sendNow', { id }) }
 }
 
 export function ensureMailTables(db: DatabaseSync): void {
@@ -254,7 +281,7 @@ export const mail: WorkModule = {
         return handled(await rescheduleMail(ctx, by, id, { sendAt, sendZone, cancelIfReply }))
       }
       case 'work.mail.sendNow':
-        return handled(await sendMailNow(ctx, by, req.params.id))
+        return handled(await sendMailNow(ctx, by, req.params.id, req.params.sendAt))
       case 'work.mail.cancel':
         return handled(await cancelMail(ctx, by, req.params.id))
       case 'work.mail.nudge':

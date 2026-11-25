@@ -91,8 +91,12 @@ export const GuestsRequestSchemas = [
   request('work.guests.create', z.object({ source: GuestSourceSchema, title: GuestTitleSchema, name: GuestNameSchema, role: z.enum(GUEST_ROLES), expiresAt: z.number().int(), attempt: attempt.optional() })),
   /** → GuestAttemptAnswer: what became of a Create link named by its `attempt` key, read without making anything. */
   request('work.guests.attempt', z.object({ attempt })),
-  /** A new address for a live link, shown once: the one before opens nothing from now on. */
-  request('work.guests.rekey', z.object({ linkId })),
+  /**
+   * A new address for a live link, shown once: the one before opens nothing from now on. `attempt` (the phone's): the
+   * host answers the key once, as Create's, so a repeat after a lost answer replaces nothing again and answers
+   * `{again: true}` with no address; `work.guests.attempt` reads it back.
+   */
+  request('work.guests.rekey', z.object({ linkId, attempt: attempt.optional() })),
   /** Revoked at once: the guest's sockets close within a second. */
   request('work.guests.revoke', z.object({ linkId })),
   /** What a live link lets its guest do, changed at once: the guest's page opens again as the new role; the address stays. */

@@ -9,7 +9,7 @@ import { serviceOf } from '../service/ctx'
 import { GuestRuntime, TICK_MS } from './links'
 import { ensureGuestTables } from './store'
 import { EDITED_TELL, OPENED_TELL } from './tells'
-import { askOf, ensureGuestAttemptsTable, guestAttemptOf, makeOnce } from './attempts'
+import { askOf, ensureGuestAttemptsTable, guestAttemptOf, makeOnce, rekeyOnce } from './attempts'
 import { guestsHealth } from './health'
 import { hisZone } from '../clock'
 import { heldReceipt } from '../outbox/words'
@@ -170,9 +170,17 @@ export const guests: WorkModule = {
         if (!(await rt.setRole(req.params.linkId, req.params.role))) throw new Error('That link no longer opens anything.')
         return handled({ ok: true })
       case 'work.guests.rekey': {
-        const url = await rt.rekey(req.params.linkId)
-        if (!url) throw new Error('That link no longer opens anything.')
-        return handled({ url })
+        const { linkId, attempt } = req.params
+        const linkOf = async (id: string) => (await rt.list()).find((l) => l.id === id) ?? null
+        const rekey = async () => {
+          const url = await rt.rekey(linkId)
+          const link = url ? await linkOf(linkId) : null
+          if (!url || !link) throw new Error('That link no longer opens anything.')
+          return { url, link }
+        }
+        if (!attempt) return handled({ url: (await rekey()).url })
+        // The phone's press, answered once by its key: a repeat after a lost answer replaces the address no second time.
+        return handled(await rekeyOnce(ctx.db, { attempt, linkId }, rekey, linkOf))
       }
       case 'work.guests.setOrigin':
         return handled(await rt.setOrigin(req.params.origin))
