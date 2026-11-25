@@ -350,7 +350,11 @@ export type DecideDo = { do: "send" } | { do: "discard"; reason?: string } | { d
  * the order asked. `onHost` hears each host's answers as they land, so rows show their results as they come.
  * A host that did not answer fails each of its items with why.
  */
-export async function decideMany(items: readonly HostItem[], choice: DecideDo, opts: { via?: PressVia; onHost?: (results: Map<string, DecisionResult>) => void } = {}): Promise<Map<string, DecisionResult>> {
+export async function decideMany(
+  items: readonly HostItem[],
+  choice: DecideDo,
+  opts: { via?: PressVia; onHost?: (results: Map<string, DecisionResult>) => void; /** a press that is many whatever its size (a request's retry) */ many?: boolean } = {},
+): Promise<Map<string, DecisionResult>> {
   const byHost = new Map<string, HostItem[]>();
   for (const item of items) byHost.set(item.environmentId, [...(byHost.get(item.environmentId) ?? []), item]);
   const all = new Map<string, DecisionResult>();
@@ -368,7 +372,7 @@ export async function decideMany(items: readonly HostItem[], choice: DecideDo, o
         const { results } = await registry
           .linkOf(environmentId)
           // A press that spans hosts is many on each host, so a part of one item earns no grant offer.
-          .request<{ results: DecisionResult[] }>("work.outbox.decide", { items: list.map(decision), ...(byHost.size > 1 ? { many: true } : {}), ...(opts.via ? { via: opts.via } : {}) });
+          .request<{ results: DecisionResult[] }>("work.outbox.decide", { items: list.map(decision), ...(byHost.size > 1 || opts.many ? { many: true } : {}), ...(opts.via ? { via: opts.via } : {}) });
         list.forEach((item, i) => mine.set(`${environmentId}:${item.ref.at}:${item.ref.id}`, results[i] ?? { ref: item.ref, ok: false, error: "No answer for it" }));
       } catch (err) {
         for (const item of list) mine.set(`${environmentId}:${item.ref.at}:${item.ref.id}`, { ref: item.ref, ok: false, error: errorText(err) });

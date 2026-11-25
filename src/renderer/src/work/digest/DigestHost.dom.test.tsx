@@ -22,8 +22,8 @@ vi.mock("../files/openFrom", () => ({ openInFiles: (...a: unknown[]) => files.op
 vi.mock("../../components/ui/toaster", async (original) => {
   const show =
     (kind: "plain" | "warning") =>
-    (text: string, o: { id: string; description?: string; duration: number; closeButton: boolean; action: { label: string; onClick: () => void }; onDismiss: () => void }) => {
-      toasts.shown.set(o.id, { id: o.id, kind, text, description: o.description, action: o.action.onClick, dismiss: o.onDismiss, sticky: o.duration === Infinity && o.closeButton, label: o.action.label });
+    (text: string, o: { id: string; description?: string; duration: number; closeButton: boolean; action: { label: string; onClick: () => void }; onDismiss: () => void; icon?: unknown }) => {
+      toasts.shown.set(o.id, { id: o.id, kind, text, description: o.description, action: o.action.onClick, dismiss: o.onDismiss, sticky: o.duration === Infinity && o.closeButton, label: o.action.label, icon: o.icon });
     };
   const api = Object.assign(show("plain"), {
     warning: show("warning"),
@@ -106,6 +106,21 @@ describe("the digest's toast", () => {
     w().rows.set("box", [...w().rows.get("box")!, tell({ key: "prep:ev9", title: "Budget review starts at 2:00 PM", how: "now", toldAt: at(24, 10), by: at(24, 14) })]);
     await mount();
     expect(shown().map((t) => t.id)).toEqual(["work-digest", "work-now:k:prep:ev9"]);
+  });
+
+  it("a thread's request for his press interrupts as held work: the Outbox's muted glyph, never the warning", async () => {
+    w().rows.set("box", [
+      ...w().rows.get("box")!,
+      tell({ key: "request:r1", kind: "outbox.request", group: "held", title: "Asked: Send 10 items", how: "now", toldAt: at(24, 10), open: { thread: "t1" } }),
+      tell({ key: "prep:ev9", title: "Budget review starts at 2:00 PM", how: "now", toldAt: at(24, 10), by: at(24, 14) }),
+    ]);
+    await mount();
+    const asked = shown().find((t) => t.text === "Asked: Send 10 items") as unknown as { kind: string; icon: { props: { className: string } } };
+    expect(asked.kind).toBe("plain");
+    expect(asked.icon.props.className).toContain("text-muted-foreground");
+    expect(asked.icon.props.className).not.toMatch(/warning|amber/);
+    // A thing that cannot wait and is not held keeps the warning.
+    expect((shown().find((t) => t.text.startsWith("Budget review")) as unknown as { kind: string }).kind).toBe("warning");
   });
 
   it("is one toast for two hosts' same day, sticky, with Open", async () => {

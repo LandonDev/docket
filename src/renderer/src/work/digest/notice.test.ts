@@ -251,3 +251,13 @@ describe("a toast's clock", () => {
     expect(keepClock("PM review at noon")).toBe("PM review at noon");
   });
 });
+
+describe("held interrupts", () => {
+  it("are held only when every thing in the toast is held work", async () => {
+    const { heldOnly } = await import("./notice");
+    const row = (group: string) => ({ group }) as never;
+    expect(heldOnly({ rows: [row("held")] })).toBe(true);
+    expect(heldOnly({ rows: [row("held"), row("meetings")] })).toBe(false);
+    expect(heldOnly({ rows: [] })).toBe(false);
+  });
+});

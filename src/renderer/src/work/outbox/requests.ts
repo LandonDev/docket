@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { HeldRef } from "@shared/work";
 import type { OutboxRequest, OutboxRequestRow } from "@shared/contract-work-outbox";
 import { registry } from "../../lib/connection";
@@ -93,6 +93,17 @@ export function useRequest(environmentId: string, id: string): { request: HostRe
   useEffect(() => {
     void getRequest(environmentId, id).catch(() => undefined);
   }, [environmentId, id]);
+  // A pushed or listed copy may carry no receipts: while it waits and a row it lists unchanged has none, the card asks
+  // `request.get` again for them, once a copy, never trusting the copy to stand for what he may press.
+  const asked = useRef<string | null>(null);
+  useEffect(() => {
+    if (!request || request.state !== "open") return;
+    if (!request.rows.some((r) => r.open && !r.changed && !r.receipt)) return;
+    const copy = JSON.stringify(request.rows.map((r) => [r.ref, r.open, r.changed, r.receipt ?? null, r.item?.updatedAt ?? null]));
+    if (asked.current === copy) return;
+    asked.current = copy;
+    void getRequest(environmentId, id).catch(() => undefined);
+  }, [environmentId, id, request]);
   return { request, error: request ? null : error, retry: () => void getRequest(environmentId, id).catch(() => undefined) };
 }
 

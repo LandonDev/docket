@@ -14,7 +14,11 @@ import { project } from "../../stores/project";
 import { shell } from "../../stores/shell";
 import { wantOutboxItem } from "../outbox/store";
 import { DigestSheet } from "./DigestSheet";
-import { carryLegacy, DIGEST_TOAST, digestNotice, forgetGone, keepClock, marked, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
+import { Outbox } from "../../chrome/icons";
+
+/** A held interrupt's glyph: the Outbox's, muted, in the 20px line the toast's icons sit on. */
+const HELD_ICON = <Outbox data-held-toast className="size-3.5 text-muted-foreground" />;
+import { carryLegacy, DIGEST_TOAST, digestNotice, forgetGone, heldOnly, keepClock, marked, nowToasts, onlyToday, openInterrupts, systemNotices, tellingOf, type NowToast } from "./notice";
 import { go, routeOf, type Routes } from "./open";
 import { todayShowsAll } from "./today";
 import { markSeen, openDigestSheet, setTellOpener, useDigest, useDigestSheetOpen } from "./store";
@@ -255,7 +259,9 @@ export function DigestHost() {
     (api, toast, id) => {
       // Shown again in place (its words changed): nothing was taken away, so his next close is his own.
       taken.current.delete(id);
-      api.warning(keepClock(toast.title), {
+      // Held work is held, not Needs you: the Outbox's muted glyph on a plain toast, never the warning's amber.
+      const show = heldOnly(toast) ? (title: string, opts: Parameters<typeof api>[1]) => api(title, { ...opts, icon: HELD_ICON }) : api.warning;
+      show(keepClock(toast.title), {
         id,
         description: toast.detail === undefined ? undefined : keepClock(toast.detail),
         duration: Infinity,

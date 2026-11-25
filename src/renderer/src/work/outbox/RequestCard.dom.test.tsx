@@ -16,6 +16,8 @@ const world = vi.hoisted(() => ({
   // the answer decide gives, made from the request it is asked about
   answer: null as ((r: OutboxRequest, receipts: string[]) => OutboxRequest) | null,
   hold: null as Promise<void> | null,
+  // what the host's Outbox lists as waiting (a failed row retried from the card must still be there, as drawn)
+  waiting: [] as OutboxItem[],
 }));
 
 vi.mock("../../lib/connection", async (original) => {
@@ -44,7 +46,7 @@ vi.mock("../../lib/connection", async (original) => {
         case "work.outbox.decline":
           return { ...world.request, state: "declined", answeredBy: "owner", answeredAt: Date.now() };
         case "work.outbox.list":
-          return { items: [], waiting: 0 };
+          return params.show === "done" ? { items: [] } : { items: world.waiting, waiting: world.waiting.length };
         case "work.outbox.grants":
           return { grants: [] };
         case "work.outbox.offers":
@@ -62,7 +64,10 @@ vi.mock("../../lib/connection", async (original) => {
 });
 
 import { OutboxRequestRow, pressLabel, refusalWords, requestOfBlock } from "./RequestCard";
-import { resetRequests } from "./requests";
+import { getRequest } from "./requests";
+import { resetOutboxStore } from "./store";
+import { wantedOutbox, wantOutbox } from "../../lib/outboxWant";
+import { setWorkOn, workSwitch } from "../../lib/workSwitch";
 import type { Block } from "../../lib/session";
 
 function item(id: string, over: Partial<OutboxItem> = {}): OutboxItem {
@@ -123,7 +128,10 @@ beforeEach(() => {
   world.request = request();
   world.answer = null;
   world.hold = null;
-  resetRequests();
+  world.waiting = [];
+  workSwitch.reset();
+  setWorkOn("box", true);
+  resetOutboxStore();
 });
 afterEach(cleanup);
 
@@ -179,6 +187,7 @@ describe("the request card", () => {
   });
 
   it("done with a failure: each row's result, the sum, who pressed and when, and Send again for what did not go", async () => {
+    world.waiting = [item("m2", { state: "failed" })];
     world.answer = (r) => ({
       ...r,
       state: "answered",
@@ -201,7 +210,8 @@ describe("the request card", () => {
     expect(within(el).queryByRole("button", { name: "Not now" })).toBeNull();
     await act(async () => fireEvent.click(within(el).getByRole("button", { name: "Send again" })));
     const again = world.calls.filter((c) => c.method === "work.outbox.decide" && c.params.items);
-    expect(again.map((c) => c.params)).toEqual([{ items: [{ ref: { at: "lifeos", table: "outbox", id: "m2" }, do: "send", rev: 500 }], via: "outbox" }]);
+    // The request's many-ness and the revision the card drew go with it (review finding 10).
+    expect(again.map((c) => c.params)).toEqual([{ items: [{ ref: { at: "lifeos", table: "outbox", id: "m2" }, do: "send", rev: 500 }], many: true, via: "outbox" }]);
   });
 
   it("Not now collapses the card to one muted line", async () => {
@@ -254,5 +264,90 @@ describe("the card's words", () => {
     expect(pressLabel(["discard"])).toBe("Discard 1");
     expect(pressLabel(["send", "discard", "send"])).toBe("Approve 3");
     expect(refusalWords("Refused: Item 31 is another job's; a thread asks only about its own job.")).toBe("Item 31 is another job's; a thread asks only about its own job.");
+  });
+});
+
+describe("ticks bound to receipts (review finding 9, and the Outbox's copy drawn first)", () => {
+  const tickOf = (i: number) => within(card().querySelectorAll("[data-summary-row]")[i] as HTMLElement).queryByRole("checkbox");
+
+  it("a request first drawn without receipts ticks its unchanged rows once the receipts arrive", async () => {
+    const bare = request({ rows: request().rows.map(({ receipt: _r, ...row }) => row) });
+    world.request = bare;
+    render(<OutboxRequestRow block={asked} />);
+    await waitFor(() => expect(card()).toBeTruthy());
+    expect(tickOf(0)).toBeNull();
+    world.request = request();
+    await act(async () => void (await getRequest("box", "r1")));
+    await waitFor(() => expect(tickOf(0)?.getAttribute("aria-checked")).toBe("true"));
+    expect(tickOf(1)?.getAttribute("aria-checked")).toBe("true");
+    // the row changed since the ask still waits for his own tick
+    expect(tickOf(2)).toBeNull();
+    expect(sendButton().textContent).toBe("Send 2");
+  });
+
+  it("a refresh that marks a ticked row changed clears its tick, and the fresh receipt after he opens it starts unticked", async () => {
+    await drawn();
+    expect(tickOf(1)?.getAttribute("aria-checked")).toBe("true");
+    world.request = request({ rows: request().rows.map((r, i) => (i === 1 ? { ...r, changed: true, receipt: undefined } : r)) });
+    await act(async () => void (await getRequest("box", "r1")));
+    await waitFor(() => expect(tickOf(1)).toBeNull());
+    expect(sendButton().textContent).toBe("Send 1");
+    await act(async () => fireEvent.click(within(card().querySelectorAll("[data-summary-row]")[1] as HTMLElement).getByRole("button", { name: /^Open / })));
+    await waitFor(() => expect(tickOf(1)).toBeTruthy());
+    expect(tickOf(1)!.getAttribute("aria-checked")).toBe("false");
+    expect(sendButton().textContent).toBe("Send 1");
+  });
+
+  it("a row whose receipt changes on a refresh is no longer ticked", async () => {
+    await drawn();
+    world.request = request({ rows: request().rows.map((r, i) => (i === 0 ? { ...r, receipt: "rc-m1-moved" } : r)) });
+    await act(async () => void (await getRequest("box", "r1")));
+    await waitFor(() => expect(tickOf(0)?.getAttribute("aria-checked")).toBe("false"));
+    expect(world.calls.filter((c) => c.method === "work.outbox.decide")).toEqual([]);
+  });
+});
+
+describe("Send again on an answered request (review finding 10)", () => {
+  const answered = (rows: OutboxRequest["rows"]) => () => ({ ...world.request, state: "answered" as const, answeredBy: "owner", answeredAt: Date.now(), rows });
+
+  it("a failed Later row takes a new time he picks, said before it goes, as many with the revision drawn", async () => {
+    world.request = request({ rows: [{ ...request().rows[0]!, do: "later", at: Date.now() + 3_600_000 }] });
+    world.waiting = [item("m1", { state: "held" })];
+    world.answer = answered([{ ...request().rows[0]!, do: "later", at: Date.now() + 3_600_000, result: { ok: false, error: "LifeOS refused the time" } }]);
+    const el = await drawn();
+    await act(async () => fireEvent.click(sendButton()));
+    await waitFor(() => expect(within(el).getByRole("button", { name: "Pick a new time…" })).toBeTruthy());
+    expect(within(el).queryByRole("button", { name: "Send again" })).toBeNull();
+    fireEvent.click(within(el).getByRole("button", { name: "Pick a new time…" }));
+    const dialog = await screen.findByRole("dialog");
+    // The time it will go is said before he presses.
+    await waitFor(() => expect(dialog.textContent).toMatch(/\d:\d\d [AP]M/));
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Send later" })));
+    const later = world.calls.filter((c) => c.method === "work.outbox.decide" && c.params.items);
+    expect(later).toHaveLength(1);
+    expect(later[0]!.params).toMatchObject({ many: true, via: "outbox", items: [{ ref: { id: "m1" }, do: "later", rev: 500 }] });
+    expect((later[0]!.params.items as { at?: number }[])[0]!.at).toBeGreaterThan(Date.now());
+  });
+
+  it("a failed row whose item moved since, or may have gone, is opened in the Outbox, never retried from the card", async () => {
+    world.waiting = [item("m2", { state: "failed", updatedAt: 900 })];
+    world.answer = answered([{ ...request().rows[1]!, result: { ok: false, error: "Changed, open it again" } }]);
+    const el = await drawn();
+    await act(async () => fireEvent.click(sendButton()));
+    await waitFor(() => expect(within(el).getByRole("button", { name: "Open in the Outbox" })).toBeTruthy());
+    expect(within(el).queryByRole("button", { name: /Send .*again|Send again/ })).toBeNull();
+    fireEvent.click(within(el).getByRole("button", { name: "Open in the Outbox" }));
+    expect(wantedOutbox()).toBe("box:lifeos:m2");
+    expect(world.calls.filter((c) => c.method === "work.outbox.decide" && c.params.items)).toEqual([]);
+    wantOutbox(null);
+  });
+
+  it("a send that may have gone goes to its detail too", async () => {
+    world.waiting = [item("m2", { state: "failed", outcomeUnknown: true })];
+    world.answer = answered([{ ...request().rows[1]!, item: item("m2", { state: "failed", outcomeUnknown: true }), result: { ok: false, error: "Outlook did not answer in time" } }]);
+    const el = await drawn();
+    await act(async () => fireEvent.click(sendButton()));
+    await waitFor(() => expect(within(el).getByRole("button", { name: "Open in the Outbox" })).toBeTruthy());
+    expect(within(el).queryByRole("button", { name: "Send again" })).toBeNull();
   });
 });

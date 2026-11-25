@@ -145,6 +145,12 @@ export interface NowToast {
 export const keepClock = (words: string): string => words.replace(/(\d) ([AP]M)\b/g, "$1\u00a0$2");
 
 /** One toast a row; past three, one toast for them all, which opens the list. */
+/**
+ * A toast whose every thing is held work (a held act, a thread's request for his press): held is not Needs you, so it
+ * wears the Outbox's muted glyph, never the warning's amber one (docs/DESIGN.md "Held is not Needs you").
+ */
+export const heldOnly = (toast: Pick<NowToast, "rows">): boolean => toast.rows.length > 0 && toast.rows.every((row) => row.group === "held");
+
 export function nowToasts(rows: readonly TellRow[]): NowToast[] {
   if (rows.length > FOLD_PAST) return [{ id: NOW_FOLD_TOAST, title: `${rows.length} things need you now`, rows: [...rows] }];
   return rows.map((row) => ({ id: `${NOW_FOLD_TOAST}:${nameOf(row)}`, title: row.title, ...(row.detail ? { detail: row.detail } : {}), rows: [row] }));

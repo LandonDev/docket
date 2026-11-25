@@ -1066,10 +1066,18 @@ LifeOS item's Send carries `rev` = its `updatedAt` as shown.
   (`request.get`) and kept current by the `work.outbox.request` push. A row
   with a receipt starts ticked; a changed one starts unticked, "Changed
   since asked", and opening it asks `request.view` for a fresh receipt, then
-  he ticks it. His press is `decide({request, receipts})` with the ticked
-  rows' receipts alone (Send N, Discard N, Approve N when the actions mix);
-  Not now is `decline`. Results land per row; then "by you at 9:41 AM" and
-  Send again for rows that did not go (an ordinary Outbox press). Not now,
+  he ticks it. A tick is bound to the receipt it was given for (`absorbRows`):
+  a copy that marks the row changed, or gives it another receipt or none,
+  leaves it unticked; a row's first receipt, unchanged and open, starts
+  ticked when it arrives, though the first copy drawn (a push, the list) had
+  none, and the card asks `request.get` again while a copy lacks them. His
+  press is `decide({request, receipts})` with the ticked rows' receipts alone
+  (Send N, Discard N, Approve N when the actions mix); Not now is `decline`.
+  Results land per row; then "by you at 9:41 AM" and, for rows that did not
+  go: Send again (`decide` with `many` and the revision the card drew) for a
+  Send; Pick a new time… (a dialog that says when it goes, then `decide`
+  `later` with `many`) for a Later; and Open in the Outbox, never a retry
+  here, for a row whose item moved since or may have gone. Not now,
   void and a refused ask are one muted line. Never the warning colour
   (RequestCard.dom.test.tsx holds it). The Outbox lists open requests first,
   in **Asked in threads** (one row each, its items not again under their

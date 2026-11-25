@@ -4386,8 +4386,12 @@ N, Approve N when the actions mix) at its foot, right-aligned. A row
 rewritten since the thread asked starts unticked with "Changed since
 asked" and takes its tick only once he opens it. Pressed, each row shows
 its result where its tick was; then the head sums them ("Sent 1, 1 not
-sent") and the foot says "by you at 9:41 AM" with Send again for what did
-not go. Not now, a request that ran out and a refused ask are one muted
+sent") and the foot says "by you at 9:41 AM" with, for what did not go,
+Send again (a Send), Pick a new time… (a Later, its new time said before it
+goes), or Open in the Outbox (an item that moved since or may have gone). A
+tick holds only while its row keeps the receipt it was given for. A held
+interrupt toast (a request, a held act) takes the Outbox's muted glyph, never
+the warning. Not now, a request that ran out and a refused ask are one muted
 line where the card was (the Outbox glyph, "Not now", "No longer open",
 "Not asked" with the first sentence of why). A held line ("Held Send to
 …") opens the Outbox on its own item.

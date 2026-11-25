@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useState, type ReactNode, type RefObject } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
@@ -18,11 +18,13 @@ import { QUESTION_SHAPE } from "../../surfaces/QuestionCard";
 import { NoticeLine } from "../../surfaces/transcript/NoticeLine";
 import { useTranscriptHost } from "../../surfaces/transcriptSession";
 import { pressFailWords } from "./failWords";
-import { useKeyVerbs, type DetailCommands } from "./HeldDetail";
+import { PickTime, useKeyVerbs, type DetailCommands } from "./HeldDetail";
 import { WORK_CHATS_KEY } from "./model";
 import { DetailColumn, VerbBar } from "./parts";
 import { answerRequest, declineRequest, useRequest, viewRow, type HostRequest } from "./requests";
-import { decideMany, type HostItem } from "./store";
+import { decideMany, loadHost, useOutbox, wantOutboxItem, type DecideDo, type HostItem } from "./store";
+import { shell } from "../../stores/shell";
+import { ownZone } from "work-kit/mail/lib/zones";
 import { SummaryList, type SummaryRow } from "./SummaryList";
 import { aheadTime, doneWords, itemKey, resultsHead, summaryHead, type RowResult } from "./waiting";
 
@@ -152,16 +154,50 @@ function resultOf(row: Row): RowResult | undefined {
   return { state: "done", words: doneWords(after, row.do) };
 }
 
+/** The ticks and what each row was first seen with: its first receipt, or that it was changed. */
+export type TickMarks = { ticks: ReadonlyMap<string, string>; seen: ReadonlyMap<string, string | typeof CHANGED> };
+const CHANGED = Symbol("changed");
+const NO_MARKS: TickMarks = { ticks: new Map(), seen: new Map() };
+
+/**
+ * One copy of the request taken into the ticks: a row seen changed is marked so for good; a row whose first receipt
+ * this is (unchanged, open) is ticked for that receipt. Nothing he ticked or unticked is undone. The same marks come
+ * back when nothing is new, so a copy that adds nothing renders nothing.
+ */
+export function absorbRows(prev: TickMarks, env: string, rows: readonly Pick<Row, "ref" | "open" | "changed" | "receipt">[]): TickMarks {
+  let ticks: Map<string, string> | null = null;
+  let seen: Map<string, string | typeof CHANGED> | null = null;
+  for (const r of rows) {
+    if (!r.open) continue;
+    const key = rowKey(env, r);
+    if (r.changed) {
+      if (prev.seen.get(key) !== CHANGED) (seen ??= new Map(prev.seen)).set(key, CHANGED);
+      continue;
+    }
+    if (!r.receipt || (seen ?? prev.seen).has(key)) continue;
+    (seen ??= new Map(prev.seen)).set(key, r.receipt);
+    (ticks ??= new Map(prev.ticks)).set(key, r.receipt);
+  }
+  return ticks || seen ? { ticks: ticks ?? prev.ticks, seen: seen ?? prev.seen } : prev;
+}
+
 /** The request's press: the ticks, the sending, the answer, and Send again for what failed. */
 function useRequestPress(request: HostRequest) {
   const env = request.environmentId;
-  // What he may press as drawn starts ticked; a changed row waits for him to open it and tick it himself.
-  const [ticks, setTicks] = useState<ReadonlySet<string>>(() => new Set(request.rows.filter((r) => r.receipt && r.open).map((r) => rowKey(env, r))));
+  const { waiting } = useOutbox();
+  // His ticks, bound to receipts (review finding 9): a tick counts only while the row still holds the receipt it was
+  // given for, so a refresh that marks the row changed, or gives it another receipt or none, leaves it unticked. A
+  // row's first receipt, unchanged and open, starts ticked when it arrives, though the first copy drawn had none (a
+  // pushed copy); a row seen changed, or seen with another receipt, waits for his own tick.
+  const [marks, setMarks] = useState<TickMarks>(() => absorbRows(NO_MARKS, env, request.rows));
+  useEffect(() => setMarks((prev) => absorbRows(prev, env, request.rows)), [env, request.rows]);
+  const ticks = marks.ticks;
+  const isOn = (r: Row): boolean => r.open && !!r.receipt && ticks.get(rowKey(env, r)) === r.receipt;
   const [sending, setSending] = useState<ReadonlySet<string> | null>(null);
   const [busy, setBusy] = useState<"send" | "decline" | "again" | null>(null);
   const [again, setAgain] = useState<ReadonlyMap<string, RowResult>>(new Map());
   const open = request.state === "open";
-  const ticked = request.rows.filter((r) => ticks.has(rowKey(env, r)) && r.receipt && r.open);
+  const ticked = request.rows.filter(isOn);
 
   const send = async () => {
     if (!open || !ticked.length || busy) return;
@@ -169,6 +205,8 @@ function useRequestPress(request: HostRequest) {
     setSending(new Set(ticked.map((r) => rowKey(env, r))));
     try {
       await answerRequest(env, request.id, ticked.map((r) => r.receipt!));
+      // The Outbox's list read again at once: a retry on the card is judged against what the host now holds.
+      void loadHost(env);
     } catch (err) {
       toastError(pressFailWords(err, "Nothing was sent"));
     } finally {
@@ -187,39 +225,61 @@ function useRequestPress(request: HostRequest) {
       setBusy(null);
     }
   };
-  // After the answer: the rows that did not go, sent again as an Outbox press would send them.
-  const failed = request.rows.filter((r) => r.result && !r.result.ok && r.item && r.do !== "discard" && !again.has(rowKey(env, r)));
-  const sendAgain = async () => {
-    const items = failed.map((r) => ({ ...r.item!, environmentId: env }));
+  // After the answer, what did not go is tried again only as it was asked and as he saw it (review finding 10): a Send
+  // keeps the request's many-ness and the revision the card drew; a Later takes a new time he picks and is told; a row
+  // that moved since, or that may have gone, is his to look at in its own detail, never retried from here.
+  const failedRows = request.rows.filter((r) => r.result && !r.result.ok && r.item && r.do !== "discard" && !again.has(rowKey(env, r)));
+  const moved = (r: Row): boolean => {
+    const now = waiting.find((i) => i.environmentId === env && i.ref.at === r.ref.at && i.ref.id === r.ref.id);
+    return !!r.item!.outcomeUnknown || !now || now.updatedAt !== r.item!.updatedAt || !!now.outcomeUnknown;
+  };
+  const toDetail = failedRows.filter(moved);
+  const failed = failedRows.filter((r) => r.do === "send" && !moved(r));
+  const failedLater = failedRows.filter((r) => r.do === "later" && !moved(r));
+  const retry = async (rows: readonly Row[], choice: DecideDo) => {
+    // The item as the card drew it: its revision is the one the retry names.
+    const items = rows.map((r) => ({ ...r.item!, environmentId: env }));
     if (!items.length || busy) return;
     setBusy("again");
     setAgain((prev) => new Map([...prev, ...items.map((i) => [itemKey(i), { state: "working" } as RowResult] as const)]));
-    const results = await decideMany(items, { do: "send" }, { via: "outbox" });
+    const results = await decideMany(items, choice, { via: "outbox", many: true });
     setAgain((prev) => {
       const next = new Map(prev);
-      for (const [key, r] of results) next.set(key, r.ok ? { state: "done", words: doneWords({ ...items.find((i) => itemKey(i) === key)!, ...r.item }, "send") } : { state: "failed", words: workErrorWords(r.error ?? "") || "It did not go" });
+      for (const [key, r] of results)
+        next.set(key, r.ok ? { state: "done", words: doneWords({ ...items.find((i) => itemKey(i) === key)!, ...r.item }, choice.do) } : { state: "failed", words: workErrorWords(r.error ?? "") || "It did not go" });
       return next;
     });
     setBusy(null);
+  };
+  const sendAgain = () => retry(failed, { do: "send" });
+  const laterAgain = (at: number) => retry(failedLater, { do: "later", at, zone: ownZone() });
+  const openDetail = () => {
+    const r = toDetail[0];
+    if (!r) return;
+    wantOutboxItem(rowKey(env, r));
+    shell.openOutbox();
   };
   const open1 = (item: HostItem) => {
     const row = request.rows.find((r) => r.ref.at === item.ref.at && r.ref.id === item.ref.id);
     if (open && row?.changed && !row.receipt) void viewRow(env, request.id, row.ref).catch((err) => toastError(pressFailWords(err, "It did not load")));
   };
-  const toggle = (item: HostItem, on: boolean) =>
-    setTicks((prev) => {
-      const next = new Set(prev);
-      if (on) next.add(itemKey(item));
-      else next.delete(itemKey(item));
-      return next;
+  const toggle = (item: HostItem, on: boolean) => {
+    const row = request.rows.find((r) => r.ref.at === item.ref.at && r.ref.id === item.ref.id);
+    setMarks((prev) => {
+      const ticks = new Map(prev.ticks);
+      // His tick is for the receipt the row holds as he ticks it.
+      if (on && row?.receipt) ticks.set(itemKey(item), row.receipt);
+      else ticks.delete(itemKey(item));
+      return { ...prev, ticks };
     });
+  };
 
   // The rows the summary list draws: every row whose item this host still has.
   const rows: SummaryRow[] = request.rows.flatMap((r) => {
     if (!r.item) return [];
     const key = rowKey(env, r);
     const result = again.get(key) ?? (sending?.has(key) ? ({ state: "working" } as RowResult) : resultOf(r));
-    return [{ item: { ...r.item, environmentId: env }, on: ticks.has(key) && !!r.receipt && r.open, locked: !open || !r.receipt || !r.open, side: open ? sideOf(r) : r.result ? null : "Left out", ...(result ? { result } : {}) }];
+    return [{ item: { ...r.item, environmentId: env }, on: isOn(r), locked: !open || !r.receipt || !r.open, side: open ? sideOf(r) : r.result ? null : "Left out", ...(result ? { result } : {}) }];
   });
   const gone = request.rows.filter((r) => !r.item).length;
   const results = rows.flatMap((r) => (r.result && r.result.state !== "working" ? [r.result] : []));
@@ -233,7 +293,7 @@ function useRequestPress(request: HostRequest) {
         )
       : request.head
     : resultsHead(results, did.size === 1 && did.has("discard") ? "discard" : "send") || request.head;
-  return { open, rows, gone, head, ticked, busy, send, decline, failed, sendAgain, toggle, open1, label: pressLabel(ticked.map((r) => r.do)) };
+  return { open, rows, gone, head, ticked, busy, send, decline, failed, failedLater, toDetail, sendAgain, laterAgain, openDetail, toggle, open1, label: pressLabel(ticked.map((r) => r.do)) };
 }
 
 /** Where a request came from, as an item's facts line says it: the job's dot and name, the thread, when it asked. */
@@ -328,6 +388,7 @@ function DetailBones() {
 
 function RequestBody({ request, frame, host, onOpenSession, commands }: { request: HostRequest; frame: "card" | "page"; host?: (item: HostItem) => string; onOpenSession?: (sessionId: string, environmentId: string) => void; commands?: RefObject<DetailCommands | null> }) {
   const p = useRequestPress(request);
+  const [picking, setPicking] = useState(false);
   const noop = () => {};
   useKeyVerbs(commands, { primary: () => void p.send(), edit: noop, discard: noop, later: noop, editing: () => false, cancelEdit: noop });
   const list = (
@@ -353,10 +414,29 @@ function RequestBody({ request, frame, host, onOpenSession, commands }: { reques
       <span data-outbox-request-by className="text-[13px] leading-5 text-muted-foreground tabular-nums">
         {answeredWords(request)}
       </span>
+      {p.toDetail.length ? (
+        <Button variant="ghost" size="sm" disabled={p.busy !== null} onClick={p.openDetail}>
+          Open in the Outbox
+        </Button>
+      ) : null}
+      {p.failedLater.length ? (
+        <Button variant="secondary" size="sm" disabled={p.busy !== null} onClick={() => setPicking(true)}>
+          Pick a new time…
+        </Button>
+      ) : null}
       {p.failed.length ? (
         <Button variant="secondary" size="sm" disabled={p.busy !== null} onClick={() => void p.sendAgain()}>
           <BusyLabel busy={p.busy === "again"} label={p.failed.length === 1 ? "Send again" : `Send ${p.failed.length} again`} />
         </Button>
+      ) : null}
+      {picking ? (
+        <PickTime
+          onClose={() => setPicking(false)}
+          onPick={(at) => {
+            setPicking(false);
+            void p.laterAgain(at);
+          }}
+        />
       ) : null}
     </>
   );
