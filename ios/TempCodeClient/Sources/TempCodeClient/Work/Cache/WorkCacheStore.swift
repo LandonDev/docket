@@ -122,6 +122,7 @@ public final class WorkCacheStore: Sendable {
 
     /// Drops every key `reason` names, in one statement under the lock (`WorkCacheDrop.drops` is its rule).
     public func drop(_ reason: WorkCacheDrop) {
+        if case .lifeosSignedOut(let host) = reason { return dropLifeos(suppliedBy: host) }
         let (sql, binds): (String, [Database.Value]) = switch reason {
         case .keyReplaced(let host, let generation): ("DELETE FROM kept WHERE host = ? AND generation != ?", [.text(host), .int(generation)])
         case .capabilityLost(let host), .workOff(let host), .hostRemoved(let host): ("DELETE FROM kept WHERE host = ?", [.text(host)])
@@ -129,6 +130,39 @@ public final class WorkCacheStore: Sendable {
         case .lifeosSignedOut(let host): ("DELETE FROM kept WHERE host = ? AND scope = ?", [.text(host), .text(WorkCache.Scope.today.text)])
         }
         db.withLock { db in try? db.run(sql, binds) }
+    }
+
+    /// A host's LifeOS signed out: the rows its session read go out of every host's Today rows (a row is kept under
+    /// the host its press opens on, which need not be the reader), and LifeOS rows with no known supplier with them.
+    /// Each host rewritten has its fence moved under the same lock, so a Today write queued before this, with the
+    /// old rows in it, is refused.
+    private func dropLifeos(suppliedBy host: String) {
+        db.withLock { db in
+            var rewrites: [(binds: [Database.Value], json: Data, host: String)] = []
+            try? db.query("SELECT host, account, generation, workspace, scope, json FROM kept WHERE scope = ?", [.text(WorkCache.Scope.today.text)]) { row in
+                guard let value = try? JSONDecoder().decode(WorkCacheValue.self, from: row.blob(5)) else { return }
+                let next: WorkCacheValue
+                switch value {
+                case .todayOn(let day, let rows):
+                    let left = WorkCache.withoutLifeos(rows, suppliedBy: host)
+                    guard left.count != rows.count else { return }
+                    next = .todayOn(day: day, rows: left)
+                case .today(let rows):
+                    let left = WorkCache.withoutLifeos(rows, suppliedBy: host)
+                    guard left.count != rows.count else { return }
+                    next = .today(left)
+                default:
+                    return
+                }
+                guard let json = try? JSONEncoder().encode(next) else { return }
+                let binds: [Database.Value] = [.text(row.text(0)), .text(row.text(1)), .int(row.int(2)), .text(row.text(3)), .text(row.text(4))]
+                rewrites.append((binds, json, row.text(0)))
+            }
+            for one in rewrites {
+                WorkCacheFence.purge(one.host)
+                try? db.run("UPDATE kept SET json = ? WHERE host = ? AND account = ? AND generation = ? AND workspace = ? AND scope = ?", [.blob(one.json)] + one.binds)
+            }
+        }
     }
 }
 

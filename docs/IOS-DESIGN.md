@@ -4179,7 +4179,7 @@ What gates are counts of what the app owns, held in every pass:
 | `rest-queries` | `rest-today`: Today's own LifeOS live queries held are no more than it needs (mail waits, the session's cover, each sector's people) |
 | `rest-polls` | `rest-today`: no host read in the ten seconds |
 | `list-rows-built` | `list-idle`, `list-busy`: the fixture list built no more rows before the finger moved, and held no more alive at once in the measured pass, than its visible window and one page (twice the most rows it showed) |
-| `list-rows-remade` | No row's state built a second time over the check, none built in the still seconds after the scroll, and in `list-busy` at least one push for another place arrived in them, so the count judged something |
+| `list-rows-remade` | No row built in the still seconds after the scroll, and in `list-busy` at least one push for another place arrived in them, so the count judged something. Rows the scroll built again are reported (`madeAgain`), not judged: List drops a far row's state |
 | `list-offset-writes` | No scroll the app made itself (`PlaceTop`'s return to a kept row) while the finger moved |
 
 What is only reported, until it holds in three passes on the phone: the
@@ -4197,7 +4197,8 @@ once off the main actor) in the Files place's own frame and row
 (`ListCheckLedger`). After the first rows settle it scrolls down and up once
 to warm, then again measured at 3,000 pt/s one display tick at a time, then
 stands still for six seconds; `list-busy` has the server play other places'
-traffic (`/load`) through them. In the proof the app shows it in a window of
+traffic (`/load`, asked by the app at the control address the script hands
+`list-busy` alone) through them. In the proof the app shows it in a window of
 its own over Home (`list` split); Settings → Diagnostics pushes it.
 
 **The editor run** opens a seeded document (`Perf poster` in `Perf editor`,
@@ -4235,7 +4236,7 @@ package): `launch.firstFrame` and `launch.cachedRow`; in `list`,
 (every source answered). The categories `file` (`first`, `whole`) and
 `press` (a press to its answer) exist and are unused. Settings → Diagnostics' Work
 Checks shows the phone's own numbers: this launch's first frame and cached
-row, Run List Check (rows built against the limit, any rebuilt, late frames,
+row, Run List Check (rows built against the limit, any rebuilt while still, late frames,
 hitch time), the repeating tasks alive (`TickLedger`), and the Work cache's
 size on disk and protection class.
 

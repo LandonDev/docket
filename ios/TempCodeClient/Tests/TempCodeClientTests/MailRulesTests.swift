@@ -160,7 +160,10 @@ private func names(_ sector: String) -> String { ["ref": "Ref", "purdue": "Purdu
     @Test func `a composer Send that was Checking says what became of it once heard, and asks for his eye when it did not go`() {
         #expect(MailRules.heardLate(.checking) == nil)
         #expect(MailRules.heardLate(.sending) == nil)
-        #expect(MailRules.heardLate(.done)?.line == "Sent")
+        #expect(MailRules.heardLate(.done, scheduled: false)?.line == "Sent")
+        #expect(MailRules.heardLate(.done, scheduled: true)?.line == "Scheduled")
+        // After a relaunch the phone no longer knows whether it had a time: a success names neither.
+        #expect(MailRules.heardLate(.done)?.line == "LifeOS has your mail")
         #expect(MailRules.heardLate(.done)?.tell == false)
         #expect(MailRules.heardLate(.stillWaiting)?.line == "Not sent: the mail is still in Drafts")
         #expect(MailRules.heardLate(.failed("LifeOS refused it"))?.line == "Not sent: LifeOS refused it")

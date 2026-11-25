@@ -268,7 +268,22 @@ public final class TodayStore {
     /// The host said its LifeOS signed out, heard whether or not Today shows: what its sessions gave goes now, before
     /// any later input. A narrowed session's sectors go alone; the whole session's host takes every LifeOS row.
     public func lifeosSignedOut(host: String) {
-        guard let life else { return }
+        // What that host's session gave, kept under any host's key (a row opens where its job is, not where it was
+        // read), and rows kept before a supplier was known: out of memory now, whatever input comes next.
+        var dropped = false
+        for source in Self.lifeosSources {
+            guard var kept = whole[source], let rows = kept.rows else { continue }
+            let left = WorkCache.withoutLifeos(rows, suppliedBy: host)
+            guard left.count != rows.count else { continue }
+            kept.rows = left
+            whole[source] = kept
+            dropped = true
+        }
+        if dropped { written = [:] }
+        guard let life else {
+            if dropped { rebuild() }
+            return
+        }
         if let sectors = life.narrowed[host], !sectors.isEmpty {
             let gone = Set(sectors)
             var next = life
@@ -284,6 +299,19 @@ public final class TodayStore {
         } else if life.host == host {
             update(life: TodayLifeInput(host: host, reach: .down(.signedOut)))
         }
+    }
+
+    /// Each LifeOS row stamped with the host whose session read it: a narrowed session's for its sectors, else the
+    /// whole session's.
+    private func supplied(_ answer: TodayAnswer, _ life: TodayLifeInput) -> TodayAnswer {
+        guard let rows = answer.rows else { return answer }
+        var out = answer
+        out.rows = rows.map { row in
+            var stamped = row
+            stamped.suppliedBy = row.sector.flatMap { sector in life.narrowed.first { $0.value.contains(sector) }?.key } ?? life.host
+            return stamped
+        }
+        return out
     }
 
     /// The LifeOS sources, whose rows a signed-out session no longer stands behind.
@@ -607,15 +635,15 @@ public final class TodayStore {
         case "meetings":
             guard let life else { return TodayAnswer(loading: true) }
             let built = life.events.map { TodaySources.meetingRows($0, day: day, now: now, jobs: byJobs, people: life.people, calendar: calendar) }
-            return TodaySources.lifeosAnswer(life.eventsRead, rows: built?.rows, sessionDown: life.sessionDown, host: life.host, what: "meetings", note: built?.note, jobs: byJobs)
+            return supplied(TodaySources.lifeosAnswer(life.eventsRead, rows: built?.rows, sessionDown: life.sessionDown, host: life.host, what: "meetings", note: built?.note, jobs: byJobs), life)
         case "due":
             guard let life else { return TodayAnswer(loading: true) }
             let rows = life.tasks.map { TodaySources.dueRows($0, now: now, jobs: byJobs, calendar: calendar) }
-            return TodaySources.lifeosAnswer(life.tasksRead, rows: rows, sessionDown: life.sessionDown, host: life.host, what: "tasks", jobs: byJobs)
+            return supplied(TodaySources.lifeosAnswer(life.tasksRead, rows: rows, sessionDown: life.sessionDown, host: life.host, what: "tasks", jobs: byJobs), life)
         case "waiting":
             guard let life else { return TodayAnswer(loading: true) }
             let rows = life.waits.map { TodaySources.waitingRows($0, today: day.from, jobs: byJobs, calendar: calendar) }
-            return TodaySources.waitingAnswer(TodaySources.lifeosAnswer(life.waitsRead, rows: rows, sessionDown: life.sessionDown, host: life.host, what: "mail", jobs: byJobs), beyond: life.beyond)
+            return supplied(TodaySources.waitingAnswer(TodaySources.lifeosAnswer(life.waitsRead, rows: rows, sessionDown: life.sessionDown, host: life.host, what: "mail", jobs: byJobs), beyond: life.beyond), life)
         case "messages":
             return chats.answer(jobs) { [readTo] in TodaySources.chatRows($0, now: now, readTo: readTo, calendar: calendar) }
         case "money":

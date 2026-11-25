@@ -40,7 +40,7 @@ final class MailPresses {
     @ObservationIgnored private var ended: [String: Wait.Ended] = [:]
     /// The Mail place that said Checking for a draft, by host and draft, so the late answer is said where he read it.
     @ObservationIgnored private var checking: [String: WeakScene] = [:]
-    private struct WeakScene { weak var scene: LifeScene? }
+    private struct WeakScene { weak var scene: LifeScene?; var scheduled: Bool }
 
     private init() {
         // Leaving the screen cancels what waits: nothing goes early, nothing goes unseen.
@@ -58,12 +58,14 @@ final class MailPresses {
     /// What became of a Send that was Checking: said in the Mail place that showed Checking, and as the sticky toast
     /// when it is one he must act on (not sent, may have gone).
     func heard(host: String, draftId: String, state: PressState) {
-        guard let said = MailRules.heardLate(state) else { return }
-        let scene = checking.removeValue(forKey: "\(host)|\(draftId)")?.scene
+        let kept = checking.removeValue(forKey: "\(host)|\(draftId)")
+        guard let said = MailRules.heardLate(state, scheduled: kept?.scheduled) else { return }
+        let scene = kept?.scene
         if let writes = scene?.writes {
             if said.tell { writes.fail(said.line) } else { writes.record(Act("Send", "compose:send", [:], announce: said.line, failed: "Not sent")) }
         }
-        if said.tell { FleetToastCenter.shared.post(message: said.line) }
+        // The Mail place that said Checking is gone (a relaunch, a closed job): even a success is told where he is.
+        if said.tell || scene == nil { FleetToastCenter.shared.post(message: said.line) }
     }
 
     /// A Send of this draft already waits or is on its way.
@@ -199,7 +201,7 @@ final class MailPresses {
                 // Gone with no answer: never "not sent". The draft is read back by its status on each link.
                 words = HeldSendRefusal.checking.errorDescription ?? ""
                 end = .unknown
-                checking["\(client.environment.id)|\(mail.draftId)"] = WeakScene(scene: target.scene)
+                checking["\(client.environment.id)|\(mail.draftId)"] = WeakScene(scene: target.scene, scheduled: mail.sendAt != nil)
             } catch {
                 words = "Not sent: \(ActionError.wrap(error).message)"
                 failed = true

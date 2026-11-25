@@ -89,6 +89,16 @@ public struct WorkCacheBook: Sendable, Hashable {
     /// Drops what `reason` names; answers the keys it dropped.
     @discardableResult
     public mutating func drop(_ reason: WorkCacheDrop) -> Set<WorkCache.Key> {
+        if case .lifeosSignedOut(let host) = reason {
+            for (key, value) in values where key.scope == .today {
+                switch value {
+                case .todayOn(let day, let rows): values[key] = .todayOn(day: day, rows: WorkCache.withoutLifeos(rows, suppliedBy: host))
+                case .today(let rows): values[key] = .today(WorkCache.withoutLifeos(rows, suppliedBy: host))
+                default: break
+                }
+            }
+            return []
+        }
         let dropped = reason.drops(values.keys)
         for gone in dropped { values[gone] = nil }
         return dropped

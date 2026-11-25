@@ -49,7 +49,7 @@ struct WorkListCheckTests {
         report.stillMade = 1
         report.offsetWrites = 1
         #expect(WorkListCheckRules.problems(report) == [
-            "29 rows alive at once (28)", "2 rows built again", "1 rows built while the list stood still", "1 scrolls the app made under the finger"
+            "29 rows alive at once (28)", "1 rows built while the list stood still", "1 scrolls the app made under the finger"
         ])
         report.note = "the list did not load"
         #expect(WorkListCheckRules.problems(report) == ["the list did not load"])

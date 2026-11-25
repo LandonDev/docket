@@ -199,6 +199,9 @@ public struct TodayRow: Hashable, Sendable, Codable, Identifiable {
     public var open: TodayTarget?
     /// At most two.
     public var acts: [TodayAct] = []
+    /// A LifeOS row's supplier: the host whose session read it, which may not be the host its press opens on. A
+    /// sign-out there takes it out of every host's kept rows (`WorkCache.withoutLifeos`). Nil on a row kept before.
+    public var suppliedBy: String?
 
     public var id: String { key }
     /// Where a press goes on the phone; nil: the row is not a button.

@@ -176,10 +176,12 @@ struct RootView: View {
                 Tab("Work", systemImage: "briefcase", value: AppTab.work) {
                     ShellSplit(navigator: work) {
                         WorkListView()
-                            .fleetToastInset()
                     } placeholder: {
                         DetailPlaceholder(title: "Nothing Selected", symbol: "briefcase")
                     } destination: { destination($0) }
+                    // One host for the sticky outcome over every route Work pushes (a person's page, Today, a job's
+                    // place), not only the list at the stack's root: a Mail send stopped while he was there is seen.
+                    .fleetToastInset()
                     .environment(work)
                 }
             }

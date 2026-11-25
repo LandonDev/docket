@@ -105,6 +105,8 @@ struct AwayEndNote: View {
 /// The review, as a document sheet: the span, then Held, Failed, Decided
 /// without you, Written on your files, each left out when empty.
 struct AwayReviewSheet: View {
+    /// The kind glyph's column grows with the glyph, as the type does.
+    @ScaledMetric(relativeTo: .footnote) private var glyph = Layout.glyphWidth
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @Environment(ShellNavigator.self) private var navigator
@@ -241,7 +243,7 @@ struct AwayReviewSheet: View {
                 Image(systemName: WorkGlyph.of(entry.item.kind))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .frame(width: Layout.glyphWidth)
+                    .frame(width: glyph)
                 Text(entry.item.summary)
                     .textStep(.title)
                     .lineLimit(1)

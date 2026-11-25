@@ -33,9 +33,11 @@ import Testing
         report.peakAlive = 26
         #expect(DiagnosticsText.rows(report) == "26 of 28")
         #expect(DiagnosticsText.listMisses(report) == nil)
-        report.madeAgain = 1
+        report.madeAgain = 1000
+        #expect(DiagnosticsText.listMisses(report) == nil)
+        report.stillMade = 1
         #expect(DiagnosticsText.listMisses(report) == "1 row built again")
-        report.stillMade = 2
+        report.stillMade = 3
         report.offsetWrites = 1
         #expect(DiagnosticsText.listMisses(report) == "3 rows built again, 1 scroll under the finger")
     }

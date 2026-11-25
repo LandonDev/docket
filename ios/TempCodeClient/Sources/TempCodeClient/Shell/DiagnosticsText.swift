@@ -39,9 +39,10 @@ public enum DiagnosticsText {
         "\(report.peakAlive) of \(report.rowLimit)"
     }
 
-    /// Rows the list check saw built twice or while it stood still, and its own scrolls under the finger: nil when none.
+    /// Rows the list check saw built again while it stood still (a scroll's own rebuilds are List's, not a miss), and
+    /// its own scrolls under the finger: nil when none.
     public static func listMisses(_ report: WorkListReport) -> String? {
-        let again = report.madeAgain + report.stillMade
+        let again = report.stillMade
         var parts: [String] = []
         if again > 0 { parts.append(again == 1 ? "1 row built again" : "\(again) rows built again") }
         if report.offsetWrites > 0 { parts.append(report.offsetWrites == 1 ? "1 scroll under the finger" : "\(report.offsetWrites) scrolls under the finger") }

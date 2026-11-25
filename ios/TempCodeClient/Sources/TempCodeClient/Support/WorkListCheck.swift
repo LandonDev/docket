@@ -73,7 +73,8 @@ public struct WorkListReport: Codable, Sendable, Equatable {
     public var firstPaintMade = 0
     /// The most rows alive at once in the measured (warm) pass.
     public var peakAlive = 0
-    /// Rows whose state was built a second time, over the whole check, and the first of them.
+    /// Rows whose state was built a second time, over the whole check, and the first of them: reported, never judged,
+    /// since List drops a row's state once the scroll takes it far off. The still seconds' count is the gate.
     public var madeAgain = 0
     public var madeAgainKeys: [String] = []
     /// The still seconds after the scroll: rows built in them while other places' pushes arrived, and those pushes.
@@ -118,7 +119,6 @@ public enum WorkListCheckRules {
         if report.window <= 0 { problems.append("the list showed no rows") }
         if report.firstPaintMade > limit { problems.append("\(report.firstPaintMade) rows built before the scroll (\(limit))") }
         if report.peakAlive > limit { problems.append("\(report.peakAlive) rows alive at once (\(limit))") }
-        if report.madeAgain > 0 { problems.append("\(report.madeAgain) rows built again") }
         if report.stillMade > 0 { problems.append("\(report.stillMade) rows built while the list stood still") }
         if report.offsetWrites > 0 { problems.append("\(report.offsetWrites) scrolls the app made under the finger") }
         return problems

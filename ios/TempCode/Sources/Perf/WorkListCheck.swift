@@ -7,8 +7,9 @@ import UIKit
 /// and row (`WorkPlaceScreen`, `FilesRowLabel`), its words made once off the main actor. After the rows settle it
 /// scrolls the list down and up once to warm it, then again measured at 3,000 pt/s, then holds still for a few
 /// seconds while whatever the hosts push for other places arrives. It counts what the app owns: rows built before
-/// the finger moved, the most alive at once, any built twice, any built while still, and the app's own scrolls
-/// under the finger (`PerfCounters.offsetWrites`). Frame times are reported. Settings → Diagnostics runs it on the
+/// the finger moved, the most alive at once, any built while still, and the app's own scrolls under the finger
+/// (`PerfCounters.offsetWrites`). Rows the scroll built twice are reported, not judged (List drops a far row's
+/// state). Frame times are reported. Settings → Diagnostics runs it on the
 /// phone; the `work-perf` runs `list-idle` and `list-busy` run it in the simulator (`WorkPerfRun`).
 @MainActor @Observable
 final class WorkListCheck {

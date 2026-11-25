@@ -597,7 +597,7 @@ private struct BandHeader: View {
         }
         .padding(.vertical, large ? Layout.rowVertical : 0)
         .padding(.horizontal, Layout.textEdge)
-        .frame(maxWidth: .infinity, minHeight: 30)
+        .frame(maxWidth: .infinity, minHeight: 30, alignment: .leading)
         .background(Surface.chrome)
         .textCase(nil)
         .accessibilityElement(children: all == nil ? .combine : .contain)

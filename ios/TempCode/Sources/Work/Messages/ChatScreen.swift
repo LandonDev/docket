@@ -500,6 +500,8 @@ private struct ChatMessageView: View {
 
 /// A message's file: its glyph, name and state; a press opens it in the reader when a kind there shows it.
 private struct ChatFileRow: View {
+    /// The file glyph's column grows with the glyph, as the type does.
+    @ScaledMetric(relativeTo: .body) private var glyph = Layout.glyphWidth
     let file: ChatFile
     let opening: Bool
     let opens: Bool
@@ -517,7 +519,7 @@ private struct ChatFileRow: View {
                         Image(systemName: file.status == .failed || fetchFailed ? "exclamationmark.triangle" : "doc")
                     }
                 }
-                .frame(width: Layout.glyphWidth)
+                .frame(width: glyph)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(file.name)
                         .textStep(.title, tint: opens ? Color.accentColor : nil)

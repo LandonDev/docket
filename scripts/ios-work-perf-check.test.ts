@@ -148,7 +148,6 @@ describe('ios_work_perf_check.py', () => {
     ['list-rows-built', 'list-busy', { firstPaintMade: 1000 }, 'pass 2 list-busy: 1000 rows built before the scroll (28)'],
     ['list-rows-built', 'list-idle', { window: 0 }, 'the list showed no rows'],
     ['list-rows-remade', 'list-busy', { stillMade: 14 }, 'pass 2 list-busy: 14 rows built while the list stood still'],
-    ['list-rows-remade', 'list-idle', { madeAgain: 2, madeAgainKeys: ['list-0001', 'list-0002'] }, '2 rows built again (list-0001, list-0002)'],
     ['list-rows-remade', 'list-busy', { stillPushes: 0 }, 'no push for another place arrived in the still seconds'],
     ['list-offset-writes', 'list-idle', { offsetWrites: 1 }, '1 scrolls the app made under the finger (0)'],
     ['list-offset-writes', 'list-busy', { note: 'the list did not load' }, 'pass 2 list-busy: the list did not load']
@@ -159,6 +158,14 @@ describe('ios_work_perf_check.py', () => {
     expect(on.out).toContain(words)
     expect(on.status).toBe(5)
     expect(run([good(), bad], []).status).toBe(0)
+  })
+
+  it('reports rows the scroll built again without failing on them: only the still seconds are judged', () => {
+    const scrolled = good()
+    scrolled['list-idle'] = { ...scrolled['list-idle'], list: { ...list, madeAgain: 1000, madeAgainKeys: ['list-0001'] } }
+    const r = run([good(), scrolled], ['list-rows-remade'])
+    expect(r.out).toContain('pass 2 list-idle again 1000, still 0 over 12 pushes')
+    expect(r.status).toBe(0)
   })
 
   it('needs both list runs in every pass for a list gate that is on', () => {

@@ -446,7 +446,9 @@ shot() {
 # The launch alone, for a set that shoots several times in one run (transcript, stream).
 #   launch_app <route> [thread part] [segment] [open]
 launch_app() {
-  local route=$1 thread=${2:-${TC_TEST_THREAD:-}} segment=${3:-} open=${4:-}
+  local route=$1 thread=${2:-${TC_TEST_THREAD:-}} segment=${3:-} open=${4:-} control=""
+  # The server's control, for a run that drives it: a perf run, and work-perf's list-busy, which plays /load.
+  [ -n "${TC_PERF_RUN:-}" ] || [ "${TC_WORK_PERF_RUN:-}" = list-busy ] && control=${TC_TEST_CONTROL_URL:-}
   SIMCTL_CHILD_TC_DUO_POSE="$POSE" \
   SIMCTL_CHILD_TC_TEST_PAIR_LINK="${TC_TEST_PAIR_LINK:-}" \
   SIMCTL_CHILD_TC_TEST_PAIR_NAME="${TC_TEST_PAIR_NAME:-}" \
@@ -487,7 +489,7 @@ launch_app() {
   SIMCTL_CHILD_TC_TEST_PLACE_TOP="${TC_PLACE_TOP:-}" \
   SIMCTL_CHILD_TC_TEST_CHIP="${TC_CHIP:-}" \
   SIMCTL_CHILD_TC_TEST_JOB="${TC_JOB:-}" \
-  SIMCTL_CHILD_TC_TEST_CONTROL_URL="${TC_PERF_RUN:+${TC_TEST_CONTROL_URL:-}}" \
+  SIMCTL_CHILD_TC_TEST_CONTROL_URL="$control" \
     xcrun simctl launch --terminate-running-process "$TC_SIM_UDID" "$BUNDLE" >/dev/null
 }
 appearance() { xcrun simctl ui "$TC_SIM_UDID" appearance "$1" >/dev/null 2>&1 || true; }

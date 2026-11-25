@@ -534,16 +534,27 @@ extension View {
 
 private struct LifeHostEnvironment: ViewModifier {
     @State private var shown = ShownLifeHost.shared
+    /// The last store and scene passed: a page SwiftUI hoisted to the shell's stack (a mail thread) reads them
+    /// unconditionally, so when the host's LifeOS signs out (`WorkLifeHost.signedOut` sets both to nil) it keeps the
+    /// ended ones, reset and showing nothing, until LifeOS's screen says signed out and the page goes.
+    @State private var keptStore: LifeStore?
+    @State private var keptScene: LifeScene?
 
     func body(content: Content) -> some View {
-        let store = shown.host?.store
-        let scene = shown.host?.scene
+        let store = shown.host?.store ?? keptStore
+        let scene = shown.host?.scene ?? keptScene
         content
             .environment(store)
             .environment(scene)
             .environment(scene?.writes)
             .environment(store?.clock)
             .environment(store?.connection)
+            .onChange(of: shown.host?.store.map { ObjectIdentifier($0) }, initial: true) {
+                if let live = shown.host?.store { keptStore = live }
+            }
+            .onChange(of: shown.host?.scene.map { ObjectIdentifier($0) }, initial: true) {
+                if let live = shown.host?.scene { keptScene = live }
+            }
     }
 }
 

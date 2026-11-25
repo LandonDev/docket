@@ -91,6 +91,15 @@ public enum WorkCache {
         }
     }
 
+    /// The sections LifeOS's session fills.
+    static let lifeosSections: Set<String> = ["meetings", "due", "waiting"]
+
+    /// A host's LifeOS signed out: its session's rows go, and LifeOS rows kept before a supplier was known (whose
+    /// supplier cannot be told); every other row stays.
+    public static func withoutLifeos(_ rows: [TodayRow], suppliedBy host: String) -> [TodayRow] {
+        rows.filter { row in !lifeosSections.contains(row.section) || (row.suppliedBy != nil && row.suppliedBy != host) }
+    }
+
     /// The sections whose rows are of one day: a meeting, a task due, and Also's tells and review are not shown on a
     /// later day from the disk; what waits (held, mail, chat, money, responses) is.
     static let ofTheDay: Set<String> = ["meetings", "due", "also"]
@@ -186,7 +195,8 @@ public enum WorkCacheDrop: Hashable, Sendable, Codable {
     case workOff(host: String)
     /// The host was removed from the phone.
     case hostRemoved(host: String)
-    /// The host's LifeOS signed out: its Today rows, which its LifeOS session read, go.
+    /// The host's LifeOS signed out: the Today rows its session read go out of every host's kept rows, and rows kept
+    /// with no known supplier with them (`WorkCache.withoutLifeos`); a row, not a key: no key is dropped whole.
     case lifeosSignedOut(host: String)
 
     /// The host it names; nil for a sign-out, which names an account.
@@ -204,7 +214,7 @@ public enum WorkCacheDrop: Hashable, Sendable, Codable {
             case .keyReplaced(let host, let generation): key.host == host && key.keyGeneration != generation
             case .capabilityLost(let host), .workOff(let host), .hostRemoved(let host): key.host == host
             case .signedOut(let account): key.account == account
-            case .lifeosSignedOut(let host): key.host == host && key.scope == .today
+            case .lifeosSignedOut: false
             }
         })
     }

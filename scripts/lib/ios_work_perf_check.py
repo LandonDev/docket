@@ -122,9 +122,10 @@ class Judge:
                     if r.get('peakAlive', 0) > limit:
                         problems.append(f"{tag}: {r['peakAlive']} rows alive at once ({limit})")
                 elif judge == 'remade':
+                    # SwiftUI's List drops a row's state once it scrolls far off, so a row built again by the scroll is
+                    # reported, never judged; what counts is a row built while the list stood still, which only a push
+                    # for another place could have thrown away (m6-speed-access.md).
                     facts.append(f"{tag} again {r.get('madeAgain', 0)}, still {r.get('stillMade', 0)} over {r.get('stillPushes', 0)} pushes")
-                    if r.get('madeAgain', 0):
-                        problems.append(f"{tag}: {r['madeAgain']} rows built again ({', '.join(r.get('madeAgainKeys', []))})")
                     if r.get('stillMade', 0):
                         problems.append(f"{tag}: {r['stillMade']} rows built while the list stood still")
                     if run == 'list-busy' and not r.get('stillPushes', 0):

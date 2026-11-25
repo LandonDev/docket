@@ -177,6 +177,8 @@ private struct MessagesList: View {
 /// One conversation's row: the job's dot on All Jobs, the route's glyph, who (semibold while unread), the last words
 /// under it, and the time.
 struct ChatRowView: View {
+    /// The route glyph's column grows with the glyph it holds, so at the largest sizes it never runs into the name.
+    @ScaledMetric(relativeTo: .footnote) private var glyph = Layout.glyphWidth
     @Environment(\.dynamicTypeSize) private var typeSize
     let row: ChatRow
     /// The job's sector, when the list holds every job's rows.
@@ -198,7 +200,7 @@ struct ChatRowView: View {
                         .frame(width: Layout.markWidth)
                     Image(systemName: ChatGlyph.of(row.source))
                         .textStep(.meta)
-                        .frame(width: Layout.glyphWidth)
+                        .frame(width: glyph)
                 }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(row.name)

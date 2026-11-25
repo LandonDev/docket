@@ -720,4 +720,41 @@ struct TodayStoreTests {
         let keys = Set(TodayStore.rows(store.page).map(\.key))
         #expect(keys.contains("event:e1") && !keys.contains("event:e2"))
     }
+
+    // MARK: - fix round 9
+
+    @Test func `LifeOS rows carry the host whose session read them`() async {
+        let store = store(TodayBookCache(), by: ["box": HostReads()])
+        var mac = Self.on("mac")
+        mac.workspaces = [WorkspaceMeta(id: "ws-ref", name: "Refereeing", path: "/w/ref", git: false, kind: .work, sector: "ref", createdAt: 1)]
+        store.update(hosts: [Self.on("box"), mac])
+        var life = Self.emptyLife
+        life.events = [
+            TodaySources.Event(id: "e1", title: "Budget sync", sector: "purdue", startsAt: Self.now + 3_600_000),
+            TodaySources.Event(id: "e2", title: "Varsity game", sector: "ref", startsAt: Self.now + 7_200_000),
+        ]
+        life.narrowed = ["mac": ["ref"]]
+        store.update(life: life)
+        let rows = TodayStore.rows(store.page)
+        #expect(rows.first { $0.key == "event:e1" }?.suppliedBy == "box")
+        #expect(rows.first { $0.key == "event:e2" }?.suppliedBy == "mac")
+    }
+
+    @Test func `a sign-out with no LifeOS input yet takes the session's kept rows from another host's key`() {
+        // Kept under the Mac's key (its job), read by the box's whole session; Today has had no LifeOS input yet.
+        var wait = TodayRow(key: "mail:w1", section: "waiting", sector: "purdue", title: "Dana Lee")
+        wait.open = .mail(TodayPlace(environmentId: "mac", workspaceId: "ws-mac"), threadId: "w1")
+        wait.suppliedBy = "box"
+        let macKey = WorkCache.Key(host: "mac", account: "k-mac", keyGeneration: 1, scope: .today)
+        var book = WorkCacheBook()
+        book.put(.todayRows([wait], day: Self.day), at: macKey)
+        let store = store(TodayBookCache(book: book), by: [:])
+        // The box on its first connect (open, not yet linked): LifeOS is on its way, so the kept row shows.
+        var box = Self.on("box", loaded: false, tells: nil)
+        box.linked = false
+        store.update(hosts: [box, Self.on("mac", open: false, loaded: false, tells: nil)])
+        #expect(TodayStore.rows(store.page).contains { $0.key == "mail:w1" })
+        store.lifeosSignedOut(host: "box")
+        #expect(!TodayStore.rows(store.page).contains { $0.key == "mail:w1" })
+    }
 }

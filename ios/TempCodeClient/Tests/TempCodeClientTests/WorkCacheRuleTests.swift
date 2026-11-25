@@ -112,11 +112,22 @@ struct WorkCacheRuleTests {
         #expect(purges.take().isEmpty)
     }
 
-    @Test func `a LifeOS sign-out takes the host's Today rows alone`() {
-        let today = WorkCache.Key(host: "box", account: "k", keyGeneration: 1, scope: .today)
-        let outbox = WorkCache.Key(host: "box", account: "k", keyGeneration: 1, scope: .outbox)
-        let other = WorkCache.Key(host: "mac", account: "k", keyGeneration: 1, scope: .today)
-        #expect(WorkCacheDrop.lifeosSignedOut(host: "box").drops([today, outbox, other]) == [today])
+    @Test func `a LifeOS sign-out takes the rows its session read out of every host's keys, and nothing else`() {
+        func row(_ key: String, _ section: String, by: String?) -> TodayRow {
+            var r = TodayRow(key: key, section: section, sector: "purdue", title: key)
+            r.suppliedBy = by
+            return r
+        }
+        // Box's whole session read a wait for a job on the Mac: kept under the Mac's key.
+        let macKey = WorkCache.Key(host: "mac", account: "k", keyGeneration: 1, scope: .today)
+        let boxKey = WorkCache.Key(host: "box", account: "k", keyGeneration: 1, scope: .today)
+        var book = WorkCacheBook()
+        book.put(.todayRows([row("mail:1", "waiting", by: "box"), row("mail:2", "waiting", by: "mac"), row("held:mac:host:1", "held", by: nil)], day: "d"), at: macKey)
+        book.put(.todayRows([row("event:1", "meetings", by: nil), row("held:box:host:1", "held", by: nil)], day: "d"), at: boxKey)
+        #expect(book.drop(.lifeosSignedOut(host: "box")).isEmpty)
+        // Box's own rows go wherever kept, and rows of no known supplier; the Mac's session's row and held rows stay.
+        #expect(book.today([macKey], day: "d").map(\.key) == ["mail:2", "held:mac:host:1"])
+        #expect(book.today([boxKey], day: "d").map(\.key) == ["held:box:host:1"])
     }
 
     @Test func `rows are kept under the host they came from`() {

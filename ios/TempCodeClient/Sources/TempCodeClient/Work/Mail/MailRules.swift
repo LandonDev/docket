@@ -9,11 +9,12 @@ public enum MailRules {
     // MARK: - a composer Send heard late
 
     /// What Mail says of a composer Send that was Checking once its answer comes late or is read back: the line, and
-    /// whether it is one he must act on (the sticky toast too). Nil while nothing is known yet.
-    public static func heardLate(_ state: PressState) -> (line: String, tell: Bool)? {
+    /// whether it is one he must act on (the sticky toast too). `scheduled`: the press had a time; nil when the phone
+    /// no longer knows (a read-back after a relaunch), and a success then names neither. Nil while nothing is known yet.
+    public static func heardLate(_ state: PressState, scheduled: Bool? = nil) -> (line: String, tell: Bool)? {
         switch state {
         case .sending, .checking: nil
-        case .done: ("Sent", false)
+        case .done: (scheduled.map { $0 ? "Scheduled" : "Sent" } ?? "LifeOS has your mail", false)
         case .stillWaiting: ("Not sent: the mail is still in Drafts", true)
         case .changed: ("Not sent: the draft changed", true)
         case .gone: ("Not sent: the draft is gone", true)
