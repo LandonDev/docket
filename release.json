@@ -1,5 +1,5 @@
 {
-  "n": 385,
-  "notes": "Microsoft sign-in in an Office or Forms tab no longer spins on \"passkey unlock\": passkeys are off in those tabs alone, so Microsoft offers Authenticator approval or the password.",
-  "ts": 1795591305092
+  "n": 386,
+  "notes": "Three fixes he reported: the chat beside a file shows the agent's reply again (no more stuck \"Sending\" ending in only \"Worked for\"); a new Work thread always starts on the workspace's own host (no more \"unknown workspace\"); a Microsoft form or live Office file no longer stays on screen after he leaves its tab.",
+  "ts": 1795595490851
 }
