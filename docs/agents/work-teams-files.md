@@ -10,8 +10,8 @@ its Office apps and its rule for a file others can open.
 The Files place ([work-files.md](work-files.md), the `files` pillar) reads
 what this finds as places of its own, over this pillar's code: its wire here
 (`work.office.files*`), its tools and its Settings rows stay as they are.
-Until that place has its screen (its milestone F1a), the Files row is the
-view this file describes.
+The Files place shows them; this pillar gives it the libraries, the
+threads that hold a file and the VM's sign-in ("The Files view" below).
 
 ## The way in: the synced folder
 
@@ -394,8 +394,10 @@ own folder of this host's attachments
 (`<userData>/attachments/teams-files/<sessionId>/<hash of its source>/`, a
 root a remote key reaches) and opens the copy, a snapshot: a change to the
 real file still goes through the Office tools on the host that has it. A
-thread's copies are deleted with the thread (the module's `sessionsRemoved`),
-and all of a workspace's when he turns the switch off.
+thread's copies are deleted with the thread (the module's `sessionsRemoved`).
+Turning the switch off deletes the rest of the workspace's copies, but a
+Files tab's copy whose changes have not reached its file stays until they
+land or he discards them (work-files.md "A copy saves back").
 
 The switch is the workspace host's; the file's host gives a file's bytes
 (`filesRead {as: 'bytes'}`) only to another host of his over the host link,
@@ -548,16 +550,20 @@ seats the file itself when a tab holds it, when the open names a kind or a seat 
 changes that have not reached it, or when a Word file's document holds edits the file has not.
 
 **Switching** swaps the tab's item with `CanvasStore.replace`; the tab and its key stay.
-- To Live: the copy's send goes first, waited for 30 s at most. A copy whose file changed there, went, did not
+- To Live: the copy's send goes first, waited for 30 s at most. Then the host waits up to 30 s for OneDrive on the
+  file's computer to take that send (`uploadOwed`); still owed, the switch is refused and the tab stays as it was. A copy whose file changed there, went, did not
   answer or refused asks (`changed`, `gone`, `away`, `refused`); asked again with `choice: 'keep-both'`, the
   copies' own Keep Both runs (`copyKeep`) and the file it made beside is the one shown live. Over `away` nothing can
   go beside the file: the copy stays and is sent once its computer answers. A Word file's document with edits the
   file has not asks `word`; the window runs Save to Teams as Word and asks again. Once Live, a document whose edits
   are all in the Word file goes (its record's `doc` is cleared and the file removed), so Edit here reads the Word
   file again.
-- To Edit here: `reseat` in files/handle.ts opens the file fresh, as `open` would. With `typed > 0` the host first
-  waits up to 60 s for the file's size or time on its computer to move (a local stat, the VM's `files.stat`, or the
-  other host's `work.files.stat`); a file that changed after the live view opened needs no wait.
+- To Edit here: `reseat` in files/handle.ts opens the file fresh, as `open` would. The host kept the file's version
+  as the tab went live (`liveBase`, office/live/memory.ts: sha256 where it can hash, else size and time; the sleeping
+  VM is never woken for it). With `typed > 0` it waits up to 60 s for the file to differ from that version, so a
+  restamp is no change; if nothing moved, the switch is refused, the tab stays live and the window puts the guest
+  back. A tab live from before this keeps the old rule: changed after the live view opened, by this host's own
+  clock.
 
 ## Host ids
 

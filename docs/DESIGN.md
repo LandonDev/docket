@@ -1369,8 +1369,9 @@ thread; nothing answers inside the canvas.
   cannot be reached while its content stays: glyph, a medium word in its
   tone, a muted detail, one action, 32px, a hairline under it. Never a
   second banner. Amber is for a line that needs him; how an item is, with
-  nothing asked ("Read only" and why, on a sheet, a deck, a moved PDF, a
-  document he may not change), is the quiet line: 12px muted, the word
+  nothing asked ("Read only" and why on a sheet, a deck or a document he
+  may not change; "Moved." and "The copy from Nov 16, 9:12 AM" on a PDF
+  whose file moved), is the quiet line: 12px muted, the word
   medium, its one press a link, a hairline under (`QuietLine`, tone
   `quiet`). A document gone offline asks nothing of him either: its quiet
   line ("Offline." and "Edits stay here until the box is back.", naming
@@ -1424,7 +1425,7 @@ thread; nothing answers inside the canvas.
   tenant (a document kept for a Teams Word file goes to the Word file's);
   where it knows none, a Files row's is greyed with "Share it from Teams."
   A Purdue workspace's sheet holds one 12px muted line at
-  the footer's start, beside Create link. **History** opens the item's history as a tab of its own
+  the footer's start, beside Create link. **History** on a document or a sheet opens the item's history as a tab of its own
   (in a Files tab, at the file's side, where a second file sits; "Compare
   and History" below);
   Export is a dialog with one choice (the format, a `FieldRow` with its
@@ -1468,7 +1469,7 @@ The kinds, each a hand-made body built from components/ui:
   change is accepted only from the bar's stepper. The agent's words arrive by `REVEAL`. Underline and
   Strikethrough leave the selection bar under a 520px text width.
 - **PDF.** Paper on `stage`, 12px between sheets, a 24px side inset (12px
-  narrow), fit-width zoom from 0.5 to 1.25, a 232px margin column 16px
+  narrow), Fit width from 0.3 to 1.25 or 100, 125 or 150%, a 232px margin column 16px
   off, a 76px thumbnail rail (60px narrow). Margin notes are 13/20 muted,
   foreground when picked. A citation in the thread ("p. 6, clause 7.2")
   is a link that scrolls the page and marks the clause with `sel-bg-paper`
@@ -1928,7 +1929,8 @@ Around the canvas:
   a quiet +. A tab is a folder he is browsing or a file open as itself. A
   folder opens in the tab he is in; a file opens in a tab of its own beside
   the tab it came from, never twice, and closing it returns there. No dirty
-  dot: nothing is saved by hand. Past what fits the selected tab keeps its
+  dot: the save line says where each file stands (a Teams Word file's says
+  what the Word file does not hold yet). Past what fits the selected tab keeps its
   name and every other gives up the same part of its own (a short name is
   not cut first), down to its glyph: under the room of one letter and its
   ellipsis the name gives way whole, never a sliver (`TabName`, the canvas
@@ -2004,8 +2006,8 @@ Around the canvas:
   the list's spinner and its verb until the host answers, each row its
   own: "Opening… 1.2 of 3.4 MB", "Renaming…" with the name he typed in
   the name's place, "Moving…", "Copying…", "Deleting…", "Downloading…
-  2.1 of 8.4 MB"; a row that went keeps its word until the list is read
-  again, so it never shows its old self between), then who last changed it
+  2.1 of 8.4 MB"; a row that went keeps its word for 2 s while the list is
+  read again, so it does not show its old self between), then who last changed it
   (160px) and when (128px, right aligned, tabular), both 12px muted. The
   head keeps the room the list's scroll bar takes, so Changed ends on its
   dates' edge; a
@@ -2063,10 +2065,11 @@ Around the canvas:
   on Space, Escape or a press outside. A file kept in the cloud shows its facts and Download
   and Look: nothing downloads without that press.
   **New** is the bar's one primary button: a menu of what the place
-  makes (Document, Sheet, Deck, Text File, Folder), From a Template… and
-  Upload Files… wherever the place takes them (the workspace's folder, a
-  Teams or OneDrive library; neither in the Windows VM, nor Upload on a
-  computer reached through another host), and a
+  makes (Document, Sheet, Deck, Text File, Folder), Upload Files… wherever
+  the place takes uploads (the workspace's folder, a Teams or OneDrive
+  library; not the Windows VM, nor a computer reached through another
+  host), From a Template… only where the place lies on the workspace's own
+  host (not the Windows VM), and a
   last muted line on the rows' leading edge that says where it is kept.
   TempCode's own endings (".tcsheet", ".tcdoc") are never shown as words:
   a row, a tab, a header and a rename field show the name before them, and
@@ -2152,7 +2155,8 @@ Around the canvas:
   pause, so a cell or a word never blinks it; a failure at once; no motion
   on the swap; it takes
   `foreground` only when it needs him, with at most two presses beside
-  it: Reload and Keep Both, the one conflict press everywhere; a file moved or deleted under it reads "This file was
+  it: Retry where a save was refused or did not land ("Not saved." and its
+  reason), else Reload and Keep Both, the one conflict press everywhere; a file moved or deleted under it reads "This file was
   moved or deleted" with Keep Both, which puts what the tab holds back where the file was, a sheet's too). Edits a crash left unsent come back in the same
   foreground line as the file opens, the editor read only until he answers: "Edits from 2:14 PM were not saved" with
   Restore and Discard, or over a file that changed since, "… The file changed since" with Keep Both (a text file), Copy
@@ -4397,7 +4401,9 @@ other picked shape is the outline alone.
   radius on `image-outline`, its name 13/20, its two fonts 12/16 muted; the
   deck's own on `muted`. A deck that wears none of them (a school's or a
   company's template) has its own first, by the name its file gives it
-  (else "This deck's theme"), on `muted`. One press writes it and closes. "Edit master
+  (else "This deck's theme"), on `muted`. A press on another theme writes
+  it and closes; a press on the one the deck wears closes and writes
+  nothing. "Edit master
   slides…" waits for the PowerPoint switch and is not drawn.
 - **The Format sheet** (`edit/FormatSheet.tsx`), from Format in the row:
   280px at the stage's end on `background` with a hairline on its leading

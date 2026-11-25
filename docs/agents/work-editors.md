@@ -15,7 +15,8 @@ An edit the host has not acknowledged is kept on his computer by one store main 
 as a live save; a changed base keeps both (work-files.md "Drafts survive a crash"). Each editor journals through
 `DraftJournal` (work/canvas/drafts.ts) its own `DraftBody` kind: the text file's words (`text`) and the sheet's
 unanswered mutations by the file's revision (`sheet`), the deck's open box by its slide and shape with the words
-it opened on (`deck`), and the document's sync updates the service has not applied (`document`), merged by Yjs on
+it opened on (`deck`) and its speaker notes by slide with the notes they were typed over (`notes`), and the
+document's sync updates the service has not applied (`document`), merged by Yjs on
 Restore. Each offers itself in the save line as its file opens: Restore and Discard, or over a base that moved on,
 Keep Both (text), Copy Edits (sheet) or Copy Words (deck), never a write over the newer file.
 
@@ -123,14 +124,15 @@ return <div ref={root} data-editor-keys="document">…</div>;
   (`scripts/entryGraph.test.ts`); nothing of Work is imported by the menu, the
   resolver or App.tsx.
 
-Today the document and the sheet answer `export` by opening Preview on the
-format he last used and `print` by opening it on Print ("Print" below); the
-document answers `find` by opening the editor's own find bar (work-docs.md
-"Find…"). A document of a Work workspace also answers `save_word`, File →
+The document, the sheet and the deck answer `export` by opening Preview on
+the format he last used and `print` by opening it on Print ("Print" below).
+The document, the deck and a text file answer `find`: the document opens the
+editor's own find bar (work-docs.md "Find…"), the deck its own (work-slides.md
+"Find"), a text file the code editor's. A document of a Work workspace also answers `save_word`, File →
 Save As… (⇧⌘S, a Work-only row under Save): one sheet with the name, the
 format and a folder of his places, and the file it makes stays linked to the
-document (work-files.md "Save As…"). The sheet's `find` and the deck's answers
-come with their milestones; Save As… for sheets and decks is not built.
+document (work-files.md "Save As…"). The sheet's `find` is not built on
+today's work-kit pin, nor is Save As… for sheets and decks.
 
 ## Preview: the contract
 
@@ -158,8 +160,9 @@ interface PreviewSource {
 - **`PreviewBytes`** is one finished render read by range: `rev` names it and
   every read is of that render. A kind keeps its renders by content hash on
   the host that holds the file and reads them from that host.
-- A failed draw shows one sentence with the selected format and the error
-  that reached the frame. Retry draws again.
+- A failed draw shows "Word preview failed." (the selected format's name)
+  and under it the reason in Work's words (`useFailedWords`, naming the
+  computer). Retry draws again.
 - **`drops`** are what the format cannot hold, one plain line each, counted
   from the item ("3 comments stay behind"), never a fixed list and never "not
   supported". Empty when nothing is lost.

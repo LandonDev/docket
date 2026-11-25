@@ -478,11 +478,12 @@ uses the same words when reading older restore labels.
   sheet goes on in the file put back, its waiting suggestions kept. A folder
   gone too is said, and nothing is made. `sheets.test.ts` holds it.
 - **The saved line** (`shell.saved`, `savedLine` in model.ts) is said for
-  every sheet: "saving" while his edits wait or are on their way, "saved"
-  with the time of his last edit, a refusal in the host's words with its
-  press (Reload on an opened Excel file, whose grid no longer matches it;
+  every sheet: "saving" only once a send has been out 600 ms or his edits
+  waited past the pause (canvas/calm.ts), "saved" with the time the host
+  answered, a refusal as "Not saved." with the host's reason in Work's words
+  and its press (Reload on an opened Excel file, whose grid no longer matches it;
   Retry elsewhere, where the edits wait), and why a file cannot be changed
-  here. Edits are sent as he makes them and flushed when the body goes. An
+  here; Offline only for a dropped link. Edits are sent as he makes them and flushed when the body goes. An
   opened Excel file's refused batch keeps its line after a later edit lands
   (the refused one is still not in the file) until Reload.
 
@@ -1112,8 +1113,9 @@ press.
   are refused with "Check in Excel needs your own press." before anything
   is read.
 - **Which workbooks.** Never one others can open (`madeFromShared`): the
-  renderer may be another computer than the file's own, as the document's
-  Check in Word rules. Never a macro workbook: the pair takes an .xlsx,
+  renderer may be another computer than the file's own. The document's
+  Check in Word goes to a Teams Word file's holder (work-docs.md "Preview");
+  Check in Excel has no such path yet. Never a macro workbook: the pair takes an .xlsx,
   and Excel refuses macros under that name. Never one Excel or Google
   holds. Each answers `none`, and the frame offers no Check in Excel.
 - **What goes and what is kept.** The workbook as it stands: an opened

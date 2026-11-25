@@ -122,9 +122,9 @@ their files.
 
 | Journey | Shapes | What it checks |
 | --- | --- | --- |
-| J20 | S, U | A sandbox LifeOS document's Share makes a comment link on the host's configured origin. The guest selects words and comments. The owner sees it, revokes the link, and the open guest page stops answering. |
+| J20 | S, U | A sandbox LifeOS document's Share makes a comment link on the host's configured origin. The guest selects words and comments. The owner sees it, presses Revoke… and answers its ask (the link must still be live before he answers), and the open guest page stops answering. |
 | J21 | B2 | The Word switch offers the dummy SharePoint address, the local tab names its editor, and the holder's bytes stay the same. The built webview needs a public Microsoft origin, so the journey stops at the offered address before navigation. |
-| J24 | B2 | Desk's place shows an away notice and Retry. The open copy waits, then sends the edit to desk after it returns. |
+| J24 | B2 | Desk's place stays in the sidebar, greyed, and the open folder names desk as out of reach, with Retry. The open copy waits, then sends the edit to desk after it returns. |
 | J27 | A, U | A phone-width /ui clicker can advance, go back, blank and end the separate slideshow. The host and the audience page agree. A read key can watch. |
 | J28 | A | The made Word file contains the field value. The starter opens as a job copy, and Save as template puts a file on the shelf. |
 | J29 | B1, B2 | The shared Word bytes change only after Make the change in Outbox. A stale second press does nothing and gives a reason. |

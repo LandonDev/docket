@@ -133,7 +133,9 @@ release behind names none, and the window takes the answer's own arrival).
 The line says "Saved <time>" with that time, and only once a confirmed store
 holds every update sent before it (`covered` against `edits`: an update sent
 while a store is out keeps the line waiting until the next); "Saving…"
-while edits wait for one; a store the service refused, "Not saved." and its
+only once a store has been out 600 ms, or his edits waited past the pause
+with none asked (canvas/calm.ts), and a shorter wait keeps the last Saved
+line; a store the service refused, "Not saved." and its
 words, with Retry, which asks again at once. Before he edits it says nothing,
 and the frame names the folder. While no socket is open the store waits for the
 provider's next one; the line keeps its last Saved time (the document's own
@@ -422,8 +424,8 @@ place for a LifeOS document). What it tells the pane:
   it lies, or the document kept for a Word file of another computer
   (`othersOpen`, docs/target.ts: "Agent suggestions stay private").
   A mode change the host refuses puts back the mode before the press.
-- **The state line**: the editor's own sentence when it is offline, waiting,
-  read only or did not open.
+- **The state line**: the editor's own sentence when it is read only or did
+  not open; offline and waiting are the quiet line over the text (above).
 - **The agent's last write**: "Wrote 1 section, 2:04 PM" with Undo (the
   whole line in `WrittenLine.text`, its words and time apart in `words` and
   `at`: in a Files tab whose save line
@@ -781,10 +783,10 @@ else reads.
   it); a `.tcdoc` `sharedOf` says lies where others reach it (a Teams or
   OneDrive library, the cloud folder, another host, the Windows VM); the
   `.tcdoc` the importer wrote under `work-files/imports` for a file in a
-  library; the document kept in the workspace's own folder for a Word file
-  of another computer, which a `work_files_word` record names (`keptForWord`,
-  by real path): Save as Word and the autosave carry its live text to that
-  Word file, so only his accept reaches it. On these an agent's own idea is
+  library; the document kept in the workspace's hidden Word store for a
+  Word file of another computer (`wordStoreRoot`, or a `work_files_word`
+  record by real path, `keptForWord`): Save to Teams and the autosave carry
+  its live text to that Word file, so only his accept reaches it. On these an agent's own idea is
   always a branch, and `doc_comment` is refused.
 - **Where a pending agent branch lives**: a LifeOS document's in LifeOS's
   `docBranches`, read with the owner's key only; never in the live room, so

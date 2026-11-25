@@ -88,10 +88,10 @@ once.
   docs pillar's finder (`kindOfFile`) and the Teams view (`teamsCanvasOf`,
   `teamsKindOf`) all read it, and registry.test.ts holds every kind's
   `opens.ext` and `opens.mime` to it both ways. The name decides; a type a
-  desktop or a mail gave is read only for a name with no extension. Until the
-  `file` kind lands (F1b), `.md` and `.txt` open as a document where the file
-  is his own, and in their own app in a library; sound opens in its app in a
-  library until F3.
+  desktop or a mail gave is read only for a name with no extension. In Files
+  every file opens in a tab (`seatOf`): `.md` and `.txt` as the `file`
+  kind's text, a sound with Play. A thread's canvas still opens prose text
+  as a document (`threadCanvasOf`).
 - `nameProblem`, `freeName` ("Untitled document", then "Untitled document
   2"; a file put back beside one of its name is "Name (restored)").
 - `compareEntries`, `sortEntries`, `groupEntries`: folders first, then the
@@ -965,8 +965,8 @@ in Teams or OneDrive are in their own recycle bin.", `LIBRARY_BINS`).
 
 A file or folder in a Teams or OneDrive library goes to the bin of the
 computer that holds it, never deleted for good; OneDrive then takes the delete
-to the library's own recycle bin. Pressed in the row's menu, with the Delete
-key, or from the bar for many.
+to the library's own recycle bin. Pressed in the row's menu, with ⌘⌫ (on a
+PC the Delete key), or from the bar for many.
 
 - **Asked once.** Others can open the place, so his window asks first, in the
   house confirm with Cancel focused: "Delete Testing.pptx for everyone?" (or
@@ -1267,9 +1267,10 @@ follows; the title shows the old name until the tab opens again).
   lands outside. The folder's listing is dropped and pushed, and the commit
   answers the attachment with the made row as `entry`.
 - A thread is refused (the wire takes no thread's change); another host of his has no
-  origin to give, so it is refused too. A library takes no upload yet (its
-  `can`); the window asks no question before an upload (`questionFor` has
-  no row for it) until the library verbs land.
+  origin to give, so it is refused too. A library on this host's disk
+  takes uploads (`LIBRARY_CAN`); a library in the Windows VM and a computer
+  reached through another host take none. The window asks no question
+  before an upload (`questionFor` has no row for it).
 
 ## Agents
 
@@ -1464,16 +1465,12 @@ not marked. Other pillars that put a new file in a place (`slides_new
 | Door | Before | Now |
 |---|---|---|
 | `slides_new {save}` | on this branch, wrote the deck wherever `save` named | closed on master by the slides build (cda8e33f5): a place `sharedOf` calls shared is refused in words and the deck is made in the thread; tested there ("an agent never puts a new deck in such a place") |
-| a sheet's export to a path (`work.sheets.export`) | a library's workbook gets its `.csv` beside it; a sheet read from a `.csv` writes back over it | no agent route: no sheet tool exports, and the method is his window's or key's. Left to the sheets build (below) |
+| a sheet's export to a path (`work.sheets.export`) | a library's workbook gets its `.csv` beside it; a sheet read from a `.csv` writes back over it | closed by the sheets build: a shared sheet's export lands in his workspace's own folder, never beside the file; a shared `.csv` he edits here saves back through `saveFile` by version (sheets/index.ts `writeSheetOut`) |
 | a PDF's export (`pdf_export`) | writes the copy under the item's own folder in app data | closed by design: never beside the file |
 | the importer, a thread's `canvas_open` of a Word file | wrote the `.tcdoc` beside the file | closed in F0: a shared file's document goes under `<userData>/work-files/imports/`; `formats/importPlace.test.ts`, and `files/doors.test.ts` for a thread |
 | Google's revise-copy (`google_slides_revise`) | Drive's copy landed in the deck's own folders, seen by everyone they are shared with | closed on master by the private-suggestions build: a held `google.edit`, nothing sent to Google before his press |
 | the generic `fs.*Path` verbs for a remote key | passed wherever the listener's roots let them (a Work workspace kept in a OneDrive folder) | `fsPathRefusal` (policy.ts), asked by the listener after its fence for every `fs.*` method from a remote key: `fs.writeText`, `createPath`, `renamePath`, `deletePath`, `copyPath` and `movePath` naming, by its real spelling (a link is followed, a path not made yet is judged by its nearest folder), a path in a listed library, in the cloud folder or in a copy that saves back (`placeShared`), or a path inside a Work workspace's folder that `sharedOf` calls shared, are refused: "That is in a place others can open (Teams, OneDrive): change it in Files, where the change is asked first." A code project on a mounted disk or a Windows drive other than C:, which reads as shared only by its spelling, is the code side's and passes (round 2: round 1 had refused it). |
 
-Left for the sheets build: `exportSheet` (sheets/index.ts) should ask
-`sharedOf` for `held.path` and `held.csv` and write a shared workbook's
-`.csv`, or a shared `.csv`'s `.xlsx`, under the item's own folder (`own()`)
-instead of beside it, and never back over a shared `.csv`.
 
 `files/doors.test.ts` tries every agent route into a shared folder (the
 tools, the wire, the importer) and finds each held or refused with the team's
@@ -1701,23 +1698,17 @@ while its screen is unlocked.
 | `links {source}`, `linkAct {id, act}` | read; operate and his own edit there | screen | the files a document is linked to (`DocLink[]`); Unlink, Retry, Replace or Keep Both on one |
 | `saveAsWord {source, at, name?, op}` | operate, as `saveAs` | screen | an older window's Save as Word to…: `saveAs` with Word, Keep Both and no link (`SavedAsWord {name, ref}`) |
 | `make {at, kind, name?, from?}`, `rename {ref, name}`, `move {refs, to}`, `copy {refs, to}` | operate, and `approve` where others can open the place | screen | `FileDone`: the things as they are now, and a `refused` row with its sentence for each one that could not be done ("New, rename, move and copy") |
-| `trash`, `upload` | operate, and `approve` where others can open the place | screen | located and passed through the door, then "Files cannot … yet" |
-| `restore`, `purge` | operate; approve | screen; never | the workspace's own rows; not built |
-| `make`, `rename`, `move`, `copy` | operate, and `approve` where others can open the place | screen | located and passed through the door, then "Files cannot … yet" |
 | `trash {refs, op, writes?}` | operate, and `approve` where others can open the place | screen | each ref through the door first (one refused refuses all), then to Trash ("Trash"); `writes`: each open copy's writes his question showed ("A delete in a library"); answers `FileDone` with `trashed`, the row ids Undo passes to `restore`, and `unknown` on a refusal whose outcome its disk did not say |
 | `restore {ids, op}`, `purge {ids?}` | operate, and `approve` where others can open what comes back; approve | screen; never | the workspace's own rows ("Trash"): `FileDone` with what came back and where; `{ purged }` |
 | `upload {at, name, size, sha256, op}` | operate, and `approve` where others can open the place | screen | `{ uploadId }`; the bytes then go as `attachment.chunk` and `attachment.commit` ("Upload") |
-| `home`, `names`, `search`, `searches`, `saveSearch`, `dropSearch`, `read`, `preview`, `thumbs` | | | declared; not built |
 | `home {workspaceId}` | read | yes | Waiting on you (held file acts, closed copies whose changes their file did not take (`unsent`, to his press alone), and this host's files with suggestions waiting: "Agents"; then LifeOS rows with suggestions waiting and mail's files not kept, and a key without `approve` gets no mail's), Starred and Recent, 12 each. Not a thread's or a peer's |
 | `names {workspaceId, text}` | read | yes | Go to's list, 20 rows at most, from the database alone ("Search and Go to") |
 | `search {workspaceId, query, filter?, cursor?}` | read | yes | a page of 100 results, newest first, each with `where`; `more` where a source stopped early, `asleep` for the places of a sleeping VM, `byName` for the places matched by name alone |
 | `searches`, `saveSearch {id?, name, query, filter?}`, `dropSearch {id}` | read; operate | yes | saved searches, the Docs view's saved views (`work_docs_views`). Not a thread's or a peer's |
 | `project {ref, projectId, on}` | operate, and `approve` where others can open the file | screen | Add to a project… and Take out of this project: `{ projects: { id, name }[] }`, the file's projects after the change ("LifeOS, From mail and Projects") |
-| `read`, `preview`, `thumbs` | | | declared; not built |
 | `read {ref, offset, length, version?, itemId?}` | read | screen | bytes of a file whose bytes are here, by version |
 | `preview {ref, page?, width}`, `thumbs {refs, size}` | read | screen | a PNG made on the file's own host, or a plain tile ("Previews") |
 | `archive {ref}` | read | yes | a zip's entries from its directory ("An archive's listing") |
-| `home`, `names`, `search`, `searches`, `saveSearch`, `dropSearch` | | | declared; not built |
 | any of the above with a Drive folder (`{at: 'drive'}`), a Google file (`{at: 'google'}`) or a Drive place's id | | | the same answers, from Drive ("Google Drive"); `copy`, `upload`, `write`, `read`, `preview`, `thumbs` and `archive` refuse it in a sentence |
 | push `work.files {workspaceId, at?, tabs?, places?}` | | | a folder a tab shows changed (`at`: its key; sent with `{ path }`, so a key that could not name the folder never hears of it), or the tabs changed (`tabs`: their new revision; a client asks for the list again) |
 
@@ -2090,7 +2081,8 @@ alone of the changes, named as the box names that desktop (`name`).
 - **Joined, never kept.** `places`, `list` and `stat` through the box asked while the same one (per workspace, host,
   method and params) is in flight join it: one peer call for both. Nothing is kept once it answers (2026-11-25, sol
   review S1: a kept answer skipped that desktop's own bridge policy and Files fence for 5 s), so every later ask
-  meets that desktop's gates again; the window's own listings (store.ts, 10 minutes) spare it the repeats. Work on,
+  meets that desktop's gates again. The window never draws such a folder from its keep: each showing asks again
+  (store.ts `useListing`, "What the window keeps"). Work on,
   the binding being live and the workspace's "May use this computer" run on every ask before it joins one; a
   workspace no longer allowed is asked through and refused as before. A change sent to that desktop, and Work off,
   drop the asks in flight, so no ask after them joins an answer from before them.
@@ -2842,10 +2834,11 @@ on its items is his own window.
 - The importer takes a pane owner and swaps items through
   `ctx.canvas.replace`.
 - A Teams file copied for a tab lands under
-  `attachments/teams-files/filespane_<workspaceId>/`, and goes when its tab
-  closes (a copy whose changes have not reached its file once they have, "A
-  copy saves back"), when Copy Teams files is turned off and when the
-  workspace goes.
+  `attachments/teams-files/filespane_<workspaceId>/`. It goes when its tab
+  closes, when Copy Teams files is turned off and when the workspace goes,
+  except while it holds changes its file has not taken, or edits that save
+  nowhere: then it stays until they land or he discards them ("A copy saves
+  back").
 - A remote key sees no name of a tab's file it could not list: the item's
   path, name and title are cut (`fencedItem`), and `tabs` leaves the tab out.
 
@@ -2874,7 +2867,12 @@ it. So:
   Its conversion runs on that computer, in a scratch folder removed when the
   render ends, and is never forwarded. Turning a library off drops its
   pictures.
-- **No bytes and no picture of a Teams file are kept anywhere by Files.** A
+- **Files keeps a Teams file's bytes only where he opens or types it:** a
+  tab's copy (above), the hidden Word store (`<userData>/work-files/word/`: a
+  Teams Word file's document and its copy from before TempCode's first save,
+  "A Word file from another computer"), the drafts of words the host has not
+  taken (`<userData>/drafts`), and an import's document (below). It keeps no
+  picture of one. A
   list, a stat, a star and a recent never read a byte of a file its place
   keeps in the cloud (`reads.test.ts` watches every way this process opens a
   file). The names table holds the names and places of what was listed or
@@ -2882,8 +2880,9 @@ it. So:
   and of no file kept in the cloud (`search.test.ts`).
 - **An import never writes beside a shared file.** A Word, OpenDocument,
   RTF, markdown or text file that lies in a place others can open becomes
-  its `.tcdoc` under `<userData>/work-files/imports/<hash>/`
-  (`files/imports.ts`), never in the library, where OneDrive would sync it
+  its `.tcdoc` under `<userData>/work-files/imports/<hash>/`, or in the
+  hidden Word store for a Files tab's Word file (`files/imports.ts`), never
+  in the library, where OneDrive would sync it
   to the team. This holds for every opener, a thread's `canvas_open`
   included. That folder holds a copy of the file's words on this host; it is
   the same copy the import made beside the file before, now kept out of the
@@ -2956,8 +2955,9 @@ address is held here, and that host fences it when it is listed.
 pillar calls, all landed:
 
 - `shell.saved({ state, at?, where?, pending?, detail?, actions? })` from
-  its `Body` (work-canvas.md): kept in `feeds.saved`, drawn nowhere until
-  F1b.
+  its `Body` (work-canvas.md): kept in `feeds.saved` and drawn as the
+  file's save line in a Files tab's header, a side file and the Beside
+  seat.
 - When the line says Saving… is one rule for every kind, in `canvas/calm.ts`
   (`savingNow`, the owner's decision 5): Saved <time> names the last save the
   host answered, and stays while his edits wait inside the editor's own pause

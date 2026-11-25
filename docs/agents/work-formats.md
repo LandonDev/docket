@@ -263,10 +263,10 @@ the team. Its `.tcdoc` goes under `<userData>/work-files/imports/<hash>/`
 instead, one folder per source file (work/files/imports.ts `importFolderOf`),
 for every imported type and every opener, a thread's `canvas_open` included.
 A Word file of another computer opened in a Files tab is the exception: its
-document is kept in the workspace's own folder (files/word.ts
-`wordImportPlace`), and counts as shared all the same (docs/target.ts
-`madeFromShared`, by its `work_files_word` record), since Save as Word carries
-its live text to that file.
+document is kept in the workspace's hidden Word store under this host's
+data (files/word.ts `wordImportPlace`, files/wordStore.ts), never his folder,
+and counts as shared all the same (docs/target.ts `madeFromShared`), since
+Save to Teams carries its live text to that file.
 The opener may be a pane owner as well as a thread (the Files place's tab):
 a dropped file's bytes are then kept in that pane's workspace folder, and
 the item it replaces is swapped through `ctx.canvas.replace` (only while that item is still open on the file the

@@ -1744,8 +1744,9 @@ once (`work.slides.edit`), whole or not at all.
   every read after the first held to the first's `rev`) and draws its pages
   with the PDF engine; Restore there puts it back with `work.slides.restore`.
 - **What saved means** (`shell.saved`, FILES-SEAM.md "Save state"):
-  `saving` while one of his edits is on its way, `saved` with the time of
-  the last one after, `conflict` with Reload as above; nothing without
+  `saving` once an edit has been on its way 600 ms or the box's words have
+  waited past their pause (canvas/calm.ts), `saved` with the time of the
+  last one after, `conflict` with Reload as above; nothing without
   `hand`. The frame draws it nowhere beside a thread.
 - **Fonts.** A run is set in `fontStack(name)` (work-kit/fonts): the font
   itself, then its free twin. The box does not call `ensureFonts`
@@ -1754,9 +1755,7 @@ once (`work.slides.edit`), whole or not at all.
 
 What it does not know yet, from the outline: a paragraph's indents and
 spacing (the box hangs a list's mark a quarter inch in and sets lines at
-1.2), and the look of an empty paragraph's next words (an empty
-placeholder's box takes the deck's body font at 18pt until the picture
-lands in the layout's own size).
+1.2).
 
 Where it differs from the prototype: the prototype draws its slides in
 HTML, so it tints the changed words in place and strikes the removed ones.
@@ -1790,7 +1789,7 @@ refuses one whose slide's notes changed since (`handEdit`, the box's
 `CHANGED_WHILE`), and the toast says so. His words stay in the field
 (`notesPending`), and his next keep, or the close, writes them over the
 notes as they are now, the other save kept in the deck's versions. While
-his notes wait or travel the save line says saving. From his first key they
+his notes wait or travel past 600 ms the save line says saving. From his first key they
 are also kept on this computer (`DraftBody` kind `notes`, docs/agents/work-files.md
 "Drafts survive a crash"), so a crash in the pause offers them, with
 Restore, the next time the deck opens. A slide an agent's
