@@ -224,7 +224,7 @@ export async function firstPage(ctx: Ctx & Pick<WorkCtx, 'convert'>, item: Canva
   return { png: png.toString('base64'), rev: snap.stamp.rev, width }
 }
 
-/** The other open PDF items of the workspace whose rows are the item's/** The other open PDF items of the workspace whose rows are the item's (a Files tab and a thread on one file). */
+/** The other open PDF items of the workspace whose rows are the item's (a Files tab and a thread on one file). */
 export function sharing(ctx: Ctx, item: CanvasItem): CanvasItem[] {
   if (!item.workspaceId) return []
   const store = new PdfStore(ctx.db)
