@@ -107,6 +107,27 @@ beforeEach(async () => {
 afterEach(cleanup);
 
 describe("the media canvas", () => {
+  it("draws a vertical short's loading frame at its own shape, the box the player's frame takes, and the transport at its height", async () => {
+    const tall: MediaVersion = { ...V3, probe: { ...V3.probe!, width: 1080, height: 1920 } };
+    // Still making the copy this viewer plays: the bones, at the probe's shape.
+    host.view = { itemId: "item1", kind: "video", versions: [{ ...tall, state: "preparing", plays: [] }], notes: [], mode: "writes", shared: false, rev: 1 };
+    const loading = render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+    const bone = await waitFor(() => {
+      const el = loading.container.querySelector<HTMLElement>("[data-media-frame-bone]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const boneBox = bone.getAttribute("style");
+    expect(boneBox).toContain(`aspect-ratio: ${1080 / 1920}`);
+    expect(loading.container.querySelector("[data-media-track-bone]")!.className).toContain("mt-1.5 flex h-6");
+    expect(loading.container.querySelector("[data-media-transport-bone]")!.className).toContain("h-8");
+    loading.unmount();
+    resetMediaStore();
+    // Ready: the player's frame stands in the very box the bones held.
+    const { container } = await mount({ versions: [tall] });
+    expect(container.querySelector("[data-media-frame]")!.getAttribute("style")).toBe(boneBox);
+  });
+
   it("keeps a comment at the frame it was made on, and a click on it goes back to that frame", async () => {
     await mount();
     // Step to frame 984 (0:41), as the arrow keys do.

@@ -401,7 +401,11 @@ How it works:
   with `--sel-bg-paper` until the next citation. The transcript's markdown
   keeps a `#pdf:` href as a link (pdf.test.ts checks it through the real
   pipeline).
-- **States.** Loading is a page-shaped skeleton. An encrypted file is one
+- **States.** Loading is a page-shaped skeleton. A page not yet drawn
+  (after a jump or a fast scroll) is its paper with the page's bones in
+  `paper-ink` at a low mix (`PaperBones`, pdf/PaperBones.tsx), never a
+  blank page of the file; a thumbnail not yet drawn, or one pdf.js
+  refused, wears a fainter fill of the same ink. An encrypted file is one
   field and Open; a wrong password says so. A moved file is the state line
   ("Ballroom contract.pdf moved", "Read only, as of …") over the copy the
   host kept, with no mode. A file that will not open is one Empty.

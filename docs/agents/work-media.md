@@ -229,7 +229,10 @@ frame and shows its region.
   takes no region.
 - **An image** fits the stage (`--stage`) inside a 24px inset; the bar
   holds its size, its bytes and zoom (Fit, 25% to 400%).
-- **States**: bones while the host reads the file; a bar with the share
+- **States**: bones while the host reads the file, the frame at the file's
+  own shape once the probe has read it (`frameRatio`, the box the player's
+  frame takes) and the track and transport at their own heights, so a
+  vertical short does not land narrow and the notes do not jump; a bar with the share
   done while a proxy or a conversion is made; when the file does not open
   or the shown version fails, the centred "Couldn't open this file" with
   its reason and Retry (`OpenFailed`); the pane's state line, with Retry,

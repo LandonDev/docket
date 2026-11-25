@@ -351,6 +351,16 @@ What a kind should know:
   slot (`[data-canvas-tools]`) has something in it, by a CSS rule
   (`BAR_TOOLS_ONLY` in KindBar.tsx), and the `Bar` stays mounted so it can
   fill it later. A meeting with no recording yet has no bar.
+- Once the kind's own `Bar` has drawn something for an item, the bar keeps
+  its 32px: tools that go from a bone to nothing and on to Share never move
+  the body up and back (`useHeld` in KindBar.tsx, read before paint from
+  the tools slot). The pane's bone while the kind's code loads
+  (`data-bar-bone`) does not count, so a meeting with no recording still
+  has no bar. A kind that has nothing yet but whose bar is coming draws
+  `BarHold` (canvas/barHold.tsx), an empty mark that keeps the slot from
+  being empty: a Word file while it becomes a document does, since the
+  document has a bar, and it is no bone, which a failed import would leave
+  standing.
 - The kind's tools slot takes the bar's free room, so a tool given
   `ms-auto` sits at the slot's end, just before History and the stepper.
 - The bar is a size container (`@container/bar`), and under `BAR_NARROW`

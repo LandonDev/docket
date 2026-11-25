@@ -3873,7 +3873,8 @@ A document's one way to save itself as a file somewhere (work/files/SaveAs.tsx,
 DocLinks.tsx; docs/agents/work-files.md "Save As…"). A ghost extra-small
 "Save As…" stands in the document's own bar, before Share (beside a thread,
 and in a Files tab under its 48px header, which holds no second one); File →
-Save As… (⇧⌘S), More and ⋯ open the same sheet.
+Save As… (⇧⌘S), More and ⋯ open the same sheet. Beside a thread under 560px
+of bar, Save As… is in More alone and Share stays in the bar.
 
 - **The sheet** is the large modal (768px): "Save As" as its title, then a
   20px inset in two columns, 20px apart: the form, and 200px for the page.

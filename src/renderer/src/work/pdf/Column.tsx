@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/button";
 import type { CanvasShell } from "../canvas/kind";
 import type { PdfDoc } from "./engine";
 import { FieldLayer, type FieldActions } from "./Fields";
+import { PAPER_FAINT, PaperBones } from "./PaperBones";
 import type { FindHit } from "./find";
 import { boxStyle, currentPage, layOut, quadsOf, RAIL_FROM, railWidth, scaleFor, scrollTarget, sideInset, visibleRange, type PageSlot } from "./layout";
 import { useNav, type PdfNav } from "./nav";
@@ -419,7 +420,12 @@ const Page = memo(function Page({
       }
     >
       <div ref={picture} aria-hidden="true" className="absolute inset-0" />
-      {!painted ? <div aria-hidden="true" className="absolute inset-0 bg-(--paper)" /> : null}
+      {/* Not yet drawn (a jump, a fast scroll): the page's bones on its paper, so it never reads as a blank page of the file. */}
+      {!painted ? (
+        <div aria-hidden="true" data-pdf-page-waiting className="absolute inset-0 bg-(--paper)">
+          {failed ? null : <PaperBones shape="page" />}
+        </div>
+      ) : null}
       {failed ? (
         <div data-pdf-page-failed className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 text-[13px] leading-5 text-[color-mix(in_srgb,var(--paper-ink)_60%,transparent)]">
           Couldn't draw this page
@@ -503,17 +509,31 @@ function Rail({ doc, nav, page, width }: { doc: PdfDoc; nav: PdfNav; page: numbe
 
 const Thumb = memo(function Thumb({ doc, page, width, height }: { doc: PdfDoc; page: number; width: number; height: number }) {
   const host = useRef<HTMLSpanElement>(null);
+  // Until it is drawn the small sheet wears a faint fill, so a thumbnail still coming (or one pdf.js refused) is not a white page.
+  const [painted, setPainted] = useState(false);
   useEffect(() => {
     const el = host.current;
     if (!el) return;
     const job = new AbortController();
     // A thumbnail waits a moment, so a fast scroll through the rail paints only where it stops.
-    const wait = setTimeout(() => void doc.paint(page, el, width / (doc.size(page).width * (96 / 72)), null, job.signal).catch(() => undefined), 80);
+    const wait = setTimeout(
+      () =>
+        void doc.paint(page, el, width / (doc.size(page).width * (96 / 72)), null, job.signal).then(
+          () => !job.signal.aborted && setPainted(true),
+          () => undefined,
+        ),
+      80,
+    );
     return () => {
       clearTimeout(wait);
       job.abort();
     };
   }, [doc, page, width]);
   useEffect(() => () => doc.release(page), [doc, page]);
-  return <span ref={host} aria-hidden="true" className="block overflow-hidden bg-(--paper) outline-1 outline-(--image-outline)" style={{ width, height }} />;
+  return (
+    <span className="relative block overflow-hidden bg-(--paper) outline-1 outline-(--image-outline)" style={{ width, height }}>
+      <span ref={host} aria-hidden="true" className="absolute inset-0" />
+      {painted ? null : <span aria-hidden="true" data-pdf-thumb-waiting className={`absolute inset-0 ${PAPER_FAINT}`} />}
+    </span>
+  );
 });

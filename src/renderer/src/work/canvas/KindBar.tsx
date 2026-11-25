@@ -27,6 +27,23 @@ export function barShown(feeds: Feeds, tools: boolean, history: boolean): boolea
 export const BAR_TOOLS_ONLY = "has-[[data-canvas-tools]:empty]:hidden";
 
 /**
+ * Whether the bar has been drawn for this item by the kind itself: once its own `Bar` drew something (its bone, its
+ * tools, `BarHold`), the bar keeps its 32px while those tools draw nothing, so the body never moves up and back as they
+ * come and go (a bone, then nothing, then Share). The pane's own bone while the kind's code loads (`data-bar-bone`) does
+ * not count: a kind whose `Bar` has nothing (a meeting with no recording) still has no bar. Read before paint, from the
+ * tools slot itself, since a `Bar` that renders null is still a truthy element here.
+ */
+function useHeld(slot: React.RefObject<HTMLElement | null>, others: boolean): boolean {
+  const [held, setHeld] = useState(false);
+  useLayoutEffect(() => {
+    if (held) return;
+    const own = [...(slot.current?.childNodes ?? [])].some((node) => !(node instanceof Element && node.hasAttribute("data-bar-bone")));
+    if (others || own) setHeld(true);
+  });
+  return held;
+}
+
+/**
  * Under this width of canvas the bar takes its narrow form: the other people go, the mode says "Suggests" or "Writes",
  * the kind's tools marked `data-narrow-hide` go, History is its glyph alone, and the stepper drops its group's name and
  * trades Previous and Next for one Next that goes round from the last change to the first, keeping "1/3", Reject and
@@ -106,13 +123,15 @@ export function KindBar({
   const slot = useRef<HTMLDivElement | null>(null);
   const tight = useTight(slot, !!tools);
   const others = !!lead || !!end || barShown(feeds, false, !!onHistory || !!onDownload || !!onKeep);
+  const held = useHeld(slot, others);
   if (!others && !tools) return null;
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
   return (
     <TooltipProvider>
       <div
         data-canvas-bar
-        className={`@container/bar flex h-8 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b border-border bg-background pr-2 pl-3 text-xs text-muted-foreground ${others ? "" : BAR_TOOLS_ONLY}`}
+        data-bar-held={held || undefined}
+        className={`@container/bar flex h-8 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b border-border bg-background pr-2 pl-3 text-xs text-muted-foreground ${others || held ? "" : BAR_TOOLS_ONLY}`}
       >
         {lead ? (
           <div data-canvas-bar-lead className="flex min-w-0 shrink-[2] items-center gap-2">

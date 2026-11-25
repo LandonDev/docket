@@ -30,6 +30,7 @@ import { useColorScheme } from "../../hooks/useColorScheme";
 import { dayTime } from "../../lib/duration";
 import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
 import { OpenFailed } from "../canvas/FetchState";
+import { BarHold } from "../canvas/barHold";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence, WrittenLine } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { useWorkCommands } from "../formats/command";
@@ -310,14 +311,18 @@ function PageFact({ itemId }: { itemId: string }) {
  * what can be shared, once it has opened. While it opens, a bone holds the
  * bar's place, so the mode and Share arrive without the body moving; a
  * document that could not open draws nothing, and the bar goes. A Word file
- * that becomes a document draws nothing: the item it becomes has the bar. In
- * Pages, "Page 2 of 5" stands at the bar's end, before History.
+ * that becomes a document holds the bar's place empty (`BarHold`), never a
+ * bone a failed import would leave: the item it becomes has the bar, so the
+ * body does not drop 32px when it lands. In Pages, "Page 2 of 5" stands at
+ * the bar's end, before History.
  */
 export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
   const state = useOpenState(item.id);
   const workspace = useWorkspaceOf(env, item.workspaceId);
-  // A mail's attachment is read only and is not shared; a Word file becoming a document has nothing yet.
-  if (source.at === "mail" || importsFirst(source) || state === "failed") return null;
+  // A Word file becoming a document has nothing yet, but the document it becomes has a bar.
+  if (importsFirst(source) && source.at !== "mail") return <BarHold />;
+  // A mail's attachment is read only and is not shared.
+  if (source.at === "mail" || state === "failed") return null;
   if (state === "opening") return <Skeleton aria-hidden className="h-3 w-30" />;
   return (
     <>

@@ -1587,7 +1587,11 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   left out when the host cannot read it now), so a book of 4 MB or less is
   one request; the rest come `LOAD_AT_ONCE` (3) pieces at a time, each into
   its place, and a book of more than one piece shows a 4px bar with "2.1 of
-  8.4 MB" in the skeleton's formula bar (`SheetSkeleton`). The sync keeps
+  8.4 MB" in the skeleton's formula bar (`SheetSkeleton`). Where the sheet
+  will have a format row (the view names its controls before the grid's
+  code and fonts are ready) the skeleton holds its 36px with one bone
+  (`FormatRowBone`), and the loaded body keeps that bone until the grid
+  hands its handle and work-kit's row takes its place: the grid never drops. The sync keeps
   the book it read, never handed to a grid: each grid draws a copy
   (`structuredClone`), since Univer changes the workbook it draws in place.
   A body that comes back draws the kept book again and asks

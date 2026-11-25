@@ -294,7 +294,7 @@ function Loading({ kind, version }: { kind: "image" | "video"; version?: MediaVe
     );
   return (
     <div data-media-loading>
-      <PlayerSkeleton line={undefined} />
+      <PlayerSkeleton line={undefined} probe={version?.probe} />
       {word ? (
         <div className="px-3 pt-1">
           <Preparing word={word} progress={version?.progress} />

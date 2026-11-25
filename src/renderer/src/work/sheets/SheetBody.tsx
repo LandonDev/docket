@@ -217,7 +217,7 @@ export function Body(props: Props) {
     return state.failed ? sync.open() : undefined;
   };
   if (failed) return <OpenFailed kind="sheet" why={failed} onRetry={retry} />;
-  if (!view || !book || prepared !== true || faces !== book.key) return <SheetSkeleton loading={book ? null : state.loading} name={view?.name ?? item.title} />;
+  if (!view || !book || prepared !== true || faces !== book.key) return <SheetSkeleton loading={book ? null : state.loading} name={view?.name ?? item.title} row={controls.length > 0} />;
   const Canvas = grid.Canvas;
   return (
     <div
@@ -251,6 +251,9 @@ export function Body(props: Props) {
           // Insert → Picture opens the system's file picker; the grid seats what he picks at the cell in hand.
           {...(controls.includes("picture") ? { onPicture: () => pictureInput.current?.click() } : {})}
         />
+      ) : controls.length > 0 ? (
+        // Until the grid hands its handle the row keeps its 36px, so the grid does not drop when the row lands.
+        <FormatRowBone />
       ) : null}
       {/* A sheet that is the Excel copy of an .xls, .ods or .tsv says so in one quiet line, with its one press. */}
       {view.imported ? <ImportLine imported={view.imported} shared={view.shared} run={(act) => runImport(importAsk(sync), view.imported!, act)} /> : null}
@@ -684,14 +687,25 @@ const BONE_ROWS: Array<[number, boolean]> = [
   [40, true],
 ];
 
+/** The format row's place while it comes: work-kit's 36px row (format/FormatRow.tsx) with one bone, as the bar's. */
+export function FormatRowBone() {
+  return (
+    <div data-format-row-bone aria-hidden className="flex h-9 flex-none items-center border-b border-border bg-background px-3">
+      <Skeleton className="h-3 w-40" />
+    </div>
+  );
+}
+
 /**
- * Loading: the sheet's own shape, the formula bar, the lettered grid and the sheet tabs, with bones where the words will
- * be. A book of more than one piece on its way (`loading`) puts a 4px bar with how much has come in the formula bar's
- * bone, as a fetched attachment's first line does.
+ * Loading: the sheet's own shape, the format row where the sheet will have one (`row`: the view names its controls before
+ * the grid's code and fonts are ready, so nothing drops 36px when the row lands), the formula bar, the lettered grid and
+ * the sheet tabs, with bones where the words will be. A book of more than one piece on its way (`loading`) puts a 4px bar
+ * with how much has come in the formula bar's bone, as a fetched attachment's first line does.
  */
-export function SheetSkeleton({ loading = null, name }: { loading?: { at: number; size: number } | null; name?: string } = {}) {
+export function SheetSkeleton({ loading = null, name, row = false }: { loading?: { at: number; size: number } | null; name?: string; row?: boolean } = {}) {
   return (
     <div aria-busy="true" aria-label="Loading" className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      {row ? <FormatRowBone /> : null}
       <div className="flex h-8 flex-none items-center gap-2 border-b border-border pr-3 pl-2">
         <span className="h-6 w-18 flex-none rounded-md border border-input" />
         {loading ? (

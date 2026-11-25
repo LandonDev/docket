@@ -1412,7 +1412,10 @@ How it works:
 - **The mode, the written line and the state line** come from the view:
   "Agent writes" shows the last direct write with Undo; a host with no
   LibreOffice in reach says "Can't draw the slides" once and the strip and
-  stage show each slide's title on a blank.
+  stage show each slide's title on a blank. While a drawn slide's page
+  comes, the stage is its paper with a slide's bones, a title and a
+  subtitle centred (`PaperBones`, pdf/PaperBones.tsx), in the box the
+  picture fills; a thumbnail keeps its title.
 - **PowerPoint.** For a deck that lives in PowerPoint (`hosted`), the tab
   row has the TempCode and PowerPoint switch, where the sheet's Excel
   switch goes, wherever desktop PowerPoint is installed on the computer the

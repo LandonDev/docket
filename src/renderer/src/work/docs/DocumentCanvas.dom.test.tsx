@@ -188,10 +188,14 @@ describe("the document's bar", () => {
     act(() => markOpen(ITEM.id, null));
   });
 
-  it("draws nothing for a Word file, which becomes a document of its own", () => {
+  it("holds the bar's place, empty, for a Word file while it becomes a document of its own", () => {
     const word = { at: "file", host: "box", path: "/w/Plan.docx" } as const;
     const { container } = render(bar(word));
-    expect(container.innerHTML).toBe("");
+    // The document it becomes has a bar: the hold keeps the bar 32px so the body does not drop when it lands, and it
+    // is no bone, which a failed import would leave standing.
+    expect(container.querySelector("[data-bar-hold]")).not.toBeNull();
+    expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
   });
 
   it("offers no Share on a document that did not open", async () => {

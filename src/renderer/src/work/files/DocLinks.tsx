@@ -116,7 +116,8 @@ export function DocSaveControls({ workspace, source, itemId }: { workspace: Work
           }
         />
       ) : null}
-      <Button variant="ghost" size="xs" data-doc-save-as className="shrink-0 text-muted-foreground" onClick={() => openSaveAs(itemId)}>
+      {/* Beside a thread under 560px of bar it gives way whole, Share kept: Save As… stays in the header's More and ⇧⌘S. */}
+      <Button variant="ghost" size="xs" data-doc-save-as data-narrow-hide className="shrink-0 text-muted-foreground" onClick={() => openSaveAs(itemId)}>
         Save As…
       </Button>
     </>

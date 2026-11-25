@@ -493,6 +493,38 @@ describe("the bar and failures", () => {
     await waitFor(() => expect(page1.querySelector("[data-pdf-page-failed]")).toBeNull());
   });
 
+  it("draws a page not yet drawn as its bones on paper, a thumbnail faint, each let go once it paints", async () => {
+    pdfHost = fakePdfHost(pdfView());
+    const doc = fakeDoc(Array.from({ length: 300 }, (_, i) => page([`Page ${i + 1}`])));
+    const paint = doc.paint.bind(doc);
+    const held: (() => void)[] = [];
+    // Every paint waits for the test: the first look is what a jump or a fast scroll shows.
+    doc.paint = (n, el, scale, text, signal) => new Promise<void>((done) => held.push(() => void paint(n, el, scale, text, signal).then(done)));
+    engine = fakeEngine(doc);
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    const page1 = await found('[data-pdf-page="1"]');
+    expect(page1.querySelector("[data-pdf-page-waiting] [data-paper-bones='page']")).not.toBeNull();
+    await waitFor(() => expect(document.querySelector("[data-pdf-thumb-waiting]")).not.toBeNull());
+    await waitFor(() => expect(held.length).toBeGreaterThan(1));
+    await act(async () => {
+      for (const go of held.splice(0)) go();
+    });
+    await waitFor(() => expect(page1.querySelector("[data-pdf-page-waiting]")).toBeNull());
+    // A thumbnail asks after its pause (and again as the rail settles): each paint asked is let through.
+    const rail = document.querySelector("[data-pdf-rail]")!;
+    await waitFor(async () => {
+      await act(async () => {
+        for (const go of held.splice(0)) go();
+      });
+      expect(rail.querySelector('[aria-label="Page 1"] [data-pdf-thumb-waiting]')).toBeNull();
+    });
+  });
+
   it("says what a saved copy could not keep as the toast's own line, never under an empty title", async () => {
     await open(pdfView());
     pdfHost.export = async () => ({ name: "Ballroom contract.pdf", size: 0, warnings: ["The signature is not in the copy."] });

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type Ref } from "react";
 import { clock, frameCentre, frameCount, frameStart, tableDuration, tableFps } from "@shared/mediaFrames";
 import type { FrameTable, MediaNote, MediaRegion, MediaVersion } from "@shared/contract-work-media";
 import { RowsMenu } from "../../chrome/menuRows";
 import { Pause, Play } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
+import { Skeleton } from "../../components/ui/skeleton";
 import { Tip } from "../../components/tip";
 import { TooltipProvider } from "../../components/ui/tooltip";
 import { chordKey } from "../../lib/keys";
@@ -101,17 +102,23 @@ function useSource(video: HTMLVideoElement | null, version: MediaVersion, action
   }, [hls]);
 }
 
+/** The picture's shape as the probe read it, turned where the file says to turn it; 16:9 until it is known. */
+export function frameRatio(probe: MediaVersion["probe"] | undefined): number {
+  const turned = probe?.rotation === 90 || probe?.rotation === 270;
+  return probe && probe.width && probe.height ? (turned ? probe.height / probe.width : probe.width / probe.height) : 16 / 9;
+}
+
+/** The frame's box at a shape: as wide as the player, and never taller than 58% of the window. The bones take the same box. */
+const frameStyle = (ratio: number): CSSProperties => ({ aspectRatio: String(ratio), maxWidth: `calc(58vh * ${ratio})` });
+
 function Screen({ version, label, videoRef, region, selecting, onRegion, onClick }: { version: MediaVersion; label?: string; videoRef(el: HTMLVideoElement | null): void; region: MediaRegion | null; selecting: boolean; onRegion?(r: MediaRegion, rect: DOMRect): void; onClick(): void }) {
-  const p = version.probe;
-  const turned = p?.rotation === 90 || p?.rotation === 270;
-  const ratio = p && p.width && p.height ? (turned ? p.height / p.width : p.width / p.height) : 16 / 9;
   return (
     <div className="min-w-0">
       {label ? <div className="mb-1 text-xs text-muted-foreground">{label}</div> : null}
       <div
         data-media-frame
         className="relative mx-auto w-full overflow-hidden rounded-lg bg-matte outline-1 -outline-offset-1 outline-(--image-outline)"
-        style={{ aspectRatio: String(ratio), maxWidth: `calc(58vh * ${ratio})` }}
+        style={frameStyle(frameRatio(version.probe))}
       >
         <video ref={videoRef} playsInline preload="auto" className="absolute inset-0 size-full object-contain" />
         <RegionLayer shown={region} selecting={selecting} onRegion={onRegion} onClick={onClick} />
@@ -496,17 +503,25 @@ export function Player({
   );
 }
 
-/** The player's place while the host reads the file: the frame, the track and the transport as bones. */
-export function PlayerSkeleton({ line }: { line?: string }) {
+/**
+ * The player's place while the host reads the file: the frame at the file's own shape once the probe has read it (a
+ * vertical short stands tall, never 16:9 then narrow), the track and the transport as bones, each in the box and at the
+ * height the player gives it, so nothing under the player moves when it lands.
+ */
+export function PlayerSkeleton({ line, probe }: { line?: string; probe?: MediaVersion["probe"] }) {
   return (
     <div className="px-3 pt-3">
-      <div className="relative grid aspect-video w-full place-items-center rounded-lg bg-muted">
+      <Skeleton data-media-frame-bone className="relative mx-auto grid w-full place-items-center rounded-lg" style={frameStyle(frameRatio(probe))}>
         {line ? <span className="text-xs text-muted-foreground">{line}</span> : null}
+      </Skeleton>
+      <div data-media-track-bone className="mt-1.5 flex h-6 items-center">
+        <Skeleton className="h-1 flex-1 rounded-[2px]" />
       </div>
-      <div className="mt-4 mb-3 h-1 rounded-[2px] bg-muted" />
-      <div className="flex h-6 items-center gap-2">
-        <div className="size-4 rounded bg-muted" />
-        <div className="h-3 w-[76px] rounded bg-muted" />
+      <div data-media-transport-bone className="-mx-1 flex h-8 items-center gap-0.5">
+        <span className="grid size-7 place-items-center">
+          <Skeleton className="size-4 rounded" />
+        </span>
+        <Skeleton className="mx-1 h-3 w-[76px] rounded" />
       </div>
     </div>
   );

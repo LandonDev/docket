@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { CSS_PER_POINT, type PdfDoc } from "../pdf/engine";
+import { PaperBones } from "../pdf/PaperBones";
 
 /** Whether an element is in its scroller's view, or near it; true where nothing lays out (a test, a static page). */
 function useInView(ref: { current: Element | null }, margin = "200px"): boolean {
@@ -30,7 +31,7 @@ export function freePage(doc: PdfDoc | null, page: number): void {
 
 /**
  * A slide at a width: the render's page, or with no render its title on a
- * blank; the strip's thumbnail (`waitTitle`) shows its title too while its
+ * blank; on the stage, while its page comes, the paper with a slide's bones; the strip's thumbnail (`waitTitle`) shows its title too while its
  * page comes, so the strip never stands as blank boxes beside a drawn stage. A thumbnail paints only near the view, after
  * the stage, and lets pdf.js free the page when it leaves. A paint pdf.js
  * refuses on the stage says so in the slide's place, with Retry, as a PDF's
@@ -101,7 +102,14 @@ export const Picture = memo(function Picture({
   return (
     <span className={`relative block overflow-hidden rounded-[3px] bg-muted outline-1 -outline-offset-1 outline-(--image-outline) ${ghost ? "opacity-45" : ""}`} style={{ width, height: Math.round(width / aspect) }}>
       <span ref={host} data-slide-picture aria-hidden="true" className="absolute inset-0" />
-      {!painted && !failed ? <span className="absolute inset-0 grid place-items-center overflow-hidden p-2 text-center text-xs leading-4 text-muted-foreground">{doc && !waitTitle ? "" : title}</span> : null}
+      {/* The stage waits on paper with a slide's bones, so a load reads as one and the picture lands without a change of ground; a thumbnail keeps its title. */}
+      {!painted && !failed && doc && !thumb ? (
+        <span data-slide-waiting className="absolute inset-0 bg-(--paper)">
+          <PaperBones shape="slide" />
+        </span>
+      ) : !painted && !failed ? (
+        <span className="absolute inset-0 grid place-items-center overflow-hidden p-2 text-center text-xs leading-4 text-muted-foreground">{doc && !waitTitle ? "" : title}</span>
+      ) : null}
       {failed ? (
         <span data-slide-failed className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 text-[13px] leading-5 text-muted-foreground">
           Couldn't draw this slide

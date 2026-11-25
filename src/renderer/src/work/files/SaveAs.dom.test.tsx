@@ -269,6 +269,13 @@ describe("the header's linked files", () => {
     expect(screen.getByTestId("ask").textContent).toBe("i1:last");
   });
 
+  it("gives Save As… way whole in the narrow bar beside a thread, Share kept: it stays in the header's More", () => {
+    world.links = [];
+    controls();
+    // The kind's bar hides `data-narrow-hide` tools under 560px (KindBar.tsx TOOLS_NARROW); the document's Share is not one.
+    expect(screen.getByRole("button", { name: "Save As…" }).hasAttribute("data-narrow-hide")).toBe(true);
+  });
+
   it("takes the foreground when a Word file changed there, and offers Keep Both and Replace; Unlink stops it", async () => {
     world.links = [link({ state: "changed", changedAt: 1 })];
     controls();
