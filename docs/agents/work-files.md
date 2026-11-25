@@ -3124,7 +3124,7 @@ share, listing a folder of 300 entries did not answer in 30 s and opening a 5 MB
   Home the opening progress and a held change's "Move waits for you" give way before the name, cut, whole in
   a tip. Opening is one of his acts that mark rows (files/busy.ts: a map by row key, so two at once keep their own
   words; `ActsOf.busy` and `OpenFrom.busy`): a rename says "Renaming…" and draws the name he typed until the
-  answer, a move "Moving…", a copy "Copying…", a delete "Deleting…", a download "Downloading… 2.1 of 8.4 MB"
+  answer, without TempCode's own ending as every row's name (`shownName`), a move "Moving…", a copy "Copying…", a delete "Deleting…", a download "Downloading… 2.1 of 8.4 MB"
   where the file's size is known. A rename, a move or a delete that went keeps its rows' words `SETTLE_MS`
   (2 s) after the answer, while the host's push has the folder read again (acts.ts `marking`); a refusal or a
   copy lets them go at once. Each act lets go of only its own marks (`rowMarks`: a mark carries the act that

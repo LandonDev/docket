@@ -73,6 +73,12 @@ describe("a row his act is changing", () => {
     expect(words()).toBe("");
   });
 
+  it("shows the name he typed as a row shows names, without TempCode's own ending the rename kept", async () => {
+    world.answers["work.files.rename"] = { entries: [file("Q3 plan.tcsheet")], refused: [] };
+    await renameTo(of, copy, file("Budget.tcsheet"), "Q3 plan.tcsheet");
+    expect(world.seen).toEqual([{ method: "work.files.rename", marks: "Budget.tcsheet=Renaming…>Q3 plan" }]);
+  });
+
   it("lets a refused rename go at once, back to its own name", async () => {
     world.fail = "work.files.rename";
     expect(await renameTo(of, copy, file("Budget.xlsx"), "Budget 2027.xlsx")).toBeNull();

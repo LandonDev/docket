@@ -10,7 +10,7 @@ import { revealPath } from "../../lib/fs";
 import { downloadParts, isWebMode } from "../../lib/native";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { flushItem } from "../canvas/flush";
-import { carryRefusal, doneWords, refusedWords, type PlaceCopy } from "./model";
+import { carryRefusal, doneWords, refusedWords, shownName, type PlaceCopy } from "./model";
 import { filesLink } from "./farLink";
 import { openingWords, rowMarks, type MarkBusy, type RowBusy } from "./busy";
 import { closeTab, tabsNow } from "./store";
@@ -93,11 +93,12 @@ export async function makeIn(of: ActsOf, copy: PlaceCopy, at: FolderRef, kind: M
 export async function renameTo(of: ActsOf, copy: PlaceCopy, entry: FileEntry, name: string): Promise<FileEntry | null> {
   const next = name.trim();
   if (!next || next === entry.name) return null;
-  // The row shows the name he typed from his Return until the host answers.
+  // The row shows the name he typed from his Return until the host answers, as a row shows names: TempCode's own ending
+  // (".tcsheet", ".tcdoc") that the rename kept is no word.
   return marking(
     of,
     [entry.key],
-    { word: "Renaming…", name: next },
+    { word: "Renaming…", name: shownName(next) },
     async () => {
       // What an open tab on it holds goes in first; words still waiting follow the file to its new name. Words that
       // did not go in keep the file where it is: its editor could not hand them to the new name.
