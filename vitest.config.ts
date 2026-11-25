@@ -1,5 +1,6 @@
 import { configDefaults, defineConfig } from 'vitest/config'
 import { availableParallelism } from 'node:os'
+import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 // Root vitest: the transplanted renderer tests (src/renderer/src/**) and
@@ -14,8 +15,13 @@ const renderer = resolve(__dirname, 'src/renderer/src')
 const stub = (name: string): string => resolve(renderer, 'test/stubs', name)
 const storageSetup = resolve(renderer, 'test/storageSetup.ts')
 
+// A worktree links node_modules from the main checkout; vite refuses a file past that link ("Denied ID" on a font's
+// ?url) unless its real folder is allowed.
+const modules = realpathSync(resolve(__dirname, 'node_modules'))
+
 export default defineConfig({
   esbuild: { jsx: 'automatic' },
+  server: { fs: { allow: [__dirname, modules] } },
   resolve: {
     alias: {
       '@server/shared': resolve(__dirname, 'src/shared'),
