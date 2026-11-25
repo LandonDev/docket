@@ -130,6 +130,21 @@ describe('a folder in the Windows VM', () => {
     expect(calls).toEqual([])
   })
 
+  it('never wakes it for a next page that does not say: a scroll is no press (the phone sends no `wake`)', async () => {
+    if (process.platform === 'win32') return
+    state = 'asleep'
+    // The phone's next page and its share sheet's walk send a cursor and no `wake`: no call to the VM, and no wake.
+    const next = await list({ cursor: 'a-next-page' })
+    expect(next.sleeping).toBe('asleep')
+    expect(calls).toEqual([])
+    // A first page that does not say stays his press, as a window a release behind and the phone's tap send it.
+    const first = list()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(calls.filter((c) => c.verb === 'files.list').map((c) => c.wake)).toEqual([true])
+    await release()
+    await first
+  })
+
   it('answers his press on a sleeping VM before the wake ends, and pushes the folder once when its rows land', async () => {
     if (process.platform === 'win32') return
     state = 'asleep'

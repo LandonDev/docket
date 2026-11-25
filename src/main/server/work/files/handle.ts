@@ -298,8 +298,10 @@ async function list(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fold
   const { library: place } = doorPlace(ctx, by, at)
   // A guest path is no path of this host to fence a push by: any key that may read hears it, as a VM folder's change is said.
   Object.assign(pushAt, { at: libraryKey(place!, path), ...(library.vm ? {} : { path }) })
-  // A folder in the VM wakes it only for his press (`wake`; a window a release behind sends none and still wakes it); a thread's list never does.
-  const wake = by.kind !== 'model' && p.wake !== false
+  // A folder in the VM wakes it only for his press (`wake`). A first page that does not say (a window a release behind, the
+  // phone's tap) still wakes it; a next page that does not say (the phone's scroll, its share sheet's walk) never does,
+  // since no press is meant there. A thread's list never does.
+  const wake = by.kind !== 'model' && (p.wake ?? !p.cursor)
   const page: VmPage = library.vm
     ? await vmPage(ctx, library, path, { sort, cursor: p.cursor, foldersOnly: p.foldersOnly, signal, wake, tell: { workspaceId: p.workspaceId, at: libraryKey(place!, path) } })
     : await state.lister.page(path, { sort, cursor: p.cursor, foldersOnly: p.foldersOnly, signal })

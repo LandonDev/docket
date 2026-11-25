@@ -152,7 +152,7 @@ export const FilesRequestSchemas = [
   request('work.files.places', z.object({ workspaceId: Workspace })),
   /**
    * → FilesListing: one folder or lens, a page at a time (`LIST_PAGE_MAX` entries, `LIST_PAGE_BYTES`). `cursor` is the last answer's `next`; a folder that changed between pages answers `stale`, and the window lists again.
-   * `wake`: his press for this folder, which may wake the Windows VM behind the answer; false for a list he did not press for (a restored tab, a refetch). Absent, a window's list wakes it and a thread's never does.
+   * `wake`: his press for this folder, which may wake the Windows VM behind the answer; false for a list he did not press for (a restored tab, a refetch). Absent, a window's first page wakes it, a next page (a `cursor`) never does, and a thread's list never does.
    */
   request('work.files.list', z.object({ workspaceId: Workspace, at: FolderRefSchema, cursor: z.string().max(4000).optional(), sort: FileSortSchema.optional(), foldersOnly: z.boolean().optional(), wake: z.boolean().optional() })),
   /** → { entries: (FileEntry | null)[] }: the rows again with what a list leaves out (who last saved it), for the rows on screen; null for one that is gone or out of reach, and for each row on a mapped or network drive or in the Windows VM when several are asked at once (each look is round trips over the link, or a call in the guest, which names no one who saved). */
