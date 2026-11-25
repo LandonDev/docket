@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PdfView } from "@shared/contract-work-pdf";
 import type { CanvasItem } from "@shared/work";
 import { openMenus } from "../../chrome/menuRows";
+import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { defineChunk } from "../../lib/lazyChunk";
 import { CANVAS } from "../canvas/registry";
 import { canvasItem, fakeHost } from "../canvas/testkit";
@@ -276,9 +277,11 @@ describe("the PDF kind", () => {
     // Read only asks nothing of him: the quiet line, not amber.
     const line = await found('[data-canvas-state="quiet"]');
     // The tab already names the file: the line says only that it moved.
-    expect(line.textContent).toContain("Read only");
+    expect(line.textContent).toContain("Moved.");
     expect(line.textContent).not.toContain("Ballroom contract.pdf");
-    expect(line.textContent).toContain("Moved, as of");
+    // It names which copy is shown, by its time, as one sentence.
+    expect(line.textContent).toMatch(/The copy from Nov 16, \d+:00\sAM/);
+    expect(line.textContent).not.toContain("as of");
     expect(screen.queryByRole("button", { name: /Agent suggests/ })).toBeNull();
     await waitFor(() => expect(pages()[0]).toBe(1));
   });
@@ -290,6 +293,136 @@ describe("the PDF kind", () => {
     expect(line.textContent).toContain("Only Adobe's apps fill this form");
     expect(line.textContent).not.toContain("XFA");
     expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
+  });
+
+  it("ticks a checkbox at the press, before the host answers, and puts it back when the host refuses", async () => {
+    await open(pdfView({ fields: [field("ok", { label: "I agree", type: "checkbox" })] }));
+    const box = await screen.findByRole("checkbox", { name: "I agree" });
+    const answer = Promise.withResolvers<PdfView>();
+    pdfHost.setField = () => answer.promise;
+    fireEvent.click(box);
+    // At once: the tick is his press, not the round trip.
+    expect(box.getAttribute("aria-checked")).toBe("true");
+    expect(box.querySelector("svg")).not.toBeNull();
+    await act(async () => answer.reject(new Error("refused")));
+    await waitFor(() => expect(box.getAttribute("aria-checked")).toBe("false"));
+    expect(box.querySelector("svg")).toBeNull();
+    expect(toasts.errors.at(-1)?.[0]).toBe("Couldn't change the field");
+  });
+
+  it("spins Sign and holds it while the host places a saved signature, so a second press cannot sign again", async () => {
+    await open(pdfView({ hasSignature: true, fields: [field("sig", { type: "signature", origin: "overlay", state: "needs-owner" })] }));
+    await pdfHost.setSignature({ width: 10, height: 10, strokes: [[[1, 1], [5, 5]]] });
+    const sign = await screen.findByRole("button", { name: "Sign" });
+    const placed = Promise.withResolvers<void>();
+    const real = pdfHost.sign.bind(pdfHost);
+    pdfHost.sign = async (signed) => {
+      await placed.promise;
+      return real(signed);
+    };
+    pdfHost.calls.length = 0;
+    fireEvent.click(sign);
+    expect((sign as HTMLButtonElement).disabled).toBe(true);
+    expect(sign.getAttribute("aria-busy")).toBe("true");
+    expect(sign.querySelector('[data-slot="spinner"]')).not.toBeNull();
+    fireEvent.click(sign);
+    await act(async () => placed.resolve());
+    await waitFor(() => expect(pdfHost.calls).toEqual([["sign", true]]));
+  });
+
+  it("shows Find still reading after its count until every page is read", async () => {
+    const { doc } = await open(pdfView());
+    const last = Promise.withResolvers<void>();
+    const text = doc.text.bind(doc);
+    doc.text = async (n) => {
+      if (n === FILE.length) await last.promise;
+      return text(n);
+    };
+    fireEvent.click(await screen.findByRole("button", { name: "Find" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Find" }), { target: { value: "deposit" } });
+    await waitFor(() => expect(document.querySelector("[data-pdf-find-count]")?.textContent).toMatch(/^1\/\d+$/));
+    expect(document.querySelector("[data-pdf-find-reading]")).not.toBeNull();
+    await act(async () => last.resolve());
+    await waitFor(() => expect(document.querySelector("[data-pdf-find-reading]")).toBeNull());
+    expect(document.querySelector("[data-pdf-find-count]")?.textContent).toBe("1/14");
+  });
+
+  it("puts what a narrow bar drops in the pane's More: the zoom and Save a Copy", async () => {
+    await open(pdfView());
+    await waitFor(() => expect(document.querySelector("[data-pdf-pager]")).not.toBeNull());
+    act(() => navOf("pdf1").measured(420));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Save a copy" })).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(await screen.findByRole("menuitem", { name: "Save a Copy" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Zoom: 125%" }));
+    await waitFor(() => expect(navOf("pdf1").get().zoom).toBe(1.25));
+  });
+
+  it("keeps none of the bar's tools in More while the bar has room for them", async () => {
+    await open(pdfView());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save a copy" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    await screen.findAllByRole("menuitem");
+    expect(screen.queryByRole("menuitem", { name: "Save a Copy" })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /^Zoom/ })).toBeNull();
+  });
+
+  it("offers Highlight and Copy at Ask's 24px, Copy with its tip, and keeps the selection's tint until the mark lands", async () => {
+    await act(async () => {
+      warmTooltips();
+      await tooltipChunk.load();
+    });
+    await open(pdfView());
+    const pageEl = await found('[data-pdf-page="1"]');
+    await waitFor(() => expect(pageEl.textContent).toContain("deposit"));
+    pageEl.getBoundingClientRect = () => new DOMRect(0, 0, 400, 500);
+    const words = pageEl.querySelector("[data-pdf-text]") ?? pageEl;
+    const node = document.createTextNode("A deposit of 50 percent");
+    words.appendChild(node);
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    range.getClientRects = () => [new DOMRect(40, 100, 200, 12)] as unknown as DOMRectList;
+    range.getBoundingClientRect = () => new DOMRect(40, 100, 200, 12);
+    getSelection()!.removeAllRanges();
+    getSelection()!.addRange(range);
+    fireEvent.pointerUp(document.querySelector("[data-pdf-column]")!);
+    const highlight = await screen.findByRole("button", { name: "Highlight" });
+    const copy = screen.getByRole("button", { name: "Copy" });
+    for (const tool of [highlight, copy]) expect(tool.className).toMatch(/\bh-6\b|\bsize-6\b/);
+    await act(async () => {
+      fireEvent.pointerEnter(copy, { pointerType: "mouse" });
+      fireEvent.mouseEnter(copy);
+      fireEvent.mouseMove(copy);
+    });
+    expect((await screen.findByText("Copy", { selector: "[data-slot=tooltip-content] *, [data-slot=tooltip-content]" })).closest("[data-slot=tooltip-content]")).toBeTruthy();
+
+    const made = Promise.withResolvers<PdfView>();
+    pdfHost.mark = (page, quads, text) => (pdfHost.calls.push(["mark", { page, quads, text }]), made.promise);
+    fireEvent.click(highlight);
+    const tint = await found("[data-pdf-marking]");
+    expect(tint.className).toContain("sel-bg-paper");
+    const view = { ...pdfHost.view, marks: [{ id: "m1", page: 1, quads: [[0.1, 0.2, 0.6, 0.224]], text: "A deposit of 50 percent", at: 0 }] } as PdfView;
+    await act(async () => made.resolve(view));
+    await waitFor(() => expect(document.querySelector("[data-pdf-marking]")).toBeNull());
+    expect(document.querySelector('[data-pdf-mark="m1"]')).not.toBeNull();
+  });
+
+  it("lets a cited clause go on Escape in the column", async () => {
+    await open(pdfView());
+    await waitFor(() => expect(pages()[0]).toBe(1));
+    act(() => deliverCite({ itemId: "pdf1", page: 1, bbox: [0.1, 0.13, 0.8, 0.15] }));
+    await found("[data-pdf-cite]");
+    fireEvent.keyDown(document.querySelector("[data-pdf-column]")!, { key: "Escape" });
+    await waitFor(() => expect(document.querySelector("[data-pdf-cite]")).toBeNull());
+  });
+
+  it("lets a cited clause go on a press in the column", async () => {
+    await open(pdfView());
+    await waitFor(() => expect(pages()[0]).toBe(1));
+    act(() => deliverCite({ itemId: "pdf1", page: 1, bbox: [0.1, 0.13, 0.8, 0.15] }));
+    await found("[data-pdf-cite]");
+    fireEvent.pointerDown(document.querySelector('[data-pdf-page="1"]')!);
+    await waitFor(() => expect(document.querySelector("[data-pdf-cite]")).toBeNull());
   });
 
   it("shows what the agent wrote directly with its Undo, in the stepper's place", async () => {
@@ -340,7 +473,11 @@ describe("a long file", () => {
     const rail = await found("[data-pdf-rail]");
     await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("1/300"));
     expect(rail.querySelectorAll("button").length).toBeLessThan(40);
-    fireEvent.click(within(rail).getByRole("button", { name: "Page 3" }));
+    // A press steps the thumbnail's fill at once, as every row's does (DESIGN.md "Motion values"); nothing scales.
+    const third = within(rail).getByRole("button", { name: "Page 3" });
+    expect(third.className.split(" ")).toEqual(expect.arrayContaining(["active:bg-foreground/12", "active:transition-none"]));
+    expect(third.className).not.toMatch(/active:scale/);
+    fireEvent.click(third);
     await waitFor(() => expect(document.querySelector("[data-pdf-pager]")?.textContent).toBe("3/300"));
     expect(pages().length).toBeLessThan(12);
   });

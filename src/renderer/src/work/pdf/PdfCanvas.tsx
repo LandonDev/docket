@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PdfCite, PdfField, PdfSignature, PdfView } from "@shared/contract-work-pdf";
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, X } from "../../chrome/icons";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { GroupInput, Input, InputGroup } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { dayTime } from "../../lib/duration";
 import { modOrCtrl } from "../../lib/keys";
 import { OpenFailed } from "../canvas/FetchState";
 import { Tip } from "../../components/tip";
 import { sayError } from "../canvas/frame";
-import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
-import { Download } from "../icons";
+import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../canvas/kind";
+import { Download, ZoomIn } from "../icons";
 import { onCite } from "./cite";
 import { Column } from "./Column";
 import { pdfjsEngine, type PdfEngine } from "./engine";
@@ -100,11 +101,13 @@ export function PdfBody({ item: canvasItem, source, shell, host, pdf: item, widt
   const shut = !!viewError || doc.phase === "failed" || doc.phase === "password";
   useEffect(() => nav.shut(shut), [nav, shut]);
   useFeeds(shell, doc.phase === "ready" ? view : null, proposed, at, setCurrent, nav, host, run);
+  useMore(shell, nav, host, doc.phase === "ready" && !!view);
 
-  const sign = (): void => {
+  // With a saved signature the press signs at once, and Sign spins until the host has placed it.
+  const sign = (): Promise<void> | void => {
     if (!view) return;
-    if (view.hasSignature) void run(host.sign(true), "Couldn't sign");
-    else setPad(true);
+    if (view.hasSignature) return run(host.sign(true), "Couldn't sign");
+    setPad(true);
   };
 
   if (viewError) return <OpenFailed kind="pdf" why={viewError} onRetry={item.retry} />;
@@ -126,6 +129,7 @@ export function PdfBody({ item: canvasItem, source, shell, host, pdf: item, widt
         current={proposed[at]?.key ?? null}
         signature={signature}
         cite={cite}
+        onClearCite={() => setCite(null)}
         shell={shell}
         width={width}
         height={height}
@@ -174,7 +178,8 @@ function useFeeds(
 
   useEffect(() => {
     if (!view) return shell.statusLine(null);
-    if (view.missing) shell.statusLine({ tone: "quiet", word: "Read only", detail: `Moved, as of ${dayTime(view.missing.asOf)}` });
+    // A moved file shows the copy the host kept: the line says which, by its time.
+    if (view.missing) shell.statusLine({ tone: "quiet", word: "Moved.", detail: `The copy from ${dayTime(view.missing.asOf)}` });
     // A form only Adobe's apps fill asks nothing of him here: the quiet line, as read only is, never the red of a failure.
     else if (view.xfaOnly) shell.statusLine({ tone: "quiet", word: "Can't be filled here", detail: "Only Adobe's apps fill this form" });
     else shell.statusLine(null);
@@ -211,6 +216,26 @@ function useFeeds(
     return () => shell.review(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shell, host, keys, at, run]);
+}
+
+/** What the bar gives way (`barFits`) reaches the pane's More, so a narrow pane still zooms, finds and saves a copy. */
+function useMore(shell: CanvasShell, nav: PdfNav, host: PdfHost, open: boolean): void {
+  const state = useNav(nav);
+  const fits = barFits(state.width, state.reviewing, state.find.open);
+  const zoom = !fits.zoom && open ? state.zoom : null;
+  const find = !fits.find && open;
+  const save = !fits.save && open;
+  useEffect(() => {
+    const entries: MoreEntry[] = [
+      ...(zoom !== null
+        ? ZOOMS.map<MoreEntry>((z) => ({ id: `zoom-${z}`, label: `Zoom: ${ZOOM_WORDS[String(z)]}`, icon: z === zoom ? Check : ZoomIn, disabled: z === zoom, run: () => nav.zoom(z) }))
+        : []),
+      ...(find ? [{ id: "find", label: "Find", icon: Search, run: () => nav.openFind() }] : []),
+      ...(save ? [{ id: "save-copy", label: "Save a Copy", icon: Download, run: () => saveCopy(host).catch((error: unknown) => sayError(error, "Couldn't save a copy")) }] : []),
+    ];
+    shell.more?.(entries.length ? entries : null);
+    return () => shell.more?.(null);
+  }, [shell, nav, host, zoom, find, save]);
 }
 
 /** Loading: the page's own shape, on the card step, on the paper's own side inset (layout.ts `sideInset`: 24px, 12px under 640px). */
@@ -412,8 +437,10 @@ function FindField({ nav, onClose }: { nav: PdfNav; onClose(): void }) {
         }}
         className="px-0.5 text-xs text-foreground"
       />
-      <span data-pdf-find-count aria-live="polite" className="shrink-0 px-1 text-xs text-muted-foreground tabular-nums">
+      <span data-pdf-find-count aria-live="polite" className="inline-flex shrink-0 items-center gap-1 px-1 text-xs text-muted-foreground tabular-nums">
         {count}
+        {/* Still reading pages: the count may grow, so it is not yet final. */}
+        {find.searching ? <Spinner data-pdf-find-reading aria-label="Still reading" className="size-3" /> : null}
       </span>
     </InputGroup>
   );

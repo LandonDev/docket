@@ -2,8 +2,11 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { PdfField, PdfMark, PdfSignature } from "@shared/contract-work-pdf";
 import { pdfCiteHref, type Bbox, type PdfCite } from "@shared/pdfCite";
 import type { CanvasSource } from "@shared/work";
-import { Copy } from "../../chrome/icons";
+import { Check, Copy } from "../../chrome/icons";
+import { Tip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
+import { COPIED_MS } from "../../lib/clipboard";
+import { SwapIcon } from "../../motion/IconSwap";
 import type { CanvasShell } from "../canvas/kind";
 import type { PdfDoc } from "./engine";
 import { FieldLayer, type FieldActions } from "./Fields";
@@ -34,8 +37,10 @@ export interface ColumnProps {
   signature: PdfSignature | null;
   actions: FieldActions & { mark(page: number, quads: Bbox[], text: string): Promise<unknown>; unmark(markId: string): Promise<unknown> };
   shell: CanvasShell;
-  /** The citation to mark, until another is clicked. */
+  /** The citation to mark, until another is clicked, Escape, or a press in the column. */
   cite: PdfCite | null;
+  /** Lets the cited clause go: Escape in the column, or a press on a page. */
+  onClearCite?(): void;
   /** false while the file's form is still read (`formPending`): the pages show, and no highlight is offered yet */
   marking?: boolean;
   /** A preview's fixed width: there is no layout to measure in a static page. */
@@ -43,7 +48,14 @@ export interface ColumnProps {
   height?: number;
 }
 
-const MARK = "bg-[color-mix(in_srgb,var(--paper-ink)_12%,transparent)]";
+/** A highlight: a wash of the paper's ink, firm enough to find on a white page at a glance. */
+const MARK = "bg-[color-mix(in_srgb,var(--paper-ink)_22%,transparent)]";
+/** The selection's own tint, held on a highlight from the press until the host has made it. */
+const MARKING = "bg-(--sel-bg-paper)";
+/** The selection bar's tools, as Ask is: 24px ghost buttons at the popover's 8px inner corner. */
+const TOOL = "rounded-lg text-[13px]";
+/** The selection stays selected while a tool is pressed: the press does not take the focus. */
+const keepSelection = (event: { preventDefault(): void }): void => event.preventDefault();
 
 export function Column(props: ColumnProps) {
   const { doc, nav, fields, marks, shell, source, title, itemId } = props;
@@ -55,6 +67,11 @@ export function Column(props: ColumnProps) {
   const rail = doc.pages > RAIL_FROM;
   const columnWidth = Math.max(0, box.width - (rail ? railWidth(box.width) : 0));
   const inset = sideInset(box.width);
+  // Highlights pressed and not yet made: the words keep the selection's tint until the host answers.
+  const [marking, setMarking] = useState<Array<{ id: number; page: number; quads: Bbox[] }>>([]);
+  const markSeq = useRef(0);
+  // Escape lets a drawn region go too: each page's own region hears this count.
+  const [cleared, clear] = useState(0);
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -179,9 +196,14 @@ export function Column(props: ColumnProps) {
           {props.marking !== false ? (
             <Button
               variant="ghost"
-              size="sm"
+              size="xs"
+              className={TOOL}
+              onMouseDown={keepSelection}
               onClick={() => {
-                void props.actions.mark(page, quads, text);
+                const id = ++markSeq.current;
+                setMarking((all) => [...all, { id, page, quads }]);
+                const landed = (): void => setMarking((all) => all.filter((m) => m.id !== id));
+                props.actions.mark(page, quads, text).then(landed, landed);
                 selection.removeAllRanges();
                 shell.selection(null);
               }}
@@ -189,9 +211,7 @@ export function Column(props: ColumnProps) {
               Highlight
             </Button>
           ) : null}
-          <Button variant="ghost" size="icon-sm" aria-label="Copy" onClick={() => void navigator.clipboard?.writeText(text)}>
-            <Copy />
-          </Button>
+          <CopyTool text={text} />
         </>
       ),
     });
@@ -208,6 +228,7 @@ export function Column(props: ColumnProps) {
 
   const byPage = useMemo(() => groupBy(fields, (f) => f.page), [fields]);
   const marksByPage = useMemo(() => groupBy(marks, (m) => m.page), [marks]);
+  const markingByPage = useMemo(() => groupBy(marking, (m) => m.page), [marking]);
   const hitsByPage = useMemo(() => {
     const out = new Map<number, { hit: FindHit; current: boolean }[]>();
     state.find.hits.forEach((hit, index) => {
@@ -233,6 +254,7 @@ export function Column(props: ColumnProps) {
         source={source}
         itemId={itemId}
         shell={shell}
+        cleared={cleared}
         overlay={
           <>
             {(marksByPage.get(page) ?? []).map((mark) =>
@@ -251,7 +273,9 @@ export function Column(props: ColumnProps) {
                       tools: (
                         <Button
                           variant="ghost"
-                          size="sm"
+                          size="xs"
+                          className={TOOL}
+                          onMouseDown={keepSelection}
                           onClick={() => {
                             void props.actions.unmark(mark.id);
                             shell.selection(null);
@@ -264,6 +288,9 @@ export function Column(props: ColumnProps) {
                   }
                 />
               )),
+            )}
+            {(markingByPage.get(page) ?? []).map((m) =>
+              m.quads.map((quad, i) => <span key={`p${m.id}-${i}`} data-pdf-marking style={boxStyle(quad)} className={`pointer-events-none absolute rounded-[1px] ${MARKING}`} />),
             )}
             {(hitsByPage.get(page) ?? []).map(({ hit, current }, i) =>
               hit.boxes.map((b, j) => <span key={`h${i}-${j}`} data-pdf-hit={current ? "current" : ""} style={boxStyle(b)} className={`pointer-events-none absolute rounded-[1px] ${current ? "bg-(--find-bg-paper-current)" : "bg-(--find-bg-paper)"}`} />),
@@ -287,6 +314,14 @@ export function Column(props: ColumnProps) {
         className="focus-ring relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain [scrollbar-gutter:stable]"
         onScroll={onScroll}
         onPointerUp={onPointerUp}
+        // A cited clause and a drawn region are marks of the moment: Escape, or a press on the page, lets them go.
+        onPointerDown={() => props.onClearCite?.()}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape" || (!cite && !regionShown(scroller.current))) return;
+          props.onClearCite?.();
+          clear((n) => n + 1);
+          shell.selection(null);
+        }}
         style={props.height ? { height: props.height } : undefined}
       >
         <div className="relative" style={{ height, width: contentWidth }}>
@@ -294,6 +329,35 @@ export function Column(props: ColumnProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Whether a page in the column holds a drawn region. */
+function regionShown(column: HTMLElement | null): boolean {
+  return !!column?.querySelector("[data-pdf-region]");
+}
+
+/** Copy, with its tip; the glyph turns to a tick for a moment once the words are on the clipboard. */
+function CopyTool({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), COPIED_MS);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  return (
+    <Tip label={copied ? "Copied" : "Copy"}>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        className={TOOL}
+        aria-label={copied ? "Copied" : "Copy"}
+        onMouseDown={keepSelection}
+        onClick={() => void navigator.clipboard?.writeText(text).then(() => setCopied(true), () => undefined)}
+      >
+        <SwapIcon swapped={copied} from={<Copy className="size-3.5" />} to={<Check className="size-3.5" />} />
+      </Button>
+    </Tip>
   );
 }
 
@@ -321,6 +385,7 @@ const Page = memo(function Page({
   source,
   itemId,
   shell,
+  cleared,
 }: {
   doc: PdfDoc;
   slot: PageSlot;
@@ -331,6 +396,8 @@ const Page = memo(function Page({
   source: CanvasSource;
   itemId: string;
   shell: CanvasShell;
+  /** Counts the column's Escapes: each lets a drawn region go. */
+  cleared: number;
 }) {
   const picture = useRef<HTMLDivElement>(null);
   const words = useRef<HTMLDivElement>(null);
@@ -342,6 +409,7 @@ const Page = memo(function Page({
   const [region, setRegion] = useState<Bbox | null>(null);
   const drag = useRef<{ x: number; y: number } | null>(null);
   const page = slot.page;
+  useEffect(() => setRegion(null), [cleared]);
 
   useEffect(() => {
     const host = picture.current;
@@ -486,7 +554,7 @@ function Rail({ doc, nav, page, width }: { doc: PdfDoc; nav: PdfNav; page: numbe
         aria-current={n === page ? "true" : undefined}
         aria-label={`Page ${n}`}
         onClick={() => nav.goTo(n)}
-        className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 rounded-md px-2 pt-1.5 pb-1 text-xs leading-4 text-muted-foreground tabular-nums transition-[background-color] duration-(--dur-hover) hover:bg-foreground/5 aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
+        className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 rounded-md px-2 pt-1.5 pb-1 text-xs leading-4 text-muted-foreground tabular-nums transition-[background-color] duration-(--dur-hover) ease-(--ease-out) hover:bg-foreground/5 active:bg-foreground/12 active:transition-none motion-reduce:transition-none aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
         style={{ top: 8 + (n - 1) * row }}
       >
         <Thumb doc={doc} page={n} width={thumb} height={pictureHeight} />

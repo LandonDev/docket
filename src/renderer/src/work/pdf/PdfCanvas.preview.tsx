@@ -20,7 +20,7 @@ import * as PdfCanvas from "./PdfCanvas";
 import { contractPages, formPage, guidePages, type PreviewPage } from "./PdfCanvas.preview.fixtures";
 import { fakeDoc, fakeEngine, fakePdfHost, field, pdfView } from "./testkit";
 
-export type PdfMoment = "reading" | "fill" | "cite" | "find" | "long" | "loading" | "locked" | "moved";
+export type PdfMoment = "reading" | "fill" | "cite" | "find" | "find-reading" | "marked" | "long" | "loading" | "locked" | "moved" | "xfa";
 
 void workCanvasChunk.load();
 
@@ -46,6 +46,12 @@ function setUp(moment: PdfMoment): { view: PdfView; pages: PreviewPage[]; engine
   if (moment === "long") return { pages: guidePages(140), view: pdfView({ name: "Event planning guide 2027.pdf" }) };
   if (moment === "loading") return { pages: contractPages(), view: pdfView(), engine: never };
   if (moment === "locked") return { pages: contractPages(), view: pdfView(), engine: fakeEngine(fakeDoc([]), { password: "x" }) };
+  if (moment === "xfa") return { pages: contractPages(), view: pdfView({ xfaOnly: true }) };
+  if (moment === "marked") {
+    // His highlight on clause 3.2, as a kept mark: the ink's wash on white paper.
+    const line = contractPages()[0].lines!.find((l) => l.text.startsWith("3.2"))!;
+    return { pages: contractPages(), view: pdfView({ marks: [{ id: "m1", page: 1, quads: [[line.box[0] - 0.004, line.box[1] - 0.002, 0.62, line.box[3] + 0.002]], text: line.text, by: "owner", at: 0 }] }) };
+  }
   if (moment === "moved") return { pages: contractPages(), view: pdfView({ missing: { asOf: Date.UTC(2026, 10, 16, 14, 12) } }) };
   return { pages: contractPages(), view: pdfView() };
 }
@@ -58,13 +64,15 @@ export function PdfPreview({ moment = "reading" }: { moment?: PdfMoment }) {
   const { view, pages, engine } = setUp(moment);
   const host = fakePdfHost({ ...view, itemId });
   const doc = fakeDoc(pages);
+  // Find still reading: the file's later pages never answer, so the count is not yet final.
+  if (moment === "find-reading") doc.text = (n) => (n > 1 ? new Promise(() => undefined) : Promise.resolve(pages[0].runs));
   const deps = { host, engine: engine ?? fakeEngine(doc), width: 454, height: 492 };
   if (moment === "cite") {
     // Clause 3.2's own line, as the fixture lays it out: a citation an agent would write from pdf_extract's code.
     const line = pages[0].lines!.find((l) => l.text.startsWith("3.2"))!;
     deliverCite({ itemId, page: 1, bbox: [line.box[0] - 0.005, line.box[1] - 0.002, 0.6, line.box[3] + 0.002] });
   }
-  if (moment === "find") {
+  if (moment === "find" || moment === "find-reading") {
     // After the column is up, as a person types: the first match scrolls into view.
     navOf(itemId).openFind();
     setTimeout(() => navOf(itemId).query("deposit"), 30);

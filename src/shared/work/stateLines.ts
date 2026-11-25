@@ -178,8 +178,10 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/outbox/model.ts`]: [
     ["Queued in LifeOS", "queued"],
   ],
-  [`${R}/pdf/PdfCanvas.tsx`]: [
-    ["`Moved, as of ${dayTime(view.missing.asOf)}`", "read"],
+  // The selection bar's Copy, after the clipboard took the words.
+  [`${R}/pdf/Column.tsx`]: [
+    ["Copied", "local"],
+    ["Copied", "local"],
   ],
   [`${R}/routines/model.ts`]: [
     ["Done", "read"],

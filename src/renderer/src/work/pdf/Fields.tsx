@@ -6,6 +6,7 @@ import { Check, PenLine } from "../../chrome/icons";
 import { Modal, useModalClose } from "../../chrome/Modal";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Spinner } from "../../components/ui/spinner";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { sayError } from "../canvas/frame";
 import { boxStyle } from "./layout";
@@ -35,8 +36,8 @@ export function sourceLine(field: PdfField): string | null {
 
 export interface FieldActions {
   setField(key: string, value: PdfFieldValue): Promise<unknown>;
-  /** A press on an empty signature: sign with the saved signature, or draw one first. */
-  sign(): void;
+  /** A press on an empty signature: sign with the saved signature (the promise, while the host places it), or draw one first. */
+  sign(): Promise<unknown> | void;
   unsign(): Promise<unknown>;
 }
 
@@ -74,14 +75,7 @@ function FieldBox({ field, current, pageHeight, signature, actions }: { field: P
     }
     return (
       <div data-pdf-field={field.key} style={boxStyle(field.bbox)} className={`${base} flex items-end pb-[2px]`}>
-        <button
-          type="button"
-          onClick={actions.sign}
-          className="inline-flex h-[22px] items-center gap-1 rounded-sm border border-dashed border-[color-mix(in_srgb,var(--paper-ink)_50%,transparent)] px-2 text-xs font-medium text-(--paper-ink) transition-[background-color] duration-(--dur-hover) hover:bg-[color-mix(in_srgb,var(--paper-ink)_6%,transparent)] active:bg-[color-mix(in_srgb,var(--paper-ink)_12%,transparent)] active:transition-none"
-        >
-          <PenLine className="size-3" />
-          Sign
-        </button>
+        <SignButton sign={actions.sign} />
       </div>
     );
   }
@@ -89,28 +83,72 @@ function FieldBox({ field, current, pageHeight, signature, actions }: { field: P
     // The day he signs: nothing to type, nothing to press.
     return <div data-pdf-field={field.key} style={place} className={base} />;
   }
-  if (field.type === "checkbox") {
-    return (
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={value === true}
-        aria-label={field.label}
-        data-pdf-field={field.key}
-        style={boxStyle(field.bbox)}
-        className={`${base} ${PAPER_HOVER} grid place-items-center px-0`}
-        onClick={() => void actions.setField(field.key, value !== true).catch((error: unknown) => sayError(error, "Couldn't change the field"))}
-      >
-        {value === true ? <Check className="size-[80%]" /> : null}
-      </button>
-    );
-  }
+  if (field.type === "checkbox") return <CheckBox field={field} ticked={value === true} base={base} actions={actions} />;
   return (
     <FieldPopover field={field} actions={actions}>
       <button type="button" data-pdf-field={field.key} aria-label={field.label} style={place} className={`${base} ${PAPER_HOVER} truncate text-start font-sans`}>
         {typeof value === "string" ? value : ""}
       </button>
     </FieldPopover>
+  );
+}
+
+/**
+ * A checkbox ticks at the press, as a box on paper does, while the host
+ * writes it; a refusal puts it back and says why. Only the newest press
+ * settles it, so a quick second press is never undone by the first answer.
+ */
+function CheckBox({ field, ticked, base, actions }: { field: PdfField; ticked: boolean; base: string; actions: FieldActions }) {
+  const [pressed, setPressed] = useState<boolean | null>(null);
+  const latest = useRef(0);
+  const shownTick = pressed ?? ticked;
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={shownTick}
+      aria-label={field.label}
+      data-pdf-field={field.key}
+      style={boxStyle(field.bbox)}
+      className={`${base} ${PAPER_HOVER} grid place-items-center px-0`}
+      onClick={() => {
+        const next = !shownTick;
+        const press = ++latest.current;
+        setPressed(next);
+        const settle = (): void => {
+          if (press === latest.current) setPressed(null);
+        };
+        actions.setField(field.key, next).then(settle, (error: unknown) => {
+          settle();
+          sayError(error, "Couldn't change the field");
+        });
+      }}
+    >
+      {shownTick ? <Check className="size-[80%]" /> : null}
+    </button>
+  );
+}
+
+/** The dashed Sign. With a saved signature one press signs: it spins and holds still while the host places it, so a second press cannot sign again. */
+function SignButton({ sign }: { sign: FieldActions["sign"] }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      aria-busy={busy || undefined}
+      onClick={() => {
+        const placing = sign();
+        if (!placing) return;
+        setBusy(true);
+        const done = (): void => setBusy(false);
+        placing.then(done, done);
+      }}
+      className="inline-flex h-[22px] items-center gap-1 rounded-sm border border-dashed border-[color-mix(in_srgb,var(--paper-ink)_50%,transparent)] px-2 text-xs font-medium text-(--paper-ink) transition-[background-color] duration-(--dur-hover) hover:bg-[color-mix(in_srgb,var(--paper-ink)_6%,transparent)] active:bg-[color-mix(in_srgb,var(--paper-ink)_12%,transparent)] active:transition-none disabled:hover:bg-transparent"
+    >
+      {busy ? <Spinner aria-hidden className="size-3" /> : <PenLine className="size-3" />}
+      Sign
+    </button>
   );
 }
 

@@ -1465,7 +1465,10 @@ The kinds, each a hand-made body built from components/ui:
   narrow), fit-width zoom from 0.5 to 1.25, a 232px margin column 16px
   off, a 76px thumbnail rail (60px narrow). Margin notes are 13/20 muted,
   foreground when picked. A citation in the thread ("p. 6, clause 7.2")
-  is a link that scrolls the page and marks the clause with `sel-bg-paper`.
+  is a link that scrolls the page and marks the clause with `sel-bg-paper`
+  until Escape or a press on the page. A highlight is the paper's ink at
+  22%; from the press until the host makes it, the words keep the
+  selection's tint.
   A field the agent fills is a suggestion; signing is never the agent's.
 - **Slides.** A 96px thumbnail in a 140px strip, a 3px tint frame at 6px
   radius round a 3px-radius slide, the stage on a 16px inset, filling the

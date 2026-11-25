@@ -7,10 +7,13 @@ export default [
   { name: "Fill and sign: the agent's values wait, the first outlined", props: { moment: "fill" } },
   { name: "A citation from the thread, its clause marked", props: { moment: "cite" } },
   { name: "Find", props: { moment: "find" } },
+  { name: "Find while it still reads the file", props: { moment: "find-reading" } },
+  { name: "A highlight on white paper", props: { moment: "marked" } },
   { name: "140 pages: the thumbnail rail", props: { moment: "long" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "Cannot open: a password", props: { moment: "locked" } },
   { name: "Moved: the copy kept", props: { moment: "moved" } },
+  { name: "A form only Adobe's apps fill", props: { moment: "xfa" } },
 ];
 
 export type PreviewPage = FakePage;

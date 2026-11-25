@@ -373,25 +373,40 @@ How it works:
   paper take the light theme's values: `--add-bg-paper` on an agent's
   value, `--sel-bg-paper` on a cited box and a selection,
   `--find-bg-paper` and `--find-bg-paper-current` on matches. A highlight
-  is a neutral wash of the paper's ink.
+  is a neutral wash of the paper's ink at 22%, firm enough to find on a
+  white page at a glance.
 - **The bar** is the pager ("6 / 14", following the scroll), the zoom,
   Find (also ⌘F or Ctrl+F while the PDF has the focus or the pointer; Enter
   and Shift+Enter step, Escape closes) and Save a copy (`work.pdf.export`,
   flattened, saved where he chooses). What does not fit gives way in the
   prototype's order (`barFits`): zoom and Save first, then, while the
-  stepper is there, Find and the pager's arrows.
+  stepper is there, Find and the pager's arrows. What the bar drops goes
+  to the pane's More (`useMore`): "Zoom: Fit width" and the three sizes,
+  the current one ticked, Find, and Save a Copy, so a narrow pane still
+  has every way out of the file. While Find still reads pages its count
+  carries a 12px spinner (`find.searching`), so "1/6" never reads as
+  final before it becomes "1/9".
 - **The form.** pdf.js draws the file's own empty widgets; the field layer
   draws the values over them at each field's box. An agent's value wears
   the added tint until he takes it; the stepper walks them page by page,
   top to bottom, and outlines the current one. A press on a field opens
   its source ("From Purdue profile: “…”") over a field for his own value
-  (`work.pdf.setField`). The signature box is the dashed Sign: the first
+  (`work.pdf.setField`). A checkbox ticks at his press and puts itself
+  back, with the toast, only when the host refuses; the newest press alone
+  settles it. The signature box is the dashed Sign: the first
   time, a pad dialog draws and saves his signature (`work.pdf.setSignature`),
-  then `work.pdf.sign` places it and the date; after that one press signs.
+  then `work.pdf.sign` places it and the date; after that one press signs,
+  and Sign spins and holds still until the host has placed it, so a second
+  press cannot sign again.
 - **Selection.** Words selected on a page feed the pane's floating bar:
   Ask (the chip names the page and carries the words and a citation code),
-  Highlight (`work.pdf.mark`) and Copy. A press on a highlight offers Ask
-  and Remove highlight. A page with no words is a scan: a drag draws a
+  Highlight (`work.pdf.mark`) and Copy, each a 24px ghost button at the
+  bar's 8px inner corner as Ask is, Copy with its tip and a tick for a
+  moment once it copied; a press on a tool keeps the selection. Highlight
+  keeps the selection's tint (`--sel-bg-paper`) on the words from the
+  press until the host has made the mark, then the mark's wash takes its
+  place; a refusal takes the tint away and says why. A press on a
+  highlight offers Ask and Remove highlight. A page with no words is a scan: a drag draws a
   region, and Ask chips "Region of p. 12, <name>" with its code, which
   `pdf_page_image` can crop.
 - **Citations.** `canvas.ts` installs one click listener on the document
@@ -400,7 +415,8 @@ How it works:
   pane around it (`data-session-drop`), shows the item (selecting its tab,
   or opening it again through `work.canvas.open`), and hands the body the
   page and box, which it scrolls to a few lines below the top and marks
-  with `--sel-bg-paper` until the next citation. The transcript's markdown
+  with `--sel-bg-paper` until the next citation, Escape in the column or
+  a press on a page. Escape lets a region drawn on a scan go too. The transcript's markdown
   keeps a `#pdf:` href as a link (pdf.test.ts checks it through the real
   pipeline).
 - **States.** Loading is a page-shaped skeleton. A page not yet drawn
@@ -408,9 +424,11 @@ How it works:
   `paper-ink` at a low mix (`PaperBones`, pdf/PaperBones.tsx), never a
   blank page of the file; a thumbnail not yet drawn, or one pdf.js
   refused, wears a fainter fill of the same ink. An encrypted file is one
-  field and Open; a wrong password says so. A moved file is the state line
-  ("Ballroom contract.pdf moved", "Read only, as of …") over the copy the
-  host kept, with no mode. A file that will not open is one Empty.
+  field and Open; a wrong password says so. A moved file is the quiet
+  line "Moved. The copy from Nov 16, 9:12 AM" over the copy the host
+  kept, with no mode. A form only Adobe's apps fill (XFA) is the quiet
+  line "Can't be filled here. Only Adobe's apps fill this form", never
+  the red of a failure. A file that will not open is one Empty.
 
 Not built here, and why: History in the bar (the `history` kind keeps
 block documents' versions, milestone 19; a PDF's versions are not kept
