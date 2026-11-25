@@ -26,6 +26,8 @@ const opened = vi.hoisted(() => ({ role: "edit" as "edit" | "view", page: null a
 const calls = vi.hoisted(() => [] as { method: string; params: Record<string, unknown> }[]);
 
 vi.mock("./host", () => ({
+  // No save facts: the save line's own test is docs.test.ts.
+  savesOf: () => ({ now: () => null, listen: () => () => undefined, retry: () => undefined }),
   docHost: (env: string) => ({
     env,
     open: async () => ({ doc: "file:abc", source: { at: "file", host: "box", path: "/w/Run of show.tcdoc" }, title: "Run of show", role: opened.role, shared: false, mode: "writes", written: null, me: "owner", names: { owner: "You" }, schema: 2 }),

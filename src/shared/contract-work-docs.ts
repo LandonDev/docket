@@ -166,8 +166,9 @@ export const DocsRequestSchemas = [
   /** `push`: the service's frames come as `work.docs.frames` pushes to this window's socket, with no `recv`; the answer says `push: true` when they do */
   request('work.docs.connect', z.object({ source: CanvasSourceSchema, itemId, schema: z.number().int().min(0).max(1000).optional(), push: z.literal(true).optional() })),
   /**
-   * → { ok: true }: frames for the relayed socket, in order. `stored`: answered once the service has applied every
-   * frame the socket sent and stored the document (a tab's close awaits it before anything judges the file).
+   * → { ok: true; stored?: number }: frames for the relayed socket, in order. `stored`: answered once the service has
+   * applied every frame the socket sent and stored the document (a tab's close awaits it before anything judges the
+   * file), with `stored` the time the service read that store back (epoch ms): what a document's save line says.
    */
   request('work.docs.send', z.object({ socket: socketId, frames, stored: z.literal(true).optional() })),
   /** → { frames, closed? }: what the socket received since the last ask; waits up to 20 s for something */

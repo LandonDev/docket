@@ -106,8 +106,8 @@ export function docHost(env: string, source: CanvasSource, itemId?: string): Doc
         if (push.push === "work.docs" && push.doc === doc) listener(push);
       }),
     socket,
-    flush: () => storedAll(socket),
-    sync: () => settleAll(socket, false),
+    flush: () => storedAll(socket).then(() => undefined),
+    sync: () => settleAll(socket, false).then(() => undefined),
     keepDrafts: (journal) => {
       const relayed = relayedOf.get(socket);
       if (relayed) relayed.journal = journal;
@@ -194,14 +194,30 @@ export function frameHead(bytes: Uint8Array): { type: number; step: number | nul
 }
 
 /** How long a close's flush waits for a socket to send its state and hear it applied. */
-export const relayTiming = { syncWaitMs: 6000 };
+/** `storePauseMs`: how long after his last edit the window asks the service to store the document (its own store waits as long). */
+export const relayTiming = { syncWaitMs: 6000, storePauseMs: 2000 };
 
 /** Said when the host refused an edit the window sent (a view the host holds read only). */
 export const NOT_TAKEN = "The host did not take the last edits to this document";
 
 /** The sockets each relayed class has open, and the last frames one lost (a failed send, a close with frames unsent). */
+/**
+ * What a document's save line reads (DocumentCanvas `useDocSaved`), as this window's sockets know it: `edited`, when
+ * his last edit not yet in a store went up; `asked`, when a store of it was asked and not answered; `storedAt`, the
+ * service's own time for the last store it confirmed (work.docs.send `stored`); `failed`, a store it refused, in its
+ * words, until one lands.
+ */
+export interface DocSaves {
+  edited: number | null;
+  asked: number | null;
+  storedAt: number | null;
+  failed: string | null;
+}
+export const NO_SAVES: DocSaves = { edited: null, asked: null, storedAt: null, failed: null };
+
+
 type Relayed = {
-  open: Set<{ settled(store: boolean): Promise<void>; ready(): boolean; inject(frames: string[]): void }>;
+  open: Set<{ settled(store: boolean): Promise<number | null>; ready(): boolean; inject(frames: string[]): void }>;
   /** where the updates not yet applied there are kept on this computer, and those updates (`asUpdate` frames, base64) */
   journal?: { keep(frames: string[]): void; clear(): void } | null;
   pending: string[];
@@ -212,6 +228,15 @@ type Relayed = {
   arrived: Set<() => void>;
   /** A socket the host made with the open (`work.docs.open {ready}`), for the class's next socket of that schema, once. */
   premade: { socket: string; schema: number; push?: true } | null;
+  saves: DocSaves;
+  told: Set<(saves: DocSaves) => void>;
+  /** his updates sent up any socket of the class: a store answers for the edits counted before it was asked */
+  edits: number;
+  /** of those, how many a store the service confirmed holds */
+  covered: number;
+  storeTimer: ReturnType<typeof setTimeout> | null;
+  /** Retry on a refused store: asks again now */
+  retry?: () => void;
 };
 const relayedOf = new WeakMap<object, Relayed>();
 
@@ -232,13 +257,37 @@ export const NOT_SENT = "The document is not connected, so its last edits have n
  * store fails, when a socket is not connected, and when frames were lost since the last store it confirmed: what the
  * editor holds then is in this window alone, and the close is told so.
  */
-export function storedAll(socket: new (url: string) => WebSocket): Promise<void> {
-  return settleAll(socket, true);
+export function storedAll(socket: new (url: string) => WebSocket): Promise<number | null> {
+  const relayed = relayedOf.get(socket);
+  return settleAll(socket, true).then((at) => {
+    if (relayed && at !== null) said(relayed, { storedAt: at, failed: null, ...(relayed.covered >= relayed.edits ? { edited: null } : {}) });
+    return at;
+  });
 }
 
-async function settleAll(socket: new (url: string) => WebSocket, store: boolean): Promise<void> {
+/** The save facts as they now stand, told to whoever listens. */
+function said(relayed: Relayed, patch: Partial<DocSaves>): void {
+  relayed.saves = { ...relayed.saves, ...patch };
+  for (const tell of relayed.told) tell(relayed.saves);
+}
+
+/** The class's save facts, and every change of them; a class this module did not make has none. */
+export function savesOf(socket: new (url: string) => WebSocket): { now(): DocSaves; listen(tell: (saves: DocSaves) => void): () => void; retry(): void } {
   const relayed = relayedOf.get(socket);
-  if (!relayed) return;
+  return {
+    now: () => relayed?.saves ?? NO_SAVES,
+    retry: () => relayed?.retry?.(),
+    listen: (tell) => {
+      relayed?.told.add(tell);
+      return () => void relayed?.told.delete(tell);
+    },
+  };
+}
+
+/** Answers the newest time the service stored the document at for these sockets; null when none was asked to store. */
+async function settleAll(socket: new (url: string) => WebSocket, store: boolean): Promise<number | null> {
+  const relayed = relayedOf.get(socket);
+  if (!relayed) return null;
   const lost = relayed.lost;
   // Between the provider's sockets, what he typed waits in the window: the next socket is waited for, and its state.
   if (!relayed.open.size && (relayed.dropped || lost)) {
@@ -253,9 +302,11 @@ async function settleAll(socket: new (url: string) => WebSocket, store: boolean)
     });
     if (!relayed.open.size) throw lost ?? new Error(NOT_SENT);
   }
-  await Promise.all([...relayed.open].map((s) => s.settled(store)));
+  const stored = await Promise.all([...relayed.open].map((s) => s.settled(store)));
   if (lost && relayed.lost === lost) relayed.lost = null;
   relayed.dropped = false;
+  const times = stored.filter((at): at is number => at !== null);
+  return times.length ? Math.max(...times) : null;
 }
 
 /**
@@ -266,8 +317,43 @@ async function settleAll(socket: new (url: string) => WebSocket, store: boolean)
  */
 export function relaySocket(env: string, source: CanvasSource, itemId?: string): new (url: string) => WebSocket {
   const link = () => registry.linkOf(env);
-  const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set(), premade: null, pending: [] };
+  const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set(), premade: null, pending: [], saves: NO_SAVES, told: new Set(), edits: 0, covered: 0, storeTimer: null };
   const open = relayed.open;
+  /**
+   * A pause in his edits asks the service to store what he typed, so the save line names a store it confirmed. With no
+   * socket ready (offline, between sockets) it asks again after another pause: the line says nothing new meanwhile.
+   */
+  const storeLater = (wait = relayTiming.storePauseMs): void => {
+    if (relayed.storeTimer) clearTimeout(relayed.storeTimer);
+    relayed.storeTimer = setTimeout(() => {
+      relayed.storeTimer = null;
+      // No socket at all: the provider's next one asks again as it opens (its constructor).
+      if (!open.size) return;
+      // A store already out holds every edit sent before it answers (`settled` asks again for any sent meanwhile).
+      if (relayed.saves.asked !== null) return;
+      // Nothing of his since the last store it confirmed: there is nothing to ask for.
+      if (relayed.covered >= relayed.edits) return;
+      if (![...open].some((s) => s.ready())) return storeLater();
+      said(relayed, { asked: Date.now() });
+      settleAll(RelaySocket as unknown as new (url: string) => WebSocket, true).then(
+        (at) => {
+          // Edits sent after the store was asked are not in it: they keep the line waiting, and go in the next.
+          const all = relayed.covered >= relayed.edits;
+          said(relayed, { asked: null, failed: null, ...(at !== null ? { storedAt: at } : {}), ...(all ? { edited: null } : {}) });
+          if (!all) storeLater();
+        },
+        (err: unknown) => {
+          // Not connected: the editor's own line says offline; the store is asked again once a socket is back.
+          if (err instanceof Error && err.message === NOT_SENT) {
+            said(relayed, { asked: null });
+            return storeLater();
+          }
+          said(relayed, { asked: null, failed: err instanceof Error ? err.message : String(err) });
+        },
+      );
+    }, wait);
+  };
+  relayed.retry = () => storeLater(0);
   class RelaySocket extends EventTarget {
     static readonly CONNECTING = READY.CONNECTING;
     static readonly OPEN = READY.OPEN;
@@ -321,6 +407,7 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
       this.url = url;
       open.add(this);
       for (const told of relayed.arrived) told();
+      if (relayed.saves.edited !== null && !relayed.storeTimer) storeLater();
       void this.start();
     }
 
@@ -443,18 +530,23 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
      * connecting, or one that has not yet sent its own state, is waited for; one that does not get there in time, or
      * closes, fails the flush: what the window holds has then not reached the host.
      */
-    async settled(store: boolean): Promise<void> {
+    async settled(store: boolean): Promise<number | null> {
       const deadline = Date.now() + relayTiming.syncWaitMs;
       for (;;) {
         await this.flush();
         if (this.failed) throw this.failed;
         if (this.readyState === READY.CLOSED || this.readyState === READY.CLOSING) throw new Error(NOT_SENT);
         if (this.applied()) {
-          if (!store) return;
+          if (!store) return null;
           const at = this.sentCount;
-          await link().request("work.docs.send", { socket: this.id, frames: [], stored: true });
+          const counted = relayed.edits;
+          const got = await link().request<{ stored?: number }>("work.docs.send", { socket: this.id, frames: [], stored: true });
           // An update sent while the host stored may not be in what it stored: it is applied and stored in its turn.
-          if (this.sentCount === at) return;
+          // A host a release behind names no time: its answer is the receipt, so the line says the time it came.
+          if (this.sentCount === at) {
+            relayed.covered = Math.max(relayed.covered, counted);
+            return typeof got?.stored === "number" ? got.stored : Date.now();
+          }
           if (Date.now() > deadline) throw new Error(NOT_SENT);
           continue;
         }
@@ -481,6 +573,12 @@ export function relaySocket(env: string, source: CanvasSource, itemId?: string):
         this.unacked++;
         this.sentCount++;
         if (head.step === 1) this.stateSent = true;
+        // An update is his edit (a socket's own state is not): the line waits for a store that holds it.
+        if (head.step === 2) {
+          relayed.edits++;
+          said(relayed, { edited: Date.now() });
+          storeLater();
+        }
         // His edit, kept on this computer until the service says it applied it.
         const update = asUpdate(bytes);
         if (update && relayed.journal) {

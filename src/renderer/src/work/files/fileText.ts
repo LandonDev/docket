@@ -92,6 +92,12 @@ export function savedWords(line: SavedLine, where: string | null, now = Date.now
   }
 }
 
+/** A save that did not land, in one line: "Not saved." and the reason as its own sentence. */
+export function notSavedWords(why?: string | null): string {
+  const said = why?.trim().replace(/\.$/, "");
+  return said ? `Not saved. ${said[0]!.toUpperCase()}${said.slice(1)}.` : "Not saved.";
+}
+
 /** The line reads as trouble: drawn in the foreground, not muted, so it is not missed. Only a conflict and waiting changes are. */
 export const savedNeedsHim = (line: SavedLine): boolean => line.state === "conflict" || (line.state === "offline" && (line.pending ?? 0) > 0);
 

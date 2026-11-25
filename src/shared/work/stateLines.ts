@@ -27,10 +27,15 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/connections/model.ts`]: [
     ["Ready", "answer"],
   ],
+  [`${R}/files/Home.tsx`]: [
+    ["Not saved", "answer"],
+  ],
   [`${R}/files/SaveAs.tsx`]: [
+    ["Not saved", "answer"],
     ["`Saved a copy of ${got.saved.name} in ${folder.name}`", "answer"],
   ],
   [`${R}/files/acts.ts`]: [
+    ["Not saved as Word", "answer"],
     ["Moved", "answer"],
     ["Copied", "answer"],
     ["`Saved as Word in ${to.name}`", "answer"],
@@ -48,6 +53,11 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Deleted", "read"],
   ],
   [`${R}/files/fileText.ts`]: [
+    // A save the host refused, or his window's own ask for it failed: its answer, in its words.
+    ["`Not saved. ${said[0]!.toUpperCase()}${said.slice(1)}.`", "answer"],
+    ["Not saved.", "answer"],
+    ["`Not saved to ${host}. ${why[0]!.toUpperCase()}${why.slice(1)}`", "answer"],
+    ["`Not saved to ${host}`", "answer"],
     ["`Saved ${whenWords(line.at, now)}${place ? ` in ${place}` : \"\"}`", "answer"],
     ["`Saved in ${place}`", "answer"],
     ["Saved", "answer"],
@@ -73,6 +83,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Copied", "local"],
   ],
   [`${R}/forms/FormCanvas.tsx`]: [
+    ["Not saved", "answer"],
     ["Copied", "local"],
     ["Copied", "local"],
     ["Copied", "local"],
@@ -334,6 +345,9 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   ],
   // A linked file's line: the link's record after the write's answer (files/saveAs.ts), said by both sides.
   [`${S}/saveAs.ts`]: [
+    // A link's send not answered yet: nothing is claimed.
+    ["`Not saved to ${l.place} yet`", "queued"],
+    ["`Not saved to ${l.place}`", "answer"],
     ["`Saved to ${l.place} ${time(l.at)}`", "answer"],
     ["`Saved to ${l.place}`", "answer"],
     ["`Moved or deleted in ${l.place}`", "answer"],

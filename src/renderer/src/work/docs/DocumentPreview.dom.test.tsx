@@ -16,6 +16,8 @@ const FILE = { at: "file", host: "box", path: "/w/Run of show.tcdoc" } as const;
 const opened = vi.hoisted(() => ({ role: "edit" as "edit" | "view", focused: 0, editors: 0, schema: 1 as number | undefined, props: [] as Record<string, unknown>[], lead: "", rows: [] as unknown[] }));
 
 vi.mock("./host", () => ({
+  // No save facts: the save line's own test is docs.test.ts.
+  savesOf: () => ({ now: () => null, listen: () => () => undefined, retry: () => undefined }),
   docHost: (env: string) => ({
     env,
     open: async () => ({ doc: "file:abc", source: { at: "file", host: "box", path: "/w/Run of show.tcdoc" }, title: "Run of show", role: opened.role, shared: false, mode: "writes", written: null, me: "owner", names: { owner: "You" }, ...(opened.schema === undefined ? {} : { schema: opened.schema }) }),

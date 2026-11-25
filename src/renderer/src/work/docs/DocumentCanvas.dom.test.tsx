@@ -12,6 +12,8 @@ import type { CanvasShell, StatusLine } from "../canvas/kind";
 
 const opening = vi.hoisted(() => ({ fail: (_: Error) => {}, made: 0, named: [] as unknown[][] }));
 vi.mock("./host", () => ({
+  // No save facts: the save line's own test is docs.test.ts.
+  savesOf: () => ({ now: () => null, listen: () => () => undefined, retry: () => undefined }),
   docHost: (env: string, ...named: unknown[]) => (opening.made++, opening.named.push(named), { env, open: () => new Promise((_, reject) => (opening.fail = reject)) }),
   servedBy: () => null,
 }));

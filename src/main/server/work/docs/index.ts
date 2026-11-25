@@ -149,7 +149,11 @@ export const docs: WorkModule = {
       case 'work.docs.send': {
         s.relay.send(req.params.socket, req.params.frames)
         // A tab's close waits for this: the file holds what the window sent before anything judges it.
-        if (req.params.stored) await ctx.service.internal('/internal/docs/stored', { name: await s.relay.sent(req.params.socket), fence: { sectors: 'all' } })
+        // Its answer names when the service stored it: the save line's Saved time is that receipt, never the window's guess.
+        if (req.params.stored) {
+          const got = (await ctx.service.internal('/internal/docs/stored', { name: await s.relay.sent(req.params.socket), fence: { sectors: 'all' } })) as { at?: number } | undefined
+          return handled({ ok: true as const, stored: typeof got?.at === 'number' ? got.at : Date.now() })
+        }
         return handled({ ok: true as const })
       }
       case 'work.docs.recv':

@@ -119,6 +119,26 @@ failure reaches the close (what the close does then is Files'). The live revisio
 Word file's autosave and header) hashes the Yjs snapshot, the delete set with
 the state vector, so a deletion alone moves it.
 
+### The save line
+
+A document says where saving stands in a Files tab's line under its name, as
+the other kinds do (`shell.saved`, DocumentCanvas.tsx `useDocSaved`), only
+where he may edit and no kept draft is offered (that line is the draft's). It
+reads the relayed socket's save facts (host.ts `DocSaves`, `savesOf`): each
+update he sends marks the document edited, and a pause in his edits
+(`relayTiming.storePauseMs`, 2 s, the service's own store pause) asks the
+service to store it the way a close does. `work.docs.send {stored}` answers
+`stored`, the time `/internal/docs/stored` read the store back (a host a
+release behind names none, and the window takes the answer's own arrival).
+The line says "Saved <time>" with that time, and only once a confirmed store
+holds every update sent before it (`covered` against `edits`: an update sent
+while a store is out keeps the line waiting until the next); "Saving…"
+while edits wait for one; a store the service refused, "Not saved." and its
+words, with Retry, which asks again at once. Before he edits it says nothing,
+and the frame names the folder. While no socket is open the store waits for the
+provider's next one; the line keeps its last Saved time (the document's own
+offline line says why).
+
 While a LifeOS document has a socket open here, main watches its threads
 in LifeOS and pushes `work.docs {threads: true}` when they change, so a
 comment made in LifeOS desktop shows at once.

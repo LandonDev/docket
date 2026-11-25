@@ -16,9 +16,11 @@ const said = vi.fn();
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: said }) }));
 
 const { changeId, decided, reviewOf } = await import("./review");
-const { NOT_SENT, NOT_TAKEN, docHost, frameHead, relaySocket, relayTiming, servedBy, storedAll } = await import("./host");
+const { NOT_SENT, NOT_TAKEN, docHost, frameHead, relaySocket, relayTiming, savesOf, servedBy, storedAll } = await import("./host");
 const { docThreads } = await import("./threads");
-const { presenceOf, undoWritten, writtenLine, CHANGED_SINCE, UNDO_ELSEWHERE } = await import("./DocumentCanvas");
+const { docSavedLine, presenceOf, undoWritten, writtenLine, CHANGED_SINCE, UNDO_ELSEWHERE } = await import("./DocumentCanvas");
+// The store a pause in his edits asks for is the save line's own test's: elsewhere it never comes.
+relayTiming.storePauseMs = 600_000;
 
 afterEach(() => {
   link.request.mockReset();
@@ -369,7 +371,7 @@ describe("the relayed socket", () => {
       // It sends its state and hears it applied: the loss is behind it.
       again.send(state());
       h.down(applied());
-      await expect(storedAll(Socket)).resolves.toBeUndefined();
+      await expect(storedAll(Socket)).resolves.toEqual(expect.any(Number));
       expect(h.calls.filter((c) => c === "stored")).toHaveLength(1);
       // An update the host refused (a read-only view): not stored.
       again.send(update(2));
@@ -452,6 +454,75 @@ describe("the relayed socket", () => {
     h.down(applied());
     await flushed;
     expect(h.calls).toEqual(["state", "stored", "update 5", "stored"]);
+  });
+
+  it("a pause in his edits asks the service to store them, and the save line names the service's own time for that store", async () => {
+    const h = fakeHost();
+    const base = link.request.getMockImplementation()!;
+    let storedAt = 1_700_000_000_000;
+    let refuse: string | null = null;
+    let hold: Promise<void> | null = null;
+    link.request.mockImplementation(async (method, params, opts) => {
+      if (method === "work.docs.send" && params.stored) {
+        h.calls.push("stored");
+        if (hold) await hold;
+        if (refuse) throw new Error(refuse);
+        return { ok: true, stored: storedAt };
+      }
+      return base(method, params, opts);
+    });
+    relayTiming.storePauseMs = 30;
+    try {
+      const Socket = relaySocket("env_box", { at: "lifeos", table: "docs", id: "d1" });
+      const saves = savesOf(Socket);
+      const ws = await opened(Socket);
+      ws.send(state());
+      h.down(applied());
+      // Its own state is no edit of his: nothing waits, and the frame names where the file is kept.
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(saves.now()).toEqual({ edited: null, asked: null, storedAt: null, failed: null });
+      expect(docSavedLine(saves.now(), () => undefined)).toBeNull();
+      expect(h.calls).not.toContain("stored");
+      // His edit waits for a store that holds it.
+      ws.send(update(1));
+      expect(saves.now().edited).not.toBeNull();
+      expect(docSavedLine(saves.now(), () => undefined)).toEqual({ state: "saving" });
+      h.down(applied());
+      await vi.waitFor(() => expect(saves.now().storedAt).toBe(storedAt));
+      expect(saves.now().edited).toBeNull();
+      expect(docSavedLine(saves.now(), () => undefined)).toEqual({ state: "saved", at: storedAt });
+      // An edit sent while a store is out may not be in it: the line keeps waiting, and the store is asked again before
+      // the line says Saved, with the later store's time.
+      let release!: () => void;
+      hold = new Promise<void>((resolve) => (release = resolve));
+      const stores = () => h.calls.filter((c) => c === "stored").length;
+      const asks = stores() + 1;
+      ws.send(update(2));
+      h.down(applied());
+      await vi.waitFor(() => expect(stores()).toBe(asks));
+      ws.send(update(3));
+      h.down(applied());
+      storedAt += 5_000;
+      hold = null;
+      release();
+      await vi.waitFor(() => expect(saves.now()).toMatchObject({ storedAt, edited: null, asked: null }));
+      expect(stores()).toBe(asks + 1);
+      // A store the service refused is said in its words with Retry, which asks again at once.
+      refuse = "the document was not stored: the disk is full";
+      ws.send(update(4));
+      h.down(applied());
+      await vi.waitFor(() => expect(saves.now().failed).toBe(refuse));
+      const line = docSavedLine(saves.now(), saves.retry);
+      expect(line).toMatchObject({ state: "conflict", detail: "Not saved. The document was not stored: the disk is full." });
+      expect(line!.actions!.map((a) => a.label)).toEqual(["Retry"]);
+      refuse = null;
+      relayTiming.storePauseMs = 600_000;
+      line!.actions![0]!.run();
+      await vi.waitFor(() => expect(saves.now()).toMatchObject({ failed: null, edited: null, storedAt }));
+      ws.close();
+    } finally {
+      relayTiming.storePauseMs = 600_000;
+    }
   });
 
   it("reads a frame's head as Hocuspocus writes it, and nothing from bytes that are not one", () => {

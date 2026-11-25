@@ -25,13 +25,13 @@ import { Skeleton } from "../../components/ui/skeleton";
 import type { Draft } from "@shared/work/drafts";
 import { loadToast } from "../../components/ui/toaster";
 import { itemJournal, type DraftJournal } from "../canvas/drafts";
-import { whenWords } from "../files/fileText";
+import { notSavedWords, whenWords } from "../files/fileText";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { dayTime } from "../../lib/duration";
 import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
 import { OpenFailed } from "../canvas/FetchState";
 import { BarHold } from "../canvas/barHold";
-import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence, WrittenLine } from "../canvas/kind";
+import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence, SavedLine, WrittenLine } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
 import { useWorkCommands } from "../formats/command";
 import { registerFlush } from "../canvas/flush";
@@ -42,7 +42,7 @@ import { Doc, Export, Share } from "../icons";
 import { historyActions, refreshHistory, useBranches } from "../history/store";
 import { useGoogleDoc } from "../google/docMore";
 import { DOC_FONTS } from "./fonts";
-import { docHost, servedBy, type DocHost } from "./host";
+import { docHost, savesOf, servedBy, type DocHost, type DocSaves } from "./host";
 import { blockFacts, docDrops, docPreviewSource } from "./previewSource";
 import { decided, PAGE_CHANGE_ID, reviewOf } from "./review";
 import { PageChangeSummary } from "../history/Compare";
@@ -617,7 +617,8 @@ function Opened({
   shareable?: boolean;
 }) {
   const doc = useDocument(host, open);
-  useDocDrafts(host, journal ?? null, shell);
+  const offering = useDocDrafts(host, journal ?? null, shell);
+  useDocSaved(host, shell, open.role === "edit" && !offering);
   const margin = width >= MARGIN_FROM;
   // A tab's close waits until the host has stored what he typed (canvas/flush.ts): a Word file's document is judged by its file next.
   // A send or a store that fails is said, and fails the flush: the close is never told the file holds it.
@@ -829,7 +830,7 @@ export function selectionChip(text: string, open: Pick<DocOpen, "title" | "sourc
  * updates up the open socket as his edits go and lays them on the editor's document: Yjs merges them with what the file
  * holds now, so what changed since is kept beside them, never written over. Discard lets it go.
  */
-export function useDocDrafts(host: DocHost, journal: DraftJournal | null, shell: CanvasShell): void {
+export function useDocDrafts(host: DocHost, journal: DraftJournal | null, shell: CanvasShell): boolean {
   const [offer, setOffer] = useState<Draft | null>(null);
   useEffect(() => {
     if (!journal || !host.keepDrafts) return;
@@ -868,6 +869,33 @@ export function useDocDrafts(host: DocHost, journal: DraftJournal | null, shell:
     });
     return () => shell.saved?.(null);
   }, [offer, shell, host, journal]);
+  return offer?.body.kind === "document";
+}
+
+/**
+ * A document's save line (docs/agents/work-docs.md "The save line"): Saved with the service's own time for its last
+ * store that held every edit sent before it; saving while his edits wait for one; a store the service refused, in its
+ * words, with Retry. Before he edits it says nothing, and the frame names where the file is kept.
+ */
+export function docSavedLine(saves: DocSaves, retry: () => void): SavedLine | null {
+  if (saves.failed) return { state: "conflict", detail: notSavedWords(saves.failed), actions: [{ id: "retry", label: "Retry", run: retry }] };
+  if (saves.edited !== null || saves.asked !== null) return { state: "saving" };
+  return saves.storedAt !== null ? { state: "saved", at: saves.storedAt } : null;
+}
+
+/** Feeds the save line from the socket's save facts, where he edits and no kept draft is offered (that line is the draft's). */
+export function useDocSaved(host: Pick<DocHost, "socket">, shell: CanvasShell, on: boolean): void {
+  const saves = useMemo(() => savesOf(host.socket), [host.socket]);
+  const facts = useSyncExternalStore(saves.listen, saves.now, saves.now);
+  const line = on && facts ? docSavedLine(facts, saves.retry) : null;
+  const key = line ? `${line.state}:${line.at ?? ""}:${line.detail ?? ""}` : "";
+  useEffect(() => {
+    if (!on || !shell.saved) return;
+    shell.saved(line);
+    return () => shell.saved?.(null);
+    // `key` is the line by value: the same facts told again say nothing new.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shell, on, key]);
 }
 
 export interface DocumentHandle {

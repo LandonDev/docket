@@ -432,9 +432,13 @@ describe("a document's file before its tab closes", () => {
     first!.insert(0, 'Bring the keys ')
     // The service stores a second after the last change: the file does not have it yet.
     expect(Object.values(zipText(path)).some((body) => body.includes('Bring the keys'))).toBe(false)
-    await r.call('/internal/docs/stored', { name: fileDocName(path), fence: { sectors: 'all' } })
+    const asked = Date.now()
+    const got = (await r.call('/internal/docs/stored', { name: fileDocName(path), fence: { sectors: 'all' } })) as { ok: true; at: number }
     expect(statSync(path).mtimeMs).toBeGreaterThan(before)
     expect(await r.text(path)).toContain('Bring the keys')
+    // The answer names when the store was read back: no earlier than the ask, no earlier than the file's write.
+    expect(got.at).toBeGreaterThanOrEqual(asked)
+    expect(got.at).toBeGreaterThanOrEqual(Math.floor(statSync(path).mtimeMs))
     // A bot key is never let in.
     await expect(r.call('/internal/docs/stored', { name: fileDocName(path), fence: { sectors: 'all', botId: 'b1' } })).rejects.toThrow(/main's/)
   })
