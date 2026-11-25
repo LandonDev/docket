@@ -25,10 +25,10 @@ const host = vi.hoisted(() => ({
   pushes: new Set<(push: never) => void>(),
   opens: new Set<() => void>(),
 }));
-/** What the body said in a toast (sonner rides its own chunk; the body speaks through `loadToast`). */
+/** What the body said in a toast, a title and the words under it as "title / words" (sonner rides its own chunk; the body speaks through `loadToast`). */
 const toasts = vi.hoisted(() => ({ said: [] as string[] }));
 vi.mock("../../components/ui/toaster", async (original) => {
-  const say = (text: string) => void toasts.said.push(text);
+  const say = (text: string, o?: { description?: string }) => void toasts.said.push(o?.description ? `${text} / ${o.description}` : text);
   return { ...(await original<typeof import("../../components/ui/toaster")>()), loadToast: async () => Object.assign(say, { message: say, success: say, error: say }) };
 });
 vi.mock("../../lib/connection", async (original) => {
@@ -727,7 +727,7 @@ describe("the sheet kind", () => {
     act(() => grid.edit(set(2, 1, 8)));
     const asked = sheetHost.calls.filter((c) => c[0] === "imported").length;
     fireEvent.click(within(line).getByRole("button", { name: "Save back" }));
-    await waitFor(() => expect(toasts.said).toContain("An edit is not saved: That cell is locked"));
+    await waitFor(() => expect(toasts.said).toContain("Couldn't save back / An edit is not saved: That cell is locked"));
     expect(sheetHost.calls.filter((c) => c[0] === "imported")).toHaveLength(asked);
   });
 
@@ -755,7 +755,7 @@ describe("the sheet kind", () => {
     sheetHost.since = async () => ({ rev: 4, reload: true as const });
     act(() => grid.edit(set(1, 1, 15)));
     fireEvent.click(within(document.querySelector<HTMLElement>("[data-sheet-import]")!).getByRole("button", { name: "Save back" }));
-    await waitFor(() => expect(toasts.said).toContain("An edit is not saved: the file changed before it was saved"));
+    await waitFor(() => expect(toasts.said).toContain("Couldn't save back / An edit is not saved: the file changed before it was saved"));
     expect(sheetHost.calls.some((c) => c[0] === "imported")).toBe(false);
   });
 
@@ -921,7 +921,7 @@ describe("the sheet kind", () => {
     };
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Accept all" }));
-    await waitFor(() => expect(toasts.said).toContain("The host did not answer"));
+    await waitFor(() => expect(toasts.said).toContain("Couldn't accept the change / The host did not answer"));
     await waitFor(() => expect(document.querySelectorAll("[data-mark]").length).toBeLessThan(5));
   });
 
@@ -963,7 +963,7 @@ describe("the sheet kind", () => {
     const before = opens();
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Accept all" }));
-    await waitFor(() => expect(toasts.said).toContain("The formats and rules were taken; the cells were not: That cell is a table's header"));
+    await waitFor(() => expect(toasts.said).toContain("Couldn't accept the change / The formats and rules were taken; the cells were not: That cell is a table's header"));
     await waitFor(() => expect(opens()).toBeGreaterThan(before));
   });
 
@@ -1050,11 +1050,11 @@ describe("the sheet kind", () => {
     act(() => grid.edit(set(2, 1, 8)));
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Save as CSV" }));
-    await waitFor(() => expect(toasts.said).toContain("An edit is not saved yet: The host did not answer. Retry it first"));
+    await waitFor(() => expect(toasts.said).toContain("Couldn't save the sheet / An edit is not saved yet: The host did not answer. Retry it first"));
     expect(sheetHost.calls.filter((c) => c[0] === "export")).toHaveLength(exports);
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Save to Google Sheets" }));
-    await waitFor(() => expect(toasts.said.filter((t) => t.startsWith("An edit is not saved yet"))).toHaveLength(2));
+    await waitFor(() => expect(toasts.said.filter((t) => t.endsWith(" / An edit is not saved yet: The host did not answer. Retry it first"))).toEqual(["Couldn't save the sheet", "Couldn't save to Google Sheets"].map((t) => `${t} / An edit is not saved yet: The host did not answer. Retry it first`)));
     expect(screen.queryByRole("dialog", { name: "Save to Google Sheets" })).toBeNull();
   });
 
@@ -1068,7 +1068,7 @@ describe("the sheet kind", () => {
     expect(line.compareDocumentPosition(document.querySelector("[data-fake-grid]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(within(line).getByRole("button", { name: "Save back" }));
     await waitFor(() => expect(sheetHost.calls.filter((c) => c[0] === "imported").at(-1)?.[1]).toEqual({ act: "back" }));
-    await waitFor(() => expect(toasts.said).toContain("Saved Ledger.xls"));
+    await waitFor(() => expect(toasts.said).toContain("Saved Ledger.xls / 2 tables become plain ranges."));
     // an ordinary Excel file has no such line
     cleanup();
     resetSheetSyncs();
@@ -1093,8 +1093,8 @@ describe("the sheet kind", () => {
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     expect(screen.queryByRole("menuitem", { name: "Save back as .ods" })).toBeNull();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Discard edits and read again" }));
-    // a refusal is the host's own words, in one toast
-    await waitFor(() => expect(toasts.said).toContain("Ledger.ods is no longer where it was."));
+    // a refusal is the host's own words under the act's line, in one toast
+    await waitFor(() => expect(toasts.said).toContain("Couldn't read the file again / Ledger.ods is no longer where it was."));
   });
 
   it("opens Preview over the grid, which stays mounted and out of reach, and Edit puts him back", async () => {

@@ -45,7 +45,7 @@ const host = vi.hoisted(() => ({
   toasts: [] as string[],
 }));
 vi.mock("../../components/ui/toaster", () => ({
-  loadToast: async () => Object.assign((m: string) => void host.toasts.push(m), { error: (m: string) => void host.toasts.push(`error: ${m}`) }),
+  loadToast: async () => Object.assign((m: string) => void host.toasts.push(m), { error: (m: string, o?: { description?: string }) => void host.toasts.push(o?.description ? `error: ${m} / ${o.description}` : `error: ${m}`) }),
 }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
@@ -264,7 +264,7 @@ describe("the history canvas", () => {
     const { container } = await seat();
     await waitFor(() => expect(screen.getByText("Wrote the morning")).toBeTruthy());
     fireEvent.click(screen.getAllByRole("button", { name: "Restore", hidden: true })[0]!);
-    await waitFor(() => expect(host.toasts).toEqual(["error: That version is gone"]));
+    await waitFor(() => expect(host.toasts).toEqual(["error: The restore did not go through / That version is gone"]));
     expect(container.querySelector("[data-canvas-state]")).toBeNull();
   });
 

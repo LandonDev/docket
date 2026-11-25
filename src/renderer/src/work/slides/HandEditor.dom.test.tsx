@@ -39,7 +39,7 @@ vi.mock("../../lib/connection", async (original) => {
 });
 vi.mock("./show/Show", () => ({ startShow: async () => ({ end: () => undefined, done: Promise.resolve() }) }));
 vi.mock("../../components/ui/toaster", () => ({
-  loadToast: async () => Object.assign((m: string) => void host.toasts.push(m), { error: (m: string) => void host.toasts.push(`error: ${m}`) }),
+  loadToast: async () => Object.assign((m: string) => void host.toasts.push(m), { error: (m: string, o?: { description?: string }) => void host.toasts.push(o?.description ? `error: ${m} / ${o.description}` : `error: ${m}`) }),
 }));
 
 import { CanvasSeat } from "../canvas/CanvasSeat";
@@ -322,7 +322,7 @@ describe("typing on a slide", () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("Clipboard access was denied.")) } });
     try {
       fireEvent.click(within(document.querySelector<HTMLElement>("[data-canvas-state]")!).getByRole("button", { name: "Copy words" }));
-      await waitFor(() => expect(host.toasts).toContain("error: Clipboard access was denied."));
+      await waitFor(() => expect(host.toasts).toContain("error: Couldn't copy your words / Clipboard access was denied."));
       // The words stay, and so does the way to copy them.
       expect(stateLine()).toContain("The shape is no longer on the slide");
       expect(within(document.querySelector<HTMLElement>("[data-canvas-state]")!).getByRole("button", { name: "Copy words" })).toBeTruthy();
