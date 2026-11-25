@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Button } from "@renderer/components/ui/button";
-import { Spinner } from "@renderer/components/ui/spinner";
 import { FADE_IN } from "@renderer/components/ui/reveal";
 import { StatusMark } from "@renderer/components/ui/status";
 import { Desktop, Maximize2, PictureInPicture } from "../chrome/icons";
@@ -18,11 +17,12 @@ import { drawnPixelated, fitStage, pictureKind, stageLayout, stageOf, type Pictu
 import { pixelRatioOf } from "../lib/video/support";
 import { usePageEscape } from "../lib/pageEscape";
 import { IS_MAC } from "../lib/platform";
-import { restingVm, restingVmTiles, useVmStates, wakeVm, WAKING_LINE, type VmState } from "../lib/winvmWake";
+import { restingVm, restingVmTiles, useVmStates, vmPlate, wakeVm, type VmState } from "../lib/winvmWake";
+import { readVmStill } from "../work/winvm/vmPresses";
 import { hostName } from "../lib/threadResources";
 import { EmptyState } from "./SurfaceSkeleton";
 import { ComputerBar, OpenSettingsButton, ViewButton, WakeButton, tileLine, vmScreenSeam, type BarReading } from "./threads/computer/ComputerBar";
-import { ENDED_WORDS, PIXELATED, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream } from "./threads/computer/Viewport";
+import { ENDED_WORDS, PIXELATED, Plate, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type PlateProps } from "./threads/computer/Viewport";
 import { drivenScreen } from "../lib/video/videoInput";
 
 /**
@@ -65,16 +65,59 @@ function useSize(ref: RefObject<HTMLElement | null>): Size {
 /** Where a tile is: on the stage with the room its picture may fill, or in the strip. */
 export type Place = { stage: true; room: Size } | { stage: false };
 
+/** The host's link drops: tried again this many times before the plate says the picture stopped, with Retry. */
+export const LOST_TRIES = 5;
+
+/** The plate while the host's link is down: "Reconnecting to The box", "Try 2 of 5"; past the last try, Retry. */
+export function lostPlate(host: string, attempts: number): PlateProps & { retry: boolean } {
+  if (attempts >= LOST_TRIES) return { title: "The picture stopped", retry: true };
+  return { title: `Reconnecting to ${host}`, detail: `Try ${attempts + 1} of ${LOST_TRIES}`, spin: true, retry: false };
+}
+
+/** The Windows VM's last picture, kept by its host as it went to sleep (`work.winvm.still`), as an image source; read again at each sleep. */
+const stills = new Map<string, { src: string; width: number; height: number; at: number }>();
+export function useVmStill(host: string, want: boolean, key: unknown): { src: string; width: number; height: number } | null {
+  const [still, setStill] = useState(() => stills.get(host) ?? null);
+  useEffect(() => {
+    if (!want) return;
+    let live = true;
+    void readVmStill(host).then((s) => {
+      if (!live || !s) return;
+      const kept = { src: `data:image/jpeg;base64,${s.data}`, width: s.width, height: s.height, at: s.at };
+      stills.set(host, kept);
+      setStill((was) => (was?.at === kept.at ? was : kept));
+    });
+    return () => {
+      live = false;
+    };
+  }, [host, want, key]);
+  return want ? still : null;
+}
+
+/** A clock that ticks each second while `on`: a wake's count. */
+function useNow(on: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!on) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [on]);
+  return now;
+}
+
 /**
  * A tile's picture, live, in the box its place gives it: the stage fits the stream's shape to its room (`fitStage`: a
  * whole computer's screen fills it, a window's picture stops at twice its own pixels); the strip's is the strip's width. The stream is asked for at that size. On the stage
  * it takes the box's one display and is his to drive; a press on Take over gives the picture the keyboard at once.
+ * The Windows VM's opens on the picture it last slept on, under a lighter wash, until its first frame is drawn.
  */
 function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place: Place; focusOnDrive: RefObject<boolean> }) {
   const seen = useDocumentVisible();
-  const linked = useHostLinked(tile.entry.host);
+  const link = useHostLink(tile.entry.host);
+  const linked = link.linked;
   const measure = useRef<HTMLDivElement>(null);
   const box = useRef<HTMLElement>(null);
+  const vm = tile.computer.startsWith("vm:");
   // no stream is asked for while the host's link is down: it is asked for again, as a place shown again, when the link is back
   const full = useFullWindow();
   const stream = useLiveStream(tile.entry, seen && linked, box, measure, { take: place.stage, drive: place.stage, room: place.stage && !full ? place.room : undefined });
@@ -86,19 +129,27 @@ function LivePicture({ tile, place, focusOnDrive }: { tile: ComputerTile; place:
     box.current?.focus();
   }, [focusOnDrive, stream.drive]);
   const { state } = stream;
+  const still = useVmStill(tile.entry.host, vm, null);
   const over = state.status === "ended" || state.status === "failed";
   const label = tileLabel(tile);
-  const frame = pictureFrame(frameKey(tile), streamSize(state), tile.computer.startsWith("vm:"));
+  const frame = pictureFrame(frameKey(tile), streamSize(state), vm);
   const kind = pictureKind(tile.computer);
-  if (!linked) return <WaitingPicture place={place} frame={frame} kind={kind} label={label} words={`Reconnecting to ${hostName(tile.entry.host)}`} />;
+  if (!linked) {
+    const lost = lostPlate(hostName(tile.entry.host), link.attempts);
+    return <PlatePicture place={place} frame={frame} kind={kind} label={label} plate={{ ...lost, still: still?.src, action: lost.retry ? <RetryButton onRetry={() => registry.retry(tile.entry.host)} /> : undefined }} />;
+  }
   const dpr = pixelRatioOf(measure.current);
   const fit = place.stage ? fitStage(place.room, frame, dpr, kind) : null;
+  const face = over ? null : liveFace(stream, place.stage ? (from) => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: label, from: screenRectOf(from) }) : undefined);
+  const drawn = state.status === "live" && state.drawn;
+  // the last picture, washed back, until the first frame: then it fades out over it
+  const cover = vm && still ? <Plate title="Connecting" spin still={still.src} light gone={drawn} /> : undefined;
   return (
     <div ref={measure} data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? (drawnPixelated(fit.width, frame, dpr) ? PIXELATED : undefined) : "w-full"}>
       <Viewport
         ref={box}
         fill
-        face={over ? { kind: "none" } : liveFace(stream, place.stage ? (from) => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: label, from: screenRectOf(from) }) : undefined)}
+        face={face ? { ...face, ...(cover ? { cover } : {}) } : { kind: "none" }}
         label={label}
         size={frame}
         line={over ? <ViewportLine words={state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error} onRetry={state.status === "failed" || RETRY_ENDS.has(state.reason) ? stream.retry : undefined} /> : null}
@@ -123,33 +174,34 @@ export function pictureFrame(key: string, frame: Size | null, vm: boolean): Size
   return lastFrames.get(key) ?? (vm ? VM_SIZE : null);
 }
 
-/** Whether the host's link is up; a host the registry does not list (none to wait for) counts as up. */
-function useHostLinked(host: string): boolean {
-  return useSyncExternalStore(
+/** The host's link: up (a host the registry does not list, none to wait for, counts as up), and its failed tries since. */
+function useHostLink(host: string): { linked: boolean; attempts: number } {
+  const linked = useSyncExternalStore(
     (fn) => registry.subscribe(fn),
     () => !registry.statuses().has(host) || registry.statusOf(host).transport === "open",
   );
+  const attempts = useSyncExternalStore(
+    (fn) => registry.subscribe(fn),
+    () => (registry.statuses().has(host) ? (registry.statusOf(host).attempts ?? 0) : 0),
+  );
+  return { linked, attempts };
 }
 
-/** A picture's box while it waits (the VM waking, the host's link coming back): its words beside a spinner, at the picture's size. */
-function WaitingPicture({ place, frame, kind, label, words, line }: { place: Place; frame: Size | null; kind: PictureKind; label: string; words: string; line?: ReactNode }) {
+/** Retry on a plate: secondary, small. */
+function RetryButton({ onRetry }: { onRetry: () => void }) {
+  return (
+    <Button variant="secondary" size="sm" onClick={onRetry}>
+      Retry
+    </Button>
+  );
+}
+
+/** A picture's box with nothing live in it: its plate, at the picture's size, so nothing moves when the picture comes. */
+function PlatePicture({ place, frame, kind, label, plate }: { place: Place; frame: Size | null; kind: PictureKind; label: string; plate: PlateProps }) {
   const fit = place.stage ? fitStage(place.room, frame, pixelRatioOf(null), kind) : null;
   return (
     <div data-slot="computer-picture-room" style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>
-      <Viewport
-        fill
-        face={{ kind: "none" }}
-        label={label}
-        size={frame}
-        line={
-          line ?? (
-            <span role="status" className="flex items-center gap-2 text-xs leading-4 text-muted-foreground">
-              <Spinner aria-hidden className="size-3.5" />
-              <span>{words}</span>
-            </span>
-          )
-        }
-      />
+      <Viewport fill face={{ kind: "plate", plate }} label={label} size={frame} />
     </div>
   );
 }
@@ -163,36 +215,43 @@ function ElsewherePicture({ machine }: { machine: string }) {
 const VM_SIZE = { width: 1280, height: 800 };
 
 /**
- * The Windows VM while it is not awake: its box keeps the picture's place, with one line in it. On the stage a VM
- * asleep or going to sleep is woken by itself, so the page shows "Waking the Windows VM" until the picture arrives
- * (the live tile then takes this one's place, the same element); in the strip it waits for his press. Not set up, it
- * says where to set it up.
+ * The Windows VM while it has no live picture: the desk it last slept on, washed back, with one plate of words
+ * (`vmPlate`). On the stage a VM asleep or going to sleep wakes by itself, unless his own Sleep put it there (then it
+ * waits for Wake, in the bar), and its plate counts the wake against the usual one; in the strip it waits for his
+ * press. Not set up, the plate stands on the bare box and the bar's one press goes to Settings.
  */
 export function RestingVmPicture({ host, vm, place, wake = wakeVm }: { host: string; vm: VmState; place: Place; wake?: (host: string) => Promise<void> }) {
   const rest = restingVm(vm);
   const stage = place.stage;
   const [failed, setFailed] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const wakes = stage && rest.wakes;
+  const [since, setSince] = useState<number | undefined>(undefined);
+  const wakes = stage && rest.wakes && !vm.heldAsleep;
   useEffect(() => {
     if (!wakes) return;
     let live = true;
     setFailed(null);
+    setSince(Date.now());
     wake(host).catch((err: unknown) => live && setFailed(err instanceof Error ? err.message : String(err)));
     return () => {
       live = false;
     };
   }, [attempt, host, wake, wakes]);
-  // asleep on the stage reads as waking from the first frame: the wake is already asked
-  const busy = rest.busy || wakes;
-  const line =
-    failed !== null ? (
-      <ViewportLine words={`Couldn't wake the Windows VM: ${failed}`} onRetry={() => setAttempt((n) => n + 1)} />
-    ) : busy ? undefined : (
-      <ViewportLine words={rest.line} />
-    );
-  // the size its live picture will have (the last frame seen, else 1280 by 800), so it comes with nothing moving
-  return <WaitingPicture place={place} frame={pictureFrame(`${host}\nvm:windows`, null, true)} kind="screen" label="Windows VM" words={wakes ? WAKING_LINE : rest.line} line={line} />;
+  const counting = !failed && (vm.state === "waking" || wakes);
+  const now = useNow(counting);
+  const words = vmPlate(vm, { wakes, now, failed, since });
+  // read again each time it goes to sleep: the host keeps the newest
+  const still = useVmStill(host, vm.state !== "none" && vm.state !== "setting-up", vm.state === "asleep" ? vm.since : null);
+  const frame = pictureFrame(`${host}\nvm:windows`, null, true) ?? (still ? { width: still.width, height: still.height } : VM_SIZE);
+  return (
+    <PlatePicture
+      place={place}
+      frame={frame}
+      kind="screen"
+      label="Windows VM"
+      plate={{ title: words.title, detail: words.detail, spin: words.spin, still: words.bare ? null : still?.src, action: words.retry ? <RetryButton onRetry={() => setAttempt((n) => n + 1)} /> : undefined }}
+    />
+  );
 }
 
 export interface TileProps {

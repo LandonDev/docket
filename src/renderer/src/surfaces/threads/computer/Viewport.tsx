@@ -3,6 +3,7 @@ import type { ComputerPreviewEndReason, HistoryPictureNone } from "@server/share
 import { Button } from "@renderer/components/ui/button";
 import { CONSOLE } from "@renderer/components/ui/console";
 import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Spinner } from "@renderer/components/ui/spinner";
 import { FADE_IN } from "@renderer/components/ui/reveal";
 import { cn } from "@renderer/lib/cn";
 import { CLICK_MARK } from "../../../lib/ease";
@@ -99,6 +100,51 @@ export function ViewportLine({ words, onRetry }: { words: string; onRetry?: () =
   );
 }
 
+/** What a picture's plate says: its words, a spinner while it waits, its one press, over the last picture or the bare box. */
+export interface PlateProps {
+  title: string;
+  /** one muted line under it: "Since 1:14 PM", "6 s of about 13", "Try 2 of 5" */
+  detail?: string | null;
+  spin?: boolean;
+  action?: ReactNode;
+  /** the last picture, washed back under the words; none: the bare box */
+  still?: string | null;
+  /** the lighter wash, for a picture about to come (connecting) */
+  light?: boolean;
+  /** the live picture is on the canvas: the plate fades out over it */
+  gone?: boolean;
+}
+
+/**
+ * What a picture says of itself while it has nothing live to show (docs/DESIGN.md "Computers", "The faces"): one
+ * plate of words, centred, over the last picture washed back, or over the bare box where there is none. Only its
+ * words are a status for a screen reader: a counting detail is not read out each second.
+ */
+export function Plate({ title, detail, spin = false, action, still, light = false, gone = false }: PlateProps) {
+  return (
+    <div data-slot="computer-plate" data-gone={gone || undefined} className={cn("absolute inset-0 transition-opacity duration-(--dur-base) ease-(--ease-out)", gone && "pointer-events-none opacity-0")}>
+      {still ? (
+        <>
+          <img src={still} alt="" draggable={false} className="absolute inset-0 size-full object-cover" />
+          <div data-slot="computer-wash" className={cn("absolute inset-0", light ? "bg-background/55" : "bg-background/80")} />
+        </>
+      ) : null}
+      <div className="absolute inset-0 grid place-items-center p-4">
+        <div className="flex max-w-80 flex-col items-center gap-3 text-center">
+          {spin ? <Spinner aria-hidden className="size-4 text-muted-foreground" /> : null}
+          <div className="flex flex-col items-center gap-1">
+            <span role="status" className="text-[13px] leading-5 font-medium">
+              {title}
+            </span>
+            {detail ? <span className="text-xs leading-4 text-muted-foreground tabular-nums">{detail}</span> : null}
+          </div>
+          {action}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** The class a picture's surface takes: the box's size, the image outline, hidden until it has something to show. */
 export const pictureClass = (drawn: boolean): string =>
   cn("block size-full rounded-lg outline outline-1 -outline-offset-1 outline-image-outline", !drawn && "invisible");
@@ -111,7 +157,7 @@ export type ViewportFace =
    * the live stream: `picture` is the canvas (a still in a fixture); a click opens the full view from the box.
    * `driving`: he drives the page from this picture, so the box takes the keyboard and his pointer, and opens nothing.
    */
-  | { kind: "live"; picture: ReactNode; drawn: boolean; mark?: ReactNode; onOpen?: (from: DOMRect) => void; driving?: boolean }
+  | { kind: "live"; picture: ReactNode; drawn: boolean; mark?: ReactNode; onOpen?: (from: DOMRect) => void; driving?: boolean; cover?: ReactNode }
   /** a kept picture; `dim` while the next one is on its way; a click opens the lightbox from the box */
   | { kind: "picture"; src: string; dim?: boolean; onOpen?: (from: DOMRect) => void }
   /** what the model read, where there is no picture */
@@ -119,7 +165,9 @@ export type ViewportFace =
   /** the first picture is on its way */
   | { kind: "skeleton" }
   /** a pinned step that kept nothing: the box keeps its place, with the line inside it */
-  | { kind: "none" };
+  | { kind: "none" }
+  /** nothing live to show (asleep, waking, lost, not set up): one plate of words over the last picture */
+  | { kind: "plate"; plate: PlateProps };
 
 export interface ViewportProps {
   /** null: the line alone (nothing will come into a box) */
@@ -169,6 +217,15 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
       </div>
     );
   }
+  if (face.kind === "plate") {
+    return (
+      <div {...wrap}>
+        <div ref={ref as Ref<HTMLDivElement>} role="group" aria-label={label} data-face="plate" className={boxClass} style={boxStyle}>
+          <Plate {...face.plate} />
+        </div>
+      </div>
+    );
+  }
   if (face.kind === "text") {
     return (
       <div {...wrap}>
@@ -186,8 +243,10 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
       </div>
     );
   }
-  // Until a picture is there the skeleton is the whole box, never a box inside the box.
-  const waiting = face.kind === "skeleton" || (face.kind === "live" && !face.drawn);
+  // Until a picture is there the skeleton is the whole box, never a box inside the box; a cover (the last picture under
+  // its plate) stands in its place.
+  const cover = face.kind === "live" ? face.cover : undefined;
+  const waiting = face.kind === "skeleton" || (face.kind === "live" && !face.drawn && !cover);
   const picture = (
     <div data-slot="computer-picture" className={cn(height ? "max-h-full" : "h-full max-w-full", !waiting && "relative")} style={fit}>
       {waiting ? <Skeleton className="absolute inset-0 rounded-lg" /> : null}
@@ -203,6 +262,7 @@ export const Viewport = forwardRef(function Viewport({ face, label, size, sharp,
         />
       ) : null}
       {face.kind === "live" ? <div className="pointer-events-none absolute inset-0">{face.mark}</div> : null}
+      {cover}
     </div>
   );
   // One element for the box in every mode (watched, opening, driven): a mode only changes its attributes, so the canvas

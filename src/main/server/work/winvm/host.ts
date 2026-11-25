@@ -3,7 +3,8 @@ import type { ComputerSessionRow } from '@shared/contract-computer'
 import type { ComputerSessions } from '../../computer/sessions'
 import type { VideoRelay } from '../../video/relay'
 import type { VideoRpc } from '../../video/rpc'
-import { winvmKeeper, onWinvmState } from './index'
+import { configureVmHeld, winvmKeeper, onWinvmState } from './index'
+import { configureVmStill, VmStill } from './still'
 import { rigConfig, rigPaths } from './machine/config'
 import { qmp, screendump } from './machine/qmp'
 import { configureComputerDrive } from '../../computer/drive'
@@ -42,6 +43,9 @@ export function wireVmPicture(o: {
     log: o.log
   })
   o.video.rpc.addSource(picture)
+  // the desk as he left it, kept at each sleep for the page (still.ts); his Restart waits for a thread that holds it
+  configureVmStill(new VmStill({ dir: join(o.dataDir, 'winvm', 'picture'), screenshot: qmpScreenshot(join(o.dataDir, 'winvm', 'picture', 'still-shots'), async (file) => void (await qmp(p.qmp, screendump(file)))), jpeg: electronJpeg }))
+  configureVmHeld(() => !!o.holder?.())
   // QEMU's display at the size Windows draws at, learned after every wake
   watchGuestScreen({
     onState: onWinvmState,

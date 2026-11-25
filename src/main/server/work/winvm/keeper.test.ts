@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { WAKING_WORDS, type WinvmSleepAfter, type WinvmState } from '@shared/contract-work-winvm'
 import type { WinvmPoint } from '@shared/contract-work-winvm'
-import { BEFORE_SETUP, Keeper, NO_DOOR, NO_POINT, NO_SERVICE, NOT_HIBERNATED, NOT_SET_UP, ONLY_ASLEEP, type DoorLink, type KeeperDeps, type VmGuest, type VmMachine } from './keeper'
+import { BEFORE_SETUP, HELD, Keeper, median, RESTARTING_WORDS, WAKES_KEPT, NO_DOOR, NO_POINT, NO_SERVICE, NOT_HIBERNATED, NOT_SET_UP, ONLY_ASLEEP, type DoorLink, type KeeperDeps, type VmGuest, type VmMachine } from './keeper'
 import type { PointStore } from './points'
 import { DISALLOWED, NO_RUN_FOLDERS, SETUP_STEPS, TERMINAL_DELEGATION } from './setup'
 
@@ -126,7 +126,7 @@ class FakeGuest implements VmGuest {
   }
 }
 
-function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: string | null; owed?: () => boolean } = {}) {
+function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: string | null; owed?: () => boolean; beforeSleep?: () => Promise<void> } = {}) {
   let token: string | null = o.token === undefined ? 'T'.repeat(64) : o.token
   const machine = new FakeMachine()
   machine.disk = o.disk ?? true
@@ -153,7 +153,8 @@ function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: st
     log: () => {},
     now: () => now,
     timeouts: { knock: 0, knockEvery: 1 },
-    ...(o.owed ? { owed: o.owed } : {})
+    ...(o.owed ? { owed: o.owed } : {}),
+    ...(o.beforeSleep ? { beforeSleep: o.beforeSleep } : {})
   }
   const keeper = new Keeper(deps)
   return {
@@ -512,3 +513,75 @@ describe('restore points', () => {
   })
 })
 
+
+describe('what the Computers page reads of it', () => {
+  it('says the usual wake: the median of the last five wakes from sleep, none before one', async () => {
+    const r = make()
+    expect(r.keeper.state().wakeMs).toBeNull()
+    for (const ms of [20_000, 12_000, 13_000, 14_000, 11_000, 13_500]) {
+      r.machine.start = async () => {
+        r.advance(ms)
+        r.machine.up = true
+      }
+      await r.keeper.wake()
+      await r.keeper.sleep()
+    }
+    // the first of six has gone: 12, 13, 14, 11, 13.5
+    expect(WAKES_KEPT).toBe(5)
+    expect(r.keeper.state().wakeMs).toBe(13_000)
+    expect(median([1, 4])).toBe(3)
+  })
+
+  it('holds a person\'s Sleep asleep for his Wake, and not the idle sleep; a wake clears it', async () => {
+    const r = make()
+    await r.keeper.wake()
+    await r.keeper.sleep()
+    expect(r.keeper.state().heldAsleep).toBe(true)
+    await r.keeper.wake()
+    expect(r.keeper.state().heldAsleep).toBe(false)
+    r.advance(31 * 60_000)
+    r.keeper.tick()
+    await r.keeper.sleep('idle')
+    expect(r.keeper.state()).toMatchObject({ state: 'asleep', heldAsleep: false })
+  })
+
+  it('keeps the picture before it hibernates, and sleeps anyway when that fails', async () => {
+    const order: string[] = []
+    const r = make({ beforeSleep: async () => void order.push('still') })
+    await r.keeper.wake()
+    r.guest.hibernate = async () => {
+      order.push('hibernate')
+      r.machine.up = false
+    }
+    await r.keeper.sleep()
+    expect(order).toEqual(['still', 'hibernate'])
+    const broken = make({ beforeSleep: async () => Promise.reject(new Error('qmp busy')) })
+    await broken.keeper.wake()
+    expect((await broken.keeper.sleep()).state).toBe('asleep')
+  })
+})
+
+describe('restart', () => {
+  it('restarts Windows cleanly and opens the door again, saying so while it runs', async () => {
+    const r = make()
+    await r.keeper.wake()
+    r.pushes.length = 0
+    r.guest.log.length = 0
+    expect((await r.keeper.restart(() => false)).state).toBe('awake')
+    expect(r.pushes.map((p) => [p.state, p.step])).toEqual([
+      ['waking', RESTARTING_WORDS],
+      ['awake', null]
+    ])
+    expect(r.guest.log).toEqual(['reboot', 'ready', 'start-service', 'open-door'])
+    expect(r.guest.links[0].closed).toBe(true)
+  })
+
+  it('is refused while a thread holds it, and while it is not awake', async () => {
+    const r = make()
+    await r.keeper.wake()
+    await expect(r.keeper.restart(() => true)).rejects.toThrow(HELD)
+    expect(r.guest.log).not.toContain('reboot')
+    await r.keeper.sleep()
+    await expect(r.keeper.restart(() => false)).rejects.toThrow('not awake')
+  })
+})

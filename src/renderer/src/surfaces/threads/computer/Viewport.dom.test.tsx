@@ -676,3 +676,26 @@ describe("the viewport's faces", () => {
     expect(container.innerHTML).toBe("");
   });
 });
+
+describe("the plate: what a picture says while it has nothing live", () => {
+  it("one plate of words over the last picture washed back, or over the bare box; only its words are a status", () => {
+    const { container, rerender } = render(<Viewport fill face={{ kind: "plate", plate: { title: "Asleep", detail: "Since 1:14 PM", still: "data:image/jpeg;base64,AAAA" } }} label="Windows VM" size={{ width: 1280, height: 800 }} />);
+    expect(screen.getByRole("group", { name: "Windows VM" }).getAttribute("data-face")).toBe("plate");
+    expect(screen.getByRole("status").textContent).toBe("Asleep");
+    expect(container.querySelector("img")!.getAttribute("src")).toBe("data:image/jpeg;base64,AAAA");
+    expect(container.querySelector('[data-slot="computer-wash"]')).not.toBeNull();
+    rerender(<Viewport fill face={{ kind: "plate", plate: { title: "The Windows VM is not set up" } }} label="Windows VM" />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector('[data-slot="computer-wash"]')).toBeNull();
+  });
+
+  it("a live picture's cover stands in for its skeleton, and fades out once a frame is on the canvas", () => {
+    const live = (drawn: boolean) => ({ kind: "live" as const, drawn, picture: <canvas />, cover: <div data-slot="computer-plate" data-gone={drawn || undefined} /> });
+    const { container, rerender } = render(<Viewport fill face={live(false)} label="Live view" />);
+    expect(container.querySelector('[data-slot="skeleton"]')).toBeNull();
+    expect(container.querySelector('[data-slot="computer-plate"]')!.hasAttribute("data-gone")).toBe(false);
+    rerender(<Viewport fill face={live(true)} label="Live view" />);
+    // the same canvas: the cover goes over it, nothing is made again
+    expect(container.querySelector('[data-slot="computer-plate"]')!.hasAttribute("data-gone")).toBe(true);
+  });
+});

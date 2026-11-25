@@ -6,7 +6,9 @@ import type { DoorLink, KeeperDeps } from './keeper'
 import { WinvmRequestSchemas } from '@shared/contract-work-winvm'
 import { vmClipboardWired } from './drive'
 import { vmPasteWired } from './picture'
-import { configureWinvmKeeper, NOT_A_PERSON, screenSetting, screenSize, setSleepAfter, sleepAfterSetting, winvm, winvmKeeper } from './index'
+import { HELD } from './keeper'
+import { configureVmStill, type VmStill } from './still'
+import { configureVmHeld, configureWinvmDesktop, configureWinvmKeeper, NOT_A_PERSON, screenSetting, screenSize, setSleepAfter, sleepAfterSetting, winvm, winvmKeeper } from './index'
 
 /**
  * The pillar on a real database through the Work router, over a fake
@@ -146,6 +148,44 @@ describe('the Windows VM pillar', () => {
     await rig.close()
     expect(winvmKeeper()).toBeNull()
     rig = await makeRig({ modules: [winvm] })
+  })
+})
+
+describe('the Computers page: the still, Sleep and Restart', () => {
+  afterEach(() => {
+    configureVmStill(null)
+    configureVmHeld(null)
+    configureWinvmDesktop(null)
+  })
+
+  it('keeps the picture as it goes to sleep, and gives it to whoever may watch the VM: never a thread or the box\'s own socket', async () => {
+    let kept = 0
+    const picture = { data: 'AAAA', width: 1920, height: 1200, at: 7 }
+    configureVmStill({ keep: async () => void kept++, read: () => (kept ? picture : null) } as unknown as VmStill)
+    await rig.rpc('work.winvm.wake', {})
+    await rig.rpc('work.winvm.sleep', {})
+    expect(kept).toBe(1)
+    const call = (by: Parameters<NonNullable<typeof winvm.handle>>[2]) => winvm.handle!({ id: '1', method: 'work.winvm.still', params: {} } as never, workCtx(), by)
+    expect(await call({ kind: 'remote', caps: ['read', 'approve'], audience: 'client', keyId: 'k' })).toMatchObject({ handled: true, result: { still: picture } })
+    await expect(call({ kind: 'remote', caps: ['read'], audience: 'client', keyId: 'k' })).rejects.toThrow('needs approve')
+    await expect(call(model)).rejects.toThrow('not a thread')
+    // the box's own socket is any process of its user, not his desktop
+    configureWinvmDesktop(() => false)
+    await expect(rig.rpc('work.winvm.still', {})).rejects.toThrow("own socket")
+    configureWinvmDesktop(() => true)
+    expect(await rig.rpc('work.winvm.still', {})).toEqual({ still: picture })
+    // a person's Sleep holds it asleep for his Wake
+    expect((await rig.rpc<WinvmState>('work.winvm.state', {})).heldAsleep).toBe(true)
+  })
+
+  it('restarts Windows for a person, never for a thread, and not while a thread holds it', async () => {
+    await rig.rpc('work.winvm.wake', {})
+    expect((await rig.rpc<WinvmState>('work.winvm.restart', {})).state).toBe('awake')
+    configureVmHeld(() => true)
+    await expect(rig.rpc('work.winvm.restart', {})).rejects.toThrow(HELD)
+    await expect(winvm.handle!({ id: '1', method: 'work.winvm.restart', params: {} } as never, workCtx(), model)).rejects.toThrow(NOT_A_PERSON)
+    expect(METHOD_CAPABILITY['work.winvm.restart']).toBe('operate')
+    expect(METHOD_CAPABILITY['work.winvm.still']).toBe('read')
   })
 })
 

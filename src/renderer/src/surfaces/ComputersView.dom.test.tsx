@@ -5,7 +5,7 @@ import type { ComputerTile } from "../lib/computers";
 import { closeFullWindow, fullWindowTarget, toggleFullScreen } from "../lib/fullWindow";
 import { closePopOut, popOutTarget, requestStage } from "../lib/popOut";
 import { registry } from "../lib/connection/registry";
-import { ComputersPage, ComputersView, pictureFrame, RestingVmPicture, Tile, tileLine } from "./ComputersView";
+import { ComputersPage, ComputersView, LOST_TRIES, lostPlate, pictureFrame, RestingVmPicture, Tile, tileLine } from "./ComputersView";
 import fixtures from "./ComputersView.fixtures";
 import { tile } from "./threads/computer/FullWindow.fixtures";
 
@@ -300,10 +300,10 @@ describe("the Windows VM in every state", () => {
     render(view());
     const tile = await screen.findByRole("article", { name: "Windows VM" });
     await act(async () => {});
-    expect(box.calls).toEqual(["work.winvm.state", "work.winvm.wake"]);
+    expect(box.calls.filter((m) => m !== "work.winvm.still")).toEqual(["work.winvm.state", "work.winvm.wake"]);
     expect(within(tile).getByRole("status").textContent).toBe("Waking the Windows VM");
     // the box keeps the picture's 16:10 so nothing moves when it comes
-    expect((tile.querySelector('[data-face="none"]') as HTMLElement).style.aspectRatio).toBe("1280 / 800");
+    expect((tile.querySelector('[data-face="plate"]') as HTMLElement).style.aspectRatio).toBe("1280 / 800");
     // its bar is the header's: Take over wakes it and takes over, one press; no Wake beside it
     expect(within(bar()).getByRole("button", { name: "Take over" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: /Wake/ })).toBeNull();
@@ -317,13 +317,57 @@ describe("the Windows VM in every state", () => {
     host(() => state("none"));
     render(view());
     const tile = await screen.findByRole("article", { name: "Windows VM" });
-    expect(within(tile).getByText("Not set up: Settings → Work → Windows VM")).not.toBeNull();
-    expect(within(tile).queryByRole("button", { name: "Take over" })).toBeNull();
+    expect(within(tile).getByRole("status").textContent).toBe("The Windows VM is not set up");
+    // no picture to keep: the plate stands on the bare box; the bar's one press goes to Settings
+    expect(tile.querySelector('[data-slot="computer-wash"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open Settings" })).not.toBeNull();
     cleanup();
     host(() => state("none", "The Windows VM runs on the box."));
     render(view());
     await act(async () => {});
     expect(screen.queryByRole("article", { name: "Windows VM" })).toBeNull();
+  });
+
+  it("after his own Sleep the stage waits for his Wake: the desk washed back, Asleep since when, and Wake in the bar", async () => {
+    const { workSwitch } = await import("../lib/workSwitch");
+    vi.spyOn(workSwitch, "hosts").mockReturnValue(new Set(["box"]));
+    const since = new Date(2026, 10, 24, 13, 14).getTime();
+    const box = host(() => ({ ...state("asleep"), since, heldAsleep: true }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request: async (m: string) => (box.calls.push(m), null) } as never);
+    vi.spyOn(Date, "now").mockReturnValue(since + 60_000);
+    render(view());
+    const tile = await screen.findByRole("article", { name: "Windows VM" });
+    await act(async () => {});
+    expect(box.calls).not.toContain("work.winvm.wake");
+    expect(within(tile).getByRole("status").textContent).toBe("Asleep");
+    expect(within(tile).getByText(/^Since 1:14/)).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Wake" }));
+    await act(async () => {});
+    expect(box.calls).toContain("work.winvm.wake");
+  });
+
+  it("shows the picture it slept on, washed back under its plate, where the host kept one", async () => {
+    vi.spyOn(registry, "link").mockReturnValue({ request: async (m: string) => (m === "work.winvm.still" ? { still: { data: "AAAA", width: 1920, height: 1200, at: 5 } } : null) } as never);
+    render(<RestingVmPicture host="box" vm={{ state: "asleep", cannot: null, error: null, since: 5 }} place={{ stage: false }} />);
+    await act(async () => {});
+    expect(document.querySelector<HTMLImageElement>('[data-slot="computer-plate"] img')!.src).toBe("data:image/jpeg;base64,AAAA");
+    expect(document.querySelector('[data-slot="computer-wash"]')!.className).toContain("bg-background/80");
+  });
+
+  it("counts a wake against the usual one", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(10_000);
+    render(<RestingVmPicture host="nohost" vm={{ state: "waking", cannot: null, error: null, since: 4_000, wakeMs: 13_200 }} place={{ stage: false }} />);
+    expect(screen.getByRole("status").textContent).toBe("Waking the Windows VM");
+    expect(screen.getByText("6 s of about 13")).not.toBeNull();
+  });
+
+  it("says the keeper's own work in its words, with no count and no press: a restart, a move to live resize", () => {
+    render(<RestingVmPicture host="nohost" vm={{ state: "waking", cannot: null, error: null, step: "Restarting Windows", since: 1, wakeMs: 13_000 }} place={{ stage: true, room: { width: 800, height: 500 } }} />);
+    expect(screen.getByRole("status").textContent).toBe("Restarting Windows");
+    expect(screen.queryByText(/ s of about /)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("in the strip waits for his press: asleep, no wake asked", async () => {
@@ -338,7 +382,8 @@ describe("the Windows VM in every state", () => {
     let tries = 0;
     render(<RestingVmPicture host="box" vm={{ state: "asleep", cannot: null, error: null }} place={{ stage: true, room: { width: 800, height: 500 } }} wake={async () => void (tries++, (() => { throw new Error("no door"); })())} />);
     await act(async () => {});
-    expect(screen.getByText("Couldn't wake the Windows VM: no door")).not.toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Couldn't wake the Windows VM");
+    expect(screen.getByText("no door")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await act(async () => {});
     expect(tries).toBe(2);
@@ -410,7 +455,18 @@ describe("driving from the page", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(h.streams.every((s) => !s.run)).toBe(true);
     // the box keeps the picture's size
-    expect((document.querySelector('[data-face="none"]') as HTMLElement).style.aspectRatio).toBe("1280 / 800");
+    expect((document.querySelector('[data-face="plate"]') as HTMLElement).style.aspectRatio).toBe("1280 / 800");
+  });
+
+  it("says a lost link's tries, then that the picture stopped, with Retry", () => {
+    expect(lostPlate("The box", 1)).toMatchObject({ title: "Reconnecting to The box", detail: "Try 2 of 5", spin: true, retry: false });
+    expect(lostPlate("The box", LOST_TRIES)).toMatchObject({ title: "The picture stopped", retry: true });
+    vi.spyOn(registry, "statuses").mockReturnValue(new Map([["box", {}]]) as never);
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "reconnecting", attempts: 5 } as never);
+    const retried = vi.spyOn(registry, "retry").mockImplementation(() => undefined);
+    render(<ComputersPage tiles={[vmTile({ driving: false })]} onOpenSession={() => undefined} size={{ width: 1200, height: 800 }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retried).toHaveBeenCalledWith("box");
   });
 
   it("sizes every face of a picture by one rule: the stream's frame, else the last one seen, else the VM's 1280 by 800", () => {

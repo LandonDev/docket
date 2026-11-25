@@ -58,6 +58,14 @@ export interface WinvmPoint {
   by: 'owner' | 'keeper'
 }
 
+/** The guest's screen as it was when it last went to sleep: a JPEG, base64, at most 1920 on its long edge. */
+export interface WinvmStill {
+  data: string
+  width: number
+  height: number
+  at: number
+}
+
 /** The Windows evaluation the base image was built from ends about this day (docs/agents/windows-vm.md); after it, a real key or a rebuild. */
 export const WINVM_EVALUATION_ENDS = '2027-02-17'
 
@@ -80,6 +88,10 @@ export const WinvmRequestSchemas = [
   request('work.winvm.setup', z.object({})),
   /** → WinvmSettings, with `sleepAfter` and `screen` set when given; a new screen is used by a new Set up. A person's alone. */
   request('work.winvm.settings', z.object({ sleepAfter: z.enum(WINVM_SLEEP_AFTER).optional(), screen: z.enum(WINVM_SCREENS).optional() })),
+  /** → { still: WinvmStill | null }: the guest's last picture, kept as it went to sleep; to whoever may watch it (`mayWatch`) */
+  request('work.winvm.still', z.object({})),
+  /** → WinvmState once Windows is back: a clean restart through its own shutdown, never forced; refused while a thread holds it. */
+  request('work.winvm.restart', z.object({})),
   /** → { points: WinvmPoint[] }, newest first */
   request('work.winvm.points', z.object({})),
   /** → WinvmPoint: only while it sleeps; past three, the oldest goes. A person's alone. */
@@ -96,6 +108,9 @@ export const WINVM_CAPS = {
   'work.winvm.state': 'read',
   'work.winvm.wake': 'operate',
   'work.winvm.sleep': 'operate',
+  // the same rule as its video: read here, and `mayWatch` in the handler
+  'work.winvm.still': 'read',
+  'work.winvm.restart': 'operate',
   // changes the machine itself: an admin's
   'work.winvm.setup': 'admin',
   // reads and sets a host setting: an admin's

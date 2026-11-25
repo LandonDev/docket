@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { WinvmState, WinvmStateName } from "@server/shared/contract-work-winvm";
 import { registry } from "./connection/registry";
+import { dayTime } from "./duration";
 import { useWorkHosts } from "./workSwitch";
 import { tileId, type ComputerTile } from "./computers";
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
@@ -144,6 +145,56 @@ export function restingVm(vm: VmState): { line: string; busy: boolean; wakes: bo
       return { line: WAKING_LINE, busy: true, wakes: true };
     default:
       return { line: WAKING_LINE, busy: true, wakes: false };
+  }
+}
+
+/** The keeper's own words while it wakes the machine: the plate says "Waking the Windows VM" through all of them. */
+const WAKE_STEPS: ReadonlySet<string> = new Set([WAKING_LINE, "Copying TempCode's helper into Windows"]);
+
+/** What the VM's picture says while it has nothing live: its plate's words (Viewport.tsx `Plate`). */
+export interface VmPlateWords {
+  title: string;
+  detail: string | null;
+  spin: boolean;
+  /** no picture to keep under it: the plate on the bare box */
+  bare: boolean;
+  /** a failed wake: Retry asks again */
+  retry: boolean;
+}
+
+/** "6 s of about 13": the seconds this wake has taken, against the usual (the keeper's median of its last five). */
+export function wakeCount(since: number | undefined, wakeMs: number | null | undefined, now: number): string | null {
+  if (since === undefined) return null;
+  const secs = Math.max(0, Math.floor((now - since) / 1000));
+  return wakeMs ? `${secs} s of about ${Math.round(wakeMs / 1000)}` : null;
+}
+
+/**
+ * The VM's plate in every state it has no live picture (docs/DESIGN.md "Computers", "The faces"). `wakes`: the stage
+ * asked it awake (asleep there and not held by his own Sleep); `since` is when that ask began, for its count.
+ */
+export function vmPlate(vm: VmState, o: { wakes: boolean; now: number; failed?: string | null; since?: number }): VmPlateWords {
+  const plate = (title: string, more: Partial<VmPlateWords> = {}): VmPlateWords => ({ title, detail: null, spin: false, bare: false, retry: false, ...more });
+  if (o.failed) return plate("Couldn't wake the Windows VM", { detail: o.failed, retry: true });
+  const counting = (since: number | undefined): VmPlateWords => plate(WAKING_LINE, { spin: true, detail: wakeCount(since, vm.wakeMs, o.now) });
+  switch (vm.state) {
+    case "none":
+      return plate("The Windows VM is not set up", { bare: true });
+    case "setting-up":
+      return plate(vm.step ?? "Setting up the Windows VM", { spin: true, bare: true });
+    case "asleep":
+      if (o.wakes) return counting(o.since);
+      // a step while asleep: going back to a restore point
+      if (vm.step) return plate(vm.step, { spin: true });
+      return plate("Asleep", { detail: vm.since ? `Since ${dayTime(vm.since, o.now)}` : null });
+    case "waking":
+      // the keeper's own work under the wake's name (a restart, a move to live resize) says itself, with no count
+      return vm.step && !WAKE_STEPS.has(vm.step) ? plate(vm.step, { spin: true }) : counting(vm.since);
+    case "going-to-sleep":
+      return o.wakes ? counting(o.since) : plate(vm.step ?? "Going to sleep", { spin: true });
+    case "awake":
+      // awake before its row came: the stream is about to open
+      return plate("Connecting", { spin: true });
   }
 }
 

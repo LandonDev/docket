@@ -22,6 +22,7 @@ import { shell } from "../../../stores/shell";
 import { Facts } from "../../settings/hosts/Facts";
 import { PointsDialog } from "../../../work/winvm/WinvmSection";
 import { signInOnVm } from "../../../work/winvm/signIn";
+import { restartVm, setVmScreen, sleepVm } from "../../../work/winvm/vmPresses";
 
 /**
  * The computer's bar (docs/DESIGN.md "Computers", "The bar"): one 40px row
@@ -275,10 +276,7 @@ export function vmScreenSeam(host: string, vm: VmState | undefined): VmScreenSea
     detail: display.detail,
     canResize: display.canResize,
     onPick: (pick) =>
-      void registry
-        .linkOf(host)
-        .request("work.winvm.settings", pick)
-        .catch((err: unknown) => loadToast().then((toast) => toast.error(hostFailure(host, err, "did not change the Windows VM's screen", true)))),
+      void setVmScreen(host, pick).catch((err: unknown) => loadToast().then((toast) => toast.error(hostFailure(host, err, "did not change the Windows VM's screen", true)))),
   };
 }
 
@@ -319,7 +317,6 @@ export function VmMenu({ host, state, held, screen, onOpenChange }: VmMenuProps)
   const [points, setPoints] = useState(false);
   const rows = vmMenuRows({ state, held, screen, may: { admin, operate } });
   const fail = (act: string) => (err: unknown) => void loadToast().then((toast) => toast.error(hostFailure(host, err, act, true)));
-  const link = { request: (method: string, params: object) => registry.linkOf(host).request(method, params) };
   return (
     <>
       <RowsMenu
@@ -331,10 +328,10 @@ export function VmMenu({ host, state, held, screen, onOpenChange }: VmMenuProps)
         onPick={(id) => {
           if (id.startsWith("screen:")) return screen?.onPick({ screen: id.slice(7) as VmScreenPick });
           if (id.startsWith("detail:")) return screen?.onPick({ detail: id.slice(7) as VmDetail });
-          if (id === "sleep") return void link.request("work.winvm.sleep", {}).catch(fail("did not put the Windows VM to sleep"));
+          if (id === "sleep") return void sleepVm(host).catch(fail("did not put the Windows VM to sleep"));
           if (id === "restart")
             return void confirmAction({ title: "Restart Windows?", body: "Save your work in it first. Sign-ins stay.", action: "Restart" }).then(
-              (ok) => ok && link.request("work.winvm.restart", {}).catch(fail("did not restart Windows")),
+              (ok) => ok && restartVm(host).catch(fail("did not restart Windows")),
             );
           if (id === "sign-in") return void signInOnVm(host).catch(fail("did not bring up the sign-in"));
           if (id === "points") setPoints(true);

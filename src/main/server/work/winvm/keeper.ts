@@ -87,6 +87,8 @@ export interface KeeperDeps {
   now?: () => number
   /** a save of ours there that OneDrive has not uploaded yet (files/uploads.ts): idle, the machine still stays awake for it */
   owed?(): boolean
+  /** keeps the guest's picture just before it hibernates (still.ts); a failure or a wait past STILL_WAIT_MS never holds the sleep */
+  beforeSleep?(): Promise<void>
   /** how long a wake waits for Windows; default 5 min, setup's first boot and restart 10 min */
   timeouts?: Partial<Timeouts>
 }
@@ -111,6 +113,20 @@ export const NOT_HIBERNATED = 'Windows did not hibernate.'
 export const ONLY_ASLEEP = 'Restore points are made and used only while the Windows VM sleeps. Put it to sleep first.'
 export const NO_POINT = 'That restore point is gone.'
 export const BEFORE_SETUP = 'Before setup'
+export const HELD = 'A thread is using the Windows VM. Stop it or take over first.'
+export const RESTARTING_WORDS = 'Restarting Windows'
+/** How many wakes the usual wake is the median of. */
+export const WAKES_KEPT = 5
+/** The longest a sleep waits for its picture. */
+const STILL_WAIT_MS = 3000
+
+/** The median of a few numbers; null of none. */
+export function median(xs: readonly number[]): number | null {
+  if (!xs.length) return null
+  const s = [...xs].sort((a, b) => a - b)
+  const m = Math.floor(s.length / 2)
+  return s.length % 2 ? s[m]! : Math.round((s[m - 1]! + s[m]!) / 2)
+}
 
 const words = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
@@ -127,6 +143,10 @@ export class Keeper {
   private viewers = 0
   private driving = false
   private closedDown = false
+  /** how long the last wakes took, newest last (WAKES_KEPT of them) */
+  private wakes: number[] = []
+  /** asleep by a person's Sleep: the page waits for his Wake */
+  private heldAsleep = false
   private readonly t: Timeouts
 
   constructor(private readonly d: KeeperDeps) {
@@ -142,7 +162,7 @@ export class Keeper {
   }
 
   state(): WinvmState {
-    return { state: this.name, step: this.step, error: this.error, cannot: this.d.machine.cannot(), sleepAfter: this.d.sleepAfter(), since: this.since }
+    return { state: this.name, step: this.step, error: this.error, cannot: this.d.machine.cannot(), sleepAfter: this.d.sleepAfter(), since: this.since, wakeMs: median(this.wakes), heldAsleep: this.heldAsleep && this.name === 'asleep' }
   }
 
   private readonly stateListeners = new Set<(state: WinvmState) => void>()
@@ -237,13 +257,18 @@ export class Keeper {
       const cannot = this.d.machine.cannot()
       if (cannot) throw new Error(cannot)
       if (!this.d.machine.hasDisk()) throw new Error(NOT_SET_UP)
+      this.heldAsleep = false
+      const began = this.now()
+      // only a wake from sleep is a wake to count: a door opened again on a running machine says nothing of one
+      const cold = !this.d.machine.running()
       this.set('waking', WAKING_WORDS, null)
       try {
-        if (!this.d.machine.running()) await this.d.machine.start()
+        if (cold) await this.d.machine.start()
         await this.d.guest.ready(this.t.ready)
         await this.serviceUp()
         await this.openDoor()
         this.touch()
+        if (cold) this.wakes = [...this.wakes, this.now() - began].slice(-WAKES_KEPT)
         this.set('awake', null, null)
         return this.state()
       } catch (e) {
@@ -261,9 +286,39 @@ export class Keeper {
     return { socket: this.d.doorSocket, token }
   }
 
-  /** Hibernates the guest. Resolves once QEMU has exited and the TPM is kept. */
-  sleep(): Promise<WinvmState> {
-    return this.serial(() => this.hibernate())
+  /** Hibernates the guest. Resolves once QEMU has exited and the TPM is kept. `by`: a person's press holds it asleep until his Wake; the idle sleep does not. */
+  sleep(by: 'person' | 'idle' = 'person'): Promise<WinvmState> {
+    return this.serial(async () => {
+      this.heldAsleep = by === 'person'
+      return this.hibernate()
+    })
+  }
+
+  /**
+   * Restarts Windows cleanly through its own shutdown (`shutdown /r`, never forced): the guest's apps are asked to
+   * close, so one that holds unsaved work keeps it from going down rather than losing it. Refused while a thread
+   * holds the machine (`held`). Resolves once the door is open again.
+   */
+  restart(held: () => boolean): Promise<WinvmState> {
+    if (held()) return Promise.reject(new Error(HELD))
+    return this.serial(async () => {
+      if (held()) throw new Error(HELD)
+      if (this.name !== 'awake' || !this.d.machine.running()) throw new Error('The Windows VM is not awake.')
+      this.set('waking', RESTARTING_WORDS, null)
+      this.closeLink()
+      try {
+        await this.d.guest.reboot()
+        await this.d.guest.ready(this.t.setupReady)
+        await this.d.guest.startService()
+        await this.openDoor()
+        this.touch()
+        this.set('awake', null, null)
+        return this.state()
+      } catch (e) {
+        this.fail(e)
+        throw e
+      }
+    })
   }
 
   /** The sleep itself, inside a change already running. */
@@ -273,6 +328,8 @@ export class Keeper {
       return this.state()
     }
     this.set('going-to-sleep', 'Hibernating Windows', null)
+    // the desk as he leaves it: the page shows it washed back while it sleeps
+    if (this.d.beforeSleep) await Promise.race([this.d.beforeSleep().catch((e) => this.d.log(`winvm: the picture at sleep was not kept: ${words(e)}`)), new Promise((r) => setTimeout(r, STILL_WAIT_MS))])
     this.closeLink()
     try {
       await this.d.guest.hibernate()
@@ -412,7 +469,7 @@ export class Keeper {
     // Asleep, OneDrive there uploads nothing: a write of ours still on its way to Teams holds the machine awake.
     if (this.d.owed?.()) return
     this.d.log('winvm: idle; hibernating')
-    this.sleep().catch((e) => this.d.log(`winvm: idle hibernate failed: ${words(e)}`))
+    this.sleep('idle').catch((e) => this.d.log(`winvm: idle hibernate failed: ${words(e)}`))
   }
 
   /** Work turned off or the host closes: the forward goes; the machine is left as it is (the watcher covers a stop). */

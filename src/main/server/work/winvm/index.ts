@@ -20,6 +20,8 @@ import { HELPER_PORT, HelperDoor } from './helperDoor'
 import { rigConfig, rigPaths } from './machine/config'
 import { TC_OFFICE_CS } from '../office/com/source'
 import { uploadsOwed } from './owed'
+import { stillRefusal, vmStill } from './still'
+import { personsDesktop } from '../../../headless'
 
 /**
  * The Windows VM pillar's server module (docs/agents/work-winvm.md): the
@@ -27,7 +29,7 @@ import { uploadsOwed } from './owed'
  * The windows_* tools that drive it come with the service on the box (B5).
  */
 
-export const NOT_A_PERSON = 'refused: only a person sets the Windows VM up, puts it to sleep, changes its settings or its restore points'
+export const NOT_A_PERSON = 'refused: only a person sets the Windows VM up, puts it to sleep, restarts it, changes its settings or its restore points'
 
 /** The host setting that holds how long an idle machine stays awake. */
 export const SLEEP_AFTER_SETTING = 'work.winvm.sleepAfter'
@@ -108,6 +110,17 @@ type KeeperFactory = (ctx: WorkCtx) => Omit<KeeperDeps, 'push' | 'pushPoints'>
 let factory: KeeperFactory = realKeeperDeps
 let keeper: Keeper | null = null
 
+/** Whether a thread holds the machine now (vm.ts's lease, wired by the host): his Restart waits for it. */
+let vmHeld: () => boolean = () => false
+export function configureVmHeld(fn: (() => boolean) | null): void {
+  vmHeld = fn ?? (() => false)
+}
+/** This host's own socket is a person's desktop (never the box): a test's say in place of the platform's. */
+let desktop: () => boolean = () => personsDesktop()
+export function configureWinvmDesktop(fn: (() => boolean) | null): void {
+  desktop = fn ?? (() => personsDesktop())
+}
+
 /** A test's fake machine and guest in place of the real ones; null puts the real ones back. */
 export function configureWinvmKeeper(f: KeeperFactory | null): void {
   keeper?.close()
@@ -134,7 +147,10 @@ function keeperOf(ctx: WorkCtx): Keeper {
       told(state)
     },
     pushPoints: (points) => ctx.push({ push: 'work.winvm.points', points }),
-    owed: () => uploadsOwed()
+    owed: () => uploadsOwed(),
+    beforeSleep: async () => {
+      await vmStill()?.keep()
+    }
   })
   return keeper
 }
@@ -181,6 +197,14 @@ export const winvm: WorkModule = {
       case 'work.winvm.sleep':
         if (by.kind === 'model') throw new Error(NOT_A_PERSON)
         return handled(await keeperOf(ctx).sleep())
+      case 'work.winvm.still': {
+        const refusal = stillRefusal(by, desktop())
+        if (refusal) throw new Error(refusal)
+        return handled({ still: vmStill()?.read() ?? null })
+      }
+      case 'work.winvm.restart':
+        if (by.kind === 'model') throw new Error(NOT_A_PERSON)
+        return handled(await keeperOf(ctx).restart(vmHeld))
       case 'work.winvm.setup': {
         if (by.kind === 'model') throw new Error(NOT_A_PERSON)
         const k = keeperOf(ctx)
