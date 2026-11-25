@@ -17,6 +17,7 @@ import { nameInLine } from "../../lib/hostWords";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { nativePlatform } from "../../lib/native";
 import { isWebMode } from "../../lib/nativeWeb";
+import { useKeptRetry } from "./keptRetry";
 
 /**
  * Settings → Work, a section a host: the folders on it that Files lists as shared places
@@ -66,6 +67,7 @@ export function TeamsFilesRow({ link, title, host, editable }: { link: Link | nu
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "web"; library: TeamsLibrary } | null>(null);
   const value = read.value;
+  const kept = useKeptRetry(read.error, value === undefined && read.error === null);
   const add = editable && value ? (
     // A ghost press over a column of ghost presses (Remove) and switches: its box ends on the column's edge as theirs do,
     // so its words end where Remove's do (plan §3.1). Never pulled past the edge, as a press over a column of selects is.
@@ -76,15 +78,15 @@ export function TeamsFilesRow({ link, title, host, editable }: { link: Link | nu
   if (!value)
     return (
       <PageSection title={title}>
-        {read.error ? (
+        {kept.error ? (
           <PageError
             action={
-              <Button variant="ghost" size="sm" onClick={read.retry}>
-                Retry
+              <Button variant="ghost" size="sm" disabled={kept.retrying} onClick={() => kept.press(read.retry)}>
+                <BusyLabel busy={kept.retrying} label="Retry" />
               </Button>
             }
           >
-            {folderFailure(read.error, host, "could not list its folders")}
+            {folderFailure(kept.error, host, "could not list its folders")}
           </PageError>
         ) : (
           <PageRowsSkeleton rows={1} description control="button" />

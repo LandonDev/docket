@@ -238,10 +238,13 @@ describe("the frame", () => {
     expect(f.exported).toEqual(["docx"]);
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     expect(f.asked).toHaveLength(2);
-    expect(document.querySelector("[data-preview-failed]")).toBeNull();
-    // It knows nothing of how many pages there were: a failed draw taught it nothing.
-    expect(head()).toBe("Drawing the pages");
+    // His Retry keeps the failure in place, its Retry spinning, never the bones, until the draw answers.
+    expect(document.querySelector("[data-preview-failed]")).not.toBeNull();
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
     await f.answer({ picture: paged("r1"), drops: [] });
+    expect(document.querySelector("[data-preview-failed]")).toBeNull();
     await waitFor(() => expect(count()).toBe("Page 1 of 3"));
     await act(async () => fireEvent.click(screen.getByRole("tab", { name: "PDF" })));
     await f.fail("The document’s host could not print the page.");

@@ -35,6 +35,27 @@ describe("LinkPicker", () => {
     expect(screen.getByRole("option", { name: /Spring budget/ })).toBeTruthy();
   });
 
+  it("keeps the failed list's line with Retry spinning, never Loading…, until the list answers", async () => {
+    let answer!: (v: unknown) => void;
+    let asked = 0;
+    const request = vi.fn((method: string) => {
+      if (method !== "work.docs.find") return Promise.reject(new Error("unexpected"));
+      return asked++ === 0 ? Promise.reject(new Error("No answer in 4 s")) : new Promise((r) => (answer = r));
+    });
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", request } as never);
+    await act(async () => void render(<LinkPicker env="env_box" workspaceId="w" project={{ id: "p", name: "Spring LAN" }} kind="document" onClose={() => {}} />));
+    const words = screen.getByRole("alert").textContent;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(screen.getByRole("alert").textContent).toBe(words);
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    expect(screen.queryByText("Loading…")).toBeNull();
+    await act(async () => answer({ entries: [DOC] }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("option", { name: /Spring budget/ })).toBeTruthy();
+  });
+
   it("says a refused link in his words, never the link's text", async () => {
     const request = vi.fn(async (method: string) => {
       if (method === "work.docs.find") return { entries: [DOC] };

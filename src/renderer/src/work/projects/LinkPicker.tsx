@@ -5,7 +5,7 @@ import { FIND_KIND_WORDS, FIND_WHERE_WORDS, type FindEntry } from "@shared/work/
 import { mentionMatches } from "@shared/work/mentions";
 import { PickerDialog, PickerNote, pickerRowClass } from "../../chrome/PickerDialog";
 import { usePointerHighlight } from "../../hooks/usePointerHighlight";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
 import { hostFailure } from "../../lib/hostFailure";
 
@@ -43,6 +43,8 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
   const [error, setError] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  // His Retry keeps the failure in place, its Retry spinning, until the list answers or fails again.
+  const [retrying, setRetrying] = useState(false);
   const [linking, setLinking] = useState<string | null>(null);
 
   useEffect(() => {
@@ -50,15 +52,21 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
     registry
       .linkOf(env)
       .request<FindAnswer>("work.docs.find", { workspaceId, refresh: true })
-      .then((answer) => live && setFound(answer.entries))
-      .catch((err: unknown) => live && setListError(hostFailure(env, err, "could not list what to link")));
+      .then((answer) => {
+        if (!live) return;
+        setFound(answer.entries);
+        setListError(null);
+      })
+      .catch((err: unknown) => live && setListError(hostFailure(env, err, "could not list what to link")))
+      .finally(() => live && setRetrying(false));
     return () => {
       live = false;
     };
   }, [env, workspaceId, attempt]);
   // The query stays as he typed it: the list comes back narrowed by it.
   const retry = (): void => {
-    setListError(null);
+    if (retrying) return;
+    setRetrying(true);
     setAttempt((n) => n + 1);
   };
 
@@ -112,8 +120,8 @@ export function LinkPicker({ env, workspaceId, project, kind, onClose }: { env: 
         // A note's 28px line, in red, with its way back at the end.
         <div role="alert" data-link-picker-failed className="flex min-h-7 items-center gap-2 pr-1 pl-3 text-[13px]">
           <span className="min-w-0 flex-1 text-destructive">{listError}</span>
-          <Button variant="ghost" size="xs" onClick={retry}>
-            Retry
+          <Button variant="ghost" size="xs" disabled={retrying} onClick={retry}>
+            <BusyLabel busy={retrying} label="Retry" />
           </Button>
         </div>
       ) : note ? (

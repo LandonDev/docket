@@ -240,6 +240,46 @@ describe("the Windows VM in Settings → Work", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
+  it("keeps the points' failure with its Retry spinning until the points answer, never a bone", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.pointsFail = "work.winvm.points: socket hung";
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    let land!: (v: unknown) => void;
+    h.pointsHold = new Promise((r) => (land = r));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(screen.getByText("The box could not read the restore points.")).toBeTruthy();
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    expect(document.querySelector("[data-points-bone]")).toBeNull();
+    await act(async () => land({ points: [] }));
+    expect(screen.getByText("None yet")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("keeps the machine's failure with its Retry spinning until the host answers", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    let answer!: (v: unknown) => void;
+    const request = vi.fn(async (method: string) => {
+      if (method !== "work.winvm.state") return Promise.reject(new Error("not handled"));
+      return request.mock.calls.filter(([m]) => m === "work.winvm.state").length === 1 ? Promise.reject(new Error("No answer in 4 s")) : new Promise((r) => (answer = r));
+    });
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request, onPush: () => () => undefined, onOpen: () => () => undefined } as never);
+    render(<WinvmSection hosts={["box"]} />);
+    await flush();
+    const line = screen.getByText("The box did not answer. Try again once it is connected.");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(line.isConnected).toBe(true);
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => answer(at({ state: "asleep" })));
+    expect(screen.queryByText("The box did not answer. Try again once it is connected.")).toBeNull();
+  });
+
   it("holds the count's line with a bone while the points are read, then the count in its place", async () => {
     let land!: (v: unknown) => void;
     h.pointsHold = new Promise((r) => (land = r));

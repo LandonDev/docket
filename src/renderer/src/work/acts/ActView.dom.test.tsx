@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defineChunk } from "../../lib/lazyChunk";
 
-const tries = vi.hoisted(() => ({ n: 0 }));
+const tries = vi.hoisted(() => ({ n: 0, again: 0, land: null as null | (() => void) }));
 vi.mock("./registry", async () => ({
   ACT_VIEWS: {
     "form.publish": {
@@ -15,6 +15,14 @@ vi.mock("./registry", async () => ({
       }),
     },
     "frameio.comment": { kind: "frameio.comment", chunk: defineChunk("test-act-slow", () => new Promise(() => {})) },
+    "msform.publish": {
+      kind: "msform.publish",
+      chunk: defineChunk("test-act-again", async () => {
+        if (tries.again++ === 0) throw new Error("chunk failed");
+        await new Promise<void>((r) => (tries.land = r));
+        return { View: () => <div data-slot="act-payload">The Microsoft form</div> };
+      }),
+    },
   },
 }));
 
@@ -54,6 +62,27 @@ describe("ActView's readiness", () => {
     const ready: boolean[] = [];
     render(<ActView item={{ kind: "teams.post", payload: { chat: "Staff", text: "Hi" } } as never} env="box" onReady={(r) => ready.push(r)} />);
     expect(ready).toEqual([true]);
+  });
+});
+
+describe("a kind's view his Retry loads again", () => {
+  it("keeps the failed line with Retry spinning, never the bones, until the view comes", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { container } = render(<ActView item={{ kind: "msform.publish", payload: {} } as never} env="box" />);
+    await flush();
+    await flush();
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Retry" })));
+    await flush();
+    expect(screen.getByRole("alert").textContent).toContain("Its details could not be read.");
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    expect(container.querySelectorAll('[data-slot="skeleton"]').length).toBe(0);
+    await act(async () => tries.land?.());
+    await flush();
+    await flush();
+    expect(screen.getByText("The Microsoft form")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
 

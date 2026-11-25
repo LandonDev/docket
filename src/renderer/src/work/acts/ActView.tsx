@@ -1,9 +1,9 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import type { Chunk } from "../../lib/lazyChunk";
 import { ACT_VIEWS, type ActViewProps } from "./registry";
 import { GenericActView } from "./GenericActView";
 import { Skeleton } from "../../components/ui/skeleton";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 
 type ViewChunk = Chunk<{ View: (props: ActViewProps) => ReactNode }>;
 
@@ -37,7 +37,7 @@ export function ActView({ onReady, ...props }: ActViewProps & { onReady?: (ready
     };
   }, []);
   // `surface` is cached per name in the chunk, its fallback with it: a fallback that holds no item's payload.
-  const View = chunk ? chunk.surface("View", <ActSkeleton />, (retry) => <ActFailed retry={retry} />) : GenericActView;
+  const View = chunk ? chunk.surface("View", <ActWaiting kind={chunk.name} />, (retry) => <ActFailed kind={chunk.name} retry={retry} />) : GenericActView;
   return (
     <div ref={box} className="contents">
       <View {...props} />
@@ -49,15 +49,50 @@ export function ActView({ onReady, ...props }: ActViewProps & { onReady?: (ready
  * A kind's view that failed: one quiet line in the generic view's own words, with Retry, and no bones under it (a
  * view half drawn reads as still loading). It draws no `act-payload`, so Send stays off until the thing is on screen.
  */
-function ActFailed({ retry }: { retry: () => void }) {
+function ActFailed({ kind, retry, busy = false }: { kind: string; retry: () => void; busy?: boolean }) {
   return (
     <p role="alert" data-act-failed className="flex items-baseline gap-2 text-[13px] leading-5 text-muted-foreground">
       Its details could not be read.
-      <Button variant="ghost" size="xs" onClick={retry}>
-        Retry
+      <Button
+        variant="ghost"
+        size="xs"
+        disabled={busy}
+        onClick={() => {
+          setRetrying(kind, true);
+          retry();
+        }}
+      >
+        <BusyLabel busy={busy} label="Retry" />
       </Button>
     </p>
   );
+}
+
+/** The kinds whose view his Retry is loading again: their wait keeps the failed line, its Retry spinning, never bones. */
+const retrying = new Set<string>();
+const heard = new Set<() => void>();
+const ending = new Map<string, ReturnType<typeof setTimeout>>();
+function setRetrying(kind: string, on: boolean): void {
+  if (retrying.has(kind) === on) return;
+  if (on) retrying.add(kind);
+  else retrying.delete(kind);
+  for (const fn of heard) fn();
+}
+
+/** A kind's view on its way: its bones, or after his Retry the failed line with that Retry spinning until the view or a new failure takes its place. */
+function ActWaiting({ kind }: { kind: string }) {
+  const on = useSyncExternalStore(
+    (fn) => (heard.add(fn), () => void heard.delete(fn)),
+    () => retrying.has(kind),
+  );
+  // The wait ends when the view or the boundary's failure replaces it: his press has its answer then. The end is a
+  // beat late, so a remount at once (StrictMode's) is not taken for it.
+  useEffect(() => {
+    clearTimeout(ending.get(kind));
+    ending.delete(kind);
+    return () => void ending.set(kind, setTimeout(() => (ending.delete(kind), setRetrying(kind, false)), 0));
+  }, [kind]);
+  return on ? <ActFailed kind={kind} retry={() => undefined} busy /> : <ActSkeleton />;
 }
 
 /**

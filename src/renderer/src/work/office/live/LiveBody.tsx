@@ -1,5 +1,5 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
-import { Button } from "../../../components/ui/button";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { BusyLabel, Button } from "../../../components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../../../components/ui/empty";
 import type { LiveTicketAsk } from "@shared/work/officeLive";
 import { liveAskKey, liveAskUrl, liveLayer, type LiveLayer, type LiveRect } from "./layer";
@@ -58,6 +58,10 @@ export function LiveBody({ itemId, ask, app, covered, full, layer = liveLayer }:
     (fn) => layer.subscribe(itemId, fn),
     () => layer.state(itemId),
   );
+  // His Retry keeps "did not open" in place, its Retry spinning, until the file comes up or fails again.
+  const [kept, setKept] = useState<string | null>(null);
+  if (kept !== null && (state.failed !== null || state.stage !== "start")) setKept(null);
+  const failed = state.failed ?? kept;
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -95,15 +99,23 @@ export function LiveBody({ itemId, ask, app, covered, full, layer = liveLayer }:
             </Button>
           </EmptyContent>
         </Empty>
-      ) : state.failed ? (
+      ) : failed ? (
         <Empty>
           <EmptyHeader>
             <EmptyTitle>{APP_NAME[app]} for the web did not open</EmptyTitle>
-            <EmptyDescription>{state.failed}</EmptyDescription>
+            <EmptyDescription>{failed}</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
-            <Button variant="secondary" size="sm" onClick={() => layer.retry(itemId)}>
-              Retry
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={kept !== null}
+              onClick={() => {
+                setKept(state.failed);
+                layer.retry(itemId);
+              }}
+            >
+              <BusyLabel busy={kept !== null} label="Retry" />
             </Button>
           </EmptyContent>
         </Empty>

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { DocOpen } from "@shared/contract-work-docs";
 import type { CanvasSource } from "@shared/work";
 import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider } from "work-kit/editor";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { useColorScheme } from "../../hooks/useColorScheme";
 import { useDocument, useOpened } from "../docs/DocumentCanvas";
@@ -20,15 +20,30 @@ export function Description({ env, docId, readOnly, lead }: { env: string; docId
   const source = useMemo((): CanvasSource => ({ at: "lifeos", table: "docs", id: docId }), [docId]);
   const [attempt, setAttempt] = useState(0);
   const got = useOpened(env, source, attempt);
+  // His Retry keeps the reason in place, its Retry spinning, until the document answers or fails again.
+  const [press, setPress] = useState<{ error: string; seen: boolean } | null>(null);
+  if (press && !press.seen && got === null) setPress({ ...press, seen: true });
+  else if (press?.seen && got !== null) setPress(null);
   if (got && "open" in got) return <Editor key={got.open.doc} host={got.host} open={got.open} readOnly={readOnly} />;
-  if (got && "error" in got)
+  const error = got && "error" in got ? got.error : (press?.error ?? null);
+  if (error !== null)
     return (
       <div data-description-lead className="flex flex-col gap-1">
         {lead ? <p className="text-[13px] leading-5 whitespace-pre-wrap text-foreground">{lead}</p> : null}
         <p className="flex items-baseline gap-2 text-xs text-muted-foreground">
-          <span className="min-w-0">{got.error}</span>
-          <Button type="button" variant="link" size="xs" className="h-auto shrink-0 px-0 text-xs" onClick={() => setAttempt((n) => n + 1)}>
-            Retry
+          <span className="min-w-0">{error}</span>
+          <Button
+            type="button"
+            variant="link"
+            size="xs"
+            className="h-auto shrink-0 px-0 text-xs"
+            disabled={press !== null}
+            onClick={() => {
+              setPress({ error, seen: false });
+              setAttempt((n) => n + 1);
+            }}
+          >
+            <BusyLabel busy={press !== null} label="Retry" />
           </Button>
         </p>
       </div>

@@ -178,4 +178,29 @@ describe("the pages", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
     await waitFor(() => expect(document.querySelector("[data-paged-page-failed]")).toBeNull());
   });
+
+  it("keeps \"Couldn't draw this page\" with its Retry spinning until the page is drawn", async () => {
+    const doc = fakeDoc(pagesOf(1));
+    let hold: Promise<void> | null = null;
+    let refuse = true;
+    const paint = doc.paint.bind(doc);
+    doc.paint = async (...args) => {
+      if (refuse) throw new Error("bad page");
+      await hold;
+      return paint(...args);
+    };
+    render(<PagedView bytes={bytes()} zoom="width" label="Plan" engine={fakeEngine(doc)} width={900} height={700} />);
+    expect(await screen.findByText("Couldn't draw this page")).toBeTruthy();
+    refuse = false;
+    let land!: () => void;
+    hold = new Promise((r) => (land = r));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    await act(async () => void (await new Promise((r) => setTimeout(r, 200))));
+    expect(screen.getByText("Couldn't draw this page")).toBeTruthy();
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    expect(retry.querySelector("[data-busy]")).not.toBeNull();
+    await act(async () => land());
+    await waitFor(() => expect(document.querySelector("[data-paged-page-failed]")).toBeNull());
+  });
 });

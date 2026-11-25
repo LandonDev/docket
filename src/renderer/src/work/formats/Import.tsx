@@ -53,13 +53,24 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
   const sourceKey = JSON.stringify(source);
   const latest = useRef(source);
   latest.current = source;
+  // His Retry keeps the failure in place until the import answers (its promise, for the press to spin on); any other
+  // run of the import draws the bones.
+  const pressed = useRef<(() => void) | null>(null);
   useEffect(() => {
     let live = true;
-    setFailed(null);
+    if (!pressed.current) setFailed(null);
+    const answered = (): void => {
+      pressed.current?.();
+      pressed.current = null;
+    };
     // Keyed by host, item and source: a file renamed while it imports is a new import, not the old one's answer. The
     // Files row that opened the item started this same import already (`importAhead`): its answer is this one.
     importItem(env, { id: item.id, sessionId: item.sessionId, source: latest.current }, attempt).then(
       (a) => {
+        if (live) {
+          setFailed(null);
+          answered();
+        }
         if (said.current) return;
         said.current = true;
         sayWarnings(a);
@@ -67,13 +78,14 @@ export function ImportBody({ item, source, env, shell }: CanvasBodyProps<unknown
       (err: unknown) => {
       if (!live) return;
       setFailed(err instanceof Error && err.message ? err.message : "It could not be read");
+      answered();
       },
     );
     return () => {
       live = false;
     };
   }, [env, item.id, item.sessionId, sourceKey, shell, attempt]);
-  return failed !== null ? <OpenFailed kind="document" why={failed} onRetry={() => setAttempt((n) => n + 1)} /> : <ItemSkeleton />;
+  return failed !== null ? <OpenFailed kind="document" why={failed} onRetry={() => new Promise<void>((done) => ((pressed.current = done), setAttempt((n) => n + 1)))} /> : <ItemSkeleton />;
 }
 
 /** A dropped file as the import's `from`: HTML read into blocks here, anything else its bytes. */

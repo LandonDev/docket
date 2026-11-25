@@ -8,7 +8,7 @@ import { Switch } from "../../components/ui/switch";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { loadToast } from "../../components/ui/toaster";
 import { workErrorWords } from "../../lib/workErrorWords";
-import { EmptyState } from "../../surfaces/SurfaceSkeleton";
+import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import type { PdfEngine } from "../pdf/engine";
 import { FOLD, PAGED_ZOOMS, PagedSkeleton, PagedView, ZOOM_WORDS, type PagedZoom } from "./PagedView";
 import { MARGIN_PRESETS, marginPresetOf, NotInReach, PAPER_POINTS, PAPERS, type CommonSetup, type Drawn, type MarginPreset, type OfficeApp, type PaperName, type PreviewFormat, type PreviewPicture, type PreviewSource } from "./preview";
@@ -99,6 +99,9 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
   const [format, setFormat] = useState(() => openingFormat(source.formats, kind, initial));
   const [run, setRun] = useState(0);
   const [draw, setDraw] = useState<Draw>({ status: "drawing" });
+  // His Retry on a failed preview: the failure stays, its Retry spinning, until the new draw answers.
+  const [retrying, setRetrying] = useState(false);
+  const retried = useRef(false);
   const [zoom, setZoom] = useState<PagedZoom>("width");
   const [place, setPlace] = useState<{ page: number; pages: number } | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -138,7 +141,8 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
     const job = new AbortController();
     pressed.current?.abort();
     pressed.current = null;
-    setDraw({ status: "drawing" });
+    if (!retried.current) setDraw({ status: "drawing" });
+    retried.current = false;
     setPlace(null);
     setChecking(null);
     Promise.resolve()
@@ -152,8 +156,13 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
             else known.current.set(formatId, drawn.picture.shown?.of ?? drawn.picture.pages);
           }
           setDraw({ status: "drawn", drawn });
+          setRetrying(false);
         },
-        (error: unknown) => !job.signal.aborted && setDraw({ status: "failed", message: messageOf(error, "It could not be drawn") }),
+        (error: unknown) => {
+          if (job.signal.aborted) return;
+          setDraw({ status: "failed", message: messageOf(error, "It could not be drawn") });
+          setRetrying(false);
+        },
       );
     return () => {
       job.abort();
@@ -339,7 +348,23 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
     body = (
       <div data-preview-failed className="flex min-h-0 min-w-0 flex-1 justify-center gap-4 overflow-auto bg-(--stage) px-6 pt-4 pb-6">
         <div className="flex min-h-[360px] w-[440px] max-w-full">
-          <EmptyState title={`${current?.label ?? "File"} preview failed${failure}.`} action={{ label: "Retry", onClick: () => setRun((n) => n + 1) }} />
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>{`${current?.label ?? "File"} preview failed${failure}.`}</EmptyTitle>
+            </EmptyHeader>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={retrying}
+              onClick={() => {
+                retried.current = true;
+                setRetrying(true);
+                setRun((n) => n + 1);
+              }}
+            >
+              <BusyLabel busy={retrying} label="Retry" />
+            </Button>
+          </Empty>
         </div>
         {/* The page set-up is still his to change; what the format drops is not known without a picture. */}
         {settings && !folded ? (

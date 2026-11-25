@@ -10,6 +10,7 @@ import { hostFailure } from "../../lib/hostFailure";
 import type { Link } from "../../lib/connection/link";
 import { useHostRead } from "../../lib/connection/hostRead";
 import { timeAgo } from "../../lib/duration";
+import { useKeptRetry } from "./keptRetry";
 
 /**
  * Settings → Work, "Where it runs": our Office add-in on one host
@@ -33,14 +34,15 @@ export function AddinRow({ link, title }: { link: Link | null | undefined; title
   const [removing, setRemoving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const keys = read.value?.keys;
+  const kept = useKeptRetry(read.error, read.value === undefined && read.error === null);
   const reload = (): void => setRound((n) => n + 1);
 
   if (!keys) {
-    if (!read.error) return <PageRowsSkeleton rows={1} description control="button" />;
+    if (!kept.error) return <PageRowsSkeleton rows={1} description control="button" />;
     return (
-      <PageRow title={title} error={hostFailure(link!.environmentId, read.error, "could not list the paired add-ins")}>
-        <Button variant="ghost" size="sm" onClick={read.retry}>
-          Retry
+      <PageRow title={title} error={hostFailure(link!.environmentId, kept.error, "could not list the paired add-ins")}>
+        <Button variant="ghost" size="sm" disabled={kept.retrying} onClick={() => kept.press(read.retry)}>
+          <BusyLabel busy={kept.retrying} label="Retry" />
         </Button>
       </PageRow>
     );

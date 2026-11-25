@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { PageRow, PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
 import { hostFailure } from "../../lib/hostFailure";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
+import { useKeptRetry } from "./keptRetry";
 
 /**
  * A Work workspace's page, "Where it runs": whether a Teams file on a desktop it may use is copied
@@ -18,12 +19,13 @@ export function TeamsCopyRow({ workspace, hostName, desktops }: { workspace: Pic
   const read = useHostRead(link, () => link.request<{ on: boolean }>("work.office.filesCopyGet", { workspaceId: workspace.id }), workspace.id);
   const [error, setError] = useState<string | null>(null);
   const title = `Copy Teams files to ${hostName}`;
+  const kept = useKeptRetry(read.error, read.value === undefined && read.error === null);
   if (!read.value) {
-    if (!read.error) return <PageRowsSkeleton rows={1} description control="switch" />;
+    if (!kept.error) return <PageRowsSkeleton rows={1} description control="switch" />;
     return (
-      <PageRow title={title} error={hostFailure(workspace.environmentId, read.error, "could not read whether it copies Teams files")}>
-        <Button variant="ghost" size="sm" onClick={read.retry}>
-          Retry
+      <PageRow title={title} error={hostFailure(workspace.environmentId, kept.error, "could not read whether it copies Teams files")}>
+        <Button variant="ghost" size="sm" disabled={kept.retrying} onClick={() => kept.press(read.retry)}>
+          <BusyLabel busy={kept.retrying} label="Retry" />
         </Button>
       </PageRow>
     );

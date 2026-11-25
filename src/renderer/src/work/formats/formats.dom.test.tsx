@@ -107,6 +107,22 @@ describe("Import", () => {
     expect(container.querySelector("[data-slot=skeleton]")).toBeNull();
   });
 
+  it("keeps the failure in place on his Retry, never the bones, until the import answers", async () => {
+    answer = () => Promise.reject(new Error("LibreOffice could not read it"));
+    const s = shell();
+    const { container } = render(<ImportBody item={{ id: "i6", sessionId: "t1" } as CanvasItem} source={{ at: "file", host: "env_box", path: "/w/Again.docx" }} env="env_box" state={undefined} setState={() => {}} shell={s.shell} />);
+    await waitFor(() => expect(container.querySelector("[data-canvas-failed]")).not.toBeNull());
+    let land: (v: unknown) => void = () => {};
+    answer = () => new Promise((resolve) => (land = resolve));
+    const asked = requests.length;
+    fireEvent.click(within(container.querySelector<HTMLElement>("[data-canvas-failed]")!).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(requests.length).toBe(asked + 1));
+    expect(container.querySelector("[data-canvas-failed]")).not.toBeNull();
+    expect(container.querySelector("[data-canvas-skeleton]")).toBeNull();
+    await act(async () => land({ source: { at: "file", host: "env_box", path: "/w/Again.tcdoc" }, title: "Again", itemId: "i6", warnings: [], outsiders: false }));
+    await waitFor(() => expect(container.querySelector("[data-canvas-failed]")).toBeNull());
+  });
+
   it("a file renamed while it imports is imported as itself, never answered with the old name's failure", async () => {
     let fail: (error: Error) => void = () => {};
     answer = () => new Promise((_, reject) => (fail = reject));

@@ -157,28 +157,33 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
   const [office, setOffice] = useState<{ status: VmOfficeStatus; libraries: number | null } | null>(null);
   const [signingIn, setSigningIn] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
+  /** his Retry of the machine's read is out */
+  const [retrying, setRetrying] = useState(false);
   const link = useMemo(() => registry.linkOf(env), [env]);
   const admin = useLinkMay(env, "work.winvm.settings");
   const operate = useLinkMay(env, "work.winvm.wake");
-  const loadPoints = useCallback((): void => {
-    setPointsError(null);
-    void link.request<{ points: WinvmPoint[] }>("work.winvm.points", {}).then(
-      (p) => setPoints(p.points),
+  // A failed read keeps its line until the answer replaces it: his Retry spins on it meanwhile, never a bone.
+  const loadPoints = useCallback((): Promise<void> => {
+    return link.request<{ points: WinvmPoint[] }>("work.winvm.points", {}).then(
+      (p) => {
+        setPoints(p.points);
+        setPointsError(null);
+      },
       (err: unknown) => {
         setPoints(null);
         setPointsError(hostFailure(env, err, "could not read the restore points"));
       },
     );
   }, [link, env]);
-  const load = useCallback((): void => {
-    void link.request<WinvmState>("work.winvm.state", {}).then(
+  const load = useCallback((): Promise<void> => {
+    const read = link.request<WinvmState>("work.winvm.state", {}).then(
       (s) => {
         setState(s);
         setError(null);
       },
       (err: unknown) => setError(hostFailure(env, err, "could not read the Windows VM")),
     );
-    loadPoints();
+    void loadPoints();
     // The screen size is read with the settings, the admin rule: a key that may not change it never asks.
     if (admin)
       void link.request<WinvmSettings>("work.winvm.settings", {}).then(
@@ -202,9 +207,10 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       ([status, libraries]) => setOffice({ status, libraries }),
       () => setOffice(null),
     );
+    return read;
   }, [link, env, admin, loadPoints]);
   useEffect(() => {
-    load();
+    void load();
     const offPush = link.onPush((push) => {
       if (push.push === "work.winvm") setState(push.state as WinvmState);
       if (push.push === "work.winvm.points") {
@@ -212,14 +218,14 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
         setPointsError(null);
       }
     });
-    const offOpen = link.onOpen(load);
+    const offOpen = link.onOpen(() => void load());
     return () => {
       offPush();
       offOpen();
     };
   }, [link, load]);
 
-  // a host that cannot have it shows nothing; one whose read failed says so with Retry
+  // a host that cannot have it shows nothing; one whose read failed says so with Retry, which spins until the answer
   if (state?.cannot) return null;
   const title = named ? `Windows VM on ${hostName(env)}` : "Windows VM";
   if (!state)
@@ -228,8 +234,16 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
         {error ? (
           <PageError
             action={
-              <Button variant="ghost" size="sm" onClick={load}>
-                Retry
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={retrying}
+                onClick={() => {
+                  setRetrying(true);
+                  void load().finally(() => setRetrying(false));
+                }}
+              >
+                <BusyLabel busy={retrying} label="Retry" />
               </Button>
             }
           >
@@ -259,7 +273,7 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       await link.request("work.winvm.settings", { sleepAfter });
     } catch (err) {
       setError(hostFailure(env, err, "did not save the change", true));
-      load();
+      void load();
     }
   };
   const signIn = async (): Promise<void> => {
@@ -280,7 +294,7 @@ function WinvmHost({ env, named }: { env: string; named: boolean }) {
       await link.request("work.winvm.settings", next);
     } catch (err) {
       setError(hostFailure(env, err, "did not save the change", true));
-      load();
+      void load();
     }
   };
   const turn = async (on: boolean): Promise<void> => {
@@ -329,7 +343,8 @@ export interface WinvmViewProps {
   points: readonly WinvmPoint[] | null;
   /** the points' read failed, in his words: the row says so with Retry */
   pointsError?: string | null;
-  onRetryPoints?: () => void;
+  /** his Retry: it spins until what it returns settles */
+  onRetryPoints?: () => void | Promise<void>;
   /** the guest's screen size; null until the host has said */
   screen: WinvmScreen | null;
   /** Sharp or Faster; null until the host has said */
@@ -353,6 +368,7 @@ export interface WinvmViewProps {
 /** The section, pure: the machine's row and, once it is set up, when it sleeps, its points, the edition and Office. */
 export function WinvmView({ title, state, points, pointsError, onRetryPoints, screen, detail = null, onDetail, resize, error, pressing, onPress, onSleepAfter, onScreen, onPoints, office, signIn, may = { admin: true, operate: true } }: WinvmViewProps) {
   const row = winvmRow(state);
+  const [retryingPoints, setRetryingPoints] = useState(false);
   // a host before live resize says no display: its rows are as they were
   const display = state.display;
   const live = display?.device === "virtio";
@@ -414,8 +430,16 @@ export function WinvmView({ title, state, points, pointsError, onRetryPoints, sc
           {pointsError ? (
             <PageRow title="Restore points" error={pointsError}>
               {onRetryPoints ? (
-                <Button variant="ghost" size="sm" onClick={onRetryPoints}>
-                  Retry
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={retryingPoints}
+                  onClick={() => {
+                    setRetryingPoints(true);
+                    void Promise.resolve(onRetryPoints()).finally(() => setRetryingPoints(false));
+                  }}
+                >
+                  <BusyLabel busy={retryingPoints} label="Retry" />
                 </Button>
               ) : null}
             </PageRow>

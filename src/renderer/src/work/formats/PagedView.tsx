@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { CSS_PER_POINT, pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
 import { COLUMN_TOP, currentPage, layOut, NARROW, PAGE_GAP, scaleFor, scrollTarget, visibleRange, type PageSlot } from "../pdf/layout";
@@ -315,6 +315,8 @@ const Sheet = memo(function Sheet({ doc, slot, scale, left }: { doc: PdfDoc; slo
   const [painted, setPainted] = useState(false);
   const [failed, setFailed] = useState(false);
   const [tries, setTries] = useState(0);
+  // His Retry keeps "Couldn't draw this page" in place, its Retry spinning, until the page is drawn or fails again.
+  const [retrying, setRetrying] = useState(false);
   const page = slot.page;
 
   useEffect(() => {
@@ -324,10 +326,19 @@ const Sheet = memo(function Sheet({ doc, slot, scale, left }: { doc: PdfDoc; slo
     // A zoom repaints after the column settles, not on every step of it; the old picture stays until the new one is whole.
     const wait = setTimeout(
       () => {
-        setFailed(false);
+        if (!retrying) setFailed(false);
         doc.paint(page, host, scale, words.current, job.signal).then(
-          () => !job.signal.aborted && setPainted(true),
-          () => !job.signal.aborted && setFailed(true),
+          () => {
+            if (job.signal.aborted) return;
+            setPainted(true);
+            setFailed(false);
+            setRetrying(false);
+          },
+          () => {
+            if (job.signal.aborted) return;
+            setFailed(true);
+            setRetrying(false);
+          },
         );
       },
       painted ? 120 : 0,
@@ -351,9 +362,13 @@ const Sheet = memo(function Sheet({ doc, slot, scale, left }: { doc: PdfDoc; slo
             variant="ghost"
             size="xs"
             className="text-(--paper-ink) hover:bg-[color-mix(in_srgb,var(--paper-ink)_6%,transparent)] active:bg-[color-mix(in_srgb,var(--paper-ink)_12%,transparent)]"
-            onClick={() => setTries((n) => n + 1)}
+            disabled={retrying}
+            onClick={() => {
+              setRetrying(true);
+              setTries((n) => n + 1);
+            }}
           >
-            Retry
+            <BusyLabel busy={retrying} label="Retry" />
           </Button>
         </div>
       ) : null}
