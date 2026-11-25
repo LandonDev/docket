@@ -2106,6 +2106,22 @@ describe('his own edits to a deck', () => {
     expect(calls.filter((c) => c === 'pptxstep')).toHaveLength(1)
   })
 
+  it("writes a table cell's words only over the words its box opened on: a save from PowerPoint to that cell since refuses them", async () => {
+    const tabled = (cells: string[][]): SlideInfo => slide(256, 'One', { shapes: [{ id: 9, name: 'Table 8', kind: 'table', bbox: [0.1, 0.6, 0.9, 0.9], text: '', cells }] })
+    writeFileSync(path, fakeBytes({ ...FAKE_DECK, slides: [tabled([['Team', 'Seats'], ['Gold', '12']]), ...FAKE_DECK.slides.slice(1)] }))
+    const item = openDeck(fileSource(path))
+    await call('work.slides.open', { itemId: item.id })
+    // A co-author's save to the same cell, two lines now, while his box was open on "Gold".
+    const saved = fakeBytes({ ...FAKE_DECK, slides: [tabled([['Team', 'Seats'], ['Gold\nand Black', '12']]), ...FAKE_DECK.slides.slice(1)] })
+    writeFileSync(path, saved)
+    const cell = (was: string[][]): SlideOp => ({ op: 'runs', slide: 256, shape: 9, row: 1, col: 0, was, paragraphs: [{ from: 0, runs: [{ text: 'Gold team', from: [0, 0] }] }] })
+    await expect(call('work.slides.edit', { itemId: item.id, ops: [cell([['Gold']])] })).rejects.toThrow('The deck changed while this was being made')
+    expect(readFileSync(path, 'utf8')).toBe(saved)
+    // Reload: the box is on the cell's words as they are now (a line a paragraph), and goes in.
+    await call('work.slides.edit', { itemId: item.id, ops: [cell([['Gold'], ['and Black']])] })
+    expect(calls.filter((c) => c === 'pptxstep')).toHaveLength(1)
+  })
+
   it("a read of the deck is no work on its file: a copy's send never waits behind the window's reads, and waits for his edit", async () => {
     const { workDone } = await import('../files/save')
     const item = openDeck(fileSource(path))

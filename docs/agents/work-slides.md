@@ -1628,7 +1628,10 @@ once (`work.slides.edit`), whole or not at all.
   PowerPoint's cell margins and no look of its own, so the box draws its
   words in the ink that reads on the cell's ground (`inkOn`) and the commit
   sends no look: the file keeps the table style's. Every send is the same
-  `runs` edit with `row` and `col` (the host checks no `was` on a cell),
+  `runs` edit with `row` and `col`, its `was` the cell's lines as the box
+  opened on them: the host reads that cell from the outline's `cells` in its
+  write turn and refuses with `CHANGED_WHILE` when a co-author's save changed
+  it since (the outline keeps a cell's words, not its runs),
   and the crash journal keeps the cell with the words. The box holds the outline's runs as the model (`modelOf`: each run with the
   `[paragraph, run]` it came from and the look it is drawn in), drawn into a
   contenteditable one span a run (`edit/dom.ts`). He types into it as into

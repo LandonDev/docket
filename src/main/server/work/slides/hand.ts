@@ -33,11 +33,18 @@ const packName = (): string => `${Date.now().toString().padStart(15, '0')}-${ran
 /**
  * Whether the shape a box's edit names still holds the words its `from`s were read from (`was`): run by run where the
  * window sends its runs (a look changed elsewhere cuts a run in two with the words alike), else a paragraph's words.
+ * A table's cell is read from the outline's `cells`, a line a paragraph (its vertical tab a line break within one), as
+ * the window's box drew it; the outline keeps no runs for a cell, so its words are compared.
  */
 function sameWords(info: DeckInfo, op: Extract<SlideOp, { op: 'runs' }>): boolean {
   const shape = info.slides.find((s) => s.id === op.slide)?.shapes.find((s) => s.id === op.shape)
-  const paras = shape?.paragraphs ?? []
   const was = op.was ?? []
+  if (op.row !== undefined) {
+    const cell = shape?.cells?.[op.row]?.[op.col ?? 0]
+    const lines = cell?.split('\n').map((line) => line.replace(/\v/g, '\n'))
+    return !!lines && lines.length === was.length && was.every((w, i) => (typeof w === 'string' ? w : w.join('')) === lines[i])
+  }
+  const paras = shape?.paragraphs ?? []
   return !!shape && paras.length === was.length && was.every((w, i) => (typeof w === 'string' ? w === paras[i].runs.map((r) => r.text).join('') : JSON.stringify(w) === JSON.stringify(paras[i].runs.map((r) => r.text))))
 }
 
@@ -55,10 +62,10 @@ export async function handEdit(ctx: Ctx, item: CanvasItem, ops: SlideOp[], signa
     try {
       copyWhole(path, base)
       const was = hashFile(base)
-      // A box's words go only over the words it was opened on: saved over since (in PowerPoint, from another window),
-      // the edit is refused before it is made, and his window keeps the words for Reload.
+      // A box's words go only over the words it was opened on, a table cell's too: saved over since (in PowerPoint,
+      // from another window), the edit is refused before it is made, and his window keeps the words for Reload.
       // So do his notes, over the notes his field began from.
-      const boxes = ops.filter((op): op is Extract<SlideOp, { op: 'runs' }> => op.op === 'runs' && op.was !== undefined && op.row === undefined)
+      const boxes = ops.filter((op): op is Extract<SlideOp, { op: 'runs' }> => op.op === 'runs' && op.was !== undefined)
       const notes = ops.filter((op): op is Extract<SlideOp, { op: 'notes' }> => op.op === 'notes' && op.was !== undefined)
       if (boxes.length || notes.length) {
         const info = await outlineAt(ctx, item, base, was, signal)
