@@ -690,10 +690,11 @@ export default function App() {
     sessionStore.setMounted(ids);
   }, [mountedTabIds, tabs]);
 
-  const activateTab = useCallback((id: string) => {
+  /** `behind`: the app switches the pane under what is on screen (after an archive or a delete): a Work view stays up. */
+  const activateTab = useCallback((id: string, o: { behind?: boolean } = {}) => {
     perfMark("tab-switch", id);
     // A thread picked leaves a Work view: the threads come back.
-    openWorkView(null);
+    if (!o.behind) openWorkView(null);
     workspaceActions.activateTab(id);
     const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === id);
     const shown = tab ? sessionStore.get(tab.focusedId) : undefined;
@@ -1584,11 +1585,11 @@ export default function App() {
     [],
   );
 
-  const focusOpenSession = useCallback((sessionId: string) => {
+  const focusOpenSession = useCallback((sessionId: string, o: { behind?: boolean } = {}) => {
     const tabId = workspaceActions.focusSession(sessionId);
     if (!tabId) return false;
     // activateTab brings the tab's workspace forward too (deck filter).
-    activateTab(tabId);
+    activateTab(tabId, o);
     setComposerFocused(true);
     return true;
   }, [activateTab]);
@@ -1693,13 +1694,13 @@ export default function App() {
       // one that waits on its transcript opens only if nothing was chosen meanwhile.
       const mine = o.behind ? null : choose();
       if (seq !== undefined) requestTranscriptJump(sessionId, seq);
-      if (focusOpenSession(sessionId)) return;
+      if (focusOpenSession(sessionId, o)) return;
       const session = await ensureOpenSession(sessionId);
       if (!session || (mine !== null && !stillChosen(mine, null, ""))) return;
       perfMark("open-ready", sessionId);
       // A tab may have landed during the await (a background open racing an
       // explicit ask for the same thread): show that one, never a second.
-      if (focusOpenSession(sessionId)) return;
+      if (focusOpenSession(sessionId, o)) return;
       // The thread takes the pane: a Work view over it (Tasks, Projects) leaves, as it does for a thread already open
       // (activateTab), so a press on a thread whose tab was closed never opens it under the view.
       if (!o.behind) openWorkView(null);
@@ -1969,7 +1970,7 @@ export default function App() {
       setSessions((prev) => [...prev.filter((session) => session.id !== sessionId), ...added]);
       setTabs(plan.tabs);
       if (plan.activeTabId !== workspaceTabsStore.getState().activeTabId) {
-        activateTab(plan.activeTabId);
+        activateTab(plan.activeTabId, { behind: true });
       }
       if (plan.select) void onSelectHistorySession(plan.select, undefined, { behind: true });
       else {

@@ -26,6 +26,10 @@ describe("a thread or a draft he opens takes the pane", () => {
   it("the neighbour the app picks after an archive or a delete fills the pane behind: no Work view leaves", () => {
     expect(app).toMatch(/onSelectHistorySession\(next\.id, undefined, \{ behind: true \}\)/);
     expect(app).toMatch(/onSelectHistorySession\(plan\.select, undefined, \{ behind: true \}\)/);
+    // A neighbour with a tab of its own is switched to behind the view too: activateTab keeps the view for `behind`.
+    expect(app).toMatch(/activateTab\(plan\.activeTabId, \{ behind: true \}\)/);
+    expect(app).toMatch(/if \(!o\.behind\) openWorkView\(null\);\s*workspaceActions\.activateTab\(id\)/);
+    expect(body("onSelectHistorySession").match(/focusOpenSession\(sessionId, o\)/g)).toHaveLength(2);
   });
 
   it("New thread and a project's New chat clear the Work view and claim his choice", () => {
