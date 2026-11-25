@@ -2,7 +2,7 @@
 export default [
   { name: "The list: the tracker's rows for one job, by target date; paused and backlog folded; Show finished", props: { screen: "list", height: 360 } },
   { name: "The list with its Threads column, as M7 fills it", props: { screen: "list", height: 360, threads: true } },
-  { name: "The list under 760px: two lines a row", props: { screen: "list", height: 420, width: 560, threads: true } },
+  { name: "The list under 896px: two lines a row", props: { screen: "list", height: 420, width: 560, threads: true } },
   { name: "The list while it reads: bones in the rows' shape", props: { screen: "list", height: 280, loading: true } },
   { name: "The board: a lane a state, no lane fill", props: { screen: "board", height: 420 } },
   { name: "A project: one reading column (brief, plan, files, log)", props: { screen: "project", height: 1000 } },

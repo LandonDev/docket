@@ -89,7 +89,7 @@ light one is built is "The light theme".
 | `link` | a link's words, in prose, a document, a form | `accent` | hsl(214 90% 38%) |
 | `warning` | the person is needed; the context meter from 85% full | amber | `#92450a` |
 | `waiting` | work parked on someone else: a task that waits | orange `#fb923c` | `#b93a0c` |
-| `stage-doing`, `stage-waiting`, `stage-done` | a stage of work as a mark on the project screens (a state's glyph, a meter's segment), never a word. Work in hand takes no hue, as a working thread takes none | `muted-foreground`, `waiting`, `success` | the same three |
+| `stage-doing`, `stage-waiting`, `stage-done` | a stage of work as a mark on the project screens (a state's glyph, a meter's segment), never a word. Work in hand takes no hue, as a working thread takes none; a waiting mark stays apart from late's red | `muted-foreground`, `waiting`, `success` | `muted-foreground`, `#d9620b` (a mark's 3:1, lighter and yellower than `destructive`), `success` |
 | `destructive` / `destructive-foreground` | failed, delete; the label on a solid red button | red / white | `#b91c1c` / white |
 | `success` | lines added, passed | green | `#046c4e` |
 | `info` | the one informational tint | blue | `#1d4ed8` |
@@ -2883,25 +2883,33 @@ Around the canvas:
     nothing to say), Done
     ("2 of 7") and Target. One 12px muted head row names the columns
     once; the project column has no label. Rows sort by target date,
-    none last, so a row never moves because its work does. Paused and
+    none last, then by name, as the tracker's, so a row never moves
+    because its work does. Paused and
     backlog fold under one quiet line ("1 paused, 1 in backlog"), Done
     and Dropped under "Show finished". One New project, in the header;
-    the ⋯ holds Board. Under 760px a row is two lines: the name and the
-    target, then the facts as one 12px comma sentence. Loading draws
-    bones in the rows' shape.
+    the ⋯ holds Board. Under 896px a row is two lines (six columns need
+    that room): the name and the
+    target, then the facts as one 12px comma sentence; a cut Next is
+    whole in its tip. Loading draws
+    bones in the rows' shape. A facts read that fails keeps every row and
+    its count, with one muted line at the foot, "Next and Waiting on did
+    not load.", and Retry.
   - **The board** (Board in the ⋯) keeps its lanes as open columns with
-    no fill, a plus each, so a card is the one surface: `background` with
+    no fill (a folded lane neither), a plus each but Done's and Dropped's, so a card is the one surface: `background` with
     a hairline (6px), a stronger hairline in hand, no shadow; it says its
     name, done of all and its target. Only a card being dragged lifts.
-  - **New project** is the form dialog: Name, then State and Target side
-    by side, Cancel and Create (the one primary). A refusal stays in the
+  - **New project** is the form dialog: Name, then State (Backlog, Active,
+    Paused: a project starts open) and Target side
+    by side, Cancel and Create (the one primary). While Create writes,
+    Cancel and Escape do nothing. A refusal stays in the
     dialog with its words and Create reads Retry.
   - **A project's page** is one reading column at the document page's
     measure (44rem): the name; one 12px muted facts line (job, state,
     "target Feb 14"), each a press that changes it; the brief (the
     description, whole, as prose); Plan, with done of all beside it in
     plain numbers and, at its end, the tabs (All, To do, Doing, Waiting,
-    each with a plain count; no chip) and Display, no rule above or
+    each but All with a plain count, since the head says the whole; no
+    chip) and Display, no rule above or
     below; the tree (or the task board, which keeps the brief, Files and
     Log around it); "2 done"; Files; Log. Sections stand 40px apart with
     a 14/600 head, no boxes. Files lists the project's documents, sheets,
@@ -2921,8 +2929,12 @@ Around the canvas:
     shadow or corner, 44% of the view's pane (560 to 960px); the work
     makes room for it on a pane of 1280px or more, and under that it lies
     over the work. Its Open and Close float over its corner so its title
-    stands level with the page's; its sub-tasks are flat rows, their key
-    in hand. A Work project's settings are a sheet with its name, state,
+    stands level with the page's; it is never wider than its pane. Its
+    sub-tasks are flat rows, their key
+    in hand, "1 of 3" in muted numbers on a task with sub-tasks, as on
+    the tree's rows. A task's page names its project once, in the way
+    back; under its title it names only a parent, where there is one
+    (the peek, with no way back, names both). A Work project's settings are a sheet with its name, state,
     target, rules, accounts and sharing and nothing of code; what LifeOS
     cannot take now is shown as words, never as disabled controls.
 - **The guest's page** (tempcode.landonhale.com) is the same editor on the
@@ -3144,7 +3156,7 @@ beside the page's name; no counts, no other filters, no cards.
   file made or an act done says its words with no mark. No lead mark on
   the row: the Threads cell says it once. Rows stand by target date, none
   last, so a row never moves because its work did; paused and backlog fold
-  under one quiet line a job. Under 760px a row is two lines, as the list's.
+  under one quiet line a job. Under 896px a row is two lines, as the list's.
 - **Presses.** The row opens the project's page in its job; the Threads
   cell's words open the thread. A job's head shows a 24px + at its end on
   hover or focus (`reveal`), New project in that job: the job's Projects

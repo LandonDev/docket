@@ -345,6 +345,8 @@ describe("a view opened before its chunk has landed", () => {
       await vi.waitFor(() => expect(screen.getByRole("button", { name: "A verb" })).toBeTruthy());
       expect(screen.getByText("The way back")).toBeTruthy();
       expect(screen.getByText("The week")).toBeTruthy();
+      // The view's glyph gives way when the heading holds a way back (a button), so the arrow is the one glyph before the name.
+      expect(document.querySelector("[data-view-glyph]")!.getAttribute("class")).toContain("group-has-[[data-view-heading]_button]/viewhead:hidden");
     } finally {
       WORK_VIEWS.agenda.chunk = was;
     }

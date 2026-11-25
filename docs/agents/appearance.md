@@ -138,6 +138,7 @@ time:
 | A brand mark that vanishes on the dark menu takes the foreground; Cosmic Admin's mark gets its tile | `MARK_SURFACE.dark` in `lib/addonBrand.ts` to the dark popover's luminance (0.0138); `--mark-tile: var(--matte)` in `:root` |
 | The terminal holds a program's colours to 4.5:1, and reads its ground from the pane | `MINIMUM_CONTRAST.dark` to 4.5 and drop `TERMINAL_DARK` (`lib/terminalPalette.ts`, `terminalTheme`) |
 | The full editor opens dark from a dark window | send `scheme` always in `work/sheets/host.ts` |
+| A waiting task's mark is a lighter, yellower orange than late's red, as in light | `--stage-waiting` in `:root` to a dark value clearly apart from `--destructive` (light has `#d9620b`); tokenContrast.test.ts's waiting-mark case then checks dark too |
 | The splash and the Windows caption glyphs take the app's own tokens | `--boot-background`, `--boot-foreground` in index.html's `:root`; `SYMBOL.dark` and `BACKING.dark` in `src/main/windowFrame.ts` |
 
 ## Palette copies

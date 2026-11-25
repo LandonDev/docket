@@ -182,9 +182,13 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
       className="absolute inset-0 z-40 flex min-h-0 min-w-0 flex-col bg-background outline-none"
     >
       {headless ? null : (
-        <div className="@container/viewhead flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
-          {/* The glyph is the first to give way: under 26rem of header the name and the view's controls keep its room. */}
-          <Icon className="size-3.5 shrink-0 text-muted-foreground @max-[26rem]/viewhead:hidden" />
+        <div className="group/viewhead @container/viewhead flex h-10 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4 text-[13px]">
+          {/* The glyph is the first to give way: under 26rem of header the name and the view's controls keep its room. On a
+              page inside the view the way back stands alone, its arrow the one glyph before the name (docs/DESIGN.md). */}
+          <Icon
+            data-view-glyph
+            className="size-3.5 shrink-0 text-muted-foreground @max-[26rem]/viewhead:hidden group-has-[[data-view-heading]_button]/viewhead:hidden"
+          />
           {/* The name gives way to the view's own controls only once they have given all they can: it is cut, never drawn under them. */}
           <span ref={heading} tabIndex={-1} data-view-heading className="focus-ring flex min-w-0 items-center rounded-sm">
             {/* The view's name, or the way back from a page inside it (Back to Agenda, Back to People): never held, since

@@ -789,6 +789,9 @@ html.theme-light {
   --thread-warning: #92450a;
   --thread-waiting: #b93a0c;
   --thread-danger: #b91c1c;
+  /* A waiting task's mark on the project screens is seen, not read (3:1): a lighter, yellower orange,
+     so it never reads as late's red beside it. Dark keeps its orange through --waiting. */
+  --stage-waiting: #d9620b;
   --thread-info: #1d4ed8;
   --thread-violet: #7c3aed;
   --thread-cyan: #0891b2;

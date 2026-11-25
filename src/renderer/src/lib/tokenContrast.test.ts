@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { contrast, luminance, over, resolve, themes, type Theme } from "./colourMath";
+import { contrast, hueDistance, luminance, over, resolve, themes, type Theme } from "./colourMath";
 import { HIGHLIGHT_INKS } from "./editorPalette";
 import { DARCULA, LIGHT } from "./intellijTheme";
 import { ANSI } from "./terminalPalette";
@@ -251,6 +251,14 @@ describe("the contrast contract", () => {
     // And light holds none of them back: every one passes there.
     const [, light] = THEMES.find(([name]) => name === "light")!;
     for (const h of HELD_IN_DARK) expect(ratio(light, h.ink, h.on, h.base), `${h.ink} on ${h.on} in light`).toBeGreaterThanOrEqual(h.floor ?? (h.ink.startsWith("--chart") ? 3 : 4.5));
+  });
+
+  it("in light, a waiting task's mark stands apart from late's red: lighter and yellower (dark keeps its orange)", () => {
+    const [, light] = THEMES.find(([name]) => name === "light")!;
+    const [, dark] = THEMES.find(([name]) => name === "dark")!;
+    expect(contrast(value(light, "--stage-waiting"), value(light, "--destructive"))).toBeGreaterThanOrEqual(1.5);
+    expect(hueDistance(value(light, "--stage-waiting"), value(light, "--destructive"))).toBeGreaterThanOrEqual(20);
+    expect(value(dark, "--stage-waiting")).toBe(value(dark, "--waiting"));
   });
 
   it("reads the tokens it checks", () => {
