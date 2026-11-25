@@ -454,6 +454,16 @@ uses the same words when reading older restore labels.
   written line and charts keyed `file:<path>` or `tcsheet:<path>`, a
   `.tcsheet`'s waiting suggestions in the service's folder, and the sheet a
   `.csv` opens as.
+- **An Excel file moved or deleted outside TempCode** (the Finder, a sync)
+  opens to read (`missing`), and its line says so in the words every kind's
+  moved line uses: "This file was moved or deleted", with Keep Both, in the
+  foreground under the name and as the quiet line over the grid in a thread.
+  Keep Both is `work.sheets.restore` at the revision the sheet shows: on a
+  missing file the package store makes the kept copy of that revision again
+  where the file was (`putBack` in packages.ts, through Files' `makeFile`,
+  which never writes over anything) and leaves the moved file alone; the
+  sheet goes on in the file put back, its waiting suggestions kept. A folder
+  gone too is said, and nothing is made. `sheets.test.ts` holds it.
 - **The saved line** (`shell.saved`, `savedLine` in model.ts) is said for
   every sheet: "saving" while his edits wait or are on their way, "saved"
   with the time of his last edit, a refusal in the host's words with its

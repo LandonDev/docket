@@ -1,5 +1,5 @@
 import { shiftMtime } from '../mtime.testkit'
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -255,6 +255,29 @@ describe('a package in the canvas', () => {
     expect(view.suggestions.map((s) => [s.row, s.state])).toEqual([[2, 'conflict']])
     // one by itself that cannot be taken is still refused in words, and nothing is written
     await expect(call('work.sheets.review', { itemId, which: { ids: [view.suggestions[0]!.id] }, verdict: 'accept' })).rejects.toThrow(/changed since/)
+  })
+
+  it('a file moved away keeps both: its newest kept copy is put back where it was, and the moved file is left alone', async () => {
+    const view = await call<SheetView>('work.sheets.open', { itemId })
+    const sheet = importXlsx(new Uint8Array(readFileSync(path))).workbook.sheetOrder[0]
+    const m = { id: SET_RANGE_VALUES, params: { unitId: PACKAGE_UNIT, subUnitId: sheet, cellValue: { 1: { 0: { v: 42 } } } } }
+    expect(await call('work.sheets.edit', { itemId, baseRev: view.rev, mutations: [m] })).toEqual({ rev: 1 })
+    const saved = readFileSync(path)
+    // moved in the Finder, and changed there since
+    mkdirSync(join(dir, 'Elsewhere'))
+    const moved = join(dir, 'Elsewhere', 'Budget.xlsx')
+    renameSync(path, moved)
+    writeFileSync(moved, 'his newer bytes')
+    const gone = await call<SheetView>('work.sheets.open', { itemId })
+    expect(gone.missing).toBe(true)
+    const back = await call<SheetView>('work.sheets.restore', { itemId, rev: gone.rev })
+    expect(back.missing).toBeUndefined()
+    expect(back.rev).toBe(1)
+    expect(readFileSync(path).equals(saved)).toBe(true)
+    expect(readFileSync(moved, 'utf8')).toBe('his newer bytes')
+    expect(valueAt('Data', 1, 0)).toBe(42)
+    // the file put back is the one the sheet stands on: the next edit saves into it, with no change from outside between
+    expect(await call('work.sheets.edit', { itemId, baseRev: 1, mutations: [m] })).toEqual({ rev: 2 })
   })
 
   it('lists history and compares two revisions', async () => {

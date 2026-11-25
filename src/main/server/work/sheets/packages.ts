@@ -6,7 +6,7 @@ import { basename, dirname, join } from 'node:path'
 import type { SheetCellDiff, SheetMutationJson, SheetRevision } from '@shared/contract-work-sheets'
 import { isObjectList, RULES_SET, type ObjectIds, type RulesSetParams } from '@shared/work/sheets'
 import { saveFile, versionWord } from '../files/save'
-import { versionOf } from '../files/write'
+import { makeFile, versionOf } from '../files/write'
 import { cellName, colName, parseA1 } from './a1'
 import type { Inspected, ReadCell } from './jobs'
 import { mutationsOf, NotSaved, type CellWrite } from './mutations'
@@ -587,10 +587,11 @@ export class PackageStore {
    * file held then (parts our grid never sees included) is what it holds again. Nothing after it is
    * lost: those revisions stay in the history. The grids reload.
    */
-  restore(path: string, rev: number, by: string): Promise<{ rev: number }> {
+  restore(path: string, rev: number, by: string): Promise<{ rev: number; same?: true }> {
     return this.serial(path, async () => {
       const locked = this.locked(path)
       if (locked) throw new NotSaved(locked)
+      if (!existsSync(path)) return this.putBack(path, rev, by)
       const row = this.sync(path)
       const copy = this.copyOf(path, rev)
       if (!existsSync(copy)) throw new Error('That version of the file is no longer kept.')
@@ -610,6 +611,30 @@ export class PackageStore {
       this.prune(path)
       return { rev: next }
     })
+  }
+
+  /**
+   * Keep Both on a file moved or deleted outside TempCode: revision `rev`'s kept copy is made again where the file was,
+   * never over anything (Files' `makeFile`, a new name only), and the moved file is left as it is. The sheet stands on
+   * the file put back; an older revision than the newest is a new revision, as any restore. `same`: the newest was put
+   * back, so the cells are where they were and what waits on them stays.
+   */
+  private async putBack(path: string, rev: number, by: string): Promise<{ rev: number; same?: true }> {
+    const row = this.row(path)
+    if (!row) throw new Error('Open the sheet first.')
+    const copy = this.copyOf(path, rev)
+    if (!existsSync(copy)) throw new Error('That version of the file is no longer kept.')
+    const dir = dirname(path)
+    if (!existsSync(dir)) throw new Error(`The folder ${basename(dir)} is gone too, so nothing was put back.`)
+    await makeFile({ roots: [dir] }, dir, basename(path), { from: copy, aside: true })
+    const next = rev === row.rev ? rev : row.rev + 1
+    if (next !== row.rev) {
+      copyFileSync(copy, this.copyOf(path, next))
+      this.db.prepare('INSERT INTO work_sheets_ops (path, rev, by, at, label, mutations) VALUES (?, ?, ?, ?, ?, ?)').run(path, next, by, this.now(), RESTORED, 'null')
+    }
+    this.db.prepare('UPDATE work_sheets_files SET rev = ?, stamp = ?, save_error = NULL WHERE path = ?').run(next, stampOf(path), path)
+    this.prune(path)
+    return next === row.rev ? { rev: next, same: true } : { rev: next }
   }
 
   /** Keeps the original and the newest copies. */

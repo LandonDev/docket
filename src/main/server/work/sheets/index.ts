@@ -282,9 +282,12 @@ export const sheets: WorkModule = {
         const held = notExcel(heldOf(item!, ctx.dataDir))
         await approves(s, item!, by)
         if (held.at === 'package') {
-          await s.packages.restore(held.path, req.params.rev, principalOf(ctx, by))
-          s.suggestions.orphanAll(storeKey(held))
-          s.changes.orphanAll(storeKey(held))
+          // (a moved file's Keep Both puts its newest copy back where it was: the cells are where they were)
+          const done = await s.packages.restore(held.path, req.params.rev, principalOf(ctx, by))
+          if (!done.same) {
+            s.suggestions.orphanAll(storeKey(held))
+            s.changes.orphanAll(storeKey(held))
+          }
         } else {
           await host(ctx, 'restore', { sheet: held.ref, rev: req.params.rev, by: principalOf(ctx, by) })
           // The sheet is another revision's now: a waiting format or rule may no longer be where the agent saw it.

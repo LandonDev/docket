@@ -54,6 +54,12 @@ export interface SheetHost {
   review(which: ReviewWhich, verdict: "accept" | "reject"): Promise<SheetView>;
   mode(mode: "suggests" | "writes"): Promise<SheetView>;
   undo(writeId: string): Promise<SheetView>;
+  /**
+   * Puts revision `rev` back (`work.sheets.restore`). On an Excel file moved or deleted outside TempCode it is Keep Both:
+   * the copy kept of `rev` is made again where the file was, and the moved file is left alone. Optional only so a stand-in
+   * host written before it still types.
+   */
+  restore?(rev: number): Promise<SheetView>;
   /** Writes the sheet out on the host (`work.sheets.export`); answers where it went, and what the file could not hold. */
   exportAs(format: "xlsx" | "csv", sheet?: string): Promise<{ path: string; folder?: string; left?: string[] }>;
   /** What he does with the Excel copy of an .xls, .ods or .tsv (`work.sheets.imported`): save it back, save it out as .xlsx, or read the file again. */
@@ -81,6 +87,7 @@ export function linkSheetHost(environmentId: string, itemId: string): SheetHost 
     review: (which, verdict) => call("work.sheets.review", { which, verdict }),
     mode: (mode) => call("work.sheets.mode", { mode }),
     undo: (writeId) => call("work.sheets.undo", { writeId }),
+    restore: (rev) => call("work.sheets.restore", { rev }),
     exportAs: (format, sheet) => call("work.sheets.export", { format, ...(sheet ? { sheet } : {}) }),
     imported: (act) => call("work.sheets.imported", { act }),
     switchApp: async () => {

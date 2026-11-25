@@ -103,6 +103,9 @@ export function holds(cell: SheetCellJson | null, put: SheetCellJson | null): bo
   return String(cell.v ?? "") === String(put.v ?? "");
 }
 
+/** A file moved or deleted under the sheet, in the words every kind's line uses (docs/DESIGN.md "The Files place"). */
+export const MOVED = "This file was moved or deleted";
+
 /** What saved means for a sheet now, as plain facts: the state, when, why, and the word of the one press it offers. */
 export interface SavedFacts {
   state: "saved" | "saving" | "offline" | "conflict" | "readonly";
@@ -110,8 +113,11 @@ export interface SavedFacts {
   /** where it is kept, where that is not the file the tab names: an .xls, .ods or .tsv saves to its Excel copy */
   where?: string;
   detail?: string;
-  /** the press that makes it right: Reload (the grid no longer matches the file) or Retry (the edits wait and go again) */
-  again?: "Reload" | "Retry";
+  /**
+   * the press that makes it right: Reload (the grid no longer matches the file), Retry (the edits wait and go again), or
+   * Keep Both (the file moved or was deleted: what the sheet holds is put back where it was, the moved file left alone)
+   */
+  again?: "Reload" | "Retry" | "Keep Both";
 }
 
 /**
@@ -120,7 +126,7 @@ export interface SavedFacts {
  * again); edits on their way are "saving"; else everything is in the file, since his last edit when he has made one.
  */
 export function savedLine(view: Pick<SheetView, "name" | "store" | "missing" | "readOnly" | "saveError" | "imported">, sendError: string | null, saving: boolean, savedAt: number | null): SavedFacts {
-  if (view.missing) return { state: "readonly", detail: `${view.name} moved` };
+  if (view.missing) return { state: "conflict", detail: MOVED, again: "Keep Both" };
   if (view.readOnly !== undefined) return { state: "readonly", detail: view.readOnly };
   const failed = sendError ?? view.saveError;
   if (failed) {

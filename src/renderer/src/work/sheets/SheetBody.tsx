@@ -25,7 +25,7 @@ import { univerGrid, type SheetGrid } from "./grid";
 import { linkSheetHost, type SheetHost } from "./host";
 import { ImportLine } from "./ImportLine";
 import { importRows, nameOf, runImport, savedTo } from "./imported";
-import { reviewBatches, saidLine, savedLine, sheetChanges } from "./model";
+import { MOVED, reviewBatches, saidLine, savedLine, sheetChanges } from "./model";
 import { EDIT_WAIT, SheetSync, syncOf, useSheetSync, type SheetSyncState } from "./sync";
 import { useSaving } from "../canvas/useCalm";
 import { copyText } from "../../lib/clipboard";
@@ -154,10 +154,10 @@ export function Body(props: Props) {
   useLayoutEffect(() => {
     shell.ready?.(ready);
   }, [shell, ready]);
-  useFeeds(shell, sync, failed ? null : view, state.sendError, changes, current, handle, locked, act, ready);
+  useFeeds(shell, sync, failed ? null : view, state.sendError, changes, current, handle, locked, act, ready, props.env);
   // Saving… only once a send has been out a while, or his edits waited past the grid's pause (canvas/calm.ts): every cell no longer blinks the line.
   const saving = useSaving({ edited: state.editedAt, pause: EDIT_WAIT, sent: state.sentAt }) && state.saving;
-  useSavedLine(shell, sync, failed ? null : view, state.sendError, saving, state.savedAt, state.offer ?? null);
+  useSavedLine(shell, sync, failed ? null : view, state.sendError, saving, state.savedAt, state.offer ?? null, props.env);
   // Preview is a state of the item: the frame over the grid, which stays mounted under it, out of reach, its place kept.
   // Each ask is counted: Print… pressed while Preview shows another format opens it on Print anew.
   const [previewing, setPreviewing] = useState<false | "last" | "print">(false);
@@ -464,10 +464,11 @@ function CustomFormatBody({ current, onClose, onApply }: { current: string; onCl
  * refusal an opened Excel file gave is a file the grid no longer matches, so its press is Reload; elsewhere the edits
  * wait and the press sends them again.
  */
-function useSavedLine(shell: CanvasShell, sync: SheetSync, view: SheetView | null, sendError: string | null, saving: boolean, savedAt: number | null, offer: SheetSyncState["offer"]): void {
+function useSavedLine(shell: CanvasShell, sync: SheetSync, view: SheetView | null, sendError: string | null, saving: boolean, savedAt: number | null, offer: SheetSyncState["offer"], env: string): void {
   const facts = view ? savedLine(view, sendError, saving, savedAt) : null;
-  // A failed save's reason is the host's: said in Work's words, naming the computer, else the line's own word.
-  const failure = facts && (facts.state === "conflict" || facts.state === "offline") ? (facts.detail ?? null) : null;
+  // A failed save's reason is the host's: said in Work's words, naming the computer, else the line's own word. A moved
+  // file's line is the app's own sentence.
+  const failure = facts && (facts.state === "conflict" || facts.state === "offline") && facts.again !== "Keep Both" ? (facts.detail ?? null) : null;
   const said = useFailedWords(failure);
   const line = facts && failure ? { ...facts, detail: said || "Couldn't save" } : facts;
   const key = line ? JSON.stringify([line, offer]) : "";
@@ -487,11 +488,25 @@ function useSavedLine(shell: CanvasShell, sync: SheetSync, view: SheetView | nul
       return () => shell.saved?.(null);
     }
     const { again, ...rest } = line;
-    shell.saved({ ...rest, ...(again ? { actions: [{ id: "again", label: again, run: () => sync.retry() }] } : {}) });
+    const run = again === "Keep Both" ? () => keepBoth(sync, env) : () => sync.retry();
+    shell.saved({ ...rest, ...(again && (again !== "Keep Both" || sync.host.restore) ? { actions: [{ id: again === "Keep Both" ? "keep" : "again", label: again, run }] } : {}) });
     return () => shell.saved?.(null);
     // `key` is the line by value: a view pushed again with the same facts says nothing new.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shell, sync, key]);
+  }, [shell, sync, key, env]);
+}
+
+/**
+ * Keep Both on an Excel file moved or deleted outside TempCode: the copy the sheet stands on is made again where the file
+ * was (the host never writes over anything there), and the moved file is left alone. The sheet goes on in the file put back.
+ */
+function keepBoth(sync: SheetSync, env: string): Promise<void> {
+  const view = sync.state.view;
+  if (!view || !sync.host.restore) return Promise.resolve();
+  return sync.host.restore(view.rev).then(
+    (next) => sync.view(next),
+    (error: unknown) => sayError(error, "Couldn't keep both", env),
+  );
 }
 
 /** What the body tells the pane: the mode, the one state line, the line after a direct write, the stepper, More's Chart. */
@@ -507,6 +522,7 @@ function useFeeds(
   act: (work: Promise<SheetView>, fallback: string) => Promise<void>,
   /** the grid has drawn the book, so the cells a change touches are on screen */
   ready: boolean,
+  env: string,
 ): void {
   const host = sync.host;
   const mode = view?.mode;
@@ -518,19 +534,19 @@ function useFeeds(
     return () => shell.mode(null);
   }, [shell, host, mode, shared, locked, act]);
 
-  const name = view?.name;
   const missing = view?.missing;
   const readOnly = view?.readOnly;
   const saveError = view ? (sendError ?? view.saveError) : undefined;
   const store = view?.store;
   useEffect(() => {
     // Read only asks nothing of him: one muted line, as on a deck; amber is for a line that needs him.
-    if (missing) shell.statusLine({ tone: "quiet", word: "Read only", detail: `${name} moved` });
+    // A file moved or deleted outside TempCode: what the sheet holds goes back where it was with Keep Both, as every kind's moved line offers.
+    if (missing) shell.statusLine({ tone: "quiet", word: MOVED, ...(sync.host.restore ? { action: { label: "Keep Both", run: () => keepBoth(sync, env) } } : {}) });
     else if (readOnly !== undefined) shell.statusLine({ tone: "quiet", word: "Read only", detail: readOnly });
     else if (saveError) shell.statusLine({ tone: "failed", word: "Couldn't save", detail: saveError, action: { label: store === "package" ? "Reload" : "Retry", run: () => sync.retry() }, saving: true });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
-  }, [shell, sync, name, missing, readOnly, saveError, store]);
+  }, [shell, sync, missing, readOnly, saveError, store, env]);
 
   const written = view?.written;
   const count = changes.changes.length;

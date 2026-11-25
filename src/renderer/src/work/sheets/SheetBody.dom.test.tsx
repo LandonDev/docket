@@ -1357,6 +1357,24 @@ describe("the sheet kind", () => {
     expect(line.textContent).toContain("Read only");
   });
 
+  it("says an Excel file moved or deleted outside TempCode in the words every kind's moved line uses, with Keep Both", async () => {
+    open(sheetView({ missing: true }));
+    await gridUp();
+    const line = await waitFor(() => {
+      const found = document.querySelector("[data-canvas-state]");
+      if (!found) throw new Error("no state line");
+      return found;
+    });
+    expect(line.getAttribute("data-canvas-state")).toBe("quiet");
+    // never "Nationals travel budget.xlsx moved": the header already names the file
+    expect(line.textContent).toContain("This file was moved or deleted");
+    expect(line.textContent).not.toContain("Nationals travel budget");
+    fireEvent.click(within(line as HTMLElement).getByRole("button", { name: "Keep Both" }));
+    // the copy the sheet stands on goes back where the file was, by the revision it shows
+    await waitFor(() => expect(sheetHost.calls).toContainEqual(["restore", 3]));
+    await waitFor(() => expect(document.querySelector("[data-canvas-state]")).toBeNull());
+  });
+
   it("says a sheet that did not open once, in the body, with no state line over it", async () => {
     sheetHost = fakeSheetHost(sheetView({ readOnly: "The workbook is protected" }), BOOK);
     sheetHost.load = async () => {

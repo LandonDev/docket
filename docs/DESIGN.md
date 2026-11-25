@@ -2143,7 +2143,8 @@ Around the canvas:
   pause, so a cell or a word never blinks it; a failure at once; no motion
   on the swap; it takes
   `foreground` only when it needs him, with at most two presses beside
-  it: Reload and Keep Both, the one conflict press everywhere). Edits a crash left unsent come back in the same
+  it: Reload and Keep Both, the one conflict press everywhere; a file moved or deleted under it reads "This file was
+  moved or deleted" with Keep Both, which puts what the tab holds back where the file was, a sheet's too). Edits a crash left unsent come back in the same
   foreground line as the file opens, the editor read only until he answers: "Edits from 2:14 PM were not saved" with
   Restore and Discard, or over a file that changed since, "… The file changed since" with Keep Both (a text file), Copy
   Edits (a sheet) or Copy Words (a deck's box, "The slide changed since") beside Discard. A copy that saves back to its file on

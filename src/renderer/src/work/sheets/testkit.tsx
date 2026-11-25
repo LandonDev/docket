@@ -158,6 +158,12 @@ export function fakeSheetHost(initial: SheetView, workbook: Workbook | { workboo
       host.view = { ...host.view, written: undefined };
       return host.view;
     },
+    async restore(rev) {
+      host.calls.push(["restore", rev]);
+      const { missing: _gone, ...rest } = host.view;
+      host.view = rest;
+      return host.view;
+    },
     async exportAs(format: "xlsx" | "csv", sheet?: string) {
       host.calls.push(["export", { format, sheet }]);
       return { path: `/host/files/${host.view.name.replace(/\.[^.]+$/, "")}.${format}`, folder: "/host/files", ...(host.exportLeft ? { left: host.exportLeft } : {}) };

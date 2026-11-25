@@ -68,7 +68,8 @@ describe("the saved line", () => {
 
   it("says why a file cannot be changed here, before anything else", () => {
     expect(savedLine({ ...view, readOnly: "Saved as .xlsb, which opens here only to read" }, "x", true, 5)).toEqual({ state: "readonly", detail: "Saved as .xlsb, which opens here only to read" });
-    expect(savedLine({ ...view, missing: true }, null, false, null)).toEqual({ state: "readonly", detail: "Budget.xlsx moved" });
+    // in the words every kind's moved line uses, with Keep Both: never the name again, which the header shows
+    expect(savedLine({ ...view, missing: true }, null, false, null)).toEqual({ state: "conflict", detail: "This file was moved or deleted", again: "Keep Both" });
   });
 });
 
