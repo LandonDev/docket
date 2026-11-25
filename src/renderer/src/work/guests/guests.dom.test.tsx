@@ -254,6 +254,41 @@ describe("Share", () => {
     calls.addressGate = null;
   });
 
+  it("shows a held press as the button busy until the answer comes", async () => {
+    // Council r4 (Opus 4): the button showed nothing while the press waited.
+    const { ShareButton } = await import("./Share");
+    let answer!: () => void;
+    calls.addressGate = new Promise((r) => (answer = r));
+    const page = "https://purdue0.sharepoint.com/sites/Esports/Shared%20Documents/General/Plan.docx?web=1";
+    calls.pages = { "/w/Plan.tcdoc": page };
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" workspaceId="w1" />);
+    const share = screen.getByRole("button", { name: "Share" });
+    expect(share.querySelector('[data-slot="spinner"]')).toBeNull();
+    fireEvent.click(share);
+    expect(share.getAttribute("aria-busy")).toBe("true");
+    expect(share.querySelector('[data-slot="spinner"]')).toBeTruthy();
+    await act(async () => answer());
+    await waitFor(() => expect(calls.opened).toEqual([page]));
+    calls.addressGate = null;
+  });
+
+  it("holds File → Share… and More made while the page is asked for as the button's own press: the page opens", async () => {
+    // Council r4 (Sol 5): the menu's press opened the sheet path and never waited for the answer.
+    const { ShareButton } = await import("./Share");
+    const { openShare } = await import("./sharePort");
+    let answer!: () => void;
+    calls.addressGate = new Promise((r) => (answer = r));
+    const page = "https://purdue0.sharepoint.com/sites/Esports/Shared%20Documents/General/Plan.docx?web=1";
+    calls.pages = { "/w/Plan.tcdoc": page };
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" itemId="item7" workspaceId="w1" />);
+    act(() => openShare("item7"));
+    expect(screen.getByRole("button", { name: "Share" }).getAttribute("aria-busy")).toBe("true");
+    await act(async () => answer());
+    await waitFor(() => expect(calls.opened).toEqual([page]));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    calls.addressGate = null;
+  });
+
   it("asks again on a press after a lost answer, so one drop never leaves Share on the sheet", async () => {
     const { ShareButton } = await import("./Share");
     const page = "https://purdue0.sharepoint.com/sites/Esports/Shared%20Documents/General/Plan.docx?web=1";

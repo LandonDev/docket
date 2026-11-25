@@ -5,7 +5,7 @@ import { SwapIcon } from "../../motion/IconSwap";
 import { Share as ShareGlyph } from "../icons";
 import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { confirmAction, DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Tip } from "../../components/tip";
 import { Dialog } from "../../components/ui/dialog";
 import { copyText } from "../../lib/clipboard";
@@ -62,7 +62,7 @@ export function ShareButton({ env, source, kind, title, itemId, workspaceId, pur
     if (page?.key === key && page.url === undefined) setTries((n) => n + 1);
     setHeld(true);
   } : undefined;
-  return target ? <ShareOpener env={env} target={target} title={title} itemId={itemId} purdue={purdue} hold={hold} opens={opens} /> : null;
+  return target ? <ShareOpener env={env} target={target} title={title} itemId={itemId} purdue={purdue} hold={hold} held={held} opens={opens} /> : null;
 }
 
 /** Share in Teams greyed, for a library's file whose page the host knows none of: the row menu's words say where to share it. */
@@ -103,16 +103,20 @@ export function ProjectShare({ env, project }: { env: string; project: { id: str
   return <ShareOpener env={env} target={target} title={project.name} size="sm" />;
 }
 
-/** `hold`: a press its owner keeps until it knows where Share goes; `opens` going up opens the sheet (a held press's answer). */
-function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs", hold, opens = 0 }: { env: string; target: ShareTarget; title: string; itemId?: string; purdue?: boolean; size?: "xs" | "sm"; hold?: (() => void) | undefined; opens?: number }) {
+/**
+ * `hold`: a press its owner keeps until it knows where Share goes, the button's and File → Share…'s and More's alike;
+ * `held`: one is kept, and the button is busy; `opens` going up opens the sheet (a held press's answer).
+ */
+function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs", hold, held = false, opens = 0 }: { env: string; target: ShareTarget; title: string; itemId?: string; purdue?: boolean; size?: "xs" | "sm"; hold?: (() => void) | undefined; held?: boolean; opens?: number }) {
   const [open, setOpen] = useState(false);
   const asked = useShareAsked(itemId);
   const seen = useRef(asked);
   useEffect(() => {
     if (asked === seen.current) return;
     seen.current = asked;
-    setOpen(true);
-  }, [asked]);
+    if (hold) hold();
+    else setOpen(true);
+  }, [asked, hold]);
   const opened = useRef(opens);
   useEffect(() => {
     if (opens === opened.current) return;
@@ -121,8 +125,9 @@ function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs", 
   }, [opens]);
   return (
     <>
-      <Button data-share-button="" variant="ghost" size={size} className={size === "xs" ? "ms-auto" : undefined} onClick={() => (hold ? hold() : setOpen(true))}>
-        <ShareGlyph />
+      <Button data-share-button="" variant="ghost" size={size} className={size === "xs" ? "ms-auto" : undefined} aria-busy={held || undefined} onClick={() => (held ? undefined : hold ? hold() : setOpen(true))}>
+        {/* A held press: the glyph turns to the spinner in its place (BusyLabel), so the button keeps its width. */}
+        {held ? <BusyLabel busy label="" /> : <ShareGlyph />}
         Share
       </Button>
       {open ? (

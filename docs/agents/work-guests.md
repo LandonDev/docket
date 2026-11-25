@@ -76,7 +76,9 @@ whose page the host knows none of, the answer says where it is shared from
 (`home: 'Teams' | 'OneDrive'`, an optional field of `OfficeLiveAddress`) and
 the header's Share in Teams is greyed with "Share it from Teams.", as the row's
 is; any other file keeps the sheet. Share is drawn at once; a press before the
-answer waits for it and then opens the page, the sheet, or nothing (greyed), and
+answer, the button's or File → Share…'s or More's (`openShare`, held by the same
+`hold`), waits for it, the button busy meanwhile (its glyph turns to the spinner, `BusyLabel`,
+`aria-busy`), and then opens the page, the sheet, or nothing (greyed), and
 a press after an ask that got no answer (undefined) asks again, so one drop
 never leaves Share on the sheet; only the host's own "none" greys Share in Teams. A document kept for a
 Teams file, where the host knows no page, says "This document is a Teams file

@@ -1428,8 +1428,9 @@ thread; nothing answers inside the canvas.
   his browser, only where the workspace's host knows that file's page in his
   tenant (a document kept for a Teams Word file goes to the Word file's);
   where it knows none, a Files row's, and a document's or sheet's header's,
-  is greyed with "Share it from Teams." (a header press made before the
-  host answers waits for the answer).
+  is greyed with "Share it from Teams." (a press made before the host
+  answers, the header's, File → Share…'s or More's, waits for the answer,
+  the header's Share busy meanwhile: its glyph turns to the spinner in place).
   A Purdue workspace's sheet holds one 12px muted line at
   the footer's start, beside Create link. **History** on a document or a sheet opens the item's history as a tab of its own
   (in a Files tab, at the file's side, where a second file sits; "Compare
