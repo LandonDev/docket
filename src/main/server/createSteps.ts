@@ -12,6 +12,9 @@ import type { CanvasSource } from '@shared/work'
  *   step left it, and the window runs the step again before its next send ("The chat did not start").
  * - `items`: `work.canvas.open` each (a far file's copy first, `work.office.filesCopy`). Failing, the item is named in
  *   the answer and the message goes all the same.
+ *
+ * A create with steps boots its harness at the send, after them (sessions.ts `create`'s `eager`): the bridge step
+ * reboots a harness that is starting, and the first send used to join that boot and die with it.
  */
 
 export type CreateStepParams = Pick<CreateSessionParams, 'items' | 'mailAdopt' | 'bridge'>

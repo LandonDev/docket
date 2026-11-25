@@ -2873,7 +2873,7 @@ export class SessionRegistry {
   async startWith(raw: CreateSessionInput, text: string, opts: StartWithOpts = {}): Promise<SessionMeta> {
     if (this.closed) throw new BootStopped()
     const { routineRunId, farWork, ceiling, before, ...sendOpts } = opts
-    const created = await this.create(raw, { handoff: false, routineRunId, farWork, ceiling })
+    const created = await this.create(raw, { handoff: false, routineRunId, farWork, ceiling, eager: !before })
     if (this.closed) throw new BootStopped()
     if (before) await before(created)
     if (this.closed) throw new BootStopped()
@@ -2905,13 +2905,15 @@ export class SessionRegistry {
     const { firstMessage, attachments, items: _items, mailAdopt: _mailAdopt, bridge: _bridge, ...spec } = raw
     const { before, ceiling } = limits
     if (firstMessage) return this.startWith(spec, firstMessage, { ...(by ? { by } : {}), ceiling, before, ...(attachments?.length ? { attachments } : {}) })
-    const created = await this.create(spec, { ceiling })
+    const created = await this.create(spec, { ceiling, eager: !before })
     if (!before) return created
     await before(created)
-    return this.get(created.id) ?? created
+    const after = this.get(created.id) ?? created
+    if (this.scheduler.admit(after, { first: true, optIn: this.wantsQueue(after) }) === 'start') void this.handleFor(after.id).catch(() => {})
+    return after
   }
 
-  async create(raw: CreateSessionInput, internal: { handoff?: boolean; routineRunId?: string; farWork?: boolean; ceiling?: SessionMeta['permission'] } = {}): Promise<SessionMeta> {
+  async create(raw: CreateSessionInput, internal: { handoff?: boolean; routineRunId?: string; farWork?: boolean; ceiling?: SessionMeta['permission']; eager?: boolean } = {}): Promise<SessionMeta> {
     const params = CreateSessionParams.parse(raw)
     const now = Date.now()
     if (params.id && this.store.getSession(params.id)) throw new Error(`session id already taken: ${params.id}`)
@@ -3070,8 +3072,12 @@ export class SessionRegistry {
     if (params.goal?.trim()) this.pendingGoals.set(id, params.goal.trim())
     // Start the harness eagerly so status/errors surface immediately; a
     // thread that will queue (its `after`, the running cap) boots when it
-    // starts instead, so a queued thread holds no process.
-    if (this.scheduler.admit(created, { first: true, optIn: this.wantsQueue(created) }) === 'start') {
+    // starts instead, so a queued thread holds no process. A create with
+    // folded steps (`eager: false`) boots after them: a step may change
+    // what the spawn reads (the Mac bridge, a mail chat's narrowing), and
+    // a step that dropped an eager boot raced the first send waiting on it
+    // (J12: the message went into a harness our own dispose then killed).
+    if (internal.eager !== false && this.scheduler.admit(created, { first: true, optIn: this.wantsQueue(created) }) === 'start') {
       void this.handleFor(created.id).catch(() => {})
     }
     return created

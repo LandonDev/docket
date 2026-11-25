@@ -13,23 +13,32 @@ import type { DriverCtx, DriverHandle } from './drivers/types'
  * thread is removed and the caller hears why; no host lists a titled
  * thread with no rows.
  */
-const boot = { fail: false }
+const boot = { fail: false, gate: null as Promise<void> | null, starts: 0 }
 const sends = new Map<string, string[]>()
+/** Each handle the mock made, whether our own dispose took it, and what it was sent. */
+const handles: { disposed: boolean; texts: string[] }[] = []
 vi.mock('./drivers', () => ({
   BUILT_IN_DRIVERS: {
     claude: {
       id: 'claude',
       start: async (ctx: DriverCtx): Promise<DriverHandle> => {
+        boot.starts++
+        if (boot.gate) await boot.gate
         if (boot.fail) throw new Error('claude: not logged in')
         const id = ctx.session.id
+        const made = { disposed: false, texts: [] as string[] }
+        handles.push(made)
         return {
           send: async (text: string) => {
+            made.texts.push(text)
             sends.set(id, [...(sends.get(id) ?? []), text])
             ctx.emit({ type: 'status', status: 'running' })
           },
           interrupt: () => {},
-          alive: () => true,
-          dispose: async () => {}
+          alive: () => !made.disposed,
+          dispose: async () => {
+            made.disposed = true
+          }
         }
       }
     }
@@ -48,7 +57,10 @@ beforeEach(async () => {
   store = new Store(db)
   registry = new SessionRegistry(store)
   boot.fail = false
+  boot.gate = null
+  boot.starts = 0
   sends.clear()
+  handles.length = 0
 })
 afterEach(async () => {
   cancelMirrors()
@@ -158,6 +170,34 @@ describe('startWith', () => {
     expect(userTexts(store, meta.id)).toEqual(['about this file'])
     const user = store.eventsAfter(meta.id, 0).map((r) => r.event).find((e) => e.type === 'user-text') as { attachments?: { name: string }[] }
     expect(user.attachments?.map((a) => a.name)).toEqual(['a.png'])
+  })
+
+  it('a folded step that reboots the harness does not take the first message down with it (J12)', async () => {
+    let release = (): void => {}
+    boot.gate = new Promise((r) => (release = r))
+    const started = registry.createSession({ cwd: root, provider: 'claude', title: 'Bridge', firstMessage: 'about this file' }, { kind: 'owner' }, {
+      // What the Mac bridge's rebootWhenSettled does for a row that is not live yet.
+      before: async (created) => void registry.setPermission(created.id, created.permission)
+    })
+    await settle()
+    release()
+    const meta = await started
+    await settle()
+    expect(boot.starts).toBe(1)
+    const got = handles.find((h) => h.texts.includes('about this file'))
+    expect(got?.disposed).toBe(false)
+    expect(registry.sweepLiveness(0, Date.now() + 60_000)).toEqual([])
+    expect(registry.get(meta.id)?.status).not.toBe('stopped')
+  })
+
+  it('a create with steps and no message boots once, after its steps', async () => {
+    const order: string[] = []
+    await registry.createSession({ cwd: root, provider: 'claude', title: 'Later' }, undefined, {
+      before: async () => void order.push(`step starts=${boot.starts}`)
+    })
+    await settle()
+    expect(order).toEqual(['step starts=0'])
+    expect(boot.starts).toBe(1)
   })
 
   it('a folded step that fails stops the message and keeps the thread, as the window\'s own step left it', async () => {

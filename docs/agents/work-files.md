@@ -413,7 +413,9 @@ control, takes it away.
   host runs them in the order below, each as the request the window would
   have sent, under the key's capability and the path fence
   (src/main/server/createSteps.ts, index.ts `runStep`), then stores the
-  message. A file that did not open comes back in `itemsFailed` and says so
+  message. Such a create boots its harness at that send, never before the
+  steps: the bridge step reboots a harness still starting, and a first send
+  that joined that boot died with it (J12; sessions.ts `create`'s `eager`). A file that did not open comes back in `itemsFailed` and says so
   as below. The host does not subscribe the window to the thread it made, so
   the store's `adopt` follows the draft itself: the draft reads as loaded,
   his unechoed message its one row, and it resumes from the first row
