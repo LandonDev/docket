@@ -641,6 +641,25 @@ describe('the review\'s holes, through the module', () => {
     for (let i = 0; i < 5; i++) await call('work.pdf.export', { itemId: id })
     await expect(call('work.pdf.read', { itemId: id, which: 'export', offset: 0, length: 10, rev: first.rev })).rejects.toThrow('That copy is no longer kept')
   })
+
+  it('two copies of one size and one time keep their own revisions: a read that names the first never gets the second', async () => {
+    const { statSync, utimesSync } = await import('node:fs')
+    const id = openItem(put('sw9.pdf', W9))
+    const first = await call<{ rev: string; size: number }>('work.pdf.export', { itemId: id })
+    const firstBytes = await bytesOf(id, 'export')
+    await call('work.pdf.export', { itemId: id })
+    // The second copy made other bytes of the same size, stamped with the first's time.
+    const exports = join(canvasItemDir(dir, 't1', id), 'export')
+    const [newer, older] = readdirSync(exports).sort().reverse().map((sub) => join(exports, sub, 'sw9.pdf'))
+    const other = Buffer.from(firstBytes)
+    other[other.length - 1] ^= 1
+    writeFileSync(newer, other)
+    const { atime, mtime } = statSync(older)
+    utimesSync(newer, atime, mtime)
+    const read = await call<{ data: string; rev: string }>('work.pdf.read', { itemId: id, which: 'export', offset: 0, length: first.size, rev: first.rev })
+    expect(read.rev).toBe(first.rev)
+    expect(Buffer.from(read.data, 'base64').equals(firstBytes)).toBe(true)
+  })
 })
 
 describe('round three: the fence on every method, the push, the hash, reverts', () => {

@@ -202,7 +202,9 @@ built").
 Each copy has a folder of its own, so a draft that kept an earlier copy's
 path still attaches those bytes; the newest five are kept, and
 `work.pdf.read` with `which: 'export'` reads the newest, or with `rev` the
-kept copy of that revision: Save a Copy names its own copy's `rev` in every
+kept copy of that revision. A copy's `rev` is its folder's `<time>-<id>`, made
+once, never its size and time (two copies of one size written in one millisecond
+are still two). Save a Copy names its own copy's `rev` in every
 read, so a second Save a Copy made while the first reads never lends it
 bytes, and a copy no longer kept is refused ("That copy is no longer kept").
 It writes the

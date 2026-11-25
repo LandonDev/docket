@@ -317,8 +317,8 @@ export async function exportCopy(ctx: Ctx, item: CanvasItem, flatten: boolean): 
   const path = join(dir, id, name)
   writeFileSync(path, out.bytes)
   for (const old of exportDirs(dir).slice(EXPORTS_KEPT)) rmSync(join(dir, old), { recursive: true, force: true })
-  const made = stampOf(path, name)
-  return { path, name, size: made.size, rev: made.rev, warnings: out.warnings, pending: store.pending(kept.id) }
+  // Its folder's name is its revision: two copies of one size and one time are still two (`lastExport`).
+  return { path, name, size: out.bytes.byteLength, rev: id, warnings: out.warnings, pending: store.pending(kept.id) }
 }
 
 /** How many exported copies an item keeps. */
@@ -331,13 +331,16 @@ const exportDirs = (dir: string): string[] =>
     .sort()
     .reverse()
 
-/** The copy last made of an item, if one was; with `rev`, the kept copy of that revision, newer ones made since or not. */
+/**
+ * The copy last made of an item, if one was; with `rev`, the kept copy of that revision, newer ones made since or not.
+ * A copy's revision is its folder's name, made once and never reused, not its size and time.
+ */
 export function lastExport(dir: string, rev?: string): FileStamp | null {
   for (const sub of exportDirs(dir)) {
+    if (rev && sub !== rev) continue
     const name = readdirSync(join(dir, sub)).find((f) => f.toLowerCase().endsWith('.pdf'))
     if (!name) continue
-    const copy = stampOf(join(dir, sub, name), name)
-    if (!rev || copy.rev === rev) return copy
+    return { ...stampOf(join(dir, sub, name), name), rev: sub }
   }
   return null
 }
