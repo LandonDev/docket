@@ -25,11 +25,11 @@ import { DeckRow, keyAct, officeTheme, targetOf, type Target } from "./edit/Deck
 import { FormatSheet, SHEET_BESIDE, SHEET_WIDTH } from "./edit/FormatSheet";
 import type { MediaSize } from "./edit/Insert";
 import { HistoryButton } from "./edit/History";
-import { typable, type Sel } from "./edit/model";
+import { modelOf, typable, type Sel } from "./edit/model";
 import { unitFor } from "./edit/drag";
 import { Manipulate, movable, turnable, type ManipulateHandle, type Movable } from "./edit/Manipulate";
 import { CONFLICT_WORD, HandSession, SHAPE_GONE, type HandState, type Start } from "./edit/session";
-import { TypingBox } from "./edit/TypingBox";
+import { Prompt, TypingBox } from "./edit/TypingBox";
 import { askAnchor, groundOf, HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, shapeLabel, textFrameOf, type Quad } from "./geometry";
 import { SectionName } from "./edit/SectionName";
 import type { NameAsk } from "./edit/slides";
@@ -840,12 +840,21 @@ function Main({
               const under = box.width > 0 && box.height > 0 ? hit(shapes, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height) : null;
               const el = under ? buttonOf(under.id) : null;
               if (under && el) {
-                if (under.id === picked && typable(under) && openBox(under, { x: event.clientX, y: event.clientY })) return;
+                // A second press on a picked text shape types in it; so does the first on an empty placeholder's prompt, as in PowerPoint.
+                const types = under.id === picked || (!!under.prompt && session.refusal(slide, under) === null);
+                if (types && typable(under) && openBox(under, { x: event.clientX, y: event.clientY })) return;
                 byPointer.current = true;
                 el.focus({ preventScroll: true });
                 byPointer.current = false;
                 pick(under, el);
               } else unpick();
+            }}
+            // A double-click types in the text shape under it, with the caret where he pressed, whether or not it was picked.
+            onDoubleClick={(event) => {
+              if (event.target !== event.currentTarget || manip.current?.dragged() || hand.box) return;
+              const box = event.currentTarget.getBoundingClientRect();
+              const under = box.width > 0 && box.height > 0 ? hit(shapes, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height) : null;
+              if (under && typable(under)) openBox(under, { x: event.clientX, y: event.clientY });
             }}
             // Tab walks the shapes from the back of the slide to the front; the arrows nudge the picked one (Shift: ten
             // pixels), Delete and Backspace take it off the slide; Escape lets it go.
@@ -908,6 +917,12 @@ function Main({
                 />
               );
             })}
+            {/* An empty placeholder he can type in says where its words go, until a box opens on it. */}
+            {shapes.map((shape) =>
+              shape.prompt && shape.id !== boxHere?.shape.id && session.refusal(slide, shape) === null ? (
+                <Prompt key={`p${shape.id}`} words={shape.prompt} place={textFrameOf(shape.quad, !!shape.flip, w, h)} emu={w / emuWidth} frame={shape.frame} para={modelOf(shape, session.fallback(view))[0]} />
+              ) : null,
+            )}
             {boxHere && boxShape ? (
               <TypingBox
                 key={boxHere.id}

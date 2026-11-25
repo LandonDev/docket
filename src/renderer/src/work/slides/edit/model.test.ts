@@ -41,6 +41,9 @@ describe("the typing box's model", () => {
     expect(modelOf(shape({ paragraphs: [] }), FALLBACK)).toEqual([{ level: 0, align: "left", list: "none", set: {}, look: FALLBACK, pending: {}, runs: [] }]);
     const two = modelOf(shape({ paragraphs: [{ level: 0, align: "left", list: "none", runs: [] }, { level: 0, align: "left", list: "none", runs: [{ text: "Hi", size: 30 }] }] }), FALLBACK);
     expect(two[0].look.size).toBe(30);
+    // An empty placeholder's paragraph says its own look (a blank deck's 60pt title): the box draws in it, not the deck's body.
+    const title = modelOf(shape({ text: "", paragraphs: [{ level: 0, align: "center", list: "none", runs: [], end: { font: "Calibri Light", size: 60, color: "1F1F1F" } }] }), FALLBACK);
+    expect(title[0].look).toEqual({ font: "Calibri Light", size: 60, color: "1F1F1F" });
     expect(typable(shape())).toBe(true);
     expect(typable(shape({ kind: "picture" }))).toBe(false);
     expect(typable(shape({ paragraphs: undefined }))).toBe(false);

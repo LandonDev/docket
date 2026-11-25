@@ -786,8 +786,15 @@ without drawing it. Since SLD3 it carries what a hand editor needs:
 - **Its words as they are set.** `paragraphs`: each paragraph's level,
   alignment and bullet and each run's words, font, size, weight, slant,
   underline and colour, resolved through the placeholder, layout, master
-  and theme where the run names none (`style_chain`, `theme_of`); `frame`
-  holds the text box's insets, anchor, wrap and autofit.
+  and theme where the run names none (`style_chain`, `theme_of`); a
+  paragraph with no runs (an empty placeholder's) says the look its first
+  words take as `end`. `frame` holds the text box's insets, anchor, wrap
+  and autofit, each from the nearest frame that says it: the shape's own,
+  else its layout's and master's placeholder (`bodypr_chain`), as
+  PowerPoint inherits them (a blank deck's title sits in the middle).
+  `prompt` (view.ts `promptOf`) is the words PowerPoint shows in an empty
+  title, subtitle or text placeholder ("Click to add title"); the file
+  never holds them.
 - **Each slide's** `draws` (above), `transition` (its kind, speed and
   whether it advances on a click or after a time) and layout; the deck's
   `layoutInfo` (each layout's name and placeholders) and `theme` (its
@@ -1549,8 +1556,14 @@ host that he can write. The host writes each of his edits into the file at
 once (`work.slides.edit`), whole or not at all.
 
 - **The box.** A second press on a picked text shape (a shape the outline
-  lists with `paragraphs`), Return or F2 on it, opens the typing box over
-  it: the outline's runs as the model (`modelOf`: each run with the
+  lists with `paragraphs`), a double-click on any text shape, Return or F2
+  on it, opens the typing box over it; on an empty placeholder with a
+  `prompt` one press does. The prompt is drawn where its words will go, in
+  the look they will take (`Prompt`, edit/TypingBox.tsx), only where he can
+  type, and goes while a box is open on it. The box is the shape's own
+  size, so words that overflow lie about its anchor as the new picture
+  draws them and nothing jumps on commit; only a shape that grows to its
+  words (`fit: 'grow'`) grows with them. The box holds the outline's runs as the model (`modelOf`: each run with the
   `[paragraph, run]` it came from and the look it is drawn in), drawn into a
   contenteditable one span a run (`edit/dom.ts`). He types into it as into
   any text; the browser's own words are read back after each keystroke

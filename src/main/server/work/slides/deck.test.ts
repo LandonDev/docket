@@ -14,6 +14,7 @@ import { DECK_PY } from './deckScript'
 import { allocateIds, DECK_ITSELF, HOST_ID_GAP, joinStep, SLIDES_CONVERTERS, slideOfOp, splitStep, type DeckInfo } from './deck'
 import { TWELVE } from './fixtures/twelve'
 import { writeNewDeck } from './newDeck'
+import { BLANK_DECK } from './blankDeck'
 
 /**
  * The deck tool (deck.ts, deckScript.ts): the pure helpers always; the
@@ -135,6 +136,18 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
   }
   const shape = (d: DeckInfo, slide: number, id: number) => d.slides.find((s) => s.id === slide)!.shapes.find((x) => x.id === id)!
 
+  it("says the look and the frame an empty placeholder's first words take: a blank deck's title and subtitle, in their layout's size and anchor", async () => {
+    const d = await inspect(file(BLANK_DECK))
+    const [title, subtitle] = d.slides[0].shapes
+    expect([title.placeholder, subtitle.placeholder]).toEqual(['title', 'subtitle'])
+    expect(title.paragraphs![0]).toMatchObject({ align: 'center', runs: [], end: { size: 44 } })
+    expect(title.paragraphs![0].end!.font).toBeTruthy()
+    // Laid in the frame its layout and master give it: the title in the middle, as PowerPoint draws it.
+    expect([title.frame?.anchor, subtitle.frame?.anchor]).toEqual(['middle', 'top'])
+    expect(title.frame?.fit).toBe('shrink')
+    expect(subtitle.paragraphs![0]).toMatchObject({ runs: [], end: { size: 32 } })
+  })
+
   describe('the outline of the feature deck (fixtures/12-feature-probes.pptx)', () => {
     let d: DeckInfo
     beforeAll(async () => {
@@ -181,7 +194,8 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       // A title is centred by its master's title style.
       expect(on(1, 2).paragraphs).toEqual([{ level: 0, align: 'center', list: 'none', runs: [{ text: 'Theme and layout inheritance', size: 44, font: 'Cambria', color: '000000' }] }])
       expect(on(1, 3).paragraphs![0]).toMatchObject({ list: 'bullet', runs: [{ size: 32, font: 'Calibri' }] })
-      expect(on(1, 3).frame).toMatchObject({ anchor: 'top', fit: 'none', wrap: true })
+      // Its own frame says nothing: it shrinks its text as its master's body placeholder says, as PowerPoint does.
+      expect(on(1, 3).frame).toMatchObject({ anchor: 'top', fit: 'shrink', wrap: true })
       // The run's own size, and the frame that shrinks its text.
       expect(on(2, 3).paragraphs![0].runs[0]).toMatchObject({ size: 30 })
       expect(on(2, 3).frame).toMatchObject({ fit: 'shrink', insets: [91440, 45720, 91440, 45720] })

@@ -4244,8 +4244,15 @@ other picked shape is the outline alone.
   picture, never over a shape, a handle or the typing box, where his next
   press goes. While he types it steps aside.
 - **The typing box** (`edit/TypingBox.tsx`). A second press on a picked
-  text shape opens it with the caret where he pressed; Return on a picked
-  shape opens it with its words selected, F2 with the caret at their end.
+  text shape, or a double-click on any, opens it with the caret where he
+  pressed; Return on a picked shape opens it with its words selected, F2
+  with the caret at their end. An empty title, subtitle or text
+  placeholder he can type in shows PowerPoint's prompt ("Click to add
+  title") where its words will go, in the look they will take, and one
+  press on it opens the box; the prompt goes while the box is open. The
+  box is the shape's own size (only a shape that grows to its words
+  grows), so words that overflow lie about its anchor as the picture will
+  draw them.
   The box lies on the shape's own corners, turned with it (a shape flipped
   across reads as before, one flipped down turns half round, as PowerPoint
   draws them), with the shape's insets and anchor, each run in its font,

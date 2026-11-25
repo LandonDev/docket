@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ShapeInfo, SlideInfo } from './deck'
 import type { DeckInfo } from './deck'
-import { changesOf, comesAs, editsOf, lookWords, partNames } from './view'
+import { changesOf, comesAs, editsOf, lookWords, partNames, promptOf } from './view'
 
 const shape = (id: number, name: string, kind: ShapeInfo['kind'], placeholder?: string, text = ''): ShapeInfo => ({
   id,
@@ -31,6 +31,16 @@ describe("a slide's parts in the person's words", () => {
       { where: 'Title', before: 'Old', after: 'New' },
       { where: 'Table, row 1, column 2', before: 'b', after: 'c' }
     ])
+  })
+
+  it('gives an empty title, subtitle or text placeholder PowerPoint’s prompt, and nothing else one', () => {
+    expect(promptOf(shape(2, 'Title 1', 'text', 'title'))).toBe('Click to add title')
+    expect(promptOf(shape(3, 'Subtitle 2', 'text', 'subtitle', ' \n'))).toBe('Click to add subtitle')
+    expect(promptOf(shape(4, 'Content Placeholder 3', 'text', 'body'))).toBe('Click to add text')
+    expect(promptOf(shape(2, 'Title 1', 'text', 'title', 'Who comes'))).toBeUndefined()
+    expect(promptOf(shape(5, 'TextBox 4', 'text'))).toBeUndefined()
+    expect(promptOf(shape(6, 'Footer 5', 'text', 'footer'))).toBeUndefined()
+    expect(promptOf(shape(7, 'Picture 6', 'picture', 'picture'))).toBeUndefined()
   })
 })
 

@@ -93,11 +93,11 @@ const pick = (run: RunLook): RunLook => {
  */
 export function modelOf(shape: DeckShape, fallback: RunLook): Model {
   const paras = shape.paragraphs ?? [];
-  // A paragraph with no runs takes the look of the nearest one that has some, else the fallback.
+  // A paragraph with no runs takes the look of the nearest one that has some (an empty one says its own, `end`), else the fallback.
   const firstLook = (p: number): RunLook => {
     for (let d = 0; d < paras.length; d++) {
       for (const at of [p - d, p + d]) {
-        const run = paras[at]?.runs.find((r) => r.text !== "");
+        const run = paras[at]?.runs.find((r) => r.text !== "") ?? paras[at]?.end;
         if (run) return { ...fallback, ...pick(run) };
       }
     }

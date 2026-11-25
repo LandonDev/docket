@@ -4,7 +4,8 @@ import { formatKeyOf } from "work-kit/format/keys";
 import { bareKey, modKey, modOrCtrl } from "../../../lib/keys";
 import { IS_MAC } from "../../../lib/platform";
 import { keyAct, type Target } from "./DeckRow";
-import { paint, placeOf, readModel, readSel, writeSel } from "./dom";
+import { paint, placeOf, readModel, readSel, runCss, writeSel } from "./dom";
+import type { EditPara } from "./model";
 import type { BoxState, HandSession } from "./session";
 
 /**
@@ -233,7 +234,9 @@ export function TypingBox({
     left: place.left,
     top: place.top,
     width: place.width,
-    minHeight: place.height,
+    // The shape's own size, so his words lie where the new picture will draw them: a box that overflows does so about
+    // its anchor, as PowerPoint draws it, and nothing jumps on commit. Only a shape that grows to its words grows.
+    ...(frame.fit === "grow" ? { minHeight: place.height } : { height: place.height }),
     padding: `${t}px ${r}px ${b}px ${l}px`,
     justifyContent: ANCHOR[frame.anchor],
     ...(place.turn ? { transform: `rotate(${place.turn}deg)` } : {}),
@@ -269,6 +272,35 @@ export function TypingBox({
         }}
         onDrop={(event) => event.preventDefault()}
       />
+    </div>
+  );
+}
+
+/**
+ * An empty title, subtitle or text placeholder's prompt ("Click to add title"), drawn where its words will go, in the
+ * look they will take (the paragraph's `end`), as PowerPoint draws it. The file holds no such words: the picture
+ * shows nothing there, and a show never shows it.
+ */
+export function Prompt({ words, place, emu, frame = DEFAULT_FRAME, para }: { words: string; place: BoxPlace; emu: number; frame?: DeckTextFrame; para: EditPara }) {
+  const [l, t, r, b] = frame.insets.map((v) => v * emu);
+  return (
+    <div
+      data-slide-prompt
+      aria-hidden="true"
+      className="pointer-events-none absolute flex origin-top-left flex-col overflow-hidden"
+      style={{
+        left: place.left,
+        top: place.top,
+        width: place.width,
+        height: place.height,
+        padding: `${t}px ${r}px ${b}px ${l}px`,
+        justifyContent: ANCHOR[frame.anchor],
+        ...(place.turn ? { transform: `rotate(${place.turn}deg)` } : {}),
+      }}
+    >
+      <div className="whitespace-pre-wrap" style={{ textAlign: para.align === "center" ? "center" : para.align, lineHeight: 1.2, ...(runCss(para.look, emu) as CSSProperties) }}>
+        {words}
+      </div>
     </div>
   );
 }

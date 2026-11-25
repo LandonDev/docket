@@ -592,6 +592,11 @@ const bboxOf = (s: ShapeInfo): Bbox | null => s.bbox
 const shapeText = (s: ShapeInfo): string => (s.cells ? s.cells.map((r) => r.join('\t')).join('\n') : s.chart ? chartText(s.chart) : s.text)
 const chartText = (c: NonNullable<ShapeInfo['chart']>): string =>
   c.series.map((s) => `${s.name}: ${c.categories.map((cat, i) => `${cat} ${s.values[i] ?? '–'}`).join(', ')}`).join('\n')
+/** The words PowerPoint shows in an empty placeholder of these roles; the stage draws them, the file never holds them. */
+const PROMPTS: Record<string, string> = { title: 'Click to add title', subtitle: 'Click to add subtitle', body: 'Click to add text' }
+/** An empty title, subtitle or text placeholder's prompt: a blank deck's slide says where its words go. */
+export const promptOf = (s: ShapeInfo): string | undefined => (s.kind === 'text' && s.placeholder && !s.text.trim() ? PROMPTS[s.placeholder] : undefined)
+
 const deckShape = (s: ShapeInfo, label?: string): DeckShape => ({
   id: s.id,
   name: s.name,
@@ -599,6 +604,7 @@ const deckShape = (s: ShapeInfo, label?: string): DeckShape => ({
   bbox: bboxOf(s),
   text: shapeText(s),
   kind: s.kind,
+  ...(promptOf(s) ? { prompt: promptOf(s) } : {}),
   ...(s.quad ? { quad: s.quad } : {}),
   ...(s.rot ? { rot: s.rot } : {}),
   ...(s.flip ? { flip: true } : {}),

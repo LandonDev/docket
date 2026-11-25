@@ -249,6 +249,8 @@ export interface DeckParagraph {
   align: 'left' | 'center' | 'right' | 'justify'
   list: 'none' | 'bullet' | 'number'
   runs: DeckRun[]
+  /** a paragraph with no runs (an empty placeholder's): the look its first words take, from its end mark, else what its paragraph, shape, layout and master give */
+  end?: Omit<DeckRun, 'text'>
 }
 /** How a text shape holds its words. */
 export interface DeckTextFrame {
@@ -270,6 +272,8 @@ export interface DeckShape {
   bbox: Bbox | null
   text: string
   kind?: DeckShapeKind
+  /** an empty title, subtitle or text placeholder: the words PowerPoint shows in it while it is empty ("Click to add title"), never in the file or a show */
+  prompt?: string
   /** its own box's four corners as drawn: top-left, top-right, bottom-right, bottom-left. Handles sit on these. */
   quad?: [DeckPoint, DeckPoint, DeckPoint, DeckPoint]
   /** the angle its top edge makes, in degrees clockwise */

@@ -302,6 +302,30 @@ def level_props(lst, level):
     return None if lst is None else lst.find('{%s}lvl%dpPr' % (NS_A, level + 1))
 
 
+def holders_of(sh):
+    """A placeholder's own kind and its layout's and master's placeholder of the same kind, nearest first; a shape
+    that is no placeholder has none."""
+    out = []
+    el = sh._element
+    try:
+        slide = sh.part.slide
+        pt = ph_type(sh)
+        if pt is None:
+            return None, out
+        kind = 'title' if pt in ('title', 'ctrTitle') else 'body'
+        idx = el.find('.//' + qn('p:nvPr') + '/' + qn('p:ph')).get('idx')
+        for holder in (slide.slide_layout, slide.slide_layout.slide_master):
+            for cand in holder.placeholders:
+                cph = cand._element.find('.//' + qn('p:nvPr') + '/' + qn('p:ph'))
+                same_kind = cph.get('type', 'obj') == pt or (cph.get('type', 'obj') in ('title', 'ctrTitle') and kind == 'title') or (cph.get('type', 'obj') in ('body', 'obj') and pt in ('body', 'obj', 'subTitle'))
+                if (idx is not None and cph.get('idx') == idx) or (holder is not slide.slide_layout and same_kind) or (idx is None and same_kind):
+                    out.append(cand._element)
+                    break
+        return kind, out
+    except Exception:
+        return None, out
+
+
 def style_chain(sh):
     """The list styles a shape's text takes its look from, nearest first: its own, its layout's and master's
     placeholder of the same kind, the master's title, body or other style, the presentation's default."""
@@ -310,23 +334,13 @@ def style_chain(sh):
     body = el.find(qn('p:txBody'))
     if body is not None:
         chain.append(body.find(qn('a:lstStyle')))
-    kind = None
+    kind, holders = holders_of(sh)
+    for cand in holders:
+        cb = cand.find(qn('p:txBody'))
+        if cb is not None:
+            chain.append(cb.find(qn('a:lstStyle')))
     try:
-        slide = sh.part.slide
-        pt = ph_type(sh)
-        if pt is not None:
-            kind = 'title' if pt in ('title', 'ctrTitle') else 'body'
-            idx = el.find('.//' + qn('p:nvPr') + '/' + qn('p:ph')).get('idx')
-            for holder in (slide.slide_layout, slide.slide_layout.slide_master):
-                for cand in holder.placeholders:
-                    cph = cand._element.find('.//' + qn('p:nvPr') + '/' + qn('p:ph'))
-                    same_kind = cph.get('type', 'obj') == pt or (cph.get('type', 'obj') in ('title', 'ctrTitle') and kind == 'title') or (cph.get('type', 'obj') in ('body', 'obj') and pt in ('body', 'obj', 'subTitle'))
-                    if (idx is not None and cph.get('idx') == idx) or (holder is not slide.slide_layout and same_kind) or (idx is None and same_kind):
-                        cb = cand._element.find(qn('p:txBody'))
-                        if cb is not None:
-                            chain.append(cb.find(qn('a:lstStyle')))
-                        break
-        master = slide.slide_layout.slide_master._element
+        master = sh.part.slide.slide_layout.slide_master._element
         styles = master.find(qn('p:txStyles'))
         if styles is not None:
             chain.append(styles.find(qn('p:titleStyle' if kind == 'title' else 'p:bodyStyle' if kind == 'body' else 'p:otherStyle')))
@@ -334,6 +348,18 @@ def style_chain(sh):
     except Exception:
         pass
     return [c for c in chain if c is not None]
+
+
+def bodypr_chain(sh):
+    """The text frames a shape's words are laid in, nearest first: its own, then its layout's and master's
+    placeholder's, as PowerPoint inherits a placeholder's anchor, insets, wrap and fit."""
+    own = sh._element.find(qn('p:txBody'))
+    out = [own.find(qn('a:bodyPr'))] if own is not None else []
+    for cand in holders_of(sh)[1]:
+        cb = cand.find(qn('p:txBody'))
+        if cb is not None:
+            out.append(cb.find(qn('a:bodyPr')))
+    return [b for b in out if b is not None]
 
 
 def paragraphs_of(sh, theme):
@@ -389,13 +415,8 @@ def paragraphs_of(sh, theme):
             if src.find('{%s}buAutoNum' % NS_A) is not None:
                 bullet = 'number'
                 break
-        runs = []
-        for r in p:
-            tag = etree.QName(r).localname
-            if tag not in ('r', 'br', 'fld'):
-                continue
-            rpr = r.find(qn('a:rPr'))
-            text = '\n' if tag == 'br' else ''.join(t.text or '' for t in r.findall(qn('a:t')))
+
+        def look_of(rpr, text):
             size = first('sz', rpr, defaults)
             latin = child('latin', rpr, defaults)
             fill = child('solidFill', rpr, defaults)
@@ -416,25 +437,47 @@ def paragraphs_of(sh, theme):
             colour = colour_of(fill, theme)
             if colour:
                 run['color'] = colour
-            runs.append(run)
+            return run
+
+        runs = []
+        for r in p:
+            tag = etree.QName(r).localname
+            if tag not in ('r', 'br', 'fld'):
+                continue
+            text = '\n' if tag == 'br' else ''.join(t.text or '' for t in r.findall(qn('a:t')))
+            runs.append(look_of(r.find(qn('a:rPr')), text))
             count += 1
             if count >= RUN_CAP:
                 break
-        out.append({'level': level, 'align': ALIGN.get(align or 'l', 'left'), 'list': bullet, 'runs': runs})
+        para = {'level': level, 'align': ALIGN.get(align or 'l', 'left'), 'list': bullet, 'runs': runs}
+        # A paragraph with no words (an empty placeholder's) says the look its first words take: its end mark's, else
+        # what its paragraph, shape, layout and master give. The window draws a prompt and the typing box in it.
+        if not runs:
+            end = look_of(p.find(qn('a:endParaRPr')), '')
+            del end['text']
+            para['end'] = end
+        out.append(para)
         if count >= RUN_CAP:
             break
     frame = {'anchor': 'top', 'insets': [d for _, d in INSETS], 'fit': 'none', 'wrap': True}
-    if bodypr is not None:
-        frame['anchor'] = ANCHOR.get(bodypr.get('anchor', 't'), 'top')
-        ins = []
-        for name, default in INSETS:
-            try:
-                ins.append(int(bodypr.get(name, default)))
-            except ValueError:
-                ins.append(default)
-        frame['insets'] = ins
-        frame['fit'] = 'shrink' if bodypr.find('{%s}normAutofit' % NS_A) is not None else 'grow' if bodypr.find('{%s}spAutoFit' % NS_A) is not None else 'none'
-        frame['wrap'] = bodypr.get('wrap', 'square') != 'none'
+    # Each of the frame's settings from the nearest frame that says it: a placeholder's own, else its layout's, else its master's.
+    prs = bodypr_chain(sh)
+
+    def said(attr, default):
+        return next((b.get(attr) for b in prs if b.get(attr) is not None), default)
+
+    frame['anchor'] = ANCHOR.get(said('anchor', 't'), 'top')
+    ins = []
+    for name, default in INSETS:
+        try:
+            ins.append(int(said(name, default)))
+        except ValueError:
+            ins.append(default)
+    frame['insets'] = ins
+    fits = [c for b in prs for c in b if etree.QName(c).localname in ('normAutofit', 'spAutoFit', 'noAutofit')]
+    fit = etree.QName(fits[0]).localname if fits else None
+    frame['fit'] = 'shrink' if fit == 'normAutofit' else 'grow' if fit == 'spAutoFit' else 'none'
+    frame['wrap'] = said('wrap', 'square') != 'none'
     return {'paragraphs': out, 'frame': frame}
 
 
