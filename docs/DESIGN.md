@@ -2999,7 +2999,9 @@ Around the canvas:
     each but All with a plain count, since the head says the whole; no
     chip) and Display, no rule above or
     below; the tree (or the task board, which keeps the brief, Files and
-    Log around it); "2 done"; Files; Log. Sections stand 40px apart with
+    Log around it; grouped by State or Priority, New task draws the plain
+    tree while its line is open and the groups come back when it shuts);
+    "2 done"; Files; Log. Sections stand 40px apart with
     a 14/600 head, no boxes. Files lists the project's documents, sheets,
     links and items and the files its threads made or changed, newest
     first, a 32px row each: glyph, name, then "Made by Seat map for 64"

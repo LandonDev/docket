@@ -46,9 +46,12 @@ row passes on.
 ## The window
 
 `useTracker()` asks every host with Work on (`askHosts`), once when the page shows, again on focus, each minute while
-it stands, when a Work host's link opens or drops or a linked host's Work comes on, and on a down job's Retry
-(`reload`). A link that drops says its line at once over the last answer, the other hosts' groups kept (`withClosed`),
-so no all-clear stands on a host it cannot vouch for; only the newest read lands, never an older one that answers late. A host
+it stands, when the roster moves, and on a down job's Retry (`reload`). The roster is the Work hosts and whether
+each link is open, held by one rule, `reconcileKept`, on the first read and on every change from then on (a host joins
+or leaves Work, a link drops or opens again): a host whose link is not open is marked closed and says its line at once,
+a host that is new, or whose link opens again, is pending, and a host that left Work goes; the other hosts' groups
+stand, the read in flight is dropped and every host is asked again. So no all-clear stands on a host it cannot vouch
+for; only the newest read lands, never an older one that answers late. A host
 whose link is not open is not asked: it answers its own line, "The box is connecting." or "The box is not connected."
 (`closedWords`). The last answer is kept for the window's life, so a second visit draws it at once while the hosts
 are asked again; bones show only on the first. `mergeOverviews` makes one job a sector: LifeOS's rows are the same
