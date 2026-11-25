@@ -48,8 +48,9 @@ export const pdf: WorkModule = {
     switch (req.method) {
       case 'work.pdf.open': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')
-        // The one place a new copy of the file is taken: the reads that follow are of it.
-        return handled(await viewOf(ctx, item, { refresh: true }))
+        // The one place a new copy of the file is taken: the reads that follow are of it. The pages are answered
+        // before the form is parsed; the whole view follows as a push.
+        return handled(await viewOf(ctx, item, { refresh: true, first: true }))
       }
       case 'work.pdf.read': {
         const item = itemOf(ctx, req.params.itemId, 'pdf')

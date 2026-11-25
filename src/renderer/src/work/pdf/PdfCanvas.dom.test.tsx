@@ -296,6 +296,14 @@ describe("the PDF kind", () => {
     await waitFor(() => expect(pages()[0]).toBe(1));
   });
 
+  it("draws the pages before the form is read, with no field over them, and the fields once the whole view comes", async () => {
+    await open(pdfView({ formPending: true, fields: [field("name", { state: "filled", value: "Kai" })] }));
+    await waitFor(() => expect(document.querySelector('[data-pdf-page="1"]')?.textContent).toContain("Page 1"));
+    expect(document.querySelector("[data-pdf-field]")).toBeNull();
+    act(() => pdfHost.push(pdfView({ fields: [field("name", { state: "filled", value: "Kai" })] })));
+    await waitFor(() => expect(document.querySelector('[data-pdf-field="name"]')).not.toBeNull());
+  });
+
   it("follows the host's push when the agent proposes a value", async () => {
     await open(pdfView());
     await waitFor(() => expect(pages()[0]).toBe(1));

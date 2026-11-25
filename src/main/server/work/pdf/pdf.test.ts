@@ -36,6 +36,7 @@ vi.mock('../scope', () => ({
 const { startWork } = await import('../ctx')
 const { canvas } = await import('../canvas/index')
 const { pdf } = await import('./index')
+const { formParses } = await import('./view')
 // The job runner takes its converters from the loaded registry, once, when Work first turns on: with the real tools, load it before any test.
 if (process.env.TEMP_CODE_WORK_TOOLS_DATA) await (await import('../modules')).loadWorkModules()
 
@@ -98,6 +99,22 @@ async function pageText(bytes: Uint8Array): Promise<string> {
 const SIGNATURE = { width: 300, height: 100, strokes: [[[10, 80], [60, 20], [110, 70], [160, 30]]] as Array<Array<[number, number]>> }
 const SOURCE = { kind: 'file', label: 'Purdue profile', quote: 'Ada Exampleton' }
 
+/**
+ * An open as the window takes it: the pages answered first, and the whole view (its form read) in the push that follows,
+ * or in the answer itself once that version's form has been read.
+ */
+async function openWhole(itemId: string, by?: Principal): Promise<PdfView> {
+  const from = pushes.length
+  const first = await call<PdfView>('work.pdf.open', { itemId }, by)
+  if (!first.formPending) return first
+  for (let i = 0; i < 200; i++) {
+    const got = pushes.slice(from).findLast((p) => (p as { push?: string; view?: PdfView }).push === 'work.pdf' && (p as { view: PdfView }).view.itemId === itemId && (p as { view: PdfView }).view.rev === first.rev && !(p as { view: PdfView }).view.formPending) as { view: PdfView } | undefined
+    if (got) return got.view
+    await new Promise((r) => setTimeout(r, 5))
+  }
+  throw new Error('the whole view never came')
+}
+
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tc-pdf-'))
   db = openDb(join(dir, 'test.db'))
@@ -117,9 +134,31 @@ afterEach(() => {
 })
 
 describe('opening and reading', () => {
+  it('answers the pages before the form is read: no parse, no field or mark, and the whole view pushed once after', async () => {
+    const id = openItem(put('fw9.pdf', W9))
+    const parses = formParses.count
+    const from = pushes.length
+    const first = await call<PdfView>('work.pdf.open', { itemId: id })
+    // Answered before the whole file was parsed for its form.
+    expect(formParses.count).toBe(parses)
+    expect(first).toMatchObject({ itemId: id, name: 'fw9.pdf', size: W9.length, fields: [], marks: [], formPending: true, signed: false })
+    const wholeOf = (): PdfView | undefined => (pushes.slice(from).find((p) => (p as { push?: string; view?: PdfView }).push === 'work.pdf' && !(p as { view: PdfView }).view.formPending) as { view: PdfView } | undefined)?.view
+    await vi.waitFor(() => expect(wholeOf()).toBeTruthy())
+    const whole = wholeOf()!
+    expect(whole.fields).toHaveLength(23)
+    expect(formParses.count).toBe(parses + 1)
+    const views = pushes.slice(from).filter((p) => (p as { push?: string }).push === 'work.pdf')
+    expect(views.filter((p) => !(p as { view: PdfView }).view.formPending)).toHaveLength(1)
+    // That version's form read, the next open is answered whole, with nothing parsed again.
+    const again = await call<PdfView>('work.pdf.open', { itemId: id })
+    expect(again.formPending).toBeUndefined()
+    expect(again.fields).toHaveLength(23)
+    expect(formParses.count).toBe(parses + 1)
+  })
+
   it('opens a PDF item: its name, size, rev and the form\'s fields with labels from the file or its field names', async () => {
     const id = openItem(put('fw9.pdf', W9))
-    const view = await call<PdfView>('work.pdf.open', { itemId: id })
+    const view = await openWhole(id)
     expect(view).toMatchObject({ itemId: id, sessionId: 't1', name: 'fw9.pdf', size: W9.length, mode: 'suggests', marks: [], hasSignature: false, signed: false })
     expect(view.rev).toMatch(/^[0-9a-f]{16}$/)
     expect(view.fields).toHaveLength(23)
@@ -131,17 +170,17 @@ describe('opening and reading', () => {
   it('serves the bytes by range from the copy it keeps, refreshed when the file changes, and still there when the file moves', async () => {
     const path = put('fw9.pdf', W9)
     const id = openItem(path)
-    const first = await call<PdfView>('work.pdf.open', { itemId: id })
+    const first = await openWhole(id)
     const head = await call<{ data: string; size: number; rev: string }>('work.pdf.read', { itemId: id, offset: 0, length: 8 })
     expect(Buffer.from(head.data, 'base64').toString('latin1')).toBe('%PDF-1.7')
     expect(head).toMatchObject({ size: W9.length, rev: first.rev })
     expect((await bytesOf(id)).equals(W9)).toBe(true)
     appendFileSync(path, '\n% one more line\n')
-    const second = await call<PdfView>('work.pdf.open', { itemId: id })
+    const second = await openWhole(id)
     expect(second.size).toBe(W9.length + 17)
     expect(second.rev).not.toBe(first.rev)
     unlinkSync(path)
-    const gone = await call<PdfView>('work.pdf.open', { itemId: id })
+    const gone = await openWhole(id)
     expect(gone.missing).toEqual({ asOf: expect.any(Number) })
     expect((await bytesOf(id)).length).toBe(W9.length + 17)
   })
@@ -164,7 +203,7 @@ describe('opening and reading', () => {
     const item = canvasStoreOf(db).open('t1', { kind: 'pdf', source: { at: 'thread' }, title: 'Made' })
     await expect(call('work.pdf.open', { itemId: item.id })).rejects.toThrow('Made is not where it was.')
     copyFileSync(join(import.meta.dirname, 'fixtures/fw9.pdf'), join(canvasItemDir(dir, 't1', item.id), 'file.pdf'))
-    expect(await call<PdfView>('work.pdf.open', { itemId: item.id })).toMatchObject({ name: 'Made.pdf', size: W9.length })
+    expect(await openWhole(item.id)).toMatchObject({ name: 'Made.pdf', size: W9.length })
   })
 
   it('reads a form it cannot fill as pages with a reason: an encrypted file', async () => {
@@ -172,7 +211,7 @@ describe('opening and reading', () => {
     doc.addPage()
     doc.context.trailerInfo.Encrypt = doc.context.register(doc.context.obj({ Filter: 'Standard', V: 2, R: 3 }))
     const id = openItem(put('locked.pdf', await doc.save({ useObjectStreams: false })), 'Locked')
-    const view = await call<PdfView>('work.pdf.open', { itemId: id })
+    const view = await openWhole(id)
     expect(view.formError).toBe('This PDF is encrypted, so its form cannot be read or filled here.')
     expect(view.fields).toEqual([])
   })
@@ -197,7 +236,7 @@ describe('filling', () => {
     expect((await call<PdfView>('work.pdf.mode', { itemId: id, mode: 'writes' })).mode).toBe('writes')
     const r = await tool('pdf_fill', { item: id, fields: [{ key: NAME, value: 'Ada', source: SOURCE }] })
     expect(textOf(r)).toBe('Wrote 1 value.')
-    const view = await call<PdfView>('work.pdf.open', { itemId: id })
+    const view = await openWhole(id)
     expect(view.written).toMatchObject({ text: 'Filled 1 field' })
     expect(view.fields.find((f) => f.key === NAME)).toMatchObject({ state: 'accepted', value: 'Ada' })
     const back = await call<PdfView>('work.pdf.undo', { itemId: id, writeId: view.written!.id })
@@ -271,7 +310,7 @@ describe('signing', () => {
     })
     expect(textOf(r)).toContain('Placed 2 boxes')
     expect(textOf(r)).toContain("field 2: the signature and its date are the owner's to place; leave the value out")
-    const view = await call<PdfView>('work.pdf.open', { itemId: id })
+    const view = await openWhole(id)
     expect(view.fields.filter((f) => f.origin === 'overlay').map((f) => [f.type, f.state])).toEqual(
       expect.arrayContaining([
         ['signature', 'needs-owner'],
@@ -421,7 +460,7 @@ describe.skipIf(!REAL)('the tools with the installed pdf-tools', () => {
     const fields = textOf(await tool('pdf_fields', { item: id }))
     expect(fields).not.toContain('could not be read off the page')
     expect(fields).toMatch(/f1_01\[0\]  text  "1 Name of entity\/individual/)
-    expect((await call<PdfView>('work.pdf.open', { itemId: id })).fields.find((f) => f.key === NAME)?.label).toMatch(/^1 Name of entity/)
+    expect((await openWhole(id)).fields.find((f) => f.key === NAME)?.label).toMatch(/^1 Name of entity/)
 
     const img = await tool('pdf_page_image', { item: id, page: 1, region: [0, 0, 1, 0.25] })
     const png = img.content[0] as { type: string; data: string; mimeType: string }
@@ -452,7 +491,7 @@ describe('the review\'s holes, through the module', () => {
     const r = await tool('pdf_fill', { item: id, fields: [{ key: 'box:sig', place: { ...SIG_BOX, page: 3 } }] })
     expect(r.isError).toBe(true)
     expect(textOf(r)).toContain('box:sig: the owner has signed there; it cannot be moved')
-    const view = await call<PdfView>('work.pdf.open', { itemId: id })
+    const view = await openWhole(id)
     expect(view.signed).toBe(true)
     expect(view.fields.find((f) => f.key === 'box:sig')).toMatchObject({ page: 1, state: 'accepted' })
   })
@@ -463,7 +502,7 @@ describe('the review\'s holes, through the module', () => {
     const r = await tool('pdf_fill', { item: id, fields: [{ key: 'box:t', place: SIG_BOX }, { key: NAME, place: { ...SIG_BOX, type: 'text' }, value: 'y', source: SOURCE }] })
     expect(textOf(r)).toContain('box:t: it is a text box; place a new key for a signature box')
     expect(textOf(r)).toContain(`${NAME}: a placed box's key starts with "box:" and is not one of the form's fields`)
-    const view = await call<PdfView>('work.pdf.open', { itemId: id })
+    const view = await openWhole(id)
     expect(view.fields.find((f) => f.key === 'box:t')).toMatchObject({ type: 'text', proposed: 'x' })
     // The value meant for the refused box went nowhere: the form's own field has no suggestion.
     expect(view.fields.find((f) => f.key === NAME)).toMatchObject({ origin: 'acroform', state: 'empty' })
@@ -476,7 +515,7 @@ describe('the review\'s holes, through the module', () => {
     expect(exp.size).toBeGreaterThan(0)
     expect(await inkOf(await bytesOf(id, 'export'))).toBe(true)
     appendFileSync(path, '\n% version B\n')
-    const view = await call<PdfView>('work.pdf.open', { itemId: id })
+    const view = await openWhole(id)
     expect(view.signed).toBe(false)
     expect(view.fields.find((f) => f.key === 'box:sig')?.state).toBe('needs-owner')
     await call('work.pdf.export', { itemId: id })
@@ -487,7 +526,7 @@ describe('the review\'s holes, through the module', () => {
     const id = await signedItem(put('fw9.pdf', W9))
     await call('work.pdf.mode', { itemId: id, mode: 'writes' })
     await tool('pdf_fill', { item: id, fields: [{ key: NAME, value: 'Someone else', source: SOURCE }] })
-    expect((await call<PdfView>('work.pdf.open', { itemId: id })).signed).toBe(false)
+    expect((await openWhole(id)).signed).toBe(false)
     await call('work.pdf.export', { itemId: id })
     expect(await inkOf(await bytesOf(id, 'export'))).toBe(false)
   })
@@ -495,13 +534,13 @@ describe('the review\'s holes, through the module', () => {
   it('M3: a read serves the version its rev names, never a newer one, and refuses one no longer kept', async () => {
     const path = put('fw9.pdf', W9)
     const id = openItem(path)
-    const v1 = await call<PdfView>('work.pdf.open', { itemId: id })
+    const v1 = await openWhole(id)
     const read = (rev?: string) => call<{ data: string; size: number; rev: string }>('work.pdf.read', { itemId: id, offset: 0, length: 16, ...(rev ? { rev } : {}) })
     appendFileSync(path, '\n% B\n')
     // No open since: a read, with its rev or without, is still version 1, and copies nothing.
     expect(await read(v1.rev)).toMatchObject({ size: W9.length, rev: v1.rev })
     expect(await read()).toMatchObject({ size: W9.length, rev: v1.rev })
-    const v2 = await call<PdfView>('work.pdf.open', { itemId: id })
+    const v2 = await openWhole(id)
     expect(v2.rev).not.toBe(v1.rev)
     // A load begun on version 1 can still finish.
     expect(await read(v1.rev)).toMatchObject({ size: W9.length })
@@ -522,18 +561,18 @@ describe('the review\'s holes, through the module', () => {
     ] as const)
       await expect(call(method, params, remote)).rejects.toThrow(`forbidden: ${method} is outside app-managed roots`)
     // This host's own window reads it.
-    expect((await call<PdfView>('work.pdf.open', { itemId: outside })).name).toBe('tax-return.pdf')
+    expect((await openWhole(outside)).name).toBe('tax-return.pdf')
     // Under a workspace's folder, the key reads it too.
     const ws = join(dir, 'ws')
     mkdirSync(ws)
     db.prepare(`INSERT INTO workspaces (id, name, path, created_at) VALUES ('w9', 'Job', ?, 1)`).run(ws)
     const inside = openItem(join(ws, 'fw9.pdf'), 'Inside')
     copyFileSync(join(import.meta.dirname, 'fixtures/fw9.pdf'), join(ws, 'fw9.pdf'))
-    expect((await call<PdfView>('work.pdf.open', { itemId: inside }, remote)).name).toBe('fw9.pdf')
+    expect((await openWhole(inside, remote)).name).toBe('fw9.pdf')
     // A thread-made item's file is in its own folder.
     const made = canvasStoreOf(db).open('t1', { kind: 'pdf', source: { at: 'thread' }, title: 'Made' })
     copyFileSync(join(import.meta.dirname, 'fixtures/fw9.pdf'), join(canvasItemDir(dir, 't1', made.id), 'file.pdf'))
-    expect((await call<PdfView>('work.pdf.open', { itemId: made.id }, remote)).name).toBe('Made.pdf')
+    expect((await openWhole(made.id, remote)).name).toBe('Made.pdf')
   })
 
   it('gives a key no page of a PDF in a place others can open, only his window: a workspace kept in OneDrive is read as a library is', async () => {
@@ -551,7 +590,7 @@ describe('the review\'s holes, through the module', () => {
       ] as const)
         await expect(call(method, params, key), `${method} ${caps}`).rejects.toThrow(SHARED_BYTES)
     }
-    expect((await call<PdfView>('work.pdf.open', { itemId: item })).name).toBe('fw9.pdf')
+    expect((await openWhole(item)).name).toBe('fw9.pdf')
   })
 
   it('a thread-made file.pdf that is not a PDF is never served', async () => {
@@ -605,7 +644,7 @@ describe('round three: the fence on every method, the push, the hash, reverts', 
       ['work.pdf.export', {}]
     ]
     for (const [method, params] of calls) await expect(call(method, { itemId: id, ...params }, remote), method).rejects.toThrow(`forbidden: ${method} is outside app-managed roots`)
-    const after = await call<PdfView>('work.pdf.open', { itemId: id })
+    const after = await openWhole(id)
     expect(after.fields.find((f) => f.key === NAME)?.value).toBe('SECRET-SSN')
     expect(after.marks).toHaveLength(1)
     expect(after.mode).toBe('suggests')
@@ -640,7 +679,7 @@ describe('round three: the fence on every method, the push, the hash, reverts', 
     expect((await call<PdfView>('work.pdf.sign', { itemId: id, signed: true })).signed).toBe(true)
     const r = await tool('pdf_fill', { item: id, fields: [{ key: NAME, value: 'Someone else', source: SOURCE }, { key: 'box:phone', value: '555-9999', source: SOURCE }] })
     expect(textOf(r)).toContain('Suggested in the PDF: 2 values')
-    expect((await call<PdfView>('work.pdf.open', { itemId: id })).signed).toBe(true)
+    expect((await openWhole(id)).signed).toBe(true)
     await call('work.pdf.export', { itemId: id })
     const text = await pageText(await bytesOf(id, 'export'))
     expect(text).toContain('AdaExampleton')
@@ -655,14 +694,14 @@ describe('round three: the fence on every method, the push, the hash, reverts', 
     const path = put('fw9.pdf', W9)
     const when = statSync(path).mtime
     const id = openItem(path)
-    const v1 = await call<PdfView>('work.pdf.open', { itemId: id })
+    const v1 = await openWhole(id)
     appendFileSync(path, '\n% B\n')
-    const v2 = await call<PdfView>('work.pdf.open', { itemId: id })
+    const v2 = await openWhole(id)
     expect(v2.rev).not.toBe(v1.rev)
     // Put back as `cp -p` would: the old bytes and the old time.
     writeFileSync(path, W9)
     utimesSync(path, when, when)
-    expect((await call<PdfView>('work.pdf.open', { itemId: id })).rev).toBe(v1.rev)
+    expect((await openWhole(id)).rev).toBe(v1.rev)
     const view = await call<PdfView>('work.pdf.mode', { itemId: id, mode: 'writes' })
     expect(view).toMatchObject({ rev: v1.rev, size: W9.length })
     expect((await call<{ size: number; rev: string }>('work.pdf.read', { itemId: id, offset: 0, length: 10 })).rev).toBe(v1.rev)
@@ -673,7 +712,7 @@ describe('round three: the fence on every method, the push, the hash, reverts', 
     const id = openItem(path)
     await call('work.pdf.open', { itemId: id })
     appendFileSync(path, '\n% B\n')
-    const views = await Promise.all(Array.from({ length: 6 }, () => call<PdfView>('work.pdf.open', { itemId: id })))
+    const views = await Promise.all(Array.from({ length: 6 }, () => openWhole(id)))
     expect(new Set(views.map((v) => v.rev)).size).toBe(1)
     expect(readdirSync(canvasItemDir(dir, 't1', id)).filter((f) => f.endsWith('.tmp'))).toEqual([])
   })
@@ -681,7 +720,7 @@ describe('round three: the fence on every method, the push, the hash, reverts', 
   it('a read with rev of a file that is gone, with no copy kept, says it is missing', async () => {
     const path = put('fw9.pdf', W9)
     const id = openItem(path)
-    const v = await call<PdfView>('work.pdf.open', { itemId: id })
+    const v = await openWhole(id)
     unlinkSync(path)
     for (const f of readdirSync(canvasItemDir(dir, 't1', id))) if (f.startsWith('kept-')) unlinkSync(join(canvasItemDir(dir, 't1', id), f))
     await expect(call('work.pdf.read', { itemId: id, rev: v.rev, offset: 0, length: 10 })).rejects.toThrow('fw9.pdf is not where it was.')
@@ -705,13 +744,13 @@ describe('a Files tab and a thread on one file', () => {
       expect(view.marks.map((m) => m.text)).toEqual(['from the tab'])
       expect(view.fields.find((f) => f.key === NAME)?.value).toBe('Ada')
     }
-    expect((await call<PdfView>('work.pdf.open', { itemId: thread })).marks).toHaveLength(1)
+    expect((await openWhole(thread)).marks).toHaveLength(1)
     // A thread's tool writes them too, and the tab hears.
     pushes.length = 0
     await tool('pdf_fill', { item: thread, fields: [{ key: SSN1, value: '123', source: SOURCE }] })
     expect(heard().find((v) => v.itemId === tab)?.fields.find((f) => f.key === SSN1)).toMatchObject({ proposed: '123', state: 'proposed' })
     for (const fn of removed) fn(['t1'])
-    const left = await call<PdfView>('work.pdf.open', { itemId: tab })
+    const left = await openWhole(tab)
     expect(left.marks.map((m) => m.text)).toEqual(['from the tab'])
     expect(left.fields.find((f) => f.key === NAME)?.value).toBe('Ada')
   })
@@ -724,10 +763,10 @@ describe('a Files tab and a thread on one file', () => {
     await expect(call('work.pdf.open', { itemId: tab }, remote)).rejects.toThrow('forbidden: work.pdf.open is outside app-managed roots')
     sessions.set('t2', { id: 't2', provider: 'claude', workspaceId: 'w2', scope: 'work' } as SessionMeta)
     const other = openItem(path, 'Tax', 't2')
-    const view = await call<PdfView>('work.pdf.open', { itemId: other })
+    const view = await openWhole(other)
     expect(view.marks).toEqual([])
     await call('work.pdf.mark', { itemId: other, page: 1, quads: [[0, 0, 1, 0.1]], text: 'theirs' })
-    expect((await call<PdfView>('work.pdf.open', { itemId: tab })).marks.map((m) => m.text)).toEqual(['SECRET'])
+    expect((await openWhole(tab)).marks.map((m) => m.text)).toEqual(['SECRET'])
   })
 
   it('a rename in Files takes the rows with it', async () => {
@@ -742,7 +781,7 @@ describe('a Files tab and a thread on one file', () => {
     renameSync(path, next)
     const ctx = { db, dataDir: dir, host: 'env_test', canvas: { announce: () => {} }, push: () => {}, log: () => {} } as unknown as WorkCtx
     fileMoved(ctx, { path, key: refKey(file(path)) }, { path: next, key: refKey(file(next)) })
-    expect((await call<PdfView>('work.pdf.open', { itemId: tab })).marks.map((m) => m.text)).toEqual(['x'])
+    expect((await openWhole(tab)).marks.map((m) => m.text)).toEqual(['x'])
     expect(db.prepare(`SELECT file_key FROM work_pdf_marks`).all()).toEqual([{ file_key: JSON.stringify(['w1', refKey(file(next))]) }])
   })
 })

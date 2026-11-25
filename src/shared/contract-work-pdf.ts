@@ -136,6 +136,8 @@ export interface PdfView {
   formError?: string
   /** The file is not where the item says: what shows is the copy kept when it was last read, as of then. */
   missing?: { asOf: number }
+  /** The pages are answered before the file's form is read: no field or mark is drawn or made until the whole view comes (a `work.pdf` push). */
+  formPending?: true
 }
 
 const itemId = z.string().min(1).max(100)

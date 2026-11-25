@@ -118,8 +118,10 @@ export function PdfBody({ item: canvasItem, source, shell, host, pdf: item, widt
         itemId={canvasItem.id}
         title={view.name}
         source={source}
-        fields={view.fields}
-        marks={view.marks}
+        // The pages first: no field or mark is drawn or made until the file's form is read (`formPending`).
+        fields={view.formPending ? [] : view.fields}
+        marks={view.formPending ? [] : view.marks}
+        marking={!view.formPending}
         current={proposed[at]?.key ?? null}
         signature={signature}
         cite={cite}

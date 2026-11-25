@@ -35,6 +35,8 @@ export interface ColumnProps {
   shell: CanvasShell;
   /** The citation to mark, until another is clicked. */
   cite: PdfCite | null;
+  /** false while the file's form is still read (`formPending`): the pages show, and no highlight is offered yet */
+  marking?: boolean;
   /** A preview's fixed width: there is no layout to measure in a static page. */
   width?: number;
   height?: number;
@@ -173,24 +175,26 @@ export function Column(props: ColumnProps) {
       rect: range.getBoundingClientRect(),
       tools: (
         <>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              void props.actions.mark(page, quads, text);
-              selection.removeAllRanges();
-              shell.selection(null);
-            }}
-          >
-            Highlight
-          </Button>
+          {props.marking !== false ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                void props.actions.mark(page, quads, text);
+                selection.removeAllRanges();
+                shell.selection(null);
+              }}
+            >
+              Highlight
+            </Button>
+          ) : null}
           <Button variant="ghost" size="icon-sm" aria-label="Copy" onClick={() => void navigator.clipboard?.writeText(text)}>
             <Copy />
           </Button>
         </>
       ),
     });
-  }, [itemId, props.actions, shell, source]);
+  }, [itemId, props.actions, props.marking, shell, source]);
 
   useEffect(() => {
     const clear = (): void => {

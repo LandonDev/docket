@@ -112,22 +112,62 @@ export const nameOf = (item: CanvasItem, path: string | null): string => {
   return /\.pdf$/i.test(item.title) ? item.title : `${item.title}.pdf`
 }
 
-/** A file's form, read once per version of the file. */
+/** A file's form, read once per version of the file; `read` says it has been (an open need not wait on it). */
 const forms = new Map<string, Promise<FormRead | { error: string }>>()
+const formsRead = new Set<string>()
+/** How many times a file's form was parsed whole: what a test counts. */
+export const formParses = { count: 0 }
 export function formOf(stamp: FileStamp): Promise<FormRead | { error: string }> {
   const key = `${stamp.path}:${stamp.rev}`
   let form = forms.get(key)
   if (!form) {
-    form = readForm(readFileSync(stamp.path)).catch((err) => ({ error: err instanceof PdfFormError ? err.message : `The form could not be read: ${errorText(err)}` }))
+    formParses.count++
+    form = readForm(readFileSync(stamp.path))
+      .catch((err) => ({ error: err instanceof PdfFormError ? err.message : `The form could not be read: ${errorText(err)}` }))
+      .then((got) => (formsRead.add(key), got))
     forms.set(key, form)
-    if (forms.size > 32) forms.delete(forms.keys().next().value!)
+    if (forms.size > 32) {
+      const old = forms.keys().next().value!
+      forms.delete(old)
+      formsRead.delete(old)
+    }
   }
   return form
 }
+const formRead = (stamp: FileStamp): boolean => formsRead.has(`${stamp.path}:${stamp.rev}`)
 
-/** What is drawn over the item. `refresh`: an open, which takes a new copy when the file changed. */
-export async function viewOf(ctx: Ctx, item: CanvasItem, o: { refresh?: boolean } = {}): Promise<PdfView> {
+/**
+ * What is drawn over the item. `refresh`: an open, which takes a new copy when the file changed. `first`: an open
+ * answered before the file's form is parsed (a parse reads the whole file): the pages draw at once with no field and
+ * no mark over them (`formPending`), the form is parsed after the answer is sent, and the whole view is pushed
+ * (`work.pdf`) once it is in. A form already read is answered whole.
+ */
+export async function viewOf(ctx: Ctx, item: CanvasItem, o: { refresh?: boolean; first?: boolean } = {}): Promise<PdfView> {
   const snap = await snapshot(ctx, item, o)
+  if (o.first && !formRead(snap.stamp)) {
+    setImmediate(() => {
+      void formOf(snap.stamp)
+        .then(() => announce(ctx, item))
+        .catch(() => undefined)
+    })
+    const store = new PdfStore(ctx.db)
+    const kept = store.keep(item)
+    // Nothing is judged against fields not yet read: a signature stays as it is until the whole view says.
+    return {
+      itemId: item.id,
+      sessionId: item.sessionId,
+      name: snap.name,
+      size: snap.stamp.size,
+      rev: snap.stamp.rev,
+      mode: store.mode(kept.id),
+      fields: [],
+      marks: [],
+      hasSignature: store.signature() !== null,
+      signed: false,
+      formPending: true,
+      ...(snap.missing ? { missing: snap.missing } : {})
+    }
+  }
   const form = await formOf(snap.stamp)
   const store = new PdfStore(ctx.db)
   const kept = store.keep(item)
