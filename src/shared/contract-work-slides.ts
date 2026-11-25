@@ -162,7 +162,7 @@ export const SlideOpSchema = z.discriminatedUnion('op', [
     op: z.literal('copy'),
     slide,
     shape,
-    to: slide.optional(),
+    to: slide.optional().describe('The slide to put the copy on; absent, its own slide.'),
     box: box.optional(),
     file: z.string().min(1).max(1000).optional(),
     id: z.number().int().positive().max(2_000_000_000).optional().describe('To edit it later in this list.')
