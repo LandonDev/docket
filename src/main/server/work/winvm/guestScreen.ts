@@ -45,7 +45,8 @@ export function readGuestScale(run: string): number | null {
   }
 }
 
-export function writeGuestScreen(run: string, size: VmWindow): void {
+/** The guest's size, and Windows' scale where live resize set it (readGuestScale). */
+export function writeGuestScreen(run: string, size: VmWindow & { scale?: number }): void {
   mkdirSync(dirname(guestScreenFile(run)), { recursive: true })
   writeFileSync(guestScreenFile(run), JSON.stringify(size) + '\n')
 }

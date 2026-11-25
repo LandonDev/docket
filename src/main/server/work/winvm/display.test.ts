@@ -7,7 +7,7 @@ import { guestSizeFor } from '@shared/video/guestSize'
 import type { StreamInfo } from '../../video/relay'
 import { askedMode, VmDisplay } from './display'
 import type { GuestModeAsk, GuestModeSet } from './door'
-import { readGuestScreen } from './guestScreen'
+import { readGuestScale, readGuestScreen } from './guestScreen'
 import type { VmWindow } from './machine/qemu'
 
 /** The guest follows the viewer: the five steps over a fake door, display and engines. */
@@ -92,6 +92,8 @@ describe('a size change', () => {
     expect(await r.display.set({ width: 3456, height: 2234, scale: 200 })).toEqual({ width: 3456, height: 2234, scale: 200, adapter: ADAPTER, taken: true })
     expect(r.log).toEqual(['x 3456x2234', 'set 3456x2234', 'end resized', 'stop engines'])
     expect(readGuestScreen(run)).toEqual({ width: 3456, height: 2234 })
+    // and Windows' scale, which the keeper's state shows (it said 100% after a 200% ask on his Mac, Nov 25)
+    expect(readGuestScale(run)).toBe(200)
   })
 
   it('shrinks the screen last, once the engines have stopped', async () => {

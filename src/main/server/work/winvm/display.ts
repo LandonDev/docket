@@ -70,7 +70,7 @@ export class VmDisplay {
       const took = await this.change(ask, async () => {
         const took = await this.d.guest().set(ask)
         // the file says the guest's size before anything else can fail, taken or not: a stop of the service from here leaves it true
-        writeGuestScreen(this.d.run, { width: took.width, height: took.height })
+        writeGuestScreen(this.d.run, { width: took.width, height: took.height, scale: took.scale })
         this.mode = took
         return took
       })
