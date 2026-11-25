@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PdfCite, PdfField, PdfSignature, PdfView } from "@shared/contract-work-pdf";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Search, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
@@ -10,7 +10,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { dayTime } from "../../lib/duration";
 import { modOrCtrl } from "../../lib/keys";
-import { OpenFailed } from "../canvas/FetchState";
+import { FailedHost, OpenFailed } from "../canvas/FetchState";
 import { Tip } from "../../components/tip";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, ReviewAdapter } from "../canvas/kind";
@@ -94,14 +94,16 @@ export function PdfBody({ item: canvasItem, source, shell, host, pdf: item, widt
 
   const proposed = useMemo(() => pending(view?.fields ?? []), [view?.fields]);
   const at = Math.min(current, proposed.length - 1);
-  const run = useCallback((work: Promise<PdfView>, fallback: string): Promise<void> => work.then(setView, (error: unknown) => sayError(error, fallback)), [setView]);
+  // The computer the pane's file is on (`FailedHost`): every failure here names it.
+  const env = useContext(FailedHost);
+  const run = useCallback((work: Promise<PdfView>, fallback: string): Promise<void> => work.then(setView, (error: unknown) => sayError(error, fallback, env)), [setView, env]);
 
   useEffect(() => nav.review(proposed.length > 0), [nav, proposed.length]);
   // A file that did not open (or waits for its password) has no pages for the bar: it drops its bone.
   const shut = !!viewError || doc.phase === "failed" || doc.phase === "password";
   useEffect(() => nav.shut(shut), [nav, shut]);
   useFeeds(shell, doc.phase === "ready" ? view : null, proposed, at, setCurrent, nav, host, run);
-  useMore(shell, nav, host, doc.phase === "ready" && !!view);
+  useMore(shell, nav, host, doc.phase === "ready" && !!view, env);
 
   // With a saved signature the press signs at once, and Sign spins until the host has placed it.
   const sign = (): Promise<void> | void => {
@@ -134,7 +136,7 @@ export function PdfBody({ item: canvasItem, source, shell, host, pdf: item, widt
         width={width}
         height={height}
         actions={{
-          setField: (key, value) => host.setField(key, value).then(setView),
+          setField: (key, value) => fieldWrite(host, host.setField(key, value)).then(setView),
           sign,
           unsign: () => host.sign(false).then(setView),
           mark: (page, quads, text) => run(host.mark(page, quads, text), "Couldn't highlight"),
@@ -219,7 +221,7 @@ function useFeeds(
 }
 
 /** What the bar gives way (`barFits`) reaches the pane's More, so a narrow pane still zooms, finds and saves a copy. */
-function useMore(shell: CanvasShell, nav: PdfNav, host: PdfHost, open: boolean): void {
+function useMore(shell: CanvasShell, nav: PdfNav, host: PdfHost, open: boolean, env: string | null): void {
   const state = useNav(nav);
   const fits = barFits(state.width, state.reviewing, state.find.open);
   const zoom = !fits.zoom && open ? state.zoom : null;
@@ -231,11 +233,11 @@ function useMore(shell: CanvasShell, nav: PdfNav, host: PdfHost, open: boolean):
         ? ZOOMS.map<MoreEntry>((z) => ({ id: `zoom-${z}`, label: `Zoom: ${ZOOM_WORDS[String(z)]}`, icon: z === zoom ? Check : ZoomIn, disabled: z === zoom, run: () => nav.zoom(z) }))
         : []),
       ...(find ? [{ id: "find", label: "Find", icon: Search, run: () => nav.openFind() }] : []),
-      ...(save ? [{ id: "save-copy", label: "Save a Copy", icon: Download, run: () => saveCopy(host).catch((error: unknown) => sayError(error, "Couldn't save a copy")) }] : []),
+      ...(save ? [{ id: "save-copy", label: "Save a Copy", icon: Download, run: () => saveCopy(host).catch((error: unknown) => sayError(error, "Couldn't save a copy", env)) }] : []),
     ];
     shell.more?.(entries.length ? entries : null);
     return () => shell.more?.(null);
-  }, [shell, nav, host, zoom, find, save]);
+  }, [shell, nav, host, zoom, find, save, env]);
 }
 
 /** Loading: the page's own shape, on the card step, on the paper's own side inset (layout.ts `sideInset`: 24px, 12px under 640px). */
@@ -466,6 +468,7 @@ function FindKeys({ nav, itemId }: { nav: PdfNav; itemId: string }) {
 /** A copy with his values, highlights and signature in it, flattened, saved where he chooses. */
 function SaveCopy({ host }: { host: PdfHost }) {
   const [busy, setBusy] = useState(false);
+  const env = useContext(FailedHost);
   return (
     <Tip label="Save a copy">
       <Button
@@ -476,7 +479,7 @@ function SaveCopy({ host }: { host: PdfHost }) {
         onClick={() => {
           setBusy(true);
           saveCopy(host)
-            .catch((error: unknown) => sayError(error, "Couldn't save a copy"))
+            .catch((error: unknown) => sayError(error, "Couldn't save a copy", env))
             .finally(() => setBusy(false));
         }}
       >
@@ -486,7 +489,31 @@ function SaveCopy({ host }: { host: PdfHost }) {
   );
 }
 
+/** Field writes still out, per item's host: the tick shows at his press, before the host has written it. */
+const writing = new WeakMap<PdfHost, Set<Promise<unknown>>>();
+
+/** A field write, counted until the host answers it. */
+function fieldWrite<T>(host: PdfHost, work: Promise<T>): Promise<T> {
+  let out = writing.get(host);
+  if (!out) writing.set(host, (out = new Set()));
+  const set = out;
+  set.add(work);
+  const done = (): void => void set.delete(work);
+  work.then(done, done);
+  return work;
+}
+
+/** Every field write out now and any begun while they land; a refused one stops the copy, as the page no longer shows it. */
+async function fieldsWritten(host: PdfHost): Promise<void> {
+  for (let out = [...(writing.get(host) ?? [])]; out.length; out = [...(writing.get(host) ?? [])]) {
+    const answers = await Promise.allSettled(out);
+    if (answers.some((a) => a.status === "rejected")) throw new Error("A field did not change, so the copy would not match the page.");
+  }
+}
+
 async function saveCopy(host: PdfHost): Promise<void> {
+  // The copy holds every tick he sees: a write still out is waited for first.
+  await fieldsWritten(host);
   const made = await host.export(true);
   const parts: Uint8Array[] = [];
   for (let at = 0; at < made.size; at += 4 * 1024 * 1024) parts.push(await host.read("export", at, Math.min(4 * 1024 * 1024, made.size - at)));

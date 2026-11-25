@@ -35,7 +35,9 @@ vi.mock("../../lib/connection", async (original) => {
     onOpen: (listener: () => void) => (host.opens.add(listener), () => host.opens.delete(listener)),
     onClose: () => () => undefined,
   };
-  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: (listener: (l: typeof link, event: string) => void) => (listener(link, "added"), () => undefined) } };
+  // The file's computer by name, so a failure that names it can be read.
+  const environment = (id: string) => (id === "local" ? { id, name: "Studio Mac" } : undefined);
+  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, environment, onLink: (listener: (l: typeof link, event: string) => void) => (listener(link, "added"), () => undefined) } };
 });
 
 const toasts = vi.hoisted(() => ({ errors: [] as unknown[][] }));
@@ -310,6 +312,45 @@ describe("the PDF kind", () => {
     expect(toasts.errors.at(-1)?.[0]).toBe("Couldn't change the field");
   });
 
+  it("names the file's computer when a field's answer was lost", async () => {
+    await open(pdfView({ fields: [field("ok", { label: "I agree", type: "checkbox" })] }));
+    const box = await screen.findByRole("checkbox", { name: "I agree" });
+    pdfHost.setField = async () => {
+      throw new Error("No answer in 30s");
+    };
+    toasts.errors.length = 0;
+    fireEvent.click(box);
+    await waitFor(() => expect(toasts.errors.at(-1)?.[0]).toBe("Couldn't change the field"));
+    expect(JSON.stringify(toasts.errors.at(-1)?.[1])).toContain("Studio Mac");
+  });
+
+  it("makes a saved copy only once every tick he sees is written, and none when a write fails", async () => {
+    await open(pdfView({ fields: [field("ok", { label: "I agree", type: "checkbox" })] }));
+    URL.createObjectURL ??= () => "blob:copy";
+    URL.revokeObjectURL ??= () => undefined;
+    const box = await screen.findByRole("checkbox", { name: "I agree" });
+    const exports: string[] = [];
+    pdfHost.export = async () => (exports.push("export"), { name: "Ballroom contract.pdf", size: 0, warnings: [] });
+    const real = pdfHost.setField.bind(pdfHost);
+    let answer = Promise.withResolvers<void>();
+    pdfHost.setField = async (key, value) => (await answer.promise, real(key, value));
+    fireEvent.click(box);
+    fireEvent.click(await screen.findByRole("button", { name: "Save a copy" }));
+    await new Promise((done) => setTimeout(done, 20));
+    expect(exports).toEqual([]);
+    await act(async () => answer.resolve());
+    await waitFor(() => expect(exports).toEqual(["export"]));
+    expect(pdfHost.calls.filter(([m]) => m === "setField")).toHaveLength(1);
+    // A write the host refused: the tick goes back, and no copy is made of a page he no longer sees.
+    answer = Promise.withResolvers<void>();
+    toasts.errors.length = 0;
+    fireEvent.click(box);
+    fireEvent.click(screen.getByRole("button", { name: "Save a copy" }));
+    await act(async () => answer.reject(new Error("refused")));
+    await waitFor(() => expect(toasts.errors.map((e) => e[0])).toContain("Couldn't save a copy"));
+    expect(exports).toEqual(["export"]);
+  });
+
   it("spins Sign and holds it while the host places a saved signature, so a second press cannot sign again", async () => {
     await open(pdfView({ hasSignature: true, fields: [field("sig", { type: "signature", origin: "overlay", state: "needs-owner" })] }));
     await pdfHost.setSignature({ width: 10, height: 10, strokes: [[[1, 1], [5, 5]]] });
@@ -412,7 +453,8 @@ describe("the PDF kind", () => {
     await waitFor(() => expect(pages()[0]).toBe(1));
     act(() => deliverCite({ itemId: "pdf1", page: 1, bbox: [0.1, 0.13, 0.8, 0.15] }));
     await found("[data-pdf-cite]");
-    fireEvent.keyDown(document.querySelector("[data-pdf-column]")!, { key: "Escape" });
+    // The key is the clause's: a full-window tab's Escape (it skips a key taken) does not leave as well.
+    expect(fireEvent.keyDown(document.querySelector("[data-pdf-column]")!, { key: "Escape" })).toBe(false);
     await waitFor(() => expect(document.querySelector("[data-pdf-cite]")).toBeNull());
   });
 

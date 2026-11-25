@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
+import { useContext, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
 import type { PdfField, PdfFieldValue, PdfSignature } from "@shared/contract-work-pdf";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -8,6 +8,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Spinner } from "../../components/ui/spinner";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import { FailedHost } from "../canvas/FetchState";
 import { sayError } from "../canvas/frame";
 import { boxStyle } from "./layout";
 
@@ -99,6 +100,8 @@ function FieldBox({ field, current, pageHeight, signature, actions }: { field: P
  * settles it, so a quick second press is never undone by the first answer.
  */
 function CheckBox({ field, ticked, base, actions }: { field: PdfField; ticked: boolean; base: string; actions: FieldActions }) {
+  // The computer the pane's file is on (`FailedHost`): a failure names it.
+  const env = useContext(FailedHost);
   const [pressed, setPressed] = useState<boolean | null>(null);
   const latest = useRef(0);
   const shownTick = pressed ?? ticked;
@@ -120,7 +123,7 @@ function CheckBox({ field, ticked, base, actions }: { field: PdfField; ticked: b
         };
         actions.setField(field.key, next).then(settle, (error: unknown) => {
           settle();
-          sayError(error, "Couldn't change the field");
+          sayError(error, "Couldn't change the field", env);
         });
       }}
     >
@@ -154,6 +157,8 @@ function SignButton({ sign }: { sign: FieldActions["sign"] }) {
 
 /** A press on a field: where its value came from, and his own value. */
 function FieldPopover({ field, actions, children }: { field: PdfField; actions: FieldActions; children: ReactElement }) {
+  // The computer the pane's file is on (`FailedHost`): a failure names it.
+  const env = useContext(FailedHost);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
@@ -164,7 +169,7 @@ function FieldPopover({ field, actions, children }: { field: PdfField; actions: 
     actions
       .setField(field.key, draft.trim() === "" ? null : draft)
       .then(() => setOpen(false))
-      .catch((error: unknown) => sayError(error, "Couldn't change the field"))
+      .catch((error: unknown) => sayError(error, "Couldn't change the field", env))
       .finally(() => setSaving(false));
   };
   return (
@@ -212,6 +217,8 @@ function FieldPopover({ field, actions, children }: { field: PdfField; actions: 
 }
 
 function SignedPopover({ field, actions, children }: { field: PdfField; actions: FieldActions; children: ReactElement }) {
+  // The computer the pane's file is on (`FailedHost`): a failure names it.
+  const env = useContext(FailedHost);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   return (
@@ -228,7 +235,7 @@ function SignedPopover({ field, actions, children }: { field: PdfField; actions:
             actions
               .unsign()
               .then(() => setOpen(false))
-              .catch((error: unknown) => sayError(error, "Couldn't take the signature off"))
+              .catch((error: unknown) => sayError(error, "Couldn't take the signature off", env))
               .finally(() => setBusy(false));
           }}
         >

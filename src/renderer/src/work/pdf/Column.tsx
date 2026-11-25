@@ -318,6 +318,8 @@ export function Column(props: ColumnProps) {
         onPointerDown={() => props.onClearCite?.()}
         onKeyDown={(event) => {
           if (event.key !== "Escape" || (!cite && !regionShown(scroller.current))) return;
+          // The key is the mark's: a full-window tab skips a taken Escape, so it does not leave as well.
+          event.preventDefault();
           props.onClearCite?.();
           clear((n) => n + 1);
           shell.selection(null);

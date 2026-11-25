@@ -378,7 +378,10 @@ How it works:
 - **The bar** is the pager ("6 / 14", following the scroll), the zoom,
   Find (also ⌘F or Ctrl+F while the PDF has the focus or the pointer; Enter
   and Shift+Enter step, Escape closes) and Save a copy (`work.pdf.export`,
-  flattened, saved where he chooses). What does not fit gives way in the
+  flattened, saved where he chooses). Save a copy, from the bar or More,
+  first waits for every field write still out (`fieldsWritten`), so the
+  copy holds each tick he sees; a write the host refused makes no copy.
+  What does not fit gives way in the
   prototype's order (`barFits`): zoom and Save first, then, while the
   stepper is there, Find and the pager's arrows. What the bar drops goes
   to the pane's More (`useMore`): "Zoom: Fit width" and the three sizes,
@@ -393,7 +396,8 @@ How it works:
   its source ("From Purdue profile: “…”") over a field for his own value
   (`work.pdf.setField`). A checkbox ticks at his press and puts itself
   back, with the toast, only when the host refuses; the newest press alone
-  settles it. The signature box is the dashed Sign: the first
+  settles it. Every PDF toast names the pane's computer (`FailedHost`), so
+  a lost answer says which one did not answer. The signature box is the dashed Sign: the first
   time, a pad dialog draws and saves his signature (`work.pdf.setSignature`),
   then `work.pdf.sign` places it and the date; after that one press signs,
   and Sign spins and holds still until the host has placed it, so a second
@@ -416,7 +420,8 @@ How it works:
   or opening it again through `work.canvas.open`), and hands the body the
   page and box, which it scrolls to a few lines below the top and marks
   with `--sel-bg-paper` until the next citation, Escape in the column or
-  a press on a page. Escape lets a region drawn on a scan go too. The transcript's markdown
+  a press on a page. Escape lets a region drawn on a scan go too, and
+  claims the key, so a full-window tab stays full window. The transcript's markdown
   keeps a `#pdf:` href as a link (pdf.test.ts checks it through the real
   pipeline).
 - **States.** Loading is a page-shaped skeleton. A page not yet drawn
