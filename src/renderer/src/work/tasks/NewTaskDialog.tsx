@@ -11,7 +11,8 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { jobNameNow } from "../jobName";
 import type { LifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
-import { DownLine } from "../shell/DownLine";
+import { DownLine, HostLine } from "../shell/DownLine";
+import { useHostLive } from "../shell/lifeosLive";
 
 /**
  * New task (prototype workspace.html, the Tasks header's verb): a plain write
@@ -65,7 +66,8 @@ export function NewTaskDialog({
   onClose: () => void;
   /**
    * The session it writes through, where the form outlives the view's body (`WorkViewModule.Kept`): while it is down,
-   * the form keeps what he typed, says its line (`DownLine`) and holds Add. Without it, the form writes through the
+   * the form keeps what he typed, says its line (`DownLine`) and holds Add; while the host says it is connecting, the
+   * named wait (`HostLine`) with Add held. Without it, the form writes through the
    * Convex client around it.
    */
   session?: LifeosSession;
@@ -100,6 +102,9 @@ function Body({
   const close = useModalClose();
   const [writes, setWrites] = useState<Writes | null>(null);
   const down = session && downOf(session) ? session : null;
+  // The host said its LifeOS is on its way: the named wait, Add held, what he typed kept.
+  const host = useHostLive(session?.environmentId ?? "");
+  const waits = !!session && !session.client && !down && host.waits;
   // Add waits for a client to write through: the form's own writes, or, for Mail's Make task, the session it files on.
   const held = file ? !!session && !session.client : !writes;
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -160,7 +165,7 @@ function Body({
       )}
       <ModalBody>
         {/* The session dropped while the form was open: its line, with the rule's press; what he typed stays. */}
-        {down ? <DownLine session={down} /> : null}
+        {down ? <DownLine session={down} /> : waits ? <HostLine live={host} /> : null}
         <Field label="Task">
           <Input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" />
         </Field>
