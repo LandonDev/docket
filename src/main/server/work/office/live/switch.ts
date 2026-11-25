@@ -153,14 +153,18 @@ async function forgetKept(ctx: WorkCtx, workspaceId: string, tab: FileTab): Prom
   rmSync(r.doc!, { force: true })
 }
 
-/** The file's version on its own computer, by one look; null when it does not answer. Never wakes the VM for it: Edit here does. */
-async function versionNow(ctx: WorkCtx, workspaceId: string, ref: { host: string; path: string }, signal?: AbortSignal): Promise<{ word: string; changed: number } | null> {
+/**
+ * The file's version on its own computer, by one look; null when it does not answer. Never wakes the VM for it: Edit
+ * here does. `now`: the holder's own clock as it looked, which its change time is read against; none from the VM's
+ * guest (its helper does not say it yet) or a host a build behind.
+ */
+async function versionNow(ctx: WorkCtx, workspaceId: string, ref: { host: string; path: string }, signal?: AbortSignal): Promise<{ word: string; changed: number; now?: number } | null> {
   try {
     if (ref.host !== ctx.host) {
       const far = ctx.peer.call({ scope: { sessionId: filesPaneOf(workspaceId), workspaceId }, signal } as never, ref.host)
-      const got = (await far.call('files', 'stat', { workspaceId, refs: [{ at: 'file', host: ref.host, path: ref.path }] })) as { entries: ({ size?: number; changed?: number } | null)[] }
+      const got = (await far.call('files', 'stat', { workspaceId, refs: [{ at: 'file', host: ref.host, path: ref.path }] })) as { entries: ({ size?: number; changed?: number } | null)[]; now?: number }
       const e = got.entries[0]
-      return typeof e?.changed === 'number' ? { word: `${e.size ?? 0}:${e.changed}`, changed: e.changed } : null
+      return typeof e?.changed === 'number' ? { word: `${e.size ?? 0}:${e.changed}`, changed: e.changed, ...(typeof got.now === 'number' ? { now: got.now } : {}) } : null
     }
     const at = locate(ctx, HIS, workspaceId, { at: 'file', host: ref.host, path: ref.path }, SET)
     if (at.in === 'library' && at.library.vm) {
@@ -171,7 +175,7 @@ async function versionNow(ctx: WorkCtx, workspaceId: string, ref: { host: string
     if (at.in !== 'library' && at.in !== 'folder') return null
     // By its bytes where this host can hash them: a new time alone (a restamp, a sync touching it) is no change.
     const v = await versionOf(at.path)
-    return { word: v.sha256 ? `sha256:${v.sha256}` : `${v.size}:${Math.round(v.mtimeMs)}`, changed: Math.round(v.mtimeMs) }
+    return { word: v.sha256 ? `sha256:${v.sha256}` : `${v.size}:${Math.round(v.mtimeMs)}`, changed: Math.round(v.mtimeMs), now: Date.now() }
   } catch {
     return null
   }
@@ -184,25 +188,26 @@ async function keepBase(ctx: WorkCtx, workspaceId: string, key: string, ref: { h
 
 /**
  * He typed in the live view: OneDrive brings Word's edits down to the file's computer. Waits until the file holds a
- * change made after his last key there (`quiet` ms before the press), 60 s at most: one already there by this host's
- * own clock, else the next one seen, which came after the press and the unload's save. A sync from earlier in the
- * session is not that change. A window that does not say `quiet` waits for any change since the tab went live (`base`).
- * Answers whether it moved; when it did not, nothing proves the file holds his typing, and the live seat stays.
+ * change made after his last key there (`quiet` ms before the press), 60 s at most, its time read by the holder's own
+ * clock (this host's, or his desktop's as its look answers it): one already there, else the next one seen whose time
+ * is after his last key. A sync of a save from before his last key, early or late, is not that change. Where the
+ * holder gives no clock (the VM's guest), the next change seen after the press. A window that does not say `quiet`
+ * waits for any change since the tab went live (`base`). Answers whether it moved; when it did not, nothing proves the
+ * file holds his typing, and the live seat stays.
  */
 async function versionMoved(ctx: WorkCtx, workspaceId: string, ref: { host: string; path: string }, base: string | null, since: number, quiet: number | undefined, signal?: AbortSignal): Promise<boolean> {
   const first = await versionNow(ctx, workspaceId, ref, signal)
   if (first && quiet === undefined && base !== null && first.word !== base) return true
-  // A change's time is read by this host's own clock alone (never the VM's, whose clock is its own): after his last
-  // key, or for a tab live from before its version was kept, after the live view opened.
+  // His last key by the holder's clock; for a tab live from before its version was kept, the live view's opening by this host's.
   const ownClock = ref.host === ctx.host && !(isGuestPath(ref.path) && process.platform !== 'win32')
-  const after = quiet === undefined ? since : Date.now() - quiet
-  if (first && ownClock && (quiet !== undefined || base === null) && (base === null || first.word !== base) && first.changed > after) return true
+  const after = quiet !== undefined && first?.now !== undefined ? first.now - quiet : quiet === undefined && ownClock ? since : null
+  if (first && after !== null && (quiet !== undefined || base === null) && (base === null || first.word !== base) && first.changed > after) return true
   const from = quiet === undefined ? (base ?? first?.word ?? null) : (first?.word ?? base)
   const end = Date.now() + liveTiming.version
   while (Date.now() < end && !signal?.aborted) {
     await pause(Math.min(liveTiming.look, end - Date.now()))
     const now = await versionNow(ctx, workspaceId, ref, signal)
-    if (now && now.word !== from) return true
+    if (now && now.word !== from && (quiet === undefined || after === null || now.changed > after)) return true
   }
   return false
 }

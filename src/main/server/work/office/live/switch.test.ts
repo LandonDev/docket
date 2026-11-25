@@ -464,6 +464,32 @@ describe('Live → Edit here', () => {
     expect(await set(tabId, { mode: 'here', typed: 12, quiet: 30_000 })).toEqual({ is: 'done' })
   })
 
+  it("after typing, takes at once a change on his Mac made after his last key, by the Mac's own clock", async () => {
+    const { path, tabId } = await openFar('Plan.docx', 'word')
+    expect(await set(tabId)).toEqual({ is: 'done' })
+    Object.assign(liveTiming, { version: 200, look: 5 })
+    // Word for the web said Saved: OneDrive has brought his typing down to the Mac before his press.
+    writeFileSync(path, 'word, with every word')
+    shiftMtime(path, -1000)
+    const t0 = Date.now()
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 30_000 })).toEqual({ is: 'done' })
+    expect(Date.now() - t0).toBeLessThan(150)
+  })
+
+  it('after typing, never takes a later sync of a save from before his last key: the seat stays live', async () => {
+    const { path, tabId } = await liveHere()
+    Object.assign(liveTiming, { version: 150, look: 5 })
+    let failed: unknown = null
+    const switching = set(tabId, { mode: 'here', typed: 12, quiet: 1000 }).catch((err: unknown) => (failed = err))
+    await new Promise((settle) => setTimeout(settle, 30))
+    // A save from 5 s before his last key comes down late, while the switch waits.
+    writeFileSync(path, 'word, with his first words')
+    shiftMtime(path, -5000)
+    await switching
+    expect(String(failed)).toContain('has not come down from OneDrive yet')
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+  })
+
   it('opens a far file as its copy again', async () => {
     const { path, tabId } = await openFar('Roster.xlsx', 'workbook')
     expect(await set(tabId)).toEqual({ is: 'done' })

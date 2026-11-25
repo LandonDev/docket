@@ -159,7 +159,7 @@ export const FilesRequestSchemas = [
    * `wake`: his press for this folder, which may wake the Windows VM behind the answer; false for a list he did not press for (a restored tab, a refetch). Absent, a window's first page wakes it, a next page (a `cursor`) never does, and a thread's list never does.
    */
   request('work.files.list', z.object({ workspaceId: Workspace, at: FolderRefSchema, cursor: z.string().max(4000).optional(), sort: FileSortSchema.optional(), foldersOnly: z.boolean().optional(), wake: z.boolean().optional() })),
-  /** → { entries: (FileEntry | null)[] }: the rows again with what a list leaves out (who last saved it), for the rows on screen; null for one that is gone or out of reach, and for each row on a mapped or network drive or in the Windows VM when several are asked at once (each look is round trips over the link, or a call in the guest, which names no one who saved). */
+  /** → { entries: (FileEntry | null)[], now?: number }: the rows again (`now`, the answering host's clock as it looked, which another host reads a change time against) with what a list leaves out (who last saved it), for the rows on screen; null for one that is gone or out of reach, and for each row on a mapped or network drive or in the Windows VM when several are asked at once (each look is round trips over the link, or a call in the guest, which names no one who saved). */
   request('work.files.stat', z.object({ workspaceId: Workspace, refs: z.array(FileRefSchema).min(1).max(100) })),
   /**
    * → what `host` answers to `method` (places, a folder's page, the rows on screen): a desktop of his the window has

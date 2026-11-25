@@ -1154,7 +1154,8 @@ export async function filesHandle(req: ClientRequest, ctx: WorkCtx, by: Caller, 
       }
       const found = entries.filter((e): e is FileEntry => e !== null)
       const marked = new Map(withMarks(state, p.workspaceId, found).map((e) => [e.key, e]))
-      return handled({ entries: entries.map((e) => (e ? marked.get(e.key)! : null)) })
+      // `now`: this host's clock as it looked, which another host reads a change time against (office/live/switch.ts).
+      return handled({ entries: entries.map((e) => (e ? marked.get(e.key)! : null)), now: Date.now() })
     }
     case 'work.files.threads': {
       admitCaller(ctx, by, p.workspaceId)

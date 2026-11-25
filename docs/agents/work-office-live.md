@@ -135,9 +135,13 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
   finished saving it", `leaveLive`). Switch Anyway counts as typing (`typed` at least 1): nothing
   proves the file holds what Word had not saved, so the host must see the file move or the tab stays live and the
   guest comes back; the seat is kept. When he typed, the host waits up to 60 s for a change made after his last key
-  there (`quiet`, ms before the press, the wait to leave added): one already in the file by this host's own clock,
-  else the next change seen, which came after the press and the unload's save. A sync from earlier in the session is
-  not that change (by its bytes, so a restamp or a sync touching its time is no change either). A window that does not
+  there (`quiet`, ms before the press, the wait to leave added), its time read by the holder's own clock: this
+  host's, or his desktop's, which its `work.files.stat` answer gives (`now`). One already in the file counts at once
+  (a Mac library's typing that came down before the press is taken, never waited out), else the next change seen
+  whose time is after his last key; a sync of a save from before it, early or late, is not that change (by its bytes,
+  so a restamp or a sync touching its time is no change either). The VM's guest gives no clock yet (its helper's
+  `files.stat` would answer one, waiting for a VM YES): there the next change seen after the press counts, and a
+  change already down before the press is waited for, up to the 60 s. A window that does not
   say `quiet` waits for the file to differ from that kept version. Then it `reseat`s the file fresh. Nothing moved by then, nothing proves the file holds
   his typing: the switch is refused ("What you typed in Plan.docx has not come down from OneDrive yet, so it stays
   live."), the tab stays live and the layer puts the guest back where it was (`liveLayer.back`). A tab live from
