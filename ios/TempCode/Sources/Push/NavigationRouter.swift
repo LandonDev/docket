@@ -28,6 +28,8 @@ final class NavigationRouter {
     /// Digest (`PushTarget.route`).
     func open(_ target: PushTarget) {
         pending = target.route
+        // A thread's request: its sheet over the Outbox, where he answers it (Outbox 2).
+        if let request = target.request { OutboxRequestCenter.shared.open(environmentId: target.environmentId, id: request) }
     }
 
     func isVisible(_ target: PushTarget) -> Bool {

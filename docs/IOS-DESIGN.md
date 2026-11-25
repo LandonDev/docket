@@ -2329,13 +2329,31 @@ phone does everything the desktop does. What milestone 46 built:
   purdue, ref, unify, life, light and dark, from the prototype kit's oklch
   values. Used only for a Work workspace's dot, an Outbox band's dot and the
   held detail's place line.
-- **The Outbox** is a pushed list (the sidebar in the split poses): a band
-  per workspace on the one gray step (dot, name, count), newest band first;
-  each row is the kind's glyph in the mark column, what it does, the
-  subject or target as its meta line, the time as a stamp. A failed send
-  carries the destructive dot and its reason as the meta line. Swipe
-  trailing and the context menu offer Send (Send Again) and Discard;
-  Discard asks once. Empty: "Nothing Held".
+- **The Outbox** is a pushed list (the sidebar in the split poses) in
+  Outbox 2's order (prototype A, `.temp-code/prototypes/work-outbox-2/phone.html`):
+  **Asked in threads** (a thread's open request, one row each: a
+  `checklist` glyph, its head "Send 10 mails to 10 people", the thread's
+  title under it, the time; the row opens the request sheet), **Not sent**
+  (failed, oldest first), **Starts soon** (an invite whose event starts by
+  the end of tomorrow, soonest first, its start time the one trailing word
+  in the meta step at semibold), then **one band per thread** (a routine's
+  run is its own; an item no thread made is its job's band) by the job's
+  rail order and then the band's oldest item, then **Scheduled** (the sends
+  he timed, soonest first). Each section only when it has rows, on the one
+  gray step: a thread band's sector dot, its title at semibold and its job
+  after it in regular (the job gives way first), no count; the other
+  sections' heads are their names alone. An item a request lists shows
+  under its Asked row alone. Each row is the kind's glyph in the mark
+  column, what it does, the subject or target as its meta line, and one
+  trailing stamp: when it goes (Scheduled, "Wed 8:00 AM"), "Out of date",
+  "Sending", "Changed" (the thread rewrote it), else when it was held. A
+  failed send carries the destructive dot and its reason as the meta line.
+  Swipe trailing and the context menu offer Send (Send Again) and Discard
+  on what waits on a plain press. Empty: "Nothing Held". The count on Home
+  and the host's `waiting` are one rule, `OutboxModel.needsHim`, the shared
+  `needsHim` (held, live, failed, and out of date until put away; never
+  sending or scheduled), held to the desktop's fixture in
+  OutboxWaitingTests.
 - **Inks.** The Outbox's bands, held detail and stamps draw meta and stamps in
   `label` for the 4.5:1 floor, ordered by size and weight: the hierarchical
   secondary and tertiary measure 3.4:1 and 1.7:1 on white, less in a list's
@@ -2345,18 +2363,64 @@ phone does everything the desktop does. What milestone 46 built:
   (docs/agents/appearance-phone.md).
 - **The held detail** reads as the act, exactly as it will go: the place
   line (dot, workspace, time), the summary as the title (title3
-  semibold), then each field on its own line under a hairline (label in
-  meta at a 64 pt column, the value in body, an address under a name), then
-  the body as plain text. Its own bottom bar, the fourth named bottom bar
-  after the dock, the hunk bar and the Preamble panel: Discard as plain
-  destructive text at the leading edge, Edit as a glass capsule, Send (the
-  item's own verb) as the prominent glass capsule. Edit is a form sheet:
-  each field a person reads and the message.
+  semibold), then the host's one sentence of what the press does and to
+  whom (`effect`, subheadline in `label`), then the notes that apply, one
+  line each in meta with a glyph in a 16 pt column: "Not sent. <why>" (the
+  destructive dot, its words in the destructive ink: the only colour),
+  "Out of date. <why>" (`clock.arrow.circlepath`), "The thread rewrote this
+  at 9:20 AM." or "You changed this at …" (`pencil`), "Dana Lee wrote back
+  at 8:12 AM, after this was made: “…”" (`arrowshape.turn.up.left`); then
+  each field on its own line under a hairline (label in meta at a 64 pt
+  column, the value in body, an address under a name), then the body as
+  plain text. Its own bottom bar, the fourth named bottom bar after the
+  dock, the hunk bar and the Preamble panel: Discard as plain destructive
+  text at the leading edge, Edit as a glass capsule, Send (the item's own
+  verb) as the prominent glass capsule. A press and hold on Send opens its
+  menu: **Send Later** (In an Hour, This Afternoon while the morning lasts,
+  Tomorrow Morning, Pick a Time…, the last a form sheet with the graphical
+  date picker and Send Later) for a kind the host marks `later`, above the
+  grant. A timed send's bar is Cancel Send and "<Verb> Now"; an out-of-date
+  item's is Discard and Ask the Thread Again. **Discard** asks once in an
+  alert, "Discard this?", with one optional field, "Why, for the thread":
+  the thread hears it was discarded, with his line when he wrote one. Edit
+  is a form sheet: each field a person reads and the message.
 - **After Send** the detail returns to the list and the item leaves it; an
   **undo capsule** (glass, 44 pt, one line "Sending to …" and Undo) floats
   over the list's foot for five seconds, entering and leaving from the
   same edge (opacity alone with Reduce Motion). The host hears nothing
-  until the five seconds end.
+  until the five seconds end. Every phone Send waits so: Send Later's line
+  names when it goes ("Sending to Dana Lee Wed 8:00 AM"), and Send Now's
+  is the plain send's. A phone press says `via: 'phone'`.
+- **A thread's request** (docs/agents/work-outbox.md "A thread asks for his
+  press") is one sheet (`tcSheet(.editor)`, Close at the top) opened from
+  the list's Asked row, from its notice (a tell keyed `request:<id>` opens
+  the Outbox with the sheet over it) and from the thread's card. It loads
+  the request from its host (`request.get`): the head (title3 semibold,
+  "Sent 8, 1 not sent" once answered), "You asked in <thread>: “<his
+  words>”" in meta, then a row per item: a 22 pt tick in a 44 pt hit area
+  (`checkmark.circle.fill` in the tint, else an empty circle), the act and
+  under it what it is about, "Goes Wed 8:00 AM" for a later one, or
+  "Changed since asked" for a row that changed since the ask, which starts
+  unticked and can be ticked only once he opens it (the chevron pushes the
+  item as it will go, and opening it asks the host for a fresh receipt,
+  `request.view`). The foot is two wide glass capsules, Not Now and "Send
+  N" ("Approve N" when the ticked actions mix). Send waits the phone's
+  five seconds: the foot becomes the undo capsule ("Sending 9", Undo), each
+  ticked row's line says its action, target and time ("Sending to Alex Kim
+  now"), and the rows left out dim; leaving the sheet or the app sends the
+  waiting press at once. Then each row's result lands in its line (a muted
+  check and "Queued in LifeOS", "Posted", "Discarded", "Scheduled", or the
+  destructive dot and the reason) and the foot is Done. Not Now declines
+  and closes. A key without approve reads why and cannot press. Nothing
+  here wears the warning colour: held is not Needs you.
+- **The thread's card**: under a Work thread's `outbox_request` call (its
+  result's `{outboxRequest: {id, host}}`), one compact card in the
+  transcript's hairline frame (the field radius, 12 pt in, no fill): the
+  `checklist` glyph muted, the head at subheadline medium, "You asked:
+  “…”" in meta on two lines at most, a chevron; a tap opens the sheet.
+  Answered, declined or run out, it is one muted line ("Sent 8, 1 not
+  sent", "Not now. …"). A group holding an open request stays open, as one
+  holding a held call does.
 - **The digest** (docs/agents/work-digest.md "The phone") is a pushed list
   (the sidebar in the split poses), reached from a **Digest** row on Home
   after the Outbox (the `newspaper` glyph, no count) and from the day's
@@ -2376,8 +2440,8 @@ phone does everything the desktop does. What milestone 46 built:
   a menu of three levels. The time's wheel keeps his latest pick: a slow
   host's answer to an earlier pick is not applied over it (`EditGate`).
 - **A held notice** (the host's `needs_you` with `tc.held`) opens its item
-  over the Outbox. Its category is Open alone: nothing sends from the lock
-  screen.
+  over the Outbox, and a request's notice opens its sheet over the Outbox.
+  Its category is Open alone: nothing sends from the lock screen.
 - **Away** is a check item ("Away", `moon`) in the host menu beside the
   fleet switches. When it ends: one note at the top of Home ("Away ended.
   7 held, 4 decided without you" and Review), and a notification "Away

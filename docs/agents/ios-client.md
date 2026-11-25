@@ -803,6 +803,21 @@
   (a text beside an `html` rewrites it), `parseAddresses`, `bands`, the
   route's `key`/`ref`, Away's words. Routes `.outbox` (sidebar),
   `.outboxItem(environmentId:ref:)` and `.workSettings` (detail).
+- **Outbox 2 on the phone** (M6): `OutboxModel.needsHim` is the shared
+  count (held, live, failed, out of date until put away); `waits(state)` is
+  the list's rule by state (held, live, sending, failed, scheduled) and
+  `listed` the item's (those, an out-of-date one not put away, a mail Mail
+  timed); `waitingSections` the order (Work/Outbox/OutboxWaiting.swift with
+  `rowSide`, `aheadTime`, `notes`, `laterChoices`, `requestOf` and
+  `RequestSheetModel`, all tested in OutboxWaitingTests); `WorkHost`
+  keeps `requests` (open ones, approve keys) and presses `discard(reason:)`,
+  `later`, `cancelSend`, `sendNow`, `undoSend`, `askAgain`, `request`,
+  `viewRow`, `answer`, `decline`, every one `via: .phone`. The app's
+  Work/OutboxRequestSheet.swift holds `OutboxRequestCenter` (RootView's
+  `OutboxRequestSheetHost`), the sheet and the transcript's
+  `OutboxRequestInline` (ActionGroup.swift); Work/OutboxDiscard.swift is
+  Discard's alert with its reason. `PushTarget.request` opens the sheet over
+  the Outbox (`NavigationRouter.open`).
 - **Send waits five seconds on the phone** (`OutboxPresses`): the host
   hears nothing until the wait ends, so the capsule's Undo is a true undo;
   a second Send or the app leaving the screen sends the waiting one at

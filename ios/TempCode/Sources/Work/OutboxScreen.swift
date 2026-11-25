@@ -2,7 +2,7 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// Every waiting held item of every host with Work on, newest first.
+/// Every item Waiting lists, of every host with Work on, newest first.
 @MainActor
 enum OutboxEntries {
     static func of(_ clients: [EnvironmentClient]) -> [OutboxModel.Entry] {
@@ -11,10 +11,17 @@ enum OutboxEntries {
         }
     }
 
+    /// Every host's open requests (each host lists only to a key with approve).
+    static func requests(_ clients: [EnvironmentClient]) -> [OutboxModel.RequestEntry] {
+        clients.filter(\.work.isOn).flatMap { client in
+            client.work.requests.map { OutboxModel.RequestEntry(environmentId: client.environment.id, request: $0) }
+        }
+    }
+
     /// Home's count: what the hosts say waits, less what a Send holds back right now.
     static func count(_ clients: [EnvironmentClient]) -> Int {
         let presses = OutboxPresses.shared
-        let hidden = of(clients).count(where: presses.hides)
+        let hidden = of(clients).filter { OutboxModel.needsHim($0.item) }.count(where: presses.hides)
         return max(0, clients.filter(\.work.isOn).reduce(0) { $0 + $1.work.waiting } - hidden)
     }
 }
@@ -57,10 +64,10 @@ struct OutboxHomeRow: View {
     }
 }
 
-/// The Outbox (phone-outbox.html, "A row on Home"): held items in bands, a
-/// band per Work workspace led by its sector's dot, with its count. A row
-/// opens the item; swiping it offers Send and Discard, and so does its
-/// context menu. A failed send carries the destructive dot and its reason.
+/// The Outbox in prototype A's order (docs/IOS-DESIGN.md "Work on the phone"): Asked in threads (a thread's open
+/// request, one row each, which opens its sheet), Not sent, Starts soon, a band per thread by the job's rail order,
+/// then Scheduled. A row opens the item; swiping it offers Send and Discard, and so does its context menu. A failed
+/// send carries the destructive dot and its reason. Held is not Needs you: nothing here wears the warning colour.
 struct OutboxScreen: View {
     @Environment(AppModel.self) private var model
     @Environment(ShellNavigator.self) private var navigator
@@ -72,9 +79,9 @@ struct OutboxScreen: View {
         let clients = model.registry.ordered
         let workHosts = clients.filter(\.work.isOn)
         let presses = OutboxPresses.shared
-        let bands = OutboxModel.bands(OutboxEntries.of(clients).filter { !presses.hides($0) })
-        // Each host whose read failed, named above the bands with its own Retry, whatever the others hold; the rows
-        // it read before stay below (`OutboxModel.failedReads`).
+        let sections = OutboxModel.waitingSections(OutboxEntries.of(clients).filter { !presses.hides($0) }, requests: OutboxEntries.requests(clients), places: places(clients))
+        // Each host whose read failed, named above the sections with its own Retry, whatever the others hold; the
+        // rows it read before stay below (`OutboxModel.failedReads`).
         let failed = OutboxModel.failedReads(workHosts.map { (id: $0.environment.id, name: $0.environment.name, error: $0.work.listError) })
         List {
             if !failed.isEmpty {
@@ -82,13 +89,13 @@ struct OutboxScreen: View {
                     ForEach(failed) { read in failedRow(read) }
                 }
             }
-            ForEach(bands) { band in bandSection(band) }
+            ForEach(sections) { section in sectionView(section) }
         }
         .listStyle(.plain)
         .overlay {
-            switch OutboxModel.emptyState(bandsEmpty: bands.isEmpty, anyReading: workHosts.contains { !$0.work.listed && $0.work.listError == nil }, anyFailed: !failed.isEmpty) {
+            switch OutboxModel.emptyState(bandsEmpty: sections.isEmpty, anyReading: workHosts.contains { !$0.work.listed && $0.work.listError == nil }, anyFailed: !failed.isEmpty) {
             case .reading?: ProgressView()
-            case .nothingHeld?: ContentUnavailableView("Nothing Held", systemImage: WorkGlyph.outbox, description: Text("What a Work thread sends waits here for you."))
+            case .nothingHeld?: ContentUnavailableView("Nothing Held", systemImage: WorkGlyph.outbox)
             case nil: EmptyView()
             }
         }
@@ -96,13 +103,27 @@ struct OutboxScreen: View {
         .navigationTitle("Outbox")
         .shellTitleDisplay()
         .outboxUndoInset()
-        .confirmationDialog("Discard this?", isPresented: Binding(get: { confirmDiscard != nil }, set: { if !$0 { confirmDiscard = nil } }), titleVisibility: .visible, presenting: confirmDiscard) { entry in
-            Button("Discard", role: .destructive) { Task { await discard(entry) } }
-        } message: { entry in
-            Text("\(entry.item.summary) will never go.")
+        .outboxDiscardPrompt(Binding(get: { confirmDiscard?.item }, set: { if $0 == nil { confirmDiscard = nil } })) { _, reason in
+            guard let entry = confirmDiscard else { return }
+            Task { await discard(entry, reason: reason) }
         }
         .listOnScreen("outbox")
         .accessibilityIdentifier("outbox")
+    }
+
+    /// The job's rail place (host by host, each host's Work workspaces in its own order, Work Chats after them),
+    /// its name, and a thread's title as the host lists it.
+    private func places(_ clients: [EnvironmentClient]) -> OutboxModel.Places {
+        let hostOrder = Dictionary(clients.enumerated().map { ($1.environment.id, $0) }, uniquingKeysWith: { a, _ in a })
+        return OutboxModel.Places(
+            jobOrder: { env, workspaceId in
+                let client = model.registry.client(env)
+                let index = workspaceId.flatMap { id in client?.workspaces.firstIndex { $0.id == id } } ?? 9_999
+                return (hostOrder[env] ?? 99) * 10_000 + index
+            },
+            jobOf: { env, workspaceId in model.registry.client(env)?.workPlace(workspaceId).name ?? "Work Chats" },
+            titleOf: { entry in entry.item.sessionId.flatMap { model.registry.client(entry.environmentId)?.session($0)?.title } }
+        )
     }
 
     /// "Box did not answer", its error under it, and Retry, which reads that host alone again.
@@ -139,42 +160,79 @@ struct OutboxScreen: View {
         await client.work.refreshOutbox()
     }
 
-    private func bandSection(_ band: OutboxModel.Band) -> some View {
-        let client = model.registry.client(band.environmentId)
-        let place: (name: String, sector: String?) = client?.workPlace(band.workspaceId) ?? ("Work Chats", nil)
-        let canApprove = client?.work.canApprove == true
-        return Section {
-            ForEach(band.entries) { entry in
-                OutboxRow(entry: entry, canApprove: canApprove, discard: { confirmDiscard = entry })
+    private func sectionView(_ section: OutboxModel.Section) -> some View {
+        Section {
+            ForEach(section.requests) { entry in AskedRow(entry: entry) }
+            ForEach(section.entries) { entry in
+                OutboxRow(entry: entry, section: section.kind, canApprove: model.registry.client(entry.environmentId)?.work.canApprove == true, discard: { confirmDiscard = entry })
             }
         } header: {
-            BandHeader(name: place.name, sector: band.sector ?? place.sector, count: band.entries.count)
+            BandHeader(title: section.title, job: section.job, sector: section.kind == .thread ? section.sector : nil, dot: section.kind == .thread)
                 .listRowInsets(EdgeInsets())
         }
     }
 
-    private func discard(_ entry: OutboxModel.Entry) async {
+    private func discard(_ entry: OutboxModel.Entry, reason: String?) async {
         guard let client = model.registry.client(entry.environmentId) else { return }
         do {
-            try await client.work.discard(entry.item)
+            try await client.work.discard(entry.item, reason: reason)
         } catch {
             FleetToastCenter.shared.post(message: "Not discarded: \(ActionError.wrap(error).message)")
         }
     }
 }
 
-/// One held item: the kind's glyph in the mark column (the destructive dot
-/// for a failed one), what it does, its target or its failure, the time.
+/// A thread's request in Asked in threads: what it would do, the thread that asked, when. It opens the sheet.
+private struct AskedRow: View {
+    @Environment(AppModel.self) private var model
+    let entry: OutboxModel.RequestEntry
+
+    var body: some View {
+        let request = entry.request
+        let thread = model.registry.client(entry.environmentId)?.session(request.sessionId)?.title
+        Button { OutboxRequestCenter.shared.open(environmentId: entry.environmentId, id: request.id) } label: {
+            HStack(alignment: .center, spacing: Layout.rowGap) {
+                Image(systemName: "checklist")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(width: Layout.glyphWidth + Layout.markWidth)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(request.head).textStep(.title).lineLimit(1)
+                    if let thread { Text(thread).textStep(.meta).lineLimit(1) }
+                }
+                Spacer(minLength: 8)
+                Text(HeldTime.of(request.createdAt))
+                    .textStep(.stamp, tint: Color(.label))
+            }
+            .padding(.vertical, Layout.rowVertical)
+            .frame(minHeight: Layout.rowHeight + 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.pressable)
+        .listRowInsets(Layout.rowInsets)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens what the thread asked for")
+        .accessibilityIdentifier("outbox-asked")
+    }
+}
+
+/// One held item: the kind's glyph in the mark column (the destructive dot for a failed one), what it does, its
+/// target or its failure, and one trailing word (when it goes, when its event starts, Out of date, Changed, else
+/// when it was held).
 private struct OutboxRow: View {
     @Environment(ShellNavigator.self) private var navigator
     let entry: OutboxModel.Entry
+    let section: OutboxModel.SectionKind
     let canApprove: Bool
     let discard: () -> Void
 
     private var item: OutboxItem { entry.item }
     private var failed: Bool { item.state == .failed }
+    /// Send and Discard by swipe only on what waits on a plain press: a timed send and one on its way take theirs from the item.
+    private var pressable: Bool { canApprove && OutboxModel.needsHim(item) && item.state != .stale }
 
     var body: some View {
+        let side = OutboxModel.rowSide(item, in: section)
         Button { navigator.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } label: {
             HStack(alignment: .center, spacing: Layout.rowGap) {
                 // The mark column holds one mark: the destructive dot for a failed send, else the kind's glyph.
@@ -202,9 +260,10 @@ private struct OutboxRow: View {
                     }
                 }
                 Spacer(minLength: 8)
-                // The stamp step in `label`, as the Outbox's other stamps: tertiary measured 1.7:1 on white.
-                Text(HeldTime.of(item.createdAt))
-                    .textStep(.stamp, tint: Color(.label))
+                // The stamp step in `label`, as the Outbox's other stamps: tertiary measured 1.7:1 on white. A
+                // time that is a deadline (Starts soon) is the one word in the title's weight.
+                Text(side?.text ?? HeldTime.of(item.createdAt))
+                    .textStep(side?.strong == true ? .meta : .stamp, weight: side?.strong == true ? .semibold : .regular, tint: Color(.label))
             }
             .padding(.vertical, Layout.rowVertical)
             .frame(minHeight: Layout.rowHeight + 8)
@@ -213,14 +272,14 @@ private struct OutboxRow: View {
         .buttonStyle(.pressable)
         .listRowInsets(Layout.rowInsets)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if canApprove {
+            if pressable {
                 Button("Discard", systemImage: "trash", role: .destructive, action: discard)
                 sendButton
                     .tint(.accentColor)
             }
         }
         .contextMenu {
-            if canApprove {
+            if pressable {
                 sendButton
                 Button("Discard", systemImage: "trash", role: .destructive, action: discard)
             }
@@ -234,7 +293,7 @@ private struct OutboxRow: View {
     private var sendButton: some View {
         let title = OutboxModel.pressWord(item, fallback: "Send")
         return Group {
-            if OutboxModel.sendsFromDetailOnly(item.kind) {
+            if OutboxModel.sendsFromDetailOnly(item.kind) || item.state == .live {
                 Button("\(title)…", systemImage: OutboxModel.pressGlyph(item.kind)) { navigator.open(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) }
             } else {
                 Button(title, systemImage: OutboxModel.pressGlyph(item.kind)) { OutboxPresses.shared.send(entry) }
@@ -247,26 +306,32 @@ private struct OutboxRow: View {
     private var words: (title: String, line: String?) { OutboxModel.rowWords(item) }
 }
 
-/// An Outbox band's head on the one gray step: the sector's dot, the
-/// workspace's name, the count. The dot is the only colour on it.
+/// A section's head on the one gray step: a thread band's sector dot, its title, its job after it; or the section's
+/// own name (Asked in threads, Not sent, Starts soon, Scheduled). The dot is the only colour on it, and it carries no
+/// count: the rows are the count.
 private struct BandHeader: View {
-    let name: String
+    let title: String
+    let job: String?
     let sector: String?
-    let count: Int
+    let dot: Bool
 
     var body: some View {
         HStack(spacing: 8) {
-            SectorDot(sector: sector, size: 7)
+            if dot { SectorDot(sector: sector, size: 7) }
             // Explicit inks, never the hierarchical steps: inside a list's section header those nest under the
             // header's own dimming and measured 1.7:1 and 1.3:1 on the chrome fill in light. `label` keeps 18.8:1
-            // (light) and 17:1 (dark) on it; `secondaryLabel` would be 3.3:1 in light. The two type steps stay: the
-            // name in the meta step at semibold, the count in the stamp step.
-            Text(name)
+            // (light) and 17:1 (dark) on it. The title at semibold, the job after it at regular: the job gives way
+            // first when the width runs out.
+            Text(title)
                 .textStep(.meta, weight: .semibold, tint: Color(.label))
                 .lineLimit(1)
-            Spacer(minLength: 8)
-            Text(count, format: .number)
-                .textStep(.stamp, tint: Color(.label))
+                .layoutPriority(1)
+            if let job {
+                Text(job)
+                    .textStep(.meta, tint: Color(.label))
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, Layout.textEdge)
         .frame(maxWidth: .infinity, minHeight: 30)

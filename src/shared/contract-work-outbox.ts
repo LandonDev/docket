@@ -278,6 +278,7 @@ export const OutboxRequestRowSchema = z.object({
   receipt: z.string().optional(),
   result: z.object({ ok: z.boolean(), error: z.string().optional(), state: z.string().optional() }).optional()
 })
+export const DecisionResultSchema = z.object({ ref: HeldRefSchema, ok: z.boolean(), item: OutboxItemSchema.optional(), error: z.string().optional() })
 export const OutboxRequestSchema = z.object({
   id: z.string(),
   n: z.number().int(),

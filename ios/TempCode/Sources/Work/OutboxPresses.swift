@@ -13,11 +13,19 @@ final class OutboxPresses {
     static let shared = OutboxPresses()
     static let waitSeconds: Double = 5
 
+    /// What the press does once its five seconds end: send it, send it at a time he picked, or send a timed one now.
+    enum Press: Equatable {
+        case send
+        case later(at: Int)
+        case sendNow
+    }
+
     struct Pending: Identifiable, Equatable {
         let id: String
         let line: String
         let item: OutboxItem
         let environmentId: String
+        var press: Press = .send
     }
 
     private(set) var pending: Pending?
@@ -37,9 +45,14 @@ final class OutboxPresses {
         entry.id == pending?.id || sending.contains(entry.id)
     }
 
-    func send(_ entry: OutboxModel.Entry) {
+    /// Every phone Send waits here: the capsule says the action, its target and, for a timed one, when it goes.
+    func send(_ entry: OutboxModel.Entry, press: Press = .send) {
         flush()
-        let next = Pending(id: entry.id, line: OutboxModel.pendingLine(entry.item), item: entry.item, environmentId: entry.environmentId)
+        let line = switch press {
+        case .later(let at): OutboxModel.laterLine(entry.item, at: at)
+        case .send, .sendNow: OutboxModel.pendingLine(entry.item)
+        }
+        let next = Pending(id: entry.id, line: line, item: entry.item, environmentId: entry.environmentId, press: press)
         pending = next
         AccessibilityNotification.Announcement("\(next.line). Undo for five seconds.").post()
         wait = Task { [weak self] in
@@ -72,9 +85,14 @@ final class OutboxPresses {
         Task {
             defer { sending.remove(press.id) }
             do {
-                try await client.work.send(press.item)
+                switch press.press {
+                case .send: try await client.work.send(press.item)
+                case .later(let at): try await client.work.later(press.item, at: at)
+                case .sendNow: try await client.work.sendNow(press.item)
+                }
             } catch {
-                FleetToastCenter.shared.post(message: "Not sent: \(ActionError.wrap(error).message)")
+                let word = if case .later = press.press { "Not scheduled" } else { "Not sent" }
+                FleetToastCenter.shared.post(message: "\(word): \(ActionError.wrap(error).message)")
             }
         }
     }

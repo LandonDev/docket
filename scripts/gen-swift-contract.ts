@@ -95,7 +95,7 @@ import { FrameTableSchema } from '../src/shared/contract-work-media'
 import { CanvasItemSchema, CanvasSourceSchema, ContextChipSchema } from '../src/shared/work/canvas'
 import { SessionScopeSchema, WorkspaceKindSchema } from '../src/shared/work/ids'
 import { WorkSettingsSchema } from '../src/shared/work/scope'
-import { OutboxItemSchema } from '../src/shared/contract-work-outbox'
+import { DecisionResultSchema, OutboxItemSchema, OutboxRequestRowSchema, OutboxRequestSchema } from '../src/shared/contract-work-outbox'
 import { HeldRefSchema } from '../src/shared/work/acts'
 import { TellGroupSchema, TellLevelSchema } from '../src/shared/work/tell'
 import { AwayDecidedSchema, AwayStateSchema } from '../src/shared/away'
@@ -455,6 +455,19 @@ export const SUBSET: SubsetEntry[] = [
   method('work.outbox.send', OutboxItemSchema),
   method('work.outbox.discard', OutboxItemSchema),
   method('work.outbox.edit', OutboxItemSchema),
+  // Outbox 2 (M6): Send later, a scheduled send's Cancel and Send now, Undo, Ask the thread again, and a thread's request
+  type('DecisionResult', DecisionResultSchema),
+  type('OutboxRequestRow', OutboxRequestRowSchema),
+  type('OutboxRequest', OutboxRequestSchema),
+  method('work.outbox.decide', W.OutboxDecideAnswerSchema),
+  method('work.outbox.askAgain', OutboxItemSchema),
+  method('work.outbox.cancelSend', OutboxItemSchema),
+  method('work.outbox.sendNow', OutboxItemSchema),
+  method('work.outbox.undoSend', W.OutboxUndoSendSchema),
+  method('work.outbox.requests', z.object({ requests: z.array(OutboxRequestSchema) })),
+  method('work.outbox.request.get', OutboxRequestSchema),
+  method('work.outbox.request.view', OutboxRequestRowSchema),
+  method('work.outbox.decline', OutboxRequestSchema),
   method('work.outbox.grant', W.OutboxGrantSchema),
   method('work.outbox.grants', z.object({ grants: z.array(W.OutboxGrantSchema) })),
   // a new Work workspace from Home's Work band (`kind: 'work'`, a sector)

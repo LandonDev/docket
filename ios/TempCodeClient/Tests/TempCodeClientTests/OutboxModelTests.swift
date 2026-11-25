@@ -641,9 +641,11 @@ import TempCodeContract
         #expect(bands[2].workspaceId == nil)
     }
 
-    @Test func onlyHeldLiveSendingAndFailedWait() {
+    @Test func theListWaitsOnHeldLiveSendingFailedAndScheduledAndTheCountOnNeedsHim() {
         #expect([OutboxItem.State.held, .live, .sending, .failed, .scheduled].allSatisfy(OutboxModel.waits))
         #expect(![OutboxItem.State.sent, .discarded, .stale].contains(where: OutboxModel.waits))
+        #expect([OutboxItem.State.held, .live, .failed, .stale].allSatisfy { OutboxModel.needsHim(item("x", state: $0)) })
+        #expect(![OutboxItem.State.sending, .scheduled, .sent, .discarded].contains { OutboxModel.needsHim(item("x", state: $0)) })
         #expect(OutboxModel.editable(.mailSend))
         #expect(!OutboxModel.editable(.computerAct))
     }

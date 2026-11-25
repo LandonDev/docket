@@ -2259,9 +2259,34 @@ const control = createServer((req, res) => {
                VALUES (?, ?, ?, ?, ?, 'ios-proof', 'rule', ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
             ).run(String(r.id), r.workspaceId == null ? null : String(r.workspaceId), r.sessionId == null ? null : String(r.sessionId), r.sector == null ? null : String(r.sector), String(r.kind), String(r.summary), String(r.verb ?? 'Send'), JSON.stringify(payload), String(r.state ?? 'held'), `ios-proof-${String(r.id)}`, r.error == null ? null : String(r.error), r.outcomeUnknown === true ? 1 : 0, at, at)
           }
-          // A held call as the thread saw it (the host's own answer), and Results the thread wrote.
-          const transcript = Array.isArray(body.transcript) ? (body.transcript as { sessionId: string; heldId: string; tool: string }[]) : []
+          // Outbox 2 (M6): a send he timed (its schedule as `later` writes it, never armed: the timer reads at boot),
+          // and a thread's request for his press as `outbox_request` stores it (the word check is the host's own and
+          // runs on a real ask; here the row alone). An item asked with `changed` was asked at an older revision.
+          for (const r of rows) {
+            if (typeof r.scheduleAt === 'number') db.prepare('UPDATE work_held_acts SET schedule_at = ?, schedule_zone = ?, schedule_by = ? WHERE id = ?').run(r.scheduleAt, 'America/Chicago', 'owner', String(r.id))
+          }
+          const requests = Array.isArray(body.requests) ? (body.requests as { id: string; sessionId: string; workspaceId: string; sector: string; quote: string; items: { heldId: string; do: string; at?: number; changed?: boolean }[] }[]) : []
+          for (const [i, q] of requests.entries()) {
+            const items = q.items.map((a) => {
+              const row = db.prepare('SELECT updated_at FROM work_held_acts WHERE id = ?').get(a.heldId) as { updated_at: number } | undefined
+              return { ref: { at: 'host', id: a.heldId }, do: a.do, ...(a.at !== undefined ? { at: a.at } : {}), rev: Number(row?.updated_at ?? 0) - (a.changed ? 1 : 0) }
+            })
+            db.prepare(
+              `INSERT INTO work_outbox_requests (id, session_id, root_id, workspace_id, sector, quote, source_seq, clause_digest, items, state, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'ios-proof', ?, 'open', ?, ?)`
+            ).run(q.id, q.sessionId, q.sessionId, q.workspaceId, q.sector, q.quote, 900 + i, JSON.stringify(items), now - 2 * 60_000, now + 23 * 3_600_000)
+          }
+          // A held call as the thread saw it (the host's own answer), and Results the thread wrote. A row with
+          // `request` is the thread's `outbox_request` call and its answer, which the phone draws as the request's card.
+          const transcript = Array.isArray(body.transcript) ? (body.transcript as { sessionId: string; heldId?: string; request?: string; tool: string }[]) : []
           for (const [i, t] of transcript.entries()) {
+            if (t.request) {
+              const callId = `asked-${i}`
+              const card = { outboxRequest: { id: t.request, host: server.environmentId } }
+              server.registry.append(t.sessionId, { type: 'tool-call', callId, name: t.tool, input: {} })
+              server.registry.append(t.sessionId, { type: 'tool-result', callId, output: JSON.stringify({ ...card, message: 'Asked: it waits for the owner\'s press on the card; nothing has been sent.' }), isError: false })
+              continue
+            }
+            if (!t.heldId) continue
             const held = db.prepare('SELECT rowid AS n, summary FROM work_held_acts WHERE id = ?').get(t.heldId) as { n: number; summary: string } | undefined
             if (!held) continue
             const callId = `held-${i}`

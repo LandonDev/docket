@@ -20,10 +20,10 @@ struct HeldInline: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.displayScale) private var displayScale
     @State private var open = false
-    @State private var confirmDiscard = false
+    @State private var confirmDiscard: OutboxItem?
 
     /// The waiting item this line names (the host's number), while it waits.
-    private var item: OutboxItem? { client.work.items.first { $0.n == n } }
+    private var item: OutboxItem? { client.work.items.first { $0.n == n && OutboxModel.needsHim($0) } }
     private var entry: OutboxModel.Entry? { item.map { OutboxModel.Entry(environmentId: client.environment.id, item: $0) } }
 
     var body: some View {
@@ -71,13 +71,10 @@ struct HeldInline: View {
         #if DEBUG
         .task { if TestHooks.open == "held", item != nil { open = true } }
         #endif
-        .confirmationDialog("Discard this?", isPresented: $confirmDiscard, titleVisibility: .visible) {
-            Button("Discard", role: .destructive) {
-                guard let item else { return }
-                Task {
-                    do { try await client.work.discard(item) } catch {
-                        FleetToastCenter.shared.post(message: "Not discarded: \(ActionError.wrap(error).message)")
-                    }
+        .outboxDiscardPrompt($confirmDiscard) { item, reason in
+            Task {
+                do { try await client.work.discard(item, reason: reason) } catch {
+                    FleetToastCenter.shared.post(message: "Not discarded: \(ActionError.wrap(error).message)")
                 }
             }
         }
@@ -104,7 +101,7 @@ struct HeldInline: View {
             }
             if client.work.canApprove {
                 HStack(spacing: 8) {
-                    Button("Discard", role: .destructive) { confirmDiscard = true }
+                    Button("Discard", role: .destructive) { confirmDiscard = item }
                         .font(.footnote.weight(.medium))
                         .foregroundStyle(Tint.destructive)
                         .frame(minHeight: Layout.rowHeight)
@@ -117,7 +114,10 @@ struct HeldInline: View {
                         PillButton("Edit") { Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } }
                     }
                     let verb = OutboxModel.pressWord(item, fallback: item.verb)
-                    if OutboxModel.sendsFromDetailOnly(item.kind) {
+                    if item.state == .stale {
+                        // Out of date: nothing to send; its own page asks the thread again.
+                        PillButton("Open…") { Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } }
+                    } else if OutboxModel.sendsFromDetailOnly(item.kind) {
                         // A LifeOS reply's quote and a computer act's picture show only in the detail: the verb opens it.
                         PillButton("\(verb)…", tint: .accentColor) { Task { await navigator.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(item.ref))) } }
                     } else {

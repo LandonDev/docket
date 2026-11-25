@@ -115,6 +115,11 @@ describe('the subset', () => {
     expect(pushNames).toEqual(expect.arrayContaining(['work', 'work.outbox', 'work.outbox.result', 'work.lifeos', 'away']))
     for (const m of ['work.outbox.list', 'work.outbox.send', 'work.outbox.edit', 'work.outbox.discard', 'work.outbox.results', 'work.outbox.undo', 'work.lifeos.status', 'away.get', 'away.set'])
       expect(methods).toContain(`"${m}"`)
+    // Outbox 2 on the phone (M6): one press on many, Send later's Cancel and Send now, Undo, Ask again, a thread's request.
+    for (const m of ['work.outbox.decide', 'work.outbox.askAgain', 'work.outbox.cancelSend', 'work.outbox.sendNow', 'work.outbox.undoSend', 'work.outbox.requests', 'work.outbox.request.get', 'work.outbox.request.view', 'work.outbox.decline'])
+      expect(methods).toContain(`"${m}"`)
+    expect(files['Types.swift']).toContain('public struct OutboxRequest:')
+    expect(files['ServerPush.swift']).toContain('public let request: OutboxRequest')
     expect(files['Types.swift']).toContain('public enum HeldRef')
   })
   it("tries a union's literal-pinned object branch only for the values it lists, so a known shape after it wins", () => {

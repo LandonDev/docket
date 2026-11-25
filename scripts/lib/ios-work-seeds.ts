@@ -142,6 +142,96 @@ export async function seedWork(ready: WorkSeedReady, repo: string): Promise<{ pu
   }
 }
 
+/**
+ * Outbox 2 on the phone (M6, `TC_WORK_ONLY=outbox2`): a Purdue thread, "Nationals roster", whose four roster mails
+ * wait, three of them in its open request for his press (the third changed after the ask, so the sheet draws it
+ * unticked) with the request's card in its transcript; a post that went out of date, with a note why; and a mail he
+ * timed for tomorrow at 8:00 AM. With seedWork's rows the list has every section but Starts soon (a calendar act is
+ * LifeOS's, which the test server has none of).
+ */
+export async function seedOutbox2(ready: WorkSeedReady, ids: { purdue: string; addonId: string }): Promise<{ sessionId: string; requestId: string }> {
+  const s = await socket(ready)
+  try {
+    const roster = await s.call<{ id: string }>('session.create', { scope: 'work', workspaceId: ids.purdue, threadType: 'chat', provider: 'claude', model: 'claude-opus-5-5', title: 'Nationals roster' })
+    const now = Date.now()
+    const mail = (id: string, name: string, address: string, minutes: number) => ({
+      id,
+      workspaceId: ids.purdue,
+      sessionId: roster.id,
+      sector: 'purdue',
+      kind: 'addon.call',
+      summary: `Send to ${name}`,
+      verb: 'Send',
+      createdAt: now - minutes * 60_000,
+      payload: { addonId: ids.addonId, addon: 'Purdue mail', tool: 'send_mail', words: 'Send mail', arguments: { to: address, subject: 'Nationals travel, confirm by Friday', text: `Hi ${name.split(' ')[0]},\n\nYou're on the Nationals roster. Please confirm your travel by Friday.\n\nThanks,\nLandon` } }
+    })
+    const tomorrow8 = new Date(now)
+    tomorrow8.setDate(tomorrow8.getDate() + 1)
+    tomorrow8.setHours(8, 0, 0, 0)
+    const rows = [
+      mail('ob2-alex', 'Alex Kim', 'akim@purdue.edu', 9),
+      mail('ob2-jordan', 'Jordan Patel', 'jpatel@purdue.edu', 9),
+      mail('ob2-riley', 'Riley Chen', 'rchen@purdue.edu', 9),
+      mail('ob2-morgan', 'Morgan Diaz', 'mdiaz@purdue.edu', 8),
+      {
+        id: 'ob2-stale',
+        workspaceId: ids.purdue,
+        sessionId: roster.id,
+        sector: 'purdue',
+        kind: 'addon.call',
+        summary: 'Post in Esports staff',
+        verb: 'Post',
+        state: 'stale',
+        error: 'The practice moved to Thursday after this was written.',
+        createdAt: now - 120 * 60_000,
+        payload: { addonId: ids.addonId, addon: 'Purdue mail', tool: 'echo', words: 'Echo', arguments: { text: 'Practice is Wednesday at 7.' } }
+      },
+      { ...mail('ob2-timed', 'Casey Wu', 'cwu@purdue.edu', 30), state: 'scheduled', scheduleAt: tomorrow8.getTime() }
+    ]
+    const requestId = 'rq_ob2_roster'
+    const requests = [
+      {
+        id: requestId,
+        sessionId: roster.id,
+        workspaceId: ids.purdue,
+        sector: 'purdue',
+        quote: 'send the roster mails to Alex, Jordan and Riley',
+        items: [
+          { heldId: 'ob2-alex', do: 'send' },
+          { heldId: 'ob2-jordan', do: 'send' },
+          { heldId: 'ob2-riley', do: 'send', changed: true }
+        ]
+      }
+    ]
+    const transcript = [{ sessionId: roster.id, request: requestId, tool: 'mcp__app__outbox_request' }]
+    const written = await fetch(`${ready.controlUrl}/work-held`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ rows, requests, transcript }) })
+    if (!written.ok) throw new Error(`outbox2 seed: /work-held answered ${written.status}: ${await written.text()}`)
+    return { sessionId: roster.id, requestId }
+  } finally {
+    s.close()
+  }
+}
+
+/**
+ * The phone's Send on the roster request (o07): answered by a remote press, via the request, the two ticked rows
+ * run and the changed one (never opened, so never ticked) still waiting.
+ */
+export async function verifyOutbox2(ready: WorkSeedReady): Promise<string[]> {
+  const s = await socket(ready)
+  try {
+    const r = await s.call<{ state: string; answeredBy: string | null; rows: { ref: { id: string }; result?: { ok: boolean }; open: boolean }[] }>('work.outbox.request.get', { id: 'rq_ob2_roster' })
+    const ran = r.rows.filter((row) => row.result).map((row) => row.ref.id)
+    const riley = r.rows.find((row) => row.ref.id === 'ob2-riley')
+    return [
+      `${r.state === 'answered' ? 'PASS' : 'FAIL'} the request is ${r.state} (by ${r.answeredBy ?? 'nobody'})`,
+      `${ran.join(',') === 'ob2-alex,ob2-jordan' ? 'PASS' : 'FAIL'} its press ran ${ran.join(', ') || 'nothing'}`,
+      `${riley && !riley.result && riley.open ? 'PASS' : 'FAIL'} the row that changed since asked still waits, unsent`
+    ]
+  } finally {
+    s.close()
+  }
+}
+
 /** What the host holds after the phone's presses: the mail sent as edited, and what still waits. */
 export async function verifyWork(ready: WorkSeedReady): Promise<string[]> {
   const s = await socket(ready)

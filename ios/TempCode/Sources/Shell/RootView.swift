@@ -104,6 +104,8 @@ struct RootView: View {
         .fleetSwitchHost()
         .onChange(of: model.registry.ordered.map { $0.bootResume }) { BootResumeNotes.shared.observe(model.registry.ordered) }
         .environment(projectSettings)
+        // A thread's request for his press, over every tab: from the Outbox, its notice and the thread's card (Outbox 2).
+        .modifier(OutboxRequestSheetHost())
         .modifier(NewThreadSheetHost(presenter: newThread) { created in
             tab = .home
             home.open(created)
@@ -342,6 +344,21 @@ struct RootView: View {
                 await home.openHeld(.outboxItem(environmentId: entry.environmentId, ref: OutboxModel.key(entry.item.ref)))
             } else {
                 home.open(.outbox)
+            }
+        case "outbox-request", "request-notice":
+            // Outbox 2's proof (TC_WORK_ONLY=outbox2): a thread's open request as its sheet over the Outbox, from the
+            // list's Asked row or from its notice (a tell keyed `request:<id>`, through the delegate's one route).
+            for _ in 0..<150 where OutboxEntries.requests(model.registry.ordered).isEmpty {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            guard let asked = OutboxEntries.requests(model.registry.ordered).first else { return }
+            if route == "request-notice" {
+                let tc: [AnyHashable: Any] = ["event": "needs_you", "kind": "waiting", "environmentId": asked.environmentId, "work": ["key": "now", "tell": "request:\(asked.request.id)", "open": ["thread": asked.request.sessionId]], "ts": 0]
+                PushDelegate.route(["aps": ["alert": ["title": "Asked: \(asked.request.head)"]], "tc": tc])
+            } else {
+                home.open(.outbox)
+                try? await Task.sleep(for: .milliseconds(600))
+                OutboxRequestCenter.shared.open(environmentId: asked.environmentId, id: asked.request.id)
             }
         case "away":
             // The work set: Away on and off from the phone, as the host menu's item does; the note follows.

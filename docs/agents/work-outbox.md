@@ -89,7 +89,9 @@ Three tables, made by the module's `ensure` (`work/outbox/store.ts`):
 puts it away. A send under way and a mail he scheduled do not count. The
 host's `waiting` (the rail's number and the push), Today's rows, the
 digest's tells (`syncTells`) and the phone all read it, and one fixture
-(`outboxCount.fixture.ts`) holds each to the same number.
+(`outboxCount.fixture.ts`) holds each to the same number; the phone's
+`OutboxModel.needsHim` is held to the same ten items in Swift
+(ios/TempCodeClient OutboxWaitingTests).
 
 **What a press does.** Every item carries `effect`, one sentence of who
 it reaches, as whom and when ("Goes from landon@purdue.edu to Dana Lee
@@ -1141,6 +1143,24 @@ waits five seconds with Undo before it reaches the host; nothing has gone
 while it waits. The phone also makes a grant from a held item's Send menu
 (`work.outbox.grant`, the desktop's `grantFor`), opens a thread's held call
 in place, and shows a thread's Results with Undo.
+
+Outbox 2 (M6) gave the phone the desktop's Waiting: the list in prototype
+A's order (Asked in threads, Not sent, Starts soon, a band per thread by
+job, Scheduled; `OutboxModel.waitingSections`, the port of waiting.ts),
+the item's `effect` and notes, Discard with "Why, for the thread"
+(`discard {reason, via: 'phone'}`), Send later for a kind marked `later`
+(`decide {items: [{ref, do: 'later', at, zone, rev}], via: 'phone'}`),
+Cancel send and Send now on a scheduled item, Ask the thread again on an
+out-of-date one, and a thread's request as one sheet (`requests`,
+`request.get`, `request.view`, `decide {request, receipts}`, `decline`, and
+the `work.outbox.request` push into `WorkHost.requests`), opened from the
+list, from its notice (the tell's key `request:<id>` in `tc.work.tell`,
+`PushTarget.request`) and from the thread's card (the tool's
+`{outboxRequest: {id, host}}`, `OutboxModel.requestOf`). Every phone Send,
+Send later, Send now and a request's Send waits the phone's five seconds
+with Undo before the host hears it. `undoSend` is in the phone's wire
+(`WorkHost.undoSend`) but no screen offers it yet: the five seconds come
+first.
 
 ## Kind views
 

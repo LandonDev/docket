@@ -9,11 +9,35 @@ public enum OutboxModel {
     public nonisolated static let workChatsKey = "~work"
 
     /// The states the Outbox lists as waiting: held, live, sending, failed and scheduled (Send later, until it goes).
+    /// The list's rule; the count is `needsHim`.
     public nonisolated static func waits(_ state: OutboxItem.State) -> Bool {
         switch state {
         case .held, .live, .sending, .failed, .scheduled: true
         case .sent, .discarded, .stale, .unknown: false
         }
+    }
+
+    /// Whether an item waits on him: the one count the rail, Today, the digest and the phone all show, the shared
+    /// rule `needsHim` (src/shared/work/outboxCount.ts) word for word. Held, live and failed wait; so does one that
+    /// went out of date, until he puts it away. One being sent, one he scheduled, and one decided do not.
+    public nonisolated static func needsHim(_ item: OutboxItem) -> Bool {
+        if item.scheduledFor != nil { return false }
+        switch item.state {
+        case .held, .live, .failed: return true
+        case .stale: return item.dismissedAt == nil
+        case .sending, .scheduled, .sent, .discarded, .unknown: return false
+        }
+    }
+
+    /// A send he timed: the host's own state, or a LifeOS mail scheduled from Mail (`scheduledFor` while it is sending).
+    public nonisolated static func isScheduled(_ item: OutboxItem) -> Bool {
+        item.state == .scheduled || item.scheduledFor != nil
+    }
+
+    /// What Waiting lists, item by item: the states `waits` lists, an out-of-date one until he puts it away, and a
+    /// LifeOS mail Mail timed (in Scheduled, never counted).
+    public nonisolated static func listed(_ item: OutboxItem) -> Bool {
+        waits(item.state) || needsHim(item) || isScheduled(item)
     }
 
     /// Kinds whose payload a person may change while it waits (the host refuses the rest).

@@ -1097,6 +1097,9 @@ work_set() {
   [ "${TC_WORK_ONLY:-}" = share ] && { work_share; return; }
   # TC_WORK_ONLY=files a file opened from the Files place (PF5): the reader page, Ask with no thread, a refused save.
   [ "${TC_WORK_ONLY:-}" = files ] && { work_files; return; }
+  # TC_WORK_ONLY=outbox2 Outbox 2 on the phone (M6): the list, the item's notes, Discard's reason, Send later, a
+  # thread's request as its sheet, from its notice and as its card in the thread, and his Send on it.
+  [ "${TC_WORK_ONLY:-}" = outbox2 ] && { work_outbox2; return; }
   [ "${TC_WORK_ONLY:-}" = m47 ] || work_m46
   work_m47
   work_capture
@@ -1105,6 +1108,35 @@ work_set() {
   work_clicker
   work_share
   work_files
+}
+
+# Outbox 2 on the phone (docs/IOS-DESIGN.md "Work on the phone"; scripts/lib/ios-work-seeds.ts seedOutbox2): the
+# list in prototype A's order, an out-of-date item and a timed one, Discard's question with its reason, Pick a
+# Time…, the roster thread's request as its sheet (from the Outbox and from its notice) and as its card in the
+# thread, light and dark. Last, his Send on the sheet as drawn: the five seconds with each row's line, then the
+# results; work-report.txt reads back on the host that exactly the two ticked rows ran (verifyOutbox2).
+work_outbox2() {
+  appearance light
+  shot o01-outbox-light outbox "" "" "" 12
+  shot o02-item-stale-light outbox-item "" "" ob2-stale 12
+  TC_SHEET=outbox-discard shot o03-discard-reason-light outbox-item "" "" ob2-alex 12
+  shot o04-item-scheduled-light outbox-item "" "" ob2-timed 12
+  TC_SHEET=outbox-later shot o05-pick-time-light outbox-item "" "" ob2-alex 12
+  shot o06-request-sheet-light outbox-request "" "" "" 14
+  shot o07-request-notice-light request-notice "" "" "" 14
+  shot o08-thread-card-light thread "Nationals roster" "" "" 14
+  appearance dark
+  shot o11-outbox-dark outbox "" "" "" 12
+  shot o12-request-sheet-dark outbox-request "" "" "" 14
+  shot o13-thread-card-dark thread "Nationals roster" "" "" 14
+  shot o14-item-stale-dark outbox-item "" "" ob2-stale 12
+  appearance light
+  # His Send lands two seconds after the sheet loads and waits five: a look each second across the launch and the
+  # wait (o09-NN, the ones in the wait show each row's line and the capsule), then the results.
+  TC_ACTION=request-send launch_app outbox-request
+  local i
+  for i in 02 03 04 05 06 07 08 09 10 11 12 13 14; do sleep 1; snap "o09-$i-request-light"; done
+  sleep 8; snap o10-request-done-light
 }
 
 # A file opened from the Files place (docs/agents/work-phone-files.md "From Files"): the first Work workspace's Files,

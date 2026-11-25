@@ -2,11 +2,16 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// One held item, exactly as it will go (phone-outbox.html, "The detail"):
-/// its workspace and time, what it does as the title, each field a person
-/// reads on its own line (label, value, the address under a name), the body
-/// as plain text, and its own bottom bar: Discard, Edit, Send. Send returns
-/// to the list, where it waits five seconds with Undo (OutboxPresses.swift).
+/// One held item, exactly as it will go (phone-outbox.html, "The detail";
+/// Outbox 2's phone.html): its workspace and time, what it does as the
+/// title, one sentence of what the press does and to whom (`effect`), the
+/// notes that apply (not sent, out of date, whose words it is now, who wrote
+/// back), each field a person reads on its own line (label, value, the
+/// address under a name), the body as plain text, and its own bottom bar:
+/// Discard, Edit, Send with Send later on its menu; a timed send's Cancel
+/// Send and Send Now; an out-of-date one's Discard and Ask the Thread Again.
+/// Every Send returns to the list, where it waits five seconds with Undo
+/// (OutboxPresses.swift).
 /// The fourth named bottom bar, after the dock, the hunk bar and the
 /// Preamble panel.
 struct OutboxItemScreen: View {
@@ -21,7 +26,8 @@ struct OutboxItemScreen: View {
     /// The whole read failed while the list's copy shows: what only it carries (a quote, a picture) did not come.
     @State private var wholeError: String?
     @State private var editing = false
-    @State private var confirmDiscard = false
+    @State private var confirmDiscard: OutboxItem?
+    @State private var pickingTime = false
     @State private var busy = false
     @ScaledMetric(relativeTo: .footnote) private var labelWidth: CGFloat = 64
 
@@ -76,6 +82,9 @@ struct OutboxItemScreen: View {
     private func proofHooks() async {
         for _ in 0..<100 where item == nil { try? await Task.sleep(for: .milliseconds(100)) }
         if TestHooks.sheet == "outbox-edit" { editing = true }
+        // Outbox 2's proof: Discard's question with its reason field, and Pick a Time….
+        if TestHooks.sheet == "outbox-discard" { confirmDiscard = item }
+        if TestHooks.sheet == "outbox-later" { pickingTime = true }
         if TestHooks.action == "outbox-grant-send", let current = item, let client, let grant = OutboxModel.grantFor(current.kind, payload: current.payload) {
             try? await Task.sleep(for: .seconds(2))
             await sendAndGrant(current, grant: grant, client: client)
@@ -108,7 +117,7 @@ struct OutboxItemScreen: View {
     private func content(_ item: OutboxItem, client: EnvironmentClient) -> some View {
         let view = OutboxModel.actView(item)
         let place = client.workPlace(item.workspaceId)
-        let waits = OutboxModel.waits(item.state)
+        let verbs = barKind(item)
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -127,10 +136,26 @@ struct OutboxItemScreen: View {
                         .font(.title3.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     if let state = stateLine(item) {
-                        Text(state.text)
-                            .textStep(.meta, tint: state.failed ? Tint.destructiveText : Color(.label))
+                        Text(state)
+                            .textStep(.meta, tint: Color(.label))
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.top, 2)
+                    }
+                    // What the press does and to whom, in the host's one sentence, above the thing itself.
+                    if let effect = item.effect, !effect.isEmpty {
+                        Text(effect)
+                            .font(.subheadline)
+                            .foregroundStyle(Color(.label))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.top, 4)
+                            .accessibilityIdentifier("outbox-effect")
+                    }
+                    let notes = OutboxModel.notes(item, held: { HeldTime.of($0) })
+                    if !notes.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(notes) { note in NoteLine(note: note) }
+                        }
+                        .padding(.top, 8)
                     }
                 }
                 .padding(.horizontal, Layout.textEdge)
@@ -205,30 +230,50 @@ struct OutboxItemScreen: View {
             }
         }
         .tcBottomBar {
-            if waits, client.work.canApprove {
-                bar(item, client: client, editable: OutboxModel.editable(item.kind) && (!view.fields.filter({ $0.edit != nil }).isEmpty || view.body?.readOnly == false),
-                    ready: OutboxModel.detailReady(item.kind, whole: whole) && pictureDraws(whole))
+            if client.work.canApprove {
+                switch verbs {
+                case .press:
+                    bar(item, client: client, editable: OutboxModel.editable(item.kind) && (!view.fields.filter({ $0.edit != nil }).isEmpty || view.body?.readOnly == false),
+                        ready: OutboxModel.detailReady(item.kind, whole: whole) && pictureDraws(whole))
+                case .timed:
+                    timedBar(item, client: client)
+                case .stale:
+                    staleBar(item, client: client)
+                case .none:
+                    EmptyView()
+                }
             }
         }
         .sheet(isPresented: $editing) {
             OutboxEditSheet(item: item, client: client)
         }
-        .confirmationDialog("Discard this?", isPresented: $confirmDiscard, titleVisibility: .visible) {
-            Button("Discard", role: .destructive) { Task { await discard(item, client: client) } }
-        } message: {
-            Text("\(item.summary) will never go.")
+        .sheet(isPresented: $pickingTime) {
+            OutboxPickTimeSheet { at in later(item, at: at) }
+        }
+        .outboxDiscardPrompt($confirmDiscard) { item, reason in
+            Task { await discard(item, reason: reason, client: client) }
         }
     }
 
-    /// Why it stopped, or that it went: one line under the title.
-    private func stateLine(_ item: OutboxItem) -> (text: String, failed: Bool)? {
+    private enum BarKind { case press, timed, stale, none }
+
+    /// Which verbs the item's bar offers: a plain press while it waits on one; Cancel Send and Send Now on a send he
+    /// timed on the host; Discard and Ask the Thread Again once it went out of date; none on its way or decided (a
+    /// LifeOS mail Mail timed is LifeOS's to cancel, in Mail).
+    private func barKind(_ item: OutboxItem) -> BarKind {
+        if item.state == .scheduled { return .timed }
+        if item.state == .stale { return OutboxModel.needsHim(item) ? .stale : .none }
+        return OutboxModel.needsHim(item) ? .press : .none
+    }
+
+    /// Where it stands when no note says it: on its way, timed, sent, discarded, or an agent's rewrite waiting.
+    private func stateLine(_ item: OutboxItem) -> String? {
+        if OutboxModel.isScheduled(item) { return "Goes \(OutboxModel.aheadTime(OutboxModel.scheduledAt(item)))" }
         switch item.state {
-        case .failed: (OutboxModel.failureLine(item), true)
-        case .stale: (item.error ?? "No longer current.", true)
-        case .sending: ("Sending…", false)
-        case .sent: ("\(OutboxModel.pastOf(item.verb, kind: item.kind)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")", false)
-        case .discarded: ("Discarded", false)
-        default: item.proposed == true ? ("An agent’s rewrite waits in LifeOS.", false) : nil
+        case .sending: return "Sending…"
+        case .sent: return "\(OutboxModel.pastOf(item.verb, kind: item.kind)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")"
+        case .discarded: return "Discarded"
+        default: return item.proposed == true ? "An agent’s rewrite waits in LifeOS." : nil
         }
     }
 
@@ -250,7 +295,7 @@ struct OutboxItemScreen: View {
     /// Send waits (`ready`) until the whole read and a computer act's picture have come; Discard and Edit do not.
     private func bar(_ item: OutboxItem, client: EnvironmentClient, editable: Bool, ready: Bool) -> some View {
         HStack(spacing: 8) {
-            Button("Discard", role: .destructive) { confirmDiscard = true }
+            Button("Discard", role: .destructive) { confirmDiscard = item }
                 .font(.body)
                 .foregroundStyle(Tint.destructive)
                 .frame(minHeight: 44)
@@ -274,15 +319,77 @@ struct OutboxItemScreen: View {
         .padding(.vertical, 8)
     }
 
-    /// Send, the item's own verb. With a grant the kind offers and a key that may make one, a press and
-    /// hold opens the split Send's menu: "Send and stop holding" › the grant's name (the desktop's).
+    /// A timed send: Cancel Send puts it back as held; Send Now waits its five seconds, then goes on its own claim.
+    private func timedBar(_ item: OutboxItem, client: EnvironmentClient) -> some View {
+        HStack(spacing: 8) {
+            Button("Cancel Send") { Task { await cancelSend(item, client: client) } }
+                .font(.body)
+                .frame(minHeight: 44)
+                .buttonStyle(.pressable)
+                .accessibilityIdentifier("outbox-cancel-send")
+            Spacer(minLength: 0)
+            Button("\(item.verb) Now") {
+                OutboxPresses.shared.send(OutboxModel.Entry(environmentId: environmentId, item: item), press: .sendNow)
+                close()
+            }
+            .font(.body.weight(.semibold))
+            .padding(.horizontal, 10)
+            .frame(minHeight: Layout.rowHeight)
+            .buttonBorderShape(.capsule)
+            .tcGlassButton(prominent: true)
+            .accessibilityIdentifier("outbox-send-now")
+        }
+        .disabled(busy)
+        .padding(.horizontal, Layout.textEdge)
+        .padding(.vertical, 8)
+    }
+
+    /// An out-of-date item: Discard (with its reason), or Ask the Thread Again, which puts it away and asks its
+    /// thread to draft it again from what is true now.
+    private func staleBar(_ item: OutboxItem, client: EnvironmentClient) -> some View {
+        HStack(spacing: 8) {
+            Button("Discard", role: .destructive) { confirmDiscard = item }
+                .font(.body)
+                .foregroundStyle(Tint.destructive)
+                .frame(minHeight: 44)
+                .buttonStyle(.pressable)
+                .accessibilityIdentifier("outbox-discard")
+            Spacer(minLength: 0)
+            Button("Ask the Thread Again") { Task { await askAgain(item, client: client) } }
+                .font(.body.weight(.semibold))
+                .padding(.horizontal, 10)
+                .frame(minHeight: Layout.rowHeight)
+                .buttonBorderShape(.capsule)
+                .tcGlassButton(prominent: true)
+                .accessibilityIdentifier("outbox-ask-again")
+        }
+        .disabled(busy)
+        .padding(.horizontal, Layout.textEdge)
+        .padding(.vertical, 8)
+    }
+
+    /// Send, the item's own verb. A press and hold opens the split Send's menu: Send Later (In an Hour, This
+    /// Afternoon, Tomorrow Morning, Pick a Time…) for a kind that may be sent later, above "Send and stop holding" ›
+    /// the grant's name for a key that may make one (the desktop's menu, in its order).
     @ViewBuilder
     private func sendButton(_ item: OutboxItem, client: EnvironmentClient) -> some View {
         let title = OutboxModel.pressWord(item, fallback: item.verb)
-        if client.work.canAdmin, item.state == .held, let grant = OutboxModel.grantFor(item.kind, payload: item.payload) {
+        let grant = client.work.canAdmin && item.state == .held ? OutboxModel.grantFor(item.kind, payload: item.payload) : nil
+        let later = item.later == true && item.state == .held
+        if grant != nil || later {
             Menu {
-                Section("Send and stop holding") {
-                    Button(grant.label, systemImage: "checkmark.seal") { Task { await sendAndGrant(item, grant: grant, client: client) } }
+                if later {
+                    Section("Send Later") {
+                        ForEach(OutboxModel.laterChoices(), id: \.label) { choice in
+                            Button(choice.label) { self.later(item, at: choice.at) }
+                        }
+                        Button("Pick a Time…") { pickingTime = true }
+                    }
+                }
+                if let grant {
+                    Section("Send and stop holding") {
+                        Button(grant.label, systemImage: "checkmark.seal") { Task { await sendAndGrant(item, grant: grant, client: client) } }
+                    }
                 }
             } label: {
                 Text(title)
@@ -295,7 +402,7 @@ struct OutboxItemScreen: View {
             .buttonBorderShape(.capsule)
             .tcGlassButton(prominent: true)
             .accessibilityIdentifier("outbox-send")
-            .accessibilityHint("Touch and hold to send and stop holding acts like this one")
+            .accessibilityHint(later ? "Touch and hold to send later" : "Touch and hold to send and stop holding acts like this one")
         } else {
             Button(title) { send(item) }
                 .font(.body.weight(.semibold))
@@ -335,15 +442,109 @@ struct OutboxItemScreen: View {
         }
     }
 
-    private func discard(_ item: OutboxItem, client: EnvironmentClient) async {
+    /// Send later: back to the list, where it waits its five seconds with Undo, its line naming when it goes.
+    private func later(_ item: OutboxItem, at: Int) {
+        OutboxPresses.shared.send(OutboxModel.Entry(environmentId: environmentId, item: item), press: .later(at: at))
+        close()
+    }
+
+    private func discard(_ item: OutboxItem, reason: String?, client: EnvironmentClient) async {
         busy = true
         defer { busy = false }
         do {
-            try await client.work.discard(item)
+            try await client.work.discard(item, reason: reason)
             close()
         } catch {
             FleetToastCenter.shared.post(message: "Not discarded: \(ActionError.wrap(error).message)")
         }
+    }
+
+    private func cancelSend(_ item: OutboxItem, client: EnvironmentClient) async {
+        busy = true
+        defer { busy = false }
+        do {
+            try await client.work.cancelSend(item)
+        } catch {
+            FleetToastCenter.shared.post(message: "Not cancelled: \(ActionError.wrap(error).message)")
+        }
+    }
+
+    private func askAgain(_ item: OutboxItem, client: EnvironmentClient) async {
+        busy = true
+        defer { busy = false }
+        do {
+            try await client.work.askAgain(item)
+            close()
+        } catch {
+            FleetToastCenter.shared.post(message: "Not asked: \(ActionError.wrap(error).message)")
+        }
+    }
+}
+
+/// One note under the effect: its glyph in a fixed column, then the words. Only a send that did not go wears the
+/// destructive mark; out of date, changed and replied are plain words (held is not Needs you).
+private struct NoteLine: View {
+    let note: OutboxModel.Note
+    @ScaledMetric(relativeTo: .footnote) private var mark: CGFloat = 16
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Group {
+                if note.kind == .failed {
+                    Circle().fill(Tint.destructive).frame(width: Layout.dotSize, height: Layout.dotSize)
+                } else {
+                    Image(systemName: glyph).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: mark)
+            .accessibilityHidden(true)
+            Text(note.text)
+                .textStep(.meta, tint: note.kind == .failed ? Tint.destructiveText : Color(.label))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("outbox-note-\(note.kind.rawValue)")
+    }
+
+    private var glyph: String {
+        switch note.kind {
+        case .failed: "exclamationmark.circle"
+        case .stale: "clock.arrow.circlepath"
+        case .changed: "pencil"
+        case .replied: "arrowshape.turn.up.left"
+        }
+    }
+}
+
+/// Pick a Time…: a day and a time in his own zone, no earlier than five minutes from now, and Send Later. It fills
+/// the height, so the whole month and the time show at once.
+struct OutboxPickTimeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let pick: (Int) -> Void
+    @State private var at = Date.now.addingTimeInterval(3_600)
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker("Goes", selection: $at, in: Date.now.addingTimeInterval(300)..., displayedComponents: [.date, .hourAndMinute])
+                    .datePickerStyle(.graphical)
+            }
+            .navigationTitle("Pick a Time")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Send Later") {
+                        dismiss()
+                        pick(Int((at.timeIntervalSince1970 * 1000).rounded()))
+                    }
+                    .accessibilityIdentifier("outbox-later-pick")
+                }
+            }
+        }
+        .tcSheet(.editor)
     }
 }
 

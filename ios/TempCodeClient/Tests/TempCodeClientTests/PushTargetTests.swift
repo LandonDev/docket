@@ -63,6 +63,16 @@ struct PushTargetTests {
         #expect(target.route == .workView(environmentId: "env_box", workspaceId: "w1", view: view))
     }
 
+    @Test func `a thread's request opens its sheet over the Outbox, not the thread that asked`() throws {
+        let target = try #require(PushTarget(userInfo: work(["key": "now", "tell": "request:rq_7", "by": 9_000, "open": ["thread": "s4"]])))
+        #expect(target.request == "rq_7")
+        #expect(target.sessionId.isEmpty)
+        #expect(target.route == .outbox)
+        // A tell whose key only starts alike is not a request.
+        let bare = try #require(PushTarget(userInfo: work(["key": "now", "tell": "request:", "open": ["thread": "s4"]])))
+        #expect(bare.request == nil)
+    }
+
     @Test func `a tell the phone has no route for opens the Digest`() {
         let opens: [[String: Any]] = [
             ["view": "clashes", "workspaceId": "w1"],

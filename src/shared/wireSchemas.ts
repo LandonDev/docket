@@ -6,7 +6,7 @@ import { PillarIdSchema } from './work/ids'
 import { TellGroupSchema, type TellHow, type TellOpen, type TellRow } from './work/tell'
 import { DigestLevelsSchema, type DigestDay, type DigestList, type DigestSettings } from './contract-work-digest'
 import { ActKindSchema, HeldRefSchema } from './work/acts'
-import { OutboxItemSchema, OutboxRequestSchema, ToolHintsSchema, ToolRuleSchema, type OutboxGrant, type OutboxItem, type OutboxRequest, type ToolRulesCard, type WorkResult } from './contract-work-outbox'
+import { DecisionResultSchema, OutboxItemSchema, OutboxRequestSchema, ToolHintsSchema, ToolRuleSchema, type DecisionResult, type OutboxGrant, type OutboxItem, type OutboxRequest, type ToolRulesCard, type WorkResult } from './contract-work-outbox'
 import { LifeosKeyStateSchema, LifeosStateSchema, type LifeosStateName, type LifeosStatus } from './contract-work-lifeos'
 import { AwayDecidedSchema, AwayStateSchema } from './away'
 import type { CaptureFiled, CaptureState } from './contract-work-capture'
@@ -1200,6 +1200,10 @@ export const ToolRulesCardSchema = z.object({
   tools: z.array(ToolRuleRowSchema)
 })
 export const OutboxListSchema = z.object({ items: z.array(OutboxItemSchema), waiting: z.number().int() })
+/** `work.outbox.decide`'s answer: each item's result for a press on items, or the request as it stands for a press on a request. */
+export const OutboxDecideAnswerSchema = z.object({ results: z.array(DecisionResultSchema).optional(), request: OutboxRequestSchema.optional() })
+/** `work.outbox.undoSend`'s answer: whether it came back, and the item as it stands. */
+export const OutboxUndoSendSchema = z.object({ back: z.boolean(), item: OutboxItemSchema.optional() })
 export const LifeosStatusSchema = z.object({ lifeos: LifeosStateSchema, keys: z.array(LifeosKeyStateSchema) })
 export const AwaySnapshotSchema = z.object({ state: AwayStateSchema, decided: AwayDecidedSchema })
 /** Something in the Outbox changed: how many wait, and the item that changed (no picture). To keys that can approve. */
@@ -1923,6 +1927,7 @@ export type WireSchemaPins = [
   Expect<Mirror<typeof OutboxGrantSchema, OutboxGrant>>,
   Expect<Mirror<typeof OutboxItemSchema, OutboxItem>>,
   Expect<Mirror<typeof OutboxRequestSchema, OutboxRequest>>,
+  Expect<Mirror<typeof DecisionResultSchema, DecisionResult>>,
   Expect<Mirror<typeof ToolRulesCardSchema, ToolRulesCard>>,
   Expect<Mirror<typeof LifeosStatusSchema, LifeosStatus>>,
   Expect<Mirror<typeof CaptureStateSchema, CaptureState>>,

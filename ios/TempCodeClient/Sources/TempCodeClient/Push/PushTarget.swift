@@ -20,6 +20,8 @@ public struct PushTarget: Sendable, Hashable {
     public var work: Bool
     /// A Work view a tell opens (`tc.work.open.view`, one the phone draws).
     public var view: WorkView?
+    /// A thread's request for his press (a tell keyed `request:<id>`): the tap opens its sheet over the Outbox.
+    public var request: String?
 
     public struct WorkView: Sendable, Hashable {
         public var workspaceId: String
@@ -56,7 +58,14 @@ public struct PushTarget: Sendable, Hashable {
     /// view the phone draws or a thread, on the notice's host, and the Digest otherwise.
     private init(work: [AnyHashable: Any], environmentId: String) {
         self.init(environmentId: environmentId, sessionId: "", work: true)
-        guard work["tell"] is String, let open = work["open"] as? [AnyHashable: Any], !environmentId.isEmpty else { return }
+        guard let tell = work["tell"] as? String, !environmentId.isEmpty else { return }
+        // A thread's request (the tell's key `request:<id>`): its open names the thread that asked, but the sheet is
+        // where he answers it, so the key wins.
+        if tell.hasPrefix("request:"), tell.count > "request:".count {
+            request = String(tell.dropFirst("request:".count))
+            return
+        }
+        guard let open = work["open"] as? [AnyHashable: Any] else { return }
         if let held = PushTarget.held(open["held"]) {
             self.held = held
         } else if let view = open["view"] as? String, DigestModel.phoneViews.contains(view), let workspaceId = open["workspaceId"] as? String, !workspaceId.isEmpty {
@@ -66,10 +75,11 @@ public struct PushTarget: Sendable, Hashable {
         }
     }
 
-    /// Where the tap goes: a held item over the Outbox, a Work view, the thread, or for a notice
-    /// of Work's with none of those, the Digest.
+    /// Where the tap goes: a held item over the Outbox, the Outbox under a request's sheet, a Work view, the
+    /// thread, or for a notice of Work's with none of those, the Digest.
     public var route: Route {
         if !environmentId.isEmpty {
+            if request != nil { return .outbox }
             if let held { return .outboxItem(environmentId: environmentId, ref: held) }
             if let view { return .workView(environmentId: environmentId, workspaceId: view.workspaceId, view: view.view) }
             if !sessionId.isEmpty { return .thread(environmentId: environmentId, sessionId: sessionId, seq: seq) }

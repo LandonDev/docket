@@ -10,7 +10,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { bundleNodeScript } from './lib/bundle-node-script'
-import { seedReader, seedReview, seedVideo, seedWork, seedWorkItems, verifyFilesAsk, verifyMoney, verifyReview, verifyShare, verifyWork, verifyWorkItems, type WorkSeedReady } from './lib/ios-work-seeds'
+import { seedOutbox2, verifyOutbox2, seedReader, seedReview, seedVideo, seedWork, seedWorkItems, verifyFilesAsk, verifyMoney, verifyReview, verifyShare, verifyWork, verifyWorkItems, type WorkSeedReady } from './lib/ios-work-seeds'
 
 const repo = resolve(import.meta.dir, '..')
 const out = resolve(repo, 'scripts/.out/ios-client-test-server.mjs')
@@ -73,7 +73,14 @@ let reader: { sessionId: string; lines: string[] } | null = null
 let review: { lines: string[] } | null = null
 let unify: string | null = null
 let purdue: string | null = null
-if (work) {
+if (work && process.env.TC_WORK_ONLY === 'outbox2') {
+  // Outbox 2 on the phone (M6): milestone 46's rows and the roster thread's request, nothing heavier.
+  const ids = await seedWork(ready as unknown as WorkSeedReady, repo)
+  unify = ids.unify
+  purdue = ids.purdue
+  const asked = await seedOutbox2(ready as unknown as WorkSeedReady, ids)
+  console.log(`ios-sim-proof-local: outbox2 seeded (${asked.sessionId}, ${asked.requestId})`)
+} else if (work) {
   const ids = await seedWork(ready as unknown as WorkSeedReady, repo)
   unify = ids.unify
   purdue = ids.purdue
@@ -131,7 +138,7 @@ if (work) {
   // every press, so their read-back would only say they did not happen. TC_WORK_ONLY=money is the receipt alone;
   // TC_WORK_ONLY=reader shoots neither part.
   const only = process.env.TC_WORK_ONLY
-  const skipped = only === 'm47' || only === 'capture' || only === 'money' || only === 'reader' || only === 'share' || only === 'files'
+  const skipped = only === 'm47' || only === 'capture' || only === 'money' || only === 'reader' || only === 'share' || only === 'files' || only === 'outbox2'
   const lines = skipped ? [] : await verifyWork(ready as unknown as WorkSeedReady).catch((err: unknown) => [`FAIL could not read the host back: ${String(err)}`])
   if (items && only !== 'capture' && only !== 'money' && only !== 'reader' && only !== 'share' && only !== 'files') {
     lines.push(...items.lines)
@@ -152,6 +159,8 @@ if (work) {
     const shared = existsSync(resolve(proofDir, 'share-report.json')) ? (JSON.parse(readFileSync(resolve(proofDir, 'share-report.json'), 'utf8')) as Parameters<typeof verifyShare>[2]) : null
     lines.push(...(await verifyShare(ready as unknown as WorkSeedReady, purdue, shared).catch((err: unknown) => [`FAIL could not read the share back: ${String(err)}`])))
   }
+  // Outbox 2 (TC_WORK_ONLY=outbox2): the request's Send from the phone ran exactly the ticked rows.
+  if (only === 'outbox2') lines.push(...(await verifyOutbox2(ready as unknown as WorkSeedReady).catch((err: unknown) => [`FAIL could not read the request back: ${String(err)}`])))
   // Ask from a file open in Files (the full set and TC_WORK_ONLY=files): a new thread holds the PDF.
   if (purdue && reader?.sessionId && (only === undefined || only === '' || only === 'files')) {
     lines.push(...(await verifyFilesAsk(ready as unknown as WorkSeedReady & { environmentId: string }, purdue, reader.sessionId).catch((err: unknown) => [`FAIL could not read the Files ask back: ${String(err)}`])))

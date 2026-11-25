@@ -35,8 +35,11 @@ public final class WorkHost: CaptureHost {
     public private(set) var waiting = 0
     /// Add-on tools a Work thread can reach with no rule yet.
     public private(set) var unreviewed = 0
-    /// The waiting items (held, live, sending, failed), newest first.
+    /// What Waiting lists (`OutboxModel.listed`: what waits on him, one on its way, the sends he timed), newest first.
     public private(set) var items: [OutboxItem] = []
+    /// A thread's requests for his press that are still open, oldest first (`work.outbox.requests`, the
+    /// `work.outbox.request` push). Empty for a key without approve: the host shows them to approve alone.
+    public private(set) var requests: [OutboxRequest] = []
     /// `work.outbox.list` answered at least once on this socket.
     public private(set) var listed = false
     public private(set) var listError: String?
@@ -112,12 +115,22 @@ public final class WorkHost: CaptureHost {
     public func refreshOutbox() async {
         do {
             let answer = try await socket.request(Methods.WorkOutboxList.self, .init())
-            items = answer.items.filter { OutboxModel.waits($0.state) }.sorted { $0.createdAt > $1.createdAt }
+            items = answer.items.filter(OutboxModel.listed).sorted { $0.createdAt > $1.createdAt }
             waiting = answer.waiting
             listed = true
             listError = nil
         } catch {
             listError = ActionError.wrap(error).message
+        }
+        await refreshRequests()
+    }
+
+    /// The open requests, read only with approve (the host refuses the rest). A host from before requests
+    /// refuses the method: then there are none.
+    public func refreshRequests() async {
+        guard canApprove else { return requests = [] }
+        if let answer = try? await socket.request(Methods.WorkOutboxRequests.self, .init()) {
+            requests = answer.requests.filter { $0.state == .open }
         }
     }
 
@@ -152,6 +165,8 @@ public final class WorkHost: CaptureHost {
             if let item = value.item { merge(item) } else { Task { await self.refreshOutbox() } }
         case .workLifeos(let value):
             lifeos = value.status
+        case .workOutboxRequest(let value):
+            mergeRequest(value.request)
         case .workOutboxResult:
             resultsRev += 1
         case .workRules(let value):
@@ -171,6 +186,7 @@ public final class WorkHost: CaptureHost {
 
     private func clear() {
         items = []
+        requests = []
         waiting = 0
         unreviewed = 0
         listed = false
@@ -182,10 +198,20 @@ public final class WorkHost: CaptureHost {
     func merge(_ item: OutboxItem) {
         let key = OutboxModel.key(item.ref)
         let index = items.firstIndex { OutboxModel.key($0.ref) == key }
-        if OutboxModel.waits(item.state) {
+        if OutboxModel.listed(item) {
             if let index { items[index] = item } else { items.insert(item, at: 0) }
         } else if let index {
             items.remove(at: index)
+        }
+    }
+
+    /// A request as the host answered or pushed it: kept while open, dropped once answered, declined or void.
+    func mergeRequest(_ request: OutboxRequest) {
+        let index = requests.firstIndex { $0.id == request.id }
+        if request.state == .open {
+            if let index { requests[index] = request } else { requests.append(request); requests.sort { $0.createdAt < $1.createdAt } }
+        } else if let index {
+            requests.remove(at: index)
         }
     }
 
@@ -251,15 +277,87 @@ public final class WorkHost: CaptureHost {
     public func send(_ item: OutboxItem) async throws -> OutboxItem {
         // A send that may have gone takes only an explicit Send Again (`MAY_HAVE_GONE` otherwise); the
         // phone offers no plain Send for such an item, so its press is that one.
-        let out = try await socket.request(Methods.WorkOutboxSend.self, .init(ref: item.ref, rev: item.updatedAt, again: item.outcomeUnknown == true ? true : nil))
+        let out = try await socket.request(Methods.WorkOutboxSend.self, .init(ref: item.ref, rev: item.updatedAt, again: item.outcomeUnknown == true ? true : nil, via: .phone))
         merge(out)
         return out
     }
 
+    /// Discard; `reason` is his line for the thread ("Why, for the thread"), sent only when he wrote one.
     @discardableResult
-    public func discard(_ item: OutboxItem) async throws -> OutboxItem {
-        let out = try await socket.request(Methods.WorkOutboxDiscard.self, .init(ref: item.ref))
+    public func discard(_ item: OutboxItem, reason: String? = nil) async throws -> OutboxItem {
+        let words = reason?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let out = try await socket.request(Methods.WorkOutboxDiscard.self, .init(ref: item.ref, reason: words?.isEmpty == false ? String(words!.prefix(500)) : nil, via: .phone))
         merge(out)
+        return out
+    }
+
+    /// Send later: the item goes at `at` (ms), the time he picked in his own zone, bound to what he saw.
+    @discardableResult
+    public func later(_ item: OutboxItem, at: Int, zone: String = TimeZone.current.identifier) async throws -> OutboxItem {
+        let answer = try await socket.request(Methods.WorkOutboxDecide.self, .init(items: [.init(ref: item.ref, do: .later, rev: item.updatedAt, at: at, zone: zone)], via: .phone))
+        guard let result = answer.results?.first else { throw ActionError.refused(message: "The host did not answer for it", forbidden: false) }
+        if let after = result.item { merge(after) }
+        guard result.ok, let after = result.item else { throw ActionError.refused(message: result.error ?? "Not scheduled", forbidden: false) }
+        return after
+    }
+
+    /// Cancel send on a send he timed: back to held. `rev` binds it to the item as his screen read it.
+    @discardableResult
+    public func cancelSend(_ item: OutboxItem) async throws -> OutboxItem {
+        let out = try await socket.request(Methods.WorkOutboxCancelSend.self, .init(ref: item.ref, rev: item.updatedAt))
+        merge(out)
+        return out
+    }
+
+    /// Send now on a send he timed, on its own claim, bound to the item as his screen read it.
+    @discardableResult
+    public func sendNow(_ item: OutboxItem) async throws -> OutboxItem {
+        let out = try await socket.request(Methods.WorkOutboxSendNow.self, .init(ref: item.ref, rev: item.updatedAt))
+        merge(out)
+        return out
+    }
+
+    /// Takes a LifeOS mail back while LifeOS still holds it in its undo time: true when it is back as held.
+    public func undoSend(_ item: OutboxItem) async throws -> Bool {
+        let out = try await socket.request(Methods.WorkOutboxUndoSend.self, .init(ref: item.ref))
+        if let after = out.item { merge(after) }
+        return out.back
+    }
+
+    /// An out-of-date item put away, and its thread asked to draft it again from what is true now.
+    @discardableResult
+    public func askAgain(_ item: OutboxItem) async throws -> OutboxItem {
+        let out = try await socket.request(Methods.WorkOutboxAskAgain.self, .init(ref: item.ref))
+        merge(out)
+        return out
+    }
+
+    // MARK: - a thread's request
+
+    /// One request as its sheet draws it, with a receipt for each row he may press as drawn.
+    public func request(_ id: String) async throws -> OutboxRequest {
+        let out = try await socket.request(Methods.WorkOutboxRequestGet.self, .init(id: id))
+        mergeRequest(out)
+        return out
+    }
+
+    /// He opened a row that changed since the ask: a fresh receipt at what he sees now.
+    public func viewRow(_ request: String, ref: HeldRef) async throws -> OutboxRequestRow {
+        try await socket.request(Methods.WorkOutboxRequestView.self, .init(id: request, ref: ref))
+    }
+
+    /// His Send on the sheet: exactly the ticked rows' receipts. Answers the request as it stands after.
+    public func answer(_ request: String, receipts: [String]) async throws -> OutboxRequest {
+        let out = try await socket.request(Methods.WorkOutboxDecide.self, .init(request: request, receipts: receipts))
+        guard let after = out.request else { throw ActionError.refused(message: "The host did not answer for the request", forbidden: false) }
+        mergeRequest(after)
+        return after
+    }
+
+    /// Not now: the items still wait in his Outbox.
+    public func decline(_ request: String) async throws -> OutboxRequest {
+        let out = try await socket.request(Methods.WorkOutboxDecline.self, .init(request: request))
+        mergeRequest(out)
         return out
     }
 

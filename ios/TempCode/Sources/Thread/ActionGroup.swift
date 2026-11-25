@@ -61,12 +61,15 @@ struct ActionGroup: View {
 
     private static var now: Double { Date().timeIntervalSinceReferenceDate }
 
-    /// One of the group's calls is held and still waits in the Outbox (milestone 46, HeldInline).
+    /// One of the group's calls is held and still waits in the Outbox (milestone 46, HeldInline), or asked for his press.
     private static func holds(_ group: ActivityGroup, client: EnvironmentClient) -> Bool {
-        guard !client.work.items.isEmpty else { return false }
+        guard !client.work.items.isEmpty || !client.work.requests.isEmpty else { return false }
         return group.tools.contains { tool in
-            guard case .whole(let text) = tool.output, let held = OutboxModel.heldOf(tool: tool.name, result: text) else { return false }
-            return client.work.items.contains { $0.n == held.n }
+            guard case .whole(let text) = tool.output else { return false }
+            // A thread's request still open keeps its card in view too (Outbox 2).
+            if let asked = OutboxModel.requestOf(tool: tool.name, result: text) { return client.work.requests.contains { $0.id == asked.id } }
+            guard let held = OutboxModel.heldOf(tool: tool.name, result: text) else { return false }
+            return client.work.items.contains { $0.n == held.n && OutboxModel.needsHim($0) }
         }
     }
 
@@ -301,6 +304,10 @@ private struct ToolStep: View {
                 if let held = heldLine {
                     HeldInline(n: held.n, act: held.act, client: client, inTable: inTable)
                 }
+                // A thread's ask for his press (Outbox 2): its compact card, which opens the request's sheet.
+                if let asked = requestCard {
+                    OutboxRequestInline(id: asked.id, host: asked.host, client: client, inTable: inTable)
+                }
                 if open {
                     StepBody(tool: tool, whole: whole, loading: loading, command: row.opens == .command)
                         .modifier(BodyFrame(inTable: inTable))
@@ -320,6 +327,12 @@ private struct ToolStep: View {
     private var heldLine: (n: Int, act: String)? {
         guard case .whole(let text) = tool.output else { return nil }
         return OutboxModel.heldOf(tool: tool.name, result: text)
+    }
+
+    /// The host's `outbox_request` answer to this call (`{outboxRequest: {id, host}}`), read off its result.
+    private var requestCard: (id: String, host: String)? {
+        guard case .whole(let text) = tool.output else { return nil }
+        return OutboxModel.requestOf(tool: tool.name, result: text)
     }
 
     /// The one child a spawn made, where it stands: a still mark after the words.
