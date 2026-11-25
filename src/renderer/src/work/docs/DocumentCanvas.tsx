@@ -36,6 +36,7 @@ import { useSaving } from "../canvas/useCalm";
 import { hostName } from "../../lib/threadResources";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence, SavedLine, WrittenLine } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
+import { dayTime } from "../../lib/duration";
 import { useWorkCommands } from "../formats/command";
 import { registerFlush } from "../canvas/flush";
 import { Preview } from "../formats/PreviewFrame";
@@ -839,9 +840,9 @@ export const CHANGED_SINCE = "Not undone: the document has changed since. Restor
  * History keeps every version for a choice of his own. A host that names no `after` is offered no Undo.
  */
 export function writtenLine(host: Pick<DocHost, "env" | "undo">, source: CanvasSource, w: DocWritten): WrittenLine {
-  const text = w.text;
+  const line = { text: `${w.text}, ${dayTime(w.at)}`, words: w.text, at: w.at };
   const after = w.after;
-  return after ? { text, at: w.at, undo: () => undoWritten(host, source, after) } : { text, at: w.at };
+  return after ? { ...line, undo: () => undoWritten(host, source, after) } : line;
 }
 
 /** What Undo says when the document's host is a release behind and cannot undo it there. */

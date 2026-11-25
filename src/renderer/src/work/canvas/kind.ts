@@ -199,9 +199,11 @@ export interface StatusLine {
 }
 
 export interface WrittenLine {
-  /** "Wrote 6 cells, 2:04 PM"; with `at`, the words alone ("Wrote 2 sections") */
+  /** "Wrote 6 cells, 2:04 PM": the whole line, its time included */
   text: string;
-  /** When it was written (epoch ms): said after the words, unless the save line beside says that minute already. */
+  /** The words without the time ("Wrote 6 cells") and when it was written (epoch ms): where both are given, the bar
+   *  says the words alone when the save line beside it already says that minute (KindBar `writtenWords`). */
+  words?: string;
   at?: number;
   undo?(): Promise<void>;
 }

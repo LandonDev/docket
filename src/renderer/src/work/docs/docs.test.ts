@@ -582,6 +582,8 @@ describe("Undo of an agent's write", () => {
     const line = writtenLine({ env: "env_box", undo: async () => "undone" }, source, older);
     expect(line.undo).toBeUndefined();
     expect(line.text).toMatch(/^Wrote 1 section, /);
+    // The words and the time apart too: the bar drops the time only where the save line beside says that minute.
+    expect(line).toMatchObject({ words: "Wrote 1 section", at: written.at });
   });
 
   it("the host's undo is the dismiss with undo and the write's after, and reads what the host did", async () => {

@@ -31,7 +31,7 @@ describe("the bar's lead and end", () => {
 
 describe("the written line's time", () => {
   const at = new Date(2026, 10, 25, 14, 4, 20).getTime();
-  const feeds = { ...NO_FEEDS, written: { text: "Wrote 2 sections", at } };
+  const feeds = { ...NO_FEEDS, written: { text: "Wrote 2 sections, 2:04 PM", words: "Wrote 2 sections", at } };
 
   it("is said after the words, and not again where the save line beside says that minute", () => {
     const { rerender } = render(<KindBar feeds={feeds} />);
@@ -42,7 +42,8 @@ describe("the written line's time", () => {
     expect(document.querySelector("[data-canvas-written]")!.textContent).toBe("Wrote 2 sections, 2:04 PM");
   });
 
-  it("keeps a line whose words already hold their time as it was", () => {
+  it("keeps a line whole that gives no words apart, or has no save line beside it", () => {
     expect(writtenWords({ text: "Wrote 6 cells, 2:04 PM" }, at)).toBe("Wrote 6 cells, 2:04 PM");
+    expect(writtenWords(feeds.written, null)).toBe("Wrote 2 sections, 2:04 PM");
   });
 });

@@ -6,7 +6,6 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { loadToast } from "../../components/ui/toaster";
 import { Download, History } from "../icons";
-import { dayTime } from "../../lib/duration";
 import { Face } from "../mail/face";
 import { sayError, type Feeds } from "./frame";
 import type { CanvasMode, Presence, ReviewAdapter, WrittenLine } from "./kind";
@@ -369,11 +368,11 @@ function Step({ label, tip = label, disabled = false, className, onClick, childr
   );
 }
 
-/** A written line's words: its time after them, unless the save line beside says that minute. */
+/** A written line as the bar says it: whole, or its words alone where the save line beside already says that minute. */
 export function writtenWords(line: WrittenLine, savedAt: number | null): string {
-  if (line.at === undefined) return line.text;
+  if (line.words === undefined || line.at === undefined || savedAt === null) return line.text;
   const minute = (at: number): number => Math.floor(at / 60_000);
-  return savedAt !== null && minute(savedAt) === minute(line.at) ? line.text : `${line.text}, ${dayTime(line.at)}`;
+  return minute(savedAt) === minute(line.at) ? line.words : line.text;
 }
 
 /** What the agent wrote directly, with its way back. */

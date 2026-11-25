@@ -425,7 +425,8 @@ place for a LifeOS document). What it tells the pane:
 - **The state line**: the editor's own sentence when it is offline, waiting,
   read only or did not open.
 - **The agent's last write**: "Wrote 1 section, 2:04 PM" with Undo (the
-  words and the time apart, `WrittenLine.at`: in a Files tab whose save line
+  whole line in `WrittenLine.text`, its words and time apart in `words` and
+  `at`: in a Files tab whose save line
   already says that minute the bar says "Wrote 1 section" alone, KindBar
   `writtenWords`), which
   is `work.docs.dismiss {undo: true, after}`: the host restores the version
