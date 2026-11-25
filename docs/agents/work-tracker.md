@@ -45,7 +45,9 @@ row passes on.
 ## The window
 
 `useTracker()` asks every host with Work on (`askHosts`), once when the page shows, again on focus, each minute while
-it stands, when a Work host's link opens or a linked host's Work comes on, and on a down job's Retry (`reload`). A host
+it stands, when a Work host's link opens or drops or a linked host's Work comes on, and on a down job's Retry
+(`reload`). A link that drops says its line at once over the last answer, the other hosts' groups kept (`withClosed`),
+so no all-clear stands on a host it cannot vouch for; only the newest read lands, never an older one that answers late. A host
 whose link is not open is not asked: it answers its own line, "The box is connecting." or "The box is not connected."
 (`closedWords`). The last answer is kept for the window's life, so a second visit draws it at once while the hosts
 are asked again; bones show only on the first. `mergeOverviews` makes one job a sector: LifeOS's rows are the same
@@ -64,7 +66,8 @@ page still draws the rest, and says no all-clear ("No jobs yet", "Nothing waits 
 - **Waiting on you** (`waitsOnHim`): a held act, a question or a failure among the threads, a late task, or one due
   today. Under the filter a job shows only those rows, with no fold; a job with none goes, a job that could not be
   read stays. With nothing left, and every host answered, the page says "Nothing waits on you". Held is drawn muted; the filter is where it
-  reads as urgent.
+  reads as urgent. A row the filter keeps for a late or due waiting task, which LifeOS leaves out of Next, says the count
+  where Next stands ("1 task late", `unsaidWait`), unless a pressing thread or Next's own date already says why.
 
 ## The page
 
@@ -102,12 +105,15 @@ that is a hook is the same function for the kit's life.
 - **`taskMark`**: every open `workLinks` thread of a task, newest first (`useLinkedThreads`, work/tasks/links.ts), each
   a 20px mark (its `OutcomeMark`, else its state at rest, else a thread glyph) with its title and outcome in the tip,
   each opening its own thread.
-- **`log`**: the project's threads, newest first, each with its mark, its title and its outcome words, opening the
-  thread. The kit puts them among his notes and LifeOS's changes.
+- **`log`**: the project's threads, newest first, each with its mark, its title and its outcome words (but a made
+  outcome, which Files says thing by thing), opening the thread. The kit puts them among his notes and LifeOS's changes.
 - **`files`**: what the project's threads made or changed: one `work.projects.files` ask a host the project's threads
-  live on (`useMadeFiles`, `mirrorsOf`), asked again only when one of that mirror's threads changes its outcome, each
-  host's rows landing as it answers and its last answer kept for the window's life; a host that refuses keeps nothing,
-  so the next look asks again. Newest first, one row a thing (`fileRows`: the host's `key`, a LifeOS item once across
+  live on (`useMadeFiles`, `mirrorsOf`), asked again only when one of that mirror's threads' Results moves (the
+  `work.outbox.result` push and a link back, as `resultsStamp` in work/outbox/results.ts counts them), each host's rows
+  landing as it answers and its last answer kept for the window's life; a host that refuses keeps the rows it last
+  gave, and Files ends with one muted "Some files didn't load" whose press is Retry. A batch's files are a row each
+  (`madeThingsOf`); a project link from before links named their item draws no row, since the project's own LifeOS row
+  lists it. Newest first, one row a thing (`fileRows`: the host's `key`, a LifeOS item once across
   hosts, with its `itemId` so the kit merges it with the item's own row); an undone write is left out. "Made by Seat map for 64" and the time; Open goes to a Files tab of the job (`openInFiles`), a page on
   the web for a Google file, else the thread.
 - **`threadFacts(sector)`**: each project's lead thread, its mark and outcome words, opening it, for the job's

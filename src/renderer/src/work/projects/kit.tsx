@@ -1,6 +1,6 @@
 import type { ContextChip, SectorKey } from "@shared/work";
 import type { TasksDone } from "@shared/contract-work-tasks";
-import { useEffect, useMemo, useReducer, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useSyncExternalStore } from "react";
 import type { ProjectMadeFile, RecordMade } from "@shared/work/threadRecord";
 import type { TrackerThread } from "@shared/work/tracker";
 import type { MenuRow, Project, ProjectFileEntry, ProjectItem, ProjectLogEntry, ProjectsKit, ProjectTask, ProjectThreadFact } from "work-kit/projects";
@@ -12,6 +12,7 @@ import { StatusMark } from "../../components/ui/status";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { keyCaps, keyHint } from "../../lib/keys";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { openUrl } from "../../lib/native";
 import { rowState } from "../../lib/sidebarRows";
 import { sessionStore, useSessionMetaValue } from "../../lib/tcserver/store";
@@ -20,6 +21,7 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { marksAtRest } from "../../lib/threadStripModel";
 import { workOpenPort } from "../../lib/workSwitch";
 import { registry } from "../../lib/connection";
+import { resultsMoves, resultsStamp, subscribeResults } from "../outbox/results";
 import { Face as PersonFace } from "../mail/face";
 import { openLifeosProject } from "../shell/actions";
 import { Doc, File, Link, Share, Table } from "../icons";
@@ -73,7 +75,7 @@ const toast: ProjectsKit["toast"] = ({ message, state, action }) =>
     else api(message, options);
   });
 
-const failed = (error: unknown): void => toast({ message: error instanceof Error ? error.message : String(error), state: "error" });
+const failed = (error: unknown): void => toast({ message: workErrorWords(error) || "Couldn't open it", state: "error" });
 
 /** A person or an agent as Work's one face (`Face`): 16px on a line, 20px in a row's bar. */
 const Face: ProjectsKit["Face"] = ({ name, size, className }) => <PersonFace name={name} size={size === 16 ? "line" : "bar"} className={className} />;
@@ -224,7 +226,8 @@ export function useThreadLog(project: Pick<Project, "id" | "sector">): readonly 
         at: t.updatedAt,
         ...(hasOutcomeMark(t.outcome?.tone) ? { mark: <OutcomeMark tone={t.outcome!.tone} /> } : {}),
         title: t.title,
-        ...(t.outcome ? { detail: t.outcome.words } : {}),
+        // A made outcome is said by Files, which names each thing and its thread (docs/DESIGN.md: no fact twice).
+        ...(t.outcome && t.outcome.tone !== "made" ? { detail: t.outcome.words } : {}),
         open: () => openThread(t.sessionId),
       })),
     [threads],
@@ -238,19 +241,23 @@ export function readProjectFiles(environmentId: string, mirrorId: string): Promi
   return registry.linkOf(environmentId).request<{ files: ProjectMadeFile[] }>("work.projects.files", { mirrorId });
 }
 
-/** A project's mirror on each host its threads live on, with what its threads' summaries say: the answer stands while that does. */
+/** A project's mirror on each host its threads live on, with how far its threads' Results moved: the answer stands while that does. */
 type Mirror = { env: string; mirrorId: string; stamp: string };
 
 /** The mirrors a project's root threads sit in, one a host. Pure but for the store's lookups, which a test can hand. */
-export function mirrorsOf(threads: readonly TrackerThread[], where: (sessionId: string) => { env: string; mirrorId: string } | null): Mirror[] {
+export function mirrorsOf(
+  threads: readonly TrackerThread[],
+  where: (sessionId: string) => { env: string; mirrorId: string } | null,
+  moved: (env: string, sessionId: string) => string = resultsStamp,
+): Mirror[] {
   const by = new Map<string, Mirror>();
   for (const t of threads) {
     const at = where(t.sessionId);
     if (!at) continue;
     const id = `${at.env}|${at.mirrorId}`;
     const was = by.get(id);
-    // A thing made moves its thread's outcome; a turn alone does not ask the host again.
-    const stamp = `${t.sessionId}|${t.outcome?.tone ?? ""}|${t.outcome?.words ?? ""}`;
+    // A Result made or undone moves its root's stamp (the host's push), whether or not the outcome's words change.
+    const stamp = `${t.sessionId}|${moved(at.env, t.sessionId)}`;
     by.set(id, { ...at, stamp: was ? `${was.stamp},${stamp}` : stamp });
   }
   return [...by.values()];
@@ -262,20 +269,39 @@ const whereOf = (sessionId: string): { env: string; mirrorId: string } | null =>
   return env && mirrorId ? { env, mirrorId } : null;
 };
 
-/** Each mirror's last answer, kept for the window's life by host and mirror. A failed read keeps nothing, so the next look asks again. */
+/** Each mirror's last answer, kept for the window's life by host and mirror. A failed read keeps the last answer, so its rows stand. */
 const filesKept = new Map<string, { stamp: string; files: readonly ProjectMadeFile[] }>();
+/** The mirrors whose newest read failed: Files says so once, with Retry. */
+const filesFailed = new Set<string>();
 /** Nothing kept (tests). */
-export const resetProjectFiles = (): void => filesKept.clear();
+export const resetProjectFiles = (): void => {
+  filesKept.clear();
+  filesFailed.clear();
+};
+
+/** What the project's threads made, by host, and whether a host's newest read failed (Files' Retry line). */
+export type MadeFiles = { made: readonly { env: string; file: ProjectMadeFile }[]; failed: boolean; retry: () => void };
 
 /**
- * What the project's threads made, by host: one ask a mirror whose threads moved, each host's rows landing as it
- * answers, its last answer drawn meanwhile. A host that refuses (a release behind, a dropped link) lists nothing of
- * its own this time and is asked again at the next look; it is never an error on the page.
+ * What the project's threads made, by host: one ask a mirror whose threads' Results moved, each host's rows landing as
+ * it answers, its last answer drawn meanwhile. A host that refuses (a release behind, a dropped link) keeps the rows it
+ * last gave; the page says once that some did not load, and Retry asks the hosts that failed again.
  */
-export function useMadeFiles(threads: readonly TrackerThread[] | undefined, read = readProjectFiles, where = whereOf): readonly { env: string; file: ProjectMadeFile }[] {
-  const mirrors = useMemo(() => mirrorsOf(threads ?? NO_THREADS, where), [threads, where]);
+export function useMadeFiles(threads: readonly TrackerThread[] | undefined, read = readProjectFiles, where = whereOf): MadeFiles {
+  const moves = useSyncExternalStore(subscribeResults, resultsMoves, resultsMoves);
+  const mirrors = useMemo(() => {
+    void moves;
+    return mirrorsOf(threads ?? NO_THREADS, where);
+  }, [threads, where, moves]);
   const [landed, land] = useReducer((n: number) => n + 1, 0);
+  const [tries, again] = useReducer((n: number) => n + 1, 0);
+  // The line goes while Retry's reads are out, and comes back only if one fails again.
+  const retry = useCallback(() => {
+    for (const m of mirrors) filesFailed.delete(`${m.env}|${m.mirrorId}`);
+    again();
+  }, [mirrors]);
   useEffect(() => {
+    void tries;
     let live = true;
     for (const m of mirrors) {
       const id = `${m.env}|${m.mirrorId}`;
@@ -283,20 +309,29 @@ export function useMadeFiles(threads: readonly TrackerThread[] | undefined, read
       read(m.env, m.mirrorId).then(
         (answer) => {
           filesKept.set(id, { stamp: m.stamp, files: answer.files });
+          filesFailed.delete(id);
           if (live) land();
         },
-        () => {},
+        () => {
+          filesFailed.add(id);
+          if (live) land();
+        },
       );
     }
     return () => {
       live = false;
     };
-  }, [mirrors, read]);
-  // `landed` is the clock of what the kept map holds: a host's answer draws the rows again.
+  }, [mirrors, read, tries]);
+  // `landed` is the clock of what the kept map holds: a host's answer, or a Retry, draws the rows again.
   return useMemo(() => {
     void landed;
-    return mirrors.flatMap((m) => (filesKept.get(`${m.env}|${m.mirrorId}`)?.files ?? []).map((file) => ({ env: m.env, file })));
-  }, [mirrors, landed]);
+    void tries;
+    return {
+      made: mirrors.flatMap((m) => (filesKept.get(`${m.env}|${m.mirrorId}`)?.files ?? []).map((file) => ({ env: m.env, file }))),
+      failed: mirrors.some((m) => filesFailed.has(`${m.env}|${m.mirrorId}`)),
+      retry,
+    };
+  }, [mirrors, landed, tries, retry]);
 }
 
 /** Where a made thing opens from a project's Files: a Files tab of its job, a page on the web, or else its thread. */
@@ -334,11 +369,13 @@ export function fileRows(made: readonly { env: string; file: ProjectMadeFile }[]
 /** The kit's `files` (a hook): the files the project's threads made or changed, with which thread and when; Open goes to Files. */
 export function useThreadFiles(project: Pick<Project, "id" | "sector">): readonly ProjectFileEntry[] | undefined {
   const threads = useProjectRoots(project.sector).get(project.id);
-  const made = useMadeFiles(threads);
+  const { made, failed, retry } = useMadeFiles(threads);
   return useMemo(() => {
     const titleOf = new Map((threads ?? NO_THREADS).map((t) => [t.sessionId, t.title]));
-    return fileRows(made, (root) => titleOf.get(root));
-  }, [made, threads]);
+    const rows = fileRows(made, (root) => titleOf.get(root));
+    // One quiet line at the foot (no time, so it sorts last), so a failed read never reads as no files.
+    return failed ? [...rows, { id: "files-failed", name: "Some files didn't load", by: "Retry", at: 0, open: retry }] : rows;
+  }, [made, failed, retry, threads]);
 }
 
 /** A new LifeOS document in the project, opened in place at once. */

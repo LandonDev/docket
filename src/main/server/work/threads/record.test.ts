@@ -265,6 +265,22 @@ describe('the keeper', () => {
     expect(sourceKeyOf({ id: 'n1', ref: null })).not.toBe(sourceKeyOf({ id: 'n2', ref: null }))
   })
 
+  it('lists a batch’s files one each, each opening itself, one row with a file it changed alone; an old project link with no item draws none', () => {
+    const file = (path: string, name: string) => ({ ref: { at: 'file', host: 'box', path }, name })
+    const rows: WorkResult[] = [
+      result({ id: 'm', rootId: 'a', sessionId: 'a', summary: 'Made 2 files', ref: { at: 'files', workspaceId: 'w1', files: [file('/a/Seat.xlsx', 'Seat.xlsx'), file('/a/Run.docx', 'Run.docx')] }, createdAt: T0 + 1 }),
+      result({ id: 's', rootId: 'a', sessionId: 'a', kind: 'file.save', summary: 'Saved Run.docx', ref: { at: 'files', workspaceId: 'w1', files: [file('/a/Run.docx', 'Run.docx')] }, createdAt: T0 + 5 }),
+      result({ id: 'old', rootId: 'a', sessionId: 'a', kind: 'projects.link', summary: 'Linked Run of show to Spring LAN', ref: { at: 'lifeos', table: 'projects', id: 'p1' }, createdAt: T0 + 3 })
+    ]
+    const { records } = keeper({ results: () => rows })
+    const files = records.projectFiles(['a'])
+    expect(files.map((f) => [f.id, f.name, f.verb])).toEqual([
+      ['s', 'Run.docx', 'Saved'],
+      ['m:0', 'Seat.xlsx', 'Made']
+    ])
+    expect(files[1]!.open).toEqual({ at: 'files', workspaceId: 'w1', ref: { at: 'file', host: 'box', path: '/a/Seat.xlsx' }, name: 'Seat.xlsx' })
+  })
+
   it('answers a subagent’s id with its root’s record, and refuses a code thread', async () => {
     const { records } = keeper({ requests: () => [{ id: 'q', n: 1, head: 'Send 1 item', createdAt: T0, sessionId: 'child' }] })
     const r = await records.record('child')

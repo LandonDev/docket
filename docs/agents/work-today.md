@@ -119,9 +119,11 @@ What a row does:
   LifeOS project names it on the row's second line and adds Open project,
   its page in the job's Projects view; the names come from one
   `projects:list` read on the same session, and no row waits for it. While
-  that read is out, or when it fails, Open project still opens the project
-  by the task's `projectId` (`projectOfTask`); a failed read says "Project
-  names did not load" once, at the section's foot (`namesNote`).
+  a job's names are out, or when they fail, Open project still opens the
+  project by the task's `projectId` (`projectOfTask`, by the read's
+  per-sector `known`: another job's names having come says nothing of this
+  one's); a failed read, the first or one job's own, says "Project names
+  did not load" once, at the section's foot (`namesNote`, `namesFailed`).
 - **Waiting on others.** The longest wait first. Nudge asks the job's host
   for a drafting thread (`work.mail.nudge`) and opens it; Dismiss is
   `mailWaits:dismiss` fenced by `since`, with Undo (`mailWaits:putBack`).

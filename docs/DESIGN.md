@@ -2919,9 +2919,12 @@ Around the canvas:
     links and items and the files its threads made or changed, newest
     first, a 32px row each: glyph, name, then "Made by Seat map for 64"
     and the time muted at the end; a file a thread made opens in a Files
-    tab of the job. Log is his notes, LifeOS's changes
+    tab of the job, a batch's files a row each. A host whose read failed
+    keeps the rows it last gave, and Files ends with one muted "Some files
+    didn't load" with Retry, never "No files yet". Log is his notes, LifeOS's changes
     ("You moved it from Backlog to Active") and the threads with their
-    outcome under their title ("1 mail to send"), newest first, a 16px
+    outcome under their title ("1 mail to send"), save what Files lists
+    (a made outcome: the title alone), newest first, a 16px
     mark, the words and the time; Add note at the head's end opens the
     form dialog. The ⋯ holds Rename, State, Target date…, Board, Share…,
     Project settings… and Delete project…. A row in hand shows its key

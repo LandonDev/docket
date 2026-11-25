@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { WORK_CHATS_KEY } from "../outbox/model";
 import type { HostItem } from "../outbox/store";
-import { dueRows, namesNote, NAMES_LOST, projectOfTask, type DueTask } from "./due";
+import { dueRows, namesFailed, namesNote, NAMES_LOST, projectOfTask, type DueTask } from "./due";
 import { heldWhen } from "../outbox/when";
 import { heldRows, placeOf } from "./held";
 import { liveLine, meetingRows, placeAndPeople, type MeetingEvent } from "./meetings";
@@ -185,6 +185,17 @@ describe("due", () => {
     // LifeOS answered without it: no project at all
     expect(projectOfTask(t, new Map())).toBeNull();
     expect(projectOfTask(task("t7", "purdue", "Tonight"), null)).toBeNull();
+    // Another job's names came, this job's are out or failed: still by its id; once its own came whole without it, none.
+    const ref = task("t8", "ref", "Book refs", { projectId: "lp9" });
+    const names = new Map([["lp1", { _id: "lp1", name: "Spring LAN" }]]);
+    expect(projectOfTask(ref, names, (sector) => sector !== "ref")).toEqual({ _id: "lp9", name: "" });
+    expect(projectOfTask(ref, names, () => true)).toBeNull();
+    // One job's names failing counts, not only the first read's; a job that waits on its host's LifeOS does not.
+    expect(namesFailed({ error: null, lost: [{ environmentId: "mac", sector: "ref", error: "gone" }] })).toBe(true);
+    expect(namesFailed({ error: null, lost: [{ environmentId: "mac", sector: "ref", error: "", waits: true }] })).toBe(false);
+    expect(namesFailed({ error: null, lost: [] })).toBe(false);
+    // A name LifeOS gave stands even while its job is not whole.
+    expect(projectOfTask(t, names, () => false)).toEqual({ _id: "lp1", name: "Spring LAN" });
     const openProject = vi.fn();
     const [row] = dueRows([t], at(23, 12), { ...ways(), projectOf: (x: DueTask) => projectOfTask(x, null), openProject });
     expect(row!.detail).toBeUndefined();

@@ -98,12 +98,36 @@ export function madeOf(result: ResultFacts): RecordMade {
  */
 export function sourceKeyOf(result: Pick<ResultFacts, 'id' | 'ref'>): string {
   const files = filesOf(result.ref)
-  if (files) return `files:${JSON.stringify(files.files.map((f) => f.ref))}`
+  if (files) return fileKey(files.files[0]!.ref)
   const r = result.ref as { at?: string; fileId?: unknown } | null
   if (r?.at === 'google' && typeof r.fileId === 'string') return `google:${r.fileId}`
   const itemId = itemIdOf(result.ref)
   if (itemId) return `item:${itemId}`
   return result.ref == null ? `result:${result.id}` : `ref:${JSON.stringify(result.ref)}`
+}
+
+/** One file's key, whether its Result named it alone or in a batch. */
+const fileKey = (ref: CanvasSource): string => `files:${JSON.stringify(ref)}`
+
+/**
+ * A made Result as the things it names, for a project's Files: a batch of files one each, each opening itself; a
+ * project link from before links named their item none, since the project's own LifeOS rows already list the item.
+ */
+export function madeThingsOf(result: ResultFacts): (RecordMade & { key: string })[] {
+  const files = filesOf(result.ref)
+  if (files && files.files.length > 1) {
+    const made = madeOf(result)
+    return files.files.map((f, i) => ({
+      ...made,
+      id: `${result.id}:${i}`,
+      name: f.name,
+      open: made.open && { at: 'files', workspaceId: files.workspaceId, ref: f.ref, name: f.name },
+      key: fileKey(f.ref)
+    }))
+  }
+  const r = result.ref as { at?: string; table?: string } | null
+  if (result.kind === 'projects.link' && r?.at === 'lifeos' && r.table === 'projects' && !itemIdOf(result.ref)) return []
+  return [{ ...madeOf(result), key: sourceKeyOf(result) }]
 }
 
 /** The LifeOS item a project link made (projects/index.ts `project_link_item`), where its ref names one. */
@@ -334,7 +358,7 @@ export class ThreadRecords {
 
   /**
    * What a project mirror's root threads made or changed (`work.projects.files`): one row a thing, at its newest
-   * write that stands, from the Results the keeper holds; no LifeOS read.
+   * write that stands, a batch's files one each (`madeThingsOf`), from the Results the keeper holds; no LifeOS read.
    */
   projectFiles(rootIds: readonly string[]): ProjectMadeFile[] {
     const rows = rootIds.flatMap((rootId) =>
@@ -346,11 +370,12 @@ export class ThreadRecords {
     const seen = new Set<string>()
     const files: ProjectMadeFile[] = []
     for (const { r, rootId } of rows) {
-      const key = sourceKeyOf(r)
-      if (seen.has(key)) continue
-      seen.add(key)
       const itemId = itemIdOf(r.ref)
-      files.push({ ...madeOf(r), rootId, key, ...(itemId ? { itemId } : {}) })
+      for (const made of madeThingsOf(r)) {
+        if (seen.has(made.key)) continue
+        seen.add(made.key)
+        files.push({ ...made, rootId, ...(itemId ? { itemId } : {}) })
+      }
     }
     return files
   }

@@ -112,11 +112,17 @@ export type Rows<T> = {
    * read comes back by itself once the session reads; any other is dropped and made afresh.
    */
   retryLost(lost: Lost): Promise<void>;
+  /**
+   * Whether `rows` hold all of one sector: the cover is known and that sector's read neither waits nor failed. Another
+   * job's rows having come is no sign of this one's.
+   */
+  known(sector: SectorKey): boolean;
   /** The session a row of this sector was read through, and so the one its writes go through: the sector's own narrowed session where the first one lacks it. */
   sessionOf(sector: SectorKey): LifeosSession;
 };
 
 const NO_LOST: readonly Lost[] = [];
+const NOT_KNOWN = (): boolean => false;
 
 /**
  * A LifeOS list for every job: the all-sector session's rows, with the rows
@@ -166,11 +172,13 @@ export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<st
     if (!lost.down) setResting(true);
   }, []);
   const read = useMemo<Rows<T>>(() => {
-    if (main.status !== "ready") return { rows: null, error: main.status === "failed" ? main.error : null, pending: false, lost: NO_LOST, retry, retryLost, sessionOf };
+    if (main.status !== "ready") return { rows: null, error: main.status === "failed" ? main.error : null, pending: false, lost: NO_LOST, known: NOT_KNOWN, retry, retryLost, sessionOf };
     const seen = new Set<string>();
     const rows: T[] = [];
     const lost: Lost[] = caller.status === "failed" ? [{ environmentId: host, sector: null, error: caller.error }] : [];
     let pending = caller.status === "loading";
+    // The sectors whose rows may be short: a narrowed read out or lost, or a sector no session covers.
+    const unsure = new Set<SectorKey>();
     const each = [a, b, c, d, e, f].map((slot) => slot?.query);
     for (const value of [main.value, ...each.flatMap((slot) => (slot?.status === "ready" ? [slot.value] : []))]) {
       for (const row of pick(value)) {
@@ -185,14 +193,21 @@ export function useLifeosRows<V, T>(env: TodayEnv, name: string, args: Record<st
       // A read that waits on a host whose LifeOS said it is connecting is a known state, said with what it leaves out;
       // once that host is back, the read is out and the section shows its own loading.
       if (slot?.status === "loading" && [a, b, c, d, e, f][at]?.waits) return void lost.push({ environmentId: lacking.get(sector) ?? host, sector, error: "", waits: true });
-      if (slot?.status === "loading") pending = true;
+      if (slot?.status === "loading") {
+        pending = true;
+        unsure.add(sector);
+      }
       // A narrowed session that is down keeps its true state, so the line says it by the rule and asks again only where that can help.
       const narrowed = [a, b, c, d, e, f][at]?.session;
       if (slot?.status === "failed") lost.push({ environmentId: lacking.get(sector) ?? host, sector, error: slot.error, down: narrowed ? downOf(narrowed) : null });
     });
     // A job whose sector no open host's session covers: its rows are missing, and nothing is on its way.
     for (const sector of uncovered) lost.push({ environmentId: host, sector, error: NOT_COVERED });
-    return { rows, error: null, pending, lost: lost.length ? lost : NO_LOST, retry, retryLost, sessionOf };
+    for (const l of lost) if (l.sector) unsure.add(l.sector);
+    // With the cover not known (still out, or failed), no sector is known to be whole.
+    const whole = caller.status === "ready";
+    const known = (sector: SectorKey): boolean => whole && !unsure.has(sector);
+    return { rows, error: null, pending, lost: lost.length ? lost : NO_LOST, known, retry, retryLost, sessionOf };
     // `pick` and `idOf` are the caller's constants.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [main, caller, a, b, c, d, e, f, lacking, uncovered, host, retry, retryLost, sessionOf]);

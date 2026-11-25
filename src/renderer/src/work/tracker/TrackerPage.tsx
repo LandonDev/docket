@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ComponentType } from "react";
 import type { SectorKey } from "@shared/work";
-import { waitsOnHim, type TrackerThread } from "@shared/work/tracker";
-import { ProjectFactsBones, ProjectFactsFold, ProjectFactsHeader, ProjectFactsRow, ProjectFactsTable } from "work-kit/projects";
+import { unsaidWait, waitsOnHim, type TrackerThread } from "@shared/work/tracker";
+import { dueTone, ProjectFactsBones, ProjectFactsFold, ProjectFactsHeader, ProjectFactsRow, ProjectFactsTable } from "work-kit/projects";
 import "work-kit/projects/styles.css";
 import "../projects/projects.css";
 import { Plus } from "../../chrome/icons";
@@ -135,7 +135,7 @@ function JobGroup({ job, waitingOnly, now, onRetry, Down }: { job: MergedJob; wa
       RESTING.set(job.sector, !was);
       return !was;
     });
-  const row = (project: MergedProject) => <TrackerRow key={project.id} project={project} workspaceId={job.at.workspaceId} now={now} />;
+  const row = (project: MergedProject) => <TrackerRow key={project.id} project={project} workspaceId={job.at.workspaceId} now={now} waitingOnly={waitingOnly} />;
   return (
     <section aria-label={job.name} data-job={job.sector} className="mt-3 first-of-type:mt-1">
       <h2 className="group/item relative mx-2 flex h-8 items-center px-2 text-(length:--pk-text) text-muted-foreground">
@@ -173,9 +173,15 @@ function JobGroup({ job, waitingOnly, now, onRetry, Down }: { job: MergedJob; wa
 }
 
 /** One project, a press opening its page in its job; the Threads cell opens its lead thread. */
-const TrackerRow = memo(function TrackerRow({ project, workspaceId, now }: { project: MergedProject; workspaceId: string; now: number }) {
+const TrackerRow = memo(function TrackerRow({ project, workspaceId, now, waitingOnly }: { project: MergedProject; workspaceId: string; now: number; waitingOnly: boolean }) {
   const onOpen = useCallback(() => openProjectPage(workspaceId, project.id), [workspaceId, project.id]);
-  const next = useMemo(() => (project.next ? { title: project.next.title, ...(project.next.due !== undefined ? { due: project.next.due } : {}) } : null), [project.next]);
+  const next = useMemo(() => {
+    const shown = project.next ? { title: project.next.title, ...(project.next.due !== undefined ? { due: project.next.due } : {}) } : null;
+    if (!waitingOnly) return shown;
+    // Under Waiting on you, a row its facts do not explain (a late or due waiting task) says its count where Next stands.
+    const said = unsaidWait(project, shown?.due !== undefined && dueTone(shown.due, now) !== "later");
+    return said ? { title: said } : shown;
+  }, [project, waitingOnly, now]);
   return (
     <ProjectFactsRow
       id={project.id}

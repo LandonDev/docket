@@ -115,29 +115,46 @@ export function askHosts(ask: (environmentId: string) => Promise<TrackerOverview
 
 const askOverview = (environmentId: string): Promise<TrackerOverview> => registry.linkOf(environmentId).request<TrackerOverview>("work.projects.overview", {});
 
-/** Every host with Work on, asked once on show, again on focus, each minute while shown, and when a host's link opens. */
+/** The answers with each host whose link is no longer open saying its line at once; the other hosts' groups stand. Pure. */
+export function withClosed(answers: readonly HostAnswer[], closed: ReadonlyMap<string, string>): HostAnswer[] {
+  return answers.map((a) => (closed.has(a.environmentId) ? { environmentId: a.environmentId, overview: null, error: closed.get(a.environmentId)! } : a));
+}
+
+/** Every host with Work on, asked once on show, again on focus, each minute while shown, and when a host's link opens or drops. */
 export function useTracker(): TrackerView {
   const [answers, setAnswers] = useState<HostAnswer[] | null>(kept);
   const [asked, setAsked] = useState(0);
   const reload = useCallback(() => setAsked((n) => n + 1), []);
   useEffect(() => {
     let alive = true;
+    // Only the newest read lands: an older one that answers late never replaces a newer answer.
+    let latest = 0;
+    const show = (got: HostAnswer[]): void => {
+      kept = got;
+      if (alive) setAnswers(got);
+    };
     const read = (): void => {
+      const n = ++latest;
       void askHosts(askOverview).then((got) => {
-        kept = got;
-        if (alive) setAnswers(got);
+        if (n === latest) show(got);
       });
     };
     read();
     // A Work host whose link opens (the window started before the box's link was up), or a linked host whose Work
-    // comes on, is asked then, not a minute later.
+    // comes on, is asked then, not a minute later. One whose link drops says so at once, so no all-clear stands on
+    // an answer it can no longer vouch for, and the hosts are asked again behind it.
     const open = (): Set<string> => new Set([...workSwitch.hosts()].filter((id) => registry.statusOf(id).transport === "open"));
     let wasOpen = open();
     const moved = (): void => {
       const now = open();
       const opened = [...now].some((id) => !wasOpen.has(id));
+      const closed = new Map([...wasOpen].filter((id) => !now.has(id) && workSwitch.hosts().has(id)).map((id) => [id, closedWords(hostIn(id), registry.statusOf(id).transport)]));
       wasOpen = now;
-      if (opened) read();
+      if (closed.size && kept) {
+        latest++;
+        show(withClosed(kept, closed));
+      }
+      if (opened || closed.size) read();
     };
     const offs = [registry.subscribe(moved), workSwitch.subscribe(moved)];
     const timer = setInterval(read, TRACKER_AGAIN_MS);

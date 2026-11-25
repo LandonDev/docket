@@ -90,6 +90,27 @@ describe("the tracker", () => {
     expect(screen.getByText("Nothing waits on you")).toBeTruthy();
   });
 
+  it("under Waiting on you, a row matched by a late or due waiting task says its count where Next stands; one its facts explain is unchanged", () => {
+    const project = (id: string, over: Partial<MergedJob["projects"][number]>): MergedJob["projects"][number] => ({
+      id, name: id, state: "active", targetDate: null, next: null, late: 0, dueToday: 0, waiting: null, done: 0, total: 0, mirrorId: null, threads: 0, lead: null, leadHost: null, ...over,
+    });
+    const jobs: MergedJob[] = [{
+      sector: "purdue", name: "Purdue", at: { environmentId: "box", workspaceId: "w" },
+      projects: [
+        project("p-wait", { late: 1, waiting: { taskId: "t", name: "Sam Ortiz", since: NOW - 86_400_000 }, next: { taskId: "n", key: "P-1", title: "Book the bus" } }),
+        project("p-late", { late: 1, next: { taskId: "n2", key: "P-2", title: "Order shirts", due: NOW - 3_600_000 } }),
+      ],
+    }];
+    render(body({ waitingOnly: true, jobs }));
+    const next = (id: string) => document.querySelector(`[data-project='${id}'] [data-part=next]`)?.textContent;
+    expect(next("p-wait")).toBe("1 task late");
+    expect(next("p-late")).toContain("Order shirts");
+    cleanup();
+    // Off the filter, Next is LifeOS's own.
+    render(body({ jobs }));
+    expect(next("p-wait")).toBe("Book the bus");
+  });
+
   it("says no all-clear while a host is missing: its line stands alone, under the filter and with no jobs", () => {
     render(body({ waitingOnly: true, jobs: JOBS.slice(2, 4), errors: ["The box is connecting."] }));
     expect(document.querySelector("[data-host-silent]")!.textContent).toBe("The box is connecting.");

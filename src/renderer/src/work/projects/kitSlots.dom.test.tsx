@@ -33,7 +33,9 @@ vi.mock("../../lib/tcserver/store", async (original) => ({
 }));
 vi.mock("../files/openFrom", () => ({ openInFiles: async (workspace: unknown, what: unknown) => void seam.files.push({ workspace, what }) }));
 
-const { jobName, projectsKitFor, resetProjectFiles, useThreadFacts, useThreadFiles, useThreadLog } = await import("./kit");
+const { workErrorWords } = await import("../../lib/workErrorWords");
+const { jobName, projectsKitFor, resetProjectFiles, setProjectsHost, useThreadFacts, useThreadFiles, useThreadLog } = await import("./kit");
+const { applyResult, resetResults } = await import("../outbox/results");
 
 const thread = (sessionId: string, updatedAt: number, outcome: TrackerThread["outcome"] = null): TrackerThread => ({ sessionId, title: `Thread ${sessionId}`, updatedAt, outcome });
 const made = (id: string, sessionId: string, at: number, over: Partial<ProjectMadeFile> = {}): ProjectMadeFile => ({
@@ -63,6 +65,7 @@ beforeEach(() => {
   seam.reads = [];
   seam.files = [];
   resetProjectFiles();
+  resetResults();
   // Threads named t-mac… live on the Mac, the rest on the box; each in its host's mirror of the project.
   vi.spyOn(sessionStore, "environmentOf").mockImplementation((id) => (id.startsWith("t-mac") ? "env_mac" : "env_box"));
   vi.spyOn(sessionStore, "metaOf").mockImplementation((id) => ({ id, projectId: id.startsWith("t-mac") ? "m-mac" : "m-box" }) as SessionMeta);
@@ -124,6 +127,24 @@ describe("the kit's thread slots", () => {
     expect(opened).toEqual(["t-a"]);
   });
 
+  it("log leaves a made outcome to Files, which names each thing and its thread; the mark, title and time stay", () => {
+    seam.roots = new Map([["p-lan", [thread("t-made", 9, { words: "Made Seat map.xlsx", tone: "made" })]]]);
+    const { result } = renderHook(() => useThreadLog(LAN));
+    expect(result.current.map((e) => [e.title, e.detail, e.at])).toEqual([["Thread t-made", undefined, 9]]);
+  });
+
+  it("the kit's toasts say a failure in Work's words, never the transport's", async () => {
+    const { loadToast } = await import("../../components/ui/toaster");
+    const api = await loadToast();
+    const error = vi.spyOn(api, "error").mockImplementation(() => "" as never);
+    const raw = new Error("ECONNRESET: socket hang up at /srv/agents/work");
+    setProjectsHost({ workspace: { id: "ws-toast" }, sector: "purdue", newSheet: async () => Promise.reject(raw) } as never);
+    projectsKitFor("env_box", "ws-toast").addItems!({ id: "p", name: "LAN" } as never)[1]!.run();
+    await waitFor(() => expect(error).toHaveBeenCalled());
+    expect(error.mock.calls[0]![0]).toBe(workErrorWords(raw) || "Couldn't open it");
+    expect(String(error.mock.calls[0]![0])).not.toMatch(/ECONNRESET|\/srv/);
+  });
+
   it("threadFacts gives each project its most pressing thread's mark and words, and none where the lead says nothing", () => {
     seam.roots = new Map([
       ["p-lan", [thread("t-made", 9, { words: "Made Seat map.xlsx", tone: "made" }), thread("t-asks", 2, { words: "Asks you", tone: "asks" })]],
@@ -174,17 +195,48 @@ describe("the kit's thread slots", () => {
     expect(seam.reads.sort()).toEqual(["work.projects.files env_box|m-box", "work.projects.files env_mac|m-mac"]);
   });
 
-  it("a host that refuses lists nothing this time and is asked again at the next look; the other host's rows stand", async () => {
+  it("a host that refuses is asked again at the next look, said once at the foot; the other host's rows stand", async () => {
     seam.roots = new Map([["p-down", [thread("t-a", 9), thread("t-mac-b", 4)]]]);
     seam.answers = { "env_box|m-box": [made("a", "t-a", 50)], "env_mac|m-mac": new Error("not connected") };
     const first = renderHook(() => useThreadFiles({ id: "p-down", sector: "purdue" }));
-    await waitFor(() => expect(first.result.current?.map((f) => f.name)).toEqual(["a.xlsx"]));
+    await waitFor(() => expect(first.result.current?.map((f) => f.name)).toEqual(["a.xlsx", "Some files didn't load"]));
     first.unmount();
     seam.answers["env_mac|m-mac"] = [made("b", "t-mac-b", 60)];
     const second = renderHook(() => useThreadFiles({ id: "p-down", sector: "purdue" }));
     await waitFor(() => expect(second.result.current?.map((f) => f.name)).toEqual(["b.xlsx", "a.xlsx"]));
     // The box answered and its threads did not move: only the Mac is asked again.
     expect(seam.reads.filter((r) => r.includes("env_box"))).toHaveLength(1);
+  });
+
+  it("asks again when a thread's Result moves though its outcome's words stay the same", async () => {
+    seam.roots = new Map([["p-mail", [thread("t-mail", 9, { words: "1 mail to send", tone: "held" })]]]);
+    seam.answers = { "env_box|m-box": [made("a", "t-mail", 50)] };
+    const { result } = renderHook(() => useThreadFiles({ id: "p-mail", sector: "purdue" }));
+    await waitFor(() => expect(result.current?.map((f) => f.name)).toEqual(["a.xlsx"]));
+    seam.answers["env_box|m-box"] = [made("b", "t-mail", 60), made("a", "t-mail", 50)];
+    act(() => applyResult("env_box", { id: "r-b", rootId: "t-mail", sessionId: "t-mail" } as never));
+    await waitFor(() => expect(result.current?.map((f) => f.name)).toEqual(["b.xlsx", "a.xlsx"]));
+    expect(seam.reads).toHaveLength(2);
+  });
+
+  it("a failed first read is one quiet Retry line, never no files; Retry asks again and the line goes", async () => {
+    seam.roots = new Map([["p-fail", [thread("t-a", 9)]]]);
+    seam.answers = { "env_box|m-box": new Error("not connected") };
+    const { result } = renderHook(() => useThreadFiles({ id: "p-fail", sector: "purdue" }));
+    await waitFor(() => expect(result.current?.map((f) => [f.name, f.by])).toEqual([["Some files didn't load", "Retry"]]));
+    seam.answers["env_box|m-box"] = [made("a", "t-a", 50)];
+    act(() => result.current![0]!.open());
+    await waitFor(() => expect(result.current?.map((f) => f.name)).toEqual(["a.xlsx"]));
+  });
+
+  it("a host that fails again keeps the rows it last gave, with the Retry line under them", async () => {
+    seam.roots = new Map([["p-keep", [thread("t-a", 9)]]]);
+    seam.answers = { "env_box|m-box": [made("a", "t-a", 50)] };
+    const { result } = renderHook(() => useThreadFiles({ id: "p-keep", sector: "purdue" }));
+    await waitFor(() => expect(result.current?.map((f) => f.name)).toEqual(["a.xlsx"]));
+    seam.answers["env_box|m-box"] = new Error("not connected");
+    act(() => applyResult("env_box", { id: "r", rootId: "t-a", sessionId: "t-a" } as never));
+    await waitFor(() => expect(result.current?.map((f) => f.name)).toEqual(["a.xlsx", "Some files didn't load"]));
   });
 
   it("a made thing with nowhere to open opens its thread", async () => {

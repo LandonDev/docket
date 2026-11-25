@@ -102,9 +102,27 @@ export async function resultsSince(environmentId: string, since: number): Promis
   return tag(environmentId, answer.results);
 }
 
+/**
+ * Each root's Results moved, as heard here: the push of one made or undone (`env|root`), and a host whose link came back
+ * (it may have missed some). A reader of what threads made (a project's Files, projects/kit.tsx) asks again at a move.
+ */
+const rootMoves = new Map<string, number>();
+const hostBacks = new Map<string, number>();
+let moves = 0;
+/** What has moved, as one number: a store's snapshot. */
+export const resultsMoves = (): number => moves;
+/** A root's Results as far as this window heard: a new stamp after each of its changes. */
+export const resultsStamp = (environmentId: string, rootId: string): string => `${rootMoves.get(`${environmentId}|${rootId}`) ?? 0}.${hostBacks.get(environmentId) ?? 0}`;
+export function subscribeResults(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+}
+
 /** A result the host made or undid: into the list of its root thread and of the thread that wrote it, where loaded. */
 export function applyResult(environmentId: string, result: WorkResult): void {
   const row = { ...result, environmentId };
+  moves++;
+  rootMoves.set(`${environmentId}|${result.rootId}`, moves);
   for (const sessionId of new Set([result.rootId, result.sessionId])) {
     const entry = results.get(sessionId);
     if (!entry || entry.environmentId !== environmentId) continue;
@@ -117,6 +135,9 @@ export function applyResult(environmentId: string, result: WorkResult): void {
 
 /** A host's link came back: what it made while the socket was down is read again. */
 export function reloadResults(environmentId: string): void {
+  moves++;
+  hostBacks.set(environmentId, moves);
+  changed();
   for (const [sessionId, entry] of results) if (entry.environmentId === environmentId) loadResults(environmentId, sessionId);
 }
 
@@ -125,5 +146,7 @@ export function resetResults(): void {
   results.clear();
   loading.clear();
   again.clear();
+  rootMoves.clear();
+  hostBacks.clear();
   changed();
 }

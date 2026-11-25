@@ -80,3 +80,17 @@ export function waitsOnHim(p: Pick<TrackerProject, 'lead' | 'late' | 'dueToday'>
   const tone = p.lead?.outcome?.tone
   return tone === 'asks' || tone === 'failed' || tone === 'held' || p.late > 0 || p.dueToday > 0
 }
+
+const tasks = (n: number): string => (n === 1 ? '1 task' : `${n} tasks`)
+
+/**
+ * Why a project waits on him where the row's drawn facts do not say it: a late or due waiting task, which LifeOS
+ * leaves out of Next. "1 task late", "2 tasks due today"; null where a pressing thread or Next's date already says it.
+ * `nextSays`: the row's Next shows a late or due-today date.
+ */
+export function unsaidWait(p: Pick<TrackerProject, 'lead' | 'late' | 'dueToday'>, nextSays: boolean): string | null {
+  const tone = p.lead?.outcome?.tone
+  if (tone === 'asks' || tone === 'failed' || tone === 'held' || nextSays) return null
+  const words = [p.late > 0 ? `${tasks(p.late)} late` : '', p.dueToday > 0 ? `${tasks(p.dueToday)} due today` : ''].filter(Boolean)
+  return words.length ? words.join(', ') : null
+}

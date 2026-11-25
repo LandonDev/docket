@@ -80,12 +80,15 @@ describe("useLifeosRows", () => {
     const { result } = renderHook(() => useLifeosRows<Task[], Task>(env, "tasks:list", {}, pick, idOf));
     // The first read is back; whether it covers every job is not known yet.
     expect(result.current).toMatchObject({ rows: [{ _id: "t1" }], pending: true, lost: [] });
+    expect(result.current.known("purdue")).toBe(false);
     act(() => void box.answer("auth:caller", { sectors: ["purdue"] }));
-    // It lacks ref: the read on the Mac is out.
+    // It lacks ref: the read on the Mac is out. Purdue's rows are whole; ref's are not, whatever else came.
     await waitFor(() => expect(mac.reads.map((r) => r.args)).toEqual([{ sector: "ref" }]));
     expect(result.current.pending).toBe(true);
+    expect([result.current.known("purdue"), result.current.known("ref")]).toEqual([true, false]);
     act(() => void mac.answer("tasks:list", [{ _id: "t9", title: "Ref's", sector: "ref" }]));
     expect(result.current).toMatchObject({ pending: false, lost: [] });
+    expect(result.current.known("ref")).toBe(true);
     expect(result.current.rows?.map(idOf)).toEqual(["t1", "t9"]);
   });
 
@@ -100,6 +103,8 @@ describe("useLifeosRows", () => {
     const { result } = renderHook(() => useLifeosRows<Task[], Task>(env, "tasks:list", {}, pick, idOf));
     await waitFor(() => expect(result.current.lost).toEqual([{ environmentId: "mac", sector: "ref", error: "tasks:list is gone", down: null }]));
     expect(result.current).toMatchObject({ rows: [{ _id: "t1" }], pending: false });
+    // A failed job's rows are not whole; the job that answered is.
+    expect([result.current.known("purdue"), result.current.known("ref")]).toEqual([true, false]);
     const asked = { box: box.reads.length, mac: mac.reads.length };
     mac.answer("tasks:list", [{ _id: "t9", title: "Ref's", sector: "ref" }]);
     await act(async () => {
