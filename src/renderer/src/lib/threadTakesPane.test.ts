@@ -20,6 +20,8 @@ describe("a thread or a draft he opens takes the pane", () => {
     const opener = body("onSelectHistorySession");
     expect(opener).toMatch(/const mine = o\.behind \? null : choose\(\)/);
     expect(opener).toMatch(/if \(!o\.behind\) openWorkView\(null\)/);
+    // A page over the threads (Today, the Outbox) leaves at his pick too.
+    expect(opener).toMatch(/if \(!o\.behind\) shell\.closeOverlays\(\);/);
     expect(opener.indexOf("openWorkView(null)")).toBeGreaterThan(opener.indexOf('stillChosen(mine, null, "")'));
   });
 

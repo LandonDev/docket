@@ -1693,6 +1693,9 @@ export default function App() {
       // A thread he picks (the column, the rail, a list) is his latest choice, as a Work view is (lib/workSwitch.ts);
       // one that waits on its transcript opens only if nothing was chosen meanwhile.
       const mine = o.behind ? null : choose();
+      // His pick is the thread he wants to see: a page over the threads (Today, the Outbox, Search…) leaves at once,
+      // as it does through the Work open port; the app's own fill behind a view leaves it up.
+      if (!o.behind) shell.closeOverlays();
       if (seq !== undefined) requestTranscriptJump(sessionId, seq);
       if (focusOpenSession(sessionId, o)) return;
       const session = await ensureOpenSession(sessionId);
