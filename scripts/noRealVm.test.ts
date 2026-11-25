@@ -12,7 +12,8 @@ const ALLOWED: Record<string, string> = {
   'e2e-updater-win.ts': 'runs inside the Windows guest',
   'e2e-pc-setup-rig.ts': 'sets it in the Windows guest\'s own environment; its stand-in box (lib/pcRig.ts) names WINVM_DIR',
   'lib/pcDriveRig.ts': 'sets it in the Windows guest\'s own environment; its stand-in box (lib/pcRig.ts) names WINVM_DIR',
-  'e2e-code-update.ts': 'a packaged copy on the Mac: its harness block takes HARNESS_KEYS alone'
+  'e2e-code-update.ts': 'a packaged copy on the Mac: its harness block takes HARNESS_KEYS alone',
+  'lib/vmScreenMac.ts': 'passes the parent\'s WINVM_DIR through; e2e-vm-screen-mac.ts refuses to start with it unset (throwawayHost)'
 }
 
 function scripts(dir: string, out: string[] = []): string[] {
