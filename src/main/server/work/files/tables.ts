@@ -24,7 +24,7 @@ import type { DatabaseSync } from 'node:sqlite'
  *    editor replaced the copy's bytes; `held`: the last of those writes the file is known to hold (a send of it
  *    landed, or the file was found to hold the same bytes), so a tab says Saved only for a write that reached the file.
  *  - `work_files_word`: a Word file of another computer (or the Windows VM) opened in a Files tab, and the document
- *    made of it in the workspace's own folder (`doc`), where his edits are kept (word.ts): the file's version as
+ *    made of it in the workspace's hidden Word store (`doc`, wordStore.ts), where his edits are kept (word.ts): the file's version as
  *    read or last written, the document's change time when made (`doc_at`) and when last saved as Word.
  */
 export function ensureFilesTables(db: DatabaseSync): void {
@@ -100,6 +100,9 @@ export function ensureFilesTables(db: DatabaseSync): void {
   if (!have.has('stopped_version')) db.exec(`ALTER TABLE work_files_word ADD COLUMN stopped_version TEXT`)
   // The sha256 of the last export sent whose answer never came (`tried_sha`): found there, it is his own write.
   if (!have.has('tried_sha')) db.exec(`ALTER TABLE work_files_word ADD COLUMN tried_sha TEXT`)
+  // A file the Word store took from a workspace's folder (wordStore.ts): the old path, its copy, the store path a record
+  // must name before the old one goes (`named`), and the sha256 it was copied with (null for a folder of branches).
+  db.exec(`CREATE TABLE IF NOT EXISTS work_files_word_moved (old TEXT PRIMARY KEY, new TEXT NOT NULL, named TEXT NOT NULL, sha TEXT, at INTEGER NOT NULL)`)
   // A document's linked files (Save As…, saveAs.ts): where each lies, the format, the version and the document's live
   // revision last written to it, and how it stands (ok, waiting for its place, changed or gone there, refused).
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_links (
@@ -116,4 +119,4 @@ export function ensureFilesTables(db: DatabaseSync): void {
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_links_by_source ON work_files_links (doc, state)`)
 }
 
-export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_stays', 'work_files_bodies', 'work_files_word', 'work_files_links'] as const
+export const FILES_TABLES = ['work_files_tabs', 'work_files_revs', 'work_files_marks', 'work_files_trash', 'work_files_ops', 'work_files_names', 'work_files_kept', 'work_files_copies', 'work_files_stays', 'work_files_bodies', 'work_files_word', 'work_files_word_moved', 'work_files_links'] as const

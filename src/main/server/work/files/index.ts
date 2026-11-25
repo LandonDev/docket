@@ -5,6 +5,7 @@ import { copiesLeft, copySaved, ownCopyFolders, retryWaiting, settleCopies } fro
 import { startFileAutosaves } from './autosave'
 import { adoptWordCopies, wordFollowed, wordImportPlace, wordsLeft } from './word'
 import { stayFollowed, staysLeft } from './copyStays'
+import { settleWordStore } from './wordStore'
 import { closeFilesState, filesHandle, filesState, itemsGone, removeWorkspace } from './handle'
 import { onFileSaved } from './save'
 import { registerFileMoved, registerImportPlace } from './hooks'
@@ -112,7 +113,17 @@ export const files: WorkModule = {
       ctx.log(`files: the copies could not be settled: ${err instanceof Error ? err.message : String(err)}`)
     }
     const offSaved = onFileSaved((path) => copySaved(ctx, path))
-    // A Word file of another computer becomes a document in the workspace's own folder, kept for its next open (word.ts).
+    // A Word file's document and "before" copy an older build kept in the workspace's folder move to the hidden Word
+    // store (wordStore.ts), once every pillar's start has registered what follows a moved file.
+    const storing = setTimeout(() => {
+      try {
+        settleWordStore(ctx)
+      } catch (err) {
+        ctx.log(`files: the Word store could not be settled: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }, 0)
+    storing.unref?.()
+    // A Word file of another computer becomes a document in the workspace's hidden Word store, kept for its next open (word.ts).
     const offPlace = registerImportPlace((original, itemId) => wordImportPlace(ctx, original, itemId))
     const offFollowed = ctx.canvas.onReplaced((old, next) => {
       wordFollowed(ctx, old, next)
@@ -133,6 +144,7 @@ export const files: WorkModule = {
       resetStaged()
       offMoved()
       offSaved()
+      clearTimeout(storing)
       offPlace()
       offFollowed()
       clearInterval(daily)

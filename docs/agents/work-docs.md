@@ -798,7 +798,7 @@ publishes them yet). `blockDocs` is to go on only then.
 ## A Word file of a Teams library
 
 A `.docx` opened from a library on another computer, or in the Windows VM, is read into a document kept in the
-workspace's own folder, and the Word file is written back as our Word export: on his press, or by itself once he
+workspace's hidden Word store under this host's data (files/wordStore.ts), never his folder, and the Word file is written back as our Word export: on his press, or by itself once he
 chose that (or for a file New made here). The rules, the header's words and the first-time question are in
 work-files.md "A Word file from another computer". That document counts as shared ("Agent suggestions stay private"):
 a thread's own `doc_write` or `doc_format` there waits as a suggestion, the window opens it locked to suggest, and a

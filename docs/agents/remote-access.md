@@ -221,7 +221,12 @@ Work calls `ctx.host`).
      param: a source with this host's id, with no host, with no `self`
      given, or in any verb not listed (`work.canvas.*`, `filesList`,
      `filesRead`, `filesFetch`, `filesOpen`, `work.files.list`, `stat`,
-     `fetch`, every change), whatever host it claims.
+     `fetch`, every change), whatever host it claims. The roots a remote key
+     is fenced by are the managed roots and each Word file's kept document
+     in the hidden Word store, file by file (server/index.ts `remoteRoots`,
+     work/files/imports.ts `wordStoreDocs`): the documents it reached in a
+     workspace's folder before the store took them, and nothing else of the
+     app's data. The Mac bridge's roots stay `managedRoots`, without them.
 - A verb that reads or changes a file here is never on either list; moving
   the depth, a list or a root is a rule change, not a fix. Proven by
   fence.test.ts, the "his window on the box" tests in

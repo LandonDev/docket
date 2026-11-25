@@ -12,12 +12,13 @@ import { workspaceHere } from './policy'
 import { admitOwner, deliver, freshBytes, freshVersion, NOT_SAVING } from './copies'
 import { filesState } from './handle'
 import { sameBody } from './body'
+import { wordStore } from './wordStore'
 
 /**
  * A Word file from another computer (docs/agents/work-files.md "A Word file from another computer"; the owner's ruling
  * of 2026-11-23). A .docx of a library on another host of his, or in this host's Windows VM, opens in a Files tab as
- * the document made of it, and that document is kept in the workspace's own folder, so his edits are never thrown
- * away: opening the Word file again shows the same document. The Word file itself changes only by his Save as Word,
+ * the document made of it, and that document is kept in the workspace's hidden Word store under this host's data
+ * (wordStore.ts: never his folder), so his edits are never thrown away: opening the Word file again shows the same document. The Word file itself changes only by his Save as Word,
  * our Word export written over it by the version it was read at, after a confirm in his window, or beside it under the
  * keep-both name. A document he only looked at goes when its tab closes.
  */
@@ -36,7 +37,7 @@ export interface WordRow {
   at: number
   /** the sha256 of the bytes the copy was read with; null for a document an older build made (`adoptWordCopies`) */
   sha: string | null
-  /** the Word file as it was before TempCode's first write over it, kept in the workspace's folder */
+  /** the Word file as it was before TempCode's first write over it, kept in the workspace's hidden Word store (wordStore.ts) */
   original: string | null
   auto: number | null
   stopped: number | null
@@ -148,16 +149,17 @@ function wordTab(ctx: WorkCtx, itemId: string | undefined, workspaceId: string):
 }
 
 /**
- * Where the document made of a Word file's copy goes (files/hooks.ts `registerImportPlace`): the workspace's own folder,
- * for a copy in a Files pane whose tab shows a Word file of another computer; null for anything else.
+ * Where the document made of a Word file's copy goes (files/hooks.ts `registerImportPlace`): the workspace's hidden Word
+ * store under this host's data (wordStore.ts), never his folder, for a copy in a Files pane whose tab shows a Word file
+ * of another computer; null for anything else.
  */
 export function wordImportPlace(ctx: WorkCtx, original: string, itemId: string | undefined): string | null {
   const item = itemId ? ctx.canvas.get(itemId) : null
   const workspaceId = item ? filesPaneWorkspace(item.sessionId) : null
   if (!item || !workspaceId || item.source.at !== 'file' || dirname(item.source.path) !== dirname(original)) return null
   const tab = wordTab(ctx, itemId, workspaceId)
-  if (!tab || !wordRow(ctx, workspaceId, tab.copyOf!.host, tab.copyOf!.path)) return null
-  return workspaceHere(ctx.db, workspaceId)?.path ?? null
+  if (!tab || !wordRow(ctx, workspaceId, tab.copyOf!.host, tab.copyOf!.path) || !workspaceHere(ctx.db, workspaceId)) return null
+  return wordStore(ctx.dataDir, workspaceId)
 }
 
 /** A Word file's copy became its document (`CanvasStore.replace`): the record names the document, as made. */
@@ -300,10 +302,10 @@ const shaOf = (data: Buffer): string => createHash('sha256').update(data).digest
 /** When a version word (`size:mtime:sha`, the helper's and the door's alike) says the file last changed. */
 const changedOf = (version: string): number => Number(version.split(':')[1]) || Date.now()
 
-/** The Word file as it was before TempCode's first write over it, kept once in the workspace's folder beside his document. */
+/** The Word file as it was before TempCode's first write over it, kept once in the workspace's Word store beside his document. */
 function keepOriginal(ctx: WorkCtx, r: WordRow, data: Buffer): void {
-  const folder = workspaceHere(ctx.db, r.workspace_id)?.path
-  if (r.original || !folder) return
+  if (r.original || !workspaceHere(ctx.db, r.workspace_id)) return
+  const folder = wordStore(ctx.dataDir, r.workspace_id)
   const { stem, ext } = splitName(r.name)
   const name = freeName(`${stem} (before TempCode saved it)${ext}`, (n) => existsSync(join(folder, n)))
   writeFileSync(join(folder, name), data, { flag: 'wx' })
@@ -314,7 +316,7 @@ function keepOriginal(ctx: WorkCtx, r: WordRow, data: Buffer): void {
  * `work.files.wordSave`: Save as Word. The file as it is there now is read first: unchanged since it was read (by
  * version, or when only its version moved, by its bytes' hash: a sync's touch, an older build's copy with no version
  * on record), it is written over; changed there, the answer says when, and only `replace` (his press on Replace) writes
- * over it. Before the first write over the file its bytes are kept in the workspace's folder. `keep` puts his
+ * over it. Before the first write over the file its bytes are kept in the workspace's Word store. `keep` puts his
  * version beside the file instead.
  */
 export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean; seen?: number; version?: string; auto?: boolean }): Promise<WordSaved> {
@@ -330,7 +332,7 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
   if (!p.keep) {
     // The file's version first, with one byte of it; the whole file is pulled only when it must be: its version moved
     // (only its bytes tell SharePoint's touch from an edit), its host names no version, or its original is still owed
-    // a copy in the workspace's folder (the first save over it).
+    // a copy in the workspace's Word store (the first save over it).
     const gone = (err: unknown): boolean => /not there any more|gone|not found|No file/i.test(err instanceof Error ? err.message : String(err))
     let seen: string | null
     try {

@@ -6,7 +6,7 @@ import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { canonicalPath } from '../service/ctx'
 import { fetchedFile } from '../canvas/fetch'
-import { importsRoot } from '../files/imports'
+import { importsRoot, wordStoreRoot } from '../files/imports'
 import { MAIL_NEEDS_APPROVE, sharedOf } from '../files/policy'
 import { fileLinked } from '../guests/store'
 
@@ -103,8 +103,10 @@ export async function lifeosRow(ctx: WorkCtx, t: DocTarget): Promise<LifeosDocRo
  * `sharedOf` says is shared (a Teams or OneDrive library, the cloud folder,
  * another host, the Windows VM), the `.tcdoc` the importer wrote under
  * `work-files/imports` for a file in a library (it writes there for no
- * other), or the document kept in the workspace's own folder for a Word file
- * of another computer (files/word.ts): that Word file is a library's, and
+ * other), or the document kept for a Word file of another computer
+ * (files/word.ts): by its record wherever it lies, and by where it lies for
+ * anything in the hidden Word store (files/wordStore.ts), record or none.
+ * That Word file is a library's, and
  * Save as Word and the autosave carry this document's live text to it. An
  * agent only suggests on such a document, and what is made of it (a
  * converted copy, a preview's render) never leaves this host.
@@ -113,7 +115,7 @@ export function madeFromShared(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, so
   if (sharedOf(ctx, source)) return true
   const path = canvasSourcePath(source)
   if (!path) return false
-  return isInside(path, importsRoot(ctx.dataDir)) || keptForWord(ctx, path)
+  return isInside(path, importsRoot(ctx.dataDir)) || isInside(path, wordStoreRoot(ctx.dataDir)) || keptForWord(ctx, path)
 }
 
 /**

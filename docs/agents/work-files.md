@@ -2102,7 +2102,7 @@ over a file that changed there.
 
 - **Which copies.** Those whose kind edits the copy's own bytes and says when it saved (`copySavesBack` in
   src/shared/work/files.ts): the sheet on an .xlsx or .xlsm, the deck on a .pptx, the `file` kind's text. A
-  document edits a `.tcdoc` made of the file, not the file (a Word file's is kept in the workspace's folder and saved
+  document edits a `.tcdoc` made of the file, not the file (a Word file's is kept in the hidden Word store and saved
   back by his press alone: "A Word file from another computer" below), and a .csv opens as a sheet of our own: those
   copies, and a PDF's, a picture's or a recording's, keep "A copy from MacBook. Changes stay here".
 - **A file a pillar says opens only to read** is copied to read, and never saves back: a pillar registers its word
@@ -2434,9 +2434,23 @@ over a colleague's Word file but his own press.
 
 - **Opened**, a .docx of a library on another host of his, or in this host's Windows VM, is a copy as any other
   (`openCopy`), recorded with the version it was read at (`work_files_word`, `recordWord`). The document kind makes a
-  `.tcdoc` of it; Files names the workspace's own folder as where that goes (`registerImportPlace` in hooks.ts, which
-  the importer asks first: `wordImportPlace`), and the record names the document once the item takes its place
+  `.tcdoc` of it; Files names the workspace's hidden Word store as where that goes (`registerImportPlace` in hooks.ts,
+  which the importer asks first: `wordImportPlace`), and the record names the document once the item takes its place
   (`wordFollowed`, on `onReplaced`). The tab keeps the Word file's key.
+- **The hidden Word store** (wordStore.ts, the plan's decision 3). The document and the Word file as it was before
+  TempCode's first write over it live under this host's data, `<userData>/work-files/word/<workspace id's sha1>/`
+  (0700), never in his folder and never in a folder that syncs: his folder gains no file when he opens and types in a
+  Word file of Teams (journey J73). Each counts shared to the hold by its record (docs/target.ts `keptForWord`) and,
+  record or none, by where it lies (`madeFromShared`). A remote key reaches each kept document by its path, file by
+  file, as it reached it in his folder (server/index.ts `remoteRoots`, `wordStoreDocs`); nothing else in the store,
+  and the Mac bridge's roots leave the store out.
+- **What an older build left in his folder** moves at each start (`settleWordStore`, after every pillar's start so
+  their move hooks run): the document and the "before" copy are copied into the store with their change times, and
+  `fileMoved` points the record, the canvas items, the comments and mode, the tabs and every pillar's rows at the
+  copy; an agent's private branches go with it (`privateBranchDir`); a star or recent of the old `.tcdoc` goes. A
+  document whose edits still wait in the service's journal waits for a later start. The old files stay
+  (`work_files_word_moved`) until a later start reads the records back naming the copies; then each goes only while its
+  bytes are still the ones copied. One changed since, or one whose record is gone, is his and stays.
 - **Opened again**, the Word file shows the same document (`keptDoc`): nothing is read over it from the file.
 - **His edits stay in the document.** The tab's `word` (`WordBack`) says how the Word file stands, and the header
   says it plainly: "The Word file in Teams has not changed" ("OneDrive" for his own), "Changes since 9:12 PM are not in
@@ -2445,14 +2459,13 @@ over a colleague's Word file but his own press.
   it said "Saved to Teams" while only that computer had the file (W-18).
 - **Save to Teams as Word** (`work.files.wordSave`, the header's one press while the Word file lacks his edits): one
   confirm, "Replace Plan.docx in Teams?", saying everyone who opens it sees his version, that Teams keeps its own
-  version history and the file as it is now is kept in the workspace's folder, and what Word formatting the editor
-  does not keep may change (`WORD_LOSSES`, renderer files/wordSave.ts), with Replace and Keep Both. The file as it is
+  version history, and what Word formatting the editor does not keep may change (`WORD_LOSSES`, renderer files/wordSave.ts), with Replace and Keep Both. The file as it is
   there now is read first (`freshBytes`): unchanged since it was read, by its version or, when only the version moved
   (a sync's touch, a copy an older build left with no version on record), by its bytes' sha256 against the bytes it
   was read with (`sha`, or the copy beside the document: `knownSha`), it is written over by that version. Changed
   there, the window says when in one line ("Plan.docx changed in Teams 9:12 PM, after you opened it.") with Keep Both
   holding the focus, and Replace on his press writes over it (`replace`). Before the first write over a file its bytes
-  are kept once as "Plan (before TempCode saved it).docx" in the workspace's folder (`keepOriginal`, the record's
+  are kept once as "Plan (before TempCode saved it).docx" in the hidden Word store (`keepOriginal`, the record's
   `original`). A file gone there offers Keep Both alone. His own edit: his window, or a key that may approve; a
   thread and a read key are refused, as for a copy.
 - **Saving by itself** (the owner's order of 2026-11-23). The record keeps his choice for the file (`auto`: not asked,
@@ -2483,7 +2496,7 @@ over a colleague's Word file but his own press.
 - **A document he only looked at** goes with its tab: only one never saved, with its file's time unchanged, that the
   host saw at the live revision it was made at, and whose live revision is still that one when asked at the close, is
   deleted with its record (`wordsLeft`). The close first asks the service to store what any window sent it
-  (`/internal/docs/stored`), so the final edit counts. If the service cannot confirm the revision, the host keeps the document. Anything else is kept, in the workspace's folder, for the Word file's next
+  (`/internal/docs/stored`), so the final edit counts. If the service cannot confirm the revision, the host keeps the document. Anything else is kept, in the Word store, for the Word file's next
   open: one he typed into (his words live in the Work service before the `.tcdoc` file is written), one the host
   never looked at, and one any other open item shows (a thread's pane too). The close of a remote key, a pane's
   removal and a thread's own close are judged the same way.

@@ -25,7 +25,9 @@ import type { BranchRow, BranchStatus, CollabFile, NewBranch, NewVersion, Versio
  * - A branch that is decided (merged or dropped) is removed here: accepted
  *   words are in the file as an ordinary edit, rejected ones are gone.
  * - Keyed by the file's path: a `.tcdoc` moved or renamed leaves its pending
- *   agent suggestions behind (the agent suggests again).
+ *   agent suggestions behind (the agent suggests again). A Word file's kept
+ *   document moved into main's Word store takes its folder with it
+ *   (`privateBranchDir`, files/wordStore.ts).
  *
  * Loaded by the service's entry: node, work-kit and fflate only
  * (service/boundary.test.ts).
@@ -42,7 +44,10 @@ export const isAgentBranch = (branch: { authors: readonly string[] }): boolean =
 const BRANCHES_INDEX = 'branches/index.json'
 const INDEX = 'index.json'
 
-const newId = (): string => `b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+/** The folder a `.tcdoc`'s agent branches are kept in under `root`, by its path: main's Word store moves it with the document (files/wordStore.ts). */
+export const privateBranchDir = (root: string, path: string): string => join(root, createHash('sha256').update(path).digest('hex').slice(0, 32))
+
+const newId = (): string =>`b${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
 
 /** Written whole under a temp name and renamed: a reader sees the old file or the new one. */
 function land(path: string, data: Uint8Array | string, mode?: number): void {
@@ -63,7 +68,7 @@ export class PrivateBranchStore implements VersionStore {
   /** The folder a file's agent branches are kept in. */
   dirOf(file?: CollabFile): string {
     if (!file) throw new Error('a file document needs its file')
-    return join(this.root, createHash('sha256').update(file.path).digest('hex').slice(0, 32))
+    return privateBranchDir(this.root, file.path)
   }
 
   private rows(file?: CollabFile): BranchRow[] {

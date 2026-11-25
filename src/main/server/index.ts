@@ -186,6 +186,7 @@ import { startLoopWatch } from './loopWatch'
 import { watchStats } from './treewatch'
 import { watchFailures } from './watchGuard'
 import { folderReader as folderReaderNow } from './work/files/places/winDir'
+import { wordStoreDocs } from './work/files/imports'
 import { Linear, handleLinear } from './linear'
 import { GithubInbox, handleGithubInbox } from './githubInbox'
 import { SessionRegistry } from './sessions'
@@ -695,6 +696,10 @@ export async function startServer(
       macBridgeLandingRoot(options.dataDir ?? dirname(dbPath))
     ]
   }
+  /** What a remote key may name by path: the managed roots, and each Word file's kept document alone, as it was
+   *  reached in the workspace's folder before the hidden Word store took it (work/files/wordStore.ts). Nothing else
+   *  of the store or the app's data; the Mac bridge's roots stay `managedRoots`, without them. */
+  const remoteRoots = (): string[] => [...managedRoots(), ...wordStoreDocs(db, options.dataDir ?? dirname(dbPath))]
   // Each thread's uploaded attachments (attachmentDir.ts): under its project
   // cwd, else its workspace path, else <userData>/attachments.
   setAttachmentDirContext({
@@ -2442,7 +2447,7 @@ export async function startServer(
     dataDir: options.dataDir ?? dirname(dbPath),
     revealWindow: options.revealWindow,
     // The listener's own fence, so a module that reaches a file through an id judges a remote key as the listener would.
-    remoteFence: { roots: () => managedRoots(), denied: () => [computerHistoryRoot] },
+    remoteFence: { roots: () => remoteRoots(), denied: () => [computerHistoryRoot] },
     hostLive: (envId) => deviceBindings.mayRoute(envId),
     peers,
     peerCalls,
@@ -2870,7 +2875,7 @@ export async function startServer(
       if (principal.kind === 'local') return
       // A remote key names paths only inside the app-managed roots; the
       // refusal is one typed error that never carries the path.
-      fenceRequest(req, managedRoots(), [ATTACH_DIR], [computerHistoryRoot], environmentId)
+      fenceRequest(req, remoteRoots(), [ATTACH_DIR], [computerHistoryRoot], environmentId)
       // the same deny for a file named through a project id or inside a cwd, and for a copy that would carry it out
       fenceDenied(req, requestBases(req, (id) => registry.getProject(id)?.cwd), [computerHistoryRoot])
       // and a write by path into a library others can open goes through Files, never the generic verbs
@@ -3829,7 +3834,7 @@ export async function startServer(
               ok: true,
               // The desktop's own socket reads any path (fs.* is unfenced for it too);
               // a remote caller passed fenceRequest and meets the roots again here.
-              result: await readAttachment(req.params.path, principal.kind === 'local' ? null : managedRoots())
+              result: await readAttachment(req.params.path, principal.kind === 'local' ? null : remoteRoots())
             })
             break
           case 'session.create': {

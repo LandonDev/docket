@@ -51,7 +51,7 @@ export async function saveAsWord(
   };
   const choice = await deps.choose({
     title: `Replace ${name} in ${service}?`,
-    body: `Everyone who opens it sees your version. ${service} keeps its own version history, and the Word file as it is now is kept in your workspace's folder. Word formatting this editor does not keep may change: ${WORD_LOSSES}.`,
+    body: `Everyone who opens it sees your version. ${service} keeps its own version history. Word formatting this editor does not keep may change: ${WORD_LOSSES}.`,
     action: "Replace",
     other: "Keep Both",
   });
@@ -81,7 +81,7 @@ export async function askAutosave(tab: Pick<FileTab, "copyOf" | "name" | "key">,
   const service = serviceOf(tab);
   const choice = await deps.choose({
     title: `Save ${wordName(tab)} to ${service} as you work?`,
-    body: `Word formatting this editor does not keep may change: ${WORD_LOSSES}. ${service} keeps its own version history, and the Word file as it is now is kept in your workspace's folder.`,
+    body: `Word formatting this editor does not keep may change: ${WORD_LOSSES}. ${service} keeps its own version history.`,
     action: "Save automatically",
     other: "Ask me each time",
   });

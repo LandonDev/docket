@@ -23,6 +23,7 @@ import type { DocRevision } from '../service/wire'
 import { adoptWordCopies, autosaveWords, wordFollowed, wordImportPlace, wordRow, wordsLeft, wordTiming } from './word'
 import { stayFollowed, staysLeft } from './copyStays'
 import { cloudOf, forgetUploads, lookAll, setUploadReader, uploadTiming, uploadWrote } from './uploads'
+import { wordStoreOf } from './wordStore'
 
 // Save as Word writes the Work service's Word export; here a stand-in's bytes.
 const exported = vi.hoisted(() => ({ data: null as Buffer | null, during: null as (() => void | Promise<void>) | null }))
@@ -808,9 +809,11 @@ describe('a Word file of another computer', () => {
     for (const items of box.removed.splice(0)) await wordsLeft(box.ctx, items)
   }
 
-  it("becomes a document in the workspace's own folder, and the tab says the Word file has not changed", async () => {
+  it("becomes a document in the workspace's hidden Word store, nothing in his folder, and the tab says the Word file has not changed", async () => {
+    const before = readdirSync(box.folder).sort()
     const { folder, doc, tabId, path } = await imported('Plan.docx', 'word bytes')
-    expect(folder).toBe(box.folder)
+    expect(folder).toBe(wordStoreOf(box.ctx.dataDir, WS))
+    expect(readdirSync(box.folder).sort()).toEqual(before)
     expect(wordRow(box.ctx, WS, MAC, path)).toMatchObject({ doc })
     // No edit of his yet: nothing to save, and the line says the Word file has not changed.
     expect((await tabOf(tabId))?.word).toEqual({ since: false })
@@ -963,7 +966,7 @@ describe('a Word file of another computer', () => {
     expect(readFileSync(path, 'utf8')).toBe('word export')
   })
 
-  it('Replace on his press writes over a file that changed there, the file as it was kept first in the workspace folder', async () => {
+  it("Replace on his press writes over a file that changed there, the file as it was kept first in the Word store, never his folder", async () => {
     const { tabId, path } = await imported('Plan.docx', 'word bytes')
     writeFileSync(path, 'a colleague saved')
     const clash = await call<{ conflict?: { changed: number; version: string } }>('work.files.wordSave', { tabId })
@@ -971,12 +974,13 @@ describe('a Word file of another computer', () => {
     const got = await call<{ at?: number }>('work.files.wordSave', { tabId, replace: true, version: clash.conflict!.version })
     expect(got.at).toBeGreaterThan(0)
     expect(readFileSync(path, 'utf8')).toBe('word export')
-    const original = join(box.folder, 'Plan (before TempCode saved it).docx')
+    const original = join(wordStoreOf(box.ctx.dataDir, WS), 'Plan (before TempCode saved it).docx')
     expect(readFileSync(original, 'utf8')).toBe('a colleague saved')
     expect(wordRow(box.ctx, WS, MAC, path)).toMatchObject({ original })
+    expect(readdirSync(box.folder).filter((n) => n.includes('before TempCode'))).toHaveLength(0)
     // Kept once: a later save writes no second copy.
     await call('work.files.wordSave', { tabId, replace: true })
-    expect(readdirSync(box.folder).filter((n) => n.includes('before TempCode'))).toHaveLength(1)
+    expect(readdirSync(wordStoreOf(box.ctx.dataDir, WS)).filter((n) => n.includes('before TempCode'))).toHaveLength(1)
   })
 
   it('a save whose answer was lost is known as his own on the next press, for the same export and a newer one', async () => {
