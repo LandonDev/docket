@@ -199,8 +199,10 @@ export interface StatusLine {
 }
 
 export interface WrittenLine {
-  /** "Wrote 6 cells, 2:04 PM" */
+  /** "Wrote 6 cells, 2:04 PM"; with `at`, the words alone ("Wrote 2 sections") */
   text: string;
+  /** When it was written (epoch ms): said after the words, unless the save line beside says that minute already. */
+  at?: number;
   undo?(): Promise<void>;
 }
 

@@ -296,6 +296,19 @@ describe("the header's linked files", () => {
     await waitFor(() => expect(world.calls.find((c) => c.method === "work.files.linkAct")?.params).toMatchObject({ id: "l1", act: "unlink" }));
   });
 
+  it("reads out the link's words only when it needs him, never at each save", async () => {
+    world.links = [link()];
+    const saved = controls();
+    await screen.findByRole("button", { name: /Saved to General 9:12 PM/ });
+    expect(saved.container.querySelector("[aria-live]")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("");
+    saved.unmount();
+    world.links = [link({ state: "changed", changedAt: 1 })];
+    controls();
+    await screen.findByRole("button", { name: /Changed in General/ });
+    expect(screen.getByRole("status").textContent).toMatch(/Changed in General/);
+  });
+
   it("sends Replace with the version the link showed changed", async () => {
     world.links = [link({ state: "changed", changedAt: 1, version: "v-there" })];
     controls();

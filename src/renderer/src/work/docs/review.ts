@@ -71,6 +71,25 @@ function afterOf(branch: HistoryBranch, id: string): string | null {
   return null;
 }
 
+/** The blocks a change's marks stand in or after: an edit to any other block leaves every mark where it was. */
+export function markedBlocks(changes: readonly ReviewChange[]): Set<string> {
+  const out = new Set<string>();
+  for (const change of changes) for (const mark of change.marks) {
+    if ("block" in mark) out.add(mark.block);
+    else if (mark.after) out.add(mark.after);
+  }
+  return out;
+}
+
+/**
+ * Whether an edit moved a mark: its offsets are counted in its block's words as the host last read them, so only an
+ * edit in a marked block needs them asked again. An edit that does not say which blocks it changed is taken as one that did.
+ */
+export function editMovesMarks(changed: readonly { block: { id: string } }[] | null, marked: ReadonlySet<string>): boolean {
+  if (!changed) return true;
+  return changed.some((change) => marked.has(change.block.id));
+}
+
 export function reviewOf(branches: readonly HistoryBranch[], names: Record<string, string>): { changes: ReviewChange[]; groups: ReviewGroup[] } {
   const changes: ReviewChange[] = [];
   const groups: ReviewGroup[] = [];

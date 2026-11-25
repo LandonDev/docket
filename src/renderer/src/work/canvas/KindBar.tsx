@@ -6,6 +6,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import { loadToast } from "../../components/ui/toaster";
 import { Download, History } from "../icons";
+import { dayTime } from "../../lib/duration";
 import { Face } from "../mail/face";
 import { sayError, type Feeds } from "./frame";
 import type { CanvasMode, Presence, ReviewAdapter, WrittenLine } from "./kind";
@@ -108,8 +109,11 @@ export function KindBar({
   onKeep,
   lead,
   end,
+  savedAt = null,
 }: {
   feeds: Feeds;
+  /** the time the save line beside the pane says (a Files tab): a written line at that minute does not say it again */
+  savedAt?: number | null;
   tools?: ReactNode;
   /** what stands first in the bar, before the people: a second file's glyph, name and save line (SideFile), so its head and its bar are one row */
   lead?: ReactNode;
@@ -151,7 +155,7 @@ export function KindBar({
           {onDownload ? <DownloadButton run={onDownload} /> : null}
           {onKeep ? <KeepButton run={onKeep} /> : null}
           {onHistory ? <HistoryButton onClick={onHistory} /> : null}
-          {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} /> : null}
+          {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} savedAt={savedAt} /> : null}
           {end}
         </div>
       </div>
@@ -365,13 +369,20 @@ function Step({ label, tip = label, disabled = false, className, onClick, childr
   );
 }
 
+/** A written line's words: its time after them, unless the save line beside says that minute. */
+export function writtenWords(line: WrittenLine, savedAt: number | null): string {
+  if (line.at === undefined) return line.text;
+  const minute = (at: number): number => Math.floor(at / 60_000);
+  return savedAt !== null && minute(savedAt) === minute(line.at) ? line.text : `${line.text}, ${dayTime(line.at)}`;
+}
+
 /** What the agent wrote directly, with its way back. */
-function Written({ line }: { line: WrittenLine }) {
+function Written({ line, savedAt }: { line: WrittenLine; savedAt: number | null }) {
   const [undoing, setUndoing] = useState(false);
   const undo = line.undo;
   return (
     <div data-canvas-written className="flex min-w-0 items-center gap-2">
-      <span className="min-w-0 truncate tabular-nums">{line.text}</span>
+      <span className="min-w-0 truncate tabular-nums">{writtenWords(line, savedAt)}</span>
       {undo ? (
         <Button
           variant="ghost"

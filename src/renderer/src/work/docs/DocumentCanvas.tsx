@@ -27,7 +27,6 @@ import { loadToast } from "../../components/ui/toaster";
 import { itemJournal, type DraftJournal } from "../canvas/drafts";
 import { notSavedWords, whenWords } from "../files/fileText";
 import { useColorScheme } from "../../hooks/useColorScheme";
-import { dayTime } from "../../lib/duration";
 import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
 import { OpenFailed } from "../canvas/FetchState";
 import { BarHold } from "../canvas/barHold";
@@ -48,7 +47,7 @@ import { useGoogleDoc } from "../google/docMore";
 import { DOC_FONTS } from "./fonts";
 import { docHost, savesOf, servedBy, type DocHost, type DocSaves } from "./host";
 import { blockFacts, docDrops, docPreviewSource } from "./previewSource";
-import { decided, PAGE_CHANGE_ID, reviewOf } from "./review";
+import { decided, editMovesMarks, markedBlocks, PAGE_CHANGE_ID, reviewOf } from "./review";
 import { PageChangeSummary } from "../history/Compare";
 import { docThreads, type DocThreads } from "./threads";
 import { ShareButton } from "../guests/Share";
@@ -840,9 +839,9 @@ export const CHANGED_SINCE = "Not undone: the document has changed since. Restor
  * History keeps every version for a choice of his own. A host that names no `after` is offered no Undo.
  */
 export function writtenLine(host: Pick<DocHost, "env" | "undo">, source: CanvasSource, w: DocWritten): WrittenLine {
-  const text = `${w.text}, ${dayTime(w.at)}`;
+  const text = w.text;
   const after = w.after;
-  return after ? { text, undo: () => undoWritten(host, source, after) } : { text };
+  return after ? { text, at: w.at, undo: () => undoWritten(host, source, after) } : { text, at: w.at };
 }
 
 /** What Undo says when the document's host is a release behind and cannot undo it there. */
@@ -1033,16 +1032,20 @@ export function useDocReview(host: DocHost, open: DocOpen, shell: CanvasShell, e
     for (const [branchId, which] of byBranch) await actions.decide(branchId, which, accept, value?.branches.find((b) => b.id === branchId)?.editedAt);
   };
   const review = useReview({ changes, groups, accept: decide(true), reject: decide(false) });
-  // The changes are places in the text as it was when they were worked out: asked again once the text
-  // settles after a change, which is also how a decision made in another window reaches this one.
+  // The changes are places in a block's words as the host last read them: asked again on the host's push
+  // (useDocument), on his decision (historyActions), and once the text settles after an edit inside a marked block,
+  // his own or another window's (an Accept there changes the block here). An edit elsewhere moves no mark, so a pause
+  // in his typing is no round trip over the link.
   const pending = changes.length > 0;
+  const marked = useMemo(() => markedBlocks(changes), [changes]);
   const onChange = useMemo(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    return () => {
+    return (_editor: unknown, context?: { getChanges?(): readonly { block: { id: string } }[] }) => {
+      if (!editMovesMarks(context?.getChanges?.() ?? null, marked)) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => refreshHistory(host.env, open.source), 700);
     };
-  }, [host.env, open.source]);
+  }, [host.env, open.source, marked]);
   const latest = useRef(review);
   latest.current = review;
   const hooks = review.hooks;

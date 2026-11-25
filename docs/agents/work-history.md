@@ -172,7 +172,9 @@ the file's side in the side file's seat (`historyBeside`, SideFile.tsx:
 "History" with its glyph in the 32px head and its close; a second file
 there comes back when it closes), the file's own History is not drawn
 while it is open, the close key in it closes it alone, and it goes with
-its tab. Three views, kept in the item's state:
+its tab. Where the tab has no room for the two side by side, History lies
+over the file, and Escape closes it first (before a full window's Escape),
+as it would a sheet; side by side Escape leaves it open. Three views, kept in the item's state:
 
 - **The list**: pending branches first ("Waiting for you"), then versions,
   newest first, each row who and why (the label, else the cause in words)
@@ -188,7 +190,12 @@ its tab. Three views, kept in the item's state:
   over its column. The bar: History (back to the list), the two pickers in
   one column, then who made the current change and Previous, `n/N`, Next.
   More holds the layout switch and "Restore the older version". The current
-  change is the 1px foreground 40% outline on its own words.
+  change is the 1px foreground 40% outline on its own words. Each side's
+  block is drawn in its own style, so the newer side looks as the line
+  under it says: a heading on its level's step, a paragraph in the Title
+  style on the title step (18/26 semibold, 16/24 side by side), and its
+  alignment (centred, right, justified). The compare has no document style
+  sheet: a Word file's other named styles draw as body text.
 - **The review** of a branch: the compare drawn the same way, the pane's
   one stepper with Reject and Accept, a line saying whose suggestions they
   are or which version a restore brings back.

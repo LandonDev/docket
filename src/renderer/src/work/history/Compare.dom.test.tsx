@@ -33,4 +33,20 @@ describe("a formatting change in a compare", () => {
     const view = render(<CompareDoc diff={diffBlocks([before[2]!], [after[2]!])} layout="one" current={0} title="Budget" />);
     expect(view.container.querySelector("[data-format-words]")).toBeNull();
   });
+
+  it("draws the newer side in its style: a Title on the title step, a centred line centred, the older side as it was", () => {
+    const aligned = diffBlocks([...before, block("c", "paragraph", {}, text("Matches start on the hour"))], [...after, block("c", "paragraph", { textAlignment: "center" }, text("Matches start on the hour"))]);
+    const shape = (root: HTMLElement, words: string) => [...root.querySelectorAll("div.relative")].find((el) => el.textContent === words)!.className;
+    const one = render(<CompareDoc diff={aligned} layout="one" current={0} title="Budget" />);
+    expect(shape(one.container, "Costs")).toContain("text-lg");
+    expect(shape(one.container, "Matches start on the hour")).toContain("text-center");
+    cleanup();
+    const two = render(<CompareDoc diff={aligned} layout="sxs" current={0} title="Budget" />);
+    const [left, right] = [...two.container.querySelectorAll("div.relative")].filter((el) => el.textContent === "Matches start on the hour").map((el) => el.className);
+    expect(left).not.toContain("text-center");
+    expect(right).toContain("text-center");
+    const [oldHead, newTitle] = [...two.container.querySelectorAll("div.relative")].filter((el) => el.textContent === "Costs").map((el) => el.className);
+    expect(oldHead).toContain("text-[15px]");
+    expect(newTitle).toContain("text-base");
+  });
 });

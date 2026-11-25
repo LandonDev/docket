@@ -479,4 +479,27 @@ describe("a document's History in its Files tab", () => {
     expect(side.querySelectorAll('[role="checkbox"]').length).toBe(2);
     expect(disk.calls.find((c) => c.method === "work.history.versions")?.params).toMatchObject({ source: { at: "file", path } });
   });
+
+  it("closes on Escape when it lies over a narrow file, before anything else; side by side, Escape leaves it open", async () => {
+    const path = "/w/Events/Notes.md";
+    const history = { ...item(path), id: "h1", kind: "history" } as CanvasItem;
+    const onCloseHistory = vi.fn();
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(420);
+    try {
+      const narrow = render(<FileTabView tab={tab("Notes.md")} item={item(path)} historyItem={history} onCloseHistory={onCloseHistory} panelId="p" workspace={workspace} where="Events" copy={null} onClose={() => undefined} />);
+      await waitFor(() => expect(document.querySelector("[data-files-main]")?.hasAttribute("inert")).toBe(true));
+      const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+      window.dispatchEvent(escape);
+      expect(onCloseHistory).toHaveBeenCalledTimes(1);
+      expect(escape.defaultPrevented).toBe(true);
+      narrow.unmount();
+      width.mockReturnValue(1200);
+      render(<FileTabView tab={tab("Notes.md")} item={item(path)} historyItem={history} onCloseHistory={onCloseHistory} panelId="p" workspace={workspace} where="Events" copy={null} onClose={() => undefined} />);
+      await waitFor(() => expect(screen.getByRole("separator", { name: "Resize the two files" })).toBeTruthy());
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(onCloseHistory).toHaveBeenCalledTimes(1);
+    } finally {
+      width.mockRestore();
+    }
+  });
 });

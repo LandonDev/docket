@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { changeWords, inlineSegments, type InlineSegment } from "work-kit/formats/diff";
+import { paraOf } from "work-kit/editor/para";
 import type { BlockDiff, DiffBlock, DiffLine, DiffRow, DiffRun } from "@shared/contract-work-history";
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
@@ -86,8 +87,21 @@ function Table({ block, other, row, side, compact, cur }: { block: DiffBlock; ot
   );
 }
 
-/** Text size and space for a block type, on the document scale (one column) or a step down (side by side). */
-function shapeOf(type: string, level: number, compact: boolean): string {
+/**
+ * Text size and space for a block, on the document scale (one column) or a step down (side by side): its type, its
+ * named style when that is the Title (the ladder's title step, as the document draws it), and its alignment. So the
+ * newer side of "Heading 1 becomes Title" or "Aligned left becomes centred" looks as the line under it says.
+ */
+function shapeOf(block: DiffBlock, compact: boolean): string {
+  const type = block.type;
+  const level = Number(block.props.level ?? 1);
+  return cn(typeShape(type, level, paraOf(block).style ?? null, compact), ALIGN[String(block.props.textAlignment ?? "")]);
+}
+
+const ALIGN: Record<string, string> = { center: "text-center", right: "text-end", justify: "text-justify" };
+
+function typeShape(type: string, level: number, style: string | null, compact: boolean): string {
+  if (style === "Title" && type !== "heading") return cn("mt-5 font-semibold tracking-[-0.01em]", compact ? "text-base leading-6" : "text-lg leading-[26px]");
   if (type === "heading")
     return level <= 1
       ? cn("mt-5 font-semibold tracking-[-0.01em]", compact ? "text-[15px] leading-[22px]" : "text-base leading-6")
@@ -111,7 +125,6 @@ interface BlockProps {
 }
 
 function Block({ block, other, row, mark, side, compact, number, cur }: BlockProps) {
-  const level = Number(block.props.level ?? 1);
   const indent = { paddingInlineStart: `${block.depth * 24}px` };
   if (block.type === "table")
     return (
@@ -140,7 +153,7 @@ function Block({ block, other, row, mark, side, compact, number, cur }: BlockPro
       <div
         className={cn(
           "relative",
-          shapeOf(block.type, level, compact),
+          shapeOf(block, compact),
           lead && "ps-[22px]",
           block.type === "quote" && "ps-4 text-muted-foreground italic",
           block.type === "codeBlock" && "rounded-md bg-muted px-3 py-2 font-mono text-[13px] leading-5 whitespace-pre-wrap",

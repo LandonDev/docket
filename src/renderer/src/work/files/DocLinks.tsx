@@ -92,8 +92,11 @@ export function DocSaveControls({ workspace, source, itemId }: { workspace: Work
     else run(l, act as Act);
   };
   const needs = links.some(linkNeedsHim);
+  const shown = needs ? (links.find(linkNeedsHim) ?? first) : first;
   return (
     <>
+      {/* Read out only when a link needs him (a file changed there, a place that did not answer), never at each save. */}
+      <span role="status" className="sr-only">{needs && shown ? linkWords(shown, clock) : ""}</span>
       {first ? (
         <RowsMenu
           label="Linked files"
@@ -109,7 +112,7 @@ export function DocSaveControls({ workspace, source, itemId }: { workspace: Work
               className={`max-w-64 min-w-0 shrink gap-1.5 font-normal ${needs ? "text-foreground" : "text-muted-foreground"}`}
             >
               <KindGlyph kind={kindOfEntry(`f.${formatOf(first.format).ext}`).kind} className="size-3.5 shrink-0" />
-              <span aria-live="polite" className="min-w-0 truncate">{linkWords(needs ? (links.find(linkNeedsHim) ?? first) : first, clock)}</span>
+              <span className="min-w-0 truncate">{linkWords(shown!, clock)}</span>
               {links.length > 1 ? <span className="shrink-0 tabular-nums text-muted-foreground">+{links.length - 1}</span> : null}
               <ChevronDown aria-hidden className="size-3 shrink-0 text-muted-foreground" />
             </Button>

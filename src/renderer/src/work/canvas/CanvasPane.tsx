@@ -227,6 +227,7 @@ export function CanvasPane({
         onHistory={def.history && !historyOpen && module && !fetched && feeds.ready !== false ? shell.openHistory : undefined}
         lead={barLead}
         end={barEnd}
+        savedAt={saveLine && feeds.saved?.state === "saved" ? (feeds.saved.at ?? null) : null}
       />
       <FailedHost.Provider value={environmentId}>
         {feeds.status && !(saveLine && feeds.status.saving) ? <StateLine line={feeds.status} /> : null}

@@ -1353,7 +1353,8 @@ thread; nothing answers inside the canvas.
   and a verb. The current change is
   outlined. A move counts as one change, tinted where it lands and where
   it leaves. After a direct write the stepper's slot holds the settled
-  line ("Wrote 2 sections, 2:04 PM") with Undo.
+  line ("Wrote 2 sections, 2:04 PM") with Undo; under a save line that
+  already says 2:04 PM it is "Wrote 2 sections".
 - **A mail's attachment** waits for the host's copy in the document's
   bones; from a megabyte, the first line is a 4px bar with "2.1 of 8.4 MB"
   in 12px muted tabular figures beside it. A failed fetch is the kind's
@@ -3977,7 +3978,7 @@ of bar, Save As… is in More alone and Share stays in the bar.
   in its tint, then the words ("Saved to General 9:12 PM", "Saving to
   General…", "Not saved to General yet"), "+1" muted for each other link, a
   12px chevron; at most 256px, truncating. It reads `muted-foreground`, and
-  `foreground` only when a link needs him (its words are a polite live region): "Changed in
+  `foreground` only when a link needs him (then, and only then, its words are read out, a status beside the button; a save is never announced): "Changed in
   General", "Moved or deleted in General", "Not saved to General". Its menu
   is a label row per link (its name, and with several its state too), that
   link's presses first (Keep Both, Replace for a Word file changed there;

@@ -325,3 +325,28 @@ it("the document stepper exposes a page-only suggestion and sends its id on Reje
   await act(async () => { await hooks?.reject(0); });
   expect(conn.asked.find((req) => req.method === "work.history.decide")?.params).toMatchObject({ branchId: "page-branch", which: ["@page"], accept: false });
 });
+
+describe("pending suggestions while he types", () => {
+  it("are asked again only after an edit inside a block a suggestion marks, never at a pause in another block", async () => {
+    const branch = { id: "b1", baseVersionId: "v1", authors: ["agent:box:t1"], label: "Suggestions", at: 1, editedAt: 1,
+      diff: { rows: [{ id: "blk1", kind: "changed", inline: [{ op: "=", text: "Doors at " }, { op: "-", text: "nine" }, { op: "+", text: "ten" }] }], lines: [{ id: "blk1", left: "Doors at nine", right: "Doors at ten" }] } };
+    conn.answer = (method) => Promise.resolve(method === "work.history.branches" ? { branches: [branch], names: {} } : []);
+    let changed: ((editor: unknown, context: { getChanges(): Array<{ block: { id: string } }> }) => void) | null = null;
+    const editor = { onChange: (cb: typeof changed) => ((changed = cb), () => undefined) };
+    const source = { at: "file", host: "box", path: "/data/typing-review.tcdoc" } as const;
+    function Probe() {
+      useDocReview({ env: "box" } as never, { doc: "typing", source, role: "edit" } as never, { review: () => {} } as unknown as CanvasShell, editor as never);
+      return null;
+    }
+    conn.asked.length = 0;
+    render(<Probe />);
+    await waitFor(() => expect(changed).not.toBeNull());
+    const asks = () => conn.asked.filter((req) => req.method === "work.history.branches" && (req.params as { source: typeof source }).source.path === source.path).length;
+    const before = asks();
+    act(() => changed!(editor, { getChanges: () => [{ block: { id: "blk7" } }] }));
+    await new Promise((r) => setTimeout(r, 900));
+    expect(asks()).toBe(before);
+    act(() => changed!(editor, { getChanges: () => [{ block: { id: "blk1" } }] }));
+    await waitFor(() => expect(asks()).toBe(before + 1), { timeout: 2000 });
+  });
+});

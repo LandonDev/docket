@@ -548,16 +548,20 @@ export function FileTabView({
   // A switch says its own wait; the guest's bar is not drawn over a body it is leaving or has not reached.
   const liveProgress = live && liveState && !switching && liveState.stage !== "ready" && !liveState.failed ? STAGE_SHARE[liveState.stage] : null;
   const [renaming, setRenaming] = useState(false);
-  // Escape leaves the full window, unless a menu, a dialog or the thing holding the key took it first.
+  // History lying over the file (no room for the two side by side) is what Escape closes first, as a sheet over it would.
+  const historyOver = !!historyItem && sideOver && !(docked && shape.over);
+  // Escape closes that History, else leaves the full window, unless a menu, a dialog or the thing holding the key took it first.
   useEffect(() => {
-    if (!full) return;
+    if (!full && !historyOver) return;
     const onKey = (event: globalThis.KeyboardEvent): void => {
       if (event.key !== "Escape" || event.defaultPrevented || (event.target as HTMLElement | null)?.closest?.('[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]')) return;
-      setFull(false);
+      if (!historyOver) return setFull(false);
+      event.preventDefault();
+      onCloseHistory?.();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [full]);
+  }, [full, historyOver, onCloseHistory]);
   const canRename = !!manage && verbs.some((row) => row.act === "rename" && !row.refused);
   return (
     <div

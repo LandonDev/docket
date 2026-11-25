@@ -424,7 +424,10 @@ place for a LifeOS document). What it tells the pane:
   A mode change the host refuses puts back the mode before the press.
 - **The state line**: the editor's own sentence when it is offline, waiting,
   read only or did not open.
-- **The agent's last write**: "Wrote 1 section, 2:04 PM" with Undo, which
+- **The agent's last write**: "Wrote 1 section, 2:04 PM" with Undo (the
+  words and the time apart, `WrittenLine.at`: in a Files tab whose save line
+  already says that minute the bar says "Wrote 1 section" alone, KindBar
+  `writtenWords`), which
   is `work.docs.dismiss {undo: true, after}`: the host restores the version
   before the write only while the document is as the agent left it. The line
   carries the version cut just after the write (`DocWritten.after`); the
@@ -463,7 +466,12 @@ place for a LifeOS document). What it tells the pane:
   spacing says what it does in one small line over its block ("Heading 1
   becomes Normal text", `changeWords` of the diff row, the review's
   `words`), as a compare does. Accept all and Reject all are the pane's
-  own.
+  own. A mark's place is counted in its block's words as the host last read
+  them, so the branches are asked again on the host's `branches` push, after
+  his decision, and 700 ms after an edit inside a block a mark stands in or
+  after (his, or another window's arriving: an Accept there changes the
+  block here; `markedBlocks`, `editMovesMarks` in docs/review.ts). An edit
+  anywhere else moves no mark and asks nothing over the link.
 - **Comments** float at their words and sit in the margin (24px + 272px)
   once the canvas has 1104px, which is the thread folded on most windows.
   A `.tcdoc`'s threads are kept here in `work_docs_threads`; a LifeOS
