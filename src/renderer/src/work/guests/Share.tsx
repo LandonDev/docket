@@ -6,9 +6,10 @@ import { Share as ShareGlyph } from "../icons";
 import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { confirmAction, DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Button } from "../../components/ui/button";
+import { Tip } from "../../components/tip";
 import { Dialog } from "../../components/ui/dialog";
 import { copyText } from "../../lib/clipboard";
-import { dayOf, filePageOf, mayHavePage, ROLE_WORDS, shareHomeOf, shareTargetOf, type GuestLinkRow } from "./api";
+import { dayOf, fileShareOf, mayHavePage, ROLE_WORDS, shareHomeOf, shareTargetOf, type GuestLinkRow } from "./api";
 import { openUrl } from "../../lib/native";
 import { useShareAsked } from "./sharePort";
 import type { ShareTarget } from "./ShareSheet";
@@ -26,18 +27,51 @@ export function ShareButton({ env, source, kind, title, itemId, workspaceId, pur
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the source by its value: a new object each render is the same source.
   const target = useMemo(() => shareTargetOf(source, kind), [key, kind]);
   // A file whose library shows it on its own web page is shared there: the host is asked once; Share is drawn meanwhile,
-  // and reads Share in Teams once a page comes.
+  // and reads Share in Teams once a page comes. A library's file whose page the host knows none of greys it, saying where
+  // to share it. A press before the answer waits for it, and one after a lost answer asks again: never the sheet that
+  // only says no.
   const asks = !!workspaceId && source.at === "file" && mayHavePage(source.path);
-  const [page, setPage] = useState<{ key: string; url: string | null | undefined } | null>(null);
+  const [page, setPage] = useState<{ key: string; url: string | null | undefined; home?: "Teams" | "OneDrive" } | null>(null);
+  const [tries, setTries] = useState(0);
+  const [held, setHeld] = useState(false);
+  const [opens, setOpens] = useState(0);
   useEffect(() => {
     if (!asks) return;
     let live = true;
-    void filePageOf(env, workspaceId!, source).then((url) => live && setPage({ key, url }));
+    void fileShareOf(env, workspaceId!, source).then((got) => live && setPage({ key, url: got?.url, ...(got?.home ? { home: got.home } : {}) }));
     return () => void (live = false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the source by its value
-  }, [asks, env, workspaceId, key]);
-  if (asks && page?.key === key && page.url) return <ShareInHome url={page.url} itemId={itemId} />;
-  return target ? <ShareOpener env={env} target={target} title={title} itemId={itemId} purdue={purdue} /> : null;
+  }, [asks, env, workspaceId, key, tries]);
+  const known = asks && page?.key === key && page.url !== undefined ? page : null;
+  useEffect(() => {
+    if (!held || !known) return;
+    setHeld(false);
+    if (known.url) void openUrl(known.url);
+    else if (!known.home) setOpens((n) => n + 1);
+  }, [held, known]);
+  if (known?.url) return <ShareInHome url={known.url} itemId={itemId} />;
+  if (known?.home) return <ShareRefused home={known.home} />;
+  const hold = asks && !known ? () => {
+    // Asked again after a lost answer; either way the press waits for the answer.
+    if (page?.key === key && page.url === undefined) setTries((n) => n + 1);
+    setHeld(true);
+  } : undefined;
+  return target ? <ShareOpener env={env} target={target} title={title} itemId={itemId} purdue={purdue} hold={hold} opens={opens} /> : null;
+}
+
+/** Share in Teams greyed, for a library's file whose page the host knows none of: the row menu's words say where to share it. */
+function ShareRefused({ home }: { home: "Teams" | "OneDrive" }) {
+  const why = `Share it from ${home}.`;
+  return (
+    <Tip label={why}>
+      <span data-share-refused="" tabIndex={0} aria-description={why} className="focus-ring ms-auto inline-flex rounded-lg">
+        <Button data-share-button="" variant="ghost" size="xs" disabled>
+          <ShareGlyph />
+          Share in {home}
+        </Button>
+      </span>
+    </Tip>
+  );
 }
 
 /** Share in Teams (or OneDrive): the file's own page in his browser, where Teams shares it; File → Share… opens it too. */
@@ -63,7 +97,8 @@ export function ProjectShare({ env, project }: { env: string; project: { id: str
   return <ShareOpener env={env} target={target} title={project.name} size="sm" />;
 }
 
-function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs" }: { env: string; target: ShareTarget; title: string; itemId?: string; purdue?: boolean; size?: "xs" | "sm" }) {
+/** `hold`: a press its owner keeps until it knows where Share goes; `opens` going up opens the sheet (a held press's answer). */
+function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs", hold, opens = 0 }: { env: string; target: ShareTarget; title: string; itemId?: string; purdue?: boolean; size?: "xs" | "sm"; hold?: (() => void) | undefined; opens?: number }) {
   const [open, setOpen] = useState(false);
   const asked = useShareAsked(itemId);
   const seen = useRef(asked);
@@ -72,9 +107,15 @@ function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs" }
     seen.current = asked;
     setOpen(true);
   }, [asked]);
+  const opened = useRef(opens);
+  useEffect(() => {
+    if (opens === opened.current) return;
+    opened.current = opens;
+    setOpen(true);
+  }, [opens]);
   return (
     <>
-      <Button data-share-button="" variant="ghost" size={size} className={size === "xs" ? "ms-auto" : undefined} onClick={() => setOpen(true)}>
+      <Button data-share-button="" variant="ghost" size={size} className={size === "xs" ? "ms-auto" : undefined} onClick={() => (hold ? hold() : setOpen(true))}>
         <ShareGlyph />
         Share
       </Button>

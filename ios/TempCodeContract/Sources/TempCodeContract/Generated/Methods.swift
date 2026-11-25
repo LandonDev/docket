@@ -8933,23 +8933,48 @@ public enum Methods {
                     }
                 }
             }
+            public enum Home: RawRepresentable, Codable, Hashable, Sendable {
+                case teams
+                case oneDrive
+                /// A value this build does not know; `rawValue` keeps it.
+                case unknown(String)
+
+                public init(rawValue: String) {
+                    switch rawValue {
+                    case "Teams": self = .teams
+                    case "OneDrive": self = .oneDrive
+                    default: self = .unknown(rawValue)
+                    }
+                }
+
+                public var rawValue: String {
+                    switch self {
+                    case .teams: "Teams"
+                    case .oneDrive: "OneDrive"
+                    case .unknown(let value): value
+                    }
+                }
+            }
 
             public let address: String?
             public let app: App?
+            public let home: Home?
 
-            public init(address: String?, app: App?) {
+            public init(address: String?, app: App?, home: Home? = nil) {
                 self.address = address
                 self.app = app
+                self.home = home
             }
 
             private enum CodingKeys: String, CodingKey {
-                case address, app
+                case address, app, home
             }
 
             public func encode(to encoder: any Encoder) throws {
                 var container = encoder.container(keyedBy: CodingKeys.self)
                 try container.encode(address, forKey: .address)
                 try container.encode(app, forKey: .app)
+                try container.encodeIfPresent(home, forKey: .home)
             }
         }
     }

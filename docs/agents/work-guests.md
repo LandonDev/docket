@@ -71,10 +71,14 @@ Teams" ("Share in OneDrive") for a document, sheet or deck: asked as its menu
 opens, live once the page is known, else greyed with "Share it from Teams."
 (`PageActs.shareIn`, `actsFor`'s `shareIn`). A document's or sheet's header
 Share reads the same and opens the page where the host names one
-(`ShareButton`'s `workspaceId`, `filePageOf`), else keeps the sheet: Share is
-drawn at once and reads Share in Teams when the page comes. An ask that got no
-answer (`filePageOf` answers undefined) is kept by no one, so the next pick asks
-again; only the host's own "none" greys Share in Teams. A document kept for a
+(`ShareButton`'s `workspaceId`, `fileShareOf`). Where the file is in a library
+whose page the host knows none of, the answer says where it is shared from
+(`home: 'Teams' | 'OneDrive'`, an optional field of `OfficeLiveAddress`) and
+the header's Share in Teams is greyed with "Share it from Teams.", as the row's
+is; any other file keeps the sheet. Share is drawn at once; a press before the
+answer waits for it and then opens the page, the sheet, or nothing (greyed), and
+a press after an ask that got no answer (undefined) asks again, so one drop
+never leaves Share on the sheet; only the host's own "none" greys Share in Teams. A document kept for a
 Teams file, where the host knows no page, says "This document is a Teams file
 opened here. Share it from Teams." (`teamsCopy`). Revoking the link the sheet
 just made takes its address from the sheet, so it cannot be copied after. The page

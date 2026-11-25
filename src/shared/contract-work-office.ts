@@ -236,6 +236,8 @@ export type OfficeLiveSet = { is: 'done' } | { is: 'ask'; why: 'changed' | 'gone
 export interface OfficeLiveAddress {
   address: string | null
   app: OfficeLiveApp | null
+  /** a file of a library whose page the host knows none of: where it is shared from, so Share is greyed with those words */
+  home?: 'Teams' | 'OneDrive'
 }
 
 const LiveLibrary = z.object({ libraryId: z.string().min(1).max(200) })

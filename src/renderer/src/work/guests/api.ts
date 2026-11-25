@@ -2,6 +2,7 @@ import type { GuestCreated, GuestLinkRow, GuestRole, GuestSource } from "@shared
 import { SHARE_REFUSALS } from "@shared/work/guestRoles";
 export { guestRolesOf, isShareRefusal, SHARE_REFUSALS } from "@shared/work/guestRoles";
 import type { CanvasSource } from "@shared/work";
+import type { OfficeLiveAddress } from "@shared/contract-work-office";
 import { registry } from "../../lib/connection";
 import { clockTime } from "../../lib/duration";
 import { guestRolesOf } from "@shared/work/guestRoles";
@@ -68,10 +69,19 @@ export function shareHomeOf(url: string): "Teams" | "OneDrive" {
  * not get an answer: nothing is known, so a caller keeps nothing and asks again.
  */
 export async function filePageOf(env: string, workspaceId: string, source: CanvasSource): Promise<string | null | undefined> {
-  if (source.at !== "file" || !mayHavePage(source.path)) return null;
+  const got = await fileShareOf(env, workspaceId, source);
+  return got === undefined ? undefined : got.url;
+}
+
+/**
+ * `filePageOf` with where the file is shared from when its page is not known (`home`: a library's file, so Share is
+ * greyed with "Share it from Teams.", never a sheet that only says no). Undefined where the ask got no answer.
+ */
+export async function fileShareOf(env: string, workspaceId: string, source: CanvasSource): Promise<{ url: string | null; home?: "Teams" | "OneDrive" } | undefined> {
+  if (source.at !== "file" || !mayHavePage(source.path)) return { url: null };
   try {
-    const got = await registry.linkOf(env).request<{ address: string | null }>("work.office.live.address", { workspaceId, ref: source });
-    return got.address ?? null;
+    const got = await registry.linkOf(env).request<OfficeLiveAddress>("work.office.live.address", { workspaceId, ref: source });
+    return { url: got.address ?? null, ...(got.home ? { home: got.home } : {}) };
   } catch {
     return undefined;
   }

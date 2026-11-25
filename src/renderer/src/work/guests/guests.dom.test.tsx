@@ -13,7 +13,7 @@ import type { GuestLinkRow } from "@shared/contract-work-guests";
 import type { HeldItem } from "@shared/work";
 
 const NAMES: Record<string, string> = { box: "The box", win: "Windows PC" };
-const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), downWords: {} as Record<string, string>, revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null, itemGate: null as Promise<void> | null, pages: {} as Record<string, string>, opened: [] as string[], addressGate: null as Promise<void> | null }));
+const calls = vi.hoisted(() => ({ list: [] as { env: string; method: string; params: Record<string, unknown> }[], links: [] as unknown[], failOnce: false, down: new Set<string>(), downWords: {} as Record<string, string>, revokeGate: null as Promise<void> | null, revokeRefusal: null as string | null, listGate: null as Promise<void> | null, itemGate: null as Promise<void> | null, pages: {} as Record<string, string>, homes: {} as Record<string, string>, addressDown: 0, opened: [] as string[], addressGate: null as Promise<void> | null }));
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (env: string) => ({
     environmentId: env,
@@ -31,7 +31,14 @@ vi.mock("../../lib/connection", async (original) => {
         throw new Error("LifeOS did not answer");
       }
       if (method === "work.office.live.address" && calls.addressGate) await calls.addressGate;
-      if (method === "work.office.live.address") return { address: calls.pages[(params.ref as { path: string }).path] ?? null, app: null };
+      if (method === "work.office.live.address" && calls.addressDown > 0) {
+        calls.addressDown -= 1;
+        throw new Error("The host did not answer");
+      }
+      if (method === "work.office.live.address") {
+        const path = (params.ref as { path: string }).path;
+        return { address: calls.pages[path] ?? null, app: null, ...(calls.homes[path] ? { home: calls.homes[path] } : {}) };
+      }
       if (method === "work.guests.forItem" || method === "work.guests.list") return calls.links;
       if (method === "work.guests.create")
         return { link: { ...LINK, name: params.name, role: params.role, expiresAt: params.expiresAt }, url: "https://tempcode.landonhale.com/g/abc#k=secret" };
@@ -88,6 +95,8 @@ afterEach(() => {
   calls.revokeRefusal = null;
   calls.itemGate = null;
   calls.pages = {};
+  calls.homes = {};
+  calls.addressDown = 0;
   calls.opened.length = 0;
   confirm.answer = true;
   confirm.asked.length = 0;
@@ -219,6 +228,43 @@ describe("Share", () => {
     await act(async () => answer());
     expect(await screen.findByRole("button", { name: "Share in Teams" })).toBeTruthy();
     calls.addressGate = null;
+  });
+
+  it("greys Share in Teams on a library's file whose page the host knows none of, saying where to share it; no sheet that only says no", async () => {
+    const { ShareButton } = await import("./Share");
+    calls.homes = { "/cloud/General/Plan.docx": "Teams" };
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/cloud/General/Plan.docx" }} kind="document" title="Plan" workspaceId="w1" />);
+    const greyed = await screen.findByRole("button", { name: "Share in Teams" });
+    expect(greyed.hasAttribute("disabled")).toBe(true);
+    expect(document.querySelector("[data-share-refused]")?.getAttribute("aria-description")).toBe("Share it from Teams.");
+    calls.homes = {};
+  });
+
+  it("holds a press made while the page is asked for, and acts on the answer: the page opens, never the sheet", async () => {
+    const { ShareButton } = await import("./Share");
+    let answer!: () => void;
+    calls.addressGate = new Promise((r) => (answer = r));
+    const page = "https://purdue0.sharepoint.com/sites/Esports/Shared%20Documents/General/Plan.docx?web=1";
+    calls.pages = { "/w/Plan.tcdoc": page };
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" workspaceId="w1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await act(async () => answer());
+    await waitFor(() => expect(calls.opened).toEqual([page]));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    calls.addressGate = null;
+  });
+
+  it("asks again on a press after a lost answer, so one drop never leaves Share on the sheet", async () => {
+    const { ShareButton } = await import("./Share");
+    const page = "https://purdue0.sharepoint.com/sites/Esports/Shared%20Documents/General/Plan.docx?web=1";
+    calls.pages = { "/w/Plan.tcdoc": page };
+    calls.addressDown = 1;
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" workspaceId="w1" />);
+    await waitFor(() => expect(calls.list.filter((c) => c.method === "work.office.live.address")).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await waitFor(() => expect(calls.opened).toEqual([page]));
+    expect(calls.list.filter((c) => c.method === "work.office.live.address")).toHaveLength(2);
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("keeps only a real answer for a file's page: a lost one is asked again, never kept as none", async () => {

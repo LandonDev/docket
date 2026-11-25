@@ -140,7 +140,9 @@ async function addressOf(ctx: WorkCtx, by: Caller, workspaceId: string, source: 
   const file = source.at === 'file' ? (keptFor(ctx, workspaceId, source) ?? source) : null
   const found = file ? await libraryFile(ctx, by, workspaceId, file, ADDRESS, signal) : null
   const result = found?.at ? liveAddress(found.at.library, found.at.path, { libraries: found.libraries }) : null
-  return found && result?.ok ? { address: result.url, app: found.app } : { address: null, app: null }
+  if (found && result?.ok) return { address: result.url, app: found.app }
+  // In a library with no page known: Share is greyed with where it is shared from, never a sheet that only says no.
+  return found?.at ? { address: null, app: null, home: found.at.library.kind === 'mine' ? 'OneDrive' : 'Teams' } : { address: null, app: null }
 }
 
 /**

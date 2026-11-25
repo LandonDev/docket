@@ -195,6 +195,14 @@ describe('the live Office wire', () => {
     expect(await address('/sync/Esports - Documents/General/Run.pptx', window, host)).toEqual(none)
   })
 
+  it('says where a library file with no known page is shared from, so its Share is greyed with those words, never a sheet that says no', async () => {
+    const address = (path: string) => liveHandle(request('work.office.live.address', { workspaceId: WS, ref: at(path) }), rig.ctx, window, () => desktop)
+    setRoots(rig.db, [{ folder: rig.team }])
+    expect(await address(join(rig.team, 'General', 'Plan.docx'))).toEqual({ handled: true, result: { address: null, app: null, home: 'Teams' } })
+    // A file in no library has no home to name.
+    expect(await address(join(rig.folder, 'Budget.xlsx'))).toEqual({ handled: true, result: { address: null, app: null } })
+  })
+
   it('can list cached libraries without triggering the first VM read', async () => {
     setVmState(() => ({ state: 'asleep', cannot: null }))
     const guest = vi.fn(async () => { throw new Error('The VM must stay asleep.') })

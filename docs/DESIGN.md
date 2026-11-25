@@ -1427,7 +1427,9 @@ thread; nothing answers inside the canvas.
   Teams" ("Share in OneDrive" for his own) and opens the file's own page in
   his browser, only where the workspace's host knows that file's page in his
   tenant (a document kept for a Teams Word file goes to the Word file's);
-  where it knows none, a Files row's is greyed with "Share it from Teams."
+  where it knows none, a Files row's, and a document's or sheet's header's,
+  is greyed with "Share it from Teams." (a header press made before the
+  host answers waits for the answer).
   A Purdue workspace's sheet holds one 12px muted line at
   the footer's start, beside Create link. **History** on a document or a sheet opens the item's history as a tab of its own
   (in a Files tab, at the file's side, where a second file sits; "Compare

@@ -2181,7 +2181,7 @@ export const FilesNamesSchema = z.object({ entries: z.array(FileEntrySchema) })
 export const SavedFileSearchPhoneSchema = z.object({ id: z.string(), name: z.string(), query: z.string(), filter: FileSearchFilterSchema.optional() })
 export const FilesSearchesSchema = z.object({ searches: z.array(SavedFileSearchPhoneSchema) })
 /** `work.office.live.address`: a shared Office file's web address and its app, for the phone's Open in Word. */
-export const OfficeLiveAddressSchema = z.object({ address: z.string().nullable(), app: z.enum(['word', 'excel', 'powerpoint']).nullable() })
+export const OfficeLiveAddressSchema = z.object({ address: z.string().nullable(), app: z.enum(['word', 'excel', 'powerpoint']).nullable(), home: z.enum(['Teams', 'OneDrive']).optional() })
 /** Something of a workspace's Files changed on its host: a folder (`at`, its key), the tabs, or the places. */
 export const WorkFilesPushSchema = push('work.files', { workspaceId: z.string(), at: z.string().optional(), tabs: z.number().optional(), places: z.literal(true).optional(), marks: z.literal(true).optional(), opening: z.object({ of: z.string(), done: z.number(), total: z.number() }).optional() })
 /**
