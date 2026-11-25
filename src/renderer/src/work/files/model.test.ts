@@ -490,7 +490,7 @@ describe("the verbs for what is selected", () => {
     expect(whereWords({ place: "folder", name: "Dummy Esports", trail: ["Events", "Spring LAN"] })).toBe("Dummy Esports › Events › Spring LAN");
     // Cut, it keeps the folder the file lies in; a file at a place's top is cut at its end.
     const where = { place: "folder", name: "Dummy Esports", trail: ["Events", "Spring LAN"] };
-    expect(whereWords(where).slice(whereKeep(where)!)).toBe("Spring LAN");
+    expect(whereWords(where).slice(whereKeep(where)!)).toBe("› Spring LAN");
     expect(whereKeep({ place: "folder", name: "Dummy Esports", trail: [] })).toBeNull();
   });
 });

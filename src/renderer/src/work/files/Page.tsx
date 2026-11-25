@@ -43,6 +43,7 @@ import {
   pickAll,
   pickedAmong,
   folderGone,
+  readRefused,
   placeNote,
   vmSleepNote,
   searchingNote,
@@ -1104,9 +1105,11 @@ export function PageView({
   const toParent = parent ? () => onGo({ at: parent.at, name: parent.name }) : undefined;
   // A search that left a place out says so, with Retry, whether or not anything came back.
   const gap = results && listing?.loaded && !listing.error ? searchGap(listing) : null;
-  // A folder that is gone cannot come back on Retry: the folder above it is the way on, else Back.
-  const gone = !!listing?.error && folderGone(listing.error);
-  const way = gone && parent ? { label: `Open ${parent.name}`, onClick: toParent! } : gone && canBack ? { label: "Back", onClick: onBack } : { label: "Retry", onClick: () => void listing?.retry() };
+  // A folder that is gone, or one he may not read, cannot come back on Retry: the folder above it is the way on, else
+  // Back, else nothing to press. Retry is for a host that did not answer.
+  const refused = !!listing?.error && readRefused(listing.error);
+  const gone = refused || (!!listing?.error && folderGone(listing.error));
+  const way = gone && parent ? { label: `Open ${parent.name}`, onClick: toParent! } : gone && canBack ? { label: "Back", onClick: onBack } : refused ? undefined : { label: "Retry", onClick: () => void listing?.retry() };
   // His Retry (or Wake it) keeps the state it was pressed on, spinning; any other read with no rows draws the bones, and
   // so does a search with none while LifeOS, which it also reads, is on its way.
   const retrying = !!listing?.retrying;
@@ -1124,7 +1127,7 @@ export function PageView({
       />
     );
   else if (!listing || !listing.loaded || (!entries.length && (lifeosAgain || listing.searching || !!listing.pending?.length || reading))) body = <ListBones compact={compact} />;
-  else if (listing.error && !entries.length) body = listing.away ? null : <FailedEmpty title="This folder did not load" line={listing.error} action={way} busy={retrying} />;
+  else if (listing.error && !entries.length) body = listing.away ? null : <FailedEmpty title="This folder did not load" line={listing.error} {...(way ? { action: way } : {})} busy={retrying && way?.label === "Retry"} />;
   else if (!entries.length && filter) body = (
       // Clear filters puts the whole folder and its trail back; Return in the field still searches every place.
       <EmptyState

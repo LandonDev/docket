@@ -157,7 +157,13 @@ the first paint.
   channels from what was already read, no host asked), where a file opens
   (`openWay`), the one line said when Teams files are missing (`teamsNote`,
   the Teams view's own table) or a place is not simply there (`placeNote`),
-  and what a host a release behind still answers.
+  and what a host a release behind still answers. A failed read's words
+  decide its press: a folder gone (`folderGone`) or one he may not read
+  (`readRefused`: "may not", "not allowed", "permission denied") offers the
+  folder above it, else Back, and a refusal with neither offers nothing;
+  only a read that did not answer offers Retry. The sidebar's tree
+  (`SideFolders`) draws one bone row while a row's folders are read, "No
+  folders" for none, and "Did not load" with Retry (none under a refusal).
 - `store.ts` reads the hosts (`useReach`: what was painted of the workspace
   first, then its own host beside its settings, then each desktop it may
   use, each painting as it answers, 4 s before one is said not to answer;

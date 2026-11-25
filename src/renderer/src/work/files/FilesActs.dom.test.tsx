@@ -985,7 +985,7 @@ describe("Search", () => {
     expect(row("Practice handout.txt").textContent).toContain("Esports › Handouts");
     // Where keeps the folder it lies in; the place and the folders above give way first.
     const where = row("Practice handout.txt").querySelector<HTMLElement>("[data-middle-cut]")!;
-    expect(where.lastElementChild!.textContent).toBe("Handouts");
+    expect(where.lastElementChild!.textContent).toBe("› Handouts");
     expect(document.querySelector("[data-files-note]")?.textContent).toBe("Folders on Purdue laptop were not searched");
     fireEvent.doubleClick(row("Practice handout.txt"));
     await waitFor(() => expect(calls("work.files.open")).toEqual([expect.objectContaining({ ref: { at: "file", host: "env_mac", path: "/Users/l/Esports/Handouts/Practice handout.txt" } })]));

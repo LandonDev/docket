@@ -710,6 +710,9 @@ export const stemEnd = (name: string): number => {
 /** A folder its host says is gone ("That folder is not there any more."), as against one that did not load: Retry cannot bring it back. */
 export const folderGone = (error: string | null | undefined): boolean => !!error && / is not there any more\b/.test(error);
 
+/** A read the place refused (he may not read it there): Retry would only be refused again. */
+export const readRefused = (error: string | null | undefined): boolean => !!error && /\bmay not\b|\bnot allowed\b|\bpermission denied\b|\bdoes not let\b/i.test(error);
+
 /** Home's three lists with each file once, in the first it belongs to: what waits on him, then his stars, then what he opened last. */
 export function homeLists<T extends Pick<FileEntry, "key"> & Partial<Pick<FileEntry, "name" | "ref" | "where">>>(home: { waiting: readonly T[]; starred: readonly T[]; recent: readonly T[] }): { waiting: T[]; starred: T[]; recent: T[] } {
   const seen = new Set<string>();
@@ -807,8 +810,8 @@ export function searchingNote(places: readonly string[]): FilesNote | null {
 
 /** Where a lens's row lives, in words: the place and the folders down to it ("Dummy Esports › Events"). */
 export const whereWords = (where: NonNullable<FileEntry["where"]>): string => [where.name, ...where.trail].join(" › ");
-/** Where `whereWords` keeps its end when cut: the folder the file lies in stays, the place and the folders above it give way first. */
-export const whereKeep = (where: NonNullable<FileEntry["where"]>): number | null => (where.trail.length ? whereWords(where).length - where.trail[where.trail.length - 1]!.length : null);
+/** Where `whereWords` keeps its end when cut: the folder the file lies in, from its "›", stays; the place and the folders above it give way first. */
+export const whereKeep = (where: NonNullable<FileEntry["where"]>): number | null => (where.trail.length ? whereWords(where).length - where.trail[where.trail.length - 1]!.length - 2 : null);
 // ── the chat docked beside a file ─────────────────────────────────────
 
 /**

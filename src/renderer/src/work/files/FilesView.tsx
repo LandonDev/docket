@@ -5,10 +5,11 @@ import { chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, type FileEntry, type
 import { ChevronRight, Clock, Folder, Search, Star, Trash2, Users } from "../../chrome/icons";
 import { confirmAction, confirmChoice } from "../../chrome/ConfirmDialog";
 import { Button } from "../../components/ui/button";
+import { Skeleton } from "../../components/ui/skeleton";
 import { DISCLOSURE_CHEVRON } from "../../components/ui/disclosure";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
-import { TruncateTip } from "../../components/tip";
+import { Tip, TruncateTip } from "../../components/tip";
 import { loadToast } from "../../components/ui/toaster";
 import { registry, LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
 import { hostName } from "../../lib/threadResources";
@@ -36,7 +37,7 @@ import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
 import { MoveDialog, type MoveTarget } from "./MoveDialog";
 import { cutsMiddle, MiddleCut } from "../canvas/TabName";
-import { carryRefusal, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
+import { carryRefusal, readRefused, tabEnds, tabShowing, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
 import { tellOrigin } from "./saveAsPort";
 import "./bindings";
 import { closeOf, FILES_KEYS, landFocus } from "./chords";
@@ -174,11 +175,42 @@ function SideRow({
   );
 }
 
-/** The folders of one folder or place, under its row: each a row of its own, 16px in, that opens the same way. Read when the row is opened, never before. */
+/**
+ * The folders of one folder or place, under its row: each a row of its own, 16px in, that opens the same way. Read when
+ * the row is opened, never before. While they are read one bone row stands at their depth; none is "No folders"; a
+ * read that failed is "Did not load" with Retry (its cause in the tip), and no Retry where he may not read it.
+ */
 function SideFolders({ from, at, depth, current, tree, drop, onGo, onNewTab }: { from: ListFrom; at: FolderRef; depth: number; current: FolderRef | null; tree: SideTree; drop?: SideDrop; onGo(page: FilePage): void; onNewTab(page: FilePage): void }) {
   const listing = useListing(from, at, DEFAULT_SORT);
   const folders = listing.entries.filter((entry) => entry.folder);
-  if (!listing.loaded) return <div role="status" aria-label="Loading" aria-busy className="h-7" />;
+  const inset = { paddingInlineStart: 8 + depth * 16 };
+  // His Retry is a read under way too: the bone again, in the failure's place.
+  if (!listing.loaded || listing.retrying)
+    return (
+      <div role="status" aria-label="Loading" aria-busy data-files-side-state="loading" className="flex h-7 items-center gap-2 pe-2" style={inset}>
+        <Skeleton className="size-4 shrink-0 rounded-sm" />
+        <Skeleton className="h-3 w-[55%]" />
+      </div>
+    );
+  if (listing.error && !folders.length)
+    return (
+      <div data-files-side-state="failed" className="flex h-7 min-w-0 items-center gap-1 pe-1 text-xs" style={inset}>
+        <Tip label={listing.error}>
+          <span className="min-w-0 truncate text-destructive">Did not load</span>
+        </Tip>
+        {readRefused(listing.error) ? null : (
+          <Button variant="ghost" size="xs" className="ms-auto shrink-0 text-muted-foreground" onClick={() => void listing.retry()}>
+            Retry
+          </Button>
+        )}
+      </div>
+    );
+  if (!folders.length)
+    return (
+      <div data-files-side-state="none" className="flex h-7 items-center pe-2 text-xs text-muted-foreground" style={inset}>
+        No folders
+      </div>
+    );
   return (
     <>
       {folders.map((entry) => {

@@ -164,9 +164,21 @@ describe("the states", () => {
     expect(went).toEqual(["Dummy Esports"]);
     cleanup();
     const retry = vi.fn();
-    draw({ listing: listing({ entries: [], error: "Permission denied.", retry }) });
+    draw({ listing: listing({ entries: [], error: "The box did not answer. Try again once it is connected.", retry }) });
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no Retry under a refusal, which Retry could not fix: the folder above, else nothing", () => {
+    const { went } = draw({ listing: listing({ entries: [], error: "You may not read that folder." }) });
+    expect(screen.getByText("You may not read that folder.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open Dummy Esports" }));
+    expect(went).toEqual(["Dummy Esports"]);
+    cleanup();
+    draw({ trail: [], canBack: false, listing: listing({ entries: [], error: "Permission denied." }) });
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.getByText("Permission denied.")).toBeTruthy();
   });
 });
 

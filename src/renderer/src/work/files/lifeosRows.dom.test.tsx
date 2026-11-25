@@ -275,7 +275,7 @@ describe("a folder whose read failed", () => {
   it("offers no New while nothing is listed, and offers it again once the folder lists", async () => {
     const answer = later<FilesListing>();
     const refused = (): never => {
-      throw new Error("You may not read that folder.");
+      throw new Error("The box did not answer. Try again once it is connected.");
     };
     standIn({ id: "t1", kind: "page", name: "Dummy Esports", page: { at: { at: "place", id: "folder" }, name: "Dummy Esports" } }, { lists: [refused, () => answer.promise] });
     render(<View {...props} />);

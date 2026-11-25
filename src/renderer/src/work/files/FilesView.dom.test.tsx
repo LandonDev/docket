@@ -386,6 +386,50 @@ describe("the window", () => {
     await waitFor(() => expect(places.getByRole("button", { name: "Hide the folders of Dummy Esports" }).querySelector("svg")!.getAttribute("class")).toContain("rotate-90"));
   });
 
+  it("says in the sidebar's tree what a folder's folders are: one bone while read, No folders, Did not load with Retry", async () => {
+    const host = newHost();
+    const answer = host.answer.bind(host);
+    let events: "wait" | "fail" | "refuse" | "ok" = "wait";
+    let release = (): void => undefined;
+    host.answer = (method, params) => {
+      const at = params.at as FolderRef | undefined;
+      if (method === "work.files.list" && at?.at === "file" && at.path === "/w/Events") {
+        if (events === "wait") return new Promise((done) => (release = () => done(answer(method, params))));
+        if (events === "fail") throw new Error("The box did not answer. Try again once it is connected.");
+        if (events === "refuse") throw new Error("You may not read that folder.");
+      }
+      return answer(method, params);
+    };
+    await mount(host);
+    const places = within(screen.getByRole("navigation", { name: "Places" }));
+    fireEvent.click(places.getByRole("button", { name: "Show the folders of Dummy Esports" }));
+    fireEvent.click(await places.findByRole("button", { name: "Show the folders of Events" }));
+    // While its folders are read: one bone row at their depth, never an empty gap.
+    const state = (): string | null => document.querySelector("[data-files-side-state]")?.getAttribute("data-files-side-state") ?? null;
+    await waitFor(() => expect(state()).toBe("loading"));
+    events = "ok";
+    release();
+    await waitFor(() => expect(state()).toBe("none"));
+    expect(places.getByText("No folders")).toBeTruthy();
+    // A read that failed says so, and Retry asks again.
+    fireEvent.click(places.getByRole("button", { name: "Hide the folders of Events" }));
+    events = "fail";
+    host.say({ push: "work.files", workspaceId: "w1", at: refKey(at("/w/Events")) });
+    fireEvent.click(places.getByRole("button", { name: "Show the folders of Events" }));
+    await waitFor(() => expect(state()).toBe("failed"));
+    expect(places.getByText("Did not load").className).toContain("text-destructive");
+    events = "ok";
+    fireEvent.click(places.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(state()).toBe("none"));
+    // A refusal is not fixed by Retry: none is offered.
+    fireEvent.click(places.getByRole("button", { name: "Hide the folders of Events" }));
+    events = "refuse";
+    host.say({ push: "work.files", workspaceId: "w1", at: refKey(at("/w/Events")) });
+    fireEvent.click(places.getByRole("button", { name: "Show the folders of Events" }));
+    await waitFor(() => expect(state()).toBe("failed"));
+    expect(places.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("cuts places that share a start in their middle, keeping the ends that differ", async () => {
     await mount(
       newHost({

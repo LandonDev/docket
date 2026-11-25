@@ -211,7 +211,7 @@ describe("Home while the host's LifeOS connects", () => {
 describe("a folder that did not load", () => {
   const tab: FileTab = { id: "t1", kind: "page", name: "Dummy Esports", page: { at: { at: "place", id: "folder" }, name: "Dummy Esports" } };
   const refused = (): never => {
-    throw new Error("You may not read that folder.");
+    throw new Error("The box did not answer. Try again once it is connected.");
   };
 
   it("keeps the failure and its words with Retry spinning until the answer, never empty", async () => {
@@ -221,7 +221,7 @@ describe("a folder that did not load", () => {
     await waitFor(() => expect(screen.getByText("This folder did not load")).toBeTruthy());
     fireEvent.click(within(page()).getByRole("button", { name: "Retry" }));
     expect(screen.getByText("This folder did not load")).toBeTruthy();
-    expect(screen.getByText("You may not read that folder.")).toBeTruthy();
+    expect(screen.getByText("The box did not answer. Try again once it is connected.")).toBeTruthy();
     const retry = within(page()).getByRole("button", { name: "Retry" }) as HTMLButtonElement;
     expect(retry.disabled).toBe(true);
     expect(retry.querySelector("[data-busy]")).not.toBeNull();

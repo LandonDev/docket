@@ -1,7 +1,7 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/files/FilesView.preview.tsx#FilesBrowse` (and
 // #FilesNarrowSidebar, #FilesStates, #FilesGrid, #FilesColumns, #FilesGallery, #FilesBeside, #FilesDetails, #FilesSelection, #FilesHome,
 // #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile, #FilesMove, #FilesSaveAsWord, #FilesGoTo, #FilesNew,
-// #FilesNewLibrary, #FilesTrash, #FilesLifeosDown, #FilesWaits, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesSharedNames, #FilesBesideConflict): the Files place's window with
+// #FilesNewLibrary, #FilesTrash, #FilesLifeosDown, #FilesWaits, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesSharedNames, #FilesSideTree, #FilesBesideConflict): the Files place's window with
 // stand-in places and rows, and its states. Rendered by nothing in the app.
 import type { CopyBack, FilePage, FilesHome, FileTab } from "@shared/contract-work-files";
 import type { FileEntry, FilePlace } from "@shared/work/files";
@@ -487,7 +487,7 @@ export function FilesWaits() {
   return (
     <div className="flex flex-col gap-8 p-6">
       <Window width={720} height={300}>
-        <PageView {...common} listing={listing({ entries: [], error: "You may not read that folder.", loading: true, retrying: true })} />
+        <PageView {...common} listing={listing({ entries: [], error: "The box did not answer. Try again once it is connected.", loading: true, retrying: true })} />
       </Window>
       <Window width={720} height={300}>
         {search("box-connecting", [])}
@@ -802,6 +802,31 @@ export function FilesSharedNames() {
       <Window width={800} height={300} sidebarOpen={false}>
         <PageView {...common} acts={null} page={searchPage} copy={null} trail={[{ name: searchPage.name, at: searchPage.at }]} listing={listing({ entries: found, trail: [] })} results onReveal={noop} />
       </Window>
+    </div>
+  );
+}
+
+// The sidebar's tree over a stand-in folder (a tree of its own workspace id, which no other page asks): one folder still
+// being read, one with none, one that did not load, one refused.
+const sideDirs = ["Budgets", "Contracts", "Photos", "Private"].map((name): FileEntry => ({ key: `/w/${name}`, ref: null, folder: { at: "file", host: "env_box", path: `/w/${name}` }, name, kind: "folder", changed: NOW }));
+const sideFetch = listingSeams.fetch!;
+listingSeams.fetch = (from, at, ...rest) => {
+  if (from.workspaceId !== "side") return sideFetch(from, at, ...rest);
+  if (at.at !== "file") return Promise.resolve({ entries: sideDirs, trail: [] });
+  if (at.path.endsWith("/Budgets")) return new Promise(() => undefined);
+  if (at.path.endsWith("/Contracts")) return Promise.resolve({ entries: [file("Ballroom contract.pdf", "pdf", day)], trail: [] });
+  if (at.path.endsWith("/Photos")) return Promise.reject(new Error("The box did not answer. Try again once it is connected."));
+  return Promise.reject(new Error("You may not read that folder."));
+};
+const sideOpen = new Set(["place:folder", ...sideDirs.map((d) => d.key)]);
+
+/** The sidebar's tree: a folder still read is one bone row, one with none says No folders, a failed read Did not load with Retry, a refused one without. */
+export function FilesSideTree() {
+  return (
+    <div className="p-6">
+      <div style={{ height: 380 }} className="flex w-fit overflow-hidden rounded-lg border border-border bg-background">
+        <SidebarView model={sidebar} workspace={workspace} at={null} note={null} tree={{ workspaceId: "side", open: sideOpen, toggle: noop }} onGo={noop} onNewTab={noop} />
+      </div>
     </div>
   );
 }

@@ -1881,7 +1881,10 @@ Around the canvas:
   selected fill: `muted` on `sidebar` can barely be seen in light); then
   Made by threads and Trash. A place's row ends in a quiet chevron, always
   drawn, that turns as it opens its folders under it, 16px a level, kept open per window; a row or a folder
-  of the sidebar takes a drop. A team with
+  of the sidebar takes a drop. While a row's folders are read one bone row (a 16px square and a line)
+  stands at their depth; a folder with none says "No folders" (12px muted); a read that failed is "Did
+  not load" in `destructive`, its cause in the tip, with Retry at the row's end, and no Retry where he
+  may not read it. A team with
   several channels is one row, its channels one level in. A place that is
   down greys its glyph and says why only when opened. With no Teams place
   listed there is one greyed row, Teams files, whose page says the one
@@ -2183,8 +2186,9 @@ Around the canvas:
   closes. A selection's Ask opens the dock with the selection's chip.
   **States**: loading is the list's own bones (a 16px square and a line a
   row); an empty folder is one `Empty` ("This folder is empty"); a folder
-  that did not load is `Empty` with why and Retry, and one that is gone
-  offers the folder above it (else Back) in Retry's place; a later page
+  that did not load is `Empty` with why and Retry, and one that is gone,
+  or that he may not read, offers the folder above it (else Back) in Retry's place, and a refusal with
+  neither offers nothing to press; a later page
   that did not load is the state line over the rows it kept ("The rest
   did not load", Retry asks that page again); a search that left a place
   out says so in one line over its results, or under "Nothing found",
