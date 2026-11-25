@@ -12,7 +12,7 @@ import type { CanvasItem } from "@shared/work";
 import type { FilePlace } from "@shared/work/files";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 
-const world = vi.hoisted(() => ({ calls: [] as { method: string; params: Record<string, unknown> }[], toasts: [] as { title: string; show?: () => void }[], opened: [] as unknown[], exists: false, choice: "other" as "action" | "other" | null, links: [] as unknown[], acting: null as null | Promise<unknown> }));
+const world = vi.hoisted(() => ({ fail: 0, calls: [] as { method: string; params: Record<string, unknown> }[], toasts: [] as { title: string; show?: () => void }[], opened: [] as unknown[], exists: false, choice: "other" as "action" | "other" | null, links: [] as unknown[], acting: null as null | Promise<unknown> }));
 
 const at = (path: string) => ({ at: "file" as const, host: "env_box", path });
 const place = (id: string, kind: string, name: string, root: string, can: string[] = ["make"]): FilePlace => ({ id, kind, name, host: "The box", env: "env_box", shared: kind !== "folder", can, state: { state: "ok" }, root: at(root) }) as unknown as FilePlace;
@@ -27,6 +27,7 @@ vi.mock("../../lib/connection", async (original) => {
         return { places: [place("folder", "folder", "Dummy Esports", "/w"), { ...place("b1", "teams", "General", "/cloud/General"), group: "Esports Staff", key: "general" }], sources: [] };
       if (method === "work.files.list") return { entries: [], trail: [{ name: "General", at: at("/cloud/General") }] };
       if (method === "work.files.saveAs") {
+        if (world.fail > 0 && world.fail--) throw new Error("The request timed out.");
         if (world.exists && !params.exists) return { exists: { name: params.name } };
         return { saved: { name: params.name, ref: at(`/cloud/General/${String(params.name)}`), linked: params.link !== false } };
       }
@@ -94,6 +95,8 @@ beforeEach(() => {
   world.toasts.length = 0;
   world.opened.length = 0;
   world.exists = false;
+  world.fail = 0;
+  port.tellOrigin("i1", null);
   world.choice = "other";
   world.links = [];
   localStorage.clear();
@@ -200,6 +203,44 @@ describe("the Save As… sheet", () => {
     expect(await within(dialog).findByRole("listbox", { name: "Folders in Esports Staff, General" })).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "Places" }));
     expect(within(dialog).getByText("Recent")).toBeTruthy();
+  });
+});
+
+describe("the sheet for a document made of a file", () => {
+  const general = { place: { ...place("b1", "teams", "General", "/cloud/General"), group: "Esports Staff", key: "general" } as FilePlace, link: "box", host: "The box", wire: "files" as const };
+  const fromFile = (name: string) => port.tellOrigin("i1", { folder: { copy: general, at: at("/cloud/General"), name: "General", where: "Esports Staff, General" }, name });
+
+  it("opens in the folder the file lies in, in that file's own format", async () => {
+    fromFile("Budget.odt");
+    const dialog = await sheet();
+    expect(await within(dialog).findByRole("listbox", { name: "Folders in General" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "OpenDocument" })).toBeTruthy();
+  });
+
+  it("saves a .doc as Word, and says its copy is a .docx", async () => {
+    fromFile("Practice register.doc");
+    const dialog = await sheet();
+    expect(within(dialog).getByRole("button", { name: "Word" })).toBeTruthy();
+    expect(within(dialog).getByText("A .doc is saved as .docx")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saved()).toHaveLength(1));
+    expect(saved()[0]).toMatchObject({ at: at("/cloud/General"), format: "docx", name: "Run of show.docx" });
+  });
+
+  it("sends Save again after a failure as the same press, so a file it made is answered, never made twice", async () => {
+    fromFile("Budget.docx");
+    world.fail = 1;
+    const dialog = await sheet();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(world.toasts.map((t) => t.title)).toEqual(["Not saved"]));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saved()).toHaveLength(2));
+    expect(saved()[1]!.op).toBe(saved()[0]!.op);
+    // Once saved, the next Save is another press.
+    await waitFor(() => expect((within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(saved()).toHaveLength(3));
+    expect(saved()[2]!.op).not.toBe(saved()[0]!.op);
   });
 });
 

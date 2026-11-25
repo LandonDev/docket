@@ -36,6 +36,7 @@ import type { GoToRow } from "./GoTo";
 import { filterChoices, HomePage, SaveSearchDialog, SearchFilters } from "./Home";
 import { MoveDialog, type MoveTarget } from "./MoveDialog";
 import { carryRefusal, samePage, sitsAtSide, HOME_PAGE, isHomePage, isSearchPage, savedIdOf, savedSearchPage, searchPage, actsFor, placeDown, placeOfRef, placePage, readCopy, deskPlace, sidebarFolds, teamOfPage, teamPage, trailOf, type FilesNote, type PlaceCopy, type PlaceRow, type Sidebar as SidebarModel, type SidebarRow } from "./model";
+import { tellOrigin } from "./saveAsPort";
 import "./bindings";
 import { closeOf, FILES_KEYS, landFocus } from "./chords";
 import { historyBeside } from "./SideFile";
@@ -1098,6 +1099,16 @@ function OpenFile({
   const place = lies ? (lies.row ? (lies.row.copies.includes(lies.copy) && lies.copy.place.state.state !== "unreachable" ? lies.copy : readCopy(lies.row)) : lies.copy) : null;
   const [starred, setStarred] = useState(false);
   const entry: FileEntry | null = file && place && place.wire === "files" ? { key: tab.key ?? refKey(file), ref: file, folder: null, name: tab.name, kind: kindOfEntry(tab.name).kind, ...(place.place.shared ? { shared: true } : {}), ...(starred ? { starred: true } : {}) } : null;
+  // Save As… opens in the folder the file lies in, in its format (saveAsPort.ts `tellOrigin`).
+  const itemId = item?.id;
+  const filePath = file?.at === "file" ? file.path : null;
+  const fileHost = file?.at === "file" ? file.host : null;
+  useEffect(() => {
+    if (!itemId || !place || !filePath || !fileHost || place.wire !== "files") return;
+    const dir = filePath.replace(/[\\/]+[^\\/]*$/, "");
+    tellOrigin(itemId, { folder: { copy: place, at: { at: "file", host: fileHost, path: dir }, name: where ?? place.place.name, where: place.place.name }, name: tab.name });
+    return () => tellOrigin(itemId, null);
+  }, [itemId, place, filePath, fileHost, where, tab.name]);
   const { of } = verbs;
   const manage: FileManage | undefined =
     entry && place && file?.at === "file"

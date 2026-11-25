@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, realpathSync, rmSync, statSync } fr
 import { basename, dirname, join } from 'node:path'
 import type { FileDone, FileMakeKind, FileOrigin, FileRef } from '@shared/contract-work-files'
 import type { CanvasSource } from '@shared/work'
-import { extOf, freeName, PLACE, questionFor, refKey, refusal, UNTITLED, type FileEntry, type FolderRef } from '@shared/work/files'
+import { extOf, freeName, kindOfEntry, PLACE, questionFor, refKey, refusal, UNTITLED, type FileEntry, type FolderRef } from '@shared/work/files'
 import type { Caller, WorkCtx } from '../modules'
 import { doorPlace, filesState, placeRoot, withMarks } from './handle'
 import { fileMakerFor } from './hooks'
@@ -312,8 +312,16 @@ export async function makeBytes(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
   const name = freeIn(folder.path, p.name)
   const made = await withFileLocks([keyIn(ctx, folder, join(folder.path, name))], () => makeFile(fenceOf(folder.root), folder.path, name, p.data))
   said(ctx, by, p.workspaceId, [folder.path], method)
-  const entry = await entryOf(ctx, by, p.workspaceId, made, method)
-  return { entries: entry ? [entry] : [], refused: [], op: p.op }
+  // The file made is its own receipt: a look at it that misses just after (a sync folder's fresh file) never says it was not made.
+  const entry = await entryOf(ctx, by, p.workspaceId, made, method).catch(() => null)
+  return { entries: [entry ?? madeEntry(ctx.host, made)], refused: [], op: p.op }
+}
+
+/** A file just made, by what its making knows: its path and name. */
+function madeEntry(host: string, path: string): FileEntry {
+  const ref: CanvasSource = { at: 'file', host, path }
+  const name = basename(path)
+  return { key: refKey(ref), ref, folder: null, name, kind: kindOfEntry(name).kind }
 }
 
 /** Moves one thing to `dir`/`name` in its own place and carries what hangs on it; a fault in the carrying moves it back. */

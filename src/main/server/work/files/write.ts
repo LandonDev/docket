@@ -539,6 +539,9 @@ export function runOp<T>(db: DatabaseSync, op: { id: string; workspaceId: string
   return run
 }
 
+/** Whether an operation id was run here before, in any state: a press sent again is asked of its journal, not anew. */
+export const opKnown = (db: DatabaseSync, id: string): boolean => !!db.prepare(`SELECT 1 FROM work_files_ops WHERE id = ?`).get(id)
+
 /**
  * A done op's answer, told again later: an upload's begin learns at its commit that its file landed, so the same op
  * sent again (the commit's answer was lost, even across a restart) answers that instead of a fresh upload (upload.ts).

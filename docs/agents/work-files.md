@@ -2265,8 +2265,11 @@ picks, and stays linked to that file: each later edit is written to it.
   saved in last chosen), one muted line of what the format drops, counted from the editor as Preview counts it
   (`docDrops`, told by the open document through `tellDrops`), and Where: the Move to… dialog's folder walk (`Places`
   and `Folders` of MoveDialog.tsx) with the three folders he saved to last first under Recent (kept in the window's
-  localStorage per workspace), opening in the last one, and New Folder at the trail's end (named in place, then walked
-  into). At the right the document's first page as the host draws its Word file (`work.files.preview` on the
+  localStorage per workspace), opening in the folder of the document's own file where a Files tab knows it (the tab
+  tells `tellOrigin`, saveAsPort.ts: a library Word file's folder, a copy's original's folder), else in the last one,
+  and New Folder at the trail's end (named in place, then walked into). The format starts as that file's own where
+  the host writes it (`formatForFile`, src/shared/work/saveAs.ts); a `.doc` starts as Word with "A .doc is saved as
+  .docx" first on the drops line. At the right the document's first page as the host draws its Word file (`work.files.preview` on the
   document, LibreOffice), small; none for Markdown and none under 620px. The footer: Just a copy (unticked: linked),
   one line of what Save does ("Saves Plan.docx in General, kept up to date", or "Saves a copy of …"), Cancel and Save.
 - **The formats are the host's own.** Word, OpenDocument, Rich Text and Markdown are the exporter's (`EXPORT_FORMATS`
@@ -2287,7 +2290,14 @@ picks, and stays linked to that file: each later edit is written to it.
     Whether it is there: this host's disk by its version, the VM's folder listed case-blind as Windows reads it, another
     computer by `files.stat` there;
   - made as before: `makeBytes` here and in this host's VM (`vmMake`), that host's `writeBack` with `into` on another
-    computer, under the operation id (`runOp`: the same press again makes nothing, and links nothing, twice).
+    computer, under the operation id (`runOp`: the same press again makes nothing, and links nothing, twice). The
+    file made is its own receipt: a look at it just after that misses (a sync folder's fresh file, J23 B1's "… is not
+    there any more.") answers the file from its path and name (`madeEntry`, verbs.ts), never "The file was not made.".
+    Another computer makes it under the same id (`writeBack`'s optional `op`, journaled there as `writeBack.into`), so
+    a press whose answer was lost on the way back (`unreachable`: kept as `OpLost`, no failed row) is sent again by
+    the window under that id and answered with the file that host made, never a silent "Plan 2.docx"; a press the
+    journal knows skips the question whether the name is taken. The window keeps one press's id while its words
+    stay the same (Save again after "Not saved"), and mints a new one once it saved or he changed anything.
   The answer is `SavedAs`: `{saved: {name, ref, linked}}`. `work.files.saveAsWord` stays on the wire for an older
   window, as Save As… with Word, Keep Both and no link.
 - **The link** (`work_files_links`, tables.ts): one row a file, by the document's `.tcdoc` path: the format, where the

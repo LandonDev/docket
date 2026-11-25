@@ -3699,7 +3699,10 @@ Save As… (⇧⌘S), More and ⋯ open the same sheet.
   a 252px box at the 8px radius with the hairline and 6px inside, holding
   the Move to… walk: the trail over the folders with New Folder (ghost
   extra-small, muted) at its end, a new folder named in place as Files
-  names one. On the places, Recent comes first (the three folders he saved
+  names one. It opens in the folder of the document's own file when there
+  is one (a Word file in Teams opens where it lies), else in the last
+  folder he saved to; the format starts as that file's own, and a .doc
+  starts as Word with "A .doc is saved as .docx" first on the drops line. On the places, Recent comes first (the three folders he saved
   to last, each with its place's name muted at the row's end), then Places;
   Google Drive and LifeOS stand last, muted and off, their sentence on hover.
 - **The page** is the document's first page as the host draws its file, 168px

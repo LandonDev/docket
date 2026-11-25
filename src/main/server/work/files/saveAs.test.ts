@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
@@ -6,7 +6,7 @@ import { SAVE_AS_IDS, type DocLink, type SavedAs } from '@shared/work/saveAs'
 import type { Caller } from '../modules'
 import { filesHandle as officeHandle } from '../office/files/handle'
 import { setCloudDir, setCopyAllowed } from '../office/files/library'
-import { closeFilesState, filesHandle } from './handle'
+import { closeFilesState, filesHandle, filesState } from './handle'
 import { startFileAutosaves } from './autosave'
 import { liveRev, wordTiming } from './word'
 import type { DocRevision } from '../service/wire'
@@ -41,6 +41,8 @@ let far: { verb: string; args: Record<string, unknown> }[]
 let macUp: boolean
 /** run on the Mac before it answers a writeBack: someone there makes a file meanwhile */
 let beforeWrite: (() => void) | null
+/** the Mac's next writeBack answer is lost on the way back, after it was done there */
+let loseAnswer: boolean
 
 beforeEach(() => {
   box = makeRig()
@@ -57,6 +59,7 @@ beforeEach(() => {
   far = []
   macUp = true
   beforeWrite = null
+  loseAnswer = false
   Object.assign(box.ctx, {
     peer(this: unknown, host: string) {
       return {
@@ -67,6 +70,10 @@ beforeEach(() => {
           const req = ClientRequestSchema.parse({ id: 'peer', method: `work.${module}.${verb}`, params: args }) as ClientRequest
           const out = module === 'office' ? await officeHandle(req, mac.ctx, AS_PEER, () => null) : await filesHandle(req, mac.ctx, AS_PEER)
           if (!out.handled) throw new Error(`${req.method} is not answered there`)
+          if (verb === 'writeBack' && loseAnswer) {
+            loseAnswer = false
+            throw new Error('The request timed out.')
+          }
           return out.result
         }
       }
@@ -289,6 +296,52 @@ describe('a library on his Mac', () => {
     await autosaveLinks(box.ctx, later)
     expect(readFileSync(join(general(), 'Budget.docx'), 'utf8')).toBe('docx two')
     expect((await links())[0]!.state).toBe('saved')
+  })
+})
+
+describe('a file made but not found again at once', () => {
+  const general = () => join(mac.team, 'General')
+  /** The holder's look at the new file fails once, as a sync folder's fresh file can (audit, J23 B1). */
+  const missOnce = (rig: Rig, name: string, how: 'throw' | 'none'): void => {
+    const lister = filesState(rig.ctx).lister
+    const row = lister.row.bind(lister)
+    let missed = false
+    lister.row = async (path: string) => {
+      if (!missed && path.endsWith(name)) {
+        missed = true
+        if (how === 'throw') throw new Error(`${name} is not there any more.`)
+        return null
+      }
+      return row(path)
+    }
+  }
+  const budgets = (dir: string) => readdirSync(dir).filter((n) => /^Budget( \d+)?\.docx$/.test(n))
+
+  it("on his Mac is the file the Mac made: the answer is its receipt, never a false Not saved", async () => {
+    missOnce(mac, 'Budget.docx', 'throw')
+    const got = await save({ at: { at: 'file', host: MAC, path: general() }, name: 'Budget', place: 'General', computer: 'MacBook' })
+    expect(got).toMatchObject({ saved: { name: 'Budget.docx', linked: true } })
+    expect(budgets(general())).toEqual(['Budget.docx'])
+    expect(await links()).toMatchObject([{ name: 'Budget.docx', state: 'saved' }])
+  })
+
+  it('here is the file this host made', async () => {
+    missOnce(box, 'Budget.docx', 'none')
+    expect(await save({ at: { at: 'file', host: HOST, path: join(box.team, 'General') }, name: 'Budget', place: 'General' })).toMatchObject({ saved: { name: 'Budget.docx' } })
+    expect(budgets(join(box.team, 'General'))).toEqual(['Budget.docx'])
+  })
+
+  it('a lost answer sent again under the same press is the same file, never a silent "Budget 2"', async () => {
+    const id = op()
+    const params = { at: { at: 'file', host: MAC, path: general() }, name: 'Budget', place: 'General', computer: 'MacBook', op: id }
+    loseAnswer = true
+    await expect(save(params)).rejects.toThrow(/timed out/)
+    expect(budgets(general())).toEqual(['Budget.docx'])
+    expect(await save(params)).toMatchObject({ saved: { name: 'Budget.docx', linked: true } })
+    expect(budgets(general())).toEqual(['Budget.docx'])
+    expect(await links()).toHaveLength(1)
+    // A new press is his own choice again: the file is there, so he is asked.
+    expect(await save({ ...params, op: op() })).toEqual({ exists: { name: 'Budget.docx' } })
   })
 })
 

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { SaveAsFormat } from "@shared/work/saveAs";
+import type { MoveTarget } from "./MoveDialog";
 
 /**
  * Which document's Save As… is open, by its item (docs/agents/work-files.md "Save As…"): the header's Save As…, the
@@ -38,6 +39,24 @@ export function closeSaveAs(): void {
 export function useSaveAsAsk(itemId: string): SaveAsAsk | null {
   return useSyncExternalStore(subscribe, () => (asked?.itemId === itemId ? asked : null));
 }
+
+/** Where a document's own file lies, as a Files tab knows it: the sheet opens in that folder, in that file's format. */
+export interface SaveAsOrigin {
+  /** the folder, as Move to… walks it, with the place it is in */
+  folder: MoveTarget & { where: string };
+  /** the file's name ("Practice register.doc") */
+  name: string;
+}
+
+const origins = new Map<string, SaveAsOrigin>();
+
+/** A Files tab tells where its document's file lies; null when the tab goes. */
+export function tellOrigin(itemId: string, origin: SaveAsOrigin | null): void {
+  if (origin) origins.set(itemId, origin);
+  else origins.delete(itemId);
+}
+
+export const originOf = (itemId: string): SaveAsOrigin | null => origins.get(itemId) ?? null;
 
 const drops = new Map<string, (format: SaveAsFormat) => string[]>();
 

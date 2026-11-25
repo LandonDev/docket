@@ -18,7 +18,7 @@ import { vmReadVersioned } from './vmVerbs'
 import { liveRev, wordTiming } from './word'
 import { canonicalPath } from '../service/ctx'
 import type { DocRevision } from '../service/wire'
-import { runOp, versionOf } from './write'
+import { OpLost, opKnown, runOp, versionOf } from './write'
 
 /**
  * Save As… (docs/agents/work-files.md "Save As…"; the owner's asks of 2026-11-24): a document he has open, saved as
@@ -141,6 +141,9 @@ async function versionNow(ctx: WorkCtx, r: Spot): Promise<string | null> {
   }
 }
 
+/** Presses whose make on another computer lost its answer: sent again, they are asked of that host's journal by the same id. */
+const lostOps = new Set<string>()
+
 /** A file made in the folder under a free name, never over anything: its path, name and version. */
 async function makeIn(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: FolderRef & { at: 'file' }; name: string; data: Buffer; op: string; vm: boolean; linked: boolean }): Promise<{ path: string; name: string; version: string }> {
   if (p.at.host === ctx.host) {
@@ -155,7 +158,12 @@ async function makeIn(ctx: WorkCtx, by: Caller, p: { workspaceId: string; at: Fo
   const origin: FileOrigin = { from: 'window' }
   const peer = ctx.peer.call({ scope: { sessionId: filesPaneOf(p.workspaceId), workspaceId: p.workspaceId } } as never, p.at.host)
   const ref: CanvasSource = { at: 'file', host: p.at.host, path: join2(p.at.path, p.name, false) }
-  const got = (await writeBackInPieces((method, params) => peer.call('files', method, params), { workspaceId: p.workspaceId, ref, version: '', origin, into: true }, p.data)) as WrittenBack
+  // Under the press's own id there, so the same press sent again after a lost answer is the file that host made.
+  const got = (await writeBackInPieces((method, params) => peer.call('files', method, params), { workspaceId: p.workspaceId, ref, version: '', origin, into: true, op: p.op }, p.data).catch((err: unknown) => {
+    if (!unreachable(err)) throw err
+    lostOps.add(p.op)
+    throw new OpLost(err instanceof Error ? err.message : String(err))
+  })) as WrittenBack
   if (!('copy' in got)) throw new Error('The file was not made.')
   return { path: got.copy.path, name: got.copy.name, version: got.copy.version }
 }
@@ -232,7 +240,9 @@ async function saveAsReserved(
     filesState(ctx).tabs.touch(p.workspaceId)
   }
   let made: { path: string; name: string; version: string }
-  const version = p.exists === 'keep' ? null : await versionNow(ctx, there)
+  // The same press sent again (its answer was lost) is answered by what it made, never asked about the file it made.
+  const again = p.exists !== 'replace' && (lostOps.has(p.op) || opKnown(ctx.db, p.op))
+  const version = p.exists === 'keep' || again ? null : await versionNow(ctx, there)
   if (version !== null && p.exists === undefined) return { exists: { name } }
   if (version !== null && p.exists === 'replace') {
     // His Replace: over the file as it is now, by its version; a change made since he pressed is a conflict, never written over.
@@ -244,6 +254,7 @@ async function saveAsReserved(
     // The same press again (its operation id) answers what it did: nothing is made, or linked, twice.
     made = await runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'saveAs', refs: { source: p.source, at, name, format: p.format } }, async () => {
       const got = await makeIn(ctx, by, { workspaceId: p.workspaceId, at, name, data: out.data, op: p.op, vm, linked: !!doc })
+      lostOps.delete(p.op)
       linkTo(got)
       return got
     })

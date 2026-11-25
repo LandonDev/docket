@@ -21,7 +21,7 @@ import { keepBody, sameBody } from './body'
 import { makeBytes } from './verbs'
 import { farMoved } from './moved'
 import { guestChange, guestOp, vmReadVersioned, vmSave } from './vmVerbs'
-import { FileRefused, OpLost, versionOf } from './write'
+import { FileRefused, OpLost, runOp, versionOf } from './write'
 import { bytesSink, farBytes, type FarPiece } from '../office/files/handle'
 
 /**
@@ -529,7 +529,7 @@ export function reopened(ctx: Pick<WorkCtx, 'db'>, r: CopyRow): void {
  * keep-both name, never over anything. `into`: Save as Word to… a library folder here: `ref` names the new file,
  * made in its folder under a free name through New's door (`make`), never over anything.
  */
-export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: string; pieces?: PieceRef; version: string; copy?: boolean; into?: boolean; origin: FileOrigin }, method: string): Promise<WrittenBack> {
+export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: string; pieces?: PieceRef; version: string; copy?: boolean; into?: boolean; op?: string; origin: FileOrigin }, method: string): Promise<WrittenBack> {
   if (by.kind !== 'remote' || !by.peer) throw new Error(ONLY_HOST)
   // Sent in pieces (pieces.ts), kept here for this write alone; the door below admits the write as it always did.
   const data = p.pieces ? takePieces(by, p.workspaceId, p.pieces) : Buffer.from(p.data, 'base64')
@@ -542,11 +542,15 @@ export async function writeBack(ctx: WorkCtx, by: Caller, p: { workspaceId: stri
     admitChange(ctx, by, 'make', { workspaceId: p.workspaceId, refs: [folder], origin: p.origin }, method)
     const at = locate(ctx, by, p.workspaceId, folder, method)
     if (at.in !== 'library' || at.library.vm) throw new Error("Another host reaches only this host's libraries.")
-    const done = await makeBytes(ctx, by, { workspaceId: p.workspaceId, at: folder, name: basename(path), data, op: randomUUID() }, method)
-    const made = done.entries[0]?.ref
-    if (made?.at !== 'file') throw new Error('The file was not made.')
-    const v = await versionOf(made.path)
-    return { copy: { path: made.path, name: basename(made.path), version: versionWord(v), changed: Math.round(v.mtimeMs) } }
+    const make = async (): Promise<WrittenBack> => {
+      const done = await makeBytes(ctx, by, { workspaceId: p.workspaceId, at: folder, name: basename(path), data, op: p.op ?? randomUUID() }, method)
+      const made = done.entries[0]?.ref
+      if (made?.at !== 'file') throw new Error('The file was not made.')
+      const v = await versionOf(made.path)
+      return { copy: { path: made.path, name: basename(made.path), version: versionWord(v), changed: Math.round(v.mtimeMs) } }
+    }
+    // The press's id: the same press sent again (its answer was lost on the way back) answers the file it made, never a second one.
+    return p.op ? runOp(ctx.db, { id: p.op, workspaceId: p.workspaceId, verb: 'writeBack.into', refs: { ref: p.ref } }, make) : make()
   }
   if (p.copy) {
     const folder = { at: 'file' as const, host: p.ref.host, path: dirname(path) }

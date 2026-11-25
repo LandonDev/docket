@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { CanvasSource } from "@shared/work";
 import { refKey, type FileEntry } from "@shared/work/files";
-import { formatOf, SAVE_AS_FORMATS, saveAsName, saveAsOutcome, type SaveAsFormat, type SavedAs } from "@shared/work/saveAs";
+import { formatForFile, formatOf, SAVE_AS_FORMATS, saveAsName, saveAsOutcome, type SaveAsFormat, type SavedAs } from "@shared/work/saveAs";
 import { confirmChoice, DialogFooter } from "../../chrome/ConfirmDialog";
 import { ChevronDown } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
@@ -22,7 +22,7 @@ import { Folders, Places, ROW, type MoveTarget } from "./MoveDialog";
 import { openInFiles } from "./openFrom";
 import { hostFrom, pageWidth, usePreviewPage } from "./previews";
 import { NameField } from "./rowParts";
-import { closeSaveAs, dropsOf, keepFormat, lastFormat } from "./saveAsPort";
+import { closeSaveAs, dropsOf, keepFormat, lastFormat, originOf } from "./saveAsPort";
 import { useReach } from "./store";
 
 /**
@@ -63,11 +63,19 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
   const reach = useReach(workspace, 0);
   const sidebar = reach?.sidebar ?? NO_PLACES;
   const [stem, setStem] = useState(() => stemOf(title));
-  const [format, setFormat] = useState<SaveAsFormat>(() => asked ?? lastFormat() ?? "docx");
+  // The document's own file, where a Files tab knows it: the sheet opens in its folder, in its format where one is written.
+  const [origin] = useState(() => originOf(itemId));
+  const own = origin ? formatForFile(origin.name) : null;
+  const [format, setFormat] = useState<SaveAsFormat>(() => asked ?? own?.format ?? lastFormat() ?? "docx");
   const [copyOnly, setCopyOnly] = useState(false);
   const recent = useMemo(() => recentOf(workspace), [workspace]);
   // Where the sheet stands: a folder (the place Save writes to) under the place it was reached from; null is the places.
-  const [at, setAt] = useState<{ folder: MoveTarget; where: string } | null>(() => (recent[0] ? { folder: recent[0], where: recent[0].where } : null));
+  const [at, setAt] = useState<{ folder: MoveTarget; where: string } | null>(() =>
+    origin ? { folder: origin.folder, where: origin.folder.where } : recent[0] ? { folder: recent[0], where: recent[0].where } : null,
+  );
+  // One press's id, kept while its words stay the same: Save again after a failure is the same press, so a file it made
+  // is answered, never made twice.
+  const press = useRef<{ said: string; op: string } | null>(null);
   const [naming, setNaming] = useState(false);
   const [pending, setPending] = useState(false);
   const places: MoveTarget[] = [
@@ -80,20 +88,18 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
   // Google Drive and LifeOS make no file in a folder that a link could write again by version: there, and off.
   const off = [...sidebar.drives, ...(sidebar.lifeos ? [sidebar.lifeos] : [])].map((copy) => ({ name: copy.place.name, why: "Save As… saves to a computer's folders: the workspace's, Teams and OneDrive." }));
   const name = saveAsName(stem || "Untitled", format);
-  const drops = dropsOf(itemId, format);
+  const drops = [...(format === own?.format && own.note ? [own.note] : []), ...dropsOf(itemId, format)];
   const close = (): void => closeSaveAs();
 
   const save = async (exists?: "replace" | "keep"): Promise<void> => {
     if (!at || pending) return;
     setPending(true);
+    const asks = { workspaceId: workspace.id, source, at: at.folder.at, name, format, link: !copyOnly, place: at.folder.name, ...(exists ? { exists } : {}) };
+    const said = JSON.stringify(asks);
+    if (press.current?.said !== said) press.current = { said, op: opId() };
     try {
-      const got = await registry
-        .linkOf(workspace.environmentId)
-        .request<SavedAs>(
-          "work.files.saveAs",
-          { workspaceId: workspace.id, source, at: at.folder.at, name, format, link: !copyOnly, place: at.folder.name, ...(exists ? { exists } : {}), op: opId() },
-          { timeoutMs: 180_000 },
-        );
+      const got = await registry.linkOf(workspace.environmentId).request<SavedAs>("work.files.saveAs", { ...asks, op: press.current.op }, { timeoutMs: 180_000 });
+      press.current = null;
       if ("exists" in got) {
         const choice = await confirmChoice({ title: `Replace ${got.exists.name} in ${at.folder.name}?`, action: "Replace", other: "Keep Both", focusOther: true });
         setPending(false);

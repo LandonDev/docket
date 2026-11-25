@@ -27,6 +27,18 @@ export function saveAsName(name: string, format: SaveAsFormat): string {
   return `${ours ? stem : trimmed}.${formatOf(format).ext}`
 }
 
+/**
+ * The format a document made of a file is saved in at first: the file's own, where the host writes it; a `.doc` (no
+ * writer makes one) as Word's `.docx`, with the line that says so. Null for any other file: the format he used last.
+ */
+export function formatForFile(name: string): { format: SaveAsFormat; note?: string } | null {
+  const ext = splitName(name.trim()).ext.toLowerCase()
+  if (ext === '.doc') return { format: 'docx', note: 'A .doc is saved as .docx' }
+  if (ext === '.markdown') return { format: 'md' }
+  const own = SAVE_AS_FORMATS.find((f) => `.${f.ext}` === ext)
+  return own ? { format: own.id } : null
+}
+
 /** A linked file as the document's header shows it (`work.files.links`). */
 export interface DocLink {
   id: string
