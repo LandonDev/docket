@@ -1,5 +1,5 @@
 {
-  "n": 382,
-  "notes": "Work: Microsoft Forms reads a form's page by its whole address (every read failed on 381); a form's row in a Teams folder opens in its tab; Remove from list. Outbox 2: one clear list, bulk approval, and threads that ask for his press. Guest links on share.landonhale.com, live sheets with who has which cells. Disk stalls no longer freeze the host. Windows VM: full screen, live resize, local cursor. Files and editors reopen from what they hold; Windows motion setting; tests caught up.",
-  "ts": 1795579207213
+  "n": 383,
+  "notes": "Work polish finished (14 review rounds): LifeOS documents open from Files' Home, Go to and search; Recent and Starred follow LifeOS's state; every screen says plainly when LifeOS is down or connecting, naming the computer, and Retry keeps its line; Outbox 2 review fixes (every surface 8 or more); performance work so far (views paint from what they hold, Files keeps listings, editors reopen from what they hold, Ask's first send in one request, bounded caches, lazy menus).",
+  "ts": 1795585043663
 }
