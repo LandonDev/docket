@@ -39,6 +39,10 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
             NavigationStack(path: $navigator.sidebarPath) {
                 sidebar()
                     .navigationDestination(for: Route.self, destination: destination)
+                    // The shell's own sidebar button, so his press is recorded by its action, never guessed from the
+                    // binding's timing (`ShellNavigator.pressSidebar`); the system's toggle would write the binding.
+                    .toolbar(removing: .sidebarToggle)
+                    .toolbar { if sidebarButtonInSidebar { ToolbarItem(placement: .topBarLeading) { sidebarButton } } }
             }
             .navigationSplitViewColumnWidth(min: sidebarColumn.min, ideal: sidebarColumn.ideal, max: sidebarColumn.max)
             #if DEBUG
@@ -56,6 +60,7 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
                 // A new root is a new screen; the same root through a fold is the same one, and a
                 // project's shell is one screen whichever thread it shows.
                 .id(ShellPaths.identity(of: navigator.detailRoot))
+                .toolbar { if sidebarButtonInDetail { ToolbarItem(placement: .topBarLeading) { sidebarButton } } }
                 .navigationDestination(for: Route.self, destination: destination)
                 // At the stack's root, not on Hosts: a push made while Hosts itself was still
                 // arriving (the proof's hook) found no destination and drew the warning glyph.
@@ -69,6 +74,9 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
         .background { HingeWatch(halfOpen: $halfOpen) }
         // Its own writes as it appears are never his toggle (`ShellPose.keepsVisibilityWrite`'s `sinceShown`).
         .onAppear { navigator.splitAppeared(true) }
+        #if DEBUG
+        .task { await proofSidebarTap() }
+        #endif
         .onDisappear { navigator.splitAppeared(false) }
         #if DEBUG
         // The Duo proof's notes (the split of the tab on screen, Home's or Work's): the split's own
@@ -92,6 +100,32 @@ struct ShellSplit<Sidebar: View, Placeholder: View, Destination: View>: View {
 
     /// His own toggle for the tab, which a wide route never writes: `shown` or `hidden`.
     private var chosenWord: String { navigator.sidebarShown ? "shown" : "hidden" }
+    #endif
+
+    /// The sidebar button, where the system's toggle would sit: in the sidebar's bar while it shows, else in the
+    /// detail's (the overlay pose keeps it there under the overlay too). Never in a stack.
+    private var sidebarButtonInSidebar: Bool { navigator.pose.isSplit && navigator.splitShown }
+    private var sidebarButtonInDetail: Bool { navigator.pose.isSplit && (!navigator.splitShown || navigator.pose.isOverlay) }
+
+    private var sidebarButton: some View {
+        Button(navigator.splitShown ? "Hide Sidebar" : "Show Sidebar", systemImage: "sidebar.leading") { navigator.pressSidebar() }
+            .accessibilityIdentifier("shell-sidebar-button")
+    }
+
+    #if DEBUG
+    /// `TC_TEST_ACTION=sidebar-tap`: the button's own action pressed as soon as Work's split stands in a split pose,
+    /// inside the startup writes' half second (the m0 part's check).
+    private func proofSidebarTap() async {
+        guard TestHooks.action == "sidebar-tap", navigator.tab == .work else { return }
+        for _ in 0..<ShellPose.settleTries * 10 where !navigator.pose.isSplit {
+            try? await Task.sleep(for: .seconds(ShellPose.echoTurn / 2))
+        }
+        guard navigator.pose.isSplit else { return }
+        let before = navigator.sidebarShown ? "shown" : "hidden"
+        let at = Int((navigator.sinceShown * 1000).rounded())
+        navigator.pressSidebar()
+        LayoutProbe.note("sidebar.press", "\(before) -> \(navigator.sidebarShown ? "shown" : "hidden") at \(at) ms")
+    }
     #endif
 
     /// The expanded preference: the remembered toggle, hidden by a wide route

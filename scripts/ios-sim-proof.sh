@@ -1662,7 +1662,8 @@ work_m47() {
 
 # The Work tab (M0c): the Work list at the tab's root, Home with no row of Work's, the Outbox as a place of the
 # tab, a held notice landing over it, Work Chats and Settings in the tab, the list in dark and at the
-# accessibility size. Under TC_DUO_POSE the same shots are the pose's (the list beside its pick when open).
+# accessibility size. Under TC_DUO_POSE the same shots are the pose's (the list beside its pick when open), and in a
+# split pose his press on the sidebar button right after Work appears (work_sidebar_tap).
 work_m0() {
   appearance light
   shot m0-work-list-light work "" "" "" 12
@@ -1678,6 +1679,37 @@ work_m0() {
   shot m0-work-list-dark work
   shot m0-outbox-place-dark outbox
   appearance light
+  if [ -n "$POSE" ] && duo_regular; then work_sidebar_tap; fi
+}
+
+# His press on the sidebar button inside the half second after Work appears, when the split's own startup writes
+# are dropped (council 11, Sol 3): TC_ACTION=sidebar-tap runs the shell's button action (ShellNavigator.pressSidebar)
+# as soon as Work's split stands in a split pose, and the report after the settle must show his choice, as chosen and
+# as shown, both ways. The simulator has no finger: the action is the button's own, its hit target is not tapped.
+work_sidebar_tap() {
+  local name
+  for name in m0-work-sidebar-tap-1-light m0-work-sidebar-tap-2-light; do
+    TC_ACTION=sidebar-tap shot "$name" work
+    python3 - "$OUT/layout/$POSE/$name.json" "$name" <<'PY' || return 1
+import json, re, sys
+path, name = sys.argv[1:3]
+notes = json.load(open(path)).get('notes') or {}
+press = re.match(r'(shown|hidden) -> (shown|hidden) at (\d+) ms$', notes.get('sidebar.press', ''))
+problems = []
+if not press:
+    problems.append(f"the press never ran (sidebar.press {notes.get('sidebar.press')!r})")
+else:
+    before, want, at = press.group(1), press.group(2), int(press.group(3))
+    if want == before: problems.append(f'the press left the choice {before}')
+    if at >= 500: problems.append(f'the press came {at} ms after Work appeared, past the startup half second it must survive')
+    if notes.get('sidebar.chosen') != want: problems.append(f"chosen {notes.get('sidebar.chosen')} after the settle, want {want}")
+    allowed = ('visible', 'overlay') if want == 'shown' else ('hidden',)
+    if notes.get('sidebar') not in allowed: problems.append(f"shown {notes.get('sidebar')} after the settle, want {' or '.join(allowed)}")
+if problems:
+    print(f"ios-sim-proof: sidebar tap FAIL ({name}): {'; '.join(problems)}", file=sys.stderr); sys.exit(1)
+print(f"ios-sim-proof: sidebar tap PASS ({name}): {notes['sidebar.press']}, kept through the settle")
+PY
+  done
 }
 
 work_m1() (

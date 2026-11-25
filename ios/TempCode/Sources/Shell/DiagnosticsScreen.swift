@@ -31,6 +31,7 @@ struct DiagnosticsScreen: View {
         let target = session.lastThread
         let title = target.flatMap { key in model.registry.client(key.environmentId)?.session(key.sessionId)?.title }
         let hitch = HitchMetrics.stored
+        ScrollViewReader { proxy in
         List {
             Section {
                 LabeledContent("Thread") {
@@ -96,6 +97,7 @@ struct DiagnosticsScreen: View {
             } footer: {
                 Text("Times from this launch's start. The list check scrolls 1,000 sample files.")
             }
+            .id(Self.workChecks)
 
             Section {
                 LabeledContent("Display", value: DiagnosticsText.display(maxFramesPerSecond: screenRate, medianMs: (scroll ?? typing)?.frames.p50))
@@ -113,6 +115,15 @@ struct DiagnosticsScreen: View {
             }
         }
         .listStyle(.insetGrouped)
+        #if DEBUG
+        // The access proof's `diagnostics` route: Work Checks at the top, below the fold at the largest text size.
+        .task {
+            guard ProcessInfo.processInfo.environment["TC_TEST_ROUTE"] == "diagnostics" else { return }
+            try? await Task.sleep(for: .milliseconds(300))
+            proxy.scrollTo(Self.workChecks, anchor: .top)
+        }
+        #endif
+        }
         .monospacedDigit()
         .navigationTitle("Diagnostics")
         .navigationBarTitleDisplayMode(.inline)
@@ -133,6 +144,8 @@ struct DiagnosticsScreen: View {
         }
         .task(id: running) { await giveUp() }
     }
+
+    private static let workChecks = "work-checks"
 
     private var screenRate: Int {
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first

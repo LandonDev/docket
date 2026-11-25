@@ -150,4 +150,36 @@ import Testing
         #expect(!same && !unknown)
         #expect(answer.answer(shows: false) == false)
     }
+
+    // MARK: - his press on the sidebar button right after the tab appears (council 11, Sol 3)
+
+    @Test(arguments: duoPoses.map(\.name))
+    func `his press on the sidebar button is his at once, and the startup's stray check never undoes it`(_ name: String) throws {
+        let p = try #require(Self.duoPoses.first { $0.name == name })
+        let pose = p.pose
+        // A tenth of a second after Work appears: the binding's write at that moment is the split's own, the
+        // button's press is his, in a split; a stack has no sidebar button.
+        #expect(!ShellPose.isHisToggle(.binding, pose: pose, sincePoseChange: 30, sinceShown: 0.1))
+        #expect(ShellPose.isHisToggle(.button, pose: pose, sincePoseChange: 30, sinceShown: 0.1) == pose.isSplit)
+        #expect(ShellPose.isHisToggle(.button, pose: pose, sincePoseChange: 0.01, sinceShown: 0) == pose.isSplit)
+        guard pose.isSplit else { return }
+        // The split wrote `.detailOnly` as it was built (dropped), the shell showed the list, and a stray check is
+        // waiting. He presses Hide: the binding answers his value, and the check, once the window settles, finds the
+        // split agreeing with it, so nothing puts the list back.
+        var answer = SplitAnswer()
+        answer.pressed()
+        let hidden = false
+        #expect(answer.answer(shows: hidden) == hidden)
+        let undoesHide = answer.strayed(pose: pose, splitShows: hidden, shows: hidden)
+        #expect(!undoesHide)
+        // He presses Show instead, and the split's own build write (`.detailOnly`) lands after his press: the check
+        // answers the split's value for one turn, then his, so the list he asked for comes back.
+        var late = SplitAnswer()
+        late.pressed()
+        let strays = late.strayed(pose: pose, splitShows: false, shows: true)
+        #expect(strays)
+        #expect(late.answer(shows: true) == false)
+        late.settle()
+        #expect(late.answer(shows: true))
+    }
 }

@@ -67,6 +67,24 @@ public enum ShellPose: Sendable, Hashable {
     public static func keepsVisibilityWrite(pose: ShellPose, sincePoseChange: TimeInterval, sinceShown: TimeInterval = .infinity) -> Bool {
         pose.isSplit && sincePoseChange >= foldSettle && sinceShown >= foldSettle
     }
+
+    /// Whether a change of the sidebar is his toggle, by where it came from. His press on the shell's sidebar
+    /// button is his, in a split, at any moment (the tab just shown, a fold a breath ago); a write of the split's
+    /// binding is his only by `keepsVisibilityWrite`'s time rule, which filters the split's own writes as it is
+    /// built, shown or folded (council 11, Sol 3).
+    public static func isHisToggle(_ source: SidebarChange, pose: ShellPose, sincePoseChange: TimeInterval, sinceShown: TimeInterval) -> Bool {
+        switch source {
+        case .button: pose.isSplit
+        case .binding: keepsVisibilityWrite(pose: pose, sincePoseChange: sincePoseChange, sinceShown: sinceShown)
+        }
+    }
+}
+
+/// Where a change of the split's sidebar came from: the shell's own sidebar button (his press, recorded by the
+/// button's action), or the split writing its visibility binding (a fold, a build, a swipe, a tap outside an overlay).
+public enum SidebarChange: Sendable, Hashable {
+    case button
+    case binding
 }
 
 /// A write of the split's visibility that `keepsVisibilityWrite` let through,
@@ -159,6 +177,10 @@ public struct SplitAnswer: Sendable, Hashable {
 
     /// The turn is over: the shell's value again, which the split now reads as a change.
     public mutating func settle() { echo = nil }
+
+    /// His press on the sidebar button: whatever the split showed of its own, the shell's value (his press) is what
+    /// the binding answers from now, and a stray check already waiting finds the split agreeing with it.
+    public mutating func pressed() { echo = nil }
 }
 
 /// The split's sidebar column, the desktop's 260 px workspace column: 260

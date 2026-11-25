@@ -103,6 +103,22 @@ final class ShellNavigator {
         return SidebarVisibility(preference: sidebarShown, override: sidebarOverride).shown(route: ShellPaths.identity(of: detailRoot), wide: wide)
     }
 
+    /// His press on the shell's sidebar button (ShellSplit's own, in place of the system toggle): his toggle at once,
+    /// however soon after the tab appeared or the pose changed (`ShellPose.isHisToggle(.button, …)`). A held write
+    /// goes, and a stray check already waiting finds the split agreeing, so the settle never undoes it.
+    func pressSidebar() {
+        guard ShellPose.isHisToggle(.button, pose: pose, sincePoseChange: Date().timeIntervalSince(poseChangedAt), sinceShown: sinceShown) else { return }
+        let shown = !splitShown
+        heldWrite = nil
+        splitAnswer.pressed()
+        showSidebar(shown)
+        splitShows = shown
+        pressedSidebar &+= 1
+    }
+
+    /// How many presses of the sidebar button this run (the proof's note).
+    @ObservationIgnored private(set) var pressedSidebar = 0
+
     /// His press on the sidebar button: the route's override on a wide route, his toggle otherwise.
     func showSidebar(_ shown: Bool) {
         var visibility = SidebarVisibility(preference: sidebarShown, override: sidebarOverride)

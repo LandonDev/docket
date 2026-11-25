@@ -159,12 +159,13 @@ struct WorkspaceScreen: View {
         return (client: client, workspace: first.workspace)
     }
 
-    /// What the title's menu switches between: the jobs then Work Chats on a page of the Work tab,
-    /// Home's entries on one of Home's.
+    /// What the title's menu switches between: Home's entries on one of Home's (IOS-DESIGN "the sidebar is Home's two
+    /// levels"). A page of the Work tab (Work Chats, a job's threads) has none, as no other Work place has: Back is
+    /// its way to the Work list.
     private var titleEntries: [HomeSections.Entry] {
         let home = HomeSections.home(hosts: HomeRows.inputs(model.registry.ordered))
         guard home.work.contains(where: { $0.id == key }) else { return home.entries }
-        return home.work.filter { $0.kind != .workChats } + home.work.filter { $0.kind == .workChats }
+        return []
     }
 
     /// A Work workspace whose host cannot reach LifeOS says so once, above its threads.

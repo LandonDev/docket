@@ -272,7 +272,9 @@ below), never a third pane: the split has the sidebar and the detail only.
 The sidebar is Home's two levels; at the workspace level the
 title is a menu (`toolbarTitleMenu`) of every Home entry with the current
 one checked, left out when there is one, and a pick swaps the sidebar's path
-and leaves the detail alone. Its chevron shows on the inline title. In the
+and leaves the detail alone. Its chevron shows on the inline title. A page
+of the Work tab (Work Chats, a job's threads) has no title menu, as no
+other Work place has one: Back returns to the Work list. In the
 split the row whose thread is the detail's root sits on `Surface.fill`.
 The detail reads "No Thread Selected" (Home) or "No Result Selected"
 (Search) when nothing is open, a title alone. At the shell's top, in every
@@ -4525,7 +4527,7 @@ size classes and its own bounds, never from the idiom, the orientation or
 titles when the height is compact too, the folded landscape pose); regular
 width is a split per tab, the sidebar tiled beside the detail when the
 window is wider than tall (unfolded landscape) and overlaid behind the
-system toggle when taller than wide (unfolded portrait). The rule is the
+sidebar button when taller than wide (unfolded portrait). The rule is the
 client package's `ShellPose`; the shell publishes it as `\.shellPose` and
 every screen reads that, never `horizontalSizeClass`, for a shell decision.
 
@@ -4534,7 +4536,15 @@ every screen reads that, never `horizontalSizeClass`, for a shell decision.
 size change and nothing else: the paths, the open thread and everything it
 holds (a typed draft, a rename, the segment) are the same values before and
 after. `columnVisibility` always carries the expanded preference, so the
-sidebar arrives with the expansion and never flickers in. The sidebar is
+sidebar arrives with the expansion and never flickers in. The sidebar button
+is the shell's own (`sidebar.leading`, Show Sidebar and Hide Sidebar, where
+the system's toggle sits: the sidebar's bar while it shows, else the
+detail's), not the system's: its action is his toggle at once
+(`ShellNavigator.pressSidebar`, `ShellPose.isHisToggle(.button, …)`), even in
+the half second after a tab appears, while the split's own writes to the
+binding are still sorted by their timing. The m0 part's
+`work_sidebar_tap` presses it right after Work appears in each split pose
+and checks his choice after the settle. The sidebar is
 Home's two levels; at the workspace level its title is a menu of the
 workspaces. The detail holds a project's shell, a bare thread or Settings,
 and reads "No Thread Selected" when nothing is open; collapsed, a card's
