@@ -47,7 +47,7 @@ const OUT = resolve(flag > 0 ? process.argv[flag + 1]! : join(REPO, '..', '..', 
  * file when the person running this asks for it.
  */
 const NAMED = process.env.TEMP_CODE_WINVM_EXE ?? ''
-let EXE = NAMED'
+let EXE = NAMED
 const TOOLS = process.env.E2E_WORK_TOOLS ?? '/srv/agents/temp-code-data/work-tools'
 const REAL_HOME = process.env.HOME ?? '/srv/agents/home'
 const MODEL = 'claude-opus-5-5'
