@@ -110,6 +110,16 @@ pub mod video {
     pub const PIPE_ID_BYTES: i64 = 4;
 }
 
+/// The guest display (§29.9).
+pub mod display {
+    pub const MIN_WIDTH: i64 = 1024;
+    pub const MAX_WIDTH: i64 = 4096;
+    pub const MIN_HEIGHT: i64 = 640;
+    pub const MAX_HEIGHT: i64 = 2400;
+}
+
+pub const DISPLAY_SCALE_STEPS: &[i64] = &[100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500];
+
 /// The person's Escape while the session is held (§8).
 pub mod escape {
     pub const LEASE_MS: i64 = 30000;
@@ -168,4 +178,4 @@ pub mod grammar {
 }
 
 /// The method names, for the router (COMPUTER_METHODS' keys).
-pub const METHODS: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "browser.target", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "clipboard.read", "clipboard.write", "escape.watch"];
+pub const METHODS: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "browser.target", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "clipboard.read", "clipboard.write", "display.get", "display.set", "escape.watch"];

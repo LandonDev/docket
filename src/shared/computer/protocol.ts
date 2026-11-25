@@ -1238,6 +1238,16 @@ export const ClipboardWriteParamsSchema = z.object({
 })
 export type ClipboardWriteParams = z.infer<typeof ClipboardWriteParamsSchema>
 
+/** The guest's accepted physical sizes and Windows' standard DPI steps (§29.9). */
+export const GUEST_DISPLAY = { minWidth: 1024, maxWidth: 4096, minHeight: 640, maxHeight: 2400 } as const
+export const DISPLAY_SCALE_STEPS: readonly number[] = [100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500]
+const GuestDisplayModeSchema = z.object({
+  width: int().positive(),
+  height: int().positive(),
+  scale: int().positive(),
+  adapter: z.string().min(1)
+})
+
 export const InitializeParamsSchema = z.object({
   protocol: int(),
   client: z.object({ name: z.string(), version: z.string() }),
@@ -1316,6 +1326,16 @@ export const COMPUTER_METHODS = {
   // §29.8, the Windows service's: the Windows VM's paste in, copy out and the clipboard put back at Hand back
   'clipboard.read': { params: EmptySchema, result: ClipboardTextSchema },
   'clipboard.write': { params: ClipboardWriteParamsSchema, result: EmptySchema },
+  // §29.9, through the Windows VM's service. A PC without viogpudo can still report its mode.
+  'display.get': { params: EmptySchema, result: GuestDisplayModeSchema },
+  'display.set': {
+    params: z.object({
+      width: int().min(GUEST_DISPLAY.minWidth).max(GUEST_DISPLAY.maxWidth).multipleOf(2),
+      height: int().min(GUEST_DISPLAY.minHeight).max(GUEST_DISPLAY.maxHeight).multipleOf(2),
+      scale: int().refine((s) => DISPLAY_SCALE_STEPS.includes(s), 'scale must be a Windows DPI step')
+    }),
+    result: GuestDisplayModeSchema.extend({ taken: z.boolean() })
+  },
   /** P1: while on, the person's unmarked Escape is taken and sent as `escape/pressed`; every other event passes */
   'escape.watch': {
     params: z.object({ on: z.boolean(), leaseMs: int().min(ESCAPE_WATCH.minLeaseMs).max(ESCAPE_WATCH.maxLeaseMs).optional() }),

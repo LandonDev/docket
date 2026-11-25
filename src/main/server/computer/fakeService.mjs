@@ -186,6 +186,7 @@ function foreignChangeAt() {
 const recentCopy = (quietMs) => quietMs !== undefined && Date.now() - Math.max(foreignChangeAt() ?? 0, watchingSince) < quietMs
 // What a session step left in front, which input.restoreSession puts back.
 let restorable = null
+let displayMode = { width: 1280, height: 800, scale: 100, adapter: 'Red Hat VirtIO GPU DOD controller' }
 let initialized = false
 let dataDir
 let previewRunning = false
@@ -730,6 +731,10 @@ function handle({ id, method, params = {} }) {
     }
     case 'clipboard.state': return reply(id, { changeCount: 1, foreignChangeAt: foreignChangeAt(), watchingSince })
     // §29.8: the clipboard's text, as the Windows service answers it
+    case 'display.get': return reply(id, displayMode)
+    case 'display.set':
+      displayMode = { ...displayMode, width: params.width, height: params.height, scale: params.scale }
+      return reply(id, { ...displayMode, taken: true })
     case 'clipboard.read': return reply(id, { text: clipboardText, truncated: false })
     case 'clipboard.write': clipboardText = params.text ?? null; return reply(id, {})
     case 'browser.target': {

@@ -941,6 +941,11 @@ private X display of the VM's, and screen-relay's engine captures that
 display. So the picture is the whole screen (the taskbar, every window, the
 UAC prompt and the lock screen), and nothing runs in the guest for it.
 
+The guest's door can read the primary mode with `display.get` and change
+it with `display.set` on viogpudo (§29.9). Windows' scale changes the size
+at which the guest draws its UI. The guest's screen and the relay still
+use physical pixels.
+
 - **The tools.** `scripts/work-tools/winvm.json` names one tool,
   `qemu-window`: Ubuntu 24.04's own `qemu-system-gui`,
   `qemu-system-modules-opengl`, `libvte-2.91-0` and `libvte-2.91-common`,

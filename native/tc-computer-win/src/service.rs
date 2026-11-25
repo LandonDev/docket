@@ -41,6 +41,7 @@ pub struct Service<D: Desktop> {
     /// one initialize at a time, held while it waits for the data dir; never the state lock (§1)
     init: Mutex<()>,
     slots: AppSlots,
+    display_lock: Mutex<()>,
     /// the frames' writer, for notifications, once serving
     out: Mutex<Option<Out>>,
     me: OnceLock<Weak<Self>>,
@@ -252,6 +253,7 @@ impl<D: Desktop> Service<D> {
             }),
             init: Mutex::new(()),
             slots: AppSlots::default(),
+            display_lock: Mutex::new(()),
             out: Mutex::new(None),
             me: OnceLock::new(),
             person: Person::default(),
@@ -542,6 +544,19 @@ impl<D: Desktop> Service<D> {
                 self.clip.writing.store(false, Ordering::SeqCst);
                 done?;
                 encode(Empty {})
+            }
+            "display.get" => {
+                let _: Empty = decode(params)?;
+                gate()?;
+                let _display = guard(&self.display_lock);
+                encode(self.desktop.display_get()?)
+            }
+            "display.set" => {
+                let p: DisplaySetParams = decode(params)?;
+                crate::display::validate(&p).map_err(|why| RpcError::std(rpc_error::INVALID_PARAMS, why))?;
+                gate()?;
+                let _display = guard(&self.display_lock);
+                encode(self.desktop.display_set(p)?)
             }
             _ => Err(RpcError::std(rpc_error::METHOD_NOT_FOUND, format!("no method {method}"))),
         }

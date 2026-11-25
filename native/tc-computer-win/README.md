@@ -20,6 +20,9 @@ Automation. §29 there is its account.
 - `src/platform/windows.rs` is the desktop over UI Automation: apps, the tree, the `ax` tier; `src/platform/io.rs`
   is input (posted messages, SendInput, the foreground), the person watch (low-level hooks), capture (PrintWindow,
   WIC), the clipboard and launching.
+- Guest display (§29.9): `src/display.rs` drives mode and DPI changes through a small adapter trait.
+  `src/platform/display.rs` reads the live Windows mode and applies the viogpudo escape and DPI step.
+  `tests/wire.rs` checks both verbs over a fake adapter on Linux.
 - `src/door.rs` is `serve --listen ADDR --token-file FILE` (§29.1): loopback only, the token as the first line, one
   host at a time, a bytes connection for video; platform-free, `tests/door.rs` drives it over loopback sockets.
   main.rs gives each host a fresh `serve` child.

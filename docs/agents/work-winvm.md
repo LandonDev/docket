@@ -303,7 +303,19 @@ Windows PC's. Every act goes through run.ts with the hold as on any computer: a 
 `computer.act` with its picture in the Outbox. The machine going to sleep ends the service's connection (a clean
 exit), and the next call wakes it again.
 
+The guest's service answers `display.get` and, on viogpudo, `display.set`
+through the same door. The answer is the mode Windows reads back, including its DPI
+scale in percent. See [computer-protocol.md](../computer-protocol.md) §29.9.
+
 ### The tools
+
+At 3456×2234 and 200% Windows scale, a thread's screenshot of a window that
+fills those pixels is 1280×827 at the default `maxEdge`, or 1920×1241 at
+`maxEdge: 1920`. A smaller window uses its own bounds. As on any PC, the
+service fits the window's physical pixels to `maxEdge` and the shot's pixel
+cap (§6). The service runs per-monitor DPI aware v2 (`main.rs`). It maps the
+thread's screenshot coordinates back to the window's physical pixels for
+a click, without applying the Windows scale a second time.
 
 `windows_apps`, `windows_observe`, `windows_act`, `windows_batch` and `windows_result`: the computer tools in
 Windows' words (`computerToolSpecs` with `platform: 'windows'`), renamed, mounted as the `winvm` pillar's Work

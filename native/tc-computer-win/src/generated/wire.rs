@@ -2496,6 +2496,30 @@ pub struct ClipboardWriteParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct DisplayGetResult {
+    pub width: i64,
+    pub height: i64,
+    pub scale: i64,
+    pub adapter: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct DisplaySetParams {
+    pub width: i64,
+    pub height: i64,
+    pub scale: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct DisplaySetResult {
+    pub width: i64,
+    pub height: i64,
+    pub scale: i64,
+    pub adapter: String,
+    pub taken: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct EscapeWatchParams {
     pub on: bool,
     #[serde(rename = "leaseMs", default, skip_serializing_if = "Option::is_none")]
@@ -2548,6 +2572,10 @@ pub mod methods {
     pub type ClipboardReadResult = super::ClipboardReadResult;
     pub type ClipboardWriteParams = super::ClipboardWriteParams;
     pub type ClipboardWriteResult = super::Empty;
+    pub type DisplayGetParams = super::Empty;
+    pub type DisplayGetResult = super::DisplayGetResult;
+    pub type DisplaySetParams = super::DisplaySetParams;
+    pub type DisplaySetResult = super::DisplaySetResult;
     pub type EscapeWatchParams = super::EscapeWatchParams;
     pub type EscapeWatchResult = super::Empty;
     /// Decodes a method's params and encodes them again: the fixture tests' round trip.
@@ -2575,6 +2603,8 @@ pub mod methods {
             "clipboard.state" => serde_json::from_value::<ClipboardStateParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "clipboard.read" => serde_json::from_value::<ClipboardReadParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "clipboard.write" => serde_json::from_value::<ClipboardWriteParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "display.get" => serde_json::from_value::<DisplayGetParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "display.set" => serde_json::from_value::<DisplaySetParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "escape.watch" => serde_json::from_value::<EscapeWatchParams>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             _ => Err(format!("no method {method}")),
         }
@@ -2604,10 +2634,12 @@ pub mod methods {
             "clipboard.state" => serde_json::from_value::<ClipboardStateResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "clipboard.read" => serde_json::from_value::<ClipboardReadResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "clipboard.write" => serde_json::from_value::<ClipboardWriteResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "display.get" => serde_json::from_value::<DisplayGetResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
+            "display.set" => serde_json::from_value::<DisplaySetResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             "escape.watch" => serde_json::from_value::<EscapeWatchResult>(v).and_then(serde_json::to_value).map_err(|e| e.to_string()),
             _ => Err(format!("no method {method}")),
         }
     }
     /// The wire names, in COMPUTER_METHODS' order.
-    pub const NAMES: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "browser.target", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "clipboard.read", "clipboard.write", "escape.watch"];
+    pub const NAMES: &[&str] = &["initialize", "shutdown", "permissions.get", "permissions.request", "apps.list", "apps.launch", "session.open", "session.close", "browser.target", "state.get", "action.run", "action.batch", "capture.screenshot", "capture.stream.start", "capture.stream.stop", "capture.video.start", "capture.video.stop", "input.probe", "input.restoreSession", "clipboard.state", "clipboard.read", "clipboard.write", "display.get", "display.set", "escape.watch"];
 }

@@ -218,6 +218,11 @@ describe('fake tc-computer wire', () => {
     expect(await c.call('clipboard.state', {})).toMatchObject({ changeCount: 1, foreignChangeAt: null, watchingSince: expect.any(Number) })
     expect(await c.call('clipboard.write', { text: 'from the host' })).toEqual({})
     expect(await c.call('clipboard.read', {})).toEqual({ text: 'from the host', truncated: false })
+    const display = { width: 3456, height: 2234, scale: 200 }
+    const adapter = 'Red Hat VirtIO GPU DOD controller'
+    expect(await c.call('display.get', {})).toEqual({ width: 1280, height: 800, scale: 100, adapter })
+    expect(await c.call('display.set', display)).toEqual({ ...display, adapter, taken: true })
+    expect(await c.call('display.get', {})).toEqual({ ...display, adapter })
     expect(await c.call('escape.watch', { on: true, leaseMs: 30_000 })).toEqual({})
     expect(await c.call('escape.watch', { on: false })).toEqual({})
     await c.call('session.close', { session: 's1' })

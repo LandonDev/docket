@@ -665,6 +665,14 @@ impl Desktop for WindowsDesktop {
             .collect()
     }
 
+    fn display_get(&self) -> Result<crate::wire::DisplayGetResult, ComputerError> {
+        crate::display::get(&super::display::WindowsDisplay)
+    }
+
+    fn display_set(&self, ask: crate::wire::DisplaySetParams) -> Result<crate::wire::DisplaySetResult, ComputerError> {
+        crate::display::set(&super::display::WindowsDisplay, ask)
+    }
+
     fn apps(&self, with_windows: bool) -> Result<Vec<AppInfo>, ComputerError> {
         let front = unsafe { GetForegroundWindow() };
         let mut front_pid = 0u32;

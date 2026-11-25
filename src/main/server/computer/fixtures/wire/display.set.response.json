@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "id": 42,
+  "result": {
+    "width": 3456,
+    "height": 2234,
+    "scale": 200,
+    "adapter": "Red Hat VirtIO GPU DOD controller",
+    "taken": true
+  }
+}

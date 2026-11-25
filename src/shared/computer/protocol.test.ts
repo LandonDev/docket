@@ -46,6 +46,28 @@ import {
 const ok = (v: unknown): boolean => ComputerActionSchema.safeParse(v).success
 const messages = (v: unknown): string[] => ComputerActionSchema.safeParse(v).error?.issues.map((i) => i.message) ?? []
 
+describe('the guest display', () => {
+  it('takes even sizes within the display bounds and Windows DPI steps', () => {
+    const params = COMPUTER_METHODS['display.set'].params
+    for (const [width, height, scale] of [[1024, 640, 100], [3456, 2234, 200], [4096, 2400, 500]]) {
+      expect(params.safeParse({ width, height, scale }).success).toBe(true)
+    }
+    for (const [width, height, scale] of [[1022, 640, 100], [1024, 638, 100], [5120, 2880, 200],
+      [4098, 2400, 200], [4096, 2402, 200], [1025, 640, 100], [1024, 641, 100], [1024.5, 640, 100], [1024, 640, 201]]) {
+      expect(params.safeParse({ width, height, scale }).success).toBe(false)
+    }
+    expect(params.safeParse({ width: 1024, height: 640 }).success).toBe(false)
+  })
+
+  it('accepts the active mode outside the write bounds and requires a verdict on writes', () => {
+    const mode = { width: 800, height: 600, scale: 100, adapter: 'Microsoft Basic Display Adapter' }
+    expect(COMPUTER_METHODS['display.get'].result.parse(mode)).toEqual(mode)
+    const result = COMPUTER_METHODS['display.set'].result
+    expect(result.parse({ ...mode, taken: false })).toEqual({ ...mode, taken: false })
+    expect(result.safeParse(mode).success).toBe(false)
+  })
+})
+
 describe('the action shape', () => {
   it("takes Anthropic's example calls verbatim", () => {
     expect(ok({ action: 'screenshot' })).toBe(true)
@@ -228,8 +250,8 @@ describe('targets and params', () => {
     expect(ActionBatchParamsSchema.safeParse({ ...base, actions: [] }).success).toBe(false)
   })
 
-  it('declares 23 methods, each with params and a result', () => {
-    expect(Object.keys(COMPUTER_METHODS)).toHaveLength(23)
+  it('declares 25 methods, each with params and a result', () => {
+    expect(Object.keys(COMPUTER_METHODS)).toHaveLength(25)
     for (const [name, m] of Object.entries(COMPUTER_METHODS)) {
       expect(m.params, name).toBeDefined()
       expect(m.result, name).toBeDefined()

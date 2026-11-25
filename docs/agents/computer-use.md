@@ -8,6 +8,10 @@ why and the measured headline.
 
 **On Windows** the service is `tc-computer.exe`, Rust over UI Automation in native/tc-computer-win ([computer-protocol.md](../computer-protocol.md) §29): apps by exe name, reads in the same grammar, the `ax` tier through UI Automation patterns, the `process` and `front` tiers as posted window messages, the `session` tier by `SendInput` with the person watched by low-level hooks, capture by `PrintWindow` and WIC, the preview stream, paste under the clipboard lock, and `apps.launch`. `bun scripts/build-tc-computer-win.ts` cross-builds it on the box; `bun scripts/gen-rust-computer.ts` writes its wire types from the zod; `bun scripts/e2e-computer-win.ts` proves it in the rig and `TC_WIN_RIG=1` runs `computer/winRig.hold.test.ts`, the hold on a Windows host. The tool words, error lines and COMPUTER_MECHANICS say PC, taskbar and desktops where the tools act on a Windows PC (`hostWords`), and a Windows desktop draws its own sessions' live window.
 
+The Windows service also answers `display.get` and `display.set` for the VM host
+([computer-protocol.md](../computer-protocol.md) §29.9). The write requires viogpudo.
+The service uses physical pixels for window geometry and input at every Windows scale.
+
 - **The service.** `tc-computer`, a Swift binary in native/tc-computer,
   one process per app instance. scripts/lib/tcComputerBuild.ts builds it
   on macOS into resources/native/tc-computer beside a content stamp

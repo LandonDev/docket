@@ -135,6 +135,15 @@ pub trait Desktop: Send + Sync + 'static {
         Err(not_here("clipboard"))
     }
 
+    // ── the primary display (§29.9) ────────────────────────────────────────
+
+    fn display_get(&self) -> Result<crate::wire::DisplayGetResult, ComputerError> {
+        Err(not_here("display mode"))
+    }
+    fn display_set(&self, _ask: crate::wire::DisplaySetParams) -> Result<crate::wire::DisplaySetResult, ComputerError> {
+        Err(not_here("display mode changes"))
+    }
+
     // ── launching (§23) ─────────────────────────────────────────────────
 
     /// Starts an app by its exe name or path, with `args`, without bringing it forward; its pid.

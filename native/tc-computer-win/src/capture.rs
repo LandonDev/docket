@@ -262,6 +262,14 @@ mod tests {
     }
 
     #[test]
+    fn a_full_size_guest_window_uses_physical_pixels_before_the_shot_cap() {
+        let default = geometry(3456.0, 2234.0, None);
+        assert_eq!((default.width, default.height), (1280, 827));
+        let large = geometry(3456.0, 2234.0, Some(1920));
+        assert_eq!((large.width, large.height), (1920, 1241));
+    }
+
+    #[test]
     fn crops_and_downscales_average_the_pixels() {
         let img = checker(4, 4);
         let half = img.scaled(2, 2);

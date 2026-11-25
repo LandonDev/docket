@@ -127,6 +127,8 @@ export const COMPUTER_DEADLINES = {
   'clipboard.state': 5_000,
   'clipboard.read': 5_000,
   'clipboard.write': 5_000,
+  'display.get': 5_000,
+  'display.set': 5_000,
   'escape.watch': 5_000
 } as const satisfies Record<ComputerMethod, number>
 

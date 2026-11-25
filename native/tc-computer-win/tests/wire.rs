@@ -4,12 +4,13 @@
 
 mod common;
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use common::{init, Wire};
 use serde_json::{json, Value};
 use tc_computer_win::desktop::{fail, Acted, Desktop};
+use tc_computer_win::display::{self, DisplayAdapter, DpiSteps, Primary};
 use tc_computer_win::text::{RawNode, RawWindow};
 use tc_computer_win::wire::*;
 
@@ -23,6 +24,84 @@ struct Fake {
     panics: bool,
     /// the clipboard's text and its sequence number
     clip: Mutex<(Option<String>, i64)>,
+    display: Arc<Mutex<FakeDisplay>>,
+}
+
+#[derive(Debug, PartialEq)]
+enum DisplayCall {
+    Get,
+    CheckDriver,
+    Resize(u16, u16),
+    Scale(i32),
+}
+
+struct FakeDisplay {
+    size: (u16, u16),
+    dpi: DpiSteps,
+    virtio: bool,
+    actual_size: Option<(u16, u16)>,
+    refuse_size: bool,
+    refuse_scale: bool,
+    calls: Vec<DisplayCall>,
+}
+
+impl Default for FakeDisplay {
+    fn default() -> Self {
+        Self {
+            size: (1280, 800),
+            dpi: DpiSteps { min: -1, current: -1, max: 5 },
+            virtio: true,
+            actual_size: None,
+            refuse_size: false,
+            refuse_scale: false,
+            calls: vec![],
+        }
+    }
+}
+
+impl DisplayAdapter for Fake {
+    type Source = ();
+
+    fn primary(&self) -> Result<Primary<()>, ComputerError> {
+        let mut d = self.display.lock().unwrap();
+        d.calls.push(DisplayCall::Get);
+        Ok(Primary {
+            source: (),
+            mode: DisplayGetResult {
+                width: d.size.0.into(),
+                height: d.size.1.into(),
+                scale: d.dpi.percent().unwrap(),
+                adapter: if d.virtio { "Red Hat VirtIO GPU DOD controller" } else { "Microsoft Basic Display Adapter" }.into(),
+            },
+            dpi: d.dpi,
+        })
+    }
+
+    fn is_viogpudo(&self, _: &()) -> bool {
+        let mut d = self.display.lock().unwrap();
+        d.calls.push(DisplayCall::CheckDriver);
+        d.virtio
+    }
+
+    fn resize(&self, _: &mut (), width: u16, height: u16) -> Result<bool, ComputerError> {
+        let mut d = self.display.lock().unwrap();
+        d.calls.push(DisplayCall::Resize(width, height));
+        if d.refuse_size {
+            return Ok(false);
+        }
+        d.size = d.actual_size.unwrap_or((width, height));
+        // A new mode can change Windows' recommended scale.
+        d.dpi = DpiSteps { min: -2, current: -2, max: 4 };
+        Ok(true)
+    }
+
+    fn set_scale(&self, _: &(), relative: i32) {
+        let mut d = self.display.lock().unwrap();
+        d.calls.push(DisplayCall::Scale(relative));
+        if !d.refuse_scale {
+            d.dpi.current = relative;
+        }
+    }
 }
 
 impl Desktop for Fake {
@@ -62,6 +141,12 @@ impl Desktop for Fake {
     fn browser_url(&self, pid: i64, _window: Option<&WindowRef>) -> Option<String> {
         (pid == 11).then(|| "http://localhost:7677/ui".into())
     }
+    fn display_get(&self) -> Result<DisplayGetResult, ComputerError> {
+        display::get(self)
+    }
+    fn display_set(&self, ask: DisplaySetParams) -> Result<DisplaySetResult, ComputerError> {
+        display::set(self, ask)
+    }
     fn clip_seq(&self) -> i64 {
         self.clip.lock().unwrap().1
     }
@@ -97,13 +182,18 @@ fn native_checks_the_browser_address_again_before_reads_and_steps() {
     init(&mut w);
     w.ok("session.open", json!({ "session": "test" }));
     let target = json!({ "session": "test", "app": { "pid": 11 } });
-    assert_eq!(w.ok("browser.target", target.clone()), json!({ "browser": true, "url": "http://localhost:7677/ui" }));
+    let browser = w.ok("browser.target", target.clone());
+    assert_eq!(browser["browser"], true);
+    assert_eq!(browser["url"], "http://localhost:7677/ui");
+    assert!(browser["proofClock"]["elapsedUs"].is_u64());
+    assert!(browser["proofClock"]["sleepUpperUs"].is_u64());
 
     let mut changed = target;
     changed["browserUrl"] = json!("https://ordinary.test/");
     assert_eq!(w.kind("state.get", changed.clone()), "browser_refused");
     changed["action"] = json!({ "action": "key", "text": "Enter" });
     changed["tiers"] = json!(["process"]);
+    changed["browserInputBudget"] = json!({ "remainingMs": 10_000, "sampleBudgetMs": 10_000, "sample": browser["proofClock"] });
     let result = w.ok("action.run", changed);
     assert_eq!(result["step"]["error"]["kind"], "browser_refused");
     assert_eq!(result["observationError"]["kind"], "browser_refused");
@@ -269,4 +359,106 @@ fn a_clipboard_past_the_cap_is_answered_cut_at_a_character() {
     let r = w.ok("clipboard.read", json!({}));
     assert_eq!(r["truncated"], json!(true));
     assert_eq!(r["text"].as_str().unwrap().len(), max - 1);
+}
+
+
+const VIRTIO: &str = "Red Hat VirtIO GPU DOD controller";
+
+#[test]
+fn the_display_verbs_validate_before_the_init_gate() {
+    let fake = Fake::default();
+    let display = fake.display.clone();
+    let mut w = Wire::start(fake);
+    assert_eq!(w.kind("display.get", json!({})), "not_initialized");
+    assert_eq!(w.kind("display.set", json!({ "width": 1024, "height": 640, "scale": 100 })), "not_initialized");
+    for (width, height, scale) in [(1022, 640, 100), (1024, 638, 100), (5120, 2880, 100),
+                                  (4098, 2400, 100), (4096, 2402, 100), (1025, 640, 100),
+                                  (1024, 641, 100), (1024, 640, 201)] {
+        let f = w.call("display.set", json!({ "width": width, "height": height, "scale": scale }));
+        assert_eq!(f["error"]["code"], -32602, "{width}x{height} at {scale}%: {f}");
+    }
+    for params in [json!({ "width": 1024.5, "height": 640, "scale": 100 }), json!({ "width": 1024, "height": 640 })] {
+        assert_eq!(w.call("display.set", params)["error"]["code"], -32602);
+    }
+    assert!(display.lock().unwrap().calls.is_empty());
+}
+
+#[test]
+fn display_set_uses_the_new_recommendation_and_reads_back_the_mode() {
+    use DisplayCall::*;
+    let fake = Fake::default();
+    let display = fake.display.clone();
+    let mut w = Wire::start(fake);
+    let init = init(&mut w);
+    assert_eq!(init["displays"][0]["scale"], 1.0);
+    assert_eq!(w.ok("display.get", json!({})), json!({ "width": 1280, "height": 800, "scale": 100, "adapter": VIRTIO }));
+
+    let ask = json!({ "width": 3456, "height": 2234, "scale": 200 });
+    assert_eq!(w.ok("display.set", ask.clone()), json!({ "width": 3456, "height": 2234, "scale": 200, "adapter": VIRTIO, "taken": true }));
+    assert_eq!(display.lock().unwrap().calls, [Get, Get, CheckDriver, Resize(3456, 2234), Get, CheckDriver, Scale(2), Get]);
+    let read = w.ok("display.get", json!({}));
+    assert_eq!(read, json!({ "width": 3456, "height": 2234, "scale": 200, "adapter": VIRTIO }));
+
+    display.lock().unwrap().calls.clear();
+    assert_eq!(w.ok("display.set", ask)["taken"], true);
+    assert_eq!(display.lock().unwrap().calls, [Get, CheckDriver]);
+    display.lock().unwrap().calls.clear();
+    assert_eq!(w.ok("display.set", json!({ "width": 3456, "height": 2234, "scale": 100 }))["taken"], true);
+    assert_eq!(display.lock().unwrap().calls, [Get, CheckDriver, Scale(-2), Get]);
+}
+
+#[test]
+fn a_non_virtio_display_reads_but_never_takes_a_write() {
+    let fake = Fake::default();
+    let display = fake.display.clone();
+    display.lock().unwrap().virtio = false;
+    let mut w = Wire::start(fake);
+    init(&mut w);
+    assert_eq!(w.ok("display.get", json!({}))["adapter"], "Microsoft Basic Display Adapter");
+    let response = w.call("display.set", json!({ "width": 1280, "height": 800, "scale": 100 }));
+    assert_eq!(response["error"]["data"]["kind"], "action_unsupported");
+    assert!(response["error"]["message"].as_str().unwrap().contains("requires viogpudo"));
+    assert_eq!(display.lock().unwrap().calls, [DisplayCall::Get, DisplayCall::Get, DisplayCall::CheckDriver]);
+}
+
+#[test]
+fn refused_or_changed_sizes_report_the_actual_mode_and_leave_dpi_alone() {
+    use DisplayCall::*;
+    for (refused, actual) in [(true, (1280, 800)), (false, (1920, 1200))] {
+        let fake = Fake::default();
+        let display = fake.display.clone();
+        {
+            let mut d = display.lock().unwrap();
+            d.refuse_size = refused;
+            d.actual_size = Some(actual);
+        }
+        let mut w = Wire::start(fake);
+        init(&mut w);
+        assert_eq!(
+            w.ok("display.set", json!({ "width": 4096, "height": 2400, "scale": 200 })),
+            json!({ "width": actual.0, "height": actual.1, "scale": 100, "adapter": VIRTIO, "taken": false }),
+        );
+        assert_eq!(display.lock().unwrap().calls, [Get, CheckDriver, Resize(4096, 2400), Get]);
+    }
+}
+
+#[test]
+fn refused_or_unavailable_dpi_reports_the_new_size_and_actual_scale() {
+    use DisplayCall::*;
+    for scale in [200, 500] {
+        let fake = Fake::default();
+        let display = fake.display.clone();
+        display.lock().unwrap().refuse_scale = true;
+        let mut w = Wire::start(fake);
+        init(&mut w);
+        assert_eq!(
+            w.ok("display.set", json!({ "width": 1024, "height": 640, "scale": scale })),
+            json!({ "width": 1024, "height": 640, "scale": 100, "adapter": VIRTIO, "taken": false }),
+        );
+        let mut calls = vec![Get, CheckDriver, Resize(1024, 640), Get];
+        if scale == 200 {
+            calls.extend([CheckDriver, Scale(2), Get]);
+        }
+        assert_eq!(display.lock().unwrap().calls, calls);
+    }
 }

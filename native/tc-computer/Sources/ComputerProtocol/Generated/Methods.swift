@@ -577,6 +577,58 @@ public enum Methods {
         public typealias Output = Empty
     }
 
+    public enum DisplayGet: ContractMethod {
+        public static let name = "display.get"
+
+        public typealias Params = Empty
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let width: Int
+            public let height: Int
+            public let scale: Int
+            public let adapter: String
+
+            public init(width: Int, height: Int, scale: Int, adapter: String) {
+                self.width = width
+                self.height = height
+                self.scale = scale
+                self.adapter = adapter
+            }
+        }
+    }
+
+    public enum DisplaySet: ContractMethod {
+        public static let name = "display.set"
+
+        public struct Params: Codable, Hashable, Sendable {
+            public let width: Int
+            public let height: Int
+            public let scale: Int
+
+            public init(width: Int, height: Int, scale: Int) {
+                self.width = width
+                self.height = height
+                self.scale = scale
+            }
+        }
+
+        public struct Output: Codable, Hashable, Sendable {
+            public let width: Int
+            public let height: Int
+            public let scale: Int
+            public let adapter: String
+            public let taken: Bool
+
+            public init(width: Int, height: Int, scale: Int, adapter: String, taken: Bool) {
+                self.width = width
+                self.height = height
+                self.scale = scale
+                self.adapter = adapter
+                self.taken = taken
+            }
+        }
+    }
+
     public enum EscapeWatch: ContractMethod {
         public static let name = "escape.watch"
 

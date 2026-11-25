@@ -359,6 +359,8 @@ async function wireLeg(): Promise<void> {
   // ── the rest ─────────────────────────────────────────────────────────
 
   await ok('clipboard.state')
+  await ok('display.get')
+  await no('display.set refuses an out-of-range size', 'display.set', { width: 5120, height: 2880, scale: 200 }, -32602)
   await ok('input.probe', { session: 'm43', app: { app: 'notepad.exe' } })
   await ok('action.batch', { session: 'm43', app: { app: 'notepad.exe' }, epoch: init.epoch, actions: [{ action: 'cursor_position' }, { action: 'wait', duration: 0.3 }], tiers: ['ax'], wait: W })
   await ok('session.close', { session: 'm43' })

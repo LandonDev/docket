@@ -2688,6 +2688,42 @@ does not answer them (`-32601`); the host sends them to the VM's service only.
 `native/tc-computer-win/tests/wire.rs` proves both over the wire with a fake
 desktop, the cap and the cut included.
 
+### 29.9 The primary display
+
+| Method | Params | Result |
+|---|---|---|
+| `display.get` | `{}` | `{ width, height, scale, adapter }` |
+| `display.set` | `{ width, height, scale }` | `{ width, height, scale, adapter, taken }` |
+
+Both methods take the init gate and run one at a time. The width and
+height are physical pixels, `scale` is Windows' DPI in percent, and
+`adapter` is the primary display adapter's name. These methods are on
+the Windows service wire, including the guest's door.
+
+- The write takes even integers from 1024 through 4096 for width and 640
+  through 2400 for height. The scale must be one of 100, 125, 150, 175,
+  200, 225, 250, 300, 350, 400, 450 or 500. Invalid params answer
+  `-32602`. The 5120×2880 mode tried in M0 is outside this range.
+- A read works on other Windows adapters. A write requires the primary
+  adapter's installed service to be `VioGpuDod`. If the check fails, it
+  answers `action_unsupported` and names the adapter.
+- For a new size the service sends the viogpudo custom-resolution escape,
+  checks the driver's custom mode and applies it with `SetDisplayConfig`.
+  It reads the mode back before setting DPI. Once the size matches, it
+  uses packet type −3 to get the source's current and recommended steps,
+  and type −4 to set a step relative to the recommendation.
+- The reply reports what Windows reads back. `taken` is true when the
+  requested size and scale took. A refused size leaves the DPI alone and
+  returns `taken: false`. If Windows refuses the DPI step, the reply can
+  show the new size at the actual scale with `taken: false`. If Windows
+  cannot report the active mode, the call says why in an error.
+
+The escape layout comes from the tagged
+[VirtIO header](https://github.com/virtio-win/kvm-guest-drivers-windows/blob/mm322/viogpu/shared/viogpum.h)
+and the call sequence from its
+[adapter tool](https://github.com/virtio-win/kvm-guest-drivers-windows/blob/mm322/viogpu/viogpures/GpuAdapter.cpp).
+The Rust wire tests exercise both verbs over a fake display adapter.
+
 ## 30. Live video
 
 A window as H.264 video, for a person to watch (docs/agents/live-video.md).

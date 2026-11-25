@@ -202,9 +202,9 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
 - **The Windows VM's keeper** — the `standing` rig instance as a computer for Work threads: the `winvm`
   pillar's states, `work.winvm.*`, setup with tcuser's policies, wake, hibernate on idle and at a stop of the
   box's service (stop signals blocked, a watcher), restore points taken asleep (disk snapshot, firmware, TPM);
-  the `windows_*` Work tools on a third `ComputerService` through the guest's door (work/winvm/vm.ts), one
-  thread at a time; a second door for the Office helper as tcuser (`tc-office.exe`, compiled in the guest from the
-  box's source, winvm/helperDoor.ts), the door under `conhost --headless`; QEMU's GTK window on a display of the VM's own (`qemu-window` tool, winvm/window.ts), its
+  the `windows_*` tools on a third `ComputerService` through the guest's door (winvm/vm.ts), one thread at a time;
+  `display.get` and viogpudo's `display.set` (§29.9); the Office helper as tcuser (`tc-office.exe`, winvm/helperDoor.ts);
+  the door under `conhost --headless`; QEMU's GTK window on the VM's own display (`qemu-window` tool, winvm/window.ts), its
   `vm:windows` video source and idle row (winvm/picture.ts), QMP's 4 fps picture where the tools are missing; `windows_put`/`windows_get` (files.ts) and his clipboard in and out
   (clipboard.ts, §29.8); his Take over (winvm/drive.ts), Settings → Work's section, the whole job run by
   `e2e-winvm-work.ts`. [docs/agents/work-winvm.md](docs/agents/work-winvm.md)
