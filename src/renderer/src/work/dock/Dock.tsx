@@ -100,9 +100,18 @@ export function Dock({
   const root = useRef<HTMLElement | null>(null);
   const input = (): HTMLElement | null | undefined => root.current?.querySelector<HTMLElement>("[data-composer-input]");
   const caret = (): void => void requestAnimationFrame(() => input()?.focus());
+  // The same key about another thing (a file tab moved to its Keep Both copy): the draft follows, his words kept.
+  // Before the lookup below, so the thing's own thread is asked for, never the one the key's last thing had.
+  useEffect(() => {
+    if (subject) rebindDock(subject);
+  }, [subject]);
+
   // The subject's thread from before, asked behind the draft (once a subject a run: findThread): it takes the draft's
-  // place only while he has put nothing in it, in place and with no fade; the caret stays in the composer.
+  // place only while he has put nothing in it, in place and with no fade; the caret stays in the composer. Asked by
+  // the thing it is about (its lead chip) too: a lookup for the thing before is let go.
   const draftId = thread?.draft ? thread.id : null;
+  const lead = subject?.chips[0];
+  const thing = lead ? JSON.stringify(lead) : "";
   useEffect(() => {
     if (!subject || preset || !draftId) return;
     let live = true;
@@ -120,14 +129,9 @@ export function Dock({
     return () => {
       live = false;
     };
-    // The key stands for the subject: one chat a key.
+    // The key stands for the subject: one chat a key, about the thing its lead chip names.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspace.id, key, draftId]);
-
-  // The same key about another thing (a file tab moved to its Keep Both copy): the draft follows, his words kept.
-  useEffect(() => {
-    if (subject) rebindDock(subject);
-  }, [subject]);
+  }, [workspace.id, key, draftId, thing]);
 
   useEffect(() => {
     if (!id || !chip) return;

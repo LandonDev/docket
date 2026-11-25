@@ -485,7 +485,9 @@ control, takes it away.
 - **The tab moved to another file** (`rebindDock`, work/dock/dockThread.ts): Keep Both on a copy tab points the tab
   and its item at the copy it made, under the same ids. The dock makes its subject again from the tab's name and
   `copyOf`, and an unsent draft follows it: his words and other chips stay, the file's chip becomes the new file's
-  where it sat (left off if he took it off), and the first send's step opens the new file.
+  where it sat (left off if he took it off), and the first send's step opens the new file. A lookup for the old
+  file's thread still out is let go, and the new file's is asked (Dock.tsx keys the lookup by the lead chip too, and
+  rebinds before it asks), so the old file's chat never takes the draft's place.
 - **Closed with nothing sent** (`leaveDock`): the draft leaves the open
   set and its step is cleared; nothing was made on the host, no item, no
   rail row. Its id is kept for the tab this run, so opening the dock again
