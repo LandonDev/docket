@@ -483,7 +483,9 @@ chosen row as not started; a Work Chat's reach is capped before its tree
 is chosen; a host that stops between a thread's deletion and its cancel and
 stays down past the mail's time cannot stop LifeOS's own timer (the drain
 takes it back if the host is up first; it runs from boot, Work on or off,
-and reaches LifeOS with Work off too, `cancelAnyway`); a LifeOS draft
+and asks LifeOS again once Work is on: with Work off the host holds no
+LifeOS session, so a removed thread's mail he scheduled can go at his time
+while Work stays off, the schedule he set being what lets it go); a LifeOS draft
 deleted in LifeOS itself after his words leaves no trace here, so "all"
 cannot see it was once in the set; Mail's own scheduled controls
 (work-kit's) name no revision, so Send now, Move and Cancel from an older

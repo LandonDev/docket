@@ -303,10 +303,15 @@ function useRequestPress(request: HostRequest) {
   });
   const gone = request.rows.filter((r) => !r.item).length;
   const results = rows.flatMap((r) => (r.result && r.result.state !== "working" ? [r.result] : []));
+  // Each result with the act it was for, in the same order (rows are request.rows that still have their item).
+  const acts = request.rows.filter((r) => r.item).flatMap((r, i) => (rows[i]?.result && rows[i]!.result!.state !== "working" ? [r.do] : []));
   // The head: the request's one name while it waits, as its row, Today and its notice say it (the press counts what
   // is ticked); what the press did once answered.
   const did = new Set(request.rows.filter((r) => r.result).map((r) => r.do));
-  const head = open ? requestName(request) : resultsHead(results, did.size === 1 && did.has("discard") ? "discard" : "send") || requestName(request);
+  // Each act counted as what it did: scheduled rows say Scheduled, never Sent.
+  const head = open
+    ? requestName(request)
+    : (did.size === 1 ? resultsHead(results, [...did][0]!) : (["send", "later", "discard"] as const).flatMap((d) => (did.has(d) ? [resultsHead(results.filter((_, i) => acts[i] === d), d)] : [])).filter(Boolean).join("; ")) || requestName(request);
   return { open, rows, gone, head, ticked, busy, send, decline, failed, failedLater, toDetail, sendAgain, laterAgain, openDetail, toggle, open1, label: pressLabel(ticked.map((r) => r.do)) };
 }
 

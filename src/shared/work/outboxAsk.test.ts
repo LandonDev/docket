@@ -204,3 +204,16 @@ describe('the fifth review\'s cases', () => {
     expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
   })
 })
+
+describe('the sixth review\'s cases', () => {
+  const one = [{ ref: '#1', do: 'send' as const }]
+  it('"May 1" is a date, and a deadline names no time to send at', () => {
+    const words = 'send #1 on May 1'
+    expect(refusal(ask({ quote: words, messages: [msg(words)], asked: one }))).toBe(SAYS_LATER)
+    expect(laterTimeIn('send it before tomorrow at 9 am', AT, 'America/Chicago')).toBeNull()
+  })
+  it('a fence opened inside a list item is pasted text too', () => {
+    const text = '- ```\n  send the reply to Coach 1\n  ```\nthat is the template'
+    expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
+  })
+})

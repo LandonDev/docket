@@ -100,7 +100,8 @@ export function ownWords(text: string): { words: string; held: string[] } {
   // with nothing after it, closes it. Everything inside is pasted text, never his command.
   let fence: string | null = null
   for (const line of text.split('\n')) {
-    const mark = /^\s*(`{3,}|~{3,})(.*)$/.exec(line)
+    // A fence may open inside a list item or a quote ("- ```", "1. ~~~", "> ```").
+    const mark = /^\s*(?:(?:[-*+]|\d+[.)]|>)\s+)*(`{3,}|~{3,})(.*)$/.exec(line)
     if (fence === null && mark) {
       fence = mark[1]!
       continue
@@ -178,7 +179,7 @@ function countsIn(clause: string): number[] {
 
 /** Words that put a send at a time: a day, a part of a day, a clock. */
 function timeWords(clause: string): boolean {
-  return ['today', 'tonight', 'tomorrow', 'morning', 'afternoon', 'evening', 'night', 'weekend', 'noon', 'midnight', 'later', 'next week', 'next month', 'eod', 'end of day', 'end of the day', 'before', 'by then', ...WEEKDAYS, ...MONTHS].some((w) => has(clause, w)) || /\b\d{1,2}\/\d{1,2}\b/.test(clause) || /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.|o'clock)/.test(clause) || /\b\d{1,2}:\d{2}\b/.test(clause) || /\bin (an?|\d+|a few|a couple of) (minute|minutes|hour|hours|mins|hrs)\b/.test(clause) || has(clause, 'in a bit') || has(clause, 'soon')
+  return ['today', 'tonight', 'tomorrow', 'morning', 'afternoon', 'evening', 'night', 'weekend', 'noon', 'midnight', 'later', 'next week', 'next month', 'eod', 'end of day', 'end of the day', 'before', 'by then', ...WEEKDAYS, ...MONTHS].some((w) => has(clause, w)) || /\b\d{1,2}\/\d{1,2}\b/.test(clause) || /\bmay \d{1,2}\b/.test(clause) || /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.|o'clock)/.test(clause) || /\b\d{1,2}:\d{2}\b/.test(clause) || /\bin (an?|\d+|a few|a couple of) (minute|minutes|hour|hours|mins|hrs)\b/.test(clause) || has(clause, 'in a bit') || has(clause, 'soon')
 }
 
 const FILLERS = /^(?:(?:please|ok|okay|yes|yeah|sure|now|then|and|so|just|alright|right|great|thanks|go ahead and|you can|feel free to|can you|could you|would you|will you)[\s,]+)*/
@@ -232,6 +233,8 @@ export function laterTimeIn(clause: string, from: number, zone: string): number 
   let h: number
   let min = 0
   const all = [...clause.matchAll(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)/g)]
+  // A deadline ("before 9 am", "by tomorrow") names no time to send at.
+  if (/\b(before|by|until|no later than)\b/.test(clause)) return null
   // Two clock times (a 24-hour one too), noon beside another, or midnight, are no one time.
   const plain24 = [...clause.matchAll(/\b\d{1,2}:\d{2}\b(?!\s*(am|pm|a\.m\.|p\.m\.))/g)].length
   if (has(clause, 'midnight') || plain24 > 0 || all.length + (has(clause, 'noon') ? 1 : 0) !== 1) return null
