@@ -86,8 +86,8 @@ export const CanvasSourceSchema = z.discriminatedUnion('at', [
   z.object({
     at: z.literal('msform'),
     host: z.string(),
-    workspaceId: z.string().min(1).max(100),
-    formId: z.string().regex(/^[A-Za-z0-9_.-]{20,200}$/, "a Microsoft form's id"),
+    workspaceId: z.string().min(1).max(100).describe("The workspace the form is kept in: this job's own."),
+    formId: z.string().regex(/^[A-Za-z0-9_.-]{20,200}$/, "a Microsoft form's id").describe("Microsoft's id for the form, from msform_list."),
     tenant: z.string().regex(/^[a-z0-9-]{1,63}$/, 'a tenant')
   })
 ])
