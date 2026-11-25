@@ -124,9 +124,16 @@ export class Window {
 
   centre(selector: string, text?: string): Promise<Point | null> {
     return this.eval(`(() => {
+      // A name drawn twice, whole for a screen reader and cut in its middle for the eye (TabName.tsx MiddleCut), is read
+      // as a screen reader reads it: without its aria-hidden parts.
+      const spoken = (el) => {
+        const copy = el.cloneNode(true);
+        for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+        return copy.textContent.trim() ? copy.textContent : el.textContent;
+      };
       for (const el of document.querySelectorAll(${JSON.stringify(selector)})) {
         if (el.closest('[inert], [aria-hidden="true"]') || el.matches(':disabled, [aria-disabled="true"]')) continue;
-        const label = el.getAttribute('aria-label') ?? el.querySelector('[data-menu-label]')?.textContent ?? el.textContent;
+        const label = el.getAttribute('aria-label') ?? el.querySelector('[data-menu-label]')?.textContent ?? spoken(el);
         if (${text !== undefined} && label.trim() !== ${JSON.stringify(text ?? '')}) continue;
         const r = el.getBoundingClientRect();
         const x = r.x + r.width / 2, y = r.y + r.height / 2;

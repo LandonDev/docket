@@ -25,7 +25,11 @@ export async function showPlace(context: Context): Promise<void> {
   const rail = 'nav [data-rail-path] button'
   await page.clickOn(rail, context.workspace.name)
   await page.until(context.workspace.name + ' selected', 15_000, () => page.centre(rail + '[aria-current="true"]', context.workspace.name))
-  if (!await page.centre('[data-files-view]')) await page.clickOn('button, a, [role="link"]', 'Files')
+  if (!await page.centre('[data-files-view]')) {
+    // A job's column folds Files under More (work/shell/WorkColumn.tsx): the fold opens first when no Files row shows.
+    if (!await page.centre('button, a, [role="link"]', 'Files')) await page.clickOn('button', 'More')
+    await page.clickOn('button, a, [role="link"]', 'Files')
+  }
   await page.until('the workspace’s Files sidebar', 15_000, () => page.centre('[data-files-sidebar] button', context.workspace.name))
   await goPlace(context)
 }
