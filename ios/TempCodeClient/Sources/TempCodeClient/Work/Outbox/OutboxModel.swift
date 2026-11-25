@@ -258,7 +258,8 @@ public enum OutboxModel {
     private nonisolated static let bodyKeys = ["text", "body", "message", "content"]
     private nonisolated static let labels = ["to": "To", "cc": "Cc", "bcc": "Bcc", "from": "From", "subject": "Subject", "channel": "In", "title": "Title", "app": "App", "window": "Window", "label": "Act", "url": "URL", "chat": "In", "account": "From", "outlookAdds": "Also goes"]
     /// A payload object has no key order once decoded: these lead, in a mail's order; the rest follow by name.
-    private nonisolated static let leading = ["from", "to", "cc", "bcc", "subject", "channel", "title"]
+    /// An Outlook mail's account is its From (label "From"): it leads, as the desktop's mail runs From, To, Subject.
+    private nonisolated static let leading = ["account", "from", "to", "cc", "bcc", "subject", "channel", "title"]
 
     nonisolated static func label(_ key: String) -> String {
         if let known = labels[key] { return known }

@@ -140,9 +140,8 @@ struct OutboxItemScreen: View {
                             .textStep(.stamp, tint: Color(.label))
                             .fixedSize()
                     }
-                    // A form, a share or a Teams post says in its heading only what its rows do not (`kindHeading`), in the
-                    // present always: the state line under it says the past ("Posted 4:02 PM").
-                    Text(OutboxModel.kindHeading(kind: item.kind, payload: item.payload, sent: false) ?? item.summary)
+                    // One name: the list row's act (`OutboxModel.title`); the state line under it says the past ("Posted 4:02 PM").
+                    Text(OutboxModel.title(item))
                         .font(.title3.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     if let state = stateLine(item) {
@@ -158,7 +157,7 @@ struct OutboxItemScreen: View {
                         .accessibilityElement(children: .combine)
                     }
                     // What the press does and to whom, in the host's one sentence, above the thing itself.
-                    if let effect = item.effect, !effect.isEmpty {
+                    if let effect = OutboxModel.effectLine(item) {
                         Text(effect)
                             .font(.subheadline)
                             .foregroundStyle(Color(.label))

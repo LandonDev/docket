@@ -2363,17 +2363,19 @@ phone does everything the desktop does. What milestone 46 built:
   (docs/agents/appearance-phone.md).
 - **The held detail** reads as the act, exactly as it will go: the place
   line (dot, workspace, "from <thread>" or "from a routine", time), the
-  summary as the title (title3 semibold), a timed send's "Scheduled for Wed
-  8:00 AM" with the `clock` glyph, then the host's one sentence of what the
-  press does and to whom (`effect`, the kind's own words, subheadline in
-  `label`), then the notes that apply, one
+  list row's act as the title (title3 semibold; one name, `OutboxModel.title`),
+  a timed send's "Scheduled for Wed 8:00 AM" with the `clock` glyph, then
+  the host's one sentence of what the press does that its fields do not say
+  (`effect`, subheadline in `label`; a timed send's says "at the time you
+  set"), then the notes that apply, one
   line each in meta with a glyph in a 16 pt column: "Not sent. <why>" (the
   destructive dot, its words in the destructive ink: the only colour),
   "Out of date. <why>" (`clock.arrow.circlepath`), "The thread rewrote this
   at 9:20 AM." or "You changed this at …" (`pencil`), "Dana Lee wrote back
   at 8:12 AM, after this was made: “…”" (`arrowshape.turn.up.left`); then
   each field on its own line under a hairline (label in meta at a 64 pt
-  column, the value in body, an address under a name), then the body as
+  column, the value in body, an address under a name; a mail's run From,
+  To, Subject), then the body as
   plain text. Its own bottom bar, the fourth named bottom bar after the
   dock, the hunk bar and the Preamble panel: Discard as plain destructive
   text at the leading edge, Edit as a glass capsule, Send (the item's own
@@ -2399,7 +2401,8 @@ phone does everything the desktop does. What milestone 46 built:
   the Outbox with the sheet over it) and from the thread's card. It loads
   the request from its host (`request.get`): the head (title3 semibold), one
   sentence of what the ticked rows send in the kinds' own words ("Send 2
-  mails to 2 people", the desktop's `summaryHead`), so it always agrees with
+  mails to 2 people", "Send mail with Purdue mail, 2 times": the shared
+  `summaryHead`, src/shared/work/outboxHead.ts), so it always agrees with
   Send N, and once answered what the press did ("Sent 2, 1 left out",
   "Queued 3 in LifeOS"), "You asked in <thread>: “<his
   words>”" in meta, then a row per item: a 22 pt tick in a 44 pt hit area
@@ -2429,8 +2432,8 @@ phone does everything the desktop does. What milestone 46 built:
   result's `{outboxRequest: {id, host}}`) is drawn as its card alone, in
   the call's place (no "Used …" line above it): one compact card in the
   transcript's hairline frame (the field radius, 12 pt in, no fill), the
-  `checklist` glyph muted, what was asked at subheadline medium ("Send 3
-  mails to 3 people", the same sentence as the list's Asked row), "You
+  `checklist` glyph muted, the request's one name at subheadline medium
+  (the host's head, as the list's Asked row and the notice say it), "You
   asked: “…”" in meta on two lines at most, and "Review" in the tint where
   a chevron would be; a tap opens the sheet.
   Answered, declined or run out, it is one muted line ("Sent 8, 1 not

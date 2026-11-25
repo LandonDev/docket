@@ -213,73 +213,101 @@ public extension OutboxModel {
         "\(pendingLine(item)) \(aheadTime(at, now: now, calendar: calendar))"
     }
 
+    /// An item's one name: the list row's act, which its own screen and the request sheet's row take as their title.
+    nonisolated static func title(_ item: OutboxItem) -> String {
+        rowWords(item).title
+    }
+
+    /// The sentence the item screen draws under the title: the host's `effect` as it stands. It says only what the
+    /// fields under it do not, and a timed send's says "at the time you set" beside its "Scheduled for …" line.
+    nonisolated static func effectLine(_ item: OutboxItem) -> String? {
+        guard let effect = item.effect?.trimmingCharacters(in: .whitespacesAndNewlines), !effect.isEmpty else { return nil }
+        return effect
+    }
+
     // MARK: - one sentence of what a press sends
 
-    /// Each kind's noun, one and many, and the verb a head says for it when its items do not share one: the
-    /// desktop's NOUN (work/outbox/waiting.ts). An add-on call's noun is its own words' second word when they are
-    /// two ("Send mail" → mail), else "item".
+    /// Each kind's noun, one and many, and the verb a head says for it when its items do not share one: the shared
+    /// NOUN (src/shared/work/outboxHead.ts), word for word.
     private nonisolated static let nouns: [OutboxItem.Kind: (one: String, many: String, verb: String)] = [
         .mailSend: ("mail", "mails", "Send"), .officeMailSend: ("mail", "mails", "Send"), .teamsPost: ("message", "messages", "Post"),
         .chatReply: ("reply", "replies", "Send"), .calendarOp: ("invite", "invites", "Answer"), .officeCalendarOp: ("invite", "invites", "Answer"),
         .officeEdit: ("file", "files", "Change"), .googleEdit: ("file", "files", "Change"), .fileAct: ("file", "files", "Change"),
         .shareGuestLink: ("guest link", "guest links", "Make"), .shareGoogle: ("share", "shares", "Make"), .formPublish: ("form", "forms", "Publish"),
         .msformPublish: ("form", "forms", "Publish"), .msformMake: ("form", "forms", "Make"), .frameioPost: ("post", "posts", "Make"),
-        .portalSubmit: ("form", "forms", "Submit"), .computerAct: ("step", "steps", "Run"),
+        .portalSubmit: ("form", "forms", "Submit"), .addonCall: ("call", "calls", "Run"), .computerAct: ("step", "steps", "Run"),
     ]
 
-    private nonisolated static func noun(_ item: OutboxItem) -> (one: String, many: String, verb: String) {
-        if let known = nouns[item.kind] { return known }
-        if item.kind == .addonCall, case .object(let p)? = item.payload, case .string(let words)? = p["words"] {
-            let parts = words.split(separator: " ")
-            if parts.count == 2 { let one = parts[1].lowercased(); return (one, one + "s", String(parts[0])) }
-        }
-        return ("item", "items", "Run")
-    }
-
-    /// Every address an item goes to, lower case: a LifeOS mail's under `message`, an Outlook mail's or an add-on
-    /// call's at its top or under `arguments`.
-    private nonisolated static func addressesOf(_ item: OutboxItem) -> [String] {
+    /// Every address a mail goes to, lower case, as the shared head counts them: `{address}` entries under `message`,
+    /// else at the payload's top.
+    private nonisolated static func headRecipients(_ item: OutboxItem) -> [String] {
         guard case .object(let p)? = item.payload else { return [] }
         var object = p
-        if case .object(let m)? = p["message"] { object = m } else if case .object(let a)? = p["arguments"] { object = a }
+        if case .object(let m)? = p["message"] { object = m }
         return ["to", "cc", "bcc"].flatMap { key -> [String] in
-            switch object[key] {
-            case .string(let one)?: return [one.lowercased()]
-            case .array(let list)?:
-                return list.compactMap { v in
-                    if case .string(let s) = v { return s.lowercased() }
-                    if case .object(let o) = v, case .string(let a)? = o["address"] { return a.lowercased() }
-                    return nil
-                }
-            default: return []
+            guard case .array(let list)? = object[key] else { return [] }
+            return list.compactMap { v in
+                if case .object(let o) = v, case .string(let a)? = o["address"] { return a.lowercased() }
+                return nil
             }
         }
     }
 
-    /// One sentence of everything a press on these sends: "Send 2 mails to 2 people", "Send 3 mails and post 1
-    /// message", "and discard 1": the desktop's `summaryHead`, kinds in the order first met.
-    nonisolated static func summaryHead(_ items: [OutboxItem], discard: Int = 0) -> String {
+    private nonisolated static func lowerFirst(_ s: String) -> String { s.prefix(1).lowercased() + s.dropFirst() }
+    private nonisolated static func joinWords(_ parts: [String]) -> String {
+        parts.count > 1 ? parts.dropLast().joined(separator: ", ") + " and " + parts.last! : parts.first ?? ""
+    }
+
+    /// Each kind's part of a head: its verb, its count and its noun; mail to how many people; an add-on call by its
+    /// tool and add-on ("Echo with League, 3 times"). `bare`: the kind's words alone.
+    private nonisolated static func groupParts(_ items: [OutboxItem], bare: Bool) -> [String] {
         var order: [String] = []
         var groups: [String: (noun: (one: String, many: String, verb: String), verbs: Set<String>, items: [OutboxItem])] = [:]
         for item in items {
-            let n = noun(item)
-            let key = item.kind == .mailSend || item.kind == .officeMailSend || n.one == "mail" ? "mail" : item.kind.rawValue
-            if groups[key] == nil { order.append(key); groups[key] = (n, [], []) }
+            let noun = nouns[item.kind] ?? ("item", "items", "Run")
+            var key = item.kind == .mailSend || item.kind == .officeMailSend ? "mail" : item.kind.rawValue
+            if item.kind == .addonCall {
+                let o: [String: JSONValue] = if case .object(let o)? = item.payload { o } else { [:] }
+                let word = { (v: JSONValue?) -> String in if case .string(let w)? = v { w } else { "undefined" } }
+                key = "addon:\(word(o["addonId"])):\(word(o["tool"]))"
+            }
+            if groups[key] == nil { order.append(key); groups[key] = (noun, [], []) }
             groups[key]?.verbs.insert(item.verb.split(separator: " ").first.map(String.init) ?? item.verb)
             groups[key]?.items.append(item)
         }
-        var parts = order.enumerated().map { i, key -> String in
+        return order.enumerated().map { i, key -> String in
             let g = groups[key]!
-            let verb = g.verbs.count == 1 ? g.verbs.first! : g.noun.verb
-            var part = "\(i == 0 ? verb : verb.lowercased()) \(g.items.count) \(g.items.count == 1 ? g.noun.one : g.noun.many)"
-            if key == "mail" {
-                let people = Set(g.items.flatMap(addressesOf)).count
+            let n = g.items.count
+            if key.hasPrefix("addon:"), !bare {
+                let o: [String: JSONValue] = if case .object(let o)? = g.items[0].payload { o } else { [:] }
+                let words: String = if case .string(let w)? = o["words"] { w } else if case .string(let t)? = o["tool"] { t } else { "Run" }
+                let addon: String = if case .string(let a)? = o["addon"] { " with \(a)" } else { "" }
+                let part = "\(words)\(addon)\(n > 1 ? ", \(n) times" : "")"
+                return i > 0 ? lowerFirst(part) : part
+            }
+            let verb = key.hasPrefix("addon:") ? g.noun.verb : g.verbs.count == 1 ? g.verbs.first! : g.noun.verb
+            var part = "\(i > 0 ? lowerFirst(verb) : verb) \(n) \(n == 1 ? g.noun.one : g.noun.many)"
+            if key == "mail", !bare {
+                let people = Set(g.items.flatMap(headRecipients)).count
                 if people > 0 { part += " to \(people) \(people == 1 ? "person" : "people")" }
             }
             return part
         }
-        if discard > 0 { parts.append(parts.isEmpty ? "Discard \(discard)" : "discard \(discard)") }
-        return parts.count > 1 ? parts.dropLast().joined(separator: ", ") + " and " + parts.last! : parts.first ?? ""
+    }
+
+    /// One sentence of everything a press sends, the shared `summaryHead` (src/shared/work/outboxHead.ts) in Swift:
+    /// "Send 2 mails to 2 people, post 1 message and accept 1 invite"; what is sent at a time he set its own part
+    /// ("… later"); what is discarded by its noun ("discard 1 mail"), or by a bare count.
+    nonisolated static func summaryHead(_ items: [OutboxItem], discard: Int = 0, discarding: [OutboxItem] = [], later: [OutboxItem] = []) -> String {
+        var parts = groupParts(items, bare: false)
+        for part in later.isEmpty ? [] : groupParts(later, bare: false) { parts.append("\(parts.isEmpty ? part : lowerFirst(part)) later") }
+        if !discarding.isEmpty {
+            let nouns = groupParts(discarding, bare: true).map { $0.split(separator: " ", maxSplits: 1).dropFirst().joined() }
+            parts.append("\(parts.isEmpty ? "Discard" : "discard") \(joinWords(nouns))")
+        } else if discard > 0 {
+            parts.append(parts.isEmpty ? "Discard \(discard)" : "discard \(discard)")
+        }
+        return joinWords(parts)
     }
 
     // MARK: - the thread's inline card
@@ -360,21 +388,15 @@ public enum RequestSheetModel {
     }
 
     /// The head of a request as asked (the list's Asked row, the thread's card): every row it lists, in one sentence.
+    /// The request's one name (the list's Asked row, the thread's card, the notice): the host's own, which it makes
+    /// with the shared head over every row it lists.
     public nonisolated static func askedHead(_ request: OutboxRequest) -> String {
-        let head = sentence(request.rows.filter { $0.item != nil })
-        return head.isEmpty ? request.head : head
+        request.head
     }
 
-    /// Rows in one sentence: what is sent now (the kinds' own words), what is sent later, what is discarded.
+    /// Rows in one sentence, the shared head: what is sent now, what is sent later, what is discarded.
     nonisolated static func sentence(_ rows: [OutboxRequestRow]) -> String {
-        let now = OutboxModel.summaryHead(rows.filter { $0.do == .send }.compactMap(\.item))
-        let later = rows.filter { $0.do == .later }.count
-        let discard = rows.filter { $0.do == .discard }.count
-        var parts = now.isEmpty ? [] : [now]
-        if later > 0 { parts.append("send \(later) later") }
-        if discard > 0 { parts.append("discard \(discard)") }
-        let text = parts.count > 1 ? parts.dropLast().joined(separator: ", ") + " and " + parts.last! : parts.first ?? ""
-        return text.prefix(1).uppercased() + text.dropFirst()
+        OutboxModel.summaryHead(rows.filter { $0.do == .send }.compactMap(\.item), discarding: rows.filter { $0.do == .discard }.compactMap(\.item), later: rows.filter { $0.do == .later }.compactMap(\.item))
     }
 
     /// The sheet's head: while it is open, what the ticked rows do (so it always agrees with Send N); with none

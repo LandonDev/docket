@@ -244,29 +244,32 @@ import TempCodeContract
         kinded(id, kind: .mailSend, payload: .object(["message": .object(["to": .array([.object(["address": .string(address)])]), "cc": .array([]), "bcc": .array([])])]))
     }
 
-    @Test func theHeadSaysWhatGoesInTheDesktopsWords() {
-        // waiting.test.ts's own case, word for word.
+    @Test func theHeadSaysWhatGoesInTheSharedWords() {
+        // src/shared/work/outboxHead.ts's cases (waiting.test.ts and outboxCount.test.ts), word for word.
         let head = OutboxModel.summaryHead([lifeosMail("a", to: "a@x.edu"), lifeosMail("b", to: "b@x.edu"), lifeosMail("c", to: "a@x.edu"), kinded("p", kind: .teamsPost, verb: "Post"), kinded("i", kind: .calendarOp, verb: "Accept")])
         #expect(head == "Send 3 mails to 2 people, post 1 message and accept 1 invite")
         #expect(OutboxModel.summaryHead([kinded("i", kind: .calendarOp, verb: "Accept"), kinded("j", kind: .calendarOp, verb: "Decline")]) == "Answer 2 invites")
         #expect(OutboxModel.summaryHead([], discard: 3) == "Discard 3")
-        // An add-on's own two words name its noun ("Send mail"), its recipients counted from its arguments; else "items".
-        let addon = { (id: String, to: String) in self.kinded(id, kind: .addonCall, payload: .object(["words": .string("Send mail"), "arguments": .object(["to": .string(to)])])) }
-        #expect(OutboxModel.summaryHead([addon("a", "a@x.edu"), addon("b", "b@x.edu")]) == "Send 2 mails to 2 people")
-        #expect(OutboxModel.summaryHead([kinded("e", kind: .addonCall, verb: "Run", payload: .object(["words": .string("Echo")]))]) == "Run 1 item")
+        #expect(OutboxModel.summaryHead([lifeosMail("a", to: "a@x.edu")], discarding: [lifeosMail("d", to: "d@x.edu")]) == "Send 1 mail to 1 person and discard 1 mail")
+        #expect(OutboxModel.summaryHead([], discarding: [lifeosMail("d", to: "d@x.edu"), lifeosMail("e", to: "e@x.edu")]) == "Discard 2 mails")
+        #expect(OutboxModel.summaryHead([], later: [lifeosMail("a", to: "a@x"), lifeosMail("b", to: "b@x")]) == "Send 2 mails to 2 people later")
+        // An add-on's call by its own words and its add-on's name, counted in times.
+        let echo = { (id: String) in self.kinded(id, kind: .addonCall, verb: "Echo", payload: .object(["addonId": .string("ad1"), "tool": .string("echo"), "words": .string("Echo"), "addon": .string("League")])) }
+        #expect(OutboxModel.summaryHead([echo("e1"), echo("e2"), echo("e3")]) == "Echo with League, 3 times")
+        #expect(OutboxModel.summaryHead([echo("e1")]) == "Echo with League")
     }
 
     @Test func theSheetsHeadFollowsItsTicksAndAgreesWithItsButton() {
         let req = request("q", rows: [row(lifeosMail("a", to: "a@x.edu")), row(lifeosMail("b", to: "b@x.edu")), row(lifeosMail("c", to: "c@x.edu"), changed: true, receipt: nil)])
         let ticks = RequestSheetModel.initialTicks(req)
-        #expect(RequestSheetModel.askedHead(req) == "Send 3 mails to 3 people")
+        // The request's own name is the host's (the list row, the card, the notice); the sheet's head is the ticked rows'.
+        #expect(RequestSheetModel.askedHead(req) == req.head)
         #expect(RequestSheetModel.head(req, ticked: ticks) == "Send 2 mails to 2 people")
         #expect(RequestSheetModel.pressWord(req, ticked: ticks) == "Send 2")
         #expect(RequestSheetModel.head(req, ticked: ["r-a"]) == "Send 1 mail to 1 person")
-        // None ticked: what was asked, never an empty head.
-        #expect(RequestSheetModel.head(req, ticked: []) == "Send 3 mails to 3 people")
+        #expect(RequestSheetModel.head(req, ticked: []) == req.head)
         let mixed = request("m", rows: [row(lifeosMail("a", to: "a@x.edu")), row(lifeosMail("b", to: "b@x.edu"), do: .later, at: 5), row(lifeosMail("c", to: "c@x.edu"), do: .discard)])
-        #expect(RequestSheetModel.head(mixed, ticked: RequestSheetModel.initialTicks(mixed)) == "Send 1 mail to 1 person, send 1 later and discard 1")
+        #expect(RequestSheetModel.head(mixed, ticked: RequestSheetModel.initialTicks(mixed)) == "Send 1 mail to 1 person, send 1 mail to 1 person later and discard 1 mail")
     }
 
     @Test func theWaitNamesWhatGoesAndNeverSaysNow() {
@@ -274,6 +277,21 @@ import TempCodeContract
         let press = RequestSheetModel.freeze(req, ticks: RequestSheetModel.initialTicks(req), environmentId: "box")
         #expect(press?.waitingLine == "Sending 2 mails to 2 people")
         #expect(RequestPress(environmentId: "box", requestId: "q", receipts: ["a", "b", "c"], word: "Approve 3", lines: [], head: "Send 2 mails and discard 1").waitingLine == "Approving 3")
+    }
+
+    @Test func anItemHasOneNameAndItsSentenceIsTheHosts() {
+        let post = OutboxItem(ref: .host(.init(id: "p")), kind: .teamsPost, workspaceId: "w1", sessionId: "t1", sector: "purdue", summary: "Post in Esports staff", verb: "Post", account: nil, state: .held,
+                              payload: .object(["chat": .string("Esports staff › General"), "text": .string("Practice is Wednesday at 7.")]), createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .pillar, grantId: nil, error: nil, result: nil, routineRunId: nil, effect: "Everyone in it sees it.", updatedAt: 1)
+        // The screen's title is the row's act, never a second name ("Post in Teams").
+        #expect(OutboxModel.title(post) == OutboxModel.rowWords(post).title)
+        #expect(OutboxModel.title(post) == "Post in Esports staff")
+        #expect(OutboxModel.effectLine(post) == "Everyone in it sees it.")
+        let timed = OutboxItem(ref: .host(.init(id: "t")), kind: .officeMailSend, workspaceId: "w1", sessionId: "t1", sector: "purdue", summary: "Send to Casey Wu", verb: "Send", account: nil, state: .scheduled,
+                               payload: .object(["account": .string("landon@purdue.edu"), "to": .array([.string("cwu@purdue.edu")]), "subject": .string("Travel")]), createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .pillar, grantId: nil, error: nil, result: nil, routineRunId: nil, scheduledFor: 9_000, effect: "Goes at the time you set, as you.", updatedAt: 1)
+        // The host's sentence for a timed send agrees with its time line, so it is drawn as it stands.
+        #expect(OutboxModel.effectLine(timed) == "Goes at the time you set, as you.")
+        // An Outlook mail's fields run From, To, Subject, as the desktop's.
+        #expect(OutboxModel.payloadView(timed.payload).fields.map(\.label) == ["From", "To", "Subject"])
     }
 
     @Test func overTheHeadSaysQueuedAndLeftOutAndALeftOutRowSaysSo() {

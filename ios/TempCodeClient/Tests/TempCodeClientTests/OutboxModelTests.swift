@@ -250,7 +250,7 @@ import TempCodeContract
                                         "subject": .string("Re: Ballroom"), "replyTo": .string("AAMkAGI2NGVh"), "outlookAdds": .string("The mail from events@purdue.edu, under this one"),
                                         "html": .string("<p>Yes, thanks.</p>")])
         let view = OutboxModel.payloadView(reply)
-        #expect(view.fields.map(\.label) == ["To", "Subject", "From", "Also goes"])
+        #expect(view.fields.map(\.label) == ["From", "To", "Subject", "Also goes"])
         #expect(view.fields.allSatisfy { $0.edit == nil })
         #expect(view.body?.readOnly == true)
         #expect(!view.fields.contains { $0.value.contains("AAMk") })

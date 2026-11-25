@@ -363,10 +363,10 @@ private struct RequestRowDetail: View {
                 let view = OutboxModel.actView(item)
                 VStack(alignment: .leading, spacing: 0) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(OutboxModel.kindHeading(kind: item.kind, payload: item.payload, sent: false) ?? item.summary)
+                        Text(OutboxModel.title(item))
                             .font(.title3.weight(.semibold))
                             .fixedSize(horizontal: false, vertical: true)
-                        if let effect = item.effect, !effect.isEmpty {
+                        if let effect = OutboxModel.effectLine(item) {
                             Text(effect).font(.subheadline).foregroundStyle(Color(.label)).fixedSize(horizontal: false, vertical: true)
                         }
                         if row.changed {
