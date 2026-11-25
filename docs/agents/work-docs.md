@@ -147,7 +147,9 @@ line: `statusLineOf` gives the pane only what needs him or says how the
 document is (Read only, Did not open), and `offlineWords` makes one quiet
 sentence naming the computer ("Offline." "Edits stay here until the box is
 back."; "It opens for editing once the box is back."), drawn by `OfflineLine`
-in a slot laid over the scroller's 32px top padding, out of the text's flow.
+in a slot laid over the scroller's 32px top padding, out of the text's flow. In Pages, where the scroller has no
+padding and the stage's own is 16px, the line wears the stage's ground (`group-has-[.te-pages-stage]/doc-body`) and the
+scroller keeps 16px more while the line shows (`OFFLINE_ROOM`), so the first sheet's top is never under it.
 work-kit's 1.5 s grace still holds it back for a blink. The preview page
 `DocumentCanvas.preview.tsx` draws the editor as a Files tab has it: the
 header's save line, the format row, find with Replace and this line; not Pages,

@@ -150,11 +150,16 @@ export function offlineWords(status: DocumentStatus | null, host: string): { wor
 
 /**
  * The offline line, in the 32px over the text the scroller keeps as its top padding (`pt-8`): on the page's own ground
- * so text scrolled under it is covered, never pushed. The quiet line's look (docs/DESIGN.md "The state line").
+ * so text scrolled under it is covered, never pushed. In Pages it lies on the stage's ground, over the stage's 16px top
+ * and 16px more the scroller keeps while it shows (`OFFLINE_ROOM`), so the first sheet's top is never under it. The
+ * quiet line's look (docs/DESIGN.md "The state line").
  */
+/** While the offline line shows, the scroller keeps 16px over the Pages stage's own 16px: the line's 32px, as in Flow. */
+export const OFFLINE_ROOM = "[&:has([data-doc-offline])>[data-doc-scroller]:has(.te-pages-stage)]:pt-4";
+
 export function OfflineLine({ words }: { words: { word: string; detail: string } }) {
   return (
-    <div data-doc-offline className="pointer-events-auto bg-background">
+    <div data-doc-offline className="pointer-events-auto bg-background group-has-[.te-pages-stage]/doc-body:bg-(--stage)">
       <QuietLine word={words.word} detail={words.detail} />
     </div>
   );
@@ -477,7 +482,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
         <div ref={setSlot} data-doc-preview={previewing || undefined} className={previewing ? "absolute inset-0 z-10" : "hidden"} />
         {/* Its keys are the editor's own while focus is in it (⌘B in the size field is bold, not the sidebar). */}
         <div ref={setRowSlot} data-doc-row data-editor-keys="document" className={previewing ? "invisible flex-none" : "flex-none"} inert={previewing ? true : undefined} />
-        <div className={previewing ? "invisible relative min-h-0 flex-1" : "relative min-h-0 flex-1"} inert={previewing ? true : undefined}>
+        <div className={`group/doc-body ${OFFLINE_ROOM} ${previewing ? "invisible relative min-h-0 flex-1" : "relative min-h-0 flex-1"}`} inert={previewing ? true : undefined}>
           {/* Where the offline line is laid: over the scroller's top padding, out of the text's flow. */}
           <div ref={setLineSlot} className="pointer-events-none absolute inset-x-0 top-0 z-10" />
           <Scroller scrollTop={state?.scrollTop ?? 0} ready={opened !== null && "open" in opened} onScroll={(scrollTop) => setState({ ...latestState.current, scrollTop })}>

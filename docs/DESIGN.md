@@ -1376,7 +1376,10 @@ thread; nothing answers inside the canvas.
   `quiet`). A document gone offline asks nothing of him either: its quiet
   line ("Offline." and "Edits stay here until the box is back.", naming
   the computer) is laid over the text's 32px top padding, never above it,
-  so the text does not move when the link blinks; it shows after 1.5 s.
+  so the text does not move when the link blinks; it shows after 1.5 s. In
+  Pages it lies on the stage's own ground, and the stage keeps 32px over the
+  first sheet while it shows, so it covers neither the sheet nor paints a band
+  of page colour across the grey.
 - **The selection bar** floats over any selection in any kind, on the
   transcript's selection menu recipe (surfaces/TranscriptSelectionMenu.tsx):
   the popover fill at its 12px radius, a 4px inset and 24px ghost buttons

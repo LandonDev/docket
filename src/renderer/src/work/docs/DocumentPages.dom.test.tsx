@@ -81,7 +81,7 @@ vi.mock("../formats/PreviewFrame", () => ({
   },
 }));
 
-const { Body, Bar, openingView, openingZoom, pagesSettled, PAGES_FROM, TRUE_SIZE_FROM } = await import("./DocumentCanvas");
+const { Body, Bar, OfflineLine, OFFLINE_ROOM, openingView, openingZoom, pagesSettled, PAGES_FROM, TRUE_SIZE_FROM } = await import("./DocumentCanvas");
 
 // The canvas's width, as the pane measures it.
 beforeAll(() => Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => canvas.width }));
@@ -205,6 +205,16 @@ describe("the pane around the sheets", () => {
     const column = document.querySelector<HTMLElement>("[data-editor-keys='document'].group\\/doc")!;
     expect(column.className).toContain("has-[.te-pages-stage]:max-w-none");
     expect(document.querySelector("[data-fake-editor]")!.parentElement!.className).toContain("group-has-[.te-pages-stage]/doc:px-0");
+  });
+
+  it("lays the offline line on the stage's ground in Pages, with room over the first sheet; in Flow on the page's, over the text's own 32px", async () => {
+    await mount();
+    const scroller = document.querySelector<HTMLElement>("[data-doc-scroller]")!;
+    // The scroller's frame keeps 16px over the stage's 16px while the line shows, only where it holds the stage.
+    expect(scroller.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["group/doc-body", OFFLINE_ROOM]));
+    expect(OFFLINE_ROOM).toBe("[&:has([data-doc-offline])>[data-doc-scroller]:has(.te-pages-stage)]:pt-4");
+    render(<OfflineLine words={{ word: "Offline.", detail: "Edits stay here until the box is back." }} />);
+    expect(document.querySelector<HTMLElement>("[data-doc-offline]")!.className.split(" ")).toEqual(expect.arrayContaining(["bg-background", "group-has-[.te-pages-stage]/doc-body:bg-(--stage)"]));
   });
 
   it("comments open at their words in Pages and stand in the margin in Flow", async () => {
