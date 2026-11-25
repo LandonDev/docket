@@ -5,7 +5,7 @@ import type { FileOrigin, WrittenBack } from '@shared/contract-work-files'
 import { canvasSourcePath, filesPaneOf, type CanvasSource } from '@shared/work'
 import { refKey, type FolderRef } from '@shared/work/files'
 import { linkWords, saveAsName, type DocLink, type SaveAsFormat, type SavedAs } from '@shared/work/saveAs'
-import { attachmentDocPathOf } from '../docs/target'
+import { attachmentDocPathOf, reserveLink, settlePrivateWrites } from '../docs/target'
 import { endGuestEditOn } from '../guests/store'
 import type { Caller, WorkCtx } from '../modules'
 import { admitOwner, deliver, freshBytes, freshVersion, unreachable } from './copies'
@@ -40,6 +40,8 @@ const METHOD = 'work.files.saveAs'
 const NOT_A_FOLDER_HERE = 'A file is saved into a folder on a computer: the workspace\'s folder, Teams or OneDrive.'
 const DOC_ELSEWHERE = 'That document is on another host: save it there.'
 const NOT_OPEN_HERE = 'That document is not open in this workspace.'
+/** An agent's change landed in the document as he pressed: he sees it before it goes anywhere (docs/target.ts, the hold's race). */
+export const AGENT_JUST_WROTE = 'An agent changed this document just now. Look it over, then save again.'
 /** His window: what the host itself writes as for a link his press made. */
 const LOCAL: Caller = { kind: 'local', caps: ['read', 'operate', 'approve'] }
 /** How long his document must be still before a linked file is written again, and how long a place that did not answer waits. */
@@ -193,7 +195,25 @@ export async function saveAs(
   // The door before anything is exported: a folder here as New's, one on another computer as his own edit there.
   if (far) admitOwner(by, { name: 'that folder', host: at.host })
   else if (admitChange(ctx, by, 'make', { workspaceId: p.workspaceId, refs: [at] }, method) === 'hold') throw new Error(HELD_BY_TOOLS)
-  const doc = p.link === false ? null : linkableDoc(ctx, source)
+  const file = linkableDoc(ctx, source)
+  const doc = p.link === false ? null : file
+  // The hold's race: a link counts the document shared from this press, before anything is exported, and an agent's
+  // write begun while it was private is waited for; one that wrote straight in stops the press until he has seen it.
+  const release = doc ? reserveLink(doc) : () => {}
+  try {
+    if (file && (await settlePrivateWrites(file))) throw new Error(AGENT_JUST_WROTE)
+    return await saveAsReserved(ctx, by, p, { source, at, vm, doc })
+  } finally {
+    release()
+  }
+}
+
+async function saveAsReserved(
+  ctx: WorkCtx,
+  by: Caller,
+  p: Parameters<typeof saveAs>[2],
+  { source, at, vm, doc }: { source: CanvasSource; at: FolderRef & { at: 'file' }; vm: boolean; doc: string | null }
+): Promise<SavedAs> {
   // From here the document's edits go on to another file: a guest who could edit it views it instead, before anything is written.
   if (doc) await endGuestEditOn(ctx.db, canonicalPath(doc))
   // The revision written is the one read before the export: an edit after it is written next.

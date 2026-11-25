@@ -138,6 +138,7 @@ function keptForWord(ctx: Pick<WorkCtx, 'db'>, path: string): boolean {
  */
 export function linkedOut(ctx: Pick<WorkCtx, 'db'>, path: string): boolean {
   if (!ctx.db || !path.toLowerCase().endsWith('.tcdoc')) return false
+  if (linking.has(canonicalPath(path))) return true
   if (!(ctx.db.prepare(`SELECT count(*) AS n FROM pragma_table_info('work_files_links')`).get() as { n: number }).n) return false
   const docs = ctx.db.prepare(`SELECT DISTINCT doc FROM work_files_links`).all() as { doc: string }[]
   const name = basename(path).toLowerCase()
@@ -145,6 +146,59 @@ export function linkedOut(ctx: Pick<WorkCtx, 'db'>, path: string): boolean {
   if (!near.length) return false
   const at = canonicalPath(path)
   return near.some((r) => r.doc === path || canonicalPath(r.doc) === at)
+}
+
+/**
+ * The hold's race (C1): a Save As link makes its document shared before anything is exported, not once its file is
+ * made. `reserveLink` counts the document linked from his press (`linkedOut`), so an agent's write or format whose
+ * verdict is read after it only suggests. One whose verdict was read while the document was still private registers
+ * in the same turn (`privateWrite`, docs/tools.ts), and the press waits for it (`settlePrivateWrites`): if it wrote
+ * straight into the document, Save As stops until he has looked at it, so the link never carries an agent's words he
+ * did not see.
+ */
+const linking = new Map<string, number>()
+const privateWrites = new Map<string, Set<{ direct: boolean; done: Promise<void> }>>()
+
+/** The document counted linked until the returned release: called once the link's row is written, or the press failed. */
+export function reserveLink(path: string): () => void {
+  const key = canonicalPath(path)
+  linking.set(key, (linking.get(key) ?? 0) + 1)
+  let held = true
+  return () => {
+    if (!held) return
+    held = false
+    const n = (linking.get(key) ?? 1) - 1
+    if (n > 0) linking.set(key, n)
+    else linking.delete(key)
+  }
+}
+
+/** An agent's write to a document it found private, from its verdict to its answer: `end(true)` once it wrote straight in. */
+export function privateWrite(path: string): { end: (direct?: boolean) => void } {
+  const key = canonicalPath(path)
+  let settle!: () => void
+  const w = { direct: false, done: new Promise<void>((r) => (settle = r)) }
+  const set = privateWrites.get(key) ?? new Set()
+  set.add(w)
+  privateWrites.set(key, set)
+  return {
+    end(direct = false) {
+      w.direct ||= direct
+      set.delete(w)
+      if (!set.size && privateWrites.get(key) === set) privateWrites.delete(key)
+      settle()
+    }
+  }
+}
+
+/** Whether a private write on its way when this was asked wrote straight into the document; one that does not answer in time counts as one that did. */
+export async function settlePrivateWrites(path: string, ms = 20_000): Promise<boolean> {
+  const ws = [...(privateWrites.get(canonicalPath(path)) ?? [])]
+  if (!ws.length) return false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const settled = await Promise.race([Promise.all(ws.map((w) => w.done)).then(() => true), new Promise<false>((r) => (timer = setTimeout(() => r(false), ms)))])
+  clearTimeout(timer)
+  return !settled || ws.some((w) => w.direct)
 }
 
 /**

@@ -5,7 +5,7 @@ import { agentPrincipal, canvasSourcePath, HIS_ZONE, workText, type CanvasSource
 import { errorText } from '@shared/work/ids'
 import type { ToolCtx, WorkTool } from '../modules'
 import { docsOf, modeOf, wrote } from './state'
-import { attachmentDoc, ATTACHMENT_READ_ONLY, lifeosRow, othersOpen, pathOf, serviceTarget, targetOf, titleOf, type DocTarget } from './target'
+import { attachmentDoc, ATTACHMENT_READ_ONLY, lifeosRow, othersOpen, pathOf, privateWrite, serviceTarget, targetOf, titleOf, type DocTarget } from './target'
 import { fetchedItemOfPath } from '../canvas/fetch'
 import { changeThread } from './threads'
 import { revisionOf } from './revision'
@@ -53,7 +53,12 @@ function orphaned(ctx: ToolCtx): boolean {
 /** The sectors a thread may reach: its workspace's one; none for a workspace with no sector or a thread with no Work home; every sector for a Work Chat (which reads through its own key). */
 const sectorsOf = (ctx: ToolCtx): string[] | 'all' => (ctx.scope.sector ? [ctx.scope.sector] : ctx.scope.workspaceId || orphaned(ctx) ? [] : 'all')
 
-async function resolve(ctx: ToolCtx, a: TargetArgs, write = false): Promise<{ t: DocTarget; shared: boolean; fence: string[] | 'all'; title: string; asked: CanvasSource }> {
+/**
+ * `gated`: a write or a format that may land straight in the document. One found private registers in the same turn
+ * (`privateWrite`), so a Save As link pressed meanwhile waits for its answer (docs/target.ts, the hold's race); the
+ * caller ends it.
+ */
+async function resolve(ctx: ToolCtx, a: TargetArgs, write = false, gated = false): Promise<{ t: DocTarget; shared: boolean; fence: string[] | 'all'; title: string; asked: CanvasSource; gate?: ReturnType<typeof privateWrite> }> {
   let source: CanvasSource
   if (a.item) {
     const item = ctx.canvas.get(a.item)
@@ -78,7 +83,8 @@ async function resolve(ctx: ToolCtx, a: TargetArgs, write = false): Promise<{ t:
   // A document of another sector is not this thread's to see, whatever id it was handed.
   if (row && fence !== 'all' && !fence.includes(row.sector)) throw new Error('LifeOS has no such document')
   // A .tcdoc in a synced library or cloud folder is shared as surely as a guest-linked LifeOS document: an agent's own idea there only suggests.
-  return { t, shared: othersOpen(ctx, t, row) || ctx.scope.shared(t.source), fence, title: titleOf(t, row), asked: source }
+  const shared = othersOpen(ctx, t, row) || ctx.scope.shared(t.source)
+  return { t, shared, fence, title: titleOf(t, row), asked: source, ...(gated && !shared && t.at === 'file' ? { gate: privateWrite(t.path) } : {}) }
 }
 
 function ownerSaid(ctx: ToolCtx, quote: string | undefined, about?: readonly string[]): boolean {
@@ -161,27 +167,35 @@ function writeRule(ctx: ToolCtx, a: WhyWrite & { item?: string }, t: DocTarget, 
 }
 
 async function write(ctx: ToolCtx, a: TargetArgs & WhyWrite & { markdown: string }): Promise<WorkToolResult> {
-  const { t, shared, fence, title, asked } = await resolve(ctx, a, true)
-  const { verdict, suggest, note } = writeRule(ctx, a, t, shared, title, asked)
-  const before = ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }).markdown
-  // A whole-text rewrite drafted from an older read would take back what was typed since: refused, never merged by guess.
-  if (!a.suggest && !a.revision) return fail(READ_FIRST)
-  if (a.revision && a.revision !== revisionOf(before)) return fail(CHANGED)
-  const principal = agentPrincipal(ctx.host, ctx.sessionId)
-  // Checked again where the service writes, in the same tick as the edit: a word typed after this read is never written over.
-  const done = (await ctx.service.internal('/internal/docs/write', { ...serviceTarget(t, shared, fence), markdown: a.markdown, because: verdict, suggest, principal, ...(a.revision ? { revision: a.revision } : {}) })) as ServiceWrite | { stale: true }
-  if ('stale' in done) return fail(CHANGED)
-  const parts = changedParts(before, a.markdown)
-  if (done.mode === 'branch') {
-    docsOf(ctx).push({ push: 'work.docs', doc: t.doc, branches: true }, pathOf(t))
-    const why = a.suggest ? '' : shared ? ', because others share this document' : ', because he set this document to suggest'
-    return workText(`${suggestedIn('document', `changes to ${plural(parts.count, parts.unit)}${why}`)}${note}`)
+  const { t, shared, fence, title, asked, gate } = await resolve(ctx, a, true, true)
+  let direct = false
+  try {
+    const { verdict, suggest, note } = writeRule(ctx, a, t, shared, title, asked)
+    const before = ((await ctx.service.internal('/internal/docs/read', serviceTarget(t, shared, fence))) as { markdown: string }).markdown
+    // A whole-text rewrite drafted from an older read would take back what was typed since: refused, never merged by guess.
+    if (!a.suggest && !a.revision) return fail(READ_FIRST)
+    if (a.revision && a.revision !== revisionOf(before)) return fail(CHANGED)
+    const principal = agentPrincipal(ctx.host, ctx.sessionId)
+    // Checked again where the service writes, in the same tick as the edit: a word typed after this read is never written over.
+    // Until its answer it may have landed (`gate`).
+    direct = true
+    const done = (await ctx.service.internal('/internal/docs/write', { ...serviceTarget(t, shared, fence), markdown: a.markdown, because: verdict, suggest, principal, ...(a.revision ? { revision: a.revision } : {}) })) as ServiceWrite | { stale: true }
+    direct = !('stale' in done) && done.mode === 'direct'
+    if ('stale' in done) return fail(CHANGED)
+    const parts = changedParts(before, a.markdown)
+    if (done.mode === 'branch') {
+      docsOf(ctx).push({ push: 'work.docs', doc: t.doc, branches: true }, pathOf(t))
+      const why = a.suggest ? '' : shared ? ', because others share this document' : ', because he set this document to suggest'
+      return workText(`${suggestedIn('document', `changes to ${plural(parts.count, parts.unit)}${why}`)}${note}`)
+    }
+    const text = `Wrote ${plural(parts.count, parts.unit)}`
+    // His own document, on the agent's own idea: the bar says what was written, with Undo.
+    // Undo is offered only for the write's own state: a word of his that landed in its after-version would go with it.
+    if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, ...(done.undoable ? { after: done.versionId } : {}) }, pathOf(t))
+    return workText(`${text}.${note}`)
+  } finally {
+    gate?.end(direct)
   }
-  const text = `Wrote ${plural(parts.count, parts.unit)}`
-  // His own document, on the agent's own idea: the bar says what was written, with Undo.
-  // Undo is offered only for the write's own state: a word of his that landed in its after-version would go with it.
-  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, ...(done.undoable ? { after: done.versionId } : {}) }, pathOf(t))
-  return workText(`${text}.${note}`)
 }
 
 const formatInput = z.strictObject({ ...target, ...docFormatFields })
@@ -191,28 +205,35 @@ const formatInput = z.strictObject({ ...target, ...docFormatFields })
 type FormatArgs = z.infer<typeof formatInput>
 
 async function format(ctx: ToolCtx, a: FormatArgs): Promise<WorkToolResult> {
-  const { t, shared, fence, title, asked } = await resolve(ctx, a, true)
-  const { verdict, suggest, note } = writeRule(ctx, a, t, shared, title, asked)
-  const { on, run, paragraph, style, theme, setup, header, footer } = a
-  const change = {
-    ...(on ? { text: { target: on, ...(run ? { run } : {}), ...(paragraph ? { paragraph } : {}) } } : {}),
-    ...(style ? { style } : {}), ...(theme ? { theme } : {}), ...(setup ? { setup } : {}),
-    ...(header ? { header } : {}), ...(footer ? { footer } : {})
+  const { t, shared, fence, title, asked, gate } = await resolve(ctx, a, true, true)
+  let direct = false
+  try {
+    const { verdict, suggest, note } = writeRule(ctx, a, t, shared, title, asked)
+    const { on, run, paragraph, style, theme, setup, header, footer } = a
+    const change = {
+      ...(on ? { text: { target: on, ...(run ? { run } : {}), ...(paragraph ? { paragraph } : {}) } } : {}),
+      ...(style ? { style } : {}), ...(theme ? { theme } : {}), ...(setup ? { setup } : {}),
+      ...(header ? { header } : {}), ...(footer ? { footer } : {})
+    }
+    direct = true
+    const done = await ctx.service.internal('/internal/docs/format', {
+      ...serviceTarget(t, shared, fence), change, because: verdict, suggest, principal: agentPrincipal(ctx.host, ctx.sessionId)
+    }) as DocFormatResult & { undoable?: boolean }
+    direct = done.mode !== 'branch' && !!done.changed
+    if (done.missing) return workText(`Nothing in the document matches that.${note}`)
+    if (!done.changed) return workText(`The document already has that formatting.${note}`)
+    const page = style || theme || setup || header || footer
+    const amount = plural(done.changed, on && !page ? 'paragraph' : 'formatting change')
+    if (done.mode === 'branch') {
+      docsOf(ctx).push({ push: 'work.docs', doc: t.doc, branches: true }, pathOf(t))
+      return workText(`${suggestedIn('document', `formatting on ${amount}`)}${note}`)
+    }
+    const text = `${on && !page ? 'Formatted' : 'Applied'} ${amount}`
+    if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, ...(done.undoable ? { after: done.versionId } : {}) }, pathOf(t))
+    return workText(`${text}${done.words.length ? ': ' + done.words.join(', ') : ''}.${note}`)
+  } finally {
+    gate?.end(direct)
   }
-  const done = await ctx.service.internal('/internal/docs/format', {
-    ...serviceTarget(t, shared, fence), change, because: verdict, suggest, principal: agentPrincipal(ctx.host, ctx.sessionId)
-  }) as DocFormatResult & { undoable?: boolean }
-  if (done.missing) return workText(`Nothing in the document matches that.${note}`)
-  if (!done.changed) return workText(`The document already has that formatting.${note}`)
-  const page = style || theme || setup || header || footer
-  const amount = plural(done.changed, on && !page ? 'paragraph' : 'formatting change')
-  if (done.mode === 'branch') {
-    docsOf(ctx).push({ push: 'work.docs', doc: t.doc, branches: true }, pathOf(t))
-    return workText(`${suggestedIn('document', `formatting on ${amount}`)}${note}`)
-  }
-  const text = `${on && !page ? 'Formatted' : 'Applied'} ${amount}`
-  if (verdict === 'own' && done.versionId && done.beforeVersionId) wrote(ctx, t.doc, { text, at: Date.now(), versionId: done.beforeVersionId, ...(done.undoable ? { after: done.versionId } : {}) }, pathOf(t))
-  return workText(`${text}${done.words.length ? ': ' + done.words.join(', ') : ''}.${note}`)
 }
 
 /** An offset-free date or time from a thread is on the owner’s clock. */

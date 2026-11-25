@@ -2305,6 +2305,13 @@ picks, and stays linked to that file: each later edit is written to it.
   edit to a file others can open with no press of his, so an agent's own write waits as a suggestion and the link
   carries none of it before his accept, as for a Word file's kept document. A renamed linked `.tcdoc` keeps its links
   (files/moved.ts `moveCopies`).
+- **The hold's race** (audit C1; docs/target.ts `reserveLink`, `privateWrite`, `settlePrivateWrites`). A link counts
+  its document shared from his press, before anything is exported, not once its file is made: an agent's write or
+  format whose verdict is read after the press only suggests. One whose verdict was read while the document was still
+  private registered in that same turn (docs/tools.ts `resolve`), and every Save As of a `.tcdoc` here, linked or a
+  copy, waits for it (20 s at most; one that does not answer counts as landed). If it wrote straight in, the press
+  stops with "An agent changed this document just now. Look it over, then save again." and nothing is made or linked;
+  his next press saves what he then sees. His own typing is never waited for.
 - **A change made there stops it.** A version that moved there (a colleague's save in Teams) answers a conflict: the
   link is `changed` and nothing more is written until his press. A file gone there is `gone`, never made again on its
   own. A place that does not answer (`unreachable`: the computer asleep, the VPN down) keeps the document as it is,

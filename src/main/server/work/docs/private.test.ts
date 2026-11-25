@@ -25,7 +25,7 @@ import { startWorkService, type RunningService } from '../service/serve'
 import type { ServiceConfig } from '../service/wire'
 import { docs } from './index'
 import { stopDocs } from './state'
-import { madeFromShared } from './target'
+import { madeFromShared, reserveLink, settlePrivateWrites } from './target'
 import { docTools } from './tools'
 
 /** A conversion job as `ctx.convert` takes and answers it. */
@@ -360,6 +360,46 @@ describe('a document linked by Save As to a file others can open', () => {
     const wrote = await r.tool('doc_write', { file: source.path, markdown: AFTER, because: 'own' })
     expect(wrote.text).toMatch(/others share this document/)
     expect(await r.text(source.path)).not.toContain(SUGGESTED)
+  })
+})
+
+describe("the hold's race: a Save As link pressed while an agent's write is on its way", () => {
+  it('waits for the write its verdict found private and learns it landed; a write whose verdict is read after the press only suggests', async () => {
+    const r = await rig()
+    ensureFilesTables(r.db)
+    const source = await r.make(join(r.work, 'Plan.tcdoc'))
+    // The agent's write is held at the service's door, its verdict already read while the document was private.
+    const service = r.ctx.service as { internal: (route: string, body: unknown) => Promise<unknown> }
+    const real = service.internal
+    let release!: () => void
+    const door = new Promise<void>((ok) => (release = ok))
+    let paused = false
+    service.internal = async (route, body) => {
+      if (route === '/internal/docs/write' && !paused) {
+        paused = true
+        await door
+      }
+      return real(route, body)
+    }
+    const writing = r.tool('doc_write', { file: source.path, markdown: AFTER, because: 'own' })
+    await until('the write reached the service', () => paused)
+    // His press: the document counts linked at once, and the press waits for the write on its way.
+    const unreserve = reserveLink(source.path)
+    let settled: boolean | null = null
+    const settling = settlePrivateWrites(source.path).then((v) => (settled = v))
+    await new Promise((ok) => setTimeout(ok, 30))
+    expect(settled).toBeNull()
+    // A second write now finds it shared: it suggests, and its words are not in the document.
+    const later = await r.tool('doc_write', { file: source.path, markdown: md('# Week 1', 'Later agent words'), because: 'own' })
+    expect(later.text).toMatch(/others share this document/)
+    release()
+    expect((await writing).text).toBe('Wrote 1 section.')
+    await settling
+    // It wrote straight in: Save As stops until he has seen it (files/saveAs.ts AGENT_JUST_WROTE).
+    expect(settled).toBe(true)
+    expect(await r.text(source.path)).not.toContain('Later agent words')
+    unreserve()
+    expect(await settlePrivateWrites(source.path)).toBe(false)
   })
 })
 

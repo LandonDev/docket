@@ -12,7 +12,8 @@ import { liveRev, wordTiming } from './word'
 import type { DocRevision } from '../service/wire'
 import { forgetLibraries } from './places/libraries'
 import { setThreadsMayWrite } from './policy'
-import { autosaveLinks, linkTiming, resetLinkState } from './saveAs'
+import { AGENT_JUST_WROTE, autosaveLinks, linkTiming, resetLinkState } from './saveAs'
+import { linkedOut, privateWrite } from '../docs/target'
 import { approver, HOST, makeRig, phone, reader, thread, window, WS, type Rig } from './testkit'
 
 /**
@@ -325,5 +326,41 @@ describe('who may save as', () => {
     expect(await save({ at: here, exists: 'keep' }, approver)).toMatchObject({ saved: { linked: true } })
     const [l] = await links()
     await expect(call('work.files.linkAct', { id: l!.id, act: 'unlink' }, thread('t1'))).rejects.toThrow('files_* tools')
+  })
+})
+
+describe("the hold's race: an agent's write on its way as he links the document", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 20))
+  it('is waited for; one that wrote straight in never reaches the file before he has looked, and his next press links', async () => {
+    // The agent's verdict was read while the document was private; its write lands after his press.
+    const w = privateWrite(source().path)
+    const saving = save({ at: { at: 'file', host: HOST, path: join(box.team, 'General') }, name: 'Budget', place: 'General' })
+    await flush()
+    // The document counts linked from his press: a verdict read now only suggests, and nothing is exported yet.
+    expect(linkedOut(box.ctx, source().path)).toBe(true)
+    const exported = doc.exported.length
+    doc.text = 'agent words'
+    doc.rev = 'r-agent'
+    w.end(true)
+    await expect(saving).rejects.toThrow(AGENT_JUST_WROTE)
+    expect(doc.exported).toHaveLength(exported)
+    expect(existsSync(join(box.team, 'General', 'Budget.docx'))).toBe(false)
+    expect(await links()).toEqual([])
+    expect(linkedOut(box.ctx, source().path)).toBe(false)
+    // He has seen it: his next press saves and links what is on screen.
+    expect(await save({ at: { at: 'file', host: HOST, path: join(box.team, 'General') }, name: 'Budget', place: 'General' })).toMatchObject({ saved: { name: 'Budget.docx', linked: true } })
+  })
+
+  it('one that only suggested holds nothing back, and his own words save as ever', async () => {
+    const w = privateWrite(source().path)
+    const saving = save({ at: { at: 'place', id: 'folder' } })
+    await flush()
+    doc.text = 'his words'
+    doc.rev = 'r-his'
+    w.end(false)
+    expect(await saving).toMatchObject({ saved: { name: 'Plan.docx', linked: true } })
+    expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx his words')
+    await edit('more of his words')
+    expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx more of his words')
   })
 })
