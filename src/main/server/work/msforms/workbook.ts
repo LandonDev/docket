@@ -16,10 +16,10 @@ import { formReach, librariesFor, LIBRARY_GONE, MsformsError } from './reach'
  * A Microsoft form's answers workbook (docs/agents/work-msforms.md "Open the workbook"): Forms writes a row to it for
  * every answer, so nothing of ours writes it. Opened Edit here it is read only with these words, the copy Files makes
  * of it sends nothing back, and the sheet tools refuse to change it: a copy saved back could write over rows Forms
- * added meanwhile. Live in Excel is his way to change it.
+ * added meanwhile. Excel for the web is his way to change it.
  */
 
-export const FORMS_WORKBOOK_READ_ONLY = 'Microsoft Forms writes this workbook. Open it Live in Excel to change it.'
+export const FORMS_WORKBOOK_READ_ONLY = 'Microsoft Forms writes this workbook. Open it in Excel for the web to change it.'
 export const FORMS_WORKBOOK_REFUSED = 'refused: Microsoft Forms writes this workbook; no agent changes it. Nothing was written.'
 /** A thread's read of it through the generic sheet and Office readers: answers reach a thread only through the form's own reach and withhold. */
 export const FORMS_WORKBOOK_READ_REFUSED = "refused: Microsoft Forms keeps this workbook's answers; read them with msform_answers, in the form's own job. Nothing was read."
@@ -134,7 +134,7 @@ export function isFormsWorkbook(ctx: Pick<WorkCtx, 'db' | 'host'>, ref: Workbook
 export const NO_WORKBOOK = 'Forms has not made the workbook for this form yet: it does once the first answer is read.'
 
 /**
- * `work.msforms.workbook`: the answers workbook as Files names it, to open Live in Excel in a Files tab. His press:
+ * `work.msforms.workbook`: the answers workbook as Files names it, to open in Excel for the web in a Files tab. His press:
  * the file's mode is remembered as Live (office/live/memory.ts), keyed as the seat chooser keys it (office/live/switch.ts
  * `liveSeat`), so the open that follows seats it Live with no copy made.
  */

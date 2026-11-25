@@ -41,12 +41,12 @@ function fakeHost() {
 }
 
 describe("Folders in Settings", () => {
-  it("says where each library's Office files open, TempCode until he picks Office on the web", async () => {
+  it("says where each library's Office files open, Edit here until he picks Office for the web", async () => {
     const { link, calls, host } = fakeHost();
     host.opensIn = "live";
     await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
     const select = await screen.findByLabelText("Where Purdue Esports's Office files open");
-    expect(select.textContent).toContain("Office on the web");
+    expect(select.textContent).toContain("Office for the web");
     expect(calls).toContainEqual({ method: "work.office.live.libraryDefault", params: { libraryId: FOUND.id } });
   });
 

@@ -3,7 +3,7 @@ import { BusyLabel, Button } from "../../../components/ui/button";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from "../../../components/ui/empty";
 import type { LiveTicketAsk } from "@shared/work/officeLive";
 import { liveAskKey, liveAskUrl, liveLayer, type LiveLayer, type LiveRect } from "./layer";
-import { APP_NAME, type LiveApp } from "./liveSwitch";
+import { liveLabel, type LiveApp } from "./liveSwitch";
 
 /**
  * How often a shown body checks its place in any case (perf M10: it was every 200 ms). What moves it says so first: a
@@ -115,7 +115,7 @@ export function LiveBody({ itemId, ask, app, covered, full, layer = liveLayer }:
       {!layer.can() ? (
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>Open in {APP_NAME[app]} on the Web</EmptyTitle>
+            <EmptyTitle>Open in {liveLabel(app)}</EmptyTitle>
             <EmptyDescription>This window cannot show it in the tab.</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
@@ -127,7 +127,7 @@ export function LiveBody({ itemId, ask, app, covered, full, layer = liveLayer }:
       ) : failed ? (
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>{APP_NAME[app]} for the web did not open</EmptyTitle>
+            <EmptyTitle>{liveLabel(app)} did not open</EmptyTitle>
             <EmptyDescription>{failed}</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>

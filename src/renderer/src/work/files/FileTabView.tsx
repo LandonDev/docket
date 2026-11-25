@@ -29,9 +29,9 @@ import { flushedItem } from "../canvas/flush";
 import { liveLayer, STAGE_SHARE, useLiveState } from "../office/live/layer";
 import { LiveBody } from "../office/live/LiveBody";
 import { LiveCover } from "../office/live/cover";
-import { leaveLive } from "../office/live/leave";
+import { leaveForSwitch } from "../office/live/leave";
 import { LiveControl, useLiveOf, type LiveDesktop } from "../office/live/LiveControl";
-import { APP_NAME, liveSourceOf, offersLive, switchTo, type LiveSetAnswer } from "../office/live/liveSwitch";
+import { appOfName, liveLine, liveSourceOf, offersLive, switchTo, type LiveSetAnswer } from "../office/live/liveSwitch";
 import { Ask, History } from "../icons";
 import { saveAsTemplate, workTemplatePort } from "../templates/open";
 import { KindGlyph } from "./KindGlyph";
@@ -497,14 +497,20 @@ export function FileTabView({
     ]),
     ...fileMenuEnd({ download: !!manage?.download, saveAs: wordable, template: !!template, wordAuto: wordAuto ? !!wordAuto.auto : null, full }),
   ];
-  // A shared Office file opens here or live in Office on the web (docs/agents/work-office-live.md): the header's control
+  // A shared Office file opens here or in Office for the web (docs/agents/work-office-live.md): the header's control
   // switches it, the line says how far Word has come, and the body is the guest's place (LiveBody).
   const live = liveSourceOf(item);
   const liveState = useLiveState(live && item ? item.id : null);
   const link = workspace.environmentId;
   // Only the four forms Office for the web edits are asked about (the host's `LIVE_FORMS`).
   const asksLive = offersLive(tab, !!live);
-  const liveOf = useLiveOf(() => registry.linkOf(link).request<OfficeLiveOf>("work.office.live.of", { workspaceId: workspace.id, tabId: tab.id }), asksLive ? (item?.id ?? null) : null);
+  const liveOf = useLiveOf(
+    () => registry.linkOf(link).request<OfficeLiveOf>("work.office.live.of", { workspaceId: workspace.id, tabId: tab.id }),
+    asksLive ? (item?.id ?? null) : null,
+    (fn) => registry.linkOf(link).onOpen(fn),
+  );
+  // The app the file is, before the host says: the control's place is kept for it, so its answer moves nothing.
+  const liveApp = live?.app ?? liveOf?.app ?? appOfName(tab.copyOf?.path ?? tab.name);
   // The kind's own switch in the header, as beside a thread (CanvasSeat): the sheet's Excel or Full editor, a deck's PowerPoint.
   const module = useKindModule(kindDefOf(kinds ?? CANVAS, item?.kind ?? "document").chunk);
   const KindEnd = item && !live ? module?.TabEnd : undefined;
@@ -512,15 +518,15 @@ export function FileTabView({
   const [switching, setSwitching] = useState<string | null>(null);
   const [switchBusy, setSwitchBusy] = useState(false);
   const runSwitch = (to: "here" | "live"): void => {
-    if (switchBusy || !item) return;
+    if (switchBusy || !item || !liveApp) return;
     setSwitchBusy(true);
     void switchTo(
       to,
-      { name, service: serviceOf(tab), sending: !!(copy && tab.back) },
+      { name, service: serviceOf(tab), sending: !!(copy && tab.back), app: liveApp },
       {
         set: (params) => registry.linkOf(link).request<LiveSetAnswer>("work.office.live.set", { workspaceId: workspace.id, tabId: tab.id, ...params }, { timeoutMs: 120_000, lane: "ui" }),
         flush: () => flushedItem(item.id),
-        leave: () => leaveLive(item.id, name),
+        leave: () => leaveForSwitch(item.id, name, liveApp),
         back: () => liveLayer.back(item.id),
         typed: () => liveLayer.typed(item.id),
         confirm: confirmAction,
@@ -537,9 +543,10 @@ export function FileTabView({
       .catch((err: unknown) => sayError(err, "The file did not switch", workspace.environmentId))
       .finally(() => setSwitchBusy(false));
   };
-  const liveNote = live && liveState ? (liveState.site ? `Signing in at ${liveState.site}` : liveState.stage !== "ready" && !liveState.failed ? `Opening in ${APP_NAME[live.app]}…` : null) : null;
+  const liveNote = live && liveState ? liveLine(liveState, live.app) : null;
   const note = switching ?? liveNote;
-  const liveProgress = live && liveState && liveState.stage !== "ready" && !liveState.failed ? STAGE_SHARE[liveState.stage] : null;
+  // A switch says its own wait; the guest's bar is not drawn over a body it is leaving or has not reached.
+  const liveProgress = live && liveState && !switching && liveState.stage !== "ready" && !liveState.failed ? STAGE_SHARE[liveState.stage] : null;
   const [renaming, setRenaming] = useState(false);
   // Escape leaves the full window, unless a menu, a dialog or the thing holding the key took it first.
   useEffect(() => {
@@ -601,6 +608,7 @@ export function FileTabView({
               <LiveControl
                 inTab={liveLayer.can()}
                 of={liveOf}
+                app={liveApp}
                 live={!!live}
                 busy={switchBusy}
                 desktops={liveOf && desktopsOf ? desktopsOf(liveOf) : []}

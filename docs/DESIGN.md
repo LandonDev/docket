@@ -1537,7 +1537,7 @@ The kinds, each a hand-made body built from components/ui:
   read is old. A change the agent made reloads a guest he has not typed in
   for ten seconds; otherwise the state line says "Changed by the agent"
   with Reload. More holds Open in Browser, Open the Workbook once Forms
-  made it (Live in Excel in a Files tab), Question History… (a dialog of
+  made it (Excel for the web in a Files tab), Question History… (a dialog of
   each change in words, newest first, under a 12px muted line of who and
   when: You, An agent, Seen in the page) and Check for Answers.
 - **Compare and History.** A compare is read only: its bar has no mode,
@@ -2212,19 +2212,32 @@ Around the canvas:
   read only.
   A **shared Office file** (.docx, .xlsx, .xlsm, .pptx in a library) has one
   more control before ⋯: a ghost menu button named by the mode the tab is in,
-  "Edit here" or "Live in Word" (Excel, PowerPoint), with a chevron. Its menu
+  "Edit here" or "Word for the web" ("Excel for the web", "PowerPoint for the
+  web": the mode's one name, in the menu, Settings' "Opens in" ("Edit here",
+  "Office for the web"), asks and tool words alike), with a chevron; under
+  480px of header it reads "Here" or "Live", as Ask goes to its glyph, and its
+  accessible name stays whole. Until the host answers, its place is kept,
+  unseen, for the app the file's name says, so a late answer moves nothing; a
+  missed answer is asked again (after 2, 5, 15, then every 30 s, and at once
+  when the link returns). Its menu
   holds the two modes as ticked rows, then "Open in Word on MacBook" and "Open
   in Word in the Windows VM" where those exist, which act at once and leave
   the mode as it is. A live tab's body is Office for the web itself, edge to
   edge under the header; the line says where the file is kept ("In Team
   RecWell"), "Opening in Word…" with a 4px bar along the header's foot in
-  place of its rule while Word comes up, or "Signing in at
-  login.microsoftonline.com" while the page is on another site. It never says
+  place of its rule while Word comes up, or "Signing in to Microsoft…" while
+  the page is on a sign-in site (never its address). It never says
   saved: Office does. A file that did not load is one `Empty` ("Word for the
-  web did not open", the reason, Retry). A chat or a side file that lies over
+  web did not open", the reason, Retry; a Retry after a refused ticket asks a
+  fresh one, so it ends in the file or the reason again). A chat or a side file that lies over
   the body hides the page under it. While a switch waits the line says why
-  ("Sending your changes first…", "Getting the newest from Teams…") and the
-  control waits.
+  from his press, and the control waits: to Live "Opening in Word…" (or
+  "Sending your changes first…", then "Opening in Word…"); to Edit here
+  "Leaving Word…" while Word lets go, then "Opening it here…". No bar is drawn
+  while a switch waits. Word still saving past 10 s asks in the house confirm,
+  "Plan.docx is still saving", "What Word for the web has not saved may be
+  lost. If the file does not have your changes yet, it stays in Word for the
+  web.", Cancel and a red Switch Anyway (a close asks Close Anyway).
   **Ask** docks a chat at the file's right, under the header; Ask again or
   the dock's close takes it away, at once, never a tween. It shows the
   thread that holds the file, else a draft that is in no rail and on no

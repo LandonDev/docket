@@ -125,6 +125,40 @@ describe("the layer", () => {
     expect(layer.state("a").failed).toMatch(/Only a file/);
   });
 
+  it("asks a fresh ticket on Retry after a refused one, so the Retry ends: the file opens or says why again", async () => {
+    const b = bridge();
+    b.ticket.mockResolvedValueOnce({ ok: false, error: "This Mac is offline." } as never);
+    const layer = new LiveLayer(() => b as never);
+    layer.show("a", FILE, RECT, false);
+    await flush();
+    expect(layer.state("a").failed).toBe("This Mac is offline.");
+    layer.retry("a");
+    expect(layer.state("a")).toEqual(START);
+    await flush();
+    expect(b.ticket).toHaveBeenCalledTimes(2);
+    expect(guests()).toHaveLength(1);
+    expect(guests()[0]!.style).toMatchObject({ left: "10px", top: "60px", visibility: "visible" });
+    // An attached guest's Retry loads its page again on the ticket it has.
+    const [el] = guests();
+    layer.retry("a");
+    await flush();
+    expect(b.ticket).toHaveBeenCalledTimes(2);
+    expect(guests()).toEqual([el]);
+  });
+
+  it("says why again when the fresh ticket is refused too", async () => {
+    const b = bridge();
+    b.ticket.mockResolvedValue({ ok: false, error: "This Mac is offline." } as never);
+    const layer = new LiveLayer(() => b as never);
+    layer.show("a", FILE, RECT, false);
+    await flush();
+    layer.retry("a");
+    await flush();
+    expect(b.ticket).toHaveBeenCalledTimes(2);
+    expect(guests()).toHaveLength(0);
+    expect(layer.state("a").failed).toBe("This Mac is offline.");
+  });
+
   it("hides a guest off screen without unloading it, and shows it again where its tab is", async () => {
     const layer = new LiveLayer(() => bridge() as never);
     layer.show("a", FILE, RECT, false);

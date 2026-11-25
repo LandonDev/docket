@@ -232,7 +232,7 @@ function useChrome(shell: CanvasShell, host: MsFormHost, store: Store, view: MsF
               id: "workbook",
               label: "Open the Workbook",
               icon: Table,
-              // Live in Excel in a Files tab: the host remembers the file as Live, and Files seats it so.
+              // Excel for the web in a Files tab: the host remembers the file as Live, and Files seats it so.
               run: () =>
                 void host
                   .workbook()

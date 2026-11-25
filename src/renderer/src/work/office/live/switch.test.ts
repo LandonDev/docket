@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { liveSourceOf, switchTo, type LiveSetAnswer, type SwitchDeps } from "./liveSwitch";
+import { appOfName, liveLabel, liveLine, liveSourceOf, switchTo, type LiveSetAnswer, type SwitchDeps } from "./liveSwitch";
 
-const FROM = { name: "Plan.docx", service: "Teams", sending: false };
+const FROM = { name: "Plan.docx", service: "Teams", sending: false, app: "word" as const };
 
 function deps(answers: LiveSetAnswer[], over: Partial<SwitchDeps> = {}) {
   const lines: (string | null)[] = [];
   const d = {
     set: vi.fn(async () => answers.shift() ?? { is: "done" as const }),
     flush: vi.fn(async () => true),
-    leave: vi.fn(async () => true),
+    leave: vi.fn(async (): Promise<boolean | "forced"> => true),
     back: vi.fn(),
     typed: vi.fn(async () => 0),
     confirm: vi.fn(async () => true),
@@ -38,7 +38,24 @@ describe("switching to Live", () => {
   it("says the copy's changes go first, and clears the line after", async () => {
     const { d, lines } = deps([{ is: "done" }]);
     await switchTo("live", { ...FROM, sending: true }, d);
-    expect(lines).toEqual(["Sending your changes first…", null]);
+    expect(lines).toEqual(["Sending your changes first…", "Opening in Word…", null]);
+  });
+
+  it("says so at the press, before the host answers", async () => {
+    let answer!: (a: LiveSetAnswer) => void;
+    const { d, lines } = deps([], { set: vi.fn(() => new Promise<LiveSetAnswer>((r) => (answer = r))) });
+    const going = switchTo("live", { ...FROM, app: "excel" }, d);
+    await vi.waitFor(() => expect(d.set).toHaveBeenCalled());
+    expect(lines).toEqual(["Opening in Excel…"]);
+    answer({ is: "done" });
+    expect(await going).toBe(true);
+    expect(lines.at(-1)).toBeNull();
+  });
+
+  it("names the mode in its asks", async () => {
+    const { d } = deps([{ is: "ask", why: "changed", words: "x" }, { is: "done" }]);
+    await switchTo("live", FROM, d);
+    expect(d.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Open Plan.docx in Word for the web?" }));
   });
 
   it.each(["changed", "gone", "away", "refused"] as const)("asks Keep Both over a copy whose file %s, and switches on it", async (why) => {
@@ -85,13 +102,31 @@ describe("switching to Edit here", () => {
     expect(await switchTo("here", FROM, d)).toBe(true);
     expect(order).toEqual(["typed", "leave"]);
     expect(d.set).toHaveBeenCalledWith({ mode: "here", typed: 4 });
-    expect(lines).toEqual(["Getting the newest from Teams…", null]);
+    expect(lines).toEqual(["Leaving Word…", "Opening it here…", null]);
   });
 
-  it("says nothing of waiting when he typed nothing", async () => {
-    const { d, lines } = deps([{ is: "done" }]);
+  it("says it is leaving Word while Word lets go, then opening it here, whether or not he typed", async () => {
+    const seen: (string | null)[] = [];
+    const { d, lines } = deps([{ is: "done" }], { leave: vi.fn(async () => (seen.push(lines.at(-1) ?? null), true)) });
+    d.set.mockImplementation(async () => (seen.push(lines.at(-1) ?? null), { is: "done" as const }));
     await switchTo("here", FROM, d);
-    expect(lines).toEqual([null]);
+    expect(seen).toEqual(["Leaving Word…", "Opening it here…"]);
+    expect(lines.at(-1)).toBeNull();
+  });
+
+  it("after Switch Anyway, has the host prove the file moved even when no key was counted", async () => {
+    const { d } = deps([{ is: "done" }], { leave: vi.fn(async () => "forced" as const) });
+    expect(await switchTo("here", FROM, d)).toBe(true);
+    expect(d.set).toHaveBeenCalledWith({ mode: "here", typed: 1 });
+    const typed = deps([{ is: "done" }], { leave: vi.fn(async () => "forced" as const), typed: vi.fn(async () => 7) });
+    await switchTo("here", FROM, typed.d);
+    expect(typed.d.set).toHaveBeenCalledWith({ mode: "here", typed: 7 });
+  });
+
+  it("keeps the seat after Switch Anyway when the host cannot prove the file holds his edits", async () => {
+    const { d } = deps([], { leave: vi.fn(async () => "forced" as const), set: vi.fn(async () => Promise.reject(new Error("has not come down from OneDrive yet"))) });
+    await expect(switchTo("here", FROM, d)).rejects.toThrow("has not come down");
+    expect(d.back).toHaveBeenCalledTimes(1);
   });
 
   it("brings the guest back when the host keeps the tab live, and not when it switched", async () => {
@@ -131,5 +166,27 @@ describe("which Files tab is asked about Office on the web", () => {
     expect(offersLive({ name: "Notes.md" }, false)).toBe(false);
     expect(offersLive({ name: "Notes", copyOf: { path: "/Users/him/Teams/General/Notes.pdf" } }, false)).toBe(false);
     expect(offersLive({ name: "Anything" }, true)).toBe(true);
+  });
+});
+
+describe("one name", () => {
+  it("names the live mode by its app, for the web", () => {
+    expect(["word", "excel", "powerpoint"].map((a) => liveLabel(a as "word"))).toEqual(["Word for the web", "Excel for the web", "PowerPoint for the web"]);
+  });
+
+  it("knows the app from the file's name, before the host answers", () => {
+    expect(["Plan.docx", "Roster.XLSX", "Macros.xlsm", "Deck.pptx", "Notes.doc", "a.txt"].map(appOfName)).toEqual(["word", "excel", "excel", "powerpoint", null, null]);
+  });
+});
+
+describe("liveLine", () => {
+  const S = { stage: "start" as const, site: null, failed: null };
+  it("says Opening in Word until ready, Signing in to Microsoft on a sign-in site, and nothing once up or failed", () => {
+    expect(liveLine(S, "word")).toBe("Opening in Word…");
+    expect(liveLine({ ...S, stage: "editor" }, "powerpoint")).toBe("Opening in PowerPoint…");
+    expect(liveLine({ ...S, site: "login.microsoftonline.com" }, "word")).toBe("Signing in to Microsoft…");
+    expect(liveLine({ ...S, stage: "ready", site: "idp.purdue.edu" }, "word")).toBe("Signing in to Microsoft…");
+    expect(liveLine({ ...S, stage: "ready" }, "word")).toBeNull();
+    expect(liveLine({ ...S, site: "login.microsoftonline.com", failed: "It did not load." }, "word")).toBeNull();
   });
 });

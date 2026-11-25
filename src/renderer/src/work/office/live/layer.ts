@@ -244,10 +244,19 @@ export class LiveLayer {
     this.guests.get(key)?.el.focus();
   }
 
-  /** Loads the file again after a failure. */
+  /**
+   * Loads the file again after a failure. A guest whose ticket was refused never attached, so it has nothing to load:
+   * it is made again where it was, asking a fresh ticket, which opens the file or says why once more.
+   */
   retry(key: string): void {
     const guest = this.guests.get(key);
     if (!guest) return;
+    if (!guest.el.isConnected) {
+      const { ask, rect, full, anchor } = guest;
+      this.drop(key);
+      if (rect) this.show(key, ask, rect, full, anchor);
+      return;
+    }
     this.set(key, START);
     void guest.el.loadURL?.(guest.url).catch(() => undefined);
   }

@@ -184,7 +184,7 @@ describe.skipIf(process.platform === 'win32')("a Microsoft form's answers workbo
     expect((await run('sheet_read', { file: other, range: 'A1:C3' })).content[0].text).not.toBe(FORMS_WORKBOOK_READ_REFUSED)
   })
 
-  it('names the workbook as Files does for Open the Workbook, remembered as Live in Excel', async () => {
+  it('names the workbook as Files does for Open the Workbook, remembered as Excel for the web', async () => {
     const lib = diskLibrary()
     const book = join(rig.team, 'General', 'Answers.xlsx')
     copyFileSync(join(CORPUS, 'formulas.xlsx'), book)

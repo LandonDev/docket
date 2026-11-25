@@ -189,9 +189,9 @@ it ("read them with msform_answers"; the read-only judge's `readRefused`, workbo
 
 ## Around the form
 
-- **Open the Workbook** (More, once the workbook exists; `work.msforms.workbook`): the workbook opens Live in Excel
+- **Open the Workbook** (More, once the workbook exists; `work.msforms.workbook`): the workbook opens in Excel for the web
   in a Files tab, his own Excel-for-the-web open also syncing it. Opened Edit here, the sheet editor shows it read
-  only ("Microsoft Forms writes this workbook. Open it Live in Excel to change it.", msforms/workbook.ts through
+  only ("Microsoft Forms writes this workbook. Open it in Excel for the web to change it.", msforms/workbook.ts through
   `registerReadOnlyFile`), no save goes back from its copy, and the sheet and Office tools refuse to write it.
 - **Question History** (More; `work.msforms.history`): each change of the question list in words, newest first,
   with when and who (the agent, him, or seen in the page).

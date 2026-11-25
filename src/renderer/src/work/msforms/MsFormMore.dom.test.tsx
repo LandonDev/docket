@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The Microsoft form kind's More: Open the Workbook, once Forms made it, opens it in a Files tab of the job by the
- * file the host names (the host has remembered it as Live in Excel); Question History lists each change of the
+ * file the host names (the host has remembered it as Excel for the web); Question History lists each change of the
  * questions in words with when and who.
  */
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";

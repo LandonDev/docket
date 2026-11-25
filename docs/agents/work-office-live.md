@@ -1,9 +1,10 @@
 # Live Office in a Files tab
 
 A shared Office file (.docx, .xlsx, .xlsm, .pptx in a Teams or OneDrive library) opens in its Files tab one of two
-ways, his choice per file, remembered: **Edit here** (TempCode's own editor, as before) or **Live in Word** (Excel,
-PowerPoint): Office for the web drawn in the tab, signed in as him, a real co-authoring client with Microsoft's own
-autosave. Plan: `.temp-code/plan-g6gWATXhCtN4.md`; trial: `.temp-code/plans/office-live/trial.md`; landing note:
+ways, his choice per file, remembered: **Edit here** (TempCode's own editor, as before) or **Word for the web**
+("Excel for the web", "PowerPoint for the web"; "Office for the web" for all three, as Settings says): Office for the
+web drawn in the tab, signed in as him, a real co-authoring client with Microsoft's own autosave. That is the mode's one
+name everywhere (the control, its menu, Settings, asks, the Forms workbook's words), `liveLabel` in liveSwitch.ts. Plan: `.temp-code/plan-g6gWATXhCtN4.md`; trial: `.temp-code/plans/office-live/trial.md`; landing note:
 `.temp-code/plans/landed/F-office-live.md`.
 
 ## Where it runs
@@ -84,11 +85,17 @@ every form of one file, so an add-in's `document.url`, Word's `FullName` and the
 ## The control and the memory
 
 - The header gains one control before ⋯ on a shared Office file (`LiveControl.tsx`): a menu button named by the
-  mode. Its menu holds Edit here and Live in Word as ticked rows, then "Open in Word on MacBook" / "in the Windows VM"
-  where they exist (`work.office.filesOpen`), which act at once and leave the mode as it is.
-- The header's line in a live tab: "In Team RecWell"; "Opening in Word…" with a 4px bar along the header's foot while
-  the guest comes up (stages: the file's page, Office's editor frame, ready); "Signing in at <site>" while the guest
-  is on another site. It never says saved: Office does. A failure is the body's `Empty` with Retry.
+  mode. Its menu holds Edit here and Word for the web as ticked rows, then "Open in Word on MacBook" / "in the Windows
+  VM" where they exist (`work.office.filesOpen`), which act at once and leave the mode as it is. Under 480px of header
+  (the `file-head` container) it reads "Here" or "Live"; its `aria-label` keeps the whole name. Until
+  `work.office.live.of` answers, the control's place is kept by an unseen, disabled copy for the app the file's name
+  implies (`appOfName`), so a late answer moves nothing. A missed answer keeps the last one and is asked again
+  (`useLiveOf`: after `LIVE_OF_RETRY_MS`, 2, 5, 15, then every 30 s, and at once when the link opens again).
+- The header's line in a live tab (`liveLine`): "In Team RecWell"; "Opening in Word…" with a 4px bar along the
+  header's foot while the guest comes up (stages: the file's page, Office's editor frame, ready); "Signing in to
+  Microsoft…" while the guest is on another site, never the site's address. It never says saved: Office does. A
+  failure is the body's `Empty` with Retry. A guest whose ticket was refused never attached: its Retry drops it and
+  makes it again where it was, asking a fresh ticket (`LiveLayer.retry`), so the press ends in the file or the reason.
 - `work.office.live.of {workspaceId, tabId}` answers `{mode, address, why?, app, tenant, desktops}`. The mode is kept
   per file in `work_office_live (workspace_id, ref_key, mode, at)` by the tab's stable key, with a library default in
   `work_office_files` as `live:<libraryId>` (Settings → Teams files, "Opens in", `work.office.live.setLibraryDefault`).
@@ -117,9 +124,14 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
 - The host keeps the file's version as its tab goes live (`keepBase`, in `work_office_files` beside the library
   defaults, so it pins no mode): its sha256 where this host can hash it, else size and time (another computer, the
   VM; the VM asleep is never woken for it, and gives none).
+- The line says each wait from his press (`switchTo`): to Live "Opening in Word…" (a copy's send first: "Sending your
+  changes first…", then "Opening in Word…"); to Edit here "Leaving Word…" while the guest unloads, then "Opening it
+  here…" while the host reseats. No bar while a switch waits.
 - To Edit here: the window reads how much he typed (main counts keys on the guest), then unloads the guest; Word may
-  hold the unload while saving (`will-prevent-unload`), so the layer waits up to 10 s, then asks "Close Anyway". When
-  he typed, the host waits up to 60 s for the file to differ from that kept version (by its bytes, so a restamp or a
+  hold the unload while saving (`will-prevent-unload`), so the layer waits up to 10 s, then asks "Switch Anyway"
+  (`leaveForSwitch`; a close asks "Close Anyway"). Switch Anyway counts as typing (`typed` at least 1): nothing
+  proves the file holds what Word had not saved, so the host must see the file move or the tab stays live and the
+  guest comes back; the seat is kept. When he typed, the host waits up to 60 s for the file to differ from that kept version (by its bytes, so a restamp or a
   sync touching its time is no change), then `reseat`s it fresh. Nothing moved by then, nothing proves the file holds
   his typing: the switch is refused ("What you typed in Plan.docx has not come down from OneDrive yet, so it stays
   live."), the tab stays live and the layer puts the guest back where it was (`liveLayer.back`). A tab live from

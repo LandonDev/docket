@@ -24,7 +24,7 @@ export interface MsFormHost {
   seen(): Promise<MsFormView>;
   /** The changes of the question list, newest first. */
   history(): Promise<MsFormHistoryRow[]>;
-  /** The answers workbook as Files names it, remembered as Live in Excel for the open that follows. */
+  /** The answers workbook as Files names it, remembered as Excel for the web for the open that follows. */
   workbook(): Promise<{ ref: { at: "file"; host: string; path: string }; name: string }>;
   watch(on: (view: MsFormView | null) => void): () => void;
 }

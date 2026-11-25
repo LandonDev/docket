@@ -181,13 +181,13 @@ export function TeamsFilesRow({ link, title, host, editable }: { link: Link | nu
 }
 
 const OPENS_IN = [
-  { value: "here", label: "TempCode" },
-  { value: "live", label: "Office on the web" },
+  { value: "here", label: "Edit here" },
+  { value: "live", label: "Office for the web" },
 ] as const;
 
 /**
  * Where a shared Office file of this library opens until he picks for the file itself (docs/agents/work-office-live.md
- * "The control"): TempCode's own editor, or live in Office on the web.
+ * "The control"): Edit here (TempCode's own editor), or Office for the web (Word, Excel or PowerPoint for the web).
  */
 function OpensIn({ link, libraryId, title }: { link: Link; libraryId: string; title: string }) {
   const read = useHostRead(link, () => link.request<{ mode: "here" | "live" }>("work.office.live.libraryDefault", { libraryId }), libraryId);

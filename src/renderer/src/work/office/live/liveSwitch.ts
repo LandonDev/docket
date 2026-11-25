@@ -1,4 +1,5 @@
 import type { ConfirmRequest } from "../../../chrome/ConfirmDialog";
+import type { LiveState } from "./layer";
 
 /**
  * Switching a Files tab between Edit here and Live (docs/agents/work-office-live.md "Switching"). The host swaps the
@@ -8,7 +9,10 @@ import type { ConfirmRequest } from "../../../chrome/ConfirmDialog";
  *   offers Save as Word… or Cancel. Never a quiet drop.
  * - to Edit here: the guest unloads first (Word may hold it while saving: the layer waits, then asks), and the host
  *   is told how much he typed, so it waits for OneDrive to bring Word's edits down before it opens the file. When
- *   nothing proves they came down the host keeps the tab live, and the guest comes back.
+ *   nothing proves they came down the host keeps the tab live, and the guest comes back. Switch Anyway (Word let go
+ *   mid-save) counts as typing: the host proves the file moved or keeps the seat.
+ * The line says each wait from the press: "Opening in Word…" (or "Sending your changes first…") to Live; "Leaving
+ * Word…", then "Opening it here…" to Edit here.
  */
 
 export type LiveMode = "here" | "live";
@@ -18,8 +22,8 @@ export interface SwitchDeps {
   set(params: { mode: LiveMode; typed?: number; choice?: "keep-both" }): Promise<LiveSetAnswer>;
   /** What the tab's kind still holds reaches the host (canvas/flush.ts `flushedItem`); false when its send did not land. */
   flush(): Promise<boolean>;
-  /** The guest unloads; false when he chose to stay (Word still saving). */
-  leave(): Promise<boolean>;
+  /** The guest unloads; false when he chose to stay (Word still saving), "forced" when he let Word go mid-save. */
+  leave(): Promise<boolean | "forced">;
   /** The guest `leave` let go comes back in place: the host kept the tab live. */
   back(): void;
   /** Keys he typed in the live file. */
@@ -37,38 +41,46 @@ export interface SwitchFrom {
   service: string;
   /** The tab is a copy that saves back: its changes go first. */
   sending: boolean;
+  /** Word, Excel or PowerPoint: the app the wait lines and asks name. */
+  app: LiveApp;
 }
 
 /** One switch, asked and done. Answers whether the tab is now in `to`. */
 export async function switchTo(to: LiveMode, from: SwitchFrom, deps: SwitchDeps): Promise<boolean> {
   try {
+    const app = APP_NAME[from.app];
     if (to === "here") {
       const typed = await deps.typed();
-      if (!(await deps.leave())) return false;
-      if (typed > 0) deps.busy(`Getting the newest from ${from.service}…`);
+      deps.busy(`Leaving ${app}…`);
+      const left = await deps.leave();
+      if (!left) return false;
+      deps.busy("Opening it here…");
+      // Word let go mid-save: nothing proves the file holds his edits, so the host waits for it to move, else keeps the seat.
+      const told = left === "forced" ? Math.max(typed, 1) : typed;
       let done = false;
       try {
-        done = (await deps.set({ mode: "here", typed })).is === "done";
+        done = (await deps.set({ mode: "here", typed: told })).is === "done";
       } finally {
         if (!done) deps.back();
       }
       return done;
     }
-    if (from.sending) deps.busy("Sending your changes first…");
+    deps.busy(from.sending ? "Sending your changes first…" : `Opening in ${app}…`);
     // The item is replaced by the switch: an edit the kind could not send stops it, never goes with it.
     if (!(await deps.flush())) throw new Error(`Your last change to ${from.name} has not been saved yet. Try again in a moment.`);
+    if (from.sending) deps.busy(`Opening in ${app}…`);
     let choice: "keep-both" | undefined;
     // At most one ask of each kind: a second refusal of the same kind is the host's last word.
     for (let tries = 0; tries < 3; tries++) {
       const answer = await deps.set({ mode: "live", ...(choice ? { choice } : {}) });
       if (answer.is === "done") return true;
       if (answer.why === "word") {
-        if (!(await deps.confirm({ title: `Open ${from.name} live?`, body: answer.words, action: `Save to ${from.service} as Word…` }))) return false;
+        if (!(await deps.confirm({ title: `Open ${from.name} in ${liveLabel(from.app)}?`, body: answer.words, action: `Save to ${from.service} as Word…` }))) return false;
         if (!(await deps.saveWord())) return false;
         continue;
       }
       if (choice) return false;
-      if (!(await deps.confirm({ title: `Open ${from.name} live?`, body: answer.words, action: "Keep Both" }))) return false;
+      if (!(await deps.confirm({ title: `Open ${from.name} in ${liveLabel(from.app)}?`, body: answer.words, action: "Keep Both" }))) return false;
       choice = "keep-both";
     }
     return false;
@@ -77,10 +89,16 @@ export async function switchTo(to: LiveMode, from: SwitchFrom, deps: SwitchDeps)
   }
 }
 
-/** "Live in Word", "Live in Excel", "Live in PowerPoint"; Forms names a form's guest (LiveBody), never a file's. */
+/** The app a guest draws; Forms names a form's guest (LiveBody), never a file's. */
 export const APP_NAME = { word: "Word", excel: "Excel", powerpoint: "PowerPoint", forms: "Forms" } as const;
 export type LiveApp = keyof typeof APP_NAME;
-export const liveLabel = (app: LiveApp): string => `Live in ${APP_NAME[app]}`;
+/** The one name of the live mode (docs/DESIGN.md "The Files place"): "Word for the web", "Excel for the web", "PowerPoint for the web". */
+export const liveLabel = (app: LiveApp): string => `${APP_NAME[app]} for the web`;
+/** The app a live-able file's name implies, so the control keeps its place before the host answers. */
+export function appOfName(name: string): Exclude<LiveApp, "forms"> | null {
+  const ext = /\.(\w+)$/.exec(name)?.[1]?.toLowerCase();
+  return ext === "docx" ? "word" : ext === "xlsx" || ext === "xlsm" ? "excel" : ext === "pptx" ? "powerpoint" : null;
+}
 
 /** A live tab's item: a Microsoft file by its web address (the host's seat for Live), drawn by Office for the web. */
 export function liveSourceOf(item: { source: { at: string } } | null | undefined): { url: string; app: LiveApp } | null {
@@ -91,10 +109,20 @@ export function liveSourceOf(item: { source: { at: string } } | null | undefined
 
 const LIVE_NAME = /\.(docx|xlsx|xlsm|pptx)$/i;
 /**
- * Whether a Files tab is asked about Office on the web: only the four forms it edits (the host's `LIVE_FORMS`), by the
+ * Whether a Files tab is asked about Office for the web: only the four forms it edits (the host's `LIVE_FORMS`), by the
  * tab's name or, for a Word file opened as the document made of it (the tab then carries the document's name), by the
  * file it is a copy of. A tab that is live now always is.
  */
 export function offersLive(tab: { name: string; copyOf?: { path: string } }, live: boolean): boolean {
   return live || LIVE_NAME.test(tab.name) || LIVE_NAME.test(tab.copyOf?.path ?? "");
+}
+
+/**
+ * A live tab's line while its guest comes up: "Signing in to Microsoft…" while the page is on a sign-in site (never its
+ * address: redirects pass through several), "Opening in Word…" until the editor is up, then nothing (the place line).
+ */
+export function liveLine(state: LiveState, app: LiveApp): string | null {
+  if (state.failed) return null;
+  if (state.site) return "Signing in to Microsoft…";
+  return state.stage !== "ready" ? `Opening in ${APP_NAME[app]}…` : null;
 }

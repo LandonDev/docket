@@ -30,10 +30,10 @@ export default journey({
       await showPlace(context)
       await openRow(pair.page, NAME)
     }),
-    step('Open the editor switch and record the address it offers for Live in Word', async (context) => {
+    step('Open the editor switch and record the address it offers for Word for the web', async (context) => {
       const { pair, folder, workspace } = context
       await pair.page.clickOn(CONTROL, 'Edit here')
-      await pair.page.until('the Live in Word choice', 10_000, () => pair.page.centre('[role^="menuitem"]', 'Live in Word'))
+      await pair.page.until('the Word for the web choice', 10_000, () => pair.page.centre('[role^="menuitem"]', 'Word for the web'))
       const of = await mode(context)
       writeFileSync(join(folder, 'office-address.json'), JSON.stringify(of, null, 2))
       const address = of.address ? new URL(of.address) : null
