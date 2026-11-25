@@ -1798,12 +1798,17 @@ slide), the stage leaves the slide or the tab closes (`flush` waits for
 them). Each edit names the notes it was written over (`was`: what the host
 last took from the field, else what the field began from); the host
 refuses one whose slide's notes changed since (`handEdit`, the box's
-`CHANGED_WHILE`). A refusal, that one or any other, is said in the save
-line, "Not saved." and why, with Retry (`notesFailure`, `retryNotes`),
-until he types in the field again or they go in. His words stay in the field
-(`notesPending`), the field drawn again on the slide starts from them
-(`pendingNotes`), never from the deck's older notes, and Retry, his next keep or the close writes them over the
-notes as they are now, the other save kept in the deck's versions. Inside
+`CHANGED_WHILE`): the save line says "The deck changed while you typed"
+with Replace and Reload (`notesConflict`), and nothing of his notes is sent
+until he presses one: another key keeps them his and sends nothing, and a
+close is refused (`CloseRefused`), as M1 did for files. Replace writes them
+over the notes as they are now (`retryNotes`), the other save kept in the
+deck's versions; Reload drops them and the field takes the deck's notes
+(`reloadNotes`, `notesReload`). Any other refusal is said as "Not saved." and
+why, with Retry (`notesFailure`), and Retry, his next keep or the close
+writes them over the notes as they are now. His words stay in the field
+(`notesPending`), and the field drawn again on the slide starts from them
+(`pendingNotes`), never from the deck's older notes. Inside
 the 2 s pause his notes are an edit waiting (`notesEditedAt`, canvas/calm.ts),
 not a send, so the line keeps its Saved; it says saving once a send has been
 out 600 ms, as the box's does. From his first key they

@@ -124,6 +124,10 @@ export interface HandState {
   notesFailure?: string | null;
   /** when his last key in the notes field was, while those notes wait for the pause; nothing is on its way for them yet */
   notesEditedAt?: number | null;
+  /** his notes were refused because they changed elsewhere: Replace or Reload, and nothing of them is sent until he presses one */
+  notesConflict?: boolean;
+  /** counts his notes' Reloads: the field takes the deck's notes again at each */
+  notesReload?: number;
   /** a look the row laid on the picked shape, shown until the deck comes back with it */
   shapeLook: { shapeId: number; set: RunLook & ParaLook } | null;
   /** a shape's carried picture, or the ground over a deleted one, until the new picture lands */
@@ -193,7 +197,7 @@ export class HandSession {
   private notesSending: { slide: number; text: string; done: Promise<boolean> } | null = null;
   private notesHeld = new Map<number, string>();
   /** His notes the host refused, still in the field until he types again. */
-  private notesRefused: { slide: number; text: string } | null = null;
+  private notesRefused: { slide: number; text: string; conflict?: boolean } | null = null;
   /** where the open box's unsent words are kept on this computer; null where there is no store */
   private journal: DraftJournal | null = null;
   /** where his notes not yet in the file are kept, beside the box's */
@@ -635,9 +639,10 @@ export class HandSession {
    * when they are still not in the file, so the tab stays open with them and the line's Retry or Reload.
    */
   async flush(): Promise<void> {
-    // His notes go first, and a close waits for them as for the box. Notes refused before (changed elsewhere, said
-    // then) go once more over the notes as they are now, the other save kept in the deck's versions; refused again,
-    // the tab stays with them in the field.
+    // His notes go first, and a close waits for them as for the box. Notes in conflict with a save made elsewhere keep
+    // the tab: they go only by his Replace. Notes refused otherwise go once more over the notes as they are now;
+    // refused again, the tab stays with them in the field.
+    if (this.notesRefused?.conflict) throw new CloseRefused("Your notes changed elsewhere. Replace or Reload them first");
     if (!(await this.retryNotes())) throw new CloseRefused("Your notes are not in the file yet");
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = await Promise.race([
@@ -750,12 +755,20 @@ export class HandSession {
    * written over (`was`): what the host last took from this field, else what the field began from.
    */
   typeNotes(slide: number, text: string, began: string): void {
+    const refused = this.notesRefused;
+    if (refused?.conflict && refused.slide === slide) {
+      // In conflict with a save made elsewhere: his words stay his, kept on this computer, and nothing is sent until
+      // he presses Replace or Reload.
+      this.notesRefused = { ...refused, text };
+      this.notesJournal?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
+      return;
+    }
     const waiting = this.notesWaiting;
     if (waiting && waiting.slide !== slide) void this.keepNotes();
-    this.notesRefused = null;
+    if (!refused?.conflict) this.notesRefused = null;
     if (this.notesWaiting) clearTimeout(this.notesWaiting.timer);
     // Waiting for the pause, nothing is on its way: the line keeps its Saved until the pause ends or they are sent.
-    this.set({ notesEditedAt: Date.now(), notesFailure: null });
+    this.set({ notesEditedAt: Date.now(), ...(refused?.conflict ? {} : { notesFailure: null, notesConflict: false }) });
     this.notesWaiting = { slide, text, began, timer: setTimeout(() => void this.keepNotes(), TYPING_SAVE_MS) };
     // Kept on this computer at once, so a crash in the pause loses nothing; they go from it once the host has them.
     this.notesJournal?.keep(`notes:${slide}`, { kind: "notes", slideId: slide, text, was: this.notesHeld.get(slide) ?? began });
@@ -789,13 +802,14 @@ export class HandSession {
           return true;
         },
         (error) => {
-          // Refused (the notes changed elsewhere, or the host would not take them): said in the save line with Retry,
-          // his words stay in the field and kept on this computer, and his next keep writes over the notes as the
-          // deck has them now.
+          // Refused: his words stay in the field and kept on this computer. Changed elsewhere, the line says so with
+          // Replace and Reload, the edit's own check stays theirs, and neither a close nor another key writes over the
+          // other save. Refused otherwise, Retry writes them over the notes as the deck has them now.
           const said = message(error, "Couldn't save the notes");
-          this.notesHeld.set(waiting.slide, this.store.get().view?.slides.find((s) => s.id === waiting.slide)?.notes ?? was);
-          this.notesRefused = { slide: waiting.slide, text: waiting.text };
-          this.set({ busy: this.state.busy - 1, notesFailure: MOVED.test(said) ? CONFLICT_WORD : said });
+          const conflict = MOVED.test(said);
+          this.notesHeld.set(waiting.slide, conflict ? was : (this.deckNotes(waiting.slide) ?? was));
+          this.notesRefused = { slide: waiting.slide, text: waiting.text, ...(conflict ? { conflict } : {}) };
+          this.set({ busy: this.state.busy - 1, notesFailure: conflict ? CONFLICT_WORD : said, notesConflict: conflict });
           return false;
         },
       ),
@@ -806,11 +820,30 @@ export class HandSession {
     return ok;
   }
 
-  /** His refused notes sent once more, over the notes as the deck has them now; resolves as `keepNotes` does. */
+  /** A slide's notes as the deck has them now. */
+  private deckNotes(slide: number): string | undefined {
+    return this.store.get().view?.slides.find((s) => s.id === slide)?.notes;
+  }
+
+  /** His refused notes sent once more (Retry, or Replace over notes changed elsewhere), over the notes as the deck has them now; resolves as `keepNotes` does. */
   retryNotes(): Promise<boolean> {
     const refused = this.notesRefused;
+    if (refused?.conflict) {
+      this.notesHeld.set(refused.slide, this.deckNotes(refused.slide) ?? this.notesHeld.get(refused.slide) ?? "");
+      this.notesRefused = { slide: refused.slide, text: refused.text };
+    }
     if (refused && !this.notesWaiting) this.typeNotes(refused.slide, refused.text, refused.text);
     return this.keepNotes();
+  }
+
+  /** Reload over notes changed elsewhere: his words go, and the field takes the deck's notes as they are now. */
+  reloadNotes(): Promise<void> {
+    const refused = this.notesRefused;
+    this.notesRefused = null;
+    if (refused) this.notesHeld.delete(refused.slide);
+    this.notesJournal?.clear();
+    this.set({ notesFailure: null, notesConflict: false, notesReload: (this.state.notesReload ?? 0) + 1 });
+    return this.reload();
   }
 
   /** His notes for a slide that are not yet the deck's (waiting, on their way or refused): what a field drawn again starts from. */
@@ -885,7 +918,9 @@ export class HandSession {
     if (failure?.conflict) return { state: "conflict", detail: failure.message, actions: [{ id: "reload", label: "Reload", run: reload }] };
     // A save that did not go in is said at once, never as saving: his words wait in the box, and Retry sends them again.
     if (failure) return { state: "conflict", detail: notSavedWords(failure.message), actions: [{ id: "retry", label: "Retry", run: () => void this.commit() }] };
-    const { notesFailure } = this.state;
+    const { notesFailure, notesConflict } = this.state;
+    if (notesFailure && notesConflict)
+      return { state: "conflict", detail: notesFailure, actions: [{ id: "replace", label: "Replace", run: () => void this.retryNotes() }, { id: "reload", label: "Reload", run: () => void this.reloadNotes() }] };
     if (notesFailure) return { state: "conflict", detail: notSavedWords(notesFailure), actions: [{ id: "retry", label: "Retry", run: () => void this.retryNotes() }] };
     if (saving) return { state: "saving" };
     return savedAt ? { state: "saved", at: savedAt } : { state: "saved" };

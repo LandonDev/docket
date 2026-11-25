@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeckStore } from "../deck";
 import { deckView, fakeDeckHost, slide } from "../testkit";
@@ -33,5 +33,26 @@ describe("the notes field drawn again", () => {
     await session.keepNotes();
     const edits = host.calls.filter(([name]) => name === "edit").map(([, ops]) => ops);
     expect(edits.at(-1)).toEqual([{ op: "notes", slide: 3, text: "Say hello, then the plan, then thanks", was: "Say hello, then the plan" }]);
+  });
+
+  it("takes the deck's notes again on Reload over notes changed elsewhere", async () => {
+    const view = deckView({ slides: [slide(3, { notes: "Say hello" })], hand: { undo: false, redo: false } });
+    const host = fakeDeckHost(view);
+    const store = new DeckStore();
+    store.view(view);
+    const session = new HandSession(host, store);
+    host.refuse = "The deck changed while this was being made. Nothing was written; look at it again.";
+    const changed = { ...view, slides: view.slides.map((s) => ({ ...s, notes: "Changed in PowerPoint" })) };
+    host.view = changed;
+    const { rerender, container } = render(<NotesField slide={view.slides[0]} session={session} />);
+    const field = () => container.querySelector<HTMLTextAreaElement>("[data-slide-notes-field]")!;
+    fireEvent.change(field(), { target: { value: "Mine" } });
+    await act(async () => void (await session.keepNotes()));
+    host.refuse = null;
+    // The deck's notes changed in the view meanwhile: his words stay in the field.
+    rerender(<NotesField slide={changed.slides[0]} session={session} />);
+    expect(field().value).toBe("Mine");
+    await act(async () => session.saved(() => undefined).actions!.find((a) => a.id === "reload")!.run());
+    await waitFor(() => expect(field().value).toBe("Changed in PowerPoint"));
   });
 });

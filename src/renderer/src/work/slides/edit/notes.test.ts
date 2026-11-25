@@ -74,17 +74,43 @@ describe("notes he types", () => {
     expect(edits()).toEqual([[{ op: "notes", slide: 3, text: "Three", was: "Say hello" }], [{ op: "notes", slide: 5, text: "Five", was: "" }]]);
   });
 
-  it("refused (changed elsewhere), his words stay his; a close sends them once more over the notes as they are now", async () => {
+  it("refused because they changed elsewhere: Replace and Reload in the line, and neither a close nor another key writes over the other save", async () => {
     const { host, session, edits, store } = setUp();
     host.refuse = "The deck changed while this was being made. Nothing was written; look at it again.";
     store.view({ ...store.get().view!, slides: store.get().view!.slides.map((s) => (s.id === 3 ? { ...s, notes: "Changed in PowerPoint" } : s)) });
     session.typeNotes(3, "Mine", "Say hello");
     expect(await session.keepNotes()).toBe(false);
-    expect(session.notesPending(3)).toBe(true);
     host.refuse = undefined;
+    const line = session.saved(() => undefined);
+    expect(line).toMatchObject({ state: "conflict", detail: "The deck changed while you typed", actions: [{ id: "replace", label: "Replace" }, { id: "reload", label: "Reload" }] });
+    // A close is refused, with his words kept; another key keeps them his and sends nothing.
+    await expect(session.flush()).rejects.toThrow("Your notes changed elsewhere");
+    session.typeNotes(3, "Mine, more", "Say hello");
+    await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS * 2);
+    expect(edits()).toHaveLength(1);
+    expect(session.pendingNotes(3)).toBe("Mine, more");
+    expect(session.saved(() => undefined).state).toBe("conflict");
+    // Replace writes them over the notes as they are now, the other save kept in the deck's versions.
+    session.saved(() => undefined).actions!.find((a) => a.id === "replace")!.run();
+    await vi.waitFor(() => expect(edits().at(-1)).toEqual([{ op: "notes", slide: 3, text: "Mine, more", was: "Changed in PowerPoint" }]));
+    await vi.waitFor(() => expect(session.notesPending(3)).toBe(false));
+  });
+
+  it("Reload drops his words for the notes as they are now, and sends nothing", async () => {
+    const { host, session, edits, store } = setUp();
+    host.refuse = "The deck changed while this was being made. Nothing was written; look at it again.";
+    store.view({ ...store.get().view!, slides: store.get().view!.slides.map((s) => (s.id === 3 ? { ...s, notes: "Changed in PowerPoint" } : s)) });
+    session.typeNotes(3, "Mine", "Say hello");
+    await session.keepNotes();
+    host.refuse = undefined;
+    const reloads = session.get().notesReload ?? 0;
+    session.saved(() => undefined).actions!.find((a) => a.id === "reload")!.run();
+    await vi.waitFor(() => expect(session.notesPending(3)).toBe(false));
+    expect(session.pendingNotes(3)).toBeNull();
+    expect(session.get().notesReload).toBe(reloads + 1);
+    expect(session.saved(() => undefined).state).toBe("saved");
     await session.flush();
-    expect(edits().at(-1)).toEqual([{ op: "notes", slide: 3, text: "Mine", was: "Changed in PowerPoint" }]);
-    expect(session.notesPending(3)).toBe(false);
+    expect(edits()).toHaveLength(1);
   });
 
   it("a close waits for them, and stays open when the host will not take them", async () => {

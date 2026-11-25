@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { DeckSlide } from "@shared/contract-work-slides";
 import { Textarea } from "../../../components/ui/textarea";
 import type { HandSession } from "./session";
@@ -18,12 +18,14 @@ export function NotesField({ slide, session }: { slide: DeckSlide; session: Hand
   // Drawn again (the stage back on the slide) while his words are not in the file yet: it starts from them.
   const [text, setText] = useState(() => session.pendingNotes(slide.id) ?? slide.notes);
   const began = useRef(slide.notes);
-  // The deck's notes as they come, unless his own are not in the file yet: those stay in the field.
+  // The deck's notes as they come, unless his own are not in the file yet: those stay in the field. His Reload over
+  // notes changed elsewhere takes the deck's again.
+  const reloads = useSyncExternalStore(session.subscribe, () => session.get().notesReload ?? 0);
   useEffect(() => {
     if (session.notesPending(slide.id)) return;
     setText(slide.notes);
     began.current = slide.notes;
-  }, [session, slide.id, slide.notes]);
+  }, [session, slide.id, slide.notes, reloads]);
   // The stage leaving the slide (or the tab closing) keeps what he typed.
   useEffect(() => () => void session.keepNotes(), [session]);
   return (
