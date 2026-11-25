@@ -4792,12 +4792,22 @@ public enum Methods {
         public static let name = "work.docs.open"
 
         public struct Params: Codable, Hashable, Sendable {
+            public struct Ready: Codable, Hashable, Sendable {
+                public let schema: Int?
+
+                public init(schema: Int? = nil) {
+                    self.schema = schema
+                }
+            }
+
             public let source: CanvasSource
             public let itemId: String?
+            public let ready: Ready?
 
-            public init(source: CanvasSource, itemId: String? = nil) {
+            public init(source: CanvasSource, itemId: String? = nil, ready: Ready? = nil) {
                 self.source = source
                 self.itemId = itemId
+                self.ready = ready
             }
         }
 
@@ -5019,9 +5029,11 @@ public enum Methods {
 
         public struct Params: Codable, Hashable, Sendable {
             public let itemId: String
+            public let first: Bool?
 
-            public init(itemId: String) {
+            public init(itemId: String, first: Bool? = nil) {
                 self.itemId = itemId
+                self.first = first
             }
         }
 
