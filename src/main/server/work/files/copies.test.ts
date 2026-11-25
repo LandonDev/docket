@@ -1310,6 +1310,20 @@ describe('a Word file saved by itself', () => {
     expect((await tabOf(tabId))?.word?.away).toBeUndefined()
   })
 
+  it("⌘S writes the Word file at once, inside Word's pause, and once more only when he typed since", async () => {
+    const { path, tabId } = await opened('Pressed.docx', BLANK)
+    await looks(1_000_000)
+    rev = 'r1'
+    const writes0 = writes()
+    // His ⌘S, the instant after his key: no look has seen the revision, and none waited the pause.
+    expect(await call('work.files.wordSave', { tabId, auto: true })).toMatchObject({ at: expect.any(Number) })
+    expect(readFileSync(path, 'utf8')).toBe('word export')
+    expect(writes()).toBe(writes0 + 1)
+    // Pressed again with nothing new: nothing is written.
+    await call('work.files.wordSave', { tabId, auto: true })
+    expect(writes()).toBe(writes0 + 1)
+  })
+
   it('typed words save with the .tcdoc file unchanged: autosave follows the live revision, never the file time', async () => {
     const { path, doc, tabId } = await opened('Notes.docx', BLANK)
     const fileTime = statSync(doc).mtimeMs

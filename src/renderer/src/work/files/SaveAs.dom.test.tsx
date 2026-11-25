@@ -40,6 +40,7 @@ vi.mock("../../lib/connection", async (original) => {
       if (method === "work.files.links" || method === "work.files.linkAct") return world.links;
       if (method === "work.files.preview") return { none: "There is no preview here." };
       if (method === "work.office.filesCopyGet") return { on: false };
+      if (method === "work.files.wordSave") return { at: 1 };
       throw new Error(`unexpected ${method}`);
     },
     onPush: () => () => undefined,
@@ -359,5 +360,27 @@ describe("the header's linked files", () => {
     await act(async () => answer([link()]));
     await waitFor(() => expect(within(screen.getByRole("menu")).queryByRole("menuitem", { name: "Retry" })).toBeNull());
     world.acting = null;
+  });
+});
+
+describe("⌘S on a Word file of another computer", () => {
+  const wordTab = (word: FileTab["word"]): FileTab => ({ ...tab("Agenda.docx"), copyOf: { host: "env_mac", path: "/Teams/General/Agenda.docx" }, word }) as FileTab;
+  const press = async (): Promise<void> => {
+    const { saveFocused } = await import("../../lib/saveKey");
+    await saveFocused({ closest: () => ({ getAttribute: () => "i1" }) });
+  };
+  const wordSaves = () => world.calls.filter((c) => c.method === "work.files.wordSave").map((c) => c.params);
+
+  it("that saves by itself writes the Word file at once, never waiting for Word's pause", async () => {
+    render(<FileTabView tab={wordTab({ since: true, auto: true, at: 1 })} item={item("document", "/w/Agenda.tcdoc", "Agenda")} panelId="p" workspace={META} where="General" copy={{ host: "MacBook", place: "General" } as never} onClose={() => undefined} />);
+    await press();
+    await waitFor(() => expect(wordSaves()).toEqual([{ workspaceId: "w1", tabId: "t1", auto: true }]));
+  });
+
+  it("that waits for his press writes nothing, and says so", async () => {
+    render(<FileTabView tab={wordTab({ since: true, auto: false })} item={item("document", "/w/Agenda.tcdoc", "Agenda")} panelId="p" workspace={META} where="General" copy={{ host: "MacBook", place: "General" } as never} onClose={() => undefined} />);
+    await press();
+    await waitFor(() => expect(world.toasts.map((t) => t.title)).toEqual(["Agenda.docx changes when you press Save to Teams."]));
+    expect(wordSaves()).toEqual([]);
   });
 });

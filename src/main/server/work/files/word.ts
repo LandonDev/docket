@@ -342,7 +342,21 @@ function keepOriginal(ctx: WorkCtx, r: WordRow, data: Buffer): void {
 export async function wordSave(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; keep?: boolean; replace?: boolean; seen?: number; version?: string; auto?: boolean }): Promise<WordSaved> {
   const r = recordOfWordTab(ctx, p.workspaceId, p.tabId)
   admitOwner(by, r)
-  return (await saveRow(ctx, r, p))!
+  if (!p.auto) return (await saveRow(ctx, r, p))!
+  // ⌘S on a file that saves by itself (decision 11): the save its pause would make, made now. It takes its turn with
+  // the host's own (`saving`), so the two never write over each other, and finds nothing to do once one has saved it.
+  const key = keyOf(r)
+  while (saving.has(key)) await saving.get(key)!.catch(() => undefined)
+  const latest = wordRow(ctx, r.workspace_id, r.host, r.path) ?? r
+  const rev = await liveRev(ctx, latest.doc!).catch(() => null)
+  if (latest.saved_at && rev !== null && rev === (latest.saved_rev ?? latest.base_rev)) return { at: latest.saved_at }
+  const run = saveRow(ctx, latest, { ...p, auto: true })
+  saving.set(key, run)
+  try {
+    return (await run)!
+  } finally {
+    if (saving.get(key) === run) saving.delete(key)
+  }
 }
 
 /** One save of a Word file's document as Word, as `wordSave` and the host's autosave run it. */
@@ -418,7 +432,8 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
 
 /** `pause`: how long his document must be still before the host saves it as Word by itself; `read`: a live revision's wait. */
 export const wordTiming = { pause: 3000, read: 2000 }
-const saving = new Set<string>()
+/** Each Word file's save as Word under way, by `keyOf`: the host's autosave and his ⌘S take turns on it. */
+const saving = new Map<string, Promise<unknown>>()
 /** The last autosave's refusal of each record, and when (`wordBackOf`): kept in memory, the next look tries again. */
 const refusedWords = new Map<string, { words: string; at: number }>()
 /** Since when each Word file's autosaves found its computer or drive not answering, by `keyOf`: its line says so. */
@@ -495,7 +510,8 @@ async function saveDueWords(ctx: WorkCtx, rows: WordRow[], now: number, active =
     const key = keyOf(r)
     const seen = seenWord(r)
     if (!seen || now - seen.at < wordTiming.pause || r.auto !== 1 || r.stopped || saving.has(key) || !editsSince(r)) return
-    saving.add(key)
+    let done!: () => void
+    saving.set(key, new Promise<void>((ok) => (done = ok)))
     try {
       await saveRow(ctx, r, { workspaceId: r.workspace_id, auto: true }, {
         rev: seen.rev,
@@ -523,6 +539,7 @@ async function saveDueWords(ctx: WorkCtx, rows: WordRow[], now: number, active =
       ctx.log(`files: a Word file was not saved by itself: ${words}`)
     } finally {
       saving.delete(key)
+      done()
     }
   }))
 }

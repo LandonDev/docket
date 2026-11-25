@@ -3000,7 +3000,11 @@ pillar calls, all landed:
   last edit, which the document tells on its line (`SavedLine.edited`, in
   half-second steps), and on a first open with nothing typed says "The Word
   file in Teams has not changed". Close, quit and ⌘S send what waits at once
-  (canvas/flush.ts): the pause holds nothing back from them.
+  (canvas/flush.ts): the pause holds nothing back from them. On a Word file
+  that saves by itself ⌘S then asks the host for the save its pause would make
+  (`work.files.wordSave {auto: true}`, store.ts `saveWordNow`), which takes its
+  turn with the host's own autosave (word.ts `saving`) and writes nothing when
+  one already saved that revision; one whose save is his press says it waits.
 - A copy of another computer's file asks nothing more of a kind: its
   `shell.saved` going from saving to saved is what makes the tab send the copy
   back ("A copy saves back"), and a save through `saveFile` sends it at once.

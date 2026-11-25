@@ -677,6 +677,9 @@ export const sendCopyBack = (link: string, workspaceId: string, tabId: string): 
 export const saveWordFile = (link: string, workspaceId: string, tabId: string, keep: boolean, replace = false, version?: string): Promise<WordSaved> =>
   ask<WordSaved>(link, "work.files.wordSave", { workspaceId, tabId, ...(keep ? { keep: true } : {}), ...(replace ? { replace: true } : {}), ...(replace && version !== undefined ? { version } : {}) }, { timeoutMs: 180_000 });
 
+/** ⌘S on a Word file that saves by itself: the save its pause would make, now (files/word.ts `wordSave` with `auto`). */
+export const saveWordNow = (link: string, workspaceId: string, tabId: string): Promise<WordSaved> => ask<WordSaved>(link, "work.files.wordSave", { workspaceId, tabId, auto: true }, { timeoutMs: 180_000 });
+
 /** His choice for a Word file opened as its document: save it by itself, or ask each time (files/word.ts). */
 export async function setWordAuto(link: string, workspaceId: string, tabId: string, on: boolean): Promise<void> {
   putTabs(link, workspaceId, await ask<FilesTabs>(link, "work.files.wordAuto", { workspaceId, tabId, on }));

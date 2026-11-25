@@ -38,7 +38,7 @@ import { KindGlyph } from "./KindGlyph";
 import { Dock, DockSash } from "./Dock";
 import type { DockThread } from "./dockThread";
 import { dockShape, shownName, type ActRow, type EntryAct } from "./model";
-import { saveWordFile, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
+import { saveWordFile, saveWordNow, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
 import { saveAsWord, serviceOf, wordLine, wordPress, wordWaitsWords } from "./wordSave";
 import { wordDefault } from "./wordDefault";
 import { importLosses } from "../formats/importOnce";
@@ -411,16 +411,20 @@ export function FileTabView({
     return w.auto || !w.since ? [] : [{ id: "word", label: wordPress(tab), run: saveWord }];
   };
   // ⌘S on a Word file whose save is his press: the document takes his edits, and the toast says the Word file waits.
+  // On one that saves by itself, ⌘S sends at once (decision 11): the document takes his edits, then the Word file the
+  // save its pause would have made; its line says how that went.
   const waitsPress = !!(copy && word && !word.auto && !word.stopped);
+  const savesNow = !!(copy && word?.auto && !word.stopped);
   const itemId = item?.id;
   const waitsWords = wordWaitsWords(tab);
   useEffect(() => {
-    if (!waitsPress || !itemId) return;
+    if ((!waitsPress && !savesNow) || !itemId) return;
     return saveKeyPort.set(itemId, async () => {
       await canvasFlushPort.get(itemId)?.()?.catch(() => undefined);
-      void loadToast().then((toast) => toast.message(waitsWords));
+      if (savesNow) await saveWordNow(workspace.environmentId, workspace.id, tab.id).catch((err: unknown) => sayError(err, "Not saved", workspace.environmentId));
+      else void loadToast().then((toast) => toast.message(waitsWords));
     });
-  }, [waitsPress, itemId, waitsWords]);
+  }, [waitsPress, savesNow, itemId, waitsWords, workspace.environmentId, workspace.id, tab.id]);
   // The workspace as this window knows it: Save As… needs it (SaveAs.tsx).
   const meta = useWorkspaceOf(workspace.environmentId, workspace.id);
   // A Word file saves after Word's pause in his typing (canvas/calm.ts), counted from his last edit as the document tells

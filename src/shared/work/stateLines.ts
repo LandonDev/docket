@@ -34,6 +34,10 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/files/Home.tsx`]: [
     ["Not saved", "answer"],
   ],
+  // ⌘S on a Word file that saves by itself: the host refused or failed the save it asked for.
+  [`${R}/files/FileTabView.tsx`]: [
+    ["Not saved", "answer"],
+  ],
   [`${R}/files/SaveAs.tsx`]: [
     ["Not saved", "answer"],
     ["`Saved a copy of ${got.saved.name} in ${folder.name}`", "answer"],
