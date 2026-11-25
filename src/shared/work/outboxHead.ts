@@ -46,8 +46,14 @@ const lower = (s: string): string => s[0]!.toLowerCase() + s.slice(1);
  * invite". Kinds in the order first met; each says its items' own verb when they share one ("Accept"), else its
  * kind's; mail says to how many people. `discard` adds what goes nowhere.
  */
-export function summaryHead(items: readonly HeadItem[], discard: number | readonly HeadItem[] = 0): string {
-  const parts = groupParts(items, false);
+export function summaryHead(
+  items: readonly HeadItem[],
+  discard: number | readonly HeadItem[] = 0,
+  opts: { /** sent at a time he set: their own part, "… later" */ later?: readonly HeadItem[]; /** no tool's or add-on's own words (a digest a read key sees) */ generic?: boolean } = {}
+): string {
+  const parts = groupParts(items, opts.generic === true);
+  // A later send is its own act: "send 2 mails to 2 people later", never folded into a send now.
+  for (const part of opts.later?.length ? groupParts(opts.later, opts.generic === true) : []) parts.push(`${parts.length ? lower(part) : part} later`);
   // What goes nowhere says what it is too ("discard 1 mail"); a bare count stays a count.
   if (typeof discard === "number") {
     if (discard) parts.push(parts.length ? `discard ${discard}` : `Discard ${discard}`);
@@ -79,7 +85,8 @@ function groupParts(items: readonly HeadItem[], bare: boolean): string[] {
       const part = `${words}${typeof p.addon === "string" ? ` with ${p.addon}` : ""}${n > 1 ? `, ${n} times` : ""}`;
       return i ? lower(part) : part;
     }
-    const verb = g.verbs.size === 1 ? [...g.verbs][0]! : g.fallback;
+    // An add-on call's verb is its tool's own words: generic, it is the kind's ("Run 2 calls").
+    const verb = key.startsWith("addon:") ? g.fallback : g.verbs.size === 1 ? [...g.verbs][0]! : g.fallback;
     let part = `${i ? lower(verb) : verb} ${n} ${n === 1 ? g.noun[0] : g.noun[1]}`;
     if (key === "mail" && !bare) {
       const people = new Set(g.items.flatMap(recipients)).size;

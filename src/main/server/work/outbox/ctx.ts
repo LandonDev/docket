@@ -232,6 +232,9 @@ export const heldPart: CtxPart<'held'> = (ctx, deps) => {
 
   // ── LifeOS's own held items, while Work is on ───────────────────────
   const lifeos = new LifeosHeldItems({ ctx, outbox, session: (id) => deps.registry.get(id) ?? null })
+  // A cancel LifeOS still has to hear goes out with Work off too, and its drain runs from boot.
+  outbox.cancelAnyway = (id) => lifeos.cancelMail(id)
+  outbox.startDrain()
   deps.whileOn(() => {
     outbox.lifeos = lifeos
     const stop = lifeos.start()

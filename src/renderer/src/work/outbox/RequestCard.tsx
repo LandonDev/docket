@@ -124,10 +124,10 @@ function RequestLine({ lead, detail }: { lead: string; detail?: string | null })
 
 /** "Send 3", "Discard 2", "Approve 4" when the actions mix. */
 export function pressLabel(dos: readonly ("send" | "discard" | "later")[]): string {
-  const kinds = new Set(dos.map((d) => (d === "later" ? "send" : d)));
+  const kinds = new Set(dos);
   const n = dos.length;
   if (kinds.size > 1) return `Approve ${n}`;
-  return kinds.has("discard") ? `Discard ${n}` : `Send ${n}`;
+  return kinds.has("discard") ? `Discard ${n}` : kinds.has("later") ? `Schedule ${n}` : `Send ${n}`;
 }
 
 /** "by you at 9:41 AM", "from another device at 9:41 AM". */

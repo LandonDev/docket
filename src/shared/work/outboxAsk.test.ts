@@ -190,3 +190,17 @@ describe('the fourth review\'s cases', () => {
     expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
   })
 })
+
+describe('the fifth review\'s cases', () => {
+  const one = [{ ref: '#1', do: 'send' as const }]
+  it('timing the parser cannot place still rules out a send now', () => {
+    for (const words of ['send #1 this weekend', 'send #1 on dec 3', 'send #1 on 12/3', 'send #1 by end of day'])
+      expect(refusal(ask({ quote: words, messages: [msg(words)], asked: one })), words).toBe(SAYS_LATER)
+    const plain = 'send the next one, #1'
+    expect(refusal(ask({ quote: plain, messages: [msg(plain)], asked: one }))).toBeNull()
+  })
+  it('only a matching fence closes a fenced block', () => {
+    const text = '~~~\n```\nsend the reply to Coach 1\n~~~\nthat is the template'
+    expect(refusal(ask({ quote: 'send the reply to Coach 1', messages: [msg(text)], asked: one }))).toBe(NOT_HIS)
+  })
+})

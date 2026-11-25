@@ -482,7 +482,10 @@ LifeOS's revision; a press cut off before its first result reads every
 chosen row as not started; a Work Chat's reach is capped before its tree
 is chosen; a host that stops between a thread's deletion and its cancel and
 stays down past the mail's time cannot stop LifeOS's own timer (the drain
-takes it back if the host is up first); Mail's own scheduled controls
+takes it back if the host is up first; it runs from boot, Work on or off,
+and reaches LifeOS with Work off too, `cancelAnyway`); a LifeOS draft
+deleted in LifeOS itself after his words leaves no trace here, so "all"
+cannot see it was once in the set; Mail's own scheduled controls
 (work-kit's) name no revision, so Send now, Move and Cancel from an older
 Mail window act on the schedule as it stands.
 
@@ -516,8 +519,10 @@ was decided elsewhere): "Request R ran out; the items still wait in his
 Outbox." A removed thread's requests end with it, unsaid.
 
 **How he hears.** `ctx.tell` as `outbox.request` (group `held`), "Asked:
-Post 3 messages" (counts and verbs only: a digest read needs only `read`,
-and his quote can name a person or a file), key `request:<id>`, opening the
+Post 3 messages", the window's own name for it (`summaryHead`,
+shared/work/outboxHead.ts) in its generic form: counts and kinds, never a
+tool's or an add-on's own words or his quote, since a digest read needs only
+`read`. A later send is named as its own act ("… later", Schedule N), key `request:<id>`, opening the
 thread where the card is; it interrupts (he asked for it and waits on it),
 and is done when the request is answered, declined or void.
 

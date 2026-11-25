@@ -481,7 +481,7 @@ export class OutboxRequests {
       sector: row.sector,
       quote: row.quote,
       // The window's own words for it (shared/work/outboxHead.ts), so the notice, the card and the row say one thing.
-      head: rows.every((r) => r.item) && rows.length ? summaryHead(rows.filter((r) => r.do !== 'discard').map((r) => r.item!), rows.filter((r) => r.do === 'discard').map((r) => r.item!)) : headOf(asked.map((a) => ({ do: a.do, kind: rows.find((r) => refKey(r.ref) === refKey(a.ref))?.item?.kind ?? 'mail.send' }))),
+      head: rows.every((r) => r.item) && rows.length ? summaryHead(rows.filter((r) => r.do === 'send').map((r) => r.item!), rows.filter((r) => r.do === 'discard').map((r) => r.item!), { later: rows.filter((r) => r.do === 'later').map((r) => r.item!) }) : headOf(asked.map((a) => ({ do: a.do, kind: rows.find((r) => refKey(r.ref) === refKey(a.ref))?.item?.kind ?? 'mail.send' }))),
       state: row.state as RequestState,
       ...(row.why ? { why: row.why } : {}),
       createdAt: Number(row.created_at),
@@ -539,7 +539,10 @@ export class OutboxRequests {
   private told(r: OutboxRequest, opts: { push?: boolean } = {}): void {
     try {
       // Counts and verbs alone: a digest read needs only read, and his quote can name a person or a file.
-      this.deps.ctx.tell({ kind: 'outbox.request', workspaceId: r.workspaceId, title: `Asked: ${r.head}`, key: requestKey(r.id), open: { thread: r.sessionId }, by: r.createdAt + 60_000 })
+      // Counts and kinds, never a tool's or an add-on's own words: a digest read needs only read.
+      const items = r.rows.every((row) => row.item) && r.rows.length
+      const title = items ? summaryHead(r.rows.filter((row) => row.do === 'send').map((row) => row.item!), r.rows.filter((row) => row.do === 'discard').map((row) => row.item!), { later: r.rows.filter((row) => row.do === 'later').map((row) => row.item!), generic: true }) : r.head
+      this.deps.ctx.tell({ kind: 'outbox.request', workspaceId: r.workspaceId, title: `Asked: ${title}`, key: requestKey(r.id), open: { thread: r.sessionId }, by: r.createdAt + 60_000 })
     } catch (err) {
       this.deps.ctx.log(`outbox: request ${r.n} was not told: ${errorText(err)}`)
     }

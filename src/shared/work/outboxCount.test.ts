@@ -20,3 +20,14 @@ describe('the one count', () => {
     expect(COUNT_FIXTURE.filter(needsHim).length).toBe(COUNT_FIXTURE_WAITS)
   })
 })
+
+describe('a request\'s name', () => {
+  it('names a later send as its own act, and a generic one never names a tool', async () => {
+    const { summaryHead } = await import('./outboxHead')
+    const mail = (to: string) => ({ kind: 'office.mail.send' as const, verb: 'Send', payload: { to: [{ address: to }] } })
+    expect(summaryHead([], 0, { later: [mail('a@x'), mail('b@x')] })).toMatch(/^Send 2 \w+ to 2 people later$/)
+    const call = { kind: 'addon.call' as const, verb: 'Echo', payload: { addonId: 'a1', tool: 'echo', words: 'Echo', addon: 'League' } }
+    expect(summaryHead([call, call])).toBe('Echo with League, 2 times')
+    expect(summaryHead([call, call], 0, { generic: true })).not.toMatch(/League|Echo/)
+  })
+})

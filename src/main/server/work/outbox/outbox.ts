@@ -204,6 +204,8 @@ export interface Held {
 export class Outbox {
   /** Filled by lifeosHeld.ts when LifeOS's held items are watched; null: this host lists only its own rows. */
   lifeos: LifeosHeld | null = null
+  /** LifeOS's cancel of a mail, reachable with Work off too: a removed thread's schedule is taken back whatever the switch says. */
+  cancelAnyway: ((id: string) => Promise<boolean>) | null = null
   /** What the host adds to a kind's matcher before a grant is kept (an add-on call's server), so a client cannot leave it out. */
   readonly seals = new Map<ActKind, (matcher: never, payload: never) => unknown>()
   private readonly decidedListeners = new Set<(item: HeldItem, asHeld: unknown) => void>()
@@ -590,16 +592,23 @@ export class Outbox {
     this.timing = true
     this.period++
     this.arm()
-    void this.drainCancels()
-    const drain = setInterval(() => void this.drainCancels(), CANCEL_DRAIN_MS)
-    drain.unref?.()
     return () => {
       this.timing = false
       this.period++
-      clearInterval(drain)
       if (this.timer) clearTimeout(this.timer)
       this.timer = null
     }
+  }
+
+  /**
+   * Taking a removed thread's mail back from LifeOS runs from boot, Work on or off: turning Work off stops the host's
+   * own sending, never a cancel LifeOS still has to hear (`cancelAnyway` reaches LifeOS with Work off).
+   */
+  startDrain(): () => void {
+    void this.drainCancels()
+    const drain = setInterval(() => void this.drainCancels(), CANCEL_DRAIN_MS)
+    drain.unref?.()
+    return () => clearInterval(drain)
   }
 
   /** Another time for a scheduled LifeOS mail, under the item's own lock: LifeOS first, then the row. */
@@ -643,7 +652,8 @@ export class Outbox {
       if (!row || row.state !== 'scheduled' || !row.cancelWanted || ref.at !== 'lifeos') return
       let back: boolean | undefined
       try {
-        back = await this.lifeos?.cancelMail?.(ref.id)
+        const lifeos = this.lifeos
+        back = await (lifeos?.cancelMail ? lifeos.cancelMail(ref.id) : this.cancelAnyway?.(ref.id))
       } catch (err) {
         this.deps.ctx.log(`outbox: LifeOS could not take back scheduled item ${row.n}; asking again later: ${errorText(err)}`)
         this.store.touchCancel(row.id)

@@ -141,7 +141,7 @@ async function drawn() {
   return document.querySelector("[data-outbox-request]") as HTMLElement;
 }
 const card = () => document.querySelector("[data-outbox-request]") as HTMLElement;
-const sendButton = () => within(card()).getAllByRole("button").find((b) => /^(Send|Approve|Discard) \d/.test(b.textContent ?? "")) as HTMLButtonElement;
+const sendButton = () => within(card()).getAllByRole("button").find((b) => /^(Send|Approve|Discard|Schedule) \d/.test(b.textContent ?? "")) as HTMLButtonElement;
 
 describe("the request card", () => {
   it("waits: his words quoted, the rows he may press ticked, a changed one unticked with its word, and Send N", async () => {
@@ -270,7 +270,9 @@ describe("the card's words", () => {
 
   it("names the press by what the ticked rows do", () => {
     expect(pressLabel(["send", "send"])).toBe("Send 2");
-    expect(pressLabel(["send", "later"])).toBe("Send 2");
+    // a later send is its own act (review round 5, finding 7)
+    expect(pressLabel(["send", "later"])).toBe("Approve 2");
+    expect(pressLabel(["later", "later"])).toBe("Schedule 2");
     expect(pressLabel(["discard"])).toBe("Discard 1");
     expect(pressLabel(["send", "discard", "send"])).toBe("Approve 3");
     expect(refusalWords("Refused: Item 31 is another job's; a thread asks only about its own job.")).toBe("Item 31 is another job's; a thread asks only about its own job.");

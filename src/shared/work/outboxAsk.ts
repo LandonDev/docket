@@ -96,14 +96,19 @@ export function ownWords(text: string): { words: string; held: string[] } {
   const kept: string[] = []
   const held: string[] = []
   let inChip = false
-  let inCode = false
+  // An open fenced code block's own fence (``` or ~~~, and its length): only a matching fence, at least as long and
+  // with nothing after it, closes it. Everything inside is pasted text, never his command.
+  let fence: string | null = null
   for (const line of text.split('\n')) {
-    // A fenced code block (``` or ~~~) is pasted text, never his command.
-    if (/^\s*(```|~~~)/.test(line)) {
-      inCode = !inCode
+    const mark = /^\s*(`{3,}|~{3,})(.*)$/.exec(line)
+    if (fence === null && mark) {
+      fence = mark[1]!
       continue
     }
-    if (inCode) continue
+    if (fence !== null) {
+      if (mark && mark[1]![0] === fence[0] && mark[1]!.length >= fence.length && mark[2]!.trim() === '') fence = null
+      continue
+    }
     if (CHIP_HEAD.test(line)) {
       inChip = true
       const ref = /\(Work outbox (\S+)\)$/.exec(line)
@@ -173,7 +178,7 @@ function countsIn(clause: string): number[] {
 
 /** Words that put a send at a time: a day, a part of a day, a clock. */
 function timeWords(clause: string): boolean {
-  return ['today', 'tonight', 'tomorrow', 'this morning', 'this afternoon', 'this evening', 'noon', 'midnight', 'later', 'next week', ...WEEKDAYS].some((w) => has(clause, w)) || /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.|o'clock)/.test(clause) || /\b\d{1,2}:\d{2}\b/.test(clause) || /\bin (an?|\d+|a few|a couple of) (minute|minutes|hour|hours|mins|hrs)\b/.test(clause) || has(clause, 'in a bit') || has(clause, 'soon')
+  return ['today', 'tonight', 'tomorrow', 'morning', 'afternoon', 'evening', 'night', 'weekend', 'noon', 'midnight', 'later', 'next week', 'next month', 'eod', 'end of day', 'end of the day', 'before', 'by then', ...WEEKDAYS, ...MONTHS].some((w) => has(clause, w)) || /\b\d{1,2}\/\d{1,2}\b/.test(clause) || /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.|p\.m\.|o'clock)/.test(clause) || /\b\d{1,2}:\d{2}\b/.test(clause) || /\bin (an?|\d+|a few|a couple of) (minute|minutes|hour|hours|mins|hrs)\b/.test(clause) || has(clause, 'in a bit') || has(clause, 'soon')
 }
 
 const FILLERS = /^(?:(?:please|ok|okay|yes|yeah|sure|now|then|and|so|just|alright|right|great|thanks|go ahead and|you can|feel free to|can you|could you|would you|will you)[\s,]+)*/
@@ -184,6 +189,7 @@ function commandStart(clause: string): string | null {
   return [...Object.keys(SEND_VERBS), ...DISCARD_VERBS].sort((a, b) => b.length - a.length).find((verb) => rest.startsWith(`${verb} `) || rest === verb || rest.startsWith(`${verb},`)) ?? null
 }
 
+const MONTHS = ['january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december', 'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec']
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
 
 /** The wall-clock parts of a moment in a zone. */
@@ -291,7 +297,8 @@ export function judgeAsk(input: AskInput): AskVerdict {
   const all = ALL_WORDS.some((w) => has(clause, w))
   // A number inside a name ("Coach 2", "Room 5") is no count.
   const unnamed = input.items.flatMap((i) => i.names.map(plain)).filter((n) => n.length >= 3).sort((a, b) => b.length - a.length).reduce((text, name) => text.split(name).join(' '), clause)
-  const counts = countsIn(unnamed)
+  // A date written with digits ("12/3") is no count either.
+  const counts = countsIn(unnamed.replace(/\b\d{1,2}\/\d{1,2}(\/\d{2,4})?\b/g, ' '))
   if (counts.length > 1) return { ok: false, refusal: UNCLEAR_COUNT }
   const byAction = new Map<AskAction, AskedItem[]>()
   for (const a of input.asked) byAction.set(a.do, [...(byAction.get(a.do) ?? []), a])

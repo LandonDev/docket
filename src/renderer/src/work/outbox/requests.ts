@@ -31,8 +31,9 @@ export function requestName(request: Pick<OutboxRequest, "rows" | "head">): stri
   const rows = request.rows.filter((r) => r.item);
   if (!rows.length) return request.head;
   return summaryHead(
-    rows.filter((r) => r.do !== "discard").map((r) => r.item!),
+    rows.filter((r) => r.do === "send").map((r) => r.item!),
     rows.filter((r) => r.do === "discard").map((r) => r.item!),
+    { later: rows.filter((r) => r.do === "later").map((r) => r.item!) },
   );
 }
 
