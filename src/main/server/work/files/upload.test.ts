@@ -257,7 +257,8 @@ describe('by caller', () => {
     expect(readFileSync(join(rig.team, 'General', 'Plan 2.docx'), 'utf8')).toBe('word')
   })
 
-  it("a library today: the place's own refusal, since its adapter takes no upload yet", async () => {
+  it("a library whose adapter takes no upload: the place's own refusal", async () => {
+    LIBRARY_CAN.splice(0, LIBRARY_CAN.length)
     await expect(begin('Plan.docx', 'word', { at: at(join(rig.team, 'General')), asked: true })).rejects.toThrow('Nothing can be uploaded in General from here.')
   })
 

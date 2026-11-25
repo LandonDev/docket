@@ -744,6 +744,13 @@ export function refusedWords(refused: readonly { name: string; text: string }[])
   return refused.length === 1 ? first : `${first} (and ${refused.length - 1} more)`;
 }
 
+/** The ending of TempCode's own formats, which no one but TempCode reads: the kind's glyph says what the file is. */
+const OWN_ENDING = /\.tc(doc|sheet)$/i;
+/** A file's name as he reads it: ".tcsheet" and ".tcdoc" are never shown as words. */
+export const shownName = (name: string): string => name.replace(OWN_ENDING, "");
+/** The ending a rename keeps without showing it: ".tcsheet" or ".tcdoc", else none. */
+export const hiddenEnding = (name: string): string => OWN_ENDING.exec(name)?.[0] ?? "";
+
 /** A name while it is being typed in place: the part before its extension is what a rename starts with selected. */
 export const stemEnd = (name: string): number => {
   const dot = name.lastIndexOf(".");

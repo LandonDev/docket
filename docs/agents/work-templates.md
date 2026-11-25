@@ -145,6 +145,13 @@ A play is text, so "start the game report" is a step that says so; the play's th
 
 ## The screens (`src/renderer/src/work/templates/`)
 
+**From a Template… in Files.** New offers it in any folder whose place makes files on the workspace's own host: the
+workspace's folder, and a Teams or OneDrive library on a disk (FilesView `fromTemplate`; not the Windows VM, whose
+helper takes no template, `VM_NO_TEMPLATE`, nor a place another host holds). The dialog keeps the file in the folder
+shown (`into`); his press makes it through Files' own make, its door judging the place (`askFiles` in place.ts). A
+thread, another pillar and another host still copy into the workspace's own folder alone, and a shared folder refuses
+them in one sentence (`SHARED_HELD`): only his press makes a file in a library.
+
 Every part is a Kobra part (`components/README.md`). One tile, one grid and one dialog serve the shelf, New and the fields.
 
 - **The tile** (`Shelf.tsx`). The shared `Button` laid over the whole tile (`ROW_OPEN`): the plate, then one 13/20 line with the kind's glyph 8px from the name, cut to one line; while the name is cut, its whole is the press's tip (`useTruncated`, the measure `TruncateTip` uses). 6px of padding against a -6px margin so tiles align to the grid's edge, a 12px radius, the focus ring inside. It presses as a row whose open control is laid over it (`ROW_HOLDS`, keyed to the press): a 5% wash on hover, 12% at once while pressed, nothing scaling (DESIGN.md's motion table: a row's press steps its fill and never scales; the plan's `scale(0.97)` gave way to it). While its menu is open the tile keeps the 5% wash, as a rail row does. The press's label is the name and its description the kind ("Document", "Sheet", "Deck"), for someone who cannot see the glyph or its tint. No badge, no description, no count. Starters and his own look the same; only their menus differ. The glyph turns to a `Spinner` when a make, or an Edit, runs past 150 ms (`SPIN_AFTER_MS`); the tile does not move.

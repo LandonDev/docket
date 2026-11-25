@@ -22,9 +22,10 @@ const joinIn = (dir: string, name: string): string => `${dir.replace(/[\\/]+$/, 
 /**
  * The verbs a library's adapter carries out on this host's own disk. A delete goes to the computer's own bin (the
  * Trash on a Mac, the Recycle Bin on a PC), never for good, and OneDrive takes it to the library's own recycle bin
- * (docs/agents/work-files.md "A delete in a library").
+ * (docs/agents/work-files.md "A delete in a library"). An upload is his press alone, never over a file
+ * (files/upload.ts); a key must be able to approve, as for any change others see (`admitWrite`).
  */
-export const LIBRARY_CAN: FilePlace['can'] = ['make', 'rename', 'move', 'copy', 'edit', 'trash']
+export const LIBRARY_CAN: FilePlace['can'] = ['make', 'upload', 'rename', 'move', 'copy', 'edit', 'trash']
 
 /**
  * The verbs a library in the Windows VM carries out, by what its helper says it has (`guest.status`'s `verbs`): New

@@ -32,6 +32,7 @@ import { KindGlyph } from "./KindGlyph";
 import { DetailsPane, FileBeside, FileGallery, type BesideSeatOf } from "./Looks";
 import {
   actsFor,
+  shownName,
   carryRefusal,
   DEFAULT_TILE,
   GROUP_WORDS,
@@ -349,9 +350,9 @@ const FileRow = memo(function FileRow({
         {renaming ? (
           <NameField name={entry.name} onDone={(next) => live.current.onRenamed(entry, next)} />
         ) : (
-          <TruncateTip text={busy?.name ?? entry.name}>
+          <TruncateTip text={busy?.name ?? shownName(entry.name)}>
             <span data-files-name className={`min-w-0 truncate text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
-              {busy?.name ?? entry.name}
+              {busy?.name ?? shownName(entry.name)}
             </span>
           </TruncateTip>
         )}
@@ -675,7 +676,8 @@ const MAKE_GLYPH: Record<MakeKind, IconComponent> = { document: Doc, sheet: Tabl
 function NewMenu({ acts, name, onMade }: { acts: PageActs; name: string; onMade(entry: FileEntry): void }) {
   const [busy, setBusy] = useState(false);
   const makes = acts.place.makes ?? [];
-  const upload = canDo(acts.place, "upload");
+  // A computer reached through another host takes no upload from this window: the bytes would have no road there.
+  const upload = canDo(acts.place, "upload") && !acts.far;
   const forms = acts.forms?.kinds ?? [];
   const refused = acts.forms?.refused;
   // Two kinds of form are one Form row with a line each; one kind is the row itself; a refused Microsoft form is an off row with its reason as its line, asked of no one.
@@ -1306,8 +1308,9 @@ export function PageView({
             Empty Trash
           </Button>
         ) : null}
-        {/* New makes a file in this folder: not while its session is away, nor in a folder whose read failed with nothing listed. */}
-        {acts && !inTrash && !lifeosDown && !lifeosAgain && !(listing?.error && !listed.length) ? <NewMenu acts={acts} name={page.name} onMade={(made) => setFresh(made.key)} /> : null}
+        {/* New makes a file in this folder: not while its session is away, nor in a folder whose read failed with nothing
+            listed, nor over a place's note with nothing listed (signed out, not allowed): there it could make nothing. */}
+        {acts && !inTrash && !lifeosDown && !lifeosAgain && !(listing?.error && !listed.length) && !(down && !listed.length && down.fix?.kind !== "wake") ? <NewMenu acts={acts} name={page.name} onMade={(made) => setFresh(made.key)} /> : null}
       </PageBar>
       {under}
       {line}

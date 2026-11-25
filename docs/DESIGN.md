@@ -1959,7 +1959,9 @@ Around the canvas:
   five shapes are rows of View options instead); Back, Forward, Go to,
   Search, View options and New never leave. New is left out only where
   it could make nothing: a folder whose read failed with nothing listed,
-  or a LifeOS folder while its session is away.
+  a place whose note stands with nothing listed (signed out, not
+  allowed; a sleeping VM keeps it, since a make wakes it), or a LifeOS
+  folder while its session is away.
   The **view switch** is one segmented control of glyphs: List, Grid,
   Columns, Gallery, Beside. A folder he has not shaped is a list; one he
   has shaped keeps its shape for this window. **View options** (⋯) is one
@@ -2038,8 +2040,14 @@ Around the canvas:
   on Space, Escape or a press outside. A file kept in the cloud shows its facts and Download
   and Look: nothing downloads without that press.
   **New** is the bar's one primary button: a menu of what the place
-  makes (Document, Sheet, Deck, Text File, Folder), Upload Files…, and a
-  last muted line on the rows' leading edge that says where it is kept. The new thing is selected
+  makes (Document, Sheet, Deck, Text File, Folder), From a Template… and
+  Upload Files… wherever the place takes them (the workspace's folder, a
+  Teams or OneDrive library; neither in the Windows VM, nor Upload on a
+  computer reached through another host), and a
+  last muted line on the rows' leading edge that says where it is kept.
+  TempCode's own endings (".tcsheet", ".tcdoc") are never shown as words:
+  a row, a tab, a header and a rename field show the name before them, and
+  a rename keeps the ending. The new thing is selected
   with its name ready to type; ⌘⇧N makes a folder the same way, as in
   Finder (the menu's Folder row shows it). A name is typed in place (F2, a slow
   second press on the selected name, Rename in the menu): the field

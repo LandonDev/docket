@@ -15,7 +15,7 @@ import { HostLine } from "../shell/DownLine";
 import type { HostLive } from "../shell/lifeosLive";
 import { KindGlyph } from "./KindGlyph";
 import { readsSession } from "./lifeosPlace";
-import { homeLists, type Sidebar } from "./model";
+import { homeLists, shownName, type Sidebar } from "./model";
 import { busyOf, type Busy } from "./busy";
 import { RowState, RowWords, WhereWords } from "./rowParts";
 
@@ -45,7 +45,7 @@ function HomeList({ title, entries, busy, held, onOpen }: { title: string; entri
           <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={!!opening || (held && readsSession(entry))} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
             <KindGlyph kind={entry.kind} />
             {/* Its own width as its basis (`flex-auto`), so a state beside it gives way first (`RowWords`). */}
-            <span className="min-w-0 flex-auto truncate text-start text-foreground">{entry.name}</span>
+            <span className="min-w-0 flex-auto truncate text-start text-foreground">{shownName(entry.name)}</span>
             {/* A change a thread holds for his press says its verb; the row opens the held item, not the file. */}
             {/* A state gives way before the name, cut, whole on hover (`RowWords`), as in the folder's list. */}
             {opening ? (

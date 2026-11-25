@@ -10,7 +10,7 @@ import { OVERFLOW_FADE, useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { useSortable } from "../../hooks/useSortable";
 import { shortcutFor } from "../../lib/settings";
 import { KindGlyph } from "./KindGlyph";
-import { tabEnds, tabShrink } from "./model";
+import { shownName, tabEnds, tabShrink } from "./model";
 import { TabName } from "../canvas/TabName";
 import { setDragLabel, setSideOver } from "./rowParts";
 
@@ -69,7 +69,7 @@ export function TabRow({
 }) {
   const ids = tabs.map((tab) => tab.id);
   // Tabs that share a start keep the ends that differ.
-  const ends = tabEnds(tabs.map((tab) => tab.name || "File"));
+  const ends = tabEnds(tabs.map((tab) => shownName(tab.name || "File")));
   // A folder's tab comes forward when a drag rests on it, so the folder can be dropped into.
   const spring = useRef<{ tab: string; timer: ReturnType<typeof setTimeout> } | null>(null);
   const rest = (tabId: string | null): void => {
@@ -194,7 +194,7 @@ export function TabRow({
               data-menu-id={tab.id}
               data-drop-over={drop?.at === `tab:${tab.id}` || undefined}
               className={`group/dock-tab relative flex max-w-60 min-w-9 rounded-md ${dragging ? "z-10" : ""} ${drop?.at === `tab:${tab.id}` ? "bg-sidebar-group-selected" : ""}`}
-              style={{ flexShrink: tabShrink(name, active) }}
+              style={{ flexShrink: tabShrink(shownName(name), active) }}
               {...(drop && tab.kind === "page"
                 ? {
                     onDragOver: (event: DragEvent) => {
@@ -216,7 +216,7 @@ export function TabRow({
             >
               {lineStart ? <div className="pointer-events-none absolute inset-y-1 -left-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
               {lineEnd ? <div className="pointer-events-none absolute inset-y-1 -right-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
-              <TitleTip title={name}>
+              <TitleTip title={shownName(name)}>
                 {(titleRef) => (
                   <Button
                     variant="ghost"
@@ -246,12 +246,12 @@ export function TabRow({
                     className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 pe-7`}
                   >
                     <KindGlyph kind={tab.kind === "page" ? "folder" : kindOfEntry(name).kind} tinted={false} className="size-3.5 shrink-0" />
-                    <TabName name={name} keep={ends[index]} titleRef={titleRef} />
+                    <TabName name={shownName(name)} keep={ends[index]} titleRef={titleRef} />
                   </Button>
                 )}
               </TitleTip>
               <div className={`absolute end-0.5 top-0.5 ${active ? "" : reveal("dock-tab", { row: true })}`}>
-                <Button variant="ghost" size="icon-xs" data-files-tab-close aria-label={`Close ${name}`} tabIndex={active ? 0 : -1} className="text-muted-foreground" onClick={() => onClose(tab.id)}>
+                <Button variant="ghost" size="icon-xs" data-files-tab-close aria-label={`Close ${shownName(name)}`} tabIndex={active ? 0 : -1} className="text-muted-foreground" onClick={() => onClose(tab.id)}>
                   <X />
                 </Button>
               </div>

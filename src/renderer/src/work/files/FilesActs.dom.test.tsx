@@ -396,6 +396,61 @@ describe("New", () => {
   });
 });
 
+describe("New in a library", () => {
+  it("offers Upload Files… and From a Template… where the library makes files, and keeps the file in the folder shown", async () => {
+    const general = PLACES.find((p) => p.id === "b1")!;
+    const was = general.can;
+    general.can = [...was, "upload"];
+    const { workTemplatePort } = await import("../templates/open");
+    const asked: unknown[] = [];
+    workTemplatePort.set({ open: (ask) => void asked.push(ask), save: () => undefined });
+    try {
+      await mount();
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "General" }));
+      await waitFor(() => expect(rows()).toEqual(["Agenda.docx"]));
+      fireEvent.click(screen.getByRole("button", { name: "New" }));
+      const menu = await screen.findByRole("menu");
+      expect(within(menu).getAllByRole("menuitem").map((i) => i.textContent?.replace(/⇧⌘N|⌘⇧N|Ctrl\+Shift\+N/, ""))).toEqual(["Text File", "Folder", "Form", "From a Template…", "Upload Files…"]);
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "From a Template…" }));
+      expect(asked).toEqual([{ workspaceId: "w1", into: at("/cloud/General"), intoName: "General" }]);
+    } finally {
+      general.can = was;
+      workTemplatePort.set(null);
+    }
+  });
+
+  it("draws no New over a place's note with nothing listed: there it could make nothing", async () => {
+    const esports = PLACES.find((p) => p.id === "b2")!;
+    const was = esports.state;
+    esports.state = { state: "signed-out" };
+    try {
+      await mount();
+      expect(screen.getByRole("button", { name: "New" })).toBeTruthy();
+      fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Esports" }));
+      await waitFor(() => expect(document.querySelector("[data-files-body]")?.textContent).toMatch(/signed out/i));
+      expect(screen.queryByRole("button", { name: "New" })).toBeNull();
+    } finally {
+      esports.state = was;
+    }
+  });
+});
+
+describe("TempCode's own endings", () => {
+  it("are never shown as words: a sheet is listed by its name, and renamed keeping its ending", async () => {
+    host.disk.set("/w/Roster.tcsheet", false);
+    await mount();
+    expect(rows()).toContain("Roster");
+    expect(rows().join(" ")).not.toContain(".tcsheet");
+    fireEvent.click(row("Roster"));
+    fireEvent.keyDown(list(), { key: "F2" });
+    const field = (await screen.findByRole("textbox", { name: "Rename Roster" })) as HTMLInputElement;
+    expect(field.value).toBe("Roster");
+    fireEvent.change(field, { target: { value: "Spring roster" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(calls("work.files.rename")).toEqual([expect.objectContaining({ name: "Spring roster.tcsheet" })]));
+  });
+});
+
 describe("the selection", () => {
   it("takes one on a press, more with the modifier and Shift, all with ⌘A, and shows one bar for two or more", async () => {
     await mount();

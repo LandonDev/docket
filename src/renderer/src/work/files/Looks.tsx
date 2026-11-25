@@ -19,7 +19,7 @@ import { ItemSkeleton } from "../canvas/ItemBones";
 import type { SavedAction } from "../canvas/kind";
 import { busyOf } from "./busy";
 import { KindGlyph } from "./KindGlyph";
-import { answersWords, dayWords, factOf } from "./model";
+import { answersWords, dayWords, factOf, shownName } from "./model";
 import { FilePreviewPane } from "./Preview";
 import { mayReadText, useTextHead, useThumb, type PictureFrom } from "./previews";
 import { dragProps, heldRow, howOf, NameField, onNameOf, RowState, stepHow, type ShapeProps } from "./rowParts";
@@ -132,7 +132,7 @@ export function FileGallery({ entries, picked, from, more, onPick, onOpen, onMor
       {shown ? <FilePreviewPane from={from} entry={shown} {...(onFetch ? { onFetch } : {})} /> : <div className="flex-1 bg-(--stage)" />}
       {shown ? (
         <div className="flex h-8 shrink-0 items-center justify-center gap-2 border-t border-border px-3 text-[13px]">
-          <span className="min-w-0 truncate font-medium text-foreground">{shown.name}</span>
+          <span className="min-w-0 truncate font-medium text-foreground">{shownName(shown.name)}</span>
           <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{factOf(shown, dayTime)}</span>
         </div>
       ) : null}
@@ -183,7 +183,7 @@ export function DetailsPane({ from, entry, onOpen, className }: { from: PictureF
           {text ? <TextThumb key={entry.key} from={from!} entry={entry} /> : <Thumb from={from} entry={entry} tile={208} glyph="size-10" />}
         </div>
         {/* The name, the facts and Open share one left edge under the picture. */}
-        <h3 className="w-full max-w-64 text-sm leading-5 font-semibold break-words text-foreground">{entry.name}</h3>
+        <h3 className="w-full max-w-64 text-sm leading-5 font-semibold break-words text-foreground">{shownName(entry.name)}</h3>
         {/* Each value 8px after the widest label, so a label and its value read as one pair. */}
         <dl className="grid w-full max-w-64 grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-xs">
           {factRows(entry).map(([label, value]) => (
@@ -497,7 +497,7 @@ export function FileBeside({
               <NameField name={entry.name} className="h-5" onDone={(next) => onRenamed(entry, next)} />
             ) : (
               <span data-files-name className={`min-w-0 flex-1 truncate leading-4 text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
-                {mine?.name ?? entry.name}
+                {mine?.name ?? shownName(entry.name)}
               </span>
             )}
           </span>

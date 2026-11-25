@@ -12,6 +12,7 @@ import { sayError, useFrame } from "../canvas/frame";
 import { ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasKindDef, CanvasSelection, SavedAction } from "../canvas/kind";
 import { KindGlyph } from "./KindGlyph";
+import { shownName } from "./model";
 import { SaveActions, SaveLine } from "./SaveLine";
 
 /**
@@ -82,7 +83,7 @@ export function SidePane({
     <>
       {glyph ?? <KindGlyph kind={kindOfEntry(name).kind} />}
       <TruncateTip text={name}>
-        <h3 className="min-w-0 shrink truncate text-[13px] leading-5 font-medium text-foreground">{name}</h3>
+        <h3 className="min-w-0 shrink truncate text-[13px] leading-5 font-medium text-foreground">{shownName(name)}</h3>
       </TruncateTip>
       {feeds.saved ? <SaveLine line={feeds.saved} where={null} /> : null}
       {feeds.saved?.actions?.length ? <SaveActions actions={feeds.saved.actions} busy={running} onRun={run} /> : null}

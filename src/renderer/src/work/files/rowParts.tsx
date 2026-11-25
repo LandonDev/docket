@@ -6,7 +6,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { modOrCtrl } from "../../lib/keys";
 import { Cloud } from "../icons";
 import { MiddleCut } from "../canvas/TabName";
-import { stemEnd, whereKeep, whereWords, type Picked, type PickHow, type PlaceCopy } from "./model";
+import { hiddenEnding, shownName, stemEnd, whereKeep, whereWords, type Picked, type PickHow, type PlaceCopy } from "./model";
 import type { Busy } from "./busy";
 
 /**
@@ -85,26 +85,28 @@ export function RowState({ entry, cut }: { entry: FileEntry; cut?: string }) {
  * typed, as a rename anywhere does).
  */
 export function NameField({ name, className, onDone }: { name: string; className?: string; onDone(next: string | null): void }) {
-  const [value, setValue] = useState(name);
+  // TempCode's own ending is kept, never typed or shown: the field holds the name before it.
+  const ending = hiddenEnding(name);
+  const [value, setValue] = useState(shownName(name));
   const field = useRef<HTMLInputElement>(null);
   const done = useRef(false);
   useEffect(() => {
     const el = field.current;
     if (!el) return;
     el.focus();
-    el.setSelectionRange(0, stemEnd(name));
+    el.setSelectionRange(0, ending ? shownName(name).length : stemEnd(name));
     // The name it started from only: this field owns the text from then on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const finish = (next: string | null): void => {
     if (done.current) return;
     done.current = true;
-    onDone(next);
+    onDone(next === null || !ending || !next.trim() ? next : `${next.trim()}${ending}`);
   };
   return (
     <Input
       ref={field}
-      aria-label={`Rename ${name}`}
+      aria-label={`Rename ${shownName(name)}`}
       data-files-rename
       value={value}
       spellCheck={false}

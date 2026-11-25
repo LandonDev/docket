@@ -35,7 +35,7 @@ import { saveAsTemplate, workTemplatePort } from "../templates/open";
 import { KindGlyph } from "./KindGlyph";
 import { Dock, DockSash } from "./Dock";
 import type { DockThread } from "./dockThread";
-import { dockShape, type ActRow, type EntryAct } from "./model";
+import { dockShape, shownName, type ActRow, type EntryAct } from "./model";
 import { saveWordFile, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
 import { askAutosave, saveAsWord, serviceOf, wordLine } from "./wordSave";
 import { NameField, useSideOver } from "./rowParts";
@@ -211,15 +211,15 @@ export function FileHeader({
         {rename?.on ? (
           <NameField name={name} className="h-5 flex-none text-sm font-semibold" onDone={rename.done} />
         ) : (
-          <TruncateTip text={name}>
+          <TruncateTip text={shownName(name)}>
             {rename ? (
               <h2 className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">
                 <Button variant="link" data-files-rename-name className="h-5 max-w-full min-w-0 justify-start rounded-sm p-0 text-sm leading-5 font-semibold hover:no-underline" onClick={rename.start}>
-                  <span className="truncate">{name}</span>
+                  <span className="truncate">{shownName(name)}</span>
                 </Button>
               </h2>
             ) : (
-              <h2 className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">{name}</h2>
+              <h2 className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">{shownName(name)}</h2>
             )}
           </TruncateTip>
         )}

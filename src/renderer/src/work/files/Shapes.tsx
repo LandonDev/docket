@@ -9,7 +9,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { dayTime } from "../../lib/duration";
 import { chordKey, modOrCtrl } from "../../lib/keys";
 import { KindGlyph } from "./KindGlyph";
-import { factOf, gridStep, samePage, tilesAcross, type Picked, type PickHow, type TileSize } from "./model";
+import { factOf, gridStep, samePage, shownName, tilesAcross, type Picked, type PickHow, type TileSize } from "./model";
 import { busyOf, type Busy } from "./busy";
 import { dragProps, heldRow, howOf, NameField, onNameOf, stepHow, type RowDrag, type ShapeProps } from "./rowParts";
 import { DetailsPane, Thumb } from "./Looks";
@@ -97,7 +97,7 @@ function Tile({
           </span>
         ) : (
           <span data-files-name className={`line-clamp-2 text-center text-[13px] leading-[18px] break-words text-foreground ${entry.fresh ? "font-semibold" : ""}`}>
-            {mine?.name ?? entry.name}
+            {mine?.name ?? shownName(entry.name)}
           </span>
         )}
         <span className={`truncate text-center text-xs leading-4 tabular-nums ${entry.state?.is === "suggestions" ? "text-warning" : "text-muted-foreground"}`}>{fact || " "}</span>
@@ -289,7 +289,7 @@ function Column({
         {active && renaming === entry.key ? (
           <NameField name={entry.name} onDone={(next) => onRenamed(entry, next)} />
         ) : (
-          <span className={`min-w-0 flex-1 truncate text-foreground ${entry.fresh ? "font-semibold" : ""}`}>{entry.name}</span>
+          <span className={`min-w-0 flex-1 truncate text-foreground ${entry.fresh ? "font-semibold" : ""}`}>{shownName(entry.name)}</span>
         )}
         {entry.folder ? <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground" /> : null}
       </div>

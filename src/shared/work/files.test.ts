@@ -239,6 +239,9 @@ describe('the verbs table', () => {
 
   it('gives a library on a disk the delete (its computer\'s own bin), and a VM place the delete where its helper recycles', () => {
     expect(LIBRARY_CAN).toContain('trash')
+    // A library on a disk takes an upload on his press; the VM's helper writes none yet.
+    expect(LIBRARY_CAN).toContain('upload')
+    expect(vmCanOf(['files.outcome', 'files.mkdir', 'files.write', 'files.rename', 'files.move', 'files.recycle'])).not.toContain('upload')
     expect(vmCanOf(['files.outcome', 'files.recycle'])).toEqual(['trash'])
     expect(vmCanOf(['files.recycle'])).toEqual([])
   })

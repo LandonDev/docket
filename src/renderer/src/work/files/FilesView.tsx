@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
 import type { FilePage, FileTab, SavedFileSearch } from "@shared/contract-work-files";
 import { canvasSourcePath, filesPaneOf, type CanvasItem, type CanvasSource } from "@shared/work";
-import { chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, type FileEntry, type FilePlace, type FolderRef } from "@shared/work/files";
+import { canDo, chipsOf, DEFAULT_SORT, kindOfEntry, PLACE, refKey, type FileEntry, type FilePlace, type FolderRef } from "@shared/work/files";
 import { ChevronRight, Clock, Folder, Search, Star, Trash2, Users } from "../../chrome/icons";
 import { confirmAction, confirmChoice } from "../../chrome/ConfirmDialog";
 import { Button } from "../../components/ui/button";
@@ -984,8 +984,10 @@ function FolderPage({
           pickUpload: () => verbs.pickUpload(copy, page.at),
           // A Drive lists only what TempCode made or he picked: Add from Drive is the way more of it comes in.
           ...(copy.place.kind === "drive" && copy.place.root.at === "drive" ? { addFromDrive: () => void addFromDrive((copy.place.root as { account: string }).account).then((added) => void (added && listing.retry())) } : {}),
-          // A template is a file: the templates pillar's dialog makes the copy here, in the workspace's own folder.
-          ...(copy.place.kind === "folder" && workTemplatePort.get() ? { fromTemplate: () => void openTemplates({ workspaceId: workspace.id, into: page.at, intoName: page.name }) } : {}),
+          // A template is a file: the templates pillar's dialog makes it here through Files' own make, on his press, where
+          // the place makes files on the workspace's host (the workspace's folder, a library on a disk; not the VM, whose
+          // helper takes no template). A thread's template still goes to the workspace's own folder alone (templates/place.ts).
+          ...((copy.place.kind === "folder" || copy.place.kind === "teams" || copy.place.kind === "onedrive") && canDo(copy.place, "make") && !copy.place.vm && copy.link === workspace.environmentId && workTemplatePort.get() ? { fromTemplate: () => void openTemplates({ workspaceId: workspace.id, into: page.at, intoName: page.name }) } : {}),
           upload: (files, entry) => verbs.upload(copy, into(entry), files),
           drop: (verb, entries, entry, from, back) => void carryTo(of, verb, from, entries, { copy, at: entry.folder!, name: entry.name }, back),
           // Out to the desktop, under Download's own rule: a file that lies on this computer, a shared one only where the workspace lives here too.

@@ -130,9 +130,13 @@ Close one to open another.").
 A place's `can` lists the verbs its adapter carries out. The workspace's
 folder (`FOLDER_CAN`) carries out `make`, `upload`, `rename`, `move`, `copy`,
 `edit`, `trash`, `restore` and `purge`. A library on this host's disk
-(`LIBRARY_CAN`) carries out `make`, `rename`, `move`, `copy`, `edit` and
-`trash` (the computer's own bin, "A delete in a library"); an upload is
-refused "Nothing can be uploaded in General from here." A library in the
+(`LIBRARY_CAN`) carries out `make`, `upload`, `rename`, `move`, `copy`, `edit`
+and `trash` (the computer's own bin, "A delete in a library"); an upload there
+is his press (a key must approve, `admitWrite`), never over a file
+(files/upload.ts), and New offers Upload Files… and From a Template… there
+(work-templates.md "From a Template… in Files"); a computer reached through
+another host is offered no upload. TempCode's own endings are never shown as
+words (`shownName`, model.ts; a rename field keeps the ending, `hiddenEnding`). A library in the
 Windows VM carries out what its helper says it has (`vmCanOf`, "The Windows
 VM's verbs" below): `make`, `rename`, `move`, `edit`, and `trash` where the
 helper has `files.recycle`; a helper
