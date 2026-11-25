@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { editShape, focusDocument } from './lib/edit'
+import { AUTOSAVE_ASK, editShape, focusDocument } from './lib/edit'
 import { closeSelectedFile, holds, openRow } from './lib/files'
 import { fixtureTool } from './lib/fixtures'
 import { fileAt, goPlace, holderFolder, showPlace } from './lib/place'
@@ -105,7 +105,12 @@ async function visit(context: Context, kind: Kind): Promise<void> {
     }
     if (kind === 'doc') {
       // A Word copy from Teams asks once how to save. Keep the edit on the explicit Save As path.
-      if (context.shape === 'B1') await page.clickOn('[role="alertdialog"] button, [role="dialog"] button', 'Ask me each time')
+      // focusDocument answers it when it shows on open; else it shows once he types.
+      if (context.shape === 'B1') await page.until('the autosave question, if it comes', 5_000, async () => {
+        const ask = await page.centre(AUTOSAVE_ASK, 'Ask me each time')
+        if (ask) await page.click(ask)
+        return !!ask
+      }).catch(() => undefined)
       // The editor holds a Word file's live text in a TempCode document. Save the changed copy as Word.
       await saveWordCopy(context, copy.slice(0, -'.docx'.length), true)
     }

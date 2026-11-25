@@ -35,8 +35,16 @@ export async function replaceText(page: Window, text: string): Promise<void> {
 
 export const DOC_EDITOR = '[data-doc-scroller] [contenteditable="true"]'
 
+/** A Word file of Teams asks once whether to save as he works: the walks keep the explicit presses. */
+export const AUTOSAVE_ASK = '[role="alertdialog"] button, [role="dialog"] button'
+
 export async function focusDocument(page: Window): Promise<void> {
   await page.until('the document to take focus', 35_000, async () => {
+    const ask = await page.centre(AUTOSAVE_ASK, 'Ask me each time')
+    if (ask) {
+      await page.click(ask)
+      return false
+    }
     const at = await page.centre(DOC_EDITOR)
     if (!at) return false
     await page.click(at)
