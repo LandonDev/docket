@@ -423,3 +423,64 @@ describe("the chart's axis", () => {
     expect(isTimeSeries(["Nov"])).toBe(false);
   });
 });
+
+/** Council round 10 (Opus could not judge): a page read from LifeOS sheets while the host's LifeOS is down. */
+describe("a dashboard read from LifeOS sheets while LifeOS is down", () => {
+  const st = (state: string) => ({ lifeos: { state, ...(state === "pairing" ? { expiresAt: Date.now() + 60_000 } : {}) }, keys: [] }) as never;
+  const NOT_SIGNED_IN = "This host is not signed in to LifeOS";
+  let restore: () => void = () => undefined;
+  beforeEach(async () => {
+    const { registry } = await import("../../lib/connection");
+    // The line names the computer the page is on.
+    Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
+    restore = () => void delete (registry as { environment?: unknown }).environment;
+  });
+  afterEach(async () => {
+    restore();
+    (await import("../shell/lifeos")).resetLifeos();
+  });
+
+  it("says the host's live state once, in the read's place, with its press and no Refresh, and reads again once connected", async () => {
+    const { setLifeosStatus } = await import("../shell/lifeos");
+    setLifeosStatus("local", st("signed-out"));
+    open(page({ failed: NOT_SIGNED_IN, lifeos: "signed-out" }));
+    const line = await found("[data-canvas-state]");
+    expect(line.getAttribute("data-canvas-state")).toBe("needs");
+    expect(line.textContent).toContain("Not signed in to LifeOS on the box");
+    expect(within(line).getByRole("button", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByText("Couldn't read the figures")).toBeNull();
+    expect(screen.queryByText(NOT_SIGNED_IN)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    // The figures stay, read as of before.
+    expect(document.querySelectorAll("[data-figure]")).toHaveLength(3);
+    act(() => setLifeosStatus("local", st("pairing")));
+    await waitFor(() => expect(document.querySelector("[data-canvas-state]")?.textContent).toContain("The LifeOS sign-in on the box waits for your approval"));
+    expect(screen.getByRole("button", { name: "Show the code" })).toBeTruthy();
+    act(() => setLifeosStatus("local", st("connecting")));
+    await waitFor(() => expect(document.querySelector("[data-canvas-state]")?.textContent).toBe("LifeOS is still connecting on the box"));
+    expect(dashHost.refresh).not.toHaveBeenCalled();
+    act(() => setLifeosStatus("local", st("connected")));
+    await waitFor(() => expect(dashHost.refresh).toHaveBeenCalledTimes(1));
+  });
+
+  it("says the host's silence red with Retry, which reads the page again", async () => {
+    const { setLifeosUnanswered } = await import("../shell/lifeos");
+    setLifeosUnanswered("local");
+    open(page({ failed: "LifeOS is unreachable", lifeos: "unreachable" }));
+    const line = await found("[data-canvas-state]");
+    expect(line.getAttribute("data-canvas-state")).toBe("failed");
+    expect(line.textContent).toContain("The box did not answer");
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(dashHost.refresh).toHaveBeenCalledTimes(1));
+  });
+
+  it("says it in the body's place when no figures were read, as any canvas open LifeOS could not make", async () => {
+    const { setLifeosStatus } = await import("../shell/lifeos");
+    setLifeosStatus("local", st("refused"));
+    open(page({ blocks: [], asOf: null, failed: NOT_SIGNED_IN }));
+    const body = await found("[data-lifeos-down]");
+    expect(body.getAttribute("data-lifeos-down")).toBe("refused");
+    expect(body.textContent).toBe("LifeOS refused the box's sign-inSign in");
+    expect(screen.queryByText("Couldn't open this dashboard")).toBeNull();
+  });
+});

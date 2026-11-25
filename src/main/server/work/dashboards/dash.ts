@@ -3,6 +3,7 @@ import type { DashBlock, DashboardView, DashFrom, DashProposal, DashSheet } from
 import type { CanvasItem } from '@shared/work'
 import { FenceError } from '../../remote/fence'
 import { workspaceHere } from '../files/policy'
+import { UNAVAILABLE_WORDS } from '../lifeos/session'
 import type { Caller, WorkCtx } from '../modules'
 import { aggregate, barsOf, formatValue, tableOf, type Cells } from './read'
 
@@ -80,7 +81,7 @@ export class DashStore {
   }
 }
 
-type Ctx = Pick<WorkCtx, 'db' | 'host' | 'canvas' | 'service' | 'push' | 'log'>
+type Ctx = Pick<WorkCtx, 'db' | 'host' | 'canvas' | 'service' | 'push' | 'log'> & Partial<Pick<WorkCtx, 'lifeos'>>
 
 export class DashError extends Error {}
 
@@ -209,10 +210,31 @@ async function staleOf(ctx: Ctx, row: DashRow, by: Caller): Promise<boolean> {
   return false
 }
 
+/** The host's own sentences for a LifeOS session it could not use (lifeos/session.ts): a read that failed with one failed for LifeOS. */
+const LIFEOS_DOWN_WORDS = new Set<string>(Object.values(UNAVAILABLE_WORDS))
+const failedForLifeos = (failed: string | null): boolean => !!failed && [...LIFEOS_DOWN_WORDS].some((words) => failed.includes(words))
+
+/**
+ * What the page says of its last failed read, as of now. A read that failed because the host's LifeOS session was
+ * down names that session's state while it still is (`lifeos`; one that says connected while it is not is LifeOS not
+ * answering it); once the session is back, that failure is old news: the page says nothing of it and is out of date,
+ * for Refresh to read again.
+ */
+function failureOf(ctx: Ctx, row: DashRow): Pick<DashboardView, 'failed' | 'lifeos'> & { gone: boolean } {
+  if (!ctx.lifeos || !row.blocks.flatMap(sourcesOf).some((f) => f.sheet.at === 'lifeos')) return { failed: row.failed, gone: false }
+  if (!ctx.lifeos.connected()) {
+    if (!row.failed) return { failed: null, gone: false }
+    const state = ctx.lifeos.state?.()
+    return { failed: row.failed, gone: false, ...(state ? { lifeos: state === 'connected' ? 'unreachable' : state } : {}) }
+  }
+  return failedForLifeos(row.failed) ? { failed: null, gone: true } : { failed: row.failed, gone: false }
+}
+
 /** The page as `by` is shown it: its Microsoft form figures only after the same admission a read takes (`admitForms`). */
 export async function viewOf(ctx: Ctx, row: DashRow, by: Caller = DASH_OWNER): Promise<DashboardView> {
   await admitForms(ctx, by, ctx.canvas.get(row.itemId), row.blocks)
-  return { itemId: row.itemId, rev: row.rev, title: row.title, blocks: row.blocks, asOf: row.asOf, stale: row.asOf !== null && (await staleOf(ctx, row, by)), failed: row.failed }
+  const { gone, ...failure } = failureOf(ctx, row)
+  return { itemId: row.itemId, rev: row.rev, title: row.title, blocks: row.blocks, asOf: row.asOf, stale: row.asOf !== null && (gone || (await staleOf(ctx, row, by))), ...failure }
 }
 
 /**

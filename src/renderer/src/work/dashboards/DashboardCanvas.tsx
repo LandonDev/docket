@@ -12,8 +12,14 @@ import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import { OpenFailed } from "../canvas/FetchState";
-import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
+import type { CanvasBodyProps, CanvasShell, ReviewAdapter, StatusLine } from "../canvas/kind";
 import { Table } from "../icons";
+import { savedOfReason } from "../shell/DownEmpty";
+import { useDownAction } from "../shell/DownSignIn";
+import { lifeosHostName } from "../shell/lifeos";
+import { downIsSilence, downWords, useDownPress } from "../shell/lifeosDown";
+import { savedOfState, useLiveDown, type LiveDown } from "../shell/lifeosLive";
+import { connectingWords } from "../shell/lifeosWords";
 import { linkDashHost, type DashHost } from "./host";
 
 /**
@@ -65,6 +71,20 @@ const useSlot = (store: DashStore): Slot => useSyncExternalStore(store.subscribe
 
 type Props = CanvasBodyProps<undefined> & { host?: DashHost };
 
+/** Whether a page reads a LifeOS sheet: only such a page is said down while the host's LifeOS session is. */
+const readsLifeos = (view: DashboardView | null): boolean => !!view && sheetsOf(view.blocks).some((s) => s.sheet.at === "lifeos");
+
+/**
+ * What a page read from LifeOS sheets says of the host's LifeOS session now, by its live status (`useLiveDown`): the
+ * cause the host sent with the page (`lifeos`), else the one its failed read names (a host a release behind), and the
+ * host's live state over both. `onBack` reads the page again once the host says connected.
+ */
+function useDashLifeos(view: DashboardView | null, env: string, onBack?: () => void): LiveDown {
+  const reads = readsLifeos(view);
+  const saved = !reads || !view ? null : view.lifeos ? savedOfState(view.lifeos) : savedOfReason(view.failed);
+  return useLiveDown(saved, reads ? env : null, onBack);
+}
+
 /** How often an open dashboard asks whether a sheet it reads has moved. */
 const STALE_POLL_MS = 30_000;
 
@@ -103,7 +123,11 @@ export function Body(props: Props) {
     store.set({ error: null });
     setAttempt((n) => n + 1);
   };
-  useFeeds(shell, host, store, view, current, setCurrent);
+  const reread = (): Promise<void> => host.refresh().then((v) => store.set({ view: v, missed: false }), (e: unknown) => sayError(e, "Couldn't read the figures"));
+  const lifeos = useDashLifeos(view, props.env, () => void host.refresh().then((v) => store.set({ view: v, missed: false }), () => undefined));
+  const { press, elsewhere } = useDownPress(lifeos.down, props.env);
+  const { action, dialog } = useDownAction(press, props.env, reread);
+  useFeeds(shell, host, store, view, current, setCurrent, lifeosLineOf(lifeos, props.env, action, elsewhere));
 
   if (error) return <OpenFailed kind="dashboard" why={error} onRetry={retryOpen} />;
   if (!view) return <DashSkeleton />;
@@ -118,6 +142,8 @@ export function Body(props: Props) {
   const currentId = proposed[Math.min(current, proposed.length - 1)]?.id;
   const stale = view.stale || missed;
   return (
+    <>
+    {dialog}
     <div data-dashboard data-stale={stale || undefined} className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain">
       <div className="@container mx-auto max-w-[672px] px-6 pt-6 pb-12">
         {groups(view.blocks).map((g) =>
@@ -129,7 +155,21 @@ export function Body(props: Props) {
         )}
       </div>
     </div>
+    </>
   );
+}
+
+/**
+ * The page's one line while the host's LifeOS session is down, by the rule: silence red with Retry (the page read
+ * again), a state that needs him with its press (Sign in, Show the code, Open Settings) where this window may, else who
+ * can, a session on its way a muted wait; the computer named in each. null while LifeOS reads.
+ */
+function lifeosLineOf(live: LiveDown, env: string, action: { label: string; run(): void | Promise<void> } | undefined, elsewhere: string | null): StatusLine | null {
+  if (live.waits) return { tone: "quiet", word: connectingWords(lifeosHostName(env)), wrap: true };
+  if (!live.down) return null;
+  const word = downWords(live.down, lifeosHostName(env));
+  if (downIsSilence(live.down)) return { tone: "failed", word, wrap: true, ...(action ? { action } : {}) };
+  return { tone: live.down === "withheld" ? "quiet" : "needs", word, wrap: true, ...(elsewhere ? { detail: elsewhere } : {}), ...(action ? { action } : {}) };
 }
 
 /**
@@ -154,6 +194,8 @@ function useFeeds(
   view: DashboardView | null,
   current: number,
   setCurrent: (n: number) => void,
+  /** the host's LifeOS session, down: said in the place of a failed read's line */
+  lifeos: StatusLine | null,
 ): void {
   const has = !!view;
   useEffect(() => {
@@ -189,7 +231,17 @@ function useFeeds(
 
   // A failed read over figures still shown; with none, the body says it (`OpenFailed`).
   const failed = view?.blocks.length ? view.failed : undefined;
+  // The newest press is kept in a ref: a render makes the line anew, and the line is handed up only when what it says changes.
+  const down = useRef(lifeos);
+  down.current = lifeos;
+  const downKey = lifeos && view?.blocks.length ? `${lifeos.tone}\n${lifeos.word}\n${lifeos.detail ?? ""}\n${lifeos.action?.label ?? ""}` : null;
   useEffect(() => {
+    // The host's LifeOS session, down, is the one cause: said once, in the place of the read's own line.
+    if (downKey !== null && down.current) {
+      const line = down.current;
+      shell.statusLine({ ...line, ...(line.action ? { action: { label: line.action.label, run: () => down.current?.action?.run() } } : {}) });
+      return () => shell.statusLine(null);
+    }
     // A first read that failed is the body's to say (`OpenFailed`); the line is for figures that stay on screen.
     shell.statusLine(
       failed
@@ -202,7 +254,7 @@ function useFeeds(
           : null,
     );
     return () => shell.statusLine(null);
-  }, [shell, host, store, failed]);
+  }, [shell, host, store, failed, downKey]);
 
   const sheets = view ? sheetsOf(view.blocks) : [];
   const sheetKey = sheets.map((s) => `${s.sheetTitle}`).join("\n");
@@ -238,6 +290,8 @@ export function Bar(props: Props) {
   const host = hostFor(props);
   const store = storeOf(props.item.id);
   const { view, error, refreshing, missed } = useSlot(store);
+  // While the host's LifeOS session is down the line has the one press: Refresh, which needs the session, is not offered.
+  const lifeos = useDashLifeos(view, props.env);
   if (!view) return error ? null : <Skeleton data-dash-bar-bone className="h-3 w-30" />;
   if (!view.asOf || view.blocks.some((b) => b.proposed)) return null;
   const refresh = (): void => {
@@ -258,7 +312,7 @@ export function Bar(props: Props) {
       {view.stale || missed ? <span className="font-medium text-foreground">Out of date</span> : null}
       <span>As of {dayTime(view.asOf)}</span>
       {/* While it reads, the spinner takes the button's own 24px place, so nothing beside it moves. */}
-      {refreshing ? (
+      {lifeos.down || lifeos.waits ? null : refreshing ? (
         <span role="status" aria-label="Reading the figures" className="flex size-6 items-center justify-center text-muted-foreground">
           <Spinner className="size-3" />
         </span>

@@ -42,6 +42,18 @@ real caller (the thread, his window, a key) and the withhold; a push about such 
 - The page is read whole, every block at once (`refresh`), and `asOf` is
   when that finished: "as of" is said once, in the bar. A read that fails
   keeps what was there and says why in the one state line, with Retry.
+- **LifeOS down**: a page that reads a LifeOS sheet while the host's LifeOS
+  session is down gets the session's state by name with its failure
+  (`DashboardView.lifeos`, `failureOf` in dash.ts); once the session is back,
+  a failure LifeOS caused is not said again and the page is out of date. The
+  window words it by the host's live status (`useLiveDown`): one state line in
+  the read's place, the computer named, red with Retry (the page read again)
+  for silence, Sign in, Show the code or Open Settings where this window may,
+  else who can, a muted wait while LifeOS is on its way; Refresh is not
+  offered meanwhile, the figures stay as of before, and the page is read again
+  when the host says connected. With no figures to show, the body says it, as
+  any canvas item does that could not open for LifeOS (`OpenFailed`, by the
+  pane's host).
 - **Stale**: `work.dashboards.open` asks each source sheet for its rev; if
   one moved since the page was read (or cannot be asked), the view says
   `stale` and the canvas dims the figures and the current bar
