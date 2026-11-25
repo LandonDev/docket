@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { FormPublishSchema, FormsRequestSchemas, type FormPublish } from '@shared/contract-work-forms'
 import { handled, NOT_HANDLED } from '@shared/work'
 import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
+import { mustBePerson } from '../outbox/person'
 import { announce, dropCopy, formItem, hold, publish, responses, review, rowOf, save, setOpen, settled, viewOf, writeCopy } from './forms'
 import { ensureFormsTables, FormsStore, type FormRow } from './store'
 import { formsTools } from './tools'
@@ -82,6 +83,8 @@ export const forms: WorkModule = {
       case 'work.forms.save':
         return handled(await save(ctx, item, req.params.rev, req.params.body))
       case 'work.forms.review':
+        // Accepting a thread's change to a published form changes a public page: his press, as the Outbox's.
+        if (req.params.verdict === 'accept' && rowOf(ctx, item).publicId) mustBePerson(by, 'approve')
         return handled(await review(ctx, item, req.params.which, req.params.verdict))
       case 'work.forms.mode':
         return handled(announce(ctx, new FormsStore(ctx.db).update(item.id, { mode: req.params.mode })))

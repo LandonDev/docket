@@ -307,6 +307,11 @@ describe('a form', () => {
     let view = await call<FormView>('work.forms.open', { itemId })
     expect(view.body.questions).toHaveLength(3)
     expect(view.suggestions.map((s) => [s.op, s.question.label, s.reason])).toEqual([['add', 'T-shirt size', 'Sam asked for sizes']])
+    // Accepting it changes a public page: an operate key cannot, only his press (the hold review, round 9).
+    const operateKey = { kind: 'remote', caps: ['read', 'operate'], keyId: 'k1', audience: 'client' } as const
+    const mcpKey = { kind: 'remote', caps: ['read', 'operate', 'approve'], keyId: 'k2', audience: 'mcp' } as const
+    for (const principal of [operateKey, mcpKey])
+      await expect(work.handle(ClientRequestSchema.parse({ id: '1', method: 'work.forms.review', params: { itemId, which: 'all', verdict: 'accept' } }), principal as never)).rejects.toThrow('only the owner decides')
     view = await call<FormView>('work.forms.review', { itemId, which: 'all', verdict: 'accept' })
     expect(view.body.questions.at(-1)?.label).toBe('T-shirt size')
     const form = (await (await fetch(`http://127.0.0.1:${port}/f/${publicId(live)}/form`)).json()) as PublicForm

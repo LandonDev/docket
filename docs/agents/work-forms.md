@@ -41,7 +41,9 @@ Publishing shares a link anyone can answer, so it is an outward act:
   made on the first publish, the header written, a public id given
   (`randomBytes(12)`, base64url, 16 characters) and the page goes live.
 - Once a form is published, an agent's change always waits for his Accept,
-  whatever the mode, so nothing reaches the public page without him. Before
+  whatever the mode, so nothing reaches the public page without him: that
+  Accept is a press as the Outbox's (`mustBePerson` with approve), never a
+  thread, a linked host or an MCP key. Before
   that, the mode decides ("Agent suggests", the default, or "Agent writes").
   His own edits go live at once. A new question is written in full in the
   Add question dialog (its words, kind, options for a choice or dropdown,
