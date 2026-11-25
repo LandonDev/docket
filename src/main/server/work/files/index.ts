@@ -1,4 +1,5 @@
 import { filesPaneWorkspace } from '@shared/work'
+import { resetStaged } from './pieces'
 import type { ActKindDef, WorkModule } from '../modules'
 import { copiesLeft, copySaved, retryWaiting, settleCopies } from './copies'
 import { startFileAutosaves } from './autosave'
@@ -120,6 +121,8 @@ export const files: WorkModule = {
     }, 30_000)
     waiting.unref?.()
     return () => {
+      // A copy's pieces on their way here go with Work (sol S13): the write that names them is refused and sent again.
+      resetStaged()
       offMoved()
       offSaved()
       offPlace()

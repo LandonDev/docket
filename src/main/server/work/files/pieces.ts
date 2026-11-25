@@ -64,11 +64,19 @@ interface Staged {
   parts: Map<number, Buffer>
   bytes: number
   at: number
+  /** lets the write's pieces go `STAGED_LIFE_MS` after the last one, whether or not anything else comes (sol S13) */
+  expiry: ReturnType<typeof setTimeout> | null
 }
 const staged = new Map<string, Staged>()
 
+function drop(upload: string): void {
+  const s = staged.get(upload)
+  if (s?.expiry) clearTimeout(s.expiry)
+  staged.delete(upload)
+}
+
 function sweep(now: number): void {
-  for (const [upload, s] of staged) if (now - s.at > STAGED_LIFE_MS) staged.delete(upload)
+  for (const [upload, s] of staged) if (now - s.at > STAGED_LIFE_MS) drop(upload)
 }
 
 const ONLY_PEER = "A copy's pieces come from the workspace's own host."
@@ -80,26 +88,30 @@ export function stagePiece(by: Caller, p: { workspaceId: string; upload: string;
   let s = staged.get(p.upload)
   if (!s) {
     if (staged.size >= STAGED_MOST) throw new Error('Too many copies are on their way here: try again in a moment.')
-    staged.set(p.upload, (s = { peer: by.peer, workspaceId: p.workspaceId, parts: new Map(), bytes: 0, at: now }))
+    staged.set(p.upload, (s = { peer: by.peer, workspaceId: p.workspaceId, parts: new Map(), bytes: 0, at: now, expiry: null }))
   }
   if (s.peer !== by.peer || s.workspaceId !== p.workspaceId) throw new Error(ONLY_PEER)
   const part = Buffer.from(p.data, 'base64')
   if (part.length > WRITE_PIECE) throw new Error('A piece of a copy is over its size.')
   s.bytes += part.length - (s.parts.get(p.index)?.length ?? 0)
   if (s.bytes > COPY_ACROSS_MAX) {
-    staged.delete(p.upload)
+    drop(p.upload)
     throw new Error(`A copy is over ${COPY_ACROSS_MAX / 1024 / 1024} MB, too big to send back.`)
   }
   s.parts.set(p.index, part)
   s.at = now
+  if (s.expiry) clearTimeout(s.expiry)
+  s.expiry = setTimeout(() => drop(p.upload), STAGED_LIFE_MS)
+  s.expiry.unref?.()
   return { ok: true }
 }
 
 /** The write's bytes from its pieces, taken (they are kept no longer): each piece there once, and the whole as sent. */
-export function takePieces(by: Caller, workspaceId: string, ref: PieceRef): Buffer {
+export function takePieces(by: Caller, workspaceId: string, ref: PieceRef, now = Date.now()): Buffer {
   const s = staged.get(ref.upload)
-  staged.delete(ref.upload)
-  if (!s || by.kind !== 'remote' || s.peer !== by.peer || s.workspaceId !== workspaceId) throw new Error("A copy's pieces did not all come: it is sent again.")
+  drop(ref.upload)
+  // (pieces past their life are gone, whatever timer has not yet run)
+  if (!s || now - s.at > STAGED_LIFE_MS || by.kind !== 'remote' || s.peer !== by.peer || s.workspaceId !== workspaceId) throw new Error("A copy's pieces did not all come: it is sent again.")
   const parts: Buffer[] = []
   for (let i = 0; i < ref.count; i++) {
     const part = s.parts.get(i)
@@ -111,8 +123,8 @@ export function takePieces(by: Caller, workspaceId: string, ref: PieceRef): Buff
   return data
 }
 
-/** For tests: what is kept, and none after. */
+/** For tests, and Work turning off (the files module's stop): what is kept, and none after. */
 export const stagedWrites = (): number => staged.size
 export function resetStaged(): void {
-  staged.clear()
+  for (const upload of [...staged.keys()]) drop(upload)
 }

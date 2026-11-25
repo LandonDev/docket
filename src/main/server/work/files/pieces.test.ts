@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Caller } from '../modules'
 import { PIECES_AT_ONCE, resetStaged, stagePiece, STAGED_LIFE_MS, STAGED_MOST, stagedWrites, takePieces, WRITE_PIECE, writeBackInPieces, type PieceRef } from './pieces'
 
@@ -86,6 +86,25 @@ describe("the far host's pieces", () => {
     expect(stagedWrites()).toBe(0)
     stagePiece(PEER, piece(U, 0, Buffer.from('ab')))
     expect(() => takePieces(PEER, 'w1', { upload: U, count: 1, sha256: sha(Buffer.from('xx')) })).toThrow(/not come as they were sent/)
+  })
+
+  it('go two minutes after the last piece with nothing else coming, are refused to a write past that, and go with Work (sol S13)', () => {
+    vi.useFakeTimers()
+    try {
+      stagePiece(PEER, piece(U, 0, Buffer.from('ab')))
+      vi.advanceTimersByTime(STAGED_LIFE_MS + 1)
+      expect(stagedWrites()).toBe(0)
+      // A write that names pieces staged longer ago than their life is refused, whatever timer has run.
+      vi.useRealTimers()
+      stagePiece(PEER, piece(U, 0, Buffer.from('ab')), 0)
+      expect(() => takePieces(PEER, 'w1', { upload: U, count: 1, sha256: sha(Buffer.from('ab')) }, STAGED_LIFE_MS + 1)).toThrow(/did not all come/)
+      // Work off: the files module's stop lets every write's pieces go.
+      stagePiece(PEER, piece(U, 0, Buffer.from('ab')))
+      resetStaged()
+      expect(stagedWrites()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it(`hold at most ${STAGED_MOST} writes, each for ${STAGED_LIFE_MS / 60_000} minutes after its last piece`, () => {
