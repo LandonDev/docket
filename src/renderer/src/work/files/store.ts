@@ -1081,11 +1081,17 @@ async function fetchPage(from: ListFrom, at: FolderRef, sort: FileSort, cursor?:
   return { entries: from.foldersOnly ? all.filter((e) => e.folder) : all, place: from.copy.place.id, trail: trailFromOld(from.copy.place, folder) };
 }
 
-/** Who last saved each Office file of a page, asked once for its first hundred: a list never reads a file, so this comes after. Never for the Windows VM, whose guest names no one. */
+/**
+ * Who last saved each Office file of a page, asked once for its first hundred: a list never reads a file, so this comes
+ * after. Never for the Windows VM, whose guest names no one, and only of a file that lies on the host asked: a lens
+ * (Recent, Starred) lists files of other computers too, whose paths that host's fence refuses (the walk's silent
+ * "work.files.stat is outside app-managed roots").
+ */
 async function fillWho(key: string, from: ListFrom, round: number): Promise<void> {
   const entry = listings.get(key);
   if (!entry || from.copy.wire !== "files" || from.copy.place.vm) return;
-  const want = entry.entries.filter((e) => e.ref && e.local !== false && e.by === undefined && /\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i.test(e.name)).slice(0, 100);
+  const here = from.copy.place.env;
+  const want = entry.entries.filter((e) => e.ref?.at === "file" && e.ref.host === here && e.local !== false && e.by === undefined && /\.(docx|docm|xlsx|xlsm|pptx|pptm)$/i.test(e.name)).slice(0, 100);
   if (!want.length) return;
   const got = await ask<{ entries: (FileEntry | null)[] }>(from.copy.link, "work.files.stat", { workspaceId: from.workspaceId, refs: want.map((e) => e.ref) }, readMs(from.copy)).catch(() => null);
   const now = listings.get(key);

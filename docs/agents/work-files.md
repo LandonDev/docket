@@ -2893,7 +2893,11 @@ system.
   ask within a moment. A folder he added on a network drive keeps its
   letter, and one on a drive that is gone shows as `unreachable` without a
   call on it (work-teams-files.md "A network drive"). Who last saved an Office file left the list for
-  `stat`, which reads it only from a file whose bytes are already here.
+  `stat`, which reads it only from a file whose bytes are already here. The
+  window asks it (store.ts `fillWho`) only of rows that lie on the host it
+  asks (`ref.host` is the place's `env`): a lens lists other computers'
+  files too, and their paths were once sent to that host, whose fence
+  refused each in silence ("work.files.stat is outside app-managed roots").
 - **A Google Drive** (`places/drive.ts`): read from Drive, kept 5 s, cut
   into pages here ("Google Drive").
 - **The Windows VM**: `places` answers from what was kept and reads behind

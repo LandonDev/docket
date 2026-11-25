@@ -26,6 +26,8 @@ interface Host {
 const world = vi.hoisted(() => ({
   /** Starred rows carry where each lives (a LifeOS row in a lens does). */
   starredWhere: false,
+  /** rows the Starred lens lists besides the host's own: a file of another computer (his Mac's library) */
+  starredElse: [] as FileEntry[],
   host: null as unknown,
   toasts: [] as { kind: string; title: string; description?: string; undo?: () => void; press?: string }[],
   asked: [] as { title: string; action: string }[],
@@ -195,7 +197,7 @@ function diskHost(start: Record<string, boolean>, o: { home?: boolean } = {}) {
           if (ref.at === "place" && ref.id === "trash") {
             return { entries: trashed.map((t) => ({ key: `trash:${t.id}`, ref: null, folder: null, name: name(t.path), kind: t.dir ? "folder" : kindOfEntry(name(t.path)).kind, changed: 1_700_000_100_000, where: { place: "folder", name: "Dummy Esports", trail: parent(t.path).split("/").slice(2) } })), place: "trash", trail: [{ name: "Trash", at: ref }] } satisfies FilesListing;
           }
-          if (ref.at === "place" && ref.id === "starred") return { entries: [...stars].map((p) => ({ ...entry(p), ...(world.starredWhere ? { where: { place: "folder", name: "Dummy Esports", trail: [] } } : {}) })), place: "starred", trail: [{ name: "Starred", at: ref }] } satisfies FilesListing;
+          if (ref.at === "place" && ref.id === "starred") return { entries: [...[...stars].map((p) => ({ ...entry(p), ...(world.starredWhere ? { where: { place: "folder", name: "Dummy Esports", trail: [] } } : {}) })), ...world.starredElse], place: "starred", trail: [{ name: "Starred", at: ref }] } satisfies FilesListing;
           const dir = pathOf(ref);
           const top = dir.startsWith("/cloud") ? "/cloud/General" : "/w";
           const rest = dir.slice(top.length).split("/").filter(Boolean);
@@ -330,6 +332,7 @@ beforeEach(async () => {
   world.links = {};
   world.platform = "linux";
   world.pages = {};
+  world.starredElse = [];
   world.opened.length = 0;
   localStorage.clear();
   sessionStorage.clear();
@@ -1022,6 +1025,21 @@ describe("upload and drag", () => {
     fireEvent.drop(body, { dataTransfer });
     await waitFor(() => expect(calls("work.files.upload")).toHaveLength(1));
     expect(calls("work.files.upload")[0]).toMatchObject({ name: "Bracket.pdf" });
+  });
+});
+
+describe("who saved a lens's Office files", () => {
+  it("is asked of the host only for its own files: another computer's path is never sent to its fence", async () => {
+    const mac = { at: "file" as const, host: "env_mac", path: "/Users/l/Library/CloudStorage/OneDrive-Dummy/General/Plan.docx" };
+    world.starredElse = [{ key: refKey(mac), ref: mac, folder: null, name: "Plan.docx", kind: "document", changed: 1_700_000_000_000, shared: true, where: { place: "General", name: "General", trail: [] } }];
+    await mount();
+    fireEvent.contextMenu(row("Budget.xlsx"));
+    fireEvent.click(await menuItem("Star"));
+    await waitFor(() => expect(calls("work.files.star")).toHaveLength(1));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Places" })).getByRole("button", { name: "Starred" }));
+    await waitFor(() => expect(rows()).toEqual(["Budget.xlsx", "Plan.docx"]));
+    await waitFor(() => expect(calls("work.files.stat").some((c) => JSON.stringify(c.refs).includes("/w/Budget.xlsx"))).toBe(true));
+    expect(calls("work.files.stat").flatMap((c) => c.refs as { host: string }[]).filter((r) => r.host !== "env_box")).toEqual([]);
   });
 });
 
