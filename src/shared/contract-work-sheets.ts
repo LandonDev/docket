@@ -290,6 +290,8 @@ export type SheetPreviewAnswer = {
       uncounted?: true
       /** `excel` only for his press on "Check in Excel" (`by: 'office'`): Excel's own PDF of the whole workbook */
       drawnBy: 'libreoffice' | 'excel'
+      /** the workbook the picture was drawn from (its content hash): Print names it back as `drawn`, so it prints these pages and no later ones */
+      book?: string
     }
   | { kind: 'table'; name: string; rows: string[][]; sheets: string[] }
   | { kind: 'html'; html: string }
@@ -301,6 +303,8 @@ export interface SheetExportAnswer {
   name: string
   /** what the file could not hold, one line each */
   drops: string[]
+  /** the workbook is no longer the one `drawn` names: nothing was made (`rev` and `size` are empty), and Preview draws it again */
+  moved?: true
 }
 
 /** A shared .csv's cache generation as a load answered it (`work.sheets.load`), carried back by a grid's `since` and `edit`. */
@@ -385,8 +389,11 @@ export const SheetsRequestSchemas = [
   request('work.sheets.previewOffice', z.object({ itemId })),
   /** → { data: base64 }: bytes of one render by range. A `rev` no longer kept is refused: draw it again. */
   request('work.sheets.previewRead', z.object({ itemId, rev: z.string().regex(/^[a-f0-9]{32}$/), offset: z.number().int().min(0), length: z.number().int().min(1).max(SHEET_PREVIEW_READ_MAX) })),
-  /** → SheetExportAnswer: the file in `format` made now from the workbook as it stands, read with `previewRead`. */
-  request('work.sheets.previewExport', z.object({ itemId, format: z.enum(SHEET_PREVIEW_FORMATS), sheet: z.string().max(200).optional() })),
+  /**
+   * → SheetExportAnswer: the file in `format` made now from the workbook as it stands, read with `previewRead`. `drawn`:
+   * the `book` of the picture he looked at (Print): made only while the workbook is still that one, else `moved`.
+   */
+  request('work.sheets.previewExport', z.object({ itemId, format: z.enum(SHEET_PREVIEW_FORMATS), sheet: z.string().max(200).optional(), drawn: z.string().regex(/^[a-f0-9]{32}$/).optional() })),
   /**
    * → SheetImportDone: what he does with the Excel copy of an .xls, .ods or .tsv (`SheetView.imported`). `back`
    * writes the copy over the file as the format it was, only while the file is still the one the copy was made

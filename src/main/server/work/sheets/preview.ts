@@ -580,7 +580,7 @@ export async function previewSheet(s: Sheets, item: CanvasItem, params: PreviewP
         return { kind: 'html', html: readFileSync(book.store.fileOf(file), 'utf8'), drops: drops([kept]) }
       }
       const meta = await drawPaged(job, format, params.pages)
-      return { kind: 'paged', rev: meta.rev, size: meta.size, pages: meta.pages ?? 1, ...(meta.shown ? { shown: meta.shown } : {}), ...(meta.uncounted ? { uncounted: true as const } : {}), drawnBy: 'libreoffice', drops: drops([meta.note, kept]), ...(meta.note ? { notes: [meta.note] } : {}) }
+      return { kind: 'paged', rev: meta.rev, size: meta.size, pages: meta.pages ?? 1, ...(meta.shown ? { shown: meta.shown } : {}), ...(meta.uncounted ? { uncounted: true as const } : {}), drawnBy: 'libreoffice', book: book.hash, drops: drops([meta.note, kept]), ...(meta.note ? { notes: [meta.note] } : {}) }
     } finally {
       rmSync(book.scratch, { recursive: true, force: true })
     }
@@ -592,10 +592,12 @@ export async function previewSheet(s: Sheets, item: CanvasItem, params: PreviewP
  * The window reads it and hands its bytes to the system's save dialog, so a copy of a file others can open goes
  * where he saves it, and lies here only in its item's scratch.
  */
-export async function exportPreview(s: Sheets, item: CanvasItem, params: { format: SheetPreviewFormat; sheet?: string }): Promise<SheetExportAnswer> {
+export async function exportPreview(s: Sheets, item: CanvasItem, params: { format: SheetPreviewFormat; sheet?: string; drawn?: string }): Promise<SheetExportAnswer> {
   return again(async () => {
     const book = await bookOf(s, item)
     try {
+      // Print names the workbook Preview drew: one that changed since (a co-author's save) is not sent to paper unseen.
+      if (params.drawn && params.drawn !== book.hash) return { rev: '', size: 0, name: '', drops: [], moved: true }
       const meta = await fileOf({ ctx: s.ctx, book }, params.format, params.sheet)
       // (an opened Excel file's own copy is the file itself: nothing in it was drawn from its kept values)
       const kept = params.format === 'xlsx' && book.package ? undefined : await keptWords(book)

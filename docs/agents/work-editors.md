@@ -217,7 +217,10 @@ only by case resolve to one on the Mac's disk, where the release is built.
   earlier draw unless the host confirms they are still the file. The one
   exception is the document's PDF and Print: they send the pages Preview
   shows, the pages he checked, and nothing when those are gone
-  (work-docs.md "Preview").
+  (work-docs.md "Preview"); a sheet's Print is made afresh only from the
+  workbook Preview drew, and otherwise rejects with `PictureMoved`, which the
+  frame answers by drawing the pages again and a toast asking him to print
+  again (work-sheets.md "Preview and export").
 - The Page section draws `setup.common` itself (Paper, Orientation, Margins,
   Headers and footers) and then `pageRows`, your own rows, built from
   `PageMenuRow` and `PageSwitchRow` (exported by `PreviewFrame.tsx`). After

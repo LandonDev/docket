@@ -1,7 +1,7 @@
 import type { SheetExportAnswer, SheetPreviewAnswer, SheetPreviewFormat, SheetStoreKind } from "@shared/contract-work-sheets";
 import { registry } from "../../lib/connection";
 import { saveFile } from "../formats/model";
-import { NotInReach, type Drawn, type PreviewBytes, type PreviewFormat, type PreviewSource } from "../formats/preview";
+import { NotInReach, PictureMoved, type Drawn, type PreviewBytes, type PreviewFormat, type PreviewSource } from "../formats/preview";
 import { fromBase64 } from "./host";
 import { KEPT_VALUES } from "@shared/work/sheets";
 import { loadToast } from "../../components/ui/toaster";
@@ -23,7 +23,7 @@ import { loadToast } from "../../components/ui/toaster";
  * Export makes the file on the host when he presses (`work.sheets.previewExport`),
  * from the workbook as it stands then, never a picture kept from an earlier
  * look, and saves it through the system's own dialog. Print hands the whole
- * PDF to this computer's viewer. An opened Excel file is already Excel's: its
+ * PDF to this computer's viewer, made from the workbook Preview drew or not at all (`drawn`, `PictureMoved`). An opened Excel file is already Excel's: its
  * Excel format saves a copy of it as it stands.
  */
 
@@ -104,6 +104,8 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
   const call = <T>(method: string, params: Record<string, unknown>, timeoutMs = DRAW_MS): Promise<T> => request<T>(deps.env, method, { itemId: deps.itemId, ...params }, { timeoutMs });
   // The sheet a CSV or TSV was last drawn for: what its export holds.
   const sheetOf = new Map<SheetPreviewFormat, string>();
+  // The workbook each format's picture was last drawn from (`book`): Print sends that one or nothing.
+  const bookOf = new Map<SheetFormat, string>();
 
   const bytesOf = (rev: string, size: number): PreviewBytes => ({
     rev,
@@ -153,6 +155,8 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
       if (opts.signal.aborted) throw cancelled();
       let drawn: Drawn;
       if (got.kind === "paged") {
+        if (got.book) bookOf.set(format as SheetFormat, got.book);
+        else bookOf.delete(format as SheetFormat);
         // A whole nobody has counted says no number ("Page 3 of 50+"), and what is no loss is said over the first sheet.
         const shown = got.shown ? (got.uncounted ? { from: got.shown.from, to: got.shown.to } : got.shown) : undefined;
         const notes = got.notes ?? [];
@@ -169,7 +173,10 @@ export function sheetPreviewSource(deps: SheetPreviewDeps): PreviewSource {
       const id = host(format as SheetFormat);
       // The workbook as it stands now: the host makes the file afresh, or answers the one it made of these same bytes.
       const sheet = sheetOf.get(id);
-      const made = await call<SheetExportAnswer>("work.sheets.previewExport", { format: id, ...(sheet ? { sheet } : {}) });
+      // Print goes to paper only from the workbook Preview drew (a host a release behind names none, and prints as it stands).
+      const drawn = format === "print" ? bookOf.get("print") : undefined;
+      const made = await call<SheetExportAnswer>("work.sheets.previewExport", { format: id, ...(sheet ? { sheet } : {}), ...(drawn ? { drawn } : {}) });
+      if (made.moved) throw new PictureMoved();
       const bytes = await whole(bytesOf(made.rev, made.size));
       // The file made now, not the picture on screen, says whether its totals may be old: said before it goes to paper or a folder.
       if (made.drops.includes(KEPT_VALUES)) warn(KEPT_VALUES);

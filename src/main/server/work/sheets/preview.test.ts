@@ -312,6 +312,21 @@ describe('the formats', () => {
     expect(pdf.name).toBe('Budget.pdf')
   })
 
+  it('prints only the workbook Preview drew: one changed since makes nothing and answers moved', async () => {
+    const path = settled(book('formulas.xlsx'))
+    const drawn = await previewSheet(sheetsOf(), itemOf(path), { format: 'pdf' })
+    if (drawn.kind !== 'paged') throw new Error('not paged')
+    expect(drawn.book).toMatch(/^[a-f0-9]{32}$/)
+    const same = await exportPreview(sheetsOf(), itemOf(path), { format: 'pdf', drawn: drawn.book })
+    expect(same).toMatchObject({ name: 'Budget.pdf' })
+    expect(same.moved).toBeUndefined()
+    // A co-author's save lands after the look: the workbook is another now.
+    copyFileSync(join(CORPUS, 'formats.xlsx'), path)
+    const before = jobs.length
+    expect(await exportPreview(sheetsOf(), itemOf(path), { format: 'pdf', drawn: drawn.book })).toMatchObject({ moved: true, size: 0 })
+    expect(jobs.length).toBe(before)
+  })
+
   it('refuses Office\'s own picture: no Excel is in reach yet', async () => {
     await expect(previewSheet(sheetsOf(), itemOf(book('formulas.xlsx')), { format: 'pdf', by: 'office' })).rejects.toThrow(/Excel/)
   })

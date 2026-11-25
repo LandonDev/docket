@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SHEET_PREVIEW_FORMATS, SHEET_PREVIEW_READ_MAX, type SheetExportAnswer, type SheetPreviewAnswer } from "@shared/contract-work-sheets";
+import { PictureMoved } from "../formats/preview";
 import { previewProblems } from "../formats/previewContract";
 import { READ_MAX, sheetFormats, sheetPreviewSource } from "./preview";
 import { KEPT_VALUES } from "@shared/work/sheets";
@@ -133,6 +134,33 @@ describe("the sheet's PreviewSource", () => {
     expect(h.calls.find((c) => c.method === "work.sheets.previewExport")?.params).toEqual({ itemId: "item1", format: "pdf" });
     expect(h.printed).toEqual([{ name: "Budget.pdf", size: PDF.length }]);
     expect(h.saved).toEqual([]);
+  });
+
+  it("prints the workbook Preview drew, and nothing when it changed since: Preview is drawn again first", async () => {
+    // Council r3 (Sol 7): a co-author's change after "As it will print" was drawn went to paper unseen.
+    const h = host();
+    let now = "c".repeat(32);
+    const request = async <T,>(env: string, method: string, params: unknown): Promise<T> => {
+      const p = params as Record<string, unknown>;
+      if (method === "work.sheets.previewExport" && p.drawn !== undefined && p.drawn !== now) {
+        h.calls.push({ method, params: p });
+        return { rev: "", size: 0, name: "", drops: [], moved: true } as T;
+      }
+      const got = await h.request<T>(env, method, params);
+      return (method === "work.sheets.preview" ? { ...(got as object), book: now } : got) as T;
+    };
+    const source = sheetPreviewSource({ env: "local", itemId: "item1", store: "package", name: "Budget.xlsx", request, print: async (n, bytes) => void h.printed.push({ name: n, size: bytes.length }) });
+    await source.draw("print", { signal: new AbortController().signal });
+    expect(await source.export("print")).toEqual({ name: "Budget.pdf" });
+    expect(h.calls.filter((c) => c.method === "work.sheets.previewExport").at(-1)?.params).toEqual({ itemId: "item1", format: "pdf", drawn: "c".repeat(32) });
+    expect(h.printed).toHaveLength(1);
+    now = "d".repeat(32);
+    await expect(source.export("print")).rejects.toBeInstanceOf(PictureMoved);
+    expect(h.printed).toHaveLength(1);
+    // Drawn again, it prints what he now sees.
+    await source.draw("print", { signal: new AbortController().signal });
+    await source.export("print");
+    expect(h.printed).toHaveLength(2);
   });
 
   it("draws and exports only once his last edit is in the file, and not at all when it is not", async () => {

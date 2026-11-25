@@ -12,7 +12,7 @@ import { FailedHost, useFailedWords } from "../canvas/FetchState";
 import { sayError } from "../canvas/frame";
 import type { PdfEngine } from "../pdf/engine";
 import { FOLD, PAGED_ZOOMS, PagedSkeleton, PagedView, ZOOM_WORDS, type PagedZoom } from "./PagedView";
-import { MARGIN_PRESETS, marginPresetOf, NotInReach, PAPER_POINTS, PAPERS, type CommonSetup, type Drawn, type MarginPreset, type OfficeApp, type PaperName, type PreviewFormat, type PreviewPicture, type PreviewSource } from "./preview";
+import { MARGIN_PRESETS, marginPresetOf, NotInReach, PAPER_POINTS, PictureMoved, PAPERS, type CommonSetup, type Drawn, type MarginPreset, type OfficeApp, type PaperName, type PreviewFormat, type PreviewPicture, type PreviewSource } from "./preview";
 
 
 /** The host's note for a draw that stopped short (main work/sheets/preview.ts `moreThan`). */
@@ -235,6 +235,12 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
       // the format to open on next: Export… opens on the last file he made.
       if (made.where) void loadToast().then((toast) => toast(`Saved ${made.name} to ${made.where}`));
     } catch (error) {
+      // The pages on screen are not the file any more: drawn again for him to check, and the print is his to ask again.
+      if (error instanceof PictureMoved) {
+        setRun((n) => n + 1);
+        void loadToast().then((toast) => toast(error.message));
+        return;
+      }
       sayError(error, current?.verb === "Print…" ? "It could not be printed" : "It could not be exported", env);
     } finally {
       setExporting(false);

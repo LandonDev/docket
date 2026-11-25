@@ -943,11 +943,18 @@ Server: `sheets/preview.ts` and `sheets/previewFacts.ts`; canvas:
   | Format | Its picture | Its export |
   |---|---|---|
   | Excel | the workbook's PDF | an opened package: a copy of itself as it stands ("Save a copy", .xlsx or .xlsm); else the model writer's .xlsx |
-  | PDF, Print | the same PDF | the whole PDF; Print hands it to `printPdf` |
+  | PDF, Print | the same PDF | the whole PDF; Print hands it to `printPdf`, made only from the workbook Preview drew (below) |
   | OpenDocument | the PDF of the exported .ods itself | that .ods |
   | Excel 97-2003 | the PDF of the exported .xls itself | that .xls |
   | CSV, TSV | one sheet's shown values as a table (LibreOffice's text export, the sheet by its place, cells as shown, no formulas) | that file, of the sheet last drawn |
   | Web page | LibreOffice's HTML, in the frame's sealed page (over 4 MB it is not drawn; export still works) | that .html |
+
+  **Print prints the pages he checked.** A paged picture names the workbook it was drawn from (`book`, its content
+  hash), and Print sends it back as `drawn` on `work.sheets.previewExport`. A workbook that changed since (a
+  co-author's save after "As it will print" was drawn) makes nothing and answers `moved`: the source rejects with
+  `PictureMoved`, the frame draws the pages again and says "It changed after Preview drew it. Check the new pages, then
+  print again." A host a release behind names no `book`, and Print prints the workbook as it stands (council round 3,
+  Sol 7).
 
 - **Fit to.** Where a sheet prints fitted (`pageSetUpPr fitToPage`) its
   manual breaks are taken out of a scratch copy before LibreOffice draws

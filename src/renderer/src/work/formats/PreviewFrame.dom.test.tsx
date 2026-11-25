@@ -16,7 +16,7 @@ vi.mock("../../components/ui/toaster", () => ({
 
 import { fakeDoc, fakeEngine, LETTER } from "../pdf/testkit";
 import { countLine, drawnByLine, openingFormat, Preview, sealedPage, type PreviewProps } from "./PreviewFrame";
-import { MARGIN_PRESETS, NotInReach, type DrawOptions, type Drawn, type PageSetupModel, type PreviewBytes, type PreviewFormat, type PreviewPicture, type PreviewSource } from "./preview";
+import { MARGIN_PRESETS, NotInReach, PictureMoved, type DrawOptions, type Drawn, type PageSetupModel, type PreviewBytes, type PreviewFormat, type PreviewPicture, type PreviewSource } from "./preview";
 
 beforeEach(() => {
   toasts.length = 0;
@@ -321,6 +321,16 @@ describe("the frame", () => {
     await act(async () => fireEvent.click(screen.getByRole("tab", { name: "PDF" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export" })));
     expect(localStorage.getItem("work.preview.format.document")).toBe("pdf");
+  });
+
+  it("a print of pages that changed since they were drawn draws them again and asks for Print once more, printing nothing", async () => {
+    const f = fake({ formats: [...FORMATS, { id: "print", label: "Print", paged: true, verb: "Print…" }], export: async () => Promise.reject(new PictureMoved()) });
+    await show(f, { initial: "print" });
+    await f.answer({ picture: paged("r1"), drops: [] });
+    expect(f.asked).toHaveLength(1);
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Print…" })));
+    await waitFor(() => expect(f.asked).toHaveLength(2));
+    expect(toasts).toEqual([new PictureMoved().message]);
   });
 
   it("holds its own keys as a file he can only read: ⌘P can be Print in it, and ⌘B stays the app's", async () => {

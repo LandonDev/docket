@@ -164,6 +164,14 @@ export class NotInReach extends Error {
   }
 }
 
+/** The file changed after Preview drew the pages he is about to print: `export` rejects with it, and nothing goes to paper. */
+export class PictureMoved extends Error {
+  constructor() {
+    super("It changed after Preview drew it. Check the new pages, then print again.");
+    this.name = "PictureMoved";
+  }
+}
+
 export interface DrawOptions {
   /** his press on "Check in Word" (or Excel, or PowerPoint); the draw rejects with NotInReach when the app cannot */
   by?: "office";
@@ -203,7 +211,8 @@ export interface PreviewSource {
   /**
    * Writes the file out, or prints it. `where` is the place it was saved, when the source put it somewhere itself
    * ("Spring LAN"): the frame then says "Saved <name> to <where>". Without it the system's own save or print dialog
-   * was the answer, and the frame says nothing more.
+   * was the answer, and the frame says nothing more. A print rejects with PictureMoved when the file is no longer what
+   * the picture on screen was drawn from.
    */
   export(format: string): Promise<{ name: string; where?: string }>;
 }
