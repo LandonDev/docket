@@ -22,6 +22,11 @@ import { RoutineDialog } from "./RoutineForm";
 import { loadFailure, usePlays } from "./plays/data";
 import { noRunsLine, rowLine, rowMark, runMark, runWords } from "./model";
 import { Tip } from "../../components/tip";
+import { DownLine } from "../shell/DownLine";
+import { useHostDown } from "../shell/lifeosLive";
+
+/** The host's reason for a routine that cannot fire while its LifeOS is not connected (routines/engine.ts `waiting`). */
+const LIFEOS_WAIT = "Waiting on LifeOS";
 
 /**
  * A Work workspace's Routines (prototype routines.html, "List and detail"):
@@ -206,7 +211,11 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
     const page = run.open;
     return page && routineJobOpenPort.has(page) ? () => routineJobOpenPort.open(page) : null;
   };
-  const starts = row.waiting ? `${row.words}, ${row.waiting.charAt(0).toLowerCase()}${row.waiting.slice(1)}` : row.nextAt ? `${row.words}, next ${dayTime(row.nextAt)}` : row.words;
+  // A routine that waits on its host's LifeOS says why there, by the rule: the state with the computer named and its
+  // press (`DownLine`), from the host's live status; on its way, or not yet heard, the host's own "waiting on LifeOS".
+  const hostDown = useHostDown(env);
+  const lifeosDown = row.waiting === LIFEOS_WAIT && (row.enabled || row.proposed) ? hostDown : null;
+  const starts = lifeosDown ? row.words : row.waiting ? `${row.words}, ${row.waiting.charAt(0).toLowerCase()}${row.waiting.slice(1)}` : row.nextAt ? `${row.words}, next ${dayTime(row.nextAt)}` : row.words;
   const ends = row.ends.kind === "day" ? dayTime(row.ends.at) : row.ends.kind === "once" ? "After the first run" : null;
 
   return (
@@ -271,7 +280,10 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
             </>
           ) : null}
           <dt className="text-muted-foreground">Starts</dt>
-          <dd className="min-w-0 text-foreground">{row.enabled || row.proposed ? starts : `${row.words}, paused`}</dd>
+          <dd className="min-w-0 text-foreground">
+            {row.enabled || row.proposed ? starts : `${row.words}, paused`}
+            {lifeosDown ? <DownLine session={lifeosDown} className="min-h-0 pt-1" /> : null}
+          </dd>
           {ends ? (
             <>
               <dt className="text-muted-foreground">Ends</dt>

@@ -78,6 +78,23 @@ afterEach(() => {
 });
 
 describe("the Routines view", () => {
+  /** Council round 10, the walk: "waiting on LifeOS" named no computer and offered no press while its LifeOS was down. */
+  it("says a routine that waits on its host's LifeOS by the rule, the computer named, from the live status", async () => {
+    const { resetLifeos, setLifeosStatus } = await import("../shell/lifeos");
+    setLifeosStatus("box", { lifeos: { state: "signed-out" }, keys: [] });
+    host.list = async () => ({ routines: [row({ trigger: { on: "mail" } as never, words: "When a mail arrives", waiting: "Waiting on LifeOS" })] });
+    render(<View {...props} />);
+    await settle();
+    const starts = document.querySelector("[data-routine-detail] dl")!;
+    expect(starts.textContent).toContain("When a mail arrives");
+    expect(starts.textContent).toContain("Not signed in to LifeOS on the box");
+    expect(starts.textContent).not.toContain("waiting on LifeOS");
+    act(() => setLifeosStatus("box", { lifeos: { state: "connecting" }, keys: [] }));
+    expect(starts.textContent).toContain("When a mail arrives, waiting on LifeOS");
+    expect(starts.textContent).not.toContain("Not signed in");
+    resetLifeos();
+  });
+
   it("keeps a failed read of the runs apart from a routine that never ran, with Retry", async () => {
     host.runs = () => Promise.reject(new Error("The host did not answer"));
     render(<View {...props} />);
