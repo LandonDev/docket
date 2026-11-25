@@ -175,14 +175,16 @@ describe("the strip", () => {
     expect([...document.querySelectorAll("[data-slides-strip] [data-slide]")].map((b) => b.getAttribute("data-slide"))).toEqual(["5", "7", "3", "9"]);
   });
 
-  it("offers no menu and no drag while a suggestion waits: the strip's order is the proposed one", async () => {
+  it("offers no menu and no drag while a suggestion waits, and says why: the strip's order is the proposed one", async () => {
     const view = deck();
     await t.stage({ ...view, changes: [{ id: "c1", kind: "changed", slideId: 9, label: "", edits: [], by: "agent:local:t1" }], slides: view.slides.map((s) => (s.id === 9 ? { ...s, change: "c1", tint: "add" as const } : s)) });
     fireEvent.contextMenu(thumb("5"));
     await new Promise((done) => setTimeout(done, 50));
     expect(screen.queryByRole("menu")).toBeNull();
+    await waitFor(() => expect(holder.toasts).toEqual(["error: Accept or reject the suggestions first"]));
     fireEvent.keyDown(thumb("5"), { key: "Delete" });
     expect(t.edits()).toEqual([]);
+    await waitFor(() => expect(holder.toasts).toHaveLength(2));
   });
 });
 

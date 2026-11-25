@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
+import { cloneElement, memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactElement } from "react";
 import type { DeckSlide, DeckView } from "@shared/contract-work-slides";
 import { RowsContextMenu } from "../../chrome/menuRows";
 import { useSortable } from "../../hooks/useSortable";
@@ -6,7 +6,7 @@ import { bareKey } from "../../lib/keys";
 import type { PdfDoc } from "../pdf/engine";
 import type { DeckStore } from "./deck";
 import type { HandSession } from "./edit/session";
-import { moveOp, removeSlide, slideAct, slideRows, slidesOpen, type NameAsk } from "./edit/slides";
+import { moveOp, removeSlide, sayWaits, slideAct, slideRows, slidesOpen, type NameAsk } from "./edit/slides";
 import { Picture } from "./Picture";
 
 /**
@@ -52,8 +52,17 @@ export function useRefocus(root: { current: HTMLElement | null }, view: DeckView
 }
 
 /** A slide's menu, on the strip or the Sorter: the rows for the slide under a right-click, written at once. */
-export function SlideMenu({ view, hand, children }: { view: DeckView; hand: SlideHand | null; children: ReactElement }) {
+export function SlideMenu({ view, hand, children }: { view: DeckView; hand: SlideHand | null; children: ReactElement<{ onContextMenu?: (event: MouseEvent) => void }> }) {
   const open = !!hand && slidesOpen(view);
+  // While a suggestion waits, a right-click on a slide says why nothing opens.
+  if (hand && !open && view.hand)
+    return cloneElement(children, {
+      onContextMenu: (event: MouseEvent) => {
+        if (!(event.target instanceof Element) || !event.target.closest("[data-slide]")) return;
+        event.preventDefault();
+        sayWaits(view);
+      },
+    });
   return (
     <RowsContextMenu
       lazyMount
@@ -119,6 +128,10 @@ export const Strip = memo(function Strip({
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     const keys = slides.map((slide) => slide.key);
     const at = keys.indexOf((event.target as HTMLElement).dataset.slide ?? stop ?? "");
+    if ((event.key === "Delete" || event.key === "Backspace") && bareKey(event) && hand && !open) {
+      if (sayWaits(view)) event.preventDefault();
+      return;
+    }
     if ((event.key === "Delete" || event.key === "Backspace") && bareKey(event) && open && hand) {
       const slide = slides[at];
       if (!slide) return;

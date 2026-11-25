@@ -2,6 +2,7 @@ import type { DeckSlide, DeckView, SlideOp } from "@shared/contract-work-slides"
 import { CopyPlus, Eye, Layers, Pencil, Plus, Trash2, X } from "../../../chrome/icons";
 import type { MenuRow } from "../../../chrome/menuRows";
 import { Hidden } from "../../icons";
+import { sayError } from "../../canvas/frame";
 import type { DeckStore } from "../deck";
 import { layoutsFor, madeSlide } from "./add";
 import type { HandSession } from "./session";
@@ -16,6 +17,16 @@ import type { HandSession } from "./session";
 
 /** Whether his hand may change the deck's slides now: by hand, with no suggestion waiting. */
 export const slidesOpen = (view: DeckView): boolean => !!view.hand && view.changes.length === 0;
+
+/** Why a slide's menu, a drag or Delete does nothing while an agent's suggestion waits anywhere in the deck. */
+export const SUGGESTIONS_WAIT = "Accept or reject the suggestions first";
+
+/** A slide act he tried on a deck he edits by hand while a suggestion waits: said once, as the box's refusals are. */
+export function sayWaits(view: DeckView): boolean {
+  if (!view.hand || slidesOpen(view)) return false;
+  sayError(new Error(SUGGESTIONS_WAIT), SUGGESTIONS_WAIT);
+  return true;
+}
 
 /** A section's place in the deck's list of them (from 0): how many slides before this one start one. */
 export function sectionIndex(view: DeckView, slide: DeckSlide): number {

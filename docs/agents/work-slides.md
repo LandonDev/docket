@@ -1552,7 +1552,10 @@ once as a toast; `saving` and `saved` on the save line follow it.
   and the strip keeps the new order until the deck comes back (`useDropped`;
   a refusal puts it back). All of it only while no suggestion waits
   (`slidesOpen`): the strip shows the proposed order then, which is not the
-  file's.
+  file's, and a right-click or Delete on a slide says why in one toast
+  (`sayWaits`, `SUGGESTIONS_WAIT`). The Format sheet, with a shape picked on
+  a slide a suggestion changes, says the hand's refusal (`SUGGESTED`) where
+  it would say "Pick a shape on the slide".
 - **A render on screen is drawn with its own pages.** A new view can name
   pages a render not yet opened has (a slide moved, added or taken out);
   the body keeps each render's pages by slide as its view had them

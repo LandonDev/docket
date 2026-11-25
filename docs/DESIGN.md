@@ -4381,7 +4381,9 @@ other picked shape is the outline alone.
   row and a column by their place with Insert above, Insert below (left,
   right) and Delete. A field writes when he leaves it or presses Return,
   only if its words changed; Escape puts it back. With nothing picked:
-  "Pick a shape on the slide". Its body enters on opacity and an 8px slide,
+  "Pick a shape on the slide"; with a shape picked on a slide a suggestion
+  changes, the hand's refusal in its place ("Accept or reject the
+  suggestion on this slide first"). Its body enters on opacity and an 8px slide,
   `--dur-base` `--ease-out`, each tab's body on its own. Shadow and crop
   have no edit yet and are not drawn.
 - **The Animate tab** (`edit/Animate.tsx`) is the slide's, so it needs no
@@ -4415,7 +4417,8 @@ other picked shape is the outline alone.
   drags to a new place (`useSortable` in the strip, a 2px `accent` line
   where it will land); Delete and Backspace take the focused one out. A
   hidden slide's picture is at 45%. While a suggestion waits the strip is
-  the proposed order, and none of this is offered.
+  the proposed order, and none of this is offered: a right-click or Delete
+  on a slide says "Accept or reject the suggestions first" once, as a toast.
 - **The Sorter** is the deck's grid: 16px in, four across (two under
   640px), 12px across and 16px down between them, each slide in the
   strip's 3px frame with its number and title 12/16 under it (the title in

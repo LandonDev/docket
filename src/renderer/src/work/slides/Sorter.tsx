@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { DeckSlide, DeckView } from "@shared/contract-work-slides";
 import { bareKey } from "../../lib/keys";
-import { moveOp, removeSlide, slidesOpen } from "./edit/slides";
+import { moveOp, removeSlide, sayWaits, slidesOpen } from "./edit/slides";
 import { Picture } from "./Picture";
 import { SlideMenu, useDropped, useRefocus, type PictureOf, type SlideHand } from "./Strip";
 
@@ -143,6 +143,10 @@ export function Sorter({
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     const at = slides.findIndex((s) => s.key === (event.target as HTMLElement).dataset.slide);
     if (at < 0) return;
+    if ((event.key === "Delete" || event.key === "Backspace") && bareKey(event) && hand && !open) {
+      if (sayWaits(view)) event.preventDefault();
+      return;
+    }
     if ((event.key === "Delete" || event.key === "Backspace") && bareKey(event) && open && hand) {
       event.preventDefault();
       refocus();

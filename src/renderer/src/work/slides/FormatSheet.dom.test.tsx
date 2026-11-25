@@ -68,6 +68,15 @@ describe("the Format sheet", () => {
     await waitFor(() => expect(document.querySelector("[data-slides-sheet]")).toBeNull());
   });
 
+  it("on a slide a suggestion changes, says why a picked shape offers nothing, not to pick one", async () => {
+    const view = handView();
+    const { press } = await t.stage({ ...view, changes: [{ id: "c1", kind: "changed", slideId: 3, label: "", edits: [], by: "agent:local:t1" }], slides: [{ ...view.slides[0], change: "c1", tint: "add" as const }, view.slides[1]] });
+    press(0.6, 0.6);
+    fireEvent.click(toggle());
+    await waitFor(() => expect(sheet().textContent).toContain("Accept or reject the suggestion on this slide first"));
+    expect(sheet().textContent).not.toContain("Pick a shape on the slide");
+  });
+
   it("says the picked shape's place and size in his units and writes what he types: a size keeps its top-left", async () => {
     const { press } = await t.stage();
     press(0.6, 0.6);

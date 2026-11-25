@@ -304,6 +304,8 @@ export function SlidesBody({
   // The shape his hand may change from the row and the sheet: picked on the stage, on a slide no suggestion changes.
   const pickedShape = look === "slide" && shownSlide && hand.picked?.slideKey === shownSlide.key && session.slideRefusal(shownSlide) === null ? shownSlide.shapes.find((s) => s.id === hand.picked!.shapeId) : undefined;
   const picked = shownSlide && pickedShape ? { slide: shownSlide, shape: pickedShape } : null;
+  // A shape picked on a slide a suggestion changes: the sheet says why it offers nothing for it.
+  const pickRefused = look === "slide" && shownSlide && hand.picked?.slideKey === shownSlide.key ? session.slideRefusal(shownSlide) || null : null;
   const slideSize = view?.size ?? { width: 12_192_000, height: 6_858_000 };
   const reload = useCallback(() => void session.reload(), [session]);
   // Words over a shape another save took away: the box cannot be drawn, so they go to his clipboard, and then the box.
@@ -354,6 +356,7 @@ export function SlidesBody({
     <FormatSheet
       slide={shown}
       shape={picked?.shape}
+      refusal={pickRefused}
       theme={officeTheme(view)}
       unit={UNIT}
       session={session}

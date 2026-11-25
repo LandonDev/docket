@@ -49,6 +49,7 @@ export function gridOf(shape: DeckShape): { rows: number; cols: number } | null 
 export function FormatSheet({
   slide,
   shape,
+  refusal,
   theme,
   unit,
   session,
@@ -62,6 +63,8 @@ export function FormatSheet({
   slide: DeckSlide | undefined;
   /** the picked shape, on a slide his hand may change */
   shape: DeckShape | undefined;
+  /** why a shape picked on the slide offers nothing here (a suggestion changes the slide), said in the sheet's empty place */
+  refusal?: string | null;
   theme: OfficeTheme;
   unit: Unit;
   session: HandSession;
@@ -132,7 +135,7 @@ export function FormatSheet({
           </TabsContent>
           <TabsContent value="format" key={shape?.id ?? "none"} className={body}>
             {!shape ? (
-              <p className="text-[13px] leading-5 text-muted-foreground">Pick a shape on the slide</p>
+              <p className="text-[13px] leading-5 text-muted-foreground">{refusal ?? "Pick a shape on the slide"}</p>
             ) : (
               <>
                 <h2 className="-mb-1 truncate text-[13px] leading-5 font-medium">{shape.label ?? KIND_WORDS[shape.kind ?? "other"]}</h2>
