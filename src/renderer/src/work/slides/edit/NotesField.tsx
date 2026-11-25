@@ -10,7 +10,8 @@ import type { HandSession } from "./session";
  */
 export function NotesField({ slide, session }: { slide: DeckSlide; session: HandSession }) {
   const id = useId();
-  const [text, setText] = useState(slide.notes);
+  // Drawn again (the stage back on the slide) while his words are not in the file yet: it starts from them.
+  const [text, setText] = useState(() => session.pendingNotes(slide.id) ?? slide.notes);
   const began = useRef(slide.notes);
   // The deck's notes as they come, unless his own are not in the file yet: those stay in the field.
   useEffect(() => {

@@ -188,7 +188,7 @@ export class HandSession {
   private sending: Promise<void> | null = null;
   /** His notes waiting for the typing pause, the send of them on its way, and what the host last took for each slide. */
   private notesWaiting: { slide: number; text: string; began: string; timer: ReturnType<typeof setTimeout> } | null = null;
-  private notesSending: { slide: number; done: Promise<boolean> } | null = null;
+  private notesSending: { slide: number; text: string; done: Promise<boolean> } | null = null;
   private notesHeld = new Map<number, string>();
   /** His notes the host refused, still in the field until he types again. */
   private notesRefused: { slide: number; text: string } | null = null;
@@ -773,8 +773,9 @@ export class HandSession {
     }
     // The wait's count goes on as the send's, so the line never says saved between the two.
     this.notesHeld.set(waiting.slide, waiting.text);
-    const sending: { slide: number; done: Promise<boolean> } = {
+    const sending: { slide: number; text: string; done: Promise<boolean> } = {
       slide: waiting.slide,
+      text: waiting.text,
       done: this.host.edit([{ op: "notes", slide: waiting.slide, text: waiting.text, was }]).then(
         (next) => {
           this.store.view(next);
@@ -806,6 +807,13 @@ export class HandSession {
     const refused = this.notesRefused;
     if (refused && !this.notesWaiting) this.typeNotes(refused.slide, refused.text, refused.text);
     return this.keepNotes();
+  }
+
+  /** His notes for a slide that are not yet the deck's (waiting, on their way or refused): what a field drawn again starts from. */
+  pendingNotes(slide: number): string | null {
+    if (this.notesWaiting?.slide === slide) return this.notesWaiting.text;
+    if (this.notesRefused?.slide === slide) return this.notesRefused.text;
+    return this.notesSending?.slide === slide ? this.notesSending.text : null;
   }
 
   /** Whether his notes for a slide are not yet the deck's: waiting, on their way or refused. The field keeps them over a view that comes meanwhile. */

@@ -1798,7 +1798,8 @@ refuses one whose slide's notes changed since (`handEdit`, the box's
 `CHANGED_WHILE`). A refusal, that one or any other, is said in the save
 line, "Not saved." and why, with Retry (`notesFailure`, `retryNotes`),
 until he types in the field again or they go in. His words stay in the field
-(`notesPending`), and Retry, his next keep or the close writes them over the
+(`notesPending`), the field drawn again on the slide starts from them
+(`pendingNotes`), never from the deck's older notes, and Retry, his next keep or the close writes them over the
 notes as they are now, the other save kept in the deck's versions. While
 his notes wait or travel past 600 ms the save line says saving. From his first key they
 are also kept on this computer (`DraftBody` kind `notes`, docs/agents/work-files.md
