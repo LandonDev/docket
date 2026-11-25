@@ -16,6 +16,7 @@ import {
   withRequestNotes,
   workCallsLine,
   currentLag,
+  flushStallLog,
   DEFAULT_IDLE_MAX_WAIT_MS,
   DEFAULT_IDLE_THRESHOLD_MS,
   inFlightRequests,
@@ -44,7 +45,10 @@ import {
 } from './stalls'
 
 let dir: string
-const log = (): string => readFileSync(join(dir, 'stalls.log'), 'utf8')
+const log = async (): Promise<string> => {
+  await flushStallLog()
+  return readFileSync(join(dir, 'stalls.log'), 'utf8')
+}
 
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'stalls-'))
@@ -52,8 +56,9 @@ beforeEach(() => {
   setRunningCount(() => 3)
 })
 
-afterEach(() => {
+afterEach(async () => {
   vi.useRealTimers()
+  await flushStallLog()
   setLagForTests(null)
   setStallLog(null)
   rmSync(dir, { recursive: true, force: true })
@@ -158,23 +163,23 @@ const spin = (ms: number): void => {
 }
 
 describe('stall recorder', () => {
-  it('writes a loop line only when the sampled max reaches the threshold', () => {
+  it('writes a loop line only when the sampled max reaches the threshold', async () => {
     expect(loopLine({ max: (STALL_MS - 1) * 1e6, mean: 1e6 })).toBeNull()
     expect(loopLine({ max: 312e6, mean: 40e6 })).toBe('loop max=312ms mean=40ms')
   })
 
-  it('a slow request line carries the in-flight requests, pushes, running count, load and rss', () => {
+  it('a slow request line carries the in-flight requests, pushes, running count, load and rss', async () => {
     trackRequest('1:7', 'session.events')
     countPush('meta')
     countPush('meta')
     countPush('event')
     recordSlowRequest('queue.list', 812)
     untrackRequest('1:7')
-    const line = log().trim()
+    const line = (await log()).trim()
     expect(line).toMatch(/^\d{4}-\d\d-\d\dT[^ ]+ slow-request queue\.list 812ms inflight=session\.events:\d+ms pushes=meta:2,event:1 running=3 load=\d+\.\d rss=\d+MB wsbuf=0KB lane=bulk:0\/0 pool=\d+ms\+?$/)
   })
 
-  it('a meta push names its producer and its session: the field reads the breakdown and the distinct ids', () => {
+  it('a meta push names its producer and its session: the field reads the breakdown and the distinct ids', async () => {
     resetPushesForTests()
     countPush('meta', 'accounts', 's1')
     countPush('meta', 'accounts', 's2')
@@ -184,71 +189,71 @@ describe('stall recorder', () => {
     countPush('event')
     expect(pushesField()).toBe('pushes=meta:5/3ids(accounts:3,status:1),event:1')
     recordSlowRequest('session.list', 700)
-    expect(log().trim()).toMatch(/ pushes=meta:5\/3ids\(accounts:3,status:1\),event:1 running=3 /)
+    expect((await log()).trim()).toMatch(/ pushes=meta:5\/3ids\(accounts:3,status:1\),event:1 running=3 /)
     resetPushesForTests()
     expect(pushesField()).toBe('pushes=meta:0,event:0')
   })
 
-  it('a send span line rides with the context', () => {
+  it('a send span line rides with the context', async () => {
     recordSendSpan('send session=s1 accepted=0 prepared=12 handle=340(warm) delivered=355 init=- first-message=- first-content=-')
-    expect(log().trim()).toMatch(/ send session=s1 accepted=0 prepared=12 handle=340\(warm\) delivered=355 init=- first-message=- first-content=- inflight=- pushes=/)
+    expect((await log()).trim()).toMatch(/ send session=s1 accepted=0 prepared=12 handle=340\(warm\) delivered=355 init=- first-message=- first-content=- inflight=- pushes=/)
   })
 
-  it('the context carries the most unsent bytes on any client socket, and a backpressure line names the connection', () => {
+  it('the context carries the most unsent bytes on any client socket, and a backpressure line names the connection', async () => {
     setBufferedBytes(() => 9 * 1024 * 1024)
     recordBackpressure(2, 9 * 1024 * 1024)
     setBufferedBytes(() => 0)
-    const line = log().trim()
+    const line = (await log()).trim()
     expect(line).toMatch(/ backpressure connection=2 unsent=9216KB inflight=- pushes=meta:\d+,event:\d+ running=3 load=\d+\.\d rss=\d+MB wsbuf=9216KB lane=bulk:0\/0 pool=\d+ms\+?$/)
     expect(BACKPRESSURE_BYTES).toBe(8 * 1024 * 1024)
   })
 
-  it('the context names the bulk lane\'s requests running and waiting', () => {
+  it('the context names the bulk lane\'s requests running and waiting', async () => {
     setLaneStats(() => ({ running: 2, held: 7 }))
     recordSlowRequest('git.diffStats', 900)
     setLaneStats(() => ({ running: 0, held: 0 }))
-    expect(log().trim()).toMatch(/ slow-request git\.diffStats 900ms .* wsbuf=\d+KB lane=bulk:2\/7 pool=\d+ms\+?$/)
+    expect((await log()).trim()).toMatch(/ slow-request git\.diffStats 900ms .* wsbuf=\d+KB lane=bulk:2\/7 pool=\d+ms\+?$/)
   })
 
-  it('a slow request names its lane, and a bulk one its wait in the gate or that it joined another', () => {
+  it('a slow request names its lane, and a bulk one its wait in the gate or that it joined another', async () => {
     recordSlowRequest('session.list', 700, { lane: 'normal', gateMs: null })
     recordSlowRequest('git.diffIndex', 21_000, { lane: 'bulk', gateMs: 20_000 })
     recordSlowRequest('git.diffIndex', 9_000, { lane: 'bulk', gateMs: null })
-    const lines = log().trim().split('\n')
+    const lines = (await log()).trim().split('\n')
     expect(lines[0]).toMatch(/ slow-request session\.list 700ms lane=normal inflight=/)
     expect(lines[1]).toMatch(/ slow-request git\.diffIndex 21000ms lane=bulk gate=20000ms inflight=/)
     expect(lines[2]).toMatch(/ slow-request git\.diffIndex 9000ms lane=bulk gate=joined inflight=/)
   })
 
-  it('a worker checkpoint at or over the threshold writes a checkpoint line with the context', () => {
+  it('a worker checkpoint at or over the threshold writes a checkpoint line with the context', async () => {
     recordCheckpoint('main', 40, TIMED_MS - 1)
     expect(existsSync(join(dir, 'stalls.log'))).toBe(false)
     recordCheckpoint('cold', 1547, 81.6)
-    expect(log().trim()).toMatch(/ checkpoint schema=cold frames=1547 ms=82 inflight=- pushes=meta:\d+,event:\d+ running=3 load=/)
+    expect((await log()).trim()).toMatch(/ checkpoint schema=cold frames=1547 ms=82 inflight=- pushes=meta:\d+,event:\d+ running=3 load=/)
   })
 
-  it('timed logs a section at or over the threshold and returns its value', () => {
+  it('timed logs a section at or over the threshold and returns its value', async () => {
     expect(timed('fast', () => 1)).toBe(1)
     expect(existsSync(join(dir, 'stalls.log'))).toBe(false)
     expect(timed('mirrorSession', () => { spin(TIMED_MS + 10); return 'done' })).toBe('done')
-    expect(log()).toMatch(/ timed mirrorSession \d+ms inflight=/)
+    expect((await log())).toMatch(/ timed mirrorSession \d+ms inflight=/)
   })
 
-  it('renderer lines are prefixed and kept to one line without server context', () => {
+  it('renderer lines are prefixed and kept to one line without server context', async () => {
     reportRendererStall('longtask 320ms switch=tab-switch:abc\nextra')
-    const line = log().trim()
+    const line = (await log()).trim()
     expect(line).toMatch(/ \[renderer\] longtask 320ms switch=tab-switch:abc extra$/)
     expect(line).not.toContain('inflight=')
   })
 
-  it('rotates the file to stalls.log.1 once it reaches 2 MB', () => {
+  it('rotates the file to stalls.log.1 once it reaches 2 MB', async () => {
     writeFileSync(join(dir, 'stalls.log'), 'x'.repeat(2 * 1024 * 1024))
     recordSlowRequest('session.list', 900)
+    expect((await log())).toContain('slow-request session.list 900ms')
     expect(readFileSync(join(dir, 'stalls.log.1'), 'utf8').length).toBe(2 * 1024 * 1024)
-    expect(log()).toContain('slow-request session.list 900ms')
   })
 
-  it('a long poll is slow only past its own wait plus the grace; every other request past the cap', () => {
+  it('a long poll is slow only past its own wait plus the grace; every other request past the cap', async () => {
     expect(isSlowRequest('session.list', SLOW_REQUEST_MS)).toBe(false)
     expect(isSlowRequest('session.list', SLOW_REQUEST_MS + 1)).toBe(true)
     const wait = LONG_POLL_MS['work.docs.recv']
@@ -271,13 +276,13 @@ describe('stall recorder', () => {
     })
     noteRequest('place', 'dropped outside a request')
     recordSlowRequest('work.files.list', 900)
-    const lines = log().trim().split('\n')
+    const lines = (await log()).trim().split('\n')
     expect(lines[0]).toMatch(/ slow-request work\.files\.list 15300ms lane=normal place=vm wake=13200ms inflight=/)
     expect(lines[1]).toMatch(/ timed events tail scan \d+ms profile=remote inflight=/)
     expect(lines[2]).toMatch(/ slow-request work\.files\.list 900ms inflight=/)
   })
 
-  it('a note is one word of at most 40 characters', () => {
+  it('a note is one word of at most 40 characters', async () => {
     withRequestNotes(() => {
       noteRequest('place', 'a b\nc')
       noteRequest('long', 'x'.repeat(100))
@@ -286,7 +291,7 @@ describe('stall recorder', () => {
     expect(requestNotesField()).toBe('')
   })
 
-  it('the hourly line counts each work.* method and its slow calls, busiest first, and starts again', () => {
+  it('the hourly line counts each work.* method and its slow calls, busiest first, and starts again', async () => {
     expect(workCallsLine()).toBeNull()
     for (let i = 0; i < 120; i++) countWorkCall('work.files.list', i < 3 ? SLOW_WORK_MS + 1 : 20)
     for (let i = 0; i < 800; i++) countWorkCall('work.get', 5)
@@ -296,7 +301,7 @@ describe('stall recorder', () => {
     expect(workCallsLine()).toBeNull()
   })
 
-  it('does nothing without a log dir', () => {
+  it('does nothing without a log dir', async () => {
     setStallLog(null)
     recordSlowRequest('session.list', 900)
     expect(existsSync(join(dir, 'stalls.log'))).toBe(false)

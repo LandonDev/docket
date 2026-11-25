@@ -23,9 +23,17 @@ import type { DatabaseSync } from 'node:sqlite'
 import { coldPathFor } from './db'
 import { recordCheckpoint } from './stalls'
 
-/** The writer checkpoints itself only once the WAL holds this many frames
- *  (10× SQLite's default), a backstop for a worker that fell behind. */
-export const WRITER_BACKSTOP_FRAMES = 10_000
+/** The writer never checkpoints while the worker is up: an inline checkpoint
+ *  copies every waiting frame into the file and fsyncs it on the loop. Until
+ *  2026-11-24 the writer kept a 10,000-frame backstop; with the disk held by an
+ *  agent's flush storm the worker's checkpoint fell behind, a commit on the
+ *  loop crossed the backstop and ran the copy itself, and the loop stopped for
+ *  82 s (box stalls.log 23:59:09Z: about 10,000 page writes at the 227 the disk
+ *  managed a second). A worker that falls behind now leaves a longer WAL,
+ *  told in the log (`walWatch`), never a frozen loop. */
+export const WRITER_WITH_WORKER_FRAMES = 0
+/** WAL frames past which the host says, once per doubling, that the worker is behind. */
+export const WAL_BEHIND_FRAMES = 20_000
 /** SQLite's default: what the writer runs when no worker is checkpointing. */
 export const WRITER_DEFAULT_FRAMES = 1_000
 /** Frames waiting in a WAL before the worker checkpoints it. */
@@ -115,9 +123,13 @@ export interface CheckpointWorker {
   stop(): Promise<void>
 }
 
+export const WAL_WATCH_MS = 30_000
+
 export interface CheckpointWorkerOptions {
   frames?: number
   pollMs?: number
+  /** How often the writer looks at the WAL's length (WAL_WATCH_MS). */
+  watchMs?: number
   /** Every checkpoint the worker ran; defaults to the stall log. */
   onCheckpoint?: (schema: string, frames: number, ms: number) => void
   log?: (line: string) => void
@@ -125,9 +137,10 @@ export interface CheckpointWorkerOptions {
 
 /**
  * Starts the checkpoint worker beside `db`, the writer opened on `path`.
- * On `ready` the writer's autocheckpoint moves to the backstop (one PRAGMA
- * covers hot and cold: the setting is per connection); on any end of the
- * worker it goes back to SQLite's default, once. Nothing starts for an
+ * On `ready` the writer's autocheckpoint is turned off (one PRAGMA covers hot
+ * and cold: the setting is per connection; WRITER_WITH_WORKER_FRAMES says why)
+ * and the writer looks at the WAL's length every WAL_WATCH_MS; on any end of
+ * the worker it goes back to SQLite's default, once. Nothing starts for an
  * in-memory database or when workers cannot be created.
  */
 export function startCheckpointWorker(
@@ -164,9 +177,11 @@ export function startCheckpointWorker(
   }
   let handedBack = false
   let stopping = false
+  let watch: ReturnType<typeof setInterval> | null = null
   const handBack = (why: string): void => {
     if (handedBack) return
     handedBack = true
+    if (watch) clearInterval(watch)
     setAutocheckpoint(WRITER_DEFAULT_FRAMES)
     if (!stopping) log(`[db] checkpoint worker ${why}; the writer checkpoints again`)
   }
@@ -176,10 +191,24 @@ export function startCheckpointWorker(
   })
   worker.on('message', (message: CheckpointMessage) => {
     switch (message.type) {
-      case 'ready':
-        setAutocheckpoint(WRITER_BACKSTOP_FRAMES)
+      case 'ready': {
+        setAutocheckpoint(WRITER_WITH_WORKER_FRAMES)
+        const told: Record<string, { at: number }> = { main: { at: 0 }, cold: { at: 0 } }
+        watch = setInterval(() => {
+          for (const schema of ['main', 'cold']) {
+            try {
+              const { log: frames } = db.prepare(`PRAGMA ${schema}.wal_checkpoint(NOOP)`).get() as { log: number }
+              const line = walBehind(frames, told[schema])
+              if (line) log(`${line} (${schema})`)
+            } catch {
+              // closed, or a SQLite before NOOP: nothing to watch
+            }
+          }
+        }, options.watchMs ?? WAL_WATCH_MS)
+        watch.unref()
         resolveReady(true)
         return
+      }
       case 'checkpoint':
         onCheckpoint(message.schema, message.frames, message.ms)
         return
@@ -209,6 +238,7 @@ export function startCheckpointWorker(
     stop: () =>
       (stopped ??= (async () => {
         stopping = true
+        if (watch) clearInterval(watch)
         await worker.terminate()
       })())
   }
@@ -421,3 +451,18 @@ export const STOP_WAIT_MS = 2000
 
 /** Delay before one replacement is started for a failed reader. */
 export const READER_RESTART_MS = 5_000
+
+/**
+ * A WAL the worker is behind on, told once per doubling past WAL_BEHIND_FRAMES:
+ * `PRAGMA wal_checkpoint(NOOP)` takes no lock and copies nothing, so asking it
+ * on the loop costs a read of the WAL index. Answers the line to log, or null.
+ */
+export function walBehind(log: number, told: { at: number }): string | null {
+  if (log < WAL_BEHIND_FRAMES) {
+    told.at = 0
+    return null
+  }
+  if (told.at && log < told.at * 2) return null
+  told.at = log
+  return `[db] the WAL holds ${log} frames: the checkpoint worker is behind (a slow disk); the writer does not checkpoint on the loop`
+}

@@ -219,7 +219,7 @@ log(source.id, {
   delta: false
 })
 mirrorSession(registry, source.id)
-const rel = writeThreadDigest(registry, store.getSession(source.id)!, project.cwd)
+const rel = await writeThreadDigest(registry, store.getSession(source.id)!, project.cwd)
 const digest = readFileSync(join(project.cwd, rel), 'utf8')
 check('digest fits the inline cap', digest.length <= INLINE_DIGEST_MAX_CHARS, `${digest.length} chars`)
 check('digest keeps frontmatter', digest.startsWith('---\ntitle: "Long chat"'))
@@ -259,7 +259,7 @@ const brief = fakeThread({ title: 'Brief chat', threadType: 'chat' })
 log(brief.id, { type: 'user-text', text: 'hi' }, { type: 'assistant-text', text: 'done', delta: false })
 mirrorSession(registry, brief.id)
 const small = readFileSync(
-  join(project.cwd, writeThreadDigest(registry, store.getSession(brief.id)!, project.cwd)),
+  join(project.cwd, await writeThreadDigest(registry, store.getSession(brief.id)!, project.cwd)),
   'utf8'
 )
 check('a short digest is untouched', !small.includes('_[earlier turns trimmed]_') && small.includes('hi'))

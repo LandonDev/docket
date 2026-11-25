@@ -1,4 +1,5 @@
-import { mkdtempSync, readFileSync, readSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { open, rename } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -6,9 +7,9 @@ import { openDb, Store } from './db'
 import { backfillMirrors, cancelMirrors, DIGEST_TAIL_PAGE, THREADS_INDEX_SLICE, mirrorName, mirrorSession, removeMirror, scheduleMirror, stopMirrors, renderMirror, renderMirrorOffLoop, threadDigestTail, writeThreadsIndex } from './mirror'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 
-vi.mock('node:fs', async (original) => {
-  const fs = await original<typeof import('node:fs')>()
-  return { ...fs, renameSync: vi.fn(fs.renameSync), readSync: vi.fn(fs.readSync) }
+vi.mock('node:fs/promises', async (original) => {
+  const fs = await original<typeof import('node:fs/promises')>()
+  return { ...fs, rename: vi.fn(fs.rename), open: vi.fn(fs.open) }
 })
 
 let dir: string
@@ -46,16 +47,16 @@ describe('writeThreadsIndex', () => {
 
   it('yields after each slice of a 5,000-thread index and publishes the complete index once', async () => {
     for (let i = 0; i < 5000; i++) writeFileSync(join(dir, `thread-${i}.md`), mirror(`Thread ${i}`, '2026-11-24', ''))
-    const reads = vi.mocked(readSync)
+    const reads = vi.mocked(open)
     reads.mockClear()
     const checkpoints: number[] = []
     await writeThreadsIndex(dir, async () => {
       checkpoints.push(reads.mock.calls.length)
-      expect(renameSync).not.toHaveBeenCalled()
+      expect(rename).not.toHaveBeenCalled()
     })
     expect(checkpoints).toEqual(Array.from({ length: 5000 / THREADS_INDEX_SLICE - 1 }, (_, i) => (i + 1) * THREADS_INDEX_SLICE))
     expect(reads).toHaveBeenCalledTimes(5000)
-    expect(renameSync).toHaveBeenCalledTimes(1)
+    expect(rename).toHaveBeenCalledTimes(1)
     expect(readFileSync(join(dir, 'INDEX.md'), 'utf8').match(/^- /gm)).toHaveLength(5000)
   })
 
@@ -200,8 +201,9 @@ it('three settles in a window render each session once and share one index write
     await vi.advanceTimersByTimeAsync(1001)
     expect(readLogRows).toHaveBeenCalledTimes(2)
     await vi.advanceTimersByTimeAsync(2000)
-    const writes = vi.mocked(renameSync).mock.calls.map((args) => String(args[1]))
-    expect(writes.filter((path) => path.endsWith('/INDEX.md'))).toHaveLength(1)
+    const renamed = (): string[] => vi.mocked(rename).mock.calls.map((args) => String(args[1]))
+    await vi.waitFor(() => expect(renamed().filter((path) => path.endsWith('/INDEX.md'))).toHaveLength(1))
+    const writes = renamed()
     expect(writes.filter((path) => path.endsWith(mirrorName(a)))).toHaveLength(1)
     expect(writes.filter((path) => path.endsWith(mirrorName(b)))).toHaveLength(1)
     expect(readFileSync(join(dir, '.temp-code', 'threads', 'INDEX.md'), 'utf8')).toContain('threads/a-')
@@ -224,19 +226,17 @@ it('the index waits for a queued render when a previous window is still renderin
     getProject: () => ({ cwd: dir }),
     readLogRows: async () => { await (++reads === 1 ? first : second); return [] }
   }
-  const indexes = (): string[] => vi.mocked(renameSync).mock.calls.map((args) => String(args[1])).filter((path) => path.endsWith('/INDEX.md'))
+  const indexes = (): string[] => vi.mocked(rename).mock.calls.map((args) => String(args[1])).filter((path) => path.endsWith('/INDEX.md'))
   scheduleMirror(reg as never, 'm')
   await vi.advanceTimersByTimeAsync(2000)
   meta = { ...meta, title: 'Latest title' }
   scheduleMirror(reg as never, 'm')
   await vi.advanceTimersByTimeAsync(2000)
   releaseFirst()
-  await vi.advanceTimersByTimeAsync(0)
-  expect(reads).toBe(2)
+  await vi.waitFor(() => expect(reads).toBe(2))
   expect(indexes()).toHaveLength(0)
   releaseSecond()
-  await vi.advanceTimersByTimeAsync(0)
-  expect(indexes()).toHaveLength(2)
+  await vi.waitFor(() => expect(indexes()).toHaveLength(2))
   expect(readFileSync(join(dir, '.temp-code', 'threads', 'INDEX.md'), 'utf8')).toContain('Latest title')
 })
 
@@ -259,7 +259,7 @@ describe('stopMirrors', () => {
     reg.get.mockImplementation(() => { throw new Error('registry closed') })
     await vi.advanceTimersByTimeAsync(10_000)
     expect(reg.readLogRows).not.toHaveBeenCalled()
-    expect(renameSync).not.toHaveBeenCalled()
+    expect(rename).not.toHaveBeenCalled()
   })
 
   it('ignores later schedules, direct writes, and backfills for a stopped registry', async () => {
@@ -276,7 +276,7 @@ describe('stopMirrors', () => {
     expect(reg.get).not.toHaveBeenCalled()
     expect(reg.getProject).not.toHaveBeenCalled()
     expect(reg.readLogRows).not.toHaveBeenCalled()
-    expect(renameSync).not.toHaveBeenCalled()
+    expect(rename).not.toHaveBeenCalled()
   })
 
   it('leaves other registries running and lets a new registry schedule the same session', async () => {
@@ -312,19 +312,19 @@ describe('stopMirrors', () => {
     try {
       await Promise.resolve()
       expect(stopped).toBe(false)
-      expect(renameSync).not.toHaveBeenCalled()
+      expect(rename).not.toHaveBeenCalled()
     } finally {
       release()
       await stop
     }
     expect(reg.readLogRows).toHaveBeenCalledOnce()
-    const writes = vi.mocked(renameSync).mock.calls.map((args) => String(args[1]))
+    const writes = vi.mocked(rename).mock.calls.map((args) => String(args[1]))
     expect(writes).toEqual([
       join(dir, '.temp-code', 'threads', mirrorName(thread)),
       join(dir, '.temp-code', 'threads', 'INDEX.md')
     ])
     await vi.advanceTimersByTimeAsync(10_000)
-    expect(renameSync).toHaveBeenCalledTimes(2)
+    expect(rename).toHaveBeenCalledTimes(2)
   })
 
   it('a paused backfill does no more reads or index writes after stop', async () => {
@@ -345,7 +345,7 @@ describe('stopMirrors', () => {
     await backfill
     expect(reg.getProject).not.toHaveBeenCalled()
     expect(reg.readLogRows).toHaveBeenCalledOnce()
-    expect(renameSync).toHaveBeenCalledOnce() // no final index after resuming
+    expect(rename).toHaveBeenCalledOnce() // no final index after resuming
   })
 
   it.each(['session', 'project'])('returns quietly if the store closed before its %s lookup', async (lookup) => {
@@ -357,7 +357,7 @@ describe('stopMirrors', () => {
     else reg.getProject.mockImplementation(() => store.getProject('p')!)
     await expect(mirrorSession(reg as never, 'm')).resolves.toBeUndefined()
     expect(reg.readLogRows).not.toHaveBeenCalled()
-    expect(renameSync).not.toHaveBeenCalled()
+    expect(rename).not.toHaveBeenCalled()
   })
 })
 

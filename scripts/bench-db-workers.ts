@@ -17,7 +17,7 @@ import { dirname, join, resolve } from 'node:path'
 import { openDb, Store } from '../src/main/server/db'
 import { ColdMover } from '../src/main/server/cold'
 import { EventReader, startCheckpointWorker } from '../src/main/server/dbWorkers'
-import { setStallLog, startStallMonitor, STALL_MS } from '../src/main/server/stalls'
+import { flushStallLog, setStallLog, startStallMonitor, STALL_MS } from '../src/main/server/stalls'
 import type { SessionMeta } from '../src/shared/events'
 
 const args = process.argv.slice(2)
@@ -220,6 +220,7 @@ if (checkpointWorker) {
   await checkpointWorker.stop()
 }
 await reader?.stop()
+await flushStallLog()
 console.log(`\nstalls.log (${logDir}):`)
 try {
   const lines = readFileSync(join(logDir, 'stalls.log'), 'utf8')

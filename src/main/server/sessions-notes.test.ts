@@ -499,7 +499,7 @@ describe('successors start from the notes', () => {
       registry.append(src.id, { type: 'assistant-text', text: `reply ${i} ${'y'.repeat(400)}`, delta: false })
     }
     const cwd = store.getProject('p1')!.cwd
-    const rel = writeThreadDigest(registry, registry.get(src.id)!, cwd)
+    const rel = await writeThreadDigest(registry, registry.get(src.id)!, cwd)
     const text = await readFile(join(cwd, rel), 'utf8')
     expect(text).toContain('## Notes\n\n### Decisions\n\n- SQLite mirror.')
     expect(text).toContain('_[earlier turns trimmed]_')

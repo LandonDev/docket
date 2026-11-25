@@ -179,6 +179,7 @@ import { setSearchDenied } from './search'
 import { CheckpointStore, inHeadMany, listTracked } from './checkpoint'
 import { handleCheckpoint } from './checkpointRpc'
 import { CheckpointTurns } from './checkpointTurns'
+import { startLoopWatch } from './loopWatch'
 import { watchStats } from './treewatch'
 import { watchFailures } from './watchGuard'
 import { folderReader as folderReaderNow } from './work/files/places/winDir'
@@ -214,6 +215,7 @@ import {
   setRunningCount,
   setStallLog,
   startStallMonitor,
+  recordLoopBlock,
   timed,
   trackRequest,
   untrackRequest,
@@ -704,6 +706,8 @@ export async function startServer(
   configureHostProfiler(logDir)
   setRunningCount(() => registry.runningCount())
   const stopStallMonitor = startStallMonitor()
+  // What the main thread waits in when its loop stops (loopWatch.ts): the stall log's `loop-blocked … in <syscall>` line.
+  const stopLoopWatch = startLoopWatch(recordLoopBlock)
   registry.checkpoints = checkpointTurns
   registry.onEvent((row) => void checkpointTurns.observe(row))
   const offCheckpointEdits = onLiveEdit((push) => void checkpointTurns.liveEdit(push))
@@ -4624,6 +4628,7 @@ export async function startServer(
       await remoteRestart
       await remote?.close()
       stopStallMonitor()
+      stopLoopWatch()
       guard.stop()
       laneGate.dispose()
       clearTimeout(warmKickoff)

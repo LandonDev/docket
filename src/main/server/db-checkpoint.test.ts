@@ -4,12 +4,12 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { coldPathFor, openDb } from './db'
-import { startCheckpointWorker, WRITER_BACKSTOP_FRAMES, WRITER_DEFAULT_FRAMES, type CheckpointWorker } from './dbWorkers'
+import { startCheckpointWorker, walBehind, WAL_BEHIND_FRAMES, WRITER_DEFAULT_FRAMES, WRITER_WITH_WORKER_FRAMES, type CheckpointWorker } from './dbWorkers'
 
 /**
  * The checkpoint worker (dbWorkers.ts) owns the WAL checkpoints of the hot
- * and cold files on its own connection, while the writer keeps a 10,000
- * frame backstop. These pin the handover both ways, both schemas, the
+ * and cold files on its own connection, and the writer then never
+ * checkpoints on the loop. These pin the handover both ways, both schemas, the
  * finish of a WAL a reader held half done, and that the writer still
  * closes clean after the worker is gone.
  */
@@ -62,18 +62,17 @@ const until = async (ok: () => boolean, ms = 3000): Promise<void> => {
 }
 
 describe('checkpoint worker', () => {
-  it('moves the writer to the backstop once ready, and checkpoints a thousand waiting frames itself', async () => {
+  it("turns the writer's own checkpoints off once ready, and checkpoints a thousand waiting frames itself", async () => {
     expect(autocheckpoint()).toBe(WRITER_DEFAULT_FRAMES)
     worker = start()
     expect(await worker.ready).toBe(true)
-    expect(autocheckpoint()).toBe(WRITER_BACKSTOP_FRAMES)
+    expect(autocheckpoint()).toBe(WRITER_WITH_WORKER_FRAMES)
     write('events', 1500)
     const grown = wal('main')
     expect(grown.log).toBeGreaterThanOrEqual(1500)
     await until(() => wal('main').checkpointed === wal('main').log)
-    // The writer could not have done it: its threshold is ten times the WAL.
-    expect(autocheckpoint()).toBe(WRITER_BACKSTOP_FRAMES)
-    expect(wal('main').log).toBeLessThan(WRITER_BACKSTOP_FRAMES)
+    // The writer could not have done it: its own checkpoints are off.
+    expect(autocheckpoint()).toBe(WRITER_WITH_WORKER_FRAMES)
   })
 
   it('checkpoints the cold schema the same way', async () => {
@@ -112,12 +111,37 @@ describe('checkpoint worker', () => {
   it('hands checkpointing back to the writer when the worker ends, once', async () => {
     worker = start()
     expect(await worker.ready).toBe(true)
-    expect(autocheckpoint()).toBe(WRITER_BACKSTOP_FRAMES)
+    expect(autocheckpoint()).toBe(WRITER_WITH_WORKER_FRAMES)
     await worker.stop()
     expect(autocheckpoint()).toBe(WRITER_DEFAULT_FRAMES)
     db.exec('PRAGMA wal_autocheckpoint = 5000')
     await worker.stop()
     expect(autocheckpoint()).toBe(5000)
+  })
+
+  it('a worker that falls behind (a slow disk) leaves a longer WAL, never a checkpoint on the loop, and the host says so', async () => {
+    const lines: string[] = []
+    // A worker that never polls stands for one held in fsync by a disk an agent's job saturates.
+    worker = start(db, path, { pollMs: 1e9, watchMs: 20, log: (l: string) => lines.push(l) })
+    expect(await worker.ready).toBe(true)
+    // Past the old 10,000-frame backstop, in commits the way the event flush makes them.
+    for (let i = 0; i < 24; i++) write('events', 1000, i * 1000)
+    const after = wal('main')
+    expect(after.log).toBeGreaterThanOrEqual(24_000)
+    // Before 2026-11-24 the commit that crossed 10,000 copied the WAL into the file on the loop (checkpointed > 0).
+    expect(after.checkpointed).toBe(0)
+    await until(() => lines.some((l) => l.includes('the checkpoint worker is behind')))
+    expect(lines.filter((l) => l.includes('behind'))).toHaveLength(1)
+  })
+
+  it('tells a WAL that is behind once per doubling', () => {
+    const told = { at: 0 }
+    expect(walBehind(WAL_BEHIND_FRAMES - 1, told)).toBeNull()
+    expect(walBehind(WAL_BEHIND_FRAMES, told)).toMatch(/holds 20000 frames/)
+    expect(walBehind(WAL_BEHIND_FRAMES * 1.5, told)).toBeNull()
+    expect(walBehind(WAL_BEHIND_FRAMES * 2, told)).toMatch(/holds 40000 frames/)
+    expect(walBehind(10, told)).toBeNull()
+    expect(walBehind(WAL_BEHIND_FRAMES, told)).toMatch(/holds 20000/)
   })
 
   it('a worker that cannot open its file reports it and leaves the writer as it was', async () => {

@@ -333,12 +333,12 @@ function inlineReference(text: string, tokens: string[], title: string, digest: 
  * the same `.temp-code/refs/<id>.md` a local reference gets, or inline for a
  * projectless session; a host out of reach leaves one line saying so.
  */
-export function foreignReference(text: string, tokens: string[], name: string, read: ForeignThreadRead, cwd: string | null): string {
+export async function foreignReference(text: string, tokens: string[], name: string, read: ForeignThreadRead, cwd: string | null): Promise<string> {
   if (!read.ok) return replaceTokens(text, tokens, `thread "${name}" on ${read.hostName} is unreachable (${read.why})`)
   let digest = read.digest
   if (digest.length > INLINE_DIGEST_MAX_CHARS) digest = `_[earlier turns trimmed]_\n\n…${digest.slice(-INLINE_DIGEST_MAX_CHARS)}`
   if (!cwd) return inlineReference(text, tokens, read.title, digest, read.hostName)
-  const rel = writeDigestFile(cwd, read.sessionId, digest)
+  const rel = await writeDigestFile(cwd, read.sessionId, digest)
   const from = read.projectName ? ` from project "${read.projectName}"` : ''
   return replaceTokens(text, tokens, `@${rel} (thread "${read.title}"${from} on ${read.hostName})`)
 }
@@ -3441,14 +3441,14 @@ export class SessionRegistry {
       const foreign = (await foreignReads.get(ref)) ?? null
       if (this.closed) return
       if (foreign) {
-        out = foreignReference(out, tokens, ref.name, foreign, here?.cwd ?? null)
+        out = await foreignReference(out, tokens, ref.name, foreign, here?.cwd ?? null)
         continue
       }
       const refMeta = this.store.getSession(ref.sessionId!)
       if (!refMeta) continue
       const refProject = refMeta.projectId ? this.store.getProject(refMeta.projectId) : null
       if (here) {
-        const rel = writeThreadDigest(this, refMeta, here.cwd)
+        const rel = await writeThreadDigest(this, refMeta, here.cwd)
         out = replaceTokens(out, tokens, `@${rel} (thread "${refMeta.title}"${refProject ? ` from project "${refProject.name}"` : ''})`)
       } else {
         // The rows the cap keeps, read from the log's end; never the whole log.

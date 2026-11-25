@@ -403,6 +403,19 @@ TPM-bound sign-ins, and a hibernated guest's memory image is on the disk.
 - A new disk (`makeDisk`) drops the old points with it. The points are local to the box and not in its
   backups.
 
+## Disk mode
+
+With QEMU's default (`cache=writeback`) each guest flush is a flush of the
+box's disk: on 2026-11-24 one scratch rig instance booting on a fresh overlay
+kept the NVMe 84% busy at 1.6 MB/s and the server's loop stopped for 82 s. A
+throwaway rig takes `WINVM_DISK_CACHE=unsafe` (guest flushes dropped; refused
+unless the root, TPM folder and port are scratch, `diskCacheOf` in
+machine/config.ts). The standing machine keeps the default: it holds his
+sign-ins. Its wakes still cost the box 1 to 2 s hitches for a quarter hour;
+the recommended `cache=none,aio=native`, with a restore point before its first
+start, is written in .temp-code/plans/landed/F-box-slow/root-change-disk.md and
+not made.
+
 ## Memory and the box
 
 The standing machine has 6 cores and 8 GB (`WINVM_CPUS`, `WINVM_MEM`); QEMU holds the memory it is given

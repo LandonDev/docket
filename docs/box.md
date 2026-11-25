@@ -3166,6 +3166,46 @@ a call that waited 500 ms or more on the Windows VM's door says
 `bun scripts/perf/stall-report.ts <stalls.log…>` turns a log into the
 table the Work baseline keeps (docs/agents/work-perf.md).
 
+### A disk stall froze the loop
+
+On 2026-11-24 an agent's QEMU guest on a fresh qcow2 flushed to disk in a
+burst, ext4's journal stalled, and every synchronous write or rename the
+server's main thread made waited on it: the loop froze for seconds, once
+82 s (`timed writeThreadsIndex 3318ms`). The writes the server makes on
+its own timers now go through `fs/promises`. The stall log queues its
+lines and one append at a time takes them all; it counts the log's bytes
+for rotation and stats the file once; past 1 MiB queued it drops new lines
+and, once the disk catches up, writes `stall log dropped N lines while the
+disk was slow` (stalls.ts `write`). The thread index reads each mirror's
+head three at a time and writes off the loop; `timed writeThreadsIndex`
+now times only the parsing and the sort. Each thread's mirror, the journal
+rotation and a reference's digest (`writeAtomic` in mirror.ts) write a tmp
+file and rename it off the loop, one write per path and one rotation per
+project at a time. A new project's PROJECT.md is still written on the
+caller's turn, once. `stalls-slowdisk.test.ts` and
+`mirror-slowdisk.test.ts` hold the loop's worst delay under 100 ms while
+the stubbed disk takes 2 s.
+
+
+What froze it for 82 s was the database's own backstop: the checkpoint
+worker copies the WAL into the file off the loop, but the writer kept SQLite's
+autocheckpoint at 10,000 frames in case the worker fell behind. With the disk
+held, the worker's checkpoint was slow, the WAL passed 10,000 frames, and the
+next commit on the loop copied it and fsynced the file itself: about 10,000
+page writes at the 227 operations a second the disk managed. While the worker
+is up the writer now never checkpoints (`WRITER_WITH_WORKER_FRAMES` 0,
+dbWorkers.ts); a WAL that grows past 20,000 frames is told once per doubling
+(`walBehind`), and the worker catches up when the disk does
+(db-checkpoint.test.ts: a worker that never polls, 24,000 frames written, no
+checkpoint on the loop; with the old backstop the WAL was cut to 4,059).
+Next time the log names the call: a worker beside the main thread samples its
+`/proc` syscall and kernel wait while the loop is late and writes
+`loop-blocked <ms> in <syscall> (<wait>), n of m samples` (loopWatch.ts).
+At its source, a throwaway rig may drop its guest's flushes
+(`WINVM_DISK_CACHE=unsafe`, docs/agents/work-winvm.md "Disk mode"). The
+disk's scheduler is `none`, so `ionice` does nothing on the box; the io
+controller, `lazytime` and smaller writeback bursts are root's
+(.temp-code/plans/landed/F-box-slow/root-change-disk.md).
 ### Work's indexes, and what the host keeps
 
 The tables Work walks grow with every thread, held act and deleted file,

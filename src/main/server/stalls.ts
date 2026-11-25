@@ -1,7 +1,9 @@
 /**
  * Always-on stall recorder for the main process. One short line per
  * stall in `<userData>/logs/stalls.log` (rotated once to `stalls.log.1`
- * at 2 MB), so an intermittent freeze is diagnosable after the fact:
+ * at 2 MB), so an intermittent freeze is diagnosable after the fact. The
+ * lines are queued and appended off the loop (`write`), so a slow disk
+ * never holds the loop for a line about it:
  *
  *   - `loop`: the event loop was blocked ≥ STALL_MS in the last second
  *     (monitorEventLoopDelay, sampled once a second)
@@ -26,8 +28,7 @@
  * one histogram read a second. Nothing allocates per event.
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { appendFileSync, mkdirSync, renameSync, statSync } from 'node:fs'
-import { stat } from 'node:fs/promises'
+import { appendFile, mkdir, rename, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { loadavg } from 'node:os'
 import { monitorEventLoopDelay } from 'node:perf_hooks'
@@ -95,6 +96,7 @@ let poolProbeAt: number | null = null
 /** Where stall lines go; `null` (tests, no data dir) disables the recorder. */
 export function setStallLog(logDir: string | null): void {
   file = logDir ? join(logDir, 'stalls.log') : null
+  known = null
 }
 
 /** How many threads are live right now; asked only when a line is written. */
@@ -204,6 +206,11 @@ export function noteRequest(key: string, value: string | number): void {
 export function requestNotesField(): string {
   const notes = requestNotes.getStore()
   return notes?.size ? ' ' + [...notes].map(([key, value]) => `${key}=${value}`).join(' ') : ''
+}
+
+/** A block of the loop as loopWatch.ts saw it from beside the main thread: what the thread waited in. */
+export function recordLoopBlock(body: string): void {
+  write(body)
 }
 
 /** Runs `fn` and logs it when it held the loop for TIMED_MS or more. */
@@ -363,21 +370,66 @@ export function context(): string {
   return `inflight=${requests || '-'} ${pushesField()} running=${running} load=${loadavg()[0].toFixed(1)} rss=${rss}MB wsbuf=${wsbuf}KB lane=bulk:${lane} ${poolField()}`
 }
 
+/** Pending text past which new lines are dropped (and counted) until the disk catches up. */
+export const STALL_QUEUE_MAX_BYTES = 1024 * 1024
+/** Lines waiting for the one append in flight, their bytes, and the lines dropped past the bound. */
+let pending: string[] = []
+let pendingBytes = 0
+let dropped = 0
+let draining: Promise<void> | null = null
+/** The log's size as the writer knows it: stat once per file, then counted. */
+let known: { target: string; bytes: number } | null = null
+
+/**
+ * One stall line, queued: the main thread never waits on the disk for it
+ * (2026-11-24: a guest's flush burst stalled ext4's journal and every
+ * synchronous append froze the loop for seconds). One append at a time
+ * takes everything queued; past STALL_QUEUE_MAX_BYTES new lines are
+ * dropped, and the log says how many once it drains.
+ */
 function write(body: string, withContext = true): void {
-  const target = file
-  if (!target) return
+  if (!file) return
   const line = `${new Date().toISOString()} ${body}${withContext ? ` ${context()}` : ''}\n`
-  try {
-    mkdirSync(join(target, '..'), { recursive: true })
-    let size = 0
-    try {
-      size = statSync(target).size
-    } catch {
-      // first line
-    }
-    if (size >= ROTATE_BYTES) renameSync(target, `${target}.1`)
-    appendFileSync(target, line)
-  } catch {
-    // diagnostics never fail the app
+  if (pendingBytes + line.length > STALL_QUEUE_MAX_BYTES) {
+    dropped += 1
+    return
   }
+  pending.push(line)
+  pendingBytes += line.length
+  draining ??= drain().finally(() => (draining = null))
+}
+
+async function drain(): Promise<void> {
+  while (pending.length || dropped) {
+    const target = file
+    let text = pending.join('')
+    pending = []
+    pendingBytes = 0
+    if (dropped) {
+      text += `${new Date().toISOString()} stall log dropped ${dropped} lines while the disk was slow\n`
+      dropped = 0
+    }
+    if (!target) return
+    try {
+      let log = known
+      if (log?.target !== target) {
+        await mkdir(join(target, '..'), { recursive: true })
+        log = known = { target, bytes: await stat(target).then((s) => s.size, () => 0) }
+      }
+      if (log.bytes >= ROTATE_BYTES) {
+        await rename(target, `${target}.1`)
+        log.bytes = 0
+      }
+      await appendFile(target, text)
+      log.bytes += Buffer.byteLength(text)
+    } catch {
+      // diagnostics never fail the app; the next batch stats the file again
+      known = null
+    }
+  }
+}
+
+/** Resolves once every queued line is on disk (tests, a script reading the log it made). */
+export async function flushStallLog(): Promise<void> {
+  while (draining) await draining
 }

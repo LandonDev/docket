@@ -1,18 +1,6 @@
-import {
-  closeSync,
-  existsSync,
-  mkdirSync,
-  openSync,
-  readdirSync,
-  readFileSync,
-  readSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync
-} from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { timed, untilLoopIdle, yieldUntilIdle } from './stalls'
-import { appendFile, readFile } from 'node:fs/promises'
+import { appendFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { bootMark } from './boot'
 import { basename, join, relative, isAbsolute } from 'node:path'
 import type { EventRow, SessionMeta } from '@shared/events'
@@ -86,11 +74,29 @@ export function mirrorName(meta: SessionMeta): string {
 export const mirrorRelPath = (meta: SessionMeta): string =>
   join('.temp-code', 'threads', mirrorName(meta))
 
-/** Atomic write (tmp + rename): a harness mid-read never sees a half file. */
-function writeAtomic(path: string, content: string): void {
-  const tmp = `${path}.tmp`
-  writeFileSync(tmp, content)
-  renameSync(tmp, path)
+/** Runs `fn` after the last one queued under `key` settles: one at a time per key. */
+function inTurn(queue: Map<string, Promise<void>>, key: string, fn: () => Promise<void>): Promise<void> {
+  const prior = queue.get(key)
+  const run = prior ? prior.catch(() => {}).then(fn) : fn()
+  queue.set(key, run)
+  const done = (): void => {
+    if (queue.get(key) === run) queue.delete(key)
+  }
+  void run.then(done, done)
+  return run
+}
+
+const writesByPath = new Map<string, Promise<void>>()
+
+/** Atomic write (tmp + rename) off the loop, one per path at a time: a
+ *  harness mid-read never sees a half file, two writes never share the tmp,
+ *  and a slow disk never holds the loop (box.md "A disk stall froze the loop"). */
+function writeAtomic(path: string, content: string): Promise<void> {
+  return inTurn(writesByPath, path, async () => {
+    const tmp = `${path}.tmp`
+    await writeFile(tmp, content)
+    await rename(tmp, path)
+  })
 }
 
 /** Goal lifecycle as one system line per event. Claude's mid-turn checks
@@ -320,45 +326,54 @@ export const THREADS_INDEX_SLICE = 100
 const indexByDir = new Map<string, Promise<void>>()
 
 export function writeThreadsIndex(dir: string, between = yieldUntilIdle): Promise<void> {
-  const prior = indexByDir.get(dir)
-  const run = prior ? prior.catch(() => {}).then(() => writeThreadsIndexNow(dir, between)) : writeThreadsIndexNow(dir, between)
-  indexByDir.set(dir, run)
-  const done = (): void => {
-    if (indexByDir.get(dir) === run) indexByDir.delete(dir)
-  }
-  void run.then(done, done)
-  return run
+  return inTurn(indexByDir, dir, () => writeThreadsIndexNow(dir, between))
 }
 
 /** The frontmatter lives in the first bytes; a mirror can be megabytes. */
 const FRONT_BYTES = 4_096
+/** Head reads in flight at once: each is three trips through libuv's four-thread pool. */
+export const THREADS_INDEX_READS = 3
 
-function readHead(path: string): string {
-  const fd = openSync(path, 'r')
+async function readHead(path: string): Promise<string> {
+  const handle = await open(path, 'r')
   try {
     const buf = Buffer.alloc(FRONT_BYTES)
-    const n = readSync(fd, buf, 0, FRONT_BYTES, 0)
-    return buf.toString('utf8', 0, n)
+    const { bytesRead } = await handle.read(buf, 0, FRONT_BYTES, 0)
+    return buf.toString('utf8', 0, bytesRead)
   } finally {
-    closeSync(fd)
+    await handle.close()
   }
 }
 
+/** `fn` over `items` with at most `limit` in flight; results in input order. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length)
+  let next = 0
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++
+      out[i] = await fn(items[i])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker))
+  return out
+}
+
+/** The reads and the write go through fs/promises, a few at a time; `timed`
+ *  measures only the parsing and the sort, the part that holds the loop. */
 async function writeThreadsIndexNow(dir: string, between: () => Promise<void>): Promise<void> {
   const entries: { updated: string; line: string }[] = []
-  const files = readdirSync(dir)
+  const files = (await readdir(dir)).filter((file) => file.endsWith('.md') && file !== INDEX_NAME)
   for (let start = 0; start < files.length; start += THREADS_INDEX_SLICE) {
     if (start) await between()
+    const slice = files.slice(start, start + THREADS_INDEX_SLICE)
+    const heads = await mapLimit(slice, THREADS_INDEX_READS, (file) => readHead(join(dir, file)).catch(() => null))
     timed('writeThreadsIndex', () => {
-      for (const file of files.slice(start, start + THREADS_INDEX_SLICE)) {
-        if (!file.endsWith('.md') || file === INDEX_NAME) continue
-        let front: Record<string, string>
-        try {
-          front = frontmatterOf(readHead(join(dir, file)))
-        } catch {
-          continue
-        }
-        if (!front.title) continue
+      slice.forEach((file, i) => {
+        const head = heads[i]
+        if (head === null) return
+        const front = frontmatterOf(head)
+        if (!front.title) return
         const updated = front.updated ?? ''
         const parts = [
           updated.slice(0, 10) || '?',
@@ -370,17 +385,15 @@ async function writeThreadsIndexNow(dir: string, between: () => Promise<void>): 
           join('threads', file)
         ]
         entries.push({ updated, line: `- ${parts.join(' · ')}` })
-      }
+      })
     })
   }
-  timed('writeThreadsIndex', () => {
+  const text = timed('writeThreadsIndex', () => {
     entries.sort((a, b) => b.updated.localeCompare(a.updated))
     const body = entries.length ? entries.map((e) => e.line).join('\n') : '_No threads yet._'
-    writeAtomic(
-      join(dir, INDEX_NAME),
-      `# Thread index\n\n_Written by the app after every turn. date · type · title · status · files touched · plan · path (relative to .temp-code/). Grep it by file path or topic, then read only the threads it points at._\n\n${body}\n`
-    )
+    return `# Thread index\n\n_Written by the app after every turn. date · type · title · status · files touched · plan · path (relative to .temp-code/). Grep it by file path or topic, then read only the threads it points at._\n\n${body}\n`
   })
+  await writeAtomic(join(dir, INDEX_NAME), text)
 }
 
 /** The project cwd a session's context files live in. Subagents may run in
@@ -431,16 +444,14 @@ async function mirrorSessionNow(
     if (!meta || !cwd) return
     const content = await renderMirrorOffLoop(reg, meta)
     const dir = join(cwd, '.temp-code', 'threads')
-    timed('mirrorSession', () => {
-      mkdirSync(dir, { recursive: true })
-      const name = mirrorName(meta)
-      // Sweep copies left by an old title — one file per session, always.
-      for (const f of readdirSync(dir)) {
-        if (f !== name && f.includes(meta.id)) rmSync(join(dir, f), { force: true })
-      }
-      writeAtomic(join(dir, name), content)
-      rotateJournal(cwd) // a model append lands shortly before this write
-    })
+    await mkdir(dir, { recursive: true })
+    const name = mirrorName(meta)
+    // Sweep copies left by an old title — one file per session, always.
+    for (const f of await readdir(dir)) {
+      if (f !== name && f.includes(meta.id)) await rm(join(dir, f), { force: true })
+    }
+    await writeAtomic(join(dir, name), content)
+    await rotateJournal(cwd) // a model append lands shortly before this write
     if (opts.index !== false) await writeThreadsIndex(dir)
   } catch {
     // Mirrors are best-effort context, never a failure the user sees.
@@ -637,7 +648,7 @@ export function writeThreadDigest(
   reg: SessionRegistry,
   refMeta: SessionMeta,
   targetCwd: string
-): string {
+): Promise<string> {
   const sameProject = contextCwd(reg, refMeta) === targetCwd
   const pointer = sameProject
     ? `\n_Full transcript: ${mirrorRelPath(refMeta)}_\n`
@@ -646,10 +657,10 @@ export function writeThreadDigest(
 }
 
 /** Write a digest's text as `.temp-code/refs/<id>.md` under the project; returns the project-relative path. */
-export function writeDigestFile(targetCwd: string, sessionId: string, text: string): string {
-  mkdirSync(join(targetCwd, '.temp-code', 'refs'), { recursive: true })
+export async function writeDigestFile(targetCwd: string, sessionId: string, text: string): Promise<string> {
+  await mkdir(join(targetCwd, '.temp-code', 'refs'), { recursive: true })
   const rel = join('.temp-code', 'refs', `${sessionId}.md`)
-  writeAtomic(join(targetCwd, rel), text)
+  await writeAtomic(join(targetCwd, rel), text)
   return rel
 }
 
@@ -686,7 +697,9 @@ const today = (): string => new Date().toISOString().slice(0, 10)
 
 /** Seeded once at project creation; model-maintained after that. A
  *  second project pointed at the same checkout finds a journal already
- *  there — that one is the history, so leave it alone. */
+ *  there — that one is the history, so leave it alone. Written on the
+ *  caller's turn, the one sync write left here: the project's first thread
+ *  must find it, and it happens once per project. */
 export function seedJournal(project: ProjectMeta): void {
   try {
     if (existsSync(journalPath(project.cwd))) return
@@ -697,10 +710,9 @@ export function seedJournal(project: ProjectMeta): void {
         : project.branch
           ? `local on ${project.branch}`
           : 'local'
-    writeAtomic(
-      journalPath(project.cwd),
-      `# ${project.name}\n\n_Project journal. One dated line per durable outcome, naming the files it touched — append under ## Log, never rewrite. Humans read it to catch up._\n\n## Log\n\n- ${today()} — project created (${where})\n`
-    )
+    const path = journalPath(project.cwd)
+    writeFileSync(`${path}.tmp`, `# ${project.name}\n\n_Project journal. One dated line per durable outcome, naming the files it touched — append under ## Log, never rewrite. Humans read it to catch up._\n\n## Log\n\n- ${today()} — project created (${where})\n`)
+    renameSync(`${path}.tmp`, path)
   } catch {
     // best-effort
   }
@@ -714,7 +726,7 @@ export async function appendJournal(cwd: string, line: string): Promise<void> {
     const exists = await readFile(path, 'utf8').catch(() => null)
     if (exists === null) return
     await appendFile(path, `- ${today()} — ${line}\n`)
-    rotateJournal(cwd)
+    await rotateJournal(cwd)
   } catch {
     // best-effort
   }
@@ -734,12 +746,18 @@ const ARCHIVE_POINTER = `_Older entries: ${ARCHIVE_NAME}._`
  *  once the journal outgrows its cap, keeping each entry whole and
  *  verbatim — nothing is rewritten, so the "never rewrite others'
  *  entries" contract survives rotation. Called from the app's own writes
- *  (mirror path, appendJournal), never mid-turn. */
-export function rotateJournal(cwd: string): void {
+ *  (mirror path, appendJournal), never mid-turn; one rotation per project
+ *  at a time, so two never move the same entries. */
+const rotationsByCwd = new Map<string, Promise<void>>()
+export function rotateJournal(cwd: string): Promise<void> {
+  return inTurn(rotationsByCwd, cwd, () => rotateJournalNow(cwd))
+}
+
+async function rotateJournalNow(cwd: string): Promise<void> {
   try {
     const path = journalPath(cwd)
-    if (!existsSync(path)) return
-    const text = readFileSync(path, 'utf8')
+    const text = await readFile(path, 'utf8').catch(() => null)
+    if (text === null) return
     if (Buffer.byteLength(text) <= JOURNAL_MAX_BYTES) return
     const lines = text.split('\n')
     const start = lines.findIndex((l) => l.startsWith('## Log'))
@@ -767,15 +785,16 @@ export function rotateJournal(cwd: string): void {
     if (!moved.length) return
 
     const archive = join(cwd, '.temp-code', ARCHIVE_NAME)
-    const prior = existsSync(archive)
-      ? readFileSync(archive, 'utf8').replace(/\n+$/, '\n')
+    const archived = await readFile(archive, 'utf8').catch(() => null)
+    const prior = archived !== null
+      ? archived.replace(/\n+$/, '\n')
       : `# Journal archive\n\n_Entries rotated out of PROJECT.md, oldest first._\n`
-    writeAtomic(archive, `${prior}${moved.map((e) => e.join('\n').trimEnd()).join('\n')}\n`)
+    await writeAtomic(archive, `${prior}${moved.map((e) => e.join('\n').trimEnd()).join('\n')}\n`)
 
     const kept = preamble.filter((l) => l.trim() && l.trim() !== ARCHIVE_POINTER)
     const region = ['## Log', '', ARCHIVE_POINTER, ...(kept.length ? ['', ...kept] : []), '']
     const next = [...lines.slice(0, start), ...region, ...entries.flat(), ...lines.slice(end)]
-    writeAtomic(path, `${next.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`)
+    await writeAtomic(path, `${next.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`)
   } catch {
     // best-effort, like every other write in this file
   }
