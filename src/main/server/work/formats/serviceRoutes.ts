@@ -6,6 +6,7 @@ import { writeDocx } from 'work-kit/formats/docx'
 import { writeMarkdown } from 'work-kit/formats/markdown'
 import { defaultName, documentForExport, readStoredSidecar } from 'work-kit/formats/tcdoc'
 import { isAgentBranch } from '../history/privateBranches'
+import { lastEditorOption, microsoftDisplayName } from './lastEditor'
 import { docIn, fenceOf, servingHere, str } from '../service/routes/internal'
 import { RouteError, type InternalRoute, type RouteCtx } from '../service/routes/route'
 
@@ -98,7 +99,8 @@ export const formatsRoutes: InternalRoute[] = [
       doc.destroy()
       if (format === 'md') return { text: writeMarkdown(out.blocks, out.sidecar), dropped: out.dropped }
       const title = typeof body.title === 'string' ? body.title.slice(0, 200) : undefined
-      const bytes = await writeDocx(out.blocks, out.sidecar, title ? { title } : {})
+      // His Microsoft display name as the file's last editor, where it is known and the pin takes it (lastEditor.ts).
+      const bytes = await writeDocx(out.blocks, out.sidecar, { ...(title ? { title } : {}), ...lastEditorOption(microsoftDisplayName()) })
       return { data: Buffer.from(bytes).toString('base64'), dropped: out.dropped, held: held.reduce((n, b) => n + changesOf(b.diff), 0) }
     }
   }

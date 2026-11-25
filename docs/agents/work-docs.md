@@ -808,3 +808,14 @@ work-files.md "A Word file from another computer". That document counts as share
 a thread's own `doc_write` or `doc_format` there waits as a suggestion, the window opens it locked to suggest, and a
 key that may not approve views it. A tab's close stores it first ("The socket"), so a quick close after a typo keeps it.
 
+
+## Authors
+
+A Word file he writes through an editor names him as its last editor and keeps its own author (plan cBclQIRDtvVS
+decision 16). work-kit's Word writers take `lastEditor` (work-kit `pin-a-author`, needs a signed release): `writeDocx`
+writes it as `cp:lastModifiedBy` and writes no last editor when it is not given, never the docx library's "Un-named";
+`saveInto` sets a file's own `cp:lastModifiedBy` alone and leaves `dc:creator` and every other property as they were.
+The name is his Microsoft account's display name and only that, never LifeOS's name for him or a sign-in address. No host
+reads it yet (the Windows VM's helper reads OneDrive's and Office's sign-in addresses, the Mac none), so
+`microsoftDisplayName` (formats/lastEditor.ts) answers null and the file names no last editor. The Word export
+(formats/serviceRoutes.ts) passes it through `lastEditorOption`, only where the pinned work-kit exports `lastEditorOf`.
