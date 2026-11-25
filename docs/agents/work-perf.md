@@ -155,6 +155,29 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
   held by scripts/compilerRatchet.test.ts in the commit gate's guards (`bun scripts/react-compiler-tally.ts --only
   work --check`, about 13 s).
 
+## Lists, renders and the minute over a long day (M12, first line)
+
+- **Long lists.** People, Tasks (each group), Agenda (each day) and the Money ledger each draw their rows through one
+  part, src/renderer/src/chrome/windowedRows.tsx: up to 80 rows (`PLAIN_MOST`, the Files list's line) drawn whole;
+  past it only the rows near the screen are mounted inside the view's own scroller (`WindowedRows`, over the rail's
+  `VirtualRows`), each row saying its place in the whole list (`aria-posinset` of `aria-setsize`), the list keeping
+  its role and the arrow keys' order. The ledger stays a table: the rows near the screen between two spacer rows
+  hidden from a screen reader, with `aria-rowcount` on the table and `aria-rowindex` on each row
+  (`WindowedTableRows`). Rows are measured by the ResizeObserver alone, never by reading a rect.
+- **A keyed keeper before each list** (`useKeptRows`, work/windowed.tsx): a push answers the whole list again with
+  new objects; a row that holds what it held (its JSON) is handed its old object, so its memoised row does not draw.
+  Rows are handed their words (a stamp, a due time), not the clock. Today keeps its rows the same way
+  (today/stable.ts), and a conversation its blocks (`keepBlocks`, messages/Conversation.tsx).
+- **One minute clock** (`useMinute`, work/tasks/minute.ts): one timer for the window however many readers (Tasks,
+  Agenda, Today, Prep, the column's facts, Messages, the Digest), armed for the next minute's boundary while any reads
+  it and stopped with the last; once the minute has turned the next read moves it, so a reader mounting then reads the
+  new minute.
+- **The browser canvas and the Computer section** read their thread's tree through a selector over the session store
+  (`useTreeKey`, work/browser/BrowserCanvas.tsx; `useLiveTree`, lib/computerSection.ts): a push for a thread outside
+  the tree draws neither.
+- Tests (counts): people/peopleList, tasks/tasksList, money/ledgerList, messages/minute, tasks/minute,
+  browser/BrowserCanvas and today/sources (`.dom.test.tsx`).
+
 ## What a window asks on reconnect and focus (perf M10)
 
 - **One lane per host for Work's reopen asks** (work/reopenLane.ts, after lib/tcserver/catchUp.ts). When a link
