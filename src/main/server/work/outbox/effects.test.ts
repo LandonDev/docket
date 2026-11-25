@@ -17,6 +17,8 @@ describe('what a press does, in one sentence', () => {
       ['share.google', { email: 'sam@x.edu', role: 'commenter', name: 'Plan', notify: true }, 'Lets sam@x.edu comment on Plan in Google Drive, and Google mails them.'],
       ['form.publish', { title: 'Tryouts' }, 'Publishes Tryouts: anyone with its link can answer.'],
       ['msform.publish', { act: 'audience', title: 'Survey' }, 'Changes who can answer Survey.'],
+      ['file.act', { things: [{ key: 'k', name: 'Risk.docx', version: '7' }] }, 'Changes a file in a place others can open, the moment you press.'],
+      ['file.act', { things: [{ key: 'a' }, { key: 'b' }] }, 'Changes files in a place others can open, the moment you press.'],
       ['portal.submit', {}, 'Carries this out as you.']
     ]
     for (const [kind, payload, words] of cases) expect(effectOf(kind, payload, 'America/Chicago'), kind).toBe(words)

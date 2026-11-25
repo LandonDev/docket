@@ -68,7 +68,7 @@ const EFFECTS: Partial<Record<ActKind, (p: P, zone: string) => string | undefine
   },
   'office.edit': (p) => `Changes ${str(p?.name) ?? 'the file'} for everyone who can open it, the moment you press.`,
   'google.edit': (p) => `Changes ${str(p?.name) ?? str(p?.title) ?? 'the file'} in Google for everyone who can open it, the moment you press.`,
-  'file.act': () => 'Changes files in a place others can open, the moment you press.'
+  'file.act': (p) => `Changes ${Array.isArray(p?.things) && p.things.length === 1 ? 'a file' : 'files'} in a place others can open, the moment you press.`
 }
 
 /** The sentence for an item: the kind's own, else the table's, else the plain line; a date on `zone`'s wall clock (his). Never throws. */
