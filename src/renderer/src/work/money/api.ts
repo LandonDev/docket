@@ -7,6 +7,7 @@ import { registry } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { openWorkView } from "../../lib/workSwitch";
 import { loadToast } from "../../components/ui/toaster";
+import { onWorkReopen } from "../reopenLane";
 
 /**
  * Money's calls to the workspace's host (src/shared/contract-work-money.ts)
@@ -77,7 +78,11 @@ export function useMoney(env: string, workspaceId: string, period: Period): [Mon
     const off = link.onPush((push) => {
       if (push.push === "work.money" && push.workspaceId === workspaceId) again();
     });
-    const offOpen = link.onOpen(again);
+    // (the view on screen: the front of the host's reopen lane)
+    const offOpen = onWorkReopen(link, () => {
+      readAt = Date.now();
+      return fetch();
+    }, () => true);
     return () => {
       // A late answer of this period never paints over the next one's.
       asked.current++;

@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { CanvasItem, CanvasKind, CanvasSource } from "@shared/work";
 import { registry } from "../../lib/connection";
 import { itemsGone } from "./gone";
+import { inReopenLane } from "../reopenLane";
 
 /**
  * The renderer's copy of each thread's canvas items (the host's
@@ -237,7 +238,8 @@ registry.onLink((link, event) => {
     if (push.push === "work.canvas") applyCanvasPush(push);
   });
   // A socket that came back may have missed a push: the threads on screen ask again.
+  // A pane on screen asks first: the front of the host's reopen lane (work/reopenLane.ts).
   link.onOpen(() => {
-    for (const [sessionId, entry] of entries) if (entry.environmentId === link.environmentId && listeners.has(sessionId)) void loadCanvas(link.environmentId, sessionId);
+    for (const [sessionId, entry] of entries) if (entry.environmentId === link.environmentId && listeners.has(sessionId)) inReopenLane(link.environmentId, () => loadCanvas(link.environmentId, sessionId), true);
   });
 });

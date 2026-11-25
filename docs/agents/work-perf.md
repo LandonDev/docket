@@ -148,3 +148,20 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
   held by scripts/compilerRatchet.test.ts in the commit gate's guards (`bun scripts/react-compiler-tally.ts --only
   work --check`, about 13 s).
 
+## What a window asks on reconnect and focus (perf M10)
+
+- **One lane per host for Work's reopen asks** (work/reopenLane.ts, after lib/tcserver/catchUp.ts). When a link
+  opens again the view on screen asks at once (the front: a pane's canvas list, the Files tabs and Home of the
+  workspace shown, Money's period, a Review page open); every other Work ask (the Digest, the LifeOS status) waits
+  for the front's answer, at most `REOPEN_FRONT_WAIT_MS` (2 s), then goes one at a time, each given at most
+  `REOPEN_TURN_WAIT_MS` (10 s). Each ask still goes once per open. `work.get` (lib/workSwitch.ts) is first-paint
+  code and asks at once, as before. The Outbox's reopen ask (work/outbox/store.ts) is not in the lane yet.
+- **A focus asks little.** Money re-reads its period when its link reopens, and on a focus only when its last read
+  is a minute old (`FOCUS_AGAIN_MS`: the host pushes what waits to be confirmed, not a ledger edited elsewhere). The
+  Digest tells a host its zone on a focus only when the zone changed or 15 minutes passed (`HERE_AGAIN_MS`).
+- **A check waits out its pushes** (lib/quietPoll.ts): it runs only after a spell with no word heard, never while the
+  window is hidden, and once as it shows again when one came due. The dashboard's 30 s check, Google's minute
+  check (also asked when the link opens again) and a form's 10 s read of its answers use it.
+- **A live Office tab's place** is read when something may have moved it (a ResizeObserver on the body, everything
+  above it and what sits beside that; a scroll anywhere; the window's resize) and once a second otherwise
+  (`watchPlace`, work/office/live/LiveBody.tsx); it was every 200 ms.

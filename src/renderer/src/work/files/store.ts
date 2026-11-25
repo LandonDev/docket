@@ -41,6 +41,7 @@ import {
   type PlaceCopy,
   type Sidebar,
 } from "./model";
+import { inReopenLane } from "../reopenLane";
 
 /**
  * What the Files place holds in the window (docs/agents/work-files.md): what each host answered for its places,
@@ -551,7 +552,8 @@ export function useTabs(link: string, workspaceId: string, hosted: boolean, firs
       void loadTabs(link, workspaceId, first);
     });
     // A socket that came back may have missed a push.
-    const offOpen = host.onOpen(() => void loadTabs(link, workspaceId, first));
+    // (the tabs of the workspace on screen: the front of the host's reopen lane)
+    const offOpen = host.onOpen(() => inReopenLane(link, () => loadTabs(link, workspaceId, first), true));
     return () => {
       offPush();
       offOpen();
@@ -1315,12 +1317,12 @@ export function useHome(link: string, workspaceId: string): { home: FilesHome | 
     () => homes.get(key) ?? NO_HOME,
   );
   useEffect(() => {
-    readHome(link, workspaceId);
+    void readHome(link, workspaceId);
     const host = registry.linkOf(link);
     const offPush = host.onPush((push) => {
       if (push.push === "work.files" && push.workspaceId === workspaceId && push.marks) readHome(link, workspaceId);
     });
-    const offOpen = host.onOpen(() => readHome(link, workspaceId));
+    const offOpen = host.onOpen(() => inReopenLane(link, () => readHome(link, workspaceId), true));
     return () => {
       offPush();
       offOpen();

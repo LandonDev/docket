@@ -25,6 +25,7 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { workSwitch } from "../../lib/workSwitch";
 import { jobNameNow } from "../jobName";
 import { workHome } from "../shell/actions";
+import { inReopenLane } from "../reopenLane";
 
 /**
  * The weekly review as the page reads it (docs/agents/work-review.md "The
@@ -455,13 +456,21 @@ registry.onLink((link, event) => {
     for (const hosts of money.values()) hosts.delete(link.environmentId);
     changed();
     if (listeners.size === 0 || !workSwitch.hosts().has(link.environmentId)) return;
-    void loadZone().then(() => {
-      for (const from of weeks.keys()) {
-        const week = { from, to: weekBy({ from, to: from }, 1).from };
-        void loadHostWeek(link.environmentId, week);
-        // Its sums too: they went with it, and what it said before it left may be old.
-        loadHostMoney(link.environmentId, week);
-      }
-    });
+    // The page is on screen: the front of the host's reopen lane (work/reopenLane.ts).
+    inReopenLane(
+      link.environmentId,
+      () =>
+        loadZone().then(() =>
+          Promise.all(
+            [...weeks.keys()].map((from) => {
+              const week = { from, to: weekBy({ from, to: from }, 1).from };
+              // Its sums too: they went with it, and what it said before it left may be old.
+              loadHostMoney(link.environmentId, week);
+              return loadHostWeek(link.environmentId, week);
+            }),
+          ),
+        ),
+      true,
+    );
   });
 });

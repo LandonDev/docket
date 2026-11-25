@@ -148,6 +148,8 @@ describe("the store", () => {
     w().down.clear();
     w().calls.length = 0;
     reopen(w(), "box");
+    // (the digest's reopen ask waits its turn in the host's lane: work/reopenLane.ts)
+    await new Promise((r) => setTimeout(r, 0));
     await loadDigest();
     expect(digestNow().days[0]!.seenAt).not.toBeNull();
     expect(w().calls.filter((c) => c.method === "work.digest.seen").map((c) => [c.env, c.params.day])).toEqual([["box", "2026-11-24"]]);

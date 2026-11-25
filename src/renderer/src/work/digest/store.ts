@@ -5,6 +5,7 @@ import type { TellGroup, TellLevel, TellRow } from "@shared/work/tell";
 import { registry } from "../../lib/connection";
 import { linkMay } from "../../lib/linkMay";
 import { workSwitch } from "../../lib/workSwitch";
+import { onWorkReopen } from "../reopenLane";
 
 /**
  * The digest as the screens read it (docs/agents/work-digest.md): each host
@@ -411,12 +412,13 @@ registry.onLink((link, event) => {
     hosts.set(link.environmentId, next);
     changed();
   });
-  link.onOpen(() => {
+  // In turn, after the view on screen (work/reopenLane.ts): the digest is read in the background.
+  onWorkReopen(link, () => {
     if (!workSwitch.hosts().has(link.environmentId)) return;
     // What he saw while this host was away is said now.
     for (const [day, at] of pendingSeen.get(link.environmentId) ?? []) sendSeen(link.environmentId, day, at);
-    void loadHost(link.environmentId);
     sayHere(link.environmentId);
+    return loadHost(link.environmentId);
   });
 });
 

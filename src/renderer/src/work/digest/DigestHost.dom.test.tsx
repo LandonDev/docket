@@ -283,13 +283,14 @@ describe("the zone the digest's time is kept in", () => {
     try {
       focus.mockReturnValue(false);
       w().calls.length = 0;
-      act(() => reopen(w(), "box"));
+      await act(async () => reopen(w(), "box"));
       expect(said()).toEqual([]);
       focus.mockReturnValue(true);
       act(() => void window.dispatchEvent(new Event("focus")));
       const at = (w().calls.at(-1)!.params as { at: number }).at;
       w().calls.length = 0;
-      act(() => reopen(w(), "box"));
+      // (said in turn, in the host's reopen lane)
+      await act(async () => reopen(w(), "box"));
       expect(said()).toEqual(["box"]);
       // the same moment it came to the front, not the reconnect's: the host keeps the latest across desktops
       expect(w().calls.find((c) => c.method === "work.digest.here")!.params).toMatchObject({ at });

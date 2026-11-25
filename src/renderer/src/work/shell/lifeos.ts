@@ -8,6 +8,7 @@ import { linkMay } from "../../lib/linkMay";
 import { connectingWords, lifeosDownWords } from "./lifeosWords";
 import { workSwitch } from "../../lib/workSwitch";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
+import { onWorkReopen } from "../reopenLane";
 
 /**
  * Work's screens and LifeOS (docs/agents/work-lifeos.md "The states a
@@ -95,10 +96,10 @@ export const isSilence = (err: unknown): boolean => {
 export function watchLifeos(environmentId: string): void {
   if (watched.has(environmentId)) return;
   const link = registry.linkOf(environmentId);
-  const ask = (): void => {
+  const ask = (): Promise<void> => {
     // An ask that is out draws bones again, even after one that went unanswered.
     markUnanswered(environmentId, false);
-    link
+    return link
       .request<LifeosStatus>("work.lifeos.status")
       .then((status) => putStatus(environmentId, status))
       // A host that refused (Work off, or a build from before Work) says so: never "signed out", which asks for a
@@ -108,8 +109,9 @@ export function watchLifeos(environmentId: string): void {
   const offPush = link.onPush((push) => {
     if (push.push === "work.lifeos") putStatus(environmentId, push.status);
   });
-  const offOpen = link.onOpen(ask);
-  if (link.connected) ask();
+  // After a reconnect the status waits its turn behind the view on screen (work/reopenLane.ts).
+  const offOpen = onWorkReopen(link, ask);
+  if (link.connected) void ask();
   watched.set(environmentId, () => {
     offPush();
     offOpen();
