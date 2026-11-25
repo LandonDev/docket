@@ -39,9 +39,11 @@ export function Dock({
   onClose(): void;
 }) {
   const itemId = item?.id ?? null;
-  // The item is the tab's for its life: its id stands for it.
+  // The item is the tab's for its life, but Keep Both points it at the copy it made (a new name, a new `copyOf`): the
+  // subject is made again then, and the draft follows it (`rebindDock`).
+  const file = `${tab.name}\n${tab.copyOf?.host ?? ""}\n${tab.copyOf?.path ?? ""}\n${item?.title ?? ""}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const subject = useMemo(() => (item ? fileSubject(workspace, tab, item) : null), [workspace.id, tab.id, itemId]);
+  const subject = useMemo(() => (item ? fileSubject(workspace, tab, item) : null), [workspace.id, tab.id, itemId, file]);
   const root = useRef<HTMLElement | null>(null);
   const id = (): string => root.current?.getAttribute("data-files-dock") ?? "";
   const caret = (): void => void requestAnimationFrame(() => root.current?.querySelector<HTMLElement>("[data-composer-input]")?.focus());

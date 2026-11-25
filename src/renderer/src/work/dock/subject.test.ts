@@ -23,7 +23,7 @@ vi.mock("../../lib/connection", async (original) => {
   return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf, link: linkOf, has: () => true, environments: () => [], onLink: () => () => undefined } };
 });
 
-const { dockThread, enterDock, leaveDock, resetDocks } = await import("./dockThread");
+const { dockThread, enterDock, leaveDock, rebindDock, resetDocks } = await import("./dockThread");
 const { contextChipsOf, resetContextChips, takeContextChips } = await import("../canvas/chips");
 const { sessionStore } = await import("../../lib/tcserver/store");
 const { newSession } = await import("../../lib/session");
@@ -194,5 +194,38 @@ describe("a must step", () => {
     enterDock(id);
     await expect(ensureCreated(sessionStore.get(id)!)).resolves.toBeTruthy();
     expect(afterCreate.pending(id)).toBe(false);
+  });
+});
+
+describe("a subject that comes to name another file under its key (Keep Both)", () => {
+  const chipOf = (path: string): ContextChip => ({ kind: "file", label: path.slice(3), ref: { at: "file", host: "box", path } }) as ContextChip;
+  const tabAbout = (path: string, holds: string[]): DockSubject =>
+    subject({ key: "w1/tab1", chipIn: "composer", chips: [chipOf(path)], hold: async () => void holds.push(path) });
+
+  it("keeps his words and other chips, swaps the file's chip where it sits, and the first send opens the new file", async () => {
+    const holds: string[] = [];
+    const { id } = await dockThread(workspace, tabAbout("/w/Notes.md", holds));
+    enterDock(id);
+    projectDrafts.put(projectDrafts.keyOfDraft(id)!, { segments: [{ text: "Tidy the second list" }] });
+    const other = { kind: "file", label: "Budget.xlsx", ref: { at: "file", host: "box", path: "/w/Budget.xlsx" } } as ContextChip;
+    const { addContextChip } = await import("../canvas/chips");
+    addContextChip(id, other);
+    rebindDock(tabAbout("/w/Notes (mine).md", holds));
+    expect(contextChipsOf(id)).toEqual([chipOf("/w/Notes (mine).md"), other]);
+    expect(projectDrafts.get(dockDraftKey("w1/tab1"))!.segments).toEqual([{ text: "Tidy the second list" }]);
+    await ensureCreated(sessionStore.get(id)!);
+    expect(holds).toEqual(["/w/Notes (mine).md"]);
+  });
+
+  it("leaves off a file chip he took off", async () => {
+    const holds: string[] = [];
+    const { id } = await dockThread(workspace, tabAbout("/w/Notes.md", holds));
+    enterDock(id);
+    const { removeContextChip } = await import("../canvas/chips");
+    removeContextChip(id, 0);
+    rebindDock(tabAbout("/w/Notes (mine).md", holds));
+    expect(contextChipsOf(id)).toEqual([]);
+    await ensureCreated(sessionStore.get(id)!);
+    expect(holds).toEqual([]);
   });
 });

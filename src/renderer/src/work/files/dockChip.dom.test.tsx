@@ -102,3 +102,22 @@ describe("the file's chip on the docked draft", () => {
     expect(opened).toEqual([]);
   });
 });
+
+describe("a copy tab Keep Both points at the copy it made", () => {
+  const before: FileTab = { id: "t1", kind: "file", name: "Roster.txt", itemId: "i1", copyOf: { host: "env_mac", path: "/Teams/General/Roster.txt" } };
+  const after: FileTab = { ...before, name: "Roster (mine).txt", copyOf: { host: "env_mac", path: "/Teams/General/Roster (mine).txt" } };
+  const at = (title: string) => ({ ...item, title }) as CanvasItem;
+  const dock = (t: FileTab, i: CanvasItem) => <Dock workspace={workspace} tab={t} item={i} chip={null} focus={false} onChipTaken={() => undefined} onClose={() => undefined} />;
+
+  it("the open draft keeps its id and takes the new file's chip, and its first send opens the new file", async () => {
+    const view = render(dock(before, at("Roster.txt")));
+    await waitFor(() => expect(shown()).toEqual(["Roster.txt"]));
+    const id = draftId();
+    view.rerender(dock(after, at("Roster (mine).txt")));
+    await waitFor(() => expect(shown()).toEqual(["Roster (mine).txt"]));
+    expect(draftId()).toBe(id);
+    act(() => void takeContextChips(id, true));
+    await afterCreate.run(id);
+    expect(opened).toEqual([{ sessionId: id, title: "Roster (mine).txt" }]);
+  });
+});

@@ -5,7 +5,7 @@ import { afterCreate, type CreateFold } from "../../lib/tcserver/commands";
 import { draftPicks, dockDraftKey, projectDrafts, sessionFromDraft } from "../../lib/projectDrafts";
 import { sessionStore } from "../../lib/tcserver/store";
 import { workDockPort } from "../../lib/workSwitch";
-import { aboutFor, addContextChip, contextChipsOf, setSendChips } from "../canvas/chips";
+import { aboutFor, addContextChip, contextChipsOf, setSendChips, swapContextChip } from "../canvas/chips";
 import type { DockSubject } from "./subject";
 
 /**
@@ -153,23 +153,39 @@ function planDraft(workspace: DockWorkspace, subject: DockSubject, again: string
   const remembered = !kept && record && (!again || record.id === again) && !sessionStore.metaOf(record.id) ? sessionFromDraft(record, null) : undefined;
   const made = kept ?? remembered ?? port.draft(workspace, again);
   const session = subject.seed && !kept ? subject.seed(made) : made;
+  drafts.set(session.id, { key: subject.key, seed: subject.seed, session, chipIn: subject.chipIn, ...stepsOf(session.id, subject) });
+  return session.id;
+}
+
+/** A draft's chips and first-send step, from its subject. */
+function stepsOf(id: string, subject: DockSubject): { chips: readonly ContextChip[]; hold: () => Promise<void>; must: boolean; fold?: () => CreateFold; onItemsFailed?: DockSubject["onItemsFailed"] } {
   const { hold } = subject;
   // A composer's hold runs only while its lead chip is still on the composer: he took it off, so the thread is not about it.
-  const run = (): Promise<void> => (!hold || chipTaken.has(session.id) ? Promise.resolve() : hold(session.id));
+  const run = (): Promise<void> => (!hold || chipTaken.has(id) ? Promise.resolve() : hold(id));
   // The same step as data, under the same rule, for a host that runs it inside the create.
-  const fold = subject.fold ? (): CreateFold => (chipTaken.has(session.id) ? {} : subject.fold!()) : undefined;
-  drafts.set(session.id, {
-    key: subject.key,
-    seed: subject.seed,
-    session,
-    chips: subject.chips,
-    chipIn: subject.chipIn,
-    hold: run,
-    must: !!subject.mustHold,
-    fold,
-    onItemsFailed: subject.onItemsFailed,
-  });
-  return session.id;
+  const fold = subject.fold ? (): CreateFold => (chipTaken.has(id) ? {} : subject.fold!()) : undefined;
+  return { chips: subject.chips, hold: run, must: !!subject.mustHold, fold, onItemsFailed: subject.onItemsFailed };
+}
+
+/**
+ * The subject under its key is about another thing now (Keep Both moved a file tab to the copy it made): its draft
+ * keeps what he typed and takes the subject's chips and first-send step, so the first send names and opens the file
+ * the tab shows. The lead chip in its composer is swapped where it sits, unless he took it off; the subject's thread
+ * from before is asked again. A draft already sent, or a thread, is left as it is.
+ */
+export function rebindDock(subject: DockSubject): void {
+  for (const [id, draft] of drafts) {
+    if (draft.key !== subject.key || !sessionStore.isDraft(id) || sessionStore.isProvisional(id)) continue;
+    const was = draft.chips[0];
+    const lead = subject.chips[0];
+    if (was && lead ? sameChip(was, lead) : was === lead) continue;
+    const next = { ...draft, ...stepsOf(id, subject) };
+    drafts.set(id, next);
+    found.delete(subject.key);
+    if (draft.chipIn === "send") setSendChips(id, next.chips);
+    else if (was && lead && !chipTaken.has(id)) swapContextChip(id, was, lead);
+    if (sessionStore.shownApart().has(id)) afterCreate.set(id, next.hold, { must: next.must, fold: next.fold, onItemsFailed: next.onItemsFailed });
+  }
 }
 
 /** A planned draft's record and rule, written once the dock draws it. */

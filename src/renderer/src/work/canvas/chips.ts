@@ -54,6 +54,14 @@ export function startAboutChip(sessionId: string, chip: ContextChip): void {
   put(sessionId, [chip, ...rest].slice(0, CHIPS_MAX));
 }
 
+/** One chip in a composer becomes another where it sits; a composer without it is left as it is. */
+export function swapContextChip(sessionId: string, from: ContextChip, to: ContextChip): void {
+  const have = contextChipsOf(sessionId);
+  const at = have.findIndex((c) => same(c, from));
+  if (at < 0) return;
+  put(sessionId, have.flatMap((c, i) => (i === at ? [to] : same(c, to) ? [] : [c])));
+}
+
 export function removeContextChip(sessionId: string, index: number): void {
   put(sessionId, contextChipsOf(sessionId).filter((_, i) => i !== index));
 }

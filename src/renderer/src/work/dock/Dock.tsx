@@ -16,7 +16,7 @@ import { ChatFooter } from "../../surfaces/threads/chatSlots";
 import { useSessionActions, useThreadChat } from "../../surfaces/threadChat";
 import { ThreadView } from "../../surfaces/threads/ThreadView";
 import { addContextChip } from "../canvas/chips";
-import { dockThreadNow, draftIsEmpty, enterDock, findThread, leaveDock, plannedDraft, showFound, type DockThread, type DockWorkspace } from "./dockThread";
+import { dockThreadNow, draftIsEmpty, enterDock, findThread, leaveDock, plannedDraft, rebindDock, showFound, type DockThread, type DockWorkspace } from "./dockThread";
 import type { DockSubject } from "./subject";
 
 /** What a dock's head is drawn from: the chat's id once known, its thread's meta once it is one, and Close. */
@@ -123,6 +123,11 @@ export function Dock({
     // The key stands for the subject: one chat a key.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspace.id, key, draftId]);
+
+  // The same key about another thing (a file tab moved to its Keep Both copy): the draft follows, his words kept.
+  useEffect(() => {
+    if (subject) rebindDock(subject);
+  }, [subject]);
 
   useEffect(() => {
     if (!id || !chip) return;
