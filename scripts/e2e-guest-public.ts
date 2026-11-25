@@ -484,10 +484,12 @@ try {
     !!tab.item &&
     (await until(30_000, async () => {
       sheetHistory = await tc<Revisions>('work.sheets.history', { itemId: tab.item!.id })
-      const who = new Set(sheetHistory.revisions.map((r) => sheetHistory.names[r.by]))
+      // A host from before History named a sheet's writers answers no names: then nobody is named, and the check says so.
+      const names = sheetHistory.names ?? {}
+      const who = new Set(sheetHistory.revisions.map((r) => names[r.by]))
       return who.has(NAMES.a) && who.has(NAMES.b)
     }, 1000))
-  check(`the sheet's History names ${NAMES.a} and ${NAMES.b}`, sheetNamed, JSON.stringify(sheetHistory.revisions.slice(0, 6).map((r) => [r.label, sheetHistory.names[r.by] ?? r.by])))
+  check(`the sheet's History names ${NAMES.a} and ${NAMES.b}`, sheetNamed, JSON.stringify(sheetHistory.revisions.slice(0, 6).map((r) => [r.label, (sheetHistory.names ?? {})[r.by] ?? r.by])))
   if (made.tab) {
     await tc('work.files.tabClose', { workspaceId: life.id, tabId: made.tab })
     made.tab = null
