@@ -2852,8 +2852,9 @@ Around the canvas:
     64rem: one 32px row a project, with Next (its next task and when it
     is due: late in `destructive` with how late, "2 days late"; due today
     in `foreground`; later muted), Waiting on (the name in `foreground`,
-    its age muted, "Sam Ortiz 6 days"), Threads (the most pressing live
-    thread's mark and outcome, once the thread record fills it), Done
+    its age muted, "Sam Ortiz 6 days"), Threads (the most pressing
+    thread's mark and outcome, as on the tracker; empty when it has
+    nothing to say), Done
     ("2 of 7") and Target. One 12px muted head row names the columns
     once; the project column has no label. Rows sort by target date,
     none last, so a row never moves because its work does. Paused and
@@ -2880,14 +2881,16 @@ Around the canvas:
     a 14/600 head, no boxes. Files lists the project's documents, sheets,
     links and items and the files its threads made or changed, newest
     first, a 32px row each: glyph, name, then "Made by Seat map for 64"
-    and the time muted at the end. Log is his notes, LifeOS's changes
+    and the time muted at the end; a file a thread made opens in a Files
+    tab of the job. Log is his notes, LifeOS's changes
     ("You moved it from Backlog to Active") and the threads with their
     outcome under their title ("1 mail to send"), newest first, a 16px
     mark, the words and the time; Add note at the head's end opens the
     form dialog. The ⋯ holds Rename, State, Target date…, Board, Share…,
     Project settings… and Delete project…. A row in hand shows its key
     and Start thread in its tail; waiting reads "Waiting on Sam Ortiz 6
-    days"; the threads on a task show their marks in its row at rest.
+    days"; every thread on a task shows its mark in its row at rest, newest
+    first, its title and outcome in the tip, each opening its own thread.
   - **The peek** docks flat at the pane's edge with a hairline and no
     shadow or corner, 44% of the view's pane (560 to 960px); the work
     makes room for it on a pane of 1280px or more, and under that it lies
@@ -3088,6 +3091,45 @@ own selected fill is a card's fill at rest in light.
   arrives while he is looking lands (`.step-land`); the rows a list opened
   with, and those his own unfold shows, do not move. This is the rule for a
   row leaving any list by his act.
+
+#### The tracker
+
+Projects, one page above the Work workspaces between Today and Review (a
+briefcase, "Projects", no count): every job's open projects, a row a
+project (work/tracker/, docs/agents/work-tracker.md). Its frame is
+Today's: the 40px header with the glyph and the name, and at its end one
+quiet 28px `Toggle`, Waiting on you, which keeps only the rows with a held
+act, a question, a failure, a late task or one due today. Nothing sits
+beside the page's name; no counts, no other filters, no cards.
+
+- **One column of 64rem**, the job's Projects list's own measure, with one
+  12px muted head row naming the columns once (the project column has no
+  label). Then a group a job, 12px apart: the job's name in 13px muted on
+  the rows' left edge, its sector's dot hanging in the gutter before it,
+  so every project name starts at one edge. The job's name is the
+  workspace's.
+- **A row is the Projects list's row** (work-kit's `ProjectFactsRow`): 32px,
+  Next (late in `destructive` with how late, due today in `foreground`),
+  Waiting on (the name, its age muted), Threads, Done ("2 of 7"), Target.
+  Threads is the most pressing thread's mark and its outcome in words: a
+  question's amber mark, a failure's red, the Outbox's glyph muted for a
+  held act ("1 mail to send", never amber), the spinner for live work; a
+  file made or an act done says its words with no mark. No lead mark on
+  the row: the Threads cell says it once. Rows stand by target date, none
+  last, so a row never moves because its work did; paused and backlog fold
+  under one quiet line a job. Under 760px a row is two lines, as the list's.
+- **Presses.** The row opens the project's page in its job; the Threads
+  cell's words open the thread. A job's head shows a 24px + at its end on
+  hover or focus (`reveal`), New project in that job: the job's Projects
+  view opens with its New project dialog.
+- **States.** Loading is the rows' bones under the head row. An empty job
+  is its name and a quiet New project, nothing else. A job LifeOS could not
+  be read for is `DownLine` in the group's place (the shared words and their
+  press); where the window's own session reads, the host's words with a
+  ghost Retry. A host that did not answer is one 12px muted line over the
+  groups. Under the filter a job with nothing waiting goes; with nothing
+  left the page says "Nothing waits on you". The page opens and closes
+  with no motion.
 
 #### A thread's head
 

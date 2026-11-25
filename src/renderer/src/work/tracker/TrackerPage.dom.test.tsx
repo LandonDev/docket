@@ -1,0 +1,146 @@
+// @vitest-environment jsdom
+/**
+ * The tracker (docs/agents/work-tracker.md "The page"): a group a job with its projects as work-kit's rows, by
+ * target date; one header row for the page; the Waiting on you filter; a down job, an empty job, the bones; the
+ * Threads column's held mail; a row opening its project's page in its job and a Threads cell opening its thread.
+ */
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { openWorkView, workOpenPort, workViewNow } from "../../lib/workSwitch";
+import type { MergedJob } from "./data";
+import { JOBS, NOW } from "./TrackerPage.preview.fixtures";
+
+// The window's own LifeOS session for a down job, faked at its one seam.
+const lifeos = vi.hoisted(() => ({ state: "connecting" as string }));
+vi.mock("../shell/lifeos", async (original) => ({
+  ...(await original<object>()),
+  useLifeosSession: (environmentId: string, sector: string) => ({ environmentId, sector, client: null, state: lifeos.state }),
+}));
+vi.mock("../shell/DownLine", () => ({ DownLine: ({ session }: { session: { state: string } }) => <p data-downline={session.state} /> }));
+
+const { Head, TrackerBody, resetTrackerFolds, restWords, setWaitingOnly, useWaitingOnly } = await import("./TrackerPage");
+const { placeOf, resetPlaces } = await import("../projects/place");
+
+const body = (over: Partial<Parameters<typeof TrackerBody>[0]> = {}) => <TrackerBody jobs={JOBS} loading={false} errors={[]} waitingOnly={false} now={NOW} onRetry={() => {}} {...over} />;
+const rowsOf = (job: string): string[] => [...document.querySelectorAll(`[data-job='${job}'] [data-project]`)].map((row) => row.getAttribute("data-project")!);
+
+beforeEach(() => {
+  lifeos.state = "connecting";
+  openWorkView(null);
+  resetPlaces();
+  resetTrackerFolds();
+});
+afterEach(() => {
+  cleanup();
+  setWaitingOnly(false);
+  workOpenPort.set(null);
+});
+
+describe("the tracker", () => {
+  it("draws a group a job, its name and dot over its rows, with one header row for the whole page", () => {
+    render(body());
+    const groups = [...document.querySelectorAll("section[data-job]")];
+    expect(groups.map((g) => g.getAttribute("aria-label"))).toEqual(["Purdue Esports", "Hypixel", "Cosmic", "Referee", "Unify"]);
+    expect(groups[0]!.querySelector("[data-sector=purdue]")).toBeTruthy();
+    expect(document.querySelectorAll("[data-part=track-head]")).toHaveLength(1);
+    expect(document.querySelector("[data-part=track-head]")!.textContent).toBe("NextWaiting onThreadsDoneTarget");
+  });
+
+  it("lists active projects by target date, paused and backlog folded under one line a job", () => {
+    render(body());
+    // FY27 budget's target (Dec 12) comes before Spring LAN's (Feb 14).
+    expect(rowsOf("purdue")).toEqual(["p-budget", "p-lan"]);
+    fireEvent.click(screen.getByRole("button", { name: "1 paused" }));
+    expect(rowsOf("purdue")).toEqual(["p-budget", "p-lan", "p-lights"]);
+    expect(restWords([{ state: "paused" }, { state: "backlog" }, { state: "backlog" }])).toBe("1 paused, 2 in backlog");
+  });
+
+  it("a held thread reads 1 mail to send in the Threads column, muted with the Outbox's glyph, and its press opens the thread", () => {
+    const opened: string[] = [];
+    workOpenPort.set((id) => void opened.push(id));
+    render(body());
+    const cell = document.querySelector("[data-project='p-lan'] [data-part=threads]") as HTMLElement;
+    expect(cell.textContent).toBe("1 mail to send");
+    expect(cell.querySelector("[data-outcome=held]")).toBeTruthy();
+    fireEvent.click(within(cell).getByRole("button", { name: "1 mail to send" }));
+    expect(opened).toEqual(["t-itap"]);
+    // The thread's press, not the row's: no project page opened.
+    expect(workViewNow()).toBeNull();
+    // A question is amber; a project with no thread leaves its cell empty.
+    expect(document.querySelector("[data-project='p-trailer'] [data-part=threads]")!.textContent).toBe("Asks you");
+    expect(document.querySelector("[data-project='p-season'] [data-part=threads]")).toBeNull();
+  });
+
+  it("a row opens its project's page in its job's Projects view", () => {
+    render(body());
+    fireEvent.click(screen.getByRole("button", { name: "Spring LAN" }));
+    expect(workViewNow()).toMatchObject({ workspaceId: "ws-purdue", view: "projects", project: "p-lan" });
+  });
+
+  it("Waiting on you keeps the rows with a held act, a question, a failure, a late task or one due today, and the jobs that have one", () => {
+    render(body({ waitingOnly: true }));
+    expect(rowsOf("purdue")).toEqual(["p-budget", "p-lan"]);
+    expect(rowsOf("hypixel")).toEqual(["p-trailer"]);
+    // Cosmic waits on no one, the empty Referee has nothing: both go. Unify could not be read and stays.
+    expect([...document.querySelectorAll("section[data-job]")].map((g) => g.getAttribute("data-job"))).toEqual(["purdue", "hypixel", "unify"]);
+    cleanup();
+    render(body({ waitingOnly: true, jobs: JOBS.slice(2, 4) }));
+    expect(screen.getByText("Nothing waits on you")).toBeTruthy();
+  });
+
+  it("the header's toggle is the filter, kept for the window", () => {
+    const Probe = () => <span data-on={String(useWaitingOnly())} />;
+    render(
+      <>
+        <Head onClose={() => {}} />
+        <Probe />
+      </>,
+    );
+    const toggle = screen.getByRole("button", { name: "Waiting on you" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(toggle);
+    expect(document.querySelector("[data-on]")!.getAttribute("data-on")).toBe("true");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("an empty job says its name and New project alone, which opens the job's New project dialog", () => {
+    render(body());
+    const referee = document.querySelector("[data-job=ref]") as HTMLElement;
+    expect(referee.textContent).toBe("RefereeNew project");
+    fireEvent.click(within(referee).getByRole("button", { name: "New project" }));
+    expect(placeOf("ws-ref").at).toBe("new");
+    expect(workViewNow()).toMatchObject({ workspaceId: "ws-ref", view: "projects" });
+  });
+
+  it("a job LifeOS could not be read for says so: the window's session line where it is down, else the host's words with Retry", () => {
+    const onRetry = vi.fn();
+    render(body({ onRetry }));
+    const unify = document.querySelector("[data-job=unify]") as HTMLElement;
+    expect(unify.querySelector("[data-job-down]")!.textContent).toContain("LifeOS did not answer the box.");
+    fireEvent.click(within(unify).getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledOnce();
+    cleanup();
+    lifeos.state = "signed-out";
+    render(body());
+    expect(document.querySelector("[data-job=unify] [data-downline]")!.getAttribute("data-downline")).toBe("signed-out");
+  });
+
+  it("a host that did not answer is one quiet line; the rest of the page stands", () => {
+    render(body({ errors: ["The Mac did not answer."] }));
+    expect(document.querySelector("[data-host-silent]")!.textContent).toBe("The Mac did not answer.");
+    expect(rowsOf("purdue")).toEqual(["p-budget", "p-lan"]);
+  });
+
+  it("draws bones in the rows' shape while the hosts are asked", () => {
+    vi.useFakeTimers();
+    try {
+      render(body({ loading: true, jobs: [] as MergedJob[] }));
+      act(() => void vi.advanceTimersByTime(200));
+      const held = document.querySelector("[aria-busy=true]") as HTMLElement;
+      expect(held.querySelectorAll(".pk-track-row")).toHaveLength(6);
+      expect(document.querySelector("section[data-job]")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

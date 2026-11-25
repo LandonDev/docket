@@ -17,7 +17,7 @@ the window straight to LifeOS.
 
 ## The budgets
 
-`scripts/perf/budgets.ts` is the table as data (B01 to B32): what he does, the budget in his words, and the perf
+`scripts/perf/budgets.ts` is the table as data (B01 to B33): what he does, the budget in his words, and the perf
 rows that time it. A budget the pair cannot time says why in `off` and names what times it instead (the Windows
 rig, the Mac's simulator, the live stall log, Microsoft's own pages). `scripts/perf/perf.test.ts` (a guard test
 of the commit gate) holds that every budget has a row that exists or a written reason, and every row a budget.
@@ -80,7 +80,7 @@ Results land in `.temp-code/plans/perf/runs/<run>/results.json`. `bun scripts/pe
 --section <name> <results.json…>` sets the middle press of each row beside its budget, between
 `<!-- perf:<name> -->` marks, a later run of a row replacing an earlier one.
 
-The rows: `launch`, `return`, `switch-workspace`, `view-<View>` for each view and for Today and Review,
+The rows: `launch`, `return`, `switch-workspace`, `view-<View>` for each view and for Today, Projects (the tracker) and Review,
 `mail-open`, `mail-composer`, `list-`, `back-` and `search-` in A, B1 and B2 (a 300-entry folder in the
 workspace's folder, in a library on the window's machine, in one on a third machine), `open-<kind>-<shape>` for
 a document, a Word file, a workbook, a deck, a PDF, a picture and a video, `tab-<kind>-A` (back to an open

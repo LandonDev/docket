@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { byPressing, byTarget, type TrackerOverview, type TrackerProject, type TrackerThread } from "@shared/work/tracker";
 import { registry } from "../../lib/connection";
 import { nameInLine } from "../../lib/hostWords";
@@ -74,11 +74,13 @@ function hostWords(err: unknown, environmentId: string): string {
 /** How often the page reads again while it is on screen: a thread's state moves, and a target he set elsewhere. */
 export const TRACKER_AGAIN_MS = 60_000;
 
-export type TrackerView = { jobs: MergedJob[]; loading: boolean; errors: string[] };
+export type TrackerView = { jobs: MergedJob[]; loading: boolean; errors: string[]; /** ask every host again (a down job's Retry) */ reload: () => void };
 
 /** Every linked host with Work on, asked once on show, again on focus and each minute while shown. */
 export function useTracker(): TrackerView {
   const [answers, setAnswers] = useState<HostAnswer[] | null>(null);
+  const [asked, setAsked] = useState(0);
+  const reload = useCallback(() => setAsked((n) => n + 1), []);
   useEffect(() => {
     let alive = true;
     const read = (): void => {
@@ -105,6 +107,8 @@ export function useTracker(): TrackerView {
       clearInterval(timer);
       window.removeEventListener("focus", read);
     };
-  }, []);
-  return { jobs: answers ? mergeOverviews(answers) : [], loading: answers === null, errors: (answers ?? []).flatMap((a) => (a.error ? [a.error] : [])) };
+  }, [asked]);
+  const jobs = useMemo(() => (answers ? mergeOverviews(answers) : []), [answers]);
+  const errors = useMemo(() => (answers ?? []).flatMap((a) => (a.error ? [a.error] : [])), [answers]);
+  return { jobs, loading: answers === null, errors, reload };
 }

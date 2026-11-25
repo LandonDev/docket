@@ -7,7 +7,7 @@ const region = (label: string): string => `[role="region"][aria-label=${JSON.str
 
 /** The views under a job in the rail, and the pages above the jobs. */
 export const VIEWS = ['Mail', 'Files', 'Tasks', 'Agenda', 'Messages', 'People', 'Outbox', 'Money'] as const
-const PLACES = [['Today', '[data-work-place="today"]'], ['Review', '[data-work-place="review"]']] as const
+const PLACES = [['Today', '[data-work-place="today"]'], ['Projects', '[data-work-place="projects"]'], ['Review', '[data-work-place="review"]']] as const
 
 async function shown(ctx: PerfCtx, label: string): Promise<void> {
   await ctx.pair.showWork(ctx.workspace, label)

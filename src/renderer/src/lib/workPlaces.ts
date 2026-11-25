@@ -1,4 +1,4 @@
-import { ChartBar, Sun, type IconComponent } from "../chrome/icons";
+import { Briefcase, ChartBar, Sun, type IconComponent } from "../chrome/icons";
 import { workPlacesChunk } from "../surfaces/chunks";
 import { shell } from "../stores/shell";
 import { whenIdle } from "./hoverPrefetch";
@@ -11,8 +11,8 @@ import { digestOpensPort } from "./workSwitch";
  * is plain data: a row's page lives in `work/places/registry.ts`, behind
  * `workPlacesChunk`, and a test there holds every row to a place of its id.
  *
- * Adding a page takes two lines: a row here and its place in the registry.
- * The icon is one the first paint already holds (chrome/icons).
+ * A page is a row here and its place in the registry, its icon one the
+ * first paint holds (chrome/icons).
  */
 export type WorkPlaceRow = {
   id: string;
@@ -25,6 +25,7 @@ export const WORK_PLACE_ROWS: WorkPlaceRow[] = [
   // Today: one page across every job (work/today). No count on its row: Today is not a queue.
   // Its key is the Go menu's; the row's hover reads it from the Work keybindings by this label.
   { id: "today", label: "Today", order: 10, icon: Sun },
+  { id: "projects", label: "Projects", order: 15, icon: Briefcase },
   { id: "review", label: "Review", order: 20, icon: ChartBar },
 ];
 
@@ -36,7 +37,7 @@ export const workPlaceRows = (): WorkPlaceRow[] => [...WORK_PLACE_ROWS].sort((a,
 
 export const workPlaceRow = (id: string | null): WorkPlaceRow | null => WORK_PLACE_ROWS.find((row) => row.id === id) ?? null;
 
-/** What a place is called before its row lands (a page may reach master first): its id, capitalized. */
+/** What a place is called before its row lands: its id, capitalized. */
 export const workPlaceLabel = (id: string): string => workPlaceRow(id)?.label ?? `${id.slice(0, 1).toUpperCase()}${id.slice(1)}`;
 
 /**

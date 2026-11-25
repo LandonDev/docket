@@ -1,6 +1,9 @@
 import type { ContextChip, SectorKey } from "@shared/work";
 import type { TasksDone } from "@shared/contract-work-tasks";
-import type { MenuRow, Project, ProjectItem, ProjectsKit, ProjectTask } from "work-kit/projects";
+import { useEffect, useMemo, useState } from "react";
+import type { RecordMade } from "@shared/work/threadRecord";
+import type { TrackerThread } from "@shared/work/tracker";
+import type { MenuRow, Project, ProjectFileEntry, ProjectItem, ProjectLogEntry, ProjectsKit, ProjectTask, ProjectThreadFact } from "work-kit/projects";
 import { MessageSquare, Settings } from "../../chrome/icons";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { Tip } from "../../components/tip";
@@ -11,7 +14,7 @@ import { cn } from "../../lib/cn";
 import { keyCaps, keyHint } from "../../lib/keys";
 import { openUrl } from "../../lib/native";
 import { rowState } from "../../lib/sidebarRows";
-import { useSessionMetaValue } from "../../lib/tcserver/store";
+import { sessionStore, useSessionMetaValue } from "../../lib/tcserver/store";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { marksAtRest } from "../../lib/threadStripModel";
 import { workOpenPort } from "../../lib/workSwitch";
@@ -19,7 +22,11 @@ import { registry } from "../../lib/connection";
 import { Face as PersonFace } from "../mail/face";
 import { openLifeosProject } from "../shell/actions";
 import { Doc, File, Link, Share, Table } from "../icons";
-import { useLinkedThread } from "../tasks/links";
+import { openInFiles } from "../files/openFrom";
+import { useLinkedThreads } from "../tasks/links";
+import { hasOutcomeMark, OutcomeMark } from "../threads/mark";
+import { readThreadRecord } from "../threads/record";
+import { leadOf, useProjectRoots } from "../threads/roots";
 import type { WorkViewProps } from "../views/registry";
 import { Bar } from "./bar";
 import { Description } from "./Description";
@@ -149,20 +156,148 @@ export function openItemIn(workspaceId: string, item: ProjectItem, project: Pick
   }
 }
 
-/** The thread on a task: its state mark, a press opening it. One mark, the newest open link's, until the thread record (M7) names every one. */
-function ThreadMark({ task }: { task: ProjectTask }) {
-  const thread = useLinkedThread(task.id);
-  const status = useSessionMetaValue(thread, (meta) => meta.status);
-  // A thread this window does not hold (another host's, a deleted one) has no mark to press.
-  if (!thread || status === undefined) return null;
+/** One thread on a task: its mark (what it left him, else its state at rest), its title and outcome in the tip, a press opening it. */
+function ThreadMark({ sessionId, task, alone }: { sessionId: string; task: ProjectTask; alone: boolean }) {
+  const status = useSessionMetaValue(sessionId, (meta) => meta.status);
+  const tone = useSessionMetaValue(sessionId, (meta) => meta.workOutcome?.tone ?? null);
+  const words = useSessionMetaValue(sessionId, (meta) => meta.workOutcome?.words ?? null);
+  const title = useSessionMetaValue(sessionId, (meta) => meta.title) ?? "";
+  // A thread this window does not hold (another host's not attached, a deleted one) has no mark to press.
+  if (status === undefined) return null;
   const state = rowState({ status });
+  const mark = hasOutcomeMark(tone) ? <OutcomeMark tone={tone} /> : marksAtRest(state) ? <StatusMark state={state} word={false} /> : <MessageSquare />;
   return (
-    <Tip label="Open thread">
-      <Button type="button" variant="ghost" size="icon-xs" aria-label={`Open the thread on ${task.title}`} data-task-thread={state} onClick={() => workOpenPort.get()?.(thread)}>
-        {marksAtRest(state) ? <StatusMark state={state} word={false} /> : <MessageSquare />}
+    <Tip label={[title, words].filter(Boolean).join(": ") || "Open thread"}>
+      <Button type="button" variant="ghost" size="icon-xs" aria-label={alone ? `Open the thread on ${task.title}` : `Open ${title || "the thread"}`} data-task-thread={tone ?? state} onClick={() => openThread(sessionId)}>
+        {mark}
       </Button>
     </Tip>
   );
+}
+
+/** The threads on a task (the kit's `taskMark`): every open link's mark, newest first, each opening its thread. */
+function TaskThreads({ task }: { task: ProjectTask }) {
+  const threads = useLinkedThreads(task.id);
+  if (!threads.length) return null;
+  return (
+    <span className="flex items-center" data-task-threads={threads.length}>
+      {threads.map((id) => (
+        <ThreadMark key={id} sessionId={id} task={task} alone={threads.length === 1} />
+      ))}
+    </span>
+  );
+}
+
+/** A thread opened from a project's screens: the window follows it to its place. */
+const openThread = (sessionId: string): void => workOpenPort.get()?.(sessionId);
+
+/**
+ * The kit's `threadFacts` (a hook): each project's most pressing root thread, its mark and its outcome in words,
+ * opening it, from the summaries this window holds. A project whose lead has no outcome to say has no entry.
+ */
+export function useThreadFacts(sector: SectorKey): ReadonlyMap<string, ProjectThreadFact> {
+  const roots = useProjectRoots(sector);
+  return useMemo(() => {
+    const facts = new Map<string, ProjectThreadFact>();
+    for (const [projectId, threads] of roots) {
+      const lead = leadOf(threads);
+      if (lead?.outcome) facts.set(projectId, { mark: <OutcomeMark tone={lead.outcome.tone} />, words: lead.outcome.words, open: () => openThread(lead.sessionId) });
+    }
+    return facts;
+  }, [roots]);
+}
+
+/** The kit's `log` (a hook): the project's root threads with what each left him, newest first, each opening its thread. */
+export function useThreadLog(project: Pick<Project, "id" | "sector">): readonly ProjectLogEntry[] {
+  const threads = useProjectRoots(project.sector).get(project.id);
+  return useMemo(
+    () =>
+      (threads ?? NO_THREADS).map((t) => ({
+        id: t.sessionId,
+        at: t.updatedAt,
+        ...(hasOutcomeMark(t.outcome?.tone) ? { mark: <OutcomeMark tone={t.outcome!.tone} /> } : {}),
+        title: t.title,
+        ...(t.outcome ? { detail: t.outcome.words } : {}),
+        open: () => openThread(t.sessionId),
+      })),
+    [threads],
+  );
+}
+
+const NO_THREADS: TrackerThread[] = [];
+
+/**
+ * What each thread's record says it made or changed, kept for the window's life by thread and by what its summary
+ * says: the record is read again only when the thread's outcome or its last turn moves.
+ */
+const madeKept = new Map<string, { key: string; made: readonly RecordMade[] }>();
+const madeKey = (t: TrackerThread): string => `${t.updatedAt}|${t.outcome?.tone ?? ""}|${t.outcome?.words ?? ""}`;
+
+/** The made things of the threads, if every one is kept for its state; else undefined. */
+const madeOf = (list: readonly TrackerThread[]): ReadonlyMap<string, readonly RecordMade[]> | undefined =>
+  list.every((t) => madeKept.get(t.sessionId)?.key === madeKey(t)) ? new Map(list.map((t) => [t.sessionId, madeKept.get(t.sessionId)!.made])) : undefined;
+
+/** The made things of the threads given, as their host's records say (`work.threads.record`), once a thread and state. */
+export function useMadeBy(threads: readonly TrackerThread[] | undefined, read = readThreadRecord): ReadonlyMap<string, readonly RecordMade[]> | undefined {
+  const list = threads ?? NO_THREADS;
+  // `wanted` names every thread and the state it was read in: the answer stands while it does.
+  const wanted = list.map((t) => `${t.sessionId}@${madeKey(t)}`).join(",");
+  const [got, setGot] = useState(() => ({ wanted, made: madeOf(list) }));
+  useEffect(() => {
+    let live = true;
+    const land = (): void => {
+      if (live) setGot((was) => (was.wanted === wanted && was.made ? was : { wanted, made: madeOf(list) }));
+    };
+    const missing = list.filter((t) => madeKept.get(t.sessionId)?.key !== madeKey(t));
+    if (!missing.length) {
+      land();
+      return;
+    }
+    void Promise.all(
+      missing.map((t) => {
+        const env = sessionStore.environmentOf(t.sessionId);
+        if (!env) return madeKept.set(t.sessionId, { key: madeKey(t), made: [] });
+        return read(env, t.sessionId).then(
+          (record) => void madeKept.set(t.sessionId, { key: madeKey(t), made: record.made }),
+          // A host that refuses the record (a release behind) lists nothing of the thread's: never an error on the page.
+          () => void madeKept.set(t.sessionId, { key: madeKey(t), made: [] }),
+        );
+      }),
+    ).then(land);
+    return () => {
+      live = false;
+    };
+  }, [wanted]);
+  return got.wanted === wanted ? got.made : undefined;
+}
+
+/** Where a made thing opens from a project's Files: a Files tab of its job, a page on the web, or else its thread. */
+function openMade(made: RecordMade): () => void {
+  const open = made.open;
+  const env = sessionStore.environmentOf(made.sessionId);
+  if (open?.at === "files" && env) return () => void openInFiles({ id: open.workspaceId, environmentId: env }, { ref: open.ref, name: open.name }).catch(failed);
+  if (open?.at === "url") return () => void openUrl(open.url).catch(failed);
+  return () => openThread(made.sessionId);
+}
+
+/** The kit's `files` (a hook): the files the project's threads made or changed, with which thread and when; Open goes to Files. */
+export function useThreadFiles(project: Pick<Project, "id" | "sector">): readonly ProjectFileEntry[] | undefined {
+  const threads = useProjectRoots(project.sector).get(project.id);
+  const made = useMadeBy(threads);
+  return useMemo(() => {
+    if (!made) return undefined;
+    const titleOf = new Map((threads ?? NO_THREADS).map((t) => [t.sessionId, t.title]));
+    const all = [...made].flatMap(([root, list]) => list.map((m) => ({ root, m }))).sort((a, b) => b.m.at - a.m.at);
+    const seen = new Set<string>();
+    const rows: ProjectFileEntry[] = [];
+    for (const { root, m } of all) {
+      // An undone write left nothing; a thing changed again is listed once, at its newest.
+      if (m.undone || seen.has(m.name)) continue;
+      seen.add(m.name);
+      rows.push({ id: m.id, name: m.name, kind: m.open?.at === "url" ? "link" : "file", by: `${m.verb} by ${titleOf.get(root) ?? "a thread"}`, at: m.at, open: openMade(m) });
+    }
+    return rows;
+  }, [made, threads]);
 }
 
 /** A new LifeOS document in the project, opened in place at once. */
@@ -221,9 +356,13 @@ export function projectsKitFor(env: string, workspaceId: string): ProjectsKit {
     Bar,
     // The view header's own buttons (docs/DESIGN.md): quiet, 28px, as Tasks' New task and Docs' New are.
     verbs: { primary: "ghost", size: "sm" },
-    taskMark: ThreadMark,
+    taskMark: TaskThreads,
+    // The thread record's three feeds (docs/agents/work-tracker.md "The slots"): hooks, the same functions for the kit's life.
+    log: useThreadLog,
+    files: useThreadFiles,
+    threadFacts: useThreadFacts,
     threads: {
-      Mark: ThreadMark,
+      Mark: TaskThreads,
       newThread: (project) => void startIn(workspaceId, project, projectChip(project)),
       startThread: (task, project) => void startIn(workspaceId, project, taskChip(task)),
     },

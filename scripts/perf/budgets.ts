@@ -52,7 +52,8 @@ export const BUDGETS: Budget[] = [
   { id: 'B29', what: 'The phone: list a folder; first page of a file', budget: '1 s; 2 s', rows: [], off: 'The phone runs on the Mac\'s simulator: scripts/e2e-phone-hosted.ts through a Mac child.' },
   { id: 'B30', what: 'What a window asks on connect and focus, under load', budget: '500 ms each', rows: ['reconnect'], off: 'The live box\'s own answers are read with tc-local (the kit\'s guard times `--hello` every 5 s).' },
   { id: 'B31', what: 'Reconnect: the shown view current', budget: '2 s after the socket; 5 s after a restarted box answers', ms: 2000, rows: ['reconnect'] },
-  { id: 'B32', what: "The server's loop", budget: 'no stall of 1 s; under 10 of 400 ms an hour at 30 threads', rows: [], off: 'The live stall log: scripts/perf/stall-report.ts.' }
+  { id: 'B32', what: "The server's loop", budget: 'no stall of 1 s; under 10 of 400 ms an hour at 30 threads', rows: [], off: 'The live stall log: scripts/perf/stall-report.ts.' },
+  { id: 'B33', what: 'Open Projects, the tracker across jobs', budget: '300 ms kept; 1.5 s cold', ms: 300, rows: ['view-Projects'] }
 ]
 
 /** Whether a row id times a budget: `view-*` names every row that starts `view-`. */

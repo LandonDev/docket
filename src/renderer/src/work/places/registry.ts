@@ -29,6 +29,7 @@ export interface WorkPlaceModule {
 export const WORK_PLACES: Record<string, { chunk: () => Promise<WorkPlaceModule> }> = {
   today: { chunk: () => import("../today") },
   review: { chunk: () => import("../review") },
+  projects: { chunk: () => import("../tracker") },
 };
 
 const chunks = new Map<string, Chunk<WorkPlaceModule>>();

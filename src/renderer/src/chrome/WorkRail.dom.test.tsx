@@ -242,7 +242,7 @@ describe("the rail's rows for the pages above the Work workspaces", () => {
     WORK_PLACE_ROWS.push(PLACE);
     const names = labels(await mountRail([CODE]));
     // Every page's row leads, in its order (the probe 5, Today 10, Review 20); the last sits right over Add workspace….
-    expect(names.slice(names.indexOf("Probe place"), names.indexOf("Add workspace…") + 1)).toEqual(["Probe place", "Today", "Review", "Add workspace…"]);
+    expect(names.slice(names.indexOf("Probe place"), names.indexOf("Add workspace…") + 1)).toEqual(["Probe place", "Today", "Projects", "Review", "Add workspace…"]);
   });
 });
 
@@ -254,7 +254,7 @@ describe("Today's row in the rail", () => {
     const root = await mountRail([CODE, WORK], { onOpenOutbox: () => {} });
     const names = labels(root);
     // First of the pages above the workspaces, which come before the workspaces themselves.
-    expect(names.slice(names.indexOf("Today"), names.indexOf("Purdue Esports") + 1)).toEqual(["Today", "Review", "Purdue Esports"]);
+    expect(names.slice(names.indexOf("Today"), names.indexOf("Purdue Esports") + 1)).toEqual(["Today", "Projects", "Review", "Purdue Esports"]);
     const row = [...root.querySelectorAll("nav button")].find((b) => b.textContent?.trim() === "Today") as HTMLButtonElement;
     await probe!.act(async () => setOutboxWaiting(4));
     // The Outbox's count is beside it already: Today's row carries none.

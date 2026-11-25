@@ -31,7 +31,14 @@ vi.mock("work-kit/lifeos", async (original) => ({
   createLifeosProjectsClient: () => fake.client,
 }));
 // The window holds one thread, running: the one LifeOS links to "Network for 64 seats".
-vi.mock("../tasks/links", () => ({ useLinkedThread: (taskId: string) => (taskId === "t-network" ? "th1" : null) }));
+vi.mock("../tasks/links", () => ({
+  useLinkedThread: (taskId: string) => (taskId === "t-network" ? "th1" : null),
+  useLinkedThreads: (taskId: string) => (taskId === "t-network" ? LINKED : []),
+}));
+const LINKED = ["th1"];
+// The project's threads as the window's summaries hold them (work/threads/roots.ts): none, unless a test files some.
+const roots = vi.hoisted(() => ({ map: new Map<string, unknown[]>() }));
+vi.mock("../threads/roots", async (original) => ({ ...(await original<object>()), useProjectRoots: () => roots.map }));
 vi.mock("../../lib/tcserver/store", async (original) => ({
   ...(await original<object>()),
   useSessionMetaValue: (id: string | null | undefined, read: (meta: { status: string }) => unknown) => (id === "th1" ? read({ status: "running" }) : undefined),
@@ -167,8 +174,9 @@ describe("the Projects view", () => {
     expect(within(lan).getByText("Sam Ortiz")).toBeTruthy();
     expect(lan.querySelector("[data-part=done]")!.textContent).toBe("2 of 8");
     expect(lan.querySelector("[data-part=next]")!.textContent).toContain("Stage and casters");
-    // No Threads column until the thread record fills it.
-    expect(document.querySelector("[data-part=track-head]")!.textContent).not.toContain("Threads");
+    // The Threads column is TempCode's (kit.tsx `threadFacts`); a project with no thread to speak of leaves its cell empty.
+    expect(document.querySelector("[data-part=track-head]")!.textContent).toContain("Threads");
+    expect(lan.querySelector("[data-part=threads]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "1 paused, 1 in backlog" }));
     expect(rows()).toEqual(["p-tryouts", "p-lan", "p-lights", "p-budget"]);
     fireEvent.click(screen.getByRole("button", { name: "Show finished" }));
@@ -376,6 +384,32 @@ describe("threads", () => {
 
   it("a task's chip is the task itself, as the Tasks view's is, so the host links the thread and Done names it", () => {
     expect(taskChip({ id: "t-network", title: "Network for 64 seats" } as ProjectTask)).toEqual({ kind: "task", label: "Network for 64 seats", ref: { at: "lifeos", table: "tasks", id: "t-network" } });
+  });
+
+  it("a project's Threads cell is its most pressing thread: a held mail reads 1 mail to send, muted, and opens that thread", () => {
+    const openThread = vi.fn();
+    workOpenPort.set(openThread);
+    roots.map = new Map([
+      [
+        "p-lan",
+        [
+          { sessionId: "t-seat", title: "Seat map for 64", updatedAt: 9, outcome: { words: "Made Seat map.xlsx", tone: "made" } },
+          { sessionId: "t-itap", title: "Ask ITaP for two more switches", updatedAt: 5, outcome: { words: "1 mail to send", tone: "held" } },
+        ],
+      ],
+    ]);
+    try {
+      render(<Screen {...props()} />);
+      const cell = document.querySelector("[data-project='p-lan'] [data-part=threads]") as HTMLElement;
+      expect(cell.textContent).toBe("1 mail to send");
+      expect(cell.querySelector("[data-outcome=held]")).toBeTruthy();
+      fireEvent.click(within(cell).getByRole("button", { name: "1 mail to send" }));
+      expect(openThread).toHaveBeenCalledWith("t-itap");
+      // The press is the thread's, not the row's: the list stays.
+      expect(placeOf("ws").at).toBe("list");
+    } finally {
+      roots.map = new Map();
+    }
   });
 
   it("a task a thread works on shows that thread's mark, and a press opens the thread", () => {
