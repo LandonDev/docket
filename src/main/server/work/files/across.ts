@@ -30,6 +30,17 @@ const lastName = new Map<string, string>()
 /** What the host link says of a desktop it cannot reach now. */
 const AWAY = /offline|no live link|not connected|connection closed|timed out/i
 
+/**
+ * A desktop's link to this host came back or went: each Work workspace that may use it says its places changed, so a
+ * window asks them again, and a folder of that desktop it shows is asked too (the window's far link hears it, farLink.ts):
+ * one left open on screen says it is away, or lists again, without his press. An ask in flight of it joins nothing now.
+ */
+export function reachChanged(ctx: Pick<WorkCtx, 'db' | 'push' | 'settings'>, host: string): void {
+  for (const key of [...acrossAsking.keys()]) if (key.split('\u0000')[1] === host) acrossAsking.delete(key)
+  const rows = ctx.db.prepare(`SELECT id FROM workspaces WHERE kind = 'work'`).all() as { id: string }[]
+  for (const { id } of rows) if (ctx.settings.workspace(id).mayUseDesktop.includes(host)) ctx.push({ push: 'work.files', workspaceId: id, places: true }, { need: 'read' })
+}
+
 export const ACROSS_WINDOW = 'Only your own window lists another computer through this host.'
 
 /**

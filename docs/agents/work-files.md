@@ -2011,7 +2011,21 @@ host's bridge is off for that host"). Opening a file in its app there
 (`teams_open` on that host) is a press the PC asks for, as any action beyond
 a read. A desktop asleep, off its VPN or with TempCode closed reads in a
 window as "<name> did not answer" with Retry: the box says "<name> is not
-reachable now.", naming it as it last saw it. The phone lists the box's own
+reachable now." (the typed away, `NotReachable`), naming it as it last saw it.
+The box tells when a desktop that dialed it registers again or goes
+(`HostRead.onReach`, peer.ts): copies that wait for it are sent at once
+(`retryWaiting`), and each Work workspace that may use it is pushed
+`places` (across.ts `reachChanged`), which the window's far link passes on
+(farLink.ts), so its places and a folder of it left open on screen are asked
+again with no press. A desktop that stops answering keeps the places it last
+said in the sidebar, each `unreachable` (store.ts `useReach`), so a folder of
+it left open stays its folder and is never "not here any more". A folder that
+then does not answer keeps its rows under
+the line, with when they were read ("This is the list from 1:40 PM."), and a
+copy's line names that desktop by its last read or the name the box gave it
+(FilesView.tsx `copyHostOf`), never "another computer" while it is known. The
+journey's desk runs on the box itself, so it registers as the box's machine
+name. The phone lists the box's own
 places alone; it does not yet list a desktop's.
 
 Proven 2026-11-24 in the Windows rig (.temp-code/plans/landed/pc-setup/files-across/):
@@ -2042,7 +2056,9 @@ shell/actions.ts; M3 of the performance pass).
   is names, sizes, times and marks; the host fences every ask again, and no permission is read from a mark.
 - **Back.** A folder shown again within `LISTING_FRESH_MS` (5 s, the host's own freshness) of its first page, with no
   push naming it since, is drawn as kept and asks the host nothing; the window hears each host's pushes once for the
-  keep, so a change named while no one shows the folder makes its next showing ask once. Back's own `tabSet` stays
+  keep, so a change named while no one shows the folder makes its next showing ask once. A folder of a desktop the
+  window reaches only through the workspace's host (`work.files.across`) is never drawn as kept: nothing of it is
+  pushed, so each showing asks. Back's own `tabSet` stays
   (the host keeps where each tab stands), and while it is out its own tabs push asks for nothing; a newer revision is
   asked once after its answer.
 - **Draws.** A read of a page already drawn (a push, a showing past 5 s) never puts it back to loading and keeps

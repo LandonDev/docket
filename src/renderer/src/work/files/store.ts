@@ -205,7 +205,12 @@ export function useReach(workspace: WorkspaceMeta, attempt: number): Reach | nul
       const current = (): boolean => live && asked.get(link) === mine;
       const failed = (err: unknown): void => {
         if (!current()) return;
-        reads.set(link, { link, name, desktop: false, wire: reads.get(link)?.wire ?? "files", failed: { words: workErrorWords(err, { host: name }) || "No answer.", unreachable: unreachable(err) } });
+        const was = reads.get(link);
+        const away = unreachable(err);
+        // A desktop that stopped answering keeps the places it last said, each out of reach: a folder of it left open
+        // stays its folder, its rows kept with their age, never a place gone.
+        const kept = away && link !== own && was?.answer ? { answer: { ...was.answer, places: was.answer.places.map((place) => ({ ...place, state: { state: "unreachable" as const } })) } } : {};
+        reads.set(link, { link, name, desktop: false, wire: was?.wire ?? "files", ...kept, failed: { words: workErrorWords(err, { host: name }) || "No answer.", unreachable: away } });
         paint();
         answered(link);
       };
@@ -820,7 +825,7 @@ export interface Listing {
   away: boolean;
   /** his Retry is out: the page keeps what it said (a failure and its words, a search's gap) and that Retry spins */
   retrying?: boolean;
-  /** when a kept list was read (a machine asleep) */
+  /** when a kept list was read (a machine asleep, or one that did not answer over the rows it had) */
   asOf?: number;
   /** the error is a later page's: the rows above it stay, and its cursor is kept for Retry */
   lostPage?: boolean;
@@ -1186,7 +1191,10 @@ async function load(key: string, from: ListFrom, at: FolderRef, sort: FileSort, 
   } catch (err) {
     const now = listings.get(key);
     if (!now || listingRound.get(key) !== round) return;
-    putListing(key, { ...now, loaded: true, loading: false, searching: false, retrying: false, error: workErrorWords(err, { host: registry.environment(from.copy.link)?.name }) || "The host did not answer.", away: unreachable(err), lostPage: more });
+    const away = unreachable(err);
+    // The rows a machine away leaves on screen say when they were read, unless its host said already.
+    const readAt = away && now.entries.length && !now.asOf ? listingMeta.get(key)?.loadedAt : undefined;
+    putListing(key, { ...now, loaded: true, loading: false, searching: false, retrying: false, error: workErrorWords(err, { host: registry.environment(from.copy.link)?.name }) || "The host did not answer.", away, lostPage: more, ...(readAt ? { asOf: readAt } : {}) });
   }
 }
 
@@ -1269,8 +1277,10 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
     listingMeta.set(key, { link: from.copy.link, workspaceId: from.workspaceId, placeId: from.copy.place.id, pushAt: watched, lens, seenAt: now, loadedAt: meta?.loadedAt ?? 0, dirty: meta?.dirty ?? false });
     hearWorkOff();
     const was = listings.get(key);
+    // A desktop reached through another host pushes nothing of its folders: shown again, it is always asked.
+    const far = !registry.has(from.copy.link) && !listingSeams.fetch;
     // Shown again this soon (Back, a tab switched to and back), as it was and with nothing named since: drawn, not asked.
-    const fresh = !!was?.loaded && !was.error && !was.sleeping && !was.loading && !meta?.dirty && now - (meta?.loadedAt ?? 0) <= LISTING_FRESH_MS && !from.search && !from.team;
+    const fresh = !far && !!was?.loaded && !was.error && !was.sleeping && !was.loading && !meta?.dirty && now - (meta?.loadedAt ?? 0) <= LISTING_FRESH_MS && !from.search && !from.team;
     // Shown because he pressed for it, or shown again (a restored tab): only the first may wake its machine.
     const wake = takePress(at);
     if (!fresh) void load(key, from, at, sort, false, false, wake);
@@ -1280,8 +1290,8 @@ export function useListing(from: ListFrom | null, at: FolderRef, sort: FileSort 
     const host = filesLink(from.copy.link);
     const off = host.onPush((push) => {
       if (push.push !== "work.files" || push.workspaceId !== from.workspaceId) return;
-      // A lens follows his marks, which change with the tabs he opens.
-      if ((watched && push.at === watched) || (lens && (push.tabs !== undefined || push.marks))) void load(key, from, at, sort, false, true);
+      // A lens follows his marks, which change with the tabs he opens; a far desktop's folder, its link coming or going.
+      if ((watched && push.at === watched) || (lens && (push.tabs !== undefined || push.marks)) || (far && push.places)) void load(key, from, at, sort, false, true);
     });
     // A reopened link: the folder on screen is read once, in the shown front of the host's lane, and never wakes its
     // machine (Sol round 1, S4).

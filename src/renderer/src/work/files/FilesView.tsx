@@ -1105,9 +1105,12 @@ function SearchTab({
   );
 }
 
-/** The computer a copy's file is on, as he names it: "MacBook", "the Windows VM". */
-const copyHostOf = (tab: Pick<FileTab, "copyOf">, reach: Reach): string =>
-  tab.copyOf?.vm ? "the Windows VM" : (reach.reads.find((r) => r.answer?.host === tab.copyOf?.host)?.name ?? "another computer");
+/** The computer a copy's file is on, as he names it: "MacBook", "the Windows VM". One away is still named: its last read, or the name the host in between gave it. */
+export const copyHostOf = (tab: Pick<FileTab, "copyOf">, reach: Pick<Reach, "reads">): string => {
+  if (tab.copyOf?.vm) return "the Windows VM";
+  const host = tab.copyOf?.host;
+  return reach.reads.find((r) => r.answer?.host === host)?.name ?? reach.reads.find((r) => r.link === host)?.name ?? (host ? farName(host) : undefined) ?? "another computer";
+};
 
 function OpenFile({
   tab,

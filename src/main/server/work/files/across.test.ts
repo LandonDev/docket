@@ -6,7 +6,8 @@ import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
 import { filesPaneOf } from '@shared/work'
 import type { Caller } from '../modules'
 import { setCloudDir } from '../office/files/library'
-import { forgetAcross, NOT_BOUND, setLiveBinding } from './across'
+import { forgetAcross, NOT_BOUND, reachChanged, setLiveBinding } from './across'
+import { NotReachable } from './policy'
 import { setHostRead } from '../peer'
 import { closeFilesState, filesHandle } from './handle'
 import { setSystemBin } from './trash'
@@ -81,6 +82,24 @@ afterEach(() => {
   closeFilesState(pc.db)
   pc.close()
   box.close()
+})
+
+describe("a desktop's link coming back or going", () => {
+  it('tells each Work workspace that may use it that its places changed, and no other', () => {
+    box.settings.set(WS, { mayUseDesktop: [PC] })
+    box.pushes.length = 0
+    reachChanged(box.ctx, PC)
+    expect(box.pushes.map((x) => x.p)).toEqual([{ push: 'work.files', workspaceId: WS, places: true }])
+    box.pushes.length = 0
+    reachChanged(box.ctx, 'env_elsewhere')
+    expect(box.pushes).toEqual([])
+  })
+
+  it("says an away desktop's folder in the typed away, so a window reads it as away and a send waits for it", async () => {
+    Object.assign(box.ctx, { peer: { call: () => ({ call: async () => Promise.reject(new Error(`Mac offline: ${PC} has no live link to this host`)) }) } })
+    const err = await across(window, 'work.files.list', { at: { at: 'file', host: PC, path: pc.team } }).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(NotReachable)
+  })
 })
 
 describe('work.files.across', () => {

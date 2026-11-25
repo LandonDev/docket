@@ -20,7 +20,8 @@ import { pruneOps, settleOps } from './write'
 import { setStandsFor } from '../canvas/fileKey'
 import { copyOriginal } from './tabs'
 import { forgetVmLists } from './places/teams'
-import { forgetAcross } from './across'
+import { forgetAcross, reachChanged } from './across'
+import { hostReadOf } from '../peer'
 
 // A tab's copy of another computer's file keeps its marks by the original, so the next copy of it finds them.
 setStandsFor(copyOriginal)
@@ -139,6 +140,16 @@ export const files: WorkModule = {
       }
     }, 30_000)
     waiting.unref?.()
+    // A desktop that dialed this host came back or went: copies that wait for it go now, and every window asks its
+    // places and any folder of it on screen again, so a far folder left open says it is away (across.ts).
+    const offReach = hostReadOf(ctx)?.onReach?.((host) => {
+      try {
+        retryWaiting(ctx)
+        reachChanged(ctx, host)
+      } catch (err) {
+        ctx.log(`files: a desktop's link changed and was not told: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    })
     return () => {
       // A copy's pieces on their way here go with Work (sol S13): the write that names them is refused and sent again.
       resetStaged()
@@ -149,6 +160,7 @@ export const files: WorkModule = {
       offFollowed()
       clearInterval(daily)
       clearInterval(waiting)
+      offReach?.()
       stopAutosaves()
       closeFilesState(ctx.db)
       // Work off: the VM's folder lists kept in memory go with it.

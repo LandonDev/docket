@@ -116,6 +116,8 @@ export interface HostRead {
   read<T>(host: string, module: PillarId, verb: string, args: unknown): Promise<T>
   /** another host as he names it, when this host has a link to it */
   name?(host: string): string | null
+  /** a host that dialed this one registered again or went: its link came back or dropped */
+  onReach?(listener: (host: string) => void): () => void
 }
 const hostReads = new WeakMap<WorkCtx, HostRead>()
 export const hostReadOf = (ctx: WorkCtx): HostRead | undefined => hostReads.get(ctx)
@@ -145,6 +147,10 @@ export const peerPart: CtxPart<'peer'> = (ctx, deps) => {
     hosts: () => (links?.reachable() ?? []).map((r) => r.id).filter((id) => id !== deps.environmentId),
     // A host this one dialed, by the name he saved it under; else one that dialed this one (a PC), by the name it registered with.
     name: (host) => deps.peers?.get(host)?.env.name ?? deps.peerCalls?.info(host)?.name ?? null,
+    onReach: (listener) => {
+      const offs = deps.peerCalls ? [deps.peerCalls.onRegister((host) => listener(host)), deps.peerCalls.onDrop((host) => listener(host))] : []
+      return () => offs.forEach((off) => off())
+    },
     async read<T>(host: string, module: PillarId, verb: string, args: unknown): Promise<T> {
       const answer = await ask<WorkCallResult>(host, { environmentId: deps.environmentId, sessionId: 'work', title: 'Work', permission: 'safe' }, { kind: 'call', module, verb, args })
       if (!answer || typeof answer !== 'object' || !('work' in answer)) throw new Error('that host runs a build from before Work')

@@ -42,8 +42,9 @@ export function filesLink(link: string): FilesLink {
       const { workspaceId = far.workspaceId, ...rest } = (params ?? {}) as { workspaceId?: string };
       return via.request<T>("work.files.across", { workspaceId, host: link, method, params: rest }, options);
     },
-    // The host in between carries no pushes from it: its places are asked again with the workspace's own.
-    onPush: () => () => {},
+    // The host in between carries no pushes from it, only its own word that the desktop's link came back or went
+    // (across.ts `reachChanged`): its places, and a folder of it on screen, are asked again.
+    onPush: (listener) => via.onPush((push) => void (push.push === "work.files" && push.places && push.workspaceId === far.workspaceId && listener(push))),
     onOpen: (listener) => via.onOpen(listener),
   };
   made.set(link, { far, via, link: wrapper });
