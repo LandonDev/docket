@@ -151,8 +151,8 @@ export function linkedOut(ctx: Pick<WorkCtx, 'db'>, path: string): boolean {
 }
 
 /**
- * The hold's race (C1): a Save As link makes its document shared before anything is exported, not once its file is
- * made. `reserveLink` counts the document linked from his press (`linkedOut`), so an agent's write or format whose
+ * The hold's race (C1): a Save As link, or Just a copy into a folder others open, makes its document shared before
+ * anything is exported, not once its file is made. `reserveLink` counts the document linked from his press (`linkedOut`), so an agent's write or format whose
  * verdict is read after it only suggests. One whose verdict was read while the document was still private registers
  * in the same turn (`privateWrite`, docs/tools.ts), and the press waits for it (`settlePrivateWrites`): if it wrote
  * straight into the document, Save As stops until he has looked at it, so the link never carries an agent's words he

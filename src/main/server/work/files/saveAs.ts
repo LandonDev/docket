@@ -11,7 +11,7 @@ import type { Caller, WorkCtx } from '../modules'
 import { admitOwner, deliver, freshBytes, freshVersion, unreachable } from './copies'
 import { vmList } from '../office/vm/files'
 import { admitChange, filesState, HELD_BY_TOOLS, THREADS_BY_TOOLS, vmWhere, writeBytes } from './handle'
-import { admitCaller, locate, workspaceHere } from './policy'
+import { admitCaller, locate, sharedOf, workspaceHere } from './policy'
 import { versionWord } from './save'
 import { makeBytes, makeFolderRef } from './verbs'
 import { vmReadVersioned } from './vmVerbs'
@@ -220,9 +220,10 @@ export async function saveAs(
   else if (admitChange(ctx, by, 'make', { workspaceId: p.workspaceId, refs: [at] }, method) === 'hold') throw new Error(HELD_BY_TOOLS)
   const file = linkableDoc(ctx, source)
   const doc = p.link === false ? null : file
-  // The hold's race: a link counts the document shared from this press, before anything is exported, and an agent's
-  // write begun while it was private is waited for; one that wrote straight in stops the press until he has seen it.
-  const release = doc ? reserveLink(doc) : () => {}
+  // The hold's race: a link, or Just a copy into a folder others open, counts the document shared from this press,
+  // before anything is exported, and an agent's write begun while it was private is waited for; one that wrote straight
+  // in stops the press until he has seen it.
+  const release = file && (doc || far || sharedOf(ctx, at)) ? reserveLink(file) : () => {}
   try {
     if (file && (await settlePrivateWrites(file))) throw new Error(AGENT_JUST_WROTE)
     return await saveAsReserved(ctx, by, p, { source, at, vm, doc })

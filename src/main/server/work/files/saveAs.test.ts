@@ -521,6 +521,26 @@ describe("the hold's race: an agent's write on its way as he links the document"
     await edit('more of his words')
     expect(readFileSync(join(box.folder, 'Plan.docx'), 'utf8')).toBe('docx more of his words')
   })
+
+  it('Just a copy to a shared folder counts the document shared from his press until it is made; one to his own folder does not', async () => {
+    const team = { at: 'file', host: HOST, path: join(box.team, 'General') }
+    let open!: () => void
+    doc.gate = new Promise<void>((ok) => (open = ok))
+    const saving = save({ at: team, name: 'Budget', place: 'General', link: false })
+    await flush()
+    // The export is under way: an agent's verdict read now only suggests, so no word of its reaches the copy unseen.
+    expect(linkedOut(box.ctx, source().path)).toBe(true)
+    open()
+    expect(await saving).toMatchObject({ saved: { name: 'Budget.docx', linked: false } })
+    expect(linkedOut(box.ctx, source().path)).toBe(false)
+    // His own folder is no place others open: the document stays his agent's to write while that copy is made.
+    doc.gate = new Promise<void>((ok) => (open = ok))
+    const mine = save({ at: { at: 'place', id: 'folder' }, link: false })
+    await flush()
+    expect(linkedOut(box.ctx, source().path)).toBe(false)
+    open()
+    expect(await mine).toMatchObject({ saved: { name: 'Plan.docx', linked: false } })
+  })
 })
 
 describe("a link's presses and writes, one at a time (audit A5)", () => {
