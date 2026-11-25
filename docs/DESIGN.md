@@ -3641,15 +3641,18 @@ format left behind of this workbook under it; a refusal is one toast in
 the host's own words.
 
 **A deck that is read only here** (an imported `.ppt`, `.pps`, `.ppsx`,
-`.odp` or `.key`, or a Google deck). It has no format row and no mode; the
-bar keeps Present. One quiet line sits above the stage: 12px muted words,
-a 12px inset, 4px above and below, a hairline under it, then at most one
-press 8px after the words, a link button in the same 12px with its busy
-label (the spinner in its own reserved place, the press off while it
-runs). An import and a Google deck read "Read only", then "Make a copy to
-edit". A Google deck changed in Drive since it was read reads "Changed in
-Google", then "Read again"; one Drive could not be reached for reads
-"Couldn't reach Google", then "Read again". A mail's file in a Files tab
+`.odp` or `.key`, or a Google deck). It has no format row and no mode. One
+quiet line sits above the stage: 12px muted words, a 12px inset, 4px above
+and below, a hairline under it, then at most one press 8px after the
+words, a link button in the same 12px with its busy label (the spinner in
+its own reserved place, the press off while it runs), and Present at the
+line's far end (owner item 32), so the deck has one row above it, not a
+bar holding only Present over the line. An import and a Google deck read
+"Read only", then "Make a copy to edit". A Google deck changed in Drive
+since it was read reads "Changed in Google", then "Read again"; one Drive
+could not be reached for reads "Couldn't reach Google", "This is the copy
+from 1:40 PM" in regular muted (the time the host read it from Drive,
+owner item 33; a date before today), then "Read again". A mail's file in a Files tab
 keeps the press alone: its header already says Read only. A failed press
 is one toast. More keeps Make a copy to edit, and for Google Read again
 from Google and Open in Google; Save to Google Slides is there for a deck

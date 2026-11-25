@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useTruncated } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
@@ -29,11 +29,14 @@ export function QuietLine({
   word,
   detail,
   press,
+  end,
   ...marks
 }: {
   word: string | null;
   detail?: string | null | undefined;
   press?: { label: string; run(): void | Promise<void> } | null | undefined;
+  /** what the line holds at its far end: a read-only deck's Present, so the item has one row above it, not two */
+  end?: ReactNode;
 } & Record<`data-${string}`, true | string | undefined>) {
   const [busy, setBusy] = useState(false);
   const run = () => {
@@ -54,6 +57,7 @@ export function QuietLine({
           <BusyLabel busy={busy} label={press.label} />
         </Button>
       ) : null}
+      {end ? <span className="ms-auto flex shrink-0 items-center">{end}</span> : null}
     </div>
   );
 }

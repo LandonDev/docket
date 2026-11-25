@@ -429,7 +429,19 @@ export function SlidesBody({
           mediaSize={mediaSize}
         />
       ) : null}
-      {file.notice && !renderError ? <NoticeLine notice={file.notice} /> : null}
+      {file.notice && !renderError ? (
+        <NoticeLine
+          notice={file.notice}
+          // A read-only deck's one press beside its words: Present ends this line, and the bar holds no row of its own for it.
+          end={
+            view.readOnly && canPresent(view) ? (
+              <PreviewOpener.Provider value={() => askPreview(item.id)}>
+                <PresentButton onPresent={presentFrom} />
+              </PreviewOpener.Provider>
+            ) : null
+          }
+        />
+      ) : null}
       {look === "sorter" ? (
         <div ref={box} className="flex min-h-0 min-w-0 flex-1">
           <Sorter view={view} current={shown?.key ?? null} width={size.width} pictureOf={pictureOf} pictures={!view.renderError} hand={slideHand} onOpen={(key) => store.set({ current: key, look: "slide" })} />
@@ -1236,8 +1248,9 @@ export function Bar({ item, env, source, host: given, engine }: CanvasBodyProps<
   const pending = view.changes.length;
   const host = given ?? hostFor(env, item.id);
   if (side !== "powerpoint") {
-    // Present, at the bar's end, wherever the host has a picture of the file to show and the row does not hold it.
-    const presentHere = !view.hand && canPresent(view);
+    // Present, at the bar's end, wherever the host has a picture of the file to show and neither the row nor a read-only
+    // deck's line holds it.
+    const presentHere = !view.hand && !view.readOnly && canPresent(view);
     return (
       <div className="ms-auto flex shrink-0 items-center gap-1">
         {look === "slide" ? <ZoomMenu zoom={zoom} onZoom={(next) => store.set({ zoom: next })} /> : null}

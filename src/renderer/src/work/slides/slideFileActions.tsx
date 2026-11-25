@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { GoogleFileState, GooglePush } from "@shared/contract-work-google";
 import type { DeckView } from "@shared/contract-work-slides";
 import type { CanvasItem } from "@shared/work";
@@ -9,6 +9,7 @@ import type { CanvasShell, MoreEntry } from "../canvas/kind";
 import { sayError } from "../canvas/frame";
 import { QuietLine } from "../canvas/QuietLine";
 import { Export } from "../icons";
+import { whenWords } from "../files/fileText";
 import { feedMore } from "./more";
 import { UploadGoogleDialog } from "../google/UploadGoogleDialog";
 
@@ -19,18 +20,22 @@ export const FILES_PANE = "filespane_";
 export interface SlideNotice {
   /** null: the line says nothing the bar has not (a mail's file in a Files tab is "Read only" in its header). */
   words: string | null;
+  /** after the words, muted: which copy is shown ("This is the copy from 1:40 PM") */
+  detail?: string;
   press: { label: string; run(): Promise<void> } | null;
 }
 
 /**
  * What a read-only deck says above the stage (docs/DESIGN.md "Slides from other formats"): an import or a Google
  * deck is "Read only" with Make a copy to edit; a Google deck someone changed in Drive since it was read says so
- * with Read again; one Drive could not be reached for shows the copy read before and says that instead.
+ * with Read again; one Drive could not be reached for shows the copy read before and says that instead, with when it
+ * was read.
  */
 export function noticeOf(item: Pick<CanvasItem, "source" | "sessionId">, readOnly: DeckView["readOnly"], behind: boolean, copy: () => Promise<void>, readAgain: () => Promise<void>): SlideNotice | null {
   if (!readOnly) return null;
   if (readOnly.from === "google" && behind) return { words: "Changed in Google", press: { label: "Read again", run: readAgain } };
-  if (readOnly.from === "google" && readOnly.offline) return { words: "Couldn't reach Google", press: { label: "Read again", run: readAgain } };
+  if (readOnly.from === "google" && readOnly.offline)
+    return { words: "Couldn't reach Google", ...(readOnly.readAt ? { detail: `This is the copy from ${whenWords(readOnly.readAt)}` } : {}), press: { label: "Read again", run: readAgain } };
   const saidAbove = item.source.at === "mail" && item.sessionId.startsWith(FILES_PANE);
   return { words: saidAbove ? null : "Read only", press: { label: "Make a copy to edit", run: copy } };
 }
@@ -93,14 +98,16 @@ export function useSlideFileActions({ env, item, shell, refresh, view }: { env: 
   };
 }
 
-/** The line under the format row: quiet words, then its press, which says it is busy while it runs. */
-export function NoticeLine({ notice }: { notice: SlideNotice }) {
+/** The line under the format row: quiet words, then its press, which says it is busy while it runs; `end` at its far end (a read-only deck's Present). */
+export function NoticeLine({ notice, end }: { notice: SlideNotice; end?: ReactNode }) {
   const press = notice.press;
   return (
     <QuietLine
       data-slide-notice
       word={notice.words}
+      detail={notice.detail}
       press={press ? { label: press.label, run: () => press.run().catch((e: unknown) => sayError(e, `Couldn't ${press.label.toLowerCase()}`)) } : null}
+      end={end}
     />
   );
 }

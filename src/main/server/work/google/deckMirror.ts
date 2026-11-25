@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { WorkCtx } from '../modules'
 import { hasMagic } from '../pdf/file'
@@ -10,10 +10,17 @@ import { watch } from './poll'
 
 export const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
 
-/** Decks whose last open could not reach Drive, so the mirror read before is shown: cleared by the next read that does. */
-const unreached = new Set<string>()
+/**
+ * Decks whose last open could not reach Drive, so the mirror read before is shown, each with when that copy was last
+ * read from Drive (ms): cleared by the next read that does.
+ */
+const unreached = new Map<string, number>()
+/** When each deck's mirror was last read from Drive in this run: exported, or found to be Drive's own version still. */
+const readAt = new Map<string, number>()
 const fileKey = (source: GoogleSource): string => `${source.account.toLowerCase()}/${source.fileId}`
 export const mirrorUnreached = (source: GoogleSource): boolean => unreached.has(fileKey(source))
+/** When the copy shown of a deck Drive did not answer for was read from Drive; undefined while Drive answers. */
+export const mirrorReadAt = (source: GoogleSource): number | undefined => unreached.get(fileKey(source))
 
 class NotSlidesError extends Error {}
 
@@ -37,7 +44,10 @@ export function readSlidesMirror(ctx: WorkCtx, source: GoogleSource, force = fal
     if (file.mimeType !== GOOGLE_MIME.slides) throw new NotSlidesError('That Google file is not a Slides deck.')
     const row = g.files.get(source.account, source.fileId)
     unreached.delete(key)
-    if (!force && row?.mirror && existsSync(row.mirror) && row.version === file.version) return row.mirror
+    if (!force && row?.mirror && existsSync(row.mirror) && row.version === file.version) {
+      readAt.set(key, Date.now())
+      return row.mirror
+    }
 
     const bytes = await api.export(source.fileId, PPTX_MIME)
     const dir = join(ctx.dataDir, 'google', createHash('sha256').update(key).digest('hex').slice(0, 20))
@@ -48,6 +58,7 @@ export function readSlidesMirror(ctx: WorkCtx, source: GoogleSource, force = fal
       writeFileSync(tmp, bytes, { mode: 0o600 })
       if (!hasMagic(tmp, 'zip')) throw new Error('Google did not export a PowerPoint deck.')
       renameSync(tmp, path)
+      readAt.set(key, Date.now())
       g.files.put({ account: source.account, fileId: source.fileId, kind: 'slides', name: file.name, version: file.version, mirror: path, base: null, behind: null })
       return path
     } finally {
@@ -72,7 +83,9 @@ export async function openSlidesMirror(ctx: WorkCtx, itemId: string, title: stri
   } catch (err) {
     const row = new GoogleFiles(ctx.db).get(source.account, source.fileId)
     if (!row?.mirror || !existsSync(row.mirror) || err instanceof NotSlidesError) throw err
-    unreached.add(fileKey(source))
+    // The copy's time: when this run last read it from Drive, else when it was written (an export of an earlier run).
+    const key = fileKey(source)
+    unreached.set(key, readAt.get(key) ?? statSync(row.mirror).mtimeMs)
   }
   watch(source.account, source.fileId, title, itemId)
 }

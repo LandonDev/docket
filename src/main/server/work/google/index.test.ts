@@ -198,14 +198,19 @@ describe('the google wire', () => {
     setGoogleDeps({ fetch: async () => Promise.reject(new Error('getaddrinfo ENOTFOUND www.googleapis.com')), tokenUrl: FAKE_TOKEN_URL, blocksOf: async () => [] })
   }
 
-  it('opens the mirror read before when Drive cannot be reached, and says so until Drive answers again', async () => {
+  it('opens the mirror read before when Drive cannot be reached, says when it was read, and says so until Drive answers again', async () => {
     fake.setExport('deck1', PPTX_MIME, fakePptx('Kept title'))
     const item = await openPresentation()
+    const before = Date.now()
     expect((await slidesCall<DeckView>(item.id, 'work.slides.open')).readOnly).toEqual({ from: 'google' })
+    const after = Date.now()
     const fetch = fake.fetch
     unreachable()
     const offline = await slidesCall<DeckView>(item.id, 'work.slides.open')
-    expect([offline.readOnly, offline.slides.map((slide) => slide.title)]).toEqual([{ from: 'google', offline: true }, ['Kept title']])
+    // With when the copy shown was read from Drive, for the line's "This is the copy from 1:40 PM".
+    expect([offline.readOnly, offline.slides.map((slide) => slide.title)]).toEqual([{ from: 'google', offline: true, readAt: expect.any(Number) }, ['Kept title']])
+    expect(offline.readOnly!.readAt).toBeGreaterThanOrEqual(before - 1)
+    expect(offline.readOnly!.readAt).toBeLessThanOrEqual(after + 1)
     resetGoogle()
     setGoogleDeps({ fetch, tokenUrl: FAKE_TOKEN_URL, blocksOf: async () => [] })
     expect((await slidesCall<DeckView>(item.id, 'work.slides.open')).readOnly).toEqual({ from: 'google' })

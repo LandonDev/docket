@@ -1315,7 +1315,10 @@ to the lab's `formats` folder for the Keynote 5 and 6 tests.
 Opening a picked Google Slides deck checks Drive and reads its PPTX
 export if the mirror is missing or out of date (`google/deckMirror.ts`).
 When Drive cannot be reached and a mirror was read before, that mirror
-opens and the view carries `readOnly: {from: 'google', offline: true}`.
+opens and the view carries `readOnly: {from: 'google', offline: true,
+readAt}`: `readAt` is when that copy was last read from Drive (exported, or
+found to be Drive's version still) in this run, else the mirror's file time
+(`mirrorReadAt`); the line says "This is the copy from 1:40 PM".
 Read again from Google gets a fresh export. The deck is read only as an
 import is, with the Google sentence; it Presents, and its More has Read
 again from Google, Open in Google and Make a copy to edit. The slides body
@@ -1340,7 +1343,7 @@ stage".
 | File | What it does |
 |---|---|
 | `canvas.ts` | The kind's def |
-| `SlidesCanvas.tsx` | The chunk: `Body` (the format row, the strip and the stage or the Sorter, the Format sheet), `Bar` (History, Present where the row is not drawn, the line while PowerPoint shows the deck) and `TabEnd` (the TempCode and PowerPoint switch) |
+| `SlidesCanvas.tsx` | The chunk: `Body` (the format row, the strip and the stage or the Sorter, the Format sheet), `Bar` (History, Present where neither the row nor a read-only deck's quiet line holds it, the line while PowerPoint shows the deck) and `TabEnd` (the TempCode and PowerPoint switch) |
 | `Strip.tsx`, `Sorter.tsx`, `Picture.tsx` | The strip and the Sorter, each with a slide's menu, reorder by drag and Delete; a slide's picture at a width |
 | `geometry.ts` | Hit testing, the selection's outline and handles, which kinds can be picked, where a shape's words are laid (`textFrameOf`) and the ground under them (`groundOf`) (pure) |
 | `deck.ts` | `DeckHost` (the methods and the push), the per-item store the three parts share (the view, the slide on the stage, which app shows it), and `useRender`, which opens one of the deck's renders in pdf.js and keeps the one shown until the next has opened |

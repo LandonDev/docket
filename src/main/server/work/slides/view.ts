@@ -8,7 +8,7 @@ import { importReadOnly, slideImportExt, type SlideImportExt } from '@shared/wor
 import { errorText } from '@shared/work/ids'
 import { sharedOf } from '../files/policy'
 import { fileWritten, workingOn } from '../files/save'
-import { cachedSlidesMirror, mirrorUnreached } from '../google/deckMirror'
+import { cachedSlidesMirror, mirrorReadAt } from '../google/deckMirror'
 import { madeFromShared } from '../formats/exporter'
 import { NoConverterError } from '../formats/jobs'
 import type { WorkCtx } from '../modules'
@@ -881,9 +881,12 @@ function writtenFor(ctx: Pick<WorkCtx, 'db' | 'host' | 'dataDir'>, item: CanvasI
   return w && w.item && w.item !== item.id && sharedDeck(ctx, item) ? null : w
 }
 
-/** A read-only deck says what it is: the format it was converted from, or Google (and whether Drive answered). */
+/** A read-only deck says what it is: the format it was converted from, or Google (and whether Drive answered, and if not, when the copy shown was read). */
 function readOnlyOf(item: CanvasItem): Pick<DeckView, 'readOnly'> {
-  if (item.source.at === 'google') return { readOnly: { from: 'google', ...(mirrorUnreached(item.source) ? { offline: true as const } : {}) } }
+  if (item.source.at === 'google') {
+    const readAt = mirrorReadAt(item.source)
+    return { readOnly: { from: 'google', ...(readAt !== undefined ? { offline: true as const, readAt: Math.round(readAt) } : {}) } }
+  }
   const from = slideImportOf(item)
   return from ? { readOnly: { from } } : {}
 }

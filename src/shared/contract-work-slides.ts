@@ -416,7 +416,12 @@ export interface DeckView {
    * itself, or a Google deck's mirror. Such a view has no `hand`, no `mode` and no changes. `offline`: Drive could
    * not be reached, so the copy read before is shown.
    */
-  readOnly?: { from: 'google' | 'ppt' | 'pps' | 'ppsx' | 'odp' | 'key'; offline?: true }
+  readOnly?: {
+    from: 'google' | 'ppt' | 'pps' | 'ppsx' | 'odp' | 'key'
+    offline?: true
+    /** a Google deck Drive did not answer for: when the copy shown was read from Drive, ms */
+    readAt?: number
+  }
   /** Save to Google Slides is offered: his own saved .pptx. */
   canUpload?: true
   /** The deck lives in PowerPoint (OneDrive, SharePoint, Teams): the tab row offers the real app. */
