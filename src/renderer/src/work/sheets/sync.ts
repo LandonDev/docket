@@ -706,15 +706,19 @@ export class SheetSync {
   /**
    * Restore: the offered edits, made on the revision (and cache) the file still stands at, sent as a live edit is, naming
    * that cache, and laid on the grid. A file that moved on meanwhile turns the offer to Copy, his values kept; so does a
-   * shared .csv's draft that named no cache.
+   * shared .csv's draft that named no cache. The check is made again at its turn with the host, and the send names the
+   * draft's own revision and cache: an edit that landed while Restore waited behind a catch-up is never written over.
    */
   restoreDraft(): Promise<void> {
     const draft = this.offered;
     if (!draft || draft.body.kind !== "sheet" || draft.base !== this.base()) return Promise.resolve();
     const mutations = draft.body.mutations as SheetMutationJson[];
+    const [rev, gen] = draft.base.split("@");
     return this.run(async () => {
+      if (this.offered !== draft) return;
+      if (draft.base !== this.base()) return this.set({ offer: { ...this.state.offer!, same: false } });
       try {
-        const answer = await this.host.edit(this.rev, mutations, this.gen);
+        const answer = await this.host.edit(Number(rev), mutations, gen);
         if (answer.conflict) return this.set({ offer: { ...this.state.offer!, same: false } });
         this.journal?.drop(draft);
         this.offered = null;

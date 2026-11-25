@@ -144,6 +144,31 @@ describe("a sheet's edits the host never answered", () => {
     expect(await after.kept()).toEqual([]);
   });
 
+  it("turn to Copy when a co-author's edit lands while Restore waits its turn: nothing is sent over the newer revision", async () => {
+    const { host, state } = standIn();
+    const before = store();
+    const first = await opened(host, before.journal);
+    state.down = true;
+    first.g.type(cell(42));
+    first.sync.flush();
+    await settle(async () => (await before.kept()).length === 1);
+    await before.s.settled();
+    state.down = false;
+    let hear: ((push: SheetPushed) => void) | null = null;
+    const theirs = cell(7);
+    const live = { ...host, onPush: (l: (push: SheetPushed) => void) => ((hear = l), () => (hear = null)), since: async (): Promise<SinceAnswer> => ({ rev: state.rev, ops: state.rev > 3 ? [{ rev: 4, mutations: [theirs] }] : [] }) } as SheetHost;
+    const after = store(before.dir, 2);
+    const { sync } = await opened(live, after.journal);
+    await settle(() => !!sync.state.offer);
+    expect(sync.state.offer?.same).toBe(true);
+    // Their edit lands as revision 4, and its push is heard just before his Restore: the catch-up goes first.
+    state.rev = 4;
+    hear!({ rev: 4 });
+    await sync.restoreDraft();
+    expect(state.edits).toEqual([]);
+    expect(sync.state.offer).toMatchObject({ same: false, cells: ["Budget!A1\t42"] });
+  });
+
   describe("on a shared .csv, whose new cache starts again at a revision the draft may share", () => {
     async function keptOn(gen: string) {
       const { host, state } = standIn();
