@@ -183,7 +183,8 @@ import TempCodeContract
         #expect(RequestSheetModel.rowWords(req.rows[1], now: now, calendar: calendar).line == "Goes Wed 8:00 AM")
         #expect(RequestSheetModel.pendingLines(req, ticked: ["r-Dana", "r-Sam"], now: now, calendar: calendar) == ["Sending to Dana now", "Sending to Sam Wed 8:00 AM"])
         let done = request("q", rows: [row(a, result: .init(ok: true, state: "sent")), row(b, do: .later, at: laterAt, result: .init(ok: false, error: "Teams did not answer"))], state: .answered, answeredAt: 1)
-        #expect(RequestSheetModel.resultsHead(done) == "Sent 1, 1 not sent")
+        // A LifeOS mail his press sent is queued in LifeOS (its undo time), never "sent".
+        #expect(RequestSheetModel.resultsHead(done) == "Queued 1 in LifeOS, 1 not sent")
         #expect(RequestSheetModel.resultWords(done.rows[1])?.text == "Teams did not answer")
         #expect(RequestSheetModel.closedLine(done, time: { _ in "9:41 AM" }) == "By you at 9:41 AM")
     }
@@ -229,8 +230,72 @@ import TempCodeContract
         var ticks: Set<String> = ["r-Dana"]
         let press = RequestSheetModel.freeze(req, ticks: ticks, environmentId: "box", now: now, calendar: calendar)
         ticks.insert("r-Sam")
-        #expect(press == RequestPress(environmentId: "box", requestId: "q", receipts: ["r-Dana"], word: "Send 1", lines: ["Sending to Dana now"]))
-        #expect(press?.waitingLine == "Sending 1")
+        #expect(press == RequestPress(environmentId: "box", requestId: "q", receipts: ["r-Dana"], word: "Send 1", lines: ["Sending to Dana now"], head: "Send 1 mail"))
+        #expect(press?.waitingLine == "Sending 1 mail")
+    }
+
+    // MARK: - the council's round 1 (one head sentence, the results, left out)
+
+    private func kinded(_ id: String, kind: OutboxItem.Kind, verb: String = "Send", payload: JSONValue? = nil) -> OutboxItem {
+        OutboxItem(ref: .host(.init(id: id)), kind: kind, workspaceId: "w1", sessionId: "t1", sector: "purdue", summary: "\(verb) \(id)", verb: verb, account: nil, state: .held, payload: payload,
+                   createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .rule, grantId: nil, error: nil, result: nil, routineRunId: nil, updatedAt: 1)
+    }
+    private func lifeosMail(_ id: String, to address: String) -> OutboxItem {
+        kinded(id, kind: .mailSend, payload: .object(["message": .object(["to": .array([.object(["address": .string(address)])]), "cc": .array([]), "bcc": .array([])])]))
+    }
+
+    @Test func theHeadSaysWhatGoesInTheDesktopsWords() {
+        // waiting.test.ts's own case, word for word.
+        let head = OutboxModel.summaryHead([lifeosMail("a", to: "a@x.edu"), lifeosMail("b", to: "b@x.edu"), lifeosMail("c", to: "a@x.edu"), kinded("p", kind: .teamsPost, verb: "Post"), kinded("i", kind: .calendarOp, verb: "Accept")])
+        #expect(head == "Send 3 mails to 2 people, post 1 message and accept 1 invite")
+        #expect(OutboxModel.summaryHead([kinded("i", kind: .calendarOp, verb: "Accept"), kinded("j", kind: .calendarOp, verb: "Decline")]) == "Answer 2 invites")
+        #expect(OutboxModel.summaryHead([], discard: 3) == "Discard 3")
+        // An add-on's own two words name its noun ("Send mail"), its recipients counted from its arguments; else "items".
+        let addon = { (id: String, to: String) in self.kinded(id, kind: .addonCall, payload: .object(["words": .string("Send mail"), "arguments": .object(["to": .string(to)])])) }
+        #expect(OutboxModel.summaryHead([addon("a", "a@x.edu"), addon("b", "b@x.edu")]) == "Send 2 mails to 2 people")
+        #expect(OutboxModel.summaryHead([kinded("e", kind: .addonCall, verb: "Run", payload: .object(["words": .string("Echo")]))]) == "Run 1 item")
+    }
+
+    @Test func theSheetsHeadFollowsItsTicksAndAgreesWithItsButton() {
+        let req = request("q", rows: [row(lifeosMail("a", to: "a@x.edu")), row(lifeosMail("b", to: "b@x.edu")), row(lifeosMail("c", to: "c@x.edu"), changed: true, receipt: nil)])
+        let ticks = RequestSheetModel.initialTicks(req)
+        #expect(RequestSheetModel.askedHead(req) == "Send 3 mails to 3 people")
+        #expect(RequestSheetModel.head(req, ticked: ticks) == "Send 2 mails to 2 people")
+        #expect(RequestSheetModel.pressWord(req, ticked: ticks) == "Send 2")
+        #expect(RequestSheetModel.head(req, ticked: ["r-a"]) == "Send 1 mail to 1 person")
+        // None ticked: what was asked, never an empty head.
+        #expect(RequestSheetModel.head(req, ticked: []) == "Send 3 mails to 3 people")
+        let mixed = request("m", rows: [row(lifeosMail("a", to: "a@x.edu")), row(lifeosMail("b", to: "b@x.edu"), do: .later, at: 5), row(lifeosMail("c", to: "c@x.edu"), do: .discard)])
+        #expect(RequestSheetModel.head(mixed, ticked: RequestSheetModel.initialTicks(mixed)) == "Send 1 mail to 1 person, send 1 later and discard 1")
+    }
+
+    @Test func theWaitNamesWhatGoesAndNeverSaysNow() {
+        let req = request("q", rows: [row(lifeosMail("a", to: "a@x.edu")), row(lifeosMail("b", to: "b@x.edu"))])
+        let press = RequestSheetModel.freeze(req, ticks: RequestSheetModel.initialTicks(req), environmentId: "box")
+        #expect(press?.waitingLine == "Sending 2 mails to 2 people")
+        #expect(RequestPress(environmentId: "box", requestId: "q", receipts: ["a", "b", "c"], word: "Approve 3", lines: [], head: "Send 2 mails and discard 1").waitingLine == "Approving 3")
+    }
+
+    @Test func overTheHeadSaysQueuedAndLeftOutAndALeftOutRowSaysSo() {
+        var queued = lifeosMail("a", to: "a@x.edu")
+        queued = OutboxItem(ref: queued.ref, kind: queued.kind, workspaceId: queued.workspaceId, sessionId: queued.sessionId, sector: queued.sector, summary: queued.summary, verb: queued.verb, account: nil, state: .sent, payload: queued.payload,
+                            createdAt: 1, decidedBy: "owner:remote", decidedAt: 2, n: 1, why: .rule, grantId: nil, error: nil, result: nil, routineRunId: nil, lifeos: .queued, updatedAt: 2)
+        let posted = kinded("p", kind: .teamsPost, verb: "Post")
+        let done = request("q", rows: [row(queued, result: .init(ok: true, state: "sent")), row(posted, result: .init(ok: true, state: "sent")), row(kinded("s", kind: .officeMailSend), result: .init(ok: true, state: "sent")), row(lifeosMail("c", to: "c@x.edu"), changed: true, receipt: nil)], state: .answered, answeredAt: 3)
+        #expect(RequestSheetModel.resultsHead(done) == "Sent 2, queued 1 in LifeOS, 1 left out")
+        #expect(RequestSheetModel.rowWords(done.rows[3], closed: true).line == "Left out")
+        #expect(RequestSheetModel.head(done, ticked: []) == "Sent 2, queued 1 in LifeOS, 1 left out")
+        // A row's result line only when it adds something: "Sent" beside its check would say it twice.
+        #expect(RequestSheetModel.settledLine(done.rows[0]) == "Queued in LifeOS")
+        #expect(RequestSheetModel.settledLine(done.rows[1]) == "Posted")
+        #expect(RequestSheetModel.settledLine(done.rows[2]) == RequestSheetModel.rowWords(done.rows[2]).line)
+    }
+
+    @Test func anAddonCallOrAPostSaysWhatTellsItApart() {
+        let post = kinded("p", kind: .teamsPost, verb: "Post", payload: .object(["chat": .string("General"), "text": .string("Practice is Thursday at 7.\nBring your pass.")]))
+        #expect(OutboxModel.rowWords(post).line == "Practice is Thursday at 7.")
+        let mail = kinded("m", kind: .addonCall, payload: .object(["arguments": .object(["to": .string("a@x.edu"), "subject": .string("Nationals travel"), "text": .string("Hi")])]))
+        #expect(OutboxModel.rowWords(mail).line == "Nationals travel")
     }
 }
 

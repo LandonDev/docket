@@ -808,7 +808,7 @@ describe('Outbox 2: what he reads before he presses', () => {
 
   it('says in one sentence what the press does', async () => {
     const item = await heldEcho('x')
-    expect(item.effect).toBe('Runs Echo on slack with what is below.')
+    expect(item.effect).toBe('Uses slack to echo as you.')
   })
 
   it('a discard carries his reason to the thread, and says when it came from another device', async () => {

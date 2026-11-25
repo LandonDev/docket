@@ -27,6 +27,7 @@ struct OutboxItemScreen: View {
     @State private var wholeError: String?
     @State private var editing = false
     @State private var confirmDiscard: OutboxItem?
+    @ScaledMetric(relativeTo: .footnote) private var noteMark: CGFloat = 16
     @State private var pickingTime = false
     @State private var busy = false
     @ScaledMetric(relativeTo: .footnote) private var labelWidth: CGFloat = 64
@@ -127,8 +128,17 @@ struct OutboxItemScreen: View {
                         SectorDot(sector: item.sector ?? place.sector, size: 7)
                         Text(place.name)
                             .textStep(.meta, tint: Color(.label))
+                            .lineLimit(1)
+                            .layoutPriority(1)
+                        // Who made it: the thread, or a routine's run (the desktop's facts line, "from <thread>").
+                        if let maker = maker(item, client: client) {
+                            Text(maker)
+                                .textStep(.meta, tint: Color(.label))
+                                .lineLimit(1)
+                        }
                         Text(HeldTime.of(item.createdAt))
                             .textStep(.stamp, tint: Color(.label))
+                            .fixedSize()
                     }
                     // A form, a share or a Teams post says in its heading only what its rows do not (`kindHeading`), in the
                     // present always: the state line under it says the past ("Posted 4:02 PM").
@@ -136,10 +146,16 @@ struct OutboxItemScreen: View {
                         .font(.title3.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                     if let state = stateLine(item) {
-                        Text(state)
-                            .textStep(.meta, tint: Color(.label))
-                            .fixedSize(horizontal: false, vertical: true)
-                            .padding(.top, 2)
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            if let glyph = state.glyph {
+                                Image(systemName: glyph).font(.caption).foregroundStyle(.secondary).frame(width: noteMark).accessibilityHidden(true)
+                            }
+                            Text(state.text)
+                                .textStep(.meta, tint: Color(.label))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.top, 2)
+                        .accessibilityElement(children: .combine)
                     }
                     // What the press does and to whom, in the host's one sentence, above the thing itself.
                     if let effect = item.effect, !effect.isEmpty {
@@ -267,14 +283,21 @@ struct OutboxItemScreen: View {
     }
 
     /// Where it stands when no note says it: on its way, timed, sent, discarded, or an agent's rewrite waiting.
-    private func stateLine(_ item: OutboxItem) -> String? {
-        if OutboxModel.isScheduled(item) { return "Goes \(OutboxModel.aheadTime(OutboxModel.scheduledAt(item)))" }
+    private func stateLine(_ item: OutboxItem) -> (glyph: String?, text: String)? {
+        // A timed send leads with its time, as a note with its glyph, before what the press does.
+        if OutboxModel.isScheduled(item) { return ("clock", "Scheduled for \(OutboxModel.aheadTime(OutboxModel.scheduledAt(item)))") }
         switch item.state {
-        case .sending: return "Sending…"
-        case .sent: return "\(OutboxModel.pastOf(item.verb, kind: item.kind)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")"
-        case .discarded: return "Discarded"
-        default: return item.proposed == true ? "An agent’s rewrite waits in LifeOS." : nil
+        case .sending: return (nil, "Sending…")
+        case .sent: return (nil, "\(OutboxModel.pastOf(item.verb, kind: item.kind)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")")
+        case .discarded: return (nil, "Discarded")
+        default: return item.proposed == true ? (nil, "An agent’s rewrite waits in LifeOS.") : nil
         }
+    }
+
+    /// "from Nationals roster", or "from a routine" for a routine's run; nil where no thread made it.
+    private func maker(_ item: OutboxItem, client: EnvironmentClient) -> String? {
+        if item.routineRunId != nil { return "from a routine" }
+        return item.sessionId.flatMap { client.session($0)?.title }.map { "from \($0)" }
     }
 
     /// A read that did not come back: its reason and Retry.
@@ -521,7 +544,12 @@ private struct NoteLine: View {
 struct OutboxPickTimeSheet: View {
     @Environment(\.dismiss) private var dismiss
     let pick: (Int) -> Void
-    @State private var at = Date.now.addingTimeInterval(3_600)
+    /// Opens on the next whole hour at least an hour away, never on this minute: a Send Later pressed at once still
+    /// sends later.
+    @State private var at: Date = {
+        let soon = Date.now.addingTimeInterval(3_600)
+        return Calendar.current.nextDate(after: soon, matching: DateComponents(minute: 0), matchingPolicy: .nextTime) ?? soon
+    }()
 
     var body: some View {
         NavigationStack {

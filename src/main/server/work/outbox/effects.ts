@@ -85,7 +85,11 @@ const EFFECTS: Partial<Record<ActKind, (p: P) => string | undefined>> = {
   'msform.publish': (p) =>
     p?.act === 'audience' ? `Changes who can answer ${str(p.title) ?? 'the form'}.` : `${p?.act === 'reopen' ? 'Reopens' : 'Opens'} ${str(p?.title) ?? 'the form'} for answers.`,
   'computer.act': (p) => `Does this on the screen${str((p?.app as P)?.name) ? ` in ${str((p!.app as P)!.name)}` : ''}: ${str(p?.label) ?? 'the step shown'}.`,
-  'addon.call': (p) => `Runs ${str(p?.words) ?? str(p?.tool) ?? 'the tool'} on ${str(p?.addon) ?? 'the add-on'} with what is below.`,
+  // The act in his words ("Uses Purdue mail to send mail as you."), never the tool's description of itself.
+  'addon.call': (p) => {
+    const act = str(p?.words) ?? str(p?.tool)
+    return `Uses ${str(p?.addon) ?? 'the add-on'} to ${act ? act[0]!.toLowerCase() + act.slice(1) : 'do this'} as you.`
+  },
   'office.edit': (p) => `Changes ${str(p?.name) ?? 'the file'} for everyone who can open it, the moment you press.`,
   'google.edit': (p) => `Changes ${str(p?.name) ?? str(p?.title) ?? 'the file'} in Google for everyone who can open it, the moment you press.`,
   'file.act': () => 'Changes files in a place others can open, the moment you press.'

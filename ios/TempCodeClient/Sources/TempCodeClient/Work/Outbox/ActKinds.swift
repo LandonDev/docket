@@ -149,6 +149,12 @@ public extension OutboxModel {
             let view = payloadView(item.payload)
             let subject = view.fields.first { $0.key == "subject" }?.value
             return (act, subject ?? about ?? view.body.flatMap { $0.text.split(separator: "\n").first.map(String.init) })
+        case .addonCall, .teamsPost, .chatReply:
+            // What tells two alike apart: an add-on call's subject, else the first line of what it sends.
+            let view = payloadView(item.payload)
+            let subject = view.fields.first { $0.key == "subject" }?.value
+            let first = (view.body?.text ?? view.fields.first { $0.key == "text" }?.value).flatMap { $0.split(separator: "\n").first.map(String.init) }
+            return (act, about ?? subject ?? first)
         default:
             return (act, about)
         }

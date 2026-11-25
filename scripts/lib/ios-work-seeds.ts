@@ -165,6 +165,17 @@ export async function seedOutbox2(ready: WorkSeedReady, ids: { purdue: string; a
       createdAt: now - minutes * 60_000,
       payload: { addonId: ids.addonId, addon: 'Purdue mail', tool: 'send_mail', words: 'Send mail', arguments: { to: address, subject: 'Nationals travel, confirm by Friday', text: `Hi ${name.split(' ')[0]},\n\nYou're on the Nationals roster. Please confirm your travel by Friday.\n\nThanks,\nLandon` } }
     })
+    const outlook = (id: string, name: string, address: string, minutes: number) => ({
+      id,
+      workspaceId: ids.purdue,
+      sessionId: roster.id,
+      sector: 'purdue',
+      kind: 'office.mail.send',
+      summary: `Send to ${name}`,
+      verb: 'Send',
+      createdAt: now - minutes * 60_000,
+      payload: { account: 'landon@purdue.edu', to: [address], subject: 'Nationals travel, confirm by Friday', text: `Hi ${name.split(' ')[0]},\n\nYou're on the Nationals roster. Please confirm your travel by Friday.\n\nThanks,\nLandon` }
+    })
     const tomorrow8 = new Date(now)
     tomorrow8.setDate(tomorrow8.getDate() + 1)
     tomorrow8.setHours(8, 0, 0, 0)
@@ -172,21 +183,23 @@ export async function seedOutbox2(ready: WorkSeedReady, ids: { purdue: string; a
       mail('ob2-alex', 'Alex Kim', 'akim@purdue.edu', 9),
       mail('ob2-jordan', 'Jordan Patel', 'jpatel@purdue.edu', 9),
       mail('ob2-riley', 'Riley Chen', 'rchen@purdue.edu', 9),
-      mail('ob2-morgan', 'Morgan Diaz', 'mdiaz@purdue.edu', 8),
+      // The rest are the kinds themselves (an Outlook mail, a Teams post), so each row wears its kind's glyph and the
+      // item its kind's own effect sentence; nothing presses them in this set.
+      outlook('ob2-morgan', 'Morgan Diaz', 'mdiaz@purdue.edu', 8),
       {
         id: 'ob2-stale',
         workspaceId: ids.purdue,
         sessionId: roster.id,
         sector: 'purdue',
-        kind: 'addon.call',
+        kind: 'teams.post',
         summary: 'Post in Esports staff',
         verb: 'Post',
         state: 'stale',
         error: 'The practice moved to Thursday after this was written.',
         createdAt: now - 120 * 60_000,
-        payload: { addonId: ids.addonId, addon: 'Purdue mail', tool: 'echo', words: 'Echo', arguments: { text: 'Practice is Wednesday at 7.' } }
+        payload: { chat: 'Esports staff › General', text: 'Practice is Wednesday at 7.' }
       },
-      { ...mail('ob2-timed', 'Casey Wu', 'cwu@purdue.edu', 30), state: 'scheduled', scheduleAt: tomorrow8.getTime() }
+      { ...outlook('ob2-timed', 'Casey Wu', 'cwu@purdue.edu', 30), state: 'scheduled', scheduleAt: tomorrow8.getTime() }
     ]
     const requestId = 'rq_ob2_roster'
     const requests = [

@@ -286,7 +286,11 @@ private struct ToolStep: View {
     var body: some View {
         let row = action
         VStack(alignment: .leading, spacing: 0) {
-            if row.opens == .diff, let path = Board.editPath(tool) {
+            if let asked = requestCard {
+                // A thread's ask for his press (Outbox 2): the card takes the call's place, as on the desktop; the
+                // tool's own line would name the call a second time.
+                OutboxRequestInline(id: asked.id, host: asked.host, client: client, inTable: inTable)
+            } else if row.opens == .diff, let path = Board.editPath(tool) {
                 NavigationLink(value: DiffRoute(sessionId: sessionId, card: Board.wholeChange(path: path, edits: [tool]))) {
                     lineView(row, chevron: false)
                 }
@@ -303,10 +307,6 @@ private struct ToolStep: View {
                 // A Work thread's call the host held (milestone 46): the held line, which opens in place.
                 if let held = heldLine {
                     HeldInline(n: held.n, act: held.act, client: client, inTable: inTable)
-                }
-                // A thread's ask for his press (Outbox 2): its compact card, which opens the request's sheet.
-                if let asked = requestCard {
-                    OutboxRequestInline(id: asked.id, host: asked.host, client: client, inTable: inTable)
                 }
                 if open {
                     StepBody(tool: tool, whole: whole, loading: loading, command: row.opens == .command)

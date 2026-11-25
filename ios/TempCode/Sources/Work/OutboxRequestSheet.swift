@@ -154,7 +154,7 @@ struct OutboxRequestSheet: View {
         return List {
             Section {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(RequestSheetModel.resultsHead(request) ?? request.head)
+                    Text(RequestSheetModel.head(request, ticked: held))
                         .font(.title3.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
                         .contentTransition(.opacity)
@@ -184,7 +184,7 @@ struct OutboxRequestSheet: View {
             Section {
                 ForEach(request.rows, id: \.ref) { row in
                     let (ticked, rowPhase) = look(row, held: held)
-                    RequestRowView(row: row, request: request, client: client, ticked: ticked, phase: rowPhase, toggle: { toggle(row) }, opened: { fresh[OutboxModel.key($0.ref)] = $0 })
+                    RequestRowView(row: row, request: request, client: client, ticked: ticked, phase: rowPhase, closed: request.state != .open, toggle: { toggle(row) }, opened: { fresh[OutboxModel.key($0.ref)] = $0 })
                 }
             }
         }
@@ -279,12 +279,14 @@ private struct RequestRowView: View {
     let client: EnvironmentClient
     let ticked: Bool
     let phase: Phase
+    /// The request is over: a row his press did not take reads "Left out".
+    var closed = false
     let toggle: () -> Void
     let opened: (OutboxRequestRow) -> Void
     @ScaledMetric(relativeTo: .body) private var tickSize: CGFloat = 22
 
     var body: some View {
-        let words = RequestSheetModel.rowWords(row)
+        let words = RequestSheetModel.rowWords(row, closed: closed)
         let result = RequestSheetModel.resultWords(row)
         HStack(alignment: .center, spacing: Layout.rowGap) {
             Button(action: toggle) { mark(result) }
@@ -302,7 +304,7 @@ private struct RequestRowView: View {
                     Text(words.title)
                         .textStep(.title)
                         .lineLimit(1)
-                    if let text = line(words.line, result: result) {
+                    if let text = result == nil ? words.line : RequestSheetModel.settledLine(row) {
                         Text(text)
                             .textStep(.meta, tint: result?.ok == false ? Tint.destructiveText : nil)
                             .lineLimit(2)
@@ -313,17 +315,11 @@ private struct RequestRowView: View {
             }
             .disabled(row.item == nil)
         }
-        .opacity(phase == .left ? 0.45 : 1)
+        // While a press waits, the rows it does not take step back; once it is over every row reads at full ink.
+        .opacity(phase == .left && !closed ? 0.45 : 1)
         .padding(.vertical, 2)
         .listRowInsets(EdgeInsets(top: 0, leading: Layout.textEdge - (Layout.rowHeight - tickSize) / 2, bottom: 0, trailing: Layout.textEdge))
         .accessibilityElement(children: .contain)
-    }
-
-    /// While his press waits, each ticked row says what it does, to whom and when; once it landed, its result.
-    private func line(_ line: String?, result: (ok: Bool, text: String)?) -> String? {
-        if let result { return result.text }
-        if phase == .waiting, let receipt = row.receipt { return RequestSheetModel.pendingLines(request, ticked: [receipt]).first }
-        return line
     }
 
     @ViewBuilder
@@ -461,7 +457,7 @@ struct OutboxRequestInline: View {
                             .frame(width: Layout.markWidth)
                             .padding(.top, 1)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(request.head)
+                            Text(RequestSheetModel.askedHead(request))
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(.primary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -470,10 +466,10 @@ struct OutboxRequestInline: View {
                                 .lineLimit(2)
                         }
                         Spacer(minLength: 0)
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 2)
+                        // What the tap does, in his word: the sheet is where he reviews and presses.
+                        Text("Review")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.tint)
                     }
                     .padding(12)
                     .contentShape(Rectangle())
@@ -482,7 +478,9 @@ struct OutboxRequestInline: View {
                 .buttonStyle(.pressable)
                 .accessibilityElement(children: .combine)
                 .accessibilityHint("Opens what the thread asked for")
-            } else if let read, read.state != .open, let line = RequestSheetModel.resultsHead(read) ?? RequestSheetModel.closedLine(read, time: { HeldTime.of($0) }) {
+            } else {
+                // Over, or not readable with this key: one muted line where the call was.
+                let line = read.flatMap { r in r.state == .open ? nil : RequestSheetModel.resultsHead(r) ?? RequestSheetModel.closedLine(r, time: { HeldTime.of($0) }) } ?? "Asked for your press in the Outbox"
                 HStack(spacing: Layout.rowGap) {
                     Image(systemName: "checklist").font(.caption).foregroundStyle(.secondary).frame(width: Layout.markWidth)
                     Text(line).font(.footnote).foregroundStyle(.secondary).lineLimit(1)

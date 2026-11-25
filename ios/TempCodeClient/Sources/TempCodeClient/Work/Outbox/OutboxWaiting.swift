@@ -213,6 +213,75 @@ public extension OutboxModel {
         "\(pendingLine(item)) \(aheadTime(at, now: now, calendar: calendar))"
     }
 
+    // MARK: - one sentence of what a press sends
+
+    /// Each kind's noun, one and many, and the verb a head says for it when its items do not share one: the
+    /// desktop's NOUN (work/outbox/waiting.ts). An add-on call's noun is its own words' second word when they are
+    /// two ("Send mail" → mail), else "item".
+    private nonisolated static let nouns: [OutboxItem.Kind: (one: String, many: String, verb: String)] = [
+        .mailSend: ("mail", "mails", "Send"), .officeMailSend: ("mail", "mails", "Send"), .teamsPost: ("message", "messages", "Post"),
+        .chatReply: ("reply", "replies", "Send"), .calendarOp: ("invite", "invites", "Answer"), .officeCalendarOp: ("invite", "invites", "Answer"),
+        .officeEdit: ("file", "files", "Change"), .googleEdit: ("file", "files", "Change"), .fileAct: ("file", "files", "Change"),
+        .shareGuestLink: ("guest link", "guest links", "Make"), .shareGoogle: ("share", "shares", "Make"), .formPublish: ("form", "forms", "Publish"),
+        .msformPublish: ("form", "forms", "Publish"), .msformMake: ("form", "forms", "Make"), .frameioPost: ("post", "posts", "Make"),
+        .portalSubmit: ("form", "forms", "Submit"), .computerAct: ("step", "steps", "Run"),
+    ]
+
+    private nonisolated static func noun(_ item: OutboxItem) -> (one: String, many: String, verb: String) {
+        if let known = nouns[item.kind] { return known }
+        if item.kind == .addonCall, case .object(let p)? = item.payload, case .string(let words)? = p["words"] {
+            let parts = words.split(separator: " ")
+            if parts.count == 2 { let one = parts[1].lowercased(); return (one, one + "s", String(parts[0])) }
+        }
+        return ("item", "items", "Run")
+    }
+
+    /// Every address an item goes to, lower case: a LifeOS mail's under `message`, an Outlook mail's or an add-on
+    /// call's at its top or under `arguments`.
+    private nonisolated static func addressesOf(_ item: OutboxItem) -> [String] {
+        guard case .object(let p)? = item.payload else { return [] }
+        var object = p
+        if case .object(let m)? = p["message"] { object = m } else if case .object(let a)? = p["arguments"] { object = a }
+        return ["to", "cc", "bcc"].flatMap { key -> [String] in
+            switch object[key] {
+            case .string(let one)?: return [one.lowercased()]
+            case .array(let list)?:
+                return list.compactMap { v in
+                    if case .string(let s) = v { return s.lowercased() }
+                    if case .object(let o) = v, case .string(let a)? = o["address"] { return a.lowercased() }
+                    return nil
+                }
+            default: return []
+            }
+        }
+    }
+
+    /// One sentence of everything a press on these sends: "Send 2 mails to 2 people", "Send 3 mails and post 1
+    /// message", "and discard 1": the desktop's `summaryHead`, kinds in the order first met.
+    nonisolated static func summaryHead(_ items: [OutboxItem], discard: Int = 0) -> String {
+        var order: [String] = []
+        var groups: [String: (noun: (one: String, many: String, verb: String), verbs: Set<String>, items: [OutboxItem])] = [:]
+        for item in items {
+            let n = noun(item)
+            let key = item.kind == .mailSend || item.kind == .officeMailSend || n.one == "mail" ? "mail" : item.kind.rawValue
+            if groups[key] == nil { order.append(key); groups[key] = (n, [], []) }
+            groups[key]?.verbs.insert(item.verb.split(separator: " ").first.map(String.init) ?? item.verb)
+            groups[key]?.items.append(item)
+        }
+        var parts = order.enumerated().map { i, key -> String in
+            let g = groups[key]!
+            let verb = g.verbs.count == 1 ? g.verbs.first! : g.noun.verb
+            var part = "\(i == 0 ? verb : verb.lowercased()) \(g.items.count) \(g.items.count == 1 ? g.noun.one : g.noun.many)"
+            if key == "mail" {
+                let people = Set(g.items.flatMap(addressesOf)).count
+                if people > 0 { part += " to \(people) \(people == 1 ? "person" : "people")" }
+            }
+            return part
+        }
+        if discard > 0 { parts.append(parts.isEmpty ? "Discard \(discard)" : "discard \(discard)") }
+        return parts.count > 1 ? parts.dropLast().joined(separator: ", ") + " and " + parts.last! : parts.first ?? ""
+    }
+
     // MARK: - the thread's inline card
 
     /// A Work thread's `outbox_request` answer: `{outboxRequest: {id, host}}` in its text (JSON) or its structured
@@ -273,19 +342,48 @@ public enum RequestSheetModel {
         let held = reconcile(ticks, with: request)
         let rows = request.rows.filter { ticked($0, held) }
         guard !rows.isEmpty else { return nil }
-        return RequestPress(environmentId: environmentId, requestId: request.id, receipts: rows.compactMap(\.receipt), word: pressWord(request, ticked: held), lines: pendingLines(request, ticked: held, now: now, calendar: calendar))
+        return RequestPress(environmentId: environmentId, requestId: request.id, receipts: rows.compactMap(\.receipt), word: pressWord(request, ticked: held), lines: pendingLines(request, ticked: held, now: now, calendar: calendar), head: head(request, ticked: held))
     }
 
     /// What a row does, in his words: the item's act, and under it what it is about, "Changed since asked", when a
     /// later one goes, or that it no longer waits.
-    public nonisolated static func rowWords(_ row: OutboxRequestRow, now: Date = .now, calendar: Calendar = .current) -> (title: String, line: String?) {
+    /// `closed`: the request is over, so a row his press did not take reads "Left out".
+    public nonisolated static func rowWords(_ row: OutboxRequestRow, closed: Bool = false, now: Date = .now, calendar: Calendar = .current) -> (title: String, line: String?) {
         guard let item = row.item else { return ("An item this host no longer has", nil) }
         let words = OutboxModel.rowWords(item)
         let title = row.do == .discard ? "Discard: \(words.title)" : words.title
+        if closed && row.result == nil { return (title, "Left out") }
         if !row.open && row.result == nil { return (title, "No longer waits") }
         if row.changed && row.result == nil { return (title, "Changed since asked") }
         if row.do == .later, let at = row.at { return (title, "Goes \(OutboxModel.aheadTime(at, now: now, calendar: calendar))") }
         return (title, words.line)
+    }
+
+    /// The head of a request as asked (the list's Asked row, the thread's card): every row it lists, in one sentence.
+    public nonisolated static func askedHead(_ request: OutboxRequest) -> String {
+        let head = sentence(request.rows.filter { $0.item != nil })
+        return head.isEmpty ? request.head : head
+    }
+
+    /// Rows in one sentence: what is sent now (the kinds' own words), what is sent later, what is discarded.
+    nonisolated static func sentence(_ rows: [OutboxRequestRow]) -> String {
+        let now = OutboxModel.summaryHead(rows.filter { $0.do == .send }.compactMap(\.item))
+        let later = rows.filter { $0.do == .later }.count
+        let discard = rows.filter { $0.do == .discard }.count
+        var parts = now.isEmpty ? [] : [now]
+        if later > 0 { parts.append("send \(later) later") }
+        if discard > 0 { parts.append("discard \(discard)") }
+        let text = parts.count > 1 ? parts.dropLast().joined(separator: ", ") + " and " + parts.last! : parts.first ?? ""
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    /// The sheet's head: while it is open, what the ticked rows do (so it always agrees with Send N); with none
+    /// ticked, what was asked; once over, what his press did.
+    public nonisolated static func head(_ request: OutboxRequest, ticked: Set<String>) -> String {
+        guard request.state == .open else { return resultsHead(request) ?? request.head }
+        let rows = request.rows.filter { self.ticked($0, ticked) && $0.item != nil }
+        guard !rows.isEmpty else { return askedHead(request) }
+        return sentence(rows)
     }
 
     /// The sheet's primary word: "Send 9", or "Approve 3" when the ticked rows' actions mix.
@@ -326,16 +424,26 @@ public enum RequestSheetModel {
         }
     }
 
-    /// The head once his press answered: "Sent 8, 1 not sent", "Discarded 3"; the host's own head before.
+    /// The head once his press answered: "Sent 2, 1 left out", "Queued 3 in LifeOS, 1 not sent", "Discarded 3": a
+    /// mail LifeOS holds in its undo time is queued, never sent.
     public nonisolated static func resultsHead(_ request: OutboxRequest) -> String? {
         let settled = request.rows.compactMap(resultWords)
         guard !settled.isEmpty else { return nil }
-        let done = settled.filter(\.ok).count
-        let failed = settled.count - done
+        let queued = settled.filter { $0.ok && $0.text == "Queued in LifeOS" }.count
+        let done = settled.filter(\.ok).count - queued
+        let failed = settled.count - done - queued
+        let left = request.state == .answered ? request.rows.filter { $0.result == nil && $0.item != nil }.count : 0
         let actions = Set(request.rows.filter { $0.result != nil }.map(\.do.rawValue))
         let (yes, no) = actions == ["discard"] ? ("Discarded", "not discarded") : actions == ["later"] ? ("Scheduled", "not scheduled") : ("Sent", "not sent")
-        let line = [done > 0 ? "\(yes) \(done)" : nil, failed > 0 ? "\(failed) \(no)" : nil].compactMap { $0 }.joined(separator: ", ")
+        let line = [done > 0 ? "\(yes) \(done)" : nil, queued > 0 ? "queued \(queued) in LifeOS" : nil, failed > 0 ? "\(failed) \(no)" : nil, left > 0 ? "\(left) left out" : nil].compactMap { $0 }.joined(separator: ", ")
         return line.prefix(1).uppercased() + line.dropFirst()
+    }
+
+    /// A settled row's line: its result when it adds something ("Queued in LifeOS", "Posted", "Discarded", a reason),
+    /// else what the row is about: a check beside "Sent" would say one thing twice.
+    public nonisolated static func settledLine(_ row: OutboxRequestRow) -> String? {
+        guard let result = resultWords(row) else { return nil }
+        return result.ok && result.text == "Sent" ? rowWords(row).line : result.text
     }
 
     /// The muted line under the head once it is over: who answered and when, Not now, or why it ran out.
@@ -360,16 +468,20 @@ public struct RequestPress: Sendable, Hashable {
     public var word: String
     /// Each ticked row's action, target and time.
     public var lines: [String]
+    /// What the ticked rows do, as the sheet's head said it at the press ("Send 2 mails to 2 people").
+    public var head: String
 
-    public init(environmentId: String, requestId: String, receipts: [String], word: String, lines: [String]) {
+    public init(environmentId: String, requestId: String, receipts: [String], word: String, lines: [String], head: String = "") {
         self.environmentId = environmentId
         self.requestId = requestId
         self.receipts = receipts
         self.word = word
         self.lines = lines
+        self.head = head
     }
 
-    /// "Sending 2", "Approving 3": the capsule's line.
+    /// The capsule's line while it waits: the head in the progressive ("Sending 2 mails to 2 people"), or for a press
+    /// whose actions mix, "Approving 3".
     public var waitingLine: String {
         let parts = word.split(separator: " ")
         let verb = switch parts.first {
@@ -378,6 +490,7 @@ public struct RequestPress: Sendable, Hashable {
         case "Schedule": "Scheduling"
         default: "Approving"
         }
+        if let first = parts.first, verb != "Approving", head.hasPrefix("\(first) ") { return verb + head.dropFirst(first.count) }
         return "\(verb) \(parts.last ?? "")"
     }
 }

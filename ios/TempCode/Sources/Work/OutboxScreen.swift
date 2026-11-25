@@ -197,7 +197,7 @@ private struct AskedRow: View {
                     .foregroundStyle(.secondary)
                     .frame(width: Layout.glyphWidth + Layout.markWidth)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(request.head).textStep(.title).lineLimit(1)
+                    Text(RequestSheetModel.askedHead(request)).textStep(.title).lineLimit(1)
                     if let thread { Text(thread).textStep(.meta).lineLimit(1) }
                 }
                 Spacer(minLength: 8)

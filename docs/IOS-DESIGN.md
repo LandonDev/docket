@@ -2362,9 +2362,11 @@ phone does everything the desktop does. What milestone 46 built:
   row's time. The rest of the phone keeps the steps' own inks
   (docs/agents/appearance-phone.md).
 - **The held detail** reads as the act, exactly as it will go: the place
-  line (dot, workspace, time), the summary as the title (title3
-  semibold), then the host's one sentence of what the press does and to
-  whom (`effect`, subheadline in `label`), then the notes that apply, one
+  line (dot, workspace, "from <thread>" or "from a routine", time), the
+  summary as the title (title3 semibold), a timed send's "Scheduled for Wed
+  8:00 AM" with the `clock` glyph, then the host's one sentence of what the
+  press does and to whom (`effect`, the kind's own words, subheadline in
+  `label`), then the notes that apply, one
   line each in meta with a glyph in a 16 pt column: "Not sent. <why>" (the
   destructive dot, its words in the destructive ink: the only colour),
   "Out of date. <why>" (`clock.arrow.circlepath`), "The thread rewrote this
@@ -2395,8 +2397,11 @@ phone does everything the desktop does. What milestone 46 built:
   press") is one sheet (`tcSheet(.editor)`, Close at the top) opened from
   the list's Asked row, from its notice (a tell keyed `request:<id>` opens
   the Outbox with the sheet over it) and from the thread's card. It loads
-  the request from its host (`request.get`): the head (title3 semibold,
-  "Sent 8, 1 not sent" once answered), "You asked in <thread>: “<his
+  the request from its host (`request.get`): the head (title3 semibold), one
+  sentence of what the ticked rows send in the kinds' own words ("Send 2
+  mails to 2 people", the desktop's `summaryHead`), so it always agrees with
+  Send N, and once answered what the press did ("Sent 2, 1 left out",
+  "Queued 3 in LifeOS"), "You asked in <thread>: “<his
   words>”" in meta, then a row per item: a 22 pt tick in a 44 pt hit area
   (`checkmark.circle.fill` in the tint, else an empty circle), the act and
   under it what it is about, "Goes Wed 8:00 AM" for a later one, or
@@ -2409,20 +2414,25 @@ phone does everything the desktop does. What milestone 46 built:
   unticked until he ticks it. The foot is two wide glass capsules, Not Now
   and "Send N" ("Approve N" when the ticked actions mix). Send freezes
   exactly the ticked receipts and waits the phone's five seconds: the foot
-  becomes the undo capsule ("Sending 9", Undo), each ticked row's line says
-  its action, target and time ("Sending to Alex Kim now"), and the rows
-  left out dim. Closing the sheet or leaving the app never sends it early:
+  becomes the undo capsule naming what goes ("Sending 2 mails to 2
+  people", Undo), each ticked row keeps its own words (its act, and when a
+  later one goes), and the rows left out dim. Closing the sheet or leaving the app never sends it early:
   the frozen press waits out its five seconds (`RequestPresses`), and a
   sheet opened again shows it waiting, then its answer. Then each row's result lands in its line (a muted
-  check and "Queued in LifeOS", "Posted", "Discarded", "Scheduled", or the
-  destructive dot and the reason) and the foot is Done. Not Now declines
+  check, with "Queued in LifeOS", "Posted", "Discarded" or "Scheduled" only
+  where the word adds to the check, or the destructive dot and the reason),
+  a row the press did not take reads "Left out" at full ink, and the foot
+  is Done. Not Now declines
   and closes. A key without approve reads why and cannot press. Nothing
   here wears the warning colour: held is not Needs you.
-- **The thread's card**: under a Work thread's `outbox_request` call (its
-  result's `{outboxRequest: {id, host}}`), one compact card in the
-  transcript's hairline frame (the field radius, 12 pt in, no fill): the
-  `checklist` glyph muted, the head at subheadline medium, "You asked:
-  “…”" in meta on two lines at most, a chevron; a tap opens the sheet.
+- **The thread's card**: a Work thread's `outbox_request` call (its
+  result's `{outboxRequest: {id, host}}`) is drawn as its card alone, in
+  the call's place (no "Used …" line above it): one compact card in the
+  transcript's hairline frame (the field radius, 12 pt in, no fill), the
+  `checklist` glyph muted, what was asked at subheadline medium ("Send 3
+  mails to 3 people", the same sentence as the list's Asked row), "You
+  asked: “…”" in meta on two lines at most, and "Review" in the tint where
+  a chevron would be; a tap opens the sheet.
   Answered, declined or run out, it is one muted line ("Sent 8, 1 not
   sent", "Not now. …"). A group holding an open request stays open, as one
   holding a held call does.
