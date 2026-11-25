@@ -6,7 +6,7 @@ import { connectingWords } from "../shell/lifeosWords";
 import { useKeptOpen } from "../shell/lifeosDown";
 import { shared, useShared } from "../tasks/store";
 import { createLifeosProjectsClient, type SectorKey as KitSector } from "work-kit/lifeos";
-import { projectPlace, Projects, ProjectsClientProvider, ProjectsKitProvider, type Project, type ProjectsPlace, type ProjectTask } from "work-kit/projects";
+import { LIST_PLACE, projectPlace, Projects, ProjectsClientProvider, ProjectsKitProvider, type Project, type ProjectsPlace, type ProjectTask } from "work-kit/projects";
 import "work-kit/projects/styles.css";
 import "./projects.css";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -17,7 +17,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { DocumentFrame, MARGIN_FROM, Scroller, useDocument, useOpened } from "../docs/DocumentCanvas";
 import { CodeThreadDialog } from "../tasks/CodeThreadDialog";
 import type { WorkViewProps } from "../views/registry";
-import { Bar, BarControls, BarTitle } from "./bar";
+import { BackToList, Bar, BarControls, BarTitle } from "./bar";
 import { projectsKitFor, setProjectsHost } from "./kit";
 import { LinkPicker, type LinkKind } from "./LinkPicker";
 import { openDoc, placeOf, setPlace, useOpenedDoc, usePlace, type OpenedDoc } from "./place";
@@ -36,8 +36,13 @@ const TASK_GET = makeFunctionReference<"query", { id: string }, { task: { projec
  * thread open a composer there with the project or the task as its chip.
  */
 
-/** The header's name: the way back from inside a project, else "Projects". */
-export function Title(_props: WorkViewProps) {
+/**
+ * The header's name: the way back from inside a project, else "Projects". While the session cannot read, the screens
+ * (and their bar) are not drawn: the way back to the list stays, from a project or a task, and needs no session.
+ */
+export function Title({ workspace, lifeos }: WorkViewProps) {
+  const place = usePlace(workspace.id);
+  if (!lifeos.client && place.at !== "list") return <BackToList onBack={() => setPlace(workspace.id, { ...LIST_PLACE, layout: place.layout })} />;
   return <BarTitle />;
 }
 

@@ -481,3 +481,47 @@ describe("a held act while the host's LifeOS is still connecting", () => {
     expect(presses().filter((label) => /Retry|Sign in|Show the code/.test(label))).toEqual([]);
   });
 });
+
+/**
+ * Council round 12 (Sol, Tasks 1 P2): a page inside a view keeps its way back while the session is down or the host's
+ * LifeOS is still connecting. Going back needs no session; the view's own controls are held.
+ */
+describe.each(["signed-out", "unanswered", "connecting"] as const)("a page inside a view while the session is %s", (state) => {
+  // The frame has said the state: only then is the header what the state makes it.
+  const said = async (): Promise<void> => {
+    const words = state === "connecting" ? "LifeOS is still connecting on the box" : WORDS[state];
+    await waitFor(() => expect(times(words)).toBeGreaterThan(0), { timeout: 5000 });
+    await settle();
+  };
+  it("keeps Back to Agenda on a meeting's page, and no verb of the page", async () => {
+    host(state);
+    const { openWorkView } = await import("../../lib/workSwitch");
+    act(() => openWorkView({ workspaceId: "ws", view: "prep", event: "ev1" }));
+    render(<ViewFrame view="prep" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await said();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Back to Agenda" })).toBeTruthy(), { timeout: 5000 });
+    expect(screen.queryByRole("button", { name: /Prepare|Follow up|More/ })).toBeNull();
+  });
+
+  it("keeps Back to People on a person's page, and it goes back", async () => {
+    host(state);
+    const { setPlace } = await import("../people/PeopleView");
+    setPlace("ws", { person: "p1" });
+    render(<ViewFrame view="people" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await said();
+    const back = await screen.findByRole("button", { name: "Back to People" }, { timeout: 5000 });
+    act(() => back.click());
+    expect(screen.queryByRole("button", { name: "Back to People" })).toBeNull();
+  });
+
+  it("keeps Back to Projects inside a project, and it goes back", async () => {
+    host(state);
+    const { setPlace } = await import("../projects/place");
+    setPlace("ws", { at: "project", id: "pr1", layout: "list", tab: "all" } as never);
+    render(<ViewFrame view="projects" environmentId="env_box" workspaceId="ws" sector="purdue" />);
+    await said();
+    const back = await screen.findByRole("button", { name: "Back to Projects" }, { timeout: 5000 });
+    act(() => back.click());
+    expect(screen.queryByRole("button", { name: "Back to Projects" })).toBeNull();
+  });
+});

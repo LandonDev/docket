@@ -29,6 +29,21 @@ const useSlots = (): Slots => useSyncExternalStore(subscribe, () => slots);
 const setTitle = (el: HTMLElement | null): void => set({ title: el });
 const setControls = (el: HTMLElement | null): void => set({ controls: el });
 
+/**
+ * The way back to the list while the screens are not drawn (the session is down or on its way) and the place is inside a
+ * project: the same shape as the screens' own, and it needs no session.
+ */
+export function BackToList({ onBack }: { onBack: () => void }) {
+  return (
+    <span className="flex min-w-0 items-center gap-1 font-medium text-foreground">
+      <Button type="button" variant="ghost" size="icon-xs" aria-label="Back to Projects" className="-ms-1.5 shrink-0 text-muted-foreground" onClick={onBack}>
+        <ArrowLeft />
+      </Button>
+      <span className="min-w-0 truncate">Projects</span>
+    </span>
+  );
+}
+
 /** The header's name: the way back when the screens stand inside a project, else "Projects". */
 export function BarTitle() {
   // Until a screen's bar lands the slot is empty, and says the view's name itself.

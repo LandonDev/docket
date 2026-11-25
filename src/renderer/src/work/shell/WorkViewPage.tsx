@@ -184,7 +184,9 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           <Icon className="size-3.5 shrink-0 text-muted-foreground @max-[26rem]/viewhead:hidden" />
           {/* The name gives way to the view's own controls only once they have given all they can: it is cut, never drawn under them. */}
           <span ref={heading} tabIndex={-1} data-view-heading className="focus-ring flex min-w-0 items-center rounded-sm">
-            {Title && !held ? <Title {...props} /> : <span className="truncate font-medium text-foreground">{def.label}</span>}
+            {/* The view's name, or the way back from a page inside it (Back to Agenda, Back to People): never held, since
+                going back needs no session. The view's controls are (below). */}
+            {Title ? <Title {...props} /> : <span className="truncate font-medium text-foreground">{def.label}</span>}
           </span>
           <span className="flex-1" />
           {Head && !held ? <Head {...props} /> : null}
