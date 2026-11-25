@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { deckView, slide } from "../testkit";
-import { centred, layoutAfter, layoutsFor, madeShape, madeSlide, pictureAt, shapeAt, tableAt } from "./add";
+import { centred, centredAt, layoutAfter, layoutsFor, madeShape, madeSlide, pictureAt, shapeAt, tableAt } from "./add";
 import { moveOp, sectionIndex, slidesOpen } from "./slides";
+import { mediaOf } from "./Insert";
 
 const SIZE = { width: 12_192_000, height: 6_858_000 };
 const LAYOUTS = [
@@ -83,5 +84,19 @@ describe("slides by hand", () => {
     expect(slidesOpen(view)).toBe(true);
     expect(slidesOpen({ ...view, hand: undefined })).toBe(false);
     expect(slidesOpen({ ...view, changes: [{ id: "c", kind: "changed", slideId: 1, label: "", edits: [], by: "agent:local:t1" }] })).toBe(false);
+  });
+});
+
+describe("a picture pasted or dropped", () => {
+  it("is a picture or a video by the types a deck holds, else neither", () => {
+    expect(["image/png", "image/jpeg", "video/mp4", "image/webp", "text/plain", ""].map((type) => mediaOf({ type }))).toEqual(["picture", "picture", "video", null, null, null]);
+  });
+
+  it("lies centred where it was dropped, kept on the slide", () => {
+    const box: [number, number, number, number] = [0, 0, 4_000_000, 2_000_000];
+    expect(centredAt(SIZE, box, { x: 0.5, y: 0.5 })).toEqual([4_096_000, 2_429_000, 4_000_000, 2_000_000]);
+    expect(centredAt(SIZE, box, { x: 0, y: 1 })).toEqual([0, 4_858_000, 4_000_000, 2_000_000]);
+    // Wider than the slide: at its left edge.
+    expect(centredAt(SIZE, [0, 0, 20_000_000, 1], { x: 0.9, y: 0.5 })[0]).toBe(0);
   });
 });

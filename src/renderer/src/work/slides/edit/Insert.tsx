@@ -8,7 +8,7 @@ import { Media, Shapes, Table, TextBox, Video } from "../../icons";
 import { ATTACH_PIECE, type DeckHost, type DeckStore } from "../deck";
 import type { Size } from "./drag";
 import { quadOf } from "./drag";
-import { layoutAfter, madeShape, madeSlide, NEW_TEXT, pictureAt, PRESETS, shapeAt, tableAt, textBoxAt, type Preset } from "./add";
+import { centredAt, layoutAfter, madeShape, madeSlide, NEW_TEXT, pictureAt, PRESETS, shapeAt, tableAt, textBoxAt, type Preset } from "./add";
 import type { HandSession, Start } from "./session";
 
 /**
@@ -57,6 +57,64 @@ export const mediaSize: MediaSize = async (file, kind) => {
 export const PICTURE_TYPES = "image/png,image/jpeg,image/gif,image/bmp,image/tiff";
 export const VIDEO_TYPES = "video/mp4,video/quicktime,video/x-ms-wmv,video/x-msvideo,video/mpeg,.mp4,.mov,.wmv,.avi,.mpg,.mpeg";
 
+/** The kind of file a deck holds that `file` is, by its type: a picture, a video, or neither. */
+export function mediaOf(file: Pick<File, "type">): "picture" | "video" | null {
+  if (PICTURE_TYPES.split(",").includes(file.type)) return "picture";
+  if (file.type && VIDEO_TYPES.split(",").includes(file.type)) return "video";
+  return null;
+}
+
+/**
+ * A picture or a video he adds (Insert's chooser, a paste, a drop on the stage): read in the window for its proportions
+ * and fitted to three fifths of the slide, in its middle or centred on `at` (a drop's point, as shares of the slide),
+ * brought to the host in pieces while its place is outlined ("Adding", counting what the host holds of a file of more
+ * than one piece), then one `insert`, and picked.
+ */
+export async function bringMedia({
+  file,
+  what,
+  slide,
+  size,
+  host,
+  store,
+  session,
+  measure = mediaSize,
+  at,
+}: {
+  file: File;
+  what: "picture" | "video";
+  slide: DeckSlide;
+  size: Size;
+  host: DeckHost;
+  store: DeckStore;
+  session: HandSession;
+  measure?: MediaSize | undefined;
+  at?: { x: number; y: number };
+}): Promise<void> {
+  const failed = what === "picture" ? "Couldn't add the picture" : "Couldn't add the video";
+  const got = await measure(file, what);
+  const fitted = pictureAt(size, got?.width ?? 0, got?.height ?? 0);
+  const box = at ? centredAt(size, fitted, at) : fitted;
+  const place = { slideKey: slide.key, quad: quadOf({ box, rot: 0, flipH: false, flipV: false }, size) };
+  // A file that goes in more than one piece counts what the host holds, so a long video over a slow link shows it moving.
+  const counted = file.size > ATTACH_PIECE;
+  session.adding(counted ? { ...place, sent: 0, total: file.size } : place);
+  let token: string;
+  try {
+    token = await session.while(() => file.arrayBuffer().then((bytes) => host.attach(file.name, new Uint8Array(bytes), counted ? (sent) => session.adding({ ...place, sent, total: file.size }) : undefined)));
+  } catch (error) {
+    session.adding(null);
+    sayError(error, failed);
+    return;
+  }
+  const before = store.get().view?.slides.find((s) => s.key === slide.key);
+  const next = await session.edit([{ op: "insert", slide: slide.id, what, box, file: token }], failed);
+  session.adding(null);
+  const made = madeShape(before, next, slide.id);
+  const now = next?.slides.find((s) => s.id === slide.id && s.tint !== "del");
+  if (made && now) session.pick(now.key, made.id);
+}
+
 export interface Inserter {
   newSlide(): void;
   text(): void;
@@ -102,26 +160,7 @@ export function useInsert({
     if (typing) session.open(now, made, typing);
   };
   /** A file he chose, brought to the host and put on the slide at its own proportions. */
-  const bring = async (file: File, what: "picture" | "video"): Promise<void> => {
-    const on = slide;
-    if (!on) return;
-    const got = await measure(file, what);
-    const box = pictureAt(size, got?.width ?? 0, got?.height ?? 0);
-    const place = { slideKey: on.key, quad: quadOf({ box, rot: 0, flipH: false, flipV: false }, size) };
-    // A file that goes in more than one piece counts what the host holds, so a long video over a slow link shows it moving.
-    const counted = file.size > ATTACH_PIECE;
-    session.adding(counted ? { ...place, sent: 0, total: file.size } : place);
-    let token: string;
-    try {
-      token = await session.while(() => file.arrayBuffer().then((bytes) => host.attach(file.name, new Uint8Array(bytes), counted ? (sent) => session.adding({ ...place, sent, total: file.size }) : undefined)));
-    } catch (error) {
-      session.adding(null);
-      sayError(error, what === "picture" ? "Couldn't add the picture" : "Couldn't add the video");
-      return;
-    }
-    await add((s) => ({ op: "insert", slide: s.id, what, box, file: token }), what === "picture" ? "Couldn't add the picture" : "Couldn't add the video");
-    session.adding(null);
-  };
+  const bring = (file: File, what: "picture" | "video"): Promise<void> => (slide ? bringMedia({ file, what, slide, size, host, store, session, measure }) : Promise.resolve());
   const chooser = (ref: typeof pictureInput, accept: string, what: "picture" | "video") => (
     <input
       ref={ref}

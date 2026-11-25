@@ -26,7 +26,7 @@ import { deckStoreOf, linkDeckHost, openDeck, showHostOf, useDeck, useDeckView, 
 import { pictureIn, useFilePictures } from "./filePictures";
 import { DeckRow, keyAct, officeTheme, targetOf, type Target } from "./edit/DeckRow";
 import { FormatSheet, SHEET_BESIDE, SHEET_WIDTH } from "./edit/FormatSheet";
-import type { MediaSize } from "./edit/Insert";
+import { bringMedia, mediaOf, type MediaSize } from "./edit/Insert";
 import { HistoryButton } from "./edit/History";
 import { cellAt, cellShape, modelOf, typesIn, type Sel } from "./edit/model";
 import { unitFor } from "./edit/drag";
@@ -373,15 +373,21 @@ export function SlidesBody({
       event.preventDefault();
       copyShape(event.clipboardData, { env, itemId: item.id, host, slideId: slide.id, slideKey: slide.key, shapeId: shape.id, box: shape.own?.box ?? null }, shape);
     };
+    // The shape this window copied, else a picture on the clipboard (a screenshot, an image copied in a browser), which
+    // goes on the slide as Insert → Picture… puts one.
     const onPaste = (event: ClipboardEvent): void => {
       const { view: now, current: key, look: seen } = store.get();
       const clip = heldShape(event.clipboardData);
-      if (!mine() || !now?.hand || !clip || seen !== "slide") return;
+      const picture = clip ? undefined : Array.from(event.clipboardData?.files ?? []).find((f) => mediaOf(f) === "picture");
+      if (!mine() || !now?.hand || (!clip && !picture) || seen !== "slide") return;
       event.preventDefault();
       const slide = now.slides.find((s) => s.key === key) ?? now.slides[0];
       const why = slide ? session.slideRefusal(slide) : null;
       if (why) return void sayError(new Error(why), why);
-      if (slide) void pasteShape(clip, { env, itemId: item.id, host, session, store, slide, size: now.size ?? { width: 12_192_000, height: 6_858_000 } });
+      if (!slide) return;
+      const size = now.size ?? { width: 12_192_000, height: 6_858_000 };
+      if (clip) void pasteShape(clip, { env, itemId: item.id, host, session, store, slide, size });
+      else if (picture) void bringMedia({ file: picture, what: "picture", slide, size, host, store, session, measure: mediaSize });
     };
     document.addEventListener("copy", onCopy);
     document.addEventListener("paste", onPaste);
@@ -389,7 +395,7 @@ export function SlidesBody({
       document.removeEventListener("copy", onCopy);
       document.removeEventListener("paste", onPaste);
     };
-  }, [root, store, session, env, item.id, host]);
+  }, [root, store, session, env, item.id, host, mediaSize]);
 
   // A deck the host could not open is the centred failure with its reason and Retry, no bones; a Keynote file he must
   // export first has nothing to try again, and one moved or taken away offers its folder in Files, which Retry cannot bring back.
@@ -565,6 +571,12 @@ export function SlidesBody({
               tone={tone}
               zoom={zoom}
               found={found?.slideKey === shown.key ? found : null}
+              // A picture or a video dropped on the slide goes on it, where he let it go.
+              onMedia={
+                view.hand && session.slideRefusal(shown) === null
+                  ? (file, what, at) => void bringMedia({ file, what, slide: shown, size: slideSize, host, store, session, measure: mediaSize, at })
+                  : undefined
+              }
               under={beside ? null : formatSheet}
             />
           ) : null}
@@ -769,8 +781,11 @@ function Main({
   tone,
   zoom,
   found,
+  onMedia,
   under,
 }: {
+  /** a picture or a video dropped on the slide, where he let it go (shares of the slide); absent where his hand cannot add to it */
+  onMedia?: (file: File, what: "picture" | "video", at: { x: number; y: number }) => void;
   /** Fit, or the slide at a share of its own size */
   zoom: StageZoom;
   /** the match find holds on this slide: its shape outlined, its notes brought into view */
@@ -953,7 +968,27 @@ function Main({
     >
       {/* Centred while it fits; a zoomed slide wider than the pane starts at its left edge, so all of it can be scrolled to. */}
       <div className="flex min-w-fit shrink-0 justify-center-safe bg-(--slide-stage) px-4 pt-4 pb-(--slide-stage-inset)">
-        <div data-slides-stage className="relative shrink-0" style={{ width: w }}>
+        <div
+          data-slides-stage
+          className="relative shrink-0"
+          style={{ width: w }}
+          // A picture or a video from the desktop dropped on the slide is the slide's: taken here, so the pane does not open
+          // it as a file of its own (canvas/fileDrop.tsx keeps a drop a surface took). Anything else keeps its meaning.
+          onDragOver={(event) => {
+            if (!onMedia || !Array.from(event.dataTransfer.items ?? []).some((i) => i.kind === "file" && mediaOf(i) !== null)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = "copy";
+          }}
+          onDrop={(event) => {
+            const file = onMedia ? Array.from(event.dataTransfer.files).find((f) => mediaOf(f) !== null) : undefined;
+            if (!file || !onMedia) return;
+            event.preventDefault();
+            const box = event.currentTarget.getBoundingClientRect();
+            const point = box.width > 0 && box.height > 0 ? { x: (event.clientX - box.left) / box.width, y: (event.clientY - box.top) / box.height } : null;
+            const at = point && Number.isFinite(point.x) && Number.isFinite(point.y) ? point : { x: 0.5, y: 0.5 };
+            onMedia(file, mediaOf(file)!, at);
+          }}
+        >
           <Picture
             doc={doc}
             page={page}

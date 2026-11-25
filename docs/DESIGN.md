@@ -4508,8 +4508,12 @@ other picked shape is the outline alone.
   | Find the deck's words; the next and the one before; close, keeping what he found | ⌘F; Return and ⇧Return in its field; Escape |
   | Duplicate the picked shape (12pt down and right; again after a move, as far again) | ⌘D |
   | Copy the picked shape (its words to other apps); paste it on the slide on the stage, from this deck or another | ⌘C; ⌘V |
+  | A picture on the clipboard onto the slide, in its middle; a picture or a video from the desktop, where it is let go | ⌘V; a drop on the slide |
 
-  A paste into the box is plain text, each line a paragraph. A shape pasted
+  A paste into the box is plain text, each line a paragraph. A picture
+  pasted or dropped goes in as Insert's does, its place outlined with
+  "Adding" while it travels, then picked; the stage draws no mark while a
+  drag passes over it, the pointer's copy cue alone. A shape pasted
   from another deck has its place outlined with "Adding" while its slide
   travels, as a picture's does.
 

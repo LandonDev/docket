@@ -1829,6 +1829,23 @@ Not proven in real PowerPoint yet: `op_copy` reads back in python-pptx and
 LibreOffice on the box, and its pack takes it back byte for byte; the VM
 proof ("Proven against real PowerPoint") waits for the next run there.
 
+### A picture pasted or dropped
+
+A picture on the clipboard (a screenshot, an image copied in a browser),
+pasted with ⌘V while the keyboard is in a deck he edits and not in a field,
+and a picture or a video from the desktop dropped on the slide, go in as
+Insert → Picture… and Video… put them (`bringMedia`, edit/Insert.tsx): read
+in the window for their proportions, fitted to three fifths of the slide,
+brought to the host in pieces while their place is outlined with "Adding"
+(counting what the host holds of a file of more than one piece), one
+`insert`, then picked. A paste lies in the slide's middle; a drop lies
+centred where he let it go, kept on the slide (`centredAt`). The shape this
+window copied wins over a picture on the clipboard. Only the types a deck
+holds are taken (`mediaOf`, the chooser's own lists): any other file
+dropped on the stage keeps its old meaning (the pane opens it, canvas/
+fileDrop.tsx), and a slide a suggestion changes, or a deck he cannot edit,
+takes nothing.
+
 ### Find
 
 Edit → Find… and ⌘F in a deck (`DeckFind.tsx`, the matching in `find.ts`,

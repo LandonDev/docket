@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 /**
  * The deck's own keys in the real canvas pane (docs/agents/work-slides.md
- * "Copy and paste"): ⌘D on the picked shape, ⌘C and ⌘V as the window's copy
- * and paste events, and none of them heard in a field.
+ * "Copy and paste", "A picture pasted or dropped"): ⌘D on the picked shape,
+ * ⌘C and ⌘V as the window's copy and paste events, a picture pasted or
+ * dropped on the slide, and none of them heard in a field.
  */
-import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { openMenus } from "../../chrome/menuRows";
 import { IS_MAC } from "../../lib/platform";
@@ -51,9 +52,9 @@ afterEach(cleanup);
 /** The platform's own chord: ⌘ on a Mac, Ctrl elsewhere. */
 const mod = (key: string) => ({ key, metaKey: IS_MAC, ctrlKey: !IS_MAC });
 /** A copy or a paste as the window sends it (Edit → Copy, ⌘C), on what holds the keyboard, with its clipboard. */
-function clipboardEvent(type: "copy" | "paste", data: Map<string, string>): boolean {
+function clipboardEvent(type: "copy" | "paste", data: Map<string, string>, files: File[] = []): boolean {
   const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.defineProperty(event, "clipboardData", { value: { setData: (k: string, v: string) => void data.set(k, v), getData: (k: string) => data.get(k) ?? "", files: [], items: [] } });
+  Object.defineProperty(event, "clipboardData", { value: { setData: (k: string, v: string) => void data.set(k, v), getData: (k: string) => data.get(k) ?? "", files, items: [] } });
   return (document.activeElement ?? document.body).dispatchEvent(event);
 }
 const thumbs = () => [...document.querySelectorAll<HTMLElement>("[data-slide]")];
@@ -118,5 +119,50 @@ describe("⌘C and ⌘V", () => {
     expect(clipboardEvent("paste", data)).toBe(true);
     await new Promise((done) => setTimeout(done, 20));
     expect(t.edits()).toEqual([]);
+  });
+});
+
+describe("a picture pasted or dropped", () => {
+  /** Where an 800 by 600 picture lies fitted to three fifths of the slide: 5,486,400 by 4,114,800 EMU. */
+  const [W, H] = [5_486_400, 4_114_800];
+  const png = (bytes = 10) => new File([new Uint8Array(bytes)], "image.png", { type: "image/png" });
+
+  it("a picture on the clipboard goes in the slide's middle, as Insert → Picture… puts one, and is picked", async () => {
+    const { layer } = await t.stage();
+    act(() => layer.focus());
+    expect(clipboardEvent("paste", new Map(), [png()])).toBe(false);
+    await waitFor(() => expect(t.edits()).toEqual([[{ op: "insert", slide: 3, what: "picture", box: [(12_192_000 - W) / 2, (6_858_000 - H) / 2, W, H], file: "token:image.png" }]]));
+    expect(t.host.calls.filter(([name]) => name === "attach")).toEqual([["attach", { name: "image.png", size: 10 }]]);
+    const made = t.host.view.slides[0].shapes.at(-1)!;
+    await waitFor(() => expect(document.querySelector(`[data-shape="${made.id}"]`)?.getAttribute("aria-pressed")).toBe("true"));
+    // A file that is no picture is left to go on; in a field, so is a picture.
+    expect(clipboardEvent("paste", new Map(), [new File(["x"], "notes.txt", { type: "text/plain" })])).toBe(true);
+    const field = (await t.found("[data-slide-notes-field]")) as HTMLTextAreaElement;
+    field.focus();
+    expect(clipboardEvent("paste", new Map(), [png()])).toBe(true);
+  });
+
+  it("a picture dropped on the slide lies centred where he let it go, kept on the slide; the pane does not open it", async () => {
+    await t.stage();
+    const stage = document.querySelector<HTMLElement>("[data-slides-stage]")!;
+    stage.getBoundingClientRect = () => ({ left: 0, top: 0, width: 1000, height: 562.5, right: 1000, bottom: 562.5, x: 0, y: 0, toJSON: () => ({}) });
+    const file = png();
+    const transfer = { files: [file], items: [{ kind: "file", type: "image/png" }], types: ["Files"], dropEffect: "none" };
+    expect(fireEvent.dragOver(stage, { dataTransfer: transfer })).toBe(false);
+    // jsdom has no DragEvent: the drop is given its point as the window's would carry it.
+    const drop = createEvent.drop(stage, { dataTransfer: transfer });
+    Object.defineProperties(drop, { clientX: { value: 250 }, clientY: { value: 140.625 } });
+    expect(fireEvent(stage, drop)).toBe(false);
+    // Its middle at a quarter across and down: its left 304,800 EMU in; its top would be above the slide, so it is 0.
+    await waitFor(() => expect(t.edits()).toEqual([[{ op: "insert", slide: 3, what: "picture", box: [3_048_000 - W / 2, 0, W, H], file: "token:image.png" }]]));
+    // A document dropped there keeps its old meaning: the stage leaves it be.
+    const doc = { files: [new File(["x"], "plan.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })], items: [{ kind: "file", type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }], types: ["Files"] };
+    expect(fireEvent.dragOver(stage, { dataTransfer: doc })).toBe(true);
+  });
+
+  it("is not taken on a deck he cannot edit", async () => {
+    await t.stage(handView({ hand: undefined }));
+    const stage = document.querySelector<HTMLElement>("[data-slides-stage]")!;
+    expect(fireEvent.dragOver(stage, { dataTransfer: { files: [png()], items: [{ kind: "file", type: "image/png" }], types: ["Files"] } })).toBe(true);
   });
 });

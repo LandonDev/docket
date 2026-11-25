@@ -50,6 +50,13 @@ export function pictureAt(size: Size, width: number, height: number): Box {
   return centred(size, w * k, h * k);
 }
 
+/** `box` moved so its middle lies on `at` (shares of the slide: a drop's point), kept on the slide where it fits. */
+export function centredAt(size: Size, box: Box, at: { x: number; y: number }): Box {
+  const [, , w, h] = box;
+  const keep = (v: number, room: number): number => Math.round(Math.max(0, Math.min(room, v)));
+  return [keep(at.x * size.width - w / 2, size.width - w), keep(at.y * size.height - h / 2, size.height - h), w, h];
+}
+
 /** A table: an inch and a half a column up to four fifths of the slide, two fifths of an inch a row. */
 export const tableAt = (size: Size, rows: number, cols: number): Box => centred(size, Math.min(cols * INCH * 1.5, size.width * 0.8), Math.min(rows * INCH * 0.4, size.height * 0.8));
 
