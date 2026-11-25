@@ -26,7 +26,8 @@ import { linkSheetHost, type SheetHost } from "./host";
 import { ImportLine } from "./ImportLine";
 import { importRows, runImport } from "./imported";
 import { reviewBatches, saidLine, savedLine, sheetChanges } from "./model";
-import { SheetSync, syncOf, useSheetSync, type SheetSyncState } from "./sync";
+import { EDIT_WAIT, SheetSync, syncOf, useSheetSync, type SheetSyncState } from "./sync";
+import { useSaving } from "../canvas/useCalm";
 import { copyText } from "../../lib/clipboard";
 import { itemJournal } from "../canvas/drafts";
 import { whenWords } from "../files/fileText";
@@ -153,7 +154,9 @@ export function Body(props: Props) {
     shell.ready?.(ready);
   }, [shell, ready]);
   useFeeds(shell, sync, failed ? null : view, state.sendError, changes, current, handle, locked, act, ready);
-  useSavedLine(shell, sync, failed ? null : view, state.sendError, state.saving, state.savedAt, state.offer ?? null);
+  // Saving… only once a send has been out a while, or his edits waited past the grid's pause (canvas/calm.ts): every cell no longer blinks the line.
+  const saving = useSaving({ edited: state.editedAt, pause: EDIT_WAIT, sent: state.sentAt }) && state.saving;
+  useSavedLine(shell, sync, failed ? null : view, state.sendError, saving, state.savedAt, state.offer ?? null);
   // Preview is a state of the item: the frame over the grid, which stays mounted under it, out of reach, its place kept.
   // Each ask is counted: Print… pressed while Preview shows another format opens it on Print anew.
   const [previewing, setPreviewing] = useState<false | "last" | "print">(false);

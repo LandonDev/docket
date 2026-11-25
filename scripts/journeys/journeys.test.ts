@@ -438,6 +438,9 @@ it('only accepts a saved claim after Enter when the holder has the cell', () => 
   expect(falseSaveLine('Saving to This Mac…', true, false)).toBe(false)
   expect(falseSaveLine('Saved to This Mac. OneDrive uploads it', true, false)).toBe(true)
   expect(falseSaveLine('Saved to This Mac 4:24 AM', true, true)).toBe(false)
+  // The line read before the edit, kept through its pause, names that earlier save: not a claim about this edit.
+  expect(falseSaveLine('On This Mac', true, false, 'On This Mac')).toBe(false)
+  expect(falseSaveLine('Saved to This Mac 4:24 AM', true, false, 'Saved to This Mac 4:20 AM')).toBe(true)
 })
 
 it('requires a search scope line about the omitted content', () => {

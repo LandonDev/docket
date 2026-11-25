@@ -20,6 +20,8 @@ import { CanvasPane, useKindModule } from "../canvas/CanvasPane";
 import { CANVAS, kindDefOf } from "../canvas/registry";
 import { useKeptState } from "../canvas/store";
 import { sayError, useFrame } from "../canvas/frame";
+import { PAUSE_MS } from "../canvas/calm";
+import { useLast, useSaving, useSince, useStage } from "../canvas/useCalm";
 import { ItemSkeleton } from "../canvas/ItemBones";
 import type { CanvasKindDef, CanvasSelection, SavedAction, SavedLine } from "../canvas/kind";
 import { keepItem } from "../canvas/fetched";
@@ -421,9 +423,18 @@ export function FileTabView({
   }, [waitsPress, itemId, waitsWords]);
   // The workspace as this window knows it: Save As… needs it (SaveAs.tsx).
   const meta = useWorkspaceOf(workspace.environmentId, workspace.id);
-  const said: HeaderLine | null =
+  // A Word file saves after Word's pause in his typing (canvas/calm.ts), counted from his last edit as the document tells
+  // it; nothing typed in this tab, nothing is said to be saving.
+  const [edited, setEdited] = useState<number | null>(null);
+  if (kindLine?.edited !== undefined && kindLine.edited !== edited) setEdited(kindLine.edited);
+  const wordSaving = useSaving({ edited: word?.auto && word.since ? edited : null, pause: PAUSE_MS.word, sent: null });
+  const wordSaid: HeaderLine | null =
     copy && word && (!kindLine || kindLine.state === "saved" || kindLine.state === "saving")
-      ? { ...wordLine(word, serviceOf(tab), copy.host), ...(wordActions(word).length ? { actions: wordActions(word) } : {}) }
+      ? { ...wordLine(word, serviceOf(tab), copy.host, Date.now(), wordSaving), ...(wordActions(word).length ? { actions: wordActions(word) } : {}) }
+      : null;
+  const rawSaid: HeaderLine | null =
+    wordSaid
+      ? wordSaid
       : copy && back
       ? savingCopyLine(kindLine, tab, back, copy, sendAsk, () => setFresh((n) => n + 1), () => sendBack())
       : copy
@@ -431,8 +442,17 @@ export function FileTabView({
           ? kindLine
           : frameLine(copy, item, workspace.environmentId, tab.stays ? { ...(item?.kind === "document" && meta ? { saveAs: () => openSaveAs(item.id) } : {}) } : undefined)
         : (kindLine ?? frameLine(null, item, workspace.environmentId));
-  // A save into a Teams or OneDrive library says what OneDrive has done with it, never Saved to Teams before it uploads.
-  const line = said && copy ? cloudLine(said, cloudOfBack(tab, back), serviceOf(tab), copy.host) : said;
+  // A stage the frame says itself (a copy's send to its computer) shows only once it has lasted 600 ms (canvas/calm.ts);
+  // until then the line keeps the save last confirmed. The kind's own Saving… and Word's are already timed.
+  const frameSaving = rawSaid?.state === "saving" && kindLine?.state !== "saving" && !wordSaid;
+  const savingShown = useStage(useSince(frameSaving));
+  const steady = useLast(rawSaid, rawSaid?.state === "saved", (l) => `${l.words ?? ""}|${l.at ?? ""}|${l.where ?? ""}`);
+  const said = frameSaving && !savingShown && steady ? steady : rawSaid;
+  // A save into a Teams or OneDrive library says what OneDrive has done with it, never Saved to Teams before it uploads;
+  // its upload is said once it has lasted 600 ms, the computer's own receipt until then.
+  const cloud = cloudOfBack(tab, back);
+  const uploadShown = useStage(useSince(cloud?.is === "uploading"));
+  const line = said && copy ? cloudLine(said, cloud?.is === "uploading" && !uploadShown ? undefined : cloud, serviceOf(tab), copy.host) : said;
   // Once a copy's kind has saved, the host sends the copy to its file (one send at a time there, the newest bytes).
   const saving = !!(copy && tab.back);
   const lastLine = useRef<SavedLine | null>(null);

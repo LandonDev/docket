@@ -32,6 +32,8 @@ import { ItemBones, ItemSkeleton } from "../canvas/ItemBones";
 import { OpenFailed } from "../canvas/FetchState";
 import { BarHold } from "../canvas/barHold";
 import { QuietLine } from "../canvas/QuietLine";
+import { PAUSE_MS } from "../canvas/calm";
+import { useSaving } from "../canvas/useCalm";
 import { hostName } from "../../lib/threadResources";
 import type { CanvasBodyProps, CanvasShell, MoreEntry, Presence, SavedLine, WrittenLine } from "../canvas/kind";
 import { mailSafeCopy } from "work-kit/formats/clipboard";
@@ -651,7 +653,6 @@ function Opened({
   const doc = useDocument(host, open);
   const [offline, setOffline] = useState<{ word: string; detail: string } | null>(null);
   const offering = useDocDrafts(host, journal ?? null, shell);
-  useDocSaved(host, shell, open.role === "edit" && !offering);
   const margin = width >= MARGIN_FROM;
   // A tab's close waits until the host has stored what he typed (canvas/flush.ts): a Word file's document is judged by its file next.
   // A send or a store that fails is said, and fails the flush: the close is never told the file holds it.
@@ -816,6 +817,7 @@ function Opened({
         onFind={onFind}
         {...(pages ? { pages: { view: pages.view, ...(pages.zoom !== undefined ? { zoom: pages.zoom } : {}), onView: pages.onView, onZoom: pages.onZoom, onPages, onDocumentHandle, sheets } } : {})}
       />
+      <DocSaved host={host} shell={shell} on={open.role === "edit" && !offering} />
       {offline && lineSlot ? createPortal(<OfflineLine words={offline} />, lineSlot) : null}
       {preview.on && preview.slot
         ? createPortal(
@@ -914,25 +916,43 @@ export function useDocDrafts(host: DocHost, journal: DraftJournal | null, shell:
  * store that held every edit sent before it; saving while his edits wait for one; a store the service refused, in its
  * words, with Retry. Before he edits it says nothing, and the frame names where the file is kept.
  */
-export function docSavedLine(saves: DocSaves, retry: () => void): SavedLine | null {
+export function docSavedLine(saves: DocSaves, retry: () => void, saving = saves.edited !== null || saves.asked !== null): SavedLine | null {
   if (saves.failed) return { state: "conflict", detail: notSavedWords(saves.failed), actions: [{ id: "retry", label: "Retry", run: retry }] };
-  if (saves.edited !== null || saves.asked !== null) return { state: "saving" };
+  if (saving) return { state: "saving" };
   return saves.storedAt !== null ? { state: "saved", at: saves.storedAt } : null;
 }
 
 /** Feeds the save line from the socket's save facts, where he edits and no kept draft is offered (that line is the draft's). */
+/** The save line's feed as a part of its own that draws nothing: its facts move with every keystroke, and the text around it is not drawn again for them. */
+export function DocSaved({ host, shell, on }: { host: Pick<DocHost, "socket">; shell: CanvasShell; on: boolean }): null {
+  useDocSaved(host, shell, on);
+  return null;
+}
+
+/** How finely a document's line tells the frame when he last edited (a Word file's pause reads it): twice a second at most. */
+const EDITED_STEP_MS = 500;
+
 export function useDocSaved(host: Pick<DocHost, "socket">, shell: CanvasShell, on: boolean): void {
   const saves = useMemo(() => savesOf(host.socket), [host.socket]);
   const facts = useSyncExternalStore(saves.listen, saves.now, saves.now);
-  const line = on && facts ? docSavedLine(facts, saves.retry) : null;
-  const key = line ? `${line.state}:${line.at ?? ""}:${line.detail ?? ""}` : "";
+  // Saving… once a store has been asked a while, or edits waited past the pause with none asked (canvas/calm.ts).
+  const saving = useSaving({ edited: facts && facts.asked === null ? facts.edited : null, pause: PAUSE_MS.document, sent: facts?.asked ?? null });
+  // When he last edited, for a Word file's own pause (FileTabView.tsx): told in half-second steps, not per keystroke.
+  const edited = facts?.edited != null ? facts.edited - (facts.edited % EDITED_STEP_MS) : null;
+  const present = facts !== null;
+  const storedAt = facts?.storedAt ?? null;
+  const failed = facts?.failed ?? null;
+  // The line by value: the same facts told again say nothing new.
+  const line = useMemo((): SavedLine | null => {
+    if (!on || !present) return null;
+    const said = docSavedLine({ edited: null, asked: null, storedAt, failed }, saves.retry, saving);
+    return said && said.state !== "conflict" && edited !== null ? { ...said, edited } : said;
+  }, [on, present, storedAt, failed, saving, edited, saves]);
   useEffect(() => {
     if (!on || !shell.saved) return;
     shell.saved(line);
     return () => shell.saved?.(null);
-    // `key` is the line by value: the same facts told again say nothing new.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shell, on, key]);
+  }, [shell, on, line]);
 }
 
 export interface DocumentHandle {

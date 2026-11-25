@@ -17,6 +17,7 @@ import { useLinkMay } from "../../lib/linkMay";
 import { sayError } from "../canvas/frame";
 import { itemJournal } from "../canvas/drafts";
 import { registerFlush } from "../canvas/flush";
+import { useSaving } from "../canvas/useCalm";
 import type { CanvasBodyProps, CanvasShell, ReviewAdapter } from "../canvas/kind";
 import { OpenFailed } from "../canvas/FetchState";
 import { pdfjsEngine, type PdfDoc, type PdfEngine } from "../pdf/engine";
@@ -30,7 +31,7 @@ import { HistoryButton } from "./edit/History";
 import { modelOf, typable, type Sel } from "./edit/model";
 import { unitFor } from "./edit/drag";
 import { Manipulate, movable, turnable, type ManipulateHandle, type Movable } from "./edit/Manipulate";
-import { CONFLICT_WORD, HandSession, SHAPE_GONE, type HandState, type Start } from "./edit/session";
+import { CONFLICT_WORD, HandSession, SHAPE_GONE, unsavedOf, type HandState, type Start } from "./edit/session";
 import { Prompt, TypingBox } from "./edit/TypingBox";
 import { NotesField } from "./edit/NotesField";
 import { askAnchor, groundOf, HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, shapeLabel, textFrameOf, type Quad } from "./geometry";
@@ -524,7 +525,9 @@ function useFeeds(
 
   // What saved means for the file, where he can edit it by hand (FILES-SEAM.md "Save state").
   const editable = !!view?.hand && !inPowerPoint;
-  const saved = editable ? session.saved(reload, copyDraft) : null;
+  // Saving… only once an edit has been out a while, or the box's words waited past its pause (canvas/calm.ts).
+  const saving = useSaving(unsavedOf(hand));
+  const saved = editable ? session.saved(reload, copyDraft, saving) : null;
   const savedKey = saved ? `${saved.state}:${saved.at ?? ""}:${saved.detail ?? ""}:${saved.actions?.map((a) => a.id).join() ?? ""}` : "";
   useEffect(() => {
     shell.saved?.(saved);

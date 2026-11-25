@@ -3,6 +3,7 @@ import type { CanvasSource } from "@shared/work";
 import { draftFileOf, type Draft, type DraftKey } from "@shared/work/drafts";
 import { FILE_TEXT_MAX, type FileEntry } from "@shared/work/files";
 import type { SavedLine } from "../canvas/kind";
+import { savingNow } from "../canvas/calm";
 import { bytesOfBase64, decodeText, encodeText, triedAsText, whenWords, type TextFile } from "./fileText";
 
 /**
@@ -78,6 +79,11 @@ export class FileSession {
   private pending = 0;
   private timer: unknown = null;
   private saving: Promise<void> | null = null;
+  /** when his last unsent edit was made, and when the send now out began (calm.ts): the save line's clock */
+  private editedAt: number | null = null;
+  private sentAt: number | null = null;
+  /** the save line asked again once its words change by time alone */
+  private lineTimer: unknown = null;
   private conflicted = false;
   private gone = false;
   private disposed = false;
@@ -220,8 +226,21 @@ export class FileSession {
     // A copy says nothing of its own: the frame names the computer the file is on.
     if (this.view.locked !== null) return this.host.saved(this.view.locked.startsWith("This is a copy") ? null : { state: "readonly", detail: this.view.locked });
     if (failed !== undefined) return this.host.saved({ state: "offline", pending: this.pending, detail: failed, actions: [{ id: "retry", label: "Retry", run: () => this.flush() }] });
-    if (this.draft !== null || this.saving) return this.host.saved({ state: "saving" });
+    // Saved names the last save the host answered; Saving… only once a send has been out a while, or his edits waited
+    // past the pause with nothing sent (calm.ts). Inside that, the last Saved line stays.
+    const { saving, again } = savingNow({ edited: this.draft !== null && !this.saving ? this.editedAt : null, pause: SAVE_AFTER_MS, sent: this.saving ? this.sentAt : null }, this.now());
+    this.later(again);
+    if (saving) return this.host.saved({ state: "saving" });
     this.host.saved({ state: "saved", at: this.changed });
+  }
+
+  /** Asks the line again in `ms`, once: none waits when null. */
+  private later(ms: number | null): void {
+    this.host.clearTimeout ? this.host.clearTimeout(this.lineTimer) : clearTimeout(this.lineTimer as ReturnType<typeof setTimeout>);
+    this.lineTimer = null;
+    if (ms === null) return;
+    const again = (): void => this.line();
+    this.lineTimer = this.host.setTimeout ? this.host.setTimeout(again, ms + 1) : setTimeout(again, ms + 1);
   }
 
   /** The editor's text changed by his hand. */
@@ -229,6 +248,7 @@ export class FileSession {
     if (this.view.is !== "text" || this.view.locked !== null || this.view.offer) return;
     this.draft = text;
     this.pending += 1;
+    this.editedAt = this.now();
     this.journal();
     if (this.conflicted) return this.line();
     this.line();
@@ -245,6 +265,7 @@ export class FileSession {
     if (this.draft === null || this.conflicted || this.view.is !== "text") return Promise.resolve();
     const text = this.draft;
     const sent = this.pending;
+    this.sentAt = this.now();
     this.saving = (async () => {
       const encoded = encodeText(text, this.file);
       // Kept until its answer: a send whose answer is lost is named by the next, and a resend of these bytes is this save.
@@ -267,11 +288,13 @@ export class FileSession {
           this.pending = Math.max(0, this.pending - sent);
         }
         this.saving = null;
+        this.sentAt = null;
         this.line();
       } catch (err) {
         const lost = await digest;
         if (lost && !this.tried.includes(lost)) this.tried = [...this.tried, lost].slice(-8);
         this.saving = null;
+        this.sentAt = null;
         this.line(textOf(err));
       }
     })();
@@ -384,6 +407,7 @@ export class FileSession {
     if (this.disposed) return;
     this.disposed = true;
     this.listeners.clear();
+    this.later(null);
     void this.flush().finally(() => {
       if (this.draft !== null && this.journaled) this.host.drafts?.release(this.journaled);
     });

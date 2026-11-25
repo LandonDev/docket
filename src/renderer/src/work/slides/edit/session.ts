@@ -4,6 +4,7 @@ import type { DraftJournal } from "../../canvas/drafts";
 import { copyText } from "../../../lib/clipboard";
 import { CloseRefused, FLUSH_WAIT_MS } from "../../canvas/flush";
 import { whenWords } from "../../files/fileText";
+import type { Unsaved } from "../../canvas/calm";
 import { sayError } from "../../canvas/frame";
 import { openDeck, type DeckHost, type DeckStore } from "../deck";
 import type { Quad } from "../geometry";
@@ -101,6 +102,9 @@ export interface HandState {
   busy: number;
   /** when the host last wrote one of his edits */
   savedAt: number | null;
+  /** the save line's clock (canvas/calm.ts): when his last word in the box was typed, and when the run of edits now on their way began */
+  editedAt?: number | null;
+  busySince?: number | null;
   /** why the last edit did not go in, for the pane's one state line */
   failure: Failure | null;
   /** a look the row laid on the picked shape, shown until the deck comes back with it */
@@ -127,6 +131,14 @@ export const CONFLICT_WORD = "The deck changed while you typed";
 export const SUGGESTED = "Accept or reject the suggestion on this slide first";
 /** A conflict whose shape another save took off the slide: the box cannot be drawn, so its words wait to be copied. */
 export const SHAPE_GONE = "The shape is no longer on the slide";
+/** Words in the open box that are not in the file yet. */
+const boxWaits = ({ box }: HandState): boolean => box?.phase === "typing" && !box.conflict && !unchanged(box.model, box.initial);
+
+/** The save line's facts for canvas/calm.ts, from the session's state: the box's words not sent yet, and the edits on their way. */
+export function unsavedOf(state: HandState): Unsaved {
+  return { edited: boxWaits(state) ? (state.editedAt ?? Date.now()) : null, pause: TYPING_SAVE_MS, sent: state.busy > 0 ? (state.busySince ?? Date.now()) : null };
+}
+
 /** Words in a box not saved yet, when another box would open over them. */
 export const UNSAVED = "The words in the open box are not saved yet";
 /** A close that waited this long for words still in this window keeps its tab (canvas/flush.ts closes it at FLUSH_WAIT_MS). */
@@ -180,6 +192,8 @@ export class HandSession {
     return () => this.listeners.delete(listener);
   };
   private set(patch: Partial<HandState>): void {
+    // The line's clock for edits on their way: from the first of a run, until none is.
+    if (patch.busy !== undefined) patch = { ...patch, busySince: patch.busy <= 0 ? null : this.state.busy > 0 ? (this.state.busySince ?? Date.now()) : Date.now() };
     this.state = { ...this.state, ...patch, undo: this.past.length > 0, redo: this.future.length > 0 };
     for (const listener of this.listeners) listener();
     this.note();
@@ -423,6 +437,8 @@ export class HandSession {
 
   /** A pause in his typing sends the box's words; each new word moves the pause on. */
   private keepLater(): void {
+    // Told at once, with the edit's own draw: the line's pause counts from this word.
+    this.set({ editedAt: Date.now() });
     if (this.keepTimer) clearTimeout(this.keepTimer);
     this.keepTimer = setTimeout(() => {
       this.keepTimer = null;
@@ -762,9 +778,17 @@ export class HandSession {
     return this.send(() => this.host.restore(version), "Couldn't restore that version");
   }
 
-  /** What saved means now, for a file's save line (FILES-SEAM.md "Save state"). */
-  saved(reload: () => void, copy?: () => void): { state: "saved" | "saving" | "conflict"; at?: number; detail?: string; actions?: Array<{ id: string; label: string; run(): void }> } {
-    const { busy, savedAt, failure, box, offer } = this.state;
+  /** The save line's facts for canvas/calm.ts: the box's words not sent yet, and the edits on their way. */
+  unsaved(): Unsaved {
+    return unsavedOf(this.state);
+  }
+
+  /**
+   * What saved means now, for a file's save line (FILES-SEAM.md "Save state"). `saving` is canvas/calm.ts's answer
+   * over `unsaved()`: words in the box inside its pause, and a send out less than 600 ms, keep the last Saved line.
+   */
+  saved(reload: () => void, copy?: () => void, saving = this.busyOrTyped()): { state: "saved" | "saving" | "conflict"; at?: number; detail?: string; actions?: Array<{ id: string; label: string; run(): void }> } {
+    const { savedAt, failure, offer } = this.state;
     if (offer) {
       const when = whenWords(offer.at);
       return {
@@ -775,8 +799,12 @@ export class HandSession {
     }
     if (failure?.message === SHAPE_GONE && copy) return { state: "conflict", detail: failure.message, actions: [{ id: "copy", label: "Copy words", run: copy }] };
     if (failure?.conflict) return { state: "conflict", detail: failure.message, actions: [{ id: "reload", label: "Reload", run: reload }] };
-    // Words in an open box that are not in the file yet are on their way (`keep`, within seconds): never saved.
-    if (busy > 0 || (box?.phase === "typing" && !box.conflict && !unchanged(box.model, box.initial))) return { state: "saving" };
+    if (saving) return { state: "saving" };
     return savedAt ? { state: "saved", at: savedAt } : { state: "saved" };
+  }
+
+  /** With no clock asked: anything not written yet. */
+  private busyOrTyped(): boolean {
+    return this.state.busy > 0 || boxWaits(this.state);
   }
 }

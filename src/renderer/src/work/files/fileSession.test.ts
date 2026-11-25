@@ -23,7 +23,11 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
   const lines: (SavedLine | null)[] = [];
   const said: string[] = [];
   const calls: { method: string; params: Record<string, unknown> }[] = [];
+  /** the edit's pause, by its handle; the save line's own wake is kept apart (`wakes`) so `fire` sends without moving the clock */
   const timers: (() => void)[] = [];
+  const wakes = new Map<number, () => void>();
+  let ids = 0;
+  let clock = NOW;
   let down = false;
   /** the next write lands, and its answer is lost on the way back */
   let lose = false;
@@ -50,9 +54,14 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
     },
     saved: (line) => void lines.push(line),
     say: (text) => void said.push(text),
-    now: () => NOW,
-    setTimeout: (fn) => timers.push(fn),
-    clearTimeout: () => void timers.splice(0),
+    now: () => clock,
+    // The pause's timer is the one at SAVE_AFTER_MS; anything else is the line asking again once the clock has moved.
+    setTimeout: (fn, ms) => {
+      if (ms === SAVE_AFTER_MS) return void timers.push(fn);
+      wakes.set(++ids, fn);
+      return ids;
+    },
+    clearTimeout: (id) => (typeof id === "number" ? void wakes.delete(id) : void timers.splice(0)),
     ...(o.drafts ? { drafts: o.drafts } : {}),
   };
   const session = new FileSession(host, { workspaceId: "w1", itemId: "i1", source: { at: "file", host: "box", path: `/w/${o.name ?? "Notes.md"}` }, name: o.name ?? "Notes.md", holder: "box" });
@@ -66,7 +75,15 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
     for (const fn of timers.splice(0)) fn();
     await session.flush();
   };
-  return { session, file, lines, said, calls, timers, theirs, words, fire, setDown: (on: boolean) => void (down = on), loseNext: () => void (lose = true) };
+  /** The clock moves on, and the line asks again where it said it would. */
+  const tick = (ms: number): void => {
+    clock += ms;
+    for (const [id, fn] of [...wakes]) {
+      wakes.delete(id);
+      fn();
+    }
+  };
+  return { session, file, lines, said, calls, timers, theirs, words, fire, tick, setDown: (on: boolean) => void (down = on), loseNext: () => void (lose = true) };
 }
 
 describe("a text file open", () => {
@@ -82,7 +99,8 @@ describe("a text file open", () => {
     const h = standIn("first\n");
     await h.session.load();
     h.session.edit("first\nsecond\n");
-    expect(h.words()).toBe("Saving…");
+    // Inside the pause the last Saved line stays (calm.ts): nothing has gone yet.
+    expect(h.words()).toBe("Saved 1:52 PM in Events");
     expect(h.timers).toHaveLength(1);
     expect(SAVE_AFTER_MS).toBeLessThanOrEqual(1000);
     h.session.edit("first\nsecond\nthird\n");
@@ -189,6 +207,9 @@ describe("a text file open", () => {
     expect(h.words()).toBe("Offline. 1 change waits here");
     h.setDown(false);
     const sent = h.session.reopened();
+    // A failure said at once; the send that follows says Saving… only once it has been out a while.
+    expect(h.words()).toBe("Saved 1:52 PM in Events");
+    h.tick(600);
     expect(h.words()).toBe("Saving…");
     await sent;
     expect(h.file.text).toBe("first\ntyped while away\n");
@@ -243,6 +264,28 @@ describe("a text file open", () => {
     expect(h.session.getSnapshot()).toMatchObject({ text: "theirs\n" });
   });
 
+  it("keeps the last Saved line through the pause and a short send, says Saving… past them, and never names a time later than the host's answer", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    h.session.edit("first\nsecond\n");
+    expect(h.words()).toBe("Saved 1:52 PM in Events");
+    // Edits that waited past their pause with nothing sent (the timer has not run): Saving….
+    h.tick(SAVE_AFTER_MS);
+    expect(h.words()).toBe("Saving…");
+    await h.fire();
+    // The answer's time, never the window's clock.
+    expect(h.lines.at(-1)).toEqual({ state: "saved", at: h.file.changed });
+    expect(h.file.changed).toBeLessThan(NOW);
+    // A failure inside 600 ms is said at once.
+    h.setDown(true);
+    h.session.edit("third\n");
+    const failing = h.session.flush();
+    expect(h.words()).toBe("Saved 1:53 PM in Events");
+    await failing;
+    expect(h.words()).toBe("Offline. 1 change waits here");
+    expect(h.lines.filter((l) => l?.state === "saving")).toHaveLength(1);
+  });
+
   it("sends what waits when the tab closes under the editor", async () => {
     const h = standIn("first\n");
     await h.session.load();
@@ -251,8 +294,8 @@ describe("a text file open", () => {
     await Promise.resolve();
     await new Promise((r) => setTimeout(r, 0));
     expect(h.file.text).toBe("typed and closed\n");
-    // Nothing more is said to a frame that has gone.
-    expect(h.lines.at(-1)).toEqual({ state: "saving" });
+    // Nothing more is said to a frame that has gone, and nothing it said claimed the close's send.
+    expect(h.lines.at(-1)).toEqual({ state: "saved", at: AT(13, 52) });
   });
 
   it("is read only where the host would refuse a save: nothing typed is kept or sent", async () => {

@@ -110,6 +110,8 @@ export interface SavedLine {
   where?: string;
   pending?: number;
   detail?: string;
+  /** when his last edit not yet in the file was made (epoch ms), where the kind says: a Word file's line counts its pause from it */
+  edited?: number;
   /** at most two presses, in order */
   actions?: SavedAction[];
 }

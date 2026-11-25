@@ -1,6 +1,7 @@
 import type { DocMode, DocOpen, DocReady, DocsPush, DocThreadOp, DocThreadRow, DocToken } from "@shared/contract-work-docs";
 import type { CanvasSource } from "@shared/work";
 import { registry } from "../../lib/connection";
+import { PAUSE_MS } from "../canvas/calm";
 
 /**
  * The host's side of a document, as the canvas and a project's page use it
@@ -195,7 +196,7 @@ export function frameHead(bytes: Uint8Array): { type: number; step: number | nul
 
 /** How long a close's flush waits for a socket to send its state and hear it applied. */
 /** `storePauseMs`: how long after his last edit the window asks the service to store the document (its own store waits as long). */
-export const relayTiming = { syncWaitMs: 6000, storePauseMs: 2000 };
+export const relayTiming = { syncWaitMs: 6000, storePauseMs: PAUSE_MS.document as number };
 
 /** Said when the host refused an edit the window sent (a view the host holds read only). */
 export const NOT_TAKEN = "The host did not take the last edits to this document";

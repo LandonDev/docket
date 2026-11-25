@@ -2132,7 +2132,11 @@ Around the canvas:
   says where it is kept ("In Events": a press goes back to the tab that
   shows that folder, else opens one beside it) or whose copy it is ("A copy from
   MacBook. Changes stay here", with Open on MacBook) or, for a kind that
-  saves, where saving stands ("Saved 1:52 PM in Events"; it takes
+  saves, where saving stands ("Saved 1:52 PM in Events": the last save the
+  host answered, kept while his edits wait in the editor's own short pause;
+  "Saving…" only once a send has been out 600 ms or edits waited past that
+  pause, so a cell or a word never blinks it; a failure at once; no motion
+  on the swap; it takes
   `foreground` only when it needs him, with at most two presses beside
   it: Reload and Keep Both, the one conflict press everywhere). Edits a crash left unsent come back in the same
   foreground line as the file opens, the editor read only until he answers: "Edits from 2:14 PM were not saved" with

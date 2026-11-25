@@ -2950,6 +2950,25 @@ pillar calls, all landed:
 - `shell.saved({ state, at?, where?, pending?, detail?, actions? })` from
   its `Body` (work-canvas.md): kept in `feeds.saved`, drawn nowhere until
   F1b.
+- When the line says Saving… is one rule for every kind, in `canvas/calm.ts`
+  (`savingNow`, the owner's decision 5): Saved <time> names the last save the
+  host answered, and stays while his edits wait inside the editor's own pause
+  (`PAUSE_MS`: text 700 ms, a deck's box 2 s, a document's store 2 s, Word 3 s;
+  a sheet's 150 ms `EDIT_WAIT`); Saving… once a send has been out
+  `SEND_SHOWN_MS` (600 ms), or edits waited past their pause with nothing sent.
+  A failure is the kind's to say at once, before it asks the rule. Each kind
+  keeps the facts (the text session's `editedAt`/`sentAt`, the sheet sync's
+  `editedAt`/`sentAt`, the deck's `unsavedOf`, the document's `DocSaves`) and
+  a window reads them with `useSaving` (canvas/useCalm.ts), which draws again
+  when the answer changes by time alone. A stage the frame says itself (a
+  copy's "Saving to MacBook…", OneDrive's "Saved, uploading to Teams…") shows
+  only once it has lasted 600 ms (`useStage`, `useSince`); until then the
+  line keeps the save last confirmed (`useLast`), or the computer's own
+  receipt under an upload. A Word file's line counts Word's pause from his
+  last edit, which the document tells on its line (`SavedLine.edited`, in
+  half-second steps), and on a first open with nothing typed says "The Word
+  file in Teams has not changed". Close, quit and ⌘S send what waits at once
+  (canvas/flush.ts): the pause holds nothing back from them.
 - A copy of another computer's file asks nothing more of a kind: its
   `shell.saved` going from saving to saved is what makes the tab send the copy
   back ("A copy saves back"), and a save through `saveFile` sends it at once.

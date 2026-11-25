@@ -131,7 +131,8 @@ describe("a text file in a tab", () => {
     const field = await screen.findByRole("textbox", { name: "Notes.md" });
     await waitFor(() => expect(line()).toContain("Saved"));
     fireEvent.change(field, { target: { value: "first line\nsecond\n" } });
-    expect(line()).toBe("Saving…");
+    // Inside the pause the last Saved line stays (canvas/calm.ts).
+    expect(line()).toBe("Saved 1:52 PM in Events");
     expect(writes()).toEqual([]);
     await waitFor(() => expect(writes()).toHaveLength(1), { timeout: SAVE_AFTER_MS + 1500 });
     expect(writes()[0]).toMatchObject({ workspaceId: "w1", text: "first line\nsecond\n", version: "v1" });
@@ -422,7 +423,8 @@ describe("a copy that saves back to its file", () => {
     // Nothing is sent for the line read at open.
     expect(disk.calls.some((c) => c.method === "work.files.copyBack")).toBe(false);
     fireEvent.change(field, { target: { value: "team text\nmore\n" } });
-    expect(line()).toBe("Saving to MacBook…");
+    // Nothing has gone yet: the line keeps where the file stands.
+    expect(line()).toBe("On MacBook");
     await waitFor(() => expect(disk.calls.filter((c) => c.method === "work.files.copyBack").map((c) => c.params)).toEqual([{ workspaceId: "w1", tabId: "t1" }]), { timeout: 5000 });
     expect(writes()[0]).toMatchObject({ ref: { at: "file", host: "env_box", path: COPY }, text: "team text\nmore\n" });
   });

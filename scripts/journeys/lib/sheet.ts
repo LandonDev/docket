@@ -49,8 +49,13 @@ export function cellOf(sheet: string, strings: string, ref: string): { t: string
   return { t: cell[1]?.match(/\bt="([^"]+)"/)?.[1] ?? null, value: cellValue(sheet, strings, ref), formula: (cell[2] ?? '').match(/<f(?:\s[^>]*)?>([^<]*)<\/f>/)?.[1] }
 }
 
-export function falseSaveLine(line: string | null, committed: boolean, landed: boolean): boolean {
-  if (!committed || !line) return false
+/**
+ * A save line that claims the holder has the committed cell before it does. `kept` is the line read before the edit:
+ * the last save confirmed, which the line keeps word for word while the edit waits in its pause or a send is out
+ * under 600 ms (docs/DESIGN.md "The Files place", canvas/calm.ts); it names that earlier save, not this edit.
+ */
+export function falseSaveLine(line: string | null, committed: boolean, landed: boolean, kept: string | null = null): boolean {
+  if (!committed || !line || line === kept) return false
   // The holder's disk settles whether "Saved" is true. OneDrive sync can still be pending.
   return !landed && /^(?:Saved\b|On\b|Uploading\b|Waiting to upload\b)/.test(line)
 }

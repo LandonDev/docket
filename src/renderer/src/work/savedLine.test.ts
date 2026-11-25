@@ -7,10 +7,11 @@ import { cloudLine, copyLine, savedWords } from "./files/fileText";
 import { wordLine } from "./files/wordSave";
 import type { SheetHost } from "./sheets/host";
 import { savedLine } from "./sheets/model";
-import { SheetSync } from "./sheets/sync";
+import { EDIT_WAIT, SheetSync } from "./sheets/sync";
+import { savingNow, SEND_SHOWN_MS } from "./canvas/calm";
 import { DeckStore } from "./slides/deck";
 import { insertText } from "./slides/edit/model";
-import { HandSession, TYPING_SAVE_MS } from "./slides/edit/session";
+import { HandSession, TYPING_SAVE_MS, unsavedOf } from "./slides/edit/session";
 import { deckView, fakeDeckHost, slide, textShape } from "./slides/testkit";
 
 vi.mock("./canvas/frame", () => ({ sayError: () => undefined }));
@@ -53,7 +54,9 @@ describe("the save line waits for the newest edit", () => {
     a.answer({ version: "a", changed: 2 });
     await first;
     expect(writes).toEqual(["A", "AB"]);
-    expect(lines.slice(start).every((line) => line.startsWith("Saving"))).toBe(true);
+    // Until the newest write is answered the line keeps the read's own time (calm.ts) or says Saving…, never a's.
+    const opened = lines[start - 1];
+    expect(lines.slice(start).every((line) => line.startsWith("Saving") || line === opened)).toBe(true);
     b.answer({ version: "b", changed: 3 });
     await last;
     expect(lines.at(-1)).toMatch(/^Saved\b/);
@@ -107,6 +110,130 @@ describe("the save line waits for the newest edit", () => {
     expect(line()).toMatch(/^Saved\b/);
     off();
     detach();
+  });
+
+  it("keeps a sheet's Saved line through a quick cell, says Saving… only once a send is out 600 ms, and names the receipt's time", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 10, 25, 14, 0));
+    const view: SheetView = { name: "Budget", itemId: "sheet", sessionId: "thread", store: "tcsheet", rev: 0, shared: false, mode: "writes", suggestions: [] };
+    let rev = 0;
+    let wait = 200;
+    const receipts: number[] = [];
+    const edit = vi.fn<SheetHost["edit"]>(async () => {
+      await new Promise((resolve) => setTimeout(resolve, wait));
+      receipts.push(Date.now());
+      return { rev: ++rev };
+    });
+    const unused = () => { throw new Error("Unexpected sheet request"); };
+    const host: SheetHost = {
+      open: async () => view,
+      load: async () => ({ data: "", size: 0, rev: 0, format: "snapshot" }),
+      edit, since: unused, review: unused, mode: unused, undo: unused, exportAs: unused,
+      imported: unused, switchApp: unused, onPush: () => () => undefined,
+    };
+    const sync = new SheetSync(host, async () => ({ workbook: { id: "book" } }));
+    let mutate!: (mutation: SheetMutationJson) => void;
+    await sync.open();
+    const detach = sync.attach({ unitId: "book", apply: vi.fn(), onMutation: (listener) => { mutate = listener; return () => undefined; }, read: () => null, formula: () => null, undo: vi.fn() });
+    const type = (v: string) => mutate({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "s1", cellValue: { 0: { 0: { v } } } } });
+    // The line as SheetBody draws it: the calm rule over the sync's facts, read on every change and every 50 ms.
+    const line = () => {
+      const { view: v, sendError, saving, savedAt, editedAt, sentAt } = sync.get();
+      const calm = savingNow({ edited: editedAt, pause: EDIT_WAIT, sent: sentAt }, Date.now()).saving && saving;
+      return savedLine(v!, sendError, calm, savedAt);
+    };
+    const seen: Array<ReturnType<typeof line>> = [];
+    const off = sync.subscribe(() => seen.push(line()));
+    const watch = async (ms: number) => {
+      for (let t = 0; t < ms; t += 50) {
+        await vi.advanceTimersByTimeAsync(50);
+        seen.push(line());
+      }
+    };
+    // Four cells, each answered in 200 ms: never Saving…, and each Saved names a receipt.
+    for (const v of ["10", "20", "30", "=A1+A2"]) {
+      type(v);
+      await watch(EDIT_WAIT + wait + 100);
+    }
+    expect(seen.every((l) => l.state === "saved")).toBe(true);
+    expect(receipts).toHaveLength(4);
+    for (const l of seen) if (l.at) expect(receipts).toContain(l.at);
+    // A slow link: Saving… once the send has been out 600 ms, then Saved with the receipt's time, never later.
+    wait = 1500;
+    seen.length = 0;
+    type("40");
+    await watch(EDIT_WAIT + SEND_SHOWN_MS - 100);
+    expect(seen.every((l) => l.state === "saved")).toBe(true);
+    await watch(200);
+    expect(line().state).toBe("saving");
+    await watch(1000);
+    expect(line()).toEqual({ state: "saved", at: receipts.at(-1) });
+    expect(line().at!).toBeLessThanOrEqual(Date.now());
+    off();
+    detach();
+  });
+
+  it("says a sheet's failed send at once, inside the 600 ms", async () => {
+    vi.useFakeTimers();
+    const view: SheetView = { name: "Budget", itemId: "sheet", sessionId: "thread", store: "tcsheet", rev: 0, shared: false, mode: "writes", suggestions: [] };
+    const edit = vi.fn<SheetHost["edit"]>(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      throw new Error("the disk is full");
+    });
+    const unused = () => { throw new Error("Unexpected sheet request"); };
+    const host: SheetHost = {
+      open: async () => view,
+      load: async () => ({ data: "", size: 0, rev: 0, format: "snapshot" }),
+      edit, since: unused, review: unused, mode: unused, undo: unused, exportAs: unused,
+      imported: unused, switchApp: unused, onPush: () => () => undefined,
+    };
+    const sync = new SheetSync(host, async () => ({ workbook: { id: "book" } }));
+    let mutate!: (mutation: SheetMutationJson) => void;
+    await sync.open();
+    const detach = sync.attach({ unitId: "book", apply: vi.fn(), onMutation: (listener) => { mutate = listener; return () => undefined; }, read: () => null, formula: () => null, undo: vi.fn() });
+    mutate({ id: "sheet.mutation.set-range-values", params: { unitId: "book", subUnitId: "s1", cellValue: { 0: { 0: { v: "1" } } } } });
+    await vi.advanceTimersByTimeAsync(EDIT_WAIT + 150);
+    const { view: v, sendError, saving, savedAt } = sync.get();
+    expect(sendError).toBe("the disk is full");
+    expect(savedLine(v!, sendError, saving, savedAt).state).not.toBe("saved");
+    detach();
+  });
+
+  it("keeps a deck's Saved line while he types inside the box's pause and a short send, then says Saving…", async () => {
+    vi.useFakeTimers();
+    const a = held<void>();
+    const shape = textShape(2, [{ level: 0, align: "left", list: "none", runs: [{ text: "Title", size: 40 }] }]);
+    const page = slide(3, { shapes: [shape] });
+    const view = deckView({ slides: [page], hand: { undo: false, redo: false } });
+    const host = fakeDeckHost(view);
+    const edit = host.edit.bind(host);
+    vi.spyOn(host, "edit").mockImplementationOnce(async (ops) => { await a.promise; return edit(ops); });
+    const store = new DeckStore();
+    store.view(view);
+    const session = new HandSession(host, store);
+    const type = (text: string) => {
+      const { model, sel: { to } } = session.get().box!;
+      const next = insertText(model, { from: to, to }, text);
+      session.typed(next.model, { from: next.at, to: next.at });
+    };
+    const state = () => savedWords(session.saved(() => undefined, undefined, savingNow(unsavedOf(session.get()), Date.now()).saving), null);
+    expect(session.open(page, shape, "end")).toBe(true);
+    type("A");
+    await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS - 100);
+    type("B");
+    // Each word moves the pause on: nothing has gone, and nothing is said.
+    await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS - 100);
+    expect(state()).toBe("Saved");
+    // The pause ends and the words go: Saved stays while the send is out under 600 ms.
+    await vi.advanceTimersByTimeAsync(200);
+    expect(session.get().busy).toBe(1);
+    expect(state()).toBe("Saved");
+    await vi.advanceTimersByTimeAsync(SEND_SHOWN_MS);
+    expect(state()).toBe("Saving…");
+    a.answer();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(session.saved(() => undefined, undefined, false)).toEqual({ state: "saved", at: session.get().savedAt });
+    expect(session.get().savedAt).toBeLessThanOrEqual(Date.now());
   });
 
   it("waits for both deck writes while the text box stays open", async () => {

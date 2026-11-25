@@ -40,7 +40,7 @@ export const wordWaitsWords = (tab: Pick<FileTab, "copyOf" | "name" | "key">): s
  * (`computer`, as a copy's line names it, fileText.ts `copyLine`): that is all a save knows. It reads as in Teams only
  * once OneDrive there says it has the file (`cloudLine`, laid over this line).
  */
-export function wordLine(word: WordBack, service: string, computer: string, now = Date.now()): HeaderLine {
+export function wordLine(word: WordBack, service: string, computer: string, now = Date.now(), saving = word.since): HeaderLine {
   // Stopped: an autosave met a change made there; nothing goes until his press.
   if (word.stopped) return { state: "conflict", words: `This file changed in ${service} ${whenWords(word.stopped, now)}` };
   // Refused: the holder said no to the last save (its policy, the fence), in its own words; never still saving.
@@ -49,8 +49,12 @@ export function wordLine(word: WordBack, service: string, computer: string, now 
     const why = word.refused.trim().replace(/\.$/, "");
     return { state: "conflict", words: why ? `${who} refused the save. ${why[0]!.toUpperCase()}${why.slice(1)}` : `${who} refused the save` };
   }
-  // Saving by itself: saving while his newest words are not in the file, saved with the time once they are.
-  if (word.auto) return word.since || !word.at ? { state: "saving", words: `Saving to ${computer}…` } : { state: "saved", words: `Saved to ${computer} ${whenWords(word.at, now)}` };
+  // Saving by itself: Saving… once his newest words have waited past Word's pause (`saving`, canvas/calm.ts); inside
+  // it the last save stays, and a file never saved here says it is unchanged, never Saving with nothing typed.
+  if (word.auto) {
+    if (word.since && saving) return { state: "saving", words: `Saving to ${computer}…` };
+    return word.at ? { state: "saved", words: `Saved to ${computer} ${whenWords(word.at, now)}` } : { state: "copy", words: `The Word file in ${service} has not changed` };
+  }
   if (!word.since && word.at) return { state: "saved", words: `Saved to ${computer} as Word ${whenWords(word.at, now)}` };
   if (word.at) return { state: "copy", words: `Changes since ${whenWords(word.at, now)} are not in the Word file` };
   return { state: "copy", words: `The Word file in ${service} has not changed` };

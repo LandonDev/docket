@@ -13,12 +13,16 @@ function held(context: Context): string | undefined {
   return cellValue(unzip(file, 'xl/worksheets/sheet1.xml'), unzip(file, 'xl/sharedStrings.xml'), 'A1')
 }
 
+/** The line read before his edit, by walk: the last save confirmed, which the line may keep through the edit's pause. */
+const keptLine = new WeakMap<Context, string | null>()
+
 async function readLine(context: Context, moment: string, committed: boolean): Promise<void> {
   const line = await context.pair.page.saveLine()
   const at = new Date().toISOString()
   const onDisk = held(context)
+  if (!committed) keptLine.set(context, line)
   appendFileSync(join(context.folder, 'save-lines.jsonl'), JSON.stringify({
-    at, moment, line, holderA1: onDisk, false: falseSaveLine(line, committed, onDisk === VALUE)
+    at, moment, line, holderA1: onDisk, false: falseSaveLine(line, committed, onDisk === VALUE, keptLine.get(context) ?? null)
   }) + '\n')
 }
 

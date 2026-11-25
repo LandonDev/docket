@@ -58,6 +58,9 @@ export interface SheetSyncState {
   saving: boolean;
   /** when his last edit was saved (epoch ms); null before the first */
   savedAt: number | null;
+  /** the save line's clock (canvas/calm.ts): when his last edit not yet sent was made, and when the run of sends now out began; null when none */
+  editedAt: number | null;
+  sentAt: number | null;
   /** the book is being read again from its store after a stop, or a move is on its way to the host: the grid takes no edit until it is drawn or the host has answered */
   reloading: boolean;
   /** a change the sheet's store cannot keep was stopped as he made it: why, in the words he reads, and which time (so the same words twice are said twice) */
@@ -169,7 +172,7 @@ interface Laid {
 }
 
 export class SheetSync {
-  state: SheetSyncState = { view: null, failed: null, book: null, sendError: null, saving: false, savedAt: null, reloading: false, stopped: null, current: 0, tick: 0, loading: null };
+  state: SheetSyncState = { view: null, failed: null, book: null, sendError: null, saving: false, savedAt: null, editedAt: null, sentAt: null, reloading: false, stopped: null, current: 0, tick: 0, loading: null };
   /** the op the grid stands at */
   rev = 0;
   /** a shared .csv's cache the grid drew (its load's `gen`): its edits and catch-ups name it, so the host answers for this draw */
@@ -241,6 +244,8 @@ export class SheetSync {
     return () => this.listeners.delete(listener);
   };
   private set(patch: Partial<SheetSyncState>): void {
+    // Nothing of his waits or is on its way: the line's clock stops.
+    if (patch.saving === false) patch = { ...patch, editedAt: null, sentAt: null };
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
   }
@@ -425,7 +430,7 @@ export class SheetSync {
         if (!lists.length) return;
         this.queue.push(...lists);
         this.note();
-        this.set({ saving: true });
+        this.set({ saving: true, editedAt: Date.now() });
         this.wait();
         return;
       }
@@ -444,7 +449,7 @@ export class SheetSync {
       }
       this.queue.push(...latestRules([...taken, ...lists]));
       this.note();
-      this.set({ tick: this.state.tick + 1, saving: true });
+      this.set({ tick: this.state.tick + 1, saving: true, editedAt: Date.now() });
       if (this.queue.length >= EDIT_MAX) this.flush();
       else this.wait();
     };
@@ -719,6 +724,8 @@ export class SheetSync {
 
   private async send(): Promise<void> {
     if (this.queue.length === 0) return;
+    // A run of sends back to back is one on the line: its clock starts at the first.
+    if (this.state.sentAt === null) this.set({ sentAt: Date.now() });
     const batch = this.batch();
     this.inflight = batch;
     try {
@@ -805,7 +812,7 @@ export class SheetSync {
         }
         return;
       }
-      this.set({ sendError: message(error, "The host did not answer"), saving: this.queue.length > 0 });
+      this.set({ sendError: message(error, "The host did not answer"), saving: this.queue.length > 0, sentAt: null });
     }
     if (move) {
       // A move the file took: LibreOffice and the graft wrote it, not Univer, so the grid that made it reads the file
