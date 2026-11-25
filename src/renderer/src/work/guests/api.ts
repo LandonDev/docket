@@ -3,6 +3,8 @@ import { SHARE_REFUSALS } from "@shared/work/guestRoles";
 export { guestRolesOf, isShareRefusal, SHARE_REFUSALS } from "@shared/work/guestRoles";
 import type { CanvasSource } from "@shared/work";
 import { registry } from "../../lib/connection";
+import { clockTime } from "../../lib/duration";
+import { guestRolesOf } from "@shared/work/guestRoles";
 
 /**
  * The guests pillar's calls from the renderer (docs/agents/work-guests.md).
@@ -82,5 +84,27 @@ export const dayOf = (at: number): string => new Date(at).toLocaleDateString(und
 export const shortDay = (at: number): string => new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
 export const isLive = (l: Pick<GuestLinkRow, "revokedAt" | "expiresAt">, now = Date.now()): boolean => l.revokedAt === null && l.expiresAt > now;
+
+/** The folder a file is in, by its name alone: two files of one name are told apart, and no path is ever shown. */
+export const folderNameOf = (source: GuestSource): string | undefined => (source.at === "file" ? source.path.replace(/[\\/][^\\/]*$/, "").split(/[\\/]/).pop() || undefined : undefined);
+
+/** What a link is to: a project named as one, so it is not taken for a document, and a file with its folder. */
+export function linkItem(l: Pick<GuestLinkRow, "source" | "title">): string {
+  if (l.source.table === "projects") return `${l.title} project`;
+  const folder = folderNameOf(l.source);
+  return folder ? `${l.title} in ${folder}` : l.title;
+}
+
+/**
+ * A link's facts, the one way they are said (docs/DESIGN.md "Share"): one comma sentence, never a run set apart by
+ * dots. What the guest may do (only where the item offers a choice), what it is to (`item`: a list of every item's
+ * links), when it was made, when it was last opened, and until when; an ended link says when it ended or was revoked.
+ */
+export function linkFacts(l: GuestLinkRow, o: { item?: boolean; now?: number } = {}): string {
+  const roles = guestRolesOf(l.source.at === "file" ? l.source : { at: "lifeos", table: l.source.table });
+  const seen = l.open > 0 ? "in it now" : l.lastOpenedAt ? `opened ${shortDay(l.lastOpenedAt)} ${clockTime(l.lastOpenedAt)}` : "not opened yet";
+  const end = isLive(l, o.now) ? [seen, `until ${shortDay(l.expiresAt)}`] : [l.revokedAt ? `revoked ${shortDay(l.revokedAt)}` : `ended ${shortDay(l.expiresAt)}`];
+  return [roles.length > 1 ? ROLE_WORDS[l.role] : null, o.item ? linkItem(l) : null, `made ${shortDay(l.createdAt)}`, ...end].filter(Boolean).join(", ");
+}
 
 export type { GuestCreated, GuestLinkRow, GuestRole, GuestSource };

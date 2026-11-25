@@ -116,12 +116,16 @@ export default journey({
       if (!(await wordsIn(page, 'body')).includes(comment(context))) await page.clickOn('button.te-threads-button')
       await see(page, 'body', comment(context))
       await page.shot(join(context.folder, 'owner-comment.png'))
-      // The sheet lists the item's live links; Revoke is in the row's menu.
+      // The sheet lists the item's live links; Revoke… is in the row's menu and asks first: there is no Undo.
       await page.press('button', 'Share')
       const menu = '[data-share-sheet] [aria-label=' + JSON.stringify(guestName(context) + "'s link") + ']'
       await page.until('the guest row in Share', 10_000, () => page.centre(menu))
       await page.clickOn(menu)
-      await page.press('menuitem', 'Revoke')
+      await page.press('menuitem', 'Revoke…')
+      const ask = '[role="alertdialog"] button'
+      await page.until('Revoke asks first', 10_000, () => page.centre(ask, 'Revoke'))
+      if ((await links(context)).find((row) => row.id === link!.id)?.revokedAt) throw new Error('Revoke ran before his answer')
+      await page.clickOn(ask, 'Revoke')
       await page.until('this link revoked on box', 15_000, async () => (await links(context)).some((row) => row.id === link!.id && row.revokedAt))
     }),
     step('end: the open guest page stops answering and LifeOS clears the share', async (context) => {

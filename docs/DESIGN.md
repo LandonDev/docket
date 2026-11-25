@@ -1406,10 +1406,15 @@ thread; nothing answers inside the canvas.
   field), Can (a toggle row, only where there is a choice) and Ends (a
   select); Create link puts the address in the form's place, once, with Copy,
   and the footer's start holds New link. Under a hairline, the item's live
-  links, 44px rows: the 24px face, the name, one 12px muted line ("Edit ·
-  made Nov 20 · opened Nov 22 3:10 PM · until Dec 20", no role where there
-  is no choice) and a ⋯ menu: Replace address…, the roles as radio rows,
-  Revoke. No links: nothing under the form. A document or sheet no link can
+  links, 44px rows: the 24px face, the name, one 12px muted line ("Edit,
+  made Nov 20, opened Nov 22 3:10 PM, until Dec 20", no role where there
+  is no choice; `linkFacts`, guests/api.ts, the one way a link's facts are
+  said, Settings' Guest links adding what it is to) and a ⋯ menu: Replace
+  address…, the roles as radio rows, Revoke…. Replace address… and Revoke…
+  each ask first; Replace shows the new address once, with Copy, in the
+  form's place (in Settings, in the link-made dialog); Revoke has no Undo,
+  since an old address must never open again. No links: nothing under the
+  form. A document or sheet no link can
   take shows one 13px muted line in the form's place, saying what to do
   instead, and Done; until the host answers for the item the sheet is the
   form's bones with Create link greyed, never a form it then refuses. A file

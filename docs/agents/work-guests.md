@@ -691,8 +691,12 @@ main frame alone (ios HostedItemView.swift).
   guests/sharePort.ts), and a Files row's Share… (`actsFor`'s `share`,
   FilesView). On top For, Can, Ends; Create link shows the address once with
   Copy and New link. Under it the item's live links: who, then what they can
-  do, made, last opened and until when in one muted line, and a menu:
-  Replace address… (asked first), Can view / comment / edit, Revoke. Until
+  do, made, last opened and until when in one muted comma line (`linkFacts`,
+  guests/api.ts: the one way a link's facts are said, never a run of dots),
+  and a menu: Replace address… (asked first; the new address shows once, in
+  the form's place, with Copy), Can view / comment / edit, Revoke… (asked
+  first, `confirmRevoke` in Share.tsx; no Undo, since an old address must
+  never open again: decision 21 of the files pass). Until
   `work.guests.forItem` answers the sheet is the form's bones
   (`data-share-bones`), so a form is never shown and then refused. A
   document or sheet no link can take opens on one line saying what to do
@@ -702,12 +706,17 @@ main frame alone (ios HostedItemView.swift).
   not stop him. A project has the same sheet from its page's bar
   (`ProjectShare`) and from the Sharing row of its settings sheet (the same `ProjectShare`,
   one row, never a second list of links); its sheet has no Can row.
-- **The held request** in the Outbox (`ShareActView.tsx`): To, For, Can, Ends.
+- **The held request** in the Outbox (`ShareActView.tsx`): To (the item by
+  its glyph and title, a file's with its folder's name alone: "Field trip
+  plan in Trips", never a disk path), For, Can, Ends.
 - **Guest links** in Settings → Work (`GuestLinksSection.tsx`): every link on
-  every Work host, live first: who, the role and item (a project's as
-  "Spring LAN project"), until when, and "in it now", "opened …" or "not
-  opened yet"; Copy new address
-  (`work.guests.rekey`) and Revoke. Ended ones muted.
+  every Work host, live first: who, then `linkFacts` with the item (a
+  project's as "Spring LAN project", a file's with its folder's name): the
+  role where there is a choice, made, "in it now", "opened …" or "not opened
+  yet", until when, or for an ended one when it ended or was revoked.
+  Replace address… (`work.guests.rekey`, asked first) shows the new address
+  once in the link-made dialog with Copy; Revoke… asks first. Ended ones
+  muted.
 
 ## Proofs
 

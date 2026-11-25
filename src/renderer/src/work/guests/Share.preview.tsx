@@ -2,16 +2,17 @@
 // Share on a document, over a host that answers from made-up guest links. States: `open` (the Share sheet with the
 // item's links), `none` (the sheet with no link yet), `purdue` (a Purdue workspace's sheet, its line beside Create
 // link), `why` (a Word file's sheet: the line that says how to share it instead), `made` (Settings' dialog with a new
-// link's address), and `section` (Settings → Work's Guest links with live, ended and revoked links). Rendered by
-// nothing in the app.
-import type { CanvasSource } from "@shared/work";
+// link's address), `section` (Settings → Work's Guest links with live, ended and revoked links) and `held` (an
+// agent's held link request for a file, as the Outbox shows it). Rendered by nothing in the app.
+import type { CanvasSource, HeldItem } from "@shared/work";
 import { Page } from "../../components/page";
 import { answerAs, OverFrame, usePressNamed, Unsettled } from "../kit.preview";
 import type { GuestLinkRow, GuestSource } from "./api";
 import { GuestLinksSection } from "./GuestLinksSection";
 import { MadeLinkDialog, ShareButton } from "./Share";
+import { View as HeldLink } from "./ShareActView";
 
-type State = "open" | "none" | "purdue" | "why" | "made" | "section";
+type State = "open" | "none" | "purdue" | "why" | "made" | "section" | "held";
 
 const NOW = Date.now();
 const DAY = 86_400_000;
@@ -39,6 +40,14 @@ export function SharePreview({ state = "open" }: { state?: State }) {
   }
   // Share is the bar's own press.
   usePressNamed(state === "open" || state === "none" || state === "purdue" || state === "why" ? "Share" : null, 60);
+  if (state === "held") {
+    const item = { kind: "share.guestLink", payload: { source: { at: "file", host: "local", path: "/home/work/Purdue/Trips/Field trip plan.tcdoc" }, title: "Field trip plan", name: "Dana Lee", role: "comment", expiresAt: NOW + 14 * DAY } } as unknown as HeldItem;
+    return (
+      <div className="w-full p-4" style={{ maxWidth: 480 }}>
+        <HeldLink item={item} env="local" />
+      </div>
+    );
+  }
   if (state === "section")
     return (
       <div className="w-full" style={{ maxWidth: 720 }}>

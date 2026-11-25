@@ -4,7 +4,7 @@ import { Check, Copy } from "../../chrome/icons";
 import { SwapIcon } from "../../motion/IconSwap";
 import { Share as ShareGlyph } from "../icons";
 import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
-import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { confirmAction, DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { copyText } from "../../lib/clipboard";
@@ -90,8 +90,8 @@ function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs" }
 /**
  * A link's address, shown once: read only and selectable, with Copy, and what
  * the guest may do until when. A copy that fails says so here, and the address
- * stays to select by hand. Used by a new link and by Settings' Replace address
- * when its copy failed.
+ * stays to select by hand. Used by a new link and by Replace address, in the
+ * sheet and in Settings.
  */
 export function MadeAddress({ url, link }: { url: string; link: Pick<GuestLinkRow, "name" | "role" | "expiresAt"> }) {
   const [copied, setCopied] = useState(false);
@@ -122,7 +122,7 @@ export function MadeAddress({ url, link }: { url: string; link: Pick<GuestLinkRo
   );
 }
 
-/** The link-made dialog alone: Settings' Replace address opens it when the new address did not copy. */
+/** The link-made dialog alone: Settings' Replace address opens it on the new address. */
 export function MadeLinkDialog({ url, link, title, onClose }: { url: string; link: Pick<GuestLinkRow, "name" | "role" | "expiresAt">; title: string; onClose(): void }) {
   const { root, closeThen } = useClosingDialog(onClose, false);
   return (
@@ -133,4 +133,17 @@ export function MadeLinkDialog({ url, link, title, onClose }: { url: string; lin
       </ModalPanel>
     </Dialog>
   );
+}
+
+/**
+ * Replace address's question, the sheet's and Settings' alike: the address is kept only as a hash, so a new one is made,
+ * shown once to copy (`MadeAddress`), and the one before stops opening.
+ */
+export function confirmReplace(name: string): Promise<boolean> {
+  return confirmAction({ title: "Replace the address?", body: `${name}'s current address stops opening. The new one shows here for you to copy.`, action: "Replace", danger: true });
+}
+
+/** Revoke's question, the sheet's and Settings' alike: the address stops opening for good, so it is asked, never undone. */
+export function confirmRevoke(name: string): Promise<boolean> {
+  return confirmAction({ title: "Revoke the link?", body: `${name}'s address stops opening for good.`, action: "Revoke", danger: true });
 }

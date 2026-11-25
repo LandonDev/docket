@@ -2,7 +2,7 @@ import type { GuestLinkAct } from "@shared/contract-work-guests";
 import type { ActViewProps } from "../acts/registry";
 import { Doc, Project, Table } from "../icons";
 import { guestTableOf } from "@shared/work/guestRoles";
-import { dayOf, ROLE_WORDS } from "./api";
+import { dayOf, folderNameOf, ROLE_WORDS } from "./api";
 
 /**
  * A held `share.guestLink` in the Outbox (prototype guest.html, "An agent
@@ -15,16 +15,17 @@ export function View({ item }: ActViewProps) {
   const p = item.payload as GuestLinkAct;
   const table = guestTableOf(p.source);
   const Glyph = table === "projects" ? Project : table === "sheets" ? Table : Doc;
+  const folder = folderNameOf(p.source);
   const rows: [string, React.ReactNode][] = [
     [
       "To",
       <span key="to" className="inline-flex min-w-0 items-center gap-1.5">
         <Glyph className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate font-medium">{p.title}</span>
+        {/* A file is named with its folder, by the folder's name alone: his press shares that file and no other of the same name, and no path is shown. */}
+        {folder ? <span className="shrink-0 text-muted-foreground">in {folder}</span> : null}
       </span>,
     ],
-    // A file is named by its folder too: his press shares that file and no other of the same name.
-    ...(p.source.at === "file" ? ([["In", p.source.path.replace(/[\\/][^\\/]*$/, "") || "/"]] as [string, React.ReactNode][]) : []),
     ["For", p.name],
     ["Can", ROLE_WORDS[p.role]],
     ["Ends", dayOf(p.expiresAt)],

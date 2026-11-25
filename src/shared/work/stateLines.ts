@@ -95,9 +95,6 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/google/UploadGoogleDialog.tsx`]: [
     ["`Saved to Google ${kind}`", "answer"],
   ],
-  [`${R}/guests/GuestLinksSection.tsx`]: [
-    ["Copied the new address", "local"],
-  ],
   [`${R}/guests/Share.tsx`]: [
     ["Copied", "local"],
     ["Done", "local"],

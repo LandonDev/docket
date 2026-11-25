@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { confirmAction, DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { Field, FieldRow } from "../../chrome/DialogField";
 import { MoreHorizontal } from "../../chrome/icons";
 import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
@@ -10,12 +10,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioG
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
-import { clockTime } from "../../lib/duration";
 import { hostFailure } from "../../lib/hostFailure";
 import { registry } from "../../lib/connection";
 import { Face } from "../mail/face";
-import { MadeAddress } from "./Share";
-import { dayOf, ENDS, guestRolesOf, guestsCall, isLive, isShareRefusal, ROLE_WORDS, SHARE_REFUSALS, shortDay, type GuestCreated, type GuestLinkRow, type GuestRole, type GuestSource } from "./api";
+import { confirmReplace, confirmRevoke, MadeAddress } from "./Share";
+import { dayOf, ENDS, guestRolesOf, guestsCall, isLive, isShareRefusal, linkFacts, ROLE_WORDS, SHARE_REFUSALS, type GuestCreated, type GuestLinkRow, type GuestRole, type GuestSource } from "./api";
 
 /** What a Share sheet is for: a source a link can take, or the one line that says what to do instead. */
 export type ShareTarget = { source: GuestSource } | { why: string };
@@ -235,12 +234,6 @@ function LiveLinks({
   );
 }
 
-/** "Edit · made Nov 20 · opened Nov 22 3:10 PM · until Dec 20": what the guest may do and the link's days, in one muted line. */
-export function linkFacts(l: GuestLinkRow, roles: number): string {
-  const seen = l.open > 0 ? "in it now" : l.lastOpenedAt ? `opened ${shortDay(l.lastOpenedAt)} ${clockTime(l.lastOpenedAt)}` : "not opened yet";
-  return [roles > 1 ? ROLE_WORDS[l.role] : null, `made ${shortDay(l.createdAt)}`, seen, `until ${shortDay(l.expiresAt)}`].filter(Boolean).join(" · ");
-}
-
 function LinkRow({ env, link, onChanged, onAddress }: { env: string; link: GuestLinkRow; onChanged(): void; onAddress(made: { url: string; link: GuestLinkRow }): void }) {
   const roles = guestRolesOf(link.source.at === "file" ? link.source : { at: "lifeos", table: link.source.table });
   const [busy, setBusy] = useState(false);
@@ -259,19 +252,23 @@ function LinkRow({ env, link, onChanged, onAddress }: { env: string; link: Guest
   };
   // The address is kept only as a hash: a new one is made, and the one before stops opening, so he is asked first.
   const replace = async (): Promise<void> => {
-    const ok = await confirmAction({ title: "Replace the address?", body: `${link.name}'s current address stops opening. The new one shows here for you to copy.`, action: "Replace", danger: true });
-    if (!ok) return;
+    if (!(await confirmReplace(link.name))) return;
     await act(async () => {
       const { url } = await registry.linkOf(env).request<{ url: string }>("work.guests.rekey", { linkId: link.id });
       onAddress({ url, link });
     }, "did not replace the address");
+  };
+  // Asked first, with no Undo after: a revoked address must never open again (decision 21).
+  const revoke = async (): Promise<void> => {
+    if (!(await confirmRevoke(link.name))) return;
+    await act(() => registry.linkOf(env).request("work.guests.revoke", { linkId: link.id }).then(() => undefined), "did not revoke the link");
   };
   return (
     <div data-share-link={link.id} className="flex min-h-11 min-w-0 items-center gap-2.5 rounded-lg px-2 py-1.5">
       <Face name={link.name} size="row" />
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate text-[13px] text-foreground">{link.name}</span>
-        {error ? <ErrorLine error={error} /> : <span className="truncate text-xs text-muted-foreground tabular-nums">{linkFacts(link, roles.length)}</span>}
+        {error ? <ErrorLine error={error} /> : <span className="truncate text-xs text-muted-foreground tabular-nums">{linkFacts(link)}</span>}
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`${link.name}'s link`} disabled={busy} />}>{busy ? <BusyLabel busy label="" /> : <MoreHorizontal />}</DropdownMenuTrigger>
@@ -295,8 +292,8 @@ function LinkRow({ env, link, onChanged, onAddress }: { env: string; link: Guest
             </>
           ) : null}
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive" onClick={() => void act(() => registry.linkOf(env).request("work.guests.revoke", { linkId: link.id }).then(() => undefined), "did not revoke the link")}>
-            Revoke
+          <DropdownMenuItem variant="destructive" onClick={() => void revoke()}>
+            Revoke…
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

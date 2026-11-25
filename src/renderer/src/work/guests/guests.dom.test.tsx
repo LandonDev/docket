@@ -87,6 +87,8 @@ afterEach(() => {
   calls.itemGate = null;
   calls.pages = {};
   calls.opened.length = 0;
+  confirm.answer = true;
+  confirm.asked.length = 0;
 });
 
 describe("Share", () => {
@@ -97,8 +99,8 @@ describe("Share", () => {
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByText("Sam Ortiz");
     expect(screen.getByRole("dialog", { name: "Share" })).toBeTruthy();
-    // Who, what they can do, made, last opened and until when, in one muted line.
-    expect(screen.getByText(/^Edit · made \w{3} \d+ · in it now · until \w{3} \d+$/)).toBeTruthy();
+    // Who, what they can do, made, last opened and until when, in one muted comma line: never a run of dots.
+    expect(screen.getByText(/^Edit, made \w{3} \d+, in it now, until \w{3} \d+$/)).toBeTruthy();
     // A list's avatar: 24px, as Settings' list draws it.
     expect(document.querySelector("[data-face]")!.getAttribute("data-face")).toBe("row");
     // Asked of the Mac, answered by the box.
@@ -130,8 +132,15 @@ describe("Share", () => {
     await waitFor(() => expect(calls.list.find((c) => c.method === "work.guests.setRole")?.params).toEqual({ linkId: "abc", role: "view" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Sam Ortiz's link" }).hasAttribute("disabled")).toBe(false));
     // A radio row leaves the menu open, as a menu of choices does.
-    if (!screen.queryByRole("menuitem", { name: "Revoke" })) fireEvent.click(screen.getByRole("button", { name: "Sam Ortiz's link" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Revoke" }));
+    if (!screen.queryByRole("menuitem", { name: "Revoke…" })) fireEvent.click(screen.getByRole("button", { name: "Sam Ortiz's link" }));
+    // Revoke asks first, and a No revokes nothing: there is no Undo after (decision 21).
+    confirm.answer = false;
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Revoke…" }));
+    await waitFor(() => expect(confirm.asked.at(-1)).toMatchObject({ title: "Revoke the link?", body: "Sam Ortiz's address stops opening for good.", action: "Revoke" }));
+    expect(calls.list.some((c) => c.method === "work.guests.revoke")).toBe(false);
+    confirm.answer = true;
+    fireEvent.click(screen.getByRole("button", { name: "Sam Ortiz's link" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Revoke…" }));
     await waitFor(() => expect(calls.list.find((c) => c.method === "work.guests.revoke")?.params).toEqual({ linkId: "abc" }));
   });
 
@@ -280,6 +289,18 @@ describe("Share", () => {
   });
 });
 
+describe("a link's facts", () => {
+  it("are one comma sentence everywhere, never a run of dots: what they may do where there is a choice, what it is to in a list of every link, made, opened and until; an ended link says when it ended", async () => {
+    const { linkFacts } = await import("./api");
+    const opened = { ...LINK, open: 0, lastOpenedAt: NOW - 3_600_000 };
+    expect(linkFacts(opened)).toMatch(/^Edit, made \w{3} \d+, opened \w{3} \d+ \d+:\d{2}\s?[AP]M, until \w{3} \d+$/);
+    expect(linkFacts({ ...LINK, open: 0 }, { item: true })).toMatch(/^Edit, Run of show, made \w{3} \d+, not opened yet, until \w{3} \d+$/);
+    expect(linkFacts({ ...LINK, expiresAt: NOW - 1000 })).toMatch(/^Edit, made \w{3} \d+, ended \w{3} \d+$/);
+    expect(linkFacts({ ...LINK, revokedAt: NOW - 1000 }, { item: true })).toMatch(/^Edit, Run of show, made \w{3} \d+, revoked \w{3} \d+$/);
+    for (const line of [linkFacts(opened), linkFacts(LINK, { item: true })]) expect(line).not.toMatch(/[·|•]/);
+  });
+});
+
 describe("a project's Share", () => {
   const PROJECT_LINK = { ...LINK, id: "plink", name: "Dana Lee", role: "view" as const, source: { at: "lifeos" as const, table: "projects" as const, id: "kp1" }, title: "Spring LAN", open: 0 };
 
@@ -293,7 +314,7 @@ describe("a project's Share", () => {
     fireEvent.click(share);
     await screen.findByText("Dana Lee");
     // Every guest of a project views: the row says nothing of what they can do.
-    expect(screen.getByText(/^made .* · not opened yet · until /)).toBeTruthy();
+    expect(screen.getByText(/^made .*, not opened yet, until /)).toBeTruthy();
     expect(calls.list[0]).toMatchObject({ method: "work.guests.forItem", params: { source: { at: "lifeos", table: "projects", id: "kp1" } } });
     fireEvent.change(screen.getByPlaceholderText("Name"), { target: { value: "Marcus Reed" } });
     // A project's guest views: there is nothing to pick, so no Can row is drawn.
@@ -313,7 +334,8 @@ describe("a project's Share", () => {
     const { GuestLinksSection } = await import("./GuestLinksSection");
     calls.links = [PROJECT_LINK];
     render(<GuestLinksSection hosts={["box"]} />);
-    expect(await screen.findByText(/^View, Spring LAN project, until .*, not opened yet$/)).toBeTruthy();
+    // The same facts as the sheet's row, with what the link is to: a project's guest views, so no role is said.
+    expect(await screen.findByText(/^Spring LAN project, made \w{3} \d+, not opened yet, until \w{3} \d+$/)).toBeTruthy();
   });
 });
 
@@ -326,6 +348,16 @@ describe("the held request and the audit list", () => {
     expect(screen.getByText(/Dec 18/)).toBeTruthy();
   });
 
+  it("names a file's held request by the file and its folder's name, never a disk path", async () => {
+    const { View } = await import("./ShareActView");
+    const item = { kind: "share.guestLink", payload: { source: { at: "file", host: "box", path: "/srv/work/purdue/Trips/Field trip plan.tcdoc" }, title: "Field trip plan", name: "Dana Lee", role: "comment", expiresAt: Date.UTC(2026, 11, 18, 12) } } as unknown as HeldItem;
+    render(<View item={item} env="box" />);
+    expect(screen.getByText("Field trip plan")).toBeTruthy();
+    expect(screen.getByText("in Trips")).toBeTruthy();
+    expect(screen.queryByText("In")).toBeNull();
+    expect(document.body.textContent).not.toContain("/srv/work");
+  });
+
   it("keeps a row with its menu busy until the host confirms a revoke, and a refusal visible with the row still there", async () => {
     const { ShareButton } = await import("./Share");
     calls.links = [LINK];
@@ -335,7 +367,7 @@ describe("the held request and the audit list", () => {
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
     await screen.findByText("Sam Ortiz");
     fireEvent.click(screen.getByRole("button", { name: "Sam Ortiz's link" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Revoke" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Revoke…" }));
     // Pending: the row stays and its menu is busy.
     await waitFor(() => expect(screen.getByRole("button", { name: "Sam Ortiz's link" }).hasAttribute("disabled")).toBe(true));
     expect(screen.getByText("Sam Ortiz")).toBeTruthy();
@@ -350,7 +382,7 @@ describe("the held request and the audit list", () => {
     calls.links = [{ ...LINK, id: "file1", name: "Dana Lee", title: "Field trip plan", open: 2, source: { at: "file", table: "docs", id: "f".repeat(40), host: "box", path: "/srv/work/purdue/Trips/Field trip plan.tcdoc" } }];
     render(<GuestLinksSection hosts={["box"]} />);
     await screen.findByText("Dana Lee");
-    expect(screen.getByText(/^Edit, Field trip plan in Trips, until .*, in it now$/)).toBeTruthy();
+    expect(screen.getByText(/^Edit, Field trip plan in Trips, made \w{3} \d+, in it now, until \w{3} \d+$/)).toBeTruthy();
     // No path is shown in a row.
     expect(document.body.textContent).not.toContain("/srv/work");
   });
@@ -362,9 +394,9 @@ describe("the held request and the audit list", () => {
     await screen.findByText("Sam Ortiz");
     const names = screen.getAllByText(/Sam Ortiz|Maya Chen/).map((n) => n.textContent);
     expect(names).toEqual(["Sam Ortiz", "Maya Chen"]);
-    expect(screen.getByText(/Edit, Run of show, until .*, in it now/)).toBeTruthy();
-    expect(screen.getByText(/revoked/)).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "Revoke" })).toHaveLength(1);
+    expect(screen.getByText(/^Edit, Run of show, made \w{3} \d+, in it now, until \w{3} \d+$/)).toBeTruthy();
+    expect(screen.getByText(/^Edit, Run of show, made \w{3} \d+, revoked \w{3} \d+$/)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Revoke…" })).toHaveLength(1);
     // Copy new address and Revoke wait for the row's hover.
     // They lie over the row's end and keep no room at rest, so the facts take the row's width.
     const actions = document.querySelector("[data-guest-actions]")!;
@@ -426,27 +458,44 @@ describe("the held request and the audit list", () => {
     expect((document.querySelector("[data-face]") as HTMLElement).getAttribute("data-face")).toBe("row");
     confirm.answer = false;
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
-    expect(confirm.asked.at(-1)!.body).toMatch(/^.+'s current address stops opening\. The new one is copied for you to send\.$/);
+    expect(confirm.asked.at(-1)!.body).toBe("Sam Ortiz's current address stops opening. The new one shows here for you to copy.");
     expect(calls.list.some((c) => c.method === "work.guests.rekey")).toBe(false);
     confirm.answer = true;
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
     expect(calls.list.filter((c) => c.method === "work.guests.rekey").map((c) => c.params)).toEqual([{ linkId: "abc" }]);
   });
 
-  it("shows the new address in the link-made dialog when it did not copy, so it is not lost", async () => {
+  it("shows the new address once in the link-made dialog, with Copy, and says so when Copy fails", async () => {
     const { GuestLinksSection } = await import("./GuestLinksSection");
     calls.links = [LINK];
-    confirm.answer = true;
-    clip.fail = true;
     render(<GuestLinksSection hosts={["box"]} />);
     await screen.findByText("Sam Ortiz");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("https://tempcode.landonhale.com/g/new#k=secret");
-    // Copy there fails too: it says so, and the address stays to select.
+    expect(dialog.textContent).toContain("shown only now");
+    // Copy there fails: it says so, and the address stays to select.
+    clip.fail = true;
     await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Copy" })));
     expect(dialog.textContent).toContain("It didn't copy");
     clip.fail = false;
+    // Done closes it, and the address is not shown again.
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Done" })));
+    await waitFor(() => expect(document.body.textContent).not.toContain("g/new#k=secret"));
+  });
+
+  it("Revoke… asks first in the list of every link, and revokes only on Revoke", async () => {
+    const { GuestLinksSection } = await import("./GuestLinksSection");
+    calls.links = [LINK];
+    render(<GuestLinksSection hosts={["box"]} />);
+    await screen.findByText("Sam Ortiz");
+    confirm.answer = false;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Revoke…" })));
+    expect(confirm.asked.at(-1)).toMatchObject({ title: "Revoke the link?", body: "Sam Ortiz's address stops opening for good.", action: "Revoke" });
+    expect(calls.list.some((c) => c.method === "work.guests.revoke")).toBe(false);
+    confirm.answer = true;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Revoke…" })));
+    await waitFor(() => expect(calls.list.filter((c) => c.method === "work.guests.revoke").map((c) => c.params)).toEqual([{ linkId: "abc" }]));
   });
 
   it("keeps a line for each host that did not answer, with one Retry for the section", async () => {
