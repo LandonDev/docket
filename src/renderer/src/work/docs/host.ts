@@ -298,8 +298,19 @@ type Relayed = {
   storeTimer: ReturnType<typeof setTimeout> | null;
   /** Retry on a refused store: asks again now */
   retry?: () => void;
+  /** the document's key in `lastStored`: its host and source */
+  doc: string;
 };
 const relayedOf = new WeakMap<object, Relayed>();
+
+/**
+ * The service's last confirmed store of each document this window opened, by host and source: an open after another
+ * (the tab shown again) starts its save line there, still true of every edit of his it held, never back at nothing.
+ */
+const lastStored = new Map<string, number>();
+const docKey = (env: string, source: CanvasSource): string => `${env}|${JSON.stringify(source)}`;
+/** Forgets every kept store time: a test's next open starts at nothing. */
+export const forgetStores = (): void => lastStored.clear();
 
 /**
  * Hands the class a socket the host made with the open: its next socket for that schema takes it instead of asking
@@ -329,6 +340,7 @@ export function storedAll(socket: new (url: string) => WebSocket): Promise<numbe
 /** The save facts as they now stand, told to whoever listens. */
 function said(relayed: Relayed, patch: Partial<DocSaves>): void {
   relayed.saves = { ...relayed.saves, ...patch };
+  if (relayed.saves.storedAt !== null) lastStored.set(relayed.doc, Math.max(relayed.saves.storedAt, lastStored.get(relayed.doc) ?? 0));
   for (const tell of relayed.told) tell(relayed.saves);
 }
 
@@ -378,7 +390,8 @@ async function settleAll(socket: new (url: string) => WebSocket, store: boolean)
  */
 export function relaySocket(env: string, source: CanvasSource, itemId?: string): new (url: string) => WebSocket {
   const link = () => registry.linkOf(env);
-  const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set(), premade: null, pending: [], saves: NO_SAVES, told: new Set(), edits: 0, covered: 0, storeTimer: null };
+  const doc = docKey(env, source);
+  const relayed: Relayed = { open: new Set(), lost: null, dropped: false, arrived: new Set(), premade: null, pending: [], saves: { ...NO_SAVES, storedAt: lastStored.get(doc) ?? null }, told: new Set(), edits: 0, covered: 0, storeTimer: null, doc };
   const open = relayed.open;
   /**
    * A pause in his edits asks the service to store what he typed, so the save line names a store it confirmed. With no

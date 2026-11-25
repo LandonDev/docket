@@ -138,7 +138,9 @@ only once a store has been out 600 ms, or his edits waited past the pause
 with none asked (canvas/calm.ts), and a shorter wait keeps the last Saved
 line; a store the service refused, "Not saved." and its
 words, with Retry, which asks again at once. Before he edits it says nothing,
-and the frame names the folder. While no socket is open the store waits for the
+and the frame names the folder. Each open makes its own relay class, so an open of a document this window had
+open before (its tab shown again) starts at the service's last confirmed store of it (`lastStored` in host.ts, by
+host and source), still true of every edit of his it held, never back at the folder's line. While no socket is open the store waits for the
 provider's next one; the line keeps its last Saved time (the document's own
 offline line says why).
 

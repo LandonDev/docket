@@ -16,7 +16,7 @@ const said = vi.fn();
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: said }) }));
 
 const { changeId, decided, reviewOf } = await import("./review");
-const { NOT_SENT, NOT_TAKEN, docHost, frameHead, relaySocket, relayTiming, savesOf, servedBy, storedAll } = await import("./host");
+const { NOT_SENT, NOT_TAKEN, docHost, forgetStores, frameHead, relaySocket, relayTiming, savesOf, servedBy, storedAll } = await import("./host");
 const { docThreads } = await import("./threads");
 const { docSavedLine, offlineWords, statusLineOf, presenceOf, undoWritten, writtenLine, CHANGED_SINCE, UNDO_ELSEWHERE } = await import("./DocumentCanvas");
 // The store a pause in his edits asks for is the save line's own test's: elsewhere it never comes.
@@ -24,6 +24,7 @@ relayTiming.storePauseMs = 600_000;
 
 afterEach(() => {
   link.request.mockReset();
+  forgetStores();
 });
 
 const branch = (rows: HistoryBranch["diff"]["rows"], lines: HistoryBranch["diff"]["lines"] = []): HistoryBranch => ({
@@ -311,6 +312,22 @@ describe("the relayed socket", () => {
     h.down(applied());
     await flushed;
     expect(h.calls).toEqual(["state", "update 1", "stored"]);
+  });
+
+  it("an open after another of the same document starts its save line at the store the last one confirmed, never at nothing", async () => {
+    const h = fakeHost();
+    const source = { at: "lifeos", table: "docs", id: "d-again" } as const;
+    const Socket = relaySocket("env_box", source);
+    const ws = await opened(Socket);
+    ws.send(state());
+    ws.send(update(1));
+    h.down(applied(), applied());
+    const at = await storedAll(Socket);
+    expect(at).not.toBeNull();
+    // The tab shown again: a new open, a new class, the same document.
+    expect(savesOf(relaySocket("env_box", source)).now().storedAt).toBe(at);
+    expect(savesOf(relaySocket("env_box", { ...source, id: "d-other" })).now().storedAt).toBeNull();
+    ws.close();
   });
 
   it("export waits for the window's edits to reach the service without asking it to store the file", async () => {
