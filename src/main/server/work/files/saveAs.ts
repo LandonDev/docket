@@ -65,6 +65,8 @@ export interface LinkRow {
   sha: string
   /** the version a change made there was found at: his Replace names it */
   seen_version: string | null
+  /** the sha256 of the last write sent whose answer never came */
+  tried_sha: string | null
   saved_rev: string | null
   saved_at: number | null
   state: 'ok' | 'waiting' | 'changed' | 'gone' | 'refused'
@@ -345,6 +347,17 @@ export async function linkAct(ctx: WorkCtx, by: Caller, p: { workspaceId: string
   return linksOf(ctx, by, { workspaceId: p.workspaceId, source })
 }
 
+/** The version the file has there when it holds the link's own write whose answer was lost (`tried_sha`); else null. */
+async function ownWriteThere(ctx: WorkCtx, r: LinkRow): Promise<string | null> {
+  if (!r.tried_sha) return null
+  if (r.host === ctx.host && !r.vm) {
+    const v = await versionOf(r.path)
+    return v.sha256 === r.tried_sha ? versionWord(v) : null
+  }
+  const there = await freshBytes(ctx, r)
+  return shaOf(there.data) === r.tried_sha ? there.version : null
+}
+
 /** One write of a linked file: the document exported now and written over the file by the version last written. */
 async function writeLink(ctx: WorkCtx, r: LinkRow, rev: string | null): Promise<void> {
   if (inFlight.has(r.id)) return
@@ -353,14 +366,18 @@ async function writeLink(ctx: WorkCtx, r: LinkRow, rev: string | null): Promise<
   const now = Date.now()
   try {
     const out = await exportBytes(ctx, { at: 'file', host: ctx.host, path: r.doc }, r.format)
-    const got = await putOver(ctx, r, out.data)
+    // A lost answer (audit A4): the link's own earlier write found there is written over by the version it holds now,
+    // and these bytes are kept until this write's answer. Anyone else's bytes there are still a change made there.
+    const own = await ownWriteThere(ctx, r).catch(() => null)
+    ctx.db.prepare(`UPDATE work_files_links SET tried_sha = ? WHERE id = ?`).run(shaOf(out.data), r.id)
+    const got = await putOver(ctx, own ? { ...r, version: own } : r, out.data)
     if ('conflict' in got) {
       // A change made there, or the file gone: nothing is written over it until his press.
       if ('gone' in got.conflict) ctx.db.prepare(`UPDATE work_files_links SET state = 'gone', changed_at = ?, tried_at = ? WHERE id = ?`).run(now, now, r.id)
       else ctx.db.prepare(`UPDATE work_files_links SET state = 'changed', seen_version = ?, changed_at = ?, tried_at = ? WHERE id = ?`).run(got.conflict.version, got.conflict.changed, now, r.id)
     } else {
       ctx.db
-        .prepare(`UPDATE work_files_links SET version = ?, sha = ?, saved_rev = ?, saved_at = ?, state = 'ok', changed_at = NULL, detail = NULL, tried_at = ? WHERE id = ?`)
+        .prepare(`UPDATE work_files_links SET version = ?, sha = ?, saved_rev = ?, saved_at = ?, state = 'ok', changed_at = NULL, detail = NULL, tried_at = ?, tried_sha = NULL WHERE id = ?`)
         .run(got.version, shaOf(out.data), rev, Date.now(), now, r.id)
     }
   } catch (err) {

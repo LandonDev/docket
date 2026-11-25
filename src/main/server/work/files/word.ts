@@ -42,6 +42,8 @@ export interface WordRow {
   stopped: number | null
   /** the version of the change an autosave stopped at */
   stopped_version?: string | null
+  /** the sha256 of the last export sent whose answer never came */
+  tried_sha?: string | null
   /** the document's live revision last written to the Word file, and as it stood when made of the file */
   saved_rev: string | null
   base_rev: string | null
@@ -131,7 +133,7 @@ export function recordWord(ctx: Pick<WorkCtx, 'db'>, w: { workspaceId: string; h
   ctx.db
     .prepare(
       `INSERT INTO work_files_word (workspace_id, host, path, vm, name, version, sha, doc, doc_at, saved_at, saved_doc_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)
-       ON CONFLICT (workspace_id, host, path) DO UPDATE SET vm = excluded.vm, name = excluded.name, version = excluded.version, sha = excluded.sha, doc = NULL, doc_at = NULL, saved_at = NULL, saved_doc_at = NULL, saved_rev = NULL, base_rev = NULL, stopped = NULL, stopped_version = NULL, at = excluded.at`
+       ON CONFLICT (workspace_id, host, path) DO UPDATE SET vm = excluded.vm, name = excluded.name, version = excluded.version, sha = excluded.sha, doc = NULL, doc_at = NULL, saved_at = NULL, saved_doc_at = NULL, saved_rev = NULL, base_rev = NULL, stopped = NULL, stopped_version = NULL, tried_sha = NULL, at = excluded.at`
     )
     .run(w.workspaceId, w.host, w.path, w.vm ? 1 : 0, w.name, w.version, w.sha, Date.now())
   // A Word file still exactly our blank (New → Document) holds only what our editor makes: it saves by itself, unasked.
@@ -350,7 +352,8 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
     if (observed && !observed.current()) return
     const nowVersion = now?.version ?? seen!
     // the same version, the same bytes, or only SharePoint's own rewrite of them after an upload (body.ts)
-    const same = nowVersion === r.version || (!!now && ((knownSha(r) !== null && shaOf(now.data) === knownSha(r)) || sameBody(ctx, r, now.data)))
+    // An export of his whose answer was lost (`tried_sha`) found there is his own write, not a change made there.
+    const same = nowVersion === r.version || (!!now && ((knownSha(r) !== null && shaOf(now.data) === knownSha(r)) || (!!r.tried_sha && shaOf(now.data) === r.tried_sha) || sameBody(ctx, r, now.data)))
     // His Replace covers the change its dialog named by its version, never one made there after he read it, even in
     // the same millisecond; a Replace that names none (a window a release behind) is asked again.
     if (!same && (!p.replace || p.version !== nowVersion)) {
@@ -378,11 +381,13 @@ async function saveRow(ctx: WorkCtx, r: WordRow, p: { workspaceId: string; keep?
   if (observed && !observed.current()) return
   const out = await exportDoc(ctx, LOCAL, { source: { at: 'file', host: ctx.host, path: r.doc! }, format: 'docx' })
   const data = Buffer.from(out.data, 'base64')
+  // Kept until the answer: a send whose answer is lost is known as his own on the next press.
+  if (!p.keep) ctx.db.prepare(`UPDATE work_files_word SET tried_sha = ? WHERE workspace_id = ? AND host = ? AND path = ?`).run(shaOf(data), r.workspace_id, r.host, r.path)
   const got = await deliver(ctx, { ...row, version }, data, !!p.keep)
   if ('conflict' in got) return { conflict: 'gone' in got.conflict ? { gone: true } : { changed: got.conflict.changed, version: got.conflict.version } }
   if ('copy' in got) return { copy: { name: got.copy.name } }
   const at = Date.now()
-  ctx.db.prepare(`UPDATE work_files_word SET version = ?, sha = ?, saved_at = ?, saved_doc_at = ?, saved_rev = ?, stopped = NULL, stopped_version = NULL WHERE workspace_id = ? AND host = ? AND path = ?`).run(got.version, shaOf(data), at, docAt, writtenRev, r.workspace_id, r.host, r.path)
+  ctx.db.prepare(`UPDATE work_files_word SET version = ?, sha = ?, saved_at = ?, saved_doc_at = ?, saved_rev = ?, stopped = NULL, stopped_version = NULL, tried_sha = NULL WHERE workspace_id = ? AND host = ? AND path = ?`).run(got.version, shaOf(data), at, docAt, writtenRev, r.workspace_id, r.host, r.path)
   filesState(ctx).tabs.touch(p.workspaceId)
   return { at }
 }

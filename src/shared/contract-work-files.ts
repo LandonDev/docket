@@ -336,7 +336,7 @@ export const FilesRequestSchemas = [
    * changed since is answered as the conflict and left as it is, and one that is gone is never made again.
    * `copy`: his text is kept beside the file as "Name (mine)" instead, and the file is left alone.
    */
-  request('work.files.write', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, text: z.string().max(FILE_TEXT_MAX), version: z.string().max(200), copy: z.boolean().optional(), origin: FileOriginSchema.optional() })),
+  request('work.files.write', z.object({ workspaceId: Workspace, ref: CanvasSourceSchema, text: z.string().max(FILE_TEXT_MAX), version: z.string().max(200), /** the sha256 of this editor's earlier saves on `version` whose answer never came: a file holding one is written over as his own */ tried: z.array(z.string().regex(/^[0-9a-f]{64}$/)).max(8).optional(), copy: z.boolean().optional(), origin: FileOriginSchema.optional() })),
   /**
    * → { projects: { id, name }[] }: Add to a project… (`on`) and Take out of this project. A LifeOS document or
    * sheet moves into the project (or out of it, to LifeOS's top); any other file is linked to it in LifeOS

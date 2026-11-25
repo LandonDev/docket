@@ -2154,6 +2154,15 @@ over a file that changed there.
   answer was lost after it landed is known as landed on the next try: met as a conflict, the file is read and holds
   the very bytes being sent, so the copy is held at that version, never said to have changed there (`deliver`;
   Word's saves go through the same door).
+- **A lost answer, in every writer** (audit A4). `saveFile` itself answers a file that already holds the bytes being
+  saved with its version and writes nothing: the same save, sent again. A save may also name `tried`, the sha256 of the
+  caller's earlier saves on that version whose answer never came; a file holding one of them holds his own words and is
+  written over by the version it has now. Any other bytes there are still a conflict. The text editor keeps the digest
+  of each unanswered send until an answer comes and names them in the next (`work.files.write`'s `tried`,
+  fileSession.ts). A Word file's record keeps its last unanswered export's sha256 (`tried_sha`), and the next press
+  takes that export found there as its own write, never "changed there". A linked file keeps its last unanswered
+  write's sha256 the same way (`work_files_links.tried_sha`, saveAs.ts `ownWriteThere`): found there, the next write
+  goes over it by the version it holds. Each is cleared by the answer that confirms a write.
 - **Saved means the file holds his write.** The record counts each time an editor replaced the copy's bytes
   (`writes`, bumped by `copySaved` as `saveFile` or `fileWritten` tells of the copy) and keeps the last of those the
   file is known to hold (`held`): a send landed after it was read, or a look found the copy's bytes the file's own

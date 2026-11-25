@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +25,8 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   const timers: (() => void)[] = [];
   let down = false;
+  /** the next write lands, and its answer is lost on the way back */
+  let lose = false;
   const host: FileSessionHost = {
     async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
       calls.push({ method, params });
@@ -37,6 +40,10 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
         file.text = params.text as string;
         file.version += 1;
         file.changed += 60_000;
+        if (lose) {
+          lose = false;
+          throw new Error("The request timed out.");
+        }
         return { version: `v${file.version}`, changed: file.changed } satisfies FileSaved as T;
       }
       throw new Error(`unexpected ${method}`);
@@ -59,7 +66,7 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
     for (const fn of timers.splice(0)) fn();
     await session.flush();
   };
-  return { session, file, lines, said, calls, timers, theirs, words, fire, setDown: (on: boolean) => void (down = on) };
+  return { session, file, lines, said, calls, timers, theirs, words, fire, setDown: (on: boolean) => void (down = on), loseNext: () => void (lose = true) };
 }
 
 describe("a text file open", () => {
@@ -151,7 +158,7 @@ describe("a text file open", () => {
     expect(h.file.text).toBe("first\nsecond\n");
     expect(h.words()).toBe("Saved 1:53 PM in Events");
     h.session.edit("first\nsecond\nthird\n");
-    await h.fire();
+    await h.session.flush();
     expect(h.calls.filter((c) => c.method === "work.files.write").at(-1)!.params).toMatchObject({ ref: { path: "/w/Revised.md" }, version: "v2" });
     expect(h.file.text).toBe("first\nsecond\nthird\n");
   });
@@ -191,6 +198,21 @@ describe("a text file open", () => {
     const before = h.calls.length;
     await h.session.reopened();
     expect(h.calls).toHaveLength(before);
+  });
+
+  it("names a send whose answer was lost in the next one, by its bytes' sha256", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    h.loseNext();
+    h.session.edit("first\nsecond\n");
+    await h.session.flush();
+    expect(h.words()).toBe("Offline. 1 change waits here");
+    const writes = () => h.calls.filter((c) => c.method === "work.files.write").map((c) => c.params);
+    expect(writes()[0]).not.toHaveProperty("tried");
+    h.session.edit("first\nsecond\nthird\n");
+    await h.session.flush();
+    // Same base, and the lost send named: the host goes over his own words there, never anyone else's.
+    expect(writes()[1]).toMatchObject({ version: "v1", tried: [createHash("sha256").update(writes()[0]!.text as string).digest("hex")] });
   });
 
   it("asks before a reopen writes over a change made there meanwhile", async () => {

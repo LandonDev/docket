@@ -979,6 +979,25 @@ describe('a Word file of another computer', () => {
     expect(readdirSync(box.folder).filter((n) => n.includes('before TempCode'))).toHaveLength(1)
   })
 
+  it('a save whose answer was lost is known as his own on the next press, for the same export and a newer one', async () => {
+    const { tabId, path } = await imported('Lost.docx', 'word bytes')
+    loseReply = true
+    await expect(call('work.files.wordSave', { tabId })).rejects.toThrow(/timed out/)
+    expect(readFileSync(path, 'utf8')).toBe('word export')
+    // The same export again: its own write, never "changed there".
+    expect((await call<{ at?: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
+    loseReply = true
+    exported.data = Buffer.from('word export, newer')
+    await expect(call('work.files.wordSave', { tabId })).rejects.toThrow(/timed out/)
+    exported.data = Buffer.from('word export, newest')
+    expect((await call<{ at?: number }>('work.files.wordSave', { tabId })).at).toBeGreaterThan(0)
+    expect(readFileSync(path, 'utf8')).toBe('word export, newest')
+    // A colleague's save is still a change made there.
+    writeFileSync(path, 'a colleague saved')
+    expect(await call('work.files.wordSave', { tabId })).toMatchObject({ conflict: { changed: expect.any(Number) } })
+    exported.data = null
+  })
+
   it("Replace goes over the change its dialog named, never one made there after: that one is said again", async () => {
     const { tabId, path } = await imported('Brief.docx', 'word bytes')
     writeFileSync(path, 'a colleague saved')

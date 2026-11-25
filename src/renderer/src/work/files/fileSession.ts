@@ -69,6 +69,8 @@ export class FileSession {
   private file: Pick<TextFile, "bom" | "crlf"> = { bom: false, crlf: false };
   /** the version the host last answered: what a save names */
   private version = "";
+  /** the sha256 of saves sent on that version whose answer never came (the link dropped): the next save names them, so the host knows his own words there */
+  private tried: string[] = [];
   private changed = 0;
   /** the editor's text now, when it differs from what the host holds */
   private draft: string | null = null;
@@ -170,6 +172,7 @@ export class FileSession {
       if (!text) return await this.facts();
       this.file = text;
       this.version = got.version;
+      this.tried = [];
       this.changed = got.changed;
       this.draft = null;
       this.pending = 0;
@@ -243,8 +246,13 @@ export class FileSession {
     const text = this.draft;
     const sent = this.pending;
     this.saving = (async () => {
+      const encoded = encodeText(text, this.file);
+      // Kept until its answer: a send whose answer is lost is named by the next, and a resend of these bytes is this save.
+      // Worked out beside the send, never before it: the send goes at once.
+      const digest = sha256Hex(encoded).catch(() => null);
       try {
-        const got = await this.host.request<FileSaved>("work.files.write", { ...this.ref(), text: encodeText(text, this.file), version: this.version });
+        const got = await this.host.request<FileSaved>("work.files.write", { ...this.ref(), text: encoded, version: this.version, ...(this.tried.length ? { tried: this.tried } : {}) });
+        this.tried = [];
         if ("conflict" in got) {
           this.conflicted = true;
           this.gone = "gone" in got.conflict;
@@ -261,6 +269,8 @@ export class FileSession {
         this.saving = null;
         this.line();
       } catch (err) {
+        const lost = await digest;
+        if (lost && !this.tried.includes(lost)) this.tried = [...this.tried, lost].slice(-8);
         this.saving = null;
         this.line(textOf(err));
       }
@@ -378,4 +388,10 @@ export class FileSession {
       if (this.draft !== null && this.journaled) this.host.drafts?.release(this.journaled);
     });
   }
+}
+
+/** The sha256 of a text as the host writes it (UTF-8), in hex. */
+async function sha256Hex(text: string): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }

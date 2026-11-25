@@ -794,7 +794,7 @@ const COPY_LOCKED = 'This is a copy. Changes are made where the file is kept.'
 const COPY_KEEP_THERE = 'This copy changed here. Reload it, then make your change again.'
 
 /** An editor's save of a text file (`work.files.write`): through the door as `edit`, then by version. */
-async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; text: string; version: string; copy?: boolean; origin?: Parameters<typeof admitWrite>[1]['origin'] }, method: string, signal?: AbortSignal): Promise<FileSaved> {
+async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; text: string; version: string; tried?: string[]; copy?: boolean; origin?: Parameters<typeof admitWrite>[1]['origin'] }, method: string, signal?: AbortSignal): Promise<FileSaved> {
   const data = Buffer.from(p.text, 'utf8')
   // A Files tab's copy that saves back: written through the door by version, and the save sends it on (copies.ts).
   const own = canvasSourcePath(p.ref)
@@ -803,7 +803,7 @@ async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: Ca
     admitCaller(ctx, by, p.workspaceId)
     admitOwner(by, saving)
     if (p.copy) throw new Error(COPY_KEEP_THERE)
-    return saveFile({ roots: [saving.dir] }, refKey({ at: 'file', host: ctx.host, path: saving.copy }), saving.copy, data, p.version)
+    return saveFile({ roots: [saving.dir] }, refKey({ at: 'file', host: ctx.host, path: saving.copy }), saving.copy, data, p.version, p.tried)
   }
   if (p.copy) {
     // His text kept beside the file is asked of the folder: the file itself may be gone, which is why he keeps a copy.
@@ -826,14 +826,14 @@ async function write(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: Ca
     if (!entry) throw new Error('The copy was made and could not be read back.')
     return { copy: entry }
   }
-  return writeBytes(ctx, by, { workspaceId: p.workspaceId, ref: p.ref, data, version: p.version, ...(p.origin ? { origin: p.origin } : {}) }, method)
+  return writeBytes(ctx, by, { workspaceId: p.workspaceId, ref: p.ref, data, version: p.version, ...(p.tried ? { tried: p.tried } : {}), ...(p.origin ? { origin: p.origin } : {}) }, method)
 }
 
 /**
  * A file of this host's replaced by version through the door as `edit`: on its disk or in its Windows VM. The editor's
  * save above, and a document's linked file written again after an edit (links.ts).
  */
-export async function writeBytes(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: Buffer; version: string; origin?: Parameters<typeof admitWrite>[1]['origin'] }, method: string): Promise<FileSaved> {
+export async function writeBytes(ctx: WorkCtx, by: Caller, p: { workspaceId: string; ref: CanvasSource; data: Buffer; version: string; tried?: readonly string[]; origin?: Parameters<typeof admitWrite>[1]['origin'] }, method: string): Promise<FileSaved> {
   let at: Located
   try {
     if (admitChange(ctx, by, 'edit', { workspaceId: p.workspaceId, refs: [p.ref], origin: p.origin }, method) === 'hold') throw new Error(HELD_NOT_YET)
@@ -850,7 +850,7 @@ export async function writeBytes(ctx: WorkCtx, by: Caller, p: { workspaceId: str
   const { roots, path } = bytesFence(ctx, by, at)
   const { library } = doorPlace(ctx, by, at)
   const key = library ? libraryKey(library, path) : refKey({ at: 'file', host: ctx.host, path })
-  return saveFile({ roots }, key, path, p.data, p.version)
+  return saveFile({ roots }, key, path, p.data, p.version, p.tried)
 }
 
 /** A located thing in the VM, as vmVerbs.ts takes it. */

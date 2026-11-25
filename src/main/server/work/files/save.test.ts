@@ -90,6 +90,25 @@ describe('saving a file', () => {
     expect(readdirSync(join(rig.folder, 'Events')).filter((n) => n.includes('Notes'))).toEqual(['Notes.md'])
   })
 
+  it('a lost answer: the same bytes sent again are the same save; newer words go over his own unanswered save, never over anyone else\'s', async () => {
+    const read = await readFile(fence(), notes, 0, 1024)
+    const sha = (text: string) => createHash('sha256').update(text).digest('hex')
+    // The first save lands; its answer never reaches the window, which still holds the old version.
+    expect(await saveFile(fence(), 'k', notes, Buffer.from('mine\n'), read.version)).toHaveProperty('version')
+    const landed = statSync(notes).mtimeMs
+    // Sent again as it was: answered with its version, nothing written twice.
+    expect(await saveFile(fence(), 'k', notes, Buffer.from('mine\n'), read.version)).toEqual({ version: versionWord(await versionOf(notes)), changed: Math.round(landed) })
+    expect(statSync(notes).mtimeMs).toBe(landed)
+    // Newer words on the same base: a conflict unless they name the lost save, then written over it.
+    expect(await saveFile(fence(), 'k', notes, Buffer.from('mine, more\n'), read.version)).toHaveProperty('conflict')
+    expect(await saveFile(fence(), 'k', notes, Buffer.from('mine, more\n'), read.version, [sha('mine\n')])).toHaveProperty('version')
+    expect(readFileSync(notes, 'utf8')).toBe('mine, more\n')
+    // Someone else's words there are a conflict whatever the save names.
+    writeFileSync(notes, 'theirs\n')
+    expect(await saveFile(fence(), 'k', notes, Buffer.from('mine, again\n'), read.version, [sha('mine\n'), sha('mine, more\n')])).toHaveProperty('conflict')
+    expect(readFileSync(notes, 'utf8')).toBe('theirs\n')
+  })
+
   it('sees a change of the same size made in the same instant, by its hash', async () => {
     const read = await readFile(fence(), notes, 0, 1024)
     const { atime, mtime } = statSync(notes)

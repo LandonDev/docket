@@ -228,8 +228,13 @@ export async function readFile(fence: WriteFence, path: string, offset: number, 
 /**
  * Replaces a file's bytes, when it is still `expect` (a `versionWord`). Answers its new version, or the
  * conflict: what the file is now, or that it is gone. One save of a file at a time (`key` is its `refKey`).
+ *
+ * A lost answer (audit A4): a file that already holds these very bytes is this save, landed before its answer was lost,
+ * and answers its version with nothing written. `tried`: the sha256 of the caller's earlier saves on `expect` whose
+ * answer never came; a file holding one of them holds his own words, and is written over by its version now. Any other
+ * bytes there are a conflict.
  */
-export async function saveFile(fence: WriteFence, key: string, path: string, data: Uint8Array, expect: string): Promise<Saved> {
+export async function saveFile(fence: WriteFence, key: string, path: string, data: Uint8Array, expect: string, tried: readonly string[] = []): Promise<Saved> {
   return withFileLocks([key], async () => {
     let real: string
     try {
@@ -241,7 +246,12 @@ export async function saveFile(fence: WriteFence, key: string, path: string, dat
     const info = await lstat(real)
     if (!info.isFile()) throw new FileRefused('gone', NOT_A_FILE)
     const before = await versionOf(real)
-    if (!sameWord(versionWord(before), expect)) return { conflict: { version: versionWord(before), changed: Math.round(before.mtimeMs) } }
+    if (!sameWord(versionWord(before), expect)) {
+      const there = before.sha256
+      if (there !== undefined && before.size === data.length && there === createHash('sha256').update(data).digest('hex')) return { version: versionWord(before), changed: Math.round(before.mtimeMs) }
+      if (there === undefined || !tried.includes(there)) return { conflict: { version: versionWord(before), changed: Math.round(before.mtimeMs) } }
+      expect = versionWord(before)
+    }
     const temp = tempOf(real)
     const out = await open(temp, 'wx', info.mode & 0o777)
     // The receipt is the version of the bytes written here, read off the staged file (a rename keeps its time), never

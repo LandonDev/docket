@@ -98,6 +98,8 @@ export function ensureFilesTables(db: DatabaseSync): void {
   for (const column of ['saved_rev', 'base_rev']) if (!have.has(column)) db.exec(`ALTER TABLE work_files_word ADD COLUMN ${column} TEXT`)
   // The version of the change an autosave stopped at (`stopped_version`): the header's Replace writes over it alone.
   if (!have.has('stopped_version')) db.exec(`ALTER TABLE work_files_word ADD COLUMN stopped_version TEXT`)
+  // The sha256 of the last export sent whose answer never came (`tried_sha`): found there, it is his own write.
+  if (!have.has('tried_sha')) db.exec(`ALTER TABLE work_files_word ADD COLUMN tried_sha TEXT`)
   // A document's linked files (Save As…, saveAs.ts): where each lies, the format, the version and the document's live
   // revision last written to it, and how it stands (ok, waiting for its place, changed or gone there, refused).
   db.exec(`CREATE TABLE IF NOT EXISTS work_files_links (
@@ -108,6 +110,8 @@ export function ensureFilesTables(db: DatabaseSync): void {
   // The version a change made there was found at (`seen_version`): his Replace names it, and writes over it alone.
   const linkCols = new Set((db.prepare(`PRAGMA table_info(work_files_links)`).all() as { name: string }[]).map((c) => c.name))
   if (!linkCols.has('seen_version')) db.exec(`ALTER TABLE work_files_links ADD COLUMN seen_version TEXT`)
+  // The sha256 of the last write sent whose answer never came (`tried_sha`): found there, it is the link's own write.
+  if (!linkCols.has('tried_sha')) db.exec(`ALTER TABLE work_files_links ADD COLUMN tried_sha TEXT`)
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_links_by_doc ON work_files_links (workspace_id, doc)`)
   db.exec(`CREATE INDEX IF NOT EXISTS work_files_links_by_source ON work_files_links (doc, state)`)
 }

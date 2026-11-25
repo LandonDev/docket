@@ -114,7 +114,7 @@ describe('Save As… formats', () => {
     const insertWord = box.db.prepare(`INSERT INTO work_files_word
       (workspace_id, host, path, name, version, doc, at, auto, base_rev) VALUES (?, ?, ?, ?, '', ?, 0, 1, ?)`)
     const insertLink = box.db.prepare(`INSERT INTO work_files_links
-      SELECT ?, workspace_id, ?, format, host, ?, vm, name, place, computer, version, sha, saved_rev, saved_at, state, changed_at, detail, tried_at, made_at, seen_version
+      SELECT ?, workspace_id, ?, format, host, ?, vm, name, place, computer, version, sha, saved_rev, saved_at, state, changed_at, detail, tried_at, made_at, seen_version, tried_sha
       FROM work_files_links WHERE name = 'Plan.docx' AND path = ?`)
     const target = join(box.folder, 'Plan.docx')
     for (let i = 0; i < 5; i++) {
@@ -383,6 +383,31 @@ describe('a file made but not found again at once', () => {
     expect(await links()).toHaveLength(1)
     // A new press is his own choice again: the file is there, so he is asked.
     expect(await save({ ...params, op: op() })).toMatchObject({ exists: { name: 'Budget.docx' } })
+  })
+})
+
+describe("a linked file's write whose answer was lost", () => {
+  const general = () => join(mac.team, 'General')
+  it('is known as the link\'s own on the next write: newer words go over it, a colleague\'s save still stops it', async () => {
+    await save({ at: { at: 'file', host: MAC, path: general() }, name: 'Budget', place: 'General', computer: 'MacBook' })
+    const file = join(general(), 'Budget.docx')
+    loseAnswer = true
+    await edit('two')
+    expect(readFileSync(file, 'utf8')).toBe('docx two')
+    expect(await links()).toMatchObject([{ state: 'waiting' }])
+    // He typed on; the link is tried again and writes over its own write, never calling it a change made there.
+    doc.text = 'three'
+    doc.rev = 'r-three'
+    const later = Date.now() + linkTiming.retry + linkTiming.pause + 10
+    await autosaveLinks(box.ctx, later)
+    await autosaveLinks(box.ctx, later + linkTiming.pause + 1)
+    expect(readFileSync(file, 'utf8')).toBe('docx three')
+    expect(await links()).toMatchObject([{ state: 'saved' }])
+    // A colleague's bytes there are still a change made there.
+    writeFileSync(file, 'a colleague saved')
+    await edit('four')
+    expect(readFileSync(file, 'utf8')).toBe('a colleague saved')
+    expect(await links()).toMatchObject([{ state: 'changed' }])
   })
 })
 
