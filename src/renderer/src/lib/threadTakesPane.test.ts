@@ -19,9 +19,9 @@ describe("a thread or a draft he opens takes the pane", () => {
   it("the history opener clears the Work view once its open still holds, and claims his choice at the press", () => {
     const opener = body("onSelectHistorySession");
     expect(opener).toMatch(/const mine = o\.behind \? null : choose\(\)/);
-    expect(opener).toMatch(/if \(!o\.behind\) openWorkView\(null\)/);
-    // A page over the threads (Today, the Outbox) leaves at his pick too.
-    expect(opener).toMatch(/if \(!o\.behind\) shell\.closeOverlays\(\);/);
+    // The Work view and a page over the threads leave when the thread takes the pane, never at the press.
+    expect(opener).toMatch(/if \(!o\.behind\) \{\s*openWorkView\(null\);\s*shell\.closeOverlays\(\);\s*\}\s*selectWorkspaceOfSession/);
+    expect(opener.indexOf("shell.closeOverlays()")).toBeGreaterThan(opener.indexOf("await ensureOpenSession"));
     expect(opener.indexOf("openWorkView(null)")).toBeGreaterThan(opener.indexOf('stillChosen(mine, null, "")'));
   });
 
@@ -30,7 +30,7 @@ describe("a thread or a draft he opens takes the pane", () => {
     expect(app).toMatch(/onSelectHistorySession\(plan\.select, undefined, \{ behind: true \}\)/);
     // A neighbour with a tab of its own is switched to behind the view too: activateTab keeps the view for `behind`.
     expect(app).toMatch(/activateTab\(plan\.activeTabId, \{ behind: true \}\)/);
-    expect(app).toMatch(/if \(!o\.behind\) openWorkView\(null\);\s*workspaceActions\.activateTab\(id\)/);
+    expect(app).toMatch(/if \(!o\.behind\) \{\s*openWorkView\(null\);\s*shell\.closeOverlays\(\);\s*\}\s*workspaceActions\.activateTab\(id\)/);
     expect(body("onSelectHistorySession").match(/focusOpenSession\(sessionId, o\)/g)).toHaveLength(2);
   });
 

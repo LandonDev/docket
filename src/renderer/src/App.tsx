@@ -693,8 +693,12 @@ export default function App() {
   /** `behind`: the app switches the pane under what is on screen (after an archive or a delete): a Work view stays up. */
   const activateTab = useCallback((id: string, o: { behind?: boolean } = {}) => {
     perfMark("tab-switch", id);
-    // A thread picked leaves a Work view: the threads come back.
-    if (!o.behind) openWorkView(null);
+    // A thread picked leaves a Work view and any page over the threads (Today, the Outbox…), in the same tick as the
+    // tab switch, so the thread that was under them is never shown, and so marked read, on the way.
+    if (!o.behind) {
+      openWorkView(null);
+      shell.closeOverlays();
+    }
     workspaceActions.activateTab(id);
     const tab = workspaceTabsStore.getState().tabs.find((entry) => entry.id === id);
     const shown = tab ? sessionStore.get(tab.focusedId) : undefined;
@@ -1693,9 +1697,6 @@ export default function App() {
       // A thread he picks (the column, the rail, a list) is his latest choice, as a Work view is (lib/workSwitch.ts);
       // one that waits on its transcript opens only if nothing was chosen meanwhile.
       const mine = o.behind ? null : choose();
-      // His pick is the thread he wants to see: a page over the threads (Today, the Outbox, Search…) leaves at once,
-      // as it does through the Work open port; the app's own fill behind a view leaves it up.
-      if (!o.behind) shell.closeOverlays();
       if (seq !== undefined) requestTranscriptJump(sessionId, seq);
       if (focusOpenSession(sessionId, o)) return;
       const session = await ensureOpenSession(sessionId);
@@ -1706,7 +1707,12 @@ export default function App() {
       if (focusOpenSession(sessionId, o)) return;
       // The thread takes the pane: a Work view over it (Tasks, Projects) leaves, as it does for a thread already open
       // (activateTab), so a press on a thread whose tab was closed never opens it under the view.
-      if (!o.behind) openWorkView(null);
+      // The page goes when the thread takes the pane, not at the press: the thread under it is never uncovered while
+      // this one loads.
+      if (!o.behind) {
+        openWorkView(null);
+        shell.closeOverlays();
+      }
       selectWorkspaceOfSession(session);
       // A subagent splits beside its parent and never gets a tab of its own.
       if (session.parentId) {

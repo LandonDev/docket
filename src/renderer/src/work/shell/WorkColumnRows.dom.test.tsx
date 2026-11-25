@@ -169,6 +169,19 @@ describe("the Projects section", () => {
     expect(workViewNow()).toEqual({ workspaceId: "w-job", view: "projects" });
   });
 
+  it("a project row or the Projects heading pressed under Today or the Outbox closes that page first, so what he asked for shows", async () => {
+    const { shell, shellStore } = await import("../../stores/shell");
+    shell.openWorkPlace("today");
+    render(<Section onOpen={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Spring LAN/ }));
+    expect(shellStore.getState().workPlace).toBeNull();
+    shell.openOutbox();
+    act(() => screen.getByRole("button", { name: "Projects" }).click());
+    expect(shellStore.getState().outboxViewOpen).toBe(false);
+    expect(workViewNow()).toEqual({ workspaceId: "w-job", view: "projects" });
+    act(() => openWorkView(null));
+  });
+
   it("opens a project's page from its row, and the job's Projects view from the heading, which then reads as open", () => {
     const opened: string[] = [];
     render(<Section onOpen={(r) => opened.push(r.id)} />);

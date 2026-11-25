@@ -28,6 +28,7 @@ import { projectsBack, useProjectsHere } from "../projects/here";
 import type { ProjectGroup } from "../../lib/workspaceSessions";
 import { choose, openWorkView, stillChosen, useWorkView } from "../../lib/workSwitch";
 import type { ThreadRow } from "../../lib/workspaceSessions";
+import { shell } from "../../stores/shell";
 
 /**
  * A Work job's column under its views (docs/DESIGN.md "The column"): Projects, one row a project, then Threads, two
@@ -88,6 +89,11 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
   useEffect(() => {
     if (quietHit) setQuietOpen(true);
   }, [quietHit, current]);
+  // A project row he presses shows its page: a page over the threads leaves first.
+  const openShown = (row: WorkProjectRow): void => {
+    shell.closeOverlays();
+    onOpen(row);
+  };
   const now = Date.now();
   if (!linked && projects.rows.length === 0 && projects.quiet.length === 0) return null;
   return (
@@ -97,6 +103,8 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
           variant="ghost"
           aria-current={on || undefined}
           onClick={() => {
+            // A page over the threads (Today, the Outbox…) leaves first, so the list he asked for shows.
+            shell.closeOverlays();
             // From inside a project, back to the job's list; on the list, the view closes.
             const back = here && !on ? projectsBack(workspaceId) : undefined;
             if (back) back();
@@ -110,14 +118,14 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
         <h3 className={HEADING}>Projects</h3>
       )}
       {projects.rows.map((row) => (
-        <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, current)} onOpen={onOpen} />
+        <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, current)} onOpen={openShown} />
       ))}
       {projects.quiet.length > 0 ? (
         <>
           <Button variant="ghost" aria-expanded={quietOpen} onClick={() => setQuietOpen((was) => !was)} data-quiet-fold className={QUIET_ROW}>
             {quietWords(projects.quiet)}
           </Button>
-          {quietOpen ? projects.quiet.map((row) => <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, current)} onOpen={onOpen} />) : null}
+          {quietOpen ? projects.quiet.map((row) => <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, current)} onOpen={openShown} />) : null}
         </>
       ) : null}
     </section>
