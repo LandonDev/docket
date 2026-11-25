@@ -198,7 +198,10 @@ Settings → Work.
   picked on the Work page, else the box, else this machine); while the home
   session is down, its state in the rule's words as the row's description
   with the rule's press as the row (Sign in…, Show the code…, both opening
-  the sign-in dialog; Retry; Open Settings), or the state and who can as a
+  the sign-in dialog; Retry, which asks that host with the menu kept open,
+  its row spinning until the answer's state replaces it, `MenuRow.keepOpen`
+  and `busy`; Open Settings), "LifeOS is still connecting on the box" while
+  it connects (`connectingWords`), or the state and who can as a
   note where this window may not, or the state alone for a computer the host
   keeps LifeOS from, which reads this window's own session once the host
   says connected (`addMenuState`); then Without a sector…, which asks for a

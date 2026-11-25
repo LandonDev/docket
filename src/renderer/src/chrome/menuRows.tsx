@@ -62,8 +62,10 @@ export type MenuRow =
       danger?: boolean;
       /** Set: a checkbox row, ticked while true. */
       checked?: boolean;
-      /** A checkbox row that leaves the menu open (a filter among several). */
+      /** A row that leaves the menu open: a filter among several, or a press whose answer the menu shows in place (the + menu's Retry). */
       keepOpen?: boolean;
+      /** Its press is out: a spinner in the icon's place, the row held, until the answer replaces the row. */
+      busy?: boolean;
     }
   | { kind: "sep" }
   | { kind: "label"; label: string }

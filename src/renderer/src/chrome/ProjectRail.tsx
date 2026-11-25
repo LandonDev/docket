@@ -26,7 +26,7 @@ import {
   Trash2,
   Desktop,
 } from "./icons";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useDragResize } from "../hooks/useDragResize";
 import { useSashKeys } from "../hooks/useSashKeys";
 import { useInboxUnseen } from "../hooks/useInboxUnseen";
@@ -199,6 +199,9 @@ type Props = {
   onOpenWhatsNew?: (version: string, markdown?: string) => void;
 };
 
+/** No port to hear: the + menu is shut. */
+const noPort = (): (() => void) => () => undefined;
+
 export function ProjectRail({
   cwd,
   recents,
@@ -275,6 +278,9 @@ export function ProjectRail({
   );
   // The project whose menu is open (its ⋯ reads expanded) and whose Customize dialog is.
   const [menuPath, setMenuPath] = useState<string | null>(null);
+  // While Work's + menu is open its rows follow Work's state (a Retry's answer replaces the row in place).
+  const addOpen = menuPath === WORK_ADD_MENU;
+  const openPort = useSyncExternalStore(addOpen ? workRailPort.subscribe : noPort, () => (addOpen ? workRailPort.get() : null));
   const [customizing, setCustomizing] = useState<{ path: string; projectKey: string } | null>(null);
   const projectMenu = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
   const [removing, setRemoving] = useState<{
@@ -362,7 +368,7 @@ export function ProjectRail({
   /** A project's menu: Customize… (the look), then pin, reveal, the fleet switches, archive and delete. */
   const projectMenuRows = (path: string | null): MenuRow[] | null => {
     if (!path) return null;
-    if (path === WORK_ADD_MENU) return workRailPort.get()?.addRows() ?? null;
+    if (path === WORK_ADD_MENU) return (openPort ?? workRailPort.get())?.addRows() ?? null;
     const projectKey = labelKey(path);
     // With Work on, a code workspace links to a LifeOS sector from its own menu; a Work workspace's is set when it is made.
     const sector = workOn && !workRows.some((row) => row.paths.some((p) => sameProjectPath(p, path))) ? (workRailPort.get()?.sectorRows(path) ?? []) : [];

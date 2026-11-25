@@ -25,7 +25,8 @@ import { ReturnHost } from "./ReturnHost";
 import { downOf, downPress, downWords, useDownPress, type DownPress, type LifeosDown } from "./lifeosDown";
 import { SignInFor } from "./DownSignIn";
 import { createWorkWorkspace, linkSector, sectorName, SECTORS, workHome } from "./actions";
-import { isSilence, reopenLifeos, sessionWords, useLifeosQuery, useLifeosSession, useLifeosStatus, type LifeosSession } from "./lifeos";
+import { isSilence, lifeosHostName, reopenLifeos, sessionWords, useLifeosQuery, useLifeosSession, useLifeosStatus, type LifeosSession } from "./lifeos";
+import { connectingWords } from "./lifeosWords";
 
 /** The digest's toasts and its list (work/digest), in a chunk of their own: nothing of it loads until Work is on. */
 const DigestHost = workDigestChunk.surface("DigestHost");
@@ -67,20 +68,22 @@ const MENU_PRESS: Record<DownPress, { id: string; label: string }> = {
  * rule's press as the row (`downPress`); where this window may not make it, the state and who can (`elsewhere`) as a
  * note; a computer the host keeps LifeOS from, the state alone as a note. Without a sector keeps its own way.
  */
-export function addMenuRows(state: AddMenuState, free: readonly string[], names?: ReadonlyMap<string, string>, said?: string, elsewhere?: string | null): MenuRow[] {
+export function addMenuRows(state: AddMenuState, free: readonly string[], names?: ReadonlyMap<string, string>, said?: string, elsewhere?: string | null, host?: string | null, retrying = false): MenuRow[] {
   const note = (id: string, words: string, who?: string | null): MenuRow => ({ kind: "note", id, content: <span className="text-muted-foreground">{words}{who ? <span className="block">{who}</span> : null}</span> });
   const down = (gone: LifeosDown): MenuRow[] => {
     const words = said ?? downWords(gone);
     const press = downPress(gone);
     if (!press) return [note("work:withheld", words)];
     if (elsewhere) return [note(press === "settings" ? "work:off" : "work:signin-elsewhere", words, elsewhere)];
-    return [{ kind: "item", ...MENU_PRESS[press], ...(press === "sign-in" || press === "code" ? { icon: LogIn } : {}), description: words }];
+    // Retry asks the host in place: the menu stays open, the row spins, and the answer's state replaces the row.
+    const retry = press === "retry" ? { keepOpen: true, ...(retrying ? { busy: true } : {}) } : {};
+    return [{ kind: "item", ...MENU_PRESS[press], ...(press === "sign-in" || press === "code" ? { icon: LogIn } : {}), description: words, ...retry }];
   };
   const top: MenuRow[] =
     state === "connected"
       ? free.map((sector) => ({ kind: "item", id: `work:add:${sector}`, label: sectorName(sector, names), icon: dotIcon(sector) }))
       : state === null || state === "connecting"
-        ? [{ kind: "note", id: "work:connecting", content: <span className="text-muted-foreground">Connecting to LifeOS…</span> }]
+        ? [{ kind: "note", id: "work:connecting", content: <span className="text-muted-foreground">{connectingWords(host)}</span> }]
         : down(state);
   return [...top, ...(top.length ? [{ kind: "sep" } as const] : []), { kind: "item", id: "work:add-unlinked", label: "Without a sector…", icon: dotIcon(null) }];
 }
@@ -88,7 +91,7 @@ export function addMenuRows(state: AddMenuState, free: readonly string[], names?
 /**
  * The state the + menu reads for the home host: its status; once that says connected, this window's own session where
  * it is down (a computer the host keeps LifeOS from, a session ask the host did not answer); with no status, a host
- * whose status ask went unanswered. Never "Connecting to LifeOS…" for a wait that has ended.
+ * whose status ask went unanswered. Never "LifeOS is still connecting" for a wait that has ended.
  */
 export function addMenuState(status: LifeosStatus | null, session: Pick<LifeosSession, "client" | "state" | "withheld" | "unanswered">): AddMenuState {
   if (!status) return session.unanswered ? "unanswered" : null;
@@ -138,10 +141,13 @@ export function sectorMenuRows(current: string | null | undefined, state: Lifeos
  * (`reopenLifeos`). Watching it again would start nothing, since the rail already watches that host; an answer that
  * does not come is said once, as a toast.
  */
-export function retryLifeos(home: string | null | undefined, fail: (error: unknown) => void): void {
+export function retryLifeos(home: string | null | undefined, fail: (error: unknown) => void, done?: () => void): void {
   // A Retry the host does not answer is said by the line alone (the menu's row, Settings → Work's line): the newest
   // cause, judged by the Retry's own error, never by the state before the press.
-  if (home) void reopenLifeos(home, null).catch((error: unknown) => (isSilence(error) ? undefined : fail(error)));
+  if (!home) return done?.();
+  void reopenLifeos(home, null)
+    .catch((error: unknown) => (isSilence(error) ? undefined : fail(error)))
+    .finally(() => done?.());
 }
 
 export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: string) => void }) {
@@ -168,12 +174,14 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
   );
   const workspaces = useWorkspaces();
   const [naming, setNaming] = useState(false);
+  // The + menu's Retry is out: its row spins in the open menu until the host's answer replaces it.
+  const [retrying, setRetrying] = useState(false);
 
   useLayoutEffect(() => {
     const fail = (error: unknown): void => void loadToast().then((toast) => toast.error(errorText(error)));
     const workspaceAt = (path: string | null): WorkspaceMeta | undefined => (path ? workspaceByPath(workspaces, path) : undefined);
     workRailPort.set({
-      addRows: () => addMenuRows(state, freeSectors(workspaces, order), names, said, menuPress.elsewhere),
+      addRows: () => addMenuRows(state, freeSectors(workspaces, order), names, said, menuPress.elsewhere, home ? lifeosHostName(home) : null, retrying),
       sectorRows(path) {
         const workspace = workspaceAt(path);
         if (!workspace || !sectorMenuShown(workspace, hosts)) return [];
@@ -186,8 +194,8 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
         if (action === "work:signin" || action === "work:code") return setSigningIn(true);
         if (action === "work:settings") return openWorkSettings();
         if (action === "work:retry") {
-          retryLifeos(home, fail);
-          return openWorkSettings();
+          setRetrying(true);
+          return retryLifeos(home, fail, () => setRetrying(false));
         }
         if (action === "work:add-unlinked") return setNaming(true);
         if (action.startsWith("work:add:") && home) {
@@ -203,7 +211,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
       },
     });
     return () => workRailPort.set(null);
-  }, [home, hostState, hosts, names, onOpenWorkspace, order, state, said, menuPress.elsewhere, session.unanswered, workspaces]);
+  }, [home, hostState, hosts, names, onOpenWorkspace, order, state, said, menuPress.elsewhere, session.unanswered, workspaces, retrying]);
 
   return (
     <>

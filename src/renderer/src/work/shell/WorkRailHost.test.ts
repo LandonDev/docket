@@ -35,6 +35,16 @@ describe("the add menu's Retry", () => {
     expect(fail).not.toHaveBeenCalled();
   });
 
+  it("tells the menu when its ask is over, answered or not, so the row's spin stops (council round 11)", async () => {
+    const done = vi.fn();
+    retryLifeos("env_box", vi.fn(), done);
+    await vi.waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+    lifeos.refresh.mockRejectedValueOnce(new Error("no"));
+    const failed = vi.fn();
+    retryLifeos("env_box", vi.fn(), failed);
+    await vi.waitFor(() => expect(failed).toHaveBeenCalledTimes(1));
+  });
+
   it("asks nothing with no home host", () => {
     lifeos.refresh.mockClear();
     retryLifeos(null, vi.fn());

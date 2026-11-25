@@ -1,3 +1,4 @@
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MenuRow } from "../../chrome/menuRows";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
@@ -52,6 +53,20 @@ describe("the Work heading's + menu", () => {
     expect(ids(addMenuRows("connecting", ["cosmic"]))).toEqual(["work:connecting", "—", "work:add-unlinked"]);
     // Every sector taken: Without a sector alone.
     expect(ids(addMenuRows("connected", []))).toEqual(["work:add-unlinked"]);
+  });
+
+  /** Council round 11 (Sol rest 2): the wait names its computer, and Retry answers in the open menu. */
+  it("names the computer in the wait, and keeps the menu open on Retry, its row spinning while it asks", () => {
+    const [wait] = addMenuRows("connecting", ["cosmic"], undefined, undefined, null, "The box");
+    expect(wait.kind === "note" && renderToStaticMarkup(wait.content as never)).toContain("LifeOS is still connecting on the box");
+    const [retry] = addMenuRows("unreachable", ["cosmic"], undefined, "LifeOS did not answer the box", null, "The box");
+    expect(retry).toMatchObject({ id: "work:retry", keepOpen: true });
+    expect(retry.kind === "item" && retry.busy).toBeFalsy();
+    const [asking] = addMenuRows("unreachable", ["cosmic"], undefined, "LifeOS did not answer the box", null, "The box", true);
+    expect(asking).toMatchObject({ id: "work:retry", keepOpen: true, busy: true });
+    // Only Retry stays: Sign in opens its dialog, which closes the menu.
+    const [signIn] = addMenuRows("signed-out", ["cosmic"], undefined, "Not signed in to LifeOS on the box", null, "The box", true);
+    expect(signIn.kind === "item" && (signIn.keepOpen || signIn.busy)).toBeFalsy();
   });
 
   /** Council round 5 (Opus, the rail's Work menu): a host whose status went unanswered read "Connecting to LifeOS…" for good. */

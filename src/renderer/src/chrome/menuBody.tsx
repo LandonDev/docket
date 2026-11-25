@@ -29,6 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { Kbd } from "../components/ui/kbd";
+import { Spinner } from "../components/ui/spinner";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import type { LazyPopoverProps, MenuAt, MenuRow, MenuRowsKind, RowsContextMenuProps, RowsMenuProps } from "./menuRows";
 
@@ -167,7 +168,7 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
   const Icon = item.icon;
   const body = (
     <>
-      {Icon ? <Icon /> : null}
+      {item.busy ? <Spinner aria-hidden /> : Icon ? <Icon /> : null}
       {item.description ? (
         <span className="flex min-w-0 flex-col gap-0.5">
           <span>{item.label}</span>
@@ -190,7 +191,7 @@ function Row({ item, onPick, kind }: { item: MenuRow; onPick: (id: string) => vo
         {body}
       </Check>
     ) : (
-      <Item data-menu-row={item.id} disabled={item.disabled} variant={item.danger ? "destructive" : "default"} onClick={() => onPick(item.id)} aria-description={item.reason}>
+      <Item data-menu-row={item.id} disabled={item.disabled || item.busy} aria-busy={item.busy || undefined} closeOnClick={!item.keepOpen} variant={item.danger ? "destructive" : "default"} onClick={() => onPick(item.id)} aria-description={item.reason}>
         {body}
       </Item>
     );
