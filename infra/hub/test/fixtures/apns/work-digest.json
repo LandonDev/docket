@@ -1,0 +1,43 @@
+{
+  "input": {
+    "event": "finished",
+    "hostId": "box",
+    "environmentId": "env_mac",
+    "seq": 0,
+    "kind": "finished",
+    "title": "Work",
+    "body": "Digest: 2 things in Cosmic",
+    "hostName": "Studio",
+    "work": {
+      "key": "digest:2026-11-24",
+      "digest": "2026-11-24"
+    },
+    "ts": 1760000702000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Work",
+        "body": "Digest: 2 things in Cosmic"
+      },
+      "thread-id": "tc.work",
+      "summary-arg": "Work",
+      "interruption-level": "active",
+      "relevance-score": 0.4,
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "finished",
+      "hostId": "box",
+      "environmentId": "env_mac",
+      "seq": 0,
+      "kind": "finished",
+      "host": "Studio",
+      "work": {
+        "key": "digest:2026-11-24",
+        "digest": "2026-11-24"
+      },
+      "ts": 1760000702000
+    }
+  }
+}

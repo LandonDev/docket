@@ -1,0 +1,44 @@
+{
+  "input": {
+    "event": "needs_you",
+    "hostId": "box",
+    "environmentId": "env_mac",
+    "seq": 0,
+    "kind": "waiting",
+    "title": "Work",
+    "body": "A workspace lost its connection",
+    "hostName": "Studio",
+    "work": {
+      "key": "connection:1",
+      "tell": "connection:1"
+    },
+    "ts": 1760000703000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Work",
+        "body": "A workspace lost its connection"
+      },
+      "sound": "default",
+      "thread-id": "tc.work",
+      "summary-arg": "Work",
+      "interruption-level": "time-sensitive",
+      "relevance-score": 1,
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "needs_you",
+      "hostId": "box",
+      "environmentId": "env_mac",
+      "seq": 0,
+      "kind": "waiting",
+      "host": "Studio",
+      "work": {
+        "key": "connection:1",
+        "tell": "connection:1"
+      },
+      "ts": 1760000703000
+    }
+  }
+}

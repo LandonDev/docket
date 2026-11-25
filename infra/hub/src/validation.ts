@@ -1,5 +1,5 @@
 import { guardTarget } from './target'
-import { activityPhases, activityUnits, events, pushEnvironments, type ActivityRow, type ActivityUpdate, type ApnsDevice, type Heartbeat, type HeldRef, type Notice, noticeKinds, type NoticeKind } from './types'
+import { activityPhases, activityUnits, events, pushEnvironments, type ActivityRow, type ActivityUpdate, type ApnsDevice, type Heartbeat, type HeldRef, type Notice, noticeKinds, type NoticeKind, type NoticeWork, type TellOpen } from './types'
 export class Invalid extends Error {}
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -96,16 +96,66 @@ export function notice(value: unknown): Notice {
     // Only the one value a phone knows; any other is left out, so the notice keeps Approve and Deny.
     ...(v.choices === 'run-skip' ? { choices: 'run-skip' as const } : {}),
     ...(v.hostName === undefined ? {} : { hostName: str(v.hostName, 'hostName', 80) }),
-    ...(v.held === undefined ? {} : { held: heldRef(v.held) })
+    ...(v.held === undefined ? {} : { held: heldRef(v.held) }),
+    ...(v.work === undefined ? {} : { work: workNotice(v.work) })
   }
 }
 
 /** A held item's ref, exactly one of its two shapes: ids, nothing else. */
-function heldRef(value: unknown): HeldRef {
+function heldRef(value: unknown, readId = (v: unknown) => str(v, 'held.id', 200)): HeldRef {
   const v = object(value)
-  if (v.at === 'host') return { at: 'host', id: str(v.id, 'held.id', 200) }
-  if (v.at === 'lifeos' && (v.table === 'outbox' || v.table === 'calendarOps')) return { at: 'lifeos', table: v.table, id: str(v.id, 'held.id', 200) }
+  if (v.at === 'host') return { at: 'host', id: readId(v.id) }
+  if (v.at === 'lifeos' && (v.table === 'outbox' || v.table === 'calendarOps')) return { at: 'lifeos', table: v.table, id: readId(v.id) }
   throw new Invalid('Invalid held')
+}
+
+/** Matches NoticeWorkSchema and TellOpenSchema in src/shared/work/tell.ts. */
+function workNotice(value: unknown): NoticeWork {
+  const v = object(value)
+  const key = workString(v.key, 'work.key', 1, 200)
+  if (v.digest !== undefined) {
+    onlyKeys(v, ['key', 'digest'], 'work')
+    return { key, digest: workString(v.digest, 'work.digest', 1, 40) }
+  }
+  onlyKeys(v, ['key', 'tell', 'by', 'open'], 'work')
+  const tell = workString(v.tell, 'work.tell', 1, 400)
+  if (v.by !== undefined && (typeof v.by !== 'number' || !Number.isFinite(v.by))) throw new Invalid('Invalid work.by')
+  return { key, tell, ...(v.by === undefined ? {} : { by: v.by }), ...(v.open === undefined ? {} : { open: tellOpen(v.open) }) }
+}
+
+function tellOpen(value: unknown): TellOpen {
+  const v = object(value)
+  const at = () => v.at === undefined ? {} : { at: workString(v.at, 'work.open.at', 0) }
+  if (v.held !== undefined) {
+    onlyKeys(v, ['held', 'thread'], 'work.open')
+    return {
+      held: heldRef(v.held, (id) => workString(id, 'work.open.held.id', 0)),
+      ...(v.thread === undefined ? {} : { thread: workString(v.thread, 'work.open.thread') })
+    }
+  }
+  if (v.view !== undefined) {
+    onlyKeys(v, ['view', 'workspaceId', 'at'], 'work.open')
+    return { view: workString(v.view, 'work.open.view'), workspaceId: workString(v.workspaceId, 'work.open.workspaceId'), ...at() }
+  }
+  if (v.place !== undefined) {
+    onlyKeys(v, ['place', 'at'], 'work.open')
+    return { place: workString(v.place, 'work.open.place'), ...at() }
+  }
+  if (v.settings !== undefined) {
+    onlyKeys(v, ['settings'], 'work.open')
+    return { settings: workString(v.settings, 'work.open.settings') }
+  }
+  onlyKeys(v, ['thread'], 'work.open')
+  return { thread: workString(v.thread, 'work.open.thread') }
+}
+
+function onlyKeys(value: Record<string, unknown>, keys: readonly string[], field: string): void {
+  if (Object.keys(value).some((key) => !keys.includes(key))) throw new Invalid('Invalid ' + field)
+}
+
+function workString(value: unknown, field: string, min = 1, max = Infinity): string {
+  if (typeof value !== 'string' || value.length < min || value.length > max) throw new Invalid('Invalid ' + field)
+  return value
 }
 function noticeKind(value: unknown): NoticeKind {
   if (!noticeKinds.includes(value as never)) throw new Invalid('Invalid kind')

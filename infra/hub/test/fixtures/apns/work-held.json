@@ -1,0 +1,60 @@
+{
+  "input": {
+    "event": "needs_you",
+    "hostId": "box",
+    "environmentId": "env_mac",
+    "seq": 0,
+    "kind": "waiting",
+    "title": "Outbox",
+    "body": "A draft waits for your press",
+    "hostName": "Studio",
+    "work": {
+      "key": "held:h9",
+      "tell": "outbox:h9",
+      "open": {
+        "held": {
+          "at": "lifeos",
+          "table": "outbox",
+          "id": "ob_1"
+        },
+        "thread": "thread-1"
+      }
+    },
+    "ts": 1760000701000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Outbox",
+        "body": "A draft waits for your press"
+      },
+      "sound": "default",
+      "thread-id": "tc.work",
+      "summary-arg": "Outbox",
+      "interruption-level": "time-sensitive",
+      "relevance-score": 1,
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "needs_you",
+      "hostId": "box",
+      "environmentId": "env_mac",
+      "seq": 0,
+      "kind": "waiting",
+      "host": "Studio",
+      "work": {
+        "key": "held:h9",
+        "tell": "outbox:h9",
+        "open": {
+          "held": {
+            "at": "lifeos",
+            "table": "outbox",
+            "id": "ob_1"
+          },
+          "thread": "thread-1"
+        }
+      },
+      "ts": 1760000701000
+    }
+  }
+}

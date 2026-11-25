@@ -144,9 +144,9 @@ carries every method.
 ## Telling the phone
 
 `Notifier.work(n)` (src/main/server/remote/notifier.ts) emits a notice
-with no thread. No new push event and no hub deploy: an interrupt goes out
-as `needs_you` with kind `waiting` (time sensitive, sound; no client turns
-it into buttons), the digest as `finished` (a banner, no sound). Each
+with no thread. An interrupt goes out as `needs_you` with kind `waiting`
+(time sensitive, with sound and no actions). The digest goes out as
+`finished` (a banner with no sound). Each
 carries `work` (`NoticeWork` in src/shared/work/tell.ts): `{key, digest}`
 or `{key, tell, by?, open?}`.
 
@@ -156,15 +156,14 @@ or `{key, tell, by?, open?}`.
   `relayServe.ts` `onNotice` and the box's `deliverNotice` (index.ts)
   forward it, so a Mac's notice reaches the phone through the box; the hub
   sink and the local APNs sink pass `work`; the Live Activity sink and the
-  webhook sinks skip a notice that is not a thread's (`isThreadNotice`);
-  `apnsPayload.ts` writes `tc.work` and groups every Work notice under
-  `thread-id` `tc.work`; `push.ts` collapses on `work:<key>`.
+  webhook sinks skip a notice that is not a thread's (`isThreadNotice`).
+  Both the box and the hub write `tc.work`, group alerts under
+  `thread-id` `tc.work` and use `work:<environment>:<key>` as the APNs
+  collapse ID. If the sender has no environment ID, it uses the host ID.
 - **One banner a host for what cannot wait.** Every interrupt of a host
-  shares the key `now` (`deliver.ts` `NOW_KEY`), collapsed on the phone as
-  `work:<environment>:now` by the box's own sender, the same as the hub's
-  own collapse id for a notice with no thread (`<host>:needs_you`): a Mac's
-  interrupt never erases the box's. So while more than one
-  interrupt is open (told within a day, its `by` not passed since; one
+  shares the key `now` (`deliver.ts` `NOW_KEY`). Both senders use
+  `work:<environment>:now`, so a Mac's interrupt leaves the box's in place.
+  While more than one interrupt is open (told within a day, its `by` not passed since; one
   whose clock had already passed when it was told, a failed send, stays
   open for the day), the body names them all:
   "2 things need you: Budget review starts at 2:00 PM; Sign-in to Frame.io
@@ -433,8 +432,10 @@ rules; nothing about the wire is the phone's own.
   item, then a Work view the phone draws, then a thread, each on the notice's
   host (`tc.environmentId`), and the Digest for anything else or no `open`.
   `NavigationRouter.open` takes `target.route`. In the foreground a Work notice
-  is a banner, or the list alone while the Digest is on screen. Through the
-  hub `tc.work` is lost and the notice has no thread: a tap opens the app.
+  is a banner, or the list alone while the Digest is on screen. The hub
+  now validates and carries `tc.work` to APNs, with the same targets,
+  grouping, categories and collapse IDs as the box. This takes effect
+  when the hub Worker deploys.
 - **Settings → Work.** A Digest section follows the group with the Work
   switch and LifeOS (the first host with Work on, once for every host), and
   shows only while some host has Work on: Time (a time picker of the "HH:mm"

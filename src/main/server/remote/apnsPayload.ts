@@ -74,6 +74,11 @@ const RELEVANCE: Record<ApnsEventKind, number> = {
   host_up: 0.2
 }
 
+/** Work replaces only a notice with the same key from the same host. Mirrored in infra/hub/src/delivery.ts. */
+export function notificationCollapseId(notice: Pick<ApnsNotice, 'work' | 'environmentId' | 'hostId' | 'threadId' | 'event'>): string {
+  return notice.work ? `work:${notice.environmentId ?? notice.hostId}:${notice.work.key}` : `${notice.threadId ?? notice.hostId}:${notice.event}`
+}
+
 export function notificationPayload(notice: ApnsNotice): unknown {
   return {
     aps: {

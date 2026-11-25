@@ -27,8 +27,17 @@ export interface Notice {
   hostName?: string
   /** An act held for the owner's press: `tc.held`, the item the phone's tap opens (ids only; the category stays Open). */
   held?: HeldRef
+  /** What a tap on a Work notice opens, as in src/shared/work/tell.ts. */
+  work?: NoticeWork
 }
 export type HeldRef = { at: 'host'; id: string } | { at: 'lifeos'; table: 'outbox' | 'calendarOps'; id: string }
+export type TellOpen =
+  | { thread: string }
+  | { view: string; workspaceId: string; at?: string }
+  | { place: string; at?: string }
+  | { held: HeldRef; thread?: string }
+  | { settings: string }
+export type NoticeWork = { key: string; digest: string } | { key: string; tell: string; by?: number; open?: TellOpen }
 export const noticeKinds = ['approval', 'question', 'plan', 'waiting', 'finished', 'failed', 'stuck', 'batch', 'stopped'] as const
 export type NoticeKind = (typeof noticeKinds)[number]
 export interface Heartbeat {

@@ -13,6 +13,7 @@ import { apnsReset, JWT_LIFETIME_MS, providerToken } from '../src/apns'
 import { ACTIVITY_DISMISS_S, activityPayload, notificationPayload } from '../src/delivery'
 import { dohResolve, guardTarget, isPrivateAddress, setResolver } from '../src/target'
 import type { ActivityUpdate, Env as HubEnv, Host, Notice, Subscription } from '../src/types'
+import { notice as validateNotice } from '../src/validation'
 declare global {
   namespace Cloudflare {
     interface Env extends HubEnv {}
@@ -728,13 +729,59 @@ describe('the APNs payloads match the shared fixtures', () => {
     .sort()
     .map((path) => ({ file: path.replace(/^.*\//, ''), ...files[path] }))
   it('has every case', () => {
-    expect(fixtures).toHaveLength(23)
+    expect(fixtures).toHaveLength(27)
   })
   for (const f of fixtures.filter((f) => !f.file.startsWith('activity-'))) {
     it(`alert ${f.file}`, () => {
       expect(notificationPayload(f.input as Notice)).toEqual(f.payload)
     })
   }
+  it('carries the four Work alerts from notify ingress to APNs with their own collapse IDs', async () => {
+    apnsReset()
+    const { env: hubEnv } = await apnsEnv()
+    const auth = await register()
+    await registerDevice(hubEnv, auth)
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''))
+    const collapseIds: Record<string, string> = {
+      'work-digest.json': 'work:env_mac:digest:2026-11-24',
+      'work-fallback.json': 'work:env_mac:connection:1',
+      'work-held.json': 'work:env_mac:held:h9',
+      'work-place.json': 'work:env_mac:meeting:ev1'
+    }
+    for (const f of fixtures.filter((f) => f.file.startsWith('work-'))) {
+      const response = await callWith(hubEnv, '/v1/notify', 'POST', f.input, auth)
+      expect(await response.json(), f.file).toEqual({ delivered: 1, failed: 0 })
+      const sent = fetch.mock.calls.at(-1)![1]!
+      expect(JSON.parse(sent.body as string), f.file).toEqual(f.payload)
+      expect(new Headers(sent.headers).get('apns-collapse-id'), f.file).toBe(collapseIds[f.file])
+    }
+    expect(fetch).toHaveBeenCalledTimes(4)
+    const { environmentId: _environmentId, ...withoutEnvironment } = validateNotice(fixtures.find((f) => f.file === 'work-place.json')!.input)
+    const response = await callWith(hubEnv, '/v1/notify', 'POST', withoutEnvironment, auth)
+    expect(await response.json()).toEqual({ delivered: 1, failed: 0 })
+    expect(new Headers(fetch.mock.calls.at(-1)![1]!.headers).get('apns-collapse-id')).toBe('work:box:meeting:ev1')
+  })
+  it.each([
+    { thread: 't1' },
+    { view: 'prep', workspaceId: 'w1', at: '' },
+    { settings: 'connections' },
+    { held: { at: 'host', id: 'row1' } },
+    { held: { at: 'lifeos', table: 'calendarOps', id: 'cal1' } }
+  ])('keeps the Work open target %j', (open) => {
+    const work = { key: 'one', tell: 'a-tell', open }
+    expect(validateNotice({ ...notice, work }).work).toEqual(work)
+  })
+  it.each([
+    { digest: '2026-11-24' },
+    { key: 'one', digest: '2026-11-24', tell: 'also-a-tell' },
+    { key: 'one', tell: 'a-tell', by: 'soon' },
+    { key: 'one', tell: 'a-tell', open: { view: 'prep' } },
+    { key: 'one', tell: 'a-tell', open: { thread: 't1', place: 'agenda' } },
+    { key: 'one', tell: 'a-tell', open: { held: { at: 'lifeos', table: 'tasks', id: 't1' } } },
+    { key: 'one', tell: 'a-tell', open: { url: 'https://example.com/' } }
+  ])('refuses malformed Work routing data %j', (work) => {
+    expect(() => validateNotice({ ...notice, work })).toThrow('Invalid')
+  })
   for (const f of fixtures.filter((f) => f.file.startsWith('activity-'))) {
     it(`activity ${f.file}`, () => {
       const update = f.input as ActivityUpdate

@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { activityPayload, notificationPayload, type ApnsActivityUpdate, type ApnsNotice } from './apnsPayload'
+import { activityPayload, notificationCollapseId, notificationPayload, type ApnsActivityUpdate, type ApnsNotice } from './apnsPayload'
 
 /**
  * Parity by shared fixtures: infra/hub/test/fixtures/apns/*.json holds one
@@ -41,7 +41,11 @@ describe('the APNs payloads match the shared fixtures', () => {
       'needs-you-question',
       'needs-you-run-skip',
       'needs-you-waiting',
-      'stuck'
+      'stuck',
+      'work-digest',
+      'work-fallback',
+      'work-held',
+      'work-place'
     ])
   })
   for (const f of fixtures.filter((f) => !f.file.startsWith('activity-'))) {
@@ -59,6 +63,15 @@ describe('the APNs payloads match the shared fixtures', () => {
 
 describe('the rules the fixtures rest on', () => {
   const base: ApnsNotice = { event: 'finished', hostId: 'box', title: 'T', body: 'b', ts: 1_000 }
+  it('collapses Work alerts by environment and key and thread alerts by thread and event', () => {
+    const work = { ...base, event: 'needs_you' as const, work: { key: 'meeting:ev1', tell: 'prep:ev1' } }
+    expect(notificationCollapseId({ ...work, environmentId: 'env_mac' })).toBe('work:env_mac:meeting:ev1')
+    expect(notificationCollapseId({ ...work, environmentId: 'env_mac', work: { key: 'held:h9', tell: 'outbox:h9' } })).toBe('work:env_mac:held:h9')
+    expect(notificationCollapseId({ ...work, environmentId: 'env_box' })).toBe('work:env_box:meeting:ev1')
+    expect(notificationCollapseId(work)).toBe('work:box:meeting:ev1')
+    expect(notificationCollapseId({ ...base, threadId: 't' })).toBe('t:finished')
+    expect(notificationCollapseId(base)).toBe('box:finished')
+  })
   it('every alert is mutable, a notice without a host carries no tc.host, one without a thread no category', () => {
     const payload = notificationPayload(base) as { aps: Record<string, unknown>; tc: Record<string, unknown> }
     expect(payload.aps['mutable-content']).toBe(1)

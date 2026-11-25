@@ -15,6 +15,7 @@ export const APPROVAL_CATEGORY = 'tc.approval'
 /** A computer step held for the Mac: the phone's Run now and Skip, under the same two actions. */
 export const RUN_SKIP_CATEGORY = 'tc.run-skip'
 export const THREAD_CATEGORY = 'tc.thread'
+export const WORK_THREAD_ID = 'tc.work'
 function categoryOf(notice: Pick<Notice, 'kind' | 'choices'>): string {
   if (notice.kind !== 'approval') return THREAD_CATEGORY
   return notice.choices === 'run-skip' ? RUN_SKIP_CATEGORY : APPROVAL_CATEGORY
@@ -22,12 +23,17 @@ function categoryOf(notice: Pick<Notice, 'kind' | 'choices'>): string {
 const SOUNDED = new Set<Notice['event']>(['needs_you', 'failed', 'host_down'])
 const RELEVANCE: Record<Notice['event'], number> = { needs_you: 1, failed: 0.8, host_down: 0.8, stuck: 0.6, finished: 0.4, host_up: 0.2 }
 
+/** Work replaces only a notice with the same key from the same host. Mirrors remote/apnsPayload.ts. */
+function notificationCollapseId(notice: Notice): string {
+  return notice.work ? `work:${notice.environmentId ?? notice.hostId}:${notice.work.key}` : `${notice.threadId ?? notice.hostId}:${notice.event}`
+}
+
 /**
  * The alert a phone shows, the same shape temp-code's remote/apnsPayload.ts
  * builds: the thread's title, the project or workspace as the subtitle, the
  * body as the host wrote it, the thread and row to land on under `tc`. Only
  * a thread that needs the person interrupts; a failure sounds too; a finish
- * or a stall lands quietly. Notices group per thread, ranked by relevance.
+ * or a stall lands quietly. Work notices group together; other notices group per thread.
  */
 export function notificationPayload(notice: Notice): unknown {
   return {
@@ -38,7 +44,7 @@ export function notificationPayload(notice: Notice): unknown {
         body: notice.body
       },
       ...(SOUNDED.has(notice.event) ? { sound: 'default' } : {}),
-      'thread-id': notice.threadId ?? notice.hostId,
+      'thread-id': notice.work ? WORK_THREAD_ID : (notice.threadId ?? notice.hostId),
       'summary-arg': notice.subtitle ?? notice.title,
       'interruption-level': notice.event === 'needs_you' ? 'time-sensitive' : 'active',
       'relevance-score': RELEVANCE[notice.event],
@@ -56,6 +62,7 @@ export function notificationPayload(notice: Notice): unknown {
       ...(notice.requestId === undefined ? {} : { requestId: notice.requestId }),
       ...(notice.hostName === undefined ? {} : { host: notice.hostName }),
       ...(notice.held === undefined ? {} : { held: notice.held }),
+      ...(notice.work === undefined ? {} : { work: notice.work }),
       ts: notice.ts
     }
   }
@@ -131,7 +138,8 @@ export async function fanOut(
   const subscriptions = (await directory(env).subscriptions()).filter(
     (s) => s.events.includes(notice.event) && (!s.hosts || s.hosts.includes(notice.hostId))
   )
-  const body = JSON.stringify(notice)
+  const { work: _work, ...webhookNotice } = notice
+  const body = JSON.stringify(webhookNotice)
   const results = await Promise.all(
     subscriptions.map(async (sub) => {
       const deliveryId = crypto.randomUUID()
@@ -148,7 +156,7 @@ export async function fanOut(
         environment: sub.environment,
         payload: notificationPayload(notice),
         expiration: Math.floor(notice.ts / 1000) + ALERT_TTL_S,
-        collapseId: `${notice.threadId ?? notice.hostId}:${notice.event}`,
+        collapseId: notificationCollapseId(notice),
         id: deliveryId
       }
       const result = await apnsSend(env, request)

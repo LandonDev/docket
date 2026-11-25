@@ -1,0 +1,54 @@
+{
+  "input": {
+    "event": "needs_you",
+    "hostId": "box",
+    "environmentId": "env_mac",
+    "seq": 0,
+    "kind": "waiting",
+    "title": "Purdue",
+    "body": "Budget review is coming up",
+    "hostName": "Studio",
+    "work": {
+      "key": "meeting:ev1",
+      "tell": "prep:ev1",
+      "by": 1760000900000,
+      "open": {
+        "place": "agenda",
+        "at": "ev1"
+      }
+    },
+    "ts": 1760000700000
+  },
+  "payload": {
+    "aps": {
+      "alert": {
+        "title": "Purdue",
+        "body": "Budget review is coming up"
+      },
+      "sound": "default",
+      "thread-id": "tc.work",
+      "summary-arg": "Purdue",
+      "interruption-level": "time-sensitive",
+      "relevance-score": 1,
+      "mutable-content": 1
+    },
+    "tc": {
+      "event": "needs_you",
+      "hostId": "box",
+      "environmentId": "env_mac",
+      "seq": 0,
+      "kind": "waiting",
+      "host": "Studio",
+      "work": {
+        "key": "meeting:ev1",
+        "tell": "prep:ev1",
+        "by": 1760000900000,
+        "open": {
+          "place": "agenda",
+          "at": "ev1"
+        }
+      },
+      "ts": 1760000700000
+    }
+  }
+}

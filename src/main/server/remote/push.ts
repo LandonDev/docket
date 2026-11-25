@@ -3,7 +3,7 @@ import type { SessionMeta } from '@shared/events'
 import { PUSH_EVENTS, type PushEnvironment, type PushEvent, type PushStatus } from '@shared/contract-remote'
 import type { HubActivityRow, HubActivityState, HubClient } from '../hub'
 import type { ApnsSender } from './apns'
-import { ACTIVITY_DISMISS_S, ALERT_TTL_S, activityPayload, notificationPayload, type ApnsNotice } from './apnsPayload'
+import { ACTIVITY_DISMISS_S, ALERT_TTL_S, activityPayload, notificationCollapseId, notificationPayload, type ApnsNotice } from './apnsPayload'
 
 /**
  * Push registrations (thread L6). A paired phone registers its APNs token
@@ -279,6 +279,7 @@ export class PushRegistry {
     const hostId = this.options.hostId?.() ?? 'host'
     const environmentId = notice.environmentId ?? this.options.environmentId?.()
     const payload = notificationPayload({ ...notice, hostId, ...(environmentId ? { environmentId } : {}) })
+    const collapseId = notificationCollapseId({ ...notice, hostId, environmentId })
     let delivered = 0
     let failed = 0
     for (const row of rows) {
@@ -289,8 +290,7 @@ export class PushRegistry {
         environment: row.environment,
         payload,
         expiration: Math.floor(notice.ts / 1000) + ALERT_TTL_S,
-        // A notice of Work's replaces the last of its own key from its own host: one banner a host for what cannot wait, one a day's digest.
-        collapseId: notice.work ? `work:${environmentId ?? hostId}:${notice.work.key}` : `${notice.threadId ?? hostId}:${notice.event}`
+        collapseId
       })
       if (result.ok) {
         delivered += 1
