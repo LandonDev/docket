@@ -23,18 +23,22 @@ export interface KeptList {
 }
 
 const kept = new Map<string, KeptList & { library: string; dir: string }>()
-/** A folder's read under way: every list of it joins the one guest call. `wakes`: it may wake the machine. */
-const reading = new Map<string, { read: Promise<KeptList>; wakes: boolean; dir: string }>()
 /**
- * Moves each time a folder's rows are dropped (and `epoch` when all are): a read begun before the drop answers its own
- * callers, but keeps nothing, and no list after the drop joins it.
+ * A folder's read under way: every list of it joins the one guest call. `wakes`: it may wake the machine. `dropped`: the
+ * folder was dropped while it ran, so it answers its own callers but keeps nothing; `before`, the read it waits on.
  */
-const drops = new Map<string, number>()
-let epoch = 0
-const stampOf = (key: string): string => `${epoch}:${drops.get(key) ?? 0}`
+interface Reading {
+  read: Promise<KeptList>
+  wakes: boolean
+  dir: string
+  dropped: boolean
+  before?: Reading
+}
+const reading = new Map<string, Reading>()
+/** A folder's rows go, and its reads under way (and the ones they wait on) keep nothing; no list after joins them. */
 function drop(key: string): void {
-  drops.set(key, (drops.get(key) ?? 0) + 1)
   kept.delete(key)
+  for (let r = reading.get(key); r; r = r.before) r.dropped = true
   reading.delete(key)
 }
 
@@ -70,17 +74,19 @@ const bare = (r: DiskRow): DiskRow => ({ name: r.name, dir: r.dir, kind: r.kind,
 export function readList(key: string, at: { library: string; dir: string }, wake: boolean, read: () => Promise<DiskRow[]>, now: () => number = Date.now): Promise<KeptList> {
   const under = reading.get(key)
   if (under && (under.wakes || !wake)) return under.read
-  const stamp = stampOf(key)
+  const entry: Reading = { read: undefined as unknown as Promise<KeptList>, wakes: wake, dir: at.dir, dropped: false, ...(under ? { before: under } : {}) }
   const go = (async () => {
     if (under) await under.read.catch(() => undefined)
+    // What it waited on is done: nothing is held through it.
+    delete entry.before
     const rows = await read()
     // The guest gives no change time for the folder itself: its names and their times stand in for a version.
     const list: KeptList = { at: now(), version: `${rows.length}:${rows.reduce((n, r) => (n + (r.changed ?? 0)) % 2_147_483_647, 0)}`, rows }
-    // Only a read begun since the folder was last dropped fills it: one from before brings back no rows a change took.
-    if (stampOf(key) === stamp) keep(key, at.library, at.dir, list)
+    // A read the folder was dropped under answers its callers, but brings back no rows a change took.
+    if (!entry.dropped) keep(key, at.library, at.dir, list)
     return list
   })()
-  const entry = { read: go, wakes: wake, dir: at.dir }
+  entry.read = go
   reading.set(key, entry)
   void go.then(
     () => reading.get(key) === entry && reading.delete(key),
@@ -103,11 +109,12 @@ export function keepOnlyWhere(still: (dir: string) => boolean): void {
 
 /** Work off, or a test's start: nothing kept, no read joined, and no read under way keeps anything. */
 export function forgetAllKept(): void {
-  epoch++
-  drops.clear()
+  for (const key of [...reading.keys()]) drop(key)
   kept.clear()
-  reading.clear()
 }
+
+/** How many entries this keeps in all, rows and reads and what a drop leaves (tests): none once nothing is kept or read. */
+export const heldCount = (): number => kept.size + reading.size
 
 /** How many folders are kept (tests). */
 export const keptCount = (): number => kept.size

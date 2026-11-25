@@ -197,7 +197,8 @@ the kept rows in places/vmKept.ts).
   library OneDrive no longer syncs (each `refreshVm`, `keepOnlyWhere`), and
   with Work off (the files module's stop); a read of the folder under way then
   answers its own lists but keeps nothing, and no list after joins it (sol
-  review S10: only a read begun since the last drop fills the folder). The fence runs first on every
+  review S10). The drop is marked on the reads under way themselves (and on
+  the one each waits on), so nothing of it is held once they land (S17). The fence runs first on every
   call: `locate` names the library for the caller before a kept row is served,
   so a key or a thread that may not name it gets the refusal, kept rows or not.
 - **Joined.** Lists of one folder in flight share one `files.list` in the

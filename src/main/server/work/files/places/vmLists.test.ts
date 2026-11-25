@@ -9,7 +9,7 @@ import { closeFilesState } from '../handle'
 import { files } from '../index'
 import { at, HOST, makeRig, thread, window, WS, type Rig } from '../testkit'
 import { forgetVmList, forgetVmLists } from './teams'
-import { keptCount, VM_LIST_KEEP_MOST, VM_LIST_KEEP_MS } from './vmKept'
+import { forgetKept, heldCount, keptCount, keptKey, VM_LIST_KEEP_MOST, VM_LIST_KEEP_MS } from './vmKept'
 
 /**
  * A folder in the Windows VM never makes him wait in silence (docs/agents/work-teams-files.md "A folder in the VM"):
@@ -156,6 +156,29 @@ describe('a folder in the Windows VM', () => {
     await release()
     await third
     expect(keptCount()).toBe(0)
+  })
+
+  it('a drop leaves nothing behind once no read predates it, however many folders changed', async () => {
+    if (process.platform === 'win32') return
+    // A thousand folders changed through Files with nothing kept or read: nothing is held for any of them.
+    for (let i = 0; i < 1000; i++) forgetKept(keptKey('lib', `${GENERAL}\\Folder ${i}`))
+    expect(heldCount()).toBe(0)
+    // A read and a waking read behind it, both under way when the folder is dropped: neither keeps its rows, and
+    // nothing is held once they land.
+    const library = vmLibraries(rig.db, HOST).find((l) => GENERAL.toLowerCase().startsWith(l.path.toLowerCase()))!
+    const quiet = list({ wake: false })
+    await new Promise((r) => setTimeout(r, 0))
+    // It falls asleep meanwhile: his press wakes it behind the quiet read, a second read that waits on the first.
+    state = 'asleep'
+    const first = list()
+    await new Promise((r) => setTimeout(r, 0))
+    forgetVmList(library.id, GENERAL)
+    await release()
+    await new Promise((r) => setTimeout(r, 0))
+    await release()
+    await Promise.allSettled([quiet, first])
+    expect(keptCount()).toBe(0)
+    expect(heldCount()).toBe(0)
   })
 
   it('never wakes it for a next page that does not say: a scroll is no press (the phone sends no `wake`)', async () => {
