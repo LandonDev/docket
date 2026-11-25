@@ -44,13 +44,14 @@ const { View: CalendarAct } = await import("../agenda/CalendarActView");
 const { PageVerbs } = await import("../prep/PrepView");
 const { TodayPageView } = await import("../today/TodayView");
 const { WaitingSection } = await import("../mail/WaitingSection");
+const { HeldDetail } = await import("../outbox/HeldDetail");
 
 const NOW = Date.UTC(2026, 10, 24, 17);
 const connected = { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] };
 const timeout = () => Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" });
 
 /** The host's status and the JWT's answer, for each down state. */
-const STATES: Record<LifeosDown | "jwt-unanswered", { status: () => Promise<unknown>; jwt?: () => Promise<unknown> }> = {
+const STATES: Record<LifeosDown | "jwt-unanswered" | "connecting", { status: () => Promise<unknown>; jwt?: () => Promise<unknown> }> = {
   unreachable: { status: async () => connected, jwt: () => Promise.reject(new Error("socket closed")) },
   unanswered: { status: () => Promise.reject(timeout()) },
   withheld: { status: async () => connected, jwt: () => Promise.reject(new Error("forbidden: work.lifeos.jwt is not for a given computer")) },
@@ -60,6 +61,8 @@ const STATES: Record<LifeosDown | "jwt-unanswered", { status: () => Promise<unkn
   off: { status: async () => ({ lifeos: { state: "off" }, keys: [] }) },
   // Council round 7 (Sol, Mail 1): the status answers, then the session ask runs out of time: the host's silence.
   "jwt-unanswered": { status: async () => connected, jwt: () => Promise.reject(timeout()) },
+  // Council round 12: not down, on its way.
+  connecting: { status: async () => ({ lifeos: { state: "connecting" }, keys: [] }) },
 };
 
 /** What each state says, the box named. */
@@ -75,12 +78,12 @@ const WORDS: Record<LifeosDown, string> = {
 const PRESS = { retry: "Retry", "sign-in": "Sign in", code: "Show the code", settings: "Open Settings" } as const;
 /** Inside Settings the switch's press is named for the section it opens. */
 const IN_SETTINGS = { ...PRESS, settings: "Work" } as const;
-const DOWN = (Object.keys(STATES) as (LifeosDown | "jwt-unanswered")[]).filter((d): d is LifeosDown => d !== "jwt-unanswered");
+const DOWN = (Object.keys(STATES) as (keyof typeof STATES)[]).filter((d): d is LifeosDown => d !== "jwt-unanswered" && d !== "connecting");
 
 let asked: string[] = [];
 /** His laptop as a given computer (operate, approve, device): it may not turn Work on for the box. */
 const GIVEN = { transport: "open", lastHello: { environmentId: "env_box", contract: 1, caps: ["operate", "approve", "device"], key: { id: "laptop" } } };
-function host(down: LifeosDown | "jwt-unanswered", status: object = { transport: "open" }): void {
+function host(down: keyof typeof STATES, status: object = { transport: "open" }): void {
   asked = [];
   vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
   vi.spyOn(registry, "statusOf").mockReturnValue(status as never);
@@ -446,5 +449,35 @@ describe("a session that comes back", () => {
     // Waiting on read its days again, through its own ask, and shows them.
     expect(asked.filter((m) => m === "work.mail.waiting").length).toBe(daysAsked + 1);
     expect(screen.getByRole("combobox", { name: "Count as waiting after" })).toBeTruthy();
+  });
+});
+
+/**
+ * Council round 12 (Opus, Outbox 1): a held calendar reply and a held chat reply, opened in the Outbox's detail while the
+ * box says its LifeOS is still connecting, say the wait once, the box named, in their reads' place, with no press and no
+ * bones beside it; the act's own fields stand.
+ */
+describe("a held act while the host's LifeOS is still connecting", () => {
+  const WAIT = "LifeOS is still connecting on the box";
+  const held = (kind: string, payload: object) =>
+    ({ ref: { at: "lifeos", table: "x", id: kind }, environmentId: "env_box", workspaceId: "ws", kind, sector: "purdue", summary: "", verb: "Send", account: null, state: "held", payload, createdAt: NOW, updatedAt: NOW, decidedBy: null, decidedAt: null }) as never;
+  const detail = (item: never) => render(<HeldDetail item={item} workspace="Purdue Esports" host="The box" onPressed={() => {}} onReview={() => {}} />);
+
+  it("a calendar reply: the wait once in place of the event's and the day's bones", async () => {
+    host("connecting");
+    detail(held("calendar.op", { id: "op1", kind: "accept", eventId: "ev1", account: "landon@purdue.edu", payload: { title: "Review", startsAt: NOW, endsAt: NOW + 3_600_000 } }));
+    await waitFor(() => expect(times(WAIT)).toBe(1), { timeout: 5000 });
+    expect(document.querySelector("[data-lifeos-waits]")).toBeTruthy();
+    expect(document.querySelector("[data-field-bones], [data-day-bones]")).toBeNull();
+    expect(presses().filter((label) => /Retry|Sign in|Show the code/.test(label))).toEqual([]);
+  });
+
+  it("a chat reply: the wait once in the quote's place, the reply's words standing", async () => {
+    host("connecting");
+    detail(held("chat.reply", { chatId: "c1", source: "slack", chat: "Starboard Games", text: "On it" }));
+    await waitFor(() => expect(times(WAIT)).toBe(1), { timeout: 5000 });
+    expect(document.querySelector("[data-answers]")).toBeNull();
+    expect(screen.getByText("On it")).toBeTruthy();
+    expect(presses().filter((label) => /Retry|Sign in|Show the code/.test(label))).toEqual([]);
   });
 });

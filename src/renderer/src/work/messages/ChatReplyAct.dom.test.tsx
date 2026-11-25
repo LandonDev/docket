@@ -167,7 +167,8 @@ describe("the held reply's view", () => {
   });
 
   // Round 10: the body's keeper (keptKeys.tsx) holds the keys across Retry, in place of the slot's own hand-off.
-  it("keeps the keys in the body's keeper while Retry reads afresh", async () => {
+  // Round 12: the line stays while the reads are out, its Retry spinning in place, until the answer replaces it.
+  it("keeps the keys in the body's keeper while Retry reads afresh, the line kept with Retry spinning", async () => {
     lifeos.rawFails = true;
     render(<View env="box" item={item({ chatId: "c_dana", replyTo: "far_4", source: "slack", chat: "Dana Lee", text: "Yes." })} />);
     const retry = screen.getByRole("button", { name: "Retry" });
@@ -175,8 +176,12 @@ describe("the held reply's view", () => {
     lifeos.rawFails = false;
     lifeos.raw = undefined;
     await act(async () => fireEvent.click(retry));
-    expect(document.activeElement).toBe(document.querySelector("[data-kept-keys]"));
-    expect(document.querySelector("[data-answers]")!.getAttribute("data-answers")).toBe("loading");
+    expect(document.querySelector("[data-kept-keys]")!.contains(document.activeElement)).toBe(true);
+    const line = document.querySelector<HTMLElement>("[data-answers]")!;
+    expect(line.getAttribute("data-answers")).toBe("unreadable");
+    expect(within(line).getByRole("button", { name: "Retry" }).hasAttribute("disabled")).toBe(true);
+    expect(line.querySelector("[data-slot=busy-label][data-busy]")).toBeTruthy();
+    expect(document.querySelector("[data-answers='loading']")).toBeNull();
   });
 
   it("gives the keys back to Retry when the quote still cannot be read", async () => {

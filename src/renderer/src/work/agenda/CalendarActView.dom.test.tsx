@@ -70,6 +70,41 @@ describe("a held reply's day", () => {
   });
 });
 
+// Council round 12: the walk. Retry keeps the failed line, spinning in place, until the new read answers.
+describe("a held calendar act's Retry", () => {
+  it("keeps Couldn't read that day with Retry spinning while the day is read again, then the day", () => {
+    day.fail = true;
+    const view = render(<View item={{ kind: "calendar.op", payload: op, sector: "purdue" } as never} env="box" />);
+    day.fail = false;
+    day.loading = true;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    const line = document.querySelector<HTMLElement>("[data-day-failed]")!;
+    expect(line.textContent).toContain("Couldn't read that day");
+    expect(line.querySelector("[data-slot=busy-label][data-busy]")).toBeTruthy();
+    expect(line.querySelector("button")!.hasAttribute("disabled")).toBe(true);
+    expect(document.querySelector("[data-day-bones]")).toBeNull();
+    day.loading = false;
+    view.rerender(<View item={{ kind: "calendar.op", payload: op, sector: "purdue" } as never} env="box" />);
+    expect(document.querySelector("[data-day-failed]")).toBeNull();
+    expect(screen.getByText("Scrim night")).toBeTruthy();
+    day.fail = true;
+  });
+
+  it("keeps Couldn't read the event with Retry spinning while the event is read again", () => {
+    day.event = "failed";
+    day.fail = false;
+    render(<View item={{ kind: "calendar.op", payload: { id: "op2", kind: "accept", eventId: "ev1", account: "landon@unify.dev" }, sector: "unify" } as never} env="box" />);
+    day.event = "loading";
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    const line = document.querySelector<HTMLElement>("[data-event-read]")!;
+    expect(line.textContent).toContain("Couldn't read the event");
+    expect(line.querySelector("[data-slot=busy-label][data-busy]")).toBeTruthy();
+    expect(document.querySelector("[data-field-bones]")).toBeNull();
+    day.event = "none";
+    day.fail = true;
+  });
+});
+
 describe("a held calendar act's day on its way", () => {
   it("shows the day's bones under the act while LifeOS reads it, so the clash check is seen to be coming", () => {
     day.loading = true;

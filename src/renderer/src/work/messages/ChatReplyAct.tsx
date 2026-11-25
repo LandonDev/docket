@@ -1,13 +1,15 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { SOURCE_NAME, type ChatDetail, type ChatMessage, type ChatRow, type ChatSource } from "@shared/work/messages";
 import { CornerDownRight } from "../../chrome/icons";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { PlaceLine, PostedAs } from "../acts/ActParts";
 import type { ActViewProps } from "../acts/registry";
 import { useLifeosQuery, useLifeosSession, type LifeosQuery } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
-import { DownLine } from "../shell/DownLine";
+import { DownLine, HostLine } from "../shell/DownLine";
+import { useHostLive } from "../shell/lifeosLive";
+import { useAgainKept } from "../shell/againKept";
 import { useKeptKeys } from "./keptKeys";
 import { chatFact } from "./model";
 
@@ -94,36 +96,43 @@ export function answerOf(reply: Pick<ChatReplyPayload, "replyTo">, detail: Lifeo
  * the message it answers as one quoted line, his name, its words exactly.
  * The conversation is read from LifeOS on the item's own sector; until it answers, the payload's own words stand and a
  * line of bones holds the quote's place. A quote that could not be read offers
- * Retry, which reads afresh. A session that is down says so once in the
- * quote's place, with its own press (`DownLine`: Retry there asks the host for
- * the session again); the hold itself is untouched.
+ * Retry, which reads afresh, the line kept with Retry spinning until the reads answer. A session that is down says so
+ * once in the quote's place, with its own press (`DownLine`: Retry there asks the host for the session again); while the
+ * host says its LifeOS is still connecting, the named wait with no press (`HostLine`). The hold itself is untouched.
  */
 export function View(props: ActViewProps) {
-  const [attempt, setAttempt] = useState(0);
-  // Retry mounts the reads afresh and takes its own button away: the body's keeper (keptKeys.tsx), which outlives the
+  const again = useAgainKept();
+  // Retry mounts the reads afresh, and its button with them: the body's keeper (keptKeys.tsx), which outlives the
   // remount, holds the keys meanwhile and hands them to the next control (Retry again, when the quote still cannot be
   // read).
   const keeper = useKeptKeys<HTMLDivElement>();
   return (
     <div ref={keeper} tabIndex={-1} className="focus-ring rounded-sm">
-      <Reads key={attempt} {...props} retry={() => setAttempt((n) => n + 1)} />
+      <Reads key={again.attempt} {...props} retry={again.retry} retrying={again.retrying} settle={again.settle} />
     </div>
   );
 }
 
-function Reads({ item, env, retry }: ActViewProps & { retry: () => void }) {
+function Reads({ item, env, retry, retrying, settle }: ActViewProps & { retry: () => void; retrying: boolean; settle: () => void }) {
   const reply = replyOf(item.payload);
   const session = useLifeosSession(env, item.sector);
+  const live = useHostLive(env);
   const detail = useLifeosQuery<ChatDetail | null>(session, "chats:get", { id: reply?.chatId ?? "" });
   const page = useLifeosQuery<{ page: ChatMessage[] }>(session, "chats:messages", { chatId: reply?.chatId ?? "", paginationOpts: { numItems: 50, cursor: null } });
   // The answered message by its id, asked when the newest page does not hold it or did not load.
   const target = reply?.replyTo ?? ready(detail)?.chat?.lastInId;
   const missing = Boolean(target) && (page.status === "failed" || (page.status === "ready" && !page.value.page.some((m) => m._id === target)));
   const byId = useLifeosQuery<RawMessage>(missing ? session : { ...session, client: null, state: "connecting" }, "rawMessages:get", { id: target ?? "" });
+  const answered = reply ? answerOf(reply, detail, page, missing ? byId : null) : null;
+  useEffect(() => void (answered === "loading" || settle()), [answered, settle]);
   if (!reply) return <div data-slot="act-payload" className="text-[13px] leading-5 text-muted-foreground">This reply could not be read</div>;
   // Every read fails at once on a session that is down, and remounting them reads the same session: its line instead.
   if (downOf(session)) return <ReplyBody reply={reply} answered={null} down={<DownLine session={session} className="text-xs" />} />;
-  return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={answerOf(reply, detail, page, missing ? byId : null)} onRetry={retry} />;
+  // Every read waits on a host whose LifeOS is still connecting: the wait, named once, in the quote's place.
+  if (!session.client && live.waits) return <ReplyBody reply={reply} answered={null} down={<HostLine live={live} className="text-xs" />} />;
+  // A Retry he pressed keeps "could not be read", its Retry spinning, while the reads are out.
+  const busy = retrying && answered === "loading";
+  return <ReplyBody reply={reply} chat={ready(detail)?.chat} answered={busy ? "unreadable" : answered} onRetry={retry} retrying={busy} />;
 }
 
 /** The held reply as it will show once sent: where it lands, what it answers, his name and its words. */
@@ -132,13 +141,16 @@ export function ReplyBody({
   chat,
   answered,
   onRetry,
+  retrying = false,
   down,
 }: {
   reply: ChatReplyPayload;
   chat?: Pick<ChatRow, "source" | "accountName" | "kind">;
   answered: Answered;
   onRetry?: () => void;
-  /** the LifeOS session's own line, in the quote's place, while it is down */
+  /** his Retry is out: it spins in place */
+  retrying?: boolean;
+  /** the LifeOS session's own line, in the quote's place, while it is down or the host's LifeOS still connects */
   down?: ReactNode;
 }) {
   // In a direct chat the writer is left out when it is the one the reply goes to, named on the place line already; his own
@@ -166,8 +178,8 @@ export function ReplyBody({
                 <CornerDownRight aria-hidden className="size-3 shrink-0" />
                 {answered === "gone" ? "The message it answers is no longer here" : "The message it answers could not be read"}
                 {answered === "unreadable" && onRetry ? (
-                  <Button variant="ghost" size="xs" className="ms-1" onClick={onRetry}>
-                    Retry
+                  <Button variant="ghost" size="xs" className="ms-1" disabled={retrying} onClick={onRetry}>
+                    <BusyLabel busy={retrying} label="Retry" />
                   </Button>
                 ) : null}
               </p>
