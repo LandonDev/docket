@@ -6,6 +6,9 @@ import type { VmState } from "../../../lib/winvmWake";
 import { ComputerBar, DelayButton, FOLD, NO_LIVE_PICTURE, NO_RESIZE, THREAD_HOLDS, ViewButton, delayWords, vmMenuRows, type VmScreenSeam } from "./ComputerBar";
 import { tile } from "./FullWindow.fixtures";
 
+const confirm = vi.hoisted(() => ({ asked: [] as { title: string; body?: string; action: string }[], yes: true }));
+vi.mock("../../../chrome/ConfirmDialog", () => ({ confirmAction: async (r: { title: string; body?: string; action: string }) => (confirm.asked.push(r), confirm.yes) }));
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -150,5 +153,26 @@ describe("the computer's bar", () => {
   it("a VM not set up has one press, to Settings, and no menu or Take over", () => {
     render(<ComputerBar tile={vmTile()} vm={{ state: "none", cannot: null, error: null }} action={<button type="button">Open Settings</button>} />);
     expect(names()).toEqual(["Open Settings"]);
+  });
+
+  it("Restart Windows… asks first, then restarts it cleanly; the sign-in row brings OneDrive's sign-in up on the VM, as Connections' walk does", async () => {
+    const calls: string[] = [];
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request: async (method: string) => void calls.push(method) } as never);
+    render(<ComputerBar tile={vmTile()} vm={awake} />);
+    confirm.yes = false;
+    fireEvent.click(screen.getByRole("button", { name: "Windows VM" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Restart Windows…" }));
+    await act(async () => {});
+    expect(confirm.asked.at(-1)).toMatchObject({ title: "Restart Windows?", action: "Restart" });
+    expect(calls).toEqual([]);
+    confirm.yes = true;
+    fireEvent.click(screen.getByRole("button", { name: "Windows VM" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Restart Windows…" }));
+    await act(async () => {});
+    expect(calls).toEqual(["work.winvm.restart"]);
+    fireEvent.click(screen.getByRole("button", { name: "Windows VM" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Sign in to Office and OneDrive…" }));
+    await act(async () => {});
+    expect(calls).toEqual(["work.winvm.restart", "work.office.vmSignIn"]);
   });
 });
