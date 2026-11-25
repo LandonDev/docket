@@ -126,10 +126,13 @@
 @source "../../../node_modules/work-kit/src/mail/attachments.tsx";
 @source "../../../node_modules/work-kit/src/mail/client.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/attachment-strip.tsx";
+@source "../../../node_modules/work-kit/src/mail/compose/composer-frame.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/composer.tsx";
+@source "../../../node_modules/work-kit/src/mail/compose/draft-observer.ts";
 @source "../../../node_modules/work-kit/src/mail/compose/format-bar.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/from-select.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/held-send.ts";
+@source "../../../node_modules/work-kit/src/mail/compose/later-composer.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/outbox-list.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/quote-frame.tsx";
 @source "../../../node_modules/work-kit/src/mail/compose/recipient-field.tsx";
@@ -151,6 +154,7 @@
 @source "../../../node_modules/work-kit/src/mail/index.ts";
 @source "../../../node_modules/work-kit/src/mail/invite-card.tsx";
 @source "../../../node_modules/work-kit/src/mail/kit.tsx";
+@source "../../../node_modules/work-kit/src/mail/later-parts.tsx";
 @source "../../../node_modules/work-kit/src/mail/lib/bytes.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/cid.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/colour.ts";
@@ -164,6 +168,7 @@
 @source "../../../node_modules/work-kit/src/mail/lib/ink.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/keys.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/labels.ts";
+@source "../../../node_modules/work-kit/src/mail/lib/later.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/mail-html.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/plain.ts";
 @source "../../../node_modules/work-kit/src/mail/lib/prepare.ts";

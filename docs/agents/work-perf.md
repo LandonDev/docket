@@ -115,6 +115,13 @@ Windows rig; it and the rig run only while the agents' slice holds under its mem
   protocol.ts, descriptions.ts and their schemas out of the first paint; all four schema files are on
   `NEVER_IN_ENTRY` (scripts/check-bundle-size.ts), held on the source by scripts/entryGraph.test.ts. zod itself is still in the first paint by 17 other
   modules (listed in `.temp-code/plans/landed/PERF-work.md` "For the owner").
+- **Mail's composer and its day pickers load apart** (work-kit 0a924bd, `compose/later-composer.tsx`,
+  `later-parts.tsx`): the mailbox's own code reaches no Tiptap, ProseMirror or react-day-picker, each part's code
+  starts once the mailbox is drawn and the browser is idle, and a press before then draws the part's frame and
+  bones. work-kit's `mail/later.test.ts` holds it (scripts/entry-graph.ts stops at a package). Mail's first open
+  went from 3,084 kB past the first paint to 1,726 kB on the built chunks.
+- **The raw-HTML parser stays in the first paint**: streamdown bundles rehype-raw into its own module, so it cannot
+  leave without forking streamdown.
 
 ## Small asks no one needed (M15)
 
