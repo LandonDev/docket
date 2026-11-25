@@ -59,6 +59,19 @@ uses the same words when reading older restore labels.
   too, by its path or web address; a Word or PowerPoint edit is already the held `office.edit`, and a Forms workbook
   is neither. Another workbook in the same folder is as before. Tests: msforms/workbook.test.ts,
   office/tools.test.ts.
+- **A workbook the importer refuses** opens to read (`inspect` in jobs.ts),
+  and so does one it reads as no sheet at all, as a binary `.xlsb` or a
+  Strict Open XML file is. The host names the cause from the file itself
+  (`refusalOf`: an OLE file where a zip should be is a password, an
+  `xl/workbook.bin` a binary workbook, Strict's namespace, a size past the
+  importer's limits) after `IMPORT_REFUSED` (shared/work/sheets.ts), and
+  passes any other reason on. The window never shows that raw line: it is
+  worded by `workErrorWords` with the computer named and what Excel can do
+  ("The box cannot read a workbook locked with a password. Remove the
+  password in Excel to edit it here."), on the read-only line and in the
+  body's failure when the grid could not read it either; any other cause
+  reads as a workbook that may be damaged. `refusal.test.ts`,
+  `workErrorWords.test.ts`, `SheetBody.dom.test.tsx`.
 - **The patch writer** (`patch/`, from the research lab): replaces only the
   edited `<c>` elements, copies every other part's compressed bytes, and
   patches the cached values IronCalc computes for the edit's dependents.

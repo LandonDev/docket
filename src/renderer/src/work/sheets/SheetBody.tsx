@@ -3,6 +3,7 @@ import { bodyFailureWords } from "../canvas/CanvasPane";
 import { OpenFailed, progressWords, useFailedWords } from "../canvas/FetchState";
 import type { SheetView } from "@shared/contract-work-sheets";
 import type { SheetImportAct, SheetImportDone } from "@shared/work/sheetFormats";
+import { IMPORT_REFUSED } from "@shared/work/sheets";
 import { patternProblem, reviewMarks, RulesSheet, SheetToolbar, type ChartSpec, type GridSelection, type RuleKind, type RulesView, type SheetControl, type SheetHandle, type SheetMark } from "work-kit/sheet";
 import { ChartBar, Eye } from "../../chrome/icons";
 import { loadToast } from "../../components/ui/toaster";
@@ -147,17 +148,22 @@ export function Body(props: Props) {
   }, [handle, change]);
   const act = useCallback((work: Promise<SheetView>, fallback: string): Promise<void> => work.then((next) => sync.view(next), (error: unknown) => sayError(error, fallback, props.env)), [sync, props.env]);
 
-  const failed = state.failed ?? (typeof prepared === "string" ? prepared : null);
+  // A workbook the host's importer refused: its cause said in Work's words, naming the computer (workErrorWords), on the
+  // read-only line and, where the grid could not read it either, in the body's failure; never the importer's own reason.
+  const refused = view?.readOnly?.startsWith(IMPORT_REFUSED) ? view.readOnly : null;
+  const refusal = useFailedWords(refused);
+  const shown = view && refused ? { ...view, readOnly: refusal || "This workbook could not be read here" } : view;
+  const failed = (state.failed && refused) || state.failed || (typeof prepared === "string" ? prepared : null);
   // Opened once the grid has drawn the book: until then History stays out of the bar and no Accept or Reject is offered for
   // cells he cannot see; a sheet that did not open stays unopened. Before paint, as the document says it.
   const ready = !failed && !!view && !!book && prepared === true && !!handle;
   useLayoutEffect(() => {
     shell.ready?.(ready);
   }, [shell, ready]);
-  useFeeds(shell, sync, failed ? null : view, state.sendError, changes, current, handle, locked, act, ready, props.env);
+  useFeeds(shell, sync, failed ? null : shown, state.sendError, changes, current, handle, locked, act, ready, props.env);
   // Saving… only once a send has been out a while, or his edits waited past the grid's pause (canvas/calm.ts): every cell no longer blinks the line.
   const saving = useSaving({ edited: state.editedAt, pause: EDIT_WAIT, sent: state.sentAt }) && state.saving;
-  useSavedLine(shell, sync, failed ? null : view, state.sendError, saving, state.savedAt, state.offer ?? null, props.env);
+  useSavedLine(shell, sync, failed ? null : shown, state.sendError, saving, state.savedAt, state.offer ?? null, props.env);
   // Preview is a state of the item: the frame over the grid, which stays mounted under it, out of reach, its place kept.
   // Each ask is counted: Print… pressed while Preview shows another format opens it on Print anew.
   const [previewing, setPreviewing] = useState<false | "last" | "print">(false);

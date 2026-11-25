@@ -27,6 +27,15 @@ const appOf = (from: string, to: string): string | undefined => OFFICE[to.toLowe
 /** A source format as the files it is ("Word files", "PDFs"); one Work has no plain name for is "this file". */
 const filesOf = (format: string): string => (OFFICE[format.toLowerCase()] ? `${OFFICE[format.toLowerCase()]} files` : format.toLowerCase() === "pdf" ? "PDFs" : "this file");
 
+/** Why a sheet's host could not read a workbook, by the cause it named, with what Excel can do about it. */
+function importRefusal(c: { host: string; Host: string }, cause: string): string {
+  if (/password/i.test(cause)) return `${c.Host} cannot read a workbook locked with a password. Remove the password in Excel to edit it here.`;
+  if (/\.xlsb|binary workbook/i.test(cause)) return `${c.Host} cannot read a binary workbook (.xlsb). Save it as .xlsx in Excel to edit it here.`;
+  if (/strict open xml/i.test(cause)) return `${c.Host} cannot read Strict Open XML. Save it in Excel as an Excel Workbook (.xlsx) to edit it here.`;
+  if (/too big/i.test(cause)) return `This workbook is too big for ${c.host} to read. Edit it in Excel.`;
+  return `${c.Host} could not read this workbook. It may be damaged: open it in Excel and save it again.`;
+}
+
 const RULES: Rule[] = [
   // The fence and the capability door (remote/fence.ts, shared/capabilities.ts).
   [/^forbidden: \S+ is outside app-managed roots/i, (c) => `${c.Host} does not let this window reach that file where it lies. Open it from Files on the computer that holds it.`],
@@ -72,6 +81,8 @@ const RULES: Rule[] = [
   // pdf.js on bytes it cannot read (pdf/engine.ts): a file cut short or damaged, never the parser's own words.
   [/^(invalid pdf structure|missing pdf\b|unexpected server response)/i, () => "This PDF is damaged, or only part of it arrived. Open it again from Files."],
   [/not a name a preview is kept under|that item is not open|that preview is gone/i, () => "This preview is gone. Close it and open it again from the file's tab."],
+  // A workbook the sheet's importer refused (main/server/work/sheets/jobs.ts `refusalOf`): the cause and what Excel can do.
+  [/^this file cannot be opened here: (.*)$/i, (c, m) => importRefusal(c, m[1]!)],
   // LifeOS, guests, the Windows VM.
   // Signed out is said only where the host said so. "Not connected" is the host's word for any state but connected
   // (signed out, a sign-in waiting, LifeOS not answering), so it reads as that: the cause and its fix are on Connections.

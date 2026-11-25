@@ -38,6 +38,12 @@ export function spillingIn(formula: string): string | null {
 }
 
 /** What a picture or export drawn from an opened Excel file's kept values says when one of them cannot be trusted (sheets/preview.ts). */
+/**
+ * How a sheet's host starts the read-only reason of a workbook its importer refused, before the cause ("it has a
+ * password"): the window says it in its own words, naming the computer (lib/workErrorWords.ts), never this raw form.
+ */
+export const IMPORT_REFUSED = 'This file cannot be opened here: '
+
 export const KEPT_VALUES = 'Its formulas show the values the file kept, which may be out of date'
 
 /** A note an opened Excel file cannot take a change to, in his words: its writer rewords a note it has, and makes or removes none. */

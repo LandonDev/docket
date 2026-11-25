@@ -43,6 +43,16 @@ describe("an error as Work says it to him", () => {
   ];
   it.each(TWENTY)("%s", (raw, words, context) => expect(says(raw, context ?? box)).toBe(words));
 
+  it("says a workbook the sheet's importer refused by its cause, naming the computer, with what Excel can do", () => {
+    expect(says("This file cannot be opened here: it has a password")).toBe("The box cannot read a workbook locked with a password. Remove the password in Excel to edit it here.");
+    expect(says("This file cannot be opened here: it is a binary workbook (.xlsb)")).toBe("The box cannot read a binary workbook (.xlsb). Save it as .xlsx in Excel to edit it here.");
+    expect(says("This file cannot be opened here: it is saved as Strict Open XML", { host: "This Mac" })).toBe("This Mac cannot read Strict Open XML. Save it in Excel as an Excel Workbook (.xlsx) to edit it here.");
+    expect(says("This file cannot be opened here: it is too big to read here")).toBe("This workbook is too big for the box to read. Edit it in Excel.");
+    // the importer's own reason never reaches him
+    expect(says("This file cannot be opened here: the package directory is damaged")).toBe("The box could not read this workbook. It may be damaged: open it in Excel and save it again.");
+    expect(workErrorWords(new Error("This file cannot be opened here: not a zip package"))).toBe("That computer could not read this workbook. It may be damaged: open it in Excel and save it again.");
+  });
+
   it("says a link closed for good, which rejects with its bare word, as a dropped connection", () => {
     expect(says("closed")).toBe("The connection to the box dropped. Try again once it is back.");
     expect(says("the file is closed")).toBe("The file is closed");

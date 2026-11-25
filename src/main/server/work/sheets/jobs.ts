@@ -1,4 +1,7 @@
 import { readFileSync, statSync, writeFileSync } from 'node:fs'
+import { strFromU8, unzipSync } from 'fflate'
+import { IMPORT_REFUSED } from '@shared/work/sheets'
+import { isPasswordLocked } from '../office/carrier'
 import type { ICellData, IWorkbookData } from '@univerjs/core'
 import { importXlsx, type ImportReport } from 'work-kit/sheet/xlsx'
 import type { SheetCellDiff, SheetMutationJson, SheetReach } from '@shared/contract-work-sheets'
@@ -105,11 +108,39 @@ export function inspect(path: string): Inspected {
   try {
     const { workbook, report } = importPackage(path)
     const sheets = workbook.sheetOrder.map((id) => ({ id, name: workbook.sheets[id]?.name ?? id }))
+    // Every workbook has a sheet: none read means the importer could not read this one (a .xlsb's or Strict's parts).
+    if (!sheets.length) throw new Error('xlsx: a workbook with no sheets')
     return { sheets, date1904: report.date1904, reach: reachOf(report) }
   } catch (err) {
-    // A file the importer refuses (Strict OOXML, a password, a binary .xlsb, a hostile zip) is not ours to edit.
-    return { sheets: [], date1904: false, reach: { parts: [], to: 'excel' }, readOnly: `This file cannot be opened here: ${err instanceof Error ? err.message : String(err)}` }
+    // A file the importer refuses (Strict OOXML, a password, a binary .xlsb, a hostile zip) is not ours to edit. Its
+    // cause is said in the window's words, naming this computer (workErrorWords).
+    return { sheets: [], date1904: false, reach: { parts: [], to: 'excel' }, readOnly: `${IMPORT_REFUSED}${refusalOf(path, err)}` }
   }
+}
+
+/** The most of a workbook's xl/workbook.xml read to tell Strict Open XML by its namespace. */
+const WORKBOOK_XML_MAX = 8 * 1024 * 1024
+
+/**
+ * Why the importer refused a workbook, as the cause the window words: a password (an OLE file where a zip should be),
+ * a binary workbook (.xlsb's xl/workbook.bin), Strict Open XML (its namespace), one too big to read here; else the
+ * importer's own reason, which the window says as a workbook it could not read.
+ */
+export function refusalOf(path: string, err: unknown): string {
+  const raw = (err instanceof Error ? err.message : String(err)).replace(/^xlsx: /, '')
+  try {
+    if (isPasswordLocked(path)) return 'it has a password'
+    const names: string[] = []
+    const got = unzipSync(new Uint8Array(readFileSync(path)), {
+      filter: (f) => (names.push(f.name), f.name === 'xl/workbook.xml' && f.originalSize <= WORKBOOK_XML_MAX)
+    })
+    if (names.includes('xl/workbook.bin')) return 'it is a binary workbook (.xlsb)'
+    const workbook = got['xl/workbook.xml']
+    if (workbook && strFromU8(workbook).includes('purl.oclc.org/ooxml/spreadsheetml/main')) return 'it is saved as Strict Open XML'
+  } catch {
+    // (not a zip at all: the importer's reason stands)
+  }
+  return /too large|too many|more than \d+|grows past/.test(raw) ? 'it is too big to read here' : raw
 }
 
 const cellOut = (at: string, c: ICellData | null | undefined): ReadCell => {

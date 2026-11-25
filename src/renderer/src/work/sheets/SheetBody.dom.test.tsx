@@ -1357,6 +1357,36 @@ describe("the sheet kind", () => {
     expect(line.textContent).toContain("Read only");
   });
 
+  it("says a workbook the host's importer refused in Work's words, naming the computer, never the importer's reason", async () => {
+    open(sheetView({ readOnly: "This file cannot be opened here: it is a binary workbook (.xlsb)" }));
+    await gridUp();
+    const line = await waitFor(() => {
+      const found = document.querySelector("[data-canvas-state]");
+      if (!found) throw new Error("no state line");
+      return found;
+    });
+    expect(line.textContent).toContain("Read only");
+    expect(line.textContent).toContain("That computer cannot read a binary workbook (.xlsb). Save it as .xlsx in Excel to edit it here.");
+    expect(line.textContent).not.toContain("cannot be opened here");
+  });
+
+  it("says why in the body when the grid could not read the refused workbook either", async () => {
+    sheetHost = fakeSheetHost(sheetView({ readOnly: "This file cannot be opened here: it has a password" }), BOOK);
+    sheetHost.load = async () => {
+      throw new Error("xlsx: not a zip package");
+    };
+    grid = fakeGrid();
+    host.current = fakeHost([ITEM], host as never);
+    render(
+      <CanvasSeat session={{ id: "t1", environmentId: "local" }} kinds={kinds() as never}>
+        <div />
+      </CanvasSeat>,
+    );
+    expect(await screen.findByText("Couldn't open this sheet", undefined, { timeout: 3000 })).toBeTruthy();
+    expect(screen.getByText(/^That computer cannot read a workbook locked with a password\. Remove the password in Excel to edit it here\./)).toBeTruthy();
+    expect(screen.queryByText(/zip package/i)).toBeNull();
+  });
+
   it("says an Excel file moved or deleted outside TempCode in the words every kind's moved line uses, with Keep Both", async () => {
     open(sheetView({ missing: true }));
     await gridUp();

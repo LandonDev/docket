@@ -18,7 +18,7 @@ import { BUDGET, BUDGET_CHANGES, INVOICES } from "./SheetBody.preview.fixtures";
 import { resetSheetSyncs, SheetSync, syncOf, type Workbook } from "./sync";
 import { fakeGrid, fakeSheetHost, sheetView, type FakeGrid } from "./testkit";
 
-export type SheetMoment = "suggestions" | "stepped" | "own" | "format" | "proposed" | "loading" | "readonly" | "waits";
+export type SheetMoment = "suggestions" | "stepped" | "own" | "format" | "proposed" | "loading" | "readonly" | "waits" | "moved" | "refused";
 
 void workCanvasChunk.load();
 
@@ -61,6 +61,8 @@ function setUp(moment: SheetMoment): { view: SheetView; book: Workbook; title: s
       view: sheetView({ name: "Season stats.xlsx", store: "package", mode: "writes", canUpload: true, reach: { parts: ["2 pivot tables", "12 charts", "macros"], to: "excel" } }),
     };
   if (moment === "loading") return { ...budget, grid: fakeGrid(), view: sheetView(), hold: true };
+  if (moment === "moved") return { ...budget, grid: fakeGrid({ selection: "E5" }), view: sheetView({ missing: true }) };
+  if (moment === "refused") return { ...budget, grid: fakeGrid({ selection: "E5" }), view: sheetView({ readOnly: "This file cannot be opened here: it is a binary workbook (.xlsb)" }) };
   if (moment === "readonly") return { ...budget, grid: fakeGrid({ selection: "E5" }), view: sheetView({ readOnly: "Saved as .xlsb, which opens here only to read" }) };
   return { ...budget, grid: fakeGrid(), view: sheetView({ shared: true, suggestions: BUDGET_CHANGES, reach: { parts: ["a pivot table"], to: "excel" } }) };
 }

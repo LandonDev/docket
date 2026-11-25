@@ -12,6 +12,8 @@ export default [
   { name: "An agent proposed a format: said in the formula bar, its range marked", props: { moment: "proposed" } },
   { name: "Loading", props: { moment: "loading" } },
   { name: "Read only", props: { moment: "readonly" } },
+  { name: "The Excel file moved or was deleted: Keep Both", props: { moment: "moved" } },
+  { name: "A workbook the importer refused, said in his words", props: { moment: "refused" } },
   { name: "An Excel file with what only Excel does: the bar says what waits there", props: { moment: "waits" } },
 ];
 
