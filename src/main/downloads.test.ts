@@ -78,3 +78,27 @@ describe('a file saved from a mail', () => {
     expect(long.endsWith('.xlsx')).toBe(true)
   })
 })
+
+describe('a download written part by part', () => {
+  it('writes each part under a free name, answers the path once kept, and takes a file it did not finish away', async () => {
+    const { mkdtempSync, readFileSync, readdirSync, writeFileSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const { partWriter } = await import('./downloads')
+    const dir = mkdtempSync(join(tmpdir(), 'tc-download-'))
+    writeFileSync(join(dir, 'Budget.xlsx'), 'his own')
+    const parts = partWriter(() => dir)
+    const id = await parts.begin('Budget.xlsx')
+    await parts.part(id, new TextEncoder().encode('one '))
+    await parts.part(id, new TextEncoder().encode('two'))
+    expect(await parts.end(id, true)).toBe(join(dir, 'Budget (1).xlsx'))
+    expect(readFileSync(join(dir, 'Budget (1).xlsx'), 'utf8')).toBe('one two')
+    expect(readFileSync(join(dir, 'Budget.xlsx'), 'utf8')).toBe('his own')
+    // Ended, it takes no more parts; one that failed on its way leaves nothing behind.
+    await expect(parts.part(id, new Uint8Array(1))).rejects.toThrow('not open')
+    const lost = await parts.begin('Plan.pdf')
+    await parts.part(lost, new Uint8Array(3))
+    expect(await parts.end(lost, false)).toBeNull()
+    expect(readdirSync(dir).sort()).toEqual(['Budget (1).xlsx', 'Budget.xlsx'])
+  })
+})

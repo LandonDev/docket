@@ -32,6 +32,9 @@ vi.mock("./farLink", async () => ({ filesLink: (await import("../../lib/connecti
 vi.mock("./store", () => ({ tabsNow: () => [], closeTab: vi.fn() }));
 vi.mock("../../chrome/ConfirmDialog", () => ({ confirmAction: async () => true }));
 vi.mock("../../components/ui/toaster", () => ({ loadToast: async () => ({ message: vi.fn(), error: vi.fn() }) }));
+// Main's disk for a download: each part taken, and the path answered once kept.
+vi.mock("../../lib/native", () => ({ isWebMode: () => false, downloadParts: () => ({ begin: async () => "d1", part: async () => undefined, end: async (_id: string, keep: boolean) => (keep ? "/Downloads/x" : null) }) }));
+vi.mock("../../lib/fs", () => ({ revealPath: async () => undefined }));
 
 const { renameTo, carryTo, trash, download, SETTLE_MS } = await import("./acts");
 
@@ -91,9 +94,6 @@ describe("a row his act is changing", () => {
   });
 
   it("says how far a download has come where the file's size is known, and lets the row go at its end", async () => {
-    globalThis.URL.createObjectURL ??= () => "blob:x";
-    globalThis.URL.revokeObjectURL ??= () => undefined;
-    vi.stubGlobal("document", { createElement: () => ({ click: vi.fn() }) });
     world.answers = {};
     // Each read answers 8 bytes here; the stand-in host ends past 4 MB, so the second read is the last.
     const big = file("Roster.xlsx", { size: 8.4 * 1024 * 1024 });
@@ -104,6 +104,5 @@ describe("a row his act is changing", () => {
     expect(reads[0]).toBe("Downloading… 0.0 of 8.4 MB");
     expect(world.seen.slice(seenAt).every((s) => s.marks.startsWith("Roster.xlsx=Downloading…"))).toBe(true);
     expect(words()).toBe("");
-    vi.unstubAllGlobals();
   });
 });

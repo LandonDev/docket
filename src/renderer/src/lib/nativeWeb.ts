@@ -187,6 +187,30 @@ export const webApi: Api = {
       window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
       return name;
     },
+    // A browser keeps the parts and hands them over whole as its own download at the end.
+    download: (() => {
+      const held = new Map<string, { name: string; parts: BlobPart[] }>();
+      return {
+        begin: async (name: string) => {
+          const id = `web-${held.size}-${Date.now()}`;
+          held.set(id, { name, parts: [] });
+          return id;
+        },
+        part: async (id: string, bytes: Uint8Array) => void held.get(id)?.parts.push(bytes as BlobPart),
+        end: async (id: string, keep: boolean) => {
+          const one = held.get(id);
+          held.delete(id);
+          if (!one || !keep) return null;
+          const url = URL.createObjectURL(new Blob(one.parts));
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = one.name;
+          link.click();
+          window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+          return one.name;
+        },
+      };
+    })(),
     openUrl: (url) => {
       window.open(url, "_blank", "noopener");
       return done();

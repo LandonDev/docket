@@ -43,8 +43,15 @@ const world = vi.hoisted(() => ({
   /** the web page the workspace's host knows for a library's file, by its path */
   pages: {} as Record<string, string>,
   opened: [] as string[],
+  /** the files main wrote into Downloads, by name */
+  saved: [] as string[],
 }));
-vi.mock("../../lib/native", async (original) => ({ ...(await original<object>()), openUrl: async (url: string) => void world.opened.push(url) }));
+vi.mock("../../lib/native", async (original) => ({
+  ...(await original<object>()),
+  openUrl: async (url: string) => void world.opened.push(url),
+  isWebMode: () => false,
+  downloadParts: () => ({ begin: async (name: string) => (world.saved.push(name), name), part: async () => undefined, end: async (id: string, keep: boolean) => (keep ? `/Downloads/${id}` : null) }),
+}));
 
 vi.mock("../../lib/connection", async (original) => {
   const linkOf = (id: string) => {
@@ -576,16 +583,8 @@ describe("a row's menu", () => {
 });
 
 describe("Download from a row", () => {
-  const saved: string[] = [];
-  beforeEach(() => {
-    saved.length = 0;
-    URL.createObjectURL = () => "blob:x";
-    URL.revokeObjectURL = () => undefined;
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
-      saved.push(this.download);
-    });
-  });
-  afterEach(() => vi.restoreAllMocks());
+  const saved = world.saved;
+  beforeEach(() => void (saved.length = 0));
 
   it("reads the file by the route a tab's Download takes and says it in one toast", async () => {
     await mount();
@@ -593,7 +592,7 @@ describe("Download from a row", () => {
     fireEvent.click(await menuItem("Download"));
     await waitFor(() => expect(saved).toEqual(["Budget.xlsx"]));
     expect(calls("work.files.read")).toEqual([{ workspaceId: "w1", ref: at("/w/Budget.xlsx"), offset: 0, length: 4 * 1024 * 1024 }]);
-    expect(world.toasts).toEqual([{ kind: "message", title: "Downloaded Budget.xlsx" }]);
+    await waitFor(() => expect(world.toasts).toMatchObject([{ kind: "message", title: "Downloaded Budget.xlsx", press: "Show" }]));
   });
 
   it("downloads many from the bulk bar, one after another, and says them in one toast", async () => {
@@ -602,7 +601,7 @@ describe("Download from a row", () => {
     fireEvent.click(row("Plan.docx"), { shiftKey: true });
     fireEvent.click(within(document.querySelector<HTMLElement>("[data-files-bulk]")!).getByRole("button", { name: "Download" }));
     await waitFor(() => expect(saved).toEqual(["Budget.xlsx", "notes.txt", "Plan.docx"]));
-    expect(world.toasts).toEqual([{ kind: "message", title: "Downloaded 3 files" }]);
+    await waitFor(() => expect(world.toasts).toMatchObject([{ kind: "message", title: "Downloaded 3 files", press: "Show" }]));
   });
 
   it("is not offered for a folder, nor in a library others open from a window of another computer, where the host gives no bytes", async () => {

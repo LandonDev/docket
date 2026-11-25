@@ -596,6 +596,11 @@ export function saveDownload(name: string, bytes: Uint8Array): Promise<string> {
   return api().app.saveDownload(name, bytes);
 }
 
+/** A download written part by part into this computer's Downloads (src/main/downloads.ts `partWriter`); a browser's is its own download. */
+export function downloadParts(): typeof window.api.app.download {
+  return api().app.download;
+}
+
 /** Hands a PDF to this computer's own PDF viewer to print (src/main/printOut.ts); a browser has none and answers so. */
 export function printPdfFile(name: string, bytes: Uint8Array): ReturnType<typeof window.api.printPdf> {
   return api().printPdf(name, bytes);

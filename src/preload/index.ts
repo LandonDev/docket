@@ -248,6 +248,12 @@ const api = {
     openFullEditor: (address: string): Promise<void> => ipcRenderer.invoke('full-editor:open', address),
     /** Writes bytes the window holds into Downloads under a safe, free name; answers the path. */
     saveDownload: (name: string, bytes: Uint8Array): Promise<string> => ipcRenderer.invoke('files:save-download', name, bytes),
+    /** A download written part by part into Downloads (the Files place's Download): begun, each part added, ended kept (its path) or taken away. */
+    download: {
+      begin: (name: string): Promise<string> => ipcRenderer.invoke('files:download-begin', name),
+      part: (id: string, bytes: Uint8Array): Promise<void> => ipcRenderer.invoke('files:download-part', id, bytes),
+      end: (id: string, keep: boolean): Promise<string | null> => ipcRenderer.invoke('files:download-end', id, keep),
+    },
     dockBadge: (count: number): Promise<void> => ipcRenderer.invoke('app:dock-badge', count),
     /** Main's navigation-only request for this window. */
     onReveal: (prepare: (token: string) => void, open: (token: string, navigation: RevealNavigation) => void, cancel: (token: string) => void): (() => void) => {

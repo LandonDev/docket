@@ -6,6 +6,8 @@ import { confirmAction } from "../../chrome/ConfirmDialog";
 import { loadToast } from "../../components/ui/toaster";
 import { blobSource } from "../../lib/attachmentUpload";
 import { registry } from "../../lib/connection";
+import { revealPath } from "../../lib/fs";
+import { downloadParts, isWebMode } from "../../lib/native";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { flushItem } from "../canvas/flush";
 import { carryRefusal, doneWords, refusedWords, type PlaceCopy } from "./model";
@@ -497,21 +499,26 @@ export function downloadOf<T>(file: { copy: boolean; shared: boolean; there: boo
 }
 
 /**
- * A file's bytes to this computer, read from where they lie in parts of one version, said in one toast once it is
- * saved ("Downloaded Budget.xlsx"). With `itemId` the bytes are a Files tab's own copy (a file of another computer or
+ * A file's bytes to this computer, read from where they lie in parts of one version and written into Downloads part by
+ * part as they come (never whole in the window), said in one toast once main says the file is on the disk
+ * ("Downloaded Budget.xlsx", Show). With `itemId` the bytes are a Files tab's own copy (a file of another computer or
  * the VM, open here): the workspace's host reads the copy it holds, since the original's bytes go to no window but its
  * own computer's.
  */
 export async function download(of: ActsOf, copy: PlaceCopy, entry: FileEntry, itemId?: string): Promise<boolean> {
   try {
-    if (!(await fetchOne(of, copy, entry, itemId))) return false;
-    said(`Downloaded ${entry.name}`);
+    const path = await fetchOne(of, copy, entry, itemId);
+    if (path === null) return false;
+    said(`Downloaded ${entry.name}`, showOf(path));
     return true;
   } catch (err) {
     failed(`${entry.name} did not download`, err);
     return false;
   }
 }
+
+/** Show, for a file written on this computer's disk; a browser's own download has no place to show. */
+const showOf = (path: string | null): { show?: () => void } => (path && !isWebMode() ? { show: () => void revealPath(path) } : {});
 
 /**
  * Download from a row's menu or the bulk bar: each file in turn, by the same route as a tab's, its row saying how far it
@@ -521,46 +528,53 @@ export async function downloadAll(of: ActsOf, copy: PlaceCopy, entries: readonly
   if (entries.length === 1) return (await download(of, copy, entries[0]!)) ? 1 : 0;
   const lost: { name: string; text: string }[] = [];
   let got = 0;
+  let last: string | null = null;
   for (const entry of entries) {
     try {
-      if (await fetchOne(of, copy, entry)) got += 1;
+      const path = await fetchOne(of, copy, entry);
+      if (path !== null) (got += 1), (last = path);
     } catch (err) {
       lost.push({ name: entry.name, text: workErrorWords(err) || "It did not download." });
     }
   }
-  if (got) said(`Downloaded ${got} files`, { description: refusedWords(lost) ?? undefined });
+  if (got) said(`Downloaded ${got} ${got === 1 ? "file" : "files"}`, { description: refusedWords(lost) ?? undefined, ...showOf(last) });
   else failed("Nothing was downloaded", new Error(refusedWords(lost) ?? ""));
   return got;
 }
 
-/** One file read part by part into the system's downloads; its row shows how far, where its size is known. */
-async function fetchOne(of: ActsOf, copy: PlaceCopy, entry: FileEntry, itemId?: string): Promise<boolean> {
-  if (!entry.ref) return false;
+/**
+ * One file read part by part into the system's downloads; its row shows how far, where its size is known. Answers
+ * where main wrote it (a browser: its name), null for a row with no file; a part that did not come takes the
+ * unfinished file away.
+ */
+async function fetchOne(of: ActsOf, copy: PlaceCopy, entry: FileEntry, itemId?: string): Promise<string | null> {
+  if (!entry.ref) return null;
   const far = (got: number): RowBusy => ({ word: entry.size ? openingWords(got, entry.size, "Downloading…") : "Downloading…" });
   of.busy?.([entry.key], far(0));
+  const disk = downloadParts();
+  let id: string | null = null;
+  let kept = false;
   try {
     const link = registry.linkOf(copy.link);
-    const parts: BlobPart[] = [];
     let version: string | undefined;
     for (let offset = 0; ; ) {
       const got = await link.request<{ data: string; version: string; end: boolean }>("work.files.read", { workspaceId: of.workspaceId, ref: entry.ref as CanvasSource, ...(itemId ? { itemId } : {}), offset, length: 4 * 1024 * 1024, ...(version ? { version } : {}) }, longWait(copy));
       const raw = atob(got.data);
       const bytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-      parts.push(bytes as BlobPart);
+      // The file is begun with its first part: a read refused at once leaves nothing in Downloads.
+      id ??= await disk.begin(entry.name);
+      if (bytes.length) await disk.part(id, bytes);
       version = got.version;
       offset += bytes.length;
       if (got.end || bytes.length === 0) break;
       of.busy?.([entry.key], far(offset));
     }
-    const url = URL.createObjectURL(new Blob(parts));
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = entry.name;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    return true;
+    const path = await disk.end(id!, true);
+    kept = true;
+    return path ?? entry.name;
   } finally {
+    if (id && !kept) await disk.end(id, false).catch(() => undefined);
     of.busy?.([entry.key], null);
   }
 }
