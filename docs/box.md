@@ -4342,6 +4342,21 @@ with: ssh box 'box-update master'" (a Mac host says "Publish with: bun run
 release:publish"). Current, ahead, or unknown on either side draws nothing.
 A headless host never fetches master; the box's own `/ui` shows no mark.
 
+### Live resize and a rollback
+
+The standing Windows VM's display device is its `run/machine.json`
+(docs/agents/work-winvm.md "The device, and live resize"). Code from before
+that file starts every machine on std VGA, so a Windows hibernated on
+virtio-gpu would wake on other hardware. Before rolling the box back past
+it, Turn off live resize (Settings → Work → Windows VM). box-update checks
+each candidate once it is built: when
+`/srv/agents/win-vm/standing/run/machine.json` says `virtio` and the
+candidate's `out/main` never names `machine.json`, the deploy log says so in
+a `WARN:` line (box-update-lib.sh `vm_device_warning`,
+scripts/box/vmDeviceWarning.test.ts). It never fails the deploy. The
+installed copies under /usr/local come from stage 85, so the check runs once
+stage 85 is applied again.
+
 On a fresh box, stage 85 creates the build/data directories and service
 without needing an existing `current`. Run `box-update <ref>` to bootstrap:
 it builds and trials the ref, skips the pre-update snapshot only when there

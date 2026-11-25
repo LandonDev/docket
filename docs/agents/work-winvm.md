@@ -41,7 +41,9 @@ and opens the door at the next call.
 | `work.winvm.restart` | operate | restarts Windows cleanly (`shutdown /r /t 0` as the admin, never `/f`), then opens the door again; the state says "Restarting Windows" meanwhile. Refused while a thread holds the machine (the lease) |
 | `work.winvm.still` | read | `{ still }`: the picture it last went to sleep on ("The still"), to whoever may watch the VM (`mayWatch`: a client key with approve; never a thread or the box's own socket) |
 | `work.winvm.setup` | admin | answers at once; the progress and the end come as pushes |
-| `work.winvm.settings` | admin | `{ sleepAfter, screen }`: `15m`, `30m` (the default), `2h` or `never`, in the host setting `work.winvm.sleepAfter`; the guest's screen, `1280x800` (the default) or `1920x1200`, in `work.winvm.screen`, used by a new Set up ("The picture") (live-video.md "The Windows VM" has the numbers that offer it) |
+| `work.winvm.settings` | admin | `{ sleepAfter, screen, detail }`: `15m`, `30m` (the default), `2h` or `never`, in the host setting `work.winvm.sleepAfter`; the guest's screen, `fit` (the default), `1280x800`, `1920x1200` or `2560x1600`, in `work.winvm.screen` (on std VGA a size is used by a new Set up, "The picture"); `sharp` (the default) or `faster` in `work.winvm.detail`. A change pushes the state, whose `display` says it |
+| `work.winvm.display.upgrade` | admin | Turn on live resize ("Live resize"): answers at once, the steps come as pushes. Refused while a thread holds the machine, while he drives and while a OneDrive write is owed |
+| `work.winvm.display.downgrade` | admin | Turn off: a clean shutdown and a start on std VGA at 1280×800; refused as upgrade is |
 | `work.winvm.points` | read | `{ points }`, newest first |
 | `work.winvm.point.save` | operate | `{ name? }`: a point of the sleeping machine |
 | `work.winvm.point.restore` | admin | `{ id }`: back to a point; the machine stays asleep |
@@ -54,7 +56,9 @@ drawn, Sleeps after stands as words and the screen size is not read. A read key 
 A model caller (a thread's `app.work*` call) may read and wake, never set up, sleep, restart, change the settings,
 read the still or touch a restore point. The state also says `wakeMs`, the median of the last five wakes from
 sleep (the Computers page's "6 s of about 13"), and `heldAsleep`. Every change of state pushes `{ push: 'work.winvm', state }` to every client socket,
-and every change to the points `{ push: 'work.winvm.points', points }`. The methods answer
+and every change to the points `{ push: 'work.winvm.points', points }`. Once set up the state also carries `display
+{ device, width, height, scale, fit, detail, canResize }`: the device machine.json names, the size and scale
+Windows has (screen.json), his choice, and whether Windows takes a new size while it runs (virtio alone). The methods answer
 `Work is off on this host` while the switch is off, as every pillar's do.
 
 `winvmKeeper()` is the keeper for the VM's service on the box (B5): `door()` wakes the machine and answers
@@ -99,6 +103,14 @@ One press later (B10, Settings → Work); `work.winvm.setup` now. It needs the b
    failure names the step it reached.
 4. The box's service copied in (below), then a restart, since tcuser's policies are read at logon.
 5. The door knocked: the service runs under the new policies. The state is then `awake`.
+
+**A new disk comes up on virtio-vga by itself.** After `makeDisk` the keeper gets the display driver ("Live
+resize", step 1) and writes `run/machine.json` = `virtio` before the disk's first start, a cold boot of the base
+image, so no hibernated Windows meets new hardware. Windows draws on the device with its Basic Display Driver
+until the driver is staged with `pnputil /add-driver … /install` after the setup script; setup's restart takes
+it, and the hardware pointer is turned on once Windows is back. A box that cannot have the driver sets the disk up
+on std VGA and says why in the log. **A Set up on a disk that exists keeps its device**: machine.json is not
+written and no driver goes in.
 
 **These policies are the first line; the host's hold rules (B6) are the second.** A thread acts in the
 guest as tcuser: no cmd, no Run box, none of the consoles, script hosts or admin tools from Explorer, Start
@@ -229,6 +241,67 @@ display's key codes into the guest's keys by the set the display names when QEMU
 the old "xfree86" set, where letters sit alike and the navigation keys do not (Page Up reached the guest as "/",
 Left and End as other keys: found from a Mac's Take over, 2026-11-22). So each start runs `setxkbmap -rules evdev`
 on the display before QEMU (`evdevKeys`, window.ts; the box's own setxkbmap), and logs it when that fails.
+
+### The device, and live resize
+
+`run/machine.json` names the display device the guest last ran on (guestScreen.ts): `vga`, QEMU's std VGA under
+Windows' Basic Display Driver, one size until a cold boot; or `virtio`, virtio-vga under Red Hat's viogpudo
+(virtio-win 0.1.302), whose size Windows changes while it runs. It is written before QEMU starts on a device,
+never after, and every start reads it; **no file is `vga`**, so a disk from before live resize wakes exactly as it
+did. The keeper's state says it (`display`), and only virtio has `canResize`.
+
+**Turn on** (Settings → Work → Windows VM → Live resize → Turn on…, `work.winvm.display.upgrade`). The confirm:
+"Windows restarts once. Save your work in it first. Sign-ins stay. A restore point is saved first, in place of
+your oldest if you have three." Refused while a thread holds the machine, while he drives, and while a OneDrive
+write is still owed (`owed()`, as the idle sleep waits for it). The keeper runs six steps, each its words in the
+state (`LIVE_RESIZE_WORDS`) and on the row:
+
+1. "Getting the display driver": the `virtio-win` tool (scripts/work-tools/winvm.json: the 0.1.302 image pinned
+   by sha256, 877 MB, its `viogpudo\w11\amd64` folder taken out by iso-folder.py with no mount and no root, the
+   image deleted after) installed by the toolchain's own installer when it is missing (driver.ts), its lines in
+   the log.
+2. "Adding the display driver to Windows": awake (a sleeping machine is woken), `viogpudo.inf`, `.cat` and `.sys`
+   copied into `C:\ProgramData\TempCode\viogpu` and staged with `pnputil /add-driver` (the device is not there
+   yet: it binds nothing), and tcuser's I-beam set to the box's colour one (`HKCU\Control Panel\Cursors\IBeam` =
+   `C:\ProgramData\TempCode\tc-ibeam.cur`, from resources/winvm/tc-ibeam.cur, the M0 spike's file): Windows' own
+   monochrome I-beam is drawn into the picture beside the last hardware shape, an alpha one is a hardware pointer
+   too (liveResize.ts `stageScript`).
+3. "Restarting Windows": `shutdown /s /full /t 0`, a clean shutdown, never a hibernate and never forced. QEMU
+   has 3 minutes to exit; past them the move is called off, nothing new is started, Windows stays on std VGA as
+   it is, and the row says "An app in Windows kept it from restarting. Save your work and try again."
+4. "Saving a restore point": `keepTpm()`, then a point of the stopped machine, "Before live resize" (by the
+   keeper; past three the oldest goes). It records std VGA.
+5. "Starting Windows with live resize": machine.json = `virtio`, and only then the start, at the size it had
+   (`-vga none -device virtio-vga,edid=on,xres,yres`). Checked: Windows names "Red Hat VirtIO GPU DOD controller"
+   over SSH, and QMP's screendump has a picture (`StandingMachine.shows`). A failed check goes back to the point
+   by itself ("Going back to the restore point"): a clean shutdown (the plug pulled only when that does not stop
+   it), the disk, firmware, TPM and std VGA put back, the machine asleep, and the row says Live resize did not
+   start and that Windows is back as it was.
+6. "Turning on the pointer": `HWCursor=1` in viogpudo's driver key and `pnputil /restart-device` (nothing
+   restarted when it is 1 already). A failure leaves Windows on virtio with the pointer in the picture; a keeper
+   tries it again at its first wake on virtio, which also finishes a Turn on whose service stopped before step 6.
+
+machine.json changes once, just before the one start on virtio: at a failure or a stop of the service before it,
+the guest last ran on std VGA and the file says so; between the write and the start Windows is cleanly shut down,
+so it boots afresh on either; after it both say virtio (keeper.test.ts holds each step to this).
+
+**Each step's undo.** After 2: nothing (the staged driver binds nothing; `pnputil /delete-driver` removes it).
+After 3: a plain start (it is still `vga`). After 5 or 6: **Turn off…** (`work.winvm.display.downgrade`, "Windows
+restarts once, at 1280 × 800. Save your work in it first. Sign-ins stay."): a sleeping machine woken on the
+device it slept on, the same clean shutdown and 3-minute call-off, machine.json `vga` and screen.json 1280×800,
+and a start on `-vga std`; Windows goes back to its Basic Display Driver by itself (viogpudo binds only the
+virtio device). The I-beam stays: it is a plain cursor on std VGA. A machine that will not boot or has lost a
+sign-in goes back to "Before live resize" (Restore points), which puts `vga` back with it.
+
+**Before any rollback of the box to code from before live resize: Turn off… first, then roll back.** Older code
+starts every machine on `-vga std` and would resume a virtio hibernate on changed hardware. box-update warns
+when machine.json says `virtio` and the build it deploys does not read it (box-update-lib.sh
+`vm_device_warning`, docs/box.md "Live resize and a rollback").
+
+**The settings.** Screen size: Fit to window (the default), 1280 × 800, 1920 × 1200 or 2560 × 1600; on std VGA it
+says "Used when the VM is set up again". Detail (Sharp, Faster) shows once live resize is on. The Computers bar's
+Size and Detail set the same host settings, and are off with "Turn on live resize in Settings → Work" on std VGA.
+Applying a size to a running Windows is the VM display's own work (`VmDisplay`, live-video.md "The Windows VM").
 
 ## Take over
 
@@ -425,6 +498,10 @@ TPM-bound sign-ins, and a hibernated guest's memory image is on the disk.
   to keep.
 - A new disk (`makeDisk`) drops the old points with it. The points are local to the box and not in its
   backups.
+- **A point carries its device.** Its record holds `device` and `screen`, the run's machine.json and screen.json
+  at the save, and going back writes both back with the disk, firmware and TPM: a Windows that slept on std VGA
+  wakes on std VGA whatever the machine runs on now, and a virtio point taken before a Turn off wakes on virtio.
+  A point from before live resize has neither and is std VGA at 1280×800.
 
 ## Disk mode
 
@@ -466,7 +543,12 @@ In order, once the box runs a build with all of Track B:
    many Teams libraries it syncs, or Sign in where it needs him (`work.office.vmSignIn`, then the Computers
    page on the VM).
 4. **Choose its sleep and screen** if the defaults do not suit: Sleeps after (30 minutes) and Screen size
-   (1280 × 800; 1920 × 1200 is used by a new Set up: Windows keeps the size it was set up at through every sleep).
+   (on std VGA a size is used by a new Set up: Windows keeps the size it was set up at through every sleep).
+   **Live resize is his press**: a deploy changes nothing in his VM (it has no machine.json, so it wakes on std
+   VGA as before). Settings → Work → Windows VM → Live resize → Turn on…, with nothing unsaved in Windows and no
+   thread on it: about two minutes and one restart the first time (plus the 877 MB driver download), a restore
+   point first. Then Screen size (Fit to window) and Detail. Turn off… goes back. Before any rollback of the box
+   past this code, Turn off… first.
 5. **Sign in to what else threads should use**, in a Take over from the Computers page: the VM keeps it across
    sleeps. A thread never types a password.
 6. **Before the evaluation ends** (about 17 February 2027, Settings' Edition row; Connections warns 14 days

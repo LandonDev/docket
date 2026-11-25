@@ -199,14 +199,15 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   (proofs) and `--instance standing` (Work's, a lasting disk, SSH 22230); their
   code is src/main/server/work/winvm/machine/.
   [docs/agents/windows-vm.md](docs/agents/windows-vm.md)
-- **The Windows VM's keeper** — the `standing` rig instance as a computer for Work threads: the `winvm`
-  pillar's states, `work.winvm.*`, setup with tcuser's policies, wake, hibernate on idle and at a stop of the
-  box's service (stop signals blocked, a watcher), restore points taken asleep (disk snapshot, firmware, TPM);
-  the `windows_*` tools on a third `ComputerService` through the guest's door (winvm/vm.ts), one thread at a time;
-  `display.get` and viogpudo's `display.set` (§29.9); the Office helper as tcuser (`tc-office.exe`, winvm/helperDoor.ts);
-  the door under `conhost --headless`; QEMU's GTK window on the VM's own display (`qemu-window` tool, winvm/window.ts), its
-  `vm:windows` video source and idle row (winvm/picture.ts), QMP's 4 fps picture where the tools are missing; `windows_put`/`windows_get` (files.ts) and his clipboard in and out
-  (clipboard.ts, §29.8); his Take over (winvm/drive.ts), Settings → Work's section, the whole job run by
+- **The Windows VM's keeper** — the `standing` rig instance as Work threads' computer: the `winvm`
+  pillar's states, `work.winvm.*`, setup with tcuser's policies, wake, hibernate when idle and at a stop of the
+  box's service (stop signals blocked, a watcher), restore points taken asleep (disk, firmware, TPM, device);
+  live resize on his press (virtio-gpu by `run/machine.json`, the door's `display.set`, §29.9);
+  the `windows_*` tools on a third `ComputerService` via the guest's door (work/winvm/vm.ts), one
+  thread at a time; a door for the Office helper as tcuser (`tc-office.exe`, built in the guest,
+  winvm/helperDoor.ts), under `conhost --headless`; QEMU's GTK window on a display of its own (`qemu-window`, winvm/window.ts), its
+  `vm:windows` video source and idle row (winvm/picture.ts), QMP's 4 fps picture without them; `windows_put`/`windows_get` (files.ts) and his clipboard in and out
+  (clipboard.ts, §29.8); his Take over (winvm/drive.ts), Settings → Work's section, the whole job:
   `e2e-winvm-work.ts`. [docs/agents/work-winvm.md](docs/agents/work-winvm.md)
 - **Live Office in a Files tab** — a shared .docx/.xlsx/.pptx opens in TempCode's editor or live in Office on
   the web, per file (`work_office_live`), in a fenced `<webview>` (src/main/officeLive.ts: tickets, a session per

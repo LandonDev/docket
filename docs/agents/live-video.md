@@ -946,8 +946,17 @@ it with `display.set` on viogpudo (§29.9). Windows' scale changes the size
 at which the guest draws its UI. The guest's screen and the relay still
 use physical pixels.
 
-- **The tools.** `scripts/work-tools/winvm.json` names one tool,
-  `qemu-window`: Ubuntu 24.04's own `qemu-system-gui`,
+- **The device.** `run/machine.json` names it (work-winvm.md "The device,
+  and live resize"): std VGA (`vga`, no file) at one size, or virtio-vga
+  under Red Hat's viogpudo (`virtio`), whose size Windows changes while it
+  runs. A disk moves to virtio only by his Turn on… in Settings (or a new
+  disk's setup); Turn off… goes back to std VGA at 1280×800. The keeper's
+  `WinvmState.display` says the device and size, his choice (Fit to window or
+  1280×800, 1920×1200, 2560×1600; Sharp or Faster: `work.winvm.settings`) and
+  `canResize` (virtio alone), which the Computers bar's Size and Detail read.
+- **The tools.** `scripts/work-tools/winvm.json` names two tools. `virtio-win`
+  is the display driver live resize copies into the guest (work-winvm.md).
+  `qemu-window` is Ubuntu 24.04's own `qemu-system-gui`,
   `qemu-system-modules-opengl`, `libvte-2.91-0` and `libvte-2.91-common`,
   each pinned by sha256 from snapshot.ubuntu.com, for the box's QEMU
   8.2.2+ds-0ubuntu1.18; its one build step copies `ui-gtk.so` and
@@ -960,7 +969,7 @@ use physical pixels.
   them, and the VM runs with no window until the manifest is moved to the
   new build.
 - **The display** (`VmScreen`, work/winvm/window.ts): the box browser's
-  `BoxXDisplay` at the guest's own size (1280×800, or 1920×1200 by the
+  `BoxXDisplay` at the guest's own size (screen.json; a new disk's at the
   setting below), 120 Hz, under
   `<userData>/winvm/picture/display/`, started before QEMU and started with
   the stop signals blocked, as QEMU is, since QEMU's window dies with its X
@@ -1019,9 +1028,9 @@ Load average 11 to 20 on the 32-core box, measured 2026-11-20. Frame gaps sit
 at 16.7 ms whenever the screen changes every frame: the guest presents at
 about 60, so 120 is never reached (the spike's finding, still true). Windows
 scales a 1920×1200 screen to 150%. The dragged window held 51.7, over the 45
-that offers the larger size, so Settings offers it: `work.winvm.settings
-{ screen: '1920x1200' }`, taken at the next wake (the display at that size,
-the same VGA told its EDID mode). The full-screen redraw at 1920×1200 spread
+that offers the larger size, so Settings offers it: on std VGA
+`work.winvm.settings { screen: '1920x1200' }` is taken by a new Set up (the
+display at that size, the same VGA told its EDID mode). The full-screen redraw at 1920×1200 spread
 too wide to rule on (one boot 36 to 41, the other 48 to 58, at load 12 to
 20); 1280×800 stays the default. Not proven: a wake from hibernate into the
 other size (the measurement cold-boots each one).

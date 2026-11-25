@@ -49,7 +49,9 @@ and `scripts/e2e-winvm-stop.ts` (the rig, signalled as a stop of the box's servi
   are on, as on a real PC. The computer is `TC-WIN11` (25H2's out-of-box step replaces the answer file's name
   with `PSD-`, a name the Task Scheduler refuses in a user ID, so `tc-setup.ps1` renames it).
 - **The machine:** q35 with Secure Boot firmware (OVMF), a software TPM 2.0 (swtpm), an AHCI disk and an e1000e
-  NIC (drivers built into Windows), a USB tablet, 1280×800 on the standard VGA, no display window.
+  NIC (drivers built into Windows), a USB tablet, 1280×800 on the standard VGA, no display window. The display
+  device is the run's `machine.json` (no file is std VGA); the standing machine moves to virtio-vga only by his
+  Turn on of live resize, or a new disk's setup (docs/agents/work-winvm.md "The device, and live resize").
 - **Ports on 127.0.0.1:** 22220 is the guest's SSH; 9333 forwards to the guest's 9333, but a CDP port does
   not answer there: Chromium's debug port listens on the guest's own loopback, and QEMU's forward lands on
   its other address. Reach CDP through SSH instead (`ssh -L 9334:127.0.0.1:9333` as tcuser, as
