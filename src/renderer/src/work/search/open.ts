@@ -3,7 +3,7 @@ import type { SearchHit } from "@shared/work/search";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { requestTranscriptJump } from "../../lib/transcriptJump";
-import { choose, openWorkView, workOpenPort, type OpenWorkView } from "../../lib/workSwitch";
+import { choose, openWorkView, stillChosen, workOpenPort, type OpenWorkView } from "../../lib/workSwitch";
 import { linkedWorkspaceIds } from "../../lib/linkedRail";
 import { project, projectStore } from "../../stores/project";
 import { shell } from "../../stores/shell";
@@ -40,7 +40,10 @@ export interface OpenDeps {
   /** whatever lies over the board (a full-page view, Settings) leaves, so what opens is seen */
   clear(): void;
   /** this open is his latest choice of where to go */
-  chose(): void;
+  /** his choice's number (lib/workSwitch.ts `choose`) */
+  chose(): number;
+  /** nothing was chosen since `mine` */
+  stillLatest(mine: number): boolean;
 }
 
 /**
@@ -72,7 +75,8 @@ const live: OpenDeps = {
   startThread: (chip, workspace) => startThreadAbout(chip, null, workspace.path),
   opened: tellOpened,
   clear: () => shell.closeOverlays(),
-  chose: () => void choose(),
+  chose: () => choose(),
+  stillLatest: (mine) => stillChosen(mine, null, ""),
 };
 
 export type Opened = "opened" | "gone" | "failed" | "nothing";
@@ -108,16 +112,19 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
   if (hit.workspaceId && !workspace) return "gone";
   const open = hit.open;
   // His latest choice: a file still on its way from a slow host no longer takes the window (lib/workSwitch.ts `choose`).
-  d.chose();
+  const mine = d.chose();
 
   if (open.to === "thread") {
     // An archived thread is put back first, as the archived list's Restore does; if the host refuses, nothing opens.
+    // A restore that waits on its host takes the window only if nothing was chosen since: the thread stays restored,
+    // and what he chose meanwhile keeps the window.
     if (open.archived) {
       try {
         await d.restore(open.sessionId, hostId);
       } catch {
         return "failed";
       }
+      if (!d.stillLatest(mine)) return "nothing";
     }
     // A thread carries its own place: the window follows it there. Whatever lies over the threads (Today, Review,
     // the Inbox, Settings) leaves first, as for every other kind, or the thread would open under it.

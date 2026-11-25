@@ -33,13 +33,25 @@ function rig(selected: string[] = ["purdue"], over: Partial<OpenDeps> = {}) {
     startThread: (chip, w) => void did.push(["startThread", chip.label, w.id]),
     opened: (hostId, h) => void did.push(["opened", hostId, h.key]),
     clear: () => void did.push(["clear"]),
-    chose: () => void chosen.n++,
+    chose: () => ++chosen.n,
+    stillLatest: (mine) => mine === chosen.n,
     ...over,
   };
   return { did, deps, chosen };
 }
 
 describe("opening a hit", () => {
+  it("an archived thread whose restore waits on its host never takes the window from a newer choice", async () => {
+    let restored = (): void => {};
+    const r = rig(["purdue"], { restore: (sessionId) => new Promise<void>((resolve) => { r.did.push(["restore", sessionId]); restored = resolve; }) });
+    const archived = hit({ key: "thread:t-old", kind: "thread", open: { to: "thread", sessionId: "t-old", archived: true } });
+    const opening = openHit(archived, "box", r.deps);
+    // He chooses something else while the host restores.
+    r.chosen.n++;
+    restored();
+    expect(await opening).toBe("nothing");
+    expect(r.did).toEqual([["restore", "t-old"]]);
+  });
   it("an archived thread is put back first, then opens; a live one is never touched", async () => {
     const r = rig(["purdue"]);
     const archived = hit({ key: "thread:t-old", kind: "thread", detail: "Archived", open: { to: "thread", sessionId: "t-old", archived: true } });
