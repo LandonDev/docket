@@ -232,7 +232,8 @@ export class LifeosBackend implements SheetBackend {
  * host, outside the file (`TcsheetBackend`), so a file in a folder others sync carries none of it.
  */
 interface Tcsheet {
-  meta: { title: string; rev: number; snapRev: number }
+  /** `id`: the file's own, made with it and kept by every write, so a guest link knows the file it was made for (guests/fileIdent.ts) */
+  meta: { title: string; rev: number; snapRev: number; id?: string }
   snapshots: Map<number, Uint8Array>
   ops: Op[]
   /** what a file written before that rule still holds: moved out on its first read */
@@ -322,7 +323,7 @@ export class TcsheetBackend implements SheetBackend {
 
   static create(path: string, title: string): void {
     if (existsSync(path)) throw new Error(`There is a file at ${path} already.`)
-    writeTcsheet(path, { meta: { title, rev: 0, snapRev: 0 }, snapshots: new Map([[0, gz(blankWorkbook('workbook', title))]]), ops: [], suggestions: [] })
+    writeTcsheet(path, { meta: { title, rev: 0, snapRev: 0, id: randomUUID() }, snapshots: new Map([[0, gz(blankWorkbook('workbook', title))]]), ops: [], suggestions: [] })
   }
 
   /** The real file the held workbook was read from: a write goes there, and only while the path still names it. */
@@ -409,6 +410,16 @@ export class TcsheetBackend implements SheetBackend {
     this.stamp = stampOf(at)
     // (the side file names the archive as it now stands)
     if (this.proposed?.length) this.keep(this.proposed)
+  }
+
+  /** The file's own id, made and written when a file from before the rule has none. */
+  ident(): string {
+    const t = this.read()
+    if (!t.meta.id) {
+      t.meta.id = randomUUID()
+      this.write(t)
+    }
+    return t.meta.id
   }
 
   async load(): Promise<Loaded> {

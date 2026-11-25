@@ -26,6 +26,11 @@ export interface GuestLinkFacts {
   keyedAt?: number
   /** a sheet kept as a file (`.tcsheet`): its path on this host as the item spelled it, which the live socket opens for this link's token alone */
   sheetFile?: string
+  /**
+   * a link to a file: the file as the service opens it (its resolved path) and the id it carried when he shared it
+   * (guests/fileIdent.ts). The service opens nothing for the link while the file there carries another id, or none.
+   */
+  file?: { path: string; uid: string }
   /** false: the document keeps no comments a guest can reach (a `.tcdoc`'s are in the app's own database) */
   comments?: false
 }
@@ -38,6 +43,8 @@ export interface OpenPassFacts {
   /** when main made it: a service started after this refuses it, so a restart never lets a used ticket open again */
   issuedAt: number
   title: string
+  /** the owner's name, as the link rows carry it: what his hosted page says on his caret */
+  owner?: string
   token: string
   tokenExp: number
   /** a sheet kept as a file (`.tcsheet`): its resolved path on this host, which the live socket opens for this pass's token alone */

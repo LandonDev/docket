@@ -76,3 +76,18 @@ main {
     display: none;
   }
 }
+
+/* Under 640px every control of a document's comments is a finger's target: the margin's and the card's buttons keep
+   their drawn size (24 to 28px) and take a 44px hit area around it, so nothing moves and nothing is missed. */
+@media (max-width: 639.98px) {
+  :is([data-guest-document] :is(.te-card, .te-margin, .te-threads-foot), .te-threads-popover) button {
+    position: relative;
+  }
+
+  :is([data-guest-document] :is(.te-card, .te-margin, .te-threads-foot), .te-threads-popover) button::after {
+    content: "";
+    position: absolute;
+    inset-block: min(0px, calc((100% - 44px) / 2));
+    inset-inline: min(0px, calc((100% - 44px) / 2));
+  }
+}

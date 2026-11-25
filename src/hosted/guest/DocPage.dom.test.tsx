@@ -35,15 +35,29 @@ const resize = (width: number) =>
   });
 
 const editors = vi.hoisted(() => [] as Record<string, unknown>[]);
-vi.mock("work-kit/editor", async (original) => ({
-  ...(await original<typeof import("work-kit/editor")>()),
-  DocumentEditor: (props: Record<string, unknown>) => (editors.push(props), (<div data-fake-editor />)),
-}));
+const given = vi.hoisted(() => ({ adapters: null as unknown }));
+vi.mock("work-kit/editor", async (original) => {
+  const real = await original<typeof import("work-kit/editor")>();
+  return {
+    ...real,
+    // The stand-in reads the adapters the page handed down, as the editor would.
+    DocumentEditor: (props: Record<string, unknown>) => {
+      given.adapters = real.useEditorAdapters();
+      editors.push(props);
+      return <div data-fake-editor />;
+    },
+  };
+});
+const pageAdapters = () => given.adapters as { collab?: { offline?: string | false }; identity?: { me?: { id: string; name: string } } };
 
 const revoked = vi.hoisted(() => [] as (() => void)[]);
-vi.mock("./ending", async (real) => ({ ...(await real<typeof import("./ending")>()), endingSocket: (on: () => void) => (revoked.push(on), class {}) }));
+/** What each page asked of its socket (ending.ts `SocketWatch`): a test tells it what the host's socket would. */
+const watches = vi.hoisted(() => [] as { revoked(): void; quiet?(q: boolean): void; tooBig?(): void; refusedCopy?(): void; tooMuch?(): void; full?(): void }[]);
+vi.mock("./ending", async (real) => ({ ...(await real<typeof import("./ending")>()), watchedSocket: (watch: (typeof watches)[number]) => (watches.push(watch), revoked.push(watch.revoked), class {}) }));
+const wiped = vi.hoisted(() => [] as string[]);
+vi.mock("./offline", async (real) => ({ ...(await real<typeof import("./offline")>()), wipeOffline: async (link: string, doc?: string) => void wiped.push(`${link}:${doc}`) }));
 
-const { DocPage } = await import("./DocPage");
+const { DocPage, FULL_WORDS, OFFLINE_WORDS, TOO_BIG_WORDS, TOO_MUCH_WORDS } = await import("./DocPage");
 const { OpenFailed } = await import("./session");
 import type { Opened, Session } from "./session";
 
@@ -51,6 +65,8 @@ const WIDTH = window.innerWidth;
 afterEach(() => {
   cleanup();
   editors.length = 0;
+  watches.length = 0;
+  wiped.length = 0;
   window.innerWidth = WIDTH;
 });
 
@@ -230,5 +246,144 @@ describe("a link revoked while its page is open", () => {
       await waitFor(() => expect(gone).toBe(1));
       cleanup();
     }
+  });
+});
+
+describe("words typed while the line is down", () => {
+  const collab = () => (editors.at(-1) as unknown as { onStatus(s: object | null): void; onPresence?: unknown; onEditor(e: object): void });
+
+  it("an Edit link keeps a copy on the guest's device, by its link; a reader's page and the owner's keep none", () => {
+    show("edit");
+    expect(pageAdapters().collab?.offline).toBe("tempcode-guest:L1");
+    cleanup();
+    show("comment");
+    expect(pageAdapters().collab?.offline).toBe(false);
+    cleanup();
+    show("view");
+    expect(pageAdapters().collab?.offline).toBe(false);
+    cleanup();
+    show("edit", sessionOf({ kind: "owner", ticket: null }));
+    expect(pageAdapters().collab?.offline).toBe(false);
+  });
+
+  it("says within the line's own words that edits are kept on this device, once the host has been quiet two seconds; the host's next word takes the line away", () => {
+    const view = show("edit");
+    const status = () => view.container.querySelector("[data-guest-status]");
+    expect(status()).toBeNull();
+    act(() => watches.at(-1)!.quiet!(true));
+    expect(status()!.textContent).toBe(OFFLINE_WORDS.device);
+    expect(status()!.getAttribute("role")).toBe("status");
+    act(() => watches.at(-1)!.quiet!(false));
+    expect(status()).toBeNull();
+    // The browser's own word that it is offline says it at once.
+    act(() => void window.dispatchEvent(new Event("offline")));
+    expect(status()!.textContent).toBe(OFFLINE_WORDS.device);
+  });
+
+  it("says what is true of each page: a reader has nothing to keep, and the owner's page keeps his edits in its tab", () => {
+    const reader = show("view");
+    act(() => void window.dispatchEvent(new Event("offline")));
+    expect(reader.container.querySelector("[data-guest-status]")!.textContent).toBe(OFFLINE_WORDS.reader);
+    cleanup();
+    const own = show("edit", sessionOf({ kind: "owner", ticket: null }));
+    act(() => watches.at(-1)!.quiet!(true));
+    expect(own.container.querySelector("[data-guest-status]")!.textContent).toBe(OFFLINE_WORDS.tab);
+  });
+
+  it("puts the editor's own offline trouble in the same words, and any other trouble in the editor's", () => {
+    const view = show("edit");
+    act(() => collab().onStatus({ kind: "offline", message: "Offline. Edits stay on this device until the connection is back.", retry: null }));
+    expect(view.container.querySelector("[data-guest-status]")!.textContent).toBe(OFFLINE_WORDS.device);
+    act(() => collab().onStatus({ kind: "refused", message: "This document could not be opened for editing.", retry: () => {} }));
+    expect(view.container.querySelector("[data-guest-status]")!.textContent).toBe("This document could not be opened for editing.Retry");
+  });
+
+  it("an update the host cut as too large is said once with Reload, the copy that holds it wiped and the editor gone: nothing sends it again", async () => {
+    const view = show("edit");
+    act(() => watches.at(-1)!.tooBig!());
+    await waitFor(() => expect(view.container.querySelector("[role=alert]")).not.toBeNull());
+    expect(view.container.querySelector("[role=alert]")!.textContent).toBe(`${TOO_BIG_WORDS}Reload`);
+    expect(wiped).toEqual(["L1:kdocrun"]);
+    expect(view.container.querySelector("[data-fake-editor]")).toBeNull();
+    expect(view.container.querySelector("[data-guest-row]")).toBeNull();
+  });
+
+  it("a link that sent more than its budget is told its edits are kept and go in a minute; the host's next word takes the line away", () => {
+    const view = show("edit");
+    act(() => watches.at(-1)!.tooMuch!());
+    expect(view.container.querySelector("[data-guest-status]")!.textContent).toBe(TOO_MUCH_WORDS);
+    // The editor stays: nothing typed is lost, and the page comes back by itself.
+    expect(view.container.querySelector("[data-fake-editor]")).not.toBeNull();
+    act(() => watches.at(-1)!.quiet!(false));
+    expect(view.container.querySelector("[data-guest-status]")).toBeNull();
+  });
+
+  it("a document as large as a guest may make it says so once with Reload, and the edit that did not go is not kept to be sent again", async () => {
+    const view = show("edit");
+    act(() => watches.at(-1)!.full!());
+    await waitFor(() => expect(view.container.querySelector("[role=alert]")).not.toBeNull());
+    expect(view.container.querySelector("[role=alert]")!.textContent).toBe(`${FULL_WORDS}Reload`);
+    expect(wiped).toEqual(["L1:kdocrun"]);
+    expect(view.container.querySelector("[data-fake-editor]")).toBeNull();
+  });
+
+  it("a copy the host refuses is wiped and the page read afresh, once: a second refusal ends as any revoked close does", async () => {
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    sessionStorage.clear();
+    show("edit");
+    act(() => watches.at(-1)!.refusedCopy!());
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(wiped).toEqual(["L1:kdocrun"]);
+    // The same tab, after that reload: no second wipe, no loop (the link still stands as it was, so the socket just comes back).
+    cleanup();
+    show("edit", { ...session, refresh: async () => ({ role: "edit", token: "t", tokenExp: 0 }) } as unknown as Session);
+    act(() => watches.at(-1)!.refusedCopy!());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(wiped).toHaveLength(1);
+    // A reader's page keeps no copy to refuse.
+    cleanup();
+    show("view");
+    expect(watches.at(-1)!.refusedCopy).toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it("tells the page's line who else is in the document, and the owner's page says his own name", () => {
+    const people: unknown[] = [];
+    render(<main><DocPage session={session} opened={opened("edit")} scheme="light" onGone={() => {}} onPeople={(p) => people.push(p)} /></main>);
+    const tell = (editors.at(-1) as unknown as { onPresence(p: unknown[]): void }).onPresence;
+    tell([{ id: "owner", name: "Landon Hale", avatarUrl: null, color: "#3b82f6" }]);
+    expect(people).toEqual([[{ id: "owner", name: "Landon Hale", avatarUrl: null, color: "#3b82f6" }]]);
+    cleanup();
+    render(<main><DocPage session={sessionOf({ kind: "owner", ticket: null })} opened={{ ...opened("edit"), name: undefined, me: "owner", self: "Landon Hale" } as Opened} scheme="light" onGone={() => {}} /></main>);
+    expect(pageAdapters().identity?.me).toMatchObject({ id: "owner", name: "Landon Hale" });
+  });
+
+  it("after a reload the caret is back in the text at its start; a first open leaves it where the reader's eye is", () => {
+    const made = { focus: vi.fn(), setTextCursorPosition: vi.fn(), document: [{ id: "b1" }] };
+    const nav = vi.spyOn(performance, "getEntriesByType");
+    nav.mockReturnValue([{ type: "navigate" } as unknown as PerformanceEntry]);
+    show("edit");
+    act(() => collab().onEditor(made));
+    expect(made.focus).not.toHaveBeenCalled();
+    cleanup();
+    nav.mockReturnValue([{ type: "reload" } as unknown as PerformanceEntry]);
+    show("edit");
+    act(() => collab().onEditor(made));
+    expect(made.setTextCursorPosition).toHaveBeenCalledWith({ id: "b1" }, "start");
+    expect(made.focus).toHaveBeenCalledTimes(1);
+    // A reader has no caret to put back.
+    cleanup();
+    show("view");
+    act(() => collab().onEditor(made));
+    expect(made.focus).toHaveBeenCalledTimes(1);
+    nav.mockRestore();
+  });
+
+  it("gives every comment control a finger's 44px around it under 640px, drawn as it was", () => {
+    const css = readFileSync(join(__dirname, "guest.css"), "utf8");
+    const narrow = css.slice(css.lastIndexOf("@media (max-width: 639.98px)"));
+    expect(narrow).toMatch(/\.te-card, \.te-margin, \.te-threads-foot\), \.te-threads-popover\) button::after \{\s*content: "";\s*position: absolute;\s*inset-block: min\(0px, calc\(\(100% - 44px\) \/ 2\)\);\s*inset-inline: min\(0px, calc\(\(100% - 44px\) \/ 2\)\);/);
   });
 });

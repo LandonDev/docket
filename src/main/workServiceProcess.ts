@@ -24,6 +24,7 @@ let starting = false
 let heldLinks: Extract<ToService, { t: 'links' }>['links'] | null = null
 let heldTrusted: Extract<ToService, { t: 'trusted' }>['trusted'] | null = null
 let heldZone: string | null = null
+let heldOrigins: Extract<ToService, { t: 'origins' }>['origins'] | null = null
 const heldProjects = new Map<string, Extract<ToService, { t: 'project' }>['project']>()
 
 const jwt = (): Promise<string> =>
@@ -55,10 +56,11 @@ parent.on('message', (event: { data: unknown }) => {
         if (heldLinks) service.setLinks(heldLinks)
         if (heldTrusted) service.setTrusted(heldTrusted)
         if (heldZone) service.setZone(heldZone)
+        if (heldOrigins) service.setOrigins(heldOrigins)
         for (const [linkId, project] of heldProjects) service.setProject(linkId, project)
         heldProjects.clear()
-        heldLinks = heldTrusted = heldZone = null
-        send({ t: 'ready', port: service.port })
+        heldLinks = heldTrusted = heldZone = heldOrigins = null
+        send({ t: 'ready', port: service.port, mark: service.mark })
       },
       fault
     )
@@ -71,6 +73,9 @@ parent.on('message', (event: { data: unknown }) => {
   } else if (m.t === 'project') {
     if (running) running.setProject(m.linkId, m.project)
     else heldProjects.set(m.linkId, m.project)
+  } else if (m.t === 'origins') {
+    if (running) running.setOrigins(m.origins)
+    else heldOrigins = m.origins
   } else if (m.t === 'trusted') {
     if (running) running.setTrusted(m.trusted)
     else heldTrusted = m.trusted

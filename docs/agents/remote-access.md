@@ -156,6 +156,19 @@
   isolated preview instance plus a real Chrome profile over CDP through
   `/pair`, `/ui`, a thread, a reply, the cookie and the CSP rewrite).
 
+## Guest pages share nothing with `/ui`
+
+The session cookie (`tc_session`: HttpOnly, `SameSite=Lax`, `Path=/`, set for
+this hostname alone) and the `/ws` origin check both pass for any page of
+this origin. Guest pages and the owner's hosted editor were pages of this
+origin (the tunnel sends `^/(g|w|f)/` to the Work service). They now have a
+hostname of their own, `share.landonhale.com`, served by the Work service
+alone: no route of this listener answers there, the cookie is never sent to
+it, and a socket here from a page of that origin is refused by `/ws`'s own
+check. Once the host's `work.guests.origin` is set, a guest's address asked
+for on this hostname answers 308 to the same path there
+([work-guests.md](work-guests.md) "The guest origin").
+
 ## The Work fence, by the host a source names
 
 This is the one account of it; work.md, work-teams-files.md and CLAUDE.md link

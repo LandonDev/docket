@@ -1,13 +1,17 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { createCollabVerifier, type VerifiedClaims } from 'work-kit/collab-server'
 import { knownSchema, SCHEMA_PARAM } from 'work-kit/collab'
 import { projectionLists } from '../../../../../shared/work/guestProjection'
+import { ensureDocUid, fileUid } from '../../guests/fileIdent'
 import type { GuestServiceLink } from '../../guests/wire'
+import { encodeStateAsUpdate } from 'yjs'
+import { BUDGET, Bucket, Buckets, CLOSE_FULL, CLOSE_TOO_MUCH, tooMuchWords } from './budget'
 import { HOSTED_CSP } from './hosted'
-import { BASE_HEADERS, refuseUpgrade, sendText, type InternalRoute, type PublicRoute, type RouteCtx } from './route'
+import { hostOf as sheetHost } from './internalSheet'
+import { BASE_HEADERS, refuseUpgrade, RouteError, sendText, type InternalRoute, type PublicRoute, type RouteCtx } from './route'
 import { sheetRoute } from './sheet'
 
 /**
@@ -36,6 +40,12 @@ import { sheetRoute } from './sheet'
  * comments, and a guest of the whole project is shown neither. Nothing on
  * these routes writes for a project's link, and a document or sheet outside
  * the projection answers as gone, like an unknown link.
+ *
+ * A start is not an end. Until main has sent its links since this service
+ * started (`ctx.settled()`), nothing here can tell a link that ended from one
+ * main has not named yet: every route that would answer "gone" answers 503
+ * `{error: 'starting'}` instead, counts no failed secret, and the page tries
+ * again. Once main has spoken, a link that is not in its list is gone at once.
  *
  * Callers are told apart by `CF-Connecting-IP` (every request reaches us
  * from cloudflared on 127.0.0.1), else the peer address.
@@ -88,6 +98,46 @@ export class Window {
 /** Requests per caller per minute, failed secrets per caller per ten minutes, comments per link per minute. */
 export const LIMITS = { requests: new Window(240, 60_000), failures: new Window(10, 10 * 60_000), comments: new Window(20, 60_000) }
 
+/** Bytes each link's document sockets may send (budget.ts): one bucket a link, whatever sockets it holds. */
+export const DOC_BYTES = new Buckets((now) => new Bucket(BUDGET.bytes, BUDGET.bytesPerMinute / 60_000, now))
+
+/** A live document's size as its state, measured at most every ten seconds a document: what a guest may not grow past `BUDGET.docBytes`. */
+const sizes = new Map<string, { at: number; bytes: number }>()
+function docBytes(ctx: RouteCtx, doc: string, now = Date.now()): number {
+  const held = sizes.get(doc)
+  if (held && now - held.at < 10_000) return held.bytes
+  const live = ctx.collab.hocuspocus.documents.get(doc)
+  const bytes = live ? encodeStateAsUpdate(live).byteLength : 0
+  if (sizes.size > 2000) sizes.clear()
+  sizes.set(doc, { at: now, bytes })
+  return bytes
+}
+
+/**
+ * Whether a frame of the collaboration wire adds to the document: a change, or a sync answer that carries one
+ * (after the document's name: kind 0, then 1 or 2, then the update, which is two bytes when it holds nothing).
+ */
+export function addsContent(bytes: Uint8Array): boolean {
+  let at = 0
+  const varUint = (): number | null => {
+    let n = 0
+    for (let shift = 0; at < bytes.length && shift < 35; shift += 7) {
+      const b = bytes[at++]!
+      n |= (b & 0x7f) << shift
+      if (b < 0x80) return n >>> 0
+    }
+    return null
+  }
+  const name = varUint()
+  if (name === null) return false
+  at += name
+  if (varUint() !== 0) return false
+  const step = varUint()
+  if (step !== 1 && step !== 2) return false
+  const size = varUint()
+  return size !== null && size > 2
+}
+
 /** Who is asking, for the limits: the tunnel's `CF-Connecting-IP`, else the peer; an IPv6 address by its /64, which one home or host holds whole. */
 export const callerOf = (req: IncomingMessage): string => {
   const cf = req.headers['cf-connecting-ip']
@@ -113,7 +163,21 @@ const sockets = (id: string, by: number): void => {
 }
 
 /** Main asks it for the audit list: when each link was last opened and how many sockets it holds. */
-export const internalGuestRoutes: InternalRoute[] = [{ path: '/internal/guests/seen', milestone: 31, run: async () => ({ seen: Object.fromEntries(seen) }) }]
+export const internalGuestRoutes: InternalRoute[] = [
+  { path: '/internal/guests/seen', milestone: 31, run: async () => ({ seen: Object.fromEntries(seen) }) },
+  {
+    // The id a `.tcdoc` or `.tcsheet` carries inside it, made here when it has none: this process is the file's one
+    // writer (guests/fileIdent.ts). A sheet is named as its workbook is, by the spelling main gives, in its own lane.
+    path: '/internal/guests/ident',
+    milestone: 31,
+    async run(body, ctx) {
+      const path = body.path
+      if (typeof path !== 'string' || !isAbsolute(path) || !/\.tc(doc|sheet)$/i.test(path)) throw new RouteError(400, 'path is an absolute .tcdoc or .tcsheet')
+      if (!existsSync(path)) throw new RouteError(404, 'there is no file there')
+      return { uid: /\.tcsheet$/i.test(path) ? await sheetHost(ctx).ident({ tcsheet: path }) : ensureDocUid(path) }
+    }
+  }
+]
 
 // ── helpers ────────────────────────────────────────────────────────────
 
@@ -127,10 +191,14 @@ const sameHash = (secret: string, hex: string): boolean => {
 /** A sheet socket reached through a guest link's own address: the sheet route takes only that link's token on it. */
 export type GuestBound = IncomingMessage & { guestLink?: string }
 
-/** A live guest link by id, or null (a ticket's pass is never one). */
+/**
+ * A live guest link by id, or null (a ticket's pass is never one). A file's link is live only while the file at its
+ * path is the one he shared (guests/fileIdent.ts): another file put there opens for nobody, from the first request.
+ */
 export function guestLink(ctx: RouteCtx, id: string, now = Date.now()): (GuestServiceLink & { guest: NonNullable<GuestServiceLink['guest']> }) | null {
   const l = ctx.links().get(id) as GuestServiceLink | undefined
   if (!l?.guest || l.revokedAt !== null || l.expiresAt <= now) return null
+  if (l.guest.file && fileUid(l.guest.file.path) !== l.guest.file.uid) return null
   return l as GuestServiceLink & { guest: NonNullable<GuestServiceLink['guest']> }
 }
 
@@ -238,6 +306,28 @@ const hostOf = (origin: string): string | null => {
     return null
   }
 }
+
+/**
+ * Once guest pages have an origin of their own (docs/agents/work-guests.md "The guest origin"), they are served
+ * there alone: the origin a request reached us on that is not it, or null. A page asked for elsewhere is sent on
+ * (308: an address already handed out keeps opening, and a browser carries its fragment across), and nothing else
+ * of a guest's answers there.
+ */
+export function elsewhere(req: IncomingMessage, ctx: RouteCtx): string | null {
+  const guest = ctx.origins().guest
+  if (!guest) return null
+  const host = req.headers.host
+  return typeof host === 'string' && host.toLowerCase() !== hostOf(guest) ? guest : null
+}
+
+/** 308 to the same path on the guest pages' origin. */
+export function sendOn(res: ServerResponse, origin: string, path: string): void {
+  res.writeHead(308, { ...BASE_HEADERS, Location: `${origin}${path}` })
+  res.end()
+}
+
+/** What a route answers (503) while main has not named its links since this service started. */
+export const STARTING = { error: 'starting' } as const
 
 // ── the route ──────────────────────────────────────────────────────────
 
@@ -392,6 +482,9 @@ function upgrade(req: IncomingMessage, socket: import('node:stream').Duplex, hea
     if (sheet) return refuseUpgrade(socket, 404, 'gone')
     item = link.item
   }
+  // A link holds a few sockets at a time, and none while it waits out what it overdrew (budget.ts).
+  if ((seen.get(id)?.open ?? 0) >= BUDGET.sockets) return refuseUpgrade(socket, 429, 'too many pages are open on this link')
+  if (DOC_BYTES.of(id).held() > 0) return refuseUpgrade(socket, 429, 'too much at once: wait a minute')
   sockets(id, 1)
   socket.once('close', () => sockets(id, -1))
   if ('sheet' in item) {
@@ -408,15 +501,24 @@ function upgrade(req: IncomingMessage, socket: import('node:stream').Duplex, hea
     // The guest's editor says the document schema it knows in its socket's address: carried through, and nothing
     // else of the address (work-kit's schema gate; a guest that says none knows 0 and is refused a styled document).
     const known = knownSchema(new URL(req.url ?? '/', 'http://localhost').searchParams.get(SCHEMA_PARAM))
-    const accepted = ctx.collab.accept(ws, new Request(`http://localhost/w/doc/${encodeURIComponent(doc)}${known > 0 ? `?${SCHEMA_PARAM}=${known}` : ''}`, { headers }), { doc })
+    const accepted = ctx.collab.accept(ws, new Request(`http://localhost/w/doc/${encodeURIComponent(doc)}${known > 0 ? `?${SCHEMA_PARAM}=${known}` : ''}`, { headers }), { doc, link: id })
     ws.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
       const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data)
-      accepted.message(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength))
+      const frame = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+      // The link's budget, before the document sees the frame: one over it is not passed on, and the page is told how long to wait.
+      const wait = DOC_BYTES.of(id).take(frame.byteLength)
+      if (wait > 0) return ws.close(CLOSE_TOO_MUCH, tooMuchWords(wait))
+      // A guest adds nothing to a document that is as large as a guest may make it; reading it, and the owner's own edits, go on.
+      if (link.role === 'edit' && addsContent(frame) && docBytes(ctx, doc) > BUDGET.docBytes) return ws.close(CLOSE_FULL, 'the document is as large as a guest can make it')
+      accepted.message(frame)
     })
     ws.on('close', (code: number, reason: Buffer) => {
       accepted.close(code, reason.toString())
+      ctx.docLeft(doc)
       // What an edit link's guest wrote is a version of its own (M19's `guest-end`); nothing written cuts nothing.
-      if (link.role === 'edit' && cutDue(`${doc}|${id}`)) void ctx.history.cut(doc, 'guest-end').catch((err: Error) => ctx.log(`[guests] ${doc}: the guest-end version was not cut: ${err.message}`))
+      // A file's document is cut by its file: the name alone opens no file (work-kit `fileFits`).
+      const file = link.guest?.file ? { file: { path: link.guest.file.path } } : undefined
+      if (link.role === 'edit' && cutDue(`${doc}|${id}`)) void ctx.history.cut(doc, 'guest-end', file).catch((err: Error) => ctx.log(`[guests] ${doc}: the guest-end version was not cut: ${err.message}`))
     })
     ws.on('error', () => ws.terminate())
   })
@@ -429,14 +531,17 @@ export const guestsRoute: PublicRoute = {
   async http(req, res, ctx) {
     if (!LIMITS.requests.take(callerOf(req))) return json(res, 429, { error: 'Too many requests from here. Try again in a minute.' })
     const path = new URL(req.url ?? '/', 'http://service').pathname
+    const other = elsewhere(req, ctx)
     if (PAGE.test(path)) {
       if (req.method !== 'GET' && req.method !== 'HEAD') return sendText(res, 405, 'read only')
+      if (other) return sendOn(res, other, path)
       return sendPage(req, res, ctx)
     }
     const m = ACTION.exec(path)
-    if (!m) return sendText(res, 404, 'not found')
+    if (!m || other) return sendText(res, 404, 'not found')
     const [, id, what] = m as unknown as [string, string, 'open' | 'item' | 'threads' | 'comment']
     if (what === 'threads' ? req.method !== 'GET' : req.method !== 'POST') return sendText(res, 405, what === 'threads' ? 'GET only' : 'POST only')
+    if (!ctx.settled()) return json(res, 503, STARTING)
     // A body from a page of another origin is refused: the guest's page is this origin's.
     const origin = req.headers.origin
     if (what !== 'threads' && typeof origin === 'string' && origin !== 'null' && hostOf(origin) !== req.headers.host) return json(res, 403, { error: 'refused' })
@@ -448,8 +553,9 @@ export const guestsRoute: PublicRoute = {
   upgrade(req, socket, head, ctx) {
     const path = (req.url ?? '').split('?')[0]
     const m = SOCKET.exec(path)
-    if (!m) return refuseUpgrade(socket, 404, 'not found')
+    if (!m || elsewhere(req, ctx)) return refuseUpgrade(socket, 404, 'not found')
     if (!LIMITS.requests.take(callerOf(req))) return refuseUpgrade(socket, 503, 'too many requests')
+    if (!ctx.settled()) return refuseUpgrade(socket, 503, 'starting')
     upgrade(req, socket, head, ctx, m[1]!, m[2])
   }
 }

@@ -63,13 +63,14 @@ function inProcess(spawned: Child[]): () => ServiceChild {
               if (zone) s.setZone(zone)
               for (const [linkId, project] of held) s.setProject(linkId, project)
               held.clear()
-              emit({ t: 'ready', port: s.port })
+              emit({ t: 'ready', port: s.port, mark: s.mark })
             },
             (err: Error) => (emit({ t: 'fault', message: err.message }), exit(1))
           )
         else if (m.t === 'jwt') asked.get(m.id)?.(m.jwt ?? '')
         else if (m.t === 'zone') running ? running.setZone(m.zone) : (zone = m.zone)
         else if (m.t === 'links') running?.setLinks(m.links)
+        else if (m.t === 'origins') running?.setOrigins(m.origins)
         // As the real process does (workServiceProcess.ts): one that comes while it starts is kept for when it runs.
         else if (m.t === 'project') running ? running.setProject(m.linkId, m.project) : held.set(m.linkId, m.project)
         else if (m.t === 'stop') void running?.stop().then(() => (emit({ t: 'stopped' }), exit(0)))
@@ -315,6 +316,26 @@ describe('ctx.service', () => {
     // Taken away, the link shows nothing: the page is told to try again.
     supervisor.setProject('L1', null)
     expect((await open()).status).toBe(503)
+  })
+
+  it("a service that restarts alone is handed main's last links as settled; one forked before main has any is told they are not", async () => {
+    const spawned: Child[] = []
+    const work = host('env_a', spawned)
+    work.settings.set({ enabled: true })
+    const supervisor = serviceOf(work.ctx)!
+    await until('running', () => supervisor.state() === 'running')
+    const configOf = (c: Child) => (c.messages.find((m) => m.t === 'config') as Extract<ToService, { t: 'config' }>).config
+    // Main has just started: it knows no links yet, and says so.
+    expect(configOf(spawned[0]!).linksSettled).toBe(false)
+    expect(supervisor.mark()).toBe(spawned[0]!.service()!.mark)
+    supervisor.setLinks([])
+    spawned[0]!.die(1)
+    await until('restarted', () => spawned.length === 2 && supervisor.state() === 'running')
+    expect(configOf(spawned[1]!).linksSettled).toBe(true)
+    expect(supervisor.mark()).toBe(spawned[1]!.service()!.mark)
+    expect(supervisor.mark()).not.toBe(spawned[0]!.service()?.mark)
+    // An isolated instance: loopback pages pass, and it names no hostname.
+    expect(configOf(spawned[1]!).origins).toEqual({ allowed: [], guest: null, loopback: true })
   })
 
   it('a call made while the service is still starting waits for it rather than failing', async () => {

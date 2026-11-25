@@ -29,6 +29,9 @@ export function ensureGuestTables(db: DatabaseSync): void {
   // What this host has marked shared in LifeOS: a project link marks every document and sheet the
   // project shows, and only this remembers them once the link is over and the host has restarted.
   db.exec(`CREATE TABLE IF NOT EXISTS ${GUEST_MARKS_TABLE} (key TEXT PRIMARY KEY)`)
+  // A file link's file, by the id inside it (fileIdent.ts); null for a LifeOS row's link, and for a file's made before the rule.
+  const columns = new Set((db.prepare(`PRAGMA table_info(${GUEST_LINKS_TABLE})`).all() as { name: string }[]).map((c) => c.name))
+  if (!columns.has('file_uid')) db.exec(`ALTER TABLE ${GUEST_LINKS_TABLE} ADD COLUMN file_uid TEXT`)
 }
 
 /** A link's row as main keeps it: the public row and what only the host may read. */
@@ -36,6 +39,8 @@ export interface StoredLink extends Omit<GuestLinkRow, 'lastOpenedAt' | 'open'> 
   secretHash: string
   /** the thread whose request his press granted; null for his own */
   bySession: string | null
+  /** a file link's file, by the id inside it; null for any other link, and until an older file link's is read */
+  fileUid: string | null
 }
 
 type Raw = {
@@ -49,6 +54,7 @@ type Raw = {
   expires_at: number
   revoked_at: number | null
   by_session: string | null
+  file_uid?: string | null
 }
 
 const rowOf = (r: Raw): StoredLink => ({
@@ -62,7 +68,8 @@ const rowOf = (r: Raw): StoredLink => ({
   expiresAt: r.expires_at,
   revokedAt: r.revoked_at,
   by: r.by_session ? 'agent' : 'owner',
-  bySession: r.by_session
+  bySession: r.by_session,
+  fileUid: r.file_uid ?? null
 })
 
 export const hashSecret = (secret: string): string => createHash('sha256').update(secret, 'utf8').digest('hex')
@@ -79,13 +86,18 @@ export class GuestStore {
   constructor(private readonly db: DatabaseSync) {}
 
   /** A new link and its secret; the secret is returned here and nowhere else. */
-  create(o: { name: string; source: GuestLinkSource; title: string; role: GuestRole; expiresAt: number; bySession: string | null }, now = Date.now()): { link: StoredLink; secret: string } {
+  create(o: { name: string; source: GuestLinkSource; title: string; role: GuestRole; expiresAt: number; bySession: string | null; fileUid?: string | null }, now = Date.now()): { link: StoredLink; secret: string } {
     const id = randomBytes(12).toString('base64url')
     const secret = randomBytes(32).toString('base64url')
     this.db
-      .prepare(`INSERT INTO ${GUEST_LINKS_TABLE} (id, secret_hash, name, source, title, role, created_at, expires_at, revoked_at, by_session) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?)`)
-      .run(id, hashSecret(secret), o.name, JSON.stringify(o.source), o.title, o.role, now, o.expiresAt, o.bySession)
+      .prepare(`INSERT INTO ${GUEST_LINKS_TABLE} (id, secret_hash, name, source, title, role, created_at, expires_at, revoked_at, by_session, file_uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`)
+      .run(id, hashSecret(secret), o.name, JSON.stringify(o.source), o.title, o.role, now, o.expiresAt, o.bySession, o.fileUid ?? null)
     return { link: this.get(id)!, secret }
+  }
+
+  /** A file link made before links knew their file by its id: the id its file carries now is taken as its own, once. */
+  setFileUid(id: string, uid: string): void {
+    this.db.prepare(`UPDATE ${GUEST_LINKS_TABLE} SET file_uid = ? WHERE id = ? AND file_uid IS NULL`).run(uid, id)
   }
 
   get(id: string): StoredLink | null {
@@ -160,6 +172,21 @@ export function fileLinked(db: DatabaseSync | undefined, resolved: string, now =
   } catch {
     return false
   }
+}
+
+/**
+ * What ends a guest's edit access to a file, by this host's database: the guests runtime puts itself here
+ * (links.ts), so the pillar that is about to send a document's edits on to another file can ask without reaching it.
+ */
+const editEnders = new WeakMap<object, (resolved: string) => Promise<void>>()
+export const setEditEnder = (db: DatabaseSync, end: (resolved: string) => Promise<void>): void => void editEnders.set(db, end)
+
+/**
+ * Before a document's edits start going to another file (Save As keeps the two linked, files/saveAs.ts): every guest
+ * who could edit it can only view it from now, their sockets closed, so nothing a guest types reaches that file.
+ */
+export async function endGuestEditOn(db: DatabaseSync | undefined, resolved: string): Promise<void> {
+  if (db && fileLinked(db, resolved)) await editEnders.get(db)?.(resolved)
 }
 
 /** `fileLinked` for a canvas source: a file on this disk, by its resolved path. */

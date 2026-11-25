@@ -7,6 +7,7 @@ import { formRoute } from './form'
 import { fullEditorRoute } from './fullEditor'
 import { guestsRoute, internalGuestRoutes } from './guests'
 import { historyRoutes } from '../../history/serviceRoutes'
+import { healthzRoute } from './healthz'
 import { hostedRoute } from './hosted'
 import { internalDocRoutes } from './internal'
 import { itemRoute } from './item'
@@ -21,6 +22,7 @@ import { sheetRoute } from './sheet'
  *
  *   /w/doc/<docId>        routes/doc.ts         18
  *   /w/hosted/*           routes/hosted.ts      18
+ *   /w/healthz            routes/healthz.ts     31 (the start mark)
  *   /w/sheet/<sheetId>    routes/sheet.ts       27
  *   /w/open               routes/item.ts        31
  *   /g/*                  routes/guests.ts      31
@@ -34,7 +36,7 @@ import { sheetRoute } from './sheet'
  *                         the guests' /internal/guests/seen in routes/guests.ts 31,
  *                         the google pillar's in work/google/serviceRoutes.ts 30
  */
-export const PUBLIC_ROUTES: readonly PublicRoute[] = [docRoute, hostedRoute, sheetRoute, itemRoute, guestsRoute, officeRoute, formRoute, fullEditorRoute]
+export const PUBLIC_ROUTES: readonly PublicRoute[] = [docRoute, hostedRoute, healthzRoute, sheetRoute, itemRoute, guestsRoute, officeRoute, formRoute, fullEditorRoute]
 
 export const INTERNAL_ROUTES = [...internalDocRoutes, ...historyRoutes, ...docsRoutes, ...formatsRoutes, ...internalGuestRoutes, ...googleRoutes]
 

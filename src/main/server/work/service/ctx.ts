@@ -8,8 +8,9 @@ import type { CtxPart, WorkPartDeps } from '../ctx'
 import { lifeosAddress } from '../lifeos/ctx'
 import { hisZone } from '../clock'
 import type { WorkCtx } from '../modules'
+import { WORK_OWNER_NAME_SETTING } from '../preamble'
 import { WORK_OFF } from '../scope'
-import { lifeosServerOf, servicePaths, servicePort } from './config'
+import { GUEST_ORIGIN_SETTING, lifeosServerOf, serviceOrigins, servicePaths, servicePort } from './config'
 import { hostedDir, spawnServiceChild } from './spawn'
 import { ServiceSupervisor, type ServiceChild } from './supervisor'
 
@@ -113,6 +114,8 @@ export const servicePart: CtxPart<'service'> = (ctx, deps) => {
     lifeosIssuer: () => lifeosIssuer(deps, env),
     jwt: () => ctx.lifeos.jwt(),
     zone: () => hisZone(ctx),
+    ownerName: () => deps.store.getSetting(WORK_OWNER_NAME_SETTING)?.trim() ?? '',
+    origins: () => serviceOrigins(deps.store.getSetting(GUEST_ORIGIN_SETTING)?.trim() || null, env),
     log: (line) => ctx.log(line),
     ...(seams.backoffMs !== undefined ? { backoffMs: seams.backoffMs } : {})
   })

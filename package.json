@@ -50,6 +50,7 @@
     "script:e2e-domain": "esbuild scripts/e2e-domain.ts --bundle --platform=node --format=esm --packages=external --alias:@shared=./src/shared --outfile=scripts/.out/e2e-domain.mjs && node scripts/.out/e2e-domain.mjs",
     "script:e2e-updater": "bun scripts/e2e-updater.ts",
     "script:e2e-phone-hosted": "bun scripts/e2e-phone-hosted.ts",
+    "script:e2e-guest-live": "bun scripts/e2e-guest-live.ts",
     "script:e2e-launch-timing": "bun scripts/e2e-launch-timing.ts",
     "script:e2e-connection": "bun scripts/e2e-connection.ts",
     "script:e2e-environments-ui": "bun scripts/e2e-environments-ui.ts",
@@ -298,7 +299,7 @@
     "unified": "^11.0.5",
     "vite": "^7.2.6",
     "vitest": "^3.2.4",
-    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#f9a190c7952e0a0b8ec6f57fe46983c80cd507e9",
+    "work-kit": "git+https://www.github.com/LandonDev/work-kit.git#28c7ea0fe20f50ce8e963c7b9cc3b8c438f1a19c",
     "y-prosemirror": "1.3.7",
     "y-protocols": "1.0.7",
     "zustand": "^5.0.15"

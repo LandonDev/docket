@@ -156,7 +156,20 @@ expected Cloudflare 502.
 The Work service's public routes ride the same hostname: a rule before it
 sends paths matching `^/(g|w|f)/` to the installed host's Work port, 7695
 (docs/agents/work-service.md). The rule is in `scripts/box/ingress.yml` and
-reaches the box with the next apply.
+is live on the tunnel.
+
+Guest pages have a hostname of their own, `share.landonhale.com`: the whole
+host goes to the Work port, 7695, whose closed route list answers 404 for
+anything that is not a Work route, so nothing of the remote listener (`/ui`,
+`/ws`, `/api`) is reachable there and his session's cookie is never sent to
+it (docs/agents/work-guests.md "The guest origin"). It needs a DNS route of
+its own (`cloudflared tunnel route dns tempcode-box share.landonhale.com`,
+run on the Mac, which holds the origin certificate) and the ingress rule,
+which comes before the `tempcode.landonhale.com` rules. A change to the
+ingress restarts cloudflared, and every hostname of the tunnel drops for a
+second or two. The host uses the name only once
+`work.guests.setOrigin {origin}` has checked that it answers as this very
+service.
 
 To add a production hostname:
 

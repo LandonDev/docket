@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -10,13 +11,14 @@ import { GUEST_KEEP_MS, guestRefusal, type LifeosGuestSource } from '@shared/con
 import type { Caller, WorkCtx } from '../modules'
 import { startFakeConvex, type FakeConvex } from '../service/fakeConvex'
 import { PUBLIC_ROUTES } from '../service/routes'
-import { callerKey, cutDue, guestThreads, LIMITS, plainBody, Window } from '../service/routes/guests'
+import { BUDGET, CLOSE_FULL, CLOSE_TOO_MUCH, waitOf } from '../service/routes/budget'
+import { addsContent, callerKey, cutDue, DOC_BYTES, guestThreads, LIMITS, plainBody, Window } from '../service/routes/guests'
 import { servicePaths } from '../service/config'
 import { startWorkService, type RunningService } from '../service/serve'
 import { workClock } from '../clock'
 import { guestLinkKind, guestsTools } from '.'
 import { ActNotSent } from '../outbox/kinds'
-import { GuestRuntime } from './links'
+import { GuestRuntime, guestOriginSetting, originOf } from './links'
 import { ensureGuestTables, GuestStore, hashSecret } from './store'
 
 /*
@@ -31,10 +33,13 @@ const DOC = 'kdoc1'
 const OTHER = 'kdoc2'
 const open: { dirs: string[]; services: RunningService[]; clients: CollaborationClient[]; convex: FakeConvex[] } = { dirs: [], services: [], clients: [], convex: [] }
 
+const BUDGET_AS_SHIPPED = { ...BUDGET }
 beforeEach(() => {
   LIMITS.requests.clear()
   LIMITS.failures.clear()
   LIMITS.comments.clear()
+  DOC_BYTES.clear()
+  Object.assign(BUDGET, BUDGET_AS_SHIPPED)
 })
 afterEach(async () => {
   await Promise.all(open.clients.splice(0).map((c) => c.destroy()))
@@ -61,6 +66,9 @@ interface Rig {
   shared: { id: string; shared: boolean }[]
   logs: string[]
   base: string
+  ctx: WorkCtx
+  /** every list main sent the service */
+  sent: Parameters<RunningService['setLinks']>[0][]
 }
 
 async function rig(): Promise<Rig> {
@@ -114,8 +122,42 @@ async function rig(): Promise<Rig> {
       })
     }
   } as unknown as WorkCtx
-  const rt = new GuestRuntime(ctx, () => ({ tokenSigner: () => signer, setLinks: (links) => service.setLinks(links), setProject: (id, project) => service.setProject(id, project) }))
-  return { rt, service, convex, db, signer, shared, logs, base }
+  const sent: Rig['sent'] = []
+  const r: Rig = { rt: null as never, service, convex, db, signer, shared, logs, base, ctx, sent }
+  r.rt = new GuestRuntime(ctx, () => ({ tokenSigner: () => r.signer, setLinks: (links) => (sent.push(links), r.service.setLinks(links)), setProject: (id, project) => r.service.setProject(id, project) }))
+  return r
+}
+
+/** A second service on the first one's port, as a restart leaves it: `settled` false is main itself restarted (it has named no link yet). */
+async function restarted(r: Rig, settled: boolean, links: Parameters<RunningService['setLinks']>[0] = []): Promise<RunningService> {
+  const port = r.service.port
+  const dir = mkdtempSync(join(tmpdir(), 'm31-again-'))
+  open.dirs.push(dir)
+  const hosted = join(dir, 'hosted')
+  mkdirSync(join(hosted, 'guest'), { recursive: true })
+  writeFileSync(join(hosted, 'guest', 'index.html'), '<!doctype html><p>guest page</p>')
+  mkdirSync(join(dir, 'data'), { recursive: true })
+  await r.service.stop()
+  const keys = await generateCollabKeys('k2')
+  r.signer = await createCollabSigner({ privateJwk: keys.privateJwk, iss: 'tempcode:env_box' })
+  const service = await startWorkService(
+    {
+      port,
+      socketPath: servicePaths(join(dir, 'data')).socketPath,
+      secret: SECRET,
+      dataDir: join(dir, 'data', 'work-service'),
+      hostedDir: hosted,
+      host: 'env_box',
+      lifeos: { here: true, url: r.convex.url },
+      trusted: [{ by: 'host', iss: 'tempcode:env_box', aud: TEMPCODE_COLLAB_AUDIENCE, keys: [keys.publicJwk] }],
+      links,
+      linksSettled: settled
+    },
+    { jwt: async () => 'owner-jwt', log: (l) => r.logs.push(l) }
+  )
+  open.services.push(service)
+  r.service = service
+  return service
 }
 
 const doc = (id = DOC): LifeosGuestSource => ({ at: 'lifeos', table: 'docs', id })
@@ -148,6 +190,276 @@ function ownerSocket(r: Rig, name: string, token: string) {
 }
 const synced = (c: CollaborationClient) => c.provider.isSynced && !c.provider.hasUnsyncedChanges
 const ownerToken = async (r: Rig, name = DOC) => (await r.signer.sign({ doc: name, role: 'edit', principal: 'owner' }, 300)).token
+
+describe('the guest origin', () => {
+  const OLD = 'tempcode.test'
+  const SHARE = 'share.test'
+  /** One request to the service as a hostname's rule in the tunnel hands it over: the path, with that `Host`. */
+  const on = (r: Rig, host: string, method: string, path: string, body?: unknown): Promise<{ status: number; location: string | null; text: string }> =>
+    new Promise((resolve, reject) => {
+      const payload = body === undefined ? undefined : JSON.stringify(body)
+      const req = httpRequest({ host: '127.0.0.1', port: r.service.port, path, method, headers: { Host: host, ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) } : {}) } }, (res) => {
+        const chunks: Buffer[] = []
+        res.on('data', (c: Buffer) => chunks.push(c))
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, location: res.headers.location ?? null, text: Buffer.concat(chunks).toString() }))
+      })
+      req.on('error', reject)
+      req.end(payload)
+    })
+  const socketOn = (r: Rig, host: string, path: string): Promise<number> =>
+    new Promise((res) => {
+      const ws = new WsSocket(`ws://127.0.0.1:${r.service.port}${path}`, { headers: { Host: host } })
+      ws.on('open', () => (ws.terminate(), res(101)))
+      ws.on('unexpected-response', (_q, got) => res(got.statusCode ?? 0))
+      ws.on('error', () => {})
+    })
+  const flipped = (r: Rig) => r.service.setOrigins({ allowed: [`https://${OLD}`, `https://${SHARE}`], guest: `https://${SHARE}`, loopback: true })
+
+  it('while guest pages share the host, every route answers on it as before', async () => {
+    const r = await rig()
+    const g = await make(r, 'edit')
+    expect((await on(r, OLD, 'GET', `/g/${g.id}`)).status).toBe(200)
+    expect((await on(r, OLD, 'POST', `/g/${g.id}/open`, { secret: g.secret })).status).toBe(200)
+    expect((await on(r, OLD, 'GET', '/w/open')).status).toBe(200)
+    expect(await socketOn(r, OLD, `/g/ws/${g.id}`)).toBe(101)
+  })
+
+  it('once they have their own, a page asked for on another host is sent on to the same path there (308), and nothing else of a guest answers on the old one', async () => {
+    const r = await rig()
+    const g = await make(r, 'edit')
+    flipped(r)
+    // An address already handed out: the browser follows, and carries its fragment (the secret) with it.
+    expect(await on(r, OLD, 'GET', `/g/${g.id}`)).toMatchObject({ status: 308, location: `https://${SHARE}/g/${g.id}` })
+    expect(await on(r, OLD, 'GET', '/w/open')).toMatchObject({ status: 308, location: `https://${SHARE}/w/open` })
+    expect((await on(r, OLD, 'POST', `/g/${g.id}/open`, { secret: g.secret })).status).toBe(404)
+    expect((await on(r, OLD, 'GET', `/g/${g.id}/threads`)).status).toBe(404)
+    expect((await on(r, OLD, 'POST', `/g/${g.id}/comment`, { quote: 'x', text: 'y' })).status).toBe(404)
+    expect(await socketOn(r, OLD, `/g/ws/${g.id}`)).toBe(404)
+    // On the guest origin everything answers; the same id and secret open it.
+    expect((await on(r, SHARE, 'GET', `/g/${g.id}`)).status).toBe(200)
+    expect((await on(r, SHARE, 'POST', `/g/${g.id}/open`, { secret: g.secret })).status).toBe(200)
+    expect((await on(r, SHARE, 'GET', '/w/open')).status).toBe(200)
+    expect(await socketOn(r, SHARE, `/g/ws/${g.id}`)).toBe(101)
+    // What is not a guest's stays where it was: the hosted files, health, and his own page's renewals.
+    expect((await on(r, OLD, 'GET', '/w/healthz')).status).toBe(200)
+    expect((await on(r, OLD, 'POST', '/w/open/renew', { renew: 'x'.repeat(43) })).status).toBe(403)
+    // Nothing else of the host is served on the guest origin: its closed route list answers 404.
+    for (const path of ['/', '/ui', '/ws', '/api/x', '/pair']) expect((await on(r, SHARE, 'GET', path)).status, path).toBe(404)
+  })
+
+  it('takes a name only once it answers as this very service, keeps it, and a link made after carries it', async () => {
+    const r = await rig()
+    const before = await make(r, 'view')
+    // The host's own origin, whatever this run's is.
+    const own = new URL(before.url).origin
+    expect(own).not.toContain('share.')
+    let mark: string | null = r.service.mark
+    const asked: string[] = []
+    const refreshed: number[] = []
+    const fetchFn = (async (url: string) => (asked.push(url), url.startsWith('https://share.landonhale.com/') ? new Response(r.service.mark) : url.startsWith('https://other.example/') ? new Response('f'.repeat(32)) : Promise.reject(new Error('no such host')))) as unknown as typeof fetch
+    const rt = new GuestRuntime(r.ctx, () => ({ tokenSigner: () => r.signer, setLinks: (links) => r.service.setLinks(links), setProject: (id, project) => r.service.setProject(id, project), mark: () => mark, refreshOrigins: () => void refreshed.push(1) }), fetchFn)
+    // Another machine's service, a name that reaches nothing, and what is no origin at all: none is taken.
+    await expect(rt.setOrigin('https://other.example')).rejects.toThrow("https://other.example does not reach this computer's Work service. Nothing changed.")
+    await expect(rt.setOrigin('https://nowhere.example')).rejects.toThrow('does not reach')
+    for (const bad of ['http://share.landonhale.com', 'https://share.landonhale.com/g', 'share.landonhale.com', 'https://user@share.landonhale.com', 'javascript:alert(1)'])
+      await expect(rt.setOrigin(bad), bad).rejects.toThrow('An origin is https:// and a name')
+    mark = null
+    await expect(rt.setOrigin('https://share.landonhale.com')).rejects.toThrow('The Work service is not running')
+    expect(guestOriginSetting(r.db)).toBeNull()
+    expect(refreshed).toHaveLength(0)
+    mark = r.service.mark
+    expect(await rt.setOrigin('https://share.landonhale.com/')).toEqual({ origin: 'https://share.landonhale.com' })
+    expect(asked.at(-1)).toBe('https://share.landonhale.com/w/healthz')
+    expect(guestOriginSetting(r.db)).toBe('https://share.landonhale.com')
+    expect(refreshed).toHaveLength(1)
+    const after = await rt.create({ source: doc(OTHER), title: 'Run of show', name: 'Sam', role: 'view', expiresAt: inDays(7), bySession: null })
+    expect(after.url.startsWith('https://share.landonhale.com/g/')).toBe(true)
+    expect((await rt.rekey(before.id))!.startsWith('https://share.landonhale.com/g/')).toBe(true)
+    // Put back: new links carry the host's own origin again.
+    expect(await rt.setOrigin(null)).toEqual({ origin: null })
+    expect(guestOriginSetting(r.db)).toBeNull()
+    expect(refreshed).toHaveLength(2)
+    expect(new URL((await rt.rekey(before.id))!).origin).toBe(own)
+  })
+
+  it('an origin is https and a name with nothing after it; a loopback http one only on an isolated instance', () => {
+    expect(originOf('https://share.landonhale.com')).toBe('https://share.landonhale.com')
+    expect(originOf(' https://Share.LandonHale.com/ ')).toBe('https://share.landonhale.com')
+    expect(originOf('https://share.landonhale.com:8443')).toBe('https://share.landonhale.com:8443')
+    expect(originOf('http://127.0.0.1:7001', { TEMP_CODE_USER_DATA: '/tmp/x' })).toBe('http://127.0.0.1:7001')
+    expect(originOf('http://127.0.0.1:7001', { TEMP_CODE_USER_DATA: '/srv/agents/temp-code-data' })).toBeNull()
+    for (const bad of ['', 'share', 'ftp://share.landonhale.com', 'https://share.landonhale.com/x', 'https://share.landonhale.com?x=1', 'https://share.landonhale.com#k']) expect(originOf(bad), bad).toBeNull()
+  })
+
+  it('a thread sets no origin: only the owner does', async () => {
+    const { guests } = await import('.')
+    const r = await rig()
+    await expect(guests.handle!({ method: 'work.guests.setOrigin', params: { origin: 'https://share.landonhale.com' } } as never, r.ctx, { kind: 'model', caps: [], sessionId: 't1' } as never)).rejects.toThrow('Only the owner')
+    const { GUESTS_CAPS } = await import('@shared/contract-work-guests')
+    expect(GUESTS_CAPS['work.guests.setOrigin']).toBe('admin')
+  })
+})
+
+describe("a link's budget", () => {
+  /** A raw socket on a link's address: what it was closed with, or the status its upgrade was refused with. */
+  const raw = (r: Rig, id: string) => {
+    const ws = new WsSocket(`ws://127.0.0.1:${r.service.port}/g/ws/${id}`)
+    const ended = new Promise<{ code: number; reason: string } | { status: number }>((res) => {
+      ws.on('close', (code, reason) => res({ code, reason: reason.toString() }))
+      ws.on('unexpected-response', (_q, got) => res({ status: got.statusCode ?? 0 }))
+      ws.on('error', () => {})
+    })
+    return { ws, ended, opened: new Promise<boolean>((res) => (ws.on('open', () => res(true)), ws.on('unexpected-response', () => res(false)))) }
+  }
+
+  it('ships as 4 MiB at once, a megabyte back a minute, 8 sockets a link and 32 MiB a document', () => {
+    expect(BUDGET_AS_SHIPPED).toEqual({ bytes: 4 * 1024 * 1024, bytesPerMinute: 1024 * 1024, sockets: 8, docBytes: 32 * 1024 * 1024 })
+  })
+
+  it('a link that sends more than its budget is closed with the seconds to wait, opens no new socket until then, and another link is untouched', async () => {
+    BUDGET.bytes = 2000
+    BUDGET.bytesPerMinute = 60_000
+    const r = await rig()
+    const a = await make(r, 'edit')
+    const b = await make(r, 'edit', doc(OTHER))
+    const flood = raw(r, a.id)
+    expect(await flood.opened).toBe(true)
+    // Three frames of 900 bytes: the third is past 2,000, is not passed on, and the socket is told how long to wait.
+    for (let i = 0; i < 3; i++) flood.ws.send(new Uint8Array(900))
+    const closed = (await flood.ended) as { code: number; reason: string }
+    expect(closed.code).toBe(CLOSE_TOO_MUCH)
+    // 700 bytes short at 1,000 bytes a second: under a second, said as one.
+    expect(waitOf(closed.reason)).toBe(1)
+    // Until then the link opens nothing: a page's tries cost one refused upgrade each.
+    expect(await raw(r, a.id).ended).toEqual({ status: 429 })
+    // The other link's guest is in as ever.
+    const other = raw(r, b.id)
+    expect(await other.opened).toBe(true)
+    other.ws.terminate()
+    await sleep(1100)
+    const back = raw(r, a.id)
+    expect(await back.opened).toBe(true)
+    back.ws.terminate()
+  })
+
+  it('a link holds eight sockets at a time; the ninth is refused until one leaves', async () => {
+    BUDGET.sockets = 3
+    const r = await rig()
+    const a = await make(r, 'view')
+    const held = [raw(r, a.id), raw(r, a.id), raw(r, a.id)]
+    for (const h of held) expect(await h.opened).toBe(true)
+    expect(await raw(r, a.id).ended).toEqual({ status: 429 })
+    held[0]!.ws.terminate()
+    await until('the service counts it gone', () => true, 10)
+    await sleep(100)
+    const next = raw(r, a.id)
+    expect(await next.opened).toBe(true)
+    for (const h of [...held, next]) h.ws.terminate()
+  })
+
+  it('a guest adds nothing to a document as large as a guest may make it; reading it and the owner writing it go on', async () => {
+    const r = await rig()
+    const g = await make(r, 'edit')
+    const first = await opened(r, g.id, g.secret)
+    const owner = ownerSocket(r, DOC, await ownerToken(r))
+    const guest = guestSocket(r, g.id, DOC, first.body.token!)
+    await until('both in', () => synced(owner) && synced(guest.client))
+    owner.document.getText('probe').insert(0, 'x'.repeat(5000))
+    await until('the guest reads it', () => guest.client.document.getText('probe').length === 5000)
+    // From here the document is past what a guest may grow it to.
+    BUDGET.docBytes = 1000
+    await sleep(50)
+    const closes: number[] = []
+    guest.client.provider.on('close', ({ event }: { event: { code: number } }) => closes.push(event.code))
+    guest.client.document.getText('probe').insert(0, 'one more word')
+    await until('the guest is told the document is full', () => closes.includes(CLOSE_FULL), 12_000)
+    owner.document.getText('probe').insert(0, 'his own words ')
+    await until('the owner still writes', () => synced(owner))
+    expect(owner.document.getText('probe').toString()).not.toContain('one more word')
+  }, 20_000)
+
+  it('tells a frame that adds to the document from one that only asks or says who is here', () => {
+    const frame = (...after: number[]) => new Uint8Array([4, 107, 100, 111, 99, ...after])
+    expect(addsContent(frame(0, 2, 5, 1, 2, 3, 4, 5))).toBe(true)
+    expect(addsContent(frame(0, 1, 9, 1, 2, 3, 4, 5, 6, 7, 8, 9))).toBe(true)
+    // A sync answer with nothing in it, a first ask, presence, a token.
+    expect(addsContent(frame(0, 1, 2, 0, 0))).toBe(false)
+    expect(addsContent(frame(0, 0, 1, 0))).toBe(false)
+    expect(addsContent(frame(1, 3, 1, 2, 3))).toBe(false)
+    expect(addsContent(frame(2, 0, 1, 65))).toBe(false)
+    expect(addsContent(new Uint8Array([200]))).toBe(false)
+  })
+})
+
+describe('a start is not an end', () => {
+  it('after main restarts, a live link answers "starting" (503) on every route until main names its links, then opens; nothing is counted against the caller', async () => {
+    const r = await rig()
+    const g = await make(r, 'edit')
+    expect((await opened(r, g.id, g.secret)).status).toBe(200)
+    // Main and its service start again: new keys, and a service that has heard of no link.
+    const before = r.signer
+    await restarted(r, false)
+    const rt2 = new GuestRuntime(r.ctx, () => ({ tokenSigner: () => r.signer, setLinks: (links) => r.service.setLinks(links), setProject: (id, project) => r.service.setProject(id, project) }))
+    expect(r.signer).not.toBe(before)
+    for (let i = 0; i < 12; i++) {
+      const got = await opened(r, g.id, g.secret)
+      expect(got.status).toBe(503)
+      expect(got.body).toEqual({ error: 'starting' })
+    }
+    // Twelve tries, none a wrong secret: the caller is not shut out for them.
+    expect(LIMITS.failures.over('127.0.0.1')).toBe(false)
+    expect((await post(r, `/g/${g.id}/item`, { secret: g.secret, table: 'docs', id: DOC })).status).toBe(503)
+    expect((await fetch(`${r.base}/g/${g.id}/threads`, { headers: { Authorization: 'Bearer x' } })).status).toBe(503)
+    expect((await post(r, '/w/open/redeem', { ticket: 'x'.repeat(43) })).status).toBe(503)
+    expect((await post(r, '/w/open/renew', { renew: 'x'.repeat(43) })).status).toBe(503)
+    const ws = new WsSocket(`ws://127.0.0.1:${r.service.port}/g/ws/${g.id}`)
+    expect(await new Promise((res) => (ws.on('open', () => res(101)), ws.on('unexpected-response', (_q, got) => res(got.statusCode)), ws.on('error', () => {})))).toBe(503)
+    // The page itself is served all along: it is the same for any id.
+    expect((await fetch(`${r.base}/g/${g.id}`)).status).toBe(200)
+    // Main's first pass: the link is sent from this host's own record of what LifeOS was told, with LifeOS not asked first.
+    const asked = r.shared.length
+    await rt2.sync()
+    expect(r.shared.length).toBe(asked)
+    const again = await opened(r, g.id, g.secret)
+    expect(again.status).toBe(200)
+    expect(again.body.token).not.toBe('')
+    // And LifeOS is still told once more after the start, as every row is.
+    await rt2.settle()
+    expect(r.shared.slice(asked)).toEqual([{ id: DOC, shared: true }])
+  })
+
+  it('once main has named its links, one that is not among them is gone at once (403), and a wrong secret is counted', async () => {
+    const r = await rig()
+    const live = await make(r, 'view')
+    const ended = await make(r, 'view', doc(OTHER))
+    await r.rt.revoke(ended.id)
+    await restarted(r, false)
+    const rt2 = new GuestRuntime(r.ctx, () => ({ tokenSigner: () => r.signer, setLinks: (links) => r.service.setLinks(links), setProject: (id, project) => r.service.setProject(id, project) }))
+    expect((await opened(r, ended.id, ended.secret)).status).toBe(503)
+    await rt2.sync()
+    expect((await opened(r, ended.id, ended.secret)).status).toBe(403)
+    expect((await opened(r, 'neverMade', 'x'.repeat(43))).status).toBe(403)
+    expect((await opened(r, live.id, 'wrong'.repeat(8))).status).toBe(403)
+    expect((await opened(r, live.id, live.secret)).status).toBe(200)
+  })
+
+  it("a service that restarts alone is handed main's last list: no wait, and the page's secret opens it again", async () => {
+    const r = await rig()
+    const g = await make(r, 'edit')
+    const list = [...(r.sent.at(-1) ?? [])]
+    await restarted(r, true, list)
+    expect((await opened(r, g.id, g.secret)).status).toBe(200)
+  })
+
+  it('main sends no list before it can sign a token: a list with nothing in it would read as every link gone', async () => {
+    const r = await rig()
+    await make(r, 'edit')
+    const lists = r.sent.length
+    const rt2 = new GuestRuntime(r.ctx, () => ({ tokenSigner: () => null, setLinks: (links) => void r.sent.push(links), setProject: () => {} }))
+    await rt2.tick()
+    expect(r.sent.length).toBe(lists)
+  })
+})
 
 describe('the rows', () => {
   it('keep the secret as its hash only; a link ended or revoked stays listed a week', () => {
@@ -378,21 +690,29 @@ describe('after the review', () => {
     expect(sent.flat()).toEqual([])
   })
 
-  it('after a restart, a live link reaches the service only once LifeOS takes its item\'s shared again', async () => {
+  it('after a restart, a link whose item this host marked is served at once from its own record; one with no record waits for LifeOS', async () => {
     const r = await rig()
     const a = await make(r, 'view')
+    const b = await make(r, 'view', doc(OTHER))
+    // As if the mark of the second had never been recorded here (a database from before marks were kept).
+    r.db.prepare('DELETE FROM work_guest_marks WHERE key = ?').run(`docs:${OTHER}`)
     const ctx = (r.rt as unknown as { ctx: WorkCtx }).ctx
     let up = false
     const flaky = { ...ctx, lifeos: { owner: () => ({ ...ctx.lifeos.owner(), mutation: async (fn: string, args: never) => (up ? ctx.lifeos.owner().mutation(fn, args) : Promise.reject(new Error('LifeOS is down'))) }) } } as unknown as WorkCtx
     const sent: string[][] = []
     const rt = new GuestRuntime(flaky, () => ({ tokenSigner: () => r.signer, setProject: (id, project) => r.service.setProject(id, project), setLinks: (l) => (sent.push(l.map((x) => x.linkId)), r.service.setLinks(l)) }))
     await rt.tick()
-    expect(sent.at(-1)).toEqual([])
-    expect((await opened(r, a.id, a.secret)).status).toBe(403)
-    up = true
-    await rt.tick()
+    // LifeOS is down: the link it was told of before the restart stays open; the other is not sent on a guess.
     expect(sent.at(-1)).toEqual([a.id])
     expect((await opened(r, a.id, a.secret)).status).toBe(200)
+    expect((await opened(r, b.id, b.secret)).status).toBe(403)
+    up = true
+    const told = r.shared.length
+    await rt.tick()
+    expect(sent.at(-1)).toEqual([a.id, b.id])
+    expect((await opened(r, b.id, b.secret)).status).toBe(200)
+    // Both were told to LifeOS again once it answered: every row once after a start.
+    expect(r.shared.slice(told).map((x) => x.id).sort()).toEqual([DOC, OTHER].sort())
   })
 
   it('the thread that asked is told the link, never its address', async () => {

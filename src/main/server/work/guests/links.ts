@@ -11,11 +11,12 @@ import { pressesFor, sharedOf, within, workspaceHere } from '../files/policy'
 import type { Caller, WorkCtx } from '../modules'
 import { ActNotSent } from '../outbox/kinds'
 import { WORK_OWNER_NAME_SETTING } from '../preamble'
-import { isIsolatedInstance, servesPublic } from '../service/config'
+import { GUEST_ORIGIN_SETTING, isIsolatedInstance, servesPublic } from '../service/config'
 import { canonicalPath, serviceOf, ServedElsewhere } from '../service/ctx'
 import type { ServiceSupervisor } from '../service/supervisor'
 import type { ServiceProject } from '../service/wire'
-import { fileLinkId, GuestStore, hashSecret, isLive, sourceKey, type StoredLink } from './store'
+import { fileUid } from './fileIdent'
+import { fileLinkId, GuestStore, hashSecret, isLive, setEditEnder, sourceKey, type StoredLink } from './store'
 import { PASS_PREFIX, type GuestServiceLink } from './wire'
 
 /**
@@ -65,6 +66,34 @@ export function publicOrigin(ctx: Pick<WorkCtx, 'service'>, env: NodeJS.ProcessE
   } catch {
     return DEFAULT_ORIGIN
   }
+}
+
+/** The origin guest pages have of their own, when he has set one (`work.guests.setOrigin`); null while they share the host's. */
+export function guestOriginSetting(db: WorkCtx['db']): string | null {
+  try {
+    return (db.prepare('SELECT value FROM settings WHERE key = ?').get(GUEST_ORIGIN_SETTING) as { value?: string } | undefined)?.value?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Where a guest's address, and his own hosted editor's, points: the guest pages' own origin once there is one
+ * (docs/agents/work-guests.md "The guest origin"), else the host's. Every other address of the host keeps `publicOrigin`.
+ */
+export const guestOrigin = (ctx: Pick<WorkCtx, 'service' | 'db'>, env: NodeJS.ProcessEnv = process.env): string => guestOriginSetting(ctx.db) ?? publicOrigin(ctx, env)
+
+/** An origin as it is kept: `https://name` (or, on an isolated instance, a loopback `http://` one), nothing after the host. Null for anything else. */
+export function originOf(text: string, env: NodeJS.ProcessEnv = process.env): string | null {
+  let url: URL
+  try {
+    url = new URL(text.trim())
+  } catch {
+    return null
+  }
+  const loopback = url.protocol === 'http:' && /^(127\.0\.0\.1|localhost|\[::1\])$/.test(url.hostname) && isIsolatedInstance(env)
+  if ((url.protocol !== 'https:' && !loopback) || url.username || url.password || (url.pathname !== '/' && url.pathname !== '') || url.search || url.hash) return null
+  return url.origin
 }
 
 /** Whether a phone can reach this host's hosted pages at all (service/config.ts). */
@@ -128,6 +157,12 @@ export class GuestRuntime {
   private readonly keyedAt = new Map<string, number>()
   /** what LifeOS was last told of each row's `shared`, by `docs:<id>`, `sheets:<id>` or `projects:<id>` */
   private readonly told = new Map<string, boolean>()
+  /**
+   * Rows read as marked from this host's own record (`work_guest_marks`) and not yet told to LifeOS again since this
+   * start. They count as told for what the service hears, so a link is sent at once after a start and no guest waits
+   * on LifeOS; each is still told once more, as every row is after a start.
+   */
+  private readonly unconfirmed = new Set<string>()
   /** the live read of what each project with a live link shows; `undefined` until LifeOS first answers */
   private readonly watched = new Map<string, { stop(): void; since: number; projection: GuestProjection | null | undefined }>()
   /** what the service was last sent for each project link, to send it again only when it changed, and the documents and sheets it named */
@@ -140,9 +175,22 @@ export class GuestRuntime {
   constructor(
     private readonly ctx: WorkCtx,
     /** the host's Work service; a test hands in its own */
-    private readonly service: () => Pick<ServiceSupervisor, 'tokenSigner' | 'setLinks' | 'setProject'> | undefined = () => serviceOf(ctx)
+    private readonly service: () => (Pick<ServiceSupervisor, 'tokenSigner' | 'setLinks' | 'setProject'> & Partial<Pick<ServiceSupervisor, 'mark' | 'refreshOrigins'>>) | undefined = () => serviceOf(ctx),
+    /** how an origin is asked for its health mark (a test's own) */
+    private readonly fetchFn: typeof fetch = (input, init) => fetch(input, init)
   ) {
     this.store = new GuestStore(ctx.db)
+    for (const key of this.store.marks()) {
+      this.told.set(key, true)
+      this.unconfirmed.add(key)
+    }
+    setEditEnder(ctx.db, (resolved) => this.endEditOn(resolved))
+  }
+
+  /** Every live edit link to this file views from now: its sockets close and its page opens again as a reader (store.ts `endGuestEditOn`). */
+  async endEditOn(resolved: string): Promise<void> {
+    const id = fileLinkId(resolved)
+    for (const l of this.store.live()) if (l.source.at === 'file' && l.source.id === id && l.role === 'edit' && this.store.setRole(l.id, 'view')) await this.retoken(l.id)
   }
 
   private ownerName(): string {
@@ -200,12 +248,26 @@ export class GuestRuntime {
     if (!existsSync(source.path)) throw new Error(SHARE_REFUSALS.gone)
     // Every rule is read of the file the spelling reaches now, as the service will open it.
     const real = canonicalPath(source.path)
+    // The file the spelling reaches is what the service opens and writes: a name that links to a Word file or a workbook is not a document of ours.
+    if (guestTableOf({ at: 'file', path: real }) !== table) throw new Error(SHARE_REFUSALS.other)
     if (sharedOf(this.ctx, { at: 'file', host: source.host, path: source.path }) || sharedOf(this.ctx, { at: 'file', host: source.host, path: real })) throw new Error(SHARE_REFUSALS.shared)
     // A document kept for a Word file in a library, or read from one, is a copy: the truth is the Teams file.
     if (table === 'docs' && madeFromShared(this.ctx, { at: 'file', host: source.host, path: real })) throw new Error(SHARE_REFUSALS.teamsCopy)
     // Save As writes a linked document's edits to another file after each pause: a guest's edits would reach it.
     if (role === 'edit' && table === 'docs' && linkedOut(this.ctx, real)) throw new Error(SHARE_REFUSALS.linkedOut)
     return { at: 'file', table, id: fileLinkId(real), host: this.ctx.host, path: source.path }
+  }
+
+  /**
+   * The id a file carries inside it (fileIdent.ts), made by the Work service, its one writer, when it has none:
+   * what a link remembers of its file, so another file put at the same path is never shown under it. A sheet is
+   * asked by its spelling, as the service names its workbook; a document by its resolved path.
+   */
+  async identOf(source: Extract<GuestLinkSource, { at: 'file' }>): Promise<string> {
+    const path = source.table === 'sheets' ? source.path : canonicalPath(source.path)
+    const got = (await this.ctx.service.internal('/internal/guests/ident', { path })) as { uid?: unknown }
+    if (typeof got?.uid !== 'string' || !got.uid) throw new Error('The Work service did not name that file. Nothing was made.')
+    return got.uid
   }
 
   /** A thread's file, held to its own workspace's folder: the press that grants it names that file and no other. */
@@ -226,6 +288,8 @@ export class GuestRuntime {
       if (s.host !== this.ctx.host || !existsSync(s.path)) return false
       const real = canonicalPath(s.path)
       if (fileLinkId(real) !== s.id) return false
+      // The same file still: one moved or saved over the path carries another id, or none (fileIdent.ts).
+      if (l.fileUid !== null && fileUid(real) !== l.fileUid) return false
       if (l.role === 'edit' && s.table === 'docs' && linkedOut(this.ctx, real)) return false
       return !(s.table === 'docs' ? madeFromShared : sharedOf)(this.ctx, { at: 'file', host: s.host, path: real })
     } catch {
@@ -247,18 +311,21 @@ export class GuestRuntime {
     if (ended) this.ctx.push({ push: 'work.guests' })
   }
 
-  async create(o: { source: GuestSource; title: string; name: string; role: GuestRole; expiresAt: number; bySession: string | null; by?: Caller; fileId?: string }): Promise<GuestCreated> {
+  async create(o: { source: GuestSource; title: string; name: string; role: GuestRole; expiresAt: number; bySession: string | null; by?: Caller; fileId?: string; fileUid?: string }): Promise<GuestCreated> {
     const refused = guestRefusal(o)
     if (refused) throw new Error(refused)
     const source = this.resolve(o.source, o.by, 'work.guests.create', o.role)
     // His press on a thread's request makes the link only for the file the thread named then.
     if (source.at === 'file' && o.fileId !== undefined && o.fileId !== source.id) throw new ActNotSent(SHARE_REFUSALS.moved)
     if (source.at === 'file') {
+      const uid = await this.identOf(source)
+      // The path the thread named may hold another file by now: his press was asked for the one it held then.
+      if (o.fileUid !== undefined && o.fileUid !== uid) throw new ActNotSent(SHARE_REFUSALS.moved)
       // A file is marked by the link itself (store.ts `fileLinked`): there is no LifeOS row to tell.
-      const { link, secret } = this.store.create({ ...o, source })
+      const { link, secret } = this.store.create({ ...o, source, fileUid: uid })
       await this.settle()
       this.ctx.push({ push: 'work.guests' })
-      return { link: this.rowOf(link, {}), url: guestUrl(publicOrigin(this.ctx), link.id, secret) }
+      return { link: this.rowOf(link, {}), url: guestUrl(guestOrigin(this.ctx), link.id, secret) }
     }
     await this.servedHere(source)
     const row = await this.itemRow(source)
@@ -278,7 +345,38 @@ export class GuestRuntime {
     }
     await this.settle()
     this.ctx.push({ push: 'work.guests' })
-    return { link: this.rowOf(link, {}), url: guestUrl(publicOrigin(this.ctx), link.id, secret) }
+    return { link: this.rowOf(link, {}), url: guestUrl(guestOrigin(this.ctx), link.id, secret) }
+  }
+
+  /**
+   * The origin guest pages are served on, set or put back (null). A name is taken only once it has answered
+   * `/w/healthz` with this very service's start mark: one that reaches nothing, or another machine, cannot break
+   * links. Links already sent keep working: their old address answers 308 to the same path on the new origin.
+   */
+  async setOrigin(asked: string | null): Promise<{ origin: string | null }> {
+    const supervisor = this.service()
+    if (asked === null) {
+      this.ctx.db.prepare('DELETE FROM settings WHERE key = ?').run(GUEST_ORIGIN_SETTING)
+      supervisor?.refreshOrigins?.()
+      this.ctx.push({ push: 'work.guests' })
+      return { origin: null }
+    }
+    const origin = originOf(asked)
+    if (!origin) throw new Error('An origin is https:// and a name, with nothing after it. Nothing changed.')
+    const mark = supervisor?.mark?.() ?? null
+    if (!mark) throw new Error('The Work service is not running on this computer. Nothing changed.')
+    let answer: string | null = null
+    try {
+      const res = await this.fetchFn(`${origin}/w/healthz`, { redirect: 'error', signal: AbortSignal.timeout(10_000) })
+      answer = res.ok ? (await res.text()).trim() : null
+    } catch {
+      answer = null
+    }
+    if (answer !== mark) throw new Error(`${origin} does not reach this computer's Work service. Nothing changed.`)
+    this.ctx.db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(GUEST_ORIGIN_SETTING, origin)
+    supervisor?.refreshOrigins?.()
+    this.ctx.push({ push: 'work.guests' })
+    return { origin }
   }
 
   /** A new address for a live link (the one before stops opening); null when it is not live. */
@@ -286,7 +384,7 @@ export class GuestRuntime {
     const secret = this.store.rekey(id)
     if (!secret) return null
     await this.retoken(id)
-    return guestUrl(publicOrigin(this.ctx), id, secret)
+    return guestUrl(guestOrigin(this.ctx), id, secret)
   }
 
   /**
@@ -336,7 +434,7 @@ export class GuestRuntime {
   }
 
   private rowOf(l: StoredLink, seen: Seen | null): GuestLinkRow {
-    const { secretHash: _h, bySession: _s, ...row } = l
+    const { secretHash: _h, bySession: _s, fileUid: _u, ...row } = l
     return { ...row, lastOpenedAt: seen ? (seen[l.id]?.at ?? null) : null, open: seen?.[l.id]?.open ?? 0 }
   }
 
@@ -410,7 +508,7 @@ export class GuestRuntime {
     const pass: Pass = { id: randomBytes(12).toString('base64url'), issuedAt: now, ticketHash: hashSecret(ticket), ticketUntil: now + TICKET_MS, until: now + PASS_MS, opens, title, role, press, ...(source.at === 'item' && opens.at !== 'lifeos' ? { itemId: source.itemId } : {}) }
     this.passes.set(pass.id, pass)
     await this.sync()
-    return { url: `${publicOrigin(this.ctx)}/w/open#t=${ticket}`, expiresAt: pass.ticketUntil }
+    return { url: `${guestOrigin(this.ctx)}/w/open#t=${ticket}`, expiresAt: pass.ticketUntil }
   }
 
   /** Whether others can read a LifeOS row (LifeOS's `shared`); a row LifeOS does not answer for is taken as read by others. */
@@ -438,6 +536,7 @@ export class GuestRuntime {
     const [table, id] = key.split(':') as [LifeosGuestSource['table'], string]
     try {
       await this.ctx.lifeos.owner().mutation(`${table}:setShared`, { id, shared })
+      this.unconfirmed.delete(key)
       this.told.set(key, shared)
       this.store.setMark(key, shared)
       return true
@@ -480,8 +579,8 @@ export class GuestRuntime {
     const pass = async (keys: string[]): Promise<void> => {
       for (const key of keys) {
         const want = wanted.has(key)
-        if (this.told.get(key) === want || (!want && (unsure || shown.has(key)))) continue
-        changed ||= this.told.has(key)
+        if ((this.told.get(key) === want && !this.unconfirmed.has(key)) || (!want && (unsure || shown.has(key)))) continue
+        changed ||= this.told.has(key) && !this.unconfirmed.has(key)
         if (await this.tell(key, want)) told++
         else if (want && key.startsWith('projects:')) await this.endIfGone(key.slice('projects:'.length))
       }
@@ -608,9 +707,21 @@ export class GuestRuntime {
     return run
   }
 
+  /** A file link from before links knew their file by its id takes the id its file carries now, once. */
+  private async adoptIdents(): Promise<void> {
+    for (const l of this.store.live()) {
+      if (l.source.at !== 'file' || l.fileUid !== null || !this.fileServes(l as StoredLink & { source: Extract<GuestLinkSource, { at: 'file' }> })) continue
+      const uid = await this.identOf(l.source).catch(() => null)
+      if (uid) this.store.setFileUid(l.id, uid)
+    }
+  }
+
   private async syncOnce(): Promise<void> {
     const supervisor = this.service()
-    if (!supervisor) return
+    // No signer yet: the service is not up, and a list sent now would be one with no link in it, which it would
+    // take for main's word that every link is gone. The first list goes once tokens can be signed.
+    if (!supervisor?.tokenSigner()) return
+    await this.adoptIdents()
     this.endFileLinks()
     const now = Date.now()
     const owner = this.ownerName()
@@ -655,6 +766,8 @@ export class GuestRuntime {
           keyedAt: this.keyedAt.get(l.id) ?? 0,
           // A sheet kept as a file: the live socket opens that file for this link's token alone.
           ...(l.source.at === 'file' && l.source.table === 'sheets' ? { sheetFile: l.source.path } : {}),
+          // The file it was made for, which the service checks as it opens it (fileIdent.ts).
+          ...(l.source.at === 'file' && l.fileUid ? { file: { path: canonicalPath(l.source.path), uid: l.fileUid } } : {}),
           ...(l.source.at === 'file' && l.source.table === 'docs' ? { comments: false } : {})
         }
       })
@@ -675,7 +788,7 @@ export class GuestRuntime {
         role: p.role,
         expiresAt: p.until,
         revokedAt: null,
-        pass: { ticketHash: p.ticketHash, ticketUntil: p.ticketUntil, issuedAt: p.issuedAt, title: p.title, token: t.token, tokenExp: t.exp, ...(p.opens.at === 'tcsheet' ? { sheetFile: p.opens.path } : {}) }
+        pass: { ticketHash: p.ticketHash, ticketUntil: p.ticketUntil, issuedAt: p.issuedAt, title: p.title, owner, token: t.token, tokenExp: t.exp, ...(p.opens.at === 'tcsheet' ? { sheetFile: p.opens.path } : {}) }
       })
     }
     for (const key of this.tokens.keys()) if (!keep.has(key)) this.tokens.delete(key)

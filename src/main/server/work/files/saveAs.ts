@@ -5,6 +5,7 @@ import { canvasSourcePath, filesPaneOf, type CanvasSource } from '@shared/work'
 import { refKey, type FolderRef } from '@shared/work/files'
 import { linkWords, saveAsName, type DocLink, type SaveAsFormat, type SavedAs } from '@shared/work/saveAs'
 import { attachmentDocPathOf } from '../docs/target'
+import { endGuestEditOn } from '../guests/store'
 import type { Caller, WorkCtx } from '../modules'
 import { admitOwner, deliver, freshBytes, unreachable } from './copies'
 import { vmList } from '../office/vm/files'
@@ -14,6 +15,7 @@ import { versionWord } from './save'
 import { makeBytes, makeFolderRef } from './verbs'
 import { vmReadVersioned } from './vmVerbs'
 import { liveRev, wordTiming } from './word'
+import { canonicalPath } from '../service/ctx'
 import type { DocRevision } from '../service/wire'
 import { runOp, versionOf } from './write'
 
@@ -190,6 +192,8 @@ export async function saveAs(
   if (far) admitOwner(by, { name: 'that folder', host: at.host })
   else if (admitChange(ctx, by, 'make', { workspaceId: p.workspaceId, refs: [at] }, method) === 'hold') throw new Error(HELD_BY_TOOLS)
   const doc = p.link === false ? null : linkableDoc(ctx, source)
+  // From here the document's edits go on to another file: a guest who could edit it views it instead, before anything is written.
+  if (doc) await endGuestEditOn(ctx.db, canonicalPath(doc))
   // The revision written is the one read before the export: an edit after it is written next.
   const rev = doc ? await liveRev(ctx, doc).catch(() => null) : null
   const out = await exportBytes(ctx, source, p.format)

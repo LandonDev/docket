@@ -90,6 +90,11 @@ export const GuestsRequestSchemas = [
   request('work.guests.revoke', z.object({ linkId })),
   /** What a live link lets its guest do, changed at once: the guest's page opens again as the new role; the address stays. */
   request('work.guests.setRole', z.object({ linkId, role: z.enum(GUEST_ROLES) })),
+  /**
+   * The origin guest pages are served on (`https://share.landonhale.com`), or null for the host's own. Taken only
+   * once that origin has answered as this very host's Work service, so a wrong name cannot break links.
+   */
+  request('work.guests.setOrigin', z.object({ origin: z.string().max(200).nullable() })),
   /** The owner's own hosted editor (`/w/open#t=<ticket>`), for the phone: a ticket that opens once, within two minutes. */
   request('work.guests.ticket', z.object({ source: TicketSourceSchema, title: GuestTitleSchema }))
 ] as const
@@ -111,6 +116,8 @@ export const GUESTS_CAPS = {
   'work.guests.revoke': 'operate',
   // A role can widen what someone outside may do: as making the link, a key that may approve.
   'work.guests.setRole': 'approve',
+  // Where every guest's page is served from: the host's own setting, as its other addresses are.
+  'work.guests.setOrigin': 'admin',
   'work.guests.ticket': 'operate'
 } satisfies CapsOf<typeof GuestsRequestSchemas>
 export const GUESTS_RELAY = {} satisfies RelayOf<typeof GuestsRequestSchemas>
@@ -120,6 +127,8 @@ export const GuestLinkActSchema = z.object({
   source: GuestSourceSchema,
   /** a file's id when the thread asked (`fileLinkId` of its resolved path): his press makes the link only for that same file */
   fileId: z.string().max(64).optional(),
+  /** the id that file carried inside it then (guests/fileIdent.ts): another file put at the same path since is not the one he was asked about */
+  fileUid: z.string().max(64).optional(),
   title: GuestTitleSchema,
   name: GuestNameSchema,
   role: z.enum(GUEST_ROLES),

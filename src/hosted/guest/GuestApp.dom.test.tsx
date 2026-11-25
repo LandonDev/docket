@@ -128,3 +128,102 @@ describe("a face in the project's screens", () => {
     expect(face.className).toContain("-outline-offset-1");
   });
 });
+
+describe("who else is in the file, in the page's line", () => {
+  const people = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `p${i}`, name: ["Landon Hale", "Sam Ito", "Kim Park", "Avery Cole", "Jo Reed"][i]!, color: ["#3b82f6", "#8b5cf6", "#22c55e", "#ef4444", "#f97316"][i]! }));
+
+  it("draws nobody when the guest is alone", async () => {
+    const { Faces } = await import("./GuestApp");
+    expect(render(<Faces people={[]} />).container.firstChild).toBeNull();
+  });
+
+  it("draws each as the app's 20px face, the later ones lapped 6px over a ring of the page's ground, each ringed in their caret's hue", async () => {
+    const { Faces } = await import("./GuestApp");
+    const { container } = render(<Faces people={people(2)} />);
+    const group = container.querySelector("[data-guest-faces]") as HTMLElement;
+    expect(group.getAttribute("role")).toBe("group");
+    expect(group.getAttribute("aria-label")).toBe("Also here: Landon Hale, Sam Ito");
+    const [first, second] = [...group.querySelectorAll<HTMLElement>("[data-person]")];
+    expect(first!.title).toBe("Landon Hale");
+    expect(first!.className).not.toContain("-ms-1.5");
+    expect(second!.className.split(" ")).toEqual(expect.arrayContaining(["-ms-1.5", "shadow-[0_0_0_2px_var(--background)]"]));
+    expect(first!.style.getPropertyValue("--face-ring")).toBe("#3b82f6");
+    const face = first!.querySelector("[data-face]") as HTMLElement;
+    expect(face.dataset.face).toBe("bar");
+    expect(face.textContent).toBe("L");
+    expect(face.className).toContain("outline-(--face-ring)");
+  });
+
+  it("shows four as four, and five or more as three and a count", async () => {
+    const { Faces } = await import("./GuestApp");
+    const four = render(<Faces people={people(4)} />);
+    expect(four.container.querySelectorAll("[data-person]")).toHaveLength(4);
+    expect(four.container.textContent).not.toContain("+");
+    cleanup();
+    const five = render(<Faces people={people(5)} />);
+    expect(five.container.querySelectorAll("[data-person]")).toHaveLength(3);
+    expect(five.container.textContent).toContain("+2");
+    expect(five.container.querySelector("[data-guest-faces]")!.getAttribute("aria-label")).toContain("Jo Reed");
+  });
+});
+
+describe("a page that does not open", () => {
+  it("says a link past the end time it was given ended, with the day and whose it was; any other end says only that it opens nothing", async () => {
+    const { Ended } = await import("./GuestApp");
+    const until = Date.UTC(2026, 11, 18, 18);
+    const day = new Date(until).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    vi.useFakeTimers({ now: until + 60_000 });
+    render(<Ended why="gone" owner={false} kept={{ until, owner: "Landon Hale" }} retry={() => {}} />);
+    expect(screen.getByRole("heading").textContent).toBe(`This link ended ${day}`);
+    expect(screen.getByText("Ask Landon Hale for a new one if you still need it.")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    cleanup();
+    vi.setSystemTime(until - 60_000);
+    render(<Ended why="gone" owner={false} kept={{ until, owner: "Landon Hale" }} retry={() => {}} />);
+    expect(screen.getByRole("heading").textContent).toBe("This link no longer opens anything");
+    cleanup();
+    render(<Ended why="gone" owner={false} retry={() => {}} />);
+    expect(screen.getByRole("heading").textContent).toBe("This link no longer opens anything");
+  });
+
+  it("says a host out of reach, or still starting after the wait, cannot be reached, with Retry: never that the link ended", async () => {
+    const { Ended } = await import("./GuestApp");
+    for (const why of ["down", "starting"] as const) {
+      let tried = 0;
+      render(<Ended why={why} owner={false} kept={{ until: 1, owner: "Landon Hale" }} retry={() => void tried++} />);
+      expect(screen.getByRole("heading").textContent).toBe("This page cannot be reached right now");
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      expect(tried).toBe(1);
+      cleanup();
+    }
+  });
+
+  it("waits out a host that is starting under the page's bones, and opens when it can say the link stands", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let asked = 0;
+    const open = fetch;
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => (new URL(url).pathname.endsWith("/open") && ++asked <= 2 ? ({ ok: false, status: 503, json: async () => ({ error: "starting" }) } as Response) : open(url, init)));
+    render(<GuestApp />);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(100)));
+    // Still the bones: no end, no unreachable screen.
+    expect(screen.queryByRole("heading", { name: /no longer opens|cannot be reached/ })).toBeNull();
+    expect(document.querySelector("[aria-busy=true]")).not.toBeNull();
+    await act(async () => void (await vi.advanceTimersByTimeAsync(4100)));
+    expect(await first("Book the ballroom")).toBeTruthy();
+    expect(asked).toBe(3);
+  });
+
+  it("remembers the link when it opens, so the same browser can say it ended once it has", async () => {
+    render(<GuestApp />);
+    await first("Book the ballroom");
+    expect(JSON.parse(localStorage.getItem("tc-guest:L1")!)).toMatchObject({ until: Date.UTC(2026, 11, 18), owner: "Landon Hale" });
+    cleanup();
+    service.now = null;
+    vi.useFakeTimers({ now: Date.UTC(2026, 11, 19), shouldAdvanceTime: true });
+    render(<GuestApp />);
+    const day = new Date(Date.UTC(2026, 11, 18)).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    expect(await screen.findByText(`This link ended ${day}`)).toBeTruthy();
+    expect(screen.getByText("Ask Landon Hale for a new one if you still need it.")).toBeTruthy();
+    localStorage.clear();
+  });
+});

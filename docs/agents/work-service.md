@@ -205,10 +205,67 @@ Hocuspocus 4.4 with garbage collection off, behind our own listener (`ws` in
 `scripts/box/ingress.yml` sends `tempcode.landonhale.com` paths matching
 `^/(g|w|f)/` to the installed host's port, 7695, before the remote
 listener's rule. Milestone 18 wrote the rule and proved on a quick tunnel
-that a path rule carries a WebSocket upgrade. It is not applied to the live
-tunnel: the owner applies it (`scripts/box/apply.sh --from 60 --through 60`,
-docs/box.md). Proofs use a quick tunnel to an instance's own port, never the
-public one.
+that a path rule carries a WebSocket upgrade. The rule is live on the box's
+tunnel (checked 2026-11-24: `/g/<id>` answers this service's page through
+Cloudflare, and `/w/doc`, `/w/sheet` and `/g/ws` upgrade). A change to it is
+applied by the owner or the master (`scripts/box/apply.sh --from 60 --through
+60`, docs/box.md), never by a build. Proofs use an instance's own port,
+never the public one.
+
+## Origins
+
+A browser says which page opens a socket (`Origin`), and the public
+listener refuses a page that is not ours at the upgrade, before any route
+(403; routes/route.ts `originAllowed`, service/config.ts `serviceOrigins`).
+Every route still asks for its token: this is a second wall, the Cosmic
+tracker's `ALLOWED_ORIGINS`.
+
+| Socket | Passes |
+|---|---|
+| a guest's (`/g/ws/*`) | the guest pages' origin alone: this host's public origin until guest pages have their own (`work.guests.origin`), then that one only. On a public host it must name an origin: only a browser page is a guest |
+| any other (`/w/doc`, `/w/sheet`, `/w/office`, `/w/full`) | no `Origin` (a native client, main's own relay); this host's own origins; a page on loopback (a dev build of LifeOS or of ours); `file://` (LifeOS's desktop window is a file) |
+
+A sandboxed frame's `null` passes nowhere. An isolated instance or a test
+(`loopback`) also takes a loopback page, or no origin, as a guest. Main
+names the list at each fork and when it changes (`{t: 'origins'}`).
+
+## Health and restarts
+
+`GET /w/healthz` answers 200 and this run's start mark, a random value made
+when the service started, and nothing else. Main reads it back through a
+name before it trusts that name with guest links, and a monitor outside
+sees a restart as a new mark. The service says the same mark to main with
+`ready`.
+
+A stopping service closes every socket with 1012 ("the service is
+restarting") and gives them a quarter second to hear it before it ends
+them: a page takes that close for a short wait, never for an end. What a
+start means for guest links ("starting", 503, until main has named its
+links) is in [work-guests.md](work-guests.md) "A start is not an end".
+
+A page's side of a restart: its document socket is tried again about every
+second for the first half minute, then every five (`RECONNECT` in
+src/hosted/guest/DocPage.tsx, work-kit's `CollabAdapter.reconnect`), and a
+token the host refuses (its keys are new after a start of main) is asked
+for again at once, at 250 ms, 1 s, 3 s, then every 10 s (work-kit's
+`retryRefusedToken`), in place of the minute's timer that once cost a guest
+52 seconds.
+
+Before a socket has signed in it may ask for one document and queue 64
+messages or 256 KiB (work-kit's collab server, as the Cosmic tracker's);
+past that it is reset and nothing it queued is applied.
+
+## Compaction
+
+A live document's state keeps every deleted word, since its history reads
+them, so it only grows. work-kit's `history.compact` rewrites one past
+2 MiB without them (its versions kept as their blocks first) and refuses
+while anyone has it open. `service/compaction.ts` calls it: about fifteen
+seconds after the last socket leaves a document (its last store lands
+first), and at the minute's tick for one that has stood idle ten minutes
+(its editor passed no socket, or someone came back before the try). A copy
+a device kept from before the compaction merges back with nothing lost or
+doubled (service.test.ts "compaction that runs").
 
 ## Proofs
 

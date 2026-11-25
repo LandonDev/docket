@@ -61,15 +61,24 @@ beforeAll(async () => {
   } as unknown as RouteCtx
   routeCtx = ctx
   server = createServer()
-  server.on('upgrade', (req, socket, head) => sheetRoute.upgrade!(req, socket, head, ctx, /x/.exec('x')!))
+  server.on('upgrade', (req, socket, head) => {
+    // As the guests route hands a link's socket on (routes/guests.ts): bound to the link its address names.
+    const bound = /^\/g\/ws\/([A-Za-z0-9]+)\/(.+)$/.exec(req.url ?? '')
+    if (bound) {
+      req.url = `/w/sheet/${bound[2]}`
+      ;(req as { guestLink?: string }).guestLink = bound[1]
+    }
+    sheetRoute.upgrade!(req, socket, head, ctx, /x/.exec('x')!)
+  })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   port = (server.address() as AddressInfo).port
 })
 afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())))
 
 type Msg = Record<string, unknown> & { t: string }
-async function client(sheet: string, token: string): Promise<{ ws: WebSocket; next(): Promise<Msg>; closed: Promise<number> }> {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/w/sheet/${sheet}`)
+/** `link`: through that link's own address, as a guest's page comes; without it the sheet's own route, as the owner's. */
+async function client(sheet: string, token: string, link?: string): Promise<{ ws: WebSocket; next(): Promise<Msg>; closed: Promise<number> }> {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}${link ? `/g/ws/${link}/${sheet}` : `/w/sheet/${sheet}`}`)
   const queue: Msg[] = []
   const waiting: ((m: Msg) => void)[] = []
   ws.on('message', (d) => {
@@ -94,7 +103,7 @@ describe('the live sheet route', () => {
     const state = await a.next()
     expect(state).toMatchObject({ t: 'state', rev: 0 })
     expect(JSON.parse(state.snapshot as string).sheetOrder).toEqual(['sheet1'])
-    const b = await client('s1', await tokenFor('s1', 'edit', 'guest:L1', 'L1'))
+    const b = await client('s1', await tokenFor('s1', 'edit', 'guest:L1', 'L1'), 'L1')
     links.set('L1', { linkId: 'L1', item: { sheet: 's1' }, role: 'edit', expiresAt: Date.now() + 60_000, revokedAt: null })
     await b.next()
     a.ws.send(JSON.stringify({ t: 'ops', id: 1, baseRev: 0, mutations: [setCell(0, 0, 'hi')] }))
@@ -124,7 +133,7 @@ describe('the live sheet route', () => {
   it('an agent\'s suggestion reaches no guest: nothing on the socket, nothing in the workbook a guest loads, no op', async () => {
     links.set('L2', { linkId: 'L2', item: { sheet: 's1' }, role: 'edit', expiresAt: Date.now() + 60_000, revokedAt: null })
     const owner = await client('s1', await tokenFor('s1', 'edit', 'owner'))
-    const guest = await client('s1', await tokenFor('s1', 'edit', 'guest:L2', 'L2'))
+    const guest = await client('s1', await tokenFor('s1', 'edit', 'guest:L2', 'L2'), 'L2')
     const rev = ((await owner.next()) as unknown as { rev: number }).rev
     await guest.next()
     const stored = ops.length
@@ -139,7 +148,7 @@ describe('the live sheet route', () => {
     expect(heard).toMatchObject({ t: 'ops', rev: rev + 1, by: 'owner' })
     expect(JSON.stringify(heard)).not.toContain(SECRET)
     // A guest who opens the page now loads the workbook without it.
-    const late = await client('s1', await tokenFor('s1', 'view', 'guest:L2', 'L2'))
+    const late = await client('s1', await tokenFor('s1', 'view', 'guest:L2', 'L2'), 'L2')
     const state = await late.next()
     expect(state).toMatchObject({ t: 'state', rev: rev + 1 })
     expect(JSON.stringify(state)).not.toContain(SECRET)
@@ -151,6 +160,17 @@ describe('the live sheet route', () => {
     expect(await c.closed).toBe(4403)
     const d = await client('s1', 'not-a-token')
     expect(await d.closed).toBe(4401)
+  })
+
+  it("a link's token opens the sheet through its own address alone: not the sheet's route reached directly, not another link's address", async () => {
+    links.set('L3', { linkId: 'L3', item: { sheet: 's1' }, role: 'edit', expiresAt: Date.now() + 60_000, revokedAt: null })
+    links.set('L4', { linkId: 'L4', item: { sheet: 's1' }, role: 'edit', expiresAt: Date.now() + 60_000, revokedAt: null })
+    const token = await tokenFor('s1', 'edit', 'guest:L3', 'L3')
+    expect(await (await client('s1', token)).closed).toBe(4403)
+    expect(await (await client('s1', token, 'L4')).closed).toBe(4403)
+    const own = await client('s1', token, 'L3')
+    expect(await own.next()).toMatchObject({ t: 'state' })
+    own.ws.close()
   })
 
   it('a view link writes nothing; a guest inserts at most 1,000 rows at once, and keeps to values and formats', () => {

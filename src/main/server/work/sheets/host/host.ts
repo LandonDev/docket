@@ -265,6 +265,11 @@ export class SheetHost {
     })
   }
 
+  /** A `.tcsheet`'s own id (guests/fileIdent.ts), made if the file has none; null for a sheet that is no file. In the sheet's lane, as every write. */
+  ident(ref: SheetRef): Promise<string | null> {
+    return this.with(ref, async (o) => (o.backend as { ident?(): string }).ident?.() ?? null)
+  }
+
   /** The row's sector (LifeOS), for the route to hold a caller's fence against. */
   sectorOf(ref: SheetRef): Promise<string | undefined> {
     return this.with(ref, async (o) => o.sector)

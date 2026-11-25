@@ -42,6 +42,8 @@ const MAX_WAITING = 32
 
 /** The sockets on each sheet, by the host's key for it; ops land through the host whoever wrote them. */
 const rooms = new Map<string, Set<WebSocket>>()
+/** Whether a socket may still hear the sheet: asked before each op is sent to it, so a link revoked a moment ago hears nothing more while its socket waits for the next second's check. */
+const hears = new WeakMap<WebSocket, () => boolean>()
 let listening: RouteCtx | null = null
 
 function listen(ctx: RouteCtx): void {
@@ -54,6 +56,7 @@ function listen(ctx: RouteCtx): void {
     for (const ws of room) {
       // A client that does not read is let go rather than held in the service's memory.
       if (ws.bufferedAmount > MAX_BUFFERED) ws.terminate()
+      else if (hears.get(ws)?.() === false) ws.close(4403, 'the link was revoked')
       else ws.send(msg)
     }
   })
@@ -154,6 +157,8 @@ export const sheetRoute: PublicRoute = {
               // Reached through a guest link's address: only that link's token opens it.
               const bound = (req as { guestLink?: string }).guestLink
               if (bound && got.link !== bound) return close(4403, 'the token is another link\'s')
+              // And a link's token opens nothing here reached directly: on its own address its sockets are counted and its link named.
+              if (!bound && got.link) return close(4403, 'a link\'s token opens its own address')
               const gone = live(got, ctx)
               if (gone) return close(gone.code, gone.reason)
               claims = got
@@ -165,6 +170,8 @@ export const sheetRoute: PublicRoute = {
             if (ws.readyState !== ws.OPEN) return
             if (!rooms.has(key)) rooms.set(key, new Set())
             rooms.get(key)!.add(ws)
+            const mine = claims
+            hears.set(ws, () => !live(mine, ctx) && (!file || opensFile(ctx, sheetId, file, mine)))
             ws.send(JSON.stringify({ t: 'state', rev: state.rev, snapshot: state.json }))
             return
           }

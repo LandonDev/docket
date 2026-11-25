@@ -5,6 +5,9 @@ ingress:
   # the remote listener's rule, which would take every path of the hostname.
   # Written by milestone 18; applying it to the live tunnel is the owner's
   # step (scripts/box/apply.sh --from 60 --through 60).
+  # Guest pages and their sockets on an origin of their own (docs/agents/work-guests.md "The guest origin").
+  - hostname: share.landonhale.com
+    service: http://127.0.0.1:7695
   - hostname: tempcode.landonhale.com
     path: ^/(g|w|f)/
     service: http://127.0.0.1:7695

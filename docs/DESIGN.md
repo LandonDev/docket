@@ -2754,7 +2754,21 @@ Around the canvas:
   words, never as disabled controls.
 - **The guest's page** (tempcode.landonhale.com) is the same editor on the
   same tokens under one 44px line: the item's name, whose it is, what the
-  guest can do, until when, and the guest's avatar. A styled document is sheets of its paper from 640px ("Work editors: Document pages"). What a guest may not
+  guest can do, until when, the faces of who else is in the file and the
+  guest's own. A face there is the bar's 20px `Face`; the others lap 6px over
+  a 2px `background` ring, each ringed 1.5px in the hue of their caret
+  (presence, never a fill), three at most and "+2" in the line's 12px muted
+  after them, 8px before the guest's own. The owner's own hosted page draws
+  the others at the line's end. One muted 13px line under the format row,
+  32px with a hairline under it, says what is wrong with the connection in
+  words ("Offline. Your edits are kept on this device until the connection
+  is back."); it is a status, never a warning, takes no glyph and no colour,
+  and wraps to two lines on a phone rather than cut. An update too large to
+  send is the same line in the text's place with a ghost Reload. A link that
+  opens nothing is the page's one empty state: past its own end "This link
+  ended Dec 18" over "Ask Landon Hale for a new one if you still need it.",
+  else "This link no longer opens anything"; out of reach, "This page cannot
+  be reached right now" with Retry. A styled document is sheets of its paper from 640px ("Work editors: Document pages"). What a guest may not
   do is absent, never disabled. A project's link draws the project
   screens there on the Projects view's own measures, read only: the line
   holds the List or Board switch before the guest's facts, no way back

@@ -4,15 +4,18 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@renderer/comp
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { ArrowLeft, RefreshCw } from "@renderer/chrome/icons";
 import { Doc, Project, Table } from "@renderer/work/icons";
+import { Face } from "@renderer/work/mail/face";
 import { projectionLists, type GuestProjection } from "@shared/work/guestProjection";
-import { initials, modeOf, OpenFailed, Session, untilDay, type ChildItem, type Failure, type Opened } from "./session";
+import { wipeOffline } from "./offline";
+import { endWords, modeOf, OpenFailed, openWhenUp, Session, untilDay, type ChildItem, type Failure, type Opened, type Remembered } from "./session";
 // The type alone: the sheet stays in its own lazy chunk.
 import type { Refusal } from "./SheetPage";
 
 /**
  * The hosted page (architecture §8.6; docs/DESIGN.md "The guest's page"):
  * one 44px line, the item's name, whose it is, what this person can do and
- * until when, their avatar; under it the owner's own editor or grid. No
+ * until when, the faces of who else is in it and their own; under it the
+ * owner's own editor or grid. No
  * sign-in: the address is the key. Nothing here reaches a thread, an agent
  * or any other item, and no control a link may not use is drawn. A project's
  * link shows the project (ProjectPage.tsx); a document or sheet of it opens
@@ -47,29 +50,68 @@ const renewStore = {
   set: (v: string | null) => (v ? sessionStorage.setItem("tc-open-renew", v) : sessionStorage.removeItem("tc-open-renew")),
 };
 
+/** What this browser keeps of a guest's link between visits (session.ts `Remembered`); a browser that keeps nothing still opens the page. */
+const memoryOf = (linkId: string) => ({
+  get: () => {
+    try {
+      return localStorage.getItem(`tc-guest:${linkId}`);
+    } catch {
+      return null;
+    }
+  },
+  set: (v: string | null) => {
+    try {
+      if (v) localStorage.setItem(`tc-guest:${linkId}`, v);
+      else localStorage.removeItem(`tc-guest:${linkId}`);
+    } catch {
+      // private browsing: nothing is kept
+    }
+  },
+});
+
+/** Someone else in the file, as the editor or the grid tells of them. */
+export interface Person {
+  id: string;
+  name: string;
+  /** their caret's colour: the ring of their face */
+  color: string;
+}
+
 export function GuestApp() {
   const scheme = useScheme();
   const session = useMemo(() => {
     const mode = modeOf(location.pathname, location.hash);
-    return mode.kind === "none" ? null : new Session(mode, location.origin, renewStore);
+    return mode.kind === "none" ? null : new Session(mode, location.origin, renewStore, undefined, null, mode.kind === "guest" ? memoryOf(mode.id) : null);
   }, []);
   const [state, setState] = useState<{ at: "loading" } | { at: "open"; opened: Opened } | { at: "failed"; why: Failure }>(session ? { at: "loading" } : { at: "failed", why: "gone" });
 
+  // What this browser knew of the link before this visit: read before the open writes over it.
+  const [kept] = useState<Remembered | null>(() => session?.remembered() ?? null);
+  // A link that is over leaves nothing on this device: the copy an Edit link kept is wiped.
+  const gone = useCallback(() => {
+    if (session?.mode.kind === "guest") void wipeOffline(session.mode.id, (session.remembered() ?? kept)?.doc);
+    setState({ at: "failed", why: "gone" });
+  }, [session, kept]);
   const load = useCallback(() => {
     if (!session) return;
     setState({ at: "loading" });
-    session.refresh().then(
+    // A host that is starting is asked again under the same bones: a start is not an end.
+    openWhenUp(() => session.refresh()).then(
       (opened) => {
         // The owner's ticket opens once: it leaves the address as soon as it has.
         if (session.mode.kind === "owner") history.replaceState(null, "", location.pathname);
         document.title = opened.title;
         setState({ at: "open", opened });
       },
-      (err: unknown) => setState({ at: "failed", why: err instanceof OpenFailed ? err.why : "down" }),
+      (err: unknown) => {
+        const why = err instanceof OpenFailed ? err.why : "down";
+        if (why === "gone") gone();
+        else setState({ at: "failed", why });
+      },
     );
-  }, [session]);
+  }, [session, gone]);
   useEffect(load, [load]);
-  const gone = useCallback(() => setState({ at: "failed", why: "gone" }), []);
+  const [people, setPeople] = useState<readonly Person[]>([]);
   // A sheet that ran out of tries hands over the refusal that stood: the screen keeps its warning, and so does the grid after Retry.
   const [left, setLeft] = useState<Refusal | null>(null);
   const down = useCallback((standing: Refusal | null = null) => {
@@ -85,7 +127,7 @@ export function GuestApp() {
   // A document or sheet the project no longer lists is closed at the page's next read: its socket is already shut.
   const shown = useCallback((p: GuestProjection) => setChild((open) => (open && !projectionLists(p, open.table, open.id) ? null : open)), []);
 
-  if (state.at === "failed") return <Ended why={state.why} left={left} owner={session?.mode.kind === "owner"} retry={load} />;
+  if (state.at === "failed") return <Ended why={state.why} left={left} owner={session?.mode.kind === "owner"} kept={session?.remembered() ?? kept} retry={load} />;
   const opened = state.at === "open" ? state.opened : null;
   const TitleTag = opened?.kind === "doc" ? "h1" : "span";
   return (
@@ -103,17 +145,20 @@ export function GuestApp() {
             <TitleTag className="min-w-0 truncate text-sm font-semibold">{child ? child.title || "Untitled" : opened.title}</TitleTag>
             {opened.owner ? <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{opened.owner}</span> : null}
             {opened.kind === "project" && !child ? <span ref={setSlot} data-project-bar className="flex min-w-0 flex-1 items-center justify-between gap-2" /> : null}
-            {opened.name ? (
+            {opened.name || people.length ? (
               <span className="ms-auto flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                <span className="hidden sm:inline">{CAN[opened.role]}</span>
-                <span className="hidden tabular-nums sm:inline">until {untilDay(opened.expiresAt)}</span>
-                <span
-                  aria-label={opened.name}
-                  role="img"
-                  className="grid size-6 place-items-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)"
-                >
-                  {initials(opened.name)}
-                </span>
+                {opened.name ? (
+                  <>
+                    <span className="hidden sm:inline">{CAN[opened.role]}</span>
+                    <span className="hidden tabular-nums sm:inline">until {untilDay(opened.expiresAt)}</span>
+                  </>
+                ) : null}
+                <Faces people={people} />
+                {opened.name ? (
+                  <span role="img" aria-label={opened.name} title={opened.name} className="grid">
+                    <Face name={opened.name} size="bar" />
+                  </span>
+                ) : null}
               </span>
             ) : null}
           </>
@@ -131,7 +176,7 @@ export function GuestApp() {
                 {child ? <ChildPage key={`${child.table}:${child.id}`} session={session!} item={child} onBack={back} onGone={gone} /> : null}
               </>
             ) : opened.kind === "doc" ? (
-              <DocPage session={session!} opened={opened} scheme={scheme} onGone={gone} />
+              <DocPage session={session!} opened={opened} scheme={scheme} onGone={gone} onPeople={setPeople} />
             ) : (
               <SheetPage session={session!} opened={opened} onGone={gone} onDown={down} carried={left} />
             )}
@@ -221,8 +266,33 @@ function Bones() {
   );
 }
 
-const ENDED: Record<Failure, { title: string; detail: string }> = {
-  gone: { title: "This link no longer opens anything", detail: "Ask the person who sent it if you still need it." },
+/**
+ * Who else is in the file, before the guest's own face: 20px faces lapped 6px over a 2px ring of the page's ground,
+ * each ringed in the hue of their caret, three at most and a count after (docs/DESIGN.md "The guest's page").
+ */
+export function Faces({ people }: { people: readonly Person[] }) {
+  if (people.length === 0) return null;
+  const shown = people.length > 4 ? people.slice(0, 3) : people;
+  const more = people.length - shown.length;
+  return (
+    <span role="group" aria-label={`Also here: ${people.map((p) => p.name).join(", ")}`} data-guest-faces className="flex shrink-0 items-center">
+      {shown.map((p, i) => (
+        <span
+          key={p.id}
+          title={p.name}
+          data-person={p.id}
+          className={`grid rounded-full [--face-ring:var(--image-outline)] ${i > 0 ? "-ms-1.5 shadow-[0_0_0_2px_var(--background)]" : ""}`}
+          style={p.color ? ({ "--face-ring": p.color } as React.CSSProperties) : undefined}
+        >
+          <Face name={p.name} size="bar" className="outline-[1.5px] -outline-offset-[1.5px] outline-(--face-ring)" />
+        </span>
+      ))}
+      {more > 0 ? <span className="ms-1 tabular-nums">+{more}</span> : null}
+    </span>
+  );
+}
+
+const ENDED: Record<Exclude<Failure, "gone" | "starting">, { title: string; detail: string }> = {
   busy: { title: "Too many tries from here", detail: "Try again in a few minutes." },
   // Says nothing of what was written: the page cannot know whether the last edit reached the item.
   down: { title: "This page cannot be reached right now", detail: "Try again in a minute." },
@@ -233,9 +303,11 @@ const DOWN_UNSAVED = { title: "This page cannot be reached right now", detail: "
 /** With an edit whose answer never came: it may or may not have landed. */
 const DOWN_UNCONFIRMED = { title: "This page cannot be reached right now", detail: "Your last edit could not be confirmed. Try again in a minute, then check the cell." };
 
-export function Ended({ why, left = null, owner, retry }: { why: Failure; left?: Refusal | null; owner: boolean; retry(): void }) {
+export function Ended({ why, left = null, owner, kept = null, retry }: { why: Failure; left?: Refusal | null; owner: boolean; kept?: Remembered | null; retry(): void }) {
   const downWords = left ? (left.unconfirmed ? DOWN_UNCONFIRMED : DOWN_UNSAVED) : ENDED.down;
-  const words = owner && why === "gone" ? { title: "This page has already been opened, or it ran out", detail: "Open it again from TempCode." } : why === "down" ? downWords : ENDED[why];
+  // A host that is still starting after the wait is out of reach, said as that: never as an end.
+  const out = why === "down" || why === "starting";
+  const words = out ? downWords : why === "busy" ? ENDED.busy : owner ? { title: "This page has already been opened, or it ran out", detail: "Open it again from TempCode." } : endWords(kept);
   return (
     <main className="grid h-dvh place-items-center bg-background px-6 text-foreground">
       <Empty>
@@ -245,7 +317,7 @@ export function Ended({ why, left = null, owner, retry }: { why: Failure; left?:
           </EmptyTitle>
           <EmptyDescription>{words.detail}</EmptyDescription>
         </EmptyHeader>
-        {why === "down" ? (
+        {out ? (
           <Button variant="secondary" size="sm" onClick={retry}>
             <RefreshCw />
             Retry

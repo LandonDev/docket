@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, mkdtempSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -16,9 +17,11 @@ import { LIMITS } from '../service/routes/guests'
 import { servicePaths } from '../service/config'
 import { startWorkService, type RunningService } from '../service/serve'
 import { TcsheetBackend } from '../sheets/host/backends'
+import { readZip, writeZip } from '../sheets/patch/zip'
 import { guestLinkKind, guests, guestsTools } from '.'
+import { fileUid } from './fileIdent'
 import { fileSheetId, GuestRuntime } from './links'
-import { ensureGuestTables, fileLinked, guestLinkedFile } from './store'
+import { endGuestEditOn, ensureGuestTables, fileLinked, guestLinkedFile } from './store'
 
 /*
  * A guest link to a TempCode document or sheet kept as a file (the Share sheet's own links): what may be shared and
@@ -57,6 +60,22 @@ const until = async (what: string, ok: () => boolean, ms = 5000): Promise<void> 
   }
 }
 
+function internal(socketPath: string, path: string, body: unknown): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const req = request({ socketPath, path, method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${'s'.repeat(43)}` } }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => {
+        const answer = JSON.parse(Buffer.concat(chunks).toString() || '{}') as { error?: string }
+        if ((res.statusCode ?? 500) >= 400) reject(new Error(answer.error ?? String(res.statusCode)))
+        else resolve(answer)
+      })
+    })
+    req.on('error', reject)
+    req.end(JSON.stringify(body ?? {}))
+  })
+}
+
 async function rig() {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'share-')))
   open.dirs.push(dir)
@@ -82,7 +101,7 @@ async function rig() {
       trusted: [{ by: 'host', iss: 'tempcode:env_box', aud: TEMPCODE_COLLAB_AUDIENCE, keys: [keys.publicJwk] }],
       links: []
     },
-    { jwt: async () => 'owner-jwt', log: () => {} }
+    { jwt: async () => 'owner-jwt', log: (line) => void (process.env.SHARE_LOG && console.error(line)) }
   )
   open.services.push(service)
   const db = new DatabaseSync(':memory:')
@@ -101,7 +120,8 @@ async function rig() {
     canvas: { get: () => null, paneOf: (s: string) => s },
     // As in the app: a remote key reaches the workspace's folder alone; the host's own callers and threads are not fenced here.
     reaches: (by: Caller, path: string) => by.kind !== 'remote' || path.startsWith(folder + '/'),
-    service: { url: (route: string) => `${base}${route}`, token: async () => 'ok', internal: async () => ({}) },
+    // The service's own internal routes, over its socket, as `ctx.service.internal` reaches them.
+    service: { url: (route: string) => `${base}${route}`, token: async () => 'ok', internal: (route: string, body: unknown) => internal(servicePaths(join(dir, 'data')).socketPath, route, body) },
     lifeos: { owner: () => ({ query: async () => null, mutation: async (name: string, args: unknown) => void told.push({ name, args }) }) }
   } as unknown as WorkCtx
   const rt = new GuestRuntime(ctx, () => ({ tokenSigner: () => signer, setLinks: (links) => service.setLinks(links), setProject: (id, project) => service.setProject(id, project) }))
@@ -118,6 +138,12 @@ async function rig() {
   return { rt, ctx, db, service, signer, base, folder, outside, doc, sheet, told }
 }
 type Rig = Awaited<ReturnType<typeof rig>>
+
+/** A `.tcdoc`'s bytes with its id entry taken out: the file as a copy made into a document of its own. */
+function readWithout(path: string): Uint8Array {
+  const z = readZip(new Uint8Array(readFileSync(path)))
+  return writeZip(z, new Map(), new Set(['ident.json']), new Map())
+}
 
 const file = (path: string, host = 'env_box') => ({ at: 'file' as const, host, path })
 const days = (n: number): number => Date.now() + n * 24 * 60 * 60_000
@@ -195,6 +221,171 @@ describe('a file link that no longer fits', () => {
   })
 })
 
+describe('a file link is for one file, not for a path', () => {
+  it('another file saved over the path opens for nobody from the first request, and the link ends at the next pass', async () => {
+    const r = await rig()
+    for (const [path, name] of [[r.doc, 'Dana'], [r.sheet, 'Sam']] as const) {
+      const made = await r.rt.create({ source: file(path), title: 'T', name, role: 'edit', expiresAt: days(7), bySession: null, by: LOCAL })
+      expect(r.rt.store.get(made.link.id)?.fileUid).toBe(fileUid(path))
+      expect((await openLink(r, made.link.id, secretOf(made.url))).status).toBe(200)
+      // Another document of his, moved onto the name in one step: the path never stood empty, so no pass saw it go.
+      const other = join(r.folder, path.endsWith('.tcdoc') ? 'Private notes.tcdoc' : 'Private budget.tcsheet')
+      if (path.endsWith('.tcsheet')) TcsheetBackend.create(other, 'Private budget')
+      else {
+        copyFileSync(path, other)
+        // A copy is the same document; one that is its own carries its own id.
+        await internal(servicePaths(join(r.folder, '..', 'data')).socketPath, '/internal/guests/ident', { path: other })
+        writeFileSync(other, readWithout(other))
+        await internal(servicePaths(join(r.folder, '..', 'data')).socketPath, '/internal/guests/ident', { path: other })
+      }
+      expect(fileUid(other)).not.toBe(fileUid(path))
+      renameSync(other, path)
+      // The service has not been told anything new, and still opens nothing of it.
+      expect((await openLink(r, made.link.id, secretOf(made.url))).status, path).toBe(403)
+      const ws = new WsSocket(`${r.base.replace('http', 'ws')}/g/ws/${made.link.id}`)
+      open.sockets.push(ws)
+      expect(await new Promise((res) => (ws.on('open', () => res('open')), ws.on('unexpected-response', (_q, got) => res(got.statusCode)), ws.on('error', () => {}))), path).toBe(404)
+      // And at main's next pass the link is over for good: he makes a new one for the new file.
+      await r.rt.tick()
+      expect(r.rt.store.get(made.link.id)?.revokedAt, path).not.toBeNull()
+    }
+  })
+
+  it("the app's own saves keep the file's id, so a guest's edits never end their own link", async () => {
+    const r = await rig()
+    const doc = await r.rt.create({ source: file(r.doc), title: 'Plan', name: 'Dana', role: 'edit', expiresAt: days(7), bySession: null, by: LOCAL })
+    const before = fileUid(r.doc)
+    const opened = await openLink(r, doc.link.id, secretOf(doc.url))
+    const guest = client(`${r.base.replace('http', 'ws')}/g/ws/${doc.link.id}`, opened.body.doc!, opened.body.token!)
+    await until('synced', () => guest.provider.isSynced)
+    guest.document.getText('proof').insert(0, 'Typed by the guest. ')
+    await until('stored', () => guest.provider.isSynced && !guest.provider.hasUnsyncedChanges)
+    await guest.destroy()
+    // The store rewrote the file (a new inode); what names it is inside it.
+    await until('the file is written again', () => fileUid(r.doc) === before && r.rt.store.get(doc.link.id)?.revokedAt === null, 8000)
+    await r.rt.tick()
+    expect(r.rt.store.get(doc.link.id)?.revokedAt).toBeNull()
+    expect((await openLink(r, doc.link.id, secretOf(doc.url))).status).toBe(200)
+    // A sheet: an op rewrites the whole file.
+    const sheet = await r.rt.create({ source: file(r.sheet), title: 'Budget', name: 'Sam', role: 'edit', expiresAt: days(7), bySession: null, by: LOCAL })
+    const id = fileUid(r.sheet)
+    await internal(servicePaths(join(r.folder, '..', 'data')).socketPath, '/internal/sheet/cells', { sheet: { tcsheet: r.sheet }, cells: [{ at: 'A1', v: 1 }], by: 'owner' })
+    expect(fileUid(r.sheet)).toBe(id)
+    await r.rt.tick()
+    expect(r.rt.store.get(sheet.link.id)?.revokedAt).toBeNull()
+  })
+
+  it('a link made before files carried an id takes the id its file has now, once', async () => {
+    const r = await rig()
+    const made = await r.rt.create({ source: file(r.doc), title: 'Plan', name: 'Dana', role: 'view', expiresAt: days(7), bySession: null, by: LOCAL })
+    r.db.prepare('UPDATE work_guest_links SET file_uid = NULL WHERE id = ?').run(made.link.id)
+    await r.rt.tick()
+    expect(r.rt.store.get(made.link.id)?.fileUid).toBe(fileUid(r.doc))
+    expect((await openLink(r, made.link.id, secretOf(made.url))).status).toBe(200)
+  })
+
+  it('a path is taken as the file it reaches: no relative path, no home shorthand, and no name that links to a Word file', async () => {
+    const r = await rig()
+    const make = (path: string, by: Caller = LOCAL) => r.rt.create({ source: file(path), title: 'T', name: 'Dana', role: 'view', expiresAt: days(7), bySession: null, by })
+    await expect(make('Field trip plan.tcdoc')).rejects.toThrow(SHARE_REFUSALS.gone)
+    await expect(make('~/Field trip plan.tcdoc')).rejects.toThrow(SHARE_REFUSALS.gone)
+    // A name that reads as a document of ours and links to a Word file: the service would open, and write, the Word file.
+    writeFileSync(join(r.folder, 'Letter.docx'), 'word bytes')
+    symlinkSync(join(r.folder, 'Letter.docx'), join(r.folder, 'Letter.tcdoc'))
+    await expect(make(join(r.folder, 'Letter.tcdoc'))).rejects.toThrow(SHARE_REFUSALS.other)
+    // A name in the workspace that links to a file outside it is fenced by the file, for a key that reaches the folder alone.
+    writeFileSync(join(r.outside, 'Private.tcdoc'), '')
+    symlinkSync(join(r.outside, 'Private.tcdoc'), join(r.folder, 'Alias.tcdoc'))
+    shared.paths.add(join(r.outside, 'Private.tcdoc'))
+    await expect(make(join(r.folder, 'Alias.tcdoc'), PHONE)).rejects.toThrow(SHARE_REFUSALS.shared)
+    // Another host's id never reaches this disk: refused before the path is looked at.
+    await expect(r.rt.create({ source: file('/does/not/matter.tcdoc', 'env_mac'), title: 'T', name: 'D', role: 'view', expiresAt: days(7), bySession: null, by: LOCAL })).rejects.toThrow('served elsewhere: env_mac')
+    expect(r.db.prepare('SELECT count(*) AS n FROM work_guest_links').get()).toEqual({ n: 0 })
+  })
+
+  it('Save As that keeps a document linked first turns its edit links into view links, their sockets closed', async () => {
+    const r = await rig()
+    const made = await r.rt.create({ source: file(r.doc), title: 'Plan', name: 'Dana', role: 'edit', expiresAt: days(7), bySession: null, by: LOCAL })
+    const reader = await r.rt.create({ source: file(r.doc), title: 'Plan', name: 'Kim', role: 'view', expiresAt: days(7), bySession: null, by: LOCAL })
+    const opened = await openLink(r, made.link.id, secretOf(made.url))
+    const guest = client(`${r.base.replace('http', 'ws')}/g/ws/${made.link.id}`, opened.body.doc!, opened.body.token!)
+    await until('synced', () => guest.provider.isSynced)
+    // What files/saveAs.ts asks before it links the document to another file.
+    await endGuestEditOn(r.db, r.doc)
+    expect(r.rt.store.get(made.link.id)).toMatchObject({ role: 'view', revokedAt: null })
+    expect(r.rt.store.get(reader.link.id)).toMatchObject({ role: 'view', revokedAt: null })
+    await until('the socket that could write is closed', () => !guest.provider.isSynced, 3000)
+    expect((await openLink(r, made.link.id, secretOf(made.url))).body.role).toBe('view')
+    // A file no link names asks nothing of anyone.
+    await endGuestEditOn(r.db, r.sheet)
+  })
+
+  it('a document that comes to be saved to another file loses its edit link at the next pass', async () => {
+    const r = await rig()
+    const made = await r.rt.create({ source: file(r.doc), title: 'Plan', name: 'Dana', role: 'edit', expiresAt: days(7), bySession: null, by: LOCAL })
+    r.db.exec('CREATE TABLE work_files_links (doc TEXT, target TEXT)')
+    r.db.prepare('INSERT INTO work_files_links VALUES (?, ?)').run(r.doc, '/elsewhere/Plan.docx')
+    await r.rt.tick()
+    expect(r.rt.store.get(made.link.id)?.revokedAt).not.toBeNull()
+    expect((await openLink(r, made.link.id, secretOf(made.url))).status).toBe(403)
+  })
+})
+
+describe('a token is held to what its link is now', () => {
+  it('one signed for a role the link no longer has opens no document and no sheet, however fresh it is', async () => {
+    const r = await rig()
+    const ws = r.base.replace('http', 'ws')
+    const doc = await r.rt.create({ source: file(r.doc), title: 'Plan', name: 'Dana', role: 'view', expiresAt: days(7), bySession: null, by: LOCAL })
+    // A token for Edit, signed after the link's last change, as a list that was being signed while the role went down would hold.
+    const stale = (await r.signer.sign({ doc: fileDocName(r.doc), file: { path: r.doc }, role: 'edit', principal: `guest:${doc.link.id}`, link: doc.link.id }, 60)).token
+    const writer = client(`${ws}/g/ws/${doc.link.id}`, fileDocName(r.doc), stale)
+    const refused: string[] = []
+    writer.provider.on('authenticationFailed', ({ reason }: { reason: string }) => refused.push(reason))
+    await until('refused', () => refused.length > 0)
+    expect(writer.provider.isSynced).toBe(false)
+    const sheet = await r.rt.create({ source: file(r.sheet), title: 'Budget', name: 'Sam', role: 'view', expiresAt: days(7), bySession: null, by: LOCAL })
+    const sock = new WsSocket(`${ws}/g/ws/${sheet.link.id}`)
+    open.sockets.push(sock)
+    const closed = new Promise<number>((res) => sock.on('close', (code) => res(code)))
+    const token = (await r.signer.sign({ sheet: fileSheetId(r.sheet), role: 'edit', principal: `guest:${sheet.link.id}`, link: sheet.link.id }, 60)).token
+    sock.on('open', () => sock.send(JSON.stringify({ t: 'hello', token })))
+    expect(await closed).toBe(4403)
+  })
+
+  it('ops a sheet socket sent before a revoke land nowhere after it, and it hears nothing more of the sheet', async () => {
+    const r = await rig()
+    const ws = r.base.replace('http', 'ws')
+    const a = await r.rt.create({ source: file(r.sheet), title: 'Budget', name: 'Sam', role: 'edit', expiresAt: days(7), bySession: null, by: LOCAL })
+    const b = await r.rt.create({ source: file(r.sheet), title: 'Budget', name: 'Kim', role: 'edit', expiresAt: days(7), bySession: null, by: LOCAL })
+    const join2 = async (made: typeof a) => {
+      const opened = await openLink(r, made.link.id, secretOf(made.url))
+      const sock = new WsSocket(`${ws}/g/ws/${made.link.id}`)
+      open.sockets.push(sock)
+      const messages: { t: string; rev?: number; by?: string }[] = []
+      sock.on('message', (d) => messages.push(JSON.parse(String(d)) as { t: string }))
+      sock.on('error', () => {})
+      sock.on('open', () => sock.send(JSON.stringify({ t: 'hello', token: opened.body.token })))
+      await until('the workbook arrives', () => messages.some((m) => m.t === 'state'))
+      return { sock, messages, rev: () => messages.find((m) => m.t === 'state')!.rev! }
+    }
+    const sam = await join2(a)
+    const kim = await join2(b)
+    const cell = (v: string) => [{ id: 'sheet.mutation.set-range-values', params: { unitId: 'workbook', subUnitId: 'sheet1', cellValue: { 3: { 3: { v } } } } }]
+    // The service is told Sam's link is gone (as a revoke tells it), and in the same turn Sam's queued op arrives.
+    await r.rt.revoke(a.link.id)
+    sam.sock.send(JSON.stringify({ t: 'ops', id: 1, baseRev: sam.rev(), mutations: cell('after the revoke') }))
+    kim.sock.send(JSON.stringify({ t: 'ops', id: 1, baseRev: kim.rev(), mutations: cell('kim') }))
+    await until('kim is answered', () => kim.messages.some((m) => m.t === 'ack'))
+    await new Promise((res) => setTimeout(res, 200))
+    expect(sam.messages.some((m) => m.t === 'ack')).toBe(false)
+    // Kim's op reached Kim and not the socket whose link was revoked.
+    expect(kim.messages.filter((m) => m.t === 'ops').length).toBe(1)
+    expect(sam.messages.filter((m) => m.t === 'ops').length).toBe(0)
+    const read = (await internal(servicePaths(join(r.folder, '..', 'data')).socketPath, '/internal/sheet/range', { sheet: { tcsheet: r.sheet }, range: 'D4' })) as { cells: { v?: unknown }[][] }
+    expect(read.cells[0]![0]!.v).toBe('kim')
+  })
+})
+
 describe('a guest on a .tcdoc', () => {
   it('edits live with the owner both ways on one document; revoke ends the guest within a second', async () => {
     const r = await rig()
@@ -224,6 +415,11 @@ describe('a guest on a .tcdoc', () => {
     expect((await openLink(r, made.link.id, secretOf(made.url))).status).toBe(403)
     // His own editor is untouched.
     expect(owner.provider.isSynced).toBe(true)
+    // What the guest wrote is a version of its own in the file's History, cut as the guest's socket closed.
+    const listed = async () => ((await r.ctx.service.internal('/internal/history/list', { file: r.doc, fence: { sectors: 'all' } })) as { versions: { cause: string }[] }).versions
+    let causes: string[] = []
+    for (const end = Date.now() + 3000; Date.now() < end && !causes.includes('guest-end'); await new Promise((done) => setTimeout(done, 50))) causes = (await listed()).map((v) => v.cause)
+    expect(causes).toContain('guest-end')
   })
 
   it('a changed role takes effect at once: the open socket closes, and the page opens again as a reader', async () => {
@@ -303,6 +499,9 @@ describe('a thread asking to share a file', () => {
     // His press makes the link only for the file the thread named: another file at that name since is refused.
     const p = (held[0] as { payload: GuestLinkAct }).payload
     await expect(r.rt.create({ ...p, fileId: 'f'.repeat(40), bySession: 'thread1' })).rejects.toThrow(SHARE_REFUSALS.moved)
+    // The same name with another file under it (the held act names the id the file carried when the thread asked).
+    expect(p.fileUid).toBe(fileUid(r.doc))
+    await expect(r.rt.create({ ...p, fileUid: 'another-file-0000', bySession: 'thread1' })).rejects.toThrow(SHARE_REFUSALS.moved)
     const made = await r.rt.create({ ...p, bySession: 'thread1' })
     expect(made.link.source).toMatchObject({ at: 'file', path: r.doc })
     // A thread's own call to make, widen or revoke is refused: only the owner's screens do.

@@ -28,6 +28,19 @@ export interface ServiceProject {
   tokens: Record<string, { token: string; exp: number }>
 }
 
+/**
+ * Which pages may open a socket on the public listener (routes/route.ts `originAllowed`): a browser
+ * says where its page came from, and a page of any other origin is refused before a route sees it.
+ */
+export interface ServiceOrigins {
+  /** this host's public origin and, once guest pages have their own, that one too */
+  allowed: string[]
+  /** the guest pages' own origin (`work.guests.origin`); null while they share the public one */
+  guest: string | null
+  /** an isolated instance, a proof or a test: a page on loopback passes, and so does a guest's socket that names no origin */
+  loopback: boolean
+}
+
 /** Who serves LifeOS's documents: this host, or the one named (the box); null for none (an isolated instance). */
 export type LifeosServer = { here: true } | { here: false; host: string | null }
 
@@ -45,10 +58,21 @@ export interface ServiceConfig {
   host: string
   /** the owner's zone for times written to response sheets */
   zone?: string
+  /** the owner's name as he set it (Settings → Work), when he has: his own connections' presence carries it, whatever their client says */
+  owner?: string
   lifeos: LifeosServer & { url: string }
   /** every issuer whose tokens open a socket: public keys only (main signs; the key never reaches this process) */
   trusted: TrustedIssuer[]
   links: ServiceLink[]
+  /**
+   * Whether `links` is a list main settled: its last one, handed on when the service alone restarted. False after main
+   * itself started, when it knows no links yet: until the first `links` message a guest's address answers 503
+   * ("starting"), never 403 ("gone"), since a start is not an end (docs/agents/work-guests.md "A start is not an end").
+   * The supervisor always says; left out (a test's own config), the list given is the list.
+   */
+  linksSettled?: boolean
+  /** absent (a test's config): loopback pages pass and nothing else is named */
+  origins?: ServiceOrigins
 }
 
 /** Main → service. */
@@ -59,6 +83,7 @@ export type ToService =
   /** one project link's projection; null takes it away */
   | { t: 'project'; linkId: string; project: ServiceProject | null }
   | { t: 'trusted'; trusted: TrustedIssuer[] }
+  | { t: 'origins'; origins: ServiceOrigins }
   | { t: 'jwt'; id: number; jwt?: string; error?: string }
   | { t: 'stop' }
 
@@ -67,7 +92,8 @@ export type DocRevision = { doc: string; rev: string; loaded?: true }
 
 /** Service → main. */
 export type FromService =
-  | { t: 'ready'; port: number }
+  /** `mark`: a random value this run of the service made at its start, what `/w/healthz` answers */
+  | { t: 'ready'; port: number; mark?: string }
   | ({ t: 'doc-revision' } & DocRevision)
   | { t: 'jwt?'; id: number }
   | { t: 'log'; line: string }

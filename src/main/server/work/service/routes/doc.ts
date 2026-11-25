@@ -6,7 +6,10 @@ import { refuseUpgrade } from './route'
  * web view on one live document (architecture §8.1). The socket opens for
  * anyone; the first message must carry a collab token naming this document,
  * which the collab server checks (work-kit/collab-server), and a connection
- * is closed when its token runs out or its link goes.
+ * is closed when its token runs out or its link goes. A guest link's token
+ * opens nothing here: it opens its own link's address (`/g/ws/<id>`,
+ * routes/guests.ts), where its sockets are counted, its budget held and its
+ * leaving cut as a version.
  */
 export const docRoute: PublicRoute = {
   name: 'live documents',
@@ -26,12 +29,15 @@ export const docRoute: PublicRoute = {
     ctx.wss.handleUpgrade(req, socket, head, (ws) => {
       const headers = new Headers()
       for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v)
-      const accepted = ctx.collab.accept(ws, new Request(`http://localhost${req.url ?? '/'}`, { headers }), { doc })
+      const accepted = ctx.collab.accept(ws, new Request(`http://localhost${req.url ?? '/'}`, { headers }), { doc, link: null })
       ws.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
         const bytes = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data)
         accepted.message(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength))
       })
-      ws.on('close', (code: number, reason: Buffer) => accepted.close(code, reason.toString()))
+      ws.on('close', (code: number, reason: Buffer) => {
+        accepted.close(code, reason.toString())
+        ctx.docLeft(doc)
+      })
       ws.on('error', () => ws.terminate())
     })
   }

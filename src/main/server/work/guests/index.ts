@@ -84,12 +84,14 @@ export const guestsTools: WorkTool[] = [
         let source: GuestSource
         let title: string
         let fileId: string | undefined
+        let fileUid: string | undefined
         if (a.path) {
           source = { at: 'file', host: ctx.host, path: a.path }
           // A file outside this thread's own workspace is not its to share; the rest is checked as for the owner's own,
           // and his press makes the link only for this same file.
           fileId = rt.threadFile(a.path, ctx.scope.workspaceId)
-          rt.resolve(source, { kind: 'model', caps: [], sessionId: ctx.sessionId }, 'guest_link', a.role)
+          const resolved = rt.resolve(source, { kind: 'model', caps: [], sessionId: ctx.sessionId }, 'guest_link', a.role)
+          if (resolved.at === 'file') fileUid = await rt.identOf(resolved)
           title = basename(a.path).replace(/\.tc(doc|sheet)$/i, '') || 'Untitled'
         } else {
           const [table, id] = named[0] as [LifeosGuestSource['table'], string]
@@ -100,7 +102,7 @@ export const guestsTools: WorkTool[] = [
           if (ctx.scope.sector && row.sector !== ctx.scope.sector) return fail('LifeOS has no such item.')
           title = row.title
         }
-        const payload: GuestLinkAct = { source, ...(fileId ? { fileId } : {}), title: title.slice(0, 200), name: a.name.trim(), role: a.role, expiresAt: Date.now() + a.days * 24 * 60 * 60_000 }
+        const payload: GuestLinkAct = { source, ...(fileId ? { fileId } : {}), ...(fileUid ? { fileUid } : {}), title: title.slice(0, 200), name: a.name.trim(), role: a.role, expiresAt: Date.now() + a.days * 24 * 60 * 60_000 }
         const refused = guestRefusal(payload)
         if (refused) return fail(refused)
         const held = ctx.held.create({ kind: 'share.guestLink', sessionId: ctx.sessionId, payload })
@@ -163,6 +165,8 @@ export const guests: WorkModule = {
         if (!url) throw new Error('That link no longer opens anything.')
         return handled({ url })
       }
+      case 'work.guests.setOrigin':
+        return handled(await rt.setOrigin(req.params.origin))
       case 'work.guests.revoke':
         await rt.revoke(req.params.linkId)
         return handled({ ok: true })

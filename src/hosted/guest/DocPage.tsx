@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DOCUMENT_SCHEMA } from "work-kit/collab";
-import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type DocumentPage, type DocumentStatus, type DocumentView, type EditorAdapters, type PageZoom } from "work-kit/editor";
+import { DOCUMENT_LADDER, DocumentEditor, EditorAdaptersProvider, EditorKitProvider, type DocumentPage, type DocumentPresence, type DocumentStatus, type DocumentView, type EditorAdapters, type PageZoom } from "work-kit/editor";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { DOC_FONTS } from "@renderer/work/docs/fonts";
 import { Comment } from "@renderer/work/icons";
 import { openingView, openingZoom, PAGES_FROM } from "./opening";
-import { afterRevoked, endingSocket } from "./ending";
+import { afterRevoked, watchedSocket } from "./ending";
+import { offlinePrefix, wipeOffline } from "./offline";
 import { commentLeft } from "./place";
 import { OpenFailed, commentsOnPage, type Opened, type Session } from "./session";
 import { guestThreads } from "./threads";
@@ -17,12 +18,23 @@ import { guestThreads } from "./threads";
  * comments on what it selects (the service marks the words); a view link
  * reads. What a link may not do is not drawn.
  *
+ * An Edit link's page keeps the document on the guest's own device (offline.ts), so words typed while the line is
+ * down outlive a closed tab. One line under the format row says when what is typed is not saved yet: within two
+ * seconds of a line that dropped, in the editor's own muted status, never as a warning. An update the host cut as
+ * too large is said once, with Reload, in place of the text: sent again it would be cut again.
+ *
  * A styled document is drawn as sheets of its paper where the page is 640px
  * wide or more as it opens (docs/DESIGN.md "Work editors: Document pages"),
  * and an Edit link's row holds the switch and the zoom. Under 640px it is
  * always Flow and the row has no switch (guest.css): a sheet fitted to a
  * phone is too small to read.
  */
+
+/** How fast the document's socket comes back: 1 s, growing a tenth a try, 5 s at most (about 30 s to reach it), with no jitter to wait on. */
+export const RECONNECT = { delayMs: 1000, factor: 1.1, maxDelayMs: 5000, jitter: false } as const;
+
+/** Set once this tab let go of a copy the host refused, so a second refusal ends as any other and never reloads again. */
+const WIPED = "tc-guest-wiped";
 
 const MEASURE = 672;
 const MARGIN = 296;
@@ -38,8 +50,48 @@ const IN_PAGES = {
   text: "group-has-[.te-pages-stage]/doc:pr-0",
 };
 
-export function DocPage({ session, opened, scheme, onGone }: { session: Session; opened: Opened; scheme: "light" | "dark"; onGone(): void }) {
+/** What the offline line says, by what holds the words typed meanwhile: this device (an Edit link's copy), this tab, or nothing to hold (a reader). */
+export const OFFLINE_WORDS = {
+  device: "Offline. Your edits are kept on this device until the connection is back.",
+  tab: "Offline. Your edits are kept in this tab until the connection is back.",
+  reader: "Offline. Changes will show when the connection is back.",
+} as const;
+export const TOO_BIG_WORDS = "That is too much to add at once. It was not saved.";
+export const TOO_MUCH_WORDS = "Too much at once. Your edits are kept and will send in a minute.";
+export const FULL_WORDS = "This document is as large as a guest can make it. Your last edit was not saved.";
+
+/** Whether this load of the page is a reload of it. */
+const reloaded = (): boolean => (performance.getEntriesByType?.("navigation")[0] as PerformanceNavigationTiming | undefined)?.type === "reload";
+
+export function DocPage({
+  session,
+  opened,
+  scheme,
+  onGone,
+  onPeople,
+}: {
+  session: Session;
+  opened: Opened;
+  scheme: "light" | "dark";
+  onGone(): void;
+  /** who else has the document open, as their carets come and go: the page's line draws their faces */
+  onPeople?(people: DocumentPresence[]): void;
+}) {
   const doc = opened.doc!;
+  const linkId = session.mode.kind === "guest" ? session.mode.id : null;
+  // The copy on this device is an Edit link's alone: a reader has nothing to keep, and the owner's page is his own app's.
+  const kept = linkId !== null && opened.role === "edit";
+  const [quiet, setQuiet] = useState(false);
+  // What stopped the page for good until a reload: an update too large to send, or a document a guest may add no more to.
+  const [stopped, setStopped] = useState<"big" | "full" | null>(null);
+  // The link is waiting out its budget: the host lets it back in about a minute, and its next word takes the line away.
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    // The browser knows it is offline before any socket does. Back online says nothing yet: the host's next word does.
+    const off = (): void => setQuiet(true);
+    window.addEventListener("offline", off);
+    return () => window.removeEventListener("offline", off);
+  }, []);
   const threads = useMemo(() => (opened.role === "view" || opened.comments === false ? null : guestThreads(session, doc)), [session, doc, opened.role, opened.comments]);
   const goneRef = useRef(onGone);
   goneRef.current = onGone;
@@ -59,23 +111,46 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
   // the document off the screen, for a reader too, whose editor shows no trouble once the text is in.
   // A role he changed opens the page again as that role; the editor brings its own socket back otherwise.
   const socket = useMemo(
-    () => endingSocket(() => void afterRevoked(() => session.refresh(), opened.role, { gone: () => goneRef.current(), reopen: () => window.location.reload(), again: () => {} })),
-    [session, opened.role],
+    () =>
+      watchedSocket({
+        revoked: () => void afterRevoked(() => session.refresh(), opened.role, { gone: () => goneRef.current(), reopen: () => window.location.reload(), again: () => {} }),
+        quiet: (q) => {
+          setQuiet(q);
+          if (!q) setHeld(false);
+        },
+        // The update is in this device's copy too: left there, the next open would send it again and be cut again.
+        tooBig: () => void (linkId !== null ? wipeOffline(linkId, doc) : Promise.resolve()).then(() => setStopped("big")),
+        full: () => void (linkId !== null ? wipeOffline(linkId, doc) : Promise.resolve()).then(() => setStopped("full")),
+        tooMuch: () => setHeld(true),
+        // What the copy holds was written under another name than this link's: it is let go and the document read afresh, once.
+        ...(kept
+          ? {
+              refusedCopy: () => {
+                if (sessionStorage.getItem(WIPED) === doc) return void afterRevoked(() => session.refresh(), opened.role, { gone: () => goneRef.current(), reopen: () => window.location.reload(), again: () => {} });
+                sessionStorage.setItem(WIPED, doc);
+                void wipeOffline(linkId, doc).then(() => window.location.reload());
+              },
+            }
+          : {}),
+      }),
+    [session, opened.role, linkId, kept, doc],
   );
   const adapters = useMemo<Partial<EditorAdapters>>(
     () => ({
       // Every token the editor asks for (on connect, and every minute) asks the service again:
       // a link revoked or ended answers "gone" there, and the page says so.
-      collab: { url: session.socketUrl(opened), getToken: () => fresh(), offline: false, socket },
+      // A line that dropped, or a host that restarted, is tried again about every second for the first half minute, then every five.
+      collab: { url: session.socketUrl(opened), getToken: () => fresh(), offline: kept ? offlinePrefix(linkId) : false, socket, reconnect: RECONNECT },
       threads: threads?.adapter ?? null,
       identity: {
-        me: { id: opened.me, name: opened.name ?? "You", avatarUrl: null },
+        // The owner's own page says his name: a guest reads it on his caret (the host hands it over with his pass).
+        me: { id: opened.me, name: opened.name ?? opened.self ?? "You", avatarUrl: null },
         get people() {
           return Object.entries(threads?.names() ?? {}).map(([id, name]) => ({ id, name, avatarUrl: null }));
         },
       },
     }),
-    [session, opened, threads, fresh, socket],
+    [session, opened, threads, fresh, socket, kept, linkId],
   );
   const wide = useWide(MEASURE + MARGIN + 64);
   // Flow or Pages, and Pages' zoom: what the page's width says as it opens, then his own pick in the row. A later resize changes nothing.
@@ -93,11 +168,23 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
     setStyled(page !== null);
   }, []);
   const read = useRef(false);
-  const onEditor = useCallback((editor: unknown) => {
-    if (!editor || read.current) return;
-    read.current = true;
-    setClassic(!styledNow.current);
-  }, []);
+  const onEditor = useCallback(
+    (editor: unknown) => {
+      if (!editor || read.current) return;
+      read.current = true;
+      setClassic(!styledNow.current);
+      // A reload puts the caret back in the text, at its start: no place is kept, and the keys go somewhere.
+      if (opened.role !== "edit" || !reloaded()) return;
+      const e = editor as { document?: unknown[]; setTextCursorPosition?(block: unknown, at: "start"): void; focus?(): void };
+      try {
+        if (e.document?.[0]) e.setTextCursorPosition?.(e.document[0], "start");
+        e.focus?.();
+      } catch {
+        // An editor with no block to stand in keeps no caret.
+      }
+    },
+    [opened.role],
+  );
   // Sheets need 640px now, too: a tablet turned narrow, or a phone turned back upright, reads Flow until there is room again.
   const room = useWide(PAGES_FROM);
   const view = room ? (picked.view ?? (classic ? "flow" : opens.view)) : "flow";
@@ -112,17 +199,39 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
     setStatus(next);
     if (next) void session.refresh().catch((err: unknown) => err instanceof OpenFailed && err.why === "gone" && goneRef.current());
   };
+  const offlineWords = kept ? OFFLINE_WORDS.device : opened.role === "edit" ? OFFLINE_WORDS.tab : OFFLINE_WORDS.reader;
+  // One line: the editor's own trouble, in this page's words where it is the line being down; else a line that went quiet.
+  const line: { message: string; retry: (() => void) | null } | null = held
+    ? { message: TOO_MUCH_WORDS, retry: null }
+    : status
+      ? status.kind === "offline"
+        ? { message: offlineWords, retry: null }
+        : status
+      : quiet
+        ? { message: offlineWords, retry: null }
+        : null;
+  if (stopped)
+    return (
+      <div data-guest-document={opened.role} className="mx-auto w-full max-w-[736px] px-4 pt-6 sm:px-8">
+        <div role="alert" className="flex min-h-8 items-center gap-2 border-b border-border text-[13px]">
+          <span className="min-w-0 text-muted-foreground">{stopped === "big" ? TOO_BIG_WORDS : FULL_WORDS}</span>
+          <Button variant="ghost" size="xs" className="ms-auto shrink-0" onClick={() => window.location.reload()}>
+            Reload
+          </Button>
+        </div>
+      </div>
+    );
   return (
     <EditorKitProvider value={{ theme: scheme, ladder: DOCUMENT_LADDER, fonts: DOC_FONTS }}>
       <EditorAdaptersProvider adapters={adapters}>
         {/* The format row's place: the page's first row under its header, held while the text scrolls under it, as in the app's pane. */}
         {opened.role === "edit" ? <div ref={setRowSlot} data-guest-row className="sticky top-0 z-10 w-full min-w-0 flex-none bg-background" /> : null}
         <div ref={frame} data-guest-document={opened.role} className={`group/doc relative mx-auto w-full max-w-(--doc-column) min-w-0 px-4 pt-6 pb-10 sm:px-8 ${IN_PAGES.column}`} style={{ "--doc-column": `${MEASURE + (side ? MARGIN : 0) + 64}px`, "--doc-margin": `${side ? MARGIN : 0}px` } as React.CSSProperties}>
-          {status ? (
-            <div role="status" className={`mb-3 flex h-8 max-w-[672px] items-center gap-2 border-b border-border text-[13px] ${IN_PAGES.status}`}>
-              <span className="min-w-0 truncate text-muted-foreground">{status.message}</span>
-              {status.retry ? (
-                <Button variant="ghost" size="xs" className="ms-auto" onClick={status.retry}>
+          {line ? (
+            <div role="status" data-guest-status className={`mb-3 flex min-h-8 max-w-[672px] items-center gap-2 border-b border-border py-1 text-[13px] leading-5 ${IN_PAGES.status}`}>
+              <span className="min-w-0 text-muted-foreground">{line.message}</span>
+              {line.retry ? (
+                <Button variant="ghost" size="xs" className="ms-auto shrink-0" onClick={line.retry}>
                   Retry
                 </Button>
               ) : null}
@@ -136,6 +245,7 @@ export function DocPage({ session, opened, scheme, onGone }: { session: Session;
               threadMargin={threads && !sheets ? (side ? "side" : "under") : undefined}
               threadList={!!threads}
               onStatus={onStatus}
+              {...(onPeople ? { onPresence: onPeople } : {})}
               // An Edit link gets the format row; Comment and View get none. The page is built with the service it is
               // served by, so the schema it knows is the service's: it says so, and asks the service to raise a document.
               formatRow={opened.role === "edit"}

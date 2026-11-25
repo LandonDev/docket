@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabSigner, type TrustedIssuer } from 'work-kit/collab-server'
-import type { DocRevision, FromService, LifeosServer, ServiceConfig, ServiceLink, ServiceProject, ToService } from './wire'
+import type { DocRevision, FromService, LifeosServer, ServiceConfig, ServiceLink, ServiceOrigins, ServiceProject, ToService } from './wire'
 
 /**
  * Main's side of the Work service (docs/agents/work-service.md): forks the
@@ -33,6 +33,10 @@ export interface SupervisorDeps {
   /** an unfenced device JWT for the owner (ctx.lifeos.jwt()) */
   jwt(): Promise<string>
   zone?(): string
+  /** the owner's name as he set it, or '' (wire.ts `ServiceConfig.owner`) */
+  ownerName?(): string
+  /** which pages may open a socket on the public listener (wire.ts `ServiceOrigins`) */
+  origins?(): ServiceOrigins
   log(line: string): void
   /** first wait before a restart; doubles to 30 s */
   backoffMs?: number
@@ -52,6 +56,9 @@ export class ServiceSupervisor {
   private signer: CollabSigner | null = null
   private issuers: TrustedIssuer[] = []
   private links: ServiceLink[] = []
+  /** whether `links` is a list main was given since it started: a service forked before then is told its list is not settled */
+  private linksSettled = false
+  private markNow: string | null = null
   private readonly projects = new Map<string, ServiceProject>()
   private secret = ''
   private backoff: number
@@ -75,6 +82,11 @@ export class ServiceSupervisor {
   /** The public listener's port while the service runs, else null. */
   port(): number | null {
     return this.stateNow === 'running' ? this.portNow : null
+  }
+
+  /** The running service's start mark (what its `/w/healthz` answers), else null. */
+  mark(): string | null {
+    return this.stateNow === 'running' ? this.markNow : null
   }
 
   /** The issuer every token of this host is signed by; null until Work is on. */
@@ -113,6 +125,10 @@ export class ServiceSupervisor {
     if (gen !== this.gen) return
     const iss = `tempcode:${this.deps.host}`
     this.signer = await createCollabSigner({ privateJwk: keys.privateJwk, iss })
+    // New keys: every token in the list main last sent was signed by the old ones. The service is told its list is
+    // not settled, so a guest's page waits ("starting") for main's next one instead of being handed a dead token.
+    this.links = []
+    this.linksSettled = false
     this.issuers = [{ by: 'host', iss, aud: TEMPCODE_COLLAB_AUDIENCE, keys: [keys.publicJwk] }]
     this.secret = randomBytes(32).toString('base64url')
     mkdirSync(this.deps.serviceDir, { recursive: true, mode: 0o700 })
@@ -156,6 +172,7 @@ export class ServiceSupervisor {
         clearTimeout(readyTimer)
         this.stateNow = 'running'
         this.portNow = m.port
+        this.markNow = m.mark ?? null
         // The wait before a restart starts over only once the service has stayed up a minute.
         if (this.stable) clearTimeout(this.stable)
         this.stable = setTimeout(() => (this.backoff = this.deps.backoffMs ?? 1000), 60_000)
@@ -187,6 +204,7 @@ export class ServiceSupervisor {
       if (epoch !== this.epoch) return
       this.child = null
       this.portNow = null
+      this.markNow = null
       if (!this.wanted) return void (this.stateNow = 'off')
       this.deps.log(`[work-service] exited (${code ?? 'killed'}); starting it again in ${Math.round(this.backoff / 1000)} s`)
       this.later()
@@ -199,9 +217,12 @@ export class ServiceSupervisor {
       hostedDir: this.deps.hostedDir,
       host: this.deps.host,
       zone: this.deps.zone?.(),
+      ...(this.deps.ownerName?.() ? { owner: this.deps.ownerName() } : {}),
       lifeos: this.deps.lifeos(),
       trusted: this.trusted(),
-      links: this.links
+      links: this.links,
+      linksSettled: this.linksSettled,
+      ...(this.deps.origins ? { origins: this.deps.origins() } : {})
     }
     try {
       child.post({ t: 'config', config })
@@ -234,7 +255,13 @@ export class ServiceSupervisor {
   /** The guest link rows (milestone 31 sends them): a revoked one's sockets close at once. */
   setLinks(links: ServiceLink[]): void {
     this.links = links
+    this.linksSettled = true
     this.child?.post({ t: 'links', links })
+  }
+
+  /** The origins changed (`work.guests.setOrigin`): the running service holds sockets to the new list. */
+  refreshOrigins(): void {
+    if (this.deps.origins) this.child?.post({ t: 'origins', origins: this.deps.origins() })
   }
 
   /** What a project link shows (null: nothing any more): kept here so a restarted service is told again. */
@@ -271,6 +298,7 @@ export class ServiceSupervisor {
     this.epoch++
     this.stateNow = 'off'
     this.portNow = null
+    this.markNow = null
     this.signer = null
     if (child) {
       await new Promise<void>((resolve) => {

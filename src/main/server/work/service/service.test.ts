@@ -5,12 +5,13 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createCollaborationClient, DOCUMENT_FRAGMENT, type CollaborationClient } from 'work-kit/collab'
 import { createCollabSigner, generateCollabKeys, TEMPCODE_COLLAB_AUDIENCE, type CollabClaims, type CollabSigner } from 'work-kit/collab-server'
-import { BOX_DATA_DIR, isIsolatedInstance, lifeosServerOf, servicePaths, servicePort, INSTALLED_WORK_PORT } from './config'
+import { BOX_DATA_DIR, BOX_PUBLIC_ORIGIN, isIsolatedInstance, lifeosServerOf, serviceOrigins, servicePaths, servicePort, INSTALLED_WORK_PORT } from './config'
 import { BOX_PROD_DATA_DIR } from '../../processGuard'
 import { startFakeConvex, type FakeConvex } from './fakeConvex'
 import { PUBLIC_ROUTES } from './routes'
 import { startWorkService, type RunningService } from './serve'
-import type { ServiceConfig, ServiceLink } from './wire'
+import { originAllowed } from './routes/route'
+import type { ServiceConfig, ServiceLink, ServiceOrigins } from './wire'
 
 /*
  * The Work service in process, as its utility process runs it: both
@@ -46,7 +47,7 @@ interface Rig {
   dir: string
 }
 
-async function rig(o: { here?: boolean; links?: ServiceLink[]; dir?: string; convex?: FakeConvex; keys?: Awaited<ReturnType<typeof generateCollabKeys>> } = {}): Promise<Rig> {
+async function rig(o: { here?: boolean; links?: ServiceLink[]; dir?: string; convex?: FakeConvex; keys?: Awaited<ReturnType<typeof generateCollabKeys>>; origins?: ServiceOrigins; owner?: string; log?: (line: string) => void } = {}): Promise<Rig> {
   const dir = o.dir ?? mkdtempSync(join(tmpdir(), 'm18-svc-'))
   if (!o.dir) open.dirs.push(dir)
   const convex = o.convex ?? (await startFakeConvex())
@@ -70,9 +71,11 @@ async function rig(o: { here?: boolean; links?: ServiceLink[]; dir?: string; con
     host: 'env_box',
     lifeos: o.here === false ? { here: false, host: 'env_box', url: convex.url } : { here: true, url: convex.url },
     trusted: [{ by: 'host', iss: 'tempcode:env_box', aud: TEMPCODE_COLLAB_AUDIENCE, keys: [keys.publicJwk] }],
-    links: o.links ?? []
+    links: o.links ?? [],
+    ...(o.origins ? { origins: o.origins } : {}),
+    ...(o.owner ? { owner: o.owner } : {})
   }
-  const service = await startWorkService(config, { jwt: async () => 'owner-jwt', log: () => {} })
+  const service = await startWorkService(config, { jwt: async () => 'owner-jwt', log: o.log ?? (() => {}) })
   open.services.push(service)
   const sign = await createCollabSigner({ privateJwk: keys.privateJwk, iss: 'tempcode:env_box' })
   return { keys, service, config, convex, sign, dir }
@@ -81,9 +84,10 @@ async function rig(o: { here?: boolean; links?: ServiceLink[]; dir?: string; con
 const token = async (r: Rig, claims: Partial<CollabClaims> & { doc: string }, seconds = 300) =>
   (await r.sign.sign({ role: 'edit', principal: 'owner', ...claims }, seconds)).token
 
-function connect(r: Rig, name: string, tok: string) {
+/** `path`: the socket's address when it is not the document's own (a guest link's `/g/ws/<id>`). */
+function connect(r: Rig, name: string, tok: string, path = `/w/doc/${name}`) {
   const closes: string[] = []
-  const client = createCollaborationClient({ documentName: name, token: tok, url: `ws://127.0.0.1:${r.service.port}/w/doc/${name}`, offline: false, onClose: (why) => closes.push(why) })
+  const client = createCollaborationClient({ documentName: name, token: tok, url: `ws://127.0.0.1:${r.service.port}${path}`, offline: false, retryRefusedToken: false, onClose: (why) => closes.push(why) })
   const refusals: string[] = []
   client.provider.on('authenticationFailed', ({ reason }: { reason: string }) => refusals.push(reason))
   open.clients.push(client)
@@ -178,7 +182,100 @@ describe('where the service listens', () => {
   })
 })
 
+describe('which pages may open a socket', () => {
+  const req = (origin?: string) => ({ headers: origin === undefined ? {} : { origin } }) as never
+  const box: ServiceOrigins = { allowed: [BOX_PUBLIC_ORIGIN], guest: null, loopback: false }
+  const flipped: ServiceOrigins = { allowed: [BOX_PUBLIC_ORIGIN, 'https://share.landonhale.com'], guest: 'https://share.landonhale.com', loopback: false }
+  const isolated: ServiceOrigins = { allowed: ['http://127.0.0.1:7001'], guest: null, loopback: true }
+
+  it('the box names its hostname, a proof the origin it was given, an installed Mac none; only an isolated instance takes loopback for a guest', () => {
+    expect(serviceOrigins(null, { TEMP_CODE_USER_DATA: BOX_DATA_DIR }, 'linux')).toEqual(box)
+    expect(serviceOrigins('https://share.landonhale.com', { TEMP_CODE_USER_DATA: BOX_DATA_DIR }, 'linux')).toEqual(flipped)
+    expect(serviceOrigins(null, { TEMP_CODE_USER_DATA: '/tmp/x', TEMP_CODE_WORK_PUBLIC_ORIGIN: 'http://127.0.0.1:7001/' }, 'linux')).toEqual(isolated)
+    expect(serviceOrigins(null, {}, 'darwin')).toEqual({ allowed: [], guest: null, loopback: false })
+  })
+
+  it('a socket that names no origin is a native client or main: it passes, but never as a guest on a public host', () => {
+    expect(originAllowed(req(), box, '/w/doc/kd1')).toBe(true)
+    expect(originAllowed(req(), box, '/w/sheet/ks1')).toBe(true)
+    expect(originAllowed(req(), box, '/g/ws/L1')).toBe(false)
+    expect(originAllowed(req(), isolated, '/g/ws/L1')).toBe(true)
+  })
+
+  it("this host's own pages pass; another site's, a sandboxed frame's and a look-alike's do not", () => {
+    for (const path of ['/w/doc/kd1', '/w/sheet/ks1', '/g/ws/L1', '/w/office', `/w/full/${'a'.repeat(64)}/x`]) {
+      expect(originAllowed(req(BOX_PUBLIC_ORIGIN), box, path), path).toBe(true)
+      for (const foreign of ['https://evil.example', 'null', 'https://tempcode.landonhale.com.evil.example', 'http://tempcode.landonhale.com', `${BOX_PUBLIC_ORIGIN}/`])
+        expect(originAllowed(req(foreign), box, path), `${foreign} on ${path}`).toBe(false)
+    }
+  })
+
+  it("LifeOS's desktop window (a file) and a page on loopback reach the owner's sockets, never a guest's on a public host", () => {
+    for (const origin of ['file://', 'http://localhost:5173', 'http://127.0.0.1:9000', 'http://[::1]:5173']) {
+      expect(originAllowed(req(origin), box, '/w/doc/kd1'), origin).toBe(true)
+      expect(originAllowed(req(origin), box, '/g/ws/L1'), origin).toBe(false)
+    }
+    expect(originAllowed(req('http://127.0.0.1:9000'), isolated, '/g/ws/L1')).toBe(true)
+    expect(originAllowed(req('http://127.0.0.1.evil.example'), isolated, '/g/ws/L1')).toBe(false)
+  })
+
+  it('once guest pages have their own origin, a guest socket takes that one alone; the old hostname still opens the owner\'s', () => {
+    expect(originAllowed(req('https://share.landonhale.com'), flipped, '/g/ws/L1')).toBe(true)
+    expect(originAllowed(req(BOX_PUBLIC_ORIGIN), flipped, '/g/ws/L1')).toBe(false)
+    expect(originAllowed(req(BOX_PUBLIC_ORIGIN), flipped, '/w/doc/kd1')).toBe(true)
+    expect(originAllowed(req('https://share.landonhale.com'), flipped, '/w/sheet/ks1')).toBe(true)
+  })
+
+  it('every route that takes a socket refuses a foreign page at the upgrade (403) and hands its own to the route', async () => {
+    const r = await rig({ origins: { allowed: ['https://pages.test'], guest: null, loopback: false } })
+    const { WebSocket: Ws } = await import('ws')
+    const probes: Record<string, string> = { doc: '/w/doc/kd1', sheet: '/w/sheet/ks1', guest: '/g/ws/L1', office: '/w/office', full: `/w/full/${'a'.repeat(64)}/x` }
+    const sockets = PUBLIC_ROUTES.filter((x) => x.upgrade)
+    const status = (path: string, origin?: string) =>
+      new Promise<number>((resolve) => {
+        const ws = new Ws(`ws://127.0.0.1:${r.service.port}${path}`, origin ? { origin } : {})
+        ws.on('open', () => (ws.terminate(), resolve(101)))
+        ws.on('unexpected-response', (_q, res) => (ws.terminate(), resolve(res.statusCode ?? 0)))
+        ws.on('error', () => resolve(0))
+      })
+    for (const route of sockets) {
+      const path = Object.entries(probes).find(([, p]) => route.match.test(p))?.[1]
+      expect(path, `a probe for "${route.name}"`).toBeDefined()
+      expect(await status(path!, 'https://evil.example'), `${path} from another site`).toBe(403)
+      expect(await status(path!, 'https://pages.test'), `${path} from this host's page`).not.toBe(403)
+      // No origin at all: a guest's socket is a browser's alone on a public host; the others take a native client.
+      const none = await status(path!)
+      if (path!.startsWith('/g/ws/')) expect(none, `${path} with no origin`).toBe(403)
+      else expect(none, `${path} with no origin`).not.toBe(403)
+    }
+  })
+})
+
 describe('the two listeners', () => {
+  it("answers /w/healthz with this run's start mark and nothing else; a restart is a new mark", async () => {
+    const r = await rig()
+    const res = await http(r.service.port, '/w/healthz')
+    expect(res.status).toBe(200)
+    expect(await res.text()).toBe(r.service.mark)
+    expect(r.service.mark).toMatch(/^[0-9a-f]{32}$/)
+    expect(res.headers.get('cache-control')).toBe('no-store')
+    expect((await http(r.service.port, '/w/healthz', { method: 'POST' })).status).toBe(405)
+    expect((await http(r.service.port, '/w/healthz/more')).status).toBe(404)
+    const again = await rig()
+    expect(again.service.mark).not.toBe(r.service.mark)
+  })
+
+  it('a stopping service tells every open socket it is restarting (1012), so a page waits and does not end', async () => {
+    const r = await rig()
+    addDoc(r, 'kd9')
+    const { WebSocket: Ws } = await import('ws')
+    const ws = new Ws(`ws://127.0.0.1:${r.service.port}/w/doc/kd9`)
+    await new Promise((resolve, reject) => (ws.on('open', resolve), ws.on('error', reject)))
+    const closed = new Promise<{ code: number; reason: string }>((resolve) => ws.on('close', (code, reason) => resolve({ code, reason: reason.toString() })))
+    await r.service.stop()
+    expect(await closed).toEqual({ code: 1012, reason: 'the service is restarting' })
+  })
+
   it('an internal route answers on the socket with the secret, refuses it without, and is unreachable on the public port either way', async () => {
     const r = await rig()
     addDoc(r, 'kd1', { markdown: 'stored', plain: 'stored' })
@@ -308,10 +405,10 @@ describe('live documents', () => {
   })
 
   it('a revoked link closes its socket within a second, and the owner stays', async () => {
-    const link: ServiceLink = { linkId: 'L1', item: { doc: 'kd5' }, role: 'edit', expiresAt: Date.now() + 60_000, revokedAt: null }
+    const link = { linkId: 'L1', item: { doc: 'kd5' }, role: 'edit', expiresAt: Date.now() + 60_000, revokedAt: null, guest: { secretHash: 'x', name: 'Dana Lee', title: 'kd5', owner: 'Landon Hale', token: '', tokenExp: 0 } } as ServiceLink
     const r = await rig({ links: [link] })
     addDoc(r, 'kd5')
-    const guest = connect(r, 'kd5', await token(r, { doc: 'kd5', principal: 'guest:L1', link: 'L1' }))
+    const guest = connect(r, 'kd5', await token(r, { doc: 'kd5', principal: 'guest:L1', link: 'L1' }), '/g/ws/L1')
     const owner = connect(r, 'kd5', await token(r, { doc: 'kd5' }))
     await until('both synced', () => synced(guest.client) && synced(owner.client))
     const at = Date.now()
@@ -320,6 +417,38 @@ describe('live documents', () => {
     expect(Date.now() - at).toBeLessThan(1000)
     owner.client.document.getText('probe').insert(0, 'still here')
     await until('owner synced', () => synced(owner.client))
+  })
+
+  it("a token opens its own address alone: a guest link's nothing on the document's route or another link's, the owner's nothing on a link's", async () => {
+    const facts = { secretHash: 'x', name: 'Dana Lee', title: 'kd7', owner: 'Landon Hale', token: '', tokenExp: 0 }
+    const links = ['L1', 'L2'].map((linkId) => ({ linkId, item: { doc: 'kd7' }, role: 'edit', expiresAt: Date.now() + 60_000, revokedAt: null, guest: facts }) as ServiceLink)
+    const r = await rig({ links })
+    addDoc(r, 'kd7')
+    const guestToken = await token(r, { doc: 'kd7', principal: 'guest:L1', link: 'L1' })
+    const refusedOn = async (what: string, tok: string, path?: string) => {
+      const { client, refusals } = connect(r, 'kd7', tok, path)
+      await until(`refused: ${what}`, () => refusals.length > 0)
+      expect(client.provider.isSynced, what).toBe(false)
+    }
+    // Reached directly, the document's route counts no guest socket, holds no budget and cuts no version of the visit.
+    await refusedOn("a guest's token on the document's own route", guestToken)
+    await refusedOn("a guest's token on another link's address", guestToken, '/g/ws/L2')
+    await refusedOn("the owner's token on a link's address", await token(r, { doc: 'kd7' }), '/g/ws/L1')
+    const own = connect(r, 'kd7', guestToken, '/g/ws/L1')
+    const owner = connect(r, 'kd7', await token(r, { doc: 'kd7' }))
+    await until('each on its own address', () => synced(own.client) && synced(owner.client))
+  })
+
+  it("the owner's own connections carry his name as he set it, whatever their page says, and keep the rest they sent", async () => {
+    const r = await rig({ owner: 'Landon Hale' })
+    addDoc(r, 'kd8')
+    const page = connect(r, 'kd8', await token(r, { doc: 'kd8' }))
+    const other = connect(r, 'kd8', await token(r, { doc: 'kd8' }))
+    await until('both synced', () => synced(page.client) && synced(other.client))
+    page.client.provider.awareness!.setLocalState({ user: { id: 'owner', name: 'You', color: '#14b8a6', avatarUrl: 'face.png' }, member: { id: 'owner' } })
+    const seen = () => [...other.client.provider.awareness!.getStates().values()].map((st) => (st as { user?: { name?: string; color?: string; avatarUrl?: string } }).user).find((u) => u?.avatarUrl === 'face.png')
+    await until('the other window sees him', () => !!seen())
+    expect(seen()).toMatchObject({ name: 'Landon Hale', color: '#14b8a6', avatarUrl: 'face.png' })
   })
 
   it('a host that does not serve LifeOS documents refuses their sockets and reads the stored state instead', async () => {
@@ -376,6 +505,49 @@ describe('live documents', () => {
     const { readFileSync } = await import('node:fs')
     expect(Object.keys(unzipSync(new Uint8Array(readFileSync(path)))).sort()).toEqual(['preview.md', 'sidecar.json', 'state.yjs', 'threads.json'])
   })
+})
+
+describe('compaction that runs', () => {
+  it('a document grown past the line is compacted once its last editor has left, and a copy from before it merges back with no word lost or doubled', async () => {
+    const { COMPACTION } = await import('./compaction')
+    const was = { ...COMPACTION }
+    Object.assign(COMPACTION, { settleMs: 0, minBytes: 4000 })
+    try {
+      const logs: string[] = []
+      const r = await rig({ log: (line) => logs.push(line) })
+      addDoc(r, 'kd10')
+      const a = connect(r, 'kd10', await token(r, { doc: 'kd10' }))
+      await until('synced', () => synced(a.client))
+      const text = a.client.document.getText('probe')
+      // Typed and deleted many times over: the state keeps every deleted run until it is compacted.
+      for (let i = 0; i < 40; i++) {
+        text.insert(0, `draft ${i} ${'x'.repeat(200)} `)
+        text.delete(0, text.length)
+      }
+      text.insert(0, 'The plan as it stands.')
+      await until('stored', () => synced(a.client))
+      // A device's copy from before the compaction (an offline copy), and a word typed on it since.
+      const { encodeStateAsUpdate, applyUpdate } = await import('yjs')
+      const copy = encodeStateAsUpdate(a.client.document)
+      // The host keeps what the device lets go: its state is past the line.
+      expect(encodeStateAsUpdate(r.service.collab.hocuspocus.documents.get('kd10')!).byteLength).toBeGreaterThan(4000)
+      await a.client.destroy()
+      await until('the last editor has left', () => (r.service.collab.hocuspocus.documents.get('kd10')?.getConnectionsCount() ?? 0) === 0)
+      await sleep(50)
+      await r.service.compactTick()
+      await until('compacted', () => logs.some((l) => l.includes('kd10: compacted from')), 8000)
+      const back = connect(r, 'kd10', await token(r, { doc: 'kd10' }))
+      applyUpdate(back.client.document, copy)
+      back.client.document.getText('probe').insert(0, 'Offline: ')
+      await until('the copy merged', () => synced(back.client))
+      const fresh = connect(r, 'kd10', await token(r, { doc: 'kd10' }))
+      await until('a third reads it', () => synced(fresh.client) && probe(fresh.client).length > 0)
+      expect(probe(fresh.client)).toBe('Offline: The plan as it stands.')
+      expect(probe(back.client)).toBe('Offline: The plan as it stands.')
+    } finally {
+      Object.assign(COMPACTION, was)
+    }
+  }, 30_000)
 })
 
 describe('the internal document routes', () => {

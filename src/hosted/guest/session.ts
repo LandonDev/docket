@@ -56,13 +56,18 @@ export interface Opened {
   markdown?: string;
   /** false: a document kept as a file, whose comments the page cannot reach; it draws none */
   comments?: false;
+  /** the owner's hosted editor: his own name, for his caret on a guest's page */
+  self?: string;
 }
 
 /** A document or sheet of a project's link. */
 export type ChildItem = { table: "docs" | "sheets"; id: string };
 
-/** Why the page could not open: the link is gone (ended, revoked, never made), too many tries, or the host cannot be reached. */
-export type Failure = "gone" | "busy" | "down";
+/**
+ * Why the page could not open: the link is gone (ended, revoked, never made), too many tries, the host cannot be
+ * reached, or it is starting (503: it answers, and cannot say yet whether the link stands; never an end).
+ */
+export type Failure = "gone" | "busy" | "down" | "starting";
 export class OpenFailed extends Error {
   constructor(readonly why: Failure) {
     super(why);
@@ -72,6 +77,17 @@ export class OpenFailed extends Error {
 export interface Storage {
   get(): string | null;
   set(v: string | null): void;
+}
+
+/**
+ * What the page keeps of a guest's link between visits, in this browser alone: when it ends and whose it is, so a
+ * link past its end says so (the service gives one answer for every link that opens nothing), and the document it
+ * opened, so the copy kept for an Edit link can be found and wiped when the link is over.
+ */
+export interface Remembered {
+  until: number;
+  owner?: string;
+  doc?: string;
 }
 
 export interface ThreadRows {
@@ -93,11 +109,23 @@ export class Session {
     private readonly fetchFn: typeof fetch = (...a) => fetch(...a),
     /** set on a session for one document or sheet of a project's link */
     private readonly item: ChildItem | null = null,
+    /** what the page keeps of this link between visits (`Remembered`); none for the owner's page or a test */
+    private readonly memory: Storage | null = null,
   ) {}
+
+  /** What this browser kept of the link from an earlier visit, or null. */
+  remembered(): Remembered | null {
+    try {
+      const kept = JSON.parse(this.memory?.get() ?? "null") as Remembered | null;
+      return kept && typeof kept.until === "number" ? kept : null;
+    } catch {
+      return null;
+    }
+  }
 
   /** A session for one document or sheet a project's link lists: its own token, asked for with the link's secret. */
   child(item: ChildItem): Session {
-    return new Session(this.mode, this.origin, this.renewKey, this.fetchFn, item);
+    return new Session(this.mode, this.origin, this.renewKey, this.fetchFn, item, null);
   }
 
   private async post(path: string, body: unknown): Promise<Opened> {
@@ -109,6 +137,7 @@ export class Session {
     }
     if (res.status === 403) throw new OpenFailed("gone");
     if (res.status === 429) throw new OpenFailed("busy");
+    if (res.status === 503) throw new OpenFailed("starting");
     if (!res.ok) throw new OpenFailed("down");
     return (await res.json()) as Opened;
   }
@@ -136,7 +165,10 @@ export class Session {
   /** Asks again (one ask at a time): a fresh token, or the failure that says the link is gone. */
   refresh(): Promise<Opened> {
     this.asking ??= this.ask()
-      .then((got) => (this.opened = got))
+      .then((got) => {
+        if (this.mode.kind === "guest" && !this.item) this.memory?.set(JSON.stringify({ until: got.expiresAt, ...(got.owner ? { owner: got.owner } : {}), ...(got.doc ? { doc: got.doc } : {}) } satisfies Remembered));
+        return (this.opened = got);
+      })
       .catch((err: unknown) => {
         if (err instanceof OpenFailed && err.why === "gone") this.renewKey.set(null);
         throw err;
@@ -181,6 +213,38 @@ export class Session {
       commentId?: string;
     };
   }
+}
+
+/** How often a page asks again while the host says it is starting, and for how long before it says the page cannot be reached. */
+export const STARTING_EVERY_MS = 2000;
+export const STARTING_FOR_MS = 2 * 60_000;
+
+/**
+ * An open that waits out a host that is starting (503): asked again every two seconds for two minutes, then failed
+ * as out of reach. Any other answer, good or bad, is given back as it came.
+ */
+export async function openWhenUp(ask: () => Promise<Opened>, o: { now?(): number; sleep?(ms: number): Promise<void>; stopped?(): boolean } = {}): Promise<Opened> {
+  const now = o.now ?? Date.now;
+  const sleep = o.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const began = now();
+  for (;;) {
+    try {
+      return await ask();
+    } catch (err) {
+      if (!(err instanceof OpenFailed) || err.why !== "starting") throw err;
+      if (now() - began >= STARTING_FOR_MS || o.stopped?.()) throw new OpenFailed("down");
+      await sleep(STARTING_EVERY_MS);
+    }
+  }
+}
+
+/**
+ * The line a link that opens nothing gets. One past the end time this browser was given says so, with the day and
+ * whose it was; any other (revoked, a new address, never made) says only that it opens nothing.
+ */
+export function endWords(kept: Remembered | null, now = Date.now()): { title: string; detail: string } {
+  if (kept && kept.until > 0 && kept.until <= now) return { title: `This link ended ${untilDay(kept.until)}`, detail: `Ask ${kept.owner ?? "the person who sent it"} for a new one if you still need it.` };
+  return { title: "This link no longer opens anything", detail: "Ask the person who sent it if you still need it." };
 }
 
 /**

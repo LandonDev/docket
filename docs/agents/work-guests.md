@@ -58,6 +58,45 @@ not in a place others open (`sharedOf`) and not a copy of a Teams file
 (`madeFromShared`). Each refusal is one line of `SHARE_REFUSALS`
 (guestRoles.ts), which the Share sheet shows in the form's place.
 
+### A file's link is for one file
+
+A link names its file by path, and a path can come to hold another file: one
+moved or saved over it, a folder link pointed elsewhere. So a link also
+remembers which file it was made for (guests/fileIdent.ts). A `.tcdoc`
+carries an id of its own in an entry `ident.json`, a `.tcsheet` in its
+`meta.json`; every save of ours keeps it (the document store keeps every
+entry it does not write, a sheet's meta goes back as read), and a copy of
+the file carries the same id, since it is the same document. The Work
+service, the file's one writer, makes the id when a file has none
+(`/internal/guests/ident`; a new `.tcsheet` is made with one). The link's
+row keeps it (`work_guest_links.file_uid`), and it is checked in three
+places:
+
+- main, before every list it sends the service (`fileServes`): another id, or
+  none, ends the link for good, as a file that went does;
+- the service, on every request and socket of the link (`guestLink` in
+  routes/guests.ts reads `guest.file {path, uid}`): another file at the path
+  opens for nobody from the first request, before main's next pass;
+- his press on a thread's request: the held act carries the id the file had
+  when the thread asked (`fileUid`), and Create refuses another file at that
+  name (`SHARE_REFUSALS.moved`).
+
+A link made before files carried an id takes the id its file has at the next
+pass, once (`adoptIdents`). A path is taken as the file it reaches: an
+absolute path only, and a name that links to a Word file or a workbook is
+refused, since the service would open and write the file behind it.
+
+Save As that keeps a document linked to another file first turns every edit
+link to it into a view link (store.ts `endGuestEditOn`, called by
+files/saveAs.ts): the sockets close and the pages open again as readers, so
+nothing a guest types reaches the linked file. An edit link to a document
+that is already linked is refused (`SHARE_REFUSALS.linkedOut`).
+
+A token is held to what its link is now: the service refuses one signed for
+a role the link no longer has, whenever it was signed (`claimLive`), and a
+sheet socket's ops and what it hears are checked against the link as it
+stands at each op, not as it stood at hello.
+
 - **No LifeOS mark.** The live link is the file's mark: `fileLinked`
   (guests/store.ts) makes the docs pillar's `othersOpen` and the sheets
   pillar's `shared` true, so an agent's own write to it is a suggestion, as
@@ -235,6 +274,69 @@ link is not sent, so the service no longer knows it: its document sockets
 close at once (`collab.closeWhere`), its sheet sockets at the sheet route's
 next second, and every route answers it as gone.
 
+### The guest origin
+
+A guest's page, the owner's hosted editor and his TempCode web session
+(`/ui`, `/ws`, `/api`) shared one origin, `https://tempcode.landonhale.com`.
+His session cookie is `Path=/; SameSite=Lax`, and `/ws` takes any socket
+whose `Origin` is that host: one script fault on a hosted page, opened in a
+browser where he is signed in, would be his whole app, with only the page's
+CSP between. So guest pages have a hostname of their own,
+`https://share.landonhale.com`. The tunnel sends the whole host to the Work
+service, whose closed route list answers 404 for everything else; the cookie
+is host-only and never reaches it; the page's CSP (`connect-src 'self'`)
+holds as it is, since the page and its socket share the new origin.
+
+- Which origin new links and tickets carry is one host setting,
+  `work.guests.origin` (service/config.ts `GUEST_ORIGIN_SETTING`), unset by
+  default: then `publicOrigin` as before. `guestOrigin(ctx)` (links.ts) reads
+  it for a guest's address and for his own hosted editor's; every other
+  address of the host (the full editor, forms) keeps `publicOrigin`.
+- `work.guests.setOrigin {origin}` sets it (admin; a thread's call is
+  refused): the origin must be `https://` and a name, and is taken only once
+  `<origin>/w/healthz` answers this very service's start mark, so a name
+  that reaches nothing, or another machine, cannot break links. `null` puts
+  it back.
+- Once it is set (the service is told with its origins,
+  `ServiceOrigins.guest`): `GET /g/<id>` and `GET /w/open` reached on any
+  other host answer 308 to the same path on the guest origin, so an address
+  already handed out keeps opening (a browser carries the fragment across);
+  the guest's POST routes, `/threads` and `/g/ws/*` answer 404 there
+  (routes/guests.ts `elsewhere`). A guest's socket takes the guest origin
+  alone ([work-service.md](work-service.md) "Origins"). What is not a
+  guest's stays where it was: `/w/hosted/`, `/w/healthz`, `/f/`, `/w/full/`,
+  the Office routes, and an open page of his own renewing its pass.
+- The DNS name and the ingress rule are the owner's or the master's step
+  (docs/box.md "Cloudflare tunnel"), never a build's.
+
+### A start is not an end
+
+After a start the service knows no link until main has named them, and "not
+in the list" would read as "gone", which a page takes for the end. So the
+service is told whether its first list is one main settled
+(`ServiceConfig.linksSettled`): the supervisor's last list, handed on when
+the service alone restarted, is; the empty list of a main that has itself
+just started, or whose keys are new, is not. Until main's first `links`
+message every route that could answer "gone" answers 503 `{error:
+'starting'}` instead (`/g/<id>/open`, `/item`, `/threads`, `/comment`,
+`/g/ws/*`, `/w/open/redeem`, `/renew`), and counts no failed secret. Once
+main has spoken, a link that is not in its list is gone at once (403).
+
+Main sends that first list as soon as it can sign a token, and never before
+(a list with no link in it would be its word that every link is gone). It
+does not wait on LifeOS for it: what LifeOS was told of each row is kept on
+this host (`work_guest_marks`), read back at a start, and a link whose row
+is in it is sent at once. Each such row is still told to LifeOS once more
+after the start, as every row is; a link with no record of a mark waits for
+LifeOS's answer.
+
+The signing key is new at every start of main and is kept nowhere. Pages
+ask for a fresh token with their secret, so nothing needs the old key. A
+link's `keyedAt` (the moment of its last new address or role) lives in
+main's memory, and that is safe only because the key changes at a start: if
+a key is ever kept across restarts, `keyedAt` must be kept in the link's row
+with it.
+
 ## The routes
 
 On the public listener (service/routes/guests.ts, item.ts). Callers are
@@ -243,8 +345,8 @@ told apart by `CF-Connecting-IP`, else the peer address.
 | Route | What |
 |---|---|
 | `GET /g/<id>` | the page, the same bytes for any well-formed id |
-| `POST /g/<id>/open {secret}` | the link's facts and its current token (a project's link: its projection and no token, above); a wrong secret, an unknown, ended or revoked link all answer 403 `gone` |
-| `GET /g/ws/<id>` | a document's or a sheet's link: the item's socket, bound to the link's item whatever the client names (a project's link has none: 404); the token is still checked inside (Hocuspocus for a document, the sheet route's hello for a sheet) |
+| `POST /g/<id>/open {secret}` | the link's facts and its current token (a project's link: its projection and no token, above); a wrong secret, an unknown, ended or revoked link all answer 403 `gone`; 503 `starting` until main has named its links ("A start is not an end") |
+| `GET /g/ws/<id>` | a document's or a sheet's link: the item's socket, bound to the link's item whatever the client names (a project's link has none: 404); the token is still checked inside (Hocuspocus for a document, the sheet route's hello for a sheet), and must be this link's own: another link's token for the same item opens nothing here, and a link's token opens nothing on `/w/doc/*` or `/w/sheet/*` reached directly |
 | `GET /g/<id>/threads` | a document's comments, `Authorization: Bearer <token>`; authors other than the owner and this guest are named, not identified |
 | `POST /g/<id>/comment` | `{quote, text}` or `{threadId, text}`, bearer; plain words only, 4,000 at most, built into the comment by the service; a reply only on a thread of this document |
 | internal `/internal/guests/seen` | for the audit list: when each link was last opened, and its open sockets |
@@ -256,9 +358,33 @@ whose `Origin` is another host is refused. The page and every hosted asset
 carry `HOSTED_CSP` (scripts and connections to its own origin only, never
 framed). A view link's document socket is read only (Hocuspocus drops its
 updates); a comment link's too. A sheet guest is held to `GUEST_OPS`
-(values, number formats, up to 1,000 rows or columns inserted or removed)
-and `guestCells` keeps a cell's value, formula, style and type only.
+(sheets/host/live.ts): cell values, formulas and styles, number formats set
+and removed, rows and columns inserted or removed (1,000 at a time), merges
+made and parted, a column's width, a row's height and its fit. Nothing
+else: no sheet added, removed, renamed or moved, no name, note, rule,
+filter, sort, table, chart or picture. `guestCells` keeps a cell's value,
+formula, style and type only.
 Nothing on these routes links to `/w/full/` or mints a full-editor token.
+
+**A link's budget** (routes/budget.ts, counted in routes/guests.ts where a
+link's frames pass, before the document sees them). A guest with an Edit
+link holds a writer's token, and nothing else capped what a writer sends but
+the 4 MiB frame.
+
+| What | The line | Past it |
+|---|---|---|
+| bytes a link's document sockets send | 4 MiB at once, 1 MiB back a minute, one bucket a link whatever sockets it holds | the frame is not passed on and the socket closes 4429 "too much at once: wait N s"; until then the link's upgrades answer 429, so a page's tries cost a refused upgrade each. The page says "Too much at once. Your edits are kept and will send in a minute." and comes back by itself |
+| sockets a link holds | 8 | the upgrade answers 429 |
+| a document's state | 32 MiB (measured at most every ten seconds a document) | a guest's frame that adds to it closes 4413; the owner's own edits and every read go on. The page says "This document is as large as a guest can make it. Your last edit was not saved." with Reload |
+
+**Whose name a caret carries.** A guest's presence is stamped whole by the
+service (work-kit `guardPresence`): the link's name, no picture, and a hue
+the service picks so two guests in one document never wear the same one
+while eight are free (`presenceHue`: a principal keeps its hue while it
+stays, its second tab wears the same, a newcomer takes one nobody wears).
+The owner's own connections carry his name as he set it in Settings → Work
+(`ServiceConfig.owner`, `namePresence`) and keep the rest they sent; unset,
+his client's word stands.
 
 An edit link's guest leaving a document cuts a `guest-end` version.
 History and the document's comments name a guest by their link's name
@@ -270,7 +396,12 @@ History and the document's comments name a guest by their link's name
 `/w/open`): one 44px line (the item's glyph and name, whose it is, "Can
 edit", "until Dec 18", the guest's initials), then the owner's own editor
 (work-kit/editor) or grid (work-kit/sheet) on the app's own tokens, light or
-dark by the browser's setting. What a link may not do is not drawn. A comment
+dark by the browser's setting. Before the guest's own face the line draws the
+faces of who else is in the file (`Faces`: the app's 20px `Face`, lapped 6px,
+each ringed in the hue of their caret, three and a count past four); the
+owner's hosted page draws them too. The owner's page says his own name on
+his caret (`self`, handed over with his pass), never "You", which a guest
+would read as themselves. What a link may not do is not drawn. A comment
 link gets its own small bar over selected words, since the editor draws none
 on a text it only reads. The page asks the service again with every token
 the editor asks for, and when the host closes the document's socket as
@@ -280,8 +411,40 @@ for an Edit, Comment or View link alike. A reader's editor shows no trouble
 once the text is in, so without that close the open page kept the document
 (W-46). A sheet's page ends on its own socket's 4403; a project's page,
 which has no socket, on its next ask (every 15 s and when the window comes
-forward). Each says "This link no longer opens anything". The other states: too many
-tries, cannot be reached (Try again), loading bones. The sheet sends one
+forward). Each says "This link no longer opens anything". The service gives
+one answer for every link that opens nothing, on purpose, so the page tells
+one case apart by itself: a link past the end time this browser was given
+says "This link ended Dec 18" and "Ask Landon Hale for a new one if you
+still need it." (`endWords`; what it needs is kept in this browser's
+`localStorage` under `tc-guest:<id>`: the end time, the owner's name and the
+document's name, nothing else). The other states: too many tries, cannot be
+reached (Retry), loading bones. A host that is starting (503) is neither: the
+first open asks again every 2 s for 2 minutes under the bones before it says
+the page cannot be reached (`openWhenUp`).
+
+**The copy on a guest's device.** An Edit link's document page keeps the
+document in this browser's IndexedDB (`tempcode-guest:<link id>:<document>`,
+offline.ts), so words typed while the line is down outlive a closed tab and
+are sent when the page next opens. A View or Comment link keeps none, and
+the owner's page keeps none. The copy is wiped when the link ends (any way
+the page learns it is gone), when the host refuses what it holds (a close
+that says another writer's; wiped and read afresh once, never in a loop),
+and when an update too large to send is stuck in it.
+
+**The lines.** One muted line under the format row says when what is typed
+is not saved yet: "Offline. Your edits are kept on this device until the
+connection is back." (an Edit link), "…in this tab…" (the owner's page),
+"Offline. Changes will show when the connection is back." (a reader). It
+shows within two seconds of a change the host has not answered
+(`watchedSocket` in ending.ts counts from a change sent to the host's next
+word; a line that drops without a word is known to the browser only after
+half a minute), at once when the browser says it is offline, and leaves at
+the host's next word. An update the host cut as too large (close 1009) is
+said once in the text's place, "That is too much to add at once. It was not
+saved." with Reload, and the editor is gone: sent again it would be cut
+again. After a reload an Edit link's caret is back in the text, at its start.
+Under 640px every comment control keeps its drawn size and takes a 44px hit
+area (guest.css). The sheet sends one
 batch of its own `sheet.mutation.*` ops at a time from the acknowledged
 revision, typed text as plain values.
 
@@ -413,5 +576,7 @@ His comments are made in TempCode: on the phone, Comment in the edit menu.
   held view, the list, and a guest's `javascript:` link and hostile paste in
   the owner's editor (the link's `href` is emptied, the paste keeps words
   only, nothing runs, a press opens nothing).
-- The tunnel rule (`scripts/box/ingress.yml`, `^/(g|w|f)/`) is the owner's
-  step; until he applies it nothing outside reaches these routes.
+- The tunnel rule (`scripts/box/ingress.yml`, `^/(g|w|f)/`) is live: checked
+  on 2026-11-24, `https://tempcode.landonhale.com/g/<id>` answers this
+  service's page, and its sockets upgrade through Cloudflare. A guest link
+  works from outside now.

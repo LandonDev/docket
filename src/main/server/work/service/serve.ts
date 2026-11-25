@@ -1,4 +1,4 @@
-import { timingSafeEqual } from 'node:crypto'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, unlinkSync } from 'node:fs'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -18,14 +18,15 @@ import {
 } from 'work-kit/collab-server'
 import { WebSocketServer } from 'ws'
 import { PrivateBranchStore } from '../history/privateBranches'
+import { compactionSchedule } from './compaction'
 import { notServedWords } from './config'
 import { storeBook } from '../docs/storeBook'
 import { docStateRev } from './docRevision'
 import { INTERNAL_ROUTES, routeFor } from './routes'
-import { refuseUpgrade, RouteError, sendJson, sendText, type RouteCtx } from './routes/route'
+import { originAllowed, refuseUpgrade, RouteError, sendJson, sendText, TEST_ORIGINS, type RouteCtx } from './routes/route'
 // By its path, as every module this process reaches: the service's bundle and its boundary test follow relative imports.
 import { projectionLists } from '../../../../shared/work/guestProjection'
-import type { DocRevision, ServiceConfig, ServiceLink, ServiceProject } from './wire'
+import type { DocRevision, ServiceConfig, ServiceLink, ServiceOrigins, ServiceProject } from './wire'
 import { queuedHistory } from '../history/hostQueue'
 
 /**
@@ -49,8 +50,13 @@ export interface ServiceIo {
 
 export interface RunningService {
   port: number
+  /** this run's start mark (`/w/healthz`) */
+  mark: string
   collab: CollabServer
   setLinks(links: ServiceLink[]): void
+  setOrigins(origins: ServiceOrigins): void
+  /** the minute's compaction tick, run now (a test's) */
+  compactTick(): Promise<void>
   setProject(linkId: string, project: ServiceProject | null): void
   setTrusted(trusted: TrustedIssuer[]): void
   setZone(zone: string): void
@@ -62,6 +68,11 @@ const MAX_BODY = 4 * 1024 * 1024
 /** Sockets the public listener holds at once, and from one caller. */
 export const MAX_SOCKETS = 512
 export const MAX_SOCKETS_PER_CALLER = 48
+
+/** The close a socket hears when the service stops: "service restart", which a page takes for a short wait and never for an end. */
+export const CLOSE_RESTARTING = 1012
+/** How long a stopping service lets its sockets hear that close before it ends them. */
+const CLOSE_GRACE_MS = 250
 
 /** A JWT's `exp` in ms, read without verifying (it is main's, for our own cache only). */
 const expOf = (jwt: string): number => {
@@ -116,6 +127,9 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
   let config = initial
   let links = new Map(initial.links.map((l) => [l.linkId, l]))
   let trusted = initial.trusted
+  let settled = initial.linksSettled ?? true
+  let origins = initial.origins ?? TEST_ORIGINS
+  const mark = randomBytes(16).toString('hex')
   const jwt = cachedJwt(io)
   const convex: ConvexCall = convexHttp(config.lifeos.url, jwt)
   const lifeosStore = new ConvexDocStore(convex)
@@ -133,13 +147,15 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
    * stands only while the projection lists that sheet, so one that left the project is shut at once
    * and opens nothing again, on any route, before the token runs out.
    */
-  const claimLive = (claims: { link?: string; doc?: string; sheet?: string; iat?: number }): boolean => {
+  const claimLive = (claims: { link?: string; doc?: string; sheet?: string; iat?: number; role?: string }): boolean => {
     if (!claims.link) return true
     if (!linkLive(claims.link)) return false
     const link = links.get(claims.link)!
     // A token signed before the link took a new address opens nothing (guests/links.ts rekey).
     const keyed = (link as { guest?: { keyedAt?: number } }).guest?.keyedAt ?? 0
     if (keyed && (claims.iat ?? 0) < keyed) return false
+    // A token says what its holder may do: one signed for a role the link does not have now opens nothing, whenever it was signed.
+    if (claims.role !== undefined && claims.role !== link.role) return false
     if (!('project' in link.item)) return true
     const shown = projects.get(claims.link)?.projection
     if (!shown) return false
@@ -161,14 +177,19 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
       async verify(token) {
         const claims = await verifier.verify(token)
         if (!claimLive(claims)) throw new Error('the link no longer shows this')
+        // Someone is on the document: its compaction waits for the last of them to leave (compaction.ts).
+        if (claims.doc) compaction.seen(claims.doc, claims.file)
         return claims
       }
     },
     storeFor: (name) => (name.startsWith('file:') ? liveFiles : (notServed ?? liveLifeos)),
     journalDir: join(config.dataDir, 'journal'),
     linkLive,
-    // A guest's caret carries the name the owner gave the link, whatever the page claims (work-kit guardPresence).
-    presenceName: (c) => (c.link ? ((links.get(c.link) as { guest?: { name?: string } } | undefined)?.guest?.name ?? 'A guest') : null),
+    // A guest's caret carries the name the owner gave the link, whatever the page claims, in a hue the server gives it
+    // (work-kit guardPresence). The owner's own connections carry his name as he set it and keep the rest they sent
+    // (namePresence): his hosted page would say "You", which a guest reads as themselves. Unset, his client's word stands.
+    presenceName: (c) =>
+      c.link ? ((links.get(c.link) as { guest?: { name?: string } } | undefined)?.guest?.name ?? 'A guest') : c.principal === 'owner' && config.owner ? { name: config.owner, only: 'name' } : null,
     log: io.log
   })
   let recoveringJournals = false
@@ -201,9 +222,17 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     storeFor: (name) => (name.startsWith('file:') ? fileStore : (notServed ?? lifeosStore)),
     log: io.log
   }))
+  // A document past 2 MiB is rewritten without its deleted words once nobody has it open (compaction.ts).
+  const compaction = compactionSchedule({
+    connections: (name) => collab.hocuspocus.documents.get(name)?.getConnectionsCount() ?? 0,
+    compact: (name, file, minBytes) => history.compact(name, { minBytes, ...(file ? { file } : {}) }),
+    log: io.log
+  })
+  const compacting = setInterval(() => void compaction.tick(), 60_000)
+  compacting.unref()
   // Yjs updates are small; an import's bulk comes through the internal routes, never a socket.
   const wss = new WebSocketServer({ noServer: true, maxPayload: 4 * 1024 * 1024 })
-  const ctx: RouteCtx = { config: () => config, collab, history, convex, links: () => links, projects: () => projects, claimLive, wss, stores, log: io.log }
+  const ctx: RouteCtx = { config: () => config, collab, history, convex, links: () => links, projects: () => projects, claimLive, wss, mark, settled: () => settled, origins: () => origins, docLeft: (doc) => compaction.left(doc), stores, log: io.log }
 
   // ── public ────────────────────────────────────────────────────────────
   const pathOf = (req: IncomingMessage): string | null => {
@@ -234,6 +263,8 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     const path = pathOf(req)
     const found = path ? routeFor(path) : null
     if (!found?.route.upgrade) return refuseUpgrade(socket, 404, 'not found')
+    // A page of another origin opens no socket here, whatever token it holds (routes/route.ts).
+    if (!originAllowed(req, origins, path!)) return refuseUpgrade(socket, 403, 'this page may not open that')
     const caller = callerOf(req)
     if (openTotal >= MAX_SOCKETS || (open.get(caller) ?? 0) >= MAX_SOCKETS_PER_CALLER) return refuseUpgrade(socket, 503, 'too many sockets')
     openTotal++
@@ -312,8 +343,15 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
 
   return {
     port,
+    mark,
     collab,
+    compactTick: () => compaction.tick(),
+    setOrigins(next) {
+      origins = next
+      config = { ...config, origins: next }
+    },
     setLinks(next) {
+      settled = true
       const keyedOf = (l: ServiceLink | undefined): number => (l as { guest?: { keyedAt?: number } } | undefined)?.guest?.keyedAt ?? 0
       const before = links
       links = new Map(next.map((l) => [l.linkId, l]))
@@ -337,7 +375,11 @@ export async function startWorkService(initial: ServiceConfig, io: ServiceIo): P
     },
     async stop() {
       clearInterval(recovery)
+      clearInterval(compacting)
       history.stop()
+      // Every page hears why before its socket goes: a restart, so it waits and tries again (the guest's page, the phone's).
+      for (const client of wss.clients) client.close(CLOSE_RESTARTING, 'the service is restarting')
+      if (wss.clients.size) await new Promise((r) => setTimeout(r, CLOSE_GRACE_MS))
       for (const client of wss.clients) client.terminate()
       await collab.stop()
       await recovering

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import type { LifeosServer } from './wire'
+import type { LifeosServer, ServiceOrigins } from './wire'
 
 /**
  * Where the Work service listens, and which host serves LifeOS's documents
@@ -35,6 +35,25 @@ export function isIsolatedInstance(env: NodeJS.ProcessEnv = process.env): boolea
  */
 export function servesPublic(env: NodeJS.ProcessEnv = process.env): boolean {
   return !!env.TEMP_CODE_WORK_PUBLIC_ORIGIN || (process.platform === 'linux' && !isIsolatedInstance(env))
+}
+
+/** Setting: the origin guest pages are served on once they have their own (`work.guests.setOrigin`); unset, the host's public origin. */
+export const GUEST_ORIGIN_SETTING = 'work.guests.origin'
+
+/** The tunnel's hostname for the box's installed host (scripts/box/ingress.yml); guests/links.ts `DEFAULT_ORIGIN` is the same. */
+export const BOX_PUBLIC_ORIGIN = 'https://tempcode.landonhale.com'
+
+/**
+ * Which pages may open a socket on this host's public listener (routes/route.ts `originAllowed`): the origin its
+ * pages are served on (the box's hostname, or the one a proof names), the guest pages' own origin once they have
+ * one, and loopback pages on an isolated instance. An installed Mac or PC serves no page to a browser: its own
+ * windows reach the service through main, which names no origin.
+ */
+export function serviceOrigins(guest: string | null, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): ServiceOrigins {
+  const isolated = isIsolatedInstance(env)
+  const named = env.TEMP_CODE_WORK_PUBLIC_ORIGIN?.replace(/\/$/, '')
+  const own = named || (platform === 'linux' && !isolated ? BOX_PUBLIC_ORIGIN : null)
+  return { allowed: [...new Set([own, guest].filter((o): o is string => !!o))], guest, loopback: isolated }
 }
 
 /**
