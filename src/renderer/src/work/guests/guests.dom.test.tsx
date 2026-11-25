@@ -61,6 +61,11 @@ vi.mock("../../chrome/ConfirmDialog", async (original) => ({
   ...(await original<object>()),
   confirmAction: async (request: { title: string; body?: string; action: string }) => (confirm.asked.push(request), confirm.answer),
 }));
+const toasts = vi.hoisted(() => [] as string[]);
+vi.mock("../../components/ui/toaster", async (original) => ({
+  ...(await original<object>()),
+  loadToast: async () => Object.assign((m: string) => void toasts.push(m), { message: (m: string) => void toasts.push(m), error: (m: string) => void toasts.push(`error: ${m}`) }),
+}));
 const clip = vi.hoisted(() => ({ fail: false }));
 vi.mock("../../lib/clipboard", () => ({
   copyText: async () => {
@@ -237,6 +242,26 @@ describe("Share", () => {
     const greyed = await screen.findByRole("button", { name: "Share in Teams" });
     expect(greyed.hasAttribute("disabled")).toBe(true);
     expect(document.querySelector("[data-share-refused]")?.getAttribute("aria-description")).toBe("Share it from Teams.");
+    calls.homes = {};
+  });
+
+  it("says where to share a library's file whose page the host knows none of, on File → Share… and on a held press", async () => {
+    // Council r5 (Opus 3): the menu's Share… did nothing once the button was greyed, and a held press answered home said nothing.
+    const { ShareButton } = await import("./Share");
+    const { openShare } = await import("./sharePort");
+    let answer!: () => void;
+    calls.addressGate = new Promise((r) => (answer = r));
+    calls.homes = { "/cloud/General/Plan.docx": "Teams" };
+    toasts.length = 0;
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/cloud/General/Plan.docx" }} kind="document" title="Plan" itemId="item9" workspaceId="w1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    await act(async () => answer());
+    await waitFor(() => expect(toasts).toEqual(["Share it from Teams."]));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    act(() => openShare("item9"));
+    await waitFor(() => expect(toasts).toEqual(["Share it from Teams.", "Share it from Teams."]));
+    expect(calls.opened).toEqual([]);
+    calls.addressGate = null;
     calls.homes = {};
   });
 

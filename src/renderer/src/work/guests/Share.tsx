@@ -8,6 +8,7 @@ import { confirmAction, DialogFooter, ErrorLine } from "../../chrome/ConfirmDial
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Tip } from "../../components/tip";
 import { Dialog } from "../../components/ui/dialog";
+import { loadToast } from "../../components/ui/toaster";
 import { copyText } from "../../lib/clipboard";
 import { dayOf, fileShareOf, mayHavePage, ROLE_WORDS, shareHomeOf, shareTargetOf, type GuestLinkRow } from "./api";
 import { openUrl } from "../../lib/native";
@@ -47,7 +48,8 @@ export function ShareButton({ env, source, kind, title, itemId, workspaceId, pur
     if (!held || !known) return;
     setHeld(false);
     if (known.url) void openUrl(known.url);
-    else if (!known.home) setOpens((n) => n + 1);
+    else if (known.home) sayHome(known.home);
+    else setOpens((n) => n + 1);
   }, [held, known]);
   // A press whose own ask was lost too opens the sheet: a press never comes to nothing.
   useEffect(() => {
@@ -56,7 +58,7 @@ export function ShareButton({ env, source, kind, title, itemId, workspaceId, pur
     setOpens((n) => n + 1);
   }, [held, page, key, tries]);
   if (known?.url) return <ShareInHome url={known.url} itemId={itemId} />;
-  if (known?.home) return <ShareRefused home={known.home} />;
+  if (known?.home) return <ShareRefused home={known.home} itemId={itemId} />;
   const hold = asks && !known ? () => {
     // Asked again after a lost answer; either way the press waits for the answer.
     if (page?.key === key && page.url === undefined) setTries((n) => n + 1);
@@ -65,9 +67,22 @@ export function ShareButton({ env, source, kind, title, itemId, workspaceId, pur
   return target ? <ShareOpener env={env} target={target} title={title} itemId={itemId} purdue={purdue} hold={hold} held={held} opens={opens} /> : null;
 }
 
-/** Share in Teams greyed, for a library's file whose page the host knows none of: the row menu's words say where to share it. */
-function ShareRefused({ home }: { home: "Teams" | "OneDrive" }) {
+/** Where to share a library's file whose page the host knows none of, said for a press the greyed button cannot take. */
+const sayHome = (home: "Teams" | "OneDrive"): void => void loadToast().then((toast) => toast.message(`Share it from ${home}.`));
+
+/**
+ * Share in Teams greyed, for a library's file whose page the host knows none of: the row menu's words say where to share
+ * it. File → Share… and More still reach it, and are told the same in a toast, never a press that does nothing.
+ */
+function ShareRefused({ home, itemId }: { home: "Teams" | "OneDrive"; itemId?: string | undefined }) {
   const why = `Share it from ${home}.`;
+  const asked = useShareAsked(itemId);
+  const seen = useRef(asked);
+  useEffect(() => {
+    if (asked === seen.current) return;
+    seen.current = asked;
+    sayHome(home);
+  }, [asked, home]);
   return (
     <Tip label={why}>
       <span data-share-refused="" tabIndex={0} aria-description={why} className="focus-ring ms-auto inline-flex rounded-lg">

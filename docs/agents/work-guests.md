@@ -78,7 +78,9 @@ the header's Share in Teams is greyed with "Share it from Teams.", as the row's
 is; any other file keeps the sheet. Share is drawn at once; a press before the
 answer, the button's or File → Share…'s or More's (`openShare`, held by the same
 `hold`), waits for it, the button busy meanwhile (its glyph turns to the spinner, `BusyLabel`,
-`aria-busy`), and then opens the page, the sheet, or nothing (greyed), and
+`aria-busy`), and then opens the page or the sheet, or, greyed, says "Share it
+from Teams." in a toast (`sayHome`), as File → Share… and More do on the greyed
+button from then on (`ShareRefused` hears `useShareAsked`), and
 a press after an ask that got no answer (undefined) asks again, so one drop
 never leaves Share on the sheet; only the host's own "none" greys Share in Teams. A document kept for a
 Teams file, where the host knows no page, says "This document is a Teams file
