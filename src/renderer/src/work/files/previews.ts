@@ -54,6 +54,10 @@ const thumbs = new Map<string, string | null>();
 const thumbListeners = new Map<string, Set<() => void>>();
 /** The most thumbnails kept while the window is open; the oldest go first. */
 export const THUMBS_KEPT = 600;
+/** And the most characters of their data URLs (about 32 MB of strings): a page of big pictures goes before 600 do. */
+export const THUMBS_CHARS = 16_000_000;
+let thumbChars = 0;
+const charsOf = (value: string | null): number => value?.length ?? 0;
 /** How many files one ask names (the wire's bound), and how long a tile waits for its neighbours to join it. */
 const BATCH_MOST = 40;
 const BATCH_AFTER_MS = 40;
@@ -70,11 +74,16 @@ interface Waiting {
 const waiting = new Map<string, Waiting>();
 
 function keep(key: string, value: string | null): void {
+  thumbChars -= charsOf(thumbs.get(key) ?? null);
   thumbs.delete(key);
   thumbs.set(key, value);
-  if (thumbs.size > THUMBS_KEPT) for (const old of thumbs.keys()) {
-    if (thumbs.size <= THUMBS_KEPT) break;
-    if (!thumbListeners.has(old)) thumbs.delete(old);
+  thumbChars += charsOf(value);
+  if (thumbs.size > THUMBS_KEPT || thumbChars > THUMBS_CHARS) for (const [old, picture] of thumbs) {
+    if (thumbs.size <= THUMBS_KEPT && thumbChars <= THUMBS_CHARS) break;
+    // A picture on screen stays (its tile listens); the oldest of the rest go.
+    if (thumbListeners.has(old)) continue;
+    thumbs.delete(old);
+    thumbChars -= charsOf(picture);
   }
   for (const listener of thumbListeners.get(key) ?? []) listener();
 }
@@ -179,9 +188,14 @@ export function useNear(el: Element | null, root: Element | null): boolean {
   return near;
 }
 
+/** Tests: a picture's landing, and how many characters are kept. */
+export const keepThumbForTests = (key: string, value: string | null): void => keep(key, value);
+export const thumbCharsKept = (): number => thumbChars;
+
 /** Forgets every picture kept (a test's clean start). */
 export function forgetPictures(): void {
   thumbs.clear();
+  thumbChars = 0;
   pending.clear();
   for (const queue of waiting.values()) if (queue.timer) clearTimeout(queue.timer);
   waiting.clear();

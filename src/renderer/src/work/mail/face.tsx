@@ -42,17 +42,43 @@ const FACE: Record<FaceSize, string> = {
  * never shows its initials again; a `data:` picture needs no reading.
  */
 const facePictures = new Map<string, string | null>();
+/** The most face pictures kept; past it the one drawn longest ago goes and its blob is let go (`revokeObjectURL`). */
+export const FACES_KEPT = 120;
 const faceReads = new Set<string>();
 const faceWaits = new Set<() => void>();
 const drawable = (url: string) => url.startsWith("data:") || url.startsWith("blob:");
 
+/** A face read: kept as the newest, the oldest past FACES_KEPT dropped and its blob revoked. */
+function keepFace(url: string, picture: string | null): void {
+  facePictures.delete(url);
+  facePictures.set(url, picture);
+  while (facePictures.size > FACES_KEPT) {
+    const [old, blob] = facePictures.entries().next().value!;
+    facePictures.delete(old);
+    if (blob) URL.revokeObjectURL(blob);
+  }
+}
+
+/** A face drawn again moves to the newest end, so the ones on screen are the last to go. */
+function touchFace(url: string): void {
+  if (!facePictures.has(url)) return;
+  const picture = facePictures.get(url)!;
+  facePictures.delete(url);
+  facePictures.set(url, picture);
+}
+
+/** Tests: how many are kept, and a read's landing. */
+export const facesKept = (): number => facePictures.size;
+export const keepFaceForTests = keepFace;
+
 function readFace(url: string): void {
-  if (drawable(url) || facePictures.has(url) || faceReads.has(url)) return;
+  if (drawable(url) || faceReads.has(url)) return;
+  if (facePictures.has(url)) return touchFace(url);
   faceReads.add(url);
   void loadBytes(url)
     .then(
-      (blob) => facePictures.set(url, URL.createObjectURL(blob)),
-      () => facePictures.set(url, null),
+      (blob) => keepFace(url, URL.createObjectURL(blob)),
+      () => keepFace(url, null),
     )
     .finally(() => {
       faceReads.delete(url);

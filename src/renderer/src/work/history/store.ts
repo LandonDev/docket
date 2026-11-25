@@ -26,10 +26,30 @@ const asks = new Map<string, { env: string; method: string; params: Record<strin
 const sourceKey = (source: CanvasSource): string => JSON.stringify(source);
 const keyOf = (env: string, source: CanvasSource, what: string): string => `${env}\u0000${sourceKey(source)}\u0000${what}`;
 
+/** The most compares kept: two versions compared are a page of words each, and he may compare many over a day. */
+export const COMPARES_KEPT = 20;
+
 function put(key: string, next: Asked<unknown>): void {
+  entries.delete(key);
   entries.set(key, next);
   for (const l of listeners.get(key) ?? []) l();
+  // Past COMPARES_KEPT compares, the oldest one no screen shows goes with its ask (asked again if shown again).
+  let compares = 0;
+  for (const k of entries.keys()) if (k.includes("\u0000compare|")) compares++;
+  if (compares <= COMPARES_KEPT) return;
+  for (const k of [...entries.keys()]) {
+    if (compares <= COMPARES_KEPT) break;
+    if (!k.includes("\u0000compare|") || listeners.get(k)?.size) continue;
+    entries.delete(k);
+    asks.delete(k);
+    listeners.delete(k);
+    compares--;
+  }
 }
+
+/** Tests: an answer's landing, and how many compares are kept. */
+export const putForTests = (key: string, value: unknown): void => put(key, { value, error: null });
+export const comparesKept = (): number => [...entries.keys()].filter((k) => k.includes("\u0000compare|")).length;
 
 /** Asks the host; while it answers, what was there stays on screen. A newer ask of the same key wins. */
 async function ask(env: string, key: string, method: string, params: Record<string, unknown>): Promise<void> {
