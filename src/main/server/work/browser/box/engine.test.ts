@@ -1,13 +1,13 @@
 import type { ChildProcess } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { encodeAck, encodeFrame, encodeInput, parseInput } from '@shared/video/nsl1'
 import type { VideoCloseReason } from '@shared/contract-video'
-import { BoxEngines, ENGINE_MAX, engineArgs, freePort, type EngineLease } from './engine'
+import { BoxEngines, BROWSER_TUNE, ENGINE_MAX, engineArgs, freePort, type EngineLease } from './engine'
 import { EngineFeed, type NeverSent, engineUrl } from './engineFeed'
 import type { VideoTools } from './videoSetting'
 
@@ -65,6 +65,14 @@ describe('the engine’s flags', () => {
     // never open to another machine, never without its token
     expect(args).not.toContain('--insecure-local')
     expect(args).not.toContain('0.0.0.0')
+  })
+  it('takes a source’s own frame rate and rates in place of the browser’s', () => {
+    const args = engineArgs({ port: 4100, tokenFile: '/e/token-1', viewer: '/t/viewer', tune: { fps: 60, bitrateStart: 12_000_000, bitrateMax: 40_000_000, cpus: '26-31' } }).join(' ')
+    expect(args).toContain('--fps 60')
+    expect(args).toContain('--bitrate-min 1000000 --bitrate-start 12000000 --bitrate-max 40000000')
+    // the CPUs are the prefix's, never the engine's own flag
+    expect(args).not.toContain('26-31')
+    expect(engineArgs({ port: 4100, tokenFile: '/e/token-1', viewer: '/t/viewer', tune: BROWSER_TUNE })).toEqual(engineArgs({ port: 4100, tokenFile: '/e/token-1', viewer: '/t/viewer' }))
   })
   it('a watcher’s address owns no input; a driver’s does', () => {
     expect(engineUrl(4100, false)).toBe('ws://127.0.0.1:4100/stream?view=1')
@@ -182,6 +190,35 @@ describe('BoxEngines', () => {
     const tokens = join(root, 'engine')
     expect(existsSync(join(tokens, 'token-1'))).toBe(false)
     await expect(pool(fakeEngines(false), { startMs: 30 }).lease()).rejects.toThrow('did not come up in time')
+  })
+
+  it('reads its tune at each start: the flags follow it', async () => {
+    const fake = fakeEngines()
+    let fps = 60
+    const engines = pool(fake, { tune: () => ({ fps, bitrateStart: 8_000_000, bitrateMax: 20_000_000 }) })
+    await engines.lease()
+    fps = 30
+    await engines.lease()
+    expect(fake.calls.map((c) => c.args[c.args.indexOf('--fps') + 1])).toEqual(['60', '30'])
+    await engines.stopAll()
+  })
+
+  it.skipIf(process.platform !== 'linux')('starts a tuned engine on its CPUs alone, and the browser’s on all of them', async () => {
+    // a stand-in engine: says it is ready and waits
+    const engine = join(root, 'relay-engine')
+    writeFileSync(engine, '#!/bin/sh\necho \'{"ready":true}\'\nexec sleep 30\n')
+    chmodSync(engine, 0o755)
+    const tools = (): VideoTools => ({ ...TOOLS(), engine })
+    const allowed = (pid: number | null): string => /Cpus_allowed_list:\s*(\S+)/.exec(readFileSync(`/proc/${pid}/status`, 'utf8'))?.[1] ?? ''
+    const pinned = new BoxEngines({ root, tools, display: () => DISPLAY, tune: () => ({ ...BROWSER_TUNE, cpus: '0' }) })
+    const free = new BoxEngines({ root, tools, display: () => DISPLAY })
+    try {
+      expect(allowed((await pinned.lease())!.pid)).toBe('0')
+      expect(allowed((await free.lease())!.pid)).toBe(readFileSync('/proc/self/status', 'utf8').match(/Cpus_allowed_list:\s*(\S+)/)![1])
+    } finally {
+      await pinned.stopAll()
+      await free.stopAll()
+    }
   })
 
   it('starts nothing when the browser is not on its display', async () => {

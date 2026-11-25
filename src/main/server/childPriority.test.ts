@@ -29,6 +29,19 @@ describe('the prefix each lowered kind starts under', () => {
     expect(lowerCommand('harness', '/bin/claude', ['-p'], 'darwin')).toEqual({ file: 'nice', args: ['-n', String(NICE_LEVEL), '/bin/claude', '-p'] })
     expect(lowerCommand('harness', 'claude.exe', ['-p'], 'win32')).toEqual({ file: 'claude.exe', args: ['-p'] })
   })
+
+  it('pins a child to its CPUs with taskset before the prefix, on Linux alone', () => {
+    expect(lowerPrefix('browser', 'linux', true, { cpus: '26-31' })).toEqual(['/usr/bin/taskset', '-c', '26-31', ...IO.browser, ...NICE])
+    expect(lowerPrefix('browser', 'linux', false, { cpus: '26-31' })).toEqual(['/usr/bin/taskset', '-c', '26-31', ...NICE])
+    expect(lowerPrefix('browser', 'darwin', false, { cpus: '26-31' })).toEqual(NICE)
+    expect(lowerPrefix('browser', 'win32', false, { cpus: '26-31' })).toEqual([])
+    expect(lowerCommand('browser', '/tools/relay-engine', ['--fps', '60'], 'linux', { cpus: '26-31' })).toEqual({
+      file: '/usr/bin/taskset',
+      args: ['-c', '26-31', ...(process.platform === 'linux' && existsSync('/usr/bin/ionice') ? IO.browser : []), ...NICE, '/tools/relay-engine', '--fps', '60']
+    })
+    // no list: the argv of today
+    expect(lowerPrefix('browser', 'linux', true, {})).toEqual([...IO.browser, ...NICE])
+  })
 })
 
 /** Every site the host lowers, and the kind it lowers by: a site that stops calling the module fails here. */

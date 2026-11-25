@@ -29,16 +29,27 @@ const IONICE = '/usr/bin/ionice'
 let ioniceHere: boolean | undefined
 const hasIonice = (): boolean => (ioniceHere ??= existsSync(IONICE))
 
+const TASKSET = '/usr/bin/taskset'
+
+/**
+ * What a lowered child may take beyond its kind's priority: `cpus`, a CPU list for `taskset -c` ("26-31"), keeps it
+ * and what it forks on those CPUs alone (the Windows VM's engines, plan stage 8). Linux only; elsewhere it is ignored.
+ */
+export interface LowerOptions {
+  cpus?: string
+}
+
 /** The argv a kind's child starts under, before its own command. */
-export function lowerPrefix(kind: LoweredKind, platform: NodeJS.Platform = process.platform, ionice: boolean = platform === 'linux' && hasIonice()): string[] {
+export function lowerPrefix(kind: LoweredKind, platform: NodeJS.Platform = process.platform, ionice: boolean = platform === 'linux' && hasIonice(), o: LowerOptions = {}): string[] {
   if (platform === 'win32') return []
+  const pin = o.cpus && platform === 'linux' ? [TASKSET, '-c', o.cpus] : []
   const io = ionice ? [IONICE, '-c', ...(IDLE_IO.includes(kind) ? ['3'] : ['2', '-n', '7'])] : []
-  return [...io, 'nice', '-n', String(NICE_LEVEL)]
+  return [...pin, ...io, 'nice', '-n', String(NICE_LEVEL)]
 }
 
 /** A command as it starts lowered: the prefix's first word becomes the file. */
-export function lowerCommand(kind: LoweredKind, file: string, args: readonly string[], platform?: NodeJS.Platform): { file: string; args: string[] } {
-  const [first, ...rest] = lowerPrefix(kind, platform)
+export function lowerCommand(kind: LoweredKind, file: string, args: readonly string[], platform?: NodeJS.Platform, o: LowerOptions = {}): { file: string; args: string[] } {
+  const [first, ...rest] = lowerPrefix(kind, platform, undefined, o)
   return first ? { file: first, args: [...rest, file, ...args] } : { file, args: [...args] }
 }
 
@@ -48,14 +59,14 @@ export function lowerCommand(kind: LoweredKind, file: string, args: readonly str
  * through this (a site that takes a spawn function uses it as the default,
  * so a test that hands its own sees the plain argv).
  */
-export function spawnLowered(kind: LoweredKind): typeof nodeSpawn {
+export function spawnLowered(kind: LoweredKind, lower: LowerOptions = {}): typeof nodeSpawn {
   return ((file: string, args?: unknown, options?: unknown) => {
     const plain = Array.isArray(args)
     const argv = plain ? (args as string[]) : []
     const opts = ((plain ? options : args) ?? {}) as SpawnOptions
     // A path that is not there starts plain, so its ENOENT reaches the caller as before (under nice it would be an exit 127).
     const missing = file.includes('/') && !existsSync(resolve(String(opts.cwd ?? ''), file))
-    const c = missing ? { file, args: argv } : lowerCommand(kind, file, argv)
+    const c = missing ? { file, args: argv } : lowerCommand(kind, file, argv, undefined, lower)
     const child = nodeSpawn(c.file, c.args, opts)
     placeLowered(child.pid)
     return child

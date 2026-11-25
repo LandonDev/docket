@@ -32,8 +32,19 @@ const STOP_MS = 3_000
 const BACKOFF_MS = [500, 1_000, 2_000, 4_000, 8_000, 16_000, 30_000]
 const BACKOFF_FORGET_MS = 120_000
 
+/** How an engine starts: its frame rate, its rate's start and top, and the CPUs it may use (`taskset`, Linux only). */
+export interface EngineTune {
+  fps: number
+  bitrateStart: number
+  bitrateMax: number
+  cpus?: string
+}
+/** The box's browser's engines: 120 fps on any CPU. */
+export const BROWSER_TUNE: EngineTune = { fps: VIDEO_FPS, bitrateStart: 8_000_000, bitrateMax: 20_000_000 }
+
 /** The engine's flags: the display it is handed, loopback only, the link read from the acks (`--behind-tls-proxy`: our relay sits in between). */
-export function engineArgs(o: { port: number; tokenFile: string; viewer: string }): string[] {
+export function engineArgs(o: { port: number; tokenFile: string; viewer: string; tune?: EngineTune }): string[] {
+  const tune = o.tune ?? BROWSER_TUNE
   return [
     '--backend',
     'x11',
@@ -42,13 +53,13 @@ export function engineArgs(o: { port: number; tokenFile: string; viewer: string 
     '--port',
     String(o.port),
     '--fps',
-    String(VIDEO_FPS),
+    String(tune.fps),
     '--bitrate-min',
     '1000000',
     '--bitrate-start',
-    '8000000',
+    String(tune.bitrateStart),
     '--bitrate-max',
-    '20000000',
+    String(tune.bitrateMax),
     '--token-file',
     o.tokenFile,
     '--behind-tls-proxy',
@@ -89,6 +100,8 @@ export interface BoxEnginesOptions {
   /** the tools and the display of the running headed browser; null ends every lease */
   tools: () => VideoTools | null
   display: () => BoxDisplay | null
+  /** how each engine starts, read at its start; BROWSER_TUNE by default (the Windows VM's passes its own) */
+  tune?: () => EngineTune
   spawn?: typeof nodeSpawn
   port?: () => Promise<number>
   idleMs?: number
@@ -183,8 +196,9 @@ export class BoxEngines {
     writeFileSync(tokenFile, token, { mode: 0o600 })
     const port = await (this.opts.port ?? freePort)()
     if (!existsSync(tools.viewer)) mkdirSync(tools.viewer, { recursive: true })
-    // The video relay runs below the server (childPriority.ts).
-    const child = (this.opts.spawn ?? spawnLowered('browser'))(tools.engine, engineArgs({ port, tokenFile, viewer: tools.viewer }), {
+    const tune = this.opts.tune?.() ?? BROWSER_TUNE
+    // The video relay runs below the server (childPriority.ts), on its own CPUs when it has them.
+    const child = (this.opts.spawn ?? spawnLowered('browser', { cpus: tune.cpus }))(tools.engine, engineArgs({ port, tokenFile, viewer: tools.viewer, tune }), {
       // its own display and libraries, and nothing of this process's display
       env: { ...displayEnv(display), ...videoToolsEnv(tools) },
       stdio: ['ignore', 'pipe', 'pipe']
