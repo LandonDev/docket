@@ -68,7 +68,7 @@ export interface AccountsDeps {
   /** The account-sync links to other hosts, by environment id. */
   peers: () => Record<string, PeerState>
   /** What the gateways of every host have seen of each account's rate limits (headroom.ts); null routes the older way. */
-  headroom: () => Pick<HeadroomStore, 'summary'> & Partial<Pick<HeadroomStore, 'observeUsage' | 'reconcileUsage'>> | null
+  headroom: () => Pick<HeadroomStore, 'summary'> & Partial<Pick<HeadroomStore, 'observeUsage' | 'observeAnswer' | 'reconcileUsage'>> | null
   dataDir: () => string
   pollMs: number
   now: () => number
@@ -573,6 +573,12 @@ export class AccountsService {
   /** A real provider sample, including regular polls; cached fallbacks never reach this path. */
   observeFreshWindow(service: ServiceId, account: string, window: UsageWindow): void {
     this.deps.headroom()?.observeUsage?.(service, account, window)
+    this.nudge()
+  }
+
+  /** A whole fresh poll answer: a label it no longer lists is retired across hosts. */
+  observeFreshAnswer(service: ServiceId, account: string, labels: string[]): void {
+    this.deps.headroom()?.observeAnswer?.(service, account, labels)
     this.nudge()
   }
 

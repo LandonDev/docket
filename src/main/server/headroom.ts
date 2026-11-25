@@ -57,6 +57,8 @@ export interface HostObservation {
   seenAt: number
   /** Fresh provider samples, timestamped per window; also the durable proof of a quota lift. */
   usage?: (UsageWindow & { at: number })[]
+  /** This host's newest whole poll answer: when, and every label it listed. */
+  answer?: { at: number; labels: string[] }
   requests?: LimitField
   tokens?: LimitField
   inputTokens?: LimitField
@@ -264,11 +266,44 @@ export class HeadroomStore {
     this.reconcileUsage(service, [{ profileName: account, windows: [] }])
   }
 
+  /**
+   * A whole, fresh poll answer (aliax-core's onUsageAnswer): never a cache
+   * hit, a failed poll or a lone header window. Its samples came through
+   * observeUsage; this files the list, and a label it leaves out is retired
+   * on every host's copy older than it (`retired`).
+   */
+  observeAnswer(service: ServiceId, account: string, labels: string[]): void {
+    if (labels.length === 0) return
+    const key = accountKey(service, account)
+    const now = this.now()
+    const prior = this.mine().get(key) ?? emptyObservation(now)
+    this.mine().set(key, { ...prior, seenAt: Math.max(now, prior.seenAt + 1), answer: { at: now, labels: [...new Set(labels)] } })
+    this.touched()
+    this.reconcileUsage(service, [{ profileName: account, windows: [] }])
+  }
+
+  /** The newest whole answer any host has for the account. */
+  private answer(service: ServiceId, account: string): HostObservation['answer'] {
+    let newest: HostObservation['answer']
+    for (const rows of this.hosts.values()) {
+      const a = rows.get(accountKey(service, account))?.answer
+      if (a && (!newest || a.at > newest.at)) newest = a
+    }
+    return newest
+  }
+
+  /** A label the newest whole answer left out is gone for every sample older than that answer, whichever host holds it. */
+  private retired(service: ServiceId, account: string): (w: { label: string; at: number }) => boolean {
+    const answer = this.answer(service, account)
+    return w => !!answer && w.at <= answer.at && !answer.labels.includes(w.label)
+  }
+
   private windows(service: ServiceId, account: string): NonNullable<HostObservation['usage']> {
     const latest = new Map<string, NonNullable<HostObservation['usage']>[number]>()
+    const retired = this.retired(service, account)
     for (const rows of this.hosts.values()) for (const w of rows.get(accountKey(service, account))?.usage ?? []) {
       // A peer on an older build may still hold one.
-      if (impossibleSample(w)) continue
+      if (impossibleSample(w) || retired(w)) continue
       const prior = latest.get(w.label)
       // Equal clocks prefer the full window: ambiguity must never grant room.
       if (!prior || w.at > prior.at || (w.at === prior.at && w.usedPercent > prior.usedPercent)) latest.set(w.label, w)
@@ -282,21 +317,24 @@ export class HeadroomStore {
     return reports.map(report => {
       const key = accountKey(service, report.profileName)
       let evidence = this.windows(service, report.profileName)
-      const expiredWindows = report.windows.filter(w => w.usedPercent >= 100 && w.resetsAt !== undefined && w.resetsAt <= this.now() && !evidence.some(e => e.label === w.label))
+      // A cache may still list a window the newest whole answer left out; an at of 0 makes it older than any answer.
+      const retired = this.retired(service, report.profileName)
+      const listed = report.windows.filter(w => !retired({ label: w.label, at: 0 }))
+      const expiredWindows = listed.filter(w => w.usedPercent >= 100 && w.resetsAt !== undefined && w.resetsAt <= this.now() && !evidence.some(e => e.label === w.label))
       if (expiredWindows.length) {
         const prior = this.mine().get(key) ?? emptyObservation(this.now())
         this.mine().set(key, { ...prior, seenAt: Math.max(this.now(), prior.seenAt + 1), usage: [...(prior.usage ?? []), ...expiredWindows.map(w => ({ ...w, at: 0 }))] })
         this.touched()
         evidence = this.windows(service, report.profileName)
       }
-      const windows = report.windows.map(w => {
+      const windows = listed.map(w => {
         const sample = evidence.find(e => e.label === w.label)
         return sample ? withoutAt(sample) : w
       })
       for (const sample of evidence) if (!windows.some(w => w.label === sample.label)) windows.push(withoutAt(sample))
       const obs = this.mine().get(key)
       if (obs) {
-        const throttles = obs.throttles.filter(t => !this.quotaLifted(service, t, evidence, report.windows))
+        const throttles = obs.throttles.filter(t => !this.quotaLifted(service, report.profileName, t, evidence, listed))
         if (throttles.length !== obs.throttles.length) {
           this.mine().set(key, { ...obs, throttles, seenAt: Math.max(this.now(), obs.seenAt + 1) })
           this.touched()
@@ -306,10 +344,13 @@ export class HeadroomStore {
     })
   }
 
-  private quotaLifted(service: ServiceId, event: ThrottleEvent, evidence: NonNullable<HostObservation['usage']>, fallback: UsageWindow[] = []): boolean {
+  private quotaLifted(service: ServiceId, account: string, event: ThrottleEvent, evidence: NonNullable<HostObservation['usage']>, fallback: UsageWindow[] = []): boolean {
     if (event.status !== 429 || event.quotaWindow === null || service === 'meta') return false
     const labels = event.quotaWindow ? [event.quotaWindow] : tiersFor(service, event.model)
+    const answer = this.answer(service, account)
     return labels.length > 0 && labels.every(label => {
+      // A whole answer after the mark that no longer lists the window: the provider holds no cap there.
+      if (answer && answer.at > event.at && !answer.labels.includes(label)) return true
       const sample = evidence.find(w => w.label === label)
       const window = sample ?? fallback.find(w => w.label === label)
       if (!window) return false
@@ -373,7 +414,7 @@ export class HeadroomStore {
     const key = accountKey(service, account)
     const observations = [...this.hosts.values()].map((m) => m.get(key)).filter((o): o is HostObservation => !!o)
     const evidence = this.windows(service, account)
-    return mergeViews(observations.map(o => ({ ...o, throttles: o.throttles.filter(t => !this.quotaLifted(service, t, evidence)) })), now, model)
+    return mergeViews(observations.map(o => ({ ...o, throttles: o.throttles.filter(t => !this.quotaLifted(service, account, t, evidence)) })), now, model)
   }
 
   /** Every account any host has seen for a service, for the snapshot the renderer paints. */

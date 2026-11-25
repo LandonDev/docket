@@ -46,7 +46,7 @@ import { shortHostName } from '@shared/hostNames'
 import type { BuildFacts } from '@shared/deployDrift'
 import type { MediaRange } from '@shared/contract-fsgit'
 import { MasterReleaseWatcher } from '../deployDrift'
-import { usageSamples } from './usageSamples'
+import { usageAnswers, usageSamples } from './usageSamples'
 import { AccountSync, accountSyncHooks } from './remote/accountSync'
 import { Peers } from './remote/peers'
 import { Givers, claimsGiver, giverMoveBytes } from './devices/giver'
@@ -936,6 +936,10 @@ export async function startServer(
   })
   usageSamples.current = (service, account, window) => {
     accounts.observeFreshWindow(service, account, window)
+    accountSync.pushHeadroomSoon()
+  }
+  usageAnswers.current = (service, account, labels) => {
+    accounts.observeFreshAnswer(service, account, labels)
     accountSync.pushHeadroomSoon()
   }
   accountSyncHooks.current = accountSync
@@ -4791,6 +4795,7 @@ export async function startServer(
       execBroker.stop()
       clearInterval(syncTimer)
       usageSamples.current = null
+      usageAnswers.current = null
       accountSync.close()
       given?.close()
       givenComputerHooks.current = null

@@ -9,6 +9,7 @@ const LimitFieldSchema = z.object({ limit: z.number().optional(), remaining: z.n
 export const HostObservationSchema = z.object({
   seenAt: z.number(),
   usage: z.array(z.object({ label: z.string(), usedPercent: z.number(), resetsAt: z.number().optional(), periodMs: z.number().optional(), at: z.number() })).optional(),
+  answer: z.object({ at: z.number(), labels: z.array(z.string()) }).optional(),
   requests: LimitFieldSchema.optional(),
   tokens: LimitFieldSchema.optional(),
   inputTokens: LimitFieldSchema.optional(),
