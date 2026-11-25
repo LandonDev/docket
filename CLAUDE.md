@@ -206,7 +206,7 @@ section's text as it was when CLAUDE.md was split (2026-11-11).
   the `windows_*` tools on a third `ComputerService` via the guest's door (work/winvm/vm.ts), one
   thread at a time; a door for the Office helper as tcuser (`tc-office.exe`, built in the guest,
   winvm/helperDoor.ts), under `conhost --headless`; QEMU's GTK window on a display of its own (`qemu-window`, winvm/window.ts), its
-  `vm:windows` video source and idle row (winvm/picture.ts), QMP's 4 fps picture without them; `windows_put`/`windows_get` (files.ts) and his clipboard in and out
+  `vm:windows` video source and idle row (winvm/picture.ts), QMP's 4 fps picture else; `windows_put`/`windows_get` (files.ts) and his clipboard in and out
   (clipboard.ts, §29.8); his Take over (winvm/drive.ts), Settings → Work's section, the whole job:
   `e2e-winvm-work.ts`. [docs/agents/work-winvm.md](docs/agents/work-winvm.md)
 - **Live Office in a Files tab** — a shared .docx/.xlsx/.pptx opens in TempCode's editor or live in Office on
