@@ -17,7 +17,7 @@ import {
   type AttachmentSettings,
   type CommittedAttachment
 } from '@shared/contract-attachments'
-import { assertSessionId, attachmentDirsOf, type AttachmentSession } from './attachmentDir'
+import { assertSessionId, attachmentDirsOf, WORK_IMPORTS_DIR, type AttachmentSession } from './attachmentDir'
 import { mimeFor } from './attachments'
 import { yieldUntilIdle } from './stalls'
 
@@ -477,6 +477,8 @@ export async function sweepAttachmentRoots(
     }
     /** Is this directory due to go, as things stand now? */
     const due = (name: string): boolean => {
+      // Work's imported documents are his, never a thread's attachments (sol S2).
+      if (name === WORK_IMPORTS_DIR) return false
       let mtime: number
       try {
         const info = statSync(join(root, name))

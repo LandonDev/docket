@@ -456,6 +456,21 @@ describe('sweeps', () => {
   })
 })
 
+describe("Work's imported documents under the attachments root (sol S2)", () => {
+  it('stay, however old: work-imports owns no thread, and the sweep leaves it alone', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'tc-sweep-imports-'))
+    const root = join(dir, 'attachments')
+    const imports = join(root, 'work-imports')
+    const orphan = join(root, 'old-orphan')
+    mkdirSync(imports, { recursive: true })
+    mkdirSync(orphan, { recursive: true })
+    writeFileSync(join(imports, 'Brief.tcdoc'), 'his document')
+    const removed = await sweepAttachmentRoots([root], () => null, { now: Date.now() + 3 * 86_400_000, between: async () => {} })
+    expect(removed).toEqual([orphan])
+    expect(existsSync(join(imports, 'Brief.tcdoc'))).toBe(true)
+  })
+})
+
 describe('the retention sweep and a restore', () => {
   it('a thread restored while the sweep paused keeps its files', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'tc-sweep-restore-'))

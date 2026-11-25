@@ -4,7 +4,7 @@ import { fileDocName } from 'work-kit/collab-server'
 import type { Block, Imported } from 'work-kit/formats'
 import type { ExportAnswer, ImportAnswer } from '@shared/contract-work-formats'
 import { canvasSourcePath, paneWorkspace, type CanvasSource } from '@shared/work'
-import { attachmentDirsOf } from '../../attachmentDir'
+import { attachmentDirsOf, WORK_IMPORTS_DIR } from '../../attachmentDir'
 import { FenceError } from '../../remote/fence'
 import type { Caller, WorkCtx } from '../modules'
 import { ensureThreadTables } from '../docs/threads'
@@ -83,7 +83,7 @@ function workspaceOfOwner(ctx: WorkCtx, sessionId: string): string | null | unde
 function folderFor(ctx: WorkCtx, sessionId: string | undefined): string {
   const workspaceId = sessionId ? workspaceOfOwner(ctx, sessionId) : null
   const row = workspaceId ? (ctx.db.prepare('SELECT path FROM workspaces WHERE id = ?').get(workspaceId) as { path?: string } | undefined) : undefined
-  const dir = row?.path && existsSync(row.path) ? row.path : join(ctx.dataDir, 'attachments', 'work-imports')
+  const dir = row?.path && existsSync(row.path) ? row.path : join(ctx.dataDir, 'attachments', WORK_IMPORTS_DIR)
   mkdirSync(dir, { recursive: true })
   // The path a document is opened by (and its threads are kept under) is the real one, links resolved.
   return canonicalPath(dir)

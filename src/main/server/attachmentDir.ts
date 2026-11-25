@@ -43,6 +43,13 @@ export function assertSessionId(id: string): void {
   if (!SESSION_ID_RE.test(id)) throw new Error('bad session id')
 }
 
+/**
+ * `<userData>/attachments/work-imports`: where a Work Chat's imported documents and a dropped file's bytes live
+ * (work/formats/importer.ts `folderFor`). It owns no thread, and the retention sweep leaves it alone: they are his
+ * documents, not a thread's attachments.
+ */
+export const WORK_IMPORTS_DIR = 'work-imports'
+
 /** `<base>/.temp-code/attachments`: the per-tree root that holds every thread's dir. */
 export const treeAttachmentsRoot = (base: string): string => join(base, '.temp-code', 'attachments')
 
