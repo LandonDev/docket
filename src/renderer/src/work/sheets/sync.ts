@@ -321,6 +321,9 @@ export class SheetSync {
   private again(): void {
     const redraw = async (): Promise<void> => {
       if (!this.kept || this.queue.length > 0 || this.state.sendError || this.locks > 0 || this.state.failed) return this.open();
+      // The kept book is the newest now: an open still out from before (a Retry he pressed and left) lands nothing
+      // over it (sol S6); the grid's catch-up from the book's revision brings it current.
+      ++this.loads;
       this.reset(this.kept.rev);
       this.owed = false;
       this.behind = true;

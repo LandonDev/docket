@@ -203,6 +203,33 @@ describe("a sheet's tab shown again", () => {
     again();
   });
 
+  it("an open still out when he left lands nothing over the kept book drawn on his return (sol S6, round 3)", async () => {
+    const host = countingHost(BOOK);
+    const sync = syncOf("local\\nretried", () => new SheetSync(host, decode));
+    (await mount(sync))();
+    // A Retry pressed, then the tab left while its open is out.
+    let answer!: () => void;
+    const open = host.open;
+    host.open = async (first) => {
+      await new Promise<void>((r) => (answer = r));
+      return open(first);
+    };
+    const stop = sync.start();
+    void sync.open();
+    stop();
+    // Back: the kept book is drawn at once.
+    const again = sync.start();
+    await settle(() => !!sync.state.book);
+    const key = sync.state.book!.key;
+    // The Retry's open answers now, at a later revision: nothing of it lands.
+    host.state.rev = 9;
+    answer();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sync.state.book!.key).toBe(key);
+    expect(sync.rev).toBe(3);
+    again();
+  });
+
   it("goes with its item: five sheets opened and closed hold nothing", async () => {
     for (let i = 0; i < 5; i++) {
       const sync = syncOf(`local\nsheet${i}`, () => new SheetSync(countingHost(BOOK), decode));
