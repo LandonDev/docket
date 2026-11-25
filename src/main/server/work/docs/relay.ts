@@ -52,6 +52,10 @@ interface Relayed {
   sink: RelaySink | null
   /** the last push's number */
   seq: number
+  /** its window has sent on it: a pushed socket no one claimed (a ready open whose tab went) idles out as any other */
+  claimed: boolean
+  /** lets go of the window socket's abort listener, once this socket is closed */
+  unhear: (() => void) | null
   doc: string
   ws: WebSocket
   frames: Buffer[]
@@ -86,6 +90,8 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
     if (s.closed) return
     s.closed = closed
     s.waiter?.()
+    s.unhear?.()
+    s.unhear = null
     // A pushed socket says how it closed in its last push, and is done: no `recv` comes for it.
     if (s.sink) {
       s.sink.send({ socket: s.id, seq: ++s.seq, frames: [], closed })
@@ -97,8 +103,9 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
   const sweep = setInterval(() => {
     const t = now()
     for (const s of sockets.values()) {
-      // A pushed socket lives as long as its window's socket does (its signal), however quiet the document.
-      if (s.sink || t - s.lastAsked < (opts.idleMs ?? IDLE_MS)) continue
+      // A pushed socket its window has claimed lives as long as that window's socket does (its signal), however quiet
+      // the document; one never claimed (the tab went before the ready open's answer landed) idles out (sol S5).
+      if ((s.sink && s.claimed) || t - s.lastAsked < (opts.idleMs ?? IDLE_MS)) continue
       sockets.delete(s.id)
       if (!s.closed) {
         s.ws.close(1000, 'idle')
@@ -120,22 +127,21 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
       if ([...sockets.values()].filter((x) => !x.closed).length >= SOCKETS_MAX) throw new Error('too many documents are open on this host; close one and try again')
       const id = randomBytes(18).toString('base64url')
       const ws = opts.socket ? opts.socket(url) : new WebSocket(url, { maxPayload: 4 * 1024 * 1024 })
-      const s: Relayed = { id, doc, ws, sink: null, seq: 0, frames: [], bytes: 0, closed: null, waiter: null, lastAsked: now(), early: [] }
+      const s: Relayed = { id, doc, ws, sink: null, seq: 0, claimed: false, unhear: null, frames: [], bytes: 0, closed: null, waiter: null, lastAsked: now(), early: [] }
       sockets.set(id, s)
       if (sink && !sink.signal?.aborted) {
         s.sink = sink
         // The window's socket went: nobody will read this one, and the window's editor makes another when it is back.
-        sink.signal?.addEventListener(
-          'abort',
-          () => {
-            if (s.closed) return
-            s.sink = null
-            sockets.delete(id)
-            ws.close(1000, 'the window went')
-            finish(s, { code: 1000, reason: 'the window went' })
-          },
-          { once: true }
-        )
+        const gone = (): void => {
+          if (s.closed) return
+          s.sink = null
+          sockets.delete(id)
+          ws.close(1000, 'the window went')
+          finish(s, { code: 1000, reason: 'the window went' })
+        }
+        const signal = sink.signal
+        signal?.addEventListener('abort', gone, { once: true })
+        s.unhear = () => signal?.removeEventListener('abort', gone)
       }
       ws.binaryType = 'nodebuffer'
       ws.on('open', () => {
@@ -164,6 +170,7 @@ export function createRelay(opts: { onDocs?(docs: Set<string>): void; now?: () =
     send(id, frames) {
       const s = get(id)
       if (s.closed) throw new Error('that document socket is closed; open the document again')
+      s.claimed = true
       for (const frame of frames) {
         const bytes = Buffer.from(frame, 'base64')
         if (s.ws.readyState === WebSocket.OPEN) s.ws.send(bytes)
