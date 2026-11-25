@@ -62,6 +62,17 @@ export function wordLine(word: WordBack, service: string, computer: string, now 
   return { state: "copy", words: `The Word file in ${service} has not changed` };
 }
 
+/** The Word file's save as every press reaches the host: Keep Both, and Replace over the change a question named, by its version. */
+export type WordSave = (keep: boolean, replace?: boolean, version?: string) => Promise<WordSaved>;
+
+/**
+ * Save to Teams on the way to Live (liveSwitch.ts `saveWord`): the header's question over the same save, so Replace
+ * after a change there goes over that change by its version, as the header's press does. Answers whether the Word file
+ * holds his edits now.
+ */
+export const saveForLive = (tab: Pick<FileTab, "copyOf" | "name" | "key">, save: WordSave, ui: Pick<Parameters<typeof saveAsWord>[1], "choose" | "confirm" | "said">): Promise<boolean> =>
+  saveAsWord(tab, { ...ui, save }).then((done) => done === "saved");
+
 /**
  * Save to Teams: one question, naming only the losses this file has (`lossesLine`). His first press on a file
  * (`first`, no choice kept for it yet) asks once whether to save it as he works from then on, and either answer saves
@@ -74,7 +85,7 @@ export async function saveAsWord(
   deps: {
     choose: typeof confirmChoice;
     confirm: typeof confirmAction;
-    save(keep: boolean, replace?: boolean, version?: string): Promise<WordSaved>;
+    save: WordSave;
     said(text: string): void;
     /** what saving over the Word file loses, counted for this file; null where this window does not know */
     losses?: readonly string[] | null;

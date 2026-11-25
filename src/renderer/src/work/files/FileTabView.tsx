@@ -39,7 +39,7 @@ import { Dock, DockSash } from "./Dock";
 import type { DockThread } from "./dockThread";
 import { dockShape, shownName, type ActRow, type EntryAct } from "./model";
 import { saveWordFile, saveWordNow, sendCopyBack, setWordAuto, useDock, useDockWidth } from "./store";
-import { saveAsWord, serviceOf, wordLine, wordPress, wordWaitsWords } from "./wordSave";
+import { saveAsWord, saveForLive, serviceOf, wordLine, wordPress, wordWaitsWords, type WordSave } from "./wordSave";
 import { wordDefault } from "./wordDefault";
 import { importLosses } from "../formats/importOnce";
 import { canvasFlushPort } from "../../lib/canvasFlushPort";
@@ -384,11 +384,13 @@ export function FileTabView({
   // A Word file opened as its document: whether the Word file holds his changes, and Save to Teams (wordSave.ts). Its
   // question names only what this file loses: what its import did not keep, and what Preview counts for Word.
   const word = tab.word;
+  // One save for every press on the Word file, so Replace always goes over the change it was asked about.
+  const saveTo: WordSave = (keep, replace, version) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace, version);
   const saveWord = (): Promise<void> =>
     saveAsWord(tab, {
       choose: confirmChoice,
       confirm: confirmAction,
-      save: (keep, replace, version) => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace, version),
+      save: saveTo,
       said: (text) => void loadToast().then((toast) => toast.message(text)),
       losses: wordLosses(item),
       ...(word && word.auto === undefined ? { first: { set: (on: boolean) => setWordAuto(workspace.environmentId, workspace.id, tab.id, on) } } : {}),
@@ -405,7 +407,7 @@ export function FileTabView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [copy, word?.auto]);
   const wordActions = (w: NonNullable<typeof word>): SavedAction[] => {
-    const save = (keep: boolean, replace = false, version?: string): Promise<void> => saveWordFile(workspace.environmentId, workspace.id, tab.id, keep, replace, version).then(() => undefined);
+    const save = (keep: boolean, replace = false, version?: string): Promise<void> => saveTo(keep, replace, version).then(() => undefined);
     // Replace goes over the change the line names (its version); a newer one there stops it again, and the line says so.
     if (w.stopped) return [{ id: "keep", label: "Keep Both", run: () => save(true) }, { id: "replace", label: "Replace", run: () => save(false, true, w.stoppedVersion) }];
     return w.auto || !w.since ? [] : [{ id: "word", label: wordPress(tab), run: saveWord }];
@@ -534,13 +536,8 @@ export function FileTabView({
         back: () => liveLayer.back(item.id),
         typed: () => liveLayer.typed(item.id),
         confirm: confirmAction,
-        saveWord: () =>
-          saveAsWord(tab, {
-            choose: confirmChoice,
-            confirm: confirmAction,
-            save: (keep) => saveWordFile(link, workspace.id, tab.id, keep),
-            said: (text) => void loadToast().then((toast) => toast.message(text)),
-          }).then((done) => done === "saved"),
+        quiet: () => liveLayer.quiet(item.id),
+        saveWord: () => saveForLive(tab, saveTo, { choose: confirmChoice, confirm: confirmAction, said: (text) => void loadToast().then((toast) => toast.message(text)) }),
         busy: setSwitching,
       },
     )

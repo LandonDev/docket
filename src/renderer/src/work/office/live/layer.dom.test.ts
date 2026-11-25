@@ -60,6 +60,7 @@ function bridge() {
     ticket: vi.fn(async (ask: string | typeof FORM) => ({ ok: true as const, src: typeof ask === "string" ? ask : BUILDER, partition: "persist:office-live-purdue0" })),
     fullWindow: vi.fn(async () => undefined),
     typed: vi.fn(async () => 3),
+    quiet: vi.fn(async (): Promise<number | null> => 1_500),
     unload: vi.fn(async (): Promise<"unloaded" | "holding" | "gone"> => "unloaded"),
     onKey: vi.fn((cb: (init: KeyboardEventInit) => void) => ((key = cb), () => undefined)),
     press: (init: KeyboardEventInit) => key?.(init),
@@ -295,6 +296,10 @@ describe("the layer", () => {
     el.dispatchEvent(new Event("dom-ready"));
     expect(await layer.typed("a")).toBe(3);
     expect(b.typed).toHaveBeenCalledWith(7);
+    // How long since his last key, from main too; none before the guest is ready.
+    expect(await layer.quiet("a")).toBe(1_500);
+    expect(b.quiet).toHaveBeenCalledWith(7);
+    expect(await layer.quiet("b")).toBeNull();
   });
 
   it("plays a forwarded key on the tab's own body, inside the Files place", async () => {

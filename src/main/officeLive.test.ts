@@ -51,6 +51,7 @@ import {
   formsTicketOf,
   forwardedKey,
   typedKey,
+  quietSince,
   blockedRequest,
   livePartition,
   livePartitionsIn,
@@ -416,6 +417,12 @@ describe('the guest\'s keys', () => {
 
   it('hears only a key going down', () => {
     expect(forwardedKey(key({ type: 'keyUp', key: 'w', code: 'KeyW', meta: true }), 'darwin', false)).toBe(false)
+  })
+
+  it('says how long ago his last key was, and nothing before he typed', () => {
+    expect(quietSince(0, 10_000)).toBeNull()
+    expect(quietSince(8_000, 10_000)).toBe(2_000)
+    expect(quietSince(12_000, 10_000)).toBe(0)
   })
 
   it('counts his typing and the chords that change the file, not the others', () => {

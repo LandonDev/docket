@@ -116,6 +116,9 @@ export function TeamsFilesRow({ link, title, host, editable }: { link: Link | nu
         // A folder he added shows its path; a library found by its team and channel is named well enough, its path in a tip that focus opens as hover does.
         <PageRow
           key={row.folder}
+          // A library's three controls (where its files open, its web link, the switch) take a line of their own in a
+          // narrow page (under 480px), so its name keeps the row's width and never breaks two letters a line.
+          wide={editable && !!row.library && row.on}
           title={
             added(row.library) ? (
               row.title

@@ -50,6 +50,16 @@ describe("Folders in Settings", () => {
     expect(calls).toContainEqual({ method: "work.office.live.libraryDefault", params: { libraryId: FOUND.id } });
   });
 
+  it("puts a library's three controls on their own line in a narrow page, so its name keeps the row's width", async () => {
+    const { link } = fakeHost();
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
+    await screen.findByLabelText("Where Purdue Esports's Office files open");
+    const row = screen.getByText("Purdue Esports").closest<HTMLElement>("[data-slot=page-row]")!;
+    // PageRow's wide row: under 480px of page content its controls take a full line under the name.
+    expect(row.hasAttribute("data-wide")).toBe(true);
+    expect(row.querySelector("[data-wide-control]")!.textContent).toContain("web link");
+  });
+
   it("offers no choice where this window cannot edit the host's list", async () => {
     const { link } = fakeHost();
     await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable={false} />));

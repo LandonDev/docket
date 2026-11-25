@@ -268,6 +268,13 @@ export class LiveLayer {
     return (await this.bridge()?.typed(guest.guestId)) ?? 0;
   }
 
+  /** How long ago his last key in the file was (main times it on the guest); null before he typed, or with no guest. */
+  async quiet(key: string): Promise<number | null> {
+    const guest = this.guests.get(key);
+    if (!guest || guest.guestId === null) return null;
+    return (await this.bridge()?.quiet?.(guest.guestId)) ?? null;
+  }
+
   /**
    * Leaves the file: the guest unloads, unless Word holds it while still saving. Then it asks again for up to
    * `waitMs`; past that `ask` decides ("Close anyway?"). Answers whether the guest is gone.

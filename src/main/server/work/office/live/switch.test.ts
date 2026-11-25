@@ -439,6 +439,31 @@ describe('Live → Edit here', () => {
     expect(modeOf(box.db, WS, (await tabOf(tabId)).key!, null)).toBe('live')
   })
 
+  it('after typing, takes only a change made after his last key in the live seat, never an earlier sync', async () => {
+    const { path, tabId } = await liveHere()
+    Object.assign(liveTiming, { version: 2_000, look: 5 })
+    // OneDrive brought down a save from earlier in the session, 5 s before his last key (1 s before the press).
+    writeFileSync(path, 'word, with his first words')
+    shiftMtime(path, -5000)
+    let done = false
+    const switching = set(tabId, { mode: 'here', typed: 12, quiet: 1000 }).then(() => (done = true))
+    await new Promise((settle) => setTimeout(settle, 60))
+    expect(done).toBe(false)
+    expect(isLiveSource((await itemOf(tabId)).source)).toBe(true)
+    // The save after the unload comes down: that change holds his last key.
+    writeFileSync(path, 'word, with every word')
+    await switching
+    expect((await itemOf(tabId)).source).toMatchObject({ ref: { kind: 'path', path } })
+  })
+
+  it('after typing, takes at once a change already made after his last key', async () => {
+    const { path, tabId } = await liveHere()
+    Object.assign(liveTiming, { version: 2_000, look: 5 })
+    writeFileSync(path, 'word, with every word')
+    shiftMtime(path, -1000)
+    expect(await set(tabId, { mode: 'here', typed: 12, quiet: 30_000 })).toEqual({ is: 'done' })
+  })
+
   it('opens a far file as its copy again', async () => {
     const { path, tabId } = await openFar('Roster.xlsx', 'workbook')
     expect(await set(tabId)).toEqual({ is: 'done' })

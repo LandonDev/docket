@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { cloudLine } from "./fileText";
-import { lossesLine, saveAsWord, serviceOf, WORD_LOSSES, wordLine, wordPress, wordWaitsWords } from "./wordSave";
+import { lossesLine, saveAsWord, saveForLive, serviceOf, WORD_LOSSES, wordLine, wordPress, wordWaitsWords } from "./wordSave";
 
 /** A Word file of another computer opened as its document: the header's words, and Save as Word's one confirm. */
 
@@ -30,6 +30,14 @@ describe("Save as Word", () => {
     confirm: vi.fn(async () => keep),
     save: vi.fn(async () => answers.shift() as never),
     said: vi.fn(),
+  });
+
+  it("on the way to Live, Replace over a change made there goes over that change by its version, as the header's does", async () => {
+    const d = deps("action", [{ conflict: { changed: AT, version: "v7" } }, { at: AT }]);
+    expect(await saveForLive(TAB, d.save, d)).toBe(true);
+    expect(d.save.mock.calls).toEqual([[false], [false, true, "v7"]]);
+    // Keep Both, or a newer change met again, leaves the Word file without his edits: the switch stays.
+    expect(await saveForLive(TAB, deps("other", [{ copy: { name: "AD Screening 9-2 2.docx" } }]).save, deps("other", []))).toBe(false);
   });
 
   it("asks once and writes over the file on Replace; where this window does not know the file's losses, it names what this editor never keeps", async () => {

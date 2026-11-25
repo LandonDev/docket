@@ -284,6 +284,9 @@ export function keyInit(input: LiveInput): { key: string; code: string; metaKey:
 }
 
 /** Whether a key changes the file (a character, Enter, Backspace, Delete, or paste, cut, undo, redo), counted for the switch back. */
+/** ms from his last key (`at`, 0 when he typed nothing) to now; null when he typed nothing. */
+export const quietSince = (at: number, now = Date.now()): number | null => (at ? Math.max(0, now - at) : null)
+
 export function typedKey(input: LiveInput): boolean {
   if (input.type !== 'keyDown') return false
   const chord = input.meta || (input.control && !input.alt)
@@ -307,6 +310,8 @@ interface Guest {
   owner: number
   fullWindow: boolean
   typed: number
+  /** When he last typed there (`typedKey`), 0 before: Edit here takes only a change made after it. */
+  typedAt: number
   /** Set while the tab asked to close over Word's "still saving": the next hold is let go. */
   force: boolean
   onHold: (() => void) | null
@@ -361,7 +366,7 @@ function fenceGuest(guest: WebContents): void {
 
 /** A guest's keys and unload, heard for the window that holds it. */
 function hearGuest(win: BrowserWindow, guest: WebContents): void {
-  const entry: Guest = { contents: guest, owner: win.webContents.id, fullWindow: false, typed: 0, force: false, onHold: null }
+  const entry: Guest = { contents: guest, owner: win.webContents.id, fullWindow: false, typed: 0, typedAt: 0, force: false, onHold: null }
   const id = guest.id
   guests.set(id, entry)
   guest.once('destroyed', () => guests.delete(id))
@@ -372,7 +377,9 @@ function hearGuest(win: BrowserWindow, guest: WebContents): void {
       if (!win.isDestroyed()) win.webContents.send('office-live:key', keyInit(input))
       return
     }
-    if (typedKey(input)) entry.typed++
+    if (!typedKey(input)) return
+    entry.typed++
+    entry.typedAt = Date.now()
   })
   // Word holds the unload while it is still saving: the tab hears so, and only his "Close anyway" lets it go.
   guest.on('will-prevent-unload', (event) => {
@@ -473,6 +480,8 @@ export function registerOfficeLive(): void {
   })
   /** How many keys he typed in the file since it opened: the switch back waits for OneDrive when any. */
   ipcMain.handle('office-live:typed', (event, guestId: unknown) => ownGuest(event, guestId)?.typed ?? 0)
+  /** How long ago his last key in the file was, null before he typed: Edit here takes only a change made after it. */
+  ipcMain.handle('office-live:quiet', (event, guestId: unknown) => quietSince(ownGuest(event, guestId)?.typedAt ?? 0))
   ipcMain.handle('office-live:unload', (event, guestId: unknown, force: unknown): Promise<UnloadAnswer> => {
     const entry = ownGuest(event, guestId)
     return entry ? unloadGuest(entry, force === true) : Promise.resolve('gone')

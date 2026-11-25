@@ -337,6 +337,8 @@ const live = {
   /** Escape is TempCode's while the tab fills the window (main's `forwardedKey`). */
   fullWindow: (guestId: number, on: boolean): Promise<void> => ipcRenderer.invoke('office-live:full-window', guestId, on),
   typed: (guestId: number): Promise<number> => ipcRenderer.invoke('office-live:typed', guestId),
+  /** ms since his last key in the file, null before he typed. */
+  quiet: (guestId: number): Promise<number | null> => ipcRenderer.invoke('office-live:quiet', guestId),
   /** Leaves the file: 'holding' while Word is still saving, until `force`. */
   unload: (guestId: number, force: boolean): Promise<'unloaded' | 'holding' | 'gone'> => ipcRenderer.invoke('office-live:unload', guestId, force),
   /** A key of TempCode's pressed in the guest, played to this page. */

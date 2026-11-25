@@ -183,17 +183,21 @@ async function keepBase(ctx: WorkCtx, workspaceId: string, key: string, ref: { h
 }
 
 /**
- * He typed in the live view: OneDrive brings Word's edits down to the file's computer. Waits until the file is no longer
- * what it was as the tab went live (`base`), 60 s at most. Answers whether it moved; when it did not, nothing proves the
- * file holds his typing, and the live seat stays.
+ * He typed in the live view: OneDrive brings Word's edits down to the file's computer. Waits until the file holds a
+ * change made after his last key there (`quiet` ms before the press), 60 s at most: one already there by this host's
+ * own clock, else the next one seen, which came after the press and the unload's save. A sync from earlier in the
+ * session is not that change. A window that does not say `quiet` waits for any change since the tab went live (`base`).
+ * Answers whether it moved; when it did not, nothing proves the file holds his typing, and the live seat stays.
  */
-async function versionMoved(ctx: WorkCtx, workspaceId: string, ref: { host: string; path: string }, base: string | null, since: number, signal?: AbortSignal): Promise<boolean> {
+async function versionMoved(ctx: WorkCtx, workspaceId: string, ref: { host: string; path: string }, base: string | null, since: number, quiet: number | undefined, signal?: AbortSignal): Promise<boolean> {
   const first = await versionNow(ctx, workspaceId, ref, signal)
-  if (first && base !== null && first.word !== base) return true
-  // A tab live from before its version was kept: changed after the live view opened, by this host's own clock alone
-  // (never the VM's, whose clock is its own).
-  if (first && base === null && ref.host === ctx.host && !(isGuestPath(ref.path) && process.platform !== 'win32') && first.changed > since) return true
-  const from = base ?? first?.word ?? null
+  if (first && quiet === undefined && base !== null && first.word !== base) return true
+  // A change's time is read by this host's own clock alone (never the VM's, whose clock is its own): after his last
+  // key, or for a tab live from before its version was kept, after the live view opened.
+  const ownClock = ref.host === ctx.host && !(isGuestPath(ref.path) && process.platform !== 'win32')
+  const after = quiet === undefined ? since : Date.now() - quiet
+  if (first && ownClock && (quiet !== undefined || base === null) && (base === null || first.word !== base) && first.changed > after) return true
+  const from = quiet === undefined ? (base ?? first?.word ?? null) : (first?.word ?? base)
   const end = Date.now() + liveTiming.version
   while (Date.now() < end && !signal?.aborted) {
     await pause(Math.min(liveTiming.look, end - Date.now()))
@@ -218,14 +222,14 @@ async function uploaded(workspaceId: string, ref: { host: string; path: string }
 }
 
 /** `work.office.live.set`: his press on the tab's mode. */
-export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; mode: OfficeLiveMode; typed?: number; choice?: 'keep-both' }, signal?: AbortSignal): Promise<OfficeLiveSet> {
+export async function liveSet(ctx: WorkCtx, by: Caller, p: { workspaceId: string; tabId: string; mode: OfficeLiveMode; typed?: number; quiet?: number; choice?: 'keep-both' }, signal?: AbortSignal): Promise<OfficeLiveSet> {
   if (by.kind === 'model') throw new Error('A Files tab is switched from his window.')
   const { tab, item, ref } = tabFile(ctx, by, p.workspaceId, p.tabId)
   if (tab.kind !== 'file' || !item || !ref || !appOf(ref.path)) throw new Error('That tab shows no shared Office file.')
   const live = isLiveSource(item.source)
   if (p.mode === 'here') {
     if (live) {
-      if (p.typed && !(await versionMoved(ctx, p.workspaceId, ref, liveBase(ctx.db, p.workspaceId, tab.key ?? ''), item.createdAt, signal)))
+      if (p.typed && !(await versionMoved(ctx, p.workspaceId, ref, liveBase(ctx.db, p.workspaceId, tab.key ?? ''), item.createdAt, p.quiet, signal)))
         throw new Error(`What you typed in ${nameOf(ref.path)} has not come down from OneDrive yet, so it stays live. Try again in a moment.`)
       await reseat(ctx, p.workspaceId, tab.id, by, signal)
     }

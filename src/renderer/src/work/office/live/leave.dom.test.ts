@@ -28,6 +28,9 @@ describe("leaving a live file", () => {
 
   it("asks Close Anyway on a close", async () => {
     expect(await leaveLive("a", "Plan.docx", holding() as never)).toBe(true);
-    expect(confirmAction).toHaveBeenCalledWith(expect.objectContaining({ action: "Close Anyway" }));
+    expect(confirmAction).toHaveBeenCalledWith(expect.objectContaining({ action: "Close Anyway", body: expect.stringContaining("Word for the web has not finished saving it") }));
+    // The app the file's name implies, as every other ask names it (decision 10).
+    await leaveLive("a", "Roster.xlsx", holding() as never);
+    expect(confirmAction).toHaveBeenLastCalledWith(expect.objectContaining({ body: expect.stringContaining("Excel for the web has not finished") }));
   });
 });

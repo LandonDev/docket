@@ -105,11 +105,12 @@ every form of one file, so an add-in's `document.url`, Word's `FullName` and the
 
 ## Switching (`office/live/switch.ts`, `live/liveSwitch.ts`)
 
-`work.office.live.set {workspaceId, tabId, mode, typed?, choice?}` swaps the tab's item in place; the tab and its key
+`work.office.live.set {workspaceId, tabId, mode, typed?, quiet?, choice?}` swaps the tab's item in place; the tab and its key
 stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
 - To Live: the window flushes the kind; the host waits up to 30 s for a copy still sending; a copy whose file
   changed, went, did not answer or refused asks Keep Both or Cancel; a Word document whose edits are not in the Word
-  file asks Save to Teams as Word… or Cancel. Nothing is dropped quietly. Whether the document holds edits is asked at
+  file asks Save to Teams (the header's own press, by name) or Cancel; its Replace over a change made there goes
+  over that change by its version, through the one save the header uses (`saveForLive`, files/wordSave.ts). Nothing is dropped quietly. Whether the document holds edits is asked at
   the switch (files/word.ts `wordsAllInFile`): what a window sent the Work service is stored first, then its live
   revision is held against the one last written to or read from the Word file, as a close asks (`wordsLeft`); never
   what the autosave saw last, which missed words typed since its last look and let the switch delete the document
@@ -127,12 +128,17 @@ stay. It answers `{is: 'done'}` or `{is: 'ask', why, words}`.
 - The line says each wait from his press (`switchTo`): to Live "Opening in Word…" (a copy's send first: "Sending your
   changes first…", then "Opening in Word…"); to Edit here "Leaving Word…" while the guest unloads, then "Opening it
   here…" while the host reseats. No bar while a switch waits.
-- To Edit here: the window reads how much he typed (main counts keys on the guest), then unloads the guest; Word may
+- To Edit here: the window reads how much he typed and how long ago his last key was (main counts and times keys
+  on the guest, `office-live:quiet`), then unloads the guest; Word may
   hold the unload while saving (`will-prevent-unload`), so the layer waits up to 10 s, then asks "Switch Anyway"
-  (`leaveForSwitch`; a close asks "Close Anyway"). Switch Anyway counts as typing (`typed` at least 1): nothing
+  (`leaveForSwitch`; a close asks "Close Anyway", naming the app by the file's name, "Word for the web has not
+  finished saving it", `leaveLive`). Switch Anyway counts as typing (`typed` at least 1): nothing
   proves the file holds what Word had not saved, so the host must see the file move or the tab stays live and the
-  guest comes back; the seat is kept. When he typed, the host waits up to 60 s for the file to differ from that kept version (by its bytes, so a restamp or a
-  sync touching its time is no change), then `reseat`s it fresh. Nothing moved by then, nothing proves the file holds
+  guest comes back; the seat is kept. When he typed, the host waits up to 60 s for a change made after his last key
+  there (`quiet`, ms before the press, the wait to leave added): one already in the file by this host's own clock,
+  else the next change seen, which came after the press and the unload's save. A sync from earlier in the session is
+  not that change (by its bytes, so a restamp or a sync touching its time is no change either). A window that does not
+  say `quiet` waits for the file to differ from that kept version. Then it `reseat`s the file fresh. Nothing moved by then, nothing proves the file holds
   his typing: the switch is refused ("What you typed in Plan.docx has not come down from OneDrive yet, so it stays
   live."), the tab stays live and the layer puts the guest back where it was (`liveLayer.back`). A tab live from
   before its version was kept falls back to the file's time after the live view opened, on this host's own clock

@@ -19,7 +19,7 @@ export type LiveMode = "here" | "live";
 export type LiveSetAnswer = { is: "done" } | { is: "ask"; why: "changed" | "gone" | "away" | "refused" | "word"; words: string };
 
 export interface SwitchDeps {
-  set(params: { mode: LiveMode; typed?: number; choice?: "keep-both" }): Promise<LiveSetAnswer>;
+  set(params: { mode: LiveMode; typed?: number; quiet?: number; choice?: "keep-both" }): Promise<LiveSetAnswer>;
   /** What the tab's kind still holds reaches the host (canvas/flush.ts `flushedItem`); false when its send did not land. */
   flush(): Promise<boolean>;
   /** The guest unloads; false when he chose to stay (Word still saving), "forced" when he let Word go mid-save. */
@@ -28,6 +28,8 @@ export interface SwitchDeps {
   back(): void;
   /** Keys he typed in the live file. */
   typed(): Promise<number>;
+  /** ms since his last key there, null before he typed: the host takes only a change made after it. */
+  quiet?(): Promise<number | null>;
   confirm(request: ConfirmRequest): Promise<boolean>;
   /** Save to Teams as Word (wordSave.ts), its own confirm included; true once the Word file holds his edits. */
   saveWord(): Promise<boolean>;
@@ -51,6 +53,9 @@ export async function switchTo(to: LiveMode, from: SwitchFrom, deps: SwitchDeps)
     const app = APP_NAME[from.app];
     if (to === "here") {
       const typed = await deps.typed();
+      // His last key, read while the guest is there; the wait to leave is added, so the host times it from the press.
+      const quiet = (await deps.quiet?.()) ?? null;
+      const asked = Date.now();
       deps.busy(`Leaving ${app}…`);
       const left = await deps.leave();
       if (!left) return false;
@@ -59,7 +64,7 @@ export async function switchTo(to: LiveMode, from: SwitchFrom, deps: SwitchDeps)
       const told = left === "forced" ? Math.max(typed, 1) : typed;
       let done = false;
       try {
-        done = (await deps.set({ mode: "here", typed: told })).is === "done";
+        done = (await deps.set({ mode: "here", typed: told, ...(quiet !== null ? { quiet: quiet + (Date.now() - asked) } : {}) })).is === "done";
       } finally {
         if (!done) deps.back();
       }
@@ -75,7 +80,7 @@ export async function switchTo(to: LiveMode, from: SwitchFrom, deps: SwitchDeps)
       const answer = await deps.set({ mode: "live", ...(choice ? { choice } : {}) });
       if (answer.is === "done") return true;
       if (answer.why === "word") {
-        if (!(await deps.confirm({ title: `Open ${from.name} in ${liveLabel(from.app)}?`, body: answer.words, action: `Save to ${from.service} as Word…` }))) return false;
+        if (!(await deps.confirm({ title: `Open ${from.name} in ${liveLabel(from.app)}?`, body: answer.words, action: `Save to ${from.service}` }))) return false;
         if (!(await deps.saveWord())) return false;
         continue;
       }

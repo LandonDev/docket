@@ -80,7 +80,8 @@ describe("switching to Live", () => {
   it("over Word edits not in the Word file, offers Save as Word, then switches", async () => {
     const { d } = deps([{ is: "ask", why: "word", words: "Changes since 9:12 PM are not in the Word file." }, { is: "done" }]);
     expect(await switchTo("live", FROM, d)).toBe(true);
-    expect(d.confirm).toHaveBeenCalledWith(expect.objectContaining({ action: "Save to Teams as Word…" }));
+    // The header's own press, by name (decision 10).
+    expect(d.confirm).toHaveBeenCalledWith(expect.objectContaining({ action: "Save to Teams" }));
     expect(d.saveWord).toHaveBeenCalled();
     expect(d.set).toHaveBeenLastCalledWith({ mode: "live" });
   });
@@ -103,6 +104,21 @@ describe("switching to Edit here", () => {
     expect(order).toEqual(["typed", "leave"]);
     expect(d.set).toHaveBeenCalledWith({ mode: "here", typed: 4 });
     expect(lines).toEqual(["Leaving Word…", "Opening it here…", null]);
+  });
+
+  it("tells the host how long ago his last key was, read before the guest goes and counting the wait to leave", async () => {
+    vi.useFakeTimers();
+    try {
+      const { d } = deps([{ is: "done" }], {
+        typed: vi.fn(async () => 4),
+        quiet: vi.fn(async () => 2_000),
+        leave: vi.fn(async () => (vi.advanceTimersByTime(3_000), true)),
+      });
+      expect(await switchTo("here", FROM, d)).toBe(true);
+      expect(d.set).toHaveBeenCalledWith({ mode: "here", typed: 4, quiet: 5_000 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("says it is leaving Word while Word lets go, then opening it here, whether or not he typed", async () => {
