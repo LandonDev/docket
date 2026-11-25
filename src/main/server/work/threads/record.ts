@@ -114,6 +114,8 @@ export function itemIdOf(ref: unknown): string | null {
 
 /** A LifeOS task as `tasks:get` answers it: what the record says of one. */
 export interface TaskFacts {
+  /** its own title: a link's is the thread's at the time it linked ("New chat") */
+  title?: string
   status: string
   dueAt?: number
   projectId?: string
@@ -160,7 +162,7 @@ export function threadRecord(f: RecordFacts): ThreadRecord {
       return {
         table: l.entity.table as RecordWork['table'],
         id: l.entity.id,
-        title: l.title,
+        title: task?.title?.trim() || l.title,
         state: task && (task.status === 'done' || task.status === 'dropped') ? 'done' : l.state,
         at: l.at,
         ...(task

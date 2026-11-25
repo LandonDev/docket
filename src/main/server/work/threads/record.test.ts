@@ -54,6 +54,16 @@ function result(over: Partial<WorkResult> = {}): WorkResult {
 
 const facts = (over: Partial<RecordFacts> = {}): RecordFacts => ({ root: { ...idle, id: 'root' }, held: [], requests: [], results: [], links: [], tasks: new Map(), ...over })
 
+describe('a task the thread works on', () => {
+  it("is named by the task's own title, never the link's, which is the thread's title when it linked", () => {
+    const link = { entity: { table: 'tasks', id: 'k1' }, title: 'New chat', state: 'open' as const, at: T0 }
+    const named = threadRecord(facts({ links: [link], tasks: new Map([['k1', { title: 'Count the spare cables', status: 'todo' }]]) }))
+    expect(named.works[0]!.title).toBe('Count the spare cables')
+    // Unread (LifeOS down, past the read cap): the link's words stand.
+    expect(threadRecord(facts({ links: [link] })).works[0]!.title).toBe('New chat')
+  })
+})
+
 describe('the outcome line', () => {
   it('says what is held for his press, by kind, muted as held', () => {
     expect(outcomeOf(idle, [item()], [])).toEqual({ words: '1 mail to send', tone: 'held' })
