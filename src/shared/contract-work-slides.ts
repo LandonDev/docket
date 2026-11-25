@@ -296,6 +296,8 @@ export interface DeckShape {
   own?: { box: [number, number, number, number]; rot: number; flipH: boolean; flipV: boolean }
   /** a table's cells, row by row */
   cells?: string[][]
+  /** a table's column widths and row heights in EMU, as the file sets them: where each cell lies in its box */
+  grid?: [cols: number[], rows: number[]]
   /** its own fill where it says one: a hex, or `none`. Absent: what its style or theme gives it. */
   fill?: string
   /** its own outline where it says one */

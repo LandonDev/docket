@@ -4,18 +4,19 @@ import type { DeckSlide, DeckView, SlideOp } from "@shared/contract-work-slides"
 import { RowMenuItem, RowMenuSeparator, RowSubmenu } from "work-kit/format";
 import { Plus } from "../../../chrome/icons";
 import { sayError } from "../../canvas/frame";
-import { Chart, ChartLine, ChartPie, Media, Shapes, Table, TextBox, Video } from "../../icons";
+import { Media, Shapes, Table, TextBox, Video } from "../../icons";
 import type { DeckHost, DeckStore } from "../deck";
 import type { Size } from "./drag";
 import { quadOf } from "./drag";
-import { chartAt, layoutAfter, madeShape, madeSlide, NEW_TEXT, pictureAt, PRESETS, shapeAt, SAMPLE_CHART, tableAt, textBoxAt, type Preset } from "./add";
-import type { HandSession } from "./session";
+import { layoutAfter, madeShape, madeSlide, NEW_TEXT, pictureAt, PRESETS, shapeAt, tableAt, textBoxAt, type Preset } from "./add";
+import type { HandSession, Start } from "./session";
 
 /**
  * Insert (the row's group 6, docs/DESIGN.md "The slide editor"): a new
  * slide, then what goes on the slide on the stage, each landing in the
  * slide's middle at a size of its own (edit/add.ts) and picked once it is
- * there; a text box opens for typing with its words selected. A picture or a
+ * there; a text box opens for typing with its words selected, a table on its
+ * first cell. A picture or a
  * video is read in the window for its proportions, brought to the host in
  * pieces (`DeckHost.attach`) and named by its token.
  */
@@ -61,7 +62,6 @@ export interface Inserter {
   text(): void;
   shape(preset: Preset): void;
   table(rows: number, cols: number): void;
-  chart(type: "bar" | "line" | "pie"): void;
   /** opens the file chooser */
   picture(): void;
   video(): void;
@@ -89,8 +89,8 @@ export function useInsert({
 }): Inserter {
   const pictureInput = useRef<HTMLInputElement>(null);
   const videoInput = useRef<HTMLInputElement>(null);
-  /** One shape onto the slide; once it is there it is picked, and a text box opens for his words. */
-  const add = async (op: (on: DeckSlide) => SlideOp, fallback: string, typing = false): Promise<void> => {
+  /** One shape onto the slide; once it is there it is picked, and a text box or a table opens for his words (`typing`: where the caret starts). */
+  const add = async (op: (on: DeckSlide) => SlideOp, fallback: string, typing?: Start): Promise<void> => {
     const on = slide;
     if (!on) return;
     const before = store.get().view?.slides.find((s) => s.key === on.key);
@@ -99,7 +99,7 @@ export function useInsert({
     const now = next?.slides.find((s) => s.id === on.id && s.tint !== "del");
     if (!made || !now) return;
     session.pick(now.key, made.id);
-    if (typing) session.open(now, made, "all");
+    if (typing) session.open(now, made, typing);
   };
   /** A file he chose, brought to the host and put on the slide at its own proportions. */
   const bring = async (file: File, what: "picture" | "video"): Promise<void> => {
@@ -143,10 +143,10 @@ export function useInsert({
         if (made) store.set({ current: made.key });
       });
     },
-    text: () => void add((s) => ({ op: "insert", slide: s.id, what: "text", box: textBoxAt(size), text: NEW_TEXT }), "Couldn't add a text box", true),
+    text: () => void add((s) => ({ op: "insert", slide: s.id, what: "text", box: textBoxAt(size), text: NEW_TEXT }), "Couldn't add a text box", "all"),
     shape: (preset) => void add((s) => ({ op: "insert", slide: s.id, what: "shape", box: shapeAt(size, preset), preset }), "Couldn't add the shape"),
-    table: (rows, cols) => void add((s) => ({ op: "insert", slide: s.id, what: "table", box: tableAt(size, rows, cols), rows, cols }), "Couldn't add the table"),
-    chart: (type) => void add((s) => ({ op: "insert", slide: s.id, what: "chart", box: chartAt(size), chart: { type, ...SAMPLE_CHART } }), "Couldn't add the chart"),
+    // A table opens on its first cell; a chart is left to PowerPoint until its data can be changed here.
+    table: (rows, cols) => void add((s) => ({ op: "insert", slide: s.id, what: "table", box: tableAt(size, rows, cols), rows, cols }), "Couldn't add the table", "end"),
     picture: () => pictureInput.current?.click(),
     video: () => videoInput.current?.click(),
     inputs: (
@@ -222,17 +222,6 @@ export function insertRows(insert: Inserter, { onSlide, canAdd }: { onSlide: boo
       </RowMenuItem>
       <RowSubmenu icon={<Table />} label="Table" disabled={!onSlide}>
         <TableGrid onPick={insert.table} />
-      </RowSubmenu>
-      <RowSubmenu icon={<Chart />} label="Chart" disabled={!onSlide}>
-        <RowMenuItem icon={<Chart />} onSelect={() => insert.chart("bar")}>
-          Column
-        </RowMenuItem>
-        <RowMenuItem icon={<ChartLine />} onSelect={() => insert.chart("line")}>
-          Line
-        </RowMenuItem>
-        <RowMenuItem icon={<ChartPie />} onSelect={() => insert.chart("pie")}>
-          Pie
-        </RowMenuItem>
       </RowSubmenu>
       <RowMenuItem icon={<Video />} disabled={!onSlide} onSelect={insert.video}>
         Video…

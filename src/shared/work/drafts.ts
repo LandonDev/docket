@@ -26,7 +26,7 @@ export interface DraftKey {
 export type DraftBody =
   | { kind: "text"; text: string; bom: boolean; crlf: boolean }
   | { kind: "sheet"; mutations: { id: string; params: unknown }[] }
-  | { kind: "deck"; slideId: number; shapeId: number; words: string[][]; model: unknown }
+  | { kind: "deck"; slideId: number; shapeId: number; /** a table's cell the box typed in */ cell?: { row: number; col: number }; words: string[][]; model: unknown }
   | { kind: "document"; frames: string[] };
 export type DraftKind = DraftBody["kind"];
 
@@ -91,7 +91,8 @@ function bodyOf(v: unknown): DraftBody | null {
     const d = b as Partial<Extract<DraftBody, { kind: "deck" }>>;
     const words = Array.isArray(d.words) && d.words.every((p) => Array.isArray(p) && p.every((r) => typeof r === "string"));
     if (!Number.isInteger(d.slideId) || !Number.isInteger(d.shapeId) || !words || !Array.isArray(d.model) || !fits(d)) return null;
-    return { kind: "deck", slideId: d.slideId!, shapeId: d.shapeId!, words: d.words!, model: d.model };
+    const cell = d.cell && Number.isInteger(d.cell.row) && Number.isInteger(d.cell.col) && d.cell.row >= 0 && d.cell.col >= 0 ? { row: d.cell.row, col: d.cell.col } : undefined;
+    return { kind: "deck", slideId: d.slideId!, shapeId: d.shapeId!, ...(cell ? { cell } : {}), words: d.words!, model: d.model };
   }
   if (b.kind === "document") {
     const f = (b as { frames?: unknown }).frames;

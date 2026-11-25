@@ -89,6 +89,8 @@ export interface ShapeInfo {
   text: string
   /** a table's cells, row by row */
   cells?: string[][]
+  /** a table's column widths and row heights, in EMU, as the file sets them */
+  grid?: [number[], number[]]
   chart?: { categories: string[]; series: Array<{ name: string; values: Array<number | null> }> }
 }
 

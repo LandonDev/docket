@@ -57,6 +57,7 @@ export function TypingBox({
   ground,
   tone,
   label,
+  ink: own,
   onLeave,
 }: {
   session: HandSession;
@@ -72,6 +73,8 @@ export function TypingBox({
   tone: "dark" | "light";
   /** what the shape is ("Title"), for a screen reader */
   label: string;
+  /** the ink of words with no colour of their own (a table's cell: the table style's), hex */
+  ink?: string | null;
   /** the box closed from the keyboard: the shape takes the keyboard back */
   onLeave(): void;
 }) {
@@ -229,7 +232,7 @@ export function TypingBox({
   };
 
   const [l, t, r, b] = frame.insets.map((v) => v * emu);
-  const ink = box.model[0]?.runs[0]?.look.color ?? box.model[0]?.look.color;
+  const ink = box.model[0]?.runs[0]?.look.color ?? box.model[0]?.look.color ?? own ?? undefined;
   const style: CSSProperties = {
     left: place.left,
     top: place.top,
@@ -241,6 +244,7 @@ export function TypingBox({
     justifyContent: ANCHOR[frame.anchor],
     ...(place.turn ? { transform: `rotate(${place.turn}deg)` } : {}),
     ...(ground ? { backgroundColor: ground } : {}),
+    ...(own ? { color: `#${own}` } : {}),
   };
   return (
     <div data-slide-typing data-phase={box.phase} className={`absolute flex origin-top-left flex-col ${typing ? "" : "pointer-events-none"}`} style={style}>

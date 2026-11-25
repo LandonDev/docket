@@ -394,6 +394,10 @@ describe.skipIf(!DATA)('the deck tool on python-pptx', () => {
       const before = await inspect(input)
       const slide = before.slides[9]
       const table = slide.shapes.find((x) => x.kind === 'table')!
+      // Where each cell lies: a width a column and a height a row, in EMU.
+      expect(table.grid![0]).toHaveLength(table.cells![0].length)
+      expect(table.grid![1]).toHaveLength(table.cells!.length)
+      expect(table.grid![0].every((w) => w > 0)).toBe(true)
       const all = await apply(input, [{ op: 'format', slide: slide.id, shape: table.id, set: { bold: true } }], true)
       const one = await apply(input, [{ op: 'format', slide: slide.id, shape: table.id, row: 1, col: 1, set: { color: 'FF0000' } }], true)
       const xml = async (p: string): Promise<string> => slideXml(p, 10)

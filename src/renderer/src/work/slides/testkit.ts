@@ -83,7 +83,7 @@ function inserted(slide: DeckSlide, op: Extract<SlideOp, { op: "insert" }>, size
   const [l, t, w, h] = op.box;
   const kind = op.what === "text" ? "text" : op.what === "shape" ? "other" : op.what === "video" ? "media" : op.what;
   const base = boxShape(id, [l / size.width, t / size.height, (l + w) / size.width, (t + h) / size.height], { kind, name: `${op.what} ${id}` }, size);
-  return op.what === "text" ? { ...base, text: op.text ?? "", paragraphs: [{ level: 0, align: "left", list: "none", runs: [{ text: op.text ?? "", font: "Calibri", size: 18, color: "000000" }] }], frame: { anchor: "top", insets: [91440, 45720, 91440, 45720], fit: "grow", wrap: true } } : op.what === "shape" ? { ...base, shape: op.preset ?? "rect" } : base;
+  return op.what === "text" ? { ...base, text: op.text ?? "", paragraphs: [{ level: 0, align: "left", list: "none", runs: [{ text: op.text ?? "", font: "Calibri", size: 18, color: "000000" }] }], frame: { anchor: "top", insets: [91440, 45720, 91440, 45720], fit: "grow", wrap: true } } : op.what === "shape" ? { ...base, shape: op.preset ?? "rect" } : op.what === "table" ? { ...base, cells: Array.from({ length: op.rows ?? 1 }, () => Array.from({ length: op.cols ?? 1 }, () => "")), grid: [Array.from({ length: op.cols ?? 1 }, () => w / (op.cols ?? 1)), Array.from({ length: op.rows ?? 1 }, () => h / (op.rows ?? 1))] } : base;
 }
 
 /** The deck after one of his edits to a slide's shapes, its slides or its theme, as the host would read it back. */
@@ -175,6 +175,11 @@ const hexOf = (color: DeckColour | undefined, view: DeckView): { color?: string 
 function edited(view: DeckView, op: SlideOp): DeckView {
   if (op.op !== "runs" && op.op !== "format") return arranged(view, op);
   const shapeOf = (s: DeckShape): DeckShape => {
+    // A cell of a table: its words, a line a paragraph.
+    if (s.id === op.shape && s.cells && op.op === "runs" && op.row !== undefined && op.col !== undefined) {
+      const words = op.paragraphs.map((p) => p.runs.map((r) => r.text).join("")).join("\n");
+      return { ...s, cells: s.cells.map((row, r) => row.map((cell, c) => (r === op.row && c === op.col ? words : cell))) };
+    }
     if (s.id !== op.shape || !s.paragraphs) return s;
     const old = s.paragraphs;
     const paragraphs: DeckParagraph[] =

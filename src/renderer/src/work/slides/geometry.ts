@@ -129,3 +129,15 @@ export function groundOf(samples: ReadonlyArray<readonly [number, number, number
   for (const c of counts.values()) if (!best || c.n > best.n) best = c;
   return best ? `#${best.rgb.map((v) => v.toString(16).padStart(2, "0")).join("")}` : null;
 }
+
+/**
+ * The ink words with no colour of their own take on a ground (a table's cell, whose ink is its style's): the deck's
+ * light ink on a dark ground, its dark ink on a light one. Hex, no hash; null where the ground is not a colour read.
+ */
+export function inkOn(ground: string | null, colors: { dk1?: string; lt1?: string } | undefined): string | null {
+  const hex = ground && /^#([0-9a-f]{6})$/i.exec(ground)?.[1];
+  if (!hex) return null;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const dark = 0.2126 * r + 0.7152 * g + 0.0722 * b < 128;
+  return ((dark ? colors?.lt1 : colors?.dk1) ?? (dark ? "FFFFFF" : "000000")).replace(/^#/, "").toUpperCase();
+}

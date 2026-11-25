@@ -501,6 +501,7 @@ def shape_info(sh, xf, w, h, group=None, theme=None):
     if getattr(sh, 'has_table', False):
         info['kind'] = 'table'
         info['cells'] = [[c.text[:TEXT_CAP] for c in row.cells] for row in sh.table.rows]
+        info['grid'] = [[int(c.width) for c in sh.table.columns], [int(r.height) for r in sh.table.rows]]
     elif getattr(sh, 'has_chart', False):
         info['kind'] = 'chart'
         data = chart_of(sh.chart)

@@ -4301,6 +4301,11 @@ other picked shape is the outline alone.
   box is the shape's own size (only a shape that grows to its words
   grows), so words that overflow lie about its anchor as the picture will
   draw them.
+  On a table the box opens on one cell: the cell pressed, else the first
+  (Return, F2, Insert). It lies on that cell's corners (the file's column
+  widths and row heights), with PowerPoint's cell margins, and its words
+  take the ink that reads on the cell's ground (the deck's light ink on a
+  dark one, its dark ink on a light one), as the table style draws them.
   The box lies on the shape's own corners, turned with it (a shape flipped
   across reads as before, one flipped down turns half round, as PowerPoint
   draws them), with the shape's insets and anchor, each run in its font,
@@ -4348,10 +4353,10 @@ other picked shape is the outline alone.
   stage, in its layout, or the next one after a title slide), a rule, Text
   box, Shape (a submenu of eight outlines, each drawn as its row's glyph),
   Picture…, Table (a submenu: a grid of 16px cells eight across and six
-  down, the size under it in 12px tabular), Chart (Column, Line, Pie, with
-  PowerPoint's sample data), Video…. Each lands in the slide's middle at a
-  size of its own and is picked; a text box opens for typing with its word
-  "Text" selected. A picture or a video is read in the window for its
+  down, the size under it in 12px tabular), Video…. Each lands in the
+  slide's middle at a size of its own and is picked; a text box opens for
+  typing with its word "Text" selected, a table with the caret in its first
+  cell. Chart is not offered until a chart's data can be changed here. A picture or a video is read in the window for its
   proportions and fitted to three fifths of the slide; while it travels to
   the host its place is outlined with a 20px pill in the middle, a 12px
   spinner and "Adding".

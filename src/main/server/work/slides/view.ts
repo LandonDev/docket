@@ -614,6 +614,7 @@ const deckShape = (s: ShapeInfo, label?: string): DeckShape => ({
   ...(s.paragraphs ? { paragraphs: s.paragraphs } : {}),
   ...(s.frame ? { frame: s.frame } : {}),
   ...(s.cells ? { cells: s.cells } : {}),
+  ...(s.grid ? { grid: s.grid } : {}),
   ...(s.own ? { own: s.own } : {}),
   ...(s.fill ? { fill: s.fill } : {}),
   ...(s.line ? { line: s.line } : {})

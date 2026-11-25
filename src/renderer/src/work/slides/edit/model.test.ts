@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DeckShape } from "@shared/contract-work-slides";
-import { allOf, applyLook, applyPara, deleteRange, endOf, insertText, modelOf, modelText, normalize, pasteText, rebase, renumber, runsOp, sameWords, showing, showingAll, splitParagraph, typable, unchanged, wordAt, type Sel, wireLook, formatOp } from "./model";
+import { allOf, applyLook, cellAt, cellShape, typesIn, applyPara, deleteRange, endOf, insertText, modelOf, modelText, normalize, pasteText, rebase, renumber, runsOp, sameWords, showing, showingAll, splitParagraph, typable, unchanged, wordAt, type Sel, wireLook, formatOp } from "./model";
 
 const FALLBACK = { font: "Calibri", size: 18, color: "000000" };
 
@@ -270,5 +270,54 @@ describe("the box's Undo past a keep keeps what its run and paragraph of the fil
     const op = runsOp(renumber(sent)(words), 3, 2);
     // no `list`: the paragraph keeps its own "–" mark and its margins; only what the Undo changed is set
     expect(op.paragraphs[1]).toEqual({ from: 1, align: "left", runs: [{ text: "Budget", from: [1, 0] }] });
+  });
+});
+
+describe("a table's cells", () => {
+  // Two columns, the first three times the second; two rows alike.
+  const table: DeckShape = {
+    id: 7,
+    name: "Table 6",
+    kind: "table",
+    bbox: [0.1, 0.2, 0.5, 0.6],
+    quad: [
+      [0.1, 0.2],
+      [0.5, 0.2],
+      [0.5, 0.6],
+      [0.1, 0.6],
+    ],
+    text: "",
+    cells: [
+      ["Team", ""],
+      ["Line one\nLine\vtwo", "4"],
+    ],
+    grid: [
+      [3_000, 1_000],
+      [500, 500],
+    ],
+  };
+
+  it("take words, one cell at a time; a table with no corners does not", () => {
+    expect(typesIn(table)).toBe(true);
+    expect(typable(table)).toBe(false);
+    expect(typesIn({ ...table, quad: undefined })).toBe(false);
+  });
+
+  it("find the cell under a point by the file's widths and heights, the nearest one outside the table", () => {
+    expect(cellAt(table, 0.35, 0.3)).toEqual({ row: 0, col: 0 });
+    expect(cellAt(table, 0.45, 0.5)).toEqual({ row: 1, col: 1 });
+    expect(cellAt(table, 0.9, 0.9)).toEqual({ row: 1, col: 1 });
+    expect(cellAt(table, 0, 0)).toEqual({ row: 0, col: 0 });
+  });
+
+  it("make a cell a text shape on its own corners, its lines paragraphs, in no look of their own", () => {
+    const cell = cellShape(table, { row: 1, col: 0 })!;
+    expect(cell.id).toBe(7);
+    expect(cell.label).toBe("Row 2, column 1");
+    cell.quad!.flat().forEach((v, i) => expect(v).toBeCloseTo([0.1, 0.4, 0.4, 0.4, 0.4, 0.6, 0.1, 0.6][i]));
+    expect(cell.paragraphs!.map((p) => p.runs.map((r) => r.text))).toEqual([["Line one"], ["Line\ntwo"]]);
+    expect(modelOf(cell, { font: "Calibri", size: 18 })[0].runs[0].look).toEqual({ font: "Calibri", size: 18 });
+    expect(cellShape(table, { row: 0, col: 1 })!.paragraphs).toEqual([{ level: 0, align: "left", list: "none", runs: [] }]);
+    expect(cellShape(table, { row: 2, col: 0 })).toBeNull();
   });
 });

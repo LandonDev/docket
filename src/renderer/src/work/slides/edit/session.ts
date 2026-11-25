@@ -11,6 +11,7 @@ import type { Quad } from "../geometry";
 import {
   applyLook,
   applyPara,
+  cellShape,
   DEFAULT_SIZE,
   formatOp,
   insertText,
@@ -25,6 +26,7 @@ import {
   typable,
   unchanged,
   wordsOf,
+  type Cell,
   type Model,
   type ParaLook,
   type RunLook,
@@ -52,8 +54,10 @@ export interface BoxState {
   id: number;
   slideId: number;
   slideKey: string;
-  /** the shape as it was when the box opened: the words his `from`s name */
+  /** the shape as it was when the box opened: the words his `from`s name (a table's cell: that cell, `cellShape`) */
   shape: DeckShape;
+  /** a table's cell the box types in; absent for a shape's own words */
+  cell?: Cell;
   initial: Model;
   model: Model;
   /** the model the page's spans were last drawn from */
@@ -139,6 +143,9 @@ export function unsavedOf(state: HandState): Unsaved {
   return { edited: boxWaits(state) ? (state.editedAt ?? Date.now()) : null, pause: TYPING_SAVE_MS, sent: state.busy > 0 ? (state.busySince ?? Date.now()) : null };
 }
 
+/** The box's words as one `runs` edit, on its cell where it types in a table's. */
+const runsOf = (model: Model, box: BoxState): Extract<SlideOp, { op: "runs" }> => ({ ...runsOp(model, box.slideId, box.shape.id, wordsOf(box.shape)), ...box.cell });
+
 /** Words in a box not saved yet, when another box would open over them. */
 export const UNSAVED = "The words in the open box are not saved yet";
 /** A close that waited this long for words still in this window keeps its tab (canvas/flush.ts closes it at FLUSH_WAIT_MS). */
@@ -204,11 +211,11 @@ export class HandSession {
     if (!this.journal) return;
     const box = this.state.box;
     const waits = box && (box.phase === "typing" || box.phase === "saving") && !unchanged(box.model, box.initial);
-    const body = waits ? { kind: "deck" as const, slideId: box.slideId, shapeId: box.shape.id, words: wordsOf(box.shape), model: box.model } : null;
+    const body = waits ? { kind: "deck" as const, slideId: box.slideId, shapeId: box.shape.id, ...(box.cell ? { cell: box.cell } : {}), words: wordsOf(box.shape), model: box.model } : null;
     const json = body ? JSON.stringify(body) : "";
     if (json === this.keptJson) return;
     this.keptJson = json;
-    this.journal.keep(body ? `${body.slideId}:${body.shapeId}` : "", body);
+    this.journal.keep(body ? `${body.slideId}:${body.shapeId}${box?.cell ? `:${box.cell.row}:${box.cell.col}` : ""}` : "", body);
   }
 
   /** Where the box's unsent words are kept (SlidesCanvas, as the item is drawn); a deck already read asks for an earlier draft now. */
@@ -225,8 +232,9 @@ export class HandSession {
     this.looked = true;
     const draft = (await this.journal.offered("deck"))[0];
     if (!draft || draft.body.kind !== "deck") return;
-    const { slideId, shapeId, words, model } = draft.body;
-    const shape = view.slides.find((s) => s.id === slideId && s.tint !== "del")?.shapes.find((s) => s.id === shapeId);
+    const { slideId, shapeId, cell, words, model } = draft.body;
+    const found = view.slides.find((s) => s.id === slideId && s.tint !== "del")?.shapes.find((s) => s.id === shapeId);
+    const shape = found && cell ? cellShape(found, cell) : found;
     this.offered = draft;
     this.set({ offer: { at: draft.at, same: !!shape && JSON.stringify(wordsOf(shape)) === JSON.stringify(words), text: modelText(model as Model) } });
   }
@@ -235,10 +243,10 @@ export class HandSession {
   async restoreDraft(): Promise<void> {
     const draft = this.offered;
     if (!draft || draft.body.kind !== "deck" || !this.state.offer?.same) return;
-    const { slideId, shapeId, words, model } = draft.body;
+    const { slideId, shapeId, cell, words, model } = draft.body;
     this.set({ busy: this.state.busy + 1 });
     try {
-      this.store.view(await this.host.edit([runsOp(model as Model, slideId, shapeId, words)]));
+      this.store.view(await this.host.edit([{ ...runsOp(model as Model, slideId, shapeId, words), ...cell }]));
       this.journal?.drop(draft);
       this.offered = null;
       this.set({ busy: this.state.busy - 1, savedAt: Date.now(), offer: null });
@@ -268,6 +276,14 @@ export class HandSession {
     return { font: view?.theme?.minor || "Calibri", size: DEFAULT_SIZE, color: (view?.theme?.colors.dk1 ?? "000000").replace(/^#/, "").toUpperCase() };
   }
 
+  /** The look of words a box draws with none of their own: a cell's take no ink here, so they are drawn in the table's (TypingBox's `ink`). */
+  private lookFor(cell: Cell | undefined, view: DeckView | null = this.store.get().view): RunLook {
+    const look = this.fallback(view);
+    if (!cell) return look;
+    const { color: _ink, ...rest } = look;
+    return rest;
+  }
+
   pick(slideKey: string, shapeId: number | null): void {
     this.set({ picked: shapeId === null ? null : { slideKey, shapeId } });
   }
@@ -287,8 +303,11 @@ export class HandSession {
     return null;
   }
 
-  /** Opens the typing box on a shape: Return selects its words, F2 and a second press put the caret in them. */
-  open(slide: DeckSlide, shape: DeckShape, start: Start): boolean {
+  /**
+   * Opens the typing box on a shape: Return selects its words, F2 and a second press put the caret in them. On a table
+   * it opens on one cell: `cell`, else the first.
+   */
+  open(slide: DeckSlide, shape: DeckShape, start: Start, cell?: Cell): boolean {
     // While his last words are on their way the deck's words are about to change: a box now would be built on the old ones.
     if (this.state.box?.phase === "saving") return false;
     // Words kept from before wait for his answer first: a box now could be built over the shape they belong to.
@@ -299,13 +318,16 @@ export class HandSession {
       sayError(new Error(UNSAVED), UNSAVED);
       return false;
     }
-    const why = this.refusal(slide, shape);
+    const at = shape.kind === "table" ? (cell ?? { row: 0, col: 0 }) : undefined;
+    const words = at ? cellShape(shape, at) : shape;
+    if (!words) return false;
+    const why = this.refusal(slide, words);
     if (why !== null) {
       if (why) sayError(new Error(why), why);
       return false;
     }
     const view = this.store.get().view;
-    const model = modelOf(shape, this.fallback(view));
+    const model = modelOf(words, this.lookFor(at, view));
     const end = model.length - 1;
     const length = model[end].runs.reduce((n, r) => n + r.text.length, 0);
     this.past = [];
@@ -317,7 +339,8 @@ export class HandSession {
         id: ++opened,
         slideId: slide.id,
         slideKey: slide.key,
-        shape,
+        shape: words,
+        ...(at ? { cell: at } : {}),
         initial: model,
         model,
         drawn: model,
@@ -478,7 +501,7 @@ export class HandSession {
       const sent = box.model;
       this.set({ busy: this.state.busy + 1, failure: null });
       try {
-        const next = await this.host.edit([runsOp(sent, box.slideId, box.shape.id, wordsOf(box.shape))]);
+        const next = await this.host.edit([runsOf(sent, box)]);
         this.store.view(next);
         const now = this.state.box;
         // Still this box: the file's paragraphs and runs are now the ones just written, so every `from` the box, its
@@ -516,9 +539,10 @@ export class HandSession {
     this.set({ box: null, failure: null });
   }
 
-  /** The shape the box is on, as the deck holds it now. */
+  /** The shape the box is on, as the deck holds it now (a table's cell: that cell). */
   private shapeNow(box: BoxState, view: DeckView | null = this.store.get().view): DeckShape | undefined {
-    return view?.slides.find((s) => s.id === box.slideId && s.tint !== "del")?.shapes.find((s) => s.id === box.shape.id);
+    const shape = view?.slides.find((s) => s.id === box.slideId && s.tint !== "del")?.shapes.find((s) => s.id === box.shape.id);
+    return shape && box.cell ? (cellShape(shape, box.cell) ?? undefined) : shape;
   }
 
   /**
@@ -556,7 +580,7 @@ export class HandSession {
     }
     this.set({ busy: this.state.busy + 1, failure: null });
     try {
-      const next = await this.host.edit([runsOp(box.model, box.slideId, box.shape.id, wordsOf(box.shape))]);
+      const next = await this.host.edit([runsOf(box.model, box)]);
       this.store.view(next);
       const slide = next.slides.find((s) => s.id === box.slideId && s.tint !== "del");
       const rev = slide && !next.renderError ? (next.renders[slide.from]?.rev ?? null) : null;
@@ -621,7 +645,7 @@ export class HandSession {
     const moved = (snap: Snapshot): Snapshot => ({ ...snap, model: rebase(snap.model, box.shape, shape) });
     this.past = this.past.map(moved);
     this.future = this.future.map(moved);
-    this.setBox({ shape, initial: modelOf(shape, this.fallback()), model, drawn: model, conflict: false, paint: box.paint + 1, before: this.store.get().view?.renders.file?.rev ?? box.before });
+    this.setBox({ shape, initial: modelOf(shape, this.lookFor(box.cell)), model, drawn: model, conflict: false, paint: box.paint + 1, before: this.store.get().view?.renders.file?.rev ?? box.before });
     this.set({ failure: null });
   }
 

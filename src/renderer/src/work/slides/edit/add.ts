@@ -53,19 +53,6 @@ export function pictureAt(size: Size, width: number, height: number): Box {
 /** A table: an inch and a half a column up to four fifths of the slide, two fifths of an inch a row. */
 export const tableAt = (size: Size, rows: number, cols: number): Box => centred(size, Math.min(cols * INCH * 1.5, size.width * 0.8), Math.min(rows * INCH * 0.4, size.height * 0.8));
 
-/** A chart: three fifths of the slide each way. */
-export const chartAt = (size: Size): Box => centred(size, size.width * 0.6, size.height * 0.6);
-
-/** The data a new chart starts with, PowerPoint's own, for him (or an agent) to change. */
-export const SAMPLE_CHART = {
-  categories: ["Category 1", "Category 2", "Category 3", "Category 4"],
-  series: [
-    { name: "Series 1", values: [4.3, 2.5, 3.5, 4.5] },
-    { name: "Series 2", values: [2.4, 4.4, 1.8, 2.8] },
-    { name: "Series 3", values: [2, 2, 3, 5] },
-  ],
-};
-
 /** The words a new text box starts with, selected so his first key replaces them. */
 export const NEW_TEXT = "Text";
 

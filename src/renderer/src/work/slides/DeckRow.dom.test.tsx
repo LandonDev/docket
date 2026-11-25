@@ -9,7 +9,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DECK_THEMES, themeEdit } from "@shared/work/deckThemes";
 import { openMenus } from "../../chrome/menuRows";
-import { chartAt, pictureAt, SAMPLE_CHART, shapeAt, tableAt, textBoxAt } from "./edit/add";
+import { pictureAt, shapeAt, tableAt, textBoxAt } from "./edit/add";
 import { BOX, harness, handView } from "./stage.testkit";
 
 const holder = vi.hoisted(() => ({ current: null as never, pushes: new Set<(push: never) => void>(), opens: new Set<() => void>(), toasts: [] as string[] }));
@@ -141,8 +141,8 @@ describe("Insert", () => {
     expect(document.querySelector('[data-shape="6"]')!.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("a table by its rows and columns on a grid", async () => {
-    await t.stage();
+  it("a table by its rows and columns on a grid, which opens typing in its first cell; his words go in that cell", async () => {
+    const { layer } = await t.stage();
     await open();
     fireEvent.click(await row("Table"));
     const cell = await waitFor(() => document.querySelector<HTMLElement>('[data-table-cell="3x4"]')!);
@@ -150,14 +150,26 @@ describe("Insert", () => {
     expect(screen.getByText("3 × 4")).toBeTruthy();
     fireEvent.click(cell);
     await waitFor(() => expect(t.edits()).toEqual([[{ op: "insert", slide: 3, what: "table", box: tableAt(SIZE, 3, 4), rows: 3, cols: 4 }]]));
+    const words = await t.found("[data-slide-typing] [role=textbox]");
+    expect(words.getAttribute("aria-label")).toBe("Row 1, column 1");
+    // On the first cell's corners: a quarter of the table's width, a third of its height.
+    const box = layer.querySelector<HTMLElement>("[data-slide-typing]")!;
+    const w = Number.parseFloat(document.querySelector<HTMLElement>("[data-slides-stage]")!.style.width);
+    const [, , tw, th] = tableAt(SIZE, 3, 4);
+    expect(Number.parseFloat(box.style.width)).toBeCloseTo((tw / 4 / SIZE.width) * w, 0);
+    expect(Number.parseFloat(box.style.height)).toBeCloseTo((th / 3 / SIZE.height) * Math.round(w / (16 / 9)), 0);
+    (words.querySelector("[data-p]") as HTMLElement).textContent = "Team";
+    fireEvent.input(words);
+    fireEvent.keyDown(words, { key: "Escape" });
+    await waitFor(() => expect(t.edits()).toHaveLength(2));
+    expect(t.edits()[1]).toEqual([expect.objectContaining({ op: "runs", slide: 3, shape: 6, row: 0, col: 0, paragraphs: [expect.objectContaining({ runs: [expect.objectContaining({ text: "Team" })] })] })]);
   });
 
-  it("a chart with PowerPoint's own data to start from", async () => {
+  it("has no Chart: a chart's data cannot be changed here yet", async () => {
     await t.stage();
     await open();
-    fireEvent.click(await row("Chart"));
-    fireEvent.click(await row("Line"));
-    await waitFor(() => expect(t.edits()).toEqual([[{ op: "insert", slide: 3, what: "chart", box: chartAt(SIZE), chart: { type: "line", ...SAMPLE_CHART } }]]));
+    await row("Table");
+    expect(screen.queryByRole("menuitem", { name: "Chart" })).toBeNull();
   });
 
   it("a picture: read for its proportions, brought in pieces, named by its token, its place shown while it comes", async () => {

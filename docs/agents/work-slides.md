@@ -1491,10 +1491,12 @@ once as a toast; `saving` and `saved` on the save line follow it.
   `DECK_THEMES`) and the view switch (`look`: `slide` or `sorter`).
 - **Insert** (`edit/Insert.tsx`, boxes in `edit/add.ts`): a text box with the
   word "Text" (the outline lists an empty box as no text shape, so it could
-  take no words), a preset, a table, a chart with PowerPoint's sample data,
-  a picture or a video. The new shape is the one in the answered view whose
+  take no words), a preset, a table, a picture or a video. No chart: nothing
+  here changes a chart's data yet, and one with PowerPoint's sample data was
+  a chart he could not make his (decision 7; an agent still inserts one with
+  its own data). The new shape is the one in the answered view whose
   id was not there (`madeShape`); it is picked, and a text box opens its
-  typing box with the word selected. A file is read for its size in the
+  typing box with the word selected, a table on its first cell. A file is read for its size in the
   window (`createImageBitmap`, a video's metadata), sent in 4 MB pieces
   (`DeckHost.attach`, `ATTACH_PIECE`: 5,592,408 characters of base64 under
   the method's 5.6 million) and named by its token; meanwhile `adding` draws
@@ -1578,7 +1580,17 @@ once (`work.slides.edit`), whole or not at all.
   type, and goes while a box is open on it. The box is the shape's own
   size, so words that overflow lie about its anchor as the new picture
   draws them and nothing jumps on commit; only a shape that grows to its
-  words (`fit: 'grow'`) grows with them. The box holds the outline's runs as the model (`modelOf`: each run with the
+  words (`fit: 'grow'`) grows with them.
+  On a table (`typesIn`) the box opens on one cell (`BoxState.cell`): the
+  cell under the press (`cellAt`, from the view's `grid`, the file's column
+  widths and row heights in EMU, which the deck tool reads), else the first
+  (Return, F2, and Insert → Table). `cellShape` makes the cell a text shape
+  of its own on its corners, a line of `cells` a paragraph, with
+  PowerPoint's cell margins and no look of its own, so the box draws its
+  words in the ink that reads on the cell's ground (`inkOn`) and the commit
+  sends no look: the file keeps the table style's. Every send is the same
+  `runs` edit with `row` and `col` (the host checks no `was` on a cell),
+  and the crash journal keeps the cell with the words. The box holds the outline's runs as the model (`modelOf`: each run with the
   `[paragraph, run]` it came from and the look it is drawn in), drawn into a
   contenteditable one span a run (`edit/dom.ts`). He types into it as into
   any text; the browser's own words are read back after each keystroke

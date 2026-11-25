@@ -81,6 +81,73 @@ const PARA_KEYS = ["level", "align", "list"] as const;
 /** A shape with words a hand can type into: a text shape whose paragraphs the outline lists. */
 export const typable = (shape: DeckShape): boolean => (shape.kind === "text" || shape.kind === "other") && Array.isArray(shape.paragraphs);
 
+/** One cell of a table, row and column from 0. */
+export interface Cell {
+  row: number;
+  col: number;
+}
+
+/** A shape his words go into: a text shape, or a table, one cell at a time (`cellShape`). */
+export const typesIn = (shape: DeckShape): boolean => typable(shape) || (shape.kind === "table" && !!shape.cells?.length && !!shape.quad);
+
+/** PowerPoint's own margins inside a cell, in EMU: a tenth of an inch at the sides, a twentieth above and below. */
+const CELL_FRAME = { anchor: "top", insets: [91_440, 45_720, 91_440, 45_720], fit: "none", wrap: true } as const;
+
+/** Where each column and row of a table starts and ends, as shares of its box: the file's widths and heights, else even. */
+function cellLines(table: DeckShape): [cols: number[], rows: number[]] {
+  const rows = table.cells?.length ?? 0;
+  const cols = table.cells?.[0]?.length ?? 0;
+  const lines = (sizes: number[] | undefined, n: number): number[] => {
+    const own = sizes?.length === n && sizes.every((v) => v > 0) ? sizes : Array.from({ length: n }, () => 1);
+    const sum = own.reduce((a, b) => a + b, 0);
+    let at = 0;
+    return [0, ...own.map((v) => (at += v) / sum)];
+  };
+  return [lines(table.grid?.[0], cols), lines(table.grid?.[1], rows)];
+}
+
+/** The cell of a table under a point on the slide (shares of its width and height): the nearest one to a point outside. */
+export function cellAt(table: DeckShape, x: number, y: number): Cell {
+  const quad = table.quad;
+  if (!quad) return { row: 0, col: 0 };
+  const [cols, rows] = cellLines(table);
+  const xs = quad.map((p) => p[0]);
+  const ys = quad.map((p) => p[1]);
+  const [left, top] = [Math.min(...xs), Math.min(...ys)];
+  const u = (x - left) / (Math.max(...xs) - left || 1);
+  const v = (y - top) / (Math.max(...ys) - top || 1);
+  const find = (lines: number[], at: number): number => {
+    for (let i = 1; i < lines.length - 1; i++) if (at < lines[i]) return i - 1;
+    return Math.max(0, lines.length - 2);
+  };
+  return { row: find(rows, v), col: find(cols, u) };
+}
+
+/**
+ * One cell of a table as a text shape of its own, for the typing box: on the cell's corners (its share of the table's
+ * box, turned with it), its words a paragraph a line of the cell, in no look of their own, so the box draws them in the
+ * table's ink and the file keeps the table style's. Null for a cell the table does not have.
+ */
+export function cellShape(table: DeckShape, { row, col }: Cell): DeckShape | null {
+  const words = table.cells?.[row]?.[col];
+  const quad = table.quad;
+  if (words === undefined || !quad) return null;
+  const [cols, rows] = cellLines(table);
+  const [tl, tr, , bl] = quad;
+  const at = (u: number, v: number): [number, number] => [tl[0] + (tr[0] - tl[0]) * u + (bl[0] - tl[0]) * v, tl[1] + (tr[1] - tl[1]) * u + (bl[1] - tl[1]) * v];
+  const [u0, u1, v0, v1] = [cols[col], cols[col + 1], rows[row], rows[row + 1]];
+  return {
+    ...table,
+    kind: "text",
+    label: `Row ${row + 1}, column ${col + 1}`,
+    quad: [at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)],
+    text: words,
+    // A line break inside a paragraph is the outline's vertical tab and the box's \n.
+    paragraphs: words.split("\n").map((line) => ({ level: 0, align: "left", list: "none", runs: line ? [{ text: line.replace(/\v/g, "\n") }] : [] })),
+    frame: CELL_FRAME,
+  };
+}
+
 const pick = (run: RunLook): RunLook => {
   const out: RunLook = {};
   for (const key of LOOK_KEYS) if (run[key] !== undefined) (out as Record<string, unknown>)[key] = run[key];

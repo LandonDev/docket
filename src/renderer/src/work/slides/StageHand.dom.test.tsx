@@ -12,7 +12,7 @@ import type { DeckShape } from "@shared/contract-work-slides";
 import { openMenus } from "../../chrome/menuRows";
 import { resizeCursor } from "./edit/Manipulate";
 import { harness, handView, TITLE } from "./stage.testkit";
-import { slide, textShape } from "./testkit";
+import { boxShape, slide, textShape } from "./testkit";
 
 const holder = vi.hoisted(() => ({ current: null as never, pushes: new Set<(push: never) => void>(), opens: new Set<() => void>(), toasts: [] as string[] }));
 vi.mock("../../lib/connection", async (original) => {
@@ -57,6 +57,26 @@ beforeEach(async () => {
   await new Promise<void>((done) => openMenus(done));
 });
 afterEach(cleanup);
+
+describe("a table", () => {
+  const TABLE: DeckShape = boxShape(9, [0.1, 0.5, 0.5, 0.9], { kind: "table", label: "Table", cells: [["Team", "Seats"], ["Gold", "12"]] });
+
+  it("a second press types in the cell pressed, in its words; Escape writes them to that cell", async () => {
+    const { layer, press, shape } = await t.stage(handView({ slides: [slide(3, { number: 1, page: 1, shapes: [TITLE, TABLE] }), slide(5, { number: 2, page: 2 })] }));
+    press(0.4, 0.8);
+    expect(shape(9).getAttribute("aria-pressed")).toBe("true");
+    expect(layer.querySelector("[data-slide-typing]")).toBeNull();
+    press(0.4, 0.8);
+    const words = await t.found("[data-slide-typing] [role=textbox]");
+    expect(words.getAttribute("aria-label")).toBe("Row 2, column 2");
+    expect(words.textContent).toBe("12");
+    (words.querySelector('[data-r="0:0"]')!.firstChild as Text).data = "14";
+    fireEvent.input(words);
+    fireEvent.keyDown(words, { key: "Escape" });
+    await waitFor(() => expect(t.edits()).toHaveLength(1));
+    expect(t.edits()[0]).toEqual([expect.objectContaining({ op: "runs", shape: 9, row: 1, col: 1 })]);
+  });
+});
 
 describe("an empty placeholder", () => {
   it("shows its prompt in the look its words will take, and one press types in it; the prompt goes while the box is open", async () => {

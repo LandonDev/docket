@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DraftStore } from "../../../../../main/drafts";
 import { DraftJournal, type DraftsPort } from "../../canvas/drafts";
 import { DeckStore } from "../deck";
-import { deckView, fakeDeckHost, slide, textShape } from "../testkit";
+import { boxShape, deckView, fakeDeckHost, slide, textShape } from "../testkit";
 import { insertText } from "./model";
 import { HandSession } from "./session";
 
@@ -100,5 +100,29 @@ describe("a deck's open box", () => {
     session.discardDraft();
     await after.s.settled();
     expect(await after.kept()).toEqual([]);
+  });
+
+  it("on a table's cell is kept with its cell, and Restore sends its words to that cell", async () => {
+    const table = boxShape(9, [0.1, 0.5, 0.5, 0.9], { kind: "table", cells: [["Team", "Seats"], ["Gold", "12"]] });
+    const before = store();
+    const first = deck(table);
+    const session = new HandSession(first.host, first.decks);
+    session.journalTo(before.journal);
+    const v = first.decks.get().view!;
+    session.open(v.slides[0], v.slides[0].shapes[0], "end", { row: 1, col: 0 });
+    const box = session.get().box!;
+    const { model, at } = insertText(box.model, { from: box.sel.to, to: box.sel.to }, " team");
+    session.typed(model, { from: at, to: at });
+    await before.s.settled();
+    const [kept] = await before.kept();
+    expect(kept).toMatchObject({ body: { kind: "deck", slideId: 3, shapeId: 9, cell: { row: 1, col: 0 }, words: [["Gold"]] } });
+    const after = store(before.dir, 2);
+    const { host, decks } = deck(table);
+    const again = new HandSession(host, decks);
+    again.journalTo(after.journal);
+    await vi.waitFor(() => expect(again.get().offer).toEqual({ at: AT, same: true, text: "Gold team" }));
+    await again.restoreDraft();
+    const edits = host.calls.filter(([name]) => name === "edit").map(([, ops]) => ops);
+    expect(edits).toEqual([[expect.objectContaining({ op: "runs", shape: 9, row: 1, col: 0 })]]);
   });
 });

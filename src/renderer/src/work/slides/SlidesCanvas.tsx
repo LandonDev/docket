@@ -28,13 +28,13 @@ import { DeckRow, keyAct, officeTheme, targetOf, type Target } from "./edit/Deck
 import { FormatSheet, SHEET_BESIDE, SHEET_WIDTH } from "./edit/FormatSheet";
 import type { MediaSize } from "./edit/Insert";
 import { HistoryButton } from "./edit/History";
-import { modelOf, typable, type Sel } from "./edit/model";
+import { cellAt, cellShape, modelOf, typesIn, type Sel } from "./edit/model";
 import { unitFor } from "./edit/drag";
 import { Manipulate, movable, turnable, type ManipulateHandle, type Movable } from "./edit/Manipulate";
 import { CONFLICT_WORD, HandSession, SHAPE_GONE, unsavedOf, type HandState, type Start } from "./edit/session";
 import { Prompt, TypingBox } from "./edit/TypingBox";
 import { NotesField } from "./edit/NotesField";
-import { askAnchor, groundOf, HANDLE, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, shapeLabel, textFrameOf, type Quad } from "./geometry";
+import { askAnchor, groundOf, HANDLE, inkOn, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, shapeLabel, textFrameOf, type Quad } from "./geometry";
 import { SectionName } from "./edit/SectionName";
 import type { NameAsk } from "./edit/slides";
 import { Picture } from "./Picture";
@@ -772,12 +772,13 @@ function Main({
   const selection = selected && selectedQuad && !dragging ? selectionOf(selectedQuad, w, h) : null;
   // The typing box, while it is on this slide: on the shape's corners as the deck has them now.
   const boxHere = hand.box?.slideKey === slide.key ? hand.box : null;
-  const boxShape = boxHere ? (shapes.find((s) => s.id === boxHere.shape.id) ?? null) : null;
+  const boxOn = boxHere ? shapes.find((s) => s.id === boxHere.shape.id) : undefined;
+  const boxShape = boxOn && boxHere?.cell ? cellShape(boxOn, boxHere.cell) : (boxOn ?? null);
   const [ground, setGround] = useState<string | null>(null);
   useLayoutEffect(() => {
     if (boxShape) setGround(groundAt(layer.current?.parentElement ?? null, boxShape.quad, w, h));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [boxShape?.id, w, h]);
+  }, [boxShape?.id, boxHere?.cell?.row, boxHere?.cell?.col, w, h]);
   // While he types the floating bar steps aside; once the box goes, the shape is Ask's again, in its new words.
   const typingHere = !!boxHere;
   const wasTyping = useRef(typingHere);
@@ -790,8 +791,12 @@ function Main({
     wasTyping.current = typingHere;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typingHere]);
-  /** A second press on a picked text shape, Return or F2 on it: his words go in a box over it. */
-  const openBox = (shape: DeckShape, start: Start): boolean => session.open(slide, shape, start);
+  /** A second press on a picked text shape, Return or F2 on it: his words go in a box over it (a table's: the cell pressed, else its first). */
+  const openBox = (shape: DeckShape, start: Start): boolean => {
+    const stage = layer.current?.getBoundingClientRect();
+    const cell = shape.kind === "table" && typeof start === "object" && stage && stage.width > 0 ? cellAt(shape, (start.x - stage.left) / stage.width, (start.y - stage.top) / stage.height) : undefined;
+    return session.open(slide, shape, start, cell);
+  };
   /** The shape off the slide; the slide's own colour round it lies over its place until the new picture lands. */
   const remove = (shape: DeckShape & { quad: Quad }): void => {
     unpick();
@@ -875,7 +880,7 @@ function Main({
               if (under && el) {
                 // A second press on a picked text shape types in it; so does the first on an empty placeholder's prompt, as in PowerPoint.
                 const types = under.id === picked || (!!under.prompt && session.refusal(slide, under) === null);
-                if (types && typable(under) && openBox(under, { x: event.clientX, y: event.clientY })) return;
+                if (types && typesIn(under) && openBox(under, { x: event.clientX, y: event.clientY })) return;
                 byPointer.current = true;
                 el.focus({ preventScroll: true });
                 byPointer.current = false;
@@ -887,7 +892,7 @@ function Main({
               if (event.target !== event.currentTarget || manip.current?.dragged() || hand.box) return;
               const box = event.currentTarget.getBoundingClientRect();
               const under = box.width > 0 && box.height > 0 ? hit(shapes, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height) : null;
-              if (under && typable(under)) openBox(under, { x: event.clientX, y: event.clientY });
+              if (under && typesIn(under)) openBox(under, { x: event.clientX, y: event.clientY });
             }}
             // Tab walks the shapes from the back of the slide to the front; the arrows nudge the picked one (Shift: ten
             // pixels), Delete and Backspace take it off the slide; Escape lets it go.
@@ -902,7 +907,7 @@ function Main({
               // Return opens the box with the words selected, F2 with the caret at their end, as in PowerPoint.
               if ((event.key === "Enter" && bareKey(event)) || (event.key === "F2" && !chordKey(event))) {
                 const shape = shapes.find((s) => s.id === at);
-                if (shape && typable(shape) && openBox(shape, event.key === "Enter" ? "all" : "end")) event.preventDefault();
+                if (shape && typesIn(shape) && openBox(shape, event.key === "Enter" ? "all" : "end")) event.preventDefault();
                 return;
               }
               const shape = shapes.find((s) => s.id === at);
@@ -969,6 +974,7 @@ function Main({
                 ground={firstTyping?.ground ?? ground ?? (doc ? null : "var(--muted)")}
                 tone={tone}
                 label={boxShape.label ?? KIND_WORDS[boxShape.kind ?? "other"]}
+                ink={boxHere.cell ? inkOn(ground, view.theme?.colors) : undefined}
                 onLeave={() => buttonOf(boxShape.id)?.focus({ preventScroll: true })}
               />
             ) : null}
