@@ -62,7 +62,7 @@ beforeEach(async () => {
   db = openDb(join(root, 'test.db'))
   store = new Store(db)
   metas.clear()
-  setSearchHost(makeSearchHost({ sessions: () => [...metas.values()], session: (id) => metas.get(id) ?? null, workspaceOfProject: (id) => projects[id] ?? null, searchEvents: (o) => store.searchEvents(o) }))
+  setSearchHost(makeSearchHost({ sessions: (archived) => [...metas.values()].filter((m) => m.archived === archived), session: (id) => metas.get(id) ?? null, workspaceOfProject: (id) => projects[id] ?? null, searchEvents: (o) => store.searchEvents(o) }))
   thread('t-purdue', { title: 'Budget review for the LAN', scope: 'work', workspaceId: PURDUE, at: 30 })
   thread('t-project', { title: 'Venue shortlist', scope: 'work', projectId: 'proj-lan', at: 20 })
   thread('t-cosmic', { title: 'Server budget', scope: 'work', workspaceId: COSMIC, at: 40 })
@@ -102,6 +102,14 @@ describe('titles', () => {
     const hits = await threadTitles.search(ask('budget', everywhere, 3), {} as never)
     expect(hits.slice(0, 3).map((h) => h.key)).toEqual(['thread:t-cosmic', 'thread:t-purdue', 'thread:t-chat'])
   })
+  it('read the archived rows only when the live titles leave room', async () => {
+    const asked: boolean[] = []
+    setSearchHost(makeSearchHost({ sessions: (archived) => (asked.push(archived), [...metas.values()].filter((m) => m.archived === archived)), session: (id) => metas.get(id) ?? null, workspaceOfProject: (id) => projects[id] ?? null, searchEvents: (o) => store.searchEvents(o) }))
+    await threadTitles.search(ask('budget', everywhere, 2), {} as never)
+    expect(asked).toEqual([false])
+    await threadTitles.search(ask('budget', everywhere, 10), {} as never)
+    expect(asked).toEqual([false, false, true])
+  })
   it('stay inside one job, a thread in a project of the job among them', async () => {
     expect((await threadTitles.search(ask('budget', onlyPurdue), {} as never)).map((h) => h.key)).toEqual(['thread:t-purdue', 'thread:t-old'])
     expect((await threadTitles.search(ask('venue', onlyPurdue), {} as never)).map((h) => [h.key, h.workspaceId])).toEqual([['thread:t-project', PURDUE]])
@@ -125,6 +133,15 @@ describe('the words said in a thread', () => {
     const hit = (await threadWords.search(ask('noon', everywhere, 10), {} as never)).find((h) => h.key === 'thread:t-old')!
     expect(hit).toMatchObject({ detail: 'Archived', open: { to: 'thread', sessionId: 't-old', archived: true } })
     expect(hit.snippet).toContain('noon')
+  })
+  it('list live threads before archived ones before the limit, whatever the index ranked first', async () => {
+    for (let i = 0; i < 4; i++) {
+      thread(`t-gone-${i}`, { title: `Gone ${i}`, scope: 'work', workspaceId: PURDUE, archived: true, at: 200 + i })
+      for (let j = 0; j < 5; j++) say(`t-gone-${i}`, `pizza pizza pizza ${j}`)
+    }
+    const hits = await threadWords.search(ask('pizza', everywhere, 3), {} as never)
+    expect(hits).toHaveLength(4)
+    expect(hits.every((h) => !(h.open as { archived?: boolean }).archived)).toBe(true)
   })
   it('stay inside one job, with no Work Chat', async () => {
     const hits = await threadWords.search(ask('pizza', onlyPurdue, 10), {} as never)

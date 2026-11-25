@@ -33,8 +33,8 @@ type Props = {
   onStart: (task: Task) => void;
   onDone: (task: Task) => void;
   onCode: (task: Task) => void;
-  /** The thread a link names for a task, if one works on it: Open thread takes Start thread's place. */
-  useThread?: (taskId: string) => string | null;
+  /** The thread a link names for a task, if one works on it: Open thread takes Start thread's place; undefined until the link read answers. */
+  useThread?: (taskId: string) => string | null | undefined;
 };
 
 const noThread = (): string | null => null;
@@ -106,7 +106,12 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, onCode, useThread 
         </p>
       ) : (
       <div className="flex shrink-0 items-center gap-2 border-t border-border px-5 py-3">
-        {thread ? (
+        {threadId === undefined ? (
+          // The link read is out: its place is kept, so Done does not move when the press comes.
+          <Button size="sm" aria-hidden tabIndex={-1} disabled className="invisible">
+            Start thread
+          </Button>
+        ) : thread ? (
           <Button size="sm" onClick={() => (onClose(), workOpenPort.get()?.(thread))}>
             Open thread
           </Button>

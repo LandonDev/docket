@@ -7,7 +7,8 @@ import type { WorkspaceMeta } from "../../lib/tcserver/types";
 vi.mock("../canvas/held", () => ({ openHeld: vi.fn() }));
 vi.mock("../shell/WorkColumn", () => ({ startThreadAbout: vi.fn() }));
 vi.mock("../files/openFrom", () => ({ openInFiles: vi.fn() }));
-const { canStartAbout, openHit, startAbout } = await import("./open");
+const { canStartAbout, openHit, restoreOnHost, startAbout } = await import("./open");
+const { sessionStore } = await import("../../lib/tcserver/store");
 type OpenDeps = import("./open").OpenDeps;
 
 /** Return on a hit: the window enters the hit's job when it is elsewhere, the thing opens in place, and the hit's host is told. */
@@ -26,7 +27,7 @@ function rig(selected: string[] = ["purdue"], over: Partial<OpenDeps> = {}) {
     enter: (w) => void did.push(["enter", w.path]),
     view: (next) => void did.push(["view", next]),
     thread: (sessionId, seq) => void did.push(["thread", sessionId, seq]),
-    restore: async (sessionId) => void did.push(["restore", sessionId]),
+    restore: async (sessionId, hostId) => void did.push(["restore", sessionId, hostId]),
     file: async (w, file) => void did.push(["file", w.id, file]),
     held: (id, hostId) => void did.push(["held", id, hostId]),
     startThread: (chip, w) => void did.push(["startThread", chip.label, w.id]),
@@ -43,10 +44,35 @@ describe("opening a hit", () => {
     const r = rig(["purdue"]);
     const archived = hit({ key: "thread:t-old", kind: "thread", detail: "Archived", open: { to: "thread", sessionId: "t-old", archived: true } });
     expect(await openHit(archived, "box", r.deps)).toBe("opened");
-    expect(r.did.slice(0, 3)).toEqual([["restore", "t-old"], ["clear"], ["thread", "t-old", undefined]]);
+    expect(r.did.slice(0, 3)).toEqual([["restore", "t-old", "box"], ["clear"], ["thread", "t-old", undefined]]);
     const live = rig(["purdue"]);
     await openHit(hit({ key: "thread:t1", kind: "thread", open: { to: "thread", sessionId: "t1" } }), "box", live.deps);
     expect(live.did.some((d) => d[0] === "restore")).toBe(false);
+  });
+  it("an archived thread restores on the hit's host when the window has not loaded that host's archived list", async () => {
+    // A host whose live list lacks the thread; only an archived list names it.
+    const calls: { method: string; params: unknown }[] = [];
+    const box = {
+      environmentId: "box",
+      profile: "remote" as const,
+      connected: true,
+      request<T>(method: string, params?: unknown): Promise<T> {
+        calls.push({ method, params });
+        const archived = (params as { archived?: boolean } | undefined)?.archived;
+        if (method === "session.list") return Promise.resolve((archived ? [{ id: "t-old", title: "Old", archived: true, status: "idle", createdAt: 1, updatedAt: 1, cwd: "/w" }] : []) as T);
+        return Promise.resolve(null as T);
+      },
+      onPush: () => () => {},
+      onOpen: () => () => {},
+      onClose: () => () => {},
+    };
+    sessionStore.reset();
+    sessionStore.attach(box as unknown as Parameters<typeof sessionStore.attach>[0]);
+    await sessionStore.ready();
+    expect(sessionStore.metaOf("t-old")).toBeNull();
+    await restoreOnHost("t-old", "box");
+    expect(calls.find((c) => c.method === "session.archive")?.params).toEqual({ sessionId: "t-old", archived: false });
+    sessionStore.reset();
   });
   it("an archived thread the host will not put back opens nothing", async () => {
     const r = rig(["purdue"], { restore: async () => Promise.reject(new Error("refused")) });

@@ -1,5 +1,5 @@
 import { ConvexProvider } from "convex/react";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ContextChip } from "@shared/work";
 import { playRunner } from "../routines/plays/runOn";
 import { groupTasks, SNOOZE_CHOICES, SNOOZE_LABELS, TASK_GROUP_LABELS, TASK_GROUPS, type SnoozeChoice } from "work-kit/lifeos/tasks";
@@ -24,6 +24,8 @@ import { shared, useShared } from "./store";
 import { sessionWaits } from "../shell/lifeos";
 import { downOf, useKeptOpen } from "../shell/lifeosDown";
 import { StatusMark } from "../../components/ui/status";
+import type { OutcomeTone } from "@shared/work/threadRecord";
+import { hasOutcomeMark, OutcomeMark } from "../threads/mark";
 import { useSessionMeta } from "../../lib/tcserver/store";
 import { rowState } from "../../lib/sidebarRows";
 import { marksAtRest } from "../../lib/threadStripModel";
@@ -122,14 +124,29 @@ function projectOfTask(task: Task, projects: ReadonlyMap<string, { name: string 
 /** No thread lookup (a test, a preview): every task offers Start. */
 const noThread = (): string | null => null;
 
-/** A task's thread as a row draws it: its id and its state in the one vocabulary; null when no thread this window knows works on it. */
-export type TaskThread = { id: string; state: ReturnType<typeof rowState> } | null;
-type UseThread = (taskId: string) => string | null;
+/**
+ * A task's thread as a row draws it: its id, its state in the one vocabulary and what it left him (`workOutcome`);
+ * null when no thread this window knows works on it; undefined until the link read answers, so neither Start nor
+ * Open thread is offered before it is known which is right.
+ */
+export type TaskThread = { id: string; state: ReturnType<typeof rowState>; tone: OutcomeTone | null } | null | undefined;
+/** The thread a task's open link names; null for none; undefined while the read is out or failed. */
+type UseThread = (taskId: string) => string | null | undefined;
 
 function useTaskThread(useThread: UseThread, taskId: string): TaskThread {
   const id = useThread(taskId);
   const meta = useSessionMeta(id);
-  return id && meta ? { id, state: rowState({ status: meta.status }) } : null;
+  if (id === undefined) return undefined;
+  return id && meta ? { id, state: rowState({ status: meta.status }), tone: meta.workOutcome?.tone ?? null } : null;
+}
+
+/**
+ * The plan's mark for a task's thread (work/projects/kit.tsx `ThreadMark`): what the thread left him first (the
+ * Outbox's glyph muted for something held, amber asks, red failed, the spinner working), else its state at rest.
+ */
+export function taskThreadMark(thread: NonNullable<TaskThread>): { key: string; mark: ReactNode } | null {
+  if (hasOutcomeMark(thread.tone)) return { key: thread.tone!, mark: <OutcomeMark tone={thread.tone} /> };
+  return marksAtRest(thread.state) ? { key: thread.state, mark: <StatusMark state={thread.state} word={false} /> } : null;
 }
 
 const openThread = (thread: NonNullable<TaskThread>): void => workOpenPort.get()?.(thread.id);
@@ -291,6 +308,7 @@ function Lead({
 }) {
   const overdue = task.dueAt !== undefined && task.dueAt < now;
   const thread = useTaskThread(useThread, task._id);
+  const lead = thread ? taskThreadMark(thread) : null;
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<div className="flex flex-col gap-1 px-3" />}>
@@ -304,13 +322,18 @@ function Lead({
         ) : null}
         {/* The presses keep to the column the rows end on: under 22rem Open gives way first, since the task's menu holds it. */}
         <div data-lead-presses className="@container/leadpresses mt-3 flex items-center gap-2">
-          {thread && marksAtRest(thread.state) ? (
+          {lead ? (
             // Beside the button, not on its fill: the mark's tone must read on the page.
-            <span data-lead-thread={thread.state} className="flex size-4 shrink-0 items-center justify-center">
-              <StatusMark state={thread.state} word={false} />
+            <span data-lead-thread={lead.key} className="flex size-4 shrink-0 items-center justify-center">
+              {lead.mark}
             </span>
           ) : null}
-          {thread ? (
+          {thread === undefined ? (
+            // The link read is out: its place is kept, so Done and Snooze do not move when the press comes.
+            <Button size="sm" aria-hidden tabIndex={-1} disabled className="invisible">
+              Start thread
+            </Button>
+          ) : thread ? (
             <Button size="sm" onClick={() => openThread(thread)}>
               Open thread
             </Button>
@@ -366,7 +389,7 @@ function TaskMenu({
   const runPlay = playRunner();
   return (
     <ContextMenuContent>
-      {thread ? <ContextMenuItem onClick={() => openThread(thread)}>Open thread</ContextMenuItem> : <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>}
+      {thread === undefined ? null : thread ? <ContextMenuItem onClick={() => openThread(thread)}>Open thread</ContextMenuItem> : <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>}
       <ContextMenuItem onClick={() => onCode(task)}>Open a code thread…</ContextMenuItem>
       {runPlay ? <ContextMenuItem onClick={() => runPlay(chipOf(task))}>Run a play…</ContextMenuItem> : null}
       <ContextMenuItem onClick={() => onOpen(task)}>Open</ContextMenuItem>
@@ -412,6 +435,7 @@ const TaskRow = memo(function TaskRow({
 }) {
   const [ticked, setTicked] = useState(false);
   const thread = useTaskThread(useThread, task._id);
+  const lead = thread ? taskThreadMark(thread) : null;
   // A Done that failed (its toast says so) puts the row back as it was.
   const complete = () => void Promise.resolve(actions.complete(task)).then((r) => r === undefined && setTicked(false));
   const done = useRef(complete);
@@ -431,14 +455,14 @@ const TaskRow = memo(function TaskRow({
           <span className={cn("max-w-full truncate text-[13px] leading-5 text-foreground transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
           {meta ? <span className="max-w-full truncate text-xs text-muted-foreground">{meta}</span> : null}
         </span>
-        {thread && marksAtRest(thread.state) ? (
-          <span data-task-thread={thread.state} className={cn("flex h-5 shrink-0 items-center", ROW_SHOWS, yields("row"))}>
-            <StatusMark state={thread.state} word={false} />
+        {lead ? (
+          <span data-task-thread={lead.key} className={cn("flex h-5 shrink-0 items-center", ROW_SHOWS, yields("row"))}>
+            {lead.mark}
           </span>
         ) : null}
         {due ? <span className={cn("shrink-0 text-xs leading-5 tabular-nums", ROW_SHOWS, overdue ? "text-destructive" : "text-muted-foreground", yields("row"))}>{due}</span> : null}
         <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true, overlay: true }))}>
-          {thread ? (
+          {thread === undefined ? null : thread ? (
             <Button size="xs" variant="ghost" onClick={() => openThread(thread)}>
               Open thread
             </Button>

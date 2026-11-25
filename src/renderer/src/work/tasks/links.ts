@@ -6,8 +6,11 @@ import { makeFunctionReference } from "convex/server";
  * Which thread works on a task: LifeOS's `workLinks:byEntity`, the read the
  * host's Done makes (docs/agents/work-tasks.md), asked live on the view's own
  * narrowed session. Tasks shows the newest open link; a project's plan shows
- * every open one. A read that fails reads as no
- * thread: the row keeps Start, never an error of its own.
+ * every open one. Tasks keeps a read that has not answered (still out, or
+ * failed) apart from no thread: the row offers neither Start nor Open thread
+ * until it is known which is right, so an early Start never makes a second
+ * thread. A row and the lead on one task share one subscription: Convex
+ * holds one watch a query and its arguments.
  */
 
 type Link = { threadId: string; state: "open" | "done"; at: number };
@@ -48,9 +51,12 @@ function useLinks<T>(taskId: string, pick: (links: readonly Link[] | undefined) 
   return value;
 }
 
-/** The thread a task's link names, live; null while it loads, when none is open, or when the read fails. */
-export function useLinkedThread(taskId: string): string | null {
-  return useLinks(taskId, newestOpenThread, Object.is);
+/** The newest open link's thread, null for none, undefined while the read is out or failed. */
+const newestOrUnknown = (links: readonly Link[] | undefined): string | null | undefined => (links ? newestOpenThread(links) : undefined);
+
+/** The thread a task's link names, live: null when none is open; undefined while the read is out or when it fails. */
+export function useLinkedThread(taskId: string): string | null | undefined {
+  return useLinks(taskId, newestOrUnknown, Object.is);
 }
 
 const NO_THREADS: string[] = [];

@@ -24,8 +24,8 @@ export interface WorkThread {
 }
 
 export interface SearchHost {
-  /** Every Work thread, archived ones flagged, newest first. Never a code thread. */
-  threads(): WorkThread[]
+  /** The live Work threads, newest first; `archived` the archived ones alone. Never a code thread. */
+  threads(archived?: boolean): WorkThread[]
   /** One Work thread by id; null for a code thread or an unknown id. */
   thread(id: string): WorkThread | null
   /** The transcript index and the threads' notes, held to Work threads and to `within` (the threads in reach), one row a thread: best first. */
@@ -34,7 +34,8 @@ export interface SearchHost {
 
 /** What the host part is made from: a test passes its own store and rows. */
 export interface SearchHostDeps {
-  sessions(): SessionMeta[]
+  /** The host's Work rows, live or archived: the registry's own scope filter, so a code row is never read or sorted. */
+  sessions(archived: boolean): SessionMeta[]
   session(id: string): SessionMeta | null
   workspaceOfProject(projectId: string): string | null
   searchEvents(o: { query: string; limit: number; scope: 'work'; perThread: true; sessionIds: readonly string[] }): Promise<{ hits: SessionSearchHit[] }>
@@ -50,9 +51,9 @@ export function makeSearchHost(deps: SearchHostDeps): SearchHost {
     child: !!s.parentId
   })
   return {
-    threads: () =>
+    threads: (archived = false) =>
       deps
-        .sessions()
+        .sessions(archived)
         .filter((s) => sessionScopeOf(s) === 'work')
         .map(threadOf)
         .sort((a, b) => b.updatedAt - a.updatedAt),
@@ -76,8 +77,8 @@ export const setSearchHost = (host: SearchHost | null): void => void (current = 
 export function searchHostPart(deps: WorkPartDeps): void {
   const { registry, store } = deps
   current = makeSearchHost({
-    // Archived threads too: Work Search finds them, marked, and opening one puts it back.
-    sessions: () => registry.listRaw({}),
+    // Archived threads are their own read: Work Search finds them, marked, only where it needs them (sources/threads.ts).
+    sessions: (archived) => registry.listRaw({ archived, scope: 'work' }),
     session: (id) => registry.get(id),
     workspaceOfProject: (id) => registry.getProject(id)?.workspaceId ?? null,
     searchEvents: (o) => store.searchEvents(o)

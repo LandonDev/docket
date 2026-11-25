@@ -10,6 +10,7 @@ import { owedRows, source as money } from "../money/today";
 import type { HostItem } from "../outbox/store";
 import { PlaceFrame } from "../places/WorkPlacePage";
 import { readyRow } from "../review/today";
+import { dueRows } from "./due";
 import { HeldSheetBody } from "./HeldSheet";
 import { page, type Fed, type Folds, type LifeosReach } from "./model";
 import { TIMED_OUT } from "./read";
@@ -50,7 +51,8 @@ const MEETING_ROWS = [
 const DUE_ROWS = [
   row("task:1", "due", "ref", "Renew arbiter registration", { when: "Nov 21", late: true, lead: tick, at: 1, acts: [{ label: "Tomorrow", run: noop }] }),
   row("task:2", "due", "cosmic", "Post patch notes for 3.8", { lead: tick, at: 2, acts: [{ label: "Tomorrow", run: noop }] }),
-  row("task:3", "due", "purdue", "Order jerseys for the spring roster", { when: "3:00 PM", lead: tick, at: 3, acts: [{ label: "Tomorrow", run: noop }] }),
+  // A task of a project, built by Due's own rule: the project on its second line, and Open project.
+  { ...dueRows([{ _id: "3", title: "Order jerseys for the spring roster", sector: "purdue", status: "todo", dueAt: new Date(2026, 10, 23, 15).getTime(), projectId: "lp1" }], new Date(2026, 10, 23, 12).getTime(), { workspaceOf: (sector) => ({ environmentId: "box", workspaceId: `box-${sector}`, sector, name: "Purdue Esports", path: `/w/${sector}`, open: true }), open: noop, done: async () => {}, tomorrow: async () => {}, projectOf: () => ({ _id: "lp1", name: "Spring LAN" }), openProject: noop })[0]!, lead: tick, at: 3 },
   ...Array.from({ length: 8 }, (_, i) => row(`task:${i + 4}`, "due", (["life", "unify", "hypixel", "purdue"] as const)[i % 4]!, ["Book the dentist", "Send the hosting report", "Trim the trailer cut", "Confirm the spring bracket", "Renew the domain", "File mileage", "Reply to the sponsor", "Pick up the van keys"][i]!, { lead: tick, at: i + 4 })),
 ];
 const WAITING_ROWS = [

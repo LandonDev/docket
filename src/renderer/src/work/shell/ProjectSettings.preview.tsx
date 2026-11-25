@@ -56,7 +56,7 @@ export function WorkProjectSheetPreview({
 }) {
   const at = REACH[reach]!;
   return (
-    <div className="flex w-[440px] flex-col overflow-hidden rounded-2xl bg-popover text-sm text-popover-foreground shadow-overlay ring-1 ring-border">
+    <div className="flex w-[440px] max-w-full flex-col overflow-hidden rounded-2xl bg-popover text-sm text-popover-foreground shadow-overlay ring-1 ring-border">
       <div className="flex flex-col gap-1 p-5 pe-12">
         <h2 className="text-base leading-6 font-semibold tracking-[-0.01em] text-foreground">Project settings</h2>
         <p className="min-w-0 truncate text-xs text-muted-foreground">Purdue Esports</p>

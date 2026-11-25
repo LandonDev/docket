@@ -362,6 +362,10 @@ function groupsOf(model: SearchModel, jobOf: (workspaceId: string | null) => str
         };
         hits = hits.sort((a, b) => at(a.hit.key) - at(b.hit.key));
       }
+      // An archived thread never stands above a live one, whichever host or tier answered first, so old work never
+      // takes a live thread's place under the cap. The row he has moved to stays where it stood.
+      const sinks = (found: { hit: SearchHit }): boolean => found.hit.open.to === "thread" && !!found.hit.open.archived && !(model.moved && model.active === `hit:${found.hit.key}`);
+      if (hits.some(sinks)) hits = [...hits.filter((found) => !sinks(found)), ...hits.filter(sinks)];
     }
     if (hits.length > 0) groups.push({ kind, label: mine[0].label, hits, more });
   }

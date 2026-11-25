@@ -381,14 +381,18 @@ Settings → Work.
   | Name | the project's name | LifeOS, `projects:update` on the workspace's own session (the screen's narrowed JWT); the mirror follows |
   | State | Backlog, Active, Paused, Done, Dropped | LifeOS, the same call |
   | Target | the day the project should be done (a date field; emptied, no target); the tracker sorts by it | LifeOS, `projects:update {targetDate}`, the start of that day here (`targetMs`) |
-  | Sharing | one row, "A view-only link for one guest", whose Share opens the Share sheet (`ProjectShare`), where the links are listed and made; drawn for a project that mirrors one in LifeOS | the guests pillar's rows on the host that serves LifeOS's documents ([work-guests.md](work-guests.md) "A project's link") |
+  | Sharing | one row with no line of its own, whose Share opens the Share sheet (`ProjectShare`), where the links are listed and made; drawn for a project that mirrors one in LifeOS | the guests pillar's rows on the host that serves LifeOS's documents ([work-guests.md](work-guests.md) "A project's link") |
   | Thread setup › Rules | the rules sent with a new thread's first message, said as "86 words. New threads here read them first."; Edit opens the rules dialog (`PreambleDialog`, with no `{{worktree}}` word for a Work project) | `projects.preamble` on the host |
   | Thread setup › Accounts | "The accounts its threads run on": which Claude, Codex or Meta account; drawn only when the host has an account to pick | `projects.account_pins` on the host |
   | Delete project | at the foot's start in the destructive tone, asked first; its tasks stay as tasks with no project | LifeOS, `projects:remove`; the host archives the mirror |
 
   Save sends only what changed; a failed save keeps the sheet open with the
   reason beside Retry, and a Retry with nothing left to send (the write
-  had landed, its answer lost) closes the sheet. While LifeOS cannot be
+  had landed, its answer lost) closes the sheet. When LifeOS took its part
+  and the accounts then failed, the line says what landed and that Save
+  tries the accounts again (`accountsFailedLine`: "Name saved. The accounts
+  did not: …. Save tries them again."). The Target field is the browser's
+  date field: work-kit's `TargetField` is not exported from the package. While LifeOS cannot be
   reached (signed out, unreachable, refused) Name, State and Target stand as plain
   words, never as disabled controls (State and Target only if LifeOS told them
   earlier), Delete is not drawn, and one line under them says why: the

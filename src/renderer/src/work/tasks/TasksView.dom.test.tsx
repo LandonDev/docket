@@ -14,7 +14,9 @@ import { returnOf } from "../../lib/workReturn";
 vi.mock("../../lib/tcserver/store", async (original) => ({
   ...(await original<object>()),
   // The window knows one thread, running: the one a link names for "Send Dana the budget".
-  useSessionMeta: (id: string | null | undefined) => (id === "th1" ? { id: "th1", status: "running" } : null),
+  // th2 is at rest, holding a mail for his press; th3 at rest, its send failed.
+  useSessionMeta: (id: string | null | undefined) =>
+    id === "th1" ? { id: "th1", status: "running" } : id === "th2" ? { id: "th2", status: "idle", workOutcome: { tone: "held", words: "1 mail to send" } } : id === "th3" ? { id: "th3", status: "idle", workOutcome: { tone: "failed", words: "Outlook refused it" } } : null,
 }));
 
 // Open a code thread…: the rail lists two code workspaces on a host with Work on, one linked to Purdue.
@@ -179,6 +181,33 @@ describe("the Tasks view", () => {
     const waiting = screen.getByRole("button", { name: "Open Approve the scrim schedule" }).closest("[role=listitem]") as HTMLElement;
     expect(within(waiting).getByRole("button", { name: "Start" })).toBeTruthy();
     workOpenPort.set(null);
+  });
+
+  it("marks a task by what its thread left him first, as the project's plan does: the Outbox glyph for held, red for failed", () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} useThread={(id) => (id === "t1" ? "th3" : id === "t2" ? "th2" : null)} />);
+    const row = screen.getByRole("button", { name: "Open Send Dana the budget" }).closest("[role=listitem]") as HTMLElement;
+    expect(row.querySelector("[data-task-thread=held] [data-outcome=held]")).toBeTruthy();
+    expect(document.querySelector("[data-lead-thread=failed]")).toBeTruthy();
+  });
+
+  it("offers neither Start nor Open thread while a task's link read has not answered", () => {
+    const startThread = vi.fn();
+    render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} useThread={() => undefined} />);
+    const row = screen.getByRole("button", { name: "Open Send Dana the budget" }).closest("[role=listitem]") as HTMLElement;
+    expect(within(row).queryByRole("button", { name: "Start" })).toBeNull();
+    expect(within(row).queryByRole("button", { name: "Open thread" })).toBeNull();
+    // The lead keeps the press's place, out of reach, so Done does not move when the answer comes.
+    expect(screen.queryByRole("button", { name: "Start thread" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();
+    expect(startThread).not.toHaveBeenCalled();
+  });
+  it("the task's sheet, too, offers neither Start nor Open thread while the link read has not answered", async () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} useThread={() => undefined} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open Send Dana the budget" }));
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).queryByRole("button", { name: "Start thread" })).toBeNull();
+    expect(within(sheet).queryByRole("button", { name: "Open thread" })).toBeNull();
+    expect(within(sheet).getByRole("button", { name: "Done" })).toBeTruthy();
   });
 
   it("leads the lead task's Open thread with its thread's mark", () => {

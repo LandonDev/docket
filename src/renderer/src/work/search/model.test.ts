@@ -375,6 +375,26 @@ describe("nothing could be asked", () => {
   });
 });
 
+describe("archived threads", () => {
+  const thread = (key: string, archived = false): SearchHit => hit(key, { kind: "thread", open: { to: "thread", sessionId: key, ...(archived ? { archived: true } : {}) } });
+  const threads = (hits: SearchHit[], source = "search.thread"): SearchGroup => ({ source, kind: "thread", label: "Thread", hits, more: false });
+  it("stand under every live thread, whichever host or tier answered first, so the cap keeps the live ones", () => {
+    let m = typed("budget", [box, mac]);
+    m = landInstant(m, m.gen, "box", answer([threads([thread("old-1", true), thread("old-2", true), thread("old-3", true)])], ["search.thread/network"])).model;
+    m = landSource(m, m.gen, "box", "search.thread/network", answer([threads([thread("live-1"), thread("live-2")], "search.thread/network")]));
+    expect(shape(rowsOf(m))).toEqual(["# Thread", "live-1", "live-2", "old-1", "old-2", "[All threads for “budget”]"]);
+  });
+  it("keep the row he moved to in its place and lit", () => {
+    let m = typed("budget", [box]);
+    m = landInstant(m, m.gen, "box", answer([threads([thread("old-1", true)])], ["search.thread/network"])).model;
+    m = point(m, "hit:old-1");
+    m = landSource(m, m.gen, "box", "search.thread/network", answer([threads([thread("live-1")], "search.thread/network")]));
+    const rows = rowsOf(m);
+    expect(shape(rows)).toEqual(["# Thread", "old-1", "live-1"]);
+    expect(activeOf(m, rows)).toBe("hit:old-1");
+  });
+});
+
 describe("the row he chose and the cap", () => {
   it("keeps its place when more of its kind lands: what lands goes under the rows already there", () => {
     let m = typed("budget", [box, mac]);

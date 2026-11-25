@@ -82,6 +82,16 @@ export type LifeosReach =
   /** a project of the workspace that mirrors nothing: its name is this host's */
   | { status: "local" };
 
+/**
+ * Said when a Save wrote LifeOS's part and then the accounts failed: what landed, and that Save sends the accounts
+ * again (the drafts are compared with what is saved, so it sends nothing else).
+ */
+export function accountsFailedLine(saved: readonly string[], why: string): string {
+  const what = saved.length > 1 ? `${saved.slice(0, -1).join(", ")} and ${saved[saved.length - 1]}` : (saved[0] ?? "");
+  const reason = why.trim().replace(/\.$/, "");
+  return `${what.charAt(0).toUpperCase()}${what.slice(1)} saved. The accounts did not${reason ? `: ${reason}` : ""}. Save tries them again.`;
+}
+
 /** Said once a Save while LifeOS is out of reach saved this host's part: what saved, and where his other words wait. */
 export const KEPT_LINE = "Accounts saved. Your name, state and target changes wait here until LifeOS answers.";
 
@@ -170,13 +180,14 @@ export function WorkProjectFields({
               </span>
             </FieldRow>
           ) : null}
-          <p data-lifeos-line className="flex items-baseline gap-2 pt-2 text-xs text-muted-foreground">
-            <span className="min-w-0">
+          {/* DownLine's shape: the press beside the words, on their line. */}
+          <p data-lifeos-line className="flex min-h-7 items-center gap-2 pt-2 text-xs text-muted-foreground">
+            <span className="min-w-0 text-pretty">
               {reach.line}
               {reach.note ? <span className="block">{reach.note}</span> : null}
             </span>
             {reach.press ? (
-              <Button type="button" variant="link" size="xs" className="h-auto shrink-0 px-0 text-xs" disabled={reach.busy} onClick={reach.press.run}>
+              <Button type="button" variant="ghost" size="xs" className="shrink-0" disabled={reach.busy} onClick={reach.press.run}>
                 <BusyLabel busy={!!reach.busy} label={reach.press.label} />
               </Button>
             ) : null}
@@ -216,7 +227,7 @@ export function WorkProjectFields({
       )}
       {sharing ? (
         <div className="-my-2 flex flex-col">
-          <FieldRow label="Sharing" description="A view-only link for one guest">
+          <FieldRow label="Sharing">
             <span data-project-sharing className="contents">
               {sharing}
             </span>
@@ -344,6 +355,8 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
     }
     setPending(true);
     setError(null);
+    // What LifeOS took before the accounts were asked, said if the accounts then fail.
+    let landed: string[] = [];
     try {
       if (lifeosId && (nameDirty || stateDirty || targetDirty)) {
         if (!session.client) throw new Error(sessionWords(session));
@@ -355,6 +368,7 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
             ...(targetDirty ? { targetDate: targetMs(target) } : {}),
           },
         });
+        landed = [nameDirty && "name", stateDirty && "state", targetDirty && "target"].filter((w): w is string => !!w);
       } else if (nameDirty) await renameProject(project.id, name.trim());
       if (pinsDirty) await setProjectAccounts(project.id, pins);
       setPending(false);
@@ -367,7 +381,8 @@ export function WorkProjectSettings({ project: opened, workspace, onClose }: { p
     } catch (err) {
       // What landed stays landed: the drafts are compared with what is saved, so Retry sends only the rest.
       const host = registry.environment(project.environmentId)?.name;
-      setError(workErrorWords(err, { host: host ? nameInLine(host) : undefined, write: true }) || "The project did not save.");
+      const why = workErrorWords(err, { host: host ? nameInLine(host) : undefined, write: true });
+      setError(landed.length ? accountsFailedLine(landed, why) : why || "The project did not save.");
       setPending(false);
     }
   };

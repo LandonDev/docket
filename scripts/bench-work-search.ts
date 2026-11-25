@@ -63,7 +63,7 @@ const events = (db.prepare(`SELECT COUNT(*) AS n FROM events`).get() as { n: num
 function host(everyThread: boolean) {
   const as = (s: SessionMeta): SessionMeta => (everyThread ? ({ ...s, scope: 'work', projectId: null, workspaceId: jobs[0]?.id ?? 'job' } as SessionMeta) : s)
   return makeSearchHost({
-    sessions: () => sessions.map(as),
+    sessions: (archived) => sessions.filter((s) => s.archived === archived && (everyThread || s.scope === 'work')).map(as),
     session: (id) => (byId.get(id) ? as(byId.get(id)!) : null),
     workspaceOfProject: (id) => projects.get(id) ?? null,
     searchEvents: (o) => store.searchEvents(o)

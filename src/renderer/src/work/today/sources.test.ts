@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { WORK_CHATS_KEY } from "../outbox/model";
 import type { HostItem } from "../outbox/store";
-import { dueRows, type DueTask } from "./due";
+import { dueRows, namesNote, NAMES_LOST, projectOfTask, type DueTask } from "./due";
 import { heldWhen } from "../outbox/when";
 import { heldRows, placeOf } from "./held";
 import { liveLine, meetingRows, placeAndPeople, type MeetingEvent } from "./meetings";
@@ -176,6 +176,25 @@ describe("due", () => {
     expect(openProject).toHaveBeenCalledWith(JOBS[0], lan);
     expect(loose!.detail).toBeUndefined();
     expect(loose!.acts!.map((a) => a.label)).toEqual(["Tomorrow"]);
+  });
+
+  it("a task's project opens by its id while the names are out or failed, and one quiet line says only a failed read", async () => {
+    const t = task("t3", "purdue", "Order jerseys", { dueAt: at(23, 15), projectId: "lp1" });
+    // names not known: the project by its id, no second line
+    expect(projectOfTask(t, null)).toEqual({ _id: "lp1", name: "" });
+    // LifeOS answered without it: no project at all
+    expect(projectOfTask(t, new Map())).toBeNull();
+    expect(projectOfTask(task("t7", "purdue", "Tonight"), null)).toBeNull();
+    const openProject = vi.fn();
+    const [row] = dueRows([t], at(23, 12), { ...ways(), projectOf: (x: DueTask) => projectOfTask(x, null), openProject });
+    expect(row!.detail).toBeUndefined();
+    expect(row!.acts!.map((a) => a.label)).toEqual(["Tomorrow", "Open project"]);
+    await row!.acts![1]!.run();
+    expect(openProject).toHaveBeenCalledWith(JOBS[0], { _id: "lp1", name: "" });
+    expect(namesNote(true, [row!])).toBe(NAMES_LOST);
+    // still loading, or a row that has its name: no line
+    expect(namesNote(false, [row!])).toBeUndefined();
+    expect(namesNote(true, dueRows([t], at(23, 12), { ...ways(), projectOf: () => ({ _id: "lp1", name: "Spring LAN" }), openProject }))).toBeUndefined();
   });
 
   it("a row's tick and press look up the job when pressed: one built for a workspace since removed acts on the sector's job now", async () => {

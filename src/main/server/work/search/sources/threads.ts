@@ -25,18 +25,25 @@ const hitOf = (t: WorkThread, over: Partial<SearchHit> = {}): SearchHit => {
   return t.archived && hit.open.to === 'thread' ? { ...hit, detail: 'Archived', snippet: hit.snippet, open: { ...hit.open, archived: true } } : hit
 }
 
-/** Titles, from memory: newest first, live threads before archived ones. A subagent's row is not listed. */
+/**
+ * Titles, from memory: newest first, live threads before archived ones. A subagent's row is not listed. The
+ * archived rows are read only when the live titles leave room under the limit: most keystrokes never touch them.
+ */
 export const threadTitles: SearchSource = {
   kind: 'thread',
   label: 'Threads',
   tier: 'instant',
   async search(ask) {
-    const found = (searchHost()?.threads() ?? []).filter((t) => !t.child && inReach(ask.reach, t.workspaceId) && mentionMatches(ask.text, t.title))
-    return [...found.filter((t) => !t.archived), ...found.filter((t) => t.archived)].slice(0, ask.limit + 1).map((t) => hitOf(t))
+    const host = searchHost()
+    if (!host) return []
+    const matches = (t: WorkThread): boolean => !t.child && inReach(ask.reach, t.workspaceId) && mentionMatches(ask.text, t.title)
+    const live = host.threads().filter(matches)
+    const found = live.length > ask.limit ? live : [...live, ...host.threads(true).filter(matches)]
+    return found.slice(0, ask.limit + 1).map((t) => hitOf(t))
   }
 }
 
-/** The words said in a thread, with the line they are in: one row a thread, the index's best first. */
+/** The words said in a thread, with the line they are in: one row a thread, the index's best first, live threads before archived ones. */
 export const threadWords: SearchSource = {
   kind: 'thread',
   label: 'Threads',
@@ -47,9 +54,8 @@ export const threadWords: SearchSource = {
     const out: SearchHit[] = []
     const seen = new Set<string>()
     // A subagent's thread is found by its words, so it is in the list; an archived one too, marked.
-    const within = host.threads().filter((t) => inReach(ask.reach, t.workspaceId)).map((t) => t.id)
+    const within = [...host.threads(), ...host.threads(true)].filter((t) => inReach(ask.reach, t.workspaceId)).map((t) => t.id)
     for (const row of await host.words(ask.text, WORDS_THREADS, within)) {
-      if (out.length > ask.limit) break
       // A thread's notes and its best row both answer: the first of them is the thread's hit.
       if (seen.has(row.sessionId)) continue
       seen.add(row.sessionId)
@@ -58,7 +64,9 @@ export const threadWords: SearchSource = {
       if (!t || !inReach(ask.reach, t.workspaceId)) continue
       out.push(hitOf(t, { snippet: row.snippet, at: row.ts, open: { to: 'thread', sessionId: t.id, ...(row.seq > 0 ? { seq: row.seq } : {}) } }))
     }
-    return out
+    // The cap after the order, so an archived thread never takes a live one's place.
+    const archived = (h: SearchHit): boolean => h.open.to === 'thread' && !!h.open.archived
+    return [...out.filter((h) => !archived(h)), ...out.filter(archived)].slice(0, ask.limit + 1)
   }
 }
 

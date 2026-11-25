@@ -228,11 +228,19 @@ words. Both are held to rows stamped `scope: 'work'`, the words by the
 query itself (`Store.searchEvents` takes `scope`), so a code thread is never
 answered whatever it says. A thread in a project has no `workspace_id` on
 its row; its job is its project's. An archived thread is found too, by title
-and by its words: its hit's fact reads "Archived", titles list it after every
-live one so it never takes a live thread's place, and its open carries
-`archived: true`, so Return puts the thread back first (`setSessionArchived`,
-as the archived list's Restore does) and then opens it; a refused restore
-opens nothing.
+and by its words: its hit's fact reads "Archived". Both sources list it after
+every live one before their cap, and the window's Threads group keeps it under
+every live row whichever host or tier answered first, the row he has moved to
+excepted (model.ts `groupsOf`), so it never takes a live thread's place. The
+host reads its Work rows through the registry's own filter, live and archived
+apart (`listRaw({archived, scope: 'work'})`), and titles read the archived
+rows only when the live titles leave room under the limit: on a host of 5,000
+threads that read is 0.02 ms a keystroke where listing and sorting every row
+was 0.5 ms. Its open carries `archived: true`, so Return puts the thread back
+first and then opens it; the restore asks the hit's own host for the thread's
+meta when the window has not loaded that host's archived list
+(`restoreOnHost`: `ensureMeta`, then `setSessionArchived`), and a refused
+restore opens nothing.
 
 **Files** are Files' to find. `search/ask.ts` finds the pillar
 that owns a method and calls its module's `handle` with the caller the

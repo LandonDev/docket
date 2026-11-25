@@ -13,6 +13,7 @@ import { openInFiles } from "../files/openFrom";
 import { startThreadAbout } from "../shell/WorkColumn";
 import { tellOpened } from "./hosts";
 import { setSessionArchived } from "../../lib/sessionStore";
+import { sessionStore } from "../../lib/tcserver/store";
 
 /**
  * Return on a hit (docs/agents/work-search.md "Opening in place"): the
@@ -29,8 +30,8 @@ export interface OpenDeps {
   enter(workspace: WorkspaceMeta): void;
   view(next: OpenWorkView): void;
   thread(sessionId: string, seq?: number): void;
-  /** an archived thread back among the live ones, before it opens; a refusal is thrown */
-  restore(sessionId: string): Promise<void>;
+  /** an archived thread back among the live ones, on the host that found it, before it opens; a refusal is thrown */
+  restore(sessionId: string, hostId: string): Promise<void>;
   /** Files' own door (work/files/openFrom.ts): the file in a tab of the job, and the Files place shown unless he went elsewhere meanwhile; a refusal is thrown */
   file(workspace: WorkspaceMeta, file: { ref: CanvasSource; name: string }): Promise<void>;
   held(id: string, hostId: string): void;
@@ -40,6 +41,16 @@ export interface OpenDeps {
   clear(): void;
   /** this open is his latest choice of where to go */
   chose(): void;
+}
+
+/**
+ * Restore on the hit's own host. The window may not hold that host's archived
+ * list yet (a job he has not opened in this window): the restore rides the
+ * thread's link, so its meta is asked of that host first (`ensureMeta`).
+ */
+export async function restoreOnHost(sessionId: string, hostId: string): Promise<void> {
+  if (!sessionStore.metaOf(sessionId)) await sessionStore.ensureMeta(sessionId, hostId);
+  await setSessionArchived(sessionId, false);
 }
 
 const live: OpenDeps = {
@@ -55,7 +66,7 @@ const live: OpenDeps = {
     if (seq !== undefined) requestTranscriptJump(sessionId, seq);
     workOpenPort.get()?.(sessionId);
   },
-  restore: (sessionId) => setSessionArchived(sessionId, false),
+  restore: restoreOnHost,
   file: (workspace, file) => openInFiles(workspace, file),
   held: (id, hostId) => openHeld({ at: "host", id }, hostId),
   startThread: (chip, workspace) => startThreadAbout(chip, null, workspace.path),
@@ -103,7 +114,7 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
     // An archived thread is put back first, as the archived list's Restore does; if the host refuses, nothing opens.
     if (open.archived) {
       try {
-        await d.restore(open.sessionId);
+        await d.restore(open.sessionId, hostId);
       } catch {
         return "failed";
       }

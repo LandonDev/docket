@@ -19,7 +19,7 @@ import { ProjectSettingsDialog } from "../../chrome/ProjectDialogs";
 import { resetLifeos, setLifeosSession, setLifeosStatus } from "./lifeos";
 import { accountsStore } from "../../stores/accounts";
 import { emptyAccounts } from "@server/shared/accounts";
-import { KEPT_LINE, rulesLine, targetDay, targetMs, WorkProjectFields } from "./ProjectSettings";
+import { accountsFailedLine, KEPT_LINE, rulesLine, targetDay, targetMs, WorkProjectFields } from "./ProjectSettings";
 
 // jsdom has no Web Animations; the sheet's scroll area asks for them.
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
@@ -45,6 +45,8 @@ const CODE_PROJECT: ProjectMeta = { id: "pc", workspaceId: "wc", name: "Alpha", 
 type Sent = { fn: string; args: Record<string, unknown> };
 let sent: Sent[] = [];
 let failWrites: string | null = null;
+/** The host refuses the accounts' save with these words. */
+let failAccounts: string | null = null;
 let hostCalls: { method: string; params: Record<string, unknown> }[] = [];
 
 /** What the live list tells its watchers when LifeOS's rows change. */
@@ -79,6 +81,7 @@ beforeEach(() => {
   sent = [];
   hostCalls = [];
   failWrites = null;
+  failAccounts = null;
   workspaceStore.reset();
   workspaceStore.hydrate([{ environmentId: BOX, workspaces: [WORK, CODE], projects: [MIRROR, CODE_PROJECT] }]);
   vi.spyOn(registry, "linkOf").mockReturnValue({
@@ -88,6 +91,7 @@ beforeEach(() => {
     onPush: () => () => {},
     request: async (method: string, params: Record<string, unknown> = {}) => {
       hostCalls.push({ method, params });
+      if (method === "project.setAccounts" && failAccounts) throw new Error(failAccounts);
       if (method === "work.guests.forItem") return [];
       if (method === "work.guests.create") return { link: { id: "L1", name: params.name, role: "view", expiresAt: params.expiresAt }, url: "https://tempcode.landonhale.com/g/L1#k=secret" };
       return null;
@@ -266,6 +270,56 @@ describe("Name and State", () => {
     });
     expect(sent).toHaveLength(1);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+});
+
+describe("a save that half landed", () => {
+  it("says what LifeOS took and that Save tries the accounts again, keeping the accounts in the sheet", async () => {
+    accountsStore.attach({
+      environmentId: BOX,
+      connected: true,
+      onOpen: () => () => {},
+      onClose: () => () => {},
+      onPush: () => () => {},
+      request: async (method: string) => {
+        if (method !== "accounts.list") return null;
+        const snap = emptyAccounts();
+        snap.updatedAt = 1;
+        snap.providers.claude.profiles = [{ name: "a@x.com", email: "a@x.com", createdAt: 1, active: true }];
+        return snap;
+      },
+    } as never);
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    connected();
+    failAccounts = "The host did not answer.";
+    const onClose = vi.fn();
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={onClose} />);
+    const root = await sheet();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Fall LAN" } });
+    await openSetup(root);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("combobox", { name: "Claude" }));
+    });
+    const option = (await screen.findAllByRole("option"))[1]!;
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+    await waitFor(() => expect(root.querySelector("[data-project-settings-error]")).not.toBeNull());
+    expect(sent.map((s) => s.args)).toEqual([{ id: "lp_1", patch: { name: "Fall LAN" } }]);
+    const line = root.querySelector("[data-project-settings-error]")!.textContent!;
+    expect(line.startsWith("Name saved. The accounts did not")).toBe(true);
+    expect(line.endsWith("Save tries them again.")).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(saveButton().disabled).toBe(false);
+    accountsStore.reset();
+  });
+  it("names every part LifeOS took, and stands alone when the cause has no words", () => {
+    expect(accountsFailedLine(["name", "state", "target"], "The box did not answer.")).toBe("Name, state and target saved. The accounts did not: The box did not answer. Save tries them again.");
+    expect(accountsFailedLine(["target"], "")).toBe("Target saved. The accounts did not. Save tries them again.");
   });
 });
 
@@ -592,5 +646,17 @@ describe("the fields alone", () => {
   it("out of reach, a target he set stands as words", () => {
     const { container } = render(<WorkProjectFields name="Spring LAN" onName={() => {}} state="active" onState={() => {}} target="2027-03-14" reach={{ status: "failed", line: "LifeOS did not answer" }} rules="None" onEditRules={() => {}} />);
     expect(container.querySelector("[data-readonly-target]")!.textContent).toBe(new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(2027, 2, 14)));
+  });
+  it("out of reach, every known fact stands, and the press sits on the line's centre beside its words", () => {
+    const { container } = render(<WorkProjectFields name="Spring LAN" onName={() => {}} state="active" onState={() => {}} target="2027-03-14" reach={{ status: "failed", line: "Not signed in to LifeOS", press: { label: "Sign in", run: () => {} } }} rules="None" onEditRules={() => {}} />);
+    expect(container.querySelector("[data-readonly-state]")!.textContent).toBe("Active");
+    const line = container.querySelector("[data-lifeos-line]") as HTMLElement;
+    expect(line.className).toContain("items-center");
+    expect(line.querySelector("button")!.textContent).toBe("Sign in");
+  });
+  it("Sharing is one row with its Share and no line of its own: the Share sheet says who can open it", () => {
+    const { container } = render(<WorkProjectFields name="Spring LAN" onName={() => {}} state="active" onState={() => {}} reach={{ status: "ready" }} rules="None" onEditRules={() => {}} sharing={<button type="button">Share</button>} />);
+    expect(container.textContent).not.toContain("view-only link");
+    expect(container.querySelector("[data-project-sharing]")).toBeTruthy();
   });
 });
