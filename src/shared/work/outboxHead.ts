@@ -58,7 +58,9 @@ export function summaryHead(
   if (typeof discard === "number") {
     if (discard) parts.push(parts.length ? `discard ${discard}` : `Discard ${discard}`);
   } else if (discard.length) {
-    const nouns = groupParts(discard, true).map((p) => p.replace(/^\S+ /, ""));
+    // An add-on's call is named by what it does, never "call" (which reads as a phone call): "discard Echo with League".
+    const calls = discard.filter((i) => i.kind === "addon.call");
+    const nouns = [...groupParts(discard.filter((i) => i.kind !== "addon.call"), true).map((p) => p.replace(/^\S+ /, "")), ...groupParts(calls, false)];
     parts.push(`${parts.length ? "discard" : "Discard"} ${joinWords(nouns)}`);
   }
   return joinWords(parts);

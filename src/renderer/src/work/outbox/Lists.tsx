@@ -46,6 +46,7 @@ function Row({
   about,
   side,
   strong = false,
+  snippet = false,
   onPick,
 }: {
   rowKey: string;
@@ -57,6 +58,8 @@ function Row({
   about: string | null;
   side: string;
   strong?: boolean;
+  /** rows that share this act: what it is about is what tells them apart, so it keeps its room before the time */
+  snippet?: boolean;
   onPick: () => void;
 }) {
   return (
@@ -68,10 +71,12 @@ function Row({
         onClick={onPick}
         className={cn("h-8 flex-nowrap gap-2 rounded-md py-0 pe-2 ps-7 text-left text-[13px] leading-5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5")}
       >
-        <span className="min-w-0 shrink truncate">{act}</span>
-        {about ? <span className="min-w-0 flex-1 shrink-[100] truncate text-muted-foreground @max-[40rem]/outbox:hidden">{about}</span> : null}
+        <span className={cn("min-w-0 shrink truncate", snippet && "max-w-[45%]")}>{act}</span>
+        {about ? (
+          <span className={cn("min-w-0 flex-1 truncate text-muted-foreground", snippet ? "shrink" : "shrink-[100] @max-[40rem]/outbox:hidden")}>{about}</span>
+        ) : null}
         {/* Its own column at the row's end whether or not what it is about shows; on a very narrow row it gives way first, so the act is read. */}
-        <span className={cn("ms-auto shrink-0 text-xs tabular-nums @max-[15rem]/row:hidden", strong ? "text-foreground" : "text-muted-foreground")}>{side}</span>
+        <span className={cn("ms-auto shrink-0 text-xs tabular-nums @max-[15rem]/row:hidden", snippet && "@max-[30rem]/row:hidden", strong ? "text-foreground" : "text-muted-foreground")}>{side}</span>
       </ItemButton>
       {/* The glyph column: the kind's glyph, which gives way to the tick on hover, and to every tick while any row is ticked. */}
       <span className="pointer-events-none absolute start-2 top-2 grid size-4 place-items-center">{lead}</span>
@@ -158,6 +163,9 @@ export function WaitingList({
         const fold = section.items.length > FOLD_AT && !expanded.has(section.key);
         const shown = fold ? section.items.slice(0, FOLD_SHOWS) : section.items;
         const tickables = section.items.filter(tickable);
+        // Rows of one act ("Echo with League" three times) are told apart by what they are about.
+        const actCount = new Map<string, number>();
+        for (const it of section.items) actCount.set(rowWords(it).act, (actCount.get(rowWords(it).act) ?? 0) + 1);
         const label = section.kind === "thread" ? `${section.title}${section.job ? `, ${section.job}` : ""}` : section.title;
         return (
           <section key={section.key} aria-label={label} data-outbox-section={section.kind} className={GROUP}>
@@ -201,6 +209,7 @@ export function WaitingList({
                     about={about}
                     side={side.text}
                     strong={side.strong}
+                    snippet={(actCount.get(act) ?? 0) > 1 && !!about}
                     onPick={() => onPick(item)}
                     lead={<span className={cn("grid size-4 place-items-center", can && (ticking ? "opacity-0" : yields("row")))}>{glyph}</span>}
                     tick={

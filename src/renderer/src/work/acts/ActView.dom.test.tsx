@@ -56,3 +56,23 @@ describe("ActView's readiness", () => {
     expect(ready).toEqual([true]);
   });
 });
+
+describe("a kind's view that fails", () => {
+  it("is one quiet line with Retry, no bones under it, and no payload for Send to wait on", async () => {
+    const { ACT_VIEWS } = await import("./registry");
+    const { defineChunk } = await import("../../lib/lazyChunk");
+    const { ActView } = await import("./ActView");
+    const { render, screen, waitFor } = await import("@testing-library/react");
+    const was = ACT_VIEWS["teams.post"];
+    ACT_VIEWS["teams.post"] = { kind: "teams.post", chunk: defineChunk("act-fails", () => Promise.resolve({ View: () => { throw new Error("bad payload"); } })) as never };
+    try {
+      const { container } = render(<ActView item={{ kind: "teams.post", payload: {} } as never} env="local" />);
+      await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("Its details could not be read."));
+      expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+      expect(container.querySelector('[data-slot="act-payload"]')).toBeNull();
+      expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    } finally {
+      ACT_VIEWS["teams.post"] = was;
+    }
+  });
+});

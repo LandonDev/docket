@@ -10,6 +10,7 @@ import { OutboxView, rememberOutboxTab } from "./OutboxView";
 import { ItemInPlace } from "./HeldDetail";
 import { rowWords } from "./parts";
 import { sessionStore } from "../../lib/tcserver/store";
+import { FakeConvex, fakeSession } from "../today/fakeLifeos";
 import { resetOutboxStore, wantOutboxItem } from "./store";
 
 /**
@@ -153,23 +154,41 @@ const OFFER: GrantOffer = { id: "go_1", workspaceId: "ws", kind: "mail.send", la
 const held = (n: number, kind: OutboxItem["kind"], summary: string, verb: string, payload: unknown, minutes: number): OutboxItem => ({ ...sent(n, "", "", at(20, 10, minutes)), kind, summary, verb, state: "held", payload, decidedBy: null, decidedAt: null, why: "pillar", result: null });
 const INVITE = { id: "op22", kind: "create", payload: { title: "Spring LAN walkthrough", startsAt: at(27, 13), endsAt: at(27, 14), location: "North Ballroom", attendees: [{ address: "dana.lee@purdue.edu", name: "Dana Lee" }] } };
 /** What each kind's press does, as the host says it (outbox/effects.ts). */
-const KIND_EFFECT: Record<string, string> = {
-  "calendar.op": "Sends the invite to Dana Lee from your Purdue calendar.",
-  "chat.reply": "Replies as you to Sam Ortiz in Teams.",
-  "file.act": "Moves the file for everyone who can open Esports Staff › Events.",
-  "share.guestLink": "Makes a link Maya Chen opens without signing in. She can comment.",
-  "teams.post": "Posts as you in Esports Staff, General, where 14 people see it.",
+const KIND_EFFECT: Record<number, string> = {
+  22: "Sends the invite to Dana Lee from your Purdue calendar.",
+  23: "Replies as you in Teams.",
+  24: "Moves the file for everyone who can open Esports Staff.",
+  25: "Makes a link Maya Chen opens without signing in. She can comment until Dec 1.",
+  26: "Posts as you in Esports Staff, General, where 14 people see it.",
+  27: "Tells Northside PT you will come and keeps it on your Purdue calendar.",
 };
+/** A file move as the host holds it (contract-work-files.ts `FileActSchema`): what moves, from where, to where. */
+const MOVE = {
+  workspaceId: "ws",
+  host: "local",
+  verb: "move",
+  op: "op24",
+  request: { refs: [{ place: "teams", key: "k-risk" }], to: { place: "teams", key: "k-events" } },
+  digest: "0123456789abcdef0123",
+  things: [{ key: "k-risk", name: "Risk assessment.docx", version: "7" }],
+  from: { place: "teams", name: "Esports Staff", trail: ["General"] },
+  into: { place: "teams", name: "Esports Staff", trail: ["Events"], key: "k-events", shared: true },
+  audience: "Everyone in Esports Staff can open it.",
+};
+/** A guest link as the host holds it (contract-work-guests.ts `GuestLinkActSchema`). */
+const LINK = { source: { at: "lifeos", table: "docs", id: "runofshow1" }, title: "Spring LAN run of show", name: "Maya Chen", role: "comment", expiresAt: at(31, 17) };
 const KINDS_BARE: OutboxItem[] = [
   { ...SENT[0]!, state: "held", decidedBy: null, decidedAt: null, result: null, n: 21, createdAt: at(20, 10, 50) },
   held(22, "calendar.op", "Add Spring LAN walkthrough on Fri, Nov 27 at 1:00 PM", "Add", INVITE, 44),
   held(23, "chat.reply", "Reply to Sam Ortiz in Teams: Thursday at 7 works for varsity", "Reply", { chatId: "c1", source: "teams", chat: "Sam Ortiz", text: "Thursday at 7 works for varsity." }, 38),
-  held(24, "file.act", "Move Risk assessment.docx to Esports Staff › Events", "Move", { verb: "move", name: "Risk assessment.docx" }, 31),
-  held(25, "share.guestLink", "Share Spring LAN run of show with Maya Chen to comment", "Share", { name: "Maya Chen", role: "comment" }, 20),
-  held(26, "teams.post", "Post in Esports Staff › General: the bus leaves at 6:30 AM", "Post", "not a payload", 12),
+  held(24, "file.act", "Move Risk assessment.docx to Esports Staff › Events", "Move", MOVE, 31),
+  held(25, "share.guestLink", "Share Spring LAN run of show with Maya Chen to comment", "Share", LINK, 20),
+  held(26, "teams.post", "Post in Esports Staff › General: the bus leaves at 6:30 AM", "Post", { chat: "Esports Staff, General", text: "The bus leaves the CoRec at 6:30 AM on Saturday. Bring your ID and your jersey." }, 12),
   held(27, "calendar.op", "Answer Kickoff call with Northside PT: Yes", "Send", { id: "op27", kind: "accept", eventId: "ev_call", account: "landon@purdue.edu" }, 6),
+  // The one error example, kept apart: a payload its kind cannot read says so in one quiet line.
+  held(28, "teams.post", "Post in Esports Staff › General: an old draft", "Post", "not a payload", 3),
 ];
-const KINDS: OutboxItem[] = KINDS_BARE.map((k) => (KIND_EFFECT[k.kind] && k.kind !== "mail.send" ? { ...k, effect: KIND_EFFECT[k.kind] } : k));
+const KINDS: OutboxItem[] = KINDS_BARE.map((k) => (k.n !== null && KIND_EFFECT[k.n] ? { ...k, effect: KIND_EFFECT[k.n] } : k));
 /** `longGuest`: the invite asks one more guest, whose name and address are each longer than a narrow column. */
 const LONG_GUEST = { address: "events-and-facilities-reservations.recwell@purdue.edu", name: "Alexandra Montgomery-Fitzgerald" };
 const LONG_KINDS: OutboxItem[] = KINDS.map((k) => (k.payload === INVITE ? { ...k, payload: { ...INVITE, payload: { ...INVITE.payload, attendees: [...INVITE.payload.attendees, LONG_GUEST] } } } : k));
@@ -297,8 +316,9 @@ const answers = (method: string, params: { show?: string; ref?: { id: string }; 
     case "work.outbox.results":
       return { results: [] };
     case "work.lifeos.status":
-      // The held calendar acts read LifeOS: in `kinds` its session did not answer, so their details say so once, with Retry.
-      if (state === "kinds" || state === "longGuest") return { lifeos: { state: "unreachable", since: at(20, 9, 58), error: "timed out" }, keys: [] };
+      // `kinds` reads a LifeOS stand-in, so each kind draws whole; `longGuest` keeps the session that did not answer.
+      if (state === "kinds") return { lifeos: { state: "connected", ownerId: "owner", since: 0 }, keys: [] };
+      if (state === "longGuest") return { lifeos: { state: "unreachable", since: at(20, 9, 58), error: "timed out" }, keys: [] };
       // In `kindsSilent` the host itself never answers its status: the acts' details name it, with Retry.
       if (state === "kindsSilent") throw Object.assign(new Error("No answer in 15 s"), { name: "TimeoutError" });
       if (state === "unread") return { lifeos: { state: "signed-out" }, keys: [] };
@@ -355,6 +375,20 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
     resetOutboxStore();
     setWorkOn("local", true);
     if (s === "given") asGivenComputer({ on: ["local"] });
+    if (s === "kinds") {
+      // A LifeOS that answers what the invite, its answer and the Teams reply read: each kind draws whole.
+      const convex = new FakeConvex();
+      convex.answer("events:get", { _id: "ev_call", title: "Kickoff call with Northside PT", sector: "purdue", startsAt: at(27, 14), endsAt: at(27, 15), allDay: false, location: "Zoom" });
+      convex.answer("events:range", []);
+      convex.answer("chats:get", {
+        chat: { _id: "c1", source: "teams", account: "landon@purdue.edu", channel: "chat", name: "Sam Ortiz", kind: "dm", sector: "purdue", lastAt: at(20, 9, 40), lastText: "Can varsity do Thursday at 7?", lastWho: "Sam Ortiz", lastFromMe: false },
+        source: null,
+        route: "teams",
+      });
+      convex.answer("chats:messages", { page: [] });
+      fakeSession("local", convex, null);
+      fakeSession("local", convex, "purdue");
+    }
     // The host the acts read through, named as the app names it.
     if (s === "kindsSilent" || s === "unread") Object.assign(registry, { environment: (id: string) => ({ id, name: "The box" }) });
     // A mail's own view still on its way: the bones it shows until then.
@@ -375,7 +409,7 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
   }, [s]);
   const page = (
     <OverFrame maxWidth={1100} height={640}>
-      {s === "results" || s === "ticked" || s === "changed" || s === "editing" ? <Unsettled ms={900} /> : null}
+      {s === "results" ? <Unsettled ms={1500} /> : s === "ticked" || s === "changed" || s === "editing" ? <Unsettled ms={900} /> : null}
       <div className="flex h-full w-full">
         <OutboxView besideRail onClose={() => {}} />
       </div>
@@ -386,7 +420,7 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
       <div className="flex w-full max-w-[1100px] flex-col gap-6">
         {page}
         {/* Each kind's own detail, opened in place as the summary list opens it: its sentence, its notes, the thing. */}
-        <Unsettled ms={600} />
+        <Unsettled ms={900} />
         {KINDS.map((k) => (
           <section key={k.ref.id} className="flex flex-col gap-1">
             <h3 className="text-sm font-medium">{rowWords(k).act}</h3>

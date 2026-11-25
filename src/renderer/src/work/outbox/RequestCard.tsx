@@ -123,11 +123,13 @@ function RequestLine({ lead, detail }: { lead: string; detail?: string | null })
 }
 
 /** "Send 3", "Discard 2", "Approve 4" when the actions mix. */
-export function pressLabel(dos: readonly ("send" | "discard" | "later")[]): string {
+export function pressLabel(dos: readonly ("send" | "discard" | "later")[], of?: number): string {
   const kinds = new Set(dos);
   const n = dos.length;
-  if (kinds.size > 1) return `Approve ${n}`;
-  return kinds.has("discard") ? `Discard ${n}` : kinds.has("later") ? `Schedule ${n}` : `Send ${n}`;
+  // Fewer ticked than the request asked: the press says so, so the head's count and the button's never disagree.
+  const count = of !== undefined && of > n ? `${n} of ${of}` : `${n}`;
+  if (kinds.size > 1) return `Approve ${count}`;
+  return kinds.has("discard") ? `Discard ${count}` : kinds.has("later") ? `Schedule ${count}` : `Send ${count}`;
 }
 
 /** "by you at 9:41 AM", "from another device at 9:41 AM". */
@@ -309,10 +311,13 @@ function useRequestPress(request: HostRequest) {
   // is ticked); what the press did once answered.
   const did = new Set(request.rows.filter((r) => r.result).map((r) => r.do));
   // Each act counted as what it did: scheduled rows say Scheduled, never Sent.
-  const head = open
-    ? requestName(request)
-    : (did.size === 1 ? resultsHead(results, [...did][0]!) : (["send", "later", "discard"] as const).flatMap((d) => (did.has(d) ? [resultsHead(results.filter((_, i) => acts[i] === d), d)] : [])).filter(Boolean).join("; ")) || requestName(request);
-  return { open, rows, gone, head, ticked, busy, send, decline, failed, failedLater, toDetail, sendAgain, laterAgain, openDetail, toggle, open1, label: pressLabel(ticked.map((r) => r.do)) };
+  // Once answered, the rows he left out are counted in the head too, as the phone says it ("Sent 9, 1 left out").
+  const leftOut = open ? 0 : rows.filter((r) => !r.result).length;
+  const sum = did.size === 1 ? resultsHead(results, [...did][0]!) : (["send", "later", "discard"] as const).flatMap((d) => (did.has(d) ? [resultsHead(results.filter((_, i) => acts[i] === d), d)] : [])).filter(Boolean).join("; ");
+  const head = open ? requestName(request) : sum ? `${sum}${leftOut ? `, ${leftOut} left out` : ""}` : requestName(request);
+  // What the request asked that still waits: the press counts its ticks against it.
+  const asked = request.rows.filter((r) => r.open && r.item).length;
+  return { open, rows, gone, head, ticked, busy, send, decline, failed, failedLater, toDetail, sendAgain, laterAgain, openDetail, toggle, open1, label: pressLabel(ticked.map((r) => r.do), asked) };
 }
 
 /** Where a request came from, as an item's facts line says it: the job's dot and name, the thread, when it asked. */
@@ -485,7 +490,7 @@ function RequestBody({ request, frame, host, onOpenSession, commands }: { reques
     <section data-outbox-request aria-label={p.head} className={cn("w-full border border-border bg-card font-sans text-card-foreground", QUESTION_SHAPE)}>
       <div className="flex min-h-5 items-center gap-2">
         <Outbox aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-        <h3 aria-live="polite" className="min-w-0 text-sm leading-5 font-medium text-balance">
+        <h3 aria-live="polite" className="min-w-0 text-sm leading-5 font-medium text-pretty">
           {p.head}
         </h3>
       </div>

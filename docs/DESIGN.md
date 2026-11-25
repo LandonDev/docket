@@ -1555,9 +1555,16 @@ Around the canvas:
   30-second undo."; a timed send's is when it goes, once), the notes that apply
   (one 13px muted line each behind a 14px glyph: not sent, out of date, the
   thread rewrote it with Show changes, someone wrote back),
-  then the thing as it will arrive. Show changes draws only what moved: a
-  field's old value muted and struck beside the new, the body's words taken
-  out muted and struck, the words put in on a light accent tint. The verb bar
+  then the thing as it will arrive. Show changes marks what moved in the
+  thing's own slot, never a second copy of it: a field's old value muted and
+  struck before the new, the body's words taken out muted and struck, 4px
+  before the words put in on a light accent tint. A failed item leads with
+  its refusal; when the failure will repeat as it stands (too large, refused)
+  the fix is the primary press, Edit where an edit can make it, else Open the
+  thread, and Send again steps down; a failure that may clear (a service that
+  did not answer) keeps Send again first. A kind's view that fails is one
+  quiet line, "Its details could not be read." with Retry, no bones under it.
+  Rows that share an act keep what they are about before the time. The verb bar
   is a hairline and one row: Discard at the start, Edit, and the primary verb
   joined to its menu (Send later's four times above the grant row); an
   out-of-date item's bar is Discard and Ask the thread again, a timed one's
@@ -4461,12 +4468,13 @@ mail"; the press counts what is ticked), "You asked: "…"" muted under
 it on the head's text column, the summary list (36px rows parted by
 hairlines: tick, kind glyph, act, what it is about, a side word, a chevron
 that opens the item in place), then Not now and the press (Send N, Discard
-N, Approve N when the actions mix) at its foot, right-aligned. A row that
+N, Approve N when the actions mix; "Send 2 of 3" when fewer are ticked than
+were asked) at its foot, right-aligned. A row that
 dies leads with "Discard", its act muted. A row rewritten since the thread
 asked shows an empty tick he cannot take, "Changed since asked", and its
 chevron reads "Review the change"; the tick is his once he opens it. Pressed, each row shows
-its result where its tick was; then the head sums them ("Queued 1 in
-LifeOS, 1 not sent") and the foot says "by you at 9:41 AM" with, for what did not go,
+its result where its tick was; then the head sums them, with the rows he
+left out ("Queued 1 in LifeOS, 1 not sent, 1 left out") and the foot says "by you at 9:41 AM" with, for what did not go,
 Send again (a Send), Pick a new time… (a Later, its new time said before it
 goes), or Open in the Outbox (an item that moved since or may have gone). A
 tick holds only while its row keeps the receipt it was given for. A held

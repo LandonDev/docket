@@ -3,6 +3,7 @@ import type { Chunk } from "../../lib/lazyChunk";
 import { ACT_VIEWS, type ActViewProps } from "./registry";
 import { GenericActView } from "./GenericActView";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Button } from "../../components/ui/button";
 
 type ViewChunk = Chunk<{ View: (props: ActViewProps) => ReactNode }>;
 
@@ -36,11 +37,26 @@ export function ActView({ onReady, ...props }: ActViewProps & { onReady?: (ready
     };
   }, []);
   // `surface` is cached per name in the chunk, its fallback with it: a fallback that holds no item's payload.
-  const View = chunk ? chunk.surface("View", <ActSkeleton />) : GenericActView;
+  const View = chunk ? chunk.surface("View", <ActSkeleton />, (retry) => <ActFailed retry={retry} />) : GenericActView;
   return (
     <div ref={box} className="contents">
       <View {...props} />
     </div>
+  );
+}
+
+/**
+ * A kind's view that failed: one quiet line in the generic view's own words, with Retry, and no bones under it (a
+ * view half drawn reads as still loading). It draws no `act-payload`, so Send stays off until the thing is on screen.
+ */
+function ActFailed({ retry }: { retry: () => void }) {
+  return (
+    <p role="alert" data-act-failed className="flex items-baseline gap-2 text-[13px] leading-5 text-muted-foreground">
+      Its details could not be read.
+      <Button variant="ghost" size="xs" onClick={retry}>
+        Retry
+      </Button>
+    </p>
   );
 }
 

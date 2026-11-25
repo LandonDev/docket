@@ -176,6 +176,14 @@ function Note({ glyph, children, alert = false, noteRef }: { glyph: ReactNode; c
   );
 }
 
+/**
+ * Whether a failure may clear by itself, so trying again is the next step: a service that did not answer, timed out,
+ * was busy or offline. One that will repeat as it stands (too large, refused, not allowed, an address) needs a fix.
+ */
+export function clearsByItself(error: string | null | undefined): boolean {
+  return /did not answer|didn't answer|timed? ?out|try again|unavailable|offline|network|connection|rate limit|too many requests|busy|temporar/i.test(error ?? "");
+}
+
 /** "The thread rewrote this at 9:20 AM." / "You changed this at 9:20 AM." */
 export const changedWords = (changed: NonNullable<HostItem["changed"]>, now = Date.now()): string =>
   `${changed.by === "thread" ? "The thread rewrote this" : "You changed this"} at ${heldWhen(changed.at, now)}.`;
@@ -184,23 +192,37 @@ export const changedWords = (changed: NonNullable<HostItem["changed"]>, now = Da
 export const repliedWords = (replied: NonNullable<HostItem["replied"]>, now = Date.now()): string =>
   `${replied.from} wrote back at ${heldWhen(replied.at, now)}, after this was made: "${replied.line}"`;
 
-/** What differs from the thread's first words: each field that moved, then the body's words in and out. */
-function Changes({ first, now }: { first: unknown; now: unknown }) {
-  const { fields, body } = useMemo(() => changesOf(first, now), [first, now]);
-  if (!fields.length && !body) return <p className="text-[13px] leading-5 text-muted-foreground">Nothing you read differs.</p>;
+/**
+ * The thing with its changes marked where they stand (Show changes): its fields on the views' 72px column, a field
+ * that moved with its old value struck before the new, then the body under its hairline with the words taken out
+ * struck and the words put in tinted. It takes the thing's own slot, so the body is never drawn twice.
+ */
+function ChangesInPlace({ first, now }: { first: unknown; now: unknown }) {
+  const { fields: moved, body } = useMemo(() => changesOf(first, now), [first, now]);
+  const view = useMemo(() => payloadView(now), [now]);
+  const was = new Map(moved.map((f) => [f.label, f.was]));
   return (
-    <div data-outbox-changes className="flex flex-col gap-2 text-[13px] leading-5">
-      {fields.map((f) => (
-        <div key={f.label} className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3">
-          <span className="text-muted-foreground">{f.label}</span>
-          <span className="min-w-0 break-words">
-            {f.was ? <del className="text-muted-foreground">{f.was}</del> : null}
-            {f.was && f.now ? " " : null}
-            {f.now ? <ins className="no-underline">{f.now}</ins> : null}
-          </span>
+    <div data-outbox-changes className="flex min-w-0 flex-col gap-4">
+      {view.fields.length ? (
+        <dl className="grid grid-cols-[72px_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[13px] leading-5">
+          {view.fields.map((f) => (
+            <div key={f.path.join(".")} className="contents">
+              <dt className="truncate text-muted-foreground">{f.label}</dt>
+              <dd className="min-w-0 break-words">
+                {was.get(f.label) ? <del className="me-1 text-muted-foreground">{was.get(f.label)}</del> : null}
+                {was.has(f.label) ? <ins className="rounded-[3px] bg-accent/18 no-underline">{f.value}</ins> : f.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : null}
+      {body ? (
+        <div className={cn(view.fields.length > 0 && "border-t border-border pt-4")}>
+          <Words pieces={body} />
         </div>
-      ))}
-      {body ? <Words pieces={body} /> : null}
+      ) : view.body ? (
+        <div className={cn("whitespace-pre-wrap break-words text-sm leading-[22px]", view.fields.length > 0 && "border-t border-border pt-4")}>{view.body.text}</div>
+      ) : null}
     </div>
   );
 }
@@ -213,7 +235,7 @@ function Words({ pieces }: { pieces: readonly Piece[] }) {
         p.t === "same" ? (
           <span key={i}>{p.s}</span>
         ) : p.t === "del" ? (
-          <del key={i} className="text-muted-foreground">
+          <del key={i} className={cn("text-muted-foreground", pieces[i + 1]?.t === "ins" && "me-1")}>
             {p.s}
           </del>
         ) : (
@@ -260,7 +282,7 @@ export function ItemNotes({ item, host, refused, unread, unreadError, onRetry, s
     );
   if (item.changed && item.state !== "stale")
     notes.push(
-      <div key="changed" className="flex flex-col gap-3">
+      <div key="changed">
         <Note glyph={<Pencil className="size-3.5" />}>
           {changedWords(item.changed)}
           {first !== undefined && onShowChanges ? (
@@ -269,11 +291,6 @@ export function ItemNotes({ item, host, refused, unread, unreadError, onRetry, s
             </Button>
           ) : null}
         </Note>
-        {showChanges && first !== undefined ? (
-          <div className="ps-[22px]">
-            <Changes first={first} now={item.payload} />
-          </div>
-        ) : null}
       </div>,
     );
   if (item.replied)
@@ -373,7 +390,7 @@ function EditInPlace({ item, values, onChange }: { item: HostItem; values: Reado
                 {field.edit ? (
                   <Input id={`${id}-${key}`} value={values.get(key) ?? field.value} onChange={(e) => onChange(key, e.target.value)} spellCheck={field.edit === "text"} className="h-7" />
                 ) : (
-                  <span id={`${id}-${key}`} className="min-w-0 break-words">
+                  <span id={`${id}-${key}`} className="min-w-0 break-words ps-[11px]">
                     {field.value}
                   </span>
                 )}
@@ -622,6 +639,10 @@ export function HeldDetail({
   const timed = isScheduled(item);
   const later = item.later === true && waiting && !item.outcomeUnknown;
   const verbAgain = changeKind(item.kind) ? "Try again" : `${item.verb} again`;
+  // A failure that will not clear by itself (a file too large, a refused address) is fixed before it is tried again:
+  // the fix leads (Edit where an edit can make it, else the thread that made it) and Send again steps down.
+  const failedFirst = item.state === "failed" || !!refused;
+  const stuck = item.state === "failed" && !item.outcomeUnknown && !clearsByItself(item.error);
 
   const run = async (which: Exclude<Busy, null>, work: () => Promise<void>, fail: string) => {
     setBusy(which);
@@ -755,6 +776,8 @@ export function HeldDetail({
         if (editing) return save();
         if (stale) return void (busy === null && again());
         if (timed) return;
+        if (stuck && editable && !editing && busy === null) return setEditing(true);
+        if (stuck && !editable && item.sessionId && onOpenSession) return onOpenSession(item.sessionId, item.environmentId);
         if (!sendOff) void send(item.outcomeUnknown ? "again" : "send");
       },
       edit: () => editable && !editing && busy === null && setEditing(true),
@@ -777,8 +800,14 @@ export function HeldDetail({
           <DetailFacts item={item} job={workspace} when={alone ? heldWhen(item.createdAt) : timeOf(item.createdAt)} onOpenSession={onOpenSession} />
           <h1 className="mt-1 text-base font-semibold leading-6 tracking-[-0.01em] text-balance">{itemTitle(item, false)}</h1>
         </header>
-        <Effect item={item} />
+        {/* A failed item leads with its refusal: what went wrong comes before what the press would do. */}
+        {failedFirst ? null : <Effect item={item} />}
         <ItemNotes item={item} host={host} refused={refused} unread={unread} unreadError={unreadError} onRetry={retry} showChanges={showChanges} onShowChanges={setShowChanges} noteRef={refusedLine} />
+        {failedFirst ? (
+          <div className="mt-1">
+            <Effect item={item} />
+          </div>
+        ) : null}
         <div
           className="mt-5 flex flex-col gap-4"
           onKeyDown={(e) => {
@@ -793,6 +822,8 @@ export function HeldDetail({
               <EditInPlace item={item} values={edits} onChange={(key, value) => setEdits((prev) => new Map(prev).set(key, value))} />
               <ErrorLine error={editError} />
             </>
+          ) : showChanges && item.changed?.first !== undefined ? (
+            <ChangesInPlace first={item.changed.first} now={item.payload} />
           ) : (
             <ActView item={item} env={item.environmentId} onReady={setViewLoaded} />
           )}
@@ -842,14 +873,35 @@ export function HeldDetail({
           <span className="flex-1" />
           {/* A send that may have gone: no plain Send, only his own Send again once he has looked. */}
           {item.outcomeUnknown && waiting ? <span className="text-[13px] leading-5 text-muted-foreground">{checkWords(item)}</span> : null}
-          {editable ? (
+          {stuck ? (
+            <>
+              {/* Send again steps down; the fix is the primary press. */}
+              <Button variant="secondary" size="sm" disabled={sendOff} onClick={() => void send("send")}>
+                <BusyLabel busy={busy === "send"} label={verbAgain} />
+              </Button>
+              {editable ? (
+                <Tip label="Edit" shortcut={keyHint("mod+enter")}>
+                  <Button size="sm" disabled={busy !== null} onClick={() => setEditing(true)}>
+                    Edit
+                  </Button>
+                </Tip>
+              ) : item.sessionId && onOpenSession ? (
+                <Tip label="Open the thread" shortcut={keyHint("mod+enter")}>
+                  <Button size="sm" onClick={() => onOpenSession(item.sessionId!, item.environmentId)}>
+                    Open the thread
+                  </Button>
+                </Tip>
+              ) : null}
+            </>
+          ) : null}
+          {!stuck && editable ? (
             <Tip label="Edit" shortcut={shortcutFor("Work", "Edit Held Item")}>
               <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => setEditing(true)}>
                 Edit
               </Button>
             </Tip>
           ) : null}
-          {item.outcomeUnknown && waiting ? (
+          {stuck ? null : item.outcomeUnknown && waiting ? (
             <Tip label={verbAgain} shortcut={keyHint("mod+enter")}>
               <Button variant="secondary" size="sm" disabled={sendOff} onClick={() => void send("again")}>
                 <BusyLabel busy={busy === "again"} label={verbAgain} />

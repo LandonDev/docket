@@ -1033,7 +1033,8 @@ group in Settings → Keybindings, "In the Outbox"; its tips read them with
     a refused press the same way), "Out of date. <why>", "The thread
     rewrote this at 9:20 AM." with Show changes (`changed.first` from
     `get`; the fields that moved and the body's words out and in,
-    `changesOf`), "<Name> wrote back at 8:12 AM, after this was made:
+    `changesOf`, drawn in the thing's own slot in place of its view, never a
+    second copy), "<Name> wrote back at 8:12 AM, after this was made:
     "<line>"" (`replied`, from `get`), "Goes <time>" for a timed send, and
     a computer act's screen. Then the thing as it will arrive (the kind's
     view, "Kind views" below). Every item is read whole with `get`; only a
@@ -1042,9 +1043,12 @@ group in Settings → Keybindings, "In the Outbox"; its tips read them with
     to a menu (`SendSplit`) with Send later (In an hour, This afternoon
     while the morning lasts, Tomorrow morning, Pick a time…; only when the
     item carries `later`) above the grant row ("Send and stop holding ›
-    <grant>", only for a key that may make one). A failed item reads Send
-    again; one that may have gone keeps "Check Sent first" and his own Send
-    again. An out-of-date item's bar is Discard and Ask the thread again
+    <grant>", only for a key that may make one). A failed item leads with
+    its refusal and reads Send again; one whose failure will repeat as it
+    stands (`clearsByItself` false: too large, refused) makes the fix primary,
+    Edit where an edit can make it, else Open the thread, with Send again
+    secondary; one that may have gone keeps "Check Sent first" and his own
+    Send again. An out-of-date item's bar is Discard and Ask the thread again
     (`work.outbox.askAgain`). A scheduled item's is Cancel send and Send now
     (`cancelSend`, `sendNow`; a Mail-scheduled LifeOS mail from before the
     state takes `work.mail.cancel`).
@@ -1123,7 +1127,10 @@ group in Settings → Keybindings, "In the Outbox"; its tips read them with
   ticked when it arrives, though the first copy drawn (a push, the list) had
   none, and the card asks `request.get` again while a copy lacks them. His
   press is `decide({request, receipts})` with the ticked rows' receipts alone
-  (Send N, Discard N, Approve N when the actions mix); Not now is `decline`.
+  (Send N, Discard N, Approve N when the actions mix; "Send 2 of 3" when
+  fewer are ticked than were asked, so the press never disagrees with the
+  request's name in the head); Not now is `decline`. Answered, the head
+  names the rows he left out ("Sent 9, 1 left out").
   Results land per row; then "by you at 9:41 AM" and, for rows that did not
   go: Send again (`decide` with `many` and the revision his press attempted,
   which the card keeps) for a Send; Pick a new time… (a dialog that says

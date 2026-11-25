@@ -1306,3 +1306,51 @@ describe("the bulk press's Send again is bound to the revision its result shows 
     expect(world.decides.at(-1)!.items).toEqual([{ ref: { at: "lifeos", table: "outbox", id: "o2" }, do: "send", rev: 500 }]);
   });
 });
+
+describe("council round 2: the detail and the list", () => {
+  it("Show changes marks the change in the thing's own slot, the body drawn once, a gap between what went and what came", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { changed: { at: Date.now() - 600_000, by: "thread" } })]);
+    world.extra = { o1: { changed: { at: Date.now() - 600_000, by: "thread", first: { message: { to: [{ name: "Dana Lee", address: "dana@purdue.edu" }], subject: "Budget", text: "Hello Dana Lee,\n\nAbout it.\n\nLandon" } } } } };
+    await open();
+    const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
+    fireEvent.click(await within(detail).findByRole("button", { name: "Show changes" }));
+    const changes = detail.querySelector("[data-outbox-changes]")!;
+    // The body once: in the changes' place, not again under the fields.
+    expect((detail.textContent!.match(/Landon/g) ?? []).length).toBe(1);
+    expect(detail.querySelector('[data-slot="act-payload"]')).toBeNull();
+    const del = changes.querySelector("p del")!;
+    expect(del.nextElementSibling?.tagName).toBe("INS");
+    expect(del.className).toContain("me-1");
+  });
+
+  it("a failure that will repeat leads with its refusal and makes Edit the primary press, Send again stepping down", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "failed", error: "LifeOS refused the send: the attachment is over 25 MB", effect: "Goes from landon@purdue.edu to Dana Lee after your 30-second undo." })]);
+    world.items.set("mac", []);
+    await open();
+    const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
+    const head = detail.querySelector("header")!;
+    expect(head.nextElementSibling!.textContent).toMatch(/^Not sent\./);
+    const edit = within(detail).getByRole("button", { name: "Edit" });
+    expect(edit.getAttribute("data-variant")).toBe("default");
+    expect(within(detail).getByRole("button", { name: "Send again" }).getAttribute("data-variant")).toBe("secondary");
+  });
+
+  it("a failure that may clear keeps Send again as the primary press", async () => {
+    world.items.set("box", [mail("o1", "Dana Lee", "Budget", { state: "failed", error: "Outlook did not answer in time" })]);
+    world.items.set("mac", []);
+    await open();
+    const detail = document.querySelector("[data-outbox-detail]") as HTMLElement;
+    await waitFor(() => expect(within(detail).getByRole("button", { name: "Send again" }).getAttribute("data-variant")).toBe("default"));
+    expect(within(detail).getByRole("button", { name: "Edit" }).getAttribute("data-variant")).toBe("secondary");
+  });
+
+  it("rows that share an act keep what tells them apart before the time", async () => {
+    const echo = (id: string, post: string) => ({ ...addonCall, ref: { at: "host" as const, id }, workspaceId: "ws1", summary: `Echo with League: ${post}` });
+    world.items.set("box", [echo("e1", "Roster post 11"), echo("e2", "Roster post 12")]);
+    world.items.set("mac", []);
+    await open().catch(() => undefined);
+    const row = await waitFor(() => screen.getByText("Roster post 11").closest("button")!, { timeout: 5000 });
+    expect(screen.getByText("Roster post 11").className).not.toContain("@max-[40rem]/outbox:hidden");
+    expect(row.lastElementChild!.className).toContain("@max-[30rem]/row:hidden");
+  });
+});

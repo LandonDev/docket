@@ -158,7 +158,7 @@ describe("the request card", () => {
     expect(waiting.getAttribute("aria-checked")).toBe("false");
     expect(waiting.hasAttribute("disabled") || waiting.getAttribute("aria-disabled") === "true" || waiting.hasAttribute("data-disabled")).toBe(true);
     expect(within(rows[2] as HTMLElement).getByRole("button", { name: /^Review the change / })).toBeTruthy();
-    expect(sendButton().textContent).toBe("Send 2");
+    expect(sendButton().textContent).toBe("Send 2 of 3");
     expect(within(el).getByRole("button", { name: "Not now" })).toBeTruthy();
     // the card's shape: the transcript's one card, a hairline on the card fill
     expect(el.className).toContain("rounded-xl");
@@ -188,7 +188,7 @@ describe("the request card", () => {
     const el = await drawn();
     // He unticks one: the press never widens past what he left ticked.
     fireEvent.click(within(el.querySelectorAll("[data-summary-row]")[1] as HTMLElement).getByRole("checkbox"));
-    expect(sendButton().textContent).toBe("Send 1");
+    expect(sendButton().textContent).toBe("Send 1 of 3");
     fireEvent.click(sendButton());
     await waitFor(() => expect(el.querySelectorAll('[data-summary-row] [data-state="working"]')).toHaveLength(1));
     await act(async () => let_go());
@@ -211,7 +211,7 @@ describe("the request card", () => {
     const el = await drawn();
     await act(async () => fireEvent.click(sendButton()));
     // Queued is queued, never sent: the sum says it as its rows do.
-    await waitFor(() => expect(el.querySelector("h3")!.textContent).toBe("Queued 1 in LifeOS, 1 not sent"));
+    await waitFor(() => expect(el.querySelector("h3")!.textContent).toBe("Queued 1 in LifeOS, 1 not sent, 1 left out"));
     const rows = [...el.querySelectorAll("[data-summary-row]")];
     expect(rows[0]!.textContent).toContain("Queued in LifeOS");
     expect(rows[1]!.querySelector("[data-summary-side]")!.textContent).toBe("Outlook did not answer in time");
@@ -295,7 +295,7 @@ describe("ticks bound to receipts (review finding 9, and the Outbox's copy drawn
     // the row changed since the ask still waits for his own tick: an empty one he cannot take yet
     expect(tickOf(2)?.getAttribute("aria-checked")).toBe("false");
     expect(tickOf(2)?.hasAttribute("data-disabled")).toBe(true);
-    expect(sendButton().textContent).toBe("Send 2");
+    expect(sendButton().textContent).toBe("Send 2 of 3");
   });
 
   it("a refresh that marks a ticked row changed clears its tick, and the fresh receipt after he opens it starts unticked", async () => {
@@ -305,11 +305,11 @@ describe("ticks bound to receipts (review finding 9, and the Outbox's copy drawn
     await act(async () => void (await getRequest("box", "r1")));
     await waitFor(() => expect(tickOf(1)?.hasAttribute("data-disabled")).toBe(true));
     expect(tickOf(1)!.getAttribute("aria-checked")).toBe("false");
-    expect(sendButton().textContent).toBe("Send 1");
+    expect(sendButton().textContent).toBe("Send 1 of 3");
     await act(async () => fireEvent.click(within(card().querySelectorAll("[data-summary-row]")[1] as HTMLElement).getByRole("button", { name: /^(Open|Review the change) / })));
     await waitFor(() => expect(tickOf(1)?.hasAttribute("data-disabled")).toBe(false));
     expect(tickOf(1)!.getAttribute("aria-checked")).toBe("false");
-    expect(sendButton().textContent).toBe("Send 1");
+    expect(sendButton().textContent).toBe("Send 1 of 3");
   });
 
   it("a row whose receipt changes on a refresh is no longer ticked", async () => {
@@ -416,5 +416,20 @@ describe("council round 1: the card's words", () => {
     expect(el.querySelectorAll("[data-summary-row]")[1]!.querySelector("[data-summary-side]")).toBeNull();
     expect(el.querySelector("h3")!.textContent).toBe("Send 1 mail to 1 person and discard 1 mail");
     expect(sendButton().textContent).toBe("Approve 2");
+  });
+});
+
+describe("council round 2: the press and the receipt agree with the head", () => {
+  it("says how many of the asked it sends when fewer are ticked, and the plain count when all are", () => {
+    expect(pressLabel(["send", "send"], 3)).toBe("Send 2 of 3");
+    expect(pressLabel(["send", "send", "send"], 3)).toBe("Send 3");
+    expect(pressLabel(["send", "discard"], 10)).toBe("Approve 2 of 10");
+  });
+
+  it("names a discarded add-on call by what it does, never a call", async () => {
+    const { summaryHead } = await import("@shared/work/outboxHead");
+    const echo = { kind: "addon.call", verb: "Send", payload: { addonId: "a1", tool: "echo", words: "Echo", addon: "League" } } as never;
+    expect(summaryHead([], [echo])).toBe("Discard Echo with League");
+    expect(summaryHead([], [echo])).not.toMatch(/call/);
   });
 });
