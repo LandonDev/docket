@@ -474,6 +474,23 @@ describe("a dashboard read from LifeOS sheets while LifeOS is down", () => {
     await waitFor(() => expect(dashHost.refresh).toHaveBeenCalledTimes(1));
   });
 
+  it("asks the box's status again on Retry before the figures, so the line goes once the box answers", async () => {
+    const { setLifeosUnanswered } = await import("../shell/lifeos");
+    setLifeosUnanswered("local");
+    open(page({ failed: "LifeOS is unreachable", lifeos: "unreachable" }));
+    const line = await found("[data-canvas-state]");
+    const link = host.current!.link;
+    const ask = link.request;
+    const asked: string[] = [];
+    link.request = async (method: string, params?: Record<string, unknown>) => (asked.push(method), method === "work.lifeos.status" ? st("connected") : ask(method, params));
+    // The box reads the sheets again once its LifeOS answers.
+    dashHost.refresh.mockImplementation(async () => ({ ...page(), itemId: item.id }));
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(document.querySelector("[data-canvas-state]")).toBeNull());
+    expect(asked[0]).toBe("work.lifeos.status");
+    expect(dashHost.refresh).toHaveBeenCalled();
+  });
+
   it("says it in the body's place when no figures were read, as any canvas open LifeOS could not make", async () => {
     const { setLifeosStatus } = await import("../shell/lifeos");
     setLifeosStatus("local", st("refused"));

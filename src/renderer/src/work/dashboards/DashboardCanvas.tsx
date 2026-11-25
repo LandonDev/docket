@@ -16,7 +16,7 @@ import type { CanvasBodyProps, CanvasShell, ReviewAdapter, StatusLine } from "..
 import { Table } from "../icons";
 import { savedOfReason } from "../shell/DownEmpty";
 import { useDownAction } from "../shell/DownSignIn";
-import { lifeosHostName } from "../shell/lifeos";
+import { lifeosHostName, refreshLifeos } from "../shell/lifeos";
 import { downIsSilence, downWords, useDownPress } from "../shell/lifeosDown";
 import { savedOfState, useLiveDown, type LiveDown } from "../shell/lifeosLive";
 import { connectingWords } from "../shell/lifeosWords";
@@ -79,7 +79,7 @@ const readsLifeos = (view: DashboardView | null): boolean => !!view && sheetsOf(
  * cause the host sent with the page (`lifeos`), else the one its failed read names (a host a release behind), and the
  * host's live state over both. `onBack` reads the page again once the host says connected.
  */
-function useDashLifeos(view: DashboardView | null, env: string, onBack?: () => void): LiveDown {
+function useDashLifeos(view: DashboardView | null, env: string, onBack?: () => Promise<void>): LiveDown {
   const reads = readsLifeos(view);
   const saved = !reads || !view ? null : view.lifeos ? savedOfState(view.lifeos) : savedOfReason(view.failed);
   return useLiveDown(saved, reads ? env : null, onBack);
@@ -123,8 +123,20 @@ export function Body(props: Props) {
     store.set({ error: null });
     setAttempt((n) => n + 1);
   };
-  const reread = (): Promise<void> => host.refresh().then((v) => store.set({ view: v, missed: false }), (e: unknown) => sayError(e, "Couldn't read the figures"));
-  const lifeos = useDashLifeos(view, props.env, () => void host.refresh().then((v) => store.set({ view: v, missed: false }), () => undefined));
+  // The figures read again, the Bar's spinner standing for it; a failure is the line's to say, never a toast beside it.
+  const readAgain = (): Promise<void> => {
+    store.set({ refreshing: true });
+    return host
+      .refresh()
+      .then((v) => store.set({ view: v, missed: false }), () => undefined)
+      .finally(() => store.set({ refreshing: false }));
+  };
+  // The line's Retry asks the computer it names first (its silence clears only on a status answer), then the figures.
+  const reread = (): Promise<void> =>
+    refreshLifeos(props.env)
+      .catch(() => undefined)
+      .then(readAgain);
+  const lifeos = useDashLifeos(view, props.env, readAgain);
   const { press, elsewhere } = useDownPress(lifeos.down, props.env);
   const { action, dialog } = useDownAction(press, props.env, reread);
   useFeeds(shell, host, store, view, current, setCurrent, lifeosLineOf(lifeos, props.env, action, elsewhere));
@@ -148,7 +160,7 @@ export function Body(props: Props) {
       <div className="@container mx-auto max-w-[672px] px-6 pt-6 pb-12">
         {groups(view.blocks).map((g) =>
           g.kind === "figures" ? (
-            <Figures key={g.blocks[0].id} blocks={g.blocks} stale={stale} current={currentId} open={(f) => void host.openSheet(f.sheet, f.sheetTitle).catch((e: unknown) => sayError(e, "Couldn't open the sheet"))} />
+            <Figures key={g.blocks[0].id} blocks={g.blocks} stale={stale} current={currentId} open={(f) => void host.openSheet(f.sheet, f.sheetTitle).catch((e: unknown) => sayError(e, "Couldn't open the sheet", props.env))} />
           ) : (
             <Section key={g.block.id} block={g.block} stale={stale} current={g.block.id === currentId} />
           ),
@@ -302,7 +314,7 @@ export function Bar(props: Props) {
         (v) => store.set({ view: v, missed: false }),
         (e: unknown) => {
           store.set({ missed: true });
-          sayError(e, "Couldn't read the figures");
+          sayError(e, "Couldn't read the figures", props.env);
         },
       )
       .finally(() => store.set({ refreshing: false }));
