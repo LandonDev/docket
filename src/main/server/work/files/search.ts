@@ -501,7 +501,7 @@ async function waitOn(live: Live, ready: () => boolean, ms: number, signal: Abor
 
 /** Searches kept for the next page and the next part: 30 seconds, eight at most, the least used first. */
 /** `owners`: the searches that asked for this walk first (a tab, a window): a replacement stops it only with its last. */
-const kept = new WeakMap<object, Map<string, { at: number; live: Live; words: string; who: string; owners: number }>>()
+const kept = new WeakMap<object, Map<string, { at: number; live: Live; words: string; who: string; owners: number; released: Set<string> }>>()
 
 interface Cursor {
   /** the search it belongs to */
@@ -561,7 +561,8 @@ export async function searchFiles(
   const s: SearchScope = { ctx, by, rowsBy: remoteKey ? HOST_ROWS : by, workspaceId: p.workspaceId, workspace, folder, words: nameWords(p.query), filter, libraries: listedLibraries(ctx, by), method }
   const who = `${p.workspaceId}\u0000${callerKey(s)}`
   const words = s.words.join(' ')
-  const key = JSON.stringify([p.workspaceId, callerKey(s), s.words, Object.fromEntries(Object.entries(filter).sort(([a], [b]) => a.localeCompare(b)))])
+  const keyOf = (w: readonly string[]): string => JSON.stringify([p.workspaceId, callerKey(s), w, Object.fromEntries(Object.entries(filter).sort(([a], [b]) => a.localeCompare(b)))])
+  const key = keyOf(s.words)
   const tag = createHash('sha1').update(key).digest('base64url').slice(0, 12)
   const from = p.cursor ? decode(p.cursor) : null
   if (p.cursor && (!from || from.h !== tag)) return { entries: [], stale: true }
@@ -569,11 +570,18 @@ export async function searchFiles(
   const cache = kept.get(ctx.db) ?? kept.set(ctx.db, new Map()).get(ctx.db)!
   // The search this one takes the place of in the same tab: its walks stop now.
   if (p.replaces !== undefined) {
-    const was = nameWords(p.replaces).join(' ')
+    const was = nameWords(p.replaces)
     // Two tabs or windows searching the same words share one walk (Sol round 1, S11): it stops with its last owner.
-    if (was !== words) for (const [k, v] of cache) if (v.who === who && v.words === was && !v.live.done && --v.owners <= 0) {
-      v.live.controller.abort()
-      cache.delete(k)
+    // Released is the walk of this search's own words and filters alone, and once for each search that replaces it,
+    // so a retried replacement releases nothing more (Sol round 2, S11).
+    const oldKey = keyOf(was)
+    const v = was.join(' ') !== words ? cache.get(oldKey) : undefined
+    if (v && !v.live.done && !v.released.has(key)) {
+      v.released.add(key)
+      if (--v.owners <= 0) {
+        v.live.controller.abort()
+        cache.delete(oldKey)
+      }
     }
   }
   const now = Date.now()
@@ -583,7 +591,7 @@ export async function searchFiles(
   const firstAsk = !p.cursor && !p.seen
   if (!entry || entry.live.controller.signal.aborted) {
     const live = start(s)
-    entry = { at: now, live, words, who, owners: 1 }
+    entry = { at: now, live, words, who, owners: 1, released: new Set() }
     cache.set(key, entry)
     while (cache.size > CAPS.kept) cache.delete(cache.keys().next().value!)
     // What a walk found feeds the names table once, as a search's first page always has: names, never a new feed.

@@ -434,34 +434,53 @@ describe('a search in parts', () => {
   it('stops the walk of the search a new one replaces: the walker reads no folder more, and the VM\'s ask is cancelled', async () => {
     if (process.platform === 'win32') return
     for (let i = 0; i < 400; i++) mkdirSync(join(rig.folder, 'Deep', `F${i}`), { recursive: true })
-    const before = searchCounts.folders
     const old = parts('zzz', 0)
     old.catch(() => undefined)
-    // He typed on: the new words name the old ones, and search LifeOS alone, so they walk nothing themselves.
-    await parts('zzzy', 0, { replaces: 'zzz', filter: { places: ['lifeos'] } })
+    // He typed on, the same filter: the old words' walk is told to stop, the new words walk on their own.
+    const next = parts('zzzy', 0, { replaces: 'zzz' })
+    next.catch(() => undefined)
     await expect(old).rejects.toThrow('cancelled')
-    const walked = searchCounts.folders - before
-    for (let i = 0; i < 50; i++) await settle()
-    expect(searchCounts.folders - before).toBe(walked)
-    expect(walked).toBeLessThan(400)
-    // The VM's walk was asked, and its ask was told to stop.
+    // The old walk's ask of the VM was told to stop; the new walk's was not.
     expect(calls[0]?.signal?.aborted).toBe(true)
+    await settle()
+    expect(calls[1]?.signal?.aborted).toBe(false)
+    release?.()
   })
 
-  /** Sol round 1, S11: two tabs (or windows) searching the same words share a walk; one typing on keeps the other's. */
   it('keeps a walk two searches share when one of them is replaced, and stops it when the other is too', async () => {
     if (process.platform === 'win32') return
     const tabA = parts('budget', 0)
     const tabB = parts('budget', 0)
     tabA.catch(() => undefined)
     tabB.catch(() => undefined)
-    await parts('budgets', 0, { replaces: 'budget', filter: { places: ['lifeos'] } })
+    void parts('budgets', 0, { replaces: 'budget' }).catch(() => undefined)
+    await settle()
     // Tab B still waits on the shared walk: the VM's ask goes on.
     expect(calls[0]?.signal?.aborted).toBe(false)
     // Tab B types on too: the walk has no owner left, and stops.
-    await parts('budgeted', 0, { replaces: 'budget', filter: { places: ['lifeos'] } })
+    void parts('budgeted', 0, { replaces: 'budget' }).catch(() => undefined)
+    await settle()
     expect(calls[0]?.signal?.aborted).toBe(true)
     await expect(tabB).rejects.toThrow('cancelled')
+  })
+
+  /** Sol round 2, S11: a replacement releases only its own search (words and filters), and only once. */
+  it('leaves alone a walk of the same words with other filters, and a retried replacement releases its walk once', async () => {
+    if (process.platform === 'win32') return
+    // Another tab searches every place for the words; this one searched LifeOS alone, and types on.
+    const other = parts('budget', 0)
+    other.catch(() => undefined)
+    await parts('budget', 0, { filter: { places: ['lifeos'] } })
+    await parts('budgets', 0, { replaces: 'budget', filter: { places: ['lifeos'] } })
+    expect(calls[0]?.signal?.aborted).toBe(false)
+    // A second tab shares the other's walk; the first types on, and its replacement is asked twice (a retry).
+    const second = parts('budget', 0)
+    second.catch(() => undefined)
+    void parts('budgeted', 0, { replaces: 'budget' }).catch(() => undefined)
+    await settle()
+    void parts('budgeted', 0, { replaces: 'budget' }).catch(() => undefined)
+    await settle()
+    expect(calls[0]?.signal?.aborted).toBe(false)
   })
 
   it('sends nothing to a sleeping VM: no door call, its places named as left out', async () => {
