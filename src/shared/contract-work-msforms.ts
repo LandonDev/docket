@@ -68,6 +68,8 @@ export interface MsSuggestion {
   change: MsChange
   words: string
   reason?: string
+  /** Agent writes was on and held it anyway: why, in his words */
+  held?: string
   by: Principal
   at: number
 }

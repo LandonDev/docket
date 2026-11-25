@@ -155,6 +155,10 @@ Work; the form stays in Forms as it is.
 - An agent's change to a collecting form always waits for his Accept (`work.msforms.review`, approve under
   `mustBePerson`: never a thread, another host or an MCP key); on a draft the mode decides, and Agent writes
   runs only after a fresh read shows Accept responses off. Waiting changes are said in words on the bar's stepper.
+  The mode is read at each change, so his switch counts from the thread's next one. Agent writes holds a change, and
+  says why on the stepper and to the thread (`WRITES_HELD`, msforms/tools.ts), where the `office.edit` rule for a file
+  others can open applies: a form that takes answers, or is collecting; and a Purdue form for a thread a routine
+  started (`answersWithheld`'s line). A form his Team can see but that takes no answers is his own draft here.
 - **The link goes out only on his press**: his Copy, the QR he shows, Mail the link (Mail's composer, his Send).
   `notGrantable` refuses a grant on any act whose words hold a form's link (`hasFormLink`, work-outbox.md).
 - SharePoint's Forms survey and Create new form, Excel's New Form and Send Form, and Forms' Open results in Excel are

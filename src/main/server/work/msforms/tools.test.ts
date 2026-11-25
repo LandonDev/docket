@@ -169,6 +169,27 @@ describe('making and changing', () => {
     carrier.forms.get(view.formId)!.settings.accepting = true
     const r2 = await tool('msform_edit', { form: view.formId, changes: [{ op: 'remove', question: 1 }] })
     expect(r2.text).toContain("waits for the owner's Accept")
+    // It says why, to the thread and on his canvas: the form takes answers.
+    expect(r2.text).toContain('The form takes answers')
+    const after = await call<MsFormView>('work.msforms.get', { workspaceId: 'w1', formId: view.formId })
+    expect(after.suggestions.at(-1)?.held).toContain('Turn off Accept responses')
+  })
+
+  it('his switch to Agent writes counts from the next change of a live thread', async () => {
+    const view = await aForm()
+    const first = await tool('msform_edit', { form: view.formId, changes: [{ op: 'remove', question: 2 }] })
+    expect(first.text).toContain("waits for the owner's Accept")
+    await call('work.msforms.mode', { workspaceId: 'w1', formId: view.formId, mode: 'writes' })
+    const next = await tool('msform_edit', { form: view.formId, changes: [{ op: 'remove', question: 1 }] })
+    expect(next.text).toContain('Written in Forms')
+  })
+
+  it("a routine's thread in Purdue writes nothing by itself, whatever the mode", async () => {
+    const view = await aForm({ mode: 'writes' })
+    scopes.set('t1', { workspaceId: 'w1', sector: 'purdue', routineRunId: 'run1' })
+    const r = await tool('msform_edit', { form: view.formId, changes: [{ op: 'remove', question: 1 }] })
+    expect(r.text).toContain('A thread a routine started does not write Purdue forms by itself')
+    expect(carrier.calls.some((c) => c.op === 'write')).toBe(false)
   })
 
   it('a form taking answers: every change waits, whatever the mode', async () => {

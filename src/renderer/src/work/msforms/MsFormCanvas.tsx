@@ -132,7 +132,8 @@ export function Body(props: Props) {
       {/* The change the stepper stands on, in words: Forms' own page cannot outline it. */}
       <div data-msform-change className="flex min-h-8 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
         <span className="min-w-0 truncate text-foreground">{waiting.words}</span>
-        {waiting.reason ? <span className="min-w-0 truncate text-muted-foreground">{waiting.reason}</span> : null}
+        {/* Agent writes held it: why, before the agent's own reason */}
+        {waiting.held ?? waiting.reason ? <span className="min-w-0 truncate text-muted-foreground" title={waiting.held ?? waiting.reason}>{waiting.held ?? waiting.reason}</span> : null}
       </div>
       {guest}
     </div>

@@ -12,7 +12,7 @@ import { announce, authFor, carrierOrRefuse, formWords, holdPublish, setOpen, st
 import { folderOf, libraryAt } from './place'
 import { formReach, formsReached, jobOf, librariesFor, MsformsError, type Reached } from './reach'
 import { MsformsStore, type MsFormRow } from './store'
-import { refuseWithheld } from './withhold'
+import { answersWithheld, refuseWithheld } from './withhold'
 import { MakerFromSchema, questionsFrom, type MakerFrom } from './makers'
 
 /**
@@ -80,27 +80,44 @@ const asChange = (c: ChangeIn): MsChange =>
         ? { op: 'remove', at: c.question - 1 }
         : { op: 'move', at: c.question - 1, to: c.to - 1 }
 
-/** An agent's changes: written now under "Agent writes" on a draft whose fresh read shows it takes no answers; else they wait for his Accept. */
-async function agentChanges(ctx: ToolCtx, at: Reached, changes: MsChange[], reason?: string): Promise<{ wrote: boolean; row: MsFormRow }> {
+/** Why "Agent writes" held a change for his Accept, in the words the thread and his canvas say. */
+export const WRITES_HELD = {
+  answers: 'The form takes answers, so Agent writes holds its changes for your Accept, as for any file others can open. Turn off Accept responses and the next change goes straight in.',
+  collecting: 'The form is collecting answers, so its changes wait for your Accept.',
+  unattended: 'A thread a routine started does not write Purdue forms by itself: its changes wait for your Accept.'
+} as const
+
+/**
+ * An agent's changes. Under "Agent writes" (the mode read at each change, so his switch counts from the next one) a
+ * change to his own draft that takes no answers, by a fresh read, is written now. A form others can answer is held
+ * as an `office.edit` is for a file others can open (work-outbox.md), and so is a Purdue form for a thread a routine
+ * started (`answersWithheld`'s line): those wait for his Accept and say why.
+ */
+async function agentChanges(ctx: ToolCtx, at: Reached, changes: MsChange[], reason?: string): Promise<{ wrote: boolean; row: MsFormRow; held?: string }> {
   const { row } = at
   const by = agentPrincipal(ctx.host, ctx.sessionId)
   const store = new MsformsStore(ctx.db)
-  if (row.state === 'draft' && row.mode === 'writes') {
-    const carrier = carrierOrRefuse()
-    // "Agent writes" holds only while the form takes no answers: read so fresh.
-    // A Settings read: Accept responses as the panel shows it, and missing reads as on.
-    const fresh = await carrier.read(authFor(ctx, row, 'read', 'pillar', readPayload(row.formId)), row.formId)
-    if (!fresh.settings.accepting) {
-      const next = await writeChanges(ctx, row, changes, 'pillar', by)
-      announce(ctx, next)
-      return { wrote: true, row: next }
+  let held: string | undefined
+  if (row.mode === 'writes') {
+    if (row.state !== 'draft') held = WRITES_HELD.collecting
+    else if (answersWithheld(ctx, callerOf(ctx), row.sector)) held = WRITES_HELD.unattended
+    else {
+      const carrier = carrierOrRefuse()
+      // A Settings read: Accept responses as the panel shows it, and missing reads as on.
+      const fresh = await carrier.read(authFor(ctx, row, 'read', 'pillar', readPayload(row.formId)), row.formId)
+      if (!fresh.settings.accepting) {
+        const next = await writeChanges(ctx, row, changes, 'pillar', by)
+        announce(ctx, next)
+        return { wrote: true, row: next }
+      }
+      storeRead(ctx, row, fresh, { by: 'page' })
+      held = WRITES_HELD.answers
     }
-    storeRead(ctx, row, fresh, { by: 'page' })
   }
-  const waiting = [...row.suggestions, ...changes.map((c) => suggestionOf(c, row.questions, by, reason))]
+  const waiting = [...row.suggestions, ...changes.map((c) => ({ ...suggestionOf(c, row.questions, by, reason), ...(held ? { held } : {}) }))]
   const next = store.update(row.workspaceId, row.formId, { suggestions: waiting })
   announce(ctx, next)
-  return { wrote: false, row: next }
+  return { wrote: false, row: next, ...(held ? { held } : {}) }
 }
 
 // ── the folder a new form goes in ────────────────────────────────────
@@ -242,8 +259,8 @@ export const msformsTools: WorkTool[] = [
       run(async () => {
         const at = reached(ctx, args.form)
         try {
-          const { wrote, row } = await agentChanges(ctx, at, args.changes.map(asChange), args.reason)
-          return workText(wrote ? `Written in Forms.\n\n${outline(row)}` : `${args.changes.length === 1 ? 'The change waits' : `${args.changes.length} changes wait`} for the owner's Accept; nothing in Forms changed yet.`)
+          const { wrote, row, held } = await agentChanges(ctx, at, args.changes.map(asChange), args.reason)
+          return workText(wrote ? `Written in Forms.\n\n${outline(row)}` : `${args.changes.length === 1 ? 'The change waits' : `${args.changes.length} changes wait`} for the owner's Accept; nothing in Forms changed yet.${held ? ` ${held}` : ''}`)
         } catch (err) {
           // A carrier stop says what it had done; the form holds that much.
           if (err instanceof MsformsError) return fail(err.message)
