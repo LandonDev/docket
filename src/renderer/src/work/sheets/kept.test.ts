@@ -154,6 +154,28 @@ describe("a sheet's tab shown again", () => {
     expect(made[2]!.state.book).not.toBeNull();
   });
 
+  it("a book that comes after its tab stopped showing is not kept, and the next body reads the file again (sol S6)", async () => {
+    const host = countingHost(BOOK);
+    let answer!: () => void;
+    const gate = new Promise<void>((r) => (answer = r));
+    const open = host.open;
+    host.open = async (first) => {
+      await gate;
+      return open(first);
+    };
+    const sync = syncOf("local\nlate", () => new SheetSync(host, decode));
+    const stop = sync.start();
+    stop();
+    answer();
+    await new Promise((r) => setTimeout(r, 10));
+    expect(sync.state.book).toBeNull();
+    expect(keptBookCount()).toBe(0);
+    const again = sync.start();
+    await settle(() => !!sync.state.book);
+    expect(host.calls.filter((c) => c.startsWith("open"))).toHaveLength(2);
+    again();
+  });
+
   it("goes with its item: five sheets opened and closed hold nothing", async () => {
     for (let i = 0; i < 5; i++) {
       const sync = syncOf(`local\nsheet${i}`, () => new SheetSync(countingHost(BOOK), decode));

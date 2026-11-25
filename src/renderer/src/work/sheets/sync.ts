@@ -280,6 +280,9 @@ export class SheetSync {
       if (this.state.loading) this.set({ loading: null });
     }
     const book = await this.decode(got === size ? whole : whole.subarray(0, got), head.format);
+    // No body shows the item now (its tab went while the book came): the book is not kept, so it never sits outside
+    // the two kept ones (sol S6); a body that comes back reads the file again.
+    if (!this.isShown()) return;
     this.kept = { book, rev: head.rev };
     this.reset(head.rev);
     this.set({ book: this.drawn() });
