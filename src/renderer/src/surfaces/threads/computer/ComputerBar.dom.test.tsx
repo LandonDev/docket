@@ -175,4 +175,19 @@ describe("the computer's bar", () => {
     await act(async () => {});
     expect(calls).toEqual(["work.winvm.restart", "work.office.vmSignIn"]);
   });
+
+  it("every computer wears it: the box's page with Take over and no VM menu, a Mac's or a PC's window with Stop alone", () => {
+    render(<ComputerBar tile={tile()} />);
+    expect(document.querySelector("[data-glyph]")!.getAttribute("data-glyph")).toBe("page");
+    expect(names()).toEqual(["Take over", "Stop File the March expense report"]);
+    expect(screen.queryByRole("button", { name: "Windows VM" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Take over" })).not.toBeNull();
+    cleanup();
+    render(<ComputerBar tile={tile({ browser: false, computer: "window:t2", title: "Tidy the Downloads folder", where: "Landon's MacBook" })} />);
+    expect(document.querySelector("[data-glyph]")!.getAttribute("data-glyph")).toBe("window");
+    expect(names()).toEqual(["Stop Tidy the Downloads folder"]);
+    cleanup();
+    render(<ComputerBar tile={vmTile()} vm={awake} />);
+    expect(document.querySelector("[data-glyph]")!.getAttribute("data-glyph")).toBe("screen");
+  });
 });

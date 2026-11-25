@@ -85,6 +85,7 @@ const fixtures: ComputersFixture[] = [
   { name: "One computer has the page (1440×900)", width: 1200, height: 860, props: { tiles: [browser], onOpenSession: noop, pictureOf } },
   { name: "Three: the stage and a strip beside it (1440×900)", width: 1200, height: 860, props: { tiles: [browser, mac, studio], onOpenSession: noop, pictureOf } },
   { name: "Three in a smaller window (900×700)", width: 660, height: 660, props: { tiles: [browser, mac, studio], onOpenSession: noop, pictureOf } },
+  { name: "A Mac's window on the stage: its own shape, Stop alone", width: 1200, height: 860, props: { tiles: [{ ...mac, entry: { ...mac.entry, row: { ...mac.entry.row, lastCallAt: 40 } } }, browser], onOpenSession: noop, pictureOf } },
   { name: "He drives the page on the stage", width: 1200, height: 860, props: { tiles: [driven, mac], onOpenSession: noop, pictureOf } },
   { name: "He drives the Windows VM: its keys beside Hand back", width: 660, height: 520, props: { tiles: [vm], onOpenSession: noop, pictureOf } },
   { name: "One waits on him: it has the stage, its question in its caption", width: 1200, height: 860, props: { tiles: [browser, asking], onOpenSession: noop, pictureOf } },

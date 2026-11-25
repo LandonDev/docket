@@ -68,9 +68,16 @@ export const NO_RESIZE = "Turn on live resize in Settings → Work";
 export const THREAD_HOLDS = "A thread is using it";
 
 /** The glyph a computer wears: the Windows VM's screen, the box's page, a Mac's or a PC's window. */
+export const glyphOf = (tile: Pick<ComputerTile, "computer" | "browser"> | null): "screen" | "page" | "window" => (!tile || tile.computer.startsWith("vm:") ? "screen" : tile.browser ? "page" : "window");
+const GLYPHS = { screen: Desktop, page: Globe, window: Laptop } as const;
 function Glyph({ tile }: { tile: ComputerTile | null }) {
-  const Icon = !tile || tile.computer.startsWith("vm:") ? Desktop : tile.browser ? Globe : Laptop;
-  return <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />;
+  const kind = glyphOf(tile);
+  const Icon = GLYPHS[kind];
+  return (
+    <span data-glyph={kind} className="flex shrink-0 text-muted-foreground">
+      <Icon aria-hidden className="size-3.5" />
+    </span>
+  );
 }
 
 /** A quiet icon button with a tip, for the bar's views (Pop out, Full screen, back, close). `fold`: it gives way under 640px. */
