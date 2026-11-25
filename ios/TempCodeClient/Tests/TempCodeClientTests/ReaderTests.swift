@@ -289,7 +289,8 @@ struct HostedRejoinTests {
         #expect(rejoin.heard(.passEnded, forward: true) == .rejoin)
         // The new page ended too before it opened: its own words stay.
         #expect(rejoin.heard(.passEnded, forward: true) == .stay)
-        #expect(!rejoin.cameForward())
+        let came1 = rejoin.cameForward()
+        #expect(!came1)
         // Once a page opened, a later restart opens it again.
         #expect(rejoin.heard(.opened, forward: true) == .stay)
         #expect(rejoin.heard(.passEnded, forward: true) == .rejoin)
@@ -298,13 +299,16 @@ struct HostedRejoinTests {
     @Test func `an end while the screen is away waits for it to come forward`() {
         var rejoin = HostedRejoin()
         #expect(rejoin.heard(.passEnded, forward: false) == .wait)
-        #expect(rejoin.cameForward())
+        let came2 = rejoin.cameForward()
+        #expect(came2)
         // Once only.
-        #expect(!rejoin.cameForward())
+        let came3 = rejoin.cameForward()
+        #expect(!came3)
         #expect(rejoin.heard(.passEnded, forward: true) == .stay)
         // Nothing ended: coming forward asks nothing.
         var quiet = HostedRejoin()
-        #expect(!quiet.cameForward())
+        let asked = quiet.cameForward()
+        #expect(!asked)
     }
 
     @Test func `the page's words are read from WebKit's body and nothing else`() {
