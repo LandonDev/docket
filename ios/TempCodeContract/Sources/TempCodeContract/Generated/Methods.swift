@@ -3967,13 +3967,15 @@ public enum Methods {
             public let name: String
             public let role: Role
             public let expiresAt: Int
+            public let attempt: String?
 
-            public init(source: Source, title: String, name: String, role: Role, expiresAt: Int) {
+            public init(source: Source, title: String, name: String, role: Role, expiresAt: Int, attempt: String? = nil) {
                 self.source = source
                 self.title = title
                 self.name = name
                 self.role = role
                 self.expiresAt = expiresAt
+                self.attempt = attempt
             }
         }
 
