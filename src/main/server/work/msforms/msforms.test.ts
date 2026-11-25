@@ -199,6 +199,16 @@ describe('the one reach check', () => {
       await expect(asThread('t1', method, { workspaceId: 'w1', ...extra })).rejects.toThrow('only the owner')
     expect(carrier.calls.filter((c) => c.op !== 'make')).toEqual([])
   })
+
+  it("takes his press to accept a thread's change, never another host or a key without approve (the hold's ninth review)", async () => {
+    const view = await made()
+    const params = { workspaceId: 'w1', formId: view.formId, accept: [], reject: [] }
+    const peer = { kind: 'remote', caps: ['read', 'operate', 'approve'], peer: 'env_mac' }
+    await expect(msforms.handle!({ id: '1', method: 'work.msforms.review', params } as ClientRequest, work.ctx, peer as never)).rejects.toThrow('only the owner decides')
+    const mcp = { kind: 'remote', caps: ['read', 'operate', 'approve'], keyId: 'k2', audience: 'mcp' }
+    await expect(msforms.handle!({ id: '1', method: 'work.msforms.review', params } as ClientRequest, work.ctx, mcp as never)).rejects.toThrow('only the owner decides')
+    await call('work.msforms.review', params)
+  })
 })
 
 describe('Collect responses, held', () => {

@@ -491,7 +491,10 @@ while Work stays off, the schedule he set being what lets it go); a LifeOS draft
 deleted in LifeOS itself after his words leaves no trace here, so "all"
 cannot see it was once in the set; Mail's own scheduled controls
 (work-kit's) name no revision, so Send now, Move and Cancel from an older
-Mail window act on the schedule as it stands.
+Mail window act on the schedule as it stands; the browser fence checks a
+step's address once, as the step begins, so a page that moves focus to a
+`/ui` window during the step's own keys is not caught (Mac and PC alike: a
+per-key check needs the native services).
 
 Each round of the hold's review also closed: a later send refused on a
 LifeOS draft whose thread is gone; every unmarked LifeOS schedule checked
@@ -502,6 +505,16 @@ tree's LifeOS drafts changed after his words; a request never voided
 before LifeOS's list arrived; and the digest never reading a request's
 detail out of its ledger. Forms' Publish names the form revision its canvas
 drew (`work.forms.publish {rev}`), refused when a thread changed it since.
+The ninth round closed three ways round the gate: a thread's `html_render`
+page or file under `/asset/*` carries `Content-Security-Policy: sandbox`, so
+loaded top-level in a browser with his `/ui` cookie its socket's Origin is
+null and refused (remote/ui.ts; a PDF keeps its viewer); a Work thread may
+not launch or touch a screen of another machine or a phone (iPhone
+Mirroring, Simulator, Screen Sharing, a remote desktop: `MIRROR_BUNDLES`,
+`MIRROR_EXES` in computer/policy.ts), where a TempCode client could take its
+clicks; and Accept of a thread's change to a published form, ours
+(`work.forms.review`) or Microsoft's (`work.msforms.review`), and Messages'
+send presses take `mustBePerson`'s rule.
 
 **His Send.** One check of the whole press (open, not run out, the
 generation, every receipt this request's and none twice, each the action
@@ -851,7 +864,8 @@ are not driven at all: a Work thread's step there is refused
 
 **What this cannot catch**, in the same class as the shell: a click by
 position on a control the screen reader gives no name (a canvas app, a
-remote desktop, a picture of a button); a control named off the list; an
+picture of a button; a remote desktop or a mirrored phone a Work thread may
+not use at all); a control named off the list; an
 act split so that no single call reads as outward; a web address whose page
 acts on being fetched. The editor rule needs a listed app or a readable
 address on a listed host. It judges the page before the call, so a batch

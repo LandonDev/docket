@@ -19,6 +19,8 @@ export const NOT_HERE = 'That reply is not in this conversation'
 
 function mustBe(by: Caller, cap: 'approve' | 'operate'): void {
   if (by.kind === 'model' || !by.caps.includes(cap)) throw new Error(NOT_A_PERSON)
+  // A press that sends is the Outbox's kind of press: never another host over the link, nor an MCP client's key.
+  if (cap === 'approve' && (by.peer !== undefined || (by.kind === 'remote' && by.audience !== 'client'))) throw new Error(NOT_A_PERSON)
 }
 
 /** LifeOS's answer to a reply, its refusal in its own words. */

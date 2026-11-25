@@ -146,6 +146,11 @@ export function createUiHandler(options: UiOptions): UiHandler {
       out.headers.forEach((value, name) => {
         headers[name] = value
       })
+      // A thread's page or file loaded top-level here would run on this origin with his cookie, and its socket could
+      // press Send (the hold's ninth review). Sandboxed, its origin is opaque: the socket's Origin is null and refused.
+      // A PDF keeps its viewer, which a sandbox blocks, and runs no script of the page's.
+      if (!/^application\/pdf\b/i.test(headers['content-type'] ?? '')) headers['content-security-policy'] = 'sandbox allow-scripts allow-forms'
+      headers['x-content-type-options'] = 'nosniff'
       res.writeHead(out.status, headers)
       if (!out.body || req.method === 'HEAD') return void res.end(), true
       Readable.fromWeb(out.body as import('node:stream/web').ReadableStream).pipe(res)

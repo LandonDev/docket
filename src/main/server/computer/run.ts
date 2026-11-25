@@ -582,7 +582,7 @@ async function runChecked(
   // an app no call may touch, or an item that is no page, file or folder: refused before the card
   if (tool === 'computer_apps') {
     const line =
-      (typeof args.launch === 'string' ? refusedLaunch(args.launch, !!host.vm) : null) ?? (openOf(args).map((item) => refusedOpenItem(item, !!host.vm)).find((l) => l !== null) ?? null)
+      (typeof args.launch === 'string' ? refusedLaunch(args.launch, !!host.vm, work) : null) ?? (openOf(args).map((item) => refusedOpenItem(item, !!host.vm)).find((l) => l !== null) ?? null)
     if (line) return refusalOf(line)
     const URLs = webOpenItems(openOf(args))
     if (URLs.length) {
@@ -844,18 +844,18 @@ async function runChecked(
         const notAllowed = await askCard()
         if (notAllowed) return notAllowed
       }
-      const apps = await runApps(call, args, t, note, !!host.vm)
+      const apps = await runApps(call, args, t, note, !!host.vm, work)
       return abortedLine(signal) ? refusal(abortedLine(signal)!) : apps
     }
 
     // 5. the target: the app pinned to a pid before any request, and checked
-    const pin = await pinApp(host, args.app!, call, t.serviceSession)
+    const pin = await pinApp(host, args.app!, call, t.serviceSession, work)
     if ('line' in pin) return refusalOf(pin.line)
     resolvedApp = pin.app
     /** the person's app as the list cached before the act reads it, for the front line */
     const person = host.targets.activeName(pin.app.pid)
     note.person = person
-    const offLimits = refusedTarget(pin.app, steps.some(sendsInput) ? 'act' : 'read')
+    const offLimits = refusedTarget(pin.app, steps.some(sendsInput) ? 'act' : 'read', process.pid, work)
     if (offLimits) return refusalOf(offLimits)
     if (host.origins && tool !== 'computer_observe') {
       const current = app()?.window
@@ -1221,19 +1221,20 @@ async function runApps(
   args: Args,
   t: ThreadComputer,
   note: CallNote,
-  vm = false
+  vm = false,
+  work = false
 ): Promise<ComputerToolOutcome> {
   const session = t.serviceSession
   const launch = typeof args.launch === 'string' ? args.launch : null
   const open = openOf(args)
-  const r = launch ? await call('apps.launch', { app: vm ? vmLaunchFile(launch) : launch, ...(open.length ? { open } : {}), session, refuse: refusedLaunchList(vm ? 'win32' : undefined, vm) }) : null
+  const r = launch ? await call('apps.launch', { app: vm ? vmLaunchFile(launch) : launch, ...(open.length ? { open } : {}), session, refuse: refusedLaunchList(vm ? 'win32' : undefined, vm, work) }) : null
   // the launch is the journal's from its answer: a list that fails after it does not unsay it
   if (r) note.launched = { launched: r.launched, opened: open.length > 0 }
   if (r?.front) note.front = r.front
   const { apps } = await call('apps.list', { windows: true })
   t.listedApps = apps
   const app = r ? apps.find((a) => a.pid === r.pid) : undefined
-  const offLimits = r ? refusedTarget(app ?? { pid: r.pid, bundleId: null }, open.length ? 'act' : 'read') : null
+  const offLimits = r ? refusedTarget(app ?? { pid: r.pid, bundleId: null }, open.length ? 'act' : 'read', process.pid, work) : null
   if (offLimits) {
     // refused as a target: the call's end is the refusal, as it was asked
     delete note.launched
@@ -1271,7 +1272,8 @@ async function pinApp(
   host: RunHost,
   query: string,
   call: <M extends ComputerMethod>(m: M, p: ComputerParams<M>) => Promise<ComputerResult<M>>,
-  session: string
+  session: string,
+  work = false
 ): Promise<Resolved> {
   const proof = host.resolveApp?.(query)
   if (proof?.pid !== undefined) return { app: { pid: proof.pid, bundleId: null, name: query } }
@@ -1279,7 +1281,7 @@ async function pinApp(
     proof?.app ?? query,
     {
       list: async () => (await call('apps.list', {})).apps,
-      launch: (app) => call('apps.launch', { app: host.vm ? vmLaunchFile(app) : app, session, refuse: refusedLaunchList(host.vm ? 'win32' : undefined, !!host.vm) }),
+      launch: (app) => call('apps.launch', { app: host.vm ? vmLaunchFile(app) : app, session, refuse: refusedLaunchList(host.vm ? 'win32' : undefined, !!host.vm, work) }),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms))
     },
     (e) => (e instanceof ComputerRpcError ? (e.data ?? null) : null)

@@ -137,7 +137,7 @@ export function refused(kind: HostErrorKind, detail?: string): ComputerToolOutco
   return { ...refusal(hostErrorLine(kind, detail)), refused: kind }
 }
 
-const REFUSED_APP_LINES: ReadonlySet<string> = new Set((['tempcode', 'prompts', 'unchecked'] satisfies RefusedApp[]).map((why) => hostErrorLine('refused_app', why)))
+const REFUSED_APP_LINES: ReadonlySet<string> = new Set((['tempcode', 'prompts', 'mirror', 'unchecked'] satisfies RefusedApp[]).map((why) => hostErrorLine('refused_app', why)))
 
 /** A refusal that reaches the run as a finished line (policy.ts): one of the off-limits lines keeps its kind, any other is the line alone. */
 export function refusalOf(line: string): ComputerToolOutcome {

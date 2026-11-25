@@ -171,7 +171,10 @@ The service uses physical pixels for window geometry and input at every Windows 
   into a password field. Away allows every card but a `pay` or
   `subscribe` act's, which it denies. Every call's app is pinned to a pid
   first (`TargetResolver`), and TempCode itself and the system's password
-  and Touch ID prompts are refused (`refused_app`). Service errors read
+  and Touch ID prompts are refused (`refused_app`); for a Work thread, so
+  is a screen of another machine or a phone (iPhone Mirroring, Simulator,
+  Screen Sharing, a remote desktop: `MIRROR_BUNDLES`, `MIRROR_EXES`), which
+  may show a TempCode client whose presses are his. Service errors read
   through `errorLine` (src/shared/computer/errorWords.ts).
 - **TempCode pages.** Reads and acts in a browser on a TempCode address
   are refused in every access and Away mode. The host checks the current

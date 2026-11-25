@@ -39,6 +39,17 @@ export const WINDOWS_PROMPT_EXES: readonly string[] = ['consent.exe', 'credentia
  */
 export const REFUSED_ACT_BUNDLES: readonly string[] = ['com.apple.SecurityAgent', 'com.apple.LocalAuthentication.UIAgent']
 
+/**
+ * Screens that show another machine or a phone (the hold's ninth review): what one shows may be a TempCode client
+ * that holds his approve key, and a click by position there reads as no control, so a Work thread could press Send
+ * in it. A Work thread launches and touches none of them: by bundle id on a Mac, by exe on a PC, or by the name a
+ * person gives it.
+ */
+export const MIRROR_BUNDLES: readonly string[] = ['com.apple.ScreenContinuity', 'com.apple.iphonesimulator', 'com.apple.ScreenSharing', 'com.microsoft.rdc.macos', 'com.realvnc.vncviewer']
+export const MIRROR_EXES: readonly string[] = ['mstsc.exe', 'msrdc.exe', 'msrdcw.exe', 'windows365.exe', 'vncviewer.exe']
+const MIRROR_NAMES: readonly string[] = ['iphone mirroring', 'simulator', 'screen sharing', 'remote desktop connection', 'microsoft remote desktop', 'windows app', 'vnc viewer']
+const mirrors = (id: string): boolean => MIRROR_EXES.includes(id) || MIRROR_BUNDLES.some((b) => b.toLowerCase() === id)
+
 /** Every `apps.launch` names these as `refuse`: the service checks the resolved app before it launches or opens anything (§23.2). */
 export const REFUSED_LAUNCH_BUNDLES: readonly string[] = [TEMPCODE_BUNDLE_ID, ...REFUSED_ACT_BUNDLES]
 
@@ -126,8 +137,12 @@ const NOT_A_BARE_NAME = /[\\/:"~]|[. ]$/
 const VM_REFUSED_LAUNCH_NAMES: readonly string[] = ['command prompt', 'powershell', 'windows powershell', 'terminal', 'windows terminal', 'registry editor', 'task scheduler', 'windows script host']
 
 /** What `apps.launch` refuses on this host's service: the Mac's bundle ids, or a Windows PC's exes, and the VM's command lines. */
-export const refusedLaunchList = (platform: NodeJS.Platform = process.platform, vm = false): string[] =>
-  vm ? [...REFUSED_LAUNCH_EXES, ...VM_REFUSED_LAUNCH_EXES] : platform === 'win32' ? [...REFUSED_LAUNCH_EXES] : [...REFUSED_LAUNCH_BUNDLES]
+export const refusedLaunchList = (platform: NodeJS.Platform = process.platform, vm = false, work = false): string[] =>
+  vm
+    ? [...REFUSED_LAUNCH_EXES, ...VM_REFUSED_LAUNCH_EXES, ...(work ? MIRROR_EXES : [])]
+    : platform === 'win32'
+      ? [...REFUSED_LAUNCH_EXES, ...(work ? MIRROR_EXES : [])]
+      : [...REFUSED_LAUNCH_BUNDLES, ...(work ? MIRROR_BUNDLES : [])]
 
 /**
  * An item the VM would run, however it is written: its `%` escapes decoded, its query cut off, and an item Windows
@@ -220,9 +235,10 @@ export class TargetResolver {
 }
 
 /** Why a call may not touch this app, or null. Reads are refused only for TempCode itself. */
-export function refusedTarget(app: { pid: number; bundleId: string | null }, use: 'read' | 'act', ownPid = process.pid): string | null {
+export function refusedTarget(app: { pid: number; bundleId: string | null }, use: 'read' | 'act', ownPid = process.pid, work = false): string | null {
   const id = app.bundleId?.toLowerCase() ?? null
   if (app.pid === ownPid || app.bundleId === TEMPCODE_BUNDLE_ID || id === TEMPCODE_WINDOWS_EXE) return hostErrorLine('refused_app', 'tempcode')
+  if (work && id && mirrors(id)) return hostErrorLine('refused_app', 'mirror')
   if (use === 'act' && id && (WINDOWS_PROMPT_EXES.includes(id) || REFUSED_ACT_BUNDLES.some((b) => b.toLowerCase() === id))) return hostErrorLine('refused_app', promptsOf(id))
   return null
 }
@@ -251,12 +267,14 @@ const promptsOf = (id: string): 'prompts' | 'windows-prompts' => (WINDOWS_PROMPT
 
 /**
  * computer_apps { launch }: a query naming TempCode or a refused prompt is refused before the service hears it; in
- * the Windows VM (`vm`), a command line or a script host too, by its file or the name a person gives it.
+ * the Windows VM (`vm`), a command line or a script host too, by its file or the name a person gives it; for a Work
+ * thread (`work`), a screen of another machine or a phone.
  */
-export function refusedLaunch(query: string, vm = false): string | null {
+export function refusedLaunch(query: string, vm = false, work = false): string | null {
   // by the file's own name too, however the app was named: `C:\\Windows\\System32\\consent.exe`, `consent`
   const base = lower(query).split(/[\\/]/).pop() ?? ''
   const exe = base.endsWith('.exe') || base.endsWith('.msc') ? base : `${base}.exe`
+  if (work && (mirrors(lower(query).trim()) || mirrors(exe) || MIRROR_NAMES.includes(lower(query).trim()))) return hostErrorLine('refused_app', 'mirror')
   if (vm && (VM_REFUSED_LAUNCH_EXES.includes(exe) || VM_REFUSED_LAUNCH_EXES.includes(base) || VM_REFUSED_LAUNCH_NAMES.includes(lower(query).trim()))) return hostErrorLine('refused_app', 'console')
   if (vm && (NOT_A_BARE_NAME.test(query) || !VM_LAUNCH_APPS.includes(lower(query)))) return hostErrorLine('refused_app', 'vm-apps')
   if (exe !== lower(query) && (exe === TEMPCODE_WINDOWS_EXE || WINDOWS_PROMPT_EXES.includes(exe))) return refusedLaunch(exe)

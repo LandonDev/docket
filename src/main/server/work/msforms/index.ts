@@ -2,6 +2,7 @@ import type { ClientRequest } from '@shared/contract'
 import { MSFORMS_OWNER_ONLY, MsformsRequestSchemas } from '@shared/contract-work-msforms'
 import { handled, NOT_HANDLED, type Handled } from '@shared/work'
 import type { ActKindDef, Caller, WorkCtx, WorkModule } from '../modules'
+import { mustBePerson } from '../outbox/person'
 import { msformMakeKind, msformPublishKind, settled } from './acts'
 import { get, history, holdPublish, list, make, markSeen, page, review, setCheck, setMode, setOpen } from './forms'
 import { forgetWorkspaceAnswers } from './answers/cache'
@@ -90,6 +91,8 @@ async function route(req: ClientRequest, ctx: WorkCtx, by: Caller): Promise<Hand
       return handled(setCheck(ctx, formReach(ctx, by, p), p.every))
     }
     case 'work.msforms.review': {
+      // Accepting a thread's change writes to a form people answer: his press, as the Outbox's (the hold's ninth review).
+      mustBePerson(by, 'approve')
       const p = paramsOf('work.msforms.review', req)
       return handled(await review(ctx, formReach(ctx, by, p), p.accept, p.reject))
     }

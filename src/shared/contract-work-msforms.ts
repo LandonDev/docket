@@ -218,7 +218,7 @@ export const MSFORMS_CAPS = {
   'work.msforms.forget': 'operate',
   'work.msforms.mode': 'operate',
   'work.msforms.check': 'operate',
-  'work.msforms.review': 'operate',
+  'work.msforms.review': 'approve',
   'work.msforms.responses': 'read',
   'work.msforms.refresh': 'operate',
   'work.msforms.seen': 'operate',

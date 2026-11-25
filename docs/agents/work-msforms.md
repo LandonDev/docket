@@ -152,7 +152,8 @@ Work; the form stays in Forms as it is.
   releases none, and an earned offer never forms. The press reads the form fresh and is stale when its rev moved or the
   page's questions or settings are not the held words; Collect responses reads the link and never sends it.
 - Not held: his own close and reopen, an agent's close, a closing end date, his edits in the page, his New.
-- An agent's change to a collecting form always waits for his Accept; on a draft the mode decides, and Agent writes
+- An agent's change to a collecting form always waits for his Accept (`work.msforms.review`, approve under
+  `mustBePerson`: never a thread, another host or an MCP key); on a draft the mode decides, and Agent writes
   runs only after a fresh read shows Accept responses off. Waiting changes are said in words on the bar's stepper.
 - **The link goes out only on his press**: his Copy, the QR he shows, Mail the link (Mail's composer, his Send).
   `notGrantable` refuses a grant on any act whose words hold a form's link (`hasFormLink`, work-outbox.md).

@@ -89,8 +89,8 @@ class FakeRes extends Writable {
   }
 }
 
-async function serve(path: string, rendererDir: string, signedIn: boolean | 'refused' = true): Promise<FakeRes> {
-  const handler = createUiHandler({ rendererDir })
+async function serve(path: string, rendererDir: string, signedIn: boolean | 'refused' = true, assets?: (r: Request) => Promise<Response>): Promise<FakeRes> {
+  const handler = createUiHandler({ rendererDir, assets })
   const res = new FakeRes()
   const done = new Promise<void>((resolve) => res.on('finish', resolve))
   const answered = await handler({
@@ -156,6 +156,18 @@ describe('createUiHandler: the lazy chunks over /ui', () => {
     expect(refused.status).toBe(302)
     expect(refused.headers.Location).toBe('/pair?signed-out')
     expect((await serve('/ui/assets/SettingsView-def.js', dir, 'refused')).status).toBe(401)
+  })
+
+  it("sandboxes a thread's page and file, so one loaded top-level has no origin to open his socket with (the hold's ninth review)", async () => {
+    const answer = (type: string) => async () => new Response('<script>new WebSocket("/ws")</script>', { headers: { 'Content-Type': type } })
+    for (const [path, type] of [['/asset/page/s1/p1.html', 'text/html; charset=utf-8'], ['/asset/file/t1/x.svg', 'image/svg+xml']]) {
+      const res = await serve(path, dir, true, answer(type))
+      expect(res.headers['content-security-policy']).toBe('sandbox allow-scripts allow-forms')
+      expect(res.headers['x-content-type-options']).toBe('nosniff')
+    }
+    const pdf = await serve('/asset/file/t1/x.pdf', dir, true, answer('application/pdf'))
+    expect(pdf.headers['content-security-policy']).toBeUndefined()
+    expect(pdf.headers['x-content-type-options']).toBe('nosniff')
   })
 
   it('a chunk that is not on disk is 404', async () => {

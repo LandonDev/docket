@@ -4,7 +4,7 @@ import type { Store } from '../db'
 
 type Direction = 'inbound' | 'outbound'
 
-/** Three missed heartbeats invalidate the snapshot. Its old addresses and ports still count for denials. */
+/** Three missed heartbeats invalidate the snapshot. A new snapshot replaces the old: the peer's listener refuses a Host it no longer publishes. */
 const MAX_AGE_MS = 3 * RELAY_HEARTBEAT_MS
 const setting = (direction: Direction, id: string): string =>
   `remote.browserEndpoints.${direction}.${id}`

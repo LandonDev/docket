@@ -148,6 +148,22 @@ describe('refusedTarget', () => {
     expect(refusedLaunchList('win32')).toEqual(['tempcode.exe', 'consent.exe', 'credentialuibroker.exe', 'logonui.exe'])
   })
 
+  it("refuses a Work thread a screen of another computer or a phone, which may show TempCode with his approve key (the hold's ninth review)", () => {
+    const mirror = /^a Work thread may not use a screen of another computer or a phone/
+    for (const bundleId of ['com.apple.ScreenContinuity', 'com.apple.iphonesimulator', 'com.apple.ScreenSharing', 'mstsc.exe', 'Windows365.exe']) {
+      expect(refusedTarget({ pid: 9, bundleId }, 'read', 7, true), bundleId).toMatch(mirror)
+      expect(refusedTarget({ pid: 9, bundleId }, 'act', 7, true), bundleId).toMatch(mirror)
+      expect(refusedTarget({ pid: 9, bundleId }, 'act', 7), bundleId).toBeNull()
+      expect(refusedLaunch(bundleId, false, true), bundleId).toMatch(mirror)
+    }
+    for (const name of ['iPhone Mirroring', 'Simulator', 'Screen Sharing', 'C:\\Windows\\System32\\mstsc.exe', 'mstsc'])
+      expect(refusedLaunch(name, false, true), name).toMatch(mirror)
+    expect(refusedLaunch('Simulator')).toBeNull()
+    expect(refusedLaunchList('darwin', false, true)).toContain('com.apple.ScreenContinuity')
+    expect(refusedLaunchList('win32', false, true)).toContain('mstsc.exe')
+    expect(refusedLaunchList('darwin')).not.toContain('com.apple.ScreenContinuity')
+  })
+
   it('refuses computer_apps { launch } of a refused app', () => {
     expect(refusedLaunch('TempCode')).toMatch(/^TempCode's own window/)
     expect(refusedLaunch(TEMPCODE_BUNDLE_ID)).toMatch(/^TempCode's own window/)
