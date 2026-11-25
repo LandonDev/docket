@@ -370,6 +370,19 @@ describe.skipIf(process.platform === 'win32')('a copy of a file in the Windows V
       expect((await back(tabId))?.is).toBe('changed')
       expect(disk.get(ROSTER.toLowerCase())!.data).toBe(BOOK('someone else', { 'customXml/item1.xml': '<ct/>' }))
     })
+
+    it("is a change made there when only a link's target moved, SharePoint's parts or not: the newer file stays", async () => {
+      const LINK = (target: string): Record<string, string> => ({ 'xl/worksheets/_rels/sheet1.xml.rels': `<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${target}" TargetMode="External"/></Relationships>` })
+      disk.get(ROSTER.toLowerCase())!.data = BOOK('1', LINK('https://example.com/TempCode-proof-a'))
+      const { copy, tabId } = await open()
+      await saveBytes(copy, BOOK('2', LINK('https://example.com/TempCode-proof-a')))
+      expect((await back(tabId))?.is).toBe('ok')
+      const theirs = BOOK('2', { ...LINK('https://example.com/TempCode-proof-b'), 'customXml/item1.xml': '<ct/>' })
+      rewrite(theirs, 2500)
+      await saveBytes(copy, BOOK('3', LINK('https://example.com/TempCode-proof-a')))
+      expect((await back(tabId))?.is).toBe('changed')
+      expect(disk.get(ROSTER.toLowerCase())!.data).toBe(theirs)
+    })
   })
 
 })

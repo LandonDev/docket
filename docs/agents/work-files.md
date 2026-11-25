@@ -2635,10 +2635,16 @@ workbooks, text and Word alike (files/uploads.ts):
   of its own, and the relationships and `[Content_Types].xml` naming them; its document part byte for byte the same
   (a .docx of 12,524 bytes came back as 21,001). By version or by its bytes' hash that read as a change made there:
   on 1.0.370 a Word file's autosave stopped on its own upload ("This file changed in Teams"), and a deck's or a
-  workbook's copy in a Teams library would have stopped at its next send. Each file's body (every part but those,
-  files/body.ts `bodyOf`) is kept at open and after each write (`work_files_bodies`); a file found changed with the
-  same body is written over by its new version (`deliver`, Word's own check in `saveRow`). An edit by anyone touches
-  a part outside them and still stops the save. My OneDrive and a file that is no package are not rewritten.
+  workbook's copy in a Teams library would have stopped at its next send. Each file's body (files/body.ts `bodyOf`)
+  is kept at open and after each write (`work_files_bodies`); a file found changed with the same body is written over
+  by its new version (`deliver`, Word's own check in `saveRow`). The body leaves out only what SharePoint was seen to
+  write: `customXml/`, `docProps/custom.xml` and `[trash]/` whole; in every `.rels` part only the relationships
+  pointing at those, in `[Content_Types].xml` only their overrides (and a default for an extension no part has); in
+  `core.xml` only a save's bookkeeping (`dcterms:modified`, `cp:lastModifiedBy`, `cp:revision`). Each of those parts
+  is read as its entries, sorted, so the same facts written another way are the same body. Anything else that
+  differs, a link's target, a title, `app.xml`, a content type, is someone's edit and stops the save as a conflict
+  (before, every relationship part and all of `docProps/` were left out, so a colleague's new link target was
+  written over). My OneDrive and a file that is no package are not rewritten.
 - **Measured** on 2026-11-24 with dummies: OneDrive in the VM marked a new or changed file in sync 1.3 to 1.8 s after
   the write (eight writes: .docx and .txt, My OneDrive and Team RecWell); on his Mac 0.8 to 2.9 s. Late is a minute.
   A file Word holds open in the VM is never uploaded (an earlier proof's dummy sat unsynced for hours): late, maybe
