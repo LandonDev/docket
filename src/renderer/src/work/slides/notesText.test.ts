@@ -23,9 +23,21 @@ describe("notes' line breaks", () => {
   it("keep each old break once: Return beside a break makes one paragraph, never a second break", () => {
     // Council r4 (Sol 2): Return just before PowerPoint's Shift+Return came back as two breaks in one paragraph.
     expect(notesTyped("first\n\nsecond", "first\vsecond")).toBe("first\v\nsecond");
+    expect(notesTyped("first\n\nsecond", "first\vsecond", 7)).toBe("first\v\nsecond");
     expect(notesTyped("first\nmiddle\nsecond", "first\vsecond")).toBe("first\vmiddle\nsecond");
     expect(notesTyped("a\nb\n\nc\nd", "a\vb\vc\nd")).toBe("a\vb\v\nc\nd");
     // Lines taken out between two ends: the end after the head stays.
     expect(notesTyped("a\nc", "a\vb\nc")).toBe("a\vc");
+  });
+
+  it("make a paragraph where Return was pressed, by the caret: before a break, the break stays after it", () => {
+    // Council r5 (Sol 5): Return at the end of "first", before the break, wrote the paragraph after the break.
+    expect(notesTyped("first\n\nsecond", "first\vsecond", 6)).toBe("first\n\vsecond");
+    // Typed on, the field's next edit keeps that order.
+    expect(notesTyped("first\nmore\n\nsecond", "first\n\vsecond", 10)).toBe("first\nmore\n\vsecond");
+    // A break he joins with Delete just before it goes, the paragraph after it stays.
+    expect(notesTyped("firstsecond\nthird", "first\vsecond\nthird", 5)).toBe("firstsecond\nthird");
+    // An edit away from the caret (undo) is read as late as it can be.
+    expect(notesTyped("first\n\nsecond", "first\vsecond", 0)).toBe("first\v\nsecond");
   });
 });

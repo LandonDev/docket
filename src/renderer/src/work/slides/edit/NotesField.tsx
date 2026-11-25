@@ -42,8 +42,8 @@ export function NotesField({ slide, session }: { slide: DeckSlide; session: Hand
         placeholder="Add notes"
         className="-mx-2.5 min-h-0 max-w-[70ch] resize-none border-transparent px-2.5 py-1 text-sm leading-[22px] text-pretty"
         onChange={(event) => {
-          // A line break inside a paragraph shows as a line and goes back as one (notesText.ts).
-          const typed = notesTyped(event.target.value, text);
+          // A line break inside a paragraph shows as a line and goes back as one; the caret says which side of it he typed (notesText.ts).
+          const typed = notesTyped(event.target.value, text, event.target.selectionEnd);
           setText(typed);
           session.typeNotes(slide.id, typed, began.current);
         }}

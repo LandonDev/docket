@@ -1851,10 +1851,13 @@ A line break inside a notes paragraph (Shift+Return in PowerPoint, `a:br`,
 which the deck tool reads as `\v`) draws as a line break in the field, the
 read-only notes and the presenter's view (`notesShown`, slides/notesText.ts),
 never as a box; the field writes it back as one where it was, and a line he
-starts with Return is a paragraph (`notesTyped`). Each old end is matched at
-most once, by the lines unchanged before and after his edit: Return beside a
-break keeps the break on one side and makes a paragraph on the other, never
-two breaks in one paragraph.
+starts with Return is a paragraph (`notesTyped`). A break is one letter shown
+as one, so the field's text matches the notes letter for letter: what lies
+before and after his edit is kept as it was, and only the part he changed is
+read again, each old end in it matched at most once by its lines, never two
+breaks in one paragraph. The field's caret says where the edit ends, so Return
+just before a break makes the paragraph before it (`first\n\vsecond`) and just
+after it after it (`first\v\nsecond`), though both show alike.
 
 ### Copy and paste
 

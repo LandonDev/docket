@@ -50,6 +50,21 @@ describe("the notes field drawn again", () => {
     expect(edits.at(-1)).toEqual([{ op: "notes", slide: 3, text: "Thank the sponsors\vDoors open at six sharp", was: "Thank the sponsors\vDoors open at six" }]);
   });
 
+  it("makes Return's paragraph on the side of a break the caret was on", async () => {
+    // Council r5 (Sol 5): Return just before a break wrote the paragraph after it.
+    const view = deckView({ slides: [slide(3, { notes: "first\vsecond" })], hand: { undo: false, redo: false } });
+    const host = fakeDeckHost(view);
+    const store = new DeckStore();
+    store.view(view);
+    const session = new HandSession(host, store);
+    const { container } = render(<NotesField slide={view.slides[0]} session={session} />);
+    const field = () => container.querySelector<HTMLTextAreaElement>("[data-slide-notes-field]")!;
+    fireEvent.change(field(), { target: { value: "first\n\nsecond", selectionStart: 6, selectionEnd: 6 } });
+    await session.keepNotes();
+    const edits = host.calls.filter(([name]) => name === "edit").map(([, ops]) => ops);
+    expect(edits.at(-1)).toEqual([{ op: "notes", slide: 3, text: "first\n\vsecond", was: "first\vsecond" }]);
+  });
+
   it("takes the deck's notes again on Reload over notes changed elsewhere", async () => {
     const view = deckView({ slides: [slide(3, { notes: "Say hello" })], hand: { undo: false, redo: false } });
     const host = fakeDeckHost(view);
