@@ -51,7 +51,7 @@ export function ShareButton({ env, source, kind, title, itemId, workspaceId, pur
   }, [held, known]);
   // A press whose own ask was lost too opens the sheet: a press never comes to nothing.
   useEffect(() => {
-    if (!held || page?.key !== key || page.url !== undefined || page.ask !== tries || tries === 0) return;
+    if (!held || page?.key !== key || page.url !== undefined || page.ask !== tries) return;
     setHeld(false);
     setOpens((n) => n + 1);
   }, [held, page, key, tries]);

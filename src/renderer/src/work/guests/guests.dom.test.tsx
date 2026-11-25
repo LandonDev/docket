@@ -278,6 +278,20 @@ describe("Share", () => {
     expect(calls.list.filter((c) => c.method === "work.office.live.address")).toHaveLength(2);
   });
 
+  it("opens the sheet for a press made while the first ask is out, when that ask is lost", async () => {
+    const { ShareButton } = await import("./Share");
+    calls.pages = {};
+    let release = (): void => {};
+    calls.addressGate = new Promise((r) => (release = r));
+    calls.addressDown = 1;
+    render(<ShareButton env="box" source={{ at: "file", host: "box", path: "/w/Plan.tcdoc" }} kind="document" title="Plan" workspaceId="w1" />);
+    await waitFor(() => expect(calls.list.filter((c) => c.method === "work.office.live.address")).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Share" }));
+    calls.addressGate = null;
+    release();
+    expect(await screen.findByRole("dialog")).toBeTruthy();
+  });
+
   it("keeps only a real answer for a file's page: a lost one is asked again, never kept as none", async () => {
     const { filePageOf } = await import("./api");
     const src = { at: "file" as const, host: "box", path: "/w/Plan.docx" };
