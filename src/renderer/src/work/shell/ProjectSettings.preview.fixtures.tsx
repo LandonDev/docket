@@ -1,7 +1,8 @@
 // Fixtures for `bun run ui:preview src/renderer/src/work/shell/ProjectSettings.preview.tsx#WorkProjectSheetPreview`.
 export default [
-  { name: "A Work project: name, state, rules, accounts, sharing; nothing of code", props: {} },
-  { name: "Shared with two guests", props: { sharing: "two" } },
+  { name: "A Work project: name, state, target, Share, Thread setup folded; nothing of code", props: {} },
+  { name: "Thread setup open: rules and accounts", props: { setup: true } },
+  { name: "No target yet", props: { target: "" } },
   { name: "Changed, ready to save", props: { name: "Fall LAN", state: "paused", dirty: true } },
   { name: "Saving", props: { name: "Fall LAN", dirty: true, pending: true } },
   { name: "A save LifeOS refused", props: { name: "Fall LAN", dirty: true, error: "LifeOS refused the write" } },
@@ -9,5 +10,6 @@ export default [
   { name: "Signed out: words, not disabled controls, and Sign in", props: { reach: "signedOut", state: null, rules: "None", accounts: false } },
   { name: "A computer the box keeps LifeOS from: the known words, no press", props: { reach: "withheld", state: "active" } },
   { name: "LifeOS dropped after it answered: the last state stands", props: { reach: "unreachable", state: "active" } },
-  { name: "Rules kept and switched off; a host with no account to pick", props: { rules: "86 words, not sent", accounts: false } },
+  { name: "Rules kept and switched off; a host with no account to pick", props: { rules: "86 words, not sent", accounts: false, setup: true } },
+  { name: "A project that mirrors nothing: its name alone, no Share", props: { reach: "local", state: null, sharing: false } },
 ];

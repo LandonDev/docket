@@ -2,8 +2,7 @@ import { Button } from "@renderer/components/ui/button";
 import { ChoiceSelect } from "../../components/choice-select";
 import { DialogFooter as Footer, ErrorLine } from "../../chrome/ConfirmDialog";
 import { FieldRow } from "../../chrome/DialogField";
-import type { GuestLinkRow } from "@shared/contract-work-guests";
-import { LinkRows } from "../guests/Share";
+import { Share as ShareGlyph } from "../icons";
 import { WorkProjectFields, type LifeosReach, type ProjectState } from "./ProjectSettings";
 
 /**
@@ -14,11 +13,6 @@ import { WorkProjectFields, type LifeosReach, type ProjectState } from "./Projec
  */
 
 const noop = (): void => {};
-
-const DAY = 86_400_000;
-const guest = (id: string, name: string, days: number): GuestLinkRow => ({ id, name, source: { at: "lifeos", table: "projects", id: "kp1" }, title: "Spring LAN", role: "view", createdAt: 0, expiresAt: Date.UTC(2026, 10, 19) + days * DAY, revokedAt: null, by: "owner", lastOpenedAt: null, open: 0 });
-/** The Sharing section's states: nobody, two guests, the read on its way. */
-const GUESTS: Record<string, GuestLinkRow[] | null> = { none: [], two: [guest("a", "Dana Lee", 29), guest("b", "Marcus Reed", 6)], loading: null };
 
 const REACH: Record<string, LifeosReach> = {
   ready: { status: "ready" },
@@ -41,7 +35,9 @@ export function WorkProjectSheetPreview({
   error = null,
   dirty = false,
   pending = false,
-  sharing = "none",
+  sharing = true,
+  target = "2027-03-14",
+  setup = false,
 }: {
   reach?: keyof typeof REACH;
   name?: string;
@@ -51,8 +47,12 @@ export function WorkProjectSheetPreview({
   error?: string | null;
   dirty?: boolean;
   pending?: boolean;
-  /** which Sharing state to draw; "off" for a project that mirrors nothing */
-  sharing?: keyof typeof GUESTS | "off";
+  /** false for a project that mirrors nothing */
+  sharing?: boolean;
+  /** "YYYY-MM-DD", or "" for no target */
+  target?: string;
+  /** Thread setup drawn open */
+  setup?: boolean;
 }) {
   const at = REACH[reach]!;
   return (
@@ -66,15 +66,20 @@ export function WorkProjectSheetPreview({
         onName={noop}
         state={state}
         onState={noop}
+        target={target}
+        onTarget={noop}
+        setupOpen={setup}
+        onSetupOpen={noop}
         reach={at}
         rules={rules}
         onEditRules={noop}
         sharing={
-          sharing === "off" ? null : (
-            <div className="-mx-2">
-              <LinkRows rows={GUESTS[sharing]!} project layout="section" onRevoke={noop} onRetry={noop} onNew={noop} />
-            </div>
-          )
+          sharing ? (
+            <Button type="button" variant="ghost" size="sm">
+              <ShareGlyph />
+              Share
+            </Button>
+          ) : null
         }
         accounts={
           accounts ? (
@@ -102,7 +107,7 @@ export function WorkProjectSheetPreview({
       <Footer
         start={
           at.status === "ready" ? (
-            <Button type="button" variant="ghost" disabled={pending}>
+            <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" disabled={pending}>
               Delete project
             </Button>
           ) : null

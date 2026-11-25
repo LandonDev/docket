@@ -2846,9 +2846,12 @@ Around the canvas:
   all beside the meter, a project's page in its tabs. A task a thread
   works on shows that thread's mark in its row, which opens the thread.
   A project's menu holds Project settings…, which opens its sheet from
-  the page. A Work project's settings are a sheet with its name, state,
-  rules, accounts and sharing and nothing of code; what LifeOS cannot take now is shown as
-  words, never as disabled controls.
+  the page. A Work project's settings are a sheet with nothing of code: Name,
+  State and Target first (LifeOS's), Sharing as one row whose Share opens
+  the Share sheet (never a second list of links), then "Thread setup"
+  folded (rules and accounts, each saying what it does), and Delete project
+  at the foot's start in the destructive tone; what LifeOS cannot take now is shown as
+  words, never as disabled controls, and words he typed for it are kept.
 - **The guest's page** (tempcode.landonhale.com) is the same editor on the
   same tokens under one 44px line: the item's name, whose it is, what the
   guest can do, until when, the faces of who else is in the file and the

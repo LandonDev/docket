@@ -611,8 +611,8 @@ His comments are made in TempCode: on the phone, Comment in the edit menu.
   a mail's attachment draws no Share. A Purdue workspace's sheet says beside
   Create link that the link shares university data (`PURDUE_LINE`); it does
   not stop him. A project has the same sheet from its page's bar
-  (`ProjectShare`) and from Sharing in its settings sheet (`ProjectSharing`,
-  its links listed in the settings sheet itself); its sheet has no Can row.
+  (`ProjectShare`) and from the Sharing row of its settings sheet (the same `ProjectShare`,
+  one row, never a second list of links); its sheet has no Can row.
 - **The held request** in the Outbox (`ShareActView.tsx`): To, For, Can, Ends.
 - **Guest links** in Settings → Work (`GuestLinksSection.tsx`): every link on
   every Work host, live first: who, the role and item (a project's as

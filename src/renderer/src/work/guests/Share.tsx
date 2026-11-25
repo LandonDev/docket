@@ -1,19 +1,14 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import type { CanvasSource } from "@shared/work";
 import { Check, Copy } from "../../chrome/icons";
 import { SwapIcon } from "../../motion/IconSwap";
 import { Share as ShareGlyph } from "../icons";
 import { ModalPanel, useClosingDialog } from "../../chrome/Modal";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
-import { hostFailure } from "../../lib/hostFailure";
-import { BusyLabel, Button } from "../../components/ui/button";
+import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Face } from "../mail/face";
 import { copyText } from "../../lib/clipboard";
-import { cn } from "../../lib/cn";
-import { reveal, yields } from "../../components/ui/reveal";
-import { dayOf, guestsCall, isLive, ROLE_WORDS, shareTargetOf, shortDay, type GuestLinkRow, type GuestSource } from "./api";
+import { dayOf, ROLE_WORDS, shareTargetOf, type GuestLinkRow } from "./api";
 import { useShareAsked } from "./sharePort";
 import type { ShareTarget } from "./ShareSheet";
 
@@ -59,163 +54,6 @@ function ShareOpener({ env, target, title, itemId, purdue = false, size = "xs" }
         </Suspense>
       ) : null}
     </>
-  );
-}
-
-/** Sharing in a Work project's settings: its guest links in the sheet itself, Revoke on hover, and New guest link…, which opens the Share sheet. */
-export function ProjectSharing({ env, projectId, title }: { env: string; projectId: string; title: string }) {
-  const target = useMemo<GuestSource>(() => ({ at: "lifeos", table: "projects", id: projectId }), [projectId]);
-  const [making, setMaking] = useState(false);
-  // The list is read again once the sheet closes, a link made or not.
-  const [made, setMade] = useState(0);
-  return (
-    <div data-project-sharing className="-mx-2">
-      <ItemLinks key={made} env={env} source={target} layout="section" onNew={() => setMaking(true)} />
-      {making ? (
-        <Suspense fallback={null}>
-          <ShareSheet
-            env={env}
-            target={{ source: target }}
-            title={title}
-            onClose={() => {
-              setMaking(false);
-              setMade((n) => n + 1);
-            }}
-          />
-        </Suspense>
-      ) : null}
-    </div>
-  );
-}
-
-function ItemLinks({ env, source, layout, onNew }: { env: string; source: GuestSource; layout?: "menu" | "section"; onNew(): void }) {
-  const [rows, setRows] = useState<GuestLinkRow[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // A revoke's own refusal: kept apart from the list's read, so a reload never wipes it.
-  const [refused, setRefused] = useState<string | null>(null);
-  const [revoking, setRevoking] = useState<string | null>(null);
-  const [home, setHome] = useState(env);
-  // Retry keeps its row, and the focus on it, busy until the read settles; the first read has no row to keep.
-  const [retrying, setRetrying] = useState(false);
-  const load = useCallback(
-    (again = false) => {
-      if (again) setRetrying(true);
-      else setError(null);
-      guestsCall<GuestLinkRow[]>(env, "work.guests.forItem", { source })
-        .then(
-          (got) => {
-            setError(null);
-            setHome(got.env);
-            setRows((got.value ?? []).filter((l) => isLive(l)));
-          },
-          (err: unknown) => setError(hostFailure(env, err, "could not list the guest links")),
-        )
-        .finally(() => setRetrying(false));
-    },
-    [env, source],
-  );
-  useEffect(() => load(), [load]);
-  // The row stays, its Revoke busy, until the host confirms; refused, it stays and says why.
-  const revoke = async (id: string): Promise<void> => {
-    setRevoking(id);
-    setRefused(null);
-    try {
-      await guestsCall(home, "work.guests.revoke", { linkId: id });
-      setRows((now) => now?.filter((l) => l.id !== id) ?? null);
-    } catch (err) {
-      setRefused(hostFailure(home, err, "did not revoke the link", true));
-    } finally {
-      setRevoking(null);
-    }
-  };
-  return <LinkRows rows={rows} error={error} refused={refused} revoking={revoking} project={source.at === "lifeos" && source.table === "projects"} layout={layout} onRevoke={(id) => void revoke(id)} onRetry={() => load(true)} retrying={retrying} onNew={onNew} />;
-}
-
-/**
- * An item's guest links as rows, with no host behind them: what the popover, the sheet and a
- * preview draw. `rows` null is the read on its way. A project's guest only views, so its row says
- * until when and not what they can do.
- */
-export function LinkRows({
-  rows,
-  error = null,
-  refused = null,
-  revoking = null,
-  project = false,
-  layout = "menu",
-  onRevoke,
-  onRetry,
-  retrying = false,
-  onNew,
-}: {
-  rows: GuestLinkRow[] | null;
-  error?: string | null;
-  refused?: string | null;
-  revoking?: string | null;
-  project?: boolean;
-  /** `menu`: the popover's rows over a full-width New guest link…; `section`: a settings sheet's part, its button at the end of the last line as the sheet's other parts hold theirs */
-  layout?: "menu" | "section";
-  onRevoke(id: string): void;
-  onRetry(): void;
-  /** Retry's read is out: the row stays and its button is busy. */
-  retrying?: boolean;
-  onNew(): void;
-}) {
-  return (
-    <div className="flex flex-col">
-      {rows === null && !error ? (
-        <div className="flex h-9 items-center px-2">
-          <Skeleton className="h-3 w-40" />
-        </div>
-      ) : null}
-      {rows?.length === 0 && layout === "menu" ? <p className="flex h-9 items-center px-2 text-[13px] text-muted-foreground">Only you can open this</p> : null}
-      {rows?.map((l) => (
-        <div key={l.id} className="group/row flex h-9 min-w-0 items-center gap-2 rounded-lg px-2 text-[13px] hover:bg-foreground/5">
-          <Face name={l.name} size="row" />
-          <span className="min-w-0 flex-1 truncate">{l.name}</span>
-          {/* Revoke takes the facts' place on hover (docs/DESIGN.md "Hover reveal"). */}
-          <span className="relative flex shrink-0 items-center justify-end">
-            <span className={cn("text-xs text-muted-foreground tabular-nums", revoking === l.id ? "opacity-0" : yields("row"))}>
-              {project ? `until ${shortDay(l.expiresAt)}` : `${ROLE_WORDS[l.role]}, until ${shortDay(l.expiresAt)}`}
-            </span>
-            <span className={cn("absolute end-0", revoking === l.id ? "opacity-100" : reveal("row", { row: true, overlay: true }))}>
-              <Button variant="ghost" size="xs" aria-label={`Revoke ${l.name}'s link`} disabled={revoking !== null} onClick={() => onRevoke(l.id)}>
-                <BusyLabel busy={revoking === l.id} label="Revoke" />
-              </Button>
-            </span>
-          </span>
-        </div>
-      ))}
-      {refused ? (
-        <div className="flex min-h-9 items-center px-2">
-          <ErrorLine error={refused} />
-        </div>
-      ) : null}
-      {error ? (
-        <div className="flex min-h-9 items-center gap-2 px-2">
-          <div className="min-w-0 flex-1">
-            <ErrorLine error={error} />
-          </div>
-          <Button variant="ghost" size="xs" disabled={retrying} onClick={onRetry}>
-            <BusyLabel busy={retrying} label="Retry" />
-          </Button>
-        </div>
-      ) : null}
-      {layout === "menu" ? (
-        <div className="mt-1 border-t border-border pt-1">
-          <Button variant="ghost" size="sm" className="w-full justify-start" onClick={onNew}>
-            New guest link…
-          </Button>
-        </div>
-      ) : (
-        <div className={cn("flex min-h-7 items-center justify-between gap-3 px-2", rows?.length ? "mt-1" : null)}>
-          <span className="min-w-0 truncate text-[13px] text-foreground">{rows?.length === 0 ? "Only you can open this" : null}</span>
-          <Button type="button" variant="secondary" size="sm" onClick={onNew}>
-            New guest link…
-          </Button>
-        </div>
-      )}
-    </div>
   );
 }
 

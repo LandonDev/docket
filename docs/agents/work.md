@@ -328,22 +328,25 @@ Settings → Work.
   `WorkProjectSettings`, a surface of the `work-shell` chunk that
   `ProjectSettingsDialog` shows for a project whose workspace is
   `kind: 'work'`, by the row and never by the switch). The sheet holds
-  what a Work project has and nothing of code:
+  what a Work project has and nothing of code, LifeOS's fields first, then
+  Sharing as one row, then "Thread setup" folded (what only shapes its
+  threads):
 
   | Part | What it sets | Where it is kept |
   |---|---|---|
   | Name | the project's name | LifeOS, `projects:update` on the workspace's own session (the screen's narrowed JWT); the mirror follows |
   | State | Backlog, Active, Paused, Done, Dropped | LifeOS, the same call |
-  | Rules for its threads | the rules sent with a new thread's first message; Edit opens the rules dialog (`PreambleDialog`, with no `{{worktree}}` word for a Work project) | `projects.preamble` on the host |
-  | Accounts | which Claude, Codex or Meta account its threads use; drawn only when the host has an account to pick | `projects.account_pins` on the host |
-  | Sharing | the project's guest links (who, until when; Revoke on hover) and New guest link…; drawn for a project that mirrors one in LifeOS | the guests pillar's rows on the host that serves LifeOS's documents ([work-guests.md](work-guests.md) "A project's link") |
-  | Delete project | at the foot's start, asked first; its tasks stay as tasks with no project | LifeOS, `projects:remove`; the host archives the mirror |
+  | Target | the day the project should be done (a date field; emptied, no target); the tracker sorts by it | LifeOS, `projects:update {targetDate}`, the start of that day here (`targetMs`) |
+  | Sharing | one row, "A view-only link for one guest", whose Share opens the Share sheet (`ProjectShare`), where the links are listed and made; drawn for a project that mirrors one in LifeOS | the guests pillar's rows on the host that serves LifeOS's documents ([work-guests.md](work-guests.md) "A project's link") |
+  | Thread setup › Rules | the rules sent with a new thread's first message, said as "86 words. New threads here read them first."; Edit opens the rules dialog (`PreambleDialog`, with no `{{worktree}}` word for a Work project) | `projects.preamble` on the host |
+  | Thread setup › Accounts | "The accounts its threads run on": which Claude, Codex or Meta account; drawn only when the host has an account to pick | `projects.account_pins` on the host |
+  | Delete project | at the foot's start in the destructive tone, asked first; its tasks stay as tasks with no project | LifeOS, `projects:remove`; the host archives the mirror |
 
   Save sends only what changed; a failed save keeps the sheet open with the
   reason beside Retry, and a Retry with nothing left to send (the write
   had landed, its answer lost) closes the sheet. While LifeOS cannot be
-  reached (signed out, unreachable, refused) Name and State stand as plain
-  words, never as disabled controls (State only if LifeOS told it
+  reached (signed out, unreachable, refused) Name, State and Target stand as plain
+  words, never as disabled controls (State and Target only if LifeOS told them
   earlier), Delete is not drawn, and one line under them says why: the
   sign-in named when signed out, Retry when LifeOS did not answer. A window
   whose key the host never hands its LifeOS session (a given computer's:
@@ -351,9 +354,13 @@ Settings → Work.
   `withheld` (work/shell/lifeos.ts asks `linkMay` first and reads a
   "forbidden" answer the same way), and the frame says "This computer cannot
   read LifeOS through the box" and where the view opens, with no Retry. The
-  rules and accounts are the host's and stay editable, and Save sends
-  them; but a name or state he changed and LifeOS cannot take holds Save,
-  so nothing he typed is dropped behind a save of the rest. A project
+  rules and accounts are the host's and stay editable. A name, state or
+  target he changed that LifeOS cannot take is kept as he typed it: Save
+  holds while that is all there is, and when the accounts changed too Save
+  saves them, leaves the sheet open with his LifeOS words in it, and says
+  so under the fields (`KEPT_LINE`: "Accounts saved. Your name, state and
+  target changes wait here until LifeOS answers."); the next Save once
+  LifeOS answers sends the rest. A project
   of a Work workspace that mirrors nothing has a name of its own
   (`project.rename`) and no State or Delete. No folder, mode, branch,
   completed turn, review, plans or build is drawn, and none of their reads

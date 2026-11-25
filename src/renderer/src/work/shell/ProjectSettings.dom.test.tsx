@@ -17,7 +17,9 @@ import { workSwitch } from "../../lib/workSwitch";
 import { PreambleDialog } from "../../chrome/PreambleDialog";
 import { ProjectSettingsDialog } from "../../chrome/ProjectDialogs";
 import { resetLifeos, setLifeosSession, setLifeosStatus } from "./lifeos";
-import { rulesLine, WorkProjectFields } from "./ProjectSettings";
+import { accountsStore } from "../../stores/accounts";
+import { emptyAccounts } from "@server/shared/accounts";
+import { KEPT_LINE, rulesLine, targetDay, targetMs, WorkProjectFields } from "./ProjectSettings";
 
 // jsdom has no Web Animations; the sheet's scroll area asks for them.
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
@@ -105,6 +107,12 @@ afterEach(() => {
 const sheet = () => screen.findByRole("dialog", { name: "Project settings" });
 const saveButton = () => screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
 const headings = (root: HTMLElement) => [...root.querySelectorAll("h3")].map((h) => h.textContent);
+/** Thread setup starts folded: open it to reach the rules and the accounts. */
+const openSetup = async (root: HTMLElement) => {
+  await act(async () => {
+    fireEvent.click(within(root).getByRole("button", { name: "Thread setup" }));
+  });
+};
 
 describe("which sheet a project gets", () => {
   it("a Work project's sheet draws no code field", async () => {
@@ -112,11 +120,14 @@ describe("which sheet a project gets", () => {
     render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
     const root = await sheet();
     expect(root.getAttribute("data-side")).toBe("right");
-    // Its rules, and who outside may see it: the project's guest links, read from the host.
-    expect(headings(root)).toEqual(["Rules for its threads", "Sharing"]);
-    expect(hostCalls.find((c) => c.method === "work.guests.forItem")?.params).toEqual({ source: { at: "lifeos", table: "projects", id: MIRROR.lifeosProjectId } });
-    expect(await within(root).findByText("Only you can open this")).toBeTruthy();
-    expect(within(root).getByRole("button", { name: "New guest link…" })).toBeTruthy();
+    // LifeOS's fields first; Sharing one row that opens the Share sheet, never a second list of links; the thread
+    // setup folded.
+    const labels = [...root.querySelectorAll("[data-slot=dialog-field] label, [data-slot=dialog-field-row] [data-slot=item-title]")].map((l) => l.textContent);
+    expect(labels).toEqual(["Name", "State", "Target", "Sharing"]);
+    expect(within(root.querySelector("[data-project-sharing]") as HTMLElement).getByRole("button", { name: "Share" })).toBeTruthy();
+    expect(hostCalls.find((c) => c.method === "work.guests.forItem")).toBeUndefined();
+    expect(within(root).getByRole("button", { name: "Thread setup" }).getAttribute("aria-expanded")).toBe("false");
+    expect(within(root).queryByRole("button", { name: "Edit" })).toBeNull();
     // No mode, folder, branch, completed turn, review, plans or build.
     expect(root.querySelector("[data-project-mode]")).toBeNull();
     expect(root.textContent).not.toContain(WORK.path);
@@ -257,6 +268,34 @@ describe("Name and State", () => {
   });
 });
 
+describe("Target", () => {
+  it("shows LifeOS's target as a day, and Save sends it as the start of the day he picked", async () => {
+    connected(lifeosClient([{ _id: "lp_1", name: "Spring LAN", status: "active", targetDate: new Date(2027, 2, 14).getTime() } as never]));
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
+    const root = await sheet();
+    const field = root.querySelector("[data-target-date]") as HTMLInputElement;
+    expect(field.value).toBe("2027-03-14");
+    fireEvent.change(field, { target: { value: "2027-04-01" } });
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].args).toEqual({ id: "lp_1", patch: { targetDate: new Date(2027, 3, 1).getTime() } });
+  });
+
+  it("an emptied field clears the target", async () => {
+    connected(lifeosClient([{ _id: "lp_1", name: "Spring LAN", status: "active", targetDate: new Date(2027, 2, 14).getTime() } as never]));
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
+    const root = await sheet();
+    fireEvent.change(root.querySelector("[data-target-date]")!, { target: { value: "" } });
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+    await waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0].args).toEqual({ id: "lp_1", patch: { targetDate: null } });
+  });
+});
+
 describe("while LifeOS cannot be reached", () => {
   it("signed out: the name stands as words, no state or Delete is drawn, nothing is disabled, and one line says so with Sign in", async () => {
     setLifeosStatus(BOX, { lifeos: { state: "signed-out" }, keys: [] });
@@ -272,6 +311,7 @@ describe("while LifeOS cannot be reached", () => {
     expect(screen.queryByRole("button", { name: "Delete project" })).toBeNull();
     expect(saveButton().disabled).toBe(true);
     // The rules are this host's: they can still be edited.
+    await openSetup(root);
     expect((screen.getByRole("button", { name: "Edit" }) as HTMLButtonElement).disabled).toBe(false);
     // Council round 7: Sign in opens the sign-in dialog over the sheet, never a page where he presses again.
     fireEvent.click(within(root.querySelector("[data-lifeos-line]") as HTMLElement).getByRole("button", { name: "Sign in" }));
@@ -374,6 +414,51 @@ describe("while LifeOS cannot be reached", () => {
     expect(saveButton().disabled).toBe(true);
     expect(sent).toEqual([]);
   });
+
+  it("Save then saves this host's accounts, keeps his LifeOS words in the sheet and says what saved where", async () => {
+    accountsStore.attach({
+      environmentId: BOX,
+      connected: true,
+      onOpen: () => () => {},
+      onClose: () => () => {},
+      onPush: () => () => {},
+      request: async (method: string) => {
+        if (method !== "accounts.list") return null;
+        const snap = emptyAccounts();
+        snap.updatedAt = 1;
+        snap.providers.claude.profiles = [{ name: "a@x.com", email: "a@x.com", createdAt: 1, active: true }];
+        return snap;
+      },
+    } as never);
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    connected();
+    const onClose = vi.fn();
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={onClose} />);
+    const root = await sheet();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Fall LAN" } });
+    act(() => setLifeosStatus(BOX, { lifeos: { state: "unreachable", since: 1, error: "timeout" }, keys: [] }));
+    await waitFor(() => expect(root.querySelector("[data-readonly-name]")).toBeTruthy());
+    await openSetup(root);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("combobox", { name: "Claude" }));
+    });
+    // The first choice is Inherit; the second the host's one account.
+    const option = (await screen.findAllByRole("option"))[1]!;
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    expect(saveButton().disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(saveButton());
+    });
+    await waitFor(() => expect(hostCalls.find((c) => c.method === "project.setAccounts")).toBeTruthy());
+    expect(sent).toEqual([]);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(root.querySelector("[data-project-settings-kept]")!.textContent).toBe(KEPT_LINE);
+    expect(root.querySelector("[data-readonly-name]")!.textContent).toBe("Fall LAN");
+    accountsStore.reset();
+  });
 });
 
 describe("Rules for its threads", () => {
@@ -381,7 +466,8 @@ describe("Rules for its threads", () => {
     connected();
     render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
     const root = await sheet();
-    expect(root.querySelector("[data-rules-line]")!.textContent).toBe("9 words");
+    await openSetup(root);
+    expect(root.querySelector("[data-rules-line]")!.textContent).toBe("9 words. New threads here read them first.");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     });
@@ -414,6 +500,13 @@ describe("Rules for its threads", () => {
 });
 
 describe("Delete project", () => {
+  it("wears the destructive tone", async () => {
+    connected();
+    render(<ProjectSettingsDialog project={MIRROR} workspace={WORK} onClose={() => {}} />);
+    await sheet();
+    expect(screen.getByRole("button", { name: "Delete project" }).className).toContain("text-destructive");
+  });
+
   it("asks first, then deletes the project in LifeOS and closes the sheet; the mirror is the host's to archive", async () => {
     connected();
     const onClose = vi.fn();
@@ -458,7 +551,7 @@ describe("Sharing", () => {
     const root = await sheet();
     // A change he has not saved: making a link must not save it for him.
     fireEvent.change(within(root).getByLabelText("Name"), { target: { value: "Fall LAN" } });
-    fireEvent.click(await within(root).findByRole("button", { name: "New guest link…" }));
+    fireEvent.click(within(root.querySelector("[data-project-sharing]") as HTMLElement).getByRole("button", { name: "Share" }));
     fireEvent.change(await screen.findByPlaceholderText("Name"), { target: { value: "Dana Lee" } });
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Create link" }));
@@ -477,12 +570,26 @@ describe("the fields alone", () => {
     expect(container.querySelector("[data-state-loading]")).toBeTruthy();
     expect((screen.getByLabelText("Name") as HTMLInputElement).disabled).toBe(false);
     expect(container.querySelector("[disabled]")).toBeNull();
-    expect(headings(container)).toEqual(["Rules for its threads"]);
+    expect(container.querySelector("[data-target-loading]")).toBeTruthy();
+    expect(container.querySelector("[data-project-sharing]")).toBeNull();
   });
 
   it("a project that mirrors nothing has a name of its own and no state", () => {
     const { container } = render(<WorkProjectFields name="Notes" onName={() => {}} state={null} onState={() => {}} reach={{ status: "local" }} rules="None" onEditRules={() => {}} />);
     expect((screen.getByLabelText("Name") as HTMLInputElement).disabled).toBe(false);
     expect(container.textContent).not.toContain("State");
+    expect(container.textContent).not.toContain("Target");
+  });
+
+  it("a target day is the start of that day here, and back", () => {
+    expect(targetMs("")).toBeNull();
+    expect(targetMs("2027-03-14")).toBe(new Date(2027, 2, 14).getTime());
+    expect(targetDay(new Date(2027, 2, 14).getTime())).toBe("2027-03-14");
+    expect(targetDay(null)).toBe("");
+  });
+
+  it("out of reach, a target he set stands as words", () => {
+    const { container } = render(<WorkProjectFields name="Spring LAN" onName={() => {}} state="active" onState={() => {}} target="2027-03-14" reach={{ status: "failed", line: "LifeOS did not answer" }} rules="None" onEditRules={() => {}} />);
+    expect(container.querySelector("[data-readonly-target]")!.textContent).toBe(new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" }).format(new Date(2027, 2, 14)));
   });
 });

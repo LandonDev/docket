@@ -263,25 +263,6 @@ describe("a project's Share", () => {
     expect(calls.list.find((c) => c.method === "work.guests.create")?.params).toMatchObject({ source: { at: "lifeos", table: "projects", id: "kp1" }, title: "Spring LAN", name: "Marcus Reed", role: "view" });
   });
 
-  it("in the project's settings lists its links in the sheet, revokes one, and reads the list again after a new one", async () => {
-    const { ProjectSharing } = await import("./Share");
-    calls.links = [PROJECT_LINK];
-    render(<ProjectSharing env="box" projectId="kp1" title="Spring LAN" />);
-    await screen.findByText("Dana Lee");
-    fireEvent.click(screen.getByRole("button", { name: "Revoke Dana Lee's link" }));
-    await waitFor(() => expect(screen.queryByText("Dana Lee")).toBeNull());
-    expect(calls.list.find((c) => c.method === "work.guests.revoke")?.params).toEqual({ linkId: "plink" });
-    expect(screen.getByText("Only you can open this")).toBeTruthy();
-    const reads = () => calls.list.filter((c) => c.method === "work.guests.forItem").length;
-    const before = reads();
-    fireEvent.click(screen.getByRole("button", { name: "New guest link…" }));
-    fireEvent.change(await screen.findByPlaceholderText("Name"), { target: { value: "Marcus Reed" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create link" }));
-    await screen.findByText(/shown only now/);
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    await waitFor(() => expect(reads()).toBeGreaterThan(before + 1));
-  });
-
   it("is named as a project in the held request and in the list of every link", async () => {
     const { View } = await import("./ShareActView");
     const item = { kind: "share.guestLink", payload: { source: PROJECT_LINK.source, title: "Spring LAN", name: "Dana Lee", role: "view", expiresAt: Date.UTC(2026, 11, 18, 12) } } as unknown as HeldItem;
