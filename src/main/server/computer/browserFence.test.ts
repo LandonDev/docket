@@ -7,13 +7,13 @@ import { computerHarness, type ComputerHarness } from './runHarness'
 vi.mock('node:dns/promises', () => ({ lookup: vi.fn() }))
 
 const dns: Record<string, string[]> = {
-  'ordinary.test': ['203.0.113.20'],
+  'ordinary.test': ['93.184.215.14', '2606:4700:4700::1111'],
   'lan-alias.test': ['2001:db8::abcd', '192.168.4.20'],
   'tunnel-alias.test': ['2001:db8:abcd::8'],
   'tunnel.example': ['203.0.113.8', '2001:db8:abcd::8'],
   'peer.example': ['203.0.113.7'],
   'peer-alias.test': ['203.0.113.7'],
-  'peer-lan-alias.test': ['2001:db8::abcd', '192.168.40.9']
+  'peer-lan-alias.test': ['2606:4700:4700::1111', '192.168.40.9']
 }
 beforeEach(() => {
   vi.mocked(lookup).mockImplementation((async (host: string, options: { all: boolean }) => {
@@ -145,18 +145,64 @@ it.each(['192.168.40.9', 'peer.local', 'peer-lan-alias.test'])('blocks a tunnel-
   expect(h.requests().some(({ method }) => method === 'state.get' || method === 'action.run')).toBe(false)
 })
 
-it.each(['https://ordinary.test/', 'http://ordinary.test:7677/', 'http://ordinary.test:8191/'])('fails closed on a known port while a peer set is missing at %s', async (url) => {
-  const h = make(false, url, () => ({ ...origins(), linkedEndpoints: [linkedPeer], linkedEndpointsUnknown: true }))
-  expect(await h.run('computer_observe', { app: 'Webby' })).toMatchObject({ body: BROWSER_ADDRESS_UNAVAILABLE })
+it.each([
+  'http://192.168.40.9:8192/ui',
+  'http://peer.local:8192/ui',
+  'http://peer:8192/ui',
+  'http://peer-lan-alias.test:8192/ui',
+  'http://unresolved.test:8192/ui',
+  'http://127.1:8192/ui',
+  'http://169.254.1.4:8192/ui',
+  'http://[fd00::1]:8192/ui',
+  'http://[fe80::1]:8192/ui',
+  'http://[::ffff:192.168.40.9]:8192/ui',
+  'about:blank'
+])('fails closed while a peer has never announced its addresses at %s', async (url) => {
+  const h = make(false, url, () => ({ ...origins(), linkedEndpointsUnknown: true }))
+  const target = { app: 'Webby' }
+  expect(await h.run('computer_observe', target)).toMatchObject({ body: BROWSER_ADDRESS_UNAVAILABLE })
+  expect(await h.run('computer_act', { ...target, action: 'key', text: 'Enter' })).toMatchObject({ body: BROWSER_ADDRESS_UNAVAILABLE })
+  expect(h.requests().some(({ method }) => method === 'state.get' || method === 'action.run')).toBe(false)
+})
+
+it.each(['https://ordinary.test/', 'http://ordinary.test:7677/', 'http://ordinary.test:8192/'])(
+  'keeps public sites available while a peer has never announced its addresses at %s',
+  async (url) => {
+    const h = make(false, url, () => ({ ...origins(), linkedEndpointsUnknown: true }))
+    expect((await h.run('computer_observe', { app: 'Webby' })).isError).toBe(false)
+  }
+)
+
+it('refuses to open a private browser URL while a peer set is missing', async () => {
+  const h = make(false, undefined, () => ({ ...origins(), linkedEndpointsUnknown: true }))
+  expect(await h.run('computer_apps', { launch: 'Webby', open: ['http://192.168.40.9:8192/ui'] })).toMatchObject({
+    body: BROWSER_ADDRESS_UNAVAILABLE
+  })
+  expect(h.requests().some(({ method }) => method === 'apps.launch')).toBe(false)
+})
+
+it.each(['192.168.40.9', 'peer-lan-alias.test'])('recognizes a moved peer by its LAN address at %s', async (host) => {
+  const h = make(false, `http://${host}:8192/ui`, () => ({ ...origins(), linkedEndpoints: [linkedPeer] }))
+  expect(await h.run('computer_observe', { app: 'Webby' })).toMatchObject({ body: TEMPCODE_ORIGIN_REFUSAL })
   expect(h.requests().some(({ method }) => method === 'state.get')).toBe(false)
 })
 
-it('keeps unrelated ports available while a peer set is missing', async () => {
-  const h = make(false, 'http://ordinary.test:8192/', () => ({ ...origins(), linkedEndpoints: [linkedPeer], linkedEndpointsUnknown: true }))
-  expect((await h.run('computer_observe', { app: 'Webby' })).isError).toBe(false)
+it('fences a moved peer before and after the announcement, even if another peer lists the new port', async () => {
+  const other = { listenerPorts: [8192], lanAddresses: ['192.168.40.8'], remoteRoutes: [] }
+  let moving = linkedPeer
+  // Model both an old port list and a LAN address not in that list.
+  const h = make(false, 'http://192.168.40.10:8192/ui', () => ({ ...origins(), linkedEndpoints: [moving, other] }))
+  const target = { app: 'Webby' }
+  expect(await h.run('computer_observe', target)).toMatchObject({ body: BROWSER_ADDRESS_UNAVAILABLE })
+  expect(await h.run('computer_act', { ...target, action: 'key', text: 'Enter' })).toMatchObject({ body: BROWSER_ADDRESS_UNAVAILABLE })
+
+  moving = { ...linkedPeer, listenerPorts: [8192], lanAddresses: ['192.168.40.10'] }
+  expect(await h.run('computer_observe', target)).toMatchObject({ body: TEMPCODE_ORIGIN_REFUSAL })
+  expect(await h.run('computer_act', { ...target, action: 'key', text: 'Enter' })).toMatchObject({ body: TEMPCODE_ORIGIN_REFUSAL })
+  expect(h.requests().some(({ method }) => method === 'state.get' || method === 'action.run')).toBe(false)
 })
 
 it('allows an ordinary address on a peer port once all peer sets are fresh', async () => {
-  const h = make(false, 'http://192.0.2.30:8191/', () => ({ ...origins(), linkedEndpoints: [linkedPeer] }))
+  const h = make(false, 'http://192.168.40.11:8191/', () => ({ ...origins(), linkedEndpoints: [linkedPeer] }))
   expect((await h.run('computer_observe', { app: 'Webby' })).isError).toBe(false)
 })

@@ -342,6 +342,10 @@ describe('RelayServer', () => {
       }
     })
     expect(received).toHaveBeenCalledWith('env_box', peer)
+
+    localPort = 7679
+    server.announceBrowserEndpoints()
+    expect(requests.at(-1)?.params).toMatchObject({ browserEndpoints: { listenerPorts: [7679] } })
     server.close()
   })
 

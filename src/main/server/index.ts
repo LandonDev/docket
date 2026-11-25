@@ -2432,7 +2432,10 @@ export async function startServer(
       await remote?.close()
       remote = null
       const port = remotePortWanted()
-      if (port === null) return
+      if (port === null) {
+        relayServer.announceBrowserEndpoints()
+        return
+      }
       remote = await startRemoteListener({
         port,
         auth: remoteAuth,
@@ -2460,6 +2463,7 @@ export async function startServer(
         // The built renderer (electron-vite build); a dev tree without it answers 503.
         ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer'), assets: options.assets })
       })
+      relayServer.announceBrowserEndpoints()
     }))
   // The phones' push registrations forward to the hub (made below), or go
   // out from here when this host holds the APNs key (remote/apns.ts); a

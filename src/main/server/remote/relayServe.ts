@@ -346,6 +346,11 @@ export class RelayServer {
     }
   }
 
+  /** Refresh peers now when the listener changes, without waiting for the heartbeat. */
+  announceBrowserEndpoints(): void {
+    this.publish(this.deps.presence.snapshot())
+  }
+
   /** A notice of a local root thread (notifier.onNotice): to every connected link as relay.notice when this host delivers nothing itself. */
   onNotice(notice: Notice): void {
     if (this.closed || this.deps.deliversNotices()) return

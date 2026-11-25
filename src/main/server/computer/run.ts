@@ -1,4 +1,4 @@
-import { isTempCodeOrigin, TEMPCODE_ORIGIN_REFUSAL, type TempCodeOrigins } from '../remote/tempcodeOrigins'
+import type { TempCodeOrigins } from '../remote/tempcodeOrigins'
 import type { z } from 'zod'
 import {
   COMPUTER_WAIT,
@@ -565,7 +565,13 @@ async function runChecked(
       (typeof args.launch === 'string' ? refusedLaunch(args.launch, !!host.vm) : null) ?? (openOf(args).map((item) => refusedOpenItem(item, !!host.vm)).find((l) => l !== null) ?? null)
     if (line) return refusalOf(line)
     const origins = browserOrigins()
-    if (origins && openOf(args).some((item) => isTempCodeOrigin(item, origins))) return refusal(TEMPCODE_ORIGIN_REFUSAL)
+    if (origins) {
+      for (const item of openOf(args)) {
+        if (!/^https?:/i.test(item)) continue
+        const refused = await refusedBrowserTarget({ browser: true, url: item }, origins)
+        if (refused) return refusal(refused)
+      }
+    }
     // a Work thread opens no Forms page: only the msform tools reach Forms
     if (work && openOf(args).some(isFormsUrl)) return refusal(FORMS_OPEN_REFUSED)
   }
@@ -734,12 +740,13 @@ async function runChecked(
   }
   /** Check a browser target without reading its content or switching tabs. The native service binds checks to its steps. */
   async function browserUrl(target: Pick<TargetBase, 'session' | 'app' | 'window'>): Promise<string | undefined> {
-    const origins = browserOrigins()
-    if (!origins) return
+    if (!host.origins) return
     const report = await send('browser.target', { session: target.session, app: target.app, window: target.window }).catch((error: unknown) => {
       if (!(error instanceof ComputerRpcError) || error.code !== -32601) throw error
       return { browser: resolvedApp !== undefined && knownBrowser(resolvedApp), url: undefined }
     })
+    const origins = browserOrigins()
+    if (!origins) return
     const line = await refusedBrowserTarget(report, origins)
     if (line) throw new ComputerRpcError(-32000, line, { kind: 'browser_refused', message: line })
     return report.browser ? report.url : undefined

@@ -4,7 +4,8 @@ import { shortHostName } from '@shared/hostNames'
 import { isIP } from 'node:net'
 import { hostname, networkInterfaces } from 'node:os'
 import { kindOf, listEnvironments, type EnvironmentsStore } from './environments'
-import { REMOTE_DEFAULT_PORT, readRemoteSettings } from './handlers'
+import { isForbiddenHostname, isPrivateAddress } from './addressGuard'
+import { readRemoteSettings } from './handlers'
 
 export const TEMPCODE_ORIGIN_REFUSAL = 'refused: TempCode pages are off limits to computer tools.'
 
@@ -84,9 +85,17 @@ export async function resolvesToTempCodeOrigin(
 ): Promise<boolean> {
   if (isTempCodeOrigin(url, origins)) return true
   const target = endpoint(url)
-  if (!target) return false
+  if (!target) {
+    if (origins.linkedEndpointsUnknown) throw new Error('a linked host’s browser addresses are unknown')
+    return false
+  }
   const { host, port } = target
-  const sets = [origins, ...(origins.linkedEndpoints ?? [])]
+  const peers = origins.linkedEndpoints ?? []
+  // A peer's last list cannot clear a port it never named. This also covers the
+  // interval between a move and the arrival of the peer's new list.
+  const unconfirmed = peers.filter((peer) => !peer.listenerPorts.includes(port))
+  const publicOnly = origins.linkedEndpointsUnknown || unconfirmed.length > 0
+  const sets = [origins, ...peers]
   const remoteHosts: string[] = []
   let listenerPort = false
   for (const set of sets) {
@@ -99,10 +108,18 @@ export async function resolvesToTempCodeOrigin(
     // A tunnel can answer on either standard web port when its saved route names only HTTPS.
     if (listens || port === 80 || port === 443) remoteHosts.push(...(set.tunnelHosts ?? []))
   }
-  if (origins.linkedEndpointsUnknown && (listenerPort || remoteHosts.length || port === REMOTE_DEFAULT_PORT)) {
-    throw new Error('a linked host’s browser addresses are unknown')
+  if (!publicOnly && !listenerPort && !remoteHosts.length) return false
+  const unconfirmedHosts = new Set(unconfirmed.flatMap((peer) => peer.lanAddresses.map(address)))
+  if (origins.linkedEndpointsUnknown) {
+    for (const route of origins.remoteRoutes) {
+      const configured = endpoint(route)
+      if (configured) unconfirmedHosts.add(configured.host)
+    }
   }
-  if (!listenerPort && !remoteHosts.length) return false
+  if (unconfirmedHosts.has(host)) return true
+  if (publicOnly && !isIP(host) && isForbiddenHostname(host)) {
+    throw new Error('a linked host’s browser addresses are unknown on this port')
+  }
 
   const resolve = async (name: string): Promise<string[]> => {
     if (isIP(name)) return [name]
@@ -113,12 +130,22 @@ export async function resolvesToTempCodeOrigin(
   const addresses = await resolve(host)
   if (
     addresses.some((ip) =>
-      isTempCodeOrigin(`http://${isIP(ip) === 6 ? `[${ip}]` : ip}:${port}`, origins)
+      unconfirmedHosts.has(ip) || isTempCodeOrigin(`http://${isIP(ip) === 6 ? `[${ip}]` : ip}:${port}`, origins)
     )
   )
     return true
+  if (publicOnly && addresses.some((ip) => !publicBrowserAddress(ip))) {
+    throw new Error('a linked host’s browser addresses are unknown on this port')
+  }
   const remoteAddresses = await Promise.all([...new Set(remoteHosts)].map(resolve))
   return remoteAddresses.some((ips) => ips.some((ip) => addresses.includes(ip)))
+}
+
+function publicBrowserAddress(ip: string): boolean {
+  if (isPrivateAddress(ip)) return false
+  if (isIP(ip) === 4) return !/^(198\.51\.100|203\.0\.113)\./.test(ip)
+  // Require global IPv6 unicast. Exclude documentation, transition and protocol ranges.
+  return /^[23][\da-f]{3}:/.test(ip) && !/^(2001:(?:0*db8:|0*:)|2002:|3fff:)/.test(ip)
 }
 
 /** Browser requests must name a known local endpoint. Never authorize an incoming Host by resolving it. */

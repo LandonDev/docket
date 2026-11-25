@@ -1393,10 +1393,12 @@ A targeted tool call checks the native service's `browser.target` result
 before reading or acting. The method reports whether the target is a browser
 and the current document URL if it can read it. Peers share their listener
 ports, LAN addresses and names, and tunnel names at registration and on each
-heartbeat. At a listener port the host checks all DNS answers against its
-own set and the linked hosts' sets. A failed lookup stops the call. At a
-known listener port a missing or stale peer set also stops the call. For a
-verified browser tab,
+heartbeat. A listener change sends an update on live links. The host
+checks all DNS answers against its own set and the linked hosts' sets.
+A failed lookup stops the call. When any peer set is missing or stale,
+native browser tools require a public origin on every port. Private
+origins also require every peer set to cover the target port, so a move
+cannot open a gap before its update arrives. For a verified browser tab,
 the host passes `browserUrl` on the native request. A changed or missing
 address stops a read or a later step with `browser_refused`. The host
 refuses known browsers whose service cannot supply the address. This gate

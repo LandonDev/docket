@@ -540,19 +540,20 @@ describe('limits', () => {
   })
 })
 
+const cookieFor = async (caps: string[] = ['operate']): Promise<string> => {
+  const admin = await adminKey()
+  const code = (
+    await call('POST', '/api/pairings', {
+      headers: bearer(admin),
+      body: { name: 'Browser', audience: 'client', caps }
+    })
+  ).body.code
+  return (await call('POST', '/api/pair', { body: { code, kind: 'session' } })).headers
+    .get('set-cookie')!
+    .split(';')[0]
+}
+
 describe('/ui and /pair', () => {
-  const cookieFor = async (caps: string[] = ['operate']): Promise<string> => {
-    const admin = await adminKey()
-    const code = (
-      await call('POST', '/api/pairings', {
-        headers: bearer(admin),
-        body: { name: 'Browser', audience: 'client', caps }
-      })
-    ).body.code
-    return (await call('POST', '/api/pair', { body: { code, kind: 'session' } })).headers
-      .get('set-cookie')!
-      .split(';')[0]
-  }
   it('the sign-in page is public; the document redirects there and assets are 401 without a cookie', async () => {
     const pairPage = await call('GET', '/pair')
     const nonce = /script-src 'nonce-([^']+)'/.exec(pairPage.body)?.[1]
@@ -891,7 +892,8 @@ describe('session.events with subscribe', () => {
 
 // Last: it stops the listener every other test talks to.
 describe('remote.settings.set', () => {
-  it('enabled off closes the port; on brings it back', async () => {
+  it('closes the port when disabled and keeps a paired browser working when it returns', async () => {
+    const cookie = await cookieFor(['approve'])
     const local = await open(`ws://127.0.0.1:${server.port}`)
     const off = await local.request('remote.settings.set', { enabled: false })
     expect(off.ok).toBe(true)
@@ -909,6 +911,9 @@ describe('remote.settings.set', () => {
     expect(server.remote!.port).toBeGreaterThan(0)
     base = `http://127.0.0.1:${server.remote!.port}`
     expect((await call('GET', '/healthz')).body).toBe('ok')
+    const headers = { Cookie: cookie, Origin: base }
+    expect((await call('GET', '/ui/', { headers })).status).toBe(200)
+    expect(await upgradeStatus(base.replace('http', 'ws') + '/ws', headers)).toBe(101)
     expect((await local.request('remote.status')).result).toMatchObject({
       enabled: true,
       running: true,
