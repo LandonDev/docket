@@ -79,7 +79,7 @@ const live: OpenDeps = {
   stillLatest: (mine) => stillChosen(mine, null, ""),
 };
 
-export type Opened = "opened" | "gone" | "failed" | "nothing";
+export type Opened = "opened" | "gone" | "failed" | "nothing" | "kept";
 
 /** The view a chip's thing opens in, as a sent chip's does (work/canvas/SentChips.tsx), on the thing itself. */
 function viewOfChip(chip: ContextChip, workspaceId: string): OpenWorkView | null {
@@ -124,7 +124,7 @@ export async function openHit(hit: SearchHit, hostId: string, over: Partial<Open
       } catch {
         return "failed";
       }
-      if (!d.stillLatest(mine)) return "nothing";
+      if (!d.stillLatest(mine)) return "kept";
     }
     // A thread carries its own place: the window follows it there. Whatever lies over the threads (Today, Review,
     // the Inbox, Settings) leaves first, as for every other kind, or the thread would open under it.

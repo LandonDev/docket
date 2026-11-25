@@ -1680,6 +1680,8 @@ export default function App() {
       // history holds that seq (lib/transcriptJump.ts), whether the thread is
       // already on screen or opens below.
       perfMark("open-click", sessionId);
+      // A thread he picks (the column, the rail, a list) is his latest choice, as a Work view is (lib/workSwitch.ts).
+      choose();
       if (seq !== undefined) requestTranscriptJump(sessionId, seq);
       if (focusOpenSession(sessionId)) return;
       const session = await ensureOpenSession(sessionId);

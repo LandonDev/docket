@@ -220,7 +220,8 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
     }
     onClose();
     void openHit(row.hit, row.host).then(async (result) => {
-      if (result === "opened") return;
+      // "kept": the thread was put back, and a newer choice of his keeps the window: nothing failed.
+      if (result === "opened" || result === "kept") return;
       const toast = await loadToast();
       toast.error(result === "gone" ? "That job is no longer here" : `Couldn't open ${row.hit.title}`);
     });

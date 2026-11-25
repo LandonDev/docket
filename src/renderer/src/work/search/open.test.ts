@@ -49,7 +49,7 @@ describe("opening a hit", () => {
     // He chooses something else while the host restores.
     r.chosen.n++;
     restored();
-    expect(await opening).toBe("nothing");
+    expect(await opening).toBe("kept");
     expect(r.did).toEqual([["restore", "t-old"]]);
   });
   it("an archived thread is put back first, then opens; a live one is never touched", async () => {

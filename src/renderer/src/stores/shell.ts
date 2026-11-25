@@ -9,6 +9,7 @@ import {
   type SettingsSectionId,
 } from "../lib/settings";
 import type { InstalledUpdate } from "../lib/updateNotice";
+import { choose } from "../lib/workSwitch";
 
 /**
  * The window chrome's own state: which panels and full-screen views are open,
@@ -277,6 +278,8 @@ export const shell = {
   /** Opens the page above the Work workspaces with this id (lib/workPlaces.ts), or closes the one open. */
   openWorkPlace: (id: string | null) => {
     if (id) perfMark("page-switch", id);
+    // A page he opens is his latest choice: a door still waiting on a host (a restore, a slow file) no longer takes the window.
+    choose();
     update((s) => openWorkPlace(s, id));
   },
   openNotes: () => {
