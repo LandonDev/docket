@@ -568,7 +568,8 @@ first wanted; nothing of it is in the first paint.
   screen or takes the computer the Computers page offers (its stage's live
   picture, `offerFullScreen`) into it; in the pop-out main toggles the
   pop-out's own full screen. The picture fills the display on `matte` with
-  no inset; the caption floats over the top edge on its own ground. A press
+  no inset; the computer's bar floats over the top edge's middle, hidden until
+  the pointer rests there 250 ms or he presses ⌃⌥ (`useFloatingBar`). A press
   (the stage's picture, Full screen) grows the picture from where it was by
   `transform` over `--dur-slow` on `--ease-out` once the window fills the
   display (`growFrom`; reduced motion: a fade over `--dur-fast`); a key's
@@ -746,11 +747,11 @@ phone's full screen ("The phone" below), and from then on:
   character the engine types on a spare keycode lands as the wrong key, so
   a phone types into the VM with keys or a paste. A layout that makes
   characters with AltGr as Ctrl+Alt cannot type those few there.
-- **The VM's keys menu.** While he drives the VM, the caption on the stage
-  and in full screen has one quiet Keys button before Hand back, with
+- **The VM's keys menu.** While he drives the VM, the computer's bar (the
+  page's header, full screen's, the pop-out's) has one quiet Keys button before Hand back, with
   the keys his own keyboard keeps for itself: Windows key, Ctrl+Alt+Del and
   Alt+Tab, pressed on his drive stream (`VideoStreams.press`, `VM_KEYS` in
-  ComputerCaption.tsx). Off a Mac the Windows key on his keyboard is never
+  ComputerBar.tsx). Off a Mac the Windows key on his keyboard is never
   sent; the menu sends it.
 - **The app leaves the page's keys alone.** While the picture holds the
   keyboard the app's own key listener passes every key by (`pageOwnsKey`,

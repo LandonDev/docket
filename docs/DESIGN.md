@@ -1076,21 +1076,68 @@ Every computer being driven now, on every connected host, in one place
   the still working dot while anything is driven and the amber waiting mark
   while a session's card needs him; it never carries a count. Go →
   Computers, ⌘⇧L.
-- **The page** covers the thread area as the Inbox and the Outbox do, on
-  their 40px header (the `Desktop` glyph, "Computers"), with nothing at its
-  end. Closing it returns
-  him to the thread he left. To keep one computer in view while he works
-  he pops it out: the one thing in the app that floats, because he asked
-  for it.
+- **The page** covers the thread area as the Inbox and the Outbox do.
+  Its 40px header is the bar of the computer on the stage (below); the
+  page's own name stays as its heading for a screen reader, and shows,
+  with the `Desktop` glyph, only when nothing is driven. Closing it
+  returns him to the thread he left. To keep one computer in view while he
+  works he pops it out: the one thing in the app that floats, because he
+  asked for it.
+- **The bar** (`ComputerBar`, surfaces/threads/computer/ComputerBar.tsx)
+  is one 40px row that says whose computer it is and holds every press it
+  has. One grammar in three places: docked as the page's header, afloat in
+  full screen, the handle of the pop-out. In order: the glyph (the Windows
+  VM's screen, the box's page, a Mac's or a PC's window), the title (13px
+  medium; a press closes the page and goes to the thread that drives it;
+  the VM's own name is no link), then on the same line one 12px muted
+  comma sentence: what it is doing in the step's own words, then where it
+  runs ("Clicking Save in TextEdit, Landon's MacBook"). While he drives the
+  first words are "You are driving", in foreground; while a card waits on
+  him they are the card's question, in foreground. A VM that shows only
+  its 4 fps picture says "No live picture to drive", which is why it has
+  no Take over. At the row's end, always shown and never behind a hover:
+  - **the delay**, a ghost button with the whole delay the app can
+    measure ("31 ms", tabular, muted). It is not drawn at all until the
+    stream has a number. Opened, a popover lists Delay, Frames, Picture
+    and Link. On a poor link the number gives way to "Link poor", in
+    foreground; opened, it says "The link is slow", why, and offers Use
+    Faster where Windows takes it now. Poor is one rule
+    (lib/video/linkHealth.ts): frames 120 ms late at the 95th centile
+    over 3 s, or two `slow` closes within a minute; it clears after 5 s
+    clean. Nothing here moves or takes a colour at rest.
+  - **Keys**, while he drives the Windows VM: a ghost icon button with a
+    tip opening the keys his own keyboard keeps (Windows key,
+    Ctrl+Alt+Del, Alt+Tab); a pick gives the keyboard back to the picture.
+  - **The VM's menu** (a ghost icon button, "Size, sleep and more"): Size
+    (Fit to window, 1280 × 800, 1920 × 1200, 2560 × 1600) and Detail
+    (Sharp, Faster), ticked by the host's choice, off with their reason as
+    the row's line while a thread holds it or until live resize is on;
+    then Sleep and Restart Windows… (a confirm first; off while a thread
+    holds it), Sign in to Office and OneDrive… (the sign-in Connections
+    walks), Restore points… (Settings' own dialog). A row this window's
+    key may not use is not drawn.
+  - **Take over** (secondary, only where the computer takes input from its
+    picture: the box's page and the Windows VM with its window) and
+    **Stop** (a quiet icon button with a tip; none on an idle page). While
+    he drives, **Hand back** alone, the page's one primary button, with
+    the chord that leaves the picture as a key cap inside it. A VM not set
+    up has Open Settings in their place; after his own Sleep, Wake.
+  - **The views**, 8px on: Pop out and Full screen, quiet icon buttons
+    with tips.
+  Under 640px the delay and Pop out give way, whole. No toast says the
+  leave chord: Hand back wears it. While he drives, Escape is the
+  computer's key and never closes the page. Leaving the page with nothing
+  else of his showing that computer hands it back by itself 1.5 seconds
+  later (lib/driveHold.ts).
 - **The stage.** One computer has the page (`ComputersPage`, the layout
-  in `lib/stageLayout.ts`). Its picture fits the room left by a 16px inset
-  and the caption, both ways, in its own shape, at the top of the room and
-  centred across it (`fitStage`, the fill rule). A whole computer's screen
-  (the Windows VM) fills that room: it is the computer. A window's picture
-  (a Mac's, a PC's, the box's page) is never drawn past twice the stream's
-  own pixels, so a small window stays small instead of turning to blur, and
-  grown past them it is drawn at a whole number of screen pixels to each of
-  the stream's (1:1, 2:1) when that costs at most a fifth of its width.
+  in `lib/stageLayout.ts`). Its picture has all the room under the bar,
+  16px in, and sits in the middle of it both ways, in its own shape
+  (`fitStage`, the fill rule). A whole computer's screen (the Windows VM)
+  fills that room: it is the computer. A window's picture (a Mac's, a
+  PC's, the box's page) is never drawn past twice the stream's own
+  pixels, so a small window stays small instead of turning to blur, and
+  grown past them it is drawn at a whole number of screen pixels to each
+  of the stream's (1:1, 2:1) when that costs at most a fifth of its width.
   Drawn at two or more screen pixels to each of the stream's, exactly, its
   pixels are doubled crisp (`image-rendering: pixelated`); at any other
   scale it stays smooth. It takes the box's one display and is where he
@@ -1110,103 +1157,94 @@ Every computer being driven now, on every connected host, in one place
   stage by itself while he watches. The swap is at once, with no motion:
   every tile is one element in one grid, and only its place changes, so no
   picture is made again and no stream is opened again.
-- **The caption** is one row under the stage's picture, 8px under it and as
-  wide as it: the thread's title (13px medium; a press closes the page and
-  goes to the thread) over one 12px muted comma sentence, what it is doing
-  in the step's own words, then where it runs ("Clicking Save in TextEdit,
-  Landon's MacBook"). While he drives the first words are "You are
-  driving", in foreground. While a card waits on him they are the card's
-  question, in foreground, and where it runs follows with no comma. At the
-  row's end, always shown and never behind a hover: Take over (secondary,
-  only where the computer takes input from its picture: the box's browser's
-  page and the Windows VM while it has its window; a Mac's or a PC's own
-  window has none, and neither has the VM with no window, `pictureOnly`) and Stop
-  (a quiet icon button with a tip; none on an idle page). While he drives,
-  Hand back alone, the page's one primary button, with the chord that
-  leaves the picture as a key cap inside it; on the Windows VM one quiet
-  Keys button before it (a ghost icon button with a tip, 4px apart) opens a
-  menu of the keys his own keyboard keeps: Windows key, Ctrl+Alt+Del,
-  Alt+Tab; a pick gives the keyboard back to the picture. Take over gives
-  the picture the keyboard as soon as it is his. No toast says the leave
-  chord here: Hand back already wears it. While he drives, Escape is the
-  computer's key and never closes the page. Leaving the page with nothing
-  else of his showing that computer (not full screen, no pop-out) hands it
-  back by itself 1.5 seconds later (lib/driveHold.ts).
 - **The picture** is the Computer section's viewport with no cap of its
-  own (`fill`): its place sizes it. Every face it has (the live picture,
-  the waiting box, the stopped line) takes one size: the stream's frame,
-  else the last frame that window saw of that computer, else the VM's
-  1280 by 800, through the stage's fit, so nothing moves when one gives
-  way to another. While the host's link is down it is the waiting box,
-  a spinner and "Reconnecting to The box", and no stream is asked for;
-  "The preview stopped" and Retry are for a stream that truly ended with
-  the host linked. A skeleton until the first frame; a
-  click on the stage's picture opens full screen. A session this desktop
-  may not draw is one muted line in the box's place, naming the machine:
-  "Shown on Studio only". The browser /ui lists the tiles with no picture
-  at all.
+  own (`fill`): its place sizes it. Every face it has takes one size: the
+  stream's frame, else the last frame that window saw of that computer,
+  else the VM's 1280 by 800, through the stage's fit, so nothing moves when
+  one gives way to another. A skeleton until the first frame; a click on
+  the stage's picture opens full screen. A session this desktop may not
+  draw is one muted line in the box's place, naming the machine: "Shown on
+  Studio only". The browser /ui lists the tiles with no picture at all.
+- **The faces.** Each state has one: a plate of words, centred (13px
+  medium, a 12px muted line under it, a spinner where it waits, one press
+  where it has one), over the last picture washed back (`Plate`,
+  Viewport.tsx), or over the bare box where there is no picture to keep.
+  Asleep: the desk the VM slept on, "Asleep", "Since 1:14 PM". Waking:
+  "Waking the Windows VM", "6 s of about 13", counted against the keeper's
+  median of its last five wakes. Connecting: the last picture under a
+  lighter wash, which fades out over `--dur-base` once the first frame is
+  on the canvas; nothing moves. Lost (the host's link down): "Reconnecting
+  to The box", "Try 2 of 5", then "The picture stopped" with Retry; no
+  stream is asked for meanwhile. Not set up: "The Windows VM is not set
+  up" on the bare box, and the bar's one press goes to Settings. The
+  keeper's own work (a restart, going back to a restore point, a move to
+  live resize) says its own words with a spinner and no press. A failed
+  wake says why, with Retry. "The preview stopped" and Retry are for a
+  stream that truly ended with the host linked. The host keeps the desk
+  as it goes to sleep (QMP's screenshot, a JPEG under
+  `<userData>/winvm/picture/`, `work.winvm.still` under the rule its video
+  has).
 - **The Windows VM** is one tile in every state, titled by the thread that
   holds it, or "Windows VM" when no thread does (then idle: no Stop, no
   working mark). Its picture is the VM's own under its name, whichever
   thread holds it, so the tile stays one element as the holder changes and
-  as it sleeps and wakes. While it is not awake its box keeps the picture's
-  16:10 at the size the picture will have, so nothing moves when it comes,
-  and says its state once, in the box, centred, 12px muted
-  (`RestingVmPicture`): on the stage a VM asleep or going to sleep wakes by
-  itself, with a spinner and "Waking the Windows VM" until the picture
-  arrives; in the strip "Asleep", and his press puts it on the stage, which
-  wakes it; "Not set up: Settings → Work → Windows VM" with no Take over; a
-  failed wake says why, with Retry. Take over on a VM that is not awake
-  wakes it and then takes over: one press. It has no Pop out or Full screen
-  until it has a picture.
+  as it sleeps and wakes. On the stage a VM asleep or going to sleep wakes
+  by itself, unless his own Sleep put it there: then it waits for Wake in
+  the bar. In the strip it waits for his press, which puts it on the
+  stage. Take over on a VM that is not awake wakes it and then takes over:
+  one press. It has no Pop out or Full screen until it has a picture.
 - **Nothing driven** is the one `EmptyState`: "Nothing is being driven",
   "A browser or an app an agent is using shows here, live." No action.
 - **Full screen** (`FullWindow`, lib/fullWindow.ts, its own chunk; main's
   fullScreen.ts): one computer over his whole display. The window itself
   goes full screen (on a Mac on this Space, at once, with no menu bar or
   Dock) and the picture fills it on `matte` (black in both themes, so no
-  words sit on it), centred both ways, with no inset and no caption row: a
-  whole computer's screen as large as the display allows in its shape
-  (the 1280 by 800 VM is 2880 by 1800 points on a 3200 by 1800 display),
-  a window's picture by the stage's rule. The stage's caption floats over
-  the top edge on its own ground, with Leave full screen (a quiet icon
-  button with a tip) after the controls; it fades over `--dur-base` two
-  seconds after the pointer last moved and comes back when it moves, or
-  with keyboard focus in it. ⌃⌘F leaves (and from the Computers page takes
-  the stage's computer in: View → Enter Full Screen); Escape leaves when
-  the picture does not hold the keyboard; a double click on the picture
-  leaves when he does not drive. While he drives, the picture holds the
-  keyboard as the computer's own: ⌘ is Ctrl, ⌘ alone the Windows key, ⌘Q
-  Alt+F4, and no app shortcut runs; ⌘Tab and ⌘Space stay the Mac's. The
-  two ways out are said once on each entry where he drives, for three
-  seconds: one quiet line at the foot of the display, 24px up, centred, on
-  the popover's ground (12px muted, `rounded-lg`, `shadow-overlay`, a
-  ring), each way a key cap and its words, 16px between the two: "⌃⌥
-  frees the keyboard" (the picture goes to Hand back) and "⌃⌘F leaves full
-  screen" (Ctrl+Alt and F11 off a Mac). It fades in over `--dur-base`, out
-  over `--dur-fast`, takes no pointer, and goes at once on Hand back. A click on any live picture (the stage's,
-  the Computer section's, the browser canvas's) or the stage's Full screen
-  button opens it, the picture growing from where it was over `--dur-slow`
-  on `--ease-out` (reduced motion: a fade over `--dur-fast`); the key's
-  entry has no motion. A window he had full screen himself stays so when
-  it closes. The lightbox no longer shows a live picture. It is another
-  canvas on the stream the place already plays, never a second stream.
+  words sit on it), centred both ways, with no inset: a whole computer's
+  screen as large as the display allows in its shape (the 1280 by 800 VM
+  is 2880 by 1800 points on a 3200 by 1800 display), a window's picture by
+  the stage's rule. The bar floats over the top edge's middle on the
+  popover's ground, 8px down and at most 560px wide, hidden until called:
+  the pointer resting 250 ms on the edge's middle 240px (the one part of a
+  maximized Windows app with nothing to press), or ⌃⌥. It comes by
+  opacity and 8px down over `--dur-base` on `--ease-out`, goes over
+  `--dur-fast` on `--ease-exit` 600 ms after the pointer leaves it, never
+  while one of its menus is open, and comes by itself once when the link
+  turns poor. Pop out and Leave full screen sit at its end. ⌃⌘F leaves
+  (and from the Computers page takes the stage's computer in: View →
+  Enter Full Screen); Escape leaves when the picture does not hold the
+  keyboard; a double click on the picture leaves when he does not drive.
+  While he drives, the picture holds the keyboard as the computer's own:
+  ⌘ is Ctrl, ⌘ alone the Windows key, ⌘Q Alt+F4, and no app shortcut
+  runs; ⌘Tab and ⌘Space stay the Mac's. The two ways out are said once on
+  each entry where he drives, for three seconds: one quiet line at the
+  foot of the display, 24px up, centred, on the popover's ground (12px
+  muted, `rounded-lg`, `shadow-overlay`, a ring), each way a key cap and
+  its words, 16px between the two: "⌃⌥ frees the keyboard" (the picture
+  goes to Hand back, and the bar comes) and "⌃⌘F leaves full screen"
+  (Ctrl+Alt and F11 off a Mac). It fades in over `--dur-base`, out over
+  `--dur-fast`, takes no pointer, and goes at once on Hand back. A click
+  on any live picture or the bar's Full screen opens it, the picture
+  growing from where it was over `--dur-slow` on `--ease-out` (reduced
+  motion: a fade over `--dur-fast`); the key's entry has no motion. The
+  VM going to sleep under him lets the keyboard go and shows its asleep
+  face. A window he had full screen himself stays so when it closes. It is
+  another canvas on the stream the place already plays, never a second
+  stream.
 - **Pop out** (`PopOut`, lib/popOut.ts, main's popOut.ts): a small
   frameless window over every app, every Space and every workspace, with
-  no place in the Dock: the picture filling it and one 36px bar under it,
-  which is its handle: the title (12px medium, truncating), Take over or
-  Hand back (xs) and Stop where the stage has them, then Back to the page
-  (the Computers glyph) and Close, quiet icon buttons with tips that open
-  in its own window. It opens without taking the keyboard, at 384 by 276
-  the first time and where he left it after, keeps the picture's shape as
-  he drags it to a size (no smaller than 240 by 186), wears the main
-  window's styles and theme and follows a change, and closes when its
-  computer leaves or the main window closes. Back to the page brings the
-  main window in front with that computer on the stage. The main window
-  draws it, on the stream it already plays: it is never a second stream.
-  The stage's caption opens it (Pop out, before Full screen). ⌃⌘F takes
-  it full screen on its own display: its picture on `matte`, fitted by the
-  stage's rule, its bar under it.
+  no place in the Dock: the bar on top, 36px, as the window's handle (the
+  title 12px medium and truncating, Keys while he drives the VM, Take over
+  or Hand back (xs) and Stop where the stage has them, then Back to the
+  page, Full screen and Close, quiet icon buttons with tips that open in
+  its own window), and the picture under it, fitted in its shape by the
+  stage's rule. It opens without taking the keyboard, at 384 by 276 the
+  first time and where he left it after, takes any size he drags it to (no
+  smaller than 240 by 186), wears the main window's styles and theme and
+  follows a change, and closes when its computer leaves or the main window
+  closes. Back to the page brings the main window in front with that
+  computer on the stage. Full screen (or ⌃⌘F) takes it over its own
+  display, its picture on `matte`. The main window draws it, on the
+  stream it already plays: it is never a second stream.
 - **The Windows VM in Settings → Work** (`WinvmSection`, work/winvm/): a
   section of its own on each Work host that can have the VM (a host that
   cannot shows nothing). Its first row, "Windows", says what the machine is
@@ -1223,9 +1261,6 @@ Every computer being driven now, on every connected host, in one place
   edition with its end date, and Office. A Work workspace's own page has
   "Computer use on the Windows VM" under Where it runs, a switch shown only
   where its host has the VM set up.
-- **Nothing says "live".** No mark, no frame counter, no quality menu. The
-  video is never eased or blurred; ours is only the first frame's arrival
-  and a tile's entry.
 
 #### The canvas pane
 

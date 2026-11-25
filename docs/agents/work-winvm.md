@@ -37,7 +37,9 @@ and opens the door at the next call.
 |---|---|---|
 | `work.winvm.state` | read | the state |
 | `work.winvm.wake` | operate | wakes it and answers once it is awake (about 13 s from hibernate, 20 to 26 s cold) |
-| `work.winvm.sleep` | operate | hibernates it and answers once QEMU has exited |
+| `work.winvm.sleep` | operate | hibernates it and answers once QEMU has exited; a person's Sleep holds it asleep (`heldAsleep`) until his Wake |
+| `work.winvm.restart` | operate | restarts Windows cleanly (`shutdown /r /t 0` as the admin, never `/f`), then opens the door again; the state says "Restarting Windows" meanwhile. Refused while a thread holds the machine (the lease) |
+| `work.winvm.still` | read | `{ still }`: the picture it last went to sleep on ("The still"), to whoever may watch the VM (`mayWatch`: a client key with approve; never a thread or the box's own socket) |
 | `work.winvm.setup` | admin | answers at once; the progress and the end come as pushes |
 | `work.winvm.settings` | admin | `{ sleepAfter, screen }`: `15m`, `30m` (the default), `2h` or `never`, in the host setting `work.winvm.sleepAfter`; the guest's screen, `1280x800` (the default) or `1920x1200`, in `work.winvm.screen`, used by a new Set up ("The picture") (live-video.md "The Windows VM" has the numbers that offer it) |
 | `work.winvm.points` | read | `{ points }`, newest first |
@@ -49,8 +51,9 @@ Settings → Work draws a press only where this window's key may make it (`linkM
 "The switch"): a given computer's key wakes, sleeps and saves a point; Set up, Go back and Delete are not
 drawn, Sleeps after stands as words and the screen size is not read. A read key gets no press.
 
-A model caller (a thread's `app.work*` call) may read and wake, never set up, sleep, change the settings or
-touch a restore point. Every change of state pushes `{ push: 'work.winvm', state }` to every client socket,
+A model caller (a thread's `app.work*` call) may read and wake, never set up, sleep, restart, change the settings,
+read the still or touch a restore point. The state also says `wakeMs`, the median of the last five wakes from
+sleep (the Computers page's "6 s of about 13"), and `heldAsleep`. Every change of state pushes `{ push: 'work.winvm', state }` to every client socket,
 and every change to the points `{ push: 'work.winvm.points', points }`. The methods answer
 `Work is off on this host` while the switch is off, as every pillar's do.
 
@@ -252,6 +255,14 @@ right after it. It happens:
 
 A machine that stopped by itself (he shut Windows down in a Take over) is noticed within a minute and reads
 `asleep`.
+
+### The still
+
+Just before it hibernates the keeper takes QMP's screenshot of the guest (`beforeSleep`, at most 3 s; a
+failure never holds the sleep) and keeps it as one JPEG, at most 1920 on its long edge, in
+`<userData>/winvm/picture/still.json`, written whole in place of the last (still.ts, wired by host.ts). The
+Computers page draws it washed back under the VM's plate while it sleeps, wakes and connects
+(docs/DESIGN.md "Computers", "The faces").
 
 ## The stop
 
