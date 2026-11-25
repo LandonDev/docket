@@ -2366,8 +2366,8 @@ phone does everything the desktop does. What milestone 46 built:
   list row's act as the title (title3 semibold; one name, `OutboxModel.title`),
   a timed send's "Scheduled for Wed 8:00 AM" with the `clock` glyph, then
   the host's one sentence of what the press does that its fields do not say
-  (`effect`, subheadline in `label`; a timed send's says "at the time you
-  set"), then the notes that apply, one
+  (`effect`, subheadline in `label`; a timed send's is "Sends as you.",
+  its time leading the item), then the notes that apply, one
   line each in meta with a glyph in a 16 pt column: "Not sent. <why>" (the
   destructive dot, its words in the destructive ink: the only colour),
   "Out of date. <why>" (`clock.arrow.circlepath`), "The thread rewrote this
@@ -2401,7 +2401,8 @@ phone does everything the desktop does. What milestone 46 built:
   the Outbox with the sheet over it) and from the thread's card. It loads
   the request from its host (`request.get`): the head (title3 semibold), one
   sentence of what the ticked rows send in the kinds' own words ("Send 2
-  mails to 2 people", "Send mail with Purdue mail, 2 times": the shared
+  mails to 2 people", "Send mail with Purdue mail to 2 people", an add-on call that names its
+  people by whom it reaches, else ", 2 times": the shared
   `summaryHead`, src/shared/work/outboxHead.ts), so it always agrees with
   Send N, and once answered what the press did ("Sent 2, 1 left out",
   "Queued 3 in LifeOS"), "You asked in <thread>: “<his

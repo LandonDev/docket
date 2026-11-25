@@ -238,20 +238,28 @@ public extension OutboxModel {
         .portalSubmit: ("form", "forms", "Submit"), .addonCall: ("call", "calls", "Run"), .computerAct: ("step", "steps", "Run"),
     ]
 
-    /// Every address a mail goes to, lower case, as the shared head counts them: `{address}` entries under `message`,
-    /// else at the payload's top.
+    /// Every address an item goes to, lower case, as the shared head counts them: a held mail's fields (under
+    /// `message`), else an add-on call's own (under `arguments`), else the payload's top; each of `to`, `cc` and `bcc`
+    /// one value or a list of them, a value a string with "@" or an `{address}`.
     private nonisolated static func headRecipients(_ item: OutboxItem) -> [String] {
         guard case .object(let p)? = item.payload else { return [] }
         var object = p
-        if case .object(let m)? = p["message"] { object = m }
+        if case .object(let m)? = p["message"] { object = m } else if case .object(let a)? = p["arguments"] { object = a }
+        let one = { (v: JSONValue) -> String? in
+            if case .string(let s) = v, s.contains("@") { return s.lowercased() }
+            if case .object(let o) = v, case .string(let a)? = o["address"] { return a.lowercased() }
+            return nil
+        }
         return ["to", "cc", "bcc"].flatMap { key -> [String] in
-            guard case .array(let list)? = object[key] else { return [] }
-            return list.compactMap { v in
-                if case .object(let o) = v, case .string(let a)? = o["address"] { return a.lowercased() }
-                return nil
+            switch object[key] {
+            case .array(let list)?: return list.compactMap(one)
+            case let value?: return one(value).map { [$0] } ?? []
+            case nil: return []
             }
         }
     }
+
+    private nonisolated static func peopleWords(_ n: Int) -> String { "\(n) \(n == 1 ? "person" : "people")" }
 
     private nonisolated static func lowerFirst(_ s: String) -> String { s.prefix(1).lowercased() + s.dropFirst() }
     private nonisolated static func joinWords(_ parts: [String]) -> String {
@@ -282,14 +290,16 @@ public extension OutboxModel {
                 let o: [String: JSONValue] = if case .object(let o)? = g.items[0].payload { o } else { [:] }
                 let words: String = if case .string(let w)? = o["words"] { w } else if case .string(let t)? = o["tool"] { t } else { "Run" }
                 let addon: String = if case .string(let a)? = o["addon"] { " with \(a)" } else { "" }
-                let part = "\(words)\(addon)\(n > 1 ? ", \(n) times" : "")"
+                // One that names its people says who it reaches, never how many times.
+                let people = Set(g.items.flatMap(headRecipients)).count
+                let part = "\(words)\(addon)\(people > 0 ? " to \(peopleWords(people))" : n > 1 ? ", \(n) times" : "")"
                 return i > 0 ? lowerFirst(part) : part
             }
             let verb = key.hasPrefix("addon:") ? g.noun.verb : g.verbs.count == 1 ? g.verbs.first! : g.noun.verb
             var part = "\(i > 0 ? lowerFirst(verb) : verb) \(n) \(n == 1 ? g.noun.one : g.noun.many)"
             if key == "mail", !bare {
                 let people = Set(g.items.flatMap(headRecipients)).count
-                if people > 0 { part += " to \(people) \(people == 1 ? "person" : "people")" }
+                if people > 0 { part += " to \(peopleWords(people))" }
             }
             return part
         }

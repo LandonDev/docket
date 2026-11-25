@@ -259,6 +259,18 @@ import TempCodeContract
         #expect(OutboxModel.summaryHead([echo("e1")]) == "Echo with League")
     }
 
+    @Test func anAddonsCallsThatNameTheirPeopleSayWhoTheyReachNeverHowManyTimes() {
+        // outboxCount.test.ts's council-round-3 cases, word for word.
+        let send = { (to: JSONValue?) -> OutboxItem in
+            var arguments: [String: JSONValue] = ["subject": .string("Travel")]
+            if let to { arguments["to"] = to }
+            return self.kinded("s", kind: .addonCall, payload: .object(["addonId": .string("m1"), "tool": .string("send_mail"), "words": .string("Send mail"), "addon": .string("Purdue mail"), "arguments": .object(arguments)]))
+        }
+        #expect(OutboxModel.summaryHead([send(.string("alex@purdue.edu")), send(.array([.string("Jordan@purdue.edu")]))]) == "Send mail with Purdue mail to 2 people")
+        #expect(OutboxModel.summaryHead([send(.array([.object(["address": .string("a@x")])])), send(.string("a@x"))]) == "Send mail with Purdue mail to 1 person")
+        #expect(OutboxModel.summaryHead([send(.string("not an address")), send(nil)]) == "Send mail with Purdue mail, 2 times")
+    }
+
     @Test func theSheetsHeadFollowsItsTicksAndAgreesWithItsButton() {
         let req = request("q", rows: [row(lifeosMail("a", to: "a@x.edu")), row(lifeosMail("b", to: "b@x.edu")), row(lifeosMail("c", to: "c@x.edu"), changed: true, receipt: nil)])
         let ticks = RequestSheetModel.initialTicks(req)
@@ -287,9 +299,9 @@ import TempCodeContract
         #expect(OutboxModel.title(post) == "Post in Esports staff")
         #expect(OutboxModel.effectLine(post) == "Everyone in it sees it.")
         let timed = OutboxItem(ref: .host(.init(id: "t")), kind: .officeMailSend, workspaceId: "w1", sessionId: "t1", sector: "purdue", summary: "Send to Casey Wu", verb: "Send", account: nil, state: .scheduled,
-                               payload: .object(["account": .string("landon@purdue.edu"), "to": .array([.string("cwu@purdue.edu")]), "subject": .string("Travel")]), createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .pillar, grantId: nil, error: nil, result: nil, routineRunId: nil, scheduledFor: 9_000, effect: "Goes at the time you set, as you.", updatedAt: 1)
-        // The host's sentence for a timed send agrees with its time line, so it is drawn as it stands.
-        #expect(OutboxModel.effectLine(timed) == "Goes at the time you set, as you.")
+                               payload: .object(["account": .string("landon@purdue.edu"), "to": .array([.string("cwu@purdue.edu")]), "subject": .string("Travel")]), createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .pillar, grantId: nil, error: nil, result: nil, routineRunId: nil, scheduledFor: 9_000, effect: "Sends as you.", updatedAt: 1)
+        // The host's sentence for a timed send ("Sends as you.", its time leading the item) is drawn as it stands.
+        #expect(OutboxModel.effectLine(timed) == "Sends as you.")
         // An Outlook mail's fields run From, To, Subject, as the desktop's.
         #expect(OutboxModel.payloadView(timed.payload).fields.map(\.label) == ["From", "To", "Subject"])
     }
