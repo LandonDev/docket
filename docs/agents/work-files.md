@@ -2539,7 +2539,9 @@ over a file that changed there.
   Reload after its confirm, and a delete of the file after its confirm drop changes that have not reached the file.
   - A text file changed elsewhere with nothing waiting here is read again (`FileSession.check`); a key he types while
     that read is out keeps his words on the version they were made on, and the line says the file changed, with
-    Reload and Keep Both (`edits`, a count `load` compares across its read). A failed send is said ("Offline. 2
+    Reload and Keep Both (`edits`, a count `load` compares across its read). Keys typed while Keep Both is out are
+    not in the copy it made: the editor and the journal keep them, nothing is read over them, and the line still
+    offers Reload and Keep Both (`keepMine` lets go only the text it sent). A failed send is said ("Offline. 2
     changes wait here", "Not saved. …", Retry) until a send is answered: his next key never turns the line back to
     Saved (`failure`, kept on the session as a sheet keeps `sendError`); a send out a while says Saving….
   - A copy's item that goes by any way (its tab's close, the pane's own Close, a stray the start's check drops) is

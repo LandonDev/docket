@@ -400,12 +400,17 @@ export class FileSession {
     await this.load();
   }
 
-  /** His text kept beside the file under a name of its own, then the file as it is now. */
+  /**
+   * His text kept beside the file under a name of its own, then the file as it is now. Keys typed while it was out
+   * are not in the copy: the editor and the journal keep them, and the line still offers Reload and Keep Both.
+   */
   async keepMine(): Promise<void> {
-    if (this.draft === null || this.view.is !== "text") return;
+    const text = this.draft;
+    if (text === null || this.view.is !== "text") return;
     try {
-      const got = await this.host.request<FileSaved>("work.files.write", { ...this.ref(), text: encodeText(this.draft, this.file), version: this.version, copy: true });
+      const got = await this.host.request<FileSaved>("work.files.write", { ...this.ref(), text: encodeText(text, this.file), version: this.version, copy: true });
       if ("copy" in got) this.host.say?.(`Kept as ${got.copy.name}`);
+      if (this.draft !== text) return this.line();
       this.draft = null;
       this.unjournal();
       if (this.gone) return this.line();

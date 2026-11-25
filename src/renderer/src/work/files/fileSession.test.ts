@@ -33,6 +33,8 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
   let lose = false;
   /** what happens while the next read is out (he types) */
   let duringRead: (() => void) | null = null;
+  /** what happens while the next Keep Both is out (he types) */
+  let duringKeep: (() => void) | null = null;
   const host: FileSessionHost = {
     async request<T>(method: string, params: Record<string, unknown>): Promise<T> {
       calls.push({ method, params });
@@ -45,6 +47,11 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
       if (method === "work.files.read") return { data: b64(file.text), size: Buffer.byteLength(file.text), version: `v${file.version}`, changed: file.changed, end: true, ...(o.locked ? { locked: o.locked } : {}) } as T;
       if (method === "work.files.stat") return { entries: [goneFrom(params) ? null : { key: "k", ref: null, folder: null, name: o.name ?? "Notes.md", kind: "text", size: Buffer.byteLength(file.text), changed: file.changed }] } as T;
       if (method === "work.files.write") {
+        if (params.copy) {
+          const typing = duringKeep;
+          duringKeep = null;
+          typing?.();
+        }
         if (params.copy) return { copy: { key: "c", ref: null, folder: null, name: "Notes (mine).md", kind: "text" } } as T;
         if (goneFrom(params)) return { conflict: { gone: true } } satisfies FileSaved as T;
         if (params.version !== `v${file.version}`) return { conflict: { version: `v${file.version}`, changed: file.changed } } satisfies FileSaved as T;
@@ -90,7 +97,7 @@ function standIn(start: string, o: { locked?: string; name?: string; drafts?: Dr
       fn();
     }
   };
-  return { session, file, lines, said, calls, timers, theirs, words, fire, tick, setDown: (on: boolean) => void (down = on), loseNext: () => void (lose = true), whileReading: (fn: () => void) => void (duringRead = fn) };
+  return { session, file, lines, said, calls, timers, theirs, words, fire, tick, setDown: (on: boolean) => void (down = on), loseNext: () => void (lose = true), whileReading: (fn: () => void) => void (duringRead = fn), whileKeeping: (fn: () => void) => void (duringKeep = fn) };
 }
 
 describe("a text file open", () => {
@@ -289,6 +296,25 @@ describe("a text file open", () => {
     await line.actions![1]!.run();
     expect(h.calls.find((c) => c.method === "work.files.write")?.params).toMatchObject({ copy: true });
     expect(h.said).toEqual(["Kept as Notes (mine).md"]);
+  });
+
+  it("keeps keys typed while Keep Both is out: only the text the copy took is let go, and the rest still waits here", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    h.theirs("theirs\n");
+    h.session.edit("first, mine\n");
+    await h.session.check();
+    const line = h.lines.at(-1)!;
+    h.whileKeeping(() => h.session.edit("first, mine\nand a line after\n"));
+    await line.actions!.find((a) => a.label === "Keep Both")!.run();
+    expect(h.said).toEqual(["Kept as Notes (mine).md"]);
+    // Not read over: the editor keeps what he typed since, and the line still offers its ways.
+    expect(h.session.getSnapshot()).toMatchObject({ is: "text", rev: 0 });
+    expect(h.session.dirty).toBe(true);
+    expect(h.lines.at(-1)!.actions?.map((a) => a.label)).toEqual(["Reload", "Keep Both"]);
+    await h.lines.at(-1)!.actions!.find((a) => a.label === "Keep Both")!.run();
+    expect(h.calls.filter((c) => c.method === "work.files.write" && c.params.copy).at(-1)!.params.text).toBe("first, mine\nand a line after\n");
+    expect(h.session.dirty).toBe(false);
   });
 
   it("keeps saying a failed save until a send is answered: a key after it never turns the line back to Saved", async () => {
