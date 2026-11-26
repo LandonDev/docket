@@ -233,7 +233,9 @@ through `useSaved`.
   settles it, though every step was missed); refused, or any other end, the size that stood is written back, and Screen
   size's row says so, also on a page opened again later. Under Screen size, one line with Retry says what is left: an
   end this window cannot confirm (Retry reads the machine again), or a size the computer would not put back (Retry
-  writes it again). Its sign-ins and its
+  writes it again). Screen size takes no pick while the upgrade is unresolved (running, unconfirmed, or the old size
+  not back), so its rollback never writes over a newer pick; a read's reply that lands after the watch settled is
+  ignored. Its sign-ins and its
   edition's end are Connections' rows alone. The Work page no longer has it.
 
 The preview (`SettingsPages.preview.tsx`) answers per computer: `<environment id>:<method>` answers first, a fixture
@@ -273,7 +275,11 @@ the set the computer last confirmed on a refusal.
   or the read's failure with Retry, also after the dialog closes. An open dialog stays open meanwhile. A refresh that
   fails over a held set (`defaultsStale`, `useThreadDefaultsStale`) keeps the values, marked "As last read" over New
   threads' rows and the place dialog's and "(as last read)" after the summary on a job's or a workspace's page, under
-  the failure with Retry (fixtures `defaults-stale`, `workspace-stale`). In a dialog
+  the failure with Retry (fixtures `defaults-stale`, `workspace-stale`). Such a set takes no change until a fresh read
+  answers: its controls, Docket's defaults and Use New threads are held (Change… on a job's or workspace's page still
+  opens the dialog to look and retry). A change then sends only the fields chosen, laid on the newest set held
+  (`onLatest`), so an old Access is never written over a newer one. "Different in N places" and its list name such a
+  place "(as last read)", with its failure and Retry, and hold its Use New threads. In a dialog
   narrower than 22rem, a place's row puts Use New threads under its name and set. A key that
   may only read sees each value in words (`ValueWords`, the size and tone Away and Digest use) and one `ManagedLine`
   first, above the first section, as on Reviews and Subagents. "Different in N places" holds its shape while places are read and, when a computer did not answer, says

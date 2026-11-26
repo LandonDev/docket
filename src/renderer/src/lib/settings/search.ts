@@ -78,7 +78,7 @@ const computersOf = (groups: readonly ListGroup[]): ListRow[] => listPages(group
 
 /** What this window is, for rows a page draws only in some windows (`SettingEntry.needs`). */
 /** `workHere`: Work is on for this window's own computer (the capture key is that computer's). */
-/** `jobsOn`: the computers (environment ids) that hold a job, whose pages list their jobs. */
+/** `jobsOn`: the computers (environment ids) with Work on that hold a job, whose pages list their jobs. */
 export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean; workHere?: boolean; jobsOn?: readonly string[] };
 
 const drawn = (entry: SettingEntry, window: SearchWindow): boolean =>

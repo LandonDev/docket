@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const store = vi.hoisted(() => ({
@@ -122,5 +122,32 @@ describe("Access for each job's new threads", () => {
     store.jobs = store.jobs.slice(0, 8);
     render(<JobsAccess />);
     expect(screen.queryByRole("searchbox")).toBeNull();
+  });
+
+  it("says why Find a job leaves no row when it matches only a job whose read failed, with Retry for it", () => {
+    store.jobs = Array.from({ length: 10 }, (_, i) => ({ id: `k${i}`, name: i === 4 ? "Purdue Esports" : `Job ${i}`, kind: "work", sector: "life", environmentId: "env_box" }));
+    for (const job of store.jobs) if (job.id !== "k4") store.defaults.set(`env_box:${job.id}`, { defaults: { permission: "edits" } });
+    store.errors.set("env_box:k4", NO_ANSWER);
+    render(<JobsAccess />);
+    fireEvent.change(screen.getByRole("searchbox", { name: "Find a job" }), { target: { value: "purdue" } });
+    expect(document.querySelectorAll("[data-job]")).toHaveLength(0);
+    const missed = document.querySelector<HTMLElement>("[data-missed]")!;
+    expect(missed.textContent).toContain("Purdue Esports: The box did not answer.");
+    store.loads.length = 0;
+    fireEvent.click(within(missed.closest<HTMLElement>("[data-slot=page-error-line]")!).getByRole("button", { name: "Retry" }));
+    expect(store.loads).toEqual(["env_box:k4"]);
+  });
+
+  it("marks a level held over a failed refresh as last read, and counts only current levels toward the heading", () => {
+    store.defaults.set("env_box:j1", { defaults: { permission: "edits" } });
+    store.defaults.set("env_box:j2", { defaults: { permission: "auto" } });
+    store.defaults.set("env_pc:j3", { defaults: { permission: "auto" } });
+    store.stale.set("env_pc:j3", NO_ANSWER);
+    render(<JobsAccess />);
+    // Two jobs answered and disagree: no shared level, each says its own; the held one says it is the last read.
+    expect(document.querySelector('[data-job="j3"]')!.textContent).toContain("Full access, as last read");
+    expect(document.querySelector('[data-job="j2"]')!.textContent).toContain("Full access");
+    expect(document.querySelector('[data-job="j2"]')!.textContent).not.toContain("as last read");
+    expect(screen.queryByText(/^Full access asks/, { selector: "section > p" })).toBeNull();
   });
 });

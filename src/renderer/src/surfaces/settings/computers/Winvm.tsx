@@ -19,7 +19,7 @@ import { useSettingsKnown, tellSettingsList } from "../../../lib/settings/useLis
 import { useWorkHosts } from "../../../lib/workSwitch";
 import { SettingRow } from "../parts/SettingRow";
 import { useSaved, type Saved } from "../parts/useSaved";
-import { forgetUpgrade, retryUpgrade, runUpgrade, useUpgrade, type Upgrade } from "./winvmUpgrade";
+import { forgetUpgrade, retryUpgrade, runUpgrade, upgradeHolds, useUpgrade, type Upgrade } from "./winvmUpgrade";
 
 /**
  * Settings › Windows VM, "A Windows computer inside the box, for Office and Teams." (docs/agents/settings.md "The
@@ -315,6 +315,8 @@ export function WinvmHost({ env }: { env: string }) {
    *  for the restart only once the save landed. A refused restart puts the size that stands back: without live resize
    *  Fits my window would not hold. */
   const pickScreen = async (screen: WinvmScreen): Promise<void> => {
+    // Held while an upgrade is unresolved: its rollback could write the size that stood over this pick.
+    if (upgradeHolds(upgrade)) return;
     const live = state.display?.device === "virtio";
     if (screen === "fit" && state.display && !live) {
       if (!(await confirmAction(TURN_ON))) return;
@@ -338,6 +340,7 @@ export function WinvmHost({ env }: { env: string }) {
         settingsError={settingsError && (settingsError.words ?? readWords(NO_ANSWER))}
         onRetrySettings={loadSettings}
         saved={{ ...savers, screen: screenMark(savers.screen, upgrade) }}
+        screenHeld={upgradeHolds(upgrade)}
         upgradeNote={upgrade?.phase === "unconfirmed" || upgrade?.phase === "unrestored" ? { words: upgrade.reason, retry: () => retryUpgrade(env) } : null}
         error={error}
         pressing={pressing}
@@ -368,6 +371,8 @@ export interface WinvmViewProps {
   /** what Fits my window's upgrade left unsettled (an end not confirmed, a size not put back), under Screen size with
    *  its Retry */
   upgradeNote?: { words: string; retry: () => Promise<void> } | null;
+  /** Screen size takes no pick while Fits my window's upgrade is unresolved (`upgradeHolds`) */
+  screenHeld?: boolean;
   /** each select's save mark and refusal, on its own row */
   saved?: Partial<Record<keyof Changes, Saved>>;
   /** a refused press (Set up, Wake, Sleep), on the Windows row */
@@ -393,6 +398,7 @@ export function WinvmView({
   onRetrySettings,
   saved = {},
   upgradeNote = null,
+  screenHeld = false,
   error,
   pressing,
   onPress,
@@ -434,7 +440,7 @@ export function WinvmView({
                 description={turning ? (state.step ?? undefined) : live || settings.screen === "fit" ? undefined : "Used when the VM is set up again"}
                 saved={saved.screen}
               >
-                <ChoiceSelect size="sm" label="Screen size" value={settings.screen} options={SCREENS} disabled={turning || state.state === "setting-up"} onChange={(v) => onScreen(v as WinvmScreen)} />
+                <ChoiceSelect size="sm" label="Screen size" value={settings.screen} options={SCREENS} disabled={turning || state.state === "setting-up" || screenHeld} onChange={(v) => onScreen(v as WinvmScreen)} />
               </SettingRow>
               {upgradeNote ? (
                 <PageError data-upgrade-note="" action={<RetryButton retry={upgradeNote.retry} />}>

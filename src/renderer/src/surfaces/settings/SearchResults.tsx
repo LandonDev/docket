@@ -43,9 +43,10 @@ export function useSearchResults(): SearchResult[] {
   // Add-ons and skills by name: asked once, here, inside Settings.
   const addons = addonNames.useExtras();
   const skills = skillNames.useExtras();
-  const workHere = useWorkHosts().has(LOCAL_ENVIRONMENT_ID);
-  // The computers that hold a job: only their pages list jobs.
-  const jobsOn = [...new Set(useWorkspaces().filter((workspace) => workspace.kind === "work").map((workspace) => workspace.environmentId))];
+  const workHosts = useWorkHosts();
+  const workHere = workHosts.has(LOCAL_ENVIRONMENT_ID);
+  // The computers with Work on that hold a job: only their pages list jobs.
+  const jobsOn = [...new Set(useWorkspaces().filter((workspace) => workspace.kind === "work" && workHosts.has(workspace.environmentId)).map((workspace) => workspace.environmentId))];
   // Found only where the list offers it (the press is mounted).
   const { addComputer } = useSettingsKnown();
   return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills, ...(window.work ? SIGN_IN_NAMES : []), ...(addComputer ? [ADD_COMPUTER_RESULT] : [])], { web: window.web, mac: window.platform === "darwin", work: window.work, workHere, jobsOn });

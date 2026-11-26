@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ThreadDefaultsDialog } from "../../chrome/ThreadDefaultsDialog";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageRow } from "../../components/page";
+import { PageError, PageRow } from "../../components/page";
+import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { awayStore, startAway, useAway } from "../../lib/away";
 import { useStore } from "zustand";
@@ -10,8 +11,8 @@ import { registry, useEnvironments } from "../../lib/connection";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { isWebMode } from "../../lib/nativeWeb";
 import { thisDesktopInLine } from "../../lib/native";
-import { accessWords } from "../../lib/settings/access";
-import { computerInLine, useComputerNames } from "../../lib/settings/computerName";
+import { ACCESS_NAMES, accessWords } from "../../lib/settings/access";
+import { computerInLine, readFailWords, useComputerNames } from "../../lib/settings/computerName";
 import type { PermissionPolicy, WorkspaceMeta } from "../../lib/tcserver/types";
 import { scopeKey, useWorkspaceCatalog, useWorkspaces, workspaceStore } from "../../lib/tcserver/workspaces";
 import { useLinksMay } from "../../lib/linkMay";
@@ -98,8 +99,11 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
   const errorOf = (job: WorkspaceMeta) => defaultsErrors.get(scopeKey(job.environmentId, job.id)) ?? defaultsStale.get(scopeKey(job.environmentId, job.id));
   const erred = jobs.filter((job) => errorOf(job) !== undefined);
   const failed = erred.filter((job) => !levelOf(job));
+  // A level held over a failed refresh is the last one read, not a current one: it is said as such, and never counts
+  // toward the level the heading says for most jobs.
+  const heldOf = (job: WorkspaceMeta) => !!levelOf(job) && defaultsStale.has(scopeKey(job.environmentId, job.id));
   const levels = jobs.map(levelOf).filter((level): level is PermissionPolicy => !!level);
-  const common = mostOf(levels);
+  const common = mostOf(jobs.filter((job) => !heldOf(job)).map(levelOf).filter((level): level is PermissionPolicy => !!level));
   // One line a computer whose jobs did not answer (the page says a silence once: `ReadFailure`), its Retry asking them again.
   const failedOn = [...new Set(erred.map((job) => job.environmentId))];
   const failures = failedOn.map((environmentId) => {
@@ -120,14 +124,30 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
   const settled = levels.length === shown.length;
   // Jobs on more than one computer: each row says its own.
   const several = new Set(jobs.map((job) => job.environmentId)).size > 1;
+  // The rows the query leaves; a query that matches only jobs whose read failed says so here, with Retry.
+  const rows = shown.filter((job) => filter.shown.includes(job));
+  const missed = rows.length === 0 ? failed.filter((job) => filter.shown.includes(job)) : [];
   return (
     <>
       {/* While any set is out the line under the heading waits as one bone and no row says a line, as most will not. */}
       <SettingSection of={computer === undefined ? "work.access" : "pc.jobs"} description={!settled ? <Skeleton className="inline-block h-3 w-64 align-middle" /> : common ? accessWords(common) : undefined}>
         {failures}
         <ListFilter filter={filter} label="Find a job" />
-        {shown.filter((job) => filter.shown.includes(job)).map((job) => {
+        {missed.length ? (
+          <PageError
+            data-missed=""
+            action={
+              <Button variant="ghost" size="sm" onClick={() => void Promise.all(missed.map((job) => workspaceStore.loadDefaults(job.environmentId, job.id)))}>
+                Retry
+              </Button>
+            }
+          >
+            {missed.map((job) => `${job.name}: ${readFailWords(errorOf(job) ?? "", names(job.environmentId))}`).join(" ")}
+          </PageError>
+        ) : null}
+        {rows.map((job) => {
           const level = levelOf(job);
+          const held = heldOf(job);
           // A job whose set is still out holds its name alone, and no way in yet.
           const opens = may(job.environmentId, "defaults.set") && !!level;
           return (
@@ -145,7 +165,7 @@ export function JobsAccess({ computer }: { /** One computer's jobs alone, on tha
                 )
               }
               // The shared level is said once, in the heading's line; only a job on another level says its own.
-              description={settled && level && level !== common ? accessWords(level) : undefined}
+              description={settled && level ? (held ? `${ACCESS_NAMES[level]}, as last read` : level !== common ? accessWords(level) : undefined) : undefined}
               onOpen={opens ? () => setOpen(job) : undefined}
               openLabel={`New threads in ${job.name}`}
             >

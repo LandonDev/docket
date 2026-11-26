@@ -62,6 +62,11 @@ export const forgetUpgrade = (environmentId: string): void => {
   }
 };
 
+/** Screen size is held while an upgrade is unresolved: running, its end unconfirmed, or the size that stood not put
+ *  back (a restore in flight included); a pick then could be written over by the upgrade's own rollback. */
+export const upgradeHolds = (upgrade: Upgrade | null): boolean =>
+  upgrade?.phase === "running" || upgrade?.phase === "unconfirmed" || upgrade?.phase === "unrestored";
+
 /** It went through: awake, with no error, on the live-resize display. The display alone does not say so. */
 export const upgradeWorked = (end: WinvmState): boolean => end.state === "awake" && !end.error && end.display?.device === "virtio";
 
@@ -87,15 +92,19 @@ export function runUpgrade(environmentId: string, before: WinvmScreen | null): P
   const unsure = (err: unknown): Upgrade => ({ phase: "unconfirmed", reason: words(err, "has not said yet whether the Windows VM fits your window") });
   put(environmentId, { phase: "running" });
   let seen = false;
+  // Once the watch has its end, a reply still on its way (a read after a socket opened) changes nothing.
+  let settled = false;
   let offPush = (): void => {};
   let offOpen = (): void => {};
   const ended = new Promise<WinvmState>((resolve) => {
     const look = (state: WinvmState, read: boolean): void => {
+      if (settled) return;
       if (state.state === "setting-up") {
         seen = true;
         if (upgrades.get(environmentId)?.phase === "unconfirmed") put(environmentId, { phase: "running" });
       }
       if (upgradeEnded(state, seen)) {
+        settled = true;
         offPush();
         offOpen();
         retries.delete(environmentId);
@@ -108,7 +117,9 @@ export function runUpgrade(environmentId: string, before: WinvmScreen | null): P
     const recheck = (): Promise<void> =>
       link.request<WinvmState>("work.winvm.state", {}).then(
         (state) => look(state, true),
-        (err: unknown) => put(environmentId, unsure(err)),
+        (err: unknown) => {
+          if (!settled) put(environmentId, unsure(err));
+        },
       );
     retries.set(environmentId, recheck);
     offPush = link.onPush((push) => {
@@ -148,6 +159,7 @@ export function runUpgrade(environmentId: string, before: WinvmScreen | null): P
       put(environmentId, null);
     },
     async (err: unknown) => {
+      settled = true;
       offPush();
       offOpen();
       retries.delete(environmentId);

@@ -623,6 +623,58 @@ describe("Screen size and picture quality", () => {
     expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1280 × 800");
   });
 
+  it("holds Screen size while the upgrade runs, while its end is unconfirmed and while the old size is not back, Retry still offered", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Screen size", "Fits my window");
+    await flush();
+    const select = () => screen.getByRole("combobox", { name: "Screen size" }) as HTMLButtonElement;
+    const held = () => select().disabled || select().getAttribute("aria-disabled") === "true" || select().hasAttribute("data-disabled");
+    // Running, with the machine still awake on the old display.
+    expect(held()).toBe(true);
+    // Unconfirmed after a reconnect: still held, Retry there.
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await flush();
+    expect(document.querySelector("[data-upgrade-note]")).not.toBeNull();
+    expect(held()).toBe(true);
+    // It fails and the old size is refused: still held, Retry there.
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "setting-up", step: "Restarting Windows", display: vga }) })));
+    h.settingsWriteFail = "The box refused the change.";
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", error: "Windows did not start with the new display.", display: vga }) })));
+    await flush();
+    expect(document.querySelector("[data-upgrade-note]")?.closest("[data-slot=page-error-line]")?.textContent).toContain("1280 × 800");
+    expect(held()).toBe(true);
+    // The old size goes back: Screen size takes picks again.
+    h.settingsWriteFail = null;
+    const line = document.querySelector("[data-upgrade-note]")!.closest("[data-slot=page-error-line]") as HTMLElement;
+    await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
+    await flush();
+    expect(held()).toBe(false);
+  });
+
+  it("ignores a reconnect's reply that lands after the watch settled", async () => {
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Screen size", "Fits my window");
+    await flush();
+    // A reconnect read goes out and hangs; the success push settles the watch meanwhile.
+    let refuse: (err: Error) => void = () => {};
+    const reads = h.state;
+    h.state = new Promise((_, reject) => (refuse = reject)) as never;
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", display: virtio }) })));
+    await flush();
+    expect(document.querySelector("[data-setting='winvm.screen'] [data-slot=save-mark]")?.getAttribute("data-state")).toBe("saved");
+    // The late reply fails: nothing comes back.
+    await act(async () => refuse(new Error("The computer did not answer")));
+    await flush();
+    expect(document.querySelector("[data-upgrade-note]")).toBeNull();
+    h.state = reads;
+  });
+
   it("calls an upgrade done only from an end that says so, never from the display alone", () => {
     expect(upgradeWorked(at({ state: "awake", display: virtio }))).toBe(true);
     expect(upgradeWorked(at({ state: "awake", error: "Live resize did not start.", display: virtio }))).toBe(false);

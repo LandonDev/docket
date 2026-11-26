@@ -26,6 +26,7 @@ const state = vi.hoisted(() => ({
   keeper: false,
   absent: false,
   stale: false,
+  stalePlaces: [] as string[],
   links: null as { id: string; name: string }[] | null,
   inheritedReads: 0,
   plansFailed: false,
@@ -96,11 +97,13 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
   useThreadDefaults: (_env: string, id: string | null) =>
     state.failed || (state.absent && id !== null) ? undefined : { defaults: defaultsOf(), overridden: id === null ? state.overridden : state.overriding.has(id), home: state.home },
   useThreadDefaultsError: () => (state.failed ? { error: "The computer did not answer", retry: state.retry } : null),
-  useThreadDefaultsStale: () => (state.stale ? { error: "The computer did not answer", retry: state.retry } : null),
+  useThreadDefaultsStale: (_env: string, id: string | null) =>
+    state.stale || (id !== null && state.stalePlaces.includes(id)) ? { error: "The computer did not answer", retry: state.retry } : null,
   useWorkspaceCatalog: () => ({
     workspaces: state.workspaces,
     defaults: new Map(state.workspaces.filter((w) => !state.unheard.includes(w.id) && !state.waiting.includes(w.id)).map((w) => [`local:${w.id}`, { overridden: state.overriding.has(w.id) }] as const)),
     defaultsErrors: new Map(state.unheard.map((id) => [`local:${id}`, "The computer did not answer"] as const)),
+    defaultsStale: new Map(state.stalePlaces.map((id) => [`local:${id}`, "The computer did not answer"] as const)),
   }),
   workspaceStore: {
     saveDefaults: (...args: unknown[]) => state.save(...args),
@@ -156,6 +159,7 @@ beforeEach(() => {
   state.keeper = false;
   state.absent = false;
   state.stale = false;
+  state.stalePlaces = [];
   state.links = null;
   state.load.mockReset();
   state.load.mockImplementation(async () => {});
@@ -667,5 +671,71 @@ describe("A refresh that failed over a held set", () => {
     render(<StartSetRow id="ws.threads" workspace={ALPHA} whose="workspace" may />);
     expect(document.body.textContent).not.toContain("as last read");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("A set shown as last read takes no change until a fresh read answers", () => {
+  it("holds New threads' controls and Docket's defaults while the values and Retry stay", () => {
+    state.stale = true;
+    state.overridden = true;
+    render(<ThreadDefaultsPage />);
+    for (const name of ["Agent app", "Model", "Access"]) expect((screen.getByRole("combobox", { name }) as HTMLButtonElement).disabled).toBe(true);
+    expect(document.querySelector("[data-setting='defaults.reset']")).toBeNull();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("holds a place's dialog, opened to look and retry, with Use New threads held too", async () => {
+    state.stale = true;
+    state.overriding = new Set(["w1"]);
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    expect((within(dialog).getByRole("combobox", { name: "Model" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(dialog).getByRole("button", { name: "Use New threads" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(dialog).getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("sends only the chosen change, onto the newest set held, so a newer Access is not written over", async () => {
+    // Shown: Auto-accept edits. Saved since, and now held: Ask first.
+    state.globalPermission = "safe";
+    render(<ThreadDefaultsPage />);
+    await pick("Model", "Opus");
+    expect(state.save).toHaveBeenCalledWith("local", null, expect.objectContaining({ model: "opus", permission: "safe" }));
+  });
+});
+
+describe("Different in N places, when a place's refresh failed", () => {
+  it("names that place as last read in the count's line and the list, and says the failure with Retry", async () => {
+    state.workspaces = [
+      { id: "w1", name: "Purdue Esports", environmentId: "local" },
+      { id: "w2", name: "CosmicPrisons", environmentId: "local" },
+    ];
+    state.overriding = new Set(["w1", "w2"]);
+    state.stalePlaces = ["w2"];
+    render(<ThreadDefaultsPage />);
+    const row = document.querySelector("[data-setting='defaults.different']") as HTMLElement;
+    expect(row.textContent).toContain("Different in 2 places");
+    expect(row.textContent).toContain("CosmicPrisons (as last read), Purdue Esports");
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
+    await act(async () => {
+      fireEvent.click(within(row).getByRole("button", { name: "Different in 2 places" }));
+    });
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    expect(dialog.textContent).toContain("(as last read)");
+    const presses = within(dialog).getAllByRole("button", { name: "Use New threads" }) as HTMLButtonElement[];
+    // CosmicPrisons first, by name: its press is held; Purdue Esports' is not.
+    expect(presses.map((b) => b.disabled)).toEqual([true, false]);
+  });
+});
+
+describe("onLatest", () => {
+  it("lays only the changed fields on the newest set", async () => {
+    const { onLatest } = await import("../../chrome/ThreadDefaultsDialog");
+    const shown = { provider: "claude", model: "", reasoning: "medium", permission: "auto" } as never;
+    const chosen = { provider: "claude", model: "", reasoning: "high", permission: "auto" } as never;
+    const latest = { provider: "claude", model: "", reasoning: "medium", permission: "safe" } as never;
+    expect(onLatest(chosen, shown, latest)).toEqual({ provider: "claude", model: "", reasoning: "high", permission: "safe" });
+    expect(onLatest(chosen, shown, undefined)).toBe(chosen);
   });
 });

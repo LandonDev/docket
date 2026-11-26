@@ -44,6 +44,24 @@ const START_ON_CHOICES: { value: StartOn; label: string }[] = [
   { value: "mac", label: "The Mac" },
 ];
 
+/**
+ * A change, laid on the newest set this window holds: only the fields the person changed (`chosen` against what was
+ * `shown`) go onto `latest`, so a field another window saved since stays as saved, and no old Access is written over
+ * a newer one. Without a newer set, the chosen set as it stands.
+ */
+export function onLatest(chosen: ThreadDefaults, shown: ThreadDefaults | undefined, latest: ThreadDefaults | undefined): ThreadDefaults {
+  if (!shown || !latest) return chosen;
+  const next: Record<string, unknown> = { ...latest };
+  const was = shown as Record<string, unknown>;
+  const now = chosen as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
+    if (was[key] === now[key]) continue;
+    if (now[key] === undefined) delete next[key];
+    else next[key] = now[key];
+  }
+  return next as ThreadDefaults;
+}
+
 /** One scope's set as an editor holds it: what the computer confirmed, what is shown, each row's save. */
 function useDefaultsSet(environmentId: string, workspaceId: string | null) {
   const scope = useThreadDefaults(environmentId, workspaceId, true);
@@ -53,11 +71,19 @@ function useDefaultsSet(environmentId: string, workspaceId: string | null) {
   const draft = useDraft(scope?.defaults);
   const saved: Record<Row, Saved> = { app: useSaved(), model: useSaved(), effort: useSaved(), access: useSaved(), startOn: useSaved() };
   const cleared = useSaved();
-  const { blocked } = homeNote(scope?.home);
+  const home = homeNote(scope?.home);
+  // A set shown as last read takes no change until a fresh read answers: its controls are held, Retry stands.
+  const blocked = home.blocked || stale !== null;
   // A key that may read the set but not change it sees each value as words (`DefaultsRows`), and no Use….
   const may = useLinkMay(environmentId, "defaults.set", { workspaceId, defaults: null });
-  const write = (row: Row, next: ThreadDefaults) =>
-    draft.change(saved[row], normalizeDefaults(next, environmentId), (set) => workspaceStore.saveDefaults(environmentId, workspaceId, set));
+  const write = (row: Row, next: ThreadDefaults) => {
+    const shown = draft.value;
+    const chosen = normalizeDefaults(next, environmentId);
+    // Only the change goes out, onto the newest set the store holds as the write leaves.
+    return draft.change(saved[row], chosen, () =>
+      workspaceStore.saveDefaults(environmentId, workspaceId, normalizeDefaults(onLatest(chosen, shown, workspaceStore.defaultsAt(environmentId, workspaceId)?.defaults), environmentId)),
+    );
+  };
   /** Drops the scope's own set: a workspace follows New threads again, New threads takes Docket's. */
   const clear = () => cleared.run(() => workspaceStore.saveDefaults(environmentId, workspaceId, null));
   return { scope, failure, stale, value: draft.value, saved, write, blocked, clear, cleared, may };
@@ -297,10 +323,14 @@ export function summary(value: ThreadDefaults, environmentId?: string): string {
  * floor ("at least"), the places named, and its computer's failure at the page's head with Retry.
  */
 function DifferentPlaces() {
-  const { workspaces, defaults, defaultsErrors } = useWorkspaceCatalog();
+  const { workspaces, defaults, defaultsErrors, defaultsStale } = useWorkspaceCatalog();
   const [open, setOpen] = useState(false);
   const keyOf = (w: WorkspaceMeta) => scopeKey(w.environmentId, w.id);
-  const own = workspaces.filter((w) => defaults.get(keyOf(w))?.overridden).sort((a, b) => a.name.localeCompare(b.name));
+  // A place whose refresh failed is held as last read: named with that mark in the count's line and the list, its
+  // failure said with Retry, its Use New threads held.
+  const stale = workspaces.filter((w) => defaults.has(keyOf(w)) && defaultsStale.has(keyOf(w)));
+  const held = (w: WorkspaceMeta) => defaults.get(keyOf(w))?.overridden === true;
+  const own = workspaces.filter((w) => held(w)).sort((a, b) => a.name.localeCompare(b.name));
   const unheard = workspaces.filter((w) => !defaults.has(keyOf(w)));
   const failed = unheard.filter((w) => defaultsErrors.has(keyOf(w)));
   const waiting = unheard.length > failed.length;
@@ -316,7 +346,8 @@ function DifferentPlaces() {
     }
   });
   const n = failed.length ? `at least ${own.length}` : own.length;
-  const line = [own.length ? own.map((w) => w.name).join(", ") : null, failed.length ? `Not heard from ${failed.map((w) => w.name).join(", ")}` : null].filter(Boolean).join(". ");
+  const nameOf = (w: WorkspaceMeta) => (defaultsStale.has(keyOf(w)) ? `${w.name} (${AS_LAST_READ.toLowerCase()})` : w.name);
+  const line = [own.length ? own.map(nameOf).join(", ") : null, failed.length ? `Not heard from ${failed.map((w) => w.name).join(", ")}` : null].filter(Boolean).join(". ");
   return (
     <>
       {waiting ? (
@@ -324,8 +355,8 @@ function DifferentPlaces() {
         <PageRowsSkeleton rows={[{ description: true, control: "none" }]} />
       ) : (
         <>
-          {failed.map((w) => (
-            <ReadFailure key={keyOf(w)} computer={w.environmentId} error={defaultsErrors.get(keyOf(w)) ?? ""} retry={() => workspaceStore.loadDefaults(w.environmentId, w.id)} />
+          {[...failed, ...stale].map((w) => (
+            <ReadFailure key={keyOf(w)} computer={w.environmentId} error={defaultsErrors.get(keyOf(w)) ?? defaultsStale.get(keyOf(w)) ?? ""} retry={() => workspaceStore.loadDefaults(w.environmentId, w.id)} />
           ))}
           {own.length || failed.length ? (
             <SettingRow
@@ -370,17 +401,21 @@ const PLACE_ROW = "@max-[22rem]/places:flex-wrap @max-[22rem]/places:[&>[data-sl
 function OwnSetRow({ place }: { place: WorkspaceMeta }) {
   const scope = useThreadDefaults(place.environmentId, place.id);
   const failure = useThreadDefaultsError(place.environmentId, place.id);
+  // A failed refresh over the held set: the summary is marked as last read, the failure said with Retry, the press held.
+  const stale = useThreadDefaultsStale(place.environmentId, place.id);
   const saved = useSaved();
-  const { blocked } = homeNote(scope?.home);
+  const blocked = homeNote(scope?.home).blocked || stale !== null;
   const own = scope?.overridden === true;
   const reset = useUseNewThreads(place);
   // Once cleared, the place says only what its computer answered: nothing while it reads, its failure with Retry.
-  const words = !scope ? undefined : own ? summary(scope.defaults, place.environmentId) : "Same as New threads";
+  const said = !scope ? undefined : own ? summary(scope.defaults, place.environmentId) : "Same as New threads";
+  const words = said && stale ? `${said} (${AS_LAST_READ.toLowerCase()})` : said;
   return (
     // A page row, so the set's words wrap whole at any width ("Full access" is never cut). The press sits beside, or
     // under the words in a narrow dialog, so a place's name and set keep their lines.
     <PageRow title={place.name} description={words} error={saved.error ?? undefined} className={PLACE_ROW}>
       {failure ? <ReadFailure computer={place.environmentId} error={failure.error} retry={failure.retry} /> : null}
+      {stale ? <ReadFailure computer={place.environmentId} error={stale.error} retry={stale.retry} /> : null}
       <SaveMark state={saved.state} />
       {own && reset.may ? <UseNewThreadsPress reset={reset} saved={saved} disabled={blocked} variant="outline" /> : null}
     </PageRow>

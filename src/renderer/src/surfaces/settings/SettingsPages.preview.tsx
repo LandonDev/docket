@@ -983,6 +983,7 @@ const PAGES: Record<
         settings={{ screen: "fit", detail: null }}
         saved={{ screen: { state: "idle", error: "The box did not fit the Windows VM to your window.", run: async () => false } }}
         upgradeNote={{ words: "The box did not put the screen size back to 1280 × 800.", retry: async () => {} }}
+        screenHeld
         error={null}
         pressing={false}
         onPress={() => {}}
