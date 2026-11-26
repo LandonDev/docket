@@ -8,7 +8,7 @@ import { ClientRequestSchema } from '@shared/contract'
 import { requiredCapability } from '@shared/capabilities'
 import { parseMapping } from '../pathMap'
 import { flushStallLog, recordSlowRequest, setStallLog, withRequestNotes } from '../stalls'
-import { MEMORY_NO_WINDOWS, MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory, readWalked } from './memorySync'
+import { MEMORY_NO_WINDOWS, MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory, readInRoot, readWalked } from './memorySync'
 import { encodeProjectDir } from './memorySet'
 import { TOMBSTONE_MS } from './memoryMerge'
 
@@ -284,6 +284,30 @@ describe('manifest hashes', () => {
   })
 })
 
+
+  it('reads a walked file only as the walk saw it, and a landing\'s own read only inside its root and never through a link', async () => {
+    put(mac, macMem('note.md'), 'a memory', T0)
+    put(mac, 'outside.txt', 'NOT A MEMORY', T0)
+    const path = join(mac, macMem('note.md'))
+    const walked = await lstat(path)
+    // Written in place since the walk: the same inode, another version; it waits for the next round.
+    writeFileSync(path, 'a longer memory')
+    expect(await readWalked(path, walked)).toBeUndefined()
+    const root = join(mac, `.claude/projects/${MAC_SHOP()}/memory`)
+    expect((await readInRoot(path, root)).toString()).toBe('a longer memory')
+    // A link at the destination, even to a file inside the set, is not read.
+    rmSync(path)
+    symlinkSync(join(mac, 'outside.txt'), path)
+    await expect(readInRoot(path, root)).rejects.toThrow(/not a regular file/)
+    // A parent swapped for a link out of the root: the real path is outside it.
+    rmSync(path)
+    const elsewhere = join(mac, 'elsewhere')
+    mkdirSync(elsewhere, { recursive: true })
+    writeFileSync(join(elsewhere, 'note.md'), 'NOT A MEMORY')
+    rmSync(root, { recursive: true })
+    symlinkSync(elsewhere, root)
+    await expect(readInRoot(join(root, 'note.md'), join(mac, '.claude/projects'))).rejects.toThrow(/outside the memory set/)
+  })
 
   it('reads a file only when it is the one the walk checked: one swapped for a link out of the set is not read or sent', async () => {
     const { sender, receiver, sent } = pair()

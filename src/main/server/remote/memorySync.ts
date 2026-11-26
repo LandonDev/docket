@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID, webcrypto } from 'node:crypto'
 import { chmodSync, existsSync, lstatSync, mkdirSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
-import { open, readFile } from 'node:fs/promises'
+import { lstat, open, readFile, realpath } from 'node:fs/promises'
 import { homedir, hostname } from 'node:os'
 import { basename, dirname, join, relative, sep } from 'node:path'
 import type { ClientRequest, ServerPush } from '@shared/contract'
@@ -29,6 +29,7 @@ import {
   conflictName,
   invertMapping,
   listMemory,
+  MEMORY_MAX_BYTES,
   mappingReadsForward,
   memoryRoot,
   memoryTranslatable,
@@ -193,10 +194,12 @@ export const MEMORY_NO_WINDOWS = 'memory sync takes no Windows host yet: its pat
 
 const within = (path: string, root: string): boolean => path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
 
-/** The file a walk checked: its device and inode (the walk's stat follows a link it allowed). */
+/** The file a walk checked, as it was then: its device and inode (the walk's stat follows a link it allowed), its size and time. */
 export interface Walked {
   dev: number
   ino: number
+  size: number
+  mtimeMs: number
 }
 
 /**
@@ -204,13 +207,34 @@ export interface Walked {
  * walk (two slots for every peer), and a transfer reads later still: a file swapped for a link in between would
  * otherwise send bytes from outside the memory set. Undefined when it is another file or is gone.
  */
+/**
+ * A file at a landing's destination, read before it is replaced or kept beside (no walk checked it): never through a
+ * link, only a regular file whose real path is under `root` and is the file opened, at most the set's size.
+ */
+export async function readInRoot(path: string, root: string): Promise<Buffer> {
+  const [link, real, realRoot] = await Promise.all([lstat(path), realpath(path), realpath(root)])
+  if (!link.isFile()) throw new Error('not a regular file')
+  if (!within(real, realRoot)) throw new Error('outside the memory set')
+  const handle = await open(path, 'r')
+  try {
+    const st = await handle.stat()
+    if (st.dev !== link.dev || st.ino !== link.ino) throw new Error('changed while it was read')
+    if (st.size > MEMORY_MAX_BYTES) throw new Error('too large for the memory set')
+    return await handle.readFile()
+  } finally {
+    await handle.close().catch(() => {})
+  }
+}
+
 export async function readWalked(path: string, walked: Walked | undefined): Promise<Buffer | undefined> {
   if (!walked) return undefined
   const handle = await open(path, 'r').catch(() => undefined)
   if (!handle) return undefined
   try {
     const st = await handle.stat()
-    if (!st.isFile() || st.dev !== walked.dev || st.ino !== walked.ino) return undefined
+    // Another file, or this one written since the walk (it goes next round, with its new manifest line).
+    if (!st.isFile() || st.dev !== walked.dev || st.ino !== walked.ino || st.size !== walked.size || st.mtimeMs !== walked.mtimeMs) return undefined
+    if (st.size > MEMORY_MAX_BYTES) return undefined
     return await handle.readFile()
   } catch {
     return undefined
@@ -221,8 +245,10 @@ export async function readWalked(path: string, walked: Walked | undefined): Prom
 
 export class MemorySync {
   private cache = new Map<string, HashEntry>()
-  /** The last walk's files by relPath: what a transfer may read (`readWalked`). */
-  private walked = new Map<string, Walked>()
+  /** Each walk's files by relPath, kept with the manifest it made: a round's transfer reads by its own walk. */
+  private readonly walkOf = new WeakMap<object, Map<string, Walked>>()
+  /** Files this sync wrote itself (a conflict copy may go back in the same round), by relPath. */
+  private readonly ownWrites = new Map<string, Walked>()
   private cacheVersion = 0
   private scanQueue: Promise<unknown> = Promise.resolve()
   // Reads and digests share two slots across all peers and scans on this host.
@@ -561,11 +587,11 @@ export class MemorySync {
       const t = new Date(mtime)
       utimesSync(tmp, t, t)
       // A file this sync writes is one it may send in the same round (a conflict copy): it counts as walked.
-      const { dev, ino } = statSync(tmp)
+      const { dev, ino, size, mtimeMs } = statSync(tmp)
       renameSync(tmp, dest)
       this.dropHash(dest)
       const rel = relative(this.home(), dest).split(sep).join('/')
-      if (!rel.startsWith('..')) this.walked.set(rel, { dev, ino })
+      if (!rel.startsWith('..')) this.ownWrites.set(rel, { dev, ino, size, mtimeMs })
       return true
     } catch (err) {
       rmSync(tmp, { force: true })
@@ -618,14 +644,14 @@ export class MemorySync {
     return timings ? timings.hashWork(run) : run()
   }
 
-  private readContent(path: string, timings: MemoryTimings): Promise<Buffer> {
-    return timings.hashWork(() => this.content(() => readFile(path)))
+  private readContent(path: string, root: string, timings: MemoryTimings): Promise<Buffer> {
+    return timings.hashWork(() => this.content(() => readInRoot(path, root)))
   }
 
   /** The file to send, or undefined when it is no longer the file the walk checked (it goes next round). */
-  private async fileOf(relPath: string, entry: MemoryEntry, timings?: MemoryTimings): Promise<MemoryFile | undefined> {
+  private async fileOf(relPath: string, entry: MemoryEntry, walked: ReadonlyMap<string, Walked> | undefined, timings?: MemoryTimings): Promise<MemoryFile | undefined> {
     const run = () => this.content(async () => {
-      const data = await readWalked(join(this.home(), relPath), this.walked.get(relPath))
+      const data = await readWalked(join(this.home(), relPath), this.ownWrites.get(relPath) ?? walked?.get(relPath))
       if (!data) {
         this.log(`${JSON.stringify(relPath)} changed after the walk; it goes next round`)
         return undefined
@@ -668,14 +694,16 @@ export class MemorySync {
         for (const [index, file] of files.entries()) {
           const hash = hashes[index]
           if (hash) next.set(file.real, hash)
-          walked.set(file.relPath, { dev: file.stat.dev, ino: file.stat.ino })
+          walked.set(file.relPath, { dev: file.stat.dev, ino: file.stat.ino, size: file.stat.size, mtimeMs: file.stat.mtimeMs })
         }
         return hashes
       })
       // A landing during the scan can preserve an old mtime. Never publish
       // hashes read before that write. The next scan rebuilds the table.
       if (version === this.cacheVersion) this.cache = next
-      this.walked = walked
+      this.walkOf.set(manifest, walked)
+      // A walk sees this sync's own writes as it sees any file.
+      this.ownWrites.clear()
       if (timings) {
         timings.statMs += performance.now() - started - (timings.hashMs - hashBefore)
         timings.files += manifest.entries.length
@@ -695,6 +723,7 @@ export class MemorySync {
     const home = this.home()
     // Read the manifest before deciding or landing any of this round.
     const manifest = await this.manifest(home)
+    const walked = this.walkOf.get(manifest)
     const state = await this.loadState()
     this.skipped = manifest.skipped.length
     const byPath = new Map(manifest.entries.map((e) => [e.relPath, e]))
@@ -723,7 +752,7 @@ export class MemorySync {
       for (const relPath of answer.pull) {
         const entry = byPath.get(relPath)
         if (!entry) throw new Error(`${link.env.name} asked for ${relPath}, which is not in the manifest`)
-        const file = await this.fileOf(relPath, entry)
+        const file = await this.fileOf(relPath, entry, walked)
         if (!file) continue
         if (file.dataBase64.length > MEMORY_MAX_WIRE_BYTES * 2) continue
         if (frames[frames.length - 1].length >= MEMORY_FILES_PER_FRAME || bytes + file.dataBase64.length > MEMORY_FILES_FRAME_BYTES) {
@@ -818,7 +847,9 @@ export class MemorySync {
     if (!params.home.startsWith('/')) throw new Error('memory.exchange: home must be absolute')
     this.generation = null
     const home = this.home()
-    const mine = new Map((await this.manifest(home, timings)).entries.map((e) => [e.relPath, e]))
+    const myManifest = await this.manifest(home, timings)
+    const walked = this.walkOf.get(myManifest)
+    const mine = new Map(myManifest.entries.map((e) => [e.relPath, e]))
     const state = await this.loadState()
     this.notePeerHome(params.from, params.home, params.workRoot)
     const mapping = this.translationFor(params.home, params.workRoot)
@@ -851,7 +882,7 @@ export class MemorySync {
     const remove: string[] = []
     const now = this.now()
     const sendMine = async (localRel: string, entry: MemoryEntry): Promise<void> => {
-      const file = await this.fileOf(localRel, entry, timings)
+      const file = await this.fileOf(localRel, entry, walked, timings)
       if (!file) return
       push.push(file)
       g.pushed.set(localRel, file.sha256)
@@ -895,7 +926,7 @@ export class MemorySync {
           if ('refused' in dest) break
           if (d.keep === 'conflict') {
             const copy = conflictName(localRel, this.hostName(), now)
-            const data = await this.readContent(dest.path, timings)
+            const data = await this.readContent(dest.path, dest.root, timings)
             dest = this.destination(localRel)
             if ('refused' in dest) break
             if (this.land(join(home, copy), data, local!.mode & 0o777, local!.mtime)) {
@@ -967,7 +998,7 @@ export class MemorySync {
       if ('refused' in dest) continue
       let current: Buffer | null = null
       try {
-        current = await this.readContent(dest.path, timings)
+        current = await this.readContent(dest.path, dest.root, timings)
       } catch {
         current = null
       }
