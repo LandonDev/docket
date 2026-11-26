@@ -84,16 +84,13 @@ function dismissBootSplash() {
     document.documentElement.classList.add("ready");
     // Launch-timing probe (scripts/e2e-launch-timing.ts): the UI is on screen.
     performance.mark("tc:ready");
+    // The shell has painted from the primary host: the second phase of every host's open may run now
+    // (lib/tcserver/openPhase.ts); a saved host still listing never holds it.
+    markUsable();
     // The rail's first full paint (scripts/e2e-launch-mirror.ts): every
     // host's rows are on screen, listed or painted from the launch mirror.
     void sessionStore.whenPainted().then(() => {
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          performance.mark("tc:rail-complete");
-          // The rail is whole: the second phase of every host's open may run now (lib/tcserver/openPhase.ts).
-          markUsable();
-        }),
-      );
+      requestAnimationFrame(() => requestAnimationFrame(() => performance.mark("tc:rail-complete")));
     });
     splash.classList.add("boot-splash-out");
     // The fade is 120ms (index.html); the cover leaves a frame or two after it.

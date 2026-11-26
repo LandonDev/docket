@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { afterOpen, markUsable, resetOpenPhase } from "./openPhase";
+import { afterOpen, markUsable, RELEASE_AFTER_MS, resetOpenPhase } from "./openPhase";
 
 /** A link as afterOpen reads it: its id, whether its socket is up, and its closes. */
 function fakeLink(environmentId: string) {
@@ -76,6 +76,23 @@ describe("the second phase of a host's open", () => {
   });
 });
 
+describe("the second phase's release and its socket", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("runs a bounded time after its first task when no shell paint ever comes", async () => {
+    vi.useFakeTimers();
+    const link = fakeLink("local");
+    let asks = 0;
+    afterOpen(link, () => void asks++);
+    await vi.advanceTimersByTimeAsync(RELEASE_AFTER_MS - 1);
+    expect(asks).toBe(0);
+    // the release, then its idle slot
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(10);
+    expect(asks).toBe(1);
+  });
+});
+
 /** The asks a host hears on open, by phase: the window's own loaders against a scripted socket. */
 class FakeSocket {
   static instances: FakeSocket[] = [];
@@ -117,8 +134,8 @@ describe("a host's open, counted by phase", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("asks at most 15 before usable, none twice, and the rest after", async () => {
-    const { registry } = await import("../connection");
+  it("asks at most 15 before usable, none twice, and the rest after, once, with a saved host that never connects", async () => {
+    const { registry, savedEnvironment } = await import("../connection");
     const { sessionStore } = await import("./store");
     const { workspaceStore } = await import("./workspaces");
     const { inboxStore } = await import("../inboxStore");
@@ -131,6 +148,8 @@ describe("a host's open, counted by phase", () => {
     const { startThreadResources } = await import("../threadResources");
     const { startComputerHistory } = await import("../computerHistory");
     const { watchJob } = await import("../hostJobs");
+    // a saved host with no mirror rows that never answers: the rail is never whole (no tc:rail-complete)
+    registry.add(savedEnvironment({ id: "env_box", name: "box", routes: [{ url: "wss://box.example/ws", kind: "tunnel" }] }));
     // as main.tsx connects them, then the parts App starts
     sessionStore.connect(registry);
     workspaceStore.connect(registry);
@@ -153,9 +172,13 @@ describe("a host's open, counted by phase", () => {
     expect(twice).toEqual([]);
     expect(first.length).toBeLessThanOrEqual(15);
     for (const later of ["doctor.get", "github.inbox", "devServer.runs", "resources.listAll", "host.log", "host.deployStatus"]) expect(first).not.toContain(later);
-    markUsable();
+    // no shell paint is marked here: the bounded release lets the primary host's second phase go regardless
+    await new Promise((r) => setTimeout(r, RELEASE_AFTER_MS + 100));
     await flush();
-    const second = socket.sent.slice(first.length).map((f) => f.method);
+    const second = socket.sent
+      .slice(first.length)
+      .map((f) => f.method)
+      .filter((m) => m !== "remote.environments.ticket");
     expect(second.filter((m) => m === "doctor.get")).toHaveLength(1);
     expect([...second].sort()).toEqual(["devServer.runs", "doctor.get", "github.inbox", "host.deployStatus", "host.log", "resources.listAll"]);
   });

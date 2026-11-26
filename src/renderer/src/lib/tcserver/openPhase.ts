@@ -1,9 +1,12 @@
 /**
  * A host's open in two phases (docs/agents/launch-mirror.md "The open in two phases"). What the first paint needs
  * runs the moment a socket opens: the session changes, the workspaces, the shown thread, its focus, the model
- * catalog. The rest (the inbox, dev servers, port forwards, host jobs, computer sessions and history, thread
- * resources, Away's state, the providers' doctor) waits for `afterOpen`: an idle slot once the window is usable, one at a time on a remote host,
- * and only while the socket that opened is still the live one, so nothing is asked twice for one open.
+ * catalog, the primary host's Away state. The rest (the inbox, dev servers, port forwards, host jobs, computer
+ * sessions and history, thread resources, another host's Away state, the providers' doctor) waits for
+ * `afterOpen`: an idle slot once the window's shell has painted from its primary host (`markUsable` at tc:ready)
+ * or `RELEASE_AFTER_MS` after the first such task, whichever is first, so no saved host that never answers holds
+ * it; one at a time on a remote host; and only while the socket that opened is still the live one, so nothing is
+ * asked twice for one open.
  */
 
 import { LOCAL_ENVIRONMENT_ID } from "../connection/registry";
@@ -16,25 +19,34 @@ type OpenLink = {
 };
 type Task = () => unknown;
 
+/** The second phase waits at most this long after its first task for the shell's paint. */
+export const RELEASE_AFTER_MS = 3_000;
+/** An idle slot is waited for at most this long: a busy window still runs the second phase. */
+export const IDLE_TIMEOUT_MS = 1_000;
+
 let usable = false;
 const usableWaiters: (() => void)[] = [];
+let releaseTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** The window is usable (main.tsx, at `tc:rail-complete`: the rail whole): the second phase may run. */
+/** The window's shell has painted from its primary host (main.tsx, at tc:ready): the second phase may run. */
 export function markUsable(): void {
   if (usable) return;
   usable = true;
+  if (releaseTimer !== null) clearTimeout(releaseTimer);
+  releaseTimer = null;
   for (const wake of usableWaiters.splice(0)) wake();
 }
 
 function whenUsable(): Promise<void> {
   // A hidden window paints nothing, so nothing waits on it: its second phase runs at once.
   if (usable || (typeof document !== "undefined" && document.visibilityState === "hidden")) return Promise.resolve();
+  releaseTimer ??= setTimeout(markUsable, RELEASE_AFTER_MS);
   return new Promise((resolve) => usableWaiters.push(resolve));
 }
 
 function idleSlot(): Promise<void> {
   return new Promise((resolve) => {
-    if (typeof requestIdleCallback === "function") requestIdleCallback(() => resolve());
+    if (typeof requestIdleCallback === "function") requestIdleCallback(() => resolve(), { timeout: IDLE_TIMEOUT_MS });
     else setTimeout(resolve, 0);
   });
 }
@@ -79,5 +91,7 @@ export function afterOpen(link: OpenLink, task: Task): void {
 export function resetOpenPhase(): void {
   usable = false;
   usableWaiters.length = 0;
+  if (releaseTimer !== null) clearTimeout(releaseTimer);
+  releaseTimer = null;
   remoteChains.clear();
 }
