@@ -125,6 +125,7 @@ export function ModelPicker({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const current = resolveModel(harness, model, environmentId);
+  const shown = triggerName(current);
   const modelSettings = useModelSettings(harness, model, environmentId);
   const effort = settings ? effortLabel(modelSettings, settings.values) : null;
   const tabRef = useRef(tab);
@@ -357,7 +358,7 @@ export function ModelPicker({
               render={
                 <Button
                   variant="ghost"
-                  aria-label={`${HARNESS_TITLE[current.harness]} ${current.name}${effort ? ` ${effort}` : ""}`}
+                  aria-label={triggerLabel(current, effort)}
                   aria-keyshortcuts={keyHint("mod+.")}
                   size={quiet ? "xs" : "sm"}
                   // One recipe in every placement (ModelMark's): the logo 6px from the name,
@@ -371,7 +372,7 @@ export function ModelPicker({
         >
           <HarnessIcon harness={current.harness} className="size-3.5 shrink-0" />
           {/* In the composer's row the words give way to the icon as the box narrows (ComposerBar). */}
-          <span className={cn("ms-1.5 min-w-0 truncate @max-[9rem]/composer-bar:hidden", !quiet && "text-foreground")}>{current.name}</span>
+          <span className={cn("ms-1.5 min-w-0 truncate @max-[9rem]/composer-bar:hidden", quiet ? "font-medium" : "text-foreground")}>{shown}</span>
           {effort ? <span className={cn("ms-1 shrink-0 @max-[23rem]/composer-bar:hidden", !quiet && "text-muted-foreground")}>{effort}</span> : null}
           <ChevronDown className="ms-2 size-3 shrink-0 text-muted-foreground" />
         </TooltipTrigger>
@@ -428,7 +429,7 @@ export function ModelPicker({
               : visibleTab === "favorites"
                 ? "No favorite models"
                 : !available(visibleTab)
-                  ? harnessUnavailableHint(visibleTab)
+                  ? harnessUnavailableHint(visibleTab, environmentId)
                   : visibleTab === "codex"
                     ? "Loading Codex models…"
                     : "No matching models"
@@ -451,6 +452,22 @@ export function ModelPicker({
       </PopoverContent>
     </Popover>
   );
+}
+
+/** The name the trigger shows beside its harness's mark: the mark already
+ *  says Claude, so a Claude model drops the maker ("Opus 5.5"), as ModelMark does. */
+export function triggerName(item: Pick<AgentModel, "harness" | "name">): string {
+  return item.harness === "claude" ? item.name.replace(/^Claude\s+/, "") : item.name;
+}
+
+/** The trigger's accessible name, the uncut form: "Claude Opus 5.5, High effort";
+ *  any other model names its harness ("GPT-5.5 on Codex", "Muse Wonder 1.0 on Claude Code"). */
+export function triggerLabel(item: Pick<AgentModel, "harness" | "name" | "vendor">, effort: string | null): string {
+  const name =
+    item.harness === "claude" && !item.vendor
+      ? /^Claude\s/.test(item.name) ? item.name : `Claude ${item.name}`
+      : `${item.name} on ${HARNESS_TITLE[item.harness]}`;
+  return effort ? `${name}, ${effort} effort` : name;
 }
 
 function ProviderToggle({ value, title, children }: { value: ModelPickerTab; title: string; children: ReactNode }) {

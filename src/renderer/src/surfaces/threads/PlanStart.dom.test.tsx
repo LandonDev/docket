@@ -127,7 +127,8 @@ describe("the Start dialog", () => {
   it("prefills the goal from the plan, and an emptied goal starts with none", async () => {
     await open();
     const goal = screen.getByLabelText("Goal") as HTMLInputElement;
-    expect(goal.value).toBe("Every task in the plan's checklist is checked off and typecheck passes");
+    // No tool named: a Java or Gradle project has no typecheck.
+    expect(goal.value).toBe("Every task in the plan is done");
     fireEvent.change(goal, { target: { value: "" } });
     await start();
     await act(async () => resolveStart?.());
@@ -137,7 +138,7 @@ describe("the Start dialog", () => {
   it("a plan without tasks prefills the plain goal", async () => {
     await open([]);
     expect((screen.getByLabelText("Goal") as HTMLInputElement).value).toBe(
-      "The plan is fully implemented and typecheck passes",
+      "The plan is built",
     );
   });
 
@@ -161,8 +162,16 @@ describe("the Start dialog", () => {
     implementPlan.mockImplementationOnce(() => Promise.reject(new Error("no such plan")));
     const onOpenChange = await open();
     await start();
-    expect(screen.getByText("no such plan")).toBeTruthy();
+    expect(screen.getByText("No such plan")).toBeTruthy();
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it("a start that never reached the host says so in words, not the socket's", async () => {
+    implementPlan.mockImplementationOnce(() => Promise.reject(new Error("socket closed")));
+    await open();
+    await start();
+    expect(screen.getByText("Its host is not connected")).toBeTruthy();
+    expect(screen.queryByText(/socket/)).toBeNull();
   });
 
   it("refuses a close that landed in a picker, and only that", () => {

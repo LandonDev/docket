@@ -318,7 +318,7 @@ describe("foldEvent", () => {
       expect(s.blocks).toHaveLength(3);
       expect(s.blocks[2].approval?.requestId).toBe("a-1");
       expect(s.blocks[2].tool?.name).toBe("mcp__app__app_list_threads");
-      expect(toolCallLabel(s.blocks[2], CWD)).toBe("Using List Threads");
+      expect(toolCallLabel(s.blocks[2], CWD)).toBe("Use List Threads");
     });
 
     it("appends its own block when nothing matches", () => {
@@ -332,7 +332,7 @@ describe("foldEvent", () => {
       );
       expect(s.blocks).toHaveLength(3);
       expect(s.blocks[2]).toMatchObject({ role: "tool", approval: { requestId: "r" } });
-      expect(toolCallLabel(s.blocks[2], CWD)).toBe("Listing files");
+      expect(toolCallLabel(s.blocks[2], CWD)).toBe("List files");
     });
 
     it("keeps Run now and Skip on the block, through its verdict", () => {

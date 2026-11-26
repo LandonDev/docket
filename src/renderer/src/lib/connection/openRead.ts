@@ -10,7 +10,7 @@ import type { Link } from "./link";
 
 /** How long a load may take, the socket's opening included, before its page says so. */
 export const LOAD_DEADLINE_MS = 10_000;
-export const NO_ANSWER = "The host did not answer";
+export const NO_ANSWER = "The computer did not answer";
 
 /** Resolves when the link's socket is open: at once, or at its next open. */
 export function whenOpen(link: Link): Promise<void> {

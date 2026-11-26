@@ -108,7 +108,7 @@ export function FindBar(props: FindBarProps) {
         />
         <div className="flex min-w-0 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-1">
-            {/* The 144px floor is the input's own; the group fits around it and the count. */}
+            {/* The input's 112px floor leaves the count room inside 240px, so "Invalid regex" never widens the field or drops the toggles to a second line; the group fits around the floor and the count. */}
             <InputGroup className={cn("h-7 w-60 min-w-fit gap-1 pe-2", missed && "border-destructive")}>
               <GroupInput
                 ref={props.searchRef}
@@ -116,7 +116,7 @@ export function FindBar(props: FindBarProps) {
                 aria-label="Find"
                 aria-invalid={missed || undefined}
                 placeholder="Find"
-                className="min-w-36 font-mono text-xs"
+                className="w-0 min-w-28 font-mono text-xs"
                 value={props.search}
                 onChange={(event) => props.onSearch(event.currentTarget.value)}
                 onCompositionStart={props.onCompositionStart}

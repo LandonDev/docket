@@ -4,7 +4,9 @@ import { sessionStore } from "./tcserver/store";
 /**
  * `@thread:<id>` tokens: a thread mentioned from the composer rides to
  * the server as the token plus a thread attachment, and reads back in the
- * transcript as the thread's title. An id nobody knows stays as typed.
+ * transcript as the thread's title. An id nobody knows (a deleted thread, one
+ * on a host this window does not hold) is never on screen: the bubble draws it
+ * as a muted "Thread" chip that opens nothing; links and copies keep the token.
  * A thread on another host than the one the message runs on is
  * `@thread:<host>:<id>`, the host's own id (`env_…`): that host reads it
  * there (docs/box.md "One project across hosts: threads see each other").
@@ -16,7 +18,8 @@ const THREAD_HREF = "#thread:";
 
 export type TitleOf = (id: string) => string | undefined;
 
-export type ThreadMentionPart = { text: string } | { id: string; title: string };
+/** A mention's title is undefined when no thread by that id is known. */
+export type ThreadMentionPart = { text: string } | { id: string; title: string | undefined };
 
 /** What a token names: the session, and its host when the token carries one. */
 export type ThreadRef = { sessionId: string; hostId?: string };
@@ -51,14 +54,13 @@ export function threadMentionsInText(text: string): string[] {
   return ids;
 }
 
-/** Split text so known thread tokens can render as chips. */
+/** Split text so thread tokens can render as chips, known or not (an unknown one has no title). */
 export function threadMentionParts(text: string, titleOf: TitleOf): ThreadMentionPart[] {
   const parts: ThreadMentionPart[] = [];
   let cursor = 0;
   for (const m of text.matchAll(THREAD_TOKEN)) {
     const id = parseRef(m[1]!).sessionId;
-    const title = titleOf(id);
-    if (!title) continue;
+    const title = titleOf(id) || undefined;
     if (m.index > cursor) parts.push({ text: text.slice(cursor, m.index) });
     parts.push({ id, title });
     cursor = m.index + m[0].length;

@@ -44,6 +44,7 @@ export const DockedComposerPreviewFixtures = [
       attachments: [file("a1", "login-error.png", "image", "image/png", 182_000), file("a2", "gateway.log", "file", "text/plain", 48_000)],
     },
   },
+  { name: "Docked, a file dragged over typed words", props: { id: "preview-drag", draft: "What does this log show?", fileDrag: true } },
   {
     name: "Docked, three lines",
     props: {

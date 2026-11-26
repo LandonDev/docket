@@ -11,6 +11,7 @@ import * as commands from "./tcserver/commands";
 import { sessionStore } from "./tcserver/store";
 import {
   ARCHIVE_DONE_AGE_MS,
+  PAUSE_ALL_BODY,
   batchTargets,
   cancelThreadBatch,
   confirmThreadBatch,
@@ -133,10 +134,12 @@ describe("batchTargets", () => {
 describe("batchConfirm", () => {
   const box = { kind: "host", environmentId: "env_box", name: "the box" } as const;
   it("says one line per action, with no separator", () => {
-    expect(batchConfirm("pause", 2, box).body).toBe("Each keeps its place and continues from there.");
+    // One line for Pause all's confirm, here and on a master's board.
+    expect(batchConfirm("pause", 2, box).body).toBe(PAUSE_ALL_BODY);
+    expect(PAUSE_ALL_BODY).toBe("Each turn holds where it is, until Resume all.");
     expect(batchConfirm("stop", 2, box).body).toBe("Their turns end now; each keeps its history.");
     expect(batchConfirm("stop", 3, box, null, 1).body).toBe("Their turns end now; each keeps its history.");
-    expect(batchConfirm("archiveDone", 2, box).body).toBe("Idle ten minutes or more, read, and waiting on nothing.");
+    expect(batchConfirm("archiveDone", 2, box).body).toBe("Idle, read and waiting on nothing.");
   });
   it("names the count and the host", () => {
     const c = batchConfirm("pause", 15, box);
@@ -230,6 +233,16 @@ describe("the request, the confirm and the run", () => {
     await runThreadBatch("stop", { ...all, scope: hostScope("env_box") });
     expect(sessionBatch).toHaveBeenCalledWith("env_box", "stop", ["b"], {});
     expect(__notices()[0]).toMatchObject({ action: "stop", succeeded: 0, failed: [{ sessionId: "b", environmentId: "env_box", title: "Build", error: "link down" }] });
+  });
+
+  it("names a thread with no title Untitled, never by its id", async () => {
+    const bare = meta({ id: "sess-7f3a", status: "running", title: "" });
+    vi.mocked(sessionStore.metas).mockReturnValue([bare]);
+    vi.mocked(sessionStore.metaOf).mockImplementation((id) => (id === bare.id ? bare : null));
+    vi.spyOn(sessionStore, "get").mockReturnValue(null as never);
+    sessionBatch.mockResolvedValue({ attempted: ["sess-7f3a"], succeeded: [], failed: [{ sessionId: "sess-7f3a", error: "refused" }] });
+    await runThreadBatch("stop", all);
+    expect(__notices()[0].failed[0].title).toBe("Untitled");
   });
 
   it("passes cleanup through for an archive and counts resources only through the seam", async () => {

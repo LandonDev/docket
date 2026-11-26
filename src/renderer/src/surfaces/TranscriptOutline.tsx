@@ -1,3 +1,4 @@
+import { LoadEarlierButton } from "./transcript/LoadEarlier";
 import { keyHint } from "../lib/keys";
 import { memo, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "../components/ui/button";
@@ -46,7 +47,7 @@ export const TranscriptOutline = memo(function TranscriptOutline({
   onJump: (blockId: string, how: JumpHow) => void;
   /** Older history the host has not sent yet. */
   hasOlder?: boolean;
-  onLoadEarlier?: () => void;
+  onLoadEarlier?: () => void | Promise<unknown>;
   /** Today, for the day labels; defaults to now. */
   now?: number;
   locale?: string;
@@ -109,14 +110,13 @@ export const TranscriptOutline = memo(function TranscriptOutline({
           enter={mounted === "by-unfold"}
           head={
             hasOlder && onLoadEarlier ? (
-              <Button
+              <LoadEarlierButton
                 variant="ghost"
                 size="sm"
                 className="w-full justify-start font-normal text-muted-foreground"
-                onClick={onLoadEarlier}
-              >
-                Earlier messages
-              </Button>
+                onLoad={onLoadEarlier}
+                label="Earlier messages"
+              />
             ) : undefined
           }
         />

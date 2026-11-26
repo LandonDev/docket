@@ -73,7 +73,7 @@ describe("the composer for a Work thread", () => {
     const code = field(false)!.outerHTML;
     expect(work).toContain("What should it do?");
     expect(work).not.toContain("build");
-    expect(code).toContain("Ask, build, / for skills, @ for references…");
+    expect(code).toContain("Reply…");
   });
 
   it("a block said in the line over the box leaves the field its placeholder; unsaid, the field says it, as for code", () => {

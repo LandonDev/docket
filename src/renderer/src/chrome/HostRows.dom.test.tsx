@@ -183,7 +183,7 @@ describe("HostsRow", () => {
     const names = within(screen.getByRole("menu", { name: "box actions" }))
       .getAllByRole("menuitem")
       .map((el) => el.textContent);
-    expect(names).toEqual(["Switch to box", "Add workspace here…", "Mark all read", "Pause all", "Resume all", "Stop all", "Archive done"]);
+    expect(names).toEqual(["Switch to box", "Add workspace here…", "Mark all read", "Pause all", "Resume all", "Stop all", "Archive done…"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Add workspace here…" }));
     expect(onAdd).toHaveBeenCalledWith("env_box");
   });

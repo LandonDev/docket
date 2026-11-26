@@ -54,6 +54,14 @@ describe("Naming a new thread in the draft row", () => {
     expect(onDraftTitleChange).toHaveBeenLastCalledWith("Gateway audit");
   });
 
+  it("gives way whole in a draft row under 20rem, never cut to Name…", () => {
+    const view = mount({ threadType: "chat", draftTitle: "", onDraftTitleChange: vi.fn() });
+    const input = field(view)!;
+    const row = view.container.querySelector<HTMLElement>("[data-composer-draft-row]")!;
+    expect(row.className.split(" ")).toContain("@container/draft-row");
+    expect(input.className.split(" ")).toContain("@max-[20rem]/draft-row:hidden");
+  });
+
   it("holds 80 characters on one line", () => {
     const onDraftTitleChange = vi.fn();
     const input = field(mount({ threadType: "chat", draftTitle: "", onDraftTitleChange }))!;

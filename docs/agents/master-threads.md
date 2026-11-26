@@ -336,7 +336,7 @@ this is the short one.
   restart nudge and a clock that starts then; the parked reports follow at
   its settle), a thread watching its own background work settles idle, a
   report to a dead watching master boots a fresh harness (`drainReports`); Stop and
-  Kill background tasks on a watching master idle it for real (a one-shot
+  Stop background tasks on a watching master idle it for real (a one-shot
   `stopWatching`), unpinning idles it, and `liveIds` counts handles and
   boots only. `decorate` gives a watching master its batch's reason ahead
   of the watch line ("Blocked: A errored", "Blocked: A ended its turn

@@ -1,9 +1,8 @@
 import { memo, useEffect, useState, type ReactNode } from "react";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
-import { STATUS_WORD } from "@renderer/components/ui/status";
+import { STATUS_WORD, StatusMark } from "@renderer/components/ui/status";
 import { cn } from "@renderer/lib/cn";
 import { usePaneVisible } from "../../hooks/paneVisibility";
-import { ThreadStatusMark } from "../../chrome/TabIndicator";
 import type { Session } from "../../lib/session";
 import { composerSlotOf, threadStatus } from "../../lib/threadStripModel";
 import { turnElapsed, useClock } from "../../lib/turnClock";
@@ -172,7 +171,12 @@ export const WorkingStrip = memo(function WorkingStrip({
     }
     // A held row's frozen time is one more fact of its detail: "Stopped The harness is gone, 1m 35s".
     const heldMark = (status: typeof shownStatus) => (
-      <ThreadStatusMark status={withTime(status, elapsed)} className={ON_PLUS_AXIS} />
+      // A frozen time with no words before it is never cut ("Paused 4m 12s"): the actions are the row's to give.
+      <StatusMark
+        state={status.state}
+        className={cn(ON_PLUS_AXIS, !status.detail && !status.tally && "[&>[data-slot=status-detail]]:shrink-0")}
+        detail={heldDetail(status, elapsed)}
+      />
     );
     switch (state) {
       case "paused":
@@ -251,10 +255,19 @@ function useBatchPaused(masterId: string, on: boolean): number {
   return metas.filter((m) => m.masterId === masterId && !m.archived && !m.parentId && (m.status === "paused" || m.treeHasPaused)).length;
 }
 
-/** A held row's detail with its frozen time after it, one comma run with the tally: never facts parted by space. */
-function withTime(status: RowView["status"], elapsed: number): RowView["status"] {
-  const facts = [status.detail, status.tally, elapsed > 0 ? duration(elapsed) : undefined].filter((f): f is string => !!f);
-  return { ...status, detail: facts.length ? facts.join(", ") : null, tally: null };
+/** A held row's detail with its frozen time after it, one comma run with the tally: never facts parted by space.
+ *  A narrow row cuts the words, never the time: it keeps its place after them ("Stopped The harness is…, 1m 35s"). */
+export function heldDetail(status: Pick<RowView["status"], "detail" | "tally">, elapsed: number): ReactNode {
+  const facts = [status.detail, status.tally].filter((f): f is string => !!f);
+  const time = elapsed > 0 ? duration(elapsed) : null;
+  if (!time) return facts.length ? facts.join(", ") : null;
+  if (facts.length === 0) return time;
+  return (
+    <span data-held-detail className="inline-flex max-w-full min-w-0 align-bottom">
+      <span className="min-w-0 truncate">{facts.join(", ")},</span>
+      <span className="ms-1 shrink-0">{time}</span>
+    </span>
+  );
 }
 
 /** A held row's glyph sits in the `+` button's 28px box, so it centres on

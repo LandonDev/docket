@@ -441,7 +441,7 @@ routed to (aliax-core's `forward`). Two listeners:
   row. The codex driver emits `retrying` on `willRetry`/`Reconnecting` and
   `initializing` while its first send waits on the MCP servers
   (`firstTurnGate`); sessions.ts words them ("Starting the CLI",
-  "Initializing", "Waiting for the provider", "Rate limited, retry 3 in 32 s"; the vocabulary is
+  "Initializing", "Waiting for the provider", "Rate limited, retry 3 in 32s"; the vocabulary is
   src/shared/statusWords.ts: a comma before a phase's detail; a state word
   and its detail are two spans, or "Word: Detail" as one string
   (`plainStatus`); the host sends the detail as `SessionMeta.statusDetail`
@@ -449,7 +449,7 @@ routed to (aliax-core's `forward`). Two listeners:
   (`legacyActivity`), which `legacyDetail` reads with a capital) and folds them onto the
   meta like `context` (`phaseLine`). A provider request open past 15 s with
   nothing finer known (Thinking or the driver's own provider word) reads
-  "Waiting for the provider, 25 s", re-pushed every 5 s (`providerRequest`,
+  "Waiting for the provider, 25s", re-pushed every 5 s (`providerRequest`,
   `PROVIDER_WAIT_MS`); only the turn's own requests count (a turn starting
   forgets those still open), and the gateway ends a request the moment its
   client hangs up, cutting the upstream (`RelayResponse` in gatewayCore.ts:

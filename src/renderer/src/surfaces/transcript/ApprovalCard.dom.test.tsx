@@ -191,6 +191,11 @@ describe("the held line", () => {
     const { container } = render(<ApprovalCard block={held(line)} />);
     expect(container.textContent).toBe("Held Send to Dana Lee: Re: budget");
     expect(container.querySelector('[data-state="waiting"]')).toBeNull();
+    // The one Button, never a raw button: a line that lifts, no fill on hover or press.
+    const row = screen.getByRole("button");
+    expect(row.getAttribute("data-slot")).toBe("held");
+    expect(row.className).toContain("group/button");
+    for (const c of ["hover:bg-transparent", "active:bg-transparent", "text-muted-foreground", "font-normal"]) expect(row.className.split(" ")).toContain(c);
     fireEvent.click(screen.getByRole("button"));
     expect(shellStore.getState().outboxViewOpen).toBe(true);
   });

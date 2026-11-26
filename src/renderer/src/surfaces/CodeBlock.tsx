@@ -6,6 +6,7 @@ import { useHeightGlide } from "../lib/heightGlide";
 import { grammarFor } from "../lib/highlightLanguages";
 import { STEP_CLASS, StreamRevealContext } from "../lib/streamReveal";
 import { playCue } from "../lib/sounds";
+import { loadToast } from "../components/ui/toaster";
 import { SwapIcon } from "../motion/IconSwap";
 import { reveal as hoverReveal } from "../components/ui/reveal";
 import { IconAction, useArmOnIntent } from "./transcript/IconAction";
@@ -200,7 +201,8 @@ export const CodeBlock = memo(function CodeBlock({
         if (copyTimer.current != null) window.clearTimeout(copyTimer.current);
         copyTimer.current = window.setTimeout(() => setCopied(false), COPIED_MS);
       },
-      () => {},
+      // A copy the clipboard refused says so: the icon never turns to the check.
+      () => void loadToast().then((toast) => toast.error("Couldn't copy")),
     );
   };
 

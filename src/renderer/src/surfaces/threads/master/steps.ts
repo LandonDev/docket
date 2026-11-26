@@ -169,6 +169,16 @@ function untimed(step: Pick<LiveStep, "status" | "detail" | "startedAt" | "ended
   return out === "passed" ? "" : out;
 }
 
+/** A failure as a person reads it: a runtime's "error:" lead dropped and a
+ *  script that is not there said in words, since a path is never on screen
+ *  ('error: Module not found "scripts/gate.ts"' → "The script is missing").
+ *  The rest is the host's own words. */
+export function failureWords(text: string): string {
+  const bare = text.replace(/^error:\s*/i, "");
+  if (/^(?:module not found|cannot find module)\b/i.test(bare)) return "The script is missing";
+  return bare;
+}
+
 /** What a step's row says after its name: the land step how branches
  *  land until it runs, then how many landed; a running step its progress;
  *  a skipped one the host's reason, else "skipped"; otherwise the host's
@@ -182,7 +192,7 @@ export function stepDetail(step: Pick<LiveStep, "kind" | "status" | "detail" | "
   const plain = (text: string) => ({ text: sentenceStart(detailText(text)) ?? "", label: null });
   // A failure is said once, on its row; ahead of a land step's progress,
   // which would hide it.
-  if (step.status === "failed") return plain(untimed(step));
+  if (step.status === "failed") return plain(failureWords(untimed(step)));
   if (step.kind === "land") {
     if (step.status === "pending") return plain(rules.land === "all-at-once" ? "All at once" : "As they finish");
     if (step.progress && step.progress.total > 0) return plain(`${step.progress.done} of ${step.progress.total} landed`);

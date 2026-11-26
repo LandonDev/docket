@@ -19,7 +19,7 @@ import { Composer } from "./Composer";
 
 afterEach(cleanup);
 
-function mount(onSubmit: () => boolean | void, props: Partial<ComponentProps<typeof Composer>> = {}) {
+function mount(onSubmit: () => boolean | string | void, props: Partial<ComponentProps<typeof Composer>> = {}) {
   const view = render(
     <Composer
       focused={false}
@@ -54,6 +54,17 @@ describe("a send nothing took", () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(view.field.textContent).toBe("what does page 3 say?");
     expect(view.getByRole("alert").textContent).toContain("Not sent");
+  });
+
+  it("says the caller's reason when it gives one, else Not sent alone", () => {
+    const view = mount(() => "this chat is closed in this window");
+    view.send();
+    expect(view.field.textContent).toContain("what does page 3 say?");
+    expect(view.getByRole("alert").textContent).toBe("Not sent: this chat is closed in this window");
+    cleanup();
+    const plain = mount(() => false);
+    plain.send();
+    expect(plain.getByRole("alert").textContent).toBe("Not sent");
   });
 
   it("clears the field once the message is taken", () => {

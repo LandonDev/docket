@@ -139,7 +139,7 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
   else if (working) rows.push({ kind: "item", id: "pause", label: "Pause", icon: Pause });
   if (canCompact(facts)) rows.push({ kind: "item", id: "compact", label: "Compact", icon: FoldVertical });
   // A watching thread is idle behind its background tasks: this ends them.
-  if (status === "watching") rows.push({ kind: "item", id: "killBackground", label: "Kill background tasks", icon: StopCircle, danger: true });
+  if (status === "watching") rows.push({ kind: "item", id: "killBackground", label: "Stop background tasks", icon: StopCircle, danger: true });
   if (live) rows.push({ kind: "item", id: "stop", label: "Stop", icon: Square, danger: true });
   rows.push({ kind: "sep" });
 
@@ -159,15 +159,8 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
   }
   if (facts.dev && !facts.work) rows.push({ kind: "item", id: "dev", label: "Dev server", icon: Globe, checked: facts.dev.open });
   if (facts.play && !facts.draft) rows.push({ kind: "item", id: "save-play", label: "Save as a play…", icon: ListPlus });
-  // A Work thread's resources are rare (a computer session); with none, the row is not drawn at all.
-  if (!facts.work || facts.removable)
-    rows.push({
-      kind: "item",
-      id: "resources",
-      label: "Resources…",
-      icon: Blocks,
-      ...(facts.removable ? { hint: String(facts.removable) } : { disabled: true, reason: "Nothing to remove" }),
-    });
+  // Drawn only with something to remove: most threads hold none, and a row that can only be refused is noise.
+  if (facts.removable) rows.push({ kind: "item", id: "resources", label: "Resources…", icon: Blocks, hint: String(facts.removable) });
   if (facts.projectId && !facts.parentId)
     rows.push({
       kind: "item",

@@ -216,6 +216,39 @@ describe("QuestionCard", () => {
     }
   });
 
+  it("a multi-select question's caps wear a hairline at rest and a check once picked; a single-select's stay filled letters", () => {
+    const questions: Question[] = [{ prompt: "Any of these?", multiSelect: true, options: [{ label: "One" }, { label: "Two" }] }];
+    const { unmount } = render(<QuestionCard questions={questions} />);
+    const capOf = (name: string) => screen.getByRole("checkbox", { name }).querySelector<HTMLElement>('[data-slot="question-key"]')!;
+    expect(capOf("One").className.split(" ")).toEqual(expect.arrayContaining(["border", "border-border"]));
+    expect(capOf("One").className).not.toContain("bg-foreground/7");
+    expect(capOf("One").textContent).toBe("A");
+    fireEvent.click(screen.getByRole("checkbox", { name: "One" }));
+    expect(capOf("One").className).toContain("bg-primary");
+    expect(capOf("One").textContent).toBe("");
+    expect(capOf("One").querySelector("svg")).not.toBeNull();
+    expect(capOf("Two").textContent).toBe("B");
+    unmount();
+    render(<QuestionCard questions={one} />);
+    const alpha = screen.getByRole("radio", { name: "Alpha" }).querySelector<HTMLElement>('[data-slot="question-key"]')!;
+    expect(alpha.className).toContain("bg-foreground/7");
+    expect(alpha.className).not.toMatch(/\bborder\b/);
+    fireEvent.click(screen.getByRole("radio", { name: "Alpha" }));
+    expect(alpha.textContent).toBe("A");
+  });
+
+  it("titles the card with the shown question's header, falling back to the card's title", () => {
+    const questions: Question[] = [
+      { prompt: "Which?", header: "Pick", options: [{ label: "Alpha" }] },
+      { prompt: "Then?", options: [{ label: "Beta" }] },
+    ];
+    render(<QuestionCard title="Set" questions={questions} />);
+    expect(screen.getByRole("heading").textContent).toBe("Pick");
+    fireEvent.click(screen.getByRole("radio", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    expect(screen.getByRole("heading").textContent).toBe("Set");
+  });
+
   it("says a selected option with a fill and the cap, never an outline", () => {
     render(<QuestionCard questions={one} />);
     const alpha = screen.getByRole("radio", { name: "Alpha" });

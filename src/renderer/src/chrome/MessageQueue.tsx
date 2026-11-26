@@ -144,7 +144,9 @@ export function MessageQueue({
                     className={`pointer-events-none absolute inset-x-2 z-20 h-0.5 rounded-full bg-accent ${sortable.toIndex! < sortable.fromIndex! ? 'top-0' : 'bottom-0'}`}
                   />
                 ) : null}
-                <div className="flex items-start gap-2 rounded-lg border border-border bg-card py-1.5 pr-1.5 pl-1.5">
+                {/* A row on the muted fill, no hairline of its own: the composer's card is the one line here.
+                    Its 1px sides stay, unseen, so the grip keeps `+`'s axis. */}
+                <div className="flex items-start gap-2 rounded-lg border border-transparent bg-muted py-1.5 pr-1.5 pl-1.5">
                   <span
                     data-queue-grip
                     aria-hidden
@@ -195,12 +197,7 @@ export function MessageQueue({
                       onClick={() => setEditing(m.id)}
                       className="h-auto min-w-0 flex-1 justify-start whitespace-normal px-0 py-0 text-left font-normal hover:bg-transparent aria-expanded:bg-transparent active:bg-transparent"
                     >
-                      <span className="line-clamp-2 text-[13px] leading-5 text-foreground">
-                        <span className="me-1 text-xs tabular-nums text-muted-foreground">
-                          {ix + 1}
-                        </span>
-                        {m.text}
-                      </span>
+                      <span className="line-clamp-2 text-[13px] leading-5 text-foreground">{m.text}</span>
                     </Button>
                   )}
                   <span className="flex shrink-0 items-center gap-0.5">

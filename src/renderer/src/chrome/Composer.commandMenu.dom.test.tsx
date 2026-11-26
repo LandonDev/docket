@@ -13,7 +13,8 @@ vi.mock("./ComposerBar", async (importOriginal) => ({
   useDraftRow: () => false,
 }));
 vi.mock("../lib/contextCache", () => ({ useContextReading: () => null }));
-vi.mock("../lib/tcserver/slashCommands", () => ({ useSlashCommands: () => ({ commands: [], loaded: true, failed: false }) }));
+const slash = vi.hoisted(() => ({ commands: [] as unknown[] }));
+vi.mock("../lib/tcserver/slashCommands", () => ({ useSlashCommands: () => ({ commands: slash.commands, loaded: true, failed: false }) }));
 
 import { Composer } from "./Composer";
 import { commandMenuChunk } from "../surfaces/chunks";
@@ -22,7 +23,10 @@ beforeAll(async () => {
   Element.prototype.scrollIntoView = () => {};
   await commandMenuChunk.load();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  slash.commands = [];
+});
 
 const noop = () => {};
 const props = (over: Partial<ComponentProps<typeof Composer>> = {}): ComponentProps<typeof Composer> => ({
@@ -66,5 +70,33 @@ describe("the / menu with nothing to pick", () => {
     expect(container.querySelector("[data-command-popover]")?.hasAttribute("data-ending-style")).toBe(true);
     fireEvent.keyDown(field, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the menu to a screen reader", () => {
+  it("the field names the open list and its highlighted row, which the arrow keys move; closed, it names none", async () => {
+    slash.commands = [
+      { name: "review", scope: "user", source: "command", description: "" },
+      { name: "release", scope: "user", source: "command", description: "" },
+    ];
+    const { container } = render(<Composer {...props()} />);
+    const field = container.querySelector<HTMLElement>("[data-composer-input]")!;
+    expect(field.getAttribute("aria-autocomplete")).toBe("list");
+    expect(field.hasAttribute("aria-controls")).toBe(false);
+    field.focus();
+    type(field, "/re");
+    await act(async () => {});
+    const list = container.querySelector<HTMLElement>("[role=listbox]")!;
+    expect(list.id).not.toBe("");
+    expect(field.getAttribute("aria-controls")).toBe(list.id);
+    const options = [...list.querySelectorAll<HTMLElement>("[role=option]")];
+    expect(options).toHaveLength(2);
+    expect(field.getAttribute("aria-activedescendant")).toBe(options[0].id);
+    fireEvent.keyDown(field, { key: "ArrowDown" });
+    expect(field.getAttribute("aria-activedescendant")).toBe(options[1].id);
+    expect(options[1].getAttribute("aria-selected")).toBe("true");
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(field.hasAttribute("aria-controls")).toBe(false);
+    expect(field.hasAttribute("aria-activedescendant")).toBe(false);
   });
 });

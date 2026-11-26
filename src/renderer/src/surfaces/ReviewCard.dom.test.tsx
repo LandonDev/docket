@@ -11,7 +11,7 @@ vi.mock("../lib/threads/agents", () => ({ modelLabel: () => "GPT-6.1 Sol" }));
 
 import type { Block } from "../lib/session";
 import { TranscriptSessionContext } from "./transcriptSession";
-import { ReviewCard } from "./ReviewCard";
+import { ReviewCard, detailOf, mergeErrorWords } from "./ReviewCard";
 import { CARD_SHAPE } from "./QuestionCard";
 
 const finding = (file: string, line: number, summary: string, scenario = ""): ReviewFinding => ({
@@ -55,7 +55,8 @@ describe("ReviewCard", () => {
   it("a pass is one line with its minor count, the minor findings closed", () => {
     const { container } = mount(review({ minor: [finding("a.ts", 3, "Nit")] }));
     expect(container.querySelectorAll('[data-slot="notice-line"]').length).toBe(1);
-    expect(container.textContent).toContain("Reviewed by GPT-6.1 Sol");
+    // The lead is a whole clause: it ends in a colon, so it never runs into the details.
+    expect(container.querySelector('[data-slot="notice-line"] .font-medium')!.textContent).toBe("Reviewed by GPT-6.1 Sol:");
     expect(container.textContent).toContain("no blocking findings");
     expect(container.textContent).toContain("1 minor");
     expect(container.textContent).not.toContain("Nit");
@@ -86,10 +87,13 @@ describe("ReviewCard", () => {
     expect(head.className.split(" ")).not.toContain("gap-2");
     expect((head.firstElementChild as HTMLElement).className.split(" ")).toContain("me-1");
     // A 20px file button reaches 24px through its hit area.
-    expect(screen.getByRole("button", { name: "src/x.ts:12" }).className).toContain("after:-inset-y-0.5");
+    // The file's name and line on screen, never its path (the tooltip holds it).
+    expect(screen.getByRole("button", { name: "x.ts:12" }).className).toContain("after:-inset-y-0.5");
+    expect(card.textContent).not.toContain("src/x.ts");
+    expect(head.textContent).toContain("Reviewed by GPT-6.1 Sol:");
     // The actions sit 8px apart, as the failure card's do.
     expect(screen.getByRole("button", { name: /Merge anyway/ }).parentElement!.classList).toContain("gap-2");
-    fireEvent.click(screen.getByRole("button", { name: "src/x.ts:12" }));
+    fireEvent.click(screen.getByRole("button", { name: "x.ts:12" }));
     expect(onOpenFile).toHaveBeenCalledWith("/repo/src/x.ts", { line: 12 });
   });
 
@@ -100,6 +104,30 @@ describe("ReviewCard", () => {
     });
     expect(mergeAnyway).toHaveBeenCalledWith("s1", "run1");
     expect(screen.getByRole("button", { name: /Merging…/ })).toBeTruthy();
+  });
+
+  it("a refused Merge anyway says it in words, never the raw error", async () => {
+    mergeAnyway.mockImplementationOnce(() => Promise.reject(new Error("connect ECONNREFUSED 127.0.0.1:7777")));
+    const { container } = mount(review({ outcome: "held", merged: false, blocking: [finding("x.ts", 1, "Bad")] }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Merge anyway" }));
+    });
+    expect(container.textContent).not.toContain("ECONNREFUSED");
+    expect(container.textContent).toContain("did not confirm the change");
+  });
+
+  it("an unknown refusal reads one fixed line", () => {
+    expect(mergeErrorWords(new Error("spawn /usr/bin/git EAGAIN at Foo.bar (/x/y.ts:3)"))).toBe("Merge anyway did not go through. Try again.");
+  });
+
+  it("settled lines: a timeout with no minutes drops the part, an override keeps its preposition, an outcome that never ran wears Stopped", () => {
+    expect(detailOf(review({ outcome: "timeout" }).review!)).toEqual(["merged without it"]);
+    expect(detailOf(review({ outcome: "timeout", minutes: 15 }).review!)).toEqual(["after 15 min", "merged without it"]);
+    expect(detailOf(review({ outcome: "merged-anyway", blocking: [finding("a.ts", 1, "A"), finding("b.ts", 2, "B")] }).review!)).toEqual(["over 2 blocking findings"]);
+    const { container } = mount(review({ outcome: "failed", reason: "the reviewer ended without reporting" }));
+    expect(container.querySelector('[data-slot="notice-line"] .font-medium')!.textContent).toBe("Review by GPT-6.1 Sol did not run:");
+    expect(container.textContent).not.toContain("?");
+    expect(container.querySelector('[data-slot="status-mark"][data-state="stopped"]')).not.toBeNull();
   });
 
   it("a hold's minor findings stay collapsed", () => {

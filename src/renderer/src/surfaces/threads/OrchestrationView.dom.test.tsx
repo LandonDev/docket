@@ -21,7 +21,8 @@ vi.mock("./fleet/AgentDetail", () => ({
 }));
 
 import { OpenAgentDetailContext } from "../agentDetailContext";
-import { OrchestrationView } from "./OrchestrationView";
+import { OrchestrationView, orchestrationGoal } from "./OrchestrationView";
+import { messageListFold } from "../../lib/messageListFold";
 import type { ThreadViewProps } from "./ThreadView";
 import { FLEET_METAS } from "./fleet/fleetFixture";
 
@@ -81,5 +82,53 @@ describe("OrchestrationView", () => {
     const { getByTestId } = render(<OrchestrationView {...props()} />);
     act(() => openAgent?.("ios-orch-a2"));
     expect(getByTestId("agent-detail").textContent).toBe("ios-orch-a2");
+  });
+
+  it("sits on the transcript's column: its gutter, and after the message list while it is beside and open", () => {
+    h.agents = FLEET_METAS;
+    const at = (placement: "beside" | "hidden" | "above") => {
+      const p = props();
+      const view = render(<OrchestrationView {...p} renderSlots={() => ({ transcript: <SpawnRow />, strip: null, composer: <div data-testid="composer" />, placement })} />);
+      const band = view.container.querySelector<HTMLElement>("[data-fleet-band]")!;
+      const footer = view.container.querySelector<HTMLElement>("[data-chat-footer]")!;
+      const got = { band: band.className, inner: band.firstElementChild!.className, pad: band.style.paddingLeft, footerInner: footer.firstElementChild!.className, footerPad: footer.style.paddingLeft };
+      view.unmount();
+      return got;
+    };
+    messageListFold.set(false);
+    const beside = at("beside");
+    expect(beside.band).toContain("pe-[calc(1rem+var(--scrollbar-size))]");
+    expect(beside.inner).toContain("mr-auto");
+    expect(beside.pad).not.toBe("");
+    // The composer's band and the header's are one rule.
+    expect(beside.inner).toBe(beside.footerInner);
+    expect(beside.pad).toBe(beside.footerPad);
+    messageListFold.set(true);
+    expect(at("beside").inner).toContain("mx-auto");
+    messageListFold.set(false);
+    expect(at("hidden").inner).toContain("mx-auto");
+    expect(at("hidden").pad).toBe("");
+  });
+});
+
+describe("the orchestration header's goal", () => {
+  const user = (id: string, text: string) => ({ id, role: "user", text }) as Session["blocks"][number];
+  it("draws no goal while it is the newest bubble's whole text, right under it", () => {
+    expect(orchestrationGoal([user("u1", "Ship the iOS thread screens\nin parallel"), user("u2", "yes, go on")])).toBe("");
+    expect(orchestrationGoal([user("u1", "Ship the iOS thread screens")])).toBe("");
+  });
+
+  it("names the newest brief by its first line when the bubble says more", () => {
+    expect(orchestrationGoal([user("u1", "yes"), user("u2", "Ship the iOS thread screens\nin parallel")])).toBe("Ship the iOS thread screens");
+    expect(orchestrationGoal([])).toBe("");
+  });
+
+  it("the header keeps its sentence with no goal", () => {
+    h.agents = FLEET_METAS;
+    const p = props();
+    const { container } = render(<OrchestrationView {...p} session={{ ...session, blocks: [user("u1", "Ship it"), user("u2", "yes, go on")] } as Session} />);
+    const header = container.querySelector('[data-slot="fleet-header"]')!;
+    expect(header.textContent).not.toContain("yes, go on");
+    expect(header.querySelectorAll("p")).toHaveLength(1);
   });
 });

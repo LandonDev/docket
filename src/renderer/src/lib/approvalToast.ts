@@ -7,7 +7,7 @@ import { sessionStore } from "./tcserver/store";
 export type PendingApprovalNotice = {
   sessionId: string;
   requestId: string | number;
-  /** What the call does, in words ("Creating empty file notes.txt"): the toast's line, where no card shows it. */
+  /** What the call does, in words ("Create empty file notes.txt": it has not run): the toast's line, where no card shows it. */
   label: string;
   /** The tool's name ("Bash"): a state's detail, "Needs you  approve Bash", beside a card that shows the rest. */
   tool: string;

@@ -210,10 +210,11 @@ export function ResearchView(props: ThreadViewProps) {
         hasBoard={hasBoard}
         collapsed={collapsed}
         onToggleChat={setChatOpen}
-        title="Research"
+        title={report.title || session.title || "Research"}
         detail={detail}
         actions={actions}
         held={heldRowOf(props, session)}
+        narrowFold
       />
       </OpenAgentDetailContext.Provider>
       <AnimatePresence>
@@ -233,8 +234,14 @@ export function ResearchView(props: ThreadViewProps) {
   );
 }
 
-/** The report: its title and state while it is being researched and
- *  written, the whole document once complete. */
+/** A body's leading `# heading` when it is the title the header already says. */
+export function withoutTitle(body: string, title: string | null): string {
+  const m = /^\s*#\s+(.+)\n?/.exec(body);
+  return m && title && m[1].trim() === title.trim() ? body.slice(m[0].length) : body;
+}
+
+/** The report under the header that names it: its state while it is being
+ *  researched and written, the whole document once complete. */
 function ReportPane({
   session,
   report,
@@ -252,8 +259,8 @@ function ReportPane({
   const complete = report.status === "complete";
   const state = running ? "working" : threadStateOf(session.status);
   return (
-    <div>
-      <h2 className="text-base font-semibold leading-6 tracking-[-0.01em] text-balance text-foreground">{report.title ?? session.title}</h2>
+    // The header says the report's title; the pane starts with what it adds.
+    <div className="[&>:first-child]:mt-0">
       {!complete ? (
         <>
           {state !== "idle" && state !== "done" ? (
@@ -272,7 +279,7 @@ function ReportPane({
           ) : null}
           <AgentMarkdown
             className="mt-4" size="document"
-            text={report.body}
+            text={withoutTitle(report.body, report.title)}
             streaming={false}
             cwd={session.cwd}
             onOpenFile={onOpenFile}

@@ -52,11 +52,12 @@ describe("tokens naming a host", () => {
 });
 
 describe("threadMentionParts", () => {
-  it("splits known tokens into chips and leaves unknown ones as text", () => {
+  it("splits tokens into chips, an unknown one with no title (its id never reaches the screen)", () => {
     expect(threadMentionParts("see @thread:abcdef123456 or @thread:unknown999", titleOf)).toEqual([
       { text: "see " },
       { id: "abcdef123456", title: "Auth rewrite" },
-      { text: " or @thread:unknown999" },
+      { text: " or " },
+      { id: "unknown999", title: undefined },
     ]);
     expect(threadMentionParts("plain", titleOf)).toEqual([{ text: "plain" }]);
     expect(threadMentionParts("@thread:abcdef123456", titleOf)).toEqual([

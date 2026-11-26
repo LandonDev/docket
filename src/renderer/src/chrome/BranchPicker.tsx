@@ -35,6 +35,8 @@ type Props = {
   tip?: string;
   onChange?: () => void;
   onClose?: () => void;
+  /** The thread's type works on a branch. False (a chat or research draft): a folder with no repo draws nothing, not a dead "No repo". */
+  needsRepo?: boolean;
 };
 
 
@@ -50,6 +52,7 @@ export function BranchPicker({
   tip,
   onChange,
   onClose,
+  needsRepo = true,
 }: Props) {
   const head = variant === "head";
   const [open, setOpen] = useState(false);
@@ -218,6 +221,7 @@ export function BranchPicker({
       : current
     : "No repo";
   const interactive = enabled && !awaitingBranch && !missingGit;
+  if (missingGit && !needsRepo) return null;
 
   const trigger = (
     <Button

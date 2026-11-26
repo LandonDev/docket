@@ -30,6 +30,8 @@ export class AttachmentUploadError extends Error {
   constructor(
     readonly fileId: string,
     message: string,
+    /** The cause alone, sentence-cased ("Not connected"): where the file's own chip already says Failed, the line says only this. */
+    readonly why: string = message,
   ) {
     super(message);
     this.name = "AttachmentUploadError";
@@ -218,7 +220,8 @@ export async function uploadAttachment(
     delete next.blob;
     return next;
   } catch (error) {
-    throw new AttachmentUploadError(file.id, `Could not attach ${file.name}: ${friendly(error)}`);
+    const why = friendly(error);
+    throw new AttachmentUploadError(file.id, `Could not attach ${file.name}: ${why}`, why.charAt(0).toUpperCase() + why.slice(1));
   }
 }
 

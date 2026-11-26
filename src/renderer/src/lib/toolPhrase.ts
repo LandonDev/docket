@@ -179,6 +179,16 @@ export function isRefused(block: Block): boolean {
   return block.approval?.decided === "deny";
 }
 
+/** A call that waits for his Allow has not run: its words are what it asks ("Remove the build output"), never running. */
+export function isAsking(block: Block): boolean {
+  return !!block.approval && !block.approval.decided;
+}
+
+/** A call that never ran, refused or still asked: its words keep the plain verb. */
+function unrun(block: Block): boolean {
+  return isRefused(block) || isAsking(block);
+}
+
 /** The settled verbs a refused call takes back to their plain form: "Created" → "Create". */
 const PLAIN: Record<string, string> = {
   ran: "run",
@@ -522,6 +532,12 @@ function echoesCommand(words: string, seg: string): boolean {
   return said.length <= typed.length && said.every((w, n) => w === (n === 0 ? base(typed[0]) : unquote(typed[n])));
 }
 
+/** A description that is the command itself, give or take case and space. */
+function sameCommand(desc: string, command: string): boolean {
+  const norm = (t: string): string => t.trim().replace(/\s+/g, " ").toLowerCase();
+  return !!command.trim() && norm(desc) === norm(command);
+}
+
 /** A title the fold already turned into "Read x" / "Find x", for a call with no command. */
 function foldedTitle(block: Block): RegExpExecArray | null {
   if (str(inputOf(block).description).trim() || inputOf(block).command !== undefined) return null;
@@ -536,10 +552,13 @@ function foldedTitle(block: Block): RegExpExecArray | null {
  * joins the first two; the group line (lib/groupPhrase.ts) keeps the first.
  */
 export function runClauses(block: Block, cwd?: string, live = isLive(block)): string[] {
-  // A refused command never ran: its clauses keep the plain verb ("Create empty file x.txt").
-  const form = (p: string): string => (!live && isRefused(block) ? p : tense(p, live));
+  // A refused or still-asked command never ran: its clauses keep the plain verb ("Create empty file x.txt"). A caller
+  // speaking live (the open group's line) keeps its own tense, so one line never mixes "Reading" and "delete".
+  const plain = !live && unrun(block);
+  const form = (p: string): string => (plain ? p : tense(p, live));
   const desc = str(inputOf(block).description).trim();
-  if (desc) return [cap(form(trim(desc.charAt(0).toLowerCase() + desc.slice(1), 60)))];
+  // A description that only repeats the command ("npm test") says nothing: the command's gist reads instead.
+  if (desc && !sameCommand(desc, commandOf(block))) return [cap(form(trim(desc.charAt(0).toLowerCase() + desc.slice(1), 60)))];
   const m = foldedTitle(block);
   if (m) return [`${cap(form(m[1] === "Find" ? "search for" : m[1].toLowerCase()))} ${m[2]}`];
   return commandPhrases(commandOf(block), cwd).map((p, i) => (i === 0 ? cap(form(p)) : form(p)));
@@ -547,14 +566,14 @@ export function runClauses(block: Block, cwd?: string, live = isLive(block)): st
 
 /** The run row's words: a description or the command's gist, split at the verb. */
 function runParts(block: Block, cwd: string | undefined, live: boolean): PhraseParts {
-  const refused = !live && isRefused(block);
+  const refused = !live && unrun(block);
   const m = foldedTitle(block);
   if (m) {
     const verb = m[1] === "Find" ? "search for" : m[1].toLowerCase();
     return { verb: cap(refused ? verb : tense(verb, live)), object: m[2] };
   }
   const clauses = runClauses(block, cwd, live);
-  if (clauses.length === 0) return { verb: live ? "Running" : refused ? "Run" : "Ran", object: "a command" };
+  if (clauses.length === 0) return { verb: refused ? "Run" : live ? "Running" : "Ran", object: "a command" };
   const extra = clauses.length - 2;
   return splitVerb(clauses.slice(0, 2).join(", ") + (extra > 0 ? ` and ${extra} more` : ""));
 }
@@ -611,9 +630,11 @@ export interface PhraseParts {
  * be said.
  */
 export function toolPhraseParts(block: Block, cwd?: string, live = isLive(block)): PhraseParts {
-  const parts = settledParts(block, cwd, live);
-  // A refused call never ran: "Create notes.txt", not "Created notes.txt" (a run's clauses are already plain).
-  return !live && isRefused(block) && kindOf(block) !== "run" ? { ...parts, verb: plainForm(parts.verb) } : parts;
+  // A call asking his Allow reads as asked, from its settled words taken back to the plain verb.
+  const asking = isAsking(block);
+  const parts = settledParts(block, cwd, asking ? false : live);
+  // A refused or asked call never ran: "Create notes.txt", not "Created notes.txt" (a run's clauses are already plain).
+  return (asking || (!live && isRefused(block))) && kindOf(block) !== "run" ? { ...parts, verb: plainForm(parts.verb) } : parts;
 }
 
 function settledParts(block: Block, cwd: string | undefined, live: boolean): PhraseParts {

@@ -176,7 +176,7 @@ function RulesForm({
                   aria-label="Working directory"
                   value={shell.cwd ?? ""}
                   onChange={(e) => setShell({ ...shell, cwd: e.target.value })}
-                  placeholder="Directory, default the project"
+                  placeholder="Folder (the project's if empty)"
                   className="font-mono text-xs"
                 />
               </div>
@@ -184,7 +184,7 @@ function RulesForm({
                 aria-label="Command"
                 value={shell.run}
                 onChange={(e) => setShell({ ...shell, run: e.target.value })}
-                placeholder="Command, exit 0 passes"
+                placeholder="Command"
                 className="font-mono text-xs"
               />
               <div className="flex justify-end gap-2">
@@ -213,7 +213,7 @@ function RulesForm({
             label="Then"
             value={rules.then}
             options={[
-              { value: "notify", label: "Notify me" },
+              { value: "notify", label: "Notify you" },
               { value: "archive-children", label: "Archive the threads" },
             ]}
             onChange={(v) => set("then", v)}

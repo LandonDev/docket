@@ -224,7 +224,7 @@
   demonstrably create: git's `Preparing worktree` line, simctl's UDID,
   `TEMP_CODE_USER_DATA`), filed under the top-level thread with the id of the
   host the resource lives on. The thread menu's "Resources…" is a removal
-  form (a checkbox per row, Remove N; disabled when the thread has nothing
+  form (a checkbox per row, Remove N; not drawn when the thread has nothing
   but dev servers, which Activity and the dev servers pane hold); archiving a thread with rows asks "and remove N resources on
   the Mac" (on by default; `session.archive { removeResources }` through
   the renderer's `archiveThread()` in lib/threadResources.ts; the fleet's

@@ -370,8 +370,9 @@ export function resetWords(atMs: number, now = Date.now()): string {
   return `in ${h} h${m ? ` ${m} min` : ''}`
 }
 
-/** Retry words for the strip: "retry 2 of 5 in 32 s (503)". */
-export function retryWords(attempt: number, maxAttempts: number, delayMs: number, httpStatus?: number): string {
+/** Retry words for the strip: "retry 2 of 5 in 32s", seconds written as every working line writes them and
+ *  no raw status on screen (the status stays in the logs and the phase's `retry` record). */
+export function retryWords(attempt: number, maxAttempts: number, delayMs: number): string {
   const secs = Math.max(1, Math.round(delayMs / 1000))
-  return `retry ${attempt} of ${maxAttempts} in ${secs} s${httpStatus ? ` (${httpStatus})` : ''}`
+  return `retry ${attempt} of ${maxAttempts} in ${secs}s`
 }

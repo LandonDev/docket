@@ -28,12 +28,13 @@ const OTHER = "Other";
  *  transcript's window mounts its row a second time. */
 const entered = new Set<string>();
 
-/** The harness's questions in the card's shape: the header is a question's
- *  description unless the card's title already says it. */
-export function cardQuestions(question: QuestionMeta, title: string): Question[] {
+/** The harness's questions in the card's shape: each header titles the card
+ *  while its question is shown (the first's is the card's title), never a
+ *  line under the prompt. */
+export function cardQuestions(question: QuestionMeta): Question[] {
   return question.questions.map((spec) => ({
     prompt: spec.question,
-    description: spec.header && spec.header !== title ? spec.header : undefined,
+    header: spec.header || undefined,
     multiSelect: spec.multiSelect,
     options: [
       ...spec.options.map((option) => ({ label: option.label, description: option.description })),
@@ -89,7 +90,7 @@ export function QuestionCard({
             className={cn(QUESTION_SHAPE, enter && QUESTION_ENTER)}
             icon={<StatusMark state="waiting" word={false} />}
             title={title}
-            questions={cardQuestions(question, title)}
+            questions={cardQuestions(question)}
             onSubmitAnswers={send}
             onSkip={() => send(null)}
           />

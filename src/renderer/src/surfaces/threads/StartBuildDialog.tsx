@@ -1,4 +1,5 @@
 import { modOrCtrl } from "../../lib/keys";
+import { failureReason } from "../../lib/threadActionFailure";
 import { useState } from "react";
 import type { ThreadRules } from "@server/shared/rules";
 import { AccessPicker } from "../../chrome/AccessPicker";
@@ -34,8 +35,8 @@ export function landedInPicker(reason: string, event: Event | undefined): boolea
 
 export function defaultGoal(tasks: string[]): string {
   return tasks.length > 0
-    ? "Every task in the plan's checklist is checked off and typecheck passes"
-    : "The plan is fully implemented and typecheck passes";
+    ? "Every task in the plan is done"
+    : "The plan is built";
 }
 
 /** Hands the approved plan to ONE builder through the server's own start
@@ -97,7 +98,7 @@ export function StartBuildDialog({
       });
       onOpenChange(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(failureReason(e) || "Couldn't start the build");
     } finally {
       setBusy(false);
     }

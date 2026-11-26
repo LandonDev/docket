@@ -88,12 +88,23 @@ describe("MessageQueue", () => {
     expect(screen.getByRole("button", { name: "Model for this message" }).parentElement!.className).not.toContain("opacity-0");
   });
 
-  it("sets the count 4px after Queued and each row's number 4px before its text", () => {
+  it("counts once, 4px after Queued: a row's text starts with the message, no number before it", () => {
     render(<MessageQueue items={[item("a", "first"), item("b", "second")]} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
     expect(screen.getByText("Queued").querySelector("span")!.className.split(" ")).toContain("ms-1");
-    const number = screen.getByRole("button", { name: "Edit: second" }).querySelector(".tabular-nums")!;
-    expect(number.textContent).toBe("2");
-    expect(number.className.split(" ")).toContain("me-1");
+    const edit = screen.getByRole("button", { name: "Edit: second" });
+    expect(edit.textContent).toBe("second");
+    expect(edit.querySelector(".tabular-nums")).toBeNull();
+  });
+
+  it("draws no hairline per row: each row sits on the muted fill, its sides unseen so the grip keeps `+`'s axis", () => {
+    render(<MessageQueue items={[item("a", "first"), item("b", "second")]} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />);
+    for (const id of ["a", "b"]) {
+      const body = document.querySelector<HTMLElement>(`[data-queue-row="${id}"]`)!.querySelector<HTMLElement>("[data-queue-grip]")!.parentElement!;
+      const cls = body.className.split(" ");
+      expect(cls).toEqual(expect.arrayContaining(["bg-muted", "border-transparent"]));
+      expect(cls).not.toContain("border-border");
+      expect(cls).not.toContain("bg-card");
+    }
   });
 
   it("an arriving row enters on a full transform string; under reduced motion it only fades", () => {

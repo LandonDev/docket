@@ -116,6 +116,16 @@ describe("TranscriptOutline", () => {
     expect(onLoadEarlier).toHaveBeenCalledOnce();
   });
 
+  it("Earlier messages spins while its page loads", () => {
+    const onLoadEarlier = vi.fn(() => new Promise<void>(() => {}));
+    render(<TranscriptOutline {...base} turns={oneDay} hasOlder onLoadEarlier={onLoadEarlier} />);
+    const head = screen.getByRole("button", { name: "Earlier messages" });
+    fireEvent.click(head);
+    expect(head.getAttribute("aria-busy")).toBe("true");
+    fireEvent.click(head);
+    expect(onLoadEarlier).toHaveBeenCalledOnce();
+  });
+
   describe("the fold", () => {
     it("opens by default, the chevron saying what it does and which list it folds", () => {
       render(<TranscriptOutline {...base} turns={oneDay} />);

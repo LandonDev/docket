@@ -43,7 +43,7 @@ describe("the fleet switches as menu rows", () => {
     expect(screen.getAllByRole("menuitem")[0]!.textContent).toBe("Customize…");
     expect(screen.getByRole("menuitem", { name: "Resume all" }).getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByRole("menuitem", { name: "Stop all" }).getAttribute("data-variant")).toBe("destructive");
-    expect(screen.getByRole("menuitem", { name: "Archive done" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Archive done…" })).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
     expect(onPick).toHaveBeenCalledWith("batch-pause");
   });
@@ -59,7 +59,7 @@ describe("the fleet switches as menu rows", () => {
       </DropdownMenu>,
     );
     const names = screen.getAllByRole("menuitem").map((el) => el.textContent);
-    expect(names).toEqual(["Mark all read", "Pause all", "Resume all", "Stop all", "Archive done"]);
+    expect(names).toEqual(["Mark all read", "Pause all", "Resume all", "Stop all", "Archive done…"]);
     expect(screen.getByRole("menuitem", { name: "Pause all" }).getAttribute("aria-disabled")).toBe("true");
     expect(screen.getByRole("menuitem", { name: "Resume all" }).getAttribute("aria-disabled")).toBeNull();
     expect(screen.getAllByRole("menuitem").every((el) => el.querySelector("svg"))).toBe(true);

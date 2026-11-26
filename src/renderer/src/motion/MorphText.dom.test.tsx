@@ -104,6 +104,33 @@ describe("MorphText", () => {
     expect(animate).toHaveBeenLastCalledWith([{ width: "119px" }, { width: "28px" }], expect.anything());
   });
 
+  it("retargets a glide when its words change under the same state: the closing line never shows Worked for 1", async () => {
+    MotionGlobalConfig.skipAnimations = true;
+    const view = render(<MorphText state="phase">Thinking it over</MorphText>);
+    view.rerender(<MorphText state="closed">Worked</MorphText>);
+    await settle();
+    expect(animate).toHaveBeenLastCalledWith([{ width: "112px" }, { width: "42px" }], expect.anything());
+    expect(box(view.container).dataset.gliding).toBe("");
+    // Mid-glide the box stands at 80px; the duration lands and the words grow to 91px.
+    const measure = Element.prototype.getBoundingClientRect;
+    Element.prototype.getBoundingClientRect = function (this: Element) {
+      return (this as HTMLElement).dataset.slot === "morph-text" ? ({ ...measure.call(this), width: 80 } as DOMRect) : measure.call(this);
+    };
+    view.rerender(<MorphText state="closed">Worked for 1s</MorphText>);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(animate).toHaveBeenLastCalledWith([{ width: "80px" }, { width: "91px" }], { duration: DUR.base * 1000, easing: EASE_SWAP_CSS });
+    expect(view.container.textContent).toBe("Worked for 1s");
+    // The same words again retarget nothing.
+    view.rerender(<MorphText state="closed">Worked for 1s</MorphText>);
+    expect(animate).toHaveBeenCalledTimes(2);
+  });
+
+  it("text that changes while nothing glides moves nothing", () => {
+    const view = render(<MorphText state="closed">Worked</MorphText>);
+    view.rerender(<MorphText state="closed">Worked for 1s</MorphText>);
+    expect(animate).not.toHaveBeenCalled();
+  });
+
   it("under reduced motion fades out then in, with no movement and no glide", async () => {
     reduced.value = true;
     MotionGlobalConfig.skipAnimations = true;

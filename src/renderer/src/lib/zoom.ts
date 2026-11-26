@@ -10,6 +10,16 @@ const STEP = 0.1;
 const MIN = 0.5;
 const MAX = 2;
 
+const listeners = new Set<() => void>();
+
+/** Hear this window's level change (the View menu's step, a second control's). `loadZoom` is the level. */
+export function subscribeZoom(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
 export function clampZoom(level: number): number {
   const rounded = Math.round(level * 10) / 10;
   return Math.min(MAX, Math.max(MIN, rounded));
@@ -41,6 +51,7 @@ export function stepZoom(level: number, direction: 1 | -1): number {
 export async function applyZoom(level: number): Promise<number> {
   const next = clampZoom(level);
   saveZoom(next);
+  for (const listener of listeners) listener();
   await invoke("set_zoom", { level: next });
   return next;
 }

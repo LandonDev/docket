@@ -10,7 +10,7 @@ vi.mock("../../chrome/lightboxStore", () => ({ openLightbox }));
 vi.mock("./ToolCall", () => ({ ToolCall: ({ block }: { block: Block }) => <div data-slot="tool-line">{block.tool?.name}</div> }));
 
 import { registry } from "../../lib/connection";
-import { ComputerShotRow } from "./ComputerShotRow";
+import { ComputerShotRow, pictureGoneText } from "./ComputerShotRow";
 
 afterEach(() => {
   cleanup();
@@ -95,6 +95,8 @@ describe("ComputerShotRow", () => {
     render(<ComputerShotRow block={block([shot(1)])} host="env_box" />);
     await flush();
     expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByText("No such file on The box.")).toBeTruthy();
+    expect(screen.getByText("The box no longer has this picture")).toBeTruthy();
+    // No path, no "No such file", no period on a one-line label; this computer's own reads as itself.
+    expect(pictureGoneText(null)).toBe("This computer no longer has this picture");
   });
 });

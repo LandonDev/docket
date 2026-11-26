@@ -41,8 +41,9 @@ vi.mock("./SplitShell", () => ({
     collapsed: boolean;
     onToggleChat: (open: boolean) => void;
     fit?: number;
+    narrowFold?: boolean;
   }) => (
-    <div data-collapsed={String(p.collapsed)} data-fit={p.fit ?? ""}>
+    <div data-collapsed={String(p.collapsed)} data-fit={p.fit ?? ""} data-narrow-fold={p.narrowFold ? "" : undefined}>
       <header data-view-header>
         {p.title}
         {p.actions}
@@ -129,6 +130,11 @@ describe("the implementation board", () => {
   it("clips horizontal overhang in its board scroller", () => {
     view(session({ status: "running", blocks: [first], todos: [todo("Write a", "in_progress")] }));
     expect(document.querySelector(".overflow-y-auto")?.classList.contains("overflow-x-hidden")).toBe(true);
+  });
+
+  it("keeps its board whole in a narrow pane: the shell folds the chat over it", () => {
+    view(session({ status: "running", blocks: [first], todos: [todo("Write a", "in_progress")] }));
+    expect(document.querySelector("[data-narrow-fold]")).not.toBeNull();
   });
 
   it("is one TaskList and the changes, with no Subagents section and no inline colours", () => {

@@ -65,6 +65,18 @@ async function open() {
 }
 
 describe("BranchPicker: no branch yet", () => {
+  it("a type that needs no branch (a chat or research draft) draws nothing for a folder with no repo, but keeps the wait and a real branch", () => {
+    h.state = { settled: true, branches: null };
+    const { container, rerender } = render(<BranchPicker cwd="/u/me/app" needsRepo={false} />);
+    expect(container.innerHTML).toBe("");
+    expect(screen.queryByText("No repo")).toBeNull();
+    h.state = { settled: false, branches: null };
+    rerender(<BranchPicker cwd="/u/me/app" needsRepo={false} />);
+    expect(screen.getByRole("button", { name: "Loading branch" })).toBeTruthy();
+    rerender(<BranchPicker cwd="/u/me/app" branch="main" needsRepo={false} />);
+    expect(screen.getByRole("button", { name: "Branch main" })).toBeTruthy();
+  });
+
   it("No repo is sans: words, not a branch name", () => {
     h.state = { settled: true, branches: null };
     render(<BranchPicker cwd="/u/me/app" />);

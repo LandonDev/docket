@@ -147,6 +147,6 @@ describe("the turn's end", () => {
     expect(turnError({ terminal: 'completed' })).toBeNull()
     expect(turnError({ terminal: 'failed' })).toBe('the turn failed')
     expect(resetWords(Date.now() + 5 * 60_000)).toBe('in 5 min')
-    expect(retryWords(2, 5, 32_000, 503)).toBe('retry 2 of 5 in 32 s (503)')
+    expect(retryWords(2, 5, 32_000)).toBe('retry 2 of 5 in 32s')
   })
 })

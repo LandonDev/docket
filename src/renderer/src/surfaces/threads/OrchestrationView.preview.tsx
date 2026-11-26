@@ -24,15 +24,38 @@ seedPreviewThreads([root,
   fixtureMeta("notes-agent", { parentId: id, environmentId: "local", title: "Review route notes", status: "idle" }),
 ], { [id]: session });
 
-export function OrchestrationPreview() {
+/** One frame: the message list beside the column (as the transcript seats it: 16px in, 208px, 24px
+ *  before the column; 8px here and the transcript's own 16px), or no list. */
+function Fleet({ list }: { list: boolean }) {
   return (
     <div className="flex h-[480px] w-full border border-border">
-      <OrchestrationView session={session} composing={false} onArmNewPass={noop} onOpenFile={noop} onOpenDiff={noop} renderChat={() => (
-        <div className="flex min-h-0 min-w-0 flex-1 gap-3 px-4">
-          <div className="hidden w-52 shrink-0 pt-3 sm:block"><TranscriptOutline turns={turns} now={previewNow} onJump={noop} /></div>
-          <div className="min-w-0 flex-1"><AgentTranscript sessionId={id} blocks={session.blocks} cwd={previewCwd} harness="claude" visible /></div>
-        </div>
-      )} />
+      <OrchestrationView session={session} composing={false} onArmNewPass={noop} onOpenFile={noop} onOpenDiff={noop} renderChat={() => null} renderSlots={() => ({
+        transcript: (
+          <div className="flex min-h-0 min-w-0 flex-1">
+            {list ? <div className="w-52 shrink-0 pt-3 ml-4 mr-2"><TranscriptOutline turns={turns} now={previewNow} onJump={noop} /></div> : null}
+            <div className="min-w-0 flex-1"><AgentTranscript sessionId={id} blocks={session.blocks} cwd={previewCwd} harness="claude" visible /></div>
+          </div>
+        ),
+        strip: null,
+        composer: null,
+        placement: list ? "beside" : "hidden",
+      })} />
+    </div>
+  );
+}
+
+/** The list beside the column from 640px (the transcript reports its own placement; a static page cannot measure), the column alone under it. */
+export function OrchestrationPreview() {
+  return (
+    <div className="flex flex-col gap-4">
+      <section className="hidden flex-col gap-2 sm:flex">
+        <h2 className="text-xs text-muted-foreground">Message list beside</h2>
+        <Fleet list />
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-xs text-muted-foreground">No message list</h2>
+        <Fleet list={false} />
+      </section>
     </div>
   );
 }

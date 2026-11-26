@@ -28,6 +28,20 @@ describe("JumpList", () => {
     expect(row(/Third ask/).textContent).toBe("Third ask2:32 PM");
   });
 
+  it("sets a day heading at 12px on the rows' own text inset", () => {
+    const { rerender } = render(<JumpList label="L" groups={groups} active="b" onJump={() => {}} />);
+    const heading = screen.getByRole("group", { name: "Today" }).firstElementChild as HTMLElement;
+    expect(heading.textContent).toBe("Today");
+    expect(heading.className.split(" ")).toEqual(expect.arrayContaining(["text-xs", "font-medium", "px-2.5"]));
+    expect(heading.className).not.toContain("text-[11px]");
+    // The heading's inset is the row's: sm rows are px-2.5, xs rows px-2.
+    expect(row(/Third ask/).className.split(" ")).toContain("px-2.5");
+    rerender(<JumpList label="L" groups={groups} active="b" onJump={() => {}} size="xs" />);
+    const small = screen.getByRole("group", { name: "Today" }).firstElementChild as HTMLElement;
+    expect(small.className.split(" ")).toContain("px-2");
+    expect(small.className.split(" ")).not.toContain("px-2.5");
+  });
+
   it("marks the row being read by colour alone, with aria-current", () => {
     render(<JumpList label="L" groups={groups} active="b" onJump={() => {}} />);
     const current = row(/Second ask/);

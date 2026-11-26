@@ -44,9 +44,10 @@ describe("appshot settings", () => {
     expect(statusNow().loaded).toBe(true);
   });
 
-  it("sends nothing before the load answered, so defaults never overwrite the stored set", () => {
-    store.setAppshotSettings({ sound: true });
+  it("sends nothing before the load answered, so defaults never overwrite the stored set", async () => {
+    const kept = store.setAppshotSettings({ sound: true });
     expect(link.calls).toHaveLength(0);
+    expect(await kept).toBe(false);
     expect(settingsNow()).toEqual(DEFAULT_APPSHOT_SETTINGS);
   });
 
@@ -54,11 +55,12 @@ describe("appshot settings", () => {
     const load = store.loadAppshotSettings();
     link.calls[0].resolve(stored);
     await load;
-    store.setAppshotSettings({ sound: true });
+    const kept = store.setAppshotSettings({ sound: true });
     await flush();
     expect(link.calls[1]).toMatchObject({ method: "appshots.set", params: { settings: { ...stored, sound: true } } });
     link.calls[1].reject(new Error("host refused"));
     await flush();
+    expect(await kept).toBe(false);
     expect(settingsNow()).toEqual(stored);
     expect(statusNow().writeError).toEqual({ key: "sound", message: "host refused" });
   });
@@ -81,8 +83,8 @@ describe("appshot settings", () => {
     const load = store.loadAppshotSettings();
     link.calls[0].resolve(stored);
     await load;
-    store.setAppshotSettings({ sound: true });
-    store.setAppshotSettings({ destination: "automatic" });
+    const first = store.setAppshotSettings({ sound: true });
+    const second = store.setAppshotSettings({ destination: "automatic" });
     await flush();
     // One write at a time: the second waits for the first's answer.
     expect(link.calls).toHaveLength(2);
@@ -91,6 +93,9 @@ describe("appshot settings", () => {
     expect(link.calls[2].params).toEqual({ settings: { ...stored, sound: false, destination: "automatic" } });
     link.calls[2].resolve({});
     await flush();
+    // Each write answers whether the host kept it, for the row's save mark.
+    expect(await first).toBe(false);
+    expect(await second).toBe(true);
     expect(settingsNow()).toEqual({ ...stored, sound: false, destination: "automatic" });
   });
 

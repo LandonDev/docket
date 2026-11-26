@@ -107,11 +107,15 @@ describe("FindBar", () => {
     const [findField, replaceField] = container.querySelectorAll<HTMLElement>('[data-slot="input-group"]');
     for (const field of [findField, replaceField]) {
       // The floor is the input's, so the group's floor is the input plus what sits beside it.
-      expect(field.className).not.toContain("min-w-36");
+      expect(field.className).not.toMatch(/min-w-(28|36)/);
       expect(field.className).toContain("min-w-fit");
-      expect(field.querySelector("input")!.className).toContain("min-w-36");
+      expect(field.className.split(" ")).toContain("w-60");
       expect(field.parentElement!.className).toContain("flex-wrap");
     }
+    // Find has no width of its own (an input's intrinsic 20 characters would set the floor) and a 112px floor, so its widest count ("Invalid regex", about 80px) still fits the 240px field: it never
+    // widens and the toggles never drop. Replace has no count and keeps 144px.
+    expect(findField.querySelector("input")!.className.split(" ")).toEqual(expect.arrayContaining(["w-0", "min-w-28"]));
+    expect(replaceField.querySelector("input")!.className.split(" ")).toContain("min-w-36");
     const count = container.querySelector<HTMLElement>("[data-count]")!;
     expect(findField.contains(count)).toBe(true);
     expect(byLabel(container, "Find").contains(count)).toBe(false);

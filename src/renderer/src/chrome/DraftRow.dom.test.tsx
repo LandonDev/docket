@@ -7,7 +7,7 @@ vi.mock("./DraftHostPicker", () => ({ DraftHostPicker: () => <span data-testid="
 vi.mock("./BranchPicker", () => ({ BranchPicker: () => <span data-testid="branch" /> }));
 vi.mock("./ThreadTypeChip", () => ({ ThreadTypeChip: () => <span data-testid="type" /> }));
 
-import { DraftRow, clearComposerHandoff, flipFrom, peekComposerHandoff, recordComposerHandoff } from "./Composer";
+import { DraftRow, clearComposerHandoff, flipFrom, needsBranch, peekComposerHandoff, recordComposerHandoff } from "./Composer";
 
 afterEach(cleanup);
 
@@ -39,6 +39,13 @@ describe("DraftRow", () => {
     expect(draftRow.closest('[data-slot="collapsible-content"]')).toBeTruthy();
     view.rerender(rowEl(false));
     await waitFor(() => expect(view.container.querySelector("[data-composer-draft-row]")).toBeNull());
+  });
+
+  it("says No repo only for a type that works on a branch", () => {
+    expect(needsBranch("chat")).toBe(false);
+    expect(needsBranch("research")).toBe(false);
+    expect(needsBranch(undefined)).toBe(false);
+    for (const type of ["planning", "project-plan", "implementation", "orchestration"] as const) expect(needsBranch(type)).toBe(true);
   });
 
   it("is gone after the first message: the branch is changed in the Changes head", () => {

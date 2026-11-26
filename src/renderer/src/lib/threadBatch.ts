@@ -129,8 +129,13 @@ export const BATCH_LABEL: Record<BatchAction, string> = {
   pause: "Pause all",
   resume: "Resume all",
   stop: "Stop all",
-  archiveDone: "Archive done",
+  archiveDone: "Archive done…",
 };
+
+/** Pause all's confirm says this one line wherever it is asked (the rail's
+ *  fleet switches and a master board's ⋯), with the count in its title and
+ *  on its button. Whether a reversible act should confirm at all is open. */
+export const PAUSE_ALL_BODY = "Each turn holds where it is, until Resume all.";
 
 /** Resume needs no confirm: nothing is lost by resuming. */
 export function needsConfirm(action: BatchAction): boolean {
@@ -229,7 +234,8 @@ export async function runThreadBatch(
     if (list) list.push(t);
     else byHost.set(t.environmentId, [t]);
   }
-  const titleOf = (id: string) => sessionStore.metaOf(id)?.title ?? sessionStore.get(id)?.title ?? id;
+  // An id is never on screen: a thread with no title is "Untitled", as its row says.
+  const titleOf = (id: string) => sessionStore.metaOf(id)?.title || sessionStore.get(id)?.title || "Untitled";
   let succeeded = 0;
   const failed: BatchFailure[] = [];
   await Promise.all(

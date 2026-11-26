@@ -5,6 +5,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "../components/ui/lazy-menus";
 import { Kbd } from "../components/ui/kbd";
@@ -96,10 +97,17 @@ export function AddMenu({
         <DropdownMenuItem onClick={() => onInsert("@")}>
           <AtSign />
           {work ? "Mention a task, mail, file or thread" : "Mention a file or thread"}
+          {/* The key that opens the same list from the field, so the placeholder need not say it. */}
+          <DropdownMenuShortcut aria-hidden>
+            <Kbd size="sm">@</Kbd>
+          </DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onInsert("/")}>
           <Slash />
           Skills and commands
+          <DropdownMenuShortcut aria-hidden>
+            <Kbd size="sm">/</Kbd>
+          </DropdownMenuShortcut>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

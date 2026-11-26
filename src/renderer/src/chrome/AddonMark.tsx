@@ -3,6 +3,13 @@ import { brandInk, brandOf, MARK_SURFACE } from "../lib/addonBrand";
 import type { SlashCommand } from "../lib/tcserver/types";
 import { Blocks, Plug, SlashSquare, Terminal } from "./icons";
 
+/** Whether a command has a mark that says something: a brand, or a plugin's,
+ *  an MCP server's or a prompt's glyph. A plain command's would only repeat
+ *  the slash its name already starts with. */
+export function hasOwnMark(command: Pick<SlashCommand, "name" | "source">): boolean {
+  return !!brandOf(command.name) || command.source === "plugin" || command.source === "mcp" || command.source === "prompt";
+}
+
 /** A command's mark: the brand for a known product, else its source glyph.
  *  On the light menu a brand's colour shows only where it is seen
  *  (`brandInk`); otherwise the mark takes the foreground. */

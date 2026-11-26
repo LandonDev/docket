@@ -104,7 +104,7 @@ describe("Editor", () => {
       await act(async () => vi.advanceTimersByTime(10_000));
       expect(host.lsp).toBe(first);
       const servers = screen.getByRole("region", { name: "Language servers" });
-      expect(within(servers).getByRole("alert").textContent).toBe("The host did not answer");
+      expect(within(servers).getByRole("alert").textContent).toBe("The computer did not answer");
       // A late answer lands, and from then on the poll runs every 5 s.
       await act(async () => host.lsp?.([]));
       expect(screen.getByText("None running")).toBeTruthy();

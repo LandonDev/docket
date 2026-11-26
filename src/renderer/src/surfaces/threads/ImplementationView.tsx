@@ -371,6 +371,7 @@ export function ImplementationView(props: ThreadViewProps) {
           title={title}
           actions={actions}
           held={heldRowOf(props, session)}
+          narrowFold
           fit={fit}
         />
       </OpenAgentDetailContext.Provider>

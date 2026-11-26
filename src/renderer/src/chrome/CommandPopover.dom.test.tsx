@@ -121,6 +121,24 @@ describe("CommandPopover", () => {
     expect(marks).toEqual(["paused", "working"]);
   });
 
+  it("leaves a plain command's mark slot empty (its name already starts with /), keeps a connector's mark, and heads groups at 12px", () => {
+    const cmd = (name: string, source: string): PopoverMatches["rows"][number] => ({ name, scope: "user", source, description: "" }) as never;
+    const slash: PopoverMatches = { mode: "command", rows: [cmd("review", "command"), cmd("deploy", "skill"), cmd("linear", "plugin")] };
+    const { container } = render(<CommandPopover matches={slash} {...props} />);
+    const [review, deploy, linear] = [...container.querySelectorAll<HTMLElement>("[role=option]")];
+    for (const row of [review, deploy]) {
+      expect(row.querySelector("svg, img")).toBeNull();
+      expect(row.querySelector("[data-mark-slot]")!.className.split(" ")).toEqual(expect.arrayContaining(["size-3.5", "shrink-0"]));
+    }
+    expect(linear.querySelector("svg, img")).not.toBeNull();
+    const headings = [...container.querySelectorAll<HTMLElement>("[data-command-popover] p")];
+    expect(headings.length).toBeGreaterThan(0);
+    for (const h of headings) {
+      expect(h.className.split(" ")).toContain("text-xs");
+      expect(h.className).not.toContain("11px");
+    }
+  });
+
   it("draws its rows as a menu's, 8px radius inside the 12px popover, on the hairline ring", () => {
     const at: PopoverMatches = { mode: "file", rows: [{ kind: "file", file: file("src/a.ts") }] };
     const { container } = render(<CommandPopover matches={at} {...props} />);

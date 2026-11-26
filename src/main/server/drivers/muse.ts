@@ -370,7 +370,7 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
       case 'turn/modelRetryScheduled': {
         const p = n.params as unknown as TurnModelRetryScheduledParams
         sawFrame()
-        emit({ type: 'phase', phase: 'retrying', detail: retryWords(p.attempt, p.maxAttempts, p.retryDelayMs, p.httpStatus), retry: { attempt: p.attempt, delayMs: p.retryDelayMs, reason: p.httpStatus ? `HTTP ${p.httpStatus}` : p.errorKind } })
+        emit({ type: 'phase', phase: 'retrying', detail: retryWords(p.attempt, p.maxAttempts, p.retryDelayMs), retry: { attempt: p.attempt, delayMs: p.retryDelayMs, reason: p.httpStatus ? `HTTP ${p.httpStatus}` : p.errorKind } })
         return
       }
       case 'session/contextUsage': {

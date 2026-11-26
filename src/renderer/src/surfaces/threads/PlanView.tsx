@@ -262,6 +262,7 @@ export function PlanView(props: ThreadViewProps) {
         detail={headerDetail}
         actions={headerActions}
         held={heldRowOf(props, session)}
+        narrowFold
       />
       {!projectPlan && !spawned ? (
         <StartBuildDialog session={session} tasks={tasks} open={starting} onOpenChange={setStarting} />

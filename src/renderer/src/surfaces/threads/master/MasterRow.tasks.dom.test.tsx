@@ -43,8 +43,18 @@ describe("the task bar", () => {
     expect(container.querySelector("[data-bar-tally]")?.textContent).toBe("3/7");
     expect(container.querySelector("[data-tally]")).toBeNull();
     expect(row(container).textContent?.match(/3\/7/g)).toHaveLength(1);
-    // Line two still says the task in hand.
-    expect(container.querySelector("[data-row-status]")?.textContent).toBe("Task 4");
+    // The open list names the task in hand: line two does not say it again.
+    expect(container.querySelector("[data-row-status]")?.textContent).toBe("");
+    expect(row(container).textContent?.match(/Task 4/g)).toHaveLength(1);
+  });
+
+  it("says the task in hand on line two while the list is folded, and a detail that is not the task in hand while open", () => {
+    const folded = view(meta(), { todos: seven(3) }, { tasksChoice: false });
+    expect(folded.container.querySelector("[data-row-status]")?.textContent).toBe("Task 4");
+    folded.unmount();
+    // An orchestration row's own detail is not the task in hand: it stays.
+    const other = view(meta({ threadType: "orchestration", statusDetail: "Spawning agents" } as Partial<SessionMeta>), { todos: seven(3) });
+    expect(other.container.querySelector("[data-row-status]")?.textContent).toBe("Spawning agents");
   });
 
   it("names its button by the tasks and says whether it is open", () => {

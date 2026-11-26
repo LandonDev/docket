@@ -1,4 +1,5 @@
 import { registry } from "../connection";
+import { nameInLine } from "../hostWords";
 import type { HarnessId } from "../session";
 import { HARNESSES } from "../session";
 import { availabilityFromDoctor, probeDoctor } from "../tcserver/catalog";
@@ -73,13 +74,12 @@ export function harnessInstallCommand(id: HarnessId): string | undefined {
   return CLI[id].install;
 }
 
-export function harnessUnavailableHint(id: HarnessId): string {
-  if (!isLiveHarness(id)) {
-    return `${CLI[id].name} moves to the server later this milestone.`;
-  }
-  const { name, install } = CLI[id];
-  const how = install ? ` (\`${install}\`)` : "";
-  return `${name} not found${how}. Install it, or restart Docket if it is already installed.`;
+/** Why a provider's models cannot be picked, in a person's words: no program's name, no command, no plan.
+ *  The install line lives on Settings → Providers alone. */
+export function harnessUnavailableHint(id: HarnessId, environmentId: string = here()): string {
+  if (!isLiveHarness(id)) return "Not available on this host";
+  const name = registry.environment(environmentId)?.name;
+  return name ? `Not installed on ${nameInLine(name)}` : "Not installed";
 }
 
 /** One `doctor.get` per host per 30 s answers for every harness; `force` refreshes. */

@@ -16,7 +16,11 @@ ticked;
 the menus' rows are `threadBatchMenu.ts`; the dialog and toast are
 `chrome/ThreadBatchDialog.tsx` and `chrome/ThreadBatchToasts.tsx` (a sonner
 toast per batch, through `chrome/toastSync.ts`). Pause,
-Stop and Archive confirm; Resume and Mark all read do not. The server side
+Stop and Archive confirm; Resume and Mark all read do not. Pause all's
+confirm says one line everywhere it is asked, the rail's switches and a
+master board's ⋯ alike (`PAUSE_ALL_BODY` in threadBatch.ts, "Each turn holds
+where it is, until Resume all."); Archive done's menu row reads "Archive
+done…", as the board's does, since its dialog asks about resources. The server side
 is `session.batch {action, ids, cleanup?}` (operate), answered by
 `SessionRegistry.batch` through `src/main/server/sessionBatch.ts`: ids
 mapped to roots once, the existing per-session calls four at a time, every

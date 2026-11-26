@@ -3,7 +3,8 @@ import { DRAFT_TITLE_MAX } from "../lib/session";
 /**
  * An unsent draft's name in the composer's draft row: one line, at most
  * `DRAFT_TITLE_MAX` characters, sized to its words (the placeholder when
- * empty) and giving way before the row's pickers do. It reads as the row's
+ * empty) and giving way before the row's pickers do: under a 20rem row it is
+ * gone, never cut to "Name…". It reads as the row's
  * other controls, 12px muted with their hover fill and no border at rest;
  * focus draws the field's ring and the typed name takes the foreground.
  * Enter hands focus to the message, Escape too. The first send creates the
@@ -30,7 +31,8 @@ export function DraftTitleField({
       maxLength={DRAFT_TITLE_MAX}
       placeholder="Name this thread"
       aria-label="Thread name"
-      className="focus-field h-6 min-w-16 text-ellipsis rounded-md border border-transparent px-1.5 text-xs text-foreground field-sizing-content placeholder:text-muted-foreground hover:bg-foreground/5"
+      // Under a 20rem row it gives way whole, as the row under the box does, never cut to "Name…".
+      className="focus-field h-6 min-w-16 text-ellipsis @max-[20rem]/draft-row:hidden rounded-md border border-transparent px-1.5 text-xs text-foreground field-sizing-content placeholder:text-muted-foreground hover:bg-foreground/5"
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={(event) => {
         if (event.key !== "Enter" && event.key !== "Escape") return;

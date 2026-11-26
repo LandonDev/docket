@@ -108,6 +108,30 @@ describe("ActionRow", () => {
     expect(onSelect).toHaveBeenCalledWith("t1");
   });
 
+  it("a question is its card alone: no Asking a question line over it", () => {
+    const block: Block = {
+      ...call("AskUserQuestion", { questions: [] }, { status: "running", kind: "question" }),
+      question: { sessionId: "s", requestId: "q1", questions: [{ question: "Which?", header: "Pick", options: [] }] },
+    } as Block;
+    const { container } = render(<ActionRow block={block} />);
+    expect(container.textContent).not.toMatch(/Ask(ing|ed) a question/);
+    expect(container.querySelector('[class*="group/action"]')).toBeNull();
+    expect(container.querySelector('[data-block="' + block.id + '"]')).not.toBeNull();
+  });
+
+  it("a call waiting for Allow reads as asked, never as running", () => {
+    const block: Block = { ...call("Bash", { command: "rm -rf out dist", description: "Remove the build output" }, { status: "pending" }), approval: { requestId: 1 } } as Block;
+    const { container } = render(<ActionRow block={block} />);
+    expect(container.textContent).toContain("Remove the build output");
+    expect(container.textContent).not.toContain("Removing");
+  });
+
+  it("a thread no one knows reads Read a thread, never its id", () => {
+    const { container } = render(<ActionRow block={call("mcp__app__app_read_thread", { threadId: "t9-unknown" })} />);
+    expect(container.textContent).toContain("Read a thread");
+    expect(container.textContent).not.toContain("t9-unknown");
+  });
+
   it("an opened run row shows the tool's name, the command and what it printed", async () => {
     const output = Array.from({ length: 30 }, (_, n) => `line ${n + 1}`).join("\n");
     const block = call("Bash", { command: "cd x && npm test 2>&1 | tail -40" }, { detail: output });
@@ -216,7 +240,9 @@ describe("ActionRow", () => {
     const onApproval = vi.fn();
     const block = call("Bash", { command: "git push", description: "Push master" }, { status: "pending", approval: { requestId: 7 } });
     const { container, getAllByRole, getByRole, queryByRole } = render(<ActionRow block={block} onApproval={onApproval} />);
-    expect(container.textContent).toContain("Pushing");
+    // Asked, not running: the call has not run.
+    expect(container.textContent).toContain("Push master");
+    expect(container.textContent).not.toContain("Pushing");
     // One amber mark, the approval line's: the row keeps its tool icon.
     expect(container.querySelector('[data-glyph] [data-state="waiting"]')).toBeNull();
     expect(container.querySelectorAll('[data-state="waiting"]')).toHaveLength(1);
@@ -245,7 +271,8 @@ describe("ActionRow", () => {
     await act(async () => {
       await diffChunk.load();
     });
-    expect(container.textContent).toContain("Editing");
+    expect(container.textContent).toContain("Edit a.ts");
+    expect(container.textContent).not.toContain("Editing");
     expect(container.querySelector('[data-glyph] [data-state="waiting"]')).toBeNull();
     expect(container.querySelectorAll('[data-state="waiting"]')).toHaveLength(1);
     expect(container.textContent).toMatch(/−\s*a/);

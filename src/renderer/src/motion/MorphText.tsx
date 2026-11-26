@@ -23,7 +23,9 @@ const FADE = { duration: DUR.fast, ease: EASE_OUT };
  * mid-glide (`data-gliding`).
  * Keyed by `state`: text that changes under the same state (a count, a
  * seconds figure, a streamed word) is drawn at once, and nothing moves on
- * mount. Reduced motion fades out, then in, over --dur-fast, with no
+ * mount; changed mid-glide, the glide retargets to the new words' width
+ * from where it stands, so the box never clips them ("Worked" becoming
+ * "Worked for 1s" as the closing line arrives never shows "Worked for 1"). Reduced motion fades out, then in, over --dur-fast, with no
  * movement and no glide.
  */
 export function MorphText({ state, children, className }: { state: string; children: ReactNode; className?: string }) {
@@ -32,6 +34,30 @@ export function MorphText({ state, children, className }: { state: string; child
   const shown = useRef(state);
   const held = useRef<number | null>(null);
   const glide = useRef<Animation | null>(null);
+  /** The width the running glide ends at. */
+  const target = useRef<number | null>(null);
+
+  /** Glide the box's width from `from` to `to`: the words keep their own width and the box clips them, so they unroll. */
+  const startGlide = useCallback((el: HTMLSpanElement, from: number, to: number) => {
+    const animation = el.animate([{ width: `${String(from)}px` }, { width: `${String(to)}px` }], {
+      duration: DUR.base * 1000,
+      easing: EASE_SWAP_CSS,
+    });
+    glide.current = animation;
+    target.current = to;
+    // While it glides the new words keep their own width and the box clips
+    // them, so they unroll; truncated to the box they would show an ellipsis
+    // that moves (components.css, [data-gliding]).
+    el.dataset.gliding = "";
+    const done = () => {
+      if (glide.current !== animation) return;
+      glide.current = null;
+      target.current = null;
+      delete el.dataset.gliding;
+    };
+    animation.onfinish = done;
+    animation.oncancel = done;
+  }, []);
 
   // In the commit that changes the state the old words are still there: hold
   // the box at its live width (mid-glide included) while they leave.
@@ -56,23 +82,25 @@ export function MorphText({ state, children, className }: { state: string; child
     el.style.width = "";
     const to = el.getBoundingClientRect().width;
     if (Math.abs(to - from) < 0.5 || typeof el.animate !== "function") return;
-    const animation = el.animate([{ width: `${String(from)}px` }, { width: `${String(to)}px` }], {
-      duration: DUR.base * 1000,
-      easing: EASE_SWAP_CSS,
-    });
-    glide.current = animation;
-    // While it glides the new words keep their own width and the box clips
-    // them, so they unroll; truncated to the box they would show an ellipsis
-    // that moves (components.css, [data-gliding]).
-    el.dataset.gliding = "";
-    const done = () => {
-      if (glide.current !== animation) return;
-      glide.current = null;
-      delete el.dataset.gliding;
-    };
-    animation.onfinish = done;
-    animation.oncancel = done;
-  }, []);
+    startGlide(el, from, to);
+  }, [startGlide]);
+
+  // New words under the same state while the box glides: retarget the glide
+  // from its live width to theirs (gliding, the words lay out at their own
+  // width). Idle, this returns at once.
+  useLayoutEffect(() => {
+    const el = box.current;
+    const running = glide.current;
+    if (!el || !running || target.current === null) return;
+    const words = el.lastElementChild;
+    if (!words) return;
+    const to = words.getBoundingClientRect().width;
+    if (Math.abs(to - target.current) < 0.5) return;
+    const from = el.getBoundingClientRect().width;
+    glide.current = null;
+    running.cancel();
+    startGlide(el, from, to);
+  });
 
   useEffect(() => () => glide.current?.cancel(), []);
 

@@ -10,13 +10,13 @@ import { boardPaintLine } from "../../lib/firstPaint";
 import { useEnvironments, useEnvironmentStatuses } from "../../lib/connection/status";
 import * as commands from "../../lib/tcserver/commands";
 import type { SessionMeta } from "../../lib/tcserver/types";
-import { resourcesHeldBy } from "../../lib/threadBatch";
+import { PAUSE_ALL_BODY, resourcesHeldBy } from "../../lib/threadBatch";
 import { actionFailed } from "../../lib/threadActionToast";
 import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useMetaById } from "../../lib/threads/agents";
 import { rightPanel } from "../../lib/rightPanel";
 import { sessionStore, useSessionMetasWhen } from "../../lib/tcserver/store";
-import { chatOf, heldRowOf } from "./chatSlots";
+import { COLUMN_GUTTER_CLASS, chatOf, columnClass, heldRowOf } from "./chatSlots";
 import { ArchiveBatchDialog } from "./master/ArchiveBatchDialog";
 import { BatchAddDialog } from "./master/BatchAddDialogs";
 import { BatchFoot } from "./master/BatchFoot";
@@ -49,7 +49,6 @@ import type { ThreadViewProps } from "./ThreadView";
 import { useChatFold } from "../../lib/chatFold";
 import { ChunkBoundary } from "../../lib/lazyChunk";
 import { tagRendererError } from "../../lib/rendererErrors";
-import { COLUMN_MAX_CLASS } from "../transcriptOutlineModel";
 import { blockedReason } from "@shared/batchWords";
 
 /**
@@ -263,11 +262,15 @@ export function MasterView(props: ThreadViewProps) {
 export function BoardFailed({ renderChat, onRetry }: Pick<ThreadViewProps, "renderChat"> & { onRetry: () => void }) {
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col [contain:layout_style]" data-board-failed>
-      <div role="alert" className={`mx-auto mt-2 flex h-6 w-full ${COLUMN_MAX_CLASS} shrink-0 items-center gap-2 px-4 text-xs text-muted-foreground`}>
-        <span className="min-w-0 flex-1 truncate">Couldn't load the board</span>
-        <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry}>
-          Retry
-        </Button>
+      {/* The column's gutter outside and the column inside, as NoRowsLine: the words start on the transcript's text edge. */}
+      <div className={`${COLUMN_GUTTER_CLASS} mt-2 shrink-0`}>
+        <div role="alert" className={`${columnClass()} flex h-6 items-center gap-2 text-xs text-muted-foreground`}>
+          <span className="min-w-0 flex-1 truncate">Couldn't load the board</span>
+          {/* Retry's word ends on the column's edge (-me-2 takes the button's own inset back). */}
+          <Button variant="ghost" size="xs" className="-me-2 shrink-0" onClick={onRetry}>
+            Retry
+          </Button>
+        </div>
       </div>
       {renderChat()}
     </div>
@@ -609,6 +612,7 @@ function MasterBoardView(props: ThreadViewProps) {
         detail={doneTally(layout) ?? undefined}
         actions={actions}
         held={heldRowOf(props, session)}
+        narrowFold
       />
       {adding ? <BatchAddDialog masterId={session.id} kind={adding} onClose={() => setAdding(null)} /> : null}
       {archiving ? (
@@ -629,8 +633,8 @@ function MasterBoardView(props: ThreadViewProps) {
       {pausing ? (
         <ConfirmDialog
           title={`Pause ${toPause.length} running thread${toPause.length === 1 ? "" : "s"}?`}
-          body="Each turn holds where it is."
-          confirmLabel="Pause all"
+          body={PAUSE_ALL_BODY}
+          confirmLabel={`Pause ${toPause.length}`}
           onCancel={() => setPausing(false)}
           onConfirm={() => byHost(toPause, "pause")}
           onDone={() => setPausing(false)}

@@ -20,7 +20,7 @@ const described: Question[] = [
 ];
 
 const three: Question[] = [
-  { prompt: "Which branch should the release cut from?", description: "Branch", options: [{ label: "master" }, { label: "stable" }, { label: "Other", freeform: true }] },
+  { prompt: "Which branch should the release cut from?", header: "Branch", options: [{ label: "master" }, { label: "stable" }, { label: "Other", freeform: true }] },
   { prompt: "Run the iOS tests too?", options: [{ label: "Yes" }, { label: "No" }] },
   { prompt: "Notify the box when it is live?", options: [{ label: "Yes" }, { label: "No" }] },
 ];

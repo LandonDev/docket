@@ -83,10 +83,10 @@ it('a phase event is activity on the meta and never a transcript row; the first 
   emit(id, { type: 'phase', phase: 'initializing' })
   expect(registry.get(id)?.activity).toBe('Initializing')
   emit(id, { type: 'phase', phase: 'retrying', retry: { attempt: 3, delayMs: 32_000, reason: 'HTTP 429' } })
-  expect(registry.get(id)?.activity).toBe('Rate limited, retry 3 in 32 s')
+  expect(registry.get(id)?.activity).toBe('Rate limited, retry 3 in 32s')
   emit(id, { type: 'phase', phase: null })
   expect(registry.get(id)?.activity).toBe('Thinking')
-  expect(pushed).toEqual(['Starting the CLI', 'Initializing', 'Rate limited, retry 3 in 32 s', 'Thinking'])
+  expect(pushed).toEqual(['Starting the CLI', 'Initializing', 'Rate limited, retry 3 in 32s', 'Thinking'])
   expect(types(id)).not.toContain('phase')
 })
 
@@ -165,8 +165,8 @@ it('phaseLine words every phase', () => {
   expect(phaseLine({ type: 'phase', phase: 'waiting-provider' })).toBe('Waiting for the provider')
   expect(phaseLine({ type: 'phase', phase: 'retrying' })).toBe('Retrying')
   expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 2, delayMs: 0, reason: 'of 5' } })).toBe('Reconnecting, retry 2 of 5')
-  expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 5_000, reason: 'HTTP 529' } })).toBe('Provider overloaded, retry 1 in 5 s')
-  expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 2_000, reason: 'no response' } })).toBe('Retrying, retry 1 in 2 s')
+  expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 5_000, reason: 'HTTP 529' } })).toBe('Provider overloaded, retry 1 in 5s')
+  expect(phaseLine({ type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 2_000, reason: 'no response' } })).toBe('Retrying, retry 1 in 2s')
   expect(phaseLine({ type: 'phase', phase: null })).toBeNull()
 })
 
@@ -177,13 +177,13 @@ it('a request out at the provider past the threshold reads Waiting for the provi
   registry.providerRequest(id, 7, t0)
   expect(registry.get(id)?.activity).toBe('Thinking')
   vi.setSystemTime(t0 + PROVIDER_WAIT_MS + 10_000)
-  expect(registry.get(id)?.activity).toBe('Waiting for the provider, 25 s')
-  expect(registry.get(id)?.statusDetail).toBe('Waiting for the provider, 25 s')
+  expect(registry.get(id)?.activity).toBe('Waiting for the provider, 25s')
+  expect(registry.get(id)?.statusDetail).toBe('Waiting for the provider, 25s')
   // A finer phase wins over the wait.
   emit(id, { type: 'phase', phase: 'retrying', retry: { attempt: 1, delayMs: 1_000, reason: 'HTTP 429' } })
-  expect(registry.get(id)?.activity).toBe('Rate limited, retry 1 in 1 s')
+  expect(registry.get(id)?.activity).toBe('Rate limited, retry 1 in 1s')
   emit(id, { type: 'phase', phase: null })
-  expect(registry.get(id)?.activity).toBe('Waiting for the provider, 25 s')
+  expect(registry.get(id)?.activity).toBe('Waiting for the provider, 25s')
   // The ticker re-pushes the row so the seconds move.
   const pushed: (string | null | undefined)[] = []
   registry.onMeta((m) => {
@@ -191,10 +191,10 @@ it('a request out at the provider past the threshold reads Waiting for the provi
   })
   vi.setSystemTime(t0 + PROVIDER_WAIT_MS + 20_000)
   await vi.advanceTimersByTimeAsync(5_000)
-  expect(pushed.at(-1)).toBe('Waiting for the provider, 40 s')
+  expect(pushed.at(-1)).toBe('Waiting for the provider, 40s')
   // The driver's own provider phase gives way to the seconds too.
   emit(id, { type: 'phase', phase: 'waiting-provider' })
-  expect(registry.get(id)?.activity).toBe('Waiting for the provider, 40 s')
+  expect(registry.get(id)?.activity).toBe('Waiting for the provider, 40s')
   registry.providerRequest(id, 7, null)
   expect(registry.get(id)?.activity).toBe('Waiting for the provider')
   emit(id, { type: 'phase', phase: null })
@@ -225,10 +225,10 @@ it("a request still open from an earlier turn never counts: the next turn's firs
   const sent = Date.now()
   registry.providerRequest(id, 9, sent)
   vi.setSystemTime(sent + PROVIDER_WAIT_MS + 1_000)
-  expect(registry.get(id)?.statusDetail).toBe('Waiting for the provider, 16 s')
+  expect(registry.get(id)?.statusDetail).toBe('Waiting for the provider, 16s')
   // The old request's late end changes nothing; the turn's own end clears the line.
   registry.providerRequest(id, 4, null)
-  expect(registry.get(id)?.statusDetail).toBe('Waiting for the provider, 16 s')
+  expect(registry.get(id)?.statusDetail).toBe('Waiting for the provider, 16s')
   registry.providerRequest(id, 9, null)
   expect(registry.get(id)?.statusDetail).toBe('Thinking')
 })

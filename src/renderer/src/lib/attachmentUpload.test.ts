@@ -186,6 +186,8 @@ describe("uploadAttachments", () => {
     }).catch((e: unknown) => e);
     expect((err as AttachmentUploadError).fileId).toBe("b");
     expect((err as Error).message).toBe("Could not attach b.txt: not connected");
+    // The composer's chip already says Failed: its line takes the cause alone.
+    expect((err as AttachmentUploadError).why).toBe("Not connected");
     expect(landed).toEqual(["a"]);
     expect(hosts.calls.box.at(-1)?.method).toBe("attachment.abort");
   });

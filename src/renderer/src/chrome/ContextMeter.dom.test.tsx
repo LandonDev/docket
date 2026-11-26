@@ -20,7 +20,7 @@ vi.mock("../lib/contextCache", () => ({
 
 import { TooltipProvider, tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { menuChunk } from "../surfaces/chunks";
-import { ContextBreakdown, ContextMeter } from "./ContextMeter";
+import { ContextBreakdown, ContextMeter, memoryLabel } from "./ContextMeter";
 import { warmMenus } from "./menuRows";
 
 afterEach(() => {
@@ -47,6 +47,16 @@ const READING: ContextReading = {
     { name: "mcp__linear__get_issue", server: "linear", tokens: 600 },
   ],
 };
+
+describe("memoryLabel", () => {
+  it("names a memory file and where it applies, never its path", () => {
+    expect(memoryLabel("/srv/agents/home/.claude/CLAUDE.md")).toBe("CLAUDE.md, user");
+    expect(memoryLabel("/Users/me/.codex/AGENTS.md")).toBe("AGENTS.md, user");
+    expect(memoryLabel("/srv/agents/work/temp-code/CLAUDE.md")).toBe("CLAUDE.md, temp-code");
+    expect(memoryLabel("/srv/agents/work/temp-code/docs/CLAUDE.md")).toBe("CLAUDE.md, docs");
+    expect(memoryLabel("C:\\Users\\me\\.claude\\CLAUDE.md")).toBe("CLAUDE.md, user");
+  });
+});
 
 describe("ContextMeter", () => {
   it("draws nothing until the harness has reported a window", () => {
@@ -160,15 +170,19 @@ describe("ContextBreakdown", () => {
     const rows = (title: string) =>
       [...container.querySelector(`[data-context-rows="${title}"]`)!.children].map((row) => row.textContent);
     expect(rows("Memory files")).toEqual([
-      "pkg7/CLAUDE.md800",
-      "pkg6/CLAUDE.md700",
-      "pkg5/CLAUDE.md600",
-      "pkg4/CLAUDE.md500",
-      "pkg3/CLAUDE.md400",
-      "pkg2/CLAUDE.md300",
+      "CLAUDE.md, pkg7800",
+      "CLAUDE.md, pkg6700",
+      "CLAUDE.md, pkg5600",
+      "CLAUDE.md, pkg4500",
+      "CLAUDE.md, pkg3400",
+      "CLAUDE.md, pkg2300",
       "+2 more",
     ]);
     expect(rows("MCP tools")).toEqual(["linear/list_issues900", "linear/get_issue600"]);
+    // A memory file's name is words in the sans, never its path in mono.
+    const first = container.querySelector('[data-context-rows="Memory files"]')!.firstElementChild!.querySelector("span")!;
+    expect(first.className).not.toContain("font-mono");
+    expect(container.textContent).not.toContain("/repo/");
   });
 
   it("puts a list under the category it details, so its total is said once", () => {

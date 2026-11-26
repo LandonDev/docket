@@ -117,3 +117,21 @@ describe("a board row's model mark", () => {
     expect(actions).toContain("transition-discrete");
   });
 });
+
+describe("a watching row with agent lines", () => {
+  it("drops its detail: the lines say what it watches", async () => {
+    const { wireMeta } = await import("../../../test/fakeMetaLink");
+    const meta = { ...wireMeta("w1"), environmentId: "local", title: "Overseer", status: "watching", activity: "Waiting on Rail rows" } as never;
+    const line = { id: "a1", environmentId: "local", title: "Rail rows", state: "working", detail: "Editing Rail.tsx", agentType: null, threadType: null } as never;
+    const draw = (agents: unknown) =>
+      render(<MasterRowView meta={meta} digest={{}} agents={agents as never} landed={false} host={null} hostGlyph={() => null} onOpen={() => {}} menu={menu as never} />);
+    const withLines = draw({ lines: [line], more: 0, moreWaiting: 0, done: 0 });
+    const status = withLines.container.querySelector("[data-row-status]")!;
+    expect(status.querySelector("[data-slot=status-word]")?.textContent).toBe("Watching");
+    expect(status.querySelector("[data-slot=status-detail]")).toBeNull();
+    expect(withLines.container.textContent?.match(/Rail rows/g)).toHaveLength(1);
+    withLines.unmount();
+    const alone = draw(null);
+    expect(alone.container.querySelector("[data-row-status] [data-slot=status-detail]")?.textContent).toBe("Rail rows");
+  });
+});

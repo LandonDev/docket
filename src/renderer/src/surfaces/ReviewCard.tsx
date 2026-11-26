@@ -1,6 +1,6 @@
 import { useContext, useState } from "react";
 import type { ReviewFinding } from "@server/shared/review";
-import { ChevronRight, CircleDashed } from "../chrome/icons";
+import { ChevronRight } from "../chrome/icons";
 import { BusyLabel, Button } from "../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../components/ui/collapsible";
 import { DISCLOSURE_CHEVRON } from "../components/ui/disclosure";
@@ -10,6 +10,7 @@ import type { Block } from "../lib/session";
 import { mergeAnyway } from "../lib/tcserver/commands";
 import { modelLabel } from "../lib/threads/agents";
 import type { OpenFileFn } from "../lib/search";
+import { workErrorWords } from "../lib/workErrorWords";
 import { SelectSessionContext } from "./AgentMarkdown";
 import { useOpenAgentDetail } from "./agentDetailContext";
 import { NoticeLine } from "./transcript/NoticeLine";
@@ -54,8 +55,8 @@ export function ReviewCard({
   }
 
   const minor = review.minor.length;
-  const glyph =
-    review.outcome === "timeout" || review.outcome === "failed" ? <CircleDashed /> : <StatusMark state="done" word={false} />;
+  // A review that never reported is over: the muted stopped glyph, never Queued's dashed ring.
+  const glyph = <StatusMark state={review.outcome === "timeout" || review.outcome === "failed" ? "stopped" : "done"} word={false} />;
   return (
     <Collapsible open={minorOpen} onOpenChange={setMinorOpen}>
       <NoticeLine
@@ -105,7 +106,7 @@ function HeldReview({
     try {
       await mergeAnyway(sessionId, review.runId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(mergeErrorWords(err));
       setPending(false);
     }
   };
@@ -115,7 +116,7 @@ function HeldReview({
       {/* The line rule: the glyph 8px from the title, each fact 4px from the next. */}
       <div data-review-head className="flex min-w-0 items-center gap-1 leading-5">
         <StatusMark state="waiting" word={false} className="me-1" />
-        <span className="shrink-0 font-medium text-foreground">Reviewed by {label}</span>
+        <span className="shrink-0 font-medium text-foreground">Reviewed by {label}:</span>
         <Facts parts={[plural(blocking, "blocking finding"), "merge held"]} className="text-muted-foreground" />
       </div>
       <FindingList findings={review.blocking} cwd={cwd} onOpenFile={onOpenFile} className="mt-3" strong />
@@ -147,6 +148,11 @@ function HeldReview({
   );
 }
 
+/** A refused Merge anyway in his words: a known refusal as `workErrorWords` says it, else one fixed line. */
+export function mergeErrorWords(err: unknown): string {
+  return workErrorWords(err, { write: true }) || "Merge anyway did not go through. Try again.";
+}
+
 function plural(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
@@ -155,11 +161,11 @@ function leadOf(outcome: Review["outcome"], label: string): string {
   switch (outcome) {
     case "pass":
     case "held":
-      return `Reviewed by ${label}`;
+      return `Reviewed by ${label}:`;
     case "timeout":
-      return `Review by ${label} timed out`;
+      return `Review by ${label} timed out:`;
     case "failed":
-      return `Review by ${label} did not run`;
+      return `Review by ${label} did not run:`;
     case "merged-anyway":
       return "Merged anyway";
     case "skipped":
@@ -179,11 +185,11 @@ export function detailOf(review: Review): string[] {
       case "held":
         return [plural(blocking, "blocking finding"), minorText, review.resolved ? "merged anyway" : "merge held"];
       case "timeout":
-        return [`after ${review.minutes ?? "?"} min`, "merged without it"];
+        return [review.minutes ? `after ${review.minutes} min` : "", "merged without it"];
       case "failed":
         return [review.reason ?? "", "merged without it"];
       case "merged-anyway":
-        return [`${plural(blocking, "blocking finding")} overridden`];
+        return [`over ${plural(blocking, "blocking finding")}`];
       case "skipped":
         return [review.reason ?? ""];
     }
@@ -209,6 +215,8 @@ function FindingList({
     <ol className={`flex min-w-0 flex-col gap-3 ${className ?? ""}`}>
       {findings.map((f, i) => {
         const where = `${f.file}${f.line ? `:${f.line}` : ""}`;
+        // The file's name and line on screen; its path only in the tooltip.
+        const shown = `${f.file.split("/").pop() || f.file}${f.line ? `:${f.line}` : ""}`;
         const path = cwd && !f.file.startsWith("/") ? `${cwd.replace(/\/$/, "")}/${f.file}` : f.file;
         return (
           <li key={`${where}:${i}`} className="flex min-w-0 flex-col items-start">
@@ -227,7 +235,7 @@ function FindingList({
                   />
                 }
               >
-                <span className="truncate">{where}</span>
+                <span className="truncate">{shown}</span>
               </TooltipTrigger>
               <TooltipContent>{path}</TooltipContent>
             </Tooltip>

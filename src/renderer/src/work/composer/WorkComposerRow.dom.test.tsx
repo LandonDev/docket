@@ -313,7 +313,7 @@ describe("a code composer", () => {
   it("keeps its model, context meter, access and draft row, its own words and every provider", async () => {
     seedDraft("c1", { workspaceId: "w-code", projectId: null, blocks: [{ id: "u1", role: "user", text: "Rework the login flow" } as Session["blocks"][number]] });
     const view = mount("c1", { work: false, cwd: "/src/temp-code", executionCwd: "/src/temp-code", context: { used: 84_000, window: 200_000 } });
-    expect(field(view).outerHTML).toContain("Ask, build, / for skills, @ for references…");
+    expect(field(view).outerHTML).toContain("Reply…");
     expect(screen.getByTestId("context-meter")).toBeTruthy();
     expect(screen.getByTestId("code-access")).toBeTruthy();
     expect(screen.getByTestId("model-picker").dataset.providers).toBe("all");

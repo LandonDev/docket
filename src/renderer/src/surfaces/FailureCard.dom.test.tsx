@@ -24,7 +24,7 @@ vi.mock("../lib/tcserver/store", async (importOriginal) => ({
 }));
 
 import { shell } from "../stores/shell";
-import { FailureCard, FailureCardView, canSignInHere } from "./FailureCard";
+import { FailureCard, FailureCardView, canSignInHere, errorLine } from "./FailureCard";
 
 const failure = (kind: FailureKind, over: Partial<Failure> = {}): Failure => ({
   kind,
@@ -291,7 +291,9 @@ describe("FailureCard wired", () => {
       fireEvent.click(next.container.querySelector("button[data-failure-action=pick-model]")!);
     });
     expect(continueSession).toHaveBeenCalledWith("s1", { provider: "codex", model: "gpt-6.1-sol" });
-    expect(next.container.textContent).toContain("session s1 is manually paused");
+    // Never the thrown text with its id: the host's refusal in words.
+    expect(next.container.textContent).not.toContain("s1");
+    expect(next.container.textContent).toContain("This thread is paused. Resume it, then try again.");
     done();
     next.unmount();
   });
@@ -325,6 +327,12 @@ describe("FailureCard wired", () => {
     const codex = mountProbe(<FailureCard sessionId="s1" failure={failure("context_thrash")} />);
     expect(buttons(codex.container)).toEqual(["Continue on another model", "Retry"]);
     codex.unmount();
+  });
+
+  it("a failed press says it in words: a lost link as the host's words, anything raw as one fixed line", () => {
+    expect(errorLine(new Error("connect ECONNREFUSED 127.0.0.1:7777"))).toBe("That computer did not answer. Try again once it is connected.");
+    expect(errorLine(new Error("TypeError: Cannot read properties of undefined (reading 'x')\n    at foo (/app/out/main.js:3:4)"))).toBe("That did not go through. Try again.");
+    expect(errorLine("")).toBe("That did not go through. Try again.");
   });
 
   it("a row the host cannot continue from offers neither Retry nor Continue on another model", () => {

@@ -228,6 +228,8 @@ function SecondOpinionLine({ card }: { card: SecondOpinionMeta }) {
 }
 
 const SentChips = workCanvasChunk.surface("SentChips");
+/** A thread mention on the bubble's line: the line's height holds, and its hit area reaches 24px through `after`. */
+export const MENTION_CHIP = "h-auto gap-1 px-1 align-baseline font-normal after:absolute after:-inset-y-0.5 after:inset-x-0 after:content-['']";
 const NO_CHIPS = { chips: [] as const };
 
 /**
@@ -262,16 +264,24 @@ export function UserText({ text }: { text: string }) {
     <>
       {parts.map((part, index) =>
         "id" in part ? (
-          <Button
-            key={index}
-            variant="ghost"
-            size="xs"
-            className="h-auto gap-1 px-1 align-baseline font-normal"
-            onClick={() => onSelectSession?.(part.id)}
-          >
-            <MessageSquare className="text-muted-foreground" />
-            {part.title}
-          </Button>
+          part.title ? (
+            <Button
+              key={index}
+              variant="ghost"
+              size="xs"
+              className={MENTION_CHIP}
+              onClick={() => onSelectSession?.(part.id)}
+            >
+              <MessageSquare className="text-muted-foreground" />
+              {part.title}
+            </Button>
+          ) : (
+            // A thread no one here knows (deleted, or on a host this window does not hold): the chip's shape, muted, opening nothing.
+            <span key={index} data-slot="thread-mention-unknown" className="inline-flex items-center gap-1 px-1 align-baseline text-xs text-muted-foreground [&_svg]:size-3">
+              <MessageSquare />
+              Thread
+            </span>
+          )
         ) : "command" in part ? (
           <CommandChip key={index} command={part.command} />
         ) : (

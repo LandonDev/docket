@@ -1,3 +1,4 @@
+import { MINI_FACTS } from "./MiniCardRemove";
 import { ChevronRight, Replace } from "./icons";
 import { HARNESS_TITLE, type HarnessId } from "../lib/session";
 import { HarnessIcon } from "./HarnessIcon";
@@ -45,7 +46,7 @@ export function HandoffMiniCard({ card, onDismiss }: Props) {
             <span className="min-w-0 truncate">{HARNESS_TITLE[card.to]}</span>
           </AttachmentTitle>
           {card.request || files ? (
-            <AttachmentDescription className="flex gap-3">
+            <AttachmentDescription className={MINI_FACTS}>
               {card.request ? <span className="min-w-0 truncate">{card.request}</span> : null}
               {files ? <span className="shrink-0 tabular-nums">{files}</span> : null}
             </AttachmentDescription>

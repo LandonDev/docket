@@ -29,8 +29,8 @@ vi.mock("../../chrome/ThreadTune", () => ({ ThreadTune: () => null, normalizeTun
 vi.mock("../../lib/models", () => ({ mergeModelSettings: (_m: unknown, s: unknown) => s, nativeModelId: (m: string) => m, resolveModel: () => null }));
 vi.mock("../AgentMarkdown", () => ({ AgentMarkdown: ({ text }: { text: string }) => <pre data-md>{text}</pre> }));
 vi.mock("./SplitShell", () => ({
-  SplitShell: (p: { board: React.ReactNode; collapsed: boolean; title?: React.ReactNode; detail?: React.ReactNode; actions?: React.ReactNode; onToggleChat: (open: boolean) => void }) => (
-    <div data-collapsed={String(p.collapsed)}>
+  SplitShell: (p: { board: React.ReactNode; collapsed: boolean; title?: React.ReactNode; detail?: React.ReactNode; actions?: React.ReactNode; onToggleChat: (open: boolean) => void; narrowFold?: boolean }) => (
+    <div data-collapsed={String(p.collapsed)} data-narrow-fold={p.narrowFold ? "" : undefined}>
       <header data-view-header>
         <span data-view-title>{p.title}</span>
         <span data-view-detail>{p.detail}</span>
@@ -83,6 +83,12 @@ describe("PlanView's chat fold", () => {
     doc = "# A plan\n\n## Tasks\n- [ ] one\n";
     const { container } = render(<PlanView {...props(session({}))} />);
     expect(container.querySelector(".overflow-y-auto")?.classList.contains("overflow-x-hidden")).toBe(true);
+  });
+
+  it("keeps its board whole in a narrow pane: the shell folds the chat over it", () => {
+    doc = "# A plan\n\n## Tasks\n- [ ] one\n";
+    render(<PlanView {...props(session({}))} />);
+    expect(document.querySelector("[data-narrow-fold]")).not.toBeNull();
   });
 
   it("survives the view unmounting, as a tab switch does", () => {

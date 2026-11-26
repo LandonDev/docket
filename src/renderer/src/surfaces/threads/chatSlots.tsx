@@ -67,10 +67,48 @@ export function columnClass(beside = false): string {
 }
 
 /**
- * The footer alone, for a view that seats the transcript elsewhere: the
- * column's gutter outside, the column inside, so the composer's box edges are
- * the column's edges, in the placement the slots carry (`placement` names it
- * outright).
+ * A band on the transcript's column outside its scroller (the footer, a
+ * view's header over the transcript): the column's gutter outside, the column
+ * inside, in the placement the transcript reports, after the message list
+ * while it sits beside and open, gliding with it. Every band of a pane
+ * follows one rule, so their edges are the transcript's.
+ */
+export function ColumnBand({
+  placement,
+  className = "",
+  children,
+  bandRef,
+  ...rest
+}: {
+  placement: OutlinePlacement;
+  className?: string;
+  children: ReactNode;
+  bandRef?: (el: HTMLDivElement | null) => void;
+} & Record<`data-${string}`, string | undefined>) {
+  // The transcript's own rule (AgentTranscript): a folded list gives the
+  // column its centre back, and the band glides there with it.
+  const folded = useSyncExternalStore(messageListFold.subscribe, messageListFold.get, messageListFold.get);
+  const beside = columnBeside(placement, folded);
+  const column = useRef<HTMLDivElement>(null);
+  // The pane's width as the transcript reads it: the band less the
+  // scrollbar's strip its end padding holds for it.
+  useColumnGlide(column, placement, beside, () => {
+    const band = column.current?.parentElement;
+    return band ? band.clientWidth - parseFloat(getComputedStyle(band).paddingRight) + PANE_PAD_PX : 0;
+  });
+  return (
+    <div ref={bandRef} {...rest} className={`${COLUMN_GUTTER_CLASS} shrink-0 ${className}`} style={beside ? { paddingLeft: LIST_SPACE } : undefined}>
+      <div ref={column} data-column-beside={beside || undefined} className={columnClass(beside)}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The footer alone, for a view that seats the transcript elsewhere: a
+ * `ColumnBand`, so the composer's box edges are the column's edges, in the
+ * placement the slots carry (`placement` names it outright).
  */
 export function ChatFooter({
   slots,
@@ -83,35 +121,16 @@ export function ChatFooter({
 }) {
   tallyRender("chatFooter");
   const where = placement ?? slots.placement ?? "hidden";
-  // The transcript's own rule (AgentTranscript): a folded list gives the
-  // column its centre back, and the composer glides there with it.
-  const folded = useSyncExternalStore(messageListFold.subscribe, messageListFold.get, messageListFold.get);
-  const beside = columnBeside(where, folded);
-  const column = useRef<HTMLDivElement>(null);
-  // The pane's width as the transcript reads it: the footer less the
-  // scrollbar's strip its end padding holds for it.
-  useColumnGlide(column, where, beside, () => {
-    const footer = column.current?.parentElement;
-    return footer ? footer.clientWidth - parseFloat(getComputedStyle(footer).paddingRight) + PANE_PAD_PX : 0;
-  });
   const anchored = !!slots.anchor;
   const ref = useCallback(
     (el: HTMLDivElement | null) => (anchored ? registerToastAnchor(el) : undefined),
     [anchored],
   );
   return (
-    <div
-      ref={ref}
-      data-toast-anchor={slots.anchor ? "" : undefined}
-      data-chat-footer={where}
-      className={`${COLUMN_GUTTER_CLASS} shrink-0 ${className}`}
-      style={beside ? { paddingLeft: LIST_SPACE } : undefined}
-    >
-      <div ref={column} className={columnClass(beside)}>
-        {slots.strip}
-        {slots.composer}
-      </div>
-    </div>
+    <ColumnBand bandRef={ref} placement={where} className={className} data-toast-anchor={slots.anchor ? "" : undefined} data-chat-footer={where}>
+      {slots.strip}
+      {slots.composer}
+    </ColumnBand>
   );
 }
 

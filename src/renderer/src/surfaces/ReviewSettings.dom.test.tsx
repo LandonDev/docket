@@ -138,12 +138,12 @@ describe("Reviews page", () => {
     state.connected = false;
     render(<ReviewsPage />);
     await act(() => vi.advanceTimersByTimeAsync(10_000));
-    expect(screen.getByText("The host did not answer").className).toContain("text-destructive");
+    expect(screen.getByText("The computer did not answer").className).toContain("text-destructive");
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     await openSocket();
     await act(() => vi.advanceTimersByTimeAsync(0));
     expect(screen.getByRole("switch", { name: "Review before merge" })).toBeTruthy();
-    expect(screen.queryByText("The host did not answer")).toBeNull();
+    expect(screen.queryByText("The computer did not answer")).toBeNull();
   });
 
   it("lands an answer that comes after the deadline, with no Retry and no new socket", async () => {
@@ -152,10 +152,10 @@ describe("Reviews page", () => {
     state.get = () => new Promise((resolve) => (answerNow = resolve));
     render(<ReviewsPage />);
     await act(() => vi.advanceTimersByTimeAsync(10_000));
-    expect(screen.getByText("The host did not answer")).toBeTruthy();
+    expect(screen.getByText("The computer did not answer")).toBeTruthy();
     await act(async () => answerNow({ override: null, global: SETTINGS, settings: SETTINGS, source: "global" }));
     expect(screen.getByRole("switch", { name: "Review before merge" })).toBeTruthy();
-    expect(screen.queryByText("The host did not answer")).toBeNull();
+    expect(screen.queryByText("The computer did not answer")).toBeNull();
   });
 
   it("says why the load failed, and Retry asks again", async () => {

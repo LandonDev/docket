@@ -269,7 +269,7 @@ describe('the muse driver over the fake host', () => {
 
     await h.send('retry')
     await waitFor(() => settled(t.events) === 4, 'the retry turn')
-    expect(of(t.events, 'phase').find((p) => p.phase === 'retrying')).toMatchObject({ detail: 'retry 2 of 5 in 32 s (503)', retry: { attempt: 2, delayMs: 32_000 } })
+    expect(of(t.events, 'phase').find((p) => p.phase === 'retrying')).toMatchObject({ detail: 'retry 2 of 5 in 32s', retry: { attempt: 2, delayMs: 32_000 } })
 
     await h.send('compact')
     await waitFor(() => settled(t.events) === 5, 'the compaction turn')

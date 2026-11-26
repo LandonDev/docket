@@ -142,9 +142,12 @@ describe("AddMenu", () => {
     let menu = await openAdd();
     expect(within(menu).getAllByRole("menuitem").map((el) => el.textContent)).toEqual([
       "Attach files",
-      "Mention a file or thread",
-      "Skills and commands",
+      "Mention a file or thread@",
+      "Skills and commands/",
     ]);
+    // The rows show the key that opens the same list from the field, so the placeholder need not say it.
+    const keys = within(menu).getAllByRole("menuitem").map((el) => el.querySelector("kbd")?.textContent ?? null);
+    expect(keys).toEqual([null, "@", "/"]);
     await act(async () => fireEvent.click(within(menu).getByRole("menuitem", { name: "Mention a file or thread" })));
     expect(onInsert).toHaveBeenLastCalledWith("@");
     menu = await openAdd();

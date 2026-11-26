@@ -100,7 +100,7 @@ function pane(s: Session, split: Split = {}) {
 
 const skeleton = () => document.querySelector('[data-surface-skeleton="transcript"]');
 const line = () => document.querySelector("[data-load-line]");
-const parts = () => [...(line()?.querySelectorAll("span > span") ?? [])].map((part) => part.textContent);
+const parts = () => [...(line()?.querySelectorAll('[data-slot="facts"] > span') ?? [])].map((part) => part.textContent);
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -220,24 +220,27 @@ describe("the pane while a transcript loads", () => {
   it("slow: the skeleton and one line naming the host with the seconds ticking, and Retry", () => {
     pane(session({ phase: "slow", since: NOW - 12_000, attempt: 0 }));
     expect(skeleton()).not.toBeNull();
-    expect(parts()).toEqual(["Waiting for box", "12 s"]);
+    expect(parts()).toEqual(["Waiting for box", "12s"]);
+    // One comma sentence (Facts), never facts set apart by space.
+    expect(line()!.querySelector('[data-slot="facts"]')!.className).toContain("[&>span:not(:last-child)]:after:content-[',']");
     expect(screen.getByRole("button", { name: "Retry" }).dataset.slot).toBe("button");
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(parts()).toEqual(["Waiting for box", "13 s"]);
+    expect(parts()).toEqual(["Waiting for box", "13s"]);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retryLoad).toHaveBeenCalledWith("s1");
   });
 
   it("failed: what went wrong, the countdown to the next try, and Retry now", () => {
-    pane(session({ phase: "failed", since: NOW - 5_000, attempt: 3, error: "timed out", retryAt: NOW + 4_000 }));
+    pane(session({ phase: "failed", since: NOW - 5_000, attempt: 3, error: "connect ECONNREFUSED 10.0.0.2:7777", retryAt: NOW + 4_000 }));
     expect(skeleton()).not.toBeNull();
-    expect(parts()).toEqual(["Box did not answer", "timed out", "retrying in 4 s"]);
+    // The host's raw error never shows.
+    expect(parts()).toEqual(["Box did not answer", "retrying in 4s"]);
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(line()?.textContent).toContain("retrying in 3 s");
+    expect(line()?.textContent).toContain("retrying in 3s");
     fireEvent.click(screen.getByRole("button", { name: "Retry now" }));
     expect(retryLoad).toHaveBeenCalledWith("s1");
   });
@@ -284,16 +287,14 @@ describe("loadLineText", () => {
   it("words each phase in parts, with no dots or parentheses", () => {
     expect(loadLineText("box", { phase: "loading", since: NOW, attempt: 0 }, NOW)).toBeNull();
     expect(loadLineText("box", { phase: "loaded", since: NOW, attempt: 0 }, NOW)).toBeNull();
-    expect(loadLineText("the box", { phase: "slow", since: NOW - 8_400, attempt: 0 }, NOW)).toEqual(["Waiting for the box", "8 s"]);
+    expect(loadLineText("the box", { phase: "slow", since: NOW - 8_400, attempt: 0 }, NOW)).toEqual(["Waiting for the box", "8s"]);
     expect(loadLineText("the box", { phase: "failed", since: NOW, attempt: 1, error: "connection closed", retryAt: NOW + 900 }, NOW)).toEqual([
       "The box did not answer",
-      "connection closed",
-      "retrying in 1 s",
+      "retrying in 1s",
     ]);
     expect(loadLineText("box", { phase: "failed", since: NOW, attempt: 1, retryAt: NOW - 1 }, NOW)).toEqual(["Box did not answer", "retrying…"]);
     expect(loadLineText("box", { phase: "failed", since: NOW, attempt: 1, error: "unknown session" }, NOW)).toEqual([
       "Box could not open this thread",
-      "unknown session",
     ]);
   });
 

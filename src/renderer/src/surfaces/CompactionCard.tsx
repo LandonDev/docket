@@ -44,7 +44,7 @@ export function CompactionCard({ block }: { block: Block }) {
             {phase === "start" ? (
               <WorkingText className={cn(meta.startedAt && "font-medium")}>{COMPACTING_WORDS}</WorkingText>
             ) : (
-              <span className={cn("shrink-0", details.length > 0 && "font-medium")}>{LEAD[phase]}</span>
+              <span className={cn("shrink-0", details.length > 0 && "font-medium")}>{failed && meta.error ? `${LEAD.failed}:` : LEAD[phase]}</span>
             )}
             {phase === "start" ? <CompactionClock startedAt={meta.startedAt} /> : null}
             {details.length > 0 ? <Details items={details} /> : null}

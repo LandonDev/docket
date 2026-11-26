@@ -49,6 +49,7 @@ export function DockedComposerPreview({
   draftThread = false,
   waiting = false,
   composerProps,
+  fileDrag = false,
 }: {
   /** One thread per fixture: the store and the draft cache are shared. */
   id: string;
@@ -62,6 +63,8 @@ export function DockedComposerPreview({
   draftThread?: boolean;
   waiting?: boolean;
   composerProps?: Partial<ComponentProps<typeof Composer>>;
+  /** A file held over the box: the drop wash. */
+  fileDrag?: boolean;
 }) {
   const now = Date.now();
   const session: Session = {
@@ -103,6 +106,7 @@ export function DockedComposerPreview({
               context={session.context}
               busy={status === "running"}
               paused={status === "paused"}
+              fileDragSeed={fileDrag}
               onFocus={noop}
               onCwdChange={noop}
               onModelChange={noop}

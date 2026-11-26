@@ -135,12 +135,12 @@ describe("actionOf", () => {
 
   it("a call waiting on approval keeps the body it opens onto", () => {
     const a = actionOf(call("Bash", { command: "npm test" }, { status: "pending", approval: { requestId: 1 } }), CWD);
-    expect(a).toMatchObject({ pending: true, running: false, opens: "command", verb: "Running" });
+    expect(a).toMatchObject({ pending: true, running: false, opens: "command", verb: "Run" });
     const edit = actionOf(
       call("Edit", { file_path: "/repo/a.ts", old_string: "a", new_string: "b" }, { approval: { requestId: 2 } }),
       CWD,
     );
-    expect(edit).toMatchObject({ pending: true, opens: "diff", verb: "Editing" });
+    expect(edit).toMatchObject({ pending: true, opens: "diff", verb: "Edit" });
   });
 });
 

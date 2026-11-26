@@ -4,6 +4,7 @@ import { AnimatePresence, motion, MotionConfig, type Variants } from "motion/rea
 import { useReducedMotion } from "../../lib/motion";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@renderer/lib/cn";
+import { Check } from "@renderer/chrome/icons";
 import { Button } from "./button";
 import { Kbd, KbdGroup } from "./kbd";
 
@@ -17,13 +18,16 @@ const SUBMIT_CAPS = keyCaps("mod+enter");
  * ⌘⏎ to continue. A `multiSelect` question takes several options and one
  * submit. Keys work only while focus is inside the card, so ⌘⏎ in the
  * composer never submits it. With more than one question (`showProgress`)
- * the title row ends with where the person is ("2 of 3"). The caller's status
+ * the title row ends with where the person is ("2 of 3"); a question with a
+ * `header` of its own titles the card while it is shown, so no label trails
+ * its prompt. A `multiSelect` question's caps wear a hairline at rest and
+ * turn to a check when picked, so it reads as several at a glance. The caller's status
  * glyph goes in `icon`, flat beside the title. Answers come back as one array
  * of labels per question (the typed text for a free-form pick). The free-form
  * row's field sits beside its toggle, never inside it, so typing never unpicks it.
  */
 export type QuestionOption = { label: string; description?: string; freeform?: boolean };
-export type Question = { prompt: string; description?: string; options: Array<QuestionOption>; multiSelect?: boolean };
+export type Question = { prompt: string; header?: string; options: Array<QuestionOption>; multiSelect?: boolean };
 
 const KEYS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
@@ -207,7 +211,7 @@ export function QuestionCard({
       <div className="flex min-h-5 items-center gap-2">
         {icon ? <span className="flex shrink-0">{icon}</span> : null}
         <h3 id={`${id}-title`} className="min-w-0 truncate text-sm leading-5 font-medium text-foreground">
-          {title}
+          {question.header ?? title}
         </h3>
         {showProgress ? (
           <span data-slot="question-progress" aria-live="polite" className="ms-auto shrink-0 text-xs leading-5 text-muted-foreground tabular-nums">
@@ -224,7 +228,6 @@ export function QuestionCard({
               <div key={entry.prompt}>
                 <div aria-live="polite">
                   <p className="text-sm leading-[22px] text-foreground">{entry.prompt}</p>
-                  {entry.description ? <p className="text-[13px] leading-5 text-muted-foreground">{entry.description}</p> : null}
                 </div>
                 <ul
                   ref={(node) => {
@@ -242,17 +245,18 @@ export function QuestionCard({
                     const key = KEYS[index];
                     const optionId = `${id}-${qIndex}-${index}`;
                     const fill = active ? "bg-foreground/10" : "hover:bg-foreground/5";
-                    // The cap sits on the label's first line: 20px, the line's own height.
+                    // The cap sits on the label's first line: 20px, the line's own height. A multi-select
+                    // question's cap is a hairline box at rest and a check once picked: several, not one.
                     const cap = (
                       <span
                         aria-hidden
                         data-slot="question-key"
                         className={cn(
                           "pointer-events-none flex size-5 shrink-0 items-center justify-center rounded-sm text-[11px] leading-none font-medium tabular-nums",
-                          active ? "bg-primary text-primary-foreground" : "bg-foreground/7 text-muted-foreground",
+                          active ? "bg-primary text-primary-foreground" : entry.multiSelect ? "border border-border text-muted-foreground" : "bg-foreground/7 text-muted-foreground",
                         )}
                       >
-                        {key}
+                        {active && entry.multiSelect ? <Check className="size-3" /> : key}
                       </span>
                     );
                     if (option.freeform) {

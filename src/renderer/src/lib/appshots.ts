@@ -84,28 +84,34 @@ const message = (err: unknown): string => (err instanceof Error ? err.message : 
  *  refused until the stored settings have loaded (it would send defaults
  *  over them). Writes go one at a time, each sending the whole set as it
  *  stands when its turn comes, so a failed one put back (to what the host
- *  last stored) is never overwritten by a later one's copy. */
-export function setAppshotSettings(patch: Partial<AppshotSettings>): void {
-  if (!status.loaded) return
+ *  last stored) is never overwritten by a later one's copy. The answer is
+ *  whether the host kept it, for a row's save mark; the refusal's words are
+ *  the status's `writeError`. */
+export function setAppshotSettings(patch: Partial<AppshotSettings>): Promise<boolean> {
+  if (!status.loaded) return Promise.resolve(false)
   settings = { ...settings, ...patch }
   setStatus({ writeError: null })
   const keys = Object.keys(patch) as (keyof AppshotSettings)[]
   for (const k of keys) queued[k] = (queued[k] ?? 0) + 1
-  writes = writes.then(async () => {
+  const write = writes.then(async () => {
     const sent = settings
     try {
       // Appshots are this Mac's feature: its settings and chats live on the local server.
       await registry.primary().request('appshots.set', { settings: sent })
       stored = sent
+      return true
     } catch (err) {
       // A setting a later queued write changes again keeps that newer choice.
       const back = keys.filter((k) => queued[k] === 1)
       settings = { ...settings, ...Object.fromEntries(back.map((k) => [k, stored[k]])) }
       setStatus({ writeError: { key: keys[0], message: message(err) } })
+      return false
     } finally {
       for (const k of keys) queued[k] = (queued[k] ?? 1) - 1
     }
   })
+  writes = write.then(() => undefined)
+  return write
 }
 
 /** Ask the host for the stored settings, waiting for the link to open. */

@@ -59,6 +59,12 @@ describe("BatchFoot", () => {
     expect(classes).not.toContain("aria-expanded:bg-foreground/7");
   });
 
+  it("ends Edit…, Stop and Log on the 12px edge the times keep: each takes its own 8px back", () => {
+    render(<BatchFoot batch={failedGate()} titleOf={() => undefined} onSave={noop} onStop={noop} />);
+    expect(screen.getByRole("button", { name: "Edit…" }).className.split(/\s+/)).toContain("-me-2");
+    expect(screen.getByRole("button", { name: "Log" }).className.split(/\s+/)).toContain("-me-2");
+  });
+
     it("an instant step says no time", () => {
     render(<BatchFoot batch={failedGate()} titleOf={() => undefined} onSave={noop} onStop={noop} />);
     expect(document.querySelector('[data-step="land"] [data-step-time]')).toBeNull();
@@ -71,6 +77,7 @@ describe("BatchFoot", () => {
     const running: BatchState = { ...state, steps: state.steps.map((s) => (s.id === "gate" ? { ...s, status: "running", endedAt: undefined } : s)) };
     render(<BatchFoot batch={running} titleOf={() => undefined} onSave={noop} onStop={onStop} />);
     const stop = screen.getByRole("button", { name: "Stop" });
+    expect(stop.className.split(/\s+/)).toContain("-me-2");
     expect(stop.querySelector("svg")).toBeNull();
     expect(stop.querySelector('[data-slot="busy-label"]')?.getAttribute("data-idle")).toBe("Stop");
     expect(stop.querySelector('[data-slot="busy-label"]')?.getAttribute("data-busy-text")).toBe("Stop");

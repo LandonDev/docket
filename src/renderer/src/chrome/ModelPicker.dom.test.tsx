@@ -95,9 +95,9 @@ describe("ModelPicker", () => {
       { id: "muse-wonder-full-1.0", label: "Muse Wonder Full 1.0", reasoning: EFFORTS, defaultReasoning: "max", context: 1_007_997 },
     ]);
     picker("muse", "muse:muse-wonder-1.0", { effort: "max" });
-    const button = screen.getByRole("button", { name: /^Muse Code Muse Wonder 1\.0/ });
+    const button = screen.getByRole("button", { name: /^Muse Wonder 1\.0 on Muse Code/ });
     expect(button.textContent).toContain("Max");
-    const dialog = await open(/^Muse Code Muse Wonder 1\.0/);
+    const dialog = await open(/^Muse Wonder 1\.0 on Muse Code/);
     const effort = within(dialog).getByRole("combobox", { name: "Effort" });
     await act(async () => fireEvent.click(effort));
     expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Low", "Medium", "High", "Extra high", "Max"]);
@@ -109,6 +109,18 @@ describe("ModelPicker", () => {
     const button = screen.getByRole("button", { name: /Opus 5\.5/ });
     expect(button.textContent).toContain("Opus 5.5");
     expect(button.textContent).toContain("High");
+  });
+
+  it("in the composer's row the mark says Claude, so the name drops it; the name medium, the effort regular, the label whole", () => {
+    seed("claude", [{ id: "claude-opus-5-5", label: "Claude Opus 5.5", reasoning: EFFORTS, defaultReasoning: "medium", context: 1_000_000 }]);
+    render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" quiet onChange={() => {}} settings={{ values: { effort: "medium" }, onChange: () => {} }} />);
+    const button = screen.getByRole("button", { name: "Claude Opus 5.5, Medium effort" });
+    const spans = [...button.querySelectorAll("span")];
+    const name = spans.find((el) => el.textContent === "Opus 5.5")!;
+    const effort = spans.find((el) => el.textContent === "Medium")!;
+    expect(button.textContent).not.toContain("Claude");
+    expect(name.className.split(" ")).toContain("font-medium");
+    expect(effort.className.split(" ")).not.toContain("font-medium");
   });
 
   it("Claude without tiers has no Speed row; with fast, Standard and Fast", async () => {
@@ -144,19 +156,19 @@ describe("ModelPicker", () => {
       return screen.getAllByRole("option").map((o) => o.textContent);
     };
     picker("codex", "codex:gpt-a");
-    expect(await options(/^Codex A/)).toEqual(["Standard", "Fast"]);
+    expect(await options(/^A on Codex/)).toEqual(["Standard", "Fast"]);
     cleanup();
     picker("codex", "codex:gpt-b");
-    expect(await options(/^Codex B/)).toEqual(["Standard", "Fast", "Ultrafast"]);
+    expect(await options(/^B on Codex/)).toEqual(["Standard", "Fast", "Ultrafast"]);
     cleanup();
     picker("codex", "codex:gpt-c");
-    expect(await options(/^Codex C/)).toBeNull();
+    expect(await options(/^C on Codex/)).toBeNull();
   });
 
   it("picking Ultrafast turns Fast off", async () => {
     seed("codex", [{ id: "gpt-b", label: "B", reasoning: [], speedTiers: ["priority", "ultrafast"] }]);
     const onChange = picker("codex", "codex:gpt-b", { fast: "true" });
-    const menu = await open(/^Codex B/);
+    const menu = await open(/^B on Codex/);
     await act(async () => fireEvent.click(within(menu).getByRole("combobox", { name: "Speed" })));
     const option = screen.getByRole("option", { name: "Ultrafast" });
     await act(async () => {
@@ -181,7 +193,7 @@ describe("ModelPicker", () => {
   it("Codex has no context setting and so no Context row", async () => {
     seed("codex", [{ id: "gpt-a", label: "A", reasoning: ["low", "high"], speedTiers: ["priority"] }]);
     picker("codex", "codex:gpt-a");
-    const menu = await open(/^Codex A/);
+    const menu = await open(/^A on Codex/);
     const rows = menu.querySelector("[data-model-settings-rows]")!;
     expect([...rows.children].map((row) => row.firstElementChild?.textContent)).toEqual(["Effort", "Speed"]);
     expect(menu.textContent).not.toMatch(/\d+%/);
@@ -251,7 +263,7 @@ describe("ModelPicker", () => {
   it("says nothing it cannot know", async () => {
     seed("codex", [{ id: "gpt-a", label: "A", reasoning: ["low"], speedTiers: ["priority"] }]);
     picker("codex", "codex:gpt-a");
-    const menu = await open(/^Codex A/);
+    const menu = await open(/^A on Codex/);
     expect(menu.textContent).not.toMatch(/priority processing|fastest service tier|not on this account/i);
   });
 });
@@ -368,7 +380,7 @@ describe("ModelPicker: Meta's models", () => {
 
     picker("claude", "claude:muse-wonder-1.0", mergeModelSettings(wonder, {}));
     let menu = await open(/Muse Wonder 1\.0/);
-    expect(screen.getByRole("button", { name: /Muse Wonder 1\.0 High/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Muse Wonder 1\.0 on .*, High effort/ })).toBeTruthy();
     expect(within(menu).queryByRole("combobox", { name: "Context" })).toBeNull();
     expect(await effortOptions(menu)).toEqual(["Low", "Medium", "High", "Extra high", "Max"]);
     cleanup();
@@ -412,7 +424,7 @@ describe("ModelPicker: Meta's models", () => {
       const { unmount } = render(
         <ModelPicker harness="claude" model="claude:claude-opus-5-5" quiet={quiet} onChange={() => {}} settings={{ values: { effort: "high" }, onChange: () => {} }} />,
       );
-      const trigger = screen.getByRole("button", { name: /Opus 5\.5 High/ });
+      const trigger = screen.getByRole("button", { name: /Opus 5\.5, High effort/ });
       const cls = (el: Element) => (el.getAttribute("class") ?? "").split(/\s+/);
       expect(cls(trigger)).toContain("gap-0");
       expect(cls(trigger).filter((c) => /^gap-(?!0$)/.test(c))).toEqual([]);

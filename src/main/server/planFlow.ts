@@ -87,8 +87,8 @@ export const ORCHESTRATE_BRIEF = 'Orchestrate implementation of the plan across 
 /** The goal a build works toward, from the plan's checklist. */
 export function goalFor(doc: string): string {
   return countTasks(doc) > 0
-    ? "Every task in the plan's checklist is checked off and typecheck passes"
-    : 'The plan is fully implemented and typecheck passes'
+    ? 'Every task in the plan is done'
+    : 'The plan is built'
 }
 
 /** `- [ ]` / `- [x]` lines: the plan's tasks. */

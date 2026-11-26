@@ -40,21 +40,28 @@ describe("GateCard", () => {
       expect(cls).toContain(c);
   });
 
-  it("the log is the one console: reached by the keyboard, no border, starting at the glyph's edge", () => {
+  it("the log is the one console: reached by the keyboard, starting at the glyph's edge, a lone body's hairline, at most 320px then scrolling", () => {
     const { container } = render(<GateCard block={block({ step: "gate", branch: "port", ok: false, log: "✗ vitest 48s", at: 1 })} />);
     fireEvent.click(screen.getByRole("button", { name: "Show the log" }));
     const pre = container.querySelector<HTMLElement>('[data-slot="gate-log"]')!;
     expect(pre.tabIndex).toBe(0);
     const cls = pre.className.split(" ");
     for (const c of CONSOLE.split(" ")) expect(cls).toContain(c);
-    for (const c of ["overflow-x-auto", "whitespace-pre", "-ml-5.5"]) expect(cls).toContain(c);
-    expect(pre.className).not.toMatch(/(^|\s)border(\s|$)/);
+    for (const c of ["overflow-x-auto", "overflow-y-auto", "max-h-80", "whitespace-pre", "-ml-5.5"]) expect(cls).toContain(c);
+    // Alone in the flow it is one card, as every lone body (DESIGN "a lone row's is one card"); in a table or a card, none.
+    for (const c of ["border", "border-border", "in-data-[table]:border-0", "in-[.bg-card]:border-0"]) expect(cls).toContain(c);
   });
 
   it("a green run is one quiet line with nothing to open", () => {
     const { container } = render(<GateCard block={block({ step: "gate", branch: "master", ok: true, log: "✓ build 20s", at: 1 })} />);
     expect(parts(container)).toEqual(["Gate passed on", "master"]);
     expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("a gate that died before its steps says did not start, never the log's raw last line", () => {
+    const { container } = render(<GateCard block={block({ step: "gate", branch: "master", ok: false, log: '$ bun scripts/gate.ts\nerror: Module not found "scripts/gate.ts"', at: 1 })} />);
+    expect(parts(container).slice(0, 2)).toEqual(["Gate failed on", "master, did not start"]);
+    expect(container.querySelector('[data-slot="notice-details"]')!.textContent).not.toContain("Module not found");
   });
 
   it("a red gate names the step; a green release names the tag", () => {
@@ -71,13 +78,11 @@ describe("GateCard", () => {
     expect(container.querySelector("pre")).toBeNull();
   });
 
-  it("a gate that never ran names its log's last line, as does a red release", () => {
-    const missing = render(
-      <GateCard block={block({ step: "gate", branch: "master", ok: false, log: '$ bun scripts/gate.ts\nerror: Module not found "scripts/gate.ts"', at: 1 })} />,
-    );
-    expect(parts(missing.container).slice(0, 2)).toEqual(["Gate failed on", 'master, error: Module not found "scripts/gate.ts"']);
-    missing.unmount();
+  it("a red release names its log's last line when it is plain words, never a raw one", () => {
     const release = render(<GateCard block={block({ step: "release", branch: "master", ok: false, log: "tree is dirty", at: 1 })} />);
     expect(parts(release.container).slice(0, 2)).toEqual(["Release failed on", "master, tree is dirty"]);
+    release.unmount();
+    const raw = render(<GateCard block={block({ step: "release", branch: "master", ok: false, log: "fatal: unable to access '/srv/x/.git/': denied", at: 1 })} />);
+    expect(parts(raw.container)).toEqual(["Release failed on", "master"]);
   });
 });

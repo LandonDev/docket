@@ -195,6 +195,8 @@ describe('WorkingStrip: the held rows', () => {
     expect(probe.container.innerHTML).not.toMatch(/bg-warning|border-warning|rounded-lg/)
     // The glyph sits in the `+` button's 28px box, on its axis.
     expect(row(probe).querySelector('[data-slot="status-mark"]')!.className).toContain('*:data-[slot=status-glyph]:w-7')
+    // A frozen time alone is never cut at a narrow width.
+    expect(row(probe).querySelector('[data-slot="status-mark"]')!.className).toContain('[&>[data-slot=status-detail]]:shrink-0')
     const [stop, cont] = buttons(probe)
     await probe.act(async () => stop!.click())
     await probe.act(async () => stop!.click())
@@ -219,9 +221,15 @@ describe('WorkingStrip: the held rows', () => {
     const onResume = vi.fn(() => Promise.resolve())
     const onStop = vi.fn()
     const probe = mount(session({ status: 'stopped', frozenActiveElapsed: 95_000 }), { onStop, onResume })
-    expect(rowText(probe)).toBe('StoppedThe harness is gone, 1m 35sResume')
-    // The detail and its frozen time are one comma run: one muted span after the word.
-    expect([...row(probe).querySelectorAll('span')].some((el) => el.textContent === 'The harness is gone, 1m 35s' && el.children.length === 0)).toBe(true)
+    expect(rowText(probe)).toBe('StoppedThe harness is gone,1m 35sResume')
+    // The detail and its frozen time are one comma run after the word; a narrow row cuts the words, never the time.
+    const held = row(probe).querySelector<HTMLElement>('[data-held-detail]')!
+    const [words, time] = [...held.children] as HTMLElement[]
+    expect(words.textContent).toBe('The harness is gone,')
+    expect(words.className.split(' ')).toEqual(expect.arrayContaining(['min-w-0', 'truncate']))
+    expect(time.textContent).toBe('1m 35s')
+    expect(time.className.split(' ')).toEqual(expect.arrayContaining(['shrink-0', 'ms-1']))
+    expect(row(probe).querySelector('[data-slot="status-mark"]')!.className).not.toContain('[&>[data-slot=status-detail]]:shrink-0')
     expect(probe.container.querySelector('[aria-live="polite"]')!.textContent).toBe('Stopped')
     await probe.act(async () => buttons(probe)[0]!.click())
     expect(onResume).toHaveBeenCalledTimes(1)

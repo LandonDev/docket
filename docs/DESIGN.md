@@ -737,8 +737,13 @@ carries the box's 1px sides, unseen), its word 8px after that box (the
 open turn's time starts on that same column, 36px in, so a pause or a
 continue never moves it), and its
 detail, the tally and the frozen time one comma run ("Stopped The harness
-is gone, 1m 35s"). The queue's grip sits in the same box, centred on its
-text's first line, and the text starts 8px after it, on the field's column. What the thread does is the transcript's
+is gone, 1m 35s"); a narrow row cuts the detail's words, never the frozen
+time, which keeps its place after them. The queue's grip sits in the same box, centred on its
+text's first line, and the text starts 8px after it, on the field's column.
+A queued row is the message alone on the `muted` fill, `rounded-lg`, with no
+hairline and no number (the heading's "Queued 2" is the one count), so the
+composer's card stays the one line there; Send's glyph while it queues is a
+list with a plus (`ListPlus`). What the thread does is the transcript's
 working line, a pending approval or question is its card, and a watching
 thread's state is the transcript's closing line (Watching then its age,
 ticking every second, amber past 30 minutes, opening the Activity section; an
@@ -749,7 +754,7 @@ idles the thread, the slot empties and the transcript's Stopped line says
 so once. A first response is said in the transcript's working line, never
 above the composer: Sending from the click until the host echoes the
 message, then the host's word for the wait (Starting the CLI, Initializing,
-Waiting for the provider, a retry, "Waiting for the provider, 25 s"), then
+Waiting for the provider, a retry, "Waiting for the provider, 25s"), then
 Thinking (with the thought block's seconds after it, "Thinking 4s", and its
 finished sentences in the reasoning column under the line once the thought
 streams with words), then
@@ -831,7 +836,8 @@ the provider's logo, the short model name and, where the row asks for it
 6px from the name and the effort 4px after it, never joined by a dot; the
 model picker's trigger (chrome/ModelPicker.tsx) keeps those spaces in every
 placement, the composer's row and a dialog's alike, its chevron 8px after
-the last word. In a
+the last word; in the composer's row, where both are muted, the name is
+medium and the effort regular. In a
 narrow row the title gives its width up first, down to 64px; then the name
 truncates, and the effort never does. The agent detail leads its numbers line with the same `ModelLine`, then
 the host and branch; queues use `effortWord` for effort names. A right
@@ -1334,7 +1340,9 @@ thread; nothing answers inside the canvas.
   document surface's wash (`muted` 70%, 12px inside, a hairline, 8px radius,
   one 13px muted line, "Drop to open"): the canvas when the thread has items,
   else the pane. Nothing moves while a file is dragged. The composer's box
-  keeps its own wash and its meaning (attach), and a surface that takes files
+  keeps its own wash and its meaning (attach: the whole box on the card's own
+  fill under the accent tint, so the field's words never show through, and
+  one 13px muted line, "Drop to attach"), and a surface that takes files
   itself (a document, an empty meeting, Mail's composer) keeps its own. While
   the file goes up the pane says "Opening <name>" beside the spinner, with a
   4px bar once the file is 4 MB or more and a ghost Cancel: centred in an empty
@@ -4814,7 +4822,7 @@ never cut (`StatusMark`'s `wrap`).
 | The working group's fold, and a board row's task list once its thread is done (`useFoldHold`, lib/foldHold.ts) | waits `FOLD_HOLD_MS` once the work moved on, so the last row's settle shows, then folds on `.collapsible-auto` | — | the same wait, then the fade |
 | Disclosure chevron (`DISCLOSURE_CHEVRON`, components/ui/disclosure.ts: one ChevronRight turning `rotate-90`, 12px beside 12px and 13px words; a menu trigger's chevron is a still `ChevronDown`) | rotates with its fold, `--dur-base` `--ease-out`, everywhere; its line's words and the chevron lift to foreground at once, on hover and keyboard focus alike, with no fill (the Watching line's mark, detail and age among them), so the turn is the one thing that moves; nothing beside it times its own turn or colour or turns it 180° (`lib/disclosureGuard.test.ts`) | same | none |
 | Icon swap (`SwapIcon`; keyed for more than two states, as a tool row's working, failed and icon; a group line's glyph when its main kind changes, a compaction's from start to its outcome, the context meter's ring and its compacting spinner, a Spawned row's bot to its provider's mark) | opacity + scale 0.25→1 on `SPRING_LAYOUT` | fade + scale →0.25, `--dur-fast` | opacity, `--dur-fast` |
-| Word morph (`MorphText`: a row's verb or a group's phrase changing tense, the working line's phases, the working line becoming the closing line) | only once the old words have left: the new rise from 3px below, `--dur-base` `--ease-swap`, while the box glides from the old width to theirs (a Web Animation from its live width when cut short); never on mount or for new words under one key | the old words lift 3px and fade first, `--dur-swap-out` `--ease-swap`; never two words in one place | fade out, then in, `--dur-fast`; no glide |
+| Word morph (`MorphText`: a row's verb or a group's phrase changing tense, the working line's phases, the working line becoming the closing line) | only once the old words have left: the new rise from 3px below, `--dur-base` `--ease-swap`, while the box glides from the old width to theirs (a Web Animation from its live width when cut short; new words under one key mid-glide retarget it from where it stands, so "Worked" filling in to "Worked for 1s" is never clipped); never on mount or for new words under one key at rest | the old words lift 3px and fade first, `--dur-swap-out` `--ease-swap`; never two words in one place | fade out, then in, `--dur-fast`; no glide |
 | Scroll glide (jump to latest, a burst while following, a jump to a row) | `DUR.drawer` on `EASE_OUT` | — | instant |
 | Park on send (prompt to top) | the transcript glides to park the prompt, `DUR.drawer` on `EASE_DRAWER`; from more than 2.5 screens away it jumps to within 2.5 screens first, as every long jump does | the parked runway retires over `DUR.base` on `EASE_OUT` | instant |
 | Jump to latest button | fade + scale 0.95→1, `--dur-base` `--ease-out` | `FADE_OUT` | fade |
@@ -5040,7 +5048,11 @@ its last row). A thread still watching ends in "Watching" with the watch's
 age under its last closing line, on every surface; in a pane it opens the
 Activity section.
 An approval card carries the amber glyph and its two buttons, not the
-word; the call's row above it keeps its tool icon, so the mark shows once.
+word; the call's row above it keeps its tool icon, so the mark shows once,
+and reads as asked, in the plain verb ("Remove the build output"), since the
+call has not run; the toast that asks for it says the same. A question has
+no row over its card: the card is the question, and its answered lines say
+what was picked.
 A thread's request for his press (its `outbox_request` call) stands in
 the call's place as the question's frame (a hairline on `card`, 12px
 corners, 16px inset): the Outbox glyph, muted, never amber (held is not
@@ -5113,14 +5125,16 @@ question card sets the sans face; mono is for code inside it. It is the one
 card the transcript allows: a hairline on the card fill, 12px corners and a
 16px inset (`QUESTION_SHAPE`, surfaces/QuestionCard.tsx; the held review keeps
 `CARD_SHAPE`), and inside a `bg-card` body it draws no second frame. Its title
-is 14px medium by the amber Needs you glyph, flat, and a set of more than one
-question ends the title row with where the person is ("2 of 3", 12px muted,
-tabular). Its question is at the prose's 14px on 22px lines, its options a
+is 14px medium by the amber Needs you glyph, flat: the shown question's
+header (the set's first while it has none of its own), so no label trails a
+prompt; a set of more than one question ends the title row with where the
+person is ("2 of 3", 12px muted, tabular). Its question is at the prose's 14px on 22px lines, its options a
 flat list of 36px rows 4px apart (a menu row's 8px radius, 8px above and
 below the 14px label's 20px line) with an option's description as a muted
 13px line under it; the 20px key cap sits on the label's first line. Selected
 is the row's fill (`foreground/10`) and the cap turned primary, never a
-border; hover is `foreground/5`, a press `foreground/12`, all at once. Its
+border on the row; a multi-select question's cap is a hairline box at rest
+and a check once picked, so several read as several before a click; hover is `foreground/5`, a press `foreground/12`, all at once. Its
 actions end the card 16px under the options, right-aligned 8px apart, the
 raised buttons at `sm`: Back and Skip `secondary`, Next or Continue (with ⌘⏎)
 `default`; Back arrives at the group's start, so Skip and Next never move. Every action

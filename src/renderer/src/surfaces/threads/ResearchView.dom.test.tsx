@@ -24,8 +24,8 @@ vi.mock("../../lib/threads/researchBoard", async (importOriginal) => ({
 vi.mock("../AgentMarkdown", () => ({ AgentMarkdown: ({ text }: { text: string }) => <div data-md>{text}</div> }));
 vi.mock("./fleet/AgentDetail", () => ({ AgentDetail: () => null }));
 vi.mock("./SplitShell", () => ({
-  SplitShell: (p: { board: React.ReactNode; title?: React.ReactNode; detail?: React.ReactNode; actions?: React.ReactNode }) => (
-    <div>
+  SplitShell: (p: { board: React.ReactNode; title?: React.ReactNode; detail?: React.ReactNode; actions?: React.ReactNode; narrowFold?: boolean }) => (
+    <div data-narrow-fold={p.narrowFold ? "" : undefined}>
       <header data-view-header>
         <span>{p.title}</span>
         <span data-detail>{p.detail}</span>
@@ -36,7 +36,7 @@ vi.mock("./SplitShell", () => ({
   ),
 }));
 
-import { ResearchView } from "./ResearchView";
+import { ResearchView, withoutTitle } from "./ResearchView";
 
 const REPORT = "/repo/.temp-code/reports/r1.md";
 
@@ -99,6 +99,12 @@ describe("the research view", () => {
     expect(container.querySelector(".overflow-y-auto")?.classList.contains("overflow-x-hidden")).toBe(true);
   });
 
+  it("keeps its board whole in a narrow pane: the shell folds the chat over it", () => {
+    seed();
+    render(<ResearchView {...props(session())} />);
+    expect(document.querySelector("[data-narrow-fold]")).not.toBeNull();
+  });
+
   it("states the header's facts as one comma run, no middle dot, and opens the report", () => {
     seed();
     docs[REPORT] = "---\ntitle: Build speed\nstatus: draft\n---\n";
@@ -108,6 +114,21 @@ describe("the research view", () => {
     expect((document.querySelector("[data-view-header]") as HTMLElement).textContent).not.toContain("·");
     fireEvent.click(screen.getByRole("button", { name: "Open the report" }));
     expect(onOpenFile).toHaveBeenCalledWith(REPORT);
+  });
+
+  it("the header is titled by the report, said once: no second heading under it", () => {
+    docs[REPORT] = "---\ntitle: Build speed\nstatus: draft\n---\n";
+    const view = render(<ResearchView {...props(session({ status: "running" }))} />);
+    expect(document.querySelector("[data-view-header]")?.textContent).toContain("Build speed");
+    expect(screen.getAllByText("Build speed")).toHaveLength(1);
+    expect(document.querySelector("h2")).toBeNull();
+    view.unmount();
+    // A report with no title yet: the thread's; a complete body drops a # heading the header says.
+    docs[REPORT] = "# Build speed\n\nthe findings\n";
+    render(<ResearchView {...props(session())} />);
+    expect(document.querySelector("[data-view-header]")?.textContent).toContain("Build speed");
+    expect(withoutTitle("# Build speed\n\nthe findings", "Build speed")).toBe("\nthe findings");
+    expect(withoutTitle("# Other\nx", "Build speed")).toBe("# Other\nx");
   });
 
   it("an unfinished report shows its state and summary; a complete one renders the body", () => {

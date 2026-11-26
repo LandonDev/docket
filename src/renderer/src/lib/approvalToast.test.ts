@@ -32,7 +32,8 @@ describe("pendingApprovalForSession", () => {
     ];
     const pending = pendingApprovalForSession(session);
     expect(pending?.requestId).toBe(2);
-    expect(pending?.label).toBe("Running a command");
+    // The call has not run: the toast says what it asks.
+    expect(pending?.label).toBe("Run a command");
     expect(pending?.tool).toBe("a tool");
   });
 
@@ -123,7 +124,7 @@ describe("approvalToastNotice", () => {
     const moved = approvalToastNotice({ ...session, cwd: "/elsewhere" }, notice)!;
     expect(moved).toBe(notice);
     const changed = approvalToastNotice({ ...session, blocks: [{ ...session.blocks[0], tool: { ...session.blocks[0].tool!, input: { file_path: "/repo/other.txt" } } }] }, notice)!;
-    expect(changed.label).toBe("Reading other.txt");
+    expect(changed.label).toBe("Read other.txt");
     expect(changed).not.toBe(notice);
   });
 

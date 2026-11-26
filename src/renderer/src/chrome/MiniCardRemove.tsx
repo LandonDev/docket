@@ -15,3 +15,7 @@ export function MiniCardRemove({ label, onDismiss }: { label: string; onDismiss:
     </AttachmentActions>
   );
 }
+
+/** A mini card's facts on one line as one comma sentence (DESIGN "Typography": never facts set apart by
+ *  space alone): each 4px from the next, the comma drawn after all but the last, the last truncating. */
+export const MINI_FACTS = "flex gap-1 [&>span:not(:last-child)]:after:content-[',']";

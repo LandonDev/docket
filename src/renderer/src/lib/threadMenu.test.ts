@@ -22,7 +22,7 @@ const row = (rows: MenuRow[], id: string) => rows.find((r) => (r.kind === "item"
 
 describe("threadMenuRows by status", () => {
   it("idle: Compact, no Pause or Stop", () => {
-    expect(ids(threadMenuRows(facts()))).toEqual(["rename", "type", "—", "compact", "—", "resources", "master", "—", "archive", "delete"]);
+    expect(ids(threadMenuRows(facts()))).toEqual(["rename", "type", "—", "compact", "—", "master", "—", "archive", "delete"]);
   });
 
   it("working: Pause and Stop, no Compact", () => {
@@ -54,8 +54,9 @@ describe("threadMenuRows by status", () => {
     expect(got).not.toContain("compact");
   });
 
-  it("watching: Kill background tasks beside Stop, both destructive", () => {
+  it("watching: Stop background tasks beside Stop, both destructive", () => {
     const got = threadMenuRows(facts({ status: "watching" }));
+    expect(row(got, "killBackground")).toMatchObject({ label: "Stop background tasks" });
     expect(row(got, "killBackground")).toMatchObject({ danger: true });
     expect(row(got, "stop")).toMatchObject({ danger: true });
     expect(ids(threadMenuRows(facts({ status: "running" })))).not.toContain("killBackground");
@@ -137,15 +138,13 @@ describe("threadMenuRows: resources, the bridge and the host moves", () => {
     expect(row(threadMenuRows(facts()), "archive")).toMatchObject({ label: "Archive" });
   });
 
-  it("disables Resources… when there is nothing it could remove, a dev server alone included", () => {
-    expect(row(threadMenuRows(facts()), "resources")).toMatchObject({ disabled: true, reason: "Nothing to remove" });
+  it("draws Resources… only when there is something it could remove, a dev server alone not counted", () => {
+    expect(ids(threadMenuRows(facts()))).not.toContain("resources");
     // A thread holding only a dev server: Archive still asks, Resources… has nothing to list.
     const onlyServer = threadMenuRows(facts({ resources: 1, removable: 0 }));
-    expect(row(onlyServer, "resources")).toMatchObject({ disabled: true });
-    expect(row(onlyServer, "resources")).not.toHaveProperty("hint");
+    expect(ids(onlyServer)).not.toContain("resources");
     expect(row(onlyServer, "archive")).toMatchObject({ label: "Archive…" });
     expect(row(threadMenuRows(facts({ resources: 1, removable: 1 })), "resources")).not.toHaveProperty("disabled");
-    expect(row(threadMenuRows(facts({ resources: 1, removable: 1 })), "resources")).not.toHaveProperty("reason");
   });
 
   it("offers Dev server when a host can serve the project, checked while the pane is open", () => {
@@ -227,7 +226,7 @@ describe("canCompact", () => {
 
 describe("Save as a play…", () => {
   it("is offered on a Work thread of a workspace with Work on, before Resources, and never on a draft", () => {
-    expect(ids(threadMenuRows(facts({ play: true })))).toEqual(["rename", "type", "—", "compact", "—", "save-play", "resources", "master", "—", "archive", "delete"]);
+    expect(ids(threadMenuRows(facts({ play: true })))).toEqual(["rename", "type", "—", "compact", "—", "save-play", "master", "—", "archive", "delete"]);
     expect(row(threadMenuRows(facts({ play: true })), "save-play")).toMatchObject({ label: "Save as a play…" });
     expect(ids(threadMenuRows(facts({ play: true, draft: true })))).not.toContain("save-play");
     expect(ids(threadMenuRows(facts()))).not.toContain("save-play");
@@ -249,7 +248,7 @@ describe("threadMenuRows for a Work thread", () => {
   });
 
   it("a code thread keeps every type, its Dev server and its Resources… row", () => {
-    const code = threadMenuRows(facts({ dev: { open: false } }));
+    const code = threadMenuRows(facts({ dev: { open: false }, resources: 1, removable: 1 }));
     expect(typesOf(code)).toEqual(["type:chat", "type:planning", "type:project-plan", "type:implementation", "type:orchestration", "type:research"]);
     expect(ids(code)).toEqual(expect.arrayContaining(["dev", "resources"]));
   });

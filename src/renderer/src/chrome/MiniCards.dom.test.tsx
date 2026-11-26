@@ -49,6 +49,10 @@ describe("the composer's mini cards", () => {
     expect(titleOf(view.container)).toBe("Fix the gate");
     expect(descriptions(view.container)).toHaveLength(1);
     expect(descriptions(view.container)[0].textContent).toBe("#12me/app");
+    // Two facts are one comma sentence, 4px apart, never set apart by 12px of space alone.
+    const facts = descriptions(view.container)[0] as HTMLElement;
+    expect(facts.className.split(" ")).toEqual(expect.arrayContaining(["gap-1", "[&>span:not(:last-child)]:after:content-[',']"]));
+    expect(facts.className.split(" ")).not.toContain("gap-3");
     expect(view.container.textContent).not.toContain("bug");
     expect(view.container.textContent).not.toContain("Pull request");
     fireEvent.click(view.getByRole("button", { name: "Open Pull request #12 in GitHub" }));

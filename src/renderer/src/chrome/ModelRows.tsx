@@ -115,7 +115,7 @@ export function ModelRows({
         {(run: Run) => (
           <ComboboxGroup key={run.value} items={run.items} data-vendor-group={run.vendor}>
             {run.vendor ? (
-              <ComboboxLabel className="flex items-center gap-2 pt-2">
+              <ComboboxLabel className="flex items-center gap-2 pt-2 text-xs">
                 <HarnessIcon harness={run.vendor} className="size-3 shrink-0" />
                 {VENDOR_TITLE[run.vendor]}
               </ComboboxLabel>

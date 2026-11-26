@@ -26,9 +26,9 @@ describe("workingPhase", () => {
   });
 
   it("says the host's words while nothing of the turn's own has come, keyed up to the first comma", () => {
-    const a = workingPhase([user()], "Waiting for the provider, 25 s");
-    const b = workingPhase([user()], "Waiting for the provider, 30 s");
-    expect(a).toEqual({ key: "host:Waiting for the provider", words: "Waiting for the provider, 25 s" });
+    const a = workingPhase([user()], "Waiting for the provider, 25s");
+    const b = workingPhase([user()], "Waiting for the provider, 30s");
+    expect(a).toEqual({ key: "host:Waiting for the provider", words: "Waiting for the provider, 25s" });
     expect(b.key).toBe(a.key);
     expect(workingPhase([user()], "Starting the CLI").key).toBe("host:Starting the CLI");
     // An empty thought is not the turn's own yet.
@@ -122,7 +122,7 @@ describe("workingPhase", () => {
       words: "Waiting for the Mac to be free, 2nd in line",
     });
     // Without the host's words (no row reached this desktop), the call's own live phrase.
-    expect(workingPhase([user(), click], null, {}).call).toMatchObject({ verb: "Clicking", object: "in TextEdit" });
+    expect(workingPhase([user(), click], null, {}).call).toMatchObject({ verb: "Clicking in", object: "TextEdit" });
   });
 });
 

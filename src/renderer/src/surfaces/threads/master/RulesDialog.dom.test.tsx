@@ -33,4 +33,10 @@ describe("RulesDialog", () => {
     expect((screen.getByRole("button", { name: "Move Release up" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.queryByRole("button", { name: "Remove Land" })).toBeNull();
   });
+
+  it("names Then's choice in the foot's words: Notify you", () => {
+    render(<RulesDialog rules={rules([{ id: "land", name: "Land", kind: "land" }])} onClose={() => {}} onSave={async () => {}} />);
+    expect(screen.getByText("Notify you")).toBeTruthy();
+    expect(screen.queryByText("Notify me")).toBeNull();
+  });
 });

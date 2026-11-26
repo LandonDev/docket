@@ -418,6 +418,15 @@ function targetNamed(a: StepInput): Named {
   return null
 }
 
+/**
+ * A phrase whose object is the app alone ("in TextEdit") keeps the preposition with its verb ("Worked in", "TextEdit"):
+ * the transcript's row and working line draw the verb muted and the object lit, so the preposition never lights. Read
+ * together the words are the same. The Computer section's history keeps the object whole: it swaps the app in and out.
+ */
+export function liftIn(p: ComputerPhrase): ComputerPhrase {
+  return p.object.startsWith('in ') ? { ...p, verb: `${p.verb} in`, object: p.object.slice(3) } : p
+}
+
 /** One action in words, with the element it names (already resolved) in the app; a null app is left out. */
 function stepPhrase(a: StepInput, element: Named, appName: string | null, tense: Tense): ComputerPhrase {
   const f = (forms: Forms): string => forms[tense]

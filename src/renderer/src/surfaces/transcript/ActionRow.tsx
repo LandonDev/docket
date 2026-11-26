@@ -67,6 +67,14 @@ export function ActionRow({
       </div>
     );
   }
+  // A question is its card, then its answered lines: no "Asking a question" line over what already is the question.
+  if (block.question) {
+    return (
+      <div data-block={block.id} className="flex min-w-0 flex-col">
+        <QuestionCard question={block.question} />
+      </div>
+    );
+  }
   const hasBody = action.opens !== "file" && action.opens !== "none";
   // While the call waits on the person its body shows what it asks, and stays open.
   const shown = open || (action.pending && hasBody);
@@ -132,7 +140,6 @@ export function ActionRow({
       ) : null}
       {/* Allow and Deny under the body while the call waits, its verdict once decided. */}
       {approval ? <ApprovalCard block={block} onApproval={onApproval} /> : null}
-      {block.question ? <QuestionCard question={block.question} /> : null}
     </div>
   );
 }

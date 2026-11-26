@@ -75,9 +75,10 @@ describe("a computer call in the transcript", () => {
     const step = formatStepLine({ index: 0, action: "left_click", status: "ok", tier: "ax", effect: "changed", element: { index: 14, line: 'button "Save"' } }, { action: "left_click", element: 14 });
     const clicked = call("mcp__app__computer_act", { app: "com.apple.TextEdit", action: "left_click", element: 14 }, result([step]));
     expect(appView(clicked, titleOf, false)).toEqual({ label: "Clicked", detail: "Save in TextEdit", phrase: "clicked Save in TextEdit", glyph: "computer" });
-    expect(appView(clicked, titleOf, true)).toMatchObject({ label: "Clicking", detail: "in com.apple.TextEdit" });
+    expect(appView(clicked, titleOf, true)).toMatchObject({ label: "Clicking in", detail: "com.apple.TextEdit" });
     const batch = call("app.computer_batch", { app: "Mail", actions: [{ action: "left_click", element: 3 }, { action: "type", text: "secret" }, { action: "key", text: "super+Return" }] }, result([]));
-    expect(appView(batch, titleOf, false)).toMatchObject({ label: "Worked", detail: "in TextEdit", tally: "3 steps", glyph: "computer" });
+    // The preposition rides with the verb: only the app lights (DESIGN "verb muted, object in foreground").
+    expect(appView(batch, titleOf, false)).toMatchObject({ label: "Worked in", detail: "TextEdit", tally: "3 steps", glyph: "computer" });
     expect(appView(call("mcp__app__computer_observe", { app: "TextEdit" }, header), titleOf, false)).toMatchObject({ label: "Read", detail: "TextEdit", phrase: "read TextEdit" });
   });
 });

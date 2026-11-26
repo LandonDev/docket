@@ -246,7 +246,7 @@ describe('implementPlan (inheritance and overrides)', () => {
       planPath: reg.get('p')!.planPath,
       title: 'Ship the widget',
       cwd: '/work/here',
-      goal: "Every task in the plan's checklist is checked off and typecheck passes"
+      goal: 'Every task in the plan is done'
     })
     expect(reg.sends[0]).toMatchObject({ id: built.id, text: 'Implement the plan "Ship the widget".' })
     expect(reg.sends[0].attachments).toEqual([{ path: 'thread:p', name: 'Plan: p', kind: 'thread', sessionId: 'p' }])

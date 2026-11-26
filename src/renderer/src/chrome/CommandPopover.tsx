@@ -9,7 +9,7 @@ import { MENU_ROW } from "../components/ui/menu-row";
 import { timeAgo } from "../lib/duration";
 import { DUR } from "../lib/ease";
 import { marksAtRest } from "../lib/threadStripModel";
-import { AddonMark } from "./AddonMark";
+import { AddonMark, hasOwnMark } from "./AddonMark";
 import { FileText, MessageSquare, StickyNote } from "./icons";
 
 /**
@@ -70,6 +70,7 @@ function ThreadGlyph({ status }: { status: SessionMeta["status"] }) {
 }
 
 export function CommandPopover({
+  id,
   matches,
   active,
   projectId,
@@ -77,6 +78,8 @@ export function CommandPopover({
   onActive,
   onAccept,
 }: {
+  /** The listbox's id; each row's is `${id}-${index}`, which the field names as its active descendant. */
+  id?: string;
   matches: PopoverMatches | null;
   active: number;
   /** The composer's own project, so foreign threads show where they live. */
@@ -118,6 +121,7 @@ export function CommandPopover({
   }, [active, matches]);
 
   const rowProps = (n: number) => ({
+    id: id ? `${id}-${n}` : undefined,
     "data-active": n === active,
     role: "option",
     "aria-selected": n === active,
@@ -145,6 +149,7 @@ export function CommandPopover({
     >
       <div
         ref={listRef}
+        id={id}
         role="listbox"
         aria-label={rows.mode === "command" ? "Skills and commands" : "Mentions"}
         className="max-h-72 overflow-x-hidden overflow-y-auto overscroll-none rounded-xl p-1 [--scrollbar-inset:var(--radius-xl)]"
@@ -165,12 +170,13 @@ export function CommandPopover({
               <Fragment key={`${c.scope}:${c.name}`}>
                 {SECTION_LABELS[c.source] !==
                 SECTION_LABELS[rows.rows[n - 1]?.source as SlashCommand["source"]] ? (
-                  <p className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground first:pt-1">
+                  <p className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground first:pt-1">
                     {SECTION_LABELS[c.source]}
                   </p>
                 ) : null}
                 <div {...rowProps(n)}>
-                  <AddonMark command={c} size={14} />
+                  {/* A plain command keeps the 14px slot empty, so every name starts on one edge. */}
+                  {hasOwnMark(c) ? <AddonMark command={c} size={14} /> : <span data-mark-slot aria-hidden className="size-3.5 shrink-0" />}
                   <span className="shrink-0 font-medium">
                     {c.source === "plugin" || c.source === "mcp"
                       ? addonTitle(c.name)
@@ -196,7 +202,7 @@ export function CommandPopover({
               const mixed = rows.rows.some((x) => groupOf(x) !== group);
               const label =
                 mixed && (!prev || groupOf(prev) !== group) && !(n === 0 && m.kind === "file") ? (
-                  <div className="px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
+                  <div className="px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground">
                     {m.kind === "work" ? m.row.group : GROUP_LABEL[m.kind]}
                   </div>
                 ) : null;

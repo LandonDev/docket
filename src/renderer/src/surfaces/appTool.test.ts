@@ -43,8 +43,10 @@ describe("appView", () => {
       phrase: "read thread “Auth rewrite”",
       threadId: "thread1",
     });
+    // An id is never on screen: an untitled thread is "Read a thread".
     expect(appView(call("app_read_thread", { threadId: "zz" }), titleOf)).toMatchObject({
-      detail: "zz",
+      label: "Read a thread",
+      detail: "",
       threadId: undefined,
     });
     expect(appView(call("app_list_threads", { allProjects: true }), titleOf)?.detail).toBe("all projects");

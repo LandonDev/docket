@@ -39,7 +39,7 @@ describe('statusWords', () => {
     expect(detailText('  Usage cap. ')).toBe('Usage cap')
     expect(detailText('PR checks failed')).toBe('PR checks failed')
     expect(detailText('sleep 45 seconds')).toBe('sleep 45 seconds')
-    expect(detailText('Rate limited, retry 3 in 32 s')).toBe('Rate limited, retry 3 in 32 s')
+    expect(detailText('Rate limited, retry 3 in 32s')).toBe('Rate limited, retry 3 in 32s')
     expect(detailText('  ')).toBeNull()
     expect(detailText(null)).toBeNull()
   })
@@ -81,16 +81,16 @@ describe('statusWords', () => {
   })
 
   it('words a retry with a comma: the wait, the count of tries, or neither', () => {
-    expect(retryWords({ why: 'rate-limited', attempt: 3, delayMs: 32_000 })).toBe('Rate limited, retry 3 in 32 s')
-    expect(retryWords({ why: 'overloaded', attempt: 2, delayMs: 8_000 })).toBe('Provider overloaded, retry 2 in 8 s')
+    expect(retryWords({ why: 'rate-limited', attempt: 3, delayMs: 32_000 })).toBe('Rate limited, retry 3 in 32s')
+    expect(retryWords({ why: 'overloaded', attempt: 2, delayMs: 8_000 })).toBe('Provider overloaded, retry 2 in 8s')
     expect(retryWords({ why: 'reconnecting', attempt: 2, of: 5 })).toBe('Reconnecting, retry 2 of 5')
     expect(retryWords({ why: 'reconnecting', attempt: 2, of: '5' })).toBe('Reconnecting, retry 2 of 5')
     expect(retryWords({ why: 'retrying', attempt: 4 })).toBe('Retrying, retry 4')
-    expect(retryWords({ why: 'retrying', attempt: 1, delayMs: 400 })).toBe('Retrying, retry 1 in 1 s')
+    expect(retryWords({ why: 'retrying', attempt: 1, delayMs: 400 })).toBe('Retrying, retry 1 in 1s')
   })
 
   it('words the provider wait with a comma', () => {
-    expect(providerWaitWords(25)).toBe('Waiting for the provider, 25 s')
+    expect(providerWaitWords(25)).toBe('Waiting for the provider, 25s')
   })
 
   it('puts an unread steer behind what the turn does', () => {

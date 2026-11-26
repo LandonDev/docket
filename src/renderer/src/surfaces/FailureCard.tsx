@@ -1,3 +1,4 @@
+import { workErrorWords } from "../lib/workErrorWords";
 import { Fragment, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import type { Failure } from "@server/shared/events";
 import { SERVICE_OF, isPickedProvider } from "@server/shared/accounts";
@@ -197,7 +198,7 @@ export function FailureCard({
         setState({ pending: "sign-in", outcome: null });
         void window.aliax
           .loginStart(SERVICE_OF[provider], failure.account ?? undefined)
-          .then((result) => settle(result.ok ? "Signed in. Retry to pick the work back up." : result.error))
+          .then((result) => settle(result.ok ? "Signed in. Retry to pick the work back up." : errorLine(result.error)))
           .catch((err: unknown) => settle(errorLine(err)));
         return;
       }
@@ -254,7 +255,13 @@ export function FailureCard({
   );
 }
 
-function errorLine(err: unknown): string {
-  const text = err instanceof Error ? err.message : String(err);
-  return text.replace(/\s+/g, " ").trim() || "That did not work.";
+/**
+ * A press that failed, in words: a refusal the host words for a thread (a
+ * paused one) by its own sentence, a known one as `workErrorWords` says it,
+ * else one fixed line. Never the thrown text with its ids and sockets.
+ */
+export function errorLine(err: unknown): string {
+  const text = (err instanceof Error ? err.message : String(err ?? "")).replace(/\s+/g, " ").trim();
+  if (/\bis manually paused\b/i.test(text)) return "This thread is paused. Resume it, then try again.";
+  return workErrorWords(text) || "That did not go through. Try again.";
 }

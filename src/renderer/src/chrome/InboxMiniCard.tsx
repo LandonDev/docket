@@ -1,3 +1,4 @@
+import { MINI_FACTS } from "./MiniCardRemove";
 import { CircleDot, GitPullRequest } from "./icons";
 import { openUrl } from "../lib/native";
 import type { InboxComposerCard } from "../lib/githubTasks";
@@ -32,7 +33,7 @@ export function InboxMiniCard({ card, onDismiss }: Props) {
         </AttachmentMedia>
         <AttachmentContent>
           <AttachmentTitle>{card.title}</AttachmentTitle>
-          <AttachmentDescription className="flex gap-3">
+          <AttachmentDescription className={MINI_FACTS}>
             <span className="shrink-0 tabular-nums">{card.identifier}</span>
             {card.source ? <span className="min-w-0 truncate">{card.source}</span> : null}
           </AttachmentDescription>

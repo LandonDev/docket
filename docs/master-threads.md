@@ -581,7 +581,7 @@ master itself, and past `STALE_WATCH_MS` (30 minutes) sends one
 thread has moved for 32 min: "A" (a1) working (last event 32 min ago),
 "B" (b1) queued (waiting for "A"), "C" (c1) done."); the stamp stays on the
 row, and only movement after it re-arms the watch, so a quiet batch is
-never nagged. Stop and Kill background tasks on a
+never nagged. Stop and Stop background tasks on a
 watching master idle it for real (a one-shot `stopWatching` that
 `masterKeepsWatching` honours until the next turn starts: a send or a
 report drain), so it holds no running slot; unpinning a watching master

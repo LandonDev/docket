@@ -1,3 +1,4 @@
+import { LoadEarlierButton } from "./transcript/LoadEarlier";
 import type { ApprovalHandler, HandoffHandler, SecondOpinionHandler } from "./transcript/types";
 import {
   memo,
@@ -53,7 +54,6 @@ import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
 import { groupTurns } from "./transcriptActivity";
 import { TurnEnd } from "./transcript/TurnEnd";
 import { ActionGroup } from "./transcript/ActionGroup";
-import { Button } from "../components/ui/button";
 import { TranscriptBlock } from "./transcript/TranscriptBlock";
 /*
  * One scroll engine (ported from temp-code). Three modes: `follow` rides the
@@ -1026,7 +1026,7 @@ export const AgentTranscript = memo(function AgentTranscript({
   // render re-rendered every mounted row on every push.
   const loadEarlier = useCallback(() => {
     release();
-    if (sessionId) void sessionStore.loadOlder(sessionId);
+    return sessionId ? sessionStore.loadOlder(sessionId) : undefined;
   }, [release, sessionId]);
 
   // Which harness answered a turn, for its duration line. Read through a
@@ -1203,7 +1203,7 @@ type RowViewProps = {
   liveState: boolean;
   onOpenActivity?: () => void;
   register: (key: string, el: HTMLElement | null) => void;
-  onLoadEarlier: () => void;
+  onLoadEarlier: () => void | Promise<unknown>;
   onApproval?: Props["onApproval"];
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path: string) => void;
@@ -1274,9 +1274,7 @@ const RowView = memo(function RowView({
     >
       {row.kind === "more" ? (
         <div className="flex justify-center">
-          <Button variant="secondary" size="sm" onClick={onLoadEarlier}>
-            Load earlier messages
-          </Button>
+          <LoadEarlierButton variant="secondary" size="sm" onLoad={onLoadEarlier} label="Load earlier messages" busyLabel="Loading…" />
         </div>
       ) : row.kind === "end" ? (
         <TurnEnd

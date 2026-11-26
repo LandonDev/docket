@@ -44,6 +44,13 @@ const folderRow = (path: string): MenuRow => ({
   checked: false,
 });
 
+/** A folder as the row names it: its own name, "Home" for the home folder;
+ *  the path is the trigger's tooltip, never its words. */
+export function folderName(cwd: string): string {
+  const path = prettyCwd(cwd);
+  return path === "~" ? "Home" : basename(cwd) || path;
+}
+
 /** The project of a draft (the composer's foot, the title bar): the current
  *  one ticked, recent ones to switch to, the rest under More projects. */
 export function CwdPicker({
@@ -61,7 +68,8 @@ export function CwdPicker({
   onClose,
 }: Props) {
   const inProject = looksLikeProject(cwd);
-  const label = prettyCwd(cwd);
+  const path = prettyCwd(cwd);
+  const label = folderName(cwd);
 
   const rows = (): MenuRow[] => {
     const others = recents.filter((item) => !inProject || !sameProjectPath(item.path, cwd));
@@ -109,7 +117,7 @@ export function CwdPicker({
         <>
           {/* 14px, as the row's other glyphs: its centre sits on the model's and `+`'s. */}
           {inProject ? <FolderGlyph path={cwd} className="size-3.5 shrink-0" /> : <Folder className="size-3.5 shrink-0" />}
-          <span className="truncate font-mono text-xs">{label}</span>
+          <span className="truncate text-xs">{label}</span>
         </>
       )}
       {chevron ? (
@@ -123,6 +131,7 @@ export function CwdPicker({
       <RowsMenu
         trigger={trigger}
         label="Project picker"
+        tip={children ? undefined : { label: path }}
         rows={rows}
         onPick={pick}
         onOpenChange={(next) => {

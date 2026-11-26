@@ -16,7 +16,8 @@ import {
   needsApproval,
   openItemName,
   verdictWords,
-  type TitleContext
+  type TitleContext,
+  liftIn
 } from './words'
 
 const book: Record<number, string> = { 14: 'button "Save"', 33: 'input "Subject" focused', 31: 'button "To"', 5: 'scroll area', 12: 'password "Password"' }
@@ -367,6 +368,9 @@ describe('computerPhrase', () => {
     ]
     expect(result(ran)).toContain(NOT_EXECUTED_LINE)
     expect(settled('computer_batch', many, result(ran))).toEqual({ verb: 'Worked', object: 'in TextEdit', tally: '3 steps' })
+    // On a transcript row the preposition rides with the verb, so only the app lights.
+    expect(liftIn(settled('computer_batch', many, result(ran))!)).toEqual({ verb: 'Worked in', object: 'TextEdit', tally: '3 steps' })
+    expect(liftIn({ verb: 'Typed', object: 'into Search in Mail' })).toEqual({ verb: 'Typed', object: 'into Search in Mail' })
     expect(words(live('computer_batch', { app: 'Mail', actions: [{ action: 'screenshot' }] }))).toBe('Looking at Mail')
   })
 

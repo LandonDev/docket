@@ -88,18 +88,19 @@ const RETRY_WORD: Record<RetryWhy, string> = {
   retrying: 'Retrying'
 }
 
-/** A retry the harness runs itself: "Rate limited, retry 3 in 32 s",
- *  "Provider overloaded, retry 2 in 8 s", "Reconnecting, retry 2 of 5",
+/** A retry the harness runs itself: "Rate limited, retry 3 in 32s",
+ *  "Provider overloaded, retry 2 in 8s", "Reconnecting, retry 2 of 5",
  *  "Retrying, retry 4" (no wait known). */
 export function retryWords(r: { why: RetryWhy; attempt: number; delayMs?: number; of?: number | string }): string {
   const of = r.of === undefined || r.of === '' ? '' : ` of ${r.of}`
-  const wait = !of && r.delayMs && r.delayMs > 0 ? ` in ${Math.max(1, Math.round(r.delayMs / 1000))} s` : ''
+  const wait = !of && r.delayMs && r.delayMs > 0 ? ` in ${Math.max(1, Math.round(r.delayMs / 1000))}s` : ''
   return `${RETRY_WORD[r.why]}, retry ${r.attempt}${of}${wait}`
 }
 
-/** A request out at the provider past the threshold: "Waiting for the provider, 25 s". */
+/** A request out at the provider past the threshold: "Waiting for the provider, 25s" (seconds as the thought and
+ *  the closing line write them). */
 export function providerWaitWords(seconds: number): string {
-  return `Waiting for the provider, ${seconds} s`
+  return `Waiting for the provider, ${seconds}s`
 }
 
 /** A message sent into an open turn that the model has not read yet: it is

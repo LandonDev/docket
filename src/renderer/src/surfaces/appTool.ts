@@ -6,7 +6,7 @@ import { bareAgentId } from "@shared/watch";
 import { inputOf, toolPathOf } from "../lib/toolDetails";
 import { hostOf } from "../lib/threads/researchBoard";
 import { isLive } from "../lib/toolPhrase";
-import { computerPhrase } from "@shared/computer/words";
+import { computerPhrase, liftIn } from "@shared/computer/words";
 import { EDIT_TOOLS } from "./editModel";
 import { editPaths } from "./editCards";
 import { computerResultText } from "./computerShots";
@@ -81,7 +81,9 @@ export function appView(block: Block, titleOf: TitleOf, live = isLive(block)): A
   }
   const short = shortName(name);
   // A computer call in plain words: live from its input, settled from its result's step lines.
-  const computer = computerPhrase(short, i, { live, result: live ? undefined : (computerResultText(block.tool?.detail) ?? undefined) });
+  const said = computerPhrase(short, i, { live, result: live ? undefined : (computerResultText(block.tool?.detail) ?? undefined) });
+  // "Worked in" muted, "TextEdit" lit: the preposition never lights with the app.
+  const computer = said && liftIn(said);
   if (computer) {
     const phrase = `${computer.verb.charAt(0).toLowerCase()}${computer.verb.slice(1)} ${computer.object}`;
     return { label: computer.verb, detail: computer.object, phrase, glyph: "computer", ...(computer.tally ? { tally: computer.tally } : {}) };
@@ -147,9 +149,10 @@ export function appView(block: Block, titleOf: TitleOf, live = isLive(block)): A
     case "app_read_thread": {
       const id = str(i.threadId);
       const title = titleOf(id);
+      // A thread's id is never on screen: an untitled or gone thread reads "Read a thread".
       return {
-        label: "Read thread",
-        detail: title ?? id,
+        label: title ? "Read thread" : "Read a thread",
+        detail: title ?? "",
         phrase: title ? `read thread “${trim(title, 24)}”` : "read a thread",
         threadId: title ? id : undefined,
       };

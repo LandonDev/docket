@@ -2,34 +2,44 @@ import { AnimatePresence } from "motion/react";
 import { useMemo, useState, type ReactNode } from "react";
 import { taskTitle, useAgents } from "../../lib/threads/agents";
 import { OpenAgentDetailContext } from "../agentDetailContext";
-import { ChatFooter, chatOf } from "./chatSlots";
+import type { Block } from "../../lib/session";
+import { ChatFooter, ColumnBand, chatOf } from "./chatSlots";
 import { AgentDetail } from "./fleet/AgentDetail";
 import { FleetHeader } from "./fleet/FleetHeader";
 import type { ThreadViewProps } from "./ThreadView";
-import { COLUMN_MAX_CLASS } from "../transcriptOutlineModel";
+import type { OutlinePlacement } from "../transcriptOutlineModel";
 
 /**
  * Orchestration thread: the chat, under a header with the goal and one
  * sentence of what the agents are doing. The agents themselves are rows in
  * the right panel's Agents section; a spawn row in the transcript opens the
- * agent's detail over the pane.
+ * agent's detail over the pane. The header sits on the transcript's column
+ * (`ColumnBand`, as the composer does), after the message list while it is
+ * beside and open.
  */
+
+/** The header's goal: the newest user line (its first line), else the
+ *  first brief's title; none while it is the newest bubble's whole text,
+ *  which the transcript shows right under the header ("yes, go on"). */
+export function orchestrationGoal(blocks: readonly Block[]): string {
+  const last = [...blocks].reverse().find((b) => b.role === "user" && b.text.trim());
+  if (!last) return taskTitle(blocks as Block[]);
+  const text = last.text.trim();
+  const line = text.split("\n")[0].trim();
+  return line === text ? "" : line;
+}
+
 export function OrchestrationView(props: ThreadViewProps) {
   const { session } = props;
   const agents = useAgents(session.id);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const goal = useMemo(() => {
-    const last = [...session.blocks].reverse().find((b) => b.role === "user" && b.text.trim());
-    return last ? last.text.trim().split("\n")[0].trim() : taskTitle(session.blocks);
-  }, [session.blocks]);
+  const goal = useMemo(() => orchestrationGoal(session.blocks), [session.blocks]);
 
-  const header =
+  const header = (placement: OutlinePlacement) =>
     agents.length > 0 ? (
-      <div className="shrink-0 px-4 pt-5 pb-3">
-        <div className={`mx-auto w-full ${COLUMN_MAX_CLASS}`}>
-          <FleetHeader goal={goal} agents={agents} />
-        </div>
-      </div>
+      <ColumnBand placement={placement} className="pt-5 pb-3" data-fleet-band="">
+        <FleetHeader goal={goal} agents={agents} />
+      </ColumnBand>
     ) : null;
 
   let column: ReactNode;
@@ -37,7 +47,7 @@ export function OrchestrationView(props: ThreadViewProps) {
     const slots = props.renderSlots();
     column = (
       <>
-        {header}
+        {header(slots.placement ?? "hidden")}
         {slots.transcript}
         <ChatFooter slots={slots} />
       </>
@@ -45,7 +55,7 @@ export function OrchestrationView(props: ThreadViewProps) {
   } else {
     column = (
       <>
-        {header}
+        {header("hidden")}
         <div className="flex min-h-0 flex-1 flex-col">{chatOf(props)}</div>
       </>
     );

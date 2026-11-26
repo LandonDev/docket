@@ -6,6 +6,7 @@ import { respondHarnessApproval } from "../../../lib/harness";
 import type { OpenFileFn } from "../../../lib/search";
 import * as commands from "../../../lib/tcserver/commands";
 import { asHarness } from "../../../lib/tcserver/store";
+import { failureReason } from "../../../lib/threadActionFailure";
 import {
   agentStatus,
   isLiveStatus,
@@ -71,7 +72,8 @@ export function AgentDetailBody({
       else await commands.send(session, body);
       setText((now) => (now.trim() === body ? "" : now));
     } catch (error) {
-      setFailure(`Couldn't ${live ? "steer" : "send"}: ${error instanceof Error ? error.message : String(error)}`);
+      const why = failureReason(error);
+      setFailure(`Couldn't ${live ? "steer" : "send"}${why ? `: ${why}` : ""}`);
     } finally {
       setSending(false);
       inputRef.current?.focus();

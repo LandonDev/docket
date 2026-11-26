@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BatchState, BatchStep, BatchStepSpec } from "@server/shared/contract-batch";
-import { consoleLines, consoleStep, hasConsole, liveStep, liveSteps, nearBottom, progressText, specOf, stepDetail, stepState, stepTime, tailLines, type LiveStep } from "./steps";
+import { consoleLines, consoleStep, failureWords, hasConsole, liveStep, liveSteps, nearBottom, progressText, specOf, stepDetail, stepState, stepTime, tailLines, type LiveStep } from "./steps";
 
 const batch = { landed: ["a"], pending: ["b", "c"] };
 const live = (over: Partial<LiveStep>): LiveStep => ({ id: "gate", name: "Gate", kind: "gate", status: "pending", detail: "", log: [], ...over });
@@ -122,6 +122,15 @@ describe("the console", () => {
     expect(consoleStep(steps, new Set(["gate"]))).toBeNull();
     expect(consoleStep([live({ id: "land", status: "running" }), ...steps], new Set())?.id).toBe("land");
     expect(consoleStep([live({ id: "land", status: "passed" })], new Set())).toBeNull();
+  });
+
+  it("says a failure without a runtime's error lead or a path", () => {
+    const rules = { land: "as-they-finish" } as const;
+    const missing = 'error: Module not found "scripts/gate.ts"';
+    expect(stepDetail(live({ status: "failed", detail: missing }), rules).text).toBe("The script is missing");
+    expect(stepDetail(live({ status: "failed", detail: "error: exit code 2" }), rules).text).toBe("Exit code 2");
+    expect(stepDetail(live({ status: "failed", detail: "Error: Cannot find module './x'" }), rules).text).toBe("The script is missing");
+    expect(failureWords("vitest: 2 failed")).toBe("vitest: 2 failed");
   });
 
   it("opens no console for a failed step whose log only repeats its row, or has no lines", () => {

@@ -112,7 +112,7 @@ describe("AgentDetailBody", () => {
     const field = view.getByPlaceholderText("Steer this agent…") as HTMLInputElement;
     fireEvent.change(field, { target: { value: "use the cache" } });
     fireEvent.submit(field.closest("form")!);
-    await waitFor(() => expect(view.getByRole("alert").textContent).toBe("Couldn't steer: no live harness"));
+    await waitFor(() => expect(view.getByRole("alert").textContent).toBe("Couldn't steer: No live harness"));
     expect(field.value).toBe("use the cache");
     expect(view.getByRole("alert").className).toContain("text-destructive");
     // Typing again clears the line; a send that lands clears the field.

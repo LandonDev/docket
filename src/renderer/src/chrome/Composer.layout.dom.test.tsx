@@ -161,6 +161,37 @@ describe("the box: one row", () => {
   });
 });
 
+describe("the field's placeholder", () => {
+  it("is Reply… in a thread and the greeting on the new-thread screen", () => {
+    const thread = render(<Composer {...props()} />);
+    expect(parts(thread.container).field.dataset.placeholder).toBe("Reply…");
+    cleanup();
+    const shell = render(<Composer {...props({ shell: true })} />);
+    expect(parts(shell.container).field.dataset.placeholder).toBe("How can I help you today?");
+  });
+});
+
+describe("a file dragged over the box", () => {
+  it("covers the field with the card's own fill under the tint and says Drop to attach at 13px, so no text shows through", async () => {
+    const view = render(
+      <div data-session-drop>
+        <Composer {...props()} />
+      </div>,
+    );
+    const root = view.container.querySelector<HTMLElement>("[data-session-drop]")!;
+    const over = new Event("dragover", { bubbles: true, cancelable: true }) as DragEvent;
+    Object.defineProperty(over, "dataTransfer", { value: { types: ["Files"], dropEffect: "none", files: [] } });
+    await act(async () => {
+      root.dispatchEvent(over);
+    });
+    const wash = view.container.querySelector<HTMLElement>("[data-drop-wash]")!;
+    expect(wash.textContent).toBe("Drop to attach");
+    const cls = wash.className.split(" ");
+    expect(cls).toEqual(expect.arrayContaining(["bg-card", "inset-0", "text-[13px]"]));
+    expect(cls.some((c) => c.includes("/"))).toBe(false);
+  });
+});
+
 describe("the row under the box gives way at a narrow box", () => {
   it("in order: the meter's percent, then the model's effort, then the mode's label, then the model's name", () => {
     const { bar } = parts(render(<Composer {...props({ modelSettings: { effort: "high" } })} />).container);

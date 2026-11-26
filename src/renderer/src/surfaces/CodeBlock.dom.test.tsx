@@ -9,6 +9,11 @@ vi.mock("../lib/highlight", () => ({
 const copyText = vi.fn((_: string) => Promise.resolve());
 vi.mock("../lib/clipboard", () => ({ COPIED_MS: 1200, copyText: (text: string) => copyText(text) }));
 vi.mock("../lib/sounds", () => ({ playCue: () => {} }));
+const toasted = vi.hoisted(() => ({ error: [] as string[] }));
+vi.mock("../components/ui/toaster", async (original) => ({
+  ...(await original<typeof import("../components/ui/toaster")>()),
+  loadToast: () => Promise.resolve(Object.assign(() => {}, { error: (m: string) => toasted.error.push(m) })),
+}));
 
 import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 import { CodeBlock, COPIED_MS } from "./CodeBlock";
@@ -86,6 +91,16 @@ describe("CodeBlock", () => {
     });
     expect(copyText).toHaveBeenCalledWith("const a = 1;");
     expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+  });
+
+  it("a copy the clipboard refuses says Couldn't copy and never shows the check", async () => {
+    copyText.mockImplementationOnce(() => Promise.reject(new Error("denied")));
+    render(<CodeBlock code="x" language="ts" />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+    });
+    expect(toasted.error).toEqual(["Couldn't copy"]);
+    expect(screen.queryByRole("button", { name: "Copied" })).toBeNull();
   });
 
   it("holds its check COPIED_MS (1.2 s), the one beat every Copy control holds", async () => {

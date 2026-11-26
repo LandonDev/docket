@@ -31,7 +31,8 @@ describe("RevisePlanDialog", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Send" }));
     });
-    expect(screen.getByText("the thread is gone").className).toContain("text-destructive");
+    // The host's words, said as a sentence (failureReason), never the raw text.
+    expect(screen.getByText("The thread is gone").className).toContain("text-destructive");
     expect(onOpenChange).not.toHaveBeenCalled();
   });
 });

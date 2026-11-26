@@ -2617,9 +2617,9 @@ export default function App() {
         intent?: ComposerIntent;
       },
     ) => {
-      // False tells the composer nothing took the message, so it keeps his words.
+      // A reason tells the composer nothing took the message, so it keeps his words and says why.
       const current = sessionStore.openForSend(sessionId);
-      if (!current) return false;
+      if (!current) return "this chat is closed in this window";
       if (options?.intent === "pause") {
         void serverCommands.pause(sessionId).catch(() => undefined);
         return;

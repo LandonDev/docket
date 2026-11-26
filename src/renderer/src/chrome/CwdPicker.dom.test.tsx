@@ -5,7 +5,7 @@ import { resetMenus } from "./menuRows";
 
 vi.mock("./ProjectLogoIcon", () => ({ ProjectLogoIcon: () => <svg data-testid="logo" /> }));
 
-import { CwdPicker } from "./CwdPicker";
+import { CwdPicker, folderName } from "./CwdPicker";
 
 afterEach(cleanup);
 beforeEach(() => resetMenus());
@@ -24,6 +24,17 @@ async function open() {
 }
 
 describe("CwdPicker", () => {
+  it("names the folder in the row's sans, Home for the home folder, never its path in mono", () => {
+    mount({ cwd: "/srv/agents/work/temp-code" });
+    const trigger = screen.getByRole("button", { name: "Project temp-code" });
+    const words = [...trigger.querySelectorAll("span")].find((el) => el.textContent === "temp-code")!;
+    expect(words.className.split(" ")).not.toContain("font-mono");
+    expect(trigger.textContent).not.toContain("/");
+    expect(folderName("~")).toBe("Home");
+    expect(folderName("/Users/me")).toBe("Home");
+    expect(folderName("/home/me/code/app/")).toBe("app");
+  });
+
   it("opens on the current project ticked, five recents, More projects and New terminal", async () => {
     mount();
     const menu = await open();

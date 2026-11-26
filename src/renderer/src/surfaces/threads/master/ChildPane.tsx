@@ -90,7 +90,7 @@ export function ChildPane({
       {claimed ? null : (
         <div data-child-bar className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-background pr-3 pl-2">
           <BackButton onBack={onBack} />
-          <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{meta?.title || title || "Untitled"}</span>
+          <span data-child-title className="min-w-0 truncate text-sm font-semibold text-foreground">{meta?.title || title || "Untitled"}</span>
         </div>
       )}
       {loading ? (

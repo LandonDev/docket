@@ -91,8 +91,9 @@ describe('gate lines', () => {
   })
   it('says why a gate failed: the step, else the last line of the log', () => {
     expect(gateReason('✓ typecheck 2s passed\n✗ vitest 40s failed\n')).toBe('at vitest')
-    expect(gateReason('$ bun scripts/gate.ts\nerror: Module not found "scripts/gate.ts"\n\n')).toBe('error: Module not found "scripts/gate.ts"')
-    expect(gateReason('\x1b[31m  fatal: not a git repository  \x1b[0m')).toBe('fatal: not a git repository')
+    // A raw log line never becomes the reason: it stays in the log.
+    expect(gateReason('$ bun scripts/gate.ts\nerror: Module not found "scripts/gate.ts"\n\n')).toBeNull()
+    expect(gateReason('\x1b[31m  fatal: not a git repository  \x1b[0m')).toBeNull()
     expect(gateReason('  \n')).toBeNull()
   })
   it('gateFailureDetail: the failing step and its first error line, by precedence, never a duration', () => {

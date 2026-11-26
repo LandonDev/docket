@@ -49,6 +49,8 @@ describe("ChildPane", () => {
     pane();
     expect(screen.getByRole("button", { name: /Back/ })).toBeTruthy();
     expect(screen.getByText("Home screen")).toBeTruthy();
+    // The board header's title size, so nothing jumps when the view's own header takes over.
+    expect(document.querySelector("[data-child-title]")!.className).toContain("text-sm font-semibold");
     expect(skeleton()).toBeTruthy();
     expect(screen.queryByTestId("thread-view")).toBeNull();
   });

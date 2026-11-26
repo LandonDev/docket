@@ -194,9 +194,10 @@ shows (lib/threadMenu.ts, the thread's one list on every surface), with
 "Move to <host>…" rows before Archive (`useThreadHost` in
 chrome/ThreadHostChip.tsx). A disabled row or submenu says why in its
 tooltip and accessible description, never a second line: Type "Stop or
-wait for the turn to end" while the thread is live, Resources… "Nothing to
-remove", Mac bridge "Set on the parent thread" or "Loading", a refused
-move its host's reason. The thread's rows include Dev server, checked
+wait for the turn to end" while the thread is live, Mac bridge "Set on the parent thread" or "Loading", a refused
+move its host's reason. A row that could only be refused for good is not
+drawn: Resources… shows only while the thread holds something it could
+remove. The thread's rows include Dev server, checked
 while the Dev servers pane is open (only when a host can serve the
 project). A master's rows carry, right after Remove as master, New batch
 thread… and Add existing thread…: the batch's add sheet and adopt dialog
@@ -918,7 +919,11 @@ keeps its 2px accent drop marker.
 The box is Claude desktop's: `rounded-xl` on `COMPOSER_SURFACE` (the card
 fill and a hairline that steps to `border-input` while the box has focus;
 the checkpoint strip above it shares it; the hairline's step eases over
-`--dur-fast`), attachments as `Attachment` chips at its top, then one row:
+`--dur-fast`), attachments as `Attachment` chips at its top (6px in, on the
+row's inset, each `rounded-md` so 12 = 6 + 6 with the box's corner; a failed
+upload is its chip's red Failed, and the line under the chips says only why;
+a send nothing took keeps the words and says "Not sent", with the caller's
+reason after a colon when it has one), then one row:
 `+` (28px) at the left, the field, Send (a 28px circle) at the right, 6px
 from the box's sides and 8px from its top and bottom (the box's 12px radius
 less 6 is the controls' 6px), so the empty box is 46px with its hairline.
@@ -940,7 +945,15 @@ toast anchor (lib/toastAnchor.ts), so the stack sits above the box and the
 row under it alike.
 
 `+` (chrome/ComposerBar.tsx `AddMenu`) holds Attach files, Mention a file or
-thread and Skills and commands; the last two type `@` or `/` at the caret.
+thread and Skills and commands; the last two type `@` or `/` at the caret,
+and show that key as a `Kbd` at the row's end, so the field's placeholder
+need not teach it: a thread's says "Reply…", the new-thread screen's "How
+can I help you today?". Typing `/` or `@` opens the composer's list over the
+box (chrome/CommandPopover.tsx): its groups headed in 12px muted medium, a
+plain command's row with its 14px mark slot left empty (its name already
+starts with `/`), a connector's or a server's with its mark; the field names
+the open list and its highlighted row (`aria-controls`,
+`aria-activedescendant`), so the arrow keys are heard.
 Send's glyph is what Enter would do: send, queue or steer, and Pause while
 the box is empty mid-turn (`SendButton`).
 
@@ -948,14 +961,16 @@ Under the box, 4px below it, one 24px row (chrome/ComposerBar.tsx), always
 there so nothing moves on focus, inset 6px as the box's own row is, so the
 model's glyph sits on `+`'s axis (both centred 21px from the box's edge) and
 the permission mode ends over Send: at the left the model
-button, which reads the model and the effort 4px after it ("Opus 5.5 High") and opens
+button, which reads the model and the effort 4px after it ("Opus 5.5 High": the
+harness's mark already says Claude, so the name drops it; the name medium, the
+effort regular; its accessible name the uncut "Claude Opus 5.5, High effort") and opens
 the model menu: providers, search, the list, then the model's settings as
 rows (Effort, Context, Speed only for the tiers the serving CLI lists, any
 other setting). Its model rows are menu rows (`MENU_ROW` at 28px, `rounded-lg`
 concentric with the 12px panel's 4px inset), and the group heading, the no-match
 line and the setting rows share their 12px inset. In the Claude and Codex tabs a maker's models (Meta's, the
 catalog's `vendor` rows) follow the harness's own under the maker's name in
-11px muted, its 12px mark 8px before it, and no row draws a glyph, so every
+12px muted medium, its 12px mark 8px before it, and no row draws a glyph, so every
 label starts on one edge; out of a tab (search, favorites) each row ends
 its name with its harness in 12px muted, 4px after it, since one model is
 offered under several; Effort lists that row's ladder
@@ -988,7 +1003,8 @@ with the live total at the end, "Compacting context" with its spinner while that
 runs, then the harness's categories largest first, the memory files and MCP
 tools each under the category it details (at most six, largest first, then
 "+N more"; a list the harness sent no category for stands after them with
-its total), `Skeleton` rows until the first reading and "Breakdown after
+its total; a memory file reads by its name and where it applies, "CLAUDE.md,
+user" or "CLAUDE.md, docs", in sans, its path the row's tooltip alone), `Skeleton` rows until the first reading and "Breakdown after
 this turn" mid-turn without one, and Compact at the foot when the thread
 can (`canCompact` in lib/threadMenu.ts, the thread menu's rule). The
 breakdown is `session.context` through lib/contextCache.ts, polled only
@@ -1032,11 +1048,14 @@ adds "Master thread" after the type (chrome/MasterCheck.tsx: a 14px
 checkbox and its 12px muted words, the label the hit area with the type
 chip's hover fill), whose tick creates the thread pinned as a master
 (`session.create { master: true }`) and lives on the draft's record;
-another type, or a thread that exists, has none. Last in the row, on a
+another type, or a thread that exists, has none. The project picker
+(chrome/CwdPicker.tsx) names the folder in the row's 12px sans, "Home" for
+the home folder, its path in the tooltip alone. Last in the row, on a
 draft of any type, "Name this thread" (chrome/DraftTitleField.tsx): one
 line of at most 80 characters in the row's 12px, muted with the row's
 hover fill and no border at rest, the field's ring on focus, the typed name
-in the foreground, as wide as its words and the first to give way; Enter
+in the foreground, as wide as its words and the first to give way (under
+a 20rem row it is gone whole, never cut to "Name…"); Enter
 or Escape go back to the message. The name lives on the draft's record and
 the first send makes it the title (`session.create { title }`), which the
 host keeps over the title it would write from the message; left empty, the
@@ -1052,7 +1071,9 @@ dialog (`GoalDialogHost` in chrome/GoalDialog.tsx); usage and accounts are the r
 the context window is the composer's meter above.
 
 The branch in that row (chrome/BranchPicker.tsx) is the branch's glyph and
-its name in mono; a folder that is no repo reads "No repo" in sans, and the
+its name in mono; a folder that is no repo reads "No repo" in sans where
+the draft's type works on a branch, and draws nothing on a chat or research
+draft (a dead control would be the row's only item: DESIGN's chip rule), and the
 wait for the branch is a `Skeleton` in a short name's shape, never a pill.
 
 The host in that row (chrome/DraftHostPicker.tsx) shows for a draft of a
@@ -1198,9 +1219,9 @@ pieces it draws are surfaces/paneChrome.tsx.
 - **Parked tabs.** Only the shown tab's panes take a drop: a parked tab is
   `content-visibility: hidden`, `pointer-events: none` and `aria-hidden`.
 - **States.** A gone thread's pane offers Close pane in a split and Close
-  tab alone. A slow or failed load is one 12px muted line, its parts 8px
-  apart ("Box did not answer", "connection closed", "retrying in 1 s"),
-  then Retry.
+  tab alone. A slow or failed load is one 12px muted line, its facts one
+  comma sentence ("Waiting for the box, 12s", "The box did not answer,
+  retrying in 4s", never the host's raw error), then Retry.
 
 ## Thread views
 
@@ -1225,7 +1246,8 @@ The transcript's left side lists the person's own messages
 one 28px row per user or handoff message (a steer and an optimistic send
 included; reports, nudges and notices never), its first line in 13px muted
 text and its clock time ("2:32 PM", `clockTime`) at the end in 12px `tabular-nums`; a thread that
-spans days heads each day with an 11px label (Today, Yesterday, Oct 30).
+spans days heads each day with a 12px medium label (Today, Yesterday, Oct 30), a group heading as
+DESIGN "Typography" sets it, its text on the rows' own 10px inset.
 The message being read (the row a third of the way down the viewport; the
 first at the top, the last at the end) is in foreground with
 `aria-current`, nothing else. It is 208px wide, 16px from the pane's edge
@@ -1277,7 +1299,10 @@ absent. It is the one control for the host's checkpoint.
 Plan, research, project plan, implementation and master share
 `SplitShell` (surfaces/threads/SplitShell.tsx): the board on the left at a
 dragged split (30 to 70 %, double-click resets to 50), the chat on the
-right, never under 360px beside the board (the board yields first). A
+right, never under 360px beside the board. In a pane under 680px
+(`narrowFold`, `NARROW_FOLD`) every board view keeps its board whole and
+the open chat lies over the board's body under its header, as the canvas
+pane does, so the header and the conversation toggle never leave. A
 board may ask for a fitted width (`fit`, in px): it gets `min(<fit>px,
 50%)` while the chat shows, until the person drags the sash, and a
 double-click then goes back to the fit instead of 50; only
@@ -1286,7 +1311,10 @@ transcript's prose breaks a token longer than its column (a bare URL, a
 path) instead of widening it; a code block scrolls inside its own box. The board has one 36px header: a short title, one muted state line in
 `tabular-nums` (its facts one comma run, "2 of 3 angles, 12 sources, 4 searches", never a middle dot or space alone), the view's
 actions, and last the conversation `Toggle` (`ChatToggle`, pressed while
-the chat shows). While the chat is folded and the thread is paused, the
+the chat shows). The header is a size container: the state line gives way first (it
+shrinks before the title, to an ellipsis) and leaves a header narrower
+than 376px (22rem inside its 12px insets);
+then the title truncates; the actions never do. While the chat is folded and the thread is paused, the
 board draws the paused row of the slot above the composer under its header
 (`held`, `heldRowOf` in chatSlots.tsx: Stop, Continue, a master's "and 3
 batch threads with it"), so a pause never goes out of sight; with the chat
@@ -1402,8 +1430,10 @@ and the task count,
 which once the plan is written and settled with no build yet is the Plan
 ready mark with the count as its detail;
 before the handoff one primary **Start build** opens `StartBuildDialog`
-(the board's add sheet's form: the goal first, prefilled from the plan,
-then Build (Implement or Orchestrate), Model with its effort and Access as
+(the board's add sheet's form: the goal first, prefilled from the plan
+with "Every task in the plan is done", naming no tool, so a Java project
+reads it as well as a TypeScript one; a refused start is the host's reason
+in words, `failureReason`, never the raw text; then Build (Implement or Orchestrate), Model with its effort and Access as
 label-and-control rows, the orchestration rules only for Orchestrate;
 Start calls `plan.implement`, one build). After the handoff the header names the build
 (the build's tinted type glyph, "Implementation" and its `StatusMark`, each
@@ -1501,9 +1531,10 @@ are `implementationBoard.ts`.
 
 ### Research — the report and its sources
 
-Header: "Research" with the angles, sources and searches as separate
-words, and a button opening the report file. The report's title, its
-`StatusMark` and summary while it is written, its body once complete;
+Header: the report's title (else the thread's, else "Research"), said
+once, with the angles, sources and searches as one comma run, and a button
+opening the report file. Under it the report's `StatusMark` and summary
+while it is written, its body once complete;
 then the angles, each opening its agent, live ones saying what they do,
 their findings opening the file, and under each query its sources (the
 favicon, the title, the host, the claim; the address in a tooltip).
@@ -1523,9 +1554,13 @@ favicon, the title, the host, the claim; the address in a tooltip).
                                                └─────────────────────────────────────┘
 ```
 
-- **The thread is the chat.** Above the transcript, inset to its column,
+- **The thread is the chat.** Above the transcript, on its column (a
+  `ColumnBand`, chatSlots.tsx, the composer's own rule: the scrollbar's
+  gutter, and after the message list while it sits beside and open),
   sits `FleetHeader` (fleet/FleetHeader.tsx): the goal (the latest user
-  line) at 15px, and one 13px muted sentence under it, "2 working, 1
+  line's first line; none while that is the whole bubble, which the
+  transcript shows right under it, so "yes, go on" is never the goal)
+  at 15px, and one 13px muted sentence under it, "2 working, 1
   watching, 1 needs you, 3 done" (`fleetSentence`), needs you in amber and
   failed in red.
   Nothing before the first agent. There is no board, no edge tab and no
@@ -1655,8 +1690,9 @@ brought into view even when it moved section meanwhile.
   (`rules.summary`) is not on the board: the rules dialog shows it and
   the master says it in its chat. The ⋯ menu is the batch's fleet switches
   (`master/boardActions.ts`), counting the rows of every host: Pause all
-  (the running-turn rule, confirmed with the live count and one line,
-  "Each turn holds where it is.") and Resume all go
+  (the running-turn rule, confirmed with the live count, "Pause 3", and
+  the rail's own line, `PAUSE_ALL_BODY`: "Each turn holds where it is,
+  until Resume all.") and Resume all go
   to each row's own host through its `session.batch`; Archive done… and
   Archive all… (`master/ArchiveBatchDialog.tsx`: "Archive 3 done threads?"
   / "Archive all 7 threads?" with the live count, the resources checkbox
@@ -1759,8 +1795,11 @@ brought into view even when it moved section meanwhile.
   working and muted in every other state, so it never competes with an
   amber or red detail and Done stays quiet; it moves only when a task
   ticks, on Progress's own `--dur-slow` `--ease-out` slide, so working's
-  spinner stays the row's one moving mark. Line two keeps the task in
-  hand, said once, right above the bar. The whole line is one button
+  spinner stays the row's one moving mark. The task in hand is said once:
+  while the list is open its running row names it and line two drops a
+  detail equal to it; folded, line two says it, right above the bar.
+  A watching row whose subagents show as lines drops its detail too: the
+  lines say what it watches. The whole line is one button
   ("Tasks: 3 of 7 done", `aria-expanded`), hover `foreground/5`; its click
   and keys stay off the row. It folds the task list open under it, open
   by default while the row is live (Working, Needs you, Queued) and closed
@@ -1835,7 +1874,8 @@ brought into view even when it moved section meanwhile.
   centred on line one with the last 12px in, with tooltips and no box
   around them: Message (opens the thread's full view with the
   composer focused), the one verb the state calls for (Pause while a turn
-  runs anywhere in its tree, Resume when paused or stopped, Start now when
+  runs anywhere in its tree, Continue when paused and Resume when stopped,
+  as the thread menu says them, Start now when
   queued, which is `session.start` past `after`; nothing otherwise), and ⋯,
   the row's menu at the button. Stop, Archive and Remove from queue live in
   that menu. Every action goes to the row's own host: the commands route
@@ -1858,7 +1898,8 @@ brought into view even when it moved section meanwhile.
   host opens against that host the way a rail row of that host does (the
   store holds every host's rows by id, `data-child-host` names it). The
   header is 36px: Back (a ghost button whose tooltip says "Back to the
-  board" with Esc) and the thread's title. A board-type child (an
+  board" with Esc) and the thread's title in a board header's 14px
+  semibold, so the title holds still when a board's header takes over. A board-type child (an
   implementation, a plan, research) whose board shows draws one header,
   its view's own, with Back leading it (`useViewBack`,
   surfaces/threads/viewBack.tsx), so the title shows once; a chat child,
@@ -1885,7 +1926,7 @@ brought into view even when it moved section meanwhile.
   Escape first: each stops the key before the dialog hears it.
 - **The foot** (`master/BatchFoot.tsx`, the step rules in `master/steps.ts`)
   stays put under the scrolling list, always rows, on the board's 12px
-  inset (`px-3 py-2`): a "When done" heading (12px medium muted) with Edit, the blocked
+  inset (`px-3 py-2`): a "When done" heading (12px medium muted) with Edit…, the blocked
   line in red when a child blocks the batch's end, then one 28px row per
   step: the master's list (`rules.steps`, a `BatchStepSpec` each: id,
   name, kind, a shell step's command and cwd) joined by id with the host's
@@ -1898,13 +1939,16 @@ brought into view even when it moved section meanwhile.
   once" until it runs, then "2 of 5 landed"; a running step its count and
   the host's label as one detail with a comma ("12 of 31, vitest");
   "Skipped" or the host's reason (a plain first word takes its capital); a
-  failed step's detail in red; a settled step's detail without the time
+  failed step's detail in red, without a runtime's "error:" lead, and a
+  script that is not there said as "The script is missing", never its path
+  (`failureWords`); a settled step's detail without the time
   its time column says, and nothing for a bare "passed", which the glyph
   says), its time (12px `tabular-nums`, ticking every
   second from `startedAt` while it runs, nothing under 1.5 s, as a task's:
   `TIME_SHOWN_FROM_MS` in lib/duration.ts), and Stop on the running step
   (the word alone with `BusyLabel`, as every Stop; `batch.stopStep` with
-  the step's id), Log on a failed one whose log says more than its row (one
+  the step's id), Log on a failed one (these and the heading's Edit… end
+  their word on the 12px edge the times keep, `-me-2`) whose log says more than its row (one
   word whatever the state, the chevron turning to say it, so nothing moves
   under the pointer).
   The running step's console opens under its own row through
@@ -1938,9 +1982,9 @@ brought into view even when it moved section meanwhile.
   Under them the "Add a step…" select: a built-in
   kind (Merge the branches, Gate the merged tree, Release, Publish the Mac
   release, Deploy to the box) lands at once with its name; Shell command
-  opens a draft with a name, the command (exit 0 passes) and a directory
-  (default the project), Cancel and Add step, in place of the select.
-  Then (Notify me / Archive the threads), Summary, the sentence read back
+  opens a draft with a name, the command (a step passes when it exits 0)
+  and a folder ("Folder (the project's if empty)"), Cancel and Add step, in
+  place of the select. Then (Notify you, the foot's own words / Archive the threads), Summary, the sentence read back
   under the fields. The two choices are `FieldRow`s with a `ChoiceToggle`. Save stays
   off while a step has no name or a shell step no command; it is
   `batch.setRules` with the whole list, the foot takes the change from the

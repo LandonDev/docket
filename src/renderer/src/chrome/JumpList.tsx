@@ -133,7 +133,9 @@ export function JumpList({
             <div
               aria-hidden
               className={cn(
-                "flex h-6 items-end px-2 pb-1 text-[11px] font-medium text-muted-foreground",
+                // A group heading (DESIGN "Typography"): 12px medium, muted, its text on the rows' own inset.
+                "flex h-6 items-end pb-1 text-xs font-medium text-muted-foreground",
+                size === "xs" ? "px-2" : "px-2.5",
                 g > 0 && "mt-2",
               )}
             >

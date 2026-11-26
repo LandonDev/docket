@@ -8,6 +8,7 @@ import { recordSendOrigin } from '../lib/sendOrigin'
 import {
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -167,8 +168,8 @@ type Props = {
   onInboxCardDismiss?: () => void
   onNoteCardDismiss?: () => void
   onHandoffCardDismiss?: () => void
-  /** False when nothing took the message: the field keeps his words and says so. */
-  onSubmit: (text: string, attachments: Attachment[], intent: ComposerIntent) => boolean | void
+  /** False when nothing took the message, or why in a few words ("this chat is closed in this window"): the field keeps his words and says so. */
+  onSubmit: (text: string, attachments: Attachment[], intent: ComposerIntent) => boolean | string | void
   /** The one button's Pause face, shown when the box is empty mid-turn. */
   onPause?: () => void
   /** Rides on the box's top edge (the implementation board's pass banner). */
@@ -177,6 +178,8 @@ type Props = {
   blocked?: string | null
   /** The block is said in the connection line over the box (a Work thread): the field keeps its own placeholder, send still waits. */
   blockedSaid?: boolean
+  /** A preview's seed: the box starts with a file dragged over it, so a still picture can show the drop wash. */
+  fileDragSeed?: boolean
   /** What kind of thread this is; absent hides the chip (subagent children). */
   threadType?: ThreadType | null
   onThreadTypeChange?: (type: ThreadType) => void
@@ -199,6 +202,7 @@ export function Composer({
   enabled = true,
   blocked = null,
   blockedSaid = false,
+  fileDragSeed = false,
   focused,
   hotkeys = false,
   shell = false,
@@ -274,7 +278,7 @@ export function Composer({
   // A Work draft whose filing pick waits on its project's mirror: typing goes on, Send waits until the move lands or
   // fails, so the first send never files under the place he just left (work/composer/WorkComposerRow.tsx).
   const [filing, setFiling] = useState(false)
-  const [fileDrag, setFileDrag] = useState(false)
+  const [fileDrag, setFileDrag] = useState(fileDragSeed)
   const reduce = useReducedMotion()
   const midTurnDefault = useSyncExternalStore(subscribeMidTurnDefault, loadMidTurnDefault)
   // A chip alone is a message: Send is live with nothing typed.
@@ -421,6 +425,8 @@ export function Composer({
   const active =
     selection.key === selectionKey ? Math.min(selection.index, Math.max(0, rows - 1)) : 0
   const setActive = (index: number) => setSelection({ key: selectionKey, index })
+  // The slash and @ list's id, so the field can name it and its highlighted row to a screen reader.
+  const menuId = useId()
 
   /** Fast and 1M reach a live thread at once through session.tune; the
    *  rest (effort) rides on the next send. Drafts have nothing to tune yet. */
@@ -529,7 +535,8 @@ export function Composer({
   )
   useEffect(() => (sessionId ? takeComposerFiles(sessionId, admitAttachments) : undefined), [sessionId, admitAttachments])
   const attachFailed = useCallback((error: unknown) => {
-    setAttachNote(error instanceof Error ? error.message : 'Could not attach the file')
+    // An upload's failure is its chip's Failed; the line under the chips says only why, never the name again.
+    setAttachNote(error instanceof AttachmentUploadError ? error.why : error instanceof Error ? error.message : 'Could not attach the file')
   }, [])
 
   const removeAttachment = useCallback(
@@ -828,9 +835,9 @@ export function Composer({
     if (draft && frameRef.current) recordComposerHandoff(sessionId, frameRef.current.getBoundingClientRect())
     // The chips go as lines of the message; a draft's first one also rides its create (commands.ts ensureCreated).
     const taken = onSubmit((sessionId && chipPort.get()?.send(sessionId, draft, text)) || text, files, intent === 'pause' ? 'send' : intent)
-    // Nothing took it (the chat is gone from this window): his words stay in the field, with the reason.
-    if (taken === false) {
-      setAttachNote('Not sent. This chat is no longer open in this window.')
+    // Nothing took it: his words stay in the field, with the reason the caller gave, else "Not sent" alone.
+    if (taken === false || typeof taken === 'string') {
+      setAttachNote(refusalWords(taken))
       return
     }
     inputRef.current?.clear()
@@ -942,6 +949,7 @@ export function Composer({
         <div ref={frameRef} className="relative overflow-visible">
           {menuUsed ? (
             <CommandPopover
+              id={menuId}
               matches={matches}
               active={active}
               projectId={projectId}
@@ -963,15 +971,18 @@ export function Composer({
                   animate={{ opacity: 1 }}
                   exit={reduce ? undefined : { opacity: 0 }}
                   transition={{ duration: DUR.fast, ease: EASE_OUT }}
-                  className="pointer-events-none absolute inset-0 z-20 grid place-items-center rounded-xl bg-accent/8 text-xs text-muted-foreground"
+                  // The card's own fill under the tint, so the words cover the field's text, never sit over it.
+                  data-drop-wash
+                  className="pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-xl bg-card text-[13px] text-muted-foreground"
                 >
-                  Drop files to attach
+                  <span className="grid size-full place-items-center bg-accent/8">Drop to attach</span>
                 </motion.div>
               ) : null}
             </AnimatePresence>
 
             {attachments.length > 0 ? (
-              <div className="flex flex-wrap gap-2 px-3 pt-3">
+              // 6px in, on the box row's inset, and 6px chips so 12 = 6 + 6: concentric with the box (its tile the ladder's 4px).
+              <div data-composer-attachments className="flex flex-wrap gap-2 px-1.5 pt-1.5 [&>[data-slot=attachment]]:rounded-md [&_[data-slot=attachment-media]]:rounded-sm">
                 {attachments.map((file) => (
                   <AttachmentChip
                     key={file.id}
@@ -1043,10 +1054,12 @@ export function Composer({
                             : 'Reply, or steer the work'
                           : shell
                             ? 'How can I help you today?'
-                            : 'Ask, build, / for skills, @ for references…'
+                            : 'Reply…'
                 }
                 className="composer-field relative max-h-40 min-w-0 flex-1 px-1 py-[3px] font-sans text-sm leading-[22px] text-foreground outline-none"
                 tokens={tokens}
+                listbox={matches ? menuId : undefined}
+                activeOption={matches && rows > 0 ? `${menuId}-${active}` : undefined}
                 onFocus={onFocus}
                 onKeyDown={onKeyDown}
                 onPaste={onPaste}
@@ -1197,6 +1210,17 @@ export function flipFrom(el: HTMLElement, from: { top: number; left: number }): 
   return true
 }
 
+/** A refused send in a person's words: "Not sent", then the caller's reason when it gave one. */
+export function refusalWords(reason: false | string): string {
+  return typeof reason === 'string' && reason.trim() ? `Not sent: ${reason.trim()}` : 'Not sent'
+}
+
+/** Whether a draft's type works on a branch, so a folder with no repo is worth saying: a chat, a research
+ *  thread or a draft with no type is not, and draws nothing there (DESIGN's chip rule). */
+export function needsBranch(type: ThreadType | null | undefined): boolean {
+  return !!type && type !== 'chat' && type !== 'research'
+}
+
 function hasFiles(data: DataTransfer | null): data is DataTransfer {
   if (!data) return false
   return [...data.types].some((type) => type === 'Files' || type === 'application/x-moz-file')
@@ -1256,7 +1280,7 @@ export function DraftRow({
   return (
     <Collapsible open={draft}>
       <CollapsibleContent>
-        <div data-composer-draft-row className="flex h-7 min-w-0 items-center gap-1 px-1.5 pt-1 text-xs text-muted-foreground">
+        <div data-composer-draft-row className="@container/draft-row flex h-7 min-w-0 items-center gap-1 px-1.5 pt-1 text-xs text-muted-foreground">
           {hideProjectPicker || work ? null : (
             <CwdPicker
               cwd={cwd}
@@ -1270,7 +1294,7 @@ export function DraftRow({
             />
           )}
           {sessionId && enabled ? <DraftHostPicker sessionId={sessionId} onClose={onClose} /> : null}
-          {work ? null : <BranchPicker cwd={cwd} branch={branch} enabled={enabled && !busy} onChange={onBranchChange} onClose={onClose} />}
+          {work ? null : <BranchPicker cwd={cwd} branch={branch} enabled={enabled && !busy} needsRepo={needsBranch(threadType)} onChange={onBranchChange} onClose={onClose} />}
           {threadType && onThreadTypeChange ? <ThreadTypeChip value={threadType} onChange={onThreadTypeChange} onClose={onClose} work={work} /> : null}
           {threadType === 'chat' && master !== undefined && onMasterChange ? <MasterCheck checked={master} onChange={onMasterChange} /> : null}
           {draftTitle !== undefined && onDraftTitleChange ? <DraftTitleField value={draftTitle} onChange={onDraftTitleChange} onDone={onClose} /> : null}

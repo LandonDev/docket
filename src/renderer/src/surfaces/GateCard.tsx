@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { GateNotice } from "@server/shared/gate";
-import { gateReason, typecheckErrorCount } from "@server/shared/gate";
+import { gateReason, logTail, typecheckErrorCount } from "@server/shared/gate";
 import { Collapsible } from "../components/ui/collapsible";
 import { CONSOLE } from "../components/ui/console";
 import { StatusMark } from "../components/ui/status";
@@ -38,7 +38,9 @@ export function GateCard({ block }: { block: Block }) {
           tabIndex={0}
           className={cn(
             CONSOLE,
-            "mt-1 mb-2 -ml-5.5 min-w-0 overflow-x-auto whitespace-pre",
+            // Past 320px it scrolls in its own box; alone in the flow it is one card, a hairline round it.
+            "mt-1 mb-2 -ml-5.5 max-h-80 min-w-0 overflow-x-auto overflow-y-auto border border-border whitespace-pre",
+            "in-[.bg-card]:border-0 in-data-[table]:border-0",
             "in-[.bg-card]:ml-0 in-[.bg-card]:rounded-none in-[.bg-card]:[--scrollbar-inset:0px] in-[.bg-card]:bg-transparent in-[.bg-card]:px-0",
             "in-data-[table]:my-0 in-data-[table]:ml-0 in-data-[table]:rounded-none in-data-[table]:[--scrollbar-inset:0px] in-data-[table]:bg-transparent in-data-[table]:px-0 in-data-[table]:py-0",
           )}
@@ -64,18 +66,25 @@ function leadOf(gate: GateNotice): string {
   return `${STEP[gate.step]} ${gate.ok ? "passed" : "failed"} on`;
 }
 
-/** ["feature", "3 errors"], ["master", "at vitest"], ["master", "error: Module not found"], ["master", "release-277"] */
+/** ["feature", "3 errors"], ["master", "at vitest"], ["master", "did not start"], ["master", "release-277"]: a raw log line never, it stays in the log. */
 export function detailOf(gate: GateNotice): string[] {
   const parts = [gate.branch];
   if (!gate.ok && gate.step === "typecheck") {
     const n = typecheckErrorCount(gate.log);
     if (n) parts.push(`${n} ${n === 1 ? "error" : "errors"}`);
   } else if (!gate.ok) {
-    const reason = gateReason(gate.log);
+    // A gate whose log names no failed step died before its steps ran; a release says its last line when it is plain words.
+    const reason = gateReason(gate.log) ?? (gate.step === "gate" ? "did not start" : plainLast(gate.log));
     if (reason) parts.push(reason);
   } else if (gate.ok && gate.step === "release") {
     const tag = /tag (release-\d+)/.exec(gate.log)?.[1];
     if (tag) parts.push(tag);
   }
   return parts;
+}
+
+/** A log's last line when it is plain words ("tree is dirty"); null when it holds a path, a quote, a code or a prefix ("error:"). */
+function plainLast(log: string): string | null {
+  const last = logTail(log.replace(/\x1b\[[0-9;]*m/g, ""), 1).trim();
+  return /^[A-Za-z][A-Za-z ,'-]{0,60}$/.test(last) ? last : null;
 }

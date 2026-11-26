@@ -193,20 +193,38 @@ describe("QuestionCard", () => {
     expect(two.container.querySelector('[data-slot="question-progress"]')!.textContent).toBe("1 of 2");
   });
 
-  it("cardQuestions passes descriptions through, keeps a header the title already says out, and adds Other", () => {
+  it("cardQuestions passes descriptions through, carries each header as its question's own, and adds Other", () => {
     const question = meta([
       { question: "Which?", header: "File", options: [{ label: "a.ts", description: "the old one" }, { label: "b.ts" }] },
       { question: "How?", header: "Speed", options: [{ label: "Fast" }], allowFreeform: false },
     ]);
-    expect(cardQuestions(question, "File")).toEqual([
+    expect(cardQuestions(question)).toEqual([
       {
         prompt: "Which?",
-        description: undefined,
+        header: "File",
         multiSelect: undefined,
         options: [{ label: "a.ts", description: "the old one" }, { label: "b.ts", description: undefined }, { label: "Other", freeform: true }],
       },
-      { prompt: "How?", description: "Speed", multiSelect: undefined, options: [{ label: "Fast", description: undefined }] },
+      { prompt: "How?", header: "Speed", multiSelect: undefined, options: [{ label: "Fast", description: undefined }] },
     ]);
+  });
+
+  it("the title is the shown question's header, never a muted line under the prompt", async () => {
+    const view = render(
+      <QuestionCard question={meta([spec("Which file?", ["a.ts"], { header: "File" }), spec("Which branch?", ["master"], { header: "Branch" }), spec("Ship?", ["Yes"])])} onAnswer={() => {}} />,
+    );
+    const title = () => view.container.querySelector("h3")!.textContent;
+    expect(title()).toBe("File");
+    fireEvent.click(option(view.container, "a.ts"));
+    await act(async () => fireEvent.click(advance()));
+    expect(title()).toBe("Branch");
+    const page = view.container.querySelector('[data-page="current"]')!;
+    expect(page.textContent).toContain("Which branch?");
+    expect(page.querySelectorAll("p")).toHaveLength(1);
+    // A question with no header of its own keeps the set's title.
+    fireEvent.click(option(view.container, "master"));
+    await act(async () => fireEvent.click(advance()));
+    expect(title()).toBe("File");
   });
 
   it("shows an option's description and answers with its bare label", () => {

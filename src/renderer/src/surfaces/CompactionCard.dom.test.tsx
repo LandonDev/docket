@@ -53,10 +53,16 @@ describe("CompactionCard", () => {
     expect(container.querySelector('[role="separator"]')).toBeNull();
   });
 
+  it("failed with no error: the lead alone, no colon", () => {
+    const { container } = render(<CompactionCard block={block({ phase: "failed" })} />);
+    expect(container.textContent).toBe("Compaction failed");
+  });
+
   it("failed: the failed glyph and the error", () => {
     const { container } = render(<CompactionCard block={block({ phase: "failed", error: "window too small" })} />);
     expect(container.querySelector('[data-state="failed"]')).not.toBeNull();
-    expect(container.textContent).toBe("Compaction failedwindow too small");
+    // A whole-clause lead ends in a colon, so it never runs into the error's clause.
+    expect(container.textContent).toBe("Compaction failed:window too small");
   });
 
   it("running: the time counts from the start and keeps counting across a re-render with the same start", async () => {

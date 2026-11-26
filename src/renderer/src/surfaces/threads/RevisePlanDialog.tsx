@@ -1,5 +1,6 @@
 import { modOrCtrl } from "../../lib/keys";
 import { useState } from "react";
+import { failureReason } from "../../lib/threadActionFailure";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { Dialog } from "../../components/ui/dialog";
@@ -35,7 +36,7 @@ export function RevisePlanDialog({
       await onSend(ask.trim());
       onOpenChange(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(failureReason(e) || "Couldn't send it");
     } finally {
       setBusy(false);
     }

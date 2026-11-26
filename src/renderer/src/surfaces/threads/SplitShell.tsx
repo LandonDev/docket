@@ -245,6 +245,11 @@ export function ChatToggle({ open, onToggle, words }: { open: boolean; onToggle:
   );
 }
 
+/** The header's one fact: shrinks while the title holds, ends in an ellipsis (a StatusMark laid out as a row,
+ *  its word allowed to cut too), and leaves a header narrower than 376px (22rem inside its 12px insets). Literal: Tailwind reads no built class. */
+const VIEW_DETAIL_CLASS =
+  "min-w-0 shrink-[1000] truncate text-xs text-muted-foreground tabular-nums @max-[22rem]/header:hidden [&>[data-slot=status-mark]]:flex [&_[data-slot=status-word]]:min-w-0 [&_[data-slot=status-word]]:shrink [&_[data-slot=status-word]]:truncate";
+
 function ViewHeader({
   title,
   detail,
@@ -262,17 +267,20 @@ function ViewHeader({
   onToggleChat: (open: boolean) => void;
   chatToggle?: ChatToggleWords;
 }) {
-  const heading = <span data-view-title className="min-w-0 truncate text-sm font-semibold text-foreground">{title}</span>;
+  // The title never shrinks for the fact beside it (a sub-pixel share would cut it to an ellipsis);
+  // it truncates only at the row's own width, which clips the fact's gap behind it.
+  const heading = <span data-view-title className="max-w-full shrink-0 truncate text-sm font-semibold text-foreground">{title}</span>;
   // Opened from a master's board, the header leads with Back (viewBack.tsx)
   // and the child pane draws no bar of its own.
   const back = useViewBack();
   // The title reads as the header (14px semibold) over 13px rows; its one
-  // fact sits 8px after it at 12px, muted. The controls are equal 28px
+  // fact sits 8px after it at 12px, muted, giving way first and leaving a
+  // narrow header, so the title truncates last and the actions never do. The controls are equal 28px
   // squares 2px apart, the last ending on the rows' 12px right edge.
   return (
     <div
       data-view-header
-      className={`flex h-9 shrink-0 items-center border-b border-border ${
+      className={`@container/header flex h-9 shrink-0 items-center border-b border-border ${
         // A lead is a row of chips: the strip's fill, 6px from the header's ends, the chips 2px apart.
         lead !== undefined ? "gap-0.5 bg-sidebar px-1.5" : `gap-2 bg-background pr-3 ${back ? "pl-2" : "pl-3"}`
       }`}
@@ -283,10 +291,12 @@ function ViewHeader({
           {lead}
         </div>
       ) : (
-        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2 overflow-hidden">
           {typeof title === "string" ? <TruncateTip text={title}>{heading}</TruncateTip> : heading}
           {detail ? (
-            <span data-view-detail className="min-w-0 truncate text-xs text-muted-foreground tabular-nums">
+            // The fact gives way before the title (it shrinks first, to an ellipsis, a StatusMark's word
+            // included), and leaves a narrow header, where it would be a stub.
+            <span data-view-detail className={VIEW_DETAIL_CLASS}>
               {detail}
             </span>
           ) : null}

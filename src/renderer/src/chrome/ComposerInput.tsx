@@ -175,6 +175,9 @@ export const ComposerInput = forwardRef<
     className?: string
     /** plain tokens to colour; positions in the serialized text */
     tokens?: readonly ComposerToken[]
+    /** The slash or @ list's id while it is open, and its highlighted row's: a screen reader hears the arrow keys move. */
+    listbox?: string
+    activeOption?: string
   }
 >(function ComposerInput(
   {
@@ -185,7 +188,9 @@ export const ComposerInput = forwardRef<
     attachLargePastes,
     placeholder,
     className,
-    tokens = NO_TOKENS
+    tokens = NO_TOKENS,
+    listbox,
+    activeOption
   },
   ref
 ) {
@@ -373,6 +378,10 @@ export const ComposerInput = forwardRef<
       role="textbox"
       aria-multiline="true"
       aria-label="Message"
+      // A multiline field stays a textbox (a combobox cannot be multiline); it names the open list and its row.
+      aria-autocomplete="list"
+      aria-controls={listbox}
+      aria-activedescendant={activeOption}
       spellCheck={false}
       data-composer-input
       data-placeholder={placeholder}

@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ChevronRight, FilePlus, FoldVertical, ICON_STROKE, UnfoldVertical } from "./icons";
+import { ChevronRight, FilePlus, FoldVertical, ICON_STROKE, ListPlus, UnfoldVertical } from "./icons";
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 // Two catalogs: the chrome's, in the first paint, and Work's, which rides Work's lazy chunks.
@@ -125,5 +125,13 @@ describe("disclosure chevrons", () => {
       }
     }
     expect(found).toEqual([]);
+  });
+});
+
+describe("the queue's glyph", () => {
+  it("ListPlus (Send while it queues, Add existing thread…) is three lines and a plus, not a media frame", () => {
+    const svg = renderToStaticMarkup(createElement(ListPlus));
+    const paths = [...svg.matchAll(/ d="([^"]+)"/g)].map((m) => m[1]);
+    expect(paths).toEqual(["M3 5H17", "M3 12H11", "M15 12.0009H21M17.995 15.0059L17.995 9.00586", "M3 19H17"]);
   });
 });

@@ -52,14 +52,13 @@ export function failedGateStep(log: string): string | null {
   return null
 }
 
-/** Why a gate or release step failed, in a few words: the failed gate step
- *  ("at vitest"), else the log's last non-empty line ("error: Module not
- *  found scripts/gate.ts", a script that never ran); null for an empty log. */
+/** Why a gate step failed, in a few words: the failed gate step ("at
+ *  vitest"); null when the log names none (a script that never ran, a
+ *  release's git error): a raw log line with its path never reaches the
+ *  notice, it stays in the log behind the caret. */
 export function gateReason(log: string): string | null {
   const step = failedGateStep(log)
-  if (step) return `at ${step}`
-  const last = logTail(log.replace(/\x1b\[[0-9;]*m/g, ''), 1).trim()
-  return last || null
+  return step ? `at ${step}` : null
 }
 
 /** The row's one line: "Typecheck failed on <branch>, 3 errors", "Gate

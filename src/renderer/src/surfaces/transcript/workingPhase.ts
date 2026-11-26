@@ -1,5 +1,5 @@
 // UI-16: what the live turn's working line says, pure.
-import { computerPhrase } from "@shared/computer/words";
+import { computerPhrase, liftIn } from "@shared/computer/words";
 import { groupPhrase } from "../../lib/groupPhrase";
 import { inputOf } from "../../lib/toolDetails";
 import type { Block } from "../../lib/session";
@@ -51,8 +51,9 @@ function computerCall(block: Block, running: ComputerRunning): WorkingPhase {
   const own = computerPhrase(name.replace(/^mcp__[^_]+(?:__)?/, "").replace(/^.*\./, ""), inputOf(block), { live: true });
   if (running?.held) return { key: `hold:${block.id}`, words: running.words };
   const words = running?.words ?? (own ? `${own.verb} ${own.object}` : "");
-  const verb = own && words.startsWith(`${own.verb} `) ? own.verb : (words.split(" ")[0] ?? "");
-  const object = words.slice(verb.length).trim();
+  const split = own && words.startsWith(`${own.verb} `) ? own.verb : (words.split(" ")[0] ?? "");
+  // "Clicking in" muted, "TextEdit" lit: the preposition rides with the verb.
+  const { verb, object } = liftIn({ verb: split, object: words.slice(split.length).trim() });
   return { key: `call:${block.id}`, words, call: { block, verb, object } };
 }
 

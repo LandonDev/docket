@@ -96,8 +96,9 @@ export function BatchFoot({
     >
       <div className="flex h-6 items-center gap-2">
         <h3 className="flex-1 text-xs font-medium text-muted-foreground">When done</h3>
-        <Button variant="ghost" size="xs" onClick={() => setEditing(true)}>
-          Edit
+        {/* The foot's trailing buttons end their word on the 12px edge the times keep (-me-2 takes the button's own 8px back). */}
+        <Button variant="ghost" size="xs" className="-me-2" onClick={() => setEditing(true)}>
+          Edit…
         </Button>
       </div>
       {blocked ? (
@@ -228,7 +229,7 @@ const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold 
         </span>
         {step.status === "running" ? (
           // The word alone, as every Stop; the spinner joins it in its reserved slot while the stop runs.
-          <Button variant="ghost" size="xs" onClick={() => void stop()} disabled={stopping} aria-busy={stopping || undefined}>
+          <Button variant="ghost" size="xs" className="-me-2" onClick={() => void stop()} disabled={stopping} aria-busy={stopping || undefined}>
             <BusyLabel busy={stopping} label="Stop" />
           </Button>
         ) : failed && hasConsole(step) ? (
@@ -237,7 +238,7 @@ const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold 
           <Button
             variant="ghost"
             size="xs"
-            className="aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/7"
+            className="-me-2 aria-expanded:bg-transparent aria-expanded:hover:bg-foreground/7"
             onClick={() => onFold(step.id, open)}
             aria-expanded={open}
           >

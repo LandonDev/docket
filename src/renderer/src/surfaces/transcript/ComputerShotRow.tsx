@@ -5,7 +5,6 @@ import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
 import { fileMedia } from "../../lib/fs";
 import { assetHref } from "../../lib/nativeWeb";
-import { missingFileText } from "../../lib/pathHost";
 import type { Block } from "../../lib/session";
 import type { ApprovalDecision } from "../../lib/harness";
 import type { OpenFileFn } from "../../lib/search";
@@ -49,6 +48,12 @@ function useShotMedia(host: string, path: string, known?: ShotMedia): ShotMedia 
 
 const hostNameOf = (host: string): string | null => (host === registry.primaryEnvironmentId ? null : (registry.environment(host)?.name ?? "that host"));
 
+/** A picture its host no longer has, said as the picture: "The Mac no longer has this picture", no path and no file. */
+export function pictureGoneText(hostName: string | null): string {
+  const who = hostName ?? "This computer";
+  return `${who.charAt(0).toUpperCase()}${who.slice(1)} no longer has this picture`;
+}
+
 function Picture({
   shot,
   host,
@@ -71,7 +76,7 @@ function Picture({
   if (media.status === "missing") {
     return (
       <p data-slot="computer-shot-missing" className="min-w-0 text-xs text-muted-foreground">
-        {missingFileText(hostNameOf(host))}
+        {pictureGoneText(hostNameOf(host))}
       </p>
     );
   }

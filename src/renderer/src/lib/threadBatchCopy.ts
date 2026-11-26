@@ -1,4 +1,4 @@
-import type { BatchAction, BatchScope } from "./threadBatch";
+import { PAUSE_ALL_BODY, type BatchAction, type BatchScope } from "./threadBatch";
 
 // The fleet confirm's words. Only the confirm dialog reads them, and it
 // rides the dialogs chunk, so they stay out of the first paint.
@@ -72,10 +72,10 @@ export function batchConfirm(
     removal && acting === 0
       ? "They have not started, so nothing is lost."
       : action === "pause"
-        ? "Each keeps its place and continues from there."
+        ? PAUSE_ALL_BODY
         : action === "stop"
           ? "Their turns end now; each keeps its history."
-          : "Idle ten minutes or more, read, and waiting on nothing.";
+          : "Idle, read and waiting on nothing.";
   const cleanup =
     action === "archiveDone" && resources !== null && resources > 0
       ? `and remove their ${resources} ${resources === 1 ? "worktree or simulator" : "worktrees and simulators"}`

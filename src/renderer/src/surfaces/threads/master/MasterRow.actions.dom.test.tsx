@@ -43,7 +43,8 @@ describe("a board row's state verb", () => {
 
   for (const [status, label, verb, command] of [
     ["running", "Pause", "pause it", "pause"],
-    ["paused", "Resume", "resume it", "resume"],
+    ["paused", "Continue", "continue it", "resume"],
+    ["stopped", "Resume", "resume it", "resume"],
     ["queued", "Start now", "start it now", "startNow"],
   ] as const) {
     it(`a refused ${label} toasts "Couldn't ${verb}" with the thread and the host's reason`, async () => {

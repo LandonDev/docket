@@ -25,7 +25,7 @@ import { ModelMark, modelMarkName, modelMarkTip, storeHostGlyph, type HostGlyphO
 import { tasksOf } from "../implementationBoard";
 import { TypeGlyph } from "../TypeGlyph";
 import { agentTail, useRowAgents, type AgentLine, type RowAgents } from "./agentSummary";
-import { rowStatus, taskList, taskProgress, taskTally } from "./rowBody";
+import { rowStatus, taskInHand, taskList, taskProgress, taskTally } from "./rowBody";
 import { useTaskFold } from "./taskFold";
 import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardRowRef, type RowHost } from "./useMasterModel";
 
@@ -39,7 +39,9 @@ import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardR
  * spinner is the row's one moving mark), then in the title's column the
  * word when the section heading does not say it (watching or paused under
  * Working, failed under Needs you, stopped under Done) and what the state
- * is about, 12px, and the task tally at the end. The child that blocks the
+ * is about, 12px, and the task tally at the end. What the row says below
+ * is not said here too: the detail drops while the open task list names
+ * the same task in hand, and on a watching row whose agent lines show. The child that blocks the
  * batch's end says why (`blocked`). An implementation or orchestration row
  * with a task list that is not yet under Done has a third line instead of
  * the end tally (16px, the row 64px; a finished one is 48px again, its
@@ -59,7 +61,7 @@ import { GROUP_LABEL, groupOf, typeWord, useBoardDigest, useRowMeta, type BoardR
  * subagents, one still line each, working as a dot (AgentLines). A row of a host out of reach is
  * under the offline tint. A click opens the thread's full view in the
  * board's place; on hover the model mark gives way to Message, the one
- * verb the state calls for (Pause, Resume, Start now) and ⋯, the thread's
+ * verb the state calls for (Pause, Continue, Resume, Start now) and ⋯, the thread's
  * menu (lib/threadMenu.ts, the thread's one list), which a right-click on
  * the row or an agent line opens too (MasterView's one context menu reads
  * `data-menu-id`). Every action goes to the row's own host (the commands route by the
@@ -200,9 +202,8 @@ export function MasterRowView({
   onTasksChoice?: (choice: boolean | undefined) => void;
 }) {
   const title = planTitle || meta.title;
-  const { state, detail } = rowStatus(meta, digest, landed, blocked);
-  // The word the glyph stands for and the detail, as one name for readers.
-  const statusLabel = plainStatus(STATUS_WORD[state], detail);
+  const status = rowStatus(meta, digest, landed, blocked);
+  const { state } = status;
   const group = groupOf(meta);
   // The task list opens on its own while the thread is live and holds a
   // beat once it reaches Done, then folds with its bar line, unless the
@@ -229,6 +230,12 @@ export function MasterRowView({
   // A bar row says its tally on the bar's line alone; a finished row with
   // every task ticked says none (Done already says it).
   const tasks = taskList(digest);
+  // Said once: the open list names the task in hand on its own row, and a
+  // watching row's agent lines name what it watches.
+  const said = (barShown && tasksOpen && status.detail === taskInHand(tasks)) || (state === "watching" && (agents?.lines.length ?? 0) > 0);
+  const detail = said ? "" : status.detail;
+  // The word the glyph stands for and the detail, as one name for readers.
+  const statusLabel = plainStatus(STATUS_WORD[state], detail);
   const tally = barShown || (group === "done" && tasks.every((t) => t.status === "completed")) ? null : taskTally(tasks);
   // The section heading says the word; a state it does not name says its own.
   const ownWord = STATUS_WORD[state] !== GROUP_LABEL[group];
@@ -253,9 +260,12 @@ export function MasterRowView({
       ? { label: "Start now", icon: Play, failed: "start it now", run: () => commands.startNow(meta.id) }
       : hasRunningTurn(meta)
         ? { label: "Pause", icon: Pause, failed: "pause it", run: () => commands.pause(meta.id) }
-        : meta.status === "paused" || meta.status === "stopped"
-          ? { label: "Resume", icon: Play, failed: "resume it", run: () => commands.resume(meta.id) }
-          : null;
+        : meta.status === "paused"
+          ? { label: "Continue", icon: Play, failed: "continue it", run: () => commands.resume(meta.id) }
+          : // The harness is gone: the same resume boots a fresh one (the thread menu's words).
+            meta.status === "stopped"
+            ? { label: "Resume", icon: Play, failed: "resume it", run: () => commands.resume(meta.id) }
+            : null;
 
   return (
     <Item

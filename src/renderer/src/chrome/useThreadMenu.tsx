@@ -199,7 +199,7 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     else if (pick === "pause") quiet(commands.pause(id), "pause it", id);
     else if (pick === "resume") quiet(commands.resume(id), "resume it", id);
     else if (pick === "compact") quiet(commands.compact(id), "compact it", id);
-    else if (pick === "killBackground") quiet(commands.killBackground(id), "stop its background work", id);
+    else if (pick === "killBackground") quiet(commands.killBackground(id), "stop its background tasks", id);
     // This thread and what it started: a subagent's Stop never stops its parent.
     else if (pick === "stop") quiet(commands.interrupt(id, { subtree: true }), "stop it", id);
     else if (pick === "start-now") quiet(commands.startNow(id), "start it", id);

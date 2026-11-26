@@ -342,6 +342,28 @@ describe("SplitShell's narrow fold", () => {
     expect(chat().className).toContain("min-w-90");
   });
 
+  it("at a 600px pane with the chat open, the board keeps its header, its title, its actions and the conversation toggle", () => {
+    mockShell(600);
+    render(shell({ narrowFold: true, actions: <button type="button">Start build</button> }));
+    expect(chat().hasAttribute("data-chat-over")).toBe(true);
+    const header = document.querySelector("[data-view-header]")!;
+    expect(board().contains(header)).toBe(true);
+    expect(header.closest("[inert]")).toBeNull();
+    expect(screen.getByRole("button", { name: "Start build" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Conversation" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("a narrow header lets its one fact go before the title: the detail shrinks first and leaves a narrow header", () => {
+    render(shell({ detail: "3 tasks" }));
+    const header = document.querySelector("[data-view-header]")!;
+    expect(header.className).toContain("@container/header");
+    const detail = document.querySelector("[data-view-detail]")!.className.split(/\s+/);
+    expect(detail).toEqual(expect.arrayContaining(["@max-[22rem]/header:hidden", "shrink-[1000]", "truncate"]));
+    // The title holds whole beside the fact, and cuts only at the row's width.
+    expect(document.querySelector("[data-view-title]")!.className.split(/\s+/)).toEqual(expect.arrayContaining(["shrink-0", "max-w-full", "truncate"]));
+    expect(document.querySelector("[data-view-actions]")!.className).toContain("shrink-0");
+  });
+
   it("with no header, the chat lies from the top", () => {
     render(shell({ narrowFold: true, title: undefined }));
     expect(chat().className).toContain(`${q}top-0`);

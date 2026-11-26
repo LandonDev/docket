@@ -7,6 +7,7 @@ import { cn } from "../lib/cn";
 import { useContextReading, type ContextReading } from "../lib/contextCache";
 import { contextPercent, contextRatio, contextTone, formatTokens, type ContextUsage } from "../lib/contextUsage";
 import { SwapIcon } from "../motion/IconSwap";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
 import { ROW_CONTROL } from "./composerRow";
 import { LazyPopover, type FocusTarget } from "./menuRows";
 
@@ -221,14 +222,14 @@ export function ContextBreakdown({
   );
 }
 
-type BreakdownListData = { title: string; rows: { key: string; label: string; tokens: number }[] };
+type BreakdownListData = { title: string; rows: { key: string; label: string; tokens: number; tip?: string; sans?: boolean }[] };
 
 /** The reading's two lists, by the names the harness gives their categories. */
 function breakdownLists(reading: ContextReading): BreakdownListData[] {
   const lists: BreakdownListData[] = [
     {
       title: "Memory files",
-      rows: (reading.memoryFiles ?? []).map((m) => ({ key: m.path, label: shortPath(m.path), tokens: m.tokens })),
+      rows: (reading.memoryFiles ?? []).map((m) => ({ key: m.path, label: memoryLabel(m.path), tokens: m.tokens, tip: m.path, sans: true })),
     },
     {
       title: "MCP tools",
@@ -248,12 +249,23 @@ function ListRows({ list }: { list: BreakdownListData }) {
   const shown = sorted.slice(0, LIST_ROWS);
   return (
     <div className="flex flex-col ps-3" data-context-rows={list.title}>
-      {shown.map((r) => (
-        <div key={r.key} className="flex h-6 items-center justify-between gap-3 text-xs">
-          <span className="min-w-0 truncate font-mono text-muted-foreground">{r.label}</span>
-          <span className="shrink-0 tabular-nums text-muted-foreground">{formatTokens(r.tokens)}</span>
-        </div>
-      ))}
+      {shown.map((r) => {
+        const row = (
+          <div key={r.key} className="flex h-6 items-center justify-between gap-3 text-xs">
+            <span className={cn("min-w-0 truncate text-muted-foreground", !r.sans && "font-mono")}>{r.label}</span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">{formatTokens(r.tokens)}</span>
+          </div>
+        );
+        // A memory file's path is its tooltip alone, never its words.
+        return r.tip ? (
+          <Tooltip key={r.key}>
+            <TooltipTrigger render={row} />
+            <TooltipContent side="left">{r.tip}</TooltipContent>
+          </Tooltip>
+        ) : (
+          row
+        );
+      })}
       {sorted.length > shown.length ? (
         <div className="flex h-6 items-center text-xs text-muted-foreground">+{sorted.length - shown.length} more</div>
       ) : null}
@@ -267,8 +279,12 @@ function mcpToolName(name: string, server: string): string {
   return name.startsWith(prefix) ? name.slice(prefix.length) : name;
 }
 
-/** The last two path segments: enough to tell CLAUDE.md files apart. */
-function shortPath(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  return parts.slice(-2).join("/") || path;
+/** A memory file by its name and where it applies, never its path: "CLAUDE.md, user" for one under a
+ *  CLI's home folder (~/.claude), else "CLAUDE.md, docs", the folder it sits in. */
+export function memoryLabel(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean);
+  const file = parts.at(-1) ?? path;
+  if (parts.slice(0, -1).some((part) => /^\.(claude|codex|cursor|config)$/.test(part))) return `${file}, user`;
+  const folder = parts.at(-2);
+  return folder ? `${file}, ${folder}` : file;
 }

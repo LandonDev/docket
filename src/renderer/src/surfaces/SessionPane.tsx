@@ -24,6 +24,7 @@ import { commandMenuChunk, dialogsChunk, diffChunk, failureCardChunk, inboxChunk
 import { tooltipChunk } from "../components/ui/tooltip";
 import { preloadWhenIdle } from "../lib/lazyChunk";
 import { Button } from "../components/ui/button";
+import { Facts } from "./settings/hosts/Facts";
 import { EmptySession } from "./EmptySession";
 import { NoRowsLine } from "./NoRowsLine";
 import { PaneHeader } from "./paneChrome";
@@ -278,17 +279,18 @@ export const SessionPane = memo(function SessionPane({
   );
 });
 
-/** The pane's one line while a transcript is slow or failed, in parts set
- *  apart by space; null otherwise. */
+/** The pane's one line while a transcript is slow or failed, as facts of one comma sentence
+ *  ("Waiting for the box, 12s"); null otherwise. Seconds as the thought and the closing line write
+ *  them. A host's raw error never shows: silence is "did not answer", a refusal "could not open
+ *  this thread". */
 export function loadLineText(name: string, load: LoadState, now: number): string[] | null {
-  if (load.phase === "slow") return [`Waiting for ${name}`, `${Math.max(0, Math.floor((now - load.since) / 1000))} s`];
+  if (load.phase === "slow") return [`Waiting for ${name}`, `${Math.max(0, Math.floor((now - load.since) / 1000))}s`];
   if (load.phase !== "failed") return null;
   const host = `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
-  const why = load.error ? [load.error] : [];
   // No retry scheduled: the host answered with a refusal, not silence.
-  if (load.retryAt === undefined) return [`${host} could not open this thread`, ...why];
+  if (load.retryAt === undefined) return [`${host} could not open this thread`];
   const wait = Math.ceil((load.retryAt - now) / 1000);
-  return [`${host} did not answer`, ...why, wait > 0 ? `retrying in ${wait} s` : "retrying…"];
+  return [`${host} did not answer`, wait > 0 ? `retrying in ${wait}s` : "retrying…"];
 }
 
 export function LoadLine({ name, load, onRetry }: { name: string; load: LoadState; onRetry: () => void }) {
@@ -313,13 +315,7 @@ export function LoadLineView({ name, load, now, onRetry }: { name: string; load:
         data-load-line={load.phase}
         className={`${columnClass()} flex h-6 items-center gap-2 text-xs text-muted-foreground`}
       >
-        <span className="flex min-w-0 flex-1 items-center gap-2">
-          {parts.map((part, i) => (
-            <span key={i} className={i === 0 ? "min-w-0 truncate" : "shrink-0 tabular-nums"}>
-              {part}
-            </span>
-          ))}
-        </span>
+        <Facts parts={parts} className="flex-1 flex-nowrap items-center [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:not(:first-child)]:shrink-0" />
         <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry}>
           {load.phase === "failed" ? "Retry now" : "Retry"}
         </Button>

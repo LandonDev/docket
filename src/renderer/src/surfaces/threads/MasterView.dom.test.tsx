@@ -217,6 +217,7 @@ vi.mock("./SplitShell", async (original) => ({
     detail,
     actions,
     splitState,
+    narrowFold,
   }: {
     board: React.ReactNode;
     chat: React.ReactNode;
@@ -227,9 +228,10 @@ vi.mock("./SplitShell", async (original) => ({
     detail?: React.ReactNode;
     actions?: React.ReactNode;
     splitState?: { split: number; setSplit: (n: number) => void };
+    narrowFold?: boolean;
   }) => (
     shellRenders.n++,
-    <div>
+    <div data-narrow-fold={narrowFold ? "" : undefined}>
       {hasBoard ? (
         <div data-board data-folded={collapsed ? "" : undefined} data-split={splitState?.split}>
           <button type="button" aria-label="Drag the sash to 60%" onClick={() => splitState?.setSplit(60)} />
@@ -260,6 +262,8 @@ import { rightPanel } from "../../lib/rightPanel";
 import { BoardPreview } from "./master/board.preview";
 import { clockTime } from "../../lib/duration";
 import { rendererErrorLine } from "../../lib/rendererErrors";
+import { PAUSE_ALL_BODY } from "../../lib/threadBatch";
+import { COLUMN_GUTTER_CLASS, columnClass } from "./chatSlots";
 
 // 12:08 on the fixtures' day, in the app's one clock (lib/duration.ts).
 const LANDED = clockTime(new Date(2026, 9, 21, 12, 8).getTime());
@@ -457,6 +461,13 @@ describe("the master view", () => {
     renderView();
     await flush();
     expect(document.querySelector("[data-board-scroller]")?.classList.contains("overflow-x-hidden")).toBe(true);
+  });
+
+  it("keeps its board whole in a narrow pane: the shell folds the chat over it rather than shrinking the board and its header away", async () => {
+    seed([meta({ id: "c-run", title: "Home", status: "running" })]);
+    renderView();
+    await flush();
+    expect(document.querySelector("[data-narrow-fold]")).not.toBeNull();
   });
 
   it("a master with no child and no running step is its transcript alone: no board, header, sash or foot", async () => {
@@ -697,7 +708,7 @@ describe("the master view", () => {
     expect(headers().map((h) => h.getAttribute("data-group-header"))).toEqual(["running"]);
   });
 
-  it("an implementation row says the task in hand on line two and 1/3 on its task bar, its list open while it works", async () => {
+  it("an implementation row says 1/3 on its task bar, its list open while it works naming the task in hand once", async () => {
     seed([
       meta({ id: "c-impl", title: "Home screen", status: "running", activity: "Running bun" }),
       meta({ id: "c-chat", title: "A question", status: "running", threadType: "chat", activity: "Reading" }),
@@ -712,11 +723,11 @@ describe("the master view", () => {
     await flush();
     await flush();
     const impl = screen.getByRole("button", { name: /Home screen/ });
-    expect(impl.querySelector("[data-row-status]")?.textContent).toBe("Write the view");
+    // The open list names the task in hand; line two does not say it again.
+    expect(impl.querySelector("[data-row-status]")?.textContent).toBe("");
+    expect(within(impl).getAllByText("Write the view")).toHaveLength(1);
     expect(impl.querySelector("[data-tally]")).toBeNull();
     expect(impl.querySelector("[data-bar-tally]")?.textContent).toBe("1/3");
-    // A reader hears the state and its detail, not the state alone.
-    expect(screen.getByRole("button", { name: /Working: Write the view/ })).toBe(impl);
     expect(within(impl).getByRole("button", { name: "Tasks: 1 of 3 done" }).getAttribute("aria-expanded")).toBe("true");
     expect(within(impl).getAllByRole("listitem")).toHaveLength(3);
     // A chat keeps its activity; the tally still ends its line.
@@ -778,7 +789,7 @@ describe("the master view", () => {
     const actionsOf = (name: RegExp) =>
       [...screen.getByRole("button", { name }).querySelectorAll<HTMLElement>("[data-actions] button")].map((b) => b.getAttribute("aria-label"));
     expect(actionsOf(/Home/)).toEqual(["Message", "Pause", "Thread actions"]);
-    expect(actionsOf(/Paused one/)).toEqual(["Message", "Resume", "Thread actions"]);
+    expect(actionsOf(/Paused one/)).toEqual(["Message", "Continue", "Thread actions"]);
     expect(actionsOf(/Idle one/)).toEqual(["Message", "Thread actions"]);
     const pause = vi.spyOn(commands, "pause").mockResolvedValue(undefined as never);
     fireEvent.click(within(screen.getByRole("button", { name: /Home/ })).getByRole("button", { name: "Pause" }));
@@ -902,8 +913,9 @@ describe("the master view", () => {
     const digest: BoardDigest = { todos: [{ content: "Write the view", status: "completed" }, { content: "Tests", status: "in_progress" }] };
     act(() => link.push({ push: "board", masterId: "m", sessionId: "c-impl", digest } as ServerPush));
     expect(within(impl()).getByText("1/2")).toBeTruthy();
-    // Line two says the task in hand; the open list names it too.
-    expect(impl().querySelector("[data-row-status]")?.textContent).toBe("Tests");
+    // The open list names the new task in hand; line two leaves it to the list.
+    expect(within(impl()).getAllByText("Tests")).toHaveLength(1);
+    expect(impl().querySelector("[data-row-status]")?.textContent).toBe("");
     // Only that row rendered again; another master's push changes nothing.
     expect(new Set(rowReads.filter(Boolean))).toEqual(new Set(["c-impl"]));
     act(() => link.push({ push: "board", masterId: "other", sessionId: "c-impl", digest: {} } as ServerPush));
@@ -985,6 +997,11 @@ describe("the master view", () => {
     expect(document.querySelector("[data-board]")).toBeNull();
     expect(screen.getByTestId("chat")).toBeTruthy();
     expect(screen.getByRole("alert").textContent).toContain("Couldn't load the board");
+    // On the load line's grid (NoRowsLine's): the column's gutter outside, the column inside, Retry ending on its edge.
+    const line = screen.getByRole("alert");
+    expect(line.className).toContain(columnClass());
+    expect(line.parentElement!.className).toContain(COLUMN_GUTTER_CLASS);
+    expect(screen.getByRole("button", { name: "Retry" }).className.split(/\s+/)).toContain("-me-2");
     expect(rendererErrorLine("caught", broke)).toMatch(/ thread=m view=master$/);
     metas.mockRestore();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -1507,18 +1524,20 @@ describe("the master view", () => {
     });
     const foot = document.querySelector("[data-batch-foot]")!;
     const gate = foot.querySelector("[data-step='gate']") as HTMLElement;
-    expect(gate.querySelector("[data-step-detail]")?.textContent).toBe(missing);
+    // Said in words: no runtime lead, no path.
+    expect(gate.querySelector("[data-step-detail]")?.textContent).toBe("The script is missing");
     expect(foot.getAttribute("data-foot-mode")).toBe("idle");
     expect(foot.querySelector("[data-console]")).toBeNull();
     expect(within(gate).queryByRole("button", { name: "Log" })).toBeNull();
-    expect((foot.textContent ?? "").split(missing)).toHaveLength(2);
+    expect(foot.textContent ?? "").not.toContain("scripts/gate.ts");
+    expect((foot.textContent ?? "").split("The script is missing")).toHaveLength(2);
   });
 
   it("Edit opens the rules: the steps reorder, a built-in and a shell step are added, one is removed, and Save writes the list", async () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit…" }));
     const dialog = screen.getByRole("dialog");
     const ids = () => [...dialog.querySelectorAll("[data-rule-step]")].map((li) => li.getAttribute("data-rule-step"));
     expect(ids()).toEqual(["land", "gate", "release"]);
@@ -1536,6 +1555,9 @@ describe("the master view", () => {
     await pick(await within(dialog).findByRole("combobox", { name: "Add a step" }), "Shell command");
     const addStep = within(dialog).getByRole("button", { name: "Add step" });
     expect(addStep.hasAttribute("disabled")).toBe(true);
+    // Plain words, no exit codes: "Command" and "Folder (the project's if empty)".
+    expect(within(dialog).getByLabelText("Command").getAttribute("placeholder")).toBe("Command");
+    expect(within(dialog).getByLabelText("Working directory").getAttribute("placeholder")).toBe("Folder (the project's if empty)");
     fireEvent.change(within(dialog).getByLabelText("Step name"), { target: { value: "Smoke test" } });
     fireEvent.change(within(dialog).getByLabelText("Command"), { target: { value: "bun run smoke" } });
     fireEvent.change(within(dialog).getByLabelText("Working directory"), { target: { value: "/srv/plugin" } });
@@ -1574,7 +1596,7 @@ describe("the master view", () => {
     seed([meta({ id: "c-run", title: "Home", status: "running" })]);
     renderView();
     await flush();
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit…" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Step 2 name"), { target: { value: " " } });
     expect(within(dialog).getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
@@ -1743,7 +1765,7 @@ describe("Stop, archive and delete a batch thread from the board", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Batch actions" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
-    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Pause all" }));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: /^Pause \d+$/ }));
     await flush();
     await waitFor(() =>
       expect(toasts).toEqual([{ message: "Couldn't pause it", description: "Home: This thread is moving to another host; try again once it lands" }]),
@@ -1857,7 +1879,8 @@ describe("the board's static preview", () => {
     expect(lines).toEqual([
       "Approve WebFetch",
       "FailedUsage cap until 14:00",
-      "Wire the rows to the store",
+      // The open task list names the task in hand; line two leaves it to the list.
+      "",
       "Watchingsleep 45 seconds",
       "PausedRunning bun test",
       "Waiting for Home screen",
@@ -1881,7 +1904,7 @@ describe("the board's first paint", () => {
     await act(() => new Promise((r) => setTimeout(r, 50)));
     const reports = () => link.calls.filter((c) => c.method === "stall.report").map((c) => (c.params as { line: string }).line);
     expect(reports()).toHaveLength(1);
-    expect(reports()[0]).toMatch(/^board-paint master=m n=2 ms=\d+$/);
+    expect(reports()[0]).toMatch(/^board-paint master=m n=2 ms=\d+ answer=\d+ render=\d+$/);
     fireEvent.click(screen.getByRole("button", { name: /Home/ }));
     await flush();
     fireEvent.click(screen.getByRole("button", { name: /Back/ }));
@@ -2088,7 +2111,7 @@ describe("the batch across hosts", () => {
     await flush();
     const box = screen.getByRole("button", { name: /Inbox/ });
     expect(within(box).getByText("0/2")).toBeTruthy();
-    expect(box.querySelector("[data-row-status]")?.textContent).toBe("Swipe");
+    expect(within(box).getAllByText("Swipe")).toHaveLength(1);
     expect(boxLink.calls.filter((c) => c.method === "batch.board").map((c) => c.params)).toEqual([{ masterId: "m" }]);
     // Its board push moves the row; nothing is read per row on either host.
     act(() => boxLink.push({ push: "board", masterId: "m", sessionId: "c-box", digest: { todos: [{ content: "Swipe", status: "completed" }] } } as ServerPush));
@@ -2191,7 +2214,9 @@ describe("the batch across hosts", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
     let dialog = screen.getByRole("alertdialog");
     expect(within(dialog).getByText("Pause 2 running threads?")).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Pause all" }));
+    // The rail's words for the same confirm: one line, the count on the button.
+    expect(within(dialog).getByText(PAUSE_ALL_BODY)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Pause 2" }));
     await flush();
     expect(link.calls.find((c) => c.method === "session.batch")?.params).toEqual({ action: "pause", ids: ["c-run"] });
     expect(boxLink.calls.find((c) => c.method === "session.batch")?.params).toEqual({ action: "pause", ids: ["b-run"] });

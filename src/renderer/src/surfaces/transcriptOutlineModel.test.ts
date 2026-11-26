@@ -200,9 +200,11 @@ describe("outlinePlacement", () => {
     expect(named).toEqual([]);
     // The places that sat on it share the column's class instead, or columnClass(), which is built on it.
     expect(readFileSync(join(__dirname, "threads/chatSlots.tsx"), "utf8")).toContain("w-full ${COLUMN_MAX_CLASS}");
-    for (const f of ["NoRowsLine.tsx", "SessionPane.tsx", "SurfaceSkeleton.tsx", "threads/OrchestrationView.tsx", "threads/WorkingStrip.tsx"]) {
+    for (const f of ["NoRowsLine.tsx", "SessionPane.tsx", "SurfaceSkeleton.tsx", "threads/WorkingStrip.tsx"]) {
       expect(readFileSync(join(__dirname, f), "utf8"), f).toMatch(/COLUMN_MAX_CLASS|columnClass\(/);
     }
+    // The orchestration header sits in the footer's own band, which draws on columnClass().
+    expect(readFileSync(join(__dirname, "threads/OrchestrationView.tsx"), "utf8")).toContain("<ColumnBand");
   });
 });
 

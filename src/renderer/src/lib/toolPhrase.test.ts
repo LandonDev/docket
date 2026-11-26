@@ -111,6 +111,9 @@ describe("toolPhrase", () => {
       "Ran the tests",
     );
     expect(toolPhrase(call("Bash", { command: "npm test" }))).toBe("Ran the tests");
+    // A description that only repeats the command is no description: never "Npm test".
+    expect(toolPhrase(call("Bash", { command: "npm test", description: "npm test" }))).toBe("Ran the tests");
+    expect(toolPhrase(call("Bash", { command: "npm  test", description: "NPM Test " }))).toBe("Ran the tests");
     expect(toolPhrase(call("Bash", { command: "git status -s" }))).toBe("Checked git status");
     expect(toolPhrase(call("Bash", { command: "git status" }), undefined, true)).toBe(
       "Checking git status",
@@ -179,9 +182,21 @@ describe("toolPhrase", () => {
   it("takes the tense from the block when not told", () => {
     expect(toolPhrase(call("Read", { file_path: "a.ts" }, { streaming: true }))).toBe("Reading a.ts");
     expect(toolPhrase(call("Read", { file_path: "a.ts" }, { status: "running" }))).toBe("Reading a.ts");
+    // A call waiting for his Allow has not run: it reads as asked.
     expect(
       toolPhrase({ ...call("Bash", { command: "npm test" }), approval: { requestId: 1 } }),
-    ).toBe("Running the tests");
+    ).toBe("Run the tests");
+  });
+
+  it("a call waiting for his Allow reads as asked: the plain verb, never running", () => {
+    const asking = { requestId: 1 };
+    expect(toolPhrase({ ...call("Bash", { command: "rm -rf out", description: "Remove the build output" }, { status: "pending" }), approval: asking })).toBe("Remove the build output");
+    expect(toolPhrase({ ...call("Bash", { command: "npm test" }, { status: "pending" }), approval: asking })).toBe("Run the tests");
+    expect(toolPhrase({ ...call("Write", { file_path: "notes.txt", content: "hi" }, { status: "pending" }), approval: asking })).toBe("Create notes.txt");
+    // The open group's line speaks live for every call: one tense on a line.
+    expect(runClauses({ ...call("Bash", { command: "rm -rf build" }, { status: "pending" }), approval: asking }, undefined, true)[0]).toMatch(/^Deleting/);
+    // Allowed and running, it reads as running again.
+    expect(toolPhrase({ ...call("Bash", { command: "npm test" }, { status: "running" }), approval: { requestId: 1, decided: "allow" as const } })).toBe("Running the tests");
   });
 
   it("a refused call never ran, so it keeps the plain verb", () => {
