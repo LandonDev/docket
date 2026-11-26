@@ -28,6 +28,29 @@
   `scrollToRow`, which lands exactly once the row is measured (a keyboard
   jump with `instant`, no glide). Never put `content-visibility` or size containment on a row:
   the window measures natural heights.
+- The work a thread costs grows with its rows, never their square.
+  Folding (lib/tcserver/fold.ts): a live push goes through `foldEvent`, which
+  copies the blocks array once, as an immutable update must; a page of rows
+  goes through `foldPage` (or `FoldBuilder`, a row at a time with `state()`
+  between slices), which copies it once for the page, writes in place after
+  that, and finds a call's block, a keyed text, the pending sends and the
+  open blocks by index rather than by walking the thread. Both run one
+  switch over a draft (`Draft`), so a page folds to exactly the state its
+  rows give one by one (fold.page.test.ts holds that over random page cuts,
+  and that 40,000 agent rows visit about 8 blocks a row, `foldProbe`).
+  `foldAll` is `foldPage`. "Load earlier" refolds the kept rows behind the
+  older page through one builder (`foldOlder`): exact, since the board's
+  rounds and todos (`Block.round`, `Block.todo`) count from the first row,
+  and each page costs its rows once. Rows (surfaces/transcriptActivity.ts,
+  transcriptRows.ts): `extendTurns` splits the turns again only from the
+  first block that changed, a live turn made from the last one regroups its
+  items from that block (`turnItems`, `turnUser`; a block's part in the
+  grouping is kept by block), an item keeps its row key, shape and height,
+  `working` is read once from the end, and `RowLayout.setRows` keeps its
+  index and offsets above the first row that moved. A delta into a
+  20,000-block live turn reads at most twice its own blocks;
+  transcriptRows.tail.test.ts keeps the old path as its oracle and checks
+  the seeded 30,000-row thread's rows against it delta by delta.
 - The streaming reveal (surfaces/smoothText.ts) holds a lead behind the live
   end (seeded 100 ms, 250 ms for another host's thread, grown by an
   underrun, decaying back), never runs slower than the stream, shows every
