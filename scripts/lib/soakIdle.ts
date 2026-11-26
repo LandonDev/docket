@@ -125,12 +125,20 @@ export const CENSUS = `(() => {
     const key = (name || 'web animation') + ' on ' + el + (seen ? '' : ', off screen')
     kinds[key] = (kinds[key] || 0) + 1
   }
+  // A working row: the nearest row that holds a spinner on screen (a rail row, a line of a project card, a column thread row, a strip
+  // chip, a transcript row, a project card), counted once however many spinners it holds.
+  const ROW = '[data-rail-row], [data-card-line], [data-thread-row], [role="tab"], [data-row], [data-batch-row], [data-project-row]'
   const rows = new Set()
+  const rowKinds = {}
   for (const sp of document.querySelectorAll('[data-slot="spinner"]')) {
     if (!shown(sp)) continue
-    rows.add(sp.closest('[data-thread-row], [data-project-row], [role="tab"], [data-row], [data-batch-row], li') || sp)
+    const row = sp.closest(ROW)
+    if (!row || rows.has(row)) continue
+    rows.add(row)
+    const kind = ['data-rail-row', 'data-card-line', 'data-thread-row', 'data-row', 'data-batch-row', 'data-project-row'].find((a) => row.hasAttribute(a)) || row.getAttribute('role') || 'row'
+    rowKinds[kind] = (rowKinds[kind] || 0) + 1
   }
-  return { running: running.length, onScreen, kinds, workingRows: rows.size }
+  return { running: running.length, onScreen, kinds, workingRows: rows.size, rowKinds }
 })()`
 
 export interface Census {
@@ -138,6 +146,8 @@ export interface Census {
   onScreen: number
   kinds: Record<string, number>
   workingRows: number
+  /** the working rows by what kind of row holds them */
+  rowKinds?: Record<string, number>
 }
 
 /** One flush as IDLE_PAGE kept it: its own ms, and to the end of the commits it caused. */

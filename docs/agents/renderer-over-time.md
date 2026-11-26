@@ -156,7 +156,7 @@
   - long: one agent-shaped thread of 30,000 rows in two turns, its last one
     live (`perfThread`, scripts/lib/ios-perf-seeds.ts, written straight to the
     event log), beside the forty. A cold open from its rail row (click to
-    three rows of it readable in the viewport, none still unparsed), every
+    a row of it in the viewport and none on screen still unparsed), every
     long task in the 15 s after and a CPU profile of them
     (`<label>.open.cpuprofile`, for scripts/profile-summary.ts); 10 s of
     deltas into the live turn (the host's stdin `stream 10000`), traced into

@@ -366,6 +366,8 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
   // ── the load ────────────────────────────────────────────────────────────
   type Stream = { msg: number; text: string; deltas: number; tools: number; tokens: number }
   const streams = new Map<string, Stream>()
+  // The long thread's stream takes message ids its seeded turns never used (perfThread numbers its own from 0).
+  if (scene === 'long') streams.set(SOAK_LONG, { msg: 1_000_000, text: '', deltas: 0, tools: 0, tokens: 40_000 })
   const streamOf = (id: string): Stream => {
     let s = streams.get(id)
     if (!s) streams.set(id, (s = { msg: 0, text: '', deltas: 0, tools: 0, tokens: 40_000 }))

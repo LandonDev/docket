@@ -3,8 +3,8 @@
  * last turn live (soakHost.ts SOAK_LONG), beside forty running threads. Four steps, each with its longest
  * task and its long tasks:
  *
- *   open    a cold open from the rail: the click to rows he can read (three rows of the thread in the
- *           transcript's viewport, none of them still an unparsed `invisible` text), and every long task in
+ *   open    a cold open from the rail: the click to rows he can read (a row of the thread in the
+ *           transcript's viewport, none on screen still an unparsed `invisible` text), and every long task in
  *           the LONG_TIMING.afterOpenMs after the click (the owner's Mac shows a 2.7 s freeze some 6 s
  *           after such an open); a CPU profile of that time is kept on disk
  *   stream  deltas into the live turn for LONG_TIMING.streamMs: main-thread ms a frame (a trace's top-level
@@ -19,7 +19,7 @@ import type { Verdict } from './soakJudge'
 import { spread, type Spread } from './soakTyping'
 import type { TraceEvent } from './soakTrace'
 
-export const LONG_TIMING = { afterOpenMs: 15_000, readableWithinMs: 60_000, streamMs: 10_000, jumpWaitMs: 10_000, topBudgetMs: 180_000, topStepWaitMs: 30_000, topMaxSteps: 200 }
+export const LONG_TIMING = { afterOpenMs: 15_000, readableWithinMs: 20_000, streamMs: 10_000, jumpWaitMs: 10_000, topBudgetMs: 180_000, topStepWaitMs: 30_000, topMaxSteps: 200 }
 
 /** D05: no task over 100 ms in the 15 s after the open. D11: no task over 50 ms while streaming, 4 ms of main
  *  thread a frame at p95. D12: the old hit lands within 2 s. D04: rows readable within 1.2 s (its p95). */
@@ -49,17 +49,29 @@ export const LONG_PAGE = `(() => {
     const box = view.getBoundingClientRect()
     return [...view.querySelectorAll('[data-row]')].filter((r) => { const b = r.getBoundingClientRect(); return b.height > 0 && b.bottom > box.top && b.top < box.bottom })
   }
-  s.readable = (id) => { const rows = seenRows(id); return rows.length >= 3 && !rows.some((r) => r.querySelector('.agent-markdown.invisible')) }
+  // Readable: a row of the thread in the transcript's viewport (an agent thread's rows are tall: a screen may hold
+  // one tool table), and none on screen still an unparsed \`invisible\` text.
+  s.readable = (id) => { const rows = seenRows(id); return rows.length >= 1 && !rows.some((r) => r.querySelector('.agent-markdown.invisible')) }
   s.rowSeen = (id, key) => seenRows(id).some((r) => (r.getAttribute('data-row') || '').includes(key))
-  // Every frame until the thread reads: the first frame it does.
-  s.arm = (id, what, test) => {
+  // Every frame until the test holds (the first frame it does), for \`ms\` at most: the poll reads layout, so it
+  // must never outlive its step.
+  s.arm = (what, test, ms) => {
     const run = (s[what] = { t0: performance.now(), at: null })
-    const tick = () => { if (s[what] !== run) return; if (test()) { run.at = performance.now(); return } if (performance.now() - run.t0 < ${60_000}) requestAnimationFrame(tick) }
+    const tick = () => { if (s[what] !== run) return; if (test()) { run.at = performance.now(); return } if (performance.now() - run.t0 < ms) requestAnimationFrame(tick) }
     requestAnimationFrame(tick)
     return run.t0
   }
-  s.armOpen = (id) => s.arm(id, 'open', () => s.readable(id))
-  s.armJump = (id, key) => s.arm(id, 'jump', () => s.rowSeen(id, key))
+  s.disarm = (what) => { s[what] = { t0: 0, at: s[what] ? s[what].at : null }; return true }
+  s.armOpen = (id) => s.arm('open', () => s.readable(id), ${LONG_TIMING.readableWithinMs})
+  s.armJump = (id, key) => s.arm('jump', () => s.rowSeen(id, key), ${LONG_TIMING.jumpWaitMs})
+  // Why a step found no pane: every pane on the page, the transcript, its rows and their state.
+  s.census = (id) => {
+    const panes = [...document.querySelectorAll('[data-session-drop]')].map((e) => { const r = e.getBoundingClientRect(); return { id: e.getAttribute('data-session-drop'), w: Math.round(r.width), h: Math.round(r.height), parked: !!e.closest('.tab-parked, .board-parked') } })
+    const p = pane(id)
+    const view = p && p.querySelector('.agent-transcript')
+    const rows = view ? [...view.querySelectorAll('[data-row]')] : []
+    return { panes, pane: !!p, transcript: !!view, rows: rows.length, seen: seenRows(id).length, invisible: rows.filter((r) => r.querySelector('.agent-markdown.invisible')).length, keys: rows.slice(0, 4).map((r) => r.getAttribute('data-row')), scroll: view ? { top: Math.round(view.scrollTop), height: view.scrollHeight, client: view.clientHeight } : null, buttons: p ? [...p.querySelectorAll('button')].map((b) => b.textContent.trim()).filter((t) => /earlier/i.test(t)) : [] }
+  }
   s.between = (t0, t1) => ({ tasks: s.tasks.filter((x) => x.start >= t0 && x.start < t1), frames: s.frames.filter((x) => x.start >= t0 && x.start < t1) })
   s.now = () => performance.now()
   // What the store holds of the thread: its blocks, its raw rows, the oldest seq loaded, and the block a seq jumps to.

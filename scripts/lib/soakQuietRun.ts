@@ -143,7 +143,7 @@ export async function recordIdle(ctx: QuietCtx): Promise<boolean> {
     '|---|---|---|---|---|---|---|---|---|---|',
     ...phases.map((p) => `| ${p.phase} | ${p.state.visibility}, ${p.state.focus ? 'focused' : 'not focused'} | ${p.cpuPct} | ${p.census.running} (${p.census.onScreen}) | ${p.census.workingRows} | ${p.flushes.count} (${p.flushes.meta}) | ${p.flushes.ms.p50} / ${p.flushes.ms.p95} / ${p.flushes.ms.max} | ${p.flushes.settledMs.p95} | ${p.longTasks.count} (${p.longTasks.maxMs}) | ${p.pushes.map((x) => x.rendered).join(', ')} |`),
     '',
-    ...phases.flatMap((p) => [`**${p.phase}**: ${p.how}.`, '', '| running animation | count |', '|---|---|', ...Object.entries(p.census.kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `| ${k} | ${n} |`), '', '| rendered for the pushes | count |', '|---|---|', ...p.pushNames.map(([k, n]) => `| ${k} | ${n} |`), ''])
+    ...phases.flatMap((p) => [`**${p.phase}**: ${p.how}.`, '', '| running animation | count |', '|---|---|', ...Object.entries(p.census.kinds).sort((a, b) => b[1] - a[1]).map(([k, n]) => `| ${k} | ${n} |`), '', `Working rows on screen by kind: ${Object.entries(p.census.rowKinds ?? {}).map(([k, n]) => `${k} ${n}`).join(', ') || 'none'}.`, '', '| rendered for the pushes | count |', '|---|---|', ...p.pushNames.map(([k, n]) => `| ${k} | ${n} |`), ''])
   ]
   return finish(ctx, 'idle', { rule: IDLE_RULE, timing: IDLE_TIMING, phases }, verdict, md)
 }
@@ -164,6 +164,15 @@ async function trace(c: Cdp, run: () => Promise<unknown>): Promise<TraceEvent[]>
   return events
 }
 
+/** A step that found nothing to read: what the page held, and a picture of it, beside the report. */
+async function explain(ctx: QuietCtx, id: string, step: string): Promise<void> {
+  const census = await ctx.c.eval<object>(`window.__long.census(${JSON.stringify(id)})`)
+  const shot = (await ctx.c.send('Page.captureScreenshot', { format: 'png' })) as { data: string }
+  const file = join(ctx.root, `${ctx.label}.${step}.png`)
+  writeFileSync(file, Buffer.from(shot.data, 'base64'))
+  ctx.log(`${step}: the page held ${JSON.stringify(census)} (${file})`)
+}
+
 export async function recordLong(ctx: QuietCtx): Promise<boolean> {
   const { c, log } = ctx
   const id = ctx.children[ctx.children.length - 1]!
@@ -177,7 +186,9 @@ export async function recordLong(ctx: QuietCtx): Promise<boolean> {
 
   // The open: a click on its row in the rail, else the opener every build has.
   const at = await c.eval<{ x: number; y: number } | null>(`(() => {
-    const row = [...document.querySelectorAll('[data-thread-row][data-menu-id=${JSON.stringify(id)}] [data-row-open]')].find((e) => e.getBoundingClientRect().width > 0)
+    // Its row in the rail or the workspace column: a row's open button named by the thread's title, outside every pane.
+    const title = window.__docket.sessionStore.metaOf(${JSON.stringify(id)})?.title ?? '\u0000'
+    const row = [...document.querySelectorAll('[data-row-open]')].find((e) => (e.getAttribute('aria-label') || '').startsWith(title) && !e.closest('[data-session-drop]') && e.getBoundingClientRect().width > 0)
     if (!row) return null
     row.scrollIntoView({ block: 'nearest' })
     const r = row.getBoundingClientRect()
@@ -201,6 +212,8 @@ export async function recordLong(ctx: QuietCtx): Promise<boolean> {
   const until = Date.now() + LONG_TIMING.readableWithinMs - LONG_TIMING.afterOpenMs
   while (Date.now() < until && (await c.eval<number | null>('window.__long.open.at')) === null) await sleep(250)
   const openAt = await c.eval<number | null>('window.__long.open.at')
+  await c.eval("window.__long.disarm('open')")
+  if (openAt === null) await explain(ctx, id, 'open')
   const afterOpen = await c.eval<{ tasks: { start: number; duration: number }[] }>(`window.__long.between(${t0}, ${t0 + LONG_TIMING.afterOpenMs})`)
   const heldOpen = await held()
   const open: LongResult['open'] = { by: at ? 'rail' : 'open', readableMs: openAt === null ? null : round(openAt - t0), tasks: taskList(afterOpen.tasks, t0), profile: profilePath, held: { blocks: heldOpen.blocks, rows: heldOpen.rows, oldest: heldOpen.oldest } }
@@ -238,13 +251,15 @@ export async function recordLong(ctx: QuietCtx): Promise<boolean> {
       await c.eval(`(() => { const t = window.__long.jump.t0; window.__long.armJump(${JSON.stringify(id)}, ${JSON.stringify(h.target)}); window.__long.jump.t0 = t; return true })()`)
     }
   }
+  await c.eval("window.__long.disarm('jump')")
   const j1 = await now()
   const jump: LongResult['jump'] = { seq: LONG_JUMP_SEQ, oldestLoaded: before.oldest, inLoaded: before.target !== null, landedMs: landed === null ? null : round(landed - j0), tasks: taskList((await c.eval<{ tasks: { start: number; duration: number }[] }>(`window.__long.between(${j0}, ${j1})`)).tasks, j0) }
   log(`jump to seq ${LONG_JUMP_SEQ} (oldest loaded ${before.oldest}): ${jump.landedMs === null ? `did not land in ${LONG_TIMING.jumpWaitMs / 1000} s` : `landed in ${jump.landedMs} ms`}`)
 
   // To the top, a "Load earlier messages" press at a time.
   const pane = `[...document.querySelectorAll('[data-session-drop=${JSON.stringify(id)}]')].find((e) => e.getBoundingClientRect().width > 0)`
-  const toTop = `(() => { const v = ${pane}?.querySelector('.agent-transcript'); if (!v) return false; v.scrollTop = 0; v.dispatchEvent(new Event('scroll')); return true })()`
+  // A wheel up first: a transcript that follows its live turn lets go only for the reader's own scroll (as the scenarios scene does).
+  const toTop = `(() => { const v = ${pane}?.querySelector('.agent-transcript'); if (!v) return false; v.dispatchEvent(new WheelEvent('wheel', { deltaY: -600, bubbles: true })); v.scrollTop = 0; v.dispatchEvent(new Event('scroll')); return true })()`
   const pressMore = `(() => { const b = [...(${pane}?.querySelectorAll('button') ?? [])].find((e) => e.textContent.trim() === 'Load earlier messages'); if (!b) return false; b.click(); return true })()`
   const top0 = await now()
   const topStart = Date.now()
@@ -269,6 +284,7 @@ export async function recordLong(ctx: QuietCtx): Promise<boolean> {
       break
     }
   }
+  if (!stepMs.length) await explain(ctx, id, 'top')
   const top1 = await now()
   const heldTop = await held()
   const top: LongResult['top'] = { steps: stepMs.length, reached, ms: Date.now() - topStart, stepMs: spread(stepMs), tasks: taskList((await c.eval<{ tasks: { start: number; duration: number }[] }>(`window.__long.between(${top0}, ${top1})`)).tasks, top0), heldAfter: { blocks: heldTop.blocks, rows: heldTop.rows, oldest: heldTop.oldest } }
