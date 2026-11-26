@@ -173,6 +173,8 @@ interface Ticket {
   expiresAt: number
   /** Minted on a device key's proved socket: the env id its socket inherits (devices.ticket). */
   provedEnv?: string
+  /** Minted over a socket (`remote.ticket`): the socket it opens is a window's (Principal.windowTicket). */
+  window?: true
 }
 
 /** What a stream ticket lets its socket do: watch, send his pointer and keys too, or publish a stream from another host. */
@@ -700,9 +702,9 @@ export class RemoteAuth {
   // ── tickets ───────────────────────────────────────────────────────────
 
   /** A 30-second single-use ticket for one WebSocket upgrade; only tickets ever ride in a URL. */
-  mintTicket(principal: Principal & { kind: 'remote' }, provedEnv?: string): { ticket: string; expiresIn: number } {
+  mintTicket(principal: Principal & { kind: 'remote' }, provedEnv?: string, window = false): { ticket: string; expiresIn: number } {
     const ticket = randomBytes(32).toString('base64url')
-    this.tickets.set(sha256(ticket), { keyId: principal.keyId, expiresAt: this.now() + TICKET_TTL_MS, ...(provedEnv ? { provedEnv } : {}) })
+    this.tickets.set(sha256(ticket), { keyId: principal.keyId, expiresAt: this.now() + TICKET_TTL_MS, ...(provedEnv ? { provedEnv } : {}), ...(window ? { window: true as const } : {}) })
     return { ticket, expiresIn: TICKET_TTL_MS / 1000 }
   }
 
@@ -716,7 +718,7 @@ export class RemoteAuth {
     if (!row || row.revoked_at) return null
     this.touchKey(row.id)
     const principal = this.principalOf(row)
-    return entry.provedEnv ? { ...principal, provedEnv: entry.provedEnv } : principal
+    return { ...principal, ...(entry.provedEnv ? { provedEnv: entry.provedEnv } : {}), ...(entry.window ? { windowTicket: true as const } : {}) }
   }
 
   /**

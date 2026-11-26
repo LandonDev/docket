@@ -473,12 +473,14 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
       let principal: (Principal & { kind: 'remote' }) | null = null
       const ticket = base.query.get('ticket')
       // Browser sockets use the session cookie; origin-bearing ticket requests are browser traffic too.
-      const browser = !ticket || header(req, 'origin') !== undefined
+      let browser = !ticket || header(req, 'origin') !== undefined
       const browserStatus = browser ? browserHostStatus(base) : null
       if (browserStatus) return refuseUpgrade(socket, browserStatus, browserStatus === 503 ? 'Service Unavailable' : 'Forbidden')
       if (ticket) {
         principal = auth.consumeTicket(ticket)
         if (!principal) auth.recordFailure(base.ip)
+        // A ticket a socket minted (`remote.ticket`) opens a window's socket, Origin or not: never more than the asker had.
+        else if (principal.windowTicket) browser = true
       } else {
         let verified: Verified | null = null
         try {
@@ -539,7 +541,7 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
           log(`socket closed: key ${keyId} (${principal.name})`)
         })
         log(`socket open: key ${keyId} (${principal.name}, ${principal.caps.join(',')}) from ${base.ip}${host ? ` to ${host}` : ''}`)
-        attach(ws, principal, host, Boolean(ticket && header(req, 'origin') === undefined))
+        attach(ws, principal, host, Boolean(ticket && header(req, 'origin') === undefined && !principal.windowTicket))
       })
     })().catch((err) => {
       console.error('[remote] upgrade failed', err)

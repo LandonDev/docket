@@ -1054,6 +1054,25 @@ describe('the relay (remote/relay.ts): a lane to another host through this one',
     }
   })
 
+  it('a ticket minted over a window\'s socket never opens a peer socket, Origin or not; an HTTPS ticket still does', async () => {
+    const from = 'env_window_ticket'
+    const presence = { screen: 'unlocked', power: 'awake', at: 1 }
+    const registration = { from, offers: [], presence, browserEndpoints: { listenerPorts: [8191], lanAddresses: [], remoteRoutes: [] } }
+    const token = await adminKey()
+    const window = await open(`${wsBase()}/ws?ticket=${await ticketFor(token)}`, { Origin: base })
+    const minted = await window.request('remote.ticket', {})
+    expect(minted.ok).toBe(true)
+    // The same key, redeemed by a client that sends no Origin: still a window's socket.
+    const native = await open(`${wsBase()}/ws?ticket=${minted.result.ticket}`)
+    const peer = await open(`${wsBase()}/ws?ticket=${await ticketFor(token)}`)
+    try {
+      expect((await native.request('peer.register', registration)).error).toMatch(/browser endpoints require a peer socket/)
+      expect((await peer.request('peer.register', registration)).result).toMatchObject({ environmentId: server.environmentId })
+    } finally {
+      for (const s of [window, native, peer]) s.ws.close()
+    }
+  })
+
   it('holds a moved public owner route until the connected peer acknowledges it', async () => {
     const from = 'env_browser_move'
     const oldOrigin = server.store.getSetting('remote.publicOrigin')

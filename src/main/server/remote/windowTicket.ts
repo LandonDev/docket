@@ -152,14 +152,15 @@ export function windowTicket(env: string, waitMs: number | undefined, deps: Wind
  * alone), to a relayed lane (its caps are the carrier's word) and to anything but a client key.
  */
 export function socketTicket(
-  auth: { mintTicket: (p: Principal & { kind: 'remote' }) => Ticket; inFarewell: (keyId: string) => boolean },
+  auth: { mintTicket: (p: Principal & { kind: 'remote' }, provedEnv: undefined, window: true) => Ticket; inFarewell: (keyId: string) => boolean },
   principal: Principal
 ): Ticket {
   if (principal.kind !== 'remote') throw new Error('forbidden: remote.ticket is for a key')
   if (principal.sessionId || principal.via || principal.audience !== 'client' || principal.caps.includes('pending'))
     throw new Error('forbidden: remote.ticket is for a client key on its own socket')
   if (auth.inFarewell(principal.keyId)) throw new Error('forbidden: this key is in farewell')
-  return auth.mintTicket(principal)
+  // Marked: whatever the upgrade carries, the socket it opens is a window's, never a peer endpoint (auth.ts).
+  return auth.mintTicket(principal, undefined, true)
 }
 
 /** `Server-Timing: mint;dur=<ms>, loop;dur=<ms>` on the box's ticket answer. */

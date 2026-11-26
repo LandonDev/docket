@@ -695,6 +695,9 @@ export type Principal =
       via?: string
       /** A ticket a device key's proved socket minted (`devices.ticket`): the env id that proof bound, carried to the socket the ticket opens. */
       provedEnv?: string
+      /** A ticket minted over a socket (`remote.ticket`): its socket is a window's whatever its upgrade carries,
+       *  never a peer endpoint, so it holds no more than the socket that asked for it. */
+      windowTicket?: true
       /** What paired the key, when it said (`PairBody.client`) */
       client?: import('./contract-remote').KeyClient
     }
