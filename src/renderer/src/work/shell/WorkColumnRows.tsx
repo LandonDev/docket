@@ -287,7 +287,9 @@ export const WorkThreadRow = memo(function WorkThreadRow({ row, project, actions
   const line = threadLine(project, row);
   const title = row.title || "Untitled";
   // A view over the thread panes (Mail, Today, Settings) is the one place lit: the thread under it is not in front.
-  const covered = useShell(threadsCovered) || useWorkView() !== null;
+  const paneCovered = useShell(threadsCovered);
+  const viewShown = useWorkView() !== null;
+  const covered = paneCovered || viewShown;
   const selected = row.id === actions.activeSessionId && !covered;
   const renaming = actions.renamingId === row.id;
   const working = lead?.kind === "state" && lead.state === "working";

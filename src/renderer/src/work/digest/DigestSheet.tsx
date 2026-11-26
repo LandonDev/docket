@@ -92,7 +92,7 @@ export function DigestList({
   onOpenRow,
   onRetry,
 }: {
-  view: Pick<DigestView, "days" | "rows" | "loaded">;
+  view: Pick<DigestView, "days" | "rows" | "loaded" | "answered">;
   now: number;
   /** "The Mac did not answer", or "" when every host did */
   unanswered: string;
