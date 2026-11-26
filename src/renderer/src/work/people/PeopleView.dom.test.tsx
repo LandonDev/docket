@@ -255,12 +255,12 @@ describe("a person's page", () => {
     expect(started).toEqual([{ kind: "person", label: "Maya Chen", ref: { at: "lifeos", table: "people", id: "p_maya" } }]);
   });
 
-  it("says when nothing is live with them, and when they are not one of the sector's people", async () => {
+  it("says when nothing is open with them, by name, and when they are not one of the sector's people", async () => {
     lifeos.page = { ...mayaPage, mail: [], coming: [], tasks: [], shared: [], person: { ...mayaPage.person, notes: "" } };
     setPlace("ws", { person: "p_maya" });
     const first = mount();
     await act(async () => {});
-    expect(screen.getByText("Nothing live with them here.")).toBeTruthy();
+    expect(screen.getByText("Nothing open with Maya Chen.")).toBeTruthy();
     first.unmount();
     lifeos.page = null;
     mount();

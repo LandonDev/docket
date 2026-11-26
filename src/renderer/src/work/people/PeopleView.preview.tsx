@@ -1,10 +1,11 @@
+import { BackTitle } from "../shell/BackTitle";
 import type { ReactNode } from "react";
 import type { GuestLinkRow } from "@shared/contract-work-guests";
 import { Users } from "../../chrome/icons";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { boxSilent, JOB, standUpView, Unsettled, ViewAt } from "../kit.preview";
 import { WORK_VIEWS } from "../views/registry";
-import { BackTitle, PageVerbs, PeopleList, PersonPageBody, setPlace } from "./PeopleView";
+import { PageVerbs, PeopleList, PersonPageBody, setPlace } from "./PeopleView";
 import type { DirectoryPerson, PersonPage } from "./model";
 
 /**
@@ -99,7 +100,7 @@ export function PeoplePreview({ state = "list" }: { state?: string }) {
   if (state === "page" || state === "quiet") {
     const page = state === "page" ? PAGE : QUIET;
     return (
-      <Frame title={<BackTitle name={page.person.name} onBack={none} />} head={<PageVerbs canWrite={page.person.emails.length > 0} onWrite={none} onThread={none} />}>
+      <Frame title={<BackTitle back="People" name={page.person.name} onBack={none} />} head={<PageVerbs canWrite={page.person.emails.length > 0} onWrite={none} onThread={none} />}>
         <PersonPageBody workspace={workspace} startThread={none} faces={NO_FACES} page={page} links={state === "page" ? LINKS : []} now={NOW} />
       </Frame>
     );

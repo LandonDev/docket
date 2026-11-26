@@ -2,13 +2,15 @@ import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore, type 
 import { makeFunctionReference } from "convex/server";
 import type { ContextChip } from "@shared/work";
 import { formatDue, formatStamp, formatTime } from "work-kit/views/lib/format";
-import { ArrowLeft, Search, X } from "../../chrome/icons";
+import { Search, X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
+import { BackTitle } from "../shell/BackTitle";
+import { moveBetweenRows } from "../rowKeys";
 import { chordKey } from "../../lib/keys";
 import { openWorkView, useWorkView, workSwitch } from "../../lib/workSwitch";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
@@ -96,20 +98,7 @@ export function Title(props: WorkViewProps) {
   const directory = useDirectory(props.lifeos, props.sector);
   if (!person) return <span className="font-medium text-foreground">People</span>;
   const name = directory.status === "ready" ? directory.value.find((p) => p._id === person)?.name : undefined;
-  return <BackTitle name={name} onBack={() => setPlace(props.workspace.id, { person: null })} />;
-}
-
-/** The way back, one shape on every Work screen (docs/DESIGN.md "Project screens"): a 24px arrow, where it goes, then where he is, muted. */
-export function BackTitle({ name, onBack }: { name: string | undefined; onBack: () => void }) {
-  return (
-    <span className="flex min-w-0 items-center gap-1 font-medium text-foreground">
-      <Button type="button" variant="ghost" size="icon-xs" aria-label="Back to People" className="-ms-1.5 shrink-0 text-muted-foreground" onClick={onBack}>
-        <ArrowLeft />
-      </Button>
-      <span className="min-w-0 truncate">People</span>
-      {name ? <span className="min-w-0 truncate font-normal text-muted-foreground">{name}</span> : null}
-    </span>
-  );
+  return <BackTitle back="People" name={name} onBack={() => setPlace(props.workspace.id, { person: null })} />;
 }
 
 /** The list's search; on a page, Write (when they have an address) and New thread. */
@@ -272,16 +261,10 @@ function ListSkeleton() {
   );
 }
 
-/** Up and down between rows; up from the first goes back to the search. */
-function moveBetweenRows(e: KeyboardEvent<HTMLElement>): void {
-  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-  const row = (e.target as HTMLElement).closest<HTMLElement>("[data-person-row], [data-page-row]");
-  const all = [...e.currentTarget.querySelectorAll<HTMLElement>("[data-person-row], [data-page-row]")];
-  const at = row ? all.indexOf(row) : -1;
-  const next = all[at + (e.key === "ArrowDown" ? 1 : -1)];
-  e.preventDefault();
-  if (next) next.focus();
-  else if (e.key === "ArrowUp") (e.currentTarget.closest('[role="region"]') ?? document).querySelector<HTMLInputElement>('[role="search"] input')?.focus();
+/** Up and down between rows (`moveBetweenRows`, every Work list's); up from the first goes back to the search. */
+function rowKeys(e: KeyboardEvent<HTMLElement>): void {
+  const list = e.currentTarget;
+  if (moveBetweenRows(e, "[data-person-row], [data-page-row]") === null && e.key === "ArrowUp") (list.closest('[role="region"]') ?? document).querySelector<HTMLInputElement>('[role="search"] input')?.focus();
 }
 
 export function PeopleList({ workspaceId, rows, faces, now }: { workspaceId: string; rows: readonly DirectoryPerson[]; faces: ReadonlyMap<string, string>; now?: number }) {
@@ -294,7 +277,7 @@ export function PeopleList({ workspaceId, rows, faces, now }: { workspaceId: str
   if (!rows.length) return <EmptyState title="No people" />;
   if (!shown.length) return <EmptyState title="No matches" action={{ label: "Clear search", onClick: () => setPlace(workspaceId, { query: "" }) }} />;
   return (
-    <div role="list" aria-label="People" data-people-list={workspaceId} onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] px-6 py-5">
+    <div role="list" aria-label="People" data-people-list={workspaceId} onKeyDown={rowKeys} className="mx-auto w-full max-w-[720px] px-6 py-5">
       <WindowedRows
         count={shown.length}
         rowHeight={32}
@@ -474,7 +457,7 @@ export function PersonPageBody({
   const waiting = page.tasks.filter((t) => t.relation === "waiting");
   const contact = [...person.emails, ...person.phones];
   return (
-    <div onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] px-6 py-6">
+    <div onKeyDown={rowKeys} className="mx-auto w-full max-w-[720px] px-6 py-6">
       <header className="flex items-center gap-3">
         <Face name={person.name} picture={pictureOf(person.emails, faces)} size="page" />
         <div className="flex min-w-0 flex-col gap-0.5">
@@ -492,7 +475,7 @@ export function PersonPageBody({
         </div>
       </header>
       {person.notes.trim() ? <p className="mt-4 max-w-[65ch] text-sm leading-[22px] whitespace-pre-line text-foreground select-text">{person.notes.trim()}</p> : null}
-      {pageIsQuiet(page) && !answered.length ? <p className="mt-6 text-[13px] text-muted-foreground">Nothing live with them here.</p> : null}
+      {pageIsQuiet(page) && !answered.length ? <p className="mt-6 text-[13px] text-muted-foreground">Nothing open with {person.name}.</p> : null}
 
       <Section label="Mail" show={page.mail.length > 0}>
         {page.mail.map((m) => (
