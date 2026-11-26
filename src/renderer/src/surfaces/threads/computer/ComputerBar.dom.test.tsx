@@ -109,6 +109,13 @@ describe("the computer's bar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Take over" }));
     await vi.waitFor(() => expect(press.toasts).toHaveLength(1));
     expect(press.toasts[0]).toEqual({ title: "Couldn't take over", description: "File the March expense report" });
+    // a refusal already in a person's words follows the computer's name
+    cleanup();
+    press.take = () => Promise.reject(new Error("The box refused it"));
+    render(<ComputerBar tile={tile()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Take over" }));
+    await vi.waitFor(() => expect(press.toasts).toHaveLength(2));
+    expect(press.toasts[1]).toEqual({ title: "Couldn't take over", description: "File the March expense report: The box refused it" });
     press.take = null;
   });
 
