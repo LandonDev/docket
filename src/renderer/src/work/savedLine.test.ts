@@ -150,25 +150,31 @@ describe("the save line waits for the newest edit", () => {
         seen.push(line());
       }
     };
-    // Four cells, each answered in 200 ms: never Saving…, and each Saved names a receipt.
+    // A sheet just opened says no save line until one is made (council R2-D1): the run starts from a saved file.
+    expect(line()).toBeNull();
+    type("0");
+    await watch(EDIT_WAIT + wait + 100);
+    expect(line()).toEqual({ state: "saved", at: receipts.at(-1) });
+    seen.length = 0;
+    // Four cells, each answered in 200 ms: never Saving…, and each Saved names a receipt (the first save's until the next).
     for (const v of ["10", "20", "30", "=A1+A2"]) {
       type(v);
       await watch(EDIT_WAIT + wait + 100);
     }
-    expect(seen.every((l) => l.state === "saved")).toBe(true);
-    expect(receipts).toHaveLength(4);
-    for (const l of seen) if (l.at) expect(receipts).toContain(l.at);
+    expect(seen.every((l) => l?.state === "saved")).toBe(true);
+    expect(receipts).toHaveLength(5);
+    for (const l of seen) if (l?.at) expect(receipts).toContain(l.at);
     // A slow link: Saving… once the send has been out 600 ms, then Saved with the receipt's time, never later.
     wait = 1500;
     seen.length = 0;
     type("40");
     await watch(EDIT_WAIT + SEND_SHOWN_MS - 100);
-    expect(seen.every((l) => l.state === "saved")).toBe(true);
+    expect(seen.every((l) => l?.state === "saved")).toBe(true);
     await watch(200);
-    expect(line().state).toBe("saving");
+    expect(line()?.state).toBe("saving");
     await watch(1000);
     expect(line()).toEqual({ state: "saved", at: receipts.at(-1) });
-    expect(line().at!).toBeLessThanOrEqual(Date.now());
+    expect(line()!.at!).toBeLessThanOrEqual(Date.now());
     off();
     detach();
   });
@@ -195,7 +201,7 @@ describe("the save line waits for the newest edit", () => {
     await vi.advanceTimersByTimeAsync(EDIT_WAIT + 150);
     const { view: v, sendError, saving, savedAt } = sync.get();
     expect(sendError).toBe("the disk is full");
-    expect(savedLine(v!, sendError, saving, savedAt).state).not.toBe("saved");
+    expect(savedLine(v!, sendError, saving, savedAt)?.state).not.toBe("saved");
     detach();
   });
 
@@ -207,7 +213,6 @@ describe("the save line waits for the newest edit", () => {
     const view = deckView({ slides: [page], hand: { undo: false, redo: false } });
     const host = fakeDeckHost(view);
     const edit = host.edit.bind(host);
-    vi.spyOn(host, "edit").mockImplementationOnce(async (ops) => { await a.promise; return edit(ops); });
     const store = new DeckStore();
     store.view(view);
     const session = new HandSession(host, store);
@@ -216,18 +221,26 @@ describe("the save line waits for the newest edit", () => {
       const next = insertText(model, { from: to, to }, text);
       session.typed(next.model, { from: next.at, to: next.at });
     };
-    const state = () => savedWords(session.saved(() => undefined, undefined, savingNow(unsavedOf(session.get()), Date.now()).saving), null);
+    const line = () => session.saved(() => undefined, undefined, savingNow(unsavedOf(session.get()), Date.now()).saving);
+    const state = () => savedWords(line()!, null);
     expect(session.open(page, shape, "end")).toBe(true);
+    // A deck just opened says no save line until one is made (council R2-D4): the run starts from a saved deck.
+    expect(line()).toBeNull();
+    type("Z");
+    await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS + 100);
+    await vi.waitFor(() => expect(session.get().savedAt).not.toBeNull());
+    expect(state()).toMatch(/^Saved\b/);
+    vi.spyOn(host, "edit").mockImplementationOnce(async (ops) => { await a.promise; return edit(ops); });
     type("A");
     await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS - 100);
     type("B");
     // Each word moves the pause on: nothing has gone, and nothing is said.
     await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS - 100);
-    expect(state()).toBe("Saved");
+    expect(state()).toMatch(/^Saved\b/);
     // The pause ends and the words go: Saved stays while the send is out under 600 ms.
     await vi.advanceTimersByTimeAsync(200);
     expect(session.get().busy).toBe(1);
-    expect(state()).toBe("Saved");
+    expect(state()).toMatch(/^Saved\b/);
     await vi.advanceTimersByTimeAsync(SEND_SHOWN_MS);
     expect(state()).toBe("Saving…");
     a.answer();
