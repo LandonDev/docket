@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, globalShortcut, ipcMain, Menu, shell, type MenuItemConstructorOptions, type WebContents } from 'electron'
 import { EDITOR_KEY_IDS, EMPTY_MENU_STATE, MENU_TREE, resolveMenu, runsInMain, sameMenuState, WORK_ONLY_IDS, type MenuNode, type MenuState } from '../shared/menuTree'
 import { createWindow } from './windows'
+import { windowsGate } from './windowGate'
 import { hostProfileRunning, profileHost } from './server/doctorProfile'
 
 /** Only set while a dev-only synthetic click runs: a menu can be clicked
@@ -40,7 +41,7 @@ function dispatch(id: string): void {
   }
   const win = BrowserWindow.getFocusedWindow() ?? debugTarget
   if (!win || win.isDestroyed()) {
-    if (id === 'new_window') createWindow()
+    if (id === 'new_window') windowsGate.run(() => void createWindow())
     return
   }
   win.webContents.send('native:menu', id)

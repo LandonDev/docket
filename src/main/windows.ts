@@ -17,6 +17,7 @@ import { killPtysForOwner } from './pty'
 import { QuitGate } from './quitGate'
 import { soakWindow } from './soakWindow'
 import { bootMark } from './server/boot'
+import { windowsGate } from './windowGate'
 import { CAPTION_HEIGHT, captionInk, frameOptions, isDarkColor, BACKING, readAppearance, withPlace, type WindowAppearance, takeAppearance } from './windowFrame'
 
 /**
@@ -600,7 +601,7 @@ export function registerWindows(hooks: { dropSnapshot?: (slot: string) => void; 
 export function registerDock(): void {
   if (process.platform !== 'darwin' || !app.dock) return
   app.dock.setMenu(
-    Menu.buildFromTemplate([{ label: 'New Window', click: () => void createWindow() }])
+    Menu.buildFromTemplate([{ label: 'New Window', click: () => windowsGate.run(() => void createWindow()) }])
   )
 }
 

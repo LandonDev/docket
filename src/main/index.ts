@@ -26,6 +26,7 @@ import { listEnvironments } from './server/remote/environments'
 import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
 import { forgetUnsavedHosts, readBootMirror, type BootRead } from './bootMirror'
 import { bootDesktop, deferred } from './desktopBoot'
+import { windowsGate } from './windowGate'
 import { preconnectAccount } from './server/preconnect'
 import { spawnExecBrokerChild } from './execBrokerSpawn'
 import { spawnGatewayChild } from './gatewaySpawn'
@@ -214,6 +215,8 @@ void bootDesktop<RunningServer>({
     bootMark('boot-mirror', `${Date.now() - t0}ms`)
   },
   openWindows: () => {
+    // The walls are up: a Dock click or New Window that came sooner runs now (windowGate.ts).
+    windowsGate.open()
     const up = openSavedWindows()
     userWindowsOpened = true
     return up
@@ -350,6 +353,10 @@ function prepare(): void {
     }
   }) : undefined
   registerWindowHandlers()
+  // A Dock click before the first window is heard, and waits for the walls (windowGate.ts).
+  app.on('activate', function () {
+    if (!headless) windowsGate.run(activateWindows)
+  })
 }
 
 /** Every handler a window may call, registered before the first window exists; one that needs the server waits for it. */
@@ -513,10 +520,6 @@ function onServerUp(running: RunningServer): void {
     void import('./printOut').then((m) => m.registerPrintOut()).catch((err: unknown) => console.error('[print] not registered', err))
   }
   setTimeout(() => flushCompileCache(), FLUSH_AFTER_MS).unref()
-
-  app.on('activate', function () {
-    if (!headless) activateWindows()
-  })
 }
 
 /** Dev-only hooks so the CDP exit test can drive things a page cannot. */
