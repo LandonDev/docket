@@ -405,6 +405,200 @@ describe("Today", () => {
     expect(refused.nextElementSibling?.textContent).toBe("Sign in");
     expect(refused.nextElementSibling?.className).toContain("shrink-0");
   });
+
+  /** Council round 4: the host's own silence (Sol P1, Opus P2) and the host named (Opus P3). */
+  it("names the computer Today reads LifeOS through: its silence is the red line with Retry, its Work off and its key withheld say which", () => {
+    const retry = vi.fn();
+    const lineOf = (reach: LifeosDown): HTMLElement => {
+      cleanup();
+      render(<TodayPageView model={{ kind: "day", blocks: [{ kind: "lifeos", reach }], offline: [], keys: [] }} hostName={() => "The box"} lifeosHost="The box" onRetryLifeos={retry} />);
+      return document.querySelector<HTMLElement>(`[data-today-lifeos="${reach}"]`)!;
+    };
+    let line = lineOf("unanswered");
+    expect(line.querySelector('[data-view-state="failed"]')).not.toBeNull();
+    expect(line.textContent).toBe("The box did not answerRetry");
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(lineOf("off").textContent).toBe("Work is off on the boxOpen Settings");
+    expect(lineOf("withheld").textContent).toBe("This computer cannot read LifeOS through the box");
+    line = lineOf("refused");
+    expect(line.textContent).toBe("LifeOS refused the box's sign-inSign in");
+  });
+
+  /** Council round 5 (Sol Today 1): at 400 a long computer's name ran the red word past its track, cut with no tip. */
+  it("wraps the red word of a long computer's silence beside Retry, never cut", () => {
+    const name = "Purdue Esports Office MacBook Pro";
+    render(<TodayPageView model={{ kind: "day", blocks: [{ kind: "lifeos", reach: "unanswered" }], offline: [], keys: [] }} hostName={() => name} lifeosHost={name} onRetryLifeos={vi.fn()} />);
+    const word = document.querySelector<HTMLElement>('[data-today-lifeos="unanswered"] [data-slot="status-word"]')!;
+    expect(word.textContent).toBe(`${name} did not answer`);
+    expect(word.className).not.toContain("truncate");
+    expect(word.className).toContain("text-pretty");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("keeps a failed read's cut detail whole to the keyboard: the canvas's CutDetail", async () => {
+    await loadOutbox();
+    const failing: TodaySource = {
+      id: "money",
+      section: { id: "money", title: "Money", order: 60, empty: "Nothing owed" },
+      use: () => ({ rows: [], failed: [{ environmentId: "box", error: "socket closed" }] }),
+    };
+    resetToday([held, failing]);
+    render(<View onClose={() => {}} />);
+    const detail = section("money").querySelector<HTMLElement>('[data-slot="status-detail"]')!;
+    expect(detail.textContent).toBe("Try again once it is back.");
+    // Its own box that truncates and, once cut, takes a Tab stop with the whole words in its tip.
+    expect(detail.querySelector(".focus-ring.truncate")?.textContent).toBe("Try again once it is back.");
+  });
+
+  it("says did not answer once for a host whose wait ran out, on the rows' grid; a read LifeOS refused is said in its own words", async () => {
+    await loadOutbox();
+    const retry = vi.fn();
+    const failing: TodaySource = {
+      id: "money",
+      section: { id: "money", title: "Money", order: 60, empty: "Nothing owed" },
+      use: () => FAILED,
+    };
+    const FAILED = {
+      rows: [],
+      failed: [{ environmentId: "mac", error: TIMED_OUT }, { environmentId: "box", error: "Uncaught Error: gone", said: "LifeOS could not read tasks", retry }, { environmentId: "box", error: "work.outbox.list timed out" }],
+    };
+    resetToday([held, failing]);
+    render(<View onClose={() => {}} />);
+    const [late, refused, link] = [...section("money").querySelectorAll<HTMLElement>('[data-view-state="failed"]')];
+    // The wait running out is what the words already say: nothing is said twice, in this page's words or the link's.
+    expect(late!.textContent).toBe("Mac did not answer");
+    expect(link!.textContent).toBe("The box did not answer");
+    // LifeOS's own error is not his to read: the line says what could not be read, with its Retry.
+    expect(refused!.textContent).toBe("LifeOS could not read tasksRetry");
+    for (const cls of ROW_GRID.split(" ")) expect(late!.className).toContain(cls);
+    fireEvent.click(within(refused!).getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  /** Council round 6 (Sol P1): a job's narrowed session on another host, down, is said by the rule with its press, never a Retry that asks it again for nothing. */
+  it("says a job's read through a down session by the rule: no press for a computer kept from LifeOS, Retry for silence", async () => {
+    await loadOutbox();
+    const retry = vi.fn();
+    const failing: TodaySource = {
+      id: "money",
+      section: { id: "money", title: "Money", order: 60, empty: "Nothing owed" },
+      use: () => ({
+        rows: [],
+        failed: [
+          { environmentId: "mac", error: "forbidden", down: "withheld" as const, said: "Refereeing's tasks left out", retry },
+          { environmentId: "box", error: "timed out", down: "unanswered" as const, said: "Hypixel's tasks left out", retry },
+        ],
+      }),
+    };
+    resetToday([held, failing]);
+    render(<View onClose={() => {}} />);
+    // Said once for the page, not in the section (council round 8). The section lost all it had to them, so it is not
+    // drawn at all: a heading over nothing (council round 9).
+    const lines = [...document.querySelectorAll<HTMLElement>("[data-today-lost] [data-view-state]")];
+    expect(document.querySelector('[data-today-section="money"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("Nothing owed");
+    expect(lines.map((line) => line.textContent)).toEqual(["This computer cannot read LifeOS through MacRefereeing's tasks left out", "The box did not answerHypixel's tasks left outRetry"]);
+    expect(within(lines[0]!).queryByRole("button")).toBeNull();
+    fireEvent.click(within(lines[1]!).getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  /** Council round 12 (Sol, Today 1 P2): a job read through another computer whose LifeOS is connecting is named, by host, with no press. */
+  it("says a job's read waiting on another computer's connecting LifeOS once, the computer named, with what it left out and no press", async () => {
+    await loadOutbox();
+    const waits = (what: string): TodaySource => ({
+      id: what,
+      section: { id: what, title: what, order: 60, empty: "None" },
+      use: () => ({ rows: [], failed: [{ environmentId: "mac", error: "", waits: true as const, sector: "ref" as const, left: { job: "Refereeing", what }, said: `Refereeing's ${what} left out` }] }),
+    });
+    resetToday([held, waits("tasks"), waits("meetings")]);
+    render(<View onClose={() => {}} />);
+    const lines = [...document.querySelectorAll<HTMLElement>("[data-today-lost] [data-view-state]")];
+    expect(lines).toHaveLength(1);
+    expect(lines[0]!.closest("[data-today-lost]")!.getAttribute("data-today-lost")).toBe("connecting");
+    expect(lines[0]!.getAttribute("data-view-state")).toBe("waits");
+    expect(lines[0]!.textContent).toBe("LifeOS is still connecting on MacRefereeing's tasks and meetings left out");
+    expect(within(lines[0]!).queryByRole("button")).toBeNull();
+    // The sections it emptied draw no heading over nothing, and never say they are empty.
+    expect(document.querySelector('[data-today-section="tasks"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("None");
+  });
+
+  it("draws a section's bones in the shape of its rows: two lines, or a tick before one", async () => {
+    await loadOutbox();
+    const waiting = { loading: true };
+    const of = (id: string, bones?: "lines" | "tick"): TodaySource => ({ id, section: { id, title: id, order: 60, empty: "None", ...(bones ? { bones } : {}) }, use: () => waiting });
+    resetToday([held, of("a", "lines"), of("b", "tick"), of("c")]);
+    render(<View onClose={() => {}} />);
+    const bone = (id: string) => section(id).querySelector<HTMLElement>("[data-today-bone]")!;
+    expect(bone("a").getAttribute("data-today-bone")).toBe("lines");
+    expect(bone("a").querySelectorAll('[data-slot="skeleton"]')).toHaveLength(4);
+    expect(bone("b").querySelector(".rounded-full")).not.toBeNull();
+    expect(bone("c").querySelectorAll('[data-slot="skeleton"]')).toHaveLength(3);
+  });
+
+  it("is all clear once only ended meetings are left, and says what tomorrow starts with", async () => {
+    await loadOutbox();
+    const over = { rows: [{ key: "event:1", section: "meetings", sector: "purdue" as const, title: "Staff sync", past: true, open: () => {} }], note: "Tomorrow starts at 9:00 AM with Crew meeting" };
+    resetToday([held, { id: "meetings", section: { id: "meetings", title: "Meetings", order: 20, empty: "No meetings today" }, use: () => over }]);
+    render(<View onClose={() => {}} />);
+    expect(screen.getByText("All clear")).toBeTruthy();
+    expect(screen.getByText("Tomorrow starts at 9:00 AM with Crew meeting.")).toBeTruthy();
+    expect(screen.queryByText("Nothing needs you today.")).toBeNull();
+  });
+
+  it("seats the toasts at its foot over the titles, clear of the ticks and the verbs, while it is open", async () => {
+    world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
+    await loadOutbox();
+    const { unmount } = render(<View onClose={() => {}} />);
+    const anchor = document.querySelector<HTMLElement>("[data-today-toasts]")!;
+    expect(toastAnchor()).toBe(anchor);
+    // The second cell of the rows' own grid: the titles' column.
+    expect(anchor.previousElementSibling).not.toBeNull();
+    expect(anchor.parentElement!.className).toContain(ROW_GRID.split(" ")[1]!);
+    // The held sheet lies over the toasts: while it is open they go back to the window's corner, behind it.
+    act(() => openHeld("held:box:lifeos:o1"));
+    expect(toastAnchor()).toBeNull();
+    act(() => openHeld(null));
+    expect(toastAnchor()).toBe(anchor);
+    // The list ends with a runway a toast and its gaps tall, so the last row can be scrolled clear of the stack.
+    expect(anchor.closest("[data-today]")!.querySelector('[class*="pb-24"]')).not.toBeNull();
+    unmount();
+    expect(toastAnchor()).toBeNull();
+  });
+
+  it("in a narrow column gives the page's own toasts a strip under the list, as wide as a row, only while one is up", async () => {
+    // The test's document lays nothing out: every width is 0, so the column is narrow once something measures it.
+    vi.stubGlobal("ResizeObserver", class { constructor(private readonly run: () => void) {} observe() { this.run(); } disconnect() {} unobserve() {} });
+    try {
+      world.items.set("box", [mail("o1", "Marcus Bell", "Sponsor deck")]);
+      await loadOutbox();
+      render(<View onClose={() => {}} />);
+      const strip = document.querySelector<HTMLElement>("[aria-hidden].flex.shrink-0.px-6")!;
+      const anchor = toastAnchor()!;
+      // The titles' column is not the anchor here; the strip's own is, outside the scrolling rows.
+      expect(anchor.closest("[data-today]")).toBeNull();
+      expect(strip.contains(anchor)).toBe(true);
+      expect(strip.style.height).toBe("0rem");
+      let down!: () => void;
+      act(() => void (down = toastUp()));
+      expect(strip.getAttribute("data-today-strip")).toBe("up");
+      expect(strip.style.height).toBe("5rem");
+      // Two Undo toasts: the stack opens under the pointer to both, and the strip keeps a place for each.
+      let second!: () => void;
+      act(() => void (second = toastUp()));
+      expect(strip.style.height).toBe("10rem");
+      act(() => second());
+      act(() => down());
+      expect(strip.getAttribute("data-today-strip")).toBeNull();
+      expect(strip.style.height).toBe("0rem");
+      expect(todayNow().toastsUp).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("gives a row with no job and no time their tracks, so its title is never cut beside blank room (council R1-A7)", () => {
     const rows = {
       rows: [
