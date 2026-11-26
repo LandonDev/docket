@@ -78,17 +78,33 @@ const zero = (): Counts => ({ t: {}, tAll: 0, c: 0, up: 0, down: 0 })
 /** Convex's keep-alives and transition acks are not asks of his. */
 const LIFEOS_ASKS = new Set(['ModifyQuerySet', 'Mutation', 'Action', 'Authenticate', 'Connect'])
 
-/** One frame, counted. Pure: scripts/perf/perf.test.ts drives it. */
-export function countFrame(counts: Counts, kind: SocketKind, sent: boolean, payload: string): void {
+/** One ask's key for the twice-asked detector: its method and its params, the request id left out. */
+export const askKey = (method: string, params: unknown): string => params === undefined ? method : `${method} ${JSON.stringify(params)}`
+
+/** The asks a press made more than once with the same params (D03: none twice), each with its count. Pure. */
+export function askedTwice(asks: ReadonlyMap<string, number>): string[] {
+  return [...asks].filter(([, n]) => n > 1).map(([key, n]) => `${n}× ${key}`)
+}
+
+/**
+ * One frame, counted. `asks`, where given, counts each request by method and params (askKey). Pure:
+ * scripts/perf/perf.test.ts drives it.
+ */
+export function countFrame(counts: Counts, kind: SocketKind, sent: boolean, payload: string, asks?: Map<string, number>): void {
   if (kind === 'box') {
     if (sent) counts.up += payload.length
     else counts.down += payload.length
     if (!sent || !payload.startsWith('{')) return
     try {
-      const method = (JSON.parse(payload) as { method?: unknown }).method
+      const frame = JSON.parse(payload) as { method?: unknown; params?: unknown }
+      const method = frame.method
       if (typeof method !== 'string') return
       counts.t[method] = (counts.t[method] ?? 0) + 1
       counts.tAll += 1
+      if (asks) {
+        const key = askKey(method, frame.params)
+        asks.set(key, (asks.get(key) ?? 0) + 1)
+      }
     } catch {
       // not a request frame
     }
@@ -105,6 +121,9 @@ export function countFrame(counts: Counts, kind: SocketKind, sent: boolean, payl
 export class Counter {
   private readonly sockets = new Map<string, SocketKind>()
   private counts = zero()
+  /** Each ask by method and params since the last take; `twice()` reads the one taken last. */
+  private asks = new Map<string, number>()
+  private taken = new Map<string, number>()
 
   constructor(page: Window, kindOf: (url: string) => SocketKind) {
     page.tap((method, params) => {
@@ -115,7 +134,7 @@ export class Counter {
         this.sockets.delete((params as { requestId: string }).requestId)
       } else if (method === 'Network.webSocketFrameSent' || method === 'Network.webSocketFrameReceived') {
         const { requestId, response } = params as { requestId: string; response?: { payloadData?: string } }
-        countFrame(this.counts, this.sockets.get(requestId) ?? 'other', method.endsWith('Sent'), response?.payloadData ?? '')
+        countFrame(this.counts, this.sockets.get(requestId) ?? 'other', method.endsWith('Sent'), response?.payloadData ?? '', this.asks)
       }
     })
   }
@@ -124,7 +143,14 @@ export class Counter {
   take(): Counts {
     const was = this.counts
     this.counts = zero()
+    this.taken = this.asks
+    this.asks = new Map()
     return was
+  }
+
+  /** The asks of the counts taken last that went out more than once with the same params. */
+  twice(): string[] {
+    return askedTwice(this.taken)
   }
 
   /** The counts so far, kept counting. */
@@ -145,6 +171,13 @@ export interface Sample {
   tasksAfter?: number
   /** asks up to usable */
   counts: Counts
+  /** the asks up to usable sent more than once with the same params, as `<n>× <method> <params>` (D03: none twice) */
+  twice?: string[]
+  /** pressed to the shown thread's `session.events` ask leaving the page, ms (D07) */
+  askAt?: number
+  /** a picker's typing phase: each key to its rows, ms (null: its rows never changed), and the host asks each key sent */
+  keyMs?: (number | null)[]
+  asksPerKey?: number[]
   /** asks in the second after usable: what goes on behind the paint */
   after: Counts
   /** the wire's own bytes and round trips, where the link is shaped */
@@ -187,13 +220,14 @@ export async function measure(
     error = cause instanceof Error ? cause.message : String(cause)
   }
   const counts = counter.take()
+  const twice = counter.twice()
   const wire = link?.reset()
   const asked = lifeosLink?.resetClasses()
   await new Promise((resolve) => setTimeout(resolve, options.settle ?? 1000))
   const after = counter.take()
   const read = await page.eval<{ first: number | null; usable: number | null; longest: number; longestAfter: number; tasksAfter: number }>('window.__perf.read()')
   await page.eval('window.__perf.stop?.()')
-  return { first: read.first, usable: read.usable, longest: Math.round(read.longest), ...(options.settle ? { longestAfter: Math.round(read.longestAfter), tasksAfter: read.tasksAfter } : {}), counts, after, ...(wire ? { wire: { up: wire.up, down: wire.down, turns: wire.turns } } : {}), ...(asked ? { lifeos: { window: asked.window?.turns ?? 0, host: asked.host?.turns ?? 0 } } : {}), ...(error ? { error } : {}) }
+  return { first: read.first, usable: read.usable, longest: Math.round(read.longest), ...(twice.length ? { twice } : {}), ...(options.settle ? { longestAfter: Math.round(read.longestAfter), tasksAfter: read.tasksAfter } : {}), counts, after, ...(wire ? { wire: { up: wire.up, down: wire.down, turns: wire.turns } } : {}), ...(asked ? { lifeos: { window: asked.window?.turns ?? 0, host: asked.host?.turns ?? 0 } } : {}), ...(error ? { error } : {}) }
 }
 
 /** The middle of three (or of however many ran): by usable time, an unfinished press last. */

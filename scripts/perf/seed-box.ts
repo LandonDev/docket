@@ -2,7 +2,8 @@
  * Seeds the isolated `box` of a perf run before it starts, for the code family (scripts/perf/run.ts `--family code`):
  * a plain workspace on a scratch git repo of 20,000 tracked files (the pickers' list), and stand-in threads made
  * from a seed (scripts/lib/ios-perf-seeds.ts `perfThread`), so every run opens the same threads: one agent-shaped
- * thread of 30,000 rows in 2 turns, a 2,000-row chat, and six short ones to switch among. Nothing here is his: the
+ * thread of 30,000 rows in 2 turns, a 2,000-row chat, six short ones to switch among, and a pinned master with a
+ * batch of 30 children of 100 to 300 rows each (the board's). Nothing here is his: the
  * rows are generated, the repo is made in the run's own folder.
  *
  * It writes through the server's own registry, as scripts/measure-transcript-seed.ts does, so it is bundled with
@@ -20,7 +21,7 @@ import { join } from 'node:path'
 import { configure } from 'aliax-core'
 import { startServer } from '../../src/main/server/index'
 import { perfThread } from '../lib/ios-perf-seeds'
-import { SEED_FILES, SEED_SHORT, SEED_THREADS, SEED_WORKSPACE } from './lib/seedNames'
+import { SEED_CHILDREN, SEED_FILES, SEED_MASTER, SEED_SHORT, SEED_THREADS, SEED_WORKSPACE } from './lib/seedNames'
 
 const data = process.env.PERF_SEED_DATA
 const repo = process.env.PERF_SEED_REPO
@@ -60,11 +61,15 @@ const server = await startServer(join(data, 'temp-code.db'), { claimShim: false,
 const workspace = await server.registry.createWorkspace(repo, SEED_WORKSPACE)
 const project = await server.registry.createProject(workspace.id, 'perf', 'local')
 const threads: { id: string; title: string; rows: number }[] = []
-for (const thread of [SEED_THREADS.long, SEED_THREADS.chat, ...SEED_SHORT]) {
+// The master first: its children carry its id (`masterId`), which is all a batch is (docs/agents/master-threads.md).
+const seeds = [SEED_THREADS.long, SEED_THREADS.chat, ...SEED_SHORT, SEED_MASTER, ...SEED_CHILDREN]
+for (const thread of seeds) {
   await server.registry.create({
     id: thread.id, provider: 'claude', model: 'claude-sonnet-5-5', reasoning: 'low', agentType: 'implementer', permission: 'edits',
-    projectId: project.id, threadType: thread.type, title: thread.title
-  })
+    projectId: project.id, threadType: thread.type, title: thread.title,
+    ...(thread.id === SEED_MASTER.id ? { master: true } : thread.id.startsWith('perf-child-') ? { masterId: SEED_MASTER.id } : {})
+    // No harness: the seed writes rows and closes; a boot here would spawn a CLI for every thread.
+  }, { eager: false })
   const events = perfThread(thread.id, thread)
   for (let i = 0; i < events.length; i++) {
     server.registry.append(thread.id, events[i]!)

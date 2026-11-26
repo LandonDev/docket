@@ -190,6 +190,19 @@ async function deskPort(inst: Instance, seed: string): Promise<number> {
   return 0
 }
 
+/**
+ * The credential lists a pair revokes on an instance at its end, each with its revoke: Work's guest links only on box,
+ * and only when the pair turned Work on (a code pair's box answers every work.* ask "Work is off on this host").
+ */
+export function cleanupLists(isBox: boolean, workOn: boolean): (readonly [string, string])[] {
+  return [
+    ['remote.pairings.list', 'remote.pairings.revoke'],
+    ['remote.sessions.list', 'remote.sessions.revoke'],
+    ['remote.keys.list', 'remote.keys.revoke'],
+    ...(isBox && workOn ? [['work.guests.list', 'work.guests.revoke'] as const] : [])
+  ]
+}
+
 export class Pair {
   readonly seed = randomBytes(32).toString('hex')
   readonly abort = new AbortController()
@@ -217,6 +230,8 @@ export class Pair {
   private finishFakeBrowserTurn?: () => void
   fakeMailReply?: MailReplyFixture
   private stopping = false
+  /** Work was turned on (`open`'s `work`, true unless a code pair): a pair with Work off has no guest links to revoke. */
+  private workOn = true
   win!: Instance
   box!: Instance
   desk?: Instance
@@ -358,7 +373,7 @@ export class Pair {
       await this.page.clickOn('[role="dialog"] button', 'Skip')
     }
     for (const inst of this.instances) inst.host = (await this.rpc<{ environmentId: string }>(inst, 'remote.status')).environmentId
-    const work = options.work !== false
+    const work = this.workOn = options.work !== false
     if (work) for (const inst of this.instances) await this.rpc(inst, 'work.set', { enabled: true })
     if (work && this.sandbox) {
       await this.rpc(this.box, 'work.lifeos.setToken', { token: this.sandbox.deviceToken })
@@ -419,7 +434,7 @@ export class Pair {
       writeFileSync(join(dir, `file${i}.ts`), `export const n${i} = ${i}\n`)
     }
     writeFileSync(join(path, 'README.md'), `# ${name}\n\nA scratch project of a perf run.\n`)
-    const git = (...args: string[]): void => void execFileSync('git', ['-c', 'user.name=Perf', '-c', 'user.email=perf@example.test', '-c', 'commit.gpgsign=false', '-C', path, ...args], { stdio: 'ignore', timeout: 120_000, env: { PATH: process.env.PATH, HOME: this.box.home, GIT_CONFIG_NOSYSTEM: '1' } })
+    const git = (...args: string[]): void => void execFileSync('git', ['-c', 'user.name=Perf', '-c', 'user.email=perf@example.test', '-c', 'commit.gpgsign=false', '-C', path, ...args], { stdio: 'ignore', timeout: 120_000, env: { HOME: this.box.home, GIT_CONFIG_NOSYSTEM: '1' } })
     git('init', '-q', '-b', 'main')
     git('add', '-A')
     git('commit', '-q', '-m', 'A scratch project')
@@ -627,14 +642,8 @@ export class Pair {
       }
       // Only this run can mint credentials in these fresh databases, including portal and setup-link credentials.
       for (const inst of this.instances) {
-        for (const [list, revoke] of [
-          ['remote.pairings.list', 'remote.pairings.revoke'],
-          ['remote.sessions.list', 'remote.sessions.revoke'],
-          ['remote.keys.list', 'remote.keys.revoke'],
-          ['work.guests.list', 'work.guests.revoke']
-        ] as const) {
+        for (const [list, revoke] of cleanupLists(inst === this.box, this.workOn)) {
           if (!inst.port || inst.halted) break
-          if (list === 'work.guests.list' && inst !== this.box) continue
           try {
             const live = async () => (await local<{ id: string; revokedAt?: number | null; endedAt?: number | null }[]>(inst, list))
               .filter((row) => !row.revokedAt && !row.endedAt)

@@ -110,6 +110,33 @@ The bench pins itself, the headless Electron host, and its children to the last 
 | `--boot` (H06) | Time to the first hello, the first and focused resumed threads, and all 40 resumed threads. The default seed is 48 threads and 6,000 rows. `--seed-size real` uses 2,000 threads and 1,000,000 rows, with 30,000 in the longest thread. |
 
 `--boot --copy <userData>` measures only hello on a scrubbed copy. It needs the scrub tool's marker check and an empty resume ledger. Boot writes to the supplied scratch copy and uses its own HOME, disables the remote listener, and routes model calls to loopback. Before startup it points the copy’s workspace, project and thread paths at missing scratch paths. It restores those paths after Electron stops. It lets the background index finish within the boot window so a second run can time a steady boot. Each result and table includes the one-minute load and agents slice anonymous memory at the start and end. The bench writes results, including failures, under the main checkout's `.temp-code/plans/perf2/runs/host-<scene>-<stamp>.json`.
+### The code family (`--family code`)
+
+`bun run perf --family code` stands the pair up for the rest of Docket: Work off, and `box` seeded before it starts by
+scripts/perf/seed-box.ts (names in scripts/perf/lib/seedNames.ts): a workspace "Perf code" on a scratch repo of 20,000
+files with one project, threads of 30,000 rows (`perf-long`), 2,000 rows and six short ones, and a pinned master with
+a batch of 30 children of 100 to 300 rows. The seed's batch keeps the default "When done" steps; its gate step fails
+at once on the scratch repo, on the isolated box alone. The 40 stand-ins stream in another workspace.
+
+The rows (scripts/perf/rows/code.ts) press what he presses:
+
+- A code project's threads open from the title bar's tabs (`[data-menu-id=<id>] [role=tab]`); the column's project
+  card lists them as words, not rows. A rail row's label is its name then what it is doing ("Perf code, unread"), so
+  rows are found by the name before a comma.
+- `thread-open-far`, `thread-open-lost`, `thread-open-catchup`: each press starts from a reloaded document that shows a
+  short thread, so the long one is never seen. `thread-open-lost` drops the answer to the first `session.events` ask
+  for the thread in the page (`WIRE_TAP`, the socket kept open, every other frame passed): an answer lost on a live
+  link, which the window's request deadline and the store's retry decide. The link carries the window's socket
+  compressed, so the relay cannot drop one frame. `thread-open-catchup` cuts the link 3 s with seven threads kept and
+  clicks as it reopens; `askAt` is the click to the thread's `session.events` leaving the page.
+- `launch-code`: a reload, to `tc:rail-complete` and the shown long thread's rows drawn; `first` is the first
+  contentful paint; `twice` names any ask sent twice with the same params.
+- `board-open`: the master's tab to its board drawn (all 30 rows, or the board's screen filled); the first press cold.
+- `picker-search`, `picker-file`, `picker-at`, `picker-model`: opened three times inside 30 s, then five keys
+  typed, `keyMs` and `asksPerKey` on the last press. Go to File draws no rows before a key, and a fresh profile's model
+  picker opens on an empty Favorites list: those opens are timed to the list in hand.
+- `window-forward`: under xvfb no window manager moves the focus, so CDP's focus emulation stands in: off is the page
+  blurred and hidden, on fires the window's `focus` and a `visibilitychange` to visible. The asks of the 2 s after.
 
 ## The pass's numbers
 

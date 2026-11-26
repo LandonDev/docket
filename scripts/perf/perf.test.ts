@@ -6,8 +6,10 @@ import { BUDGETS, budgetsOf, covers } from './budgets'
 import { DISK_PRESSED, guardLiveBox, GUARD_EVERY_MS, ioPressure, LIVE_SLOWED, slowed } from './lib/guard'
 import { guardedArgs, wrapped } from './guarded'
 import { LOAD_DELTAS_A_SECOND, loadStream } from './lib/load'
-import { countFrame, middle, type Counts, type Sample } from './lib/probe'
+import { askedTwice, askKey, countFrame, middle, type Counts, type Sample } from './lib/probe'
 import { ROWS, rowsMatching } from './rows'
+import { WIRE_TAP } from './rows/code'
+import { cleanupLists } from '../journeys/lib/shape'
 import { chosen, coreCount, flags, lastCores, parseLink, type RunResults } from './run'
 import { asks, latest, perfTable, withSection } from './table'
 
@@ -75,6 +77,14 @@ describe('the kit keeps to itself', () => {
     expect(host).toMatch(/const vm = join\([^)]*'no-vm'\)/)
     expect(host).toMatch(/WINVM_DIR: vm\b/)
     expect(host).not.toMatch(/process\.env\.WINVM/)
+  })
+
+  it("asks a pair with Work off for no guest links at its end: a code pair's box would answer that Work is off", () => {
+    const lists = (isBox: boolean, workOn: boolean) => cleanupLists(isBox, workOn).map(([list]) => list)
+    expect(lists(true, true)).toContain('work.guests.list')
+    expect(lists(true, false)).not.toContain('work.guests.list')
+    expect(lists(false, true)).not.toContain('work.guests.list')
+    expect(lists(true, false)).toEqual(['remote.pairings.list', 'remote.sessions.list', 'remote.keys.list'])
   })
 
   it('takes at most eight cores, the last ones, and a link as there-and-back over rate', () => {
@@ -191,12 +201,82 @@ describe('the counts', () => {
     expect(counts).toEqual({ t: {}, tAll: 0, c: 2, up: 0, down: 0 })
   })
 
+  it('an ask sent twice with the same params is named once with its count; the request id and other params tell asks apart', () => {
+    const counts = zero()
+    const asks = new Map<string, number>()
+    countFrame(counts, 'box', true, '{"id":"1","method":"session.list","params":{"archived":false}}', asks)
+    countFrame(counts, 'box', true, '{"id":"2","method":"session.list","params":{"archived":false}}', asks)
+    countFrame(counts, 'box', true, '{"id":"3","method":"session.list","params":{"archived":true}}', asks)
+    countFrame(counts, 'box', true, '{"id":"4","method":"hello"}', asks)
+    countFrame(counts, 'box', true, '{"id":"5","method":"hello"}', asks)
+    countFrame(counts, 'box', true, '{"id":"6","method":"hello"}', asks)
+    countFrame(counts, 'box', false, '{"id":"1","ok":true,"result":[]}', asks)
+    countFrame(counts, 'own', true, '{"id":"7","method":"hello"}', asks)
+    expect(asks.size).toBe(3)
+    expect(askedTwice(asks)).toEqual(['2× session.list {"archived":false}', '3× hello'])
+    expect(askKey('git.diffIndex', { cwd: '/x' })).toBe('git.diffIndex {"cwd":"/x"}')
+    expect(askedTwice(new Map([['a', 1]]))).toEqual([])
+  })
+
   it('the middle press is the middle by usable time, an unfinished press last', () => {
     const s = (usable: number | null): Sample => ({ first: null, usable, longest: 0, counts: zero(), after: zero() })
     expect(middle([s(900), s(120), s(300)])?.usable).toBe(300)
     expect(middle([s(null), s(120), s(300)])?.usable).toBe(300)
     expect(middle([s(120)])?.usable).toBe(120)
     expect(middle([])).toBeUndefined()
+  })
+})
+
+describe("the code rows' tap on the page's sockets", () => {
+  /** A stand-in for the page's WebSocket: `send` and an `onmessage` accessor on its prototype, as the browser's are. */
+  const page = () => {
+    class Socket {
+      sent: string[] = []
+      private handler: ((event: { data: string }) => void) | null = null
+      send(data: string): void { this.sent.push(data) }
+      get onmessage() { return this.handler }
+      set onmessage(fn) { this.handler = fn }
+      deliver(data: string): void { this.handler?.({ data }) }
+    }
+    const window: { __perfWire?: { drop(id: string): void; stamp(id: string): void; dropped: number; sentAt: number } } = {}
+    let clock = 0
+    new Function('window', 'WebSocket', 'performance', WIRE_TAP)(window, Socket, { now: () => ++clock })
+    // Put in twice (a script for new documents, then an eval): the second is a no-op.
+    new Function('window', 'WebSocket', 'performance', WIRE_TAP)(window, Socket, { now: () => ++clock })
+    return { wire: window.__perfWire!, Socket }
+  }
+  const ask = (id: string, method: string, sessionId: string): string => JSON.stringify({ id, method, params: { sessionId, afterSeq: 0 } })
+
+  it("drops only the answer to the first session.events ask for the thread, once, and passes every other frame", () => {
+    const { wire, Socket } = page()
+    const socket = new Socket()
+    const heard: string[] = []
+    socket.onmessage = (event) => heard.push(event.data)
+    wire.drop('perf-long')
+    socket.send(ask('1', 'session.events', 'perf-short-1'))
+    socket.send(ask('2', 'session.focus', 'perf-long'))
+    socket.send(ask('3', 'session.events', 'perf-long'))
+    socket.send(ask('4', 'session.events', 'perf-long'))
+    for (const id of ['1', '2', '3', '4', '3']) socket.deliver(JSON.stringify({ id, ok: true, result: [] }))
+    socket.deliver('{"push":"session.event","sessionId":"perf-long"}')
+    expect(socket.sent).toHaveLength(4)
+    expect(heard.map((data) => JSON.parse(data).id ?? 'push')).toEqual(['1', '2', '4', '3', 'push'])
+    expect(wire.dropped).toBeGreaterThan(0)
+  })
+
+  it('drops nothing unasked, and stamps when the stamped thread\'s ask leaves', () => {
+    const { wire, Socket } = page()
+    const socket = new Socket()
+    const heard: string[] = []
+    socket.onmessage = (event) => heard.push(event.data)
+    wire.stamp('perf-long')
+    socket.send(ask('1', 'session.events', 'perf-short-1'))
+    expect(wire.sentAt).toBe(0)
+    socket.send(ask('2', 'session.events', 'perf-long'))
+    socket.deliver(JSON.stringify({ id: '2', ok: true, result: [] }))
+    expect(wire.sentAt).toBeGreaterThan(0)
+    expect(heard).toHaveLength(1)
+    expect(wire.dropped).toBe(0)
   })
 })
 
