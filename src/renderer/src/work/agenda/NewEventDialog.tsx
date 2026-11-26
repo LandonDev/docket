@@ -178,6 +178,12 @@ function Body({
       <ModalBody>
         {/* The session dropped while the form was open: its line, with the rule's press; what he typed stays. */}
         {down ? <DownLine session={down} /> : waits ? <HostLine live={host} /> : null}
+        {/* What keeps Add off is said first, where the session's line stands, before he types into the fields. */}
+        {none ? (
+          <p data-no-calendar className="text-[13px] leading-5 text-muted-foreground">
+            {jobNameNow(sector)} has no calendar that takes new events.
+          </p>
+        ) : null}
         <Field label="Event">
           <Input autoFocus value={form.title} onChange={(e) => patch({ title: e.target.value })} autoComplete="off" />
         </Field>
@@ -205,11 +211,6 @@ function Body({
           <Field label="Calendar">
             <ChoiceSelect label="Calendar" value={sourceId ?? ""} options={calendars.map((c) => ({ value: c._id, label: c.label ?? c.channel ?? c.account }))} onChange={setCalendar} />
           </Field>
-        ) : null}
-        {none ? (
-          <p data-no-calendar className="text-[13px] leading-5 text-muted-foreground">
-            {jobNameNow(sector)} has no calendar that takes new events.
-          </p>
         ) : null}
         <ErrorLine error={error} />
       </ModalBody>

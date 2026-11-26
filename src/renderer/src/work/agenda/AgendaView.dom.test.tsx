@@ -40,13 +40,15 @@ describe("the Agenda's header", () => {
     expect(container.querySelector("[data-agenda-short-period]")!.textContent).toBe(shortWeek(NOW.getTime()));
   });
 
-  it("keeps a way back to today when narrow: an icon press with its tip, only off today's period", () => {
+  it("offers Today only off today's period, as a word, and narrow as an icon press with its tip", () => {
     const { container } = render(<Head {...({ workspace: { id: "ws" }, lifeos: READS } as never)} />);
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
-    // On this week there is nowhere to go back to.
+    // On this week there is nowhere to go back to: neither the word nor the icon stands idle.
     expect(container.querySelector('[data-agenda-today="icon"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Today" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Next week" }));
     fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+    expect(container.querySelector('[data-agenda-today="word"]')).not.toBeNull();
     const icon = container.querySelector<HTMLElement>('[data-agenda-today="icon"]')!;
     // Drawn only where the word gives way.
     expect(icon.className).toContain("@min-[26rem]/viewhead:hidden");
@@ -54,6 +56,7 @@ describe("the Agenda's header", () => {
     fireEvent.click(icon);
     expect(container.querySelector("[data-agenda-short-period]")!.textContent).toBe(shortWeek(NOW.getTime()));
     expect(container.querySelector('[data-agenda-today="icon"]')).toBeNull();
+    expect(container.querySelector('[data-agenda-today="word"]')).toBeNull();
   });
 
   it("offers the way back within the minute its period ends, though nothing else draws the header again", () => {
@@ -91,6 +94,8 @@ describe("the Agenda's header", () => {
   it("gives way at narrow widths: Today under 26rem of header, the three views as one select under 40rem", () => {
     const { container } = render(<Head {...({ workspace: { id: "ws" }, lifeos: READS } as never)} />);
     fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    // Off this week, where Today has somewhere to go.
+    fireEvent.click(screen.getByRole("button", { name: "Next week" }));
     expect(screen.getAllByRole("button", { name: "Today" })[0]!.className).toContain("@max-[26rem]/viewhead:hidden");
     // The short period is never cut: the view's name gives way before it.
     expect(container.querySelector("[data-agenda-short-period]")!.className).toContain("shrink-0");
@@ -129,6 +134,12 @@ describe("the Agenda's bones", () => {
     const month = view("month").querySelector('[data-agenda-bones="month"]')!;
     expect(month.querySelectorAll(".grid-rows-6 > div")).toHaveLength(42);
     cleanup();
-    expect(view("list").querySelector("[data-agenda-bones]")).toBeNull();
+    // The list's bones stand on its rows' own grid and height, so nothing moves when the events land.
+    const list = view("list").querySelector('[data-agenda-bones="list"]')!;
+    const rows = list.querySelectorAll<HTMLElement>("[data-bone-row]");
+    expect(rows).toHaveLength(5);
+    for (const row of rows) expect(row.className).toContain("grid min-h-9 grid-cols-[88px_minmax(0,1fr)] gap-x-2 px-3 py-1.5");
+    // A title's bar over a shorter place's, on the row's own two lines.
+    expect(rows[0]!.querySelectorAll(":scope > div:last-child > div")).toHaveLength(2);
   });
 });

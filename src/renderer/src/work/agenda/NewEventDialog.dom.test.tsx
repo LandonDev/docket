@@ -28,11 +28,15 @@ afterEach(() => {
 const add = () => screen.getByRole("button", { name: "Add" });
 
 describe("New event", () => {
-  it("with no calendar of the job that takes events, says so in the calendar's place and keeps Add off", () => {
+  it("with no calendar of the job that takes events, says so first, above the fields, and keeps Add off", () => {
     lifeos.sources = [{ _id: "s2", kind: "gcal", account: "a@b.c", sector: "ref", enabled: true }];
     render(<NewEventDialog sector="purdue" startsAt={null} onClose={() => {}} />);
     expect(document.querySelector("[data-no-calendar]")?.textContent).toBe("Purdue Esports has no calendar that takes new events.");
     expect(add().hasAttribute("disabled")).toBe(true);
+    // Said first, before the fields he would type into, not under them.
+    const line = document.querySelector("[data-no-calendar]")!;
+    const event = screen.getByRole("textbox", { name: "Event" });
+    expect(line.compareDocumentPosition(event) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("gives Day a row of its own where the three fields do not fit, From and To together under it (council round 9)", () => {

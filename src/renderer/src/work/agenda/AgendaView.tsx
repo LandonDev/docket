@@ -1,5 +1,5 @@
 import { ConvexProvider } from "convex/react";
-import { memo, useEffect, useLayoutEffect, useMemo } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, type KeyboardEvent } from "react";
 import { useKeptRows, WindowedRows, type RowPlace } from "../windowed";
 import type { ContextChip } from "@shared/work";
 import { AgendaMonth, AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-kit/views";
@@ -12,9 +12,12 @@ import { Tip } from "../../components/tip";
 import { Calendar } from "../icons";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "../../components/ui/context-menu";
 import { Button } from "../../components/ui/button";
+import { ItemButton } from "../../components/ui/item";
+import { ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../../components/ui/press";
 import { reveal } from "../../components/ui/reveal";
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
+import { moveBetweenRows } from "../rowKeys";
 import { clockTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { type AgendaClient, type AgendaEvent, viewsClients } from "../tasks/client";
@@ -105,17 +108,20 @@ export function Head({ workspace, lifeos }: WorkViewProps) {
           <span data-agenda-short-period className="shrink-0 text-[13px] whitespace-nowrap text-muted-foreground tabular-nums @min-[40rem]/viewhead:hidden">
             {view === "month" ? shortMonth(day) : shortWeek(day)}
           </span>
-          {/* Under 26rem of header, Today's word gives way so the short period keeps its room; off today's period an
-              icon press with its tip stays, so the way back is one press. */}
-          <Button variant="ghost" size="sm" className="@max-[26rem]/viewhead:hidden" onClick={() => go({ day: startOfDay(Date.now()) })}>
-            Today
-          </Button>
+          {/* Today only off today's period: on it the press would do nothing. Under 26rem of header the word gives way to an
+              icon press with its tip, so the short period keeps its room and the way back is still one press. The presses
+              after it hold their place, since the header's controls sit at its end. */}
           {holdsToday(view, day, now) ? null : (
-            <Tip label="Today">
-              <Button variant="ghost" size="icon-sm" aria-label="Today" data-agenda-today="icon" className="@min-[26rem]/viewhead:hidden" onClick={() => go({ day: startOfDay(Date.now()) })}>
-                <Calendar />
+            <>
+              <Button variant="ghost" size="sm" data-agenda-today="word" className="@max-[26rem]/viewhead:hidden" onClick={() => go({ day: startOfDay(Date.now()) })}>
+                Today
               </Button>
-            </Tip>
+              <Tip label="Today">
+                <Button variant="ghost" size="icon-sm" aria-label="Today" data-agenda-today="icon" className="@min-[26rem]/viewhead:hidden" onClick={() => go({ day: startOfDay(Date.now()) })}>
+                  <Calendar />
+                </Button>
+              </Tip>
+            </>
           )}
           <Button variant="ghost" size="icon-sm" aria-label={`Previous ${view}`} onClick={() => go({ day: shiftPeriod(view, day, -1) })}>
             <ChevronLeft />
@@ -261,7 +267,8 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
     );
   if (!days?.length) return <EmptyState title="Nothing scheduled" />;
   return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-6 py-6">
+    // ↑ and ↓ move between the events across the days, as Tasks' and People's rows do.
+    <div onKeyDown={rowKeys} className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-6 py-6">
       {days.map(({ day, events: rows }) => (
         <section key={day} aria-label={formatDayHeading(day, now)} className="flex flex-col">
           <h2 className="mb-1 px-3 text-xs font-medium text-muted-foreground">{formatDayHeading(day, now)}</h2>
@@ -297,9 +304,18 @@ function Agenda({ client, people = NO_PEOPLE, workspaceId, environmentId }: { cl
   );
 }
 
+/** The list's arrow keys: from anywhere in a row (a name, a clash line) to the open control of the event before or after. */
+const rowKeys = (e: KeyboardEvent<HTMLElement>): void => void moveBetweenRows(e, '[role="listitem"]', "[data-row-open]");
+
 const eventChip = (event: AgendaEvent): ContextChip => ({ kind: "event", label: event.title, ref: { at: "lifeos", table: "events", id: event._id } });
 
-/** One event: its time (with when to leave under it while that is ahead), its title over where it is and what it clashes with, and on hover the verb that opens its page (Prepare, or Follow up once it is over); its right-click, the same verb, Show clash and Run a play…. Exported for the clash line's preview. */
+/**
+ * One event: its time (with when to leave under it while that is ahead), its title over where it is and what it clashes
+ * with. A press anywhere on the row opens the meeting's page (an `ItemButton` laid over it, as a Tasks row); the hover
+ * verb (Prepare, or Follow up once it is over) says what the press does and is its pointer's shortcut, drawn over the
+ * title's end, whose last 12px fade under it. The clash lines and the names keep their own presses, above the row's.
+ * Its right-click: the same verb, Show clash and Run a play…. Exported for the clash line's preview.
+ */
 export const EventRow = memo(function EventRow({
   event,
   past,
@@ -333,29 +349,39 @@ export const EventRow = memo(function EventRow({
   const clash = clashes;
   // LifeOS's event carries its attendees; the shared type does not name them.
   const met = knownAttendees((event as AgendaEvent & { attendees?: { address: string }[] }).attendees, people);
+  const verb = done ? "Follow up" : "Prepare";
   return (
     <ContextMenu>
-      <ContextMenuTrigger
-        render={<div role="listitem" {...place} className="group/row relative grid min-h-9 grid-cols-[88px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5 transition-colors duration-(--dur-hover) hover:bg-foreground/5" />}
-      >
-        <span className="flex flex-col text-xs leading-5 text-muted-foreground tabular-nums">
+      <ContextMenuTrigger render={<div role="listitem" {...place} className={cn("group/row grid min-h-9 grid-cols-[88px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
+        {/* The row's one press, under what it shows: keyboard focus rings the whole row, and ↑ ↓ move between these. */}
+        <ItemButton data-row-open aria-label={`${verb} ${event.title}`} onClick={() => onPrepare(event)} className={ROW_OPEN} />
+        <span className={cn("flex flex-col text-xs leading-5 text-muted-foreground tabular-nums", ROW_SHOWS)}>
           <span>{event.allDay ? "All day" : formatTime(event.startsAt)}</span>
           {/* A time keeps its AM or PM on its own line: the column is as wide as "Leave 12:45 PM". */}
           {leave !== undefined && !past ? <span className="font-medium whitespace-nowrap text-foreground">Leave {clockTime(leave)}</span> : null}
         </span>
-        <span className="flex min-w-0 flex-col">
-          {/* The verb's place is kept on the title's line alone: where it is and who is there read the column's whole width. The
-              place is the verb's own width (Follow up, the longer, ends 8px in from the row's edge) and no more, so a narrow
-              column's title keeps what room there is. */}
-          <span data-event-title className={cn("truncate pr-18 text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
+        {/* What the row shows takes no pointer, so a press on it is the row's; its buttons (a clash line, a name) take their own. */}
+        <span className={cn("flex min-w-0 flex-col [&_button]:pointer-events-auto", ROW_SHOWS)}>
+          {/* The title runs the row's width at rest: no room is kept for a verb that shows only on hover. */}
+          <span data-event-title className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
           {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
           {clash?.length ? <ClashLines clashes={clash} eventId={event._id} environmentId={environmentId} day={day} /> : null}
           {met.length && workspaceId ? <With people={met} workspaceId={workspaceId} /> : null}
         </span>
-        <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true }))}>
-          <Button size="xs" variant="ghost" onClick={() => onPrepare(event)}>
-            {done ? "Follow up" : "Prepare"}
-          </Button>
+        {/* Over the title's end on the row's own fill (the page under the row's hover tint), its first 12px fading the title out,
+            as a rail row's actions do. Out of the Tab order: the row's own press, which holds focus, is the same act. */}
+        <span
+          data-event-verb
+          className={cn(
+            "absolute top-1.5 right-2 rounded-e-md bg-background ps-3 [mask-image:linear-gradient(to_right,transparent,var(--foreground)_12px)]",
+            reveal("row", { row: true, overlay: true }),
+          )}
+        >
+          <span className="flex rounded-e-md group-hover/row:bg-foreground/5">
+            <Button size="xs" variant="ghost" tabIndex={-1} aria-hidden onClick={() => onPrepare(event)}>
+              {verb}
+            </Button>
+          </span>
         </span>
       </ContextMenuTrigger>
       <EventMenu event={event} over={done} onPrepare={onPrepare} clashes={clash} environmentId={environmentId} day={day} />
@@ -391,11 +417,17 @@ function With({ people, workspaceId }: { people: readonly DirectoryPerson[]; wor
   const shown = people.slice(0, 3);
   const more = people.length - shown.length;
   return (
-    <span className="truncate text-xs text-muted-foreground">
+    // 4px of padding each side, taken back by the margin, so the line keeps its 16px and a name's hit area reaches 24px
+    // inside the box that cuts a long line.
+    <span className="-my-1 truncate py-1 text-xs text-muted-foreground">
       With{" "}
       {shown.map((p, i) => (
         <span key={p._id}>
-          <button type="button" className="relative cursor-pointer rounded-sm hover:text-foreground hover:underline hover:underline-offset-2" onClick={() => openWorkView({ workspaceId, view: "people", person: p._id })}>
+          <button
+            type="button"
+            className="relative cursor-pointer rounded-sm after:absolute after:-inset-y-1.5 after:inset-x-0 after:content-[''] hover:text-foreground hover:underline hover:underline-offset-2"
+            onClick={() => openWorkView({ workspaceId, view: "people", person: p._id })}
+          >
             {p.name}
           </button>
           {i < shown.length - 1 ? ", " : more ? `, and ${more} more` : null}
@@ -408,15 +440,28 @@ function With({ people, workspaceId }: { people: readonly DirectoryPerson[]; wor
 /** The view's shape while its events are on their way: the list's rows, or the Week's or the Month's grid, by the view he kept. */
 function AgendaSkeleton({ view = "list" }: { view?: AgendaShow }) {
   if (view !== "list") return <CalendarBones view={view} />;
+  // On the list's own grid: a day's heading over rows of the rows' height (a time; a title over a shorter place line), so
+  // nothing moves when the events land.
   return (
-    <div aria-hidden className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-9 py-6">
+    <div aria-hidden data-agenda-bones="list" className="mx-auto flex w-full max-w-[720px] flex-col gap-6 px-6 py-6">
       {[3, 2].map((n, i) => (
-        <div key={i} className="flex flex-col gap-3">
-          <Skeleton className="h-3 w-20" />
+        <div key={i} className="flex flex-col">
+          <div className="mb-1 flex h-4 items-center px-3">
+            <Skeleton className="h-3 w-20" />
+          </div>
           {Array.from({ length: n }, (_, j) => (
-            <div key={j} className="grid grid-cols-[88px_minmax(0,1fr)] gap-x-2">
-              <Skeleton className="h-3 w-12" />
-              <Skeleton className={cn("h-3.5", j % 2 ? "w-1/3" : "w-1/2")} />
+            <div key={j} data-bone-row className="grid min-h-9 grid-cols-[88px_minmax(0,1fr)] gap-x-2 px-3 py-1.5">
+              <div className="flex h-5 items-center">
+                <Skeleton className="h-3 w-12" />
+              </div>
+              <div className="flex flex-col">
+                <div className="flex h-5 items-center">
+                  <Skeleton className={cn("h-3.5", j % 2 ? "w-1/3" : "w-1/2")} />
+                </div>
+                <div className="flex h-4 items-center">
+                  <Skeleton className="h-3 w-1/4" />
+                </div>
+              </div>
             </div>
           ))}
         </div>

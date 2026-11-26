@@ -41,7 +41,7 @@ describe("Agenda's way to a meeting's page", () => {
     render(<View {...props} />);
     await act(async () => {});
     const rows = screen.getAllByRole("listitem");
-    const verbOf = (title: string) => rows.find((r) => r.textContent?.includes(title))!.querySelector("button")!;
+    const verbOf = (title: string) => rows.find((r) => r.textContent?.includes(title))!.querySelector("[data-event-verb] button")!;
     expect(verbOf("Budget review").textContent).toBe("Prepare");
     expect(verbOf("Staff sync").textContent).toBe("Follow up");
 
@@ -51,6 +51,44 @@ describe("Agenda's way to a meeting's page", () => {
     expect(workViewNow()).toEqual({ workspaceId: "ws", view: "prep", event: "ev-over" });
     // Opening the page starts no thread: that is the page's own verb.
     expect(started).toEqual([]);
+  });
+
+  it("opens the page on a press anywhere on the row: the hover verb is its shortcut, out of the Tab order", async () => {
+    events.rows = [over, ahead];
+    render(<View {...props} />);
+    await act(async () => {});
+    // One open control laid over each row, named for what it does; the verb says the same and takes no Tab stop.
+    const open = screen.getByRole("button", { name: "Prepare Budget review" });
+    expect(open.hasAttribute("data-row-open")).toBe(true);
+    expect(open.closest('[role="listitem"]')!.querySelector("[data-event-verb] button")!.getAttribute("tabindex")).toBe("-1");
+    fireEvent.click(open);
+    expect(workViewNow()).toEqual({ workspaceId: "ws", view: "prep", event: "ev-ahead" });
+    fireEvent.click(screen.getByRole("button", { name: "Follow up Staff sync" }));
+    expect(workViewNow()).toEqual({ workspaceId: "ws", view: "prep", event: "ev-over" });
+    expect(started).toEqual([]);
+  });
+
+  it("moves between the events with ↑ and ↓, across the days, and leaves the keys alone outside a row", async () => {
+    const tomorrow = { _id: "ev-tomorrow", title: "Captains meeting", sector: "purdue", startsAt: now + 26 * HOUR, endsAt: now + 27 * HOUR, allDay: false };
+    events.rows = [over, ahead, tomorrow];
+    render(<View {...props} />);
+    await act(async () => {});
+    const open = (name: string) => screen.getByRole("button", { name });
+    open("Follow up Staff sync").focus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(open("Prepare Budget review"));
+    // From today's last event into tomorrow's first: one list, whatever the day headings.
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(open("Prepare Captains meeting"));
+    // At the end it stays.
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(open("Prepare Captains meeting"));
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(open("Prepare Budget review"));
+    // A modified arrow is not a move.
+    const moved = fireEvent.keyDown(document.activeElement!, { key: "ArrowUp", shiftKey: true });
+    expect(moved).toBe(true);
+    expect(document.activeElement).toBe(open("Prepare Budget review"));
   });
 
   it("offers the same verb in the row's right-click", async () => {
@@ -69,7 +107,7 @@ describe("Agenda's way to a meeting's page", () => {
     render(<View {...props} />);
     await act(async () => {});
     const rows = screen.getAllByRole("listitem");
-    const verbOf = (title: string) => rows.find((r) => r.textContent?.includes(title))!.querySelector("button")!;
+    const verbOf = (title: string) => rows.find((r) => r.textContent?.includes(title))!.querySelector("[data-event-verb] button")!;
     expect(verbOf("Stand-up").textContent).toBe("Prepare");
     expect(verbOf("Staff sync").textContent).toBe("Follow up");
   });
