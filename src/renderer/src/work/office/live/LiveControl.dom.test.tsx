@@ -81,6 +81,27 @@ describe("useLiveOf", () => {
     expect(ask).toHaveBeenCalledTimes(3);
   });
 
+  it("stops asking by the clock after its steps; a focus or the link opening asks again and starts them over (perf M11)", async () => {
+    vi.useFakeTimers();
+    let opened: (() => void) | null = null;
+    const onOpen = vi.fn((fn: () => void) => ((opened = fn), () => void (opened = null)));
+    const ask = vi.fn<() => Promise<OfficeLiveOf>>().mockRejectedValue(new Error("refused"));
+    renderHook(() => useLiveOf(ask, "item-1", onOpen));
+    await act(async () => undefined);
+    for (const wait of LIVE_OF_RETRY_MS) await act(async () => void vi.advanceTimersByTime(wait));
+    const tries = 1 + LIVE_OF_RETRY_MS.length;
+    expect(ask).toHaveBeenCalledTimes(tries);
+    await act(async () => void vi.advanceTimersByTime(60 * 60_000));
+    expect(ask).toHaveBeenCalledTimes(tries);
+    await act(async () => void window.dispatchEvent(new Event("focus")));
+    expect(ask).toHaveBeenCalledTimes(tries + 1);
+    // The steps start over: the first wait asks once more.
+    await act(async () => void vi.advanceTimersByTime(LIVE_OF_RETRY_MS[0]));
+    expect(ask).toHaveBeenCalledTimes(tries + 2);
+    await act(async () => opened!());
+    expect(ask).toHaveBeenCalledTimes(tries + 3);
+  });
+
   it("asks again at once when the link opens after a miss", async () => {
     vi.useFakeTimers();
     let opened: (() => void) | null = null;

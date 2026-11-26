@@ -101,13 +101,14 @@ export function liveRows(of: OfficeLiveOf, live: boolean, desktops: readonly Pic
   ];
 }
 
-/** How long a missed answer waits before it is asked again, step by step; the last repeats. */
+/** How long a missed answer waits before it is asked again, step by step; past the last the timed asks stop. */
 export const LIVE_OF_RETRY_MS = [2_000, 5_000, 15_000, 30_000] as const;
 
 /**
  * The host's answer for a tab, asked again whenever the tab's item changes (a switch, a reseat). A miss keeps the last
- * answer and asks again, after `LIVE_OF_RETRY_MS` and at once when the link opens again (`onOpen`), so one lost reply
- * never hides the control for the life of the tab.
+ * answer and asks again after `LIVE_OF_RETRY_MS`, then no more by the clock (perf M11): a window focus or the link
+ * opening again (`onOpen`) asks at once and starts the steps over, so one lost reply never hides the control for the
+ * life of the tab, and a host that keeps refusing is not asked for ever.
  */
 export function useLiveOf(ask: () => Promise<OfficeLiveOf>, itemId: string | null, onOpen?: (fn: () => void) => () => void): OfficeLiveOf | null {
   const [of, setOf] = useState<OfficeLiveOf | null>(null);
@@ -124,6 +125,12 @@ export function useLiveOf(ask: () => Promise<OfficeLiveOf>, itemId: string | nul
       live = false;
       setAttempt((n) => n + 1);
     };
+    // A focus or a link that opens again: a fresh start of the steps.
+    const woken = (): void => {
+      if (!live) return;
+      missed.current = 0;
+      again();
+    };
     ask().then(
       (answer) => {
         if (!live) return;
@@ -132,15 +139,17 @@ export function useLiveOf(ask: () => Promise<OfficeLiveOf>, itemId: string | nul
       },
       () => {
         if (!live) return;
-        timer = setTimeout(again, LIVE_OF_RETRY_MS[Math.min(missed.current, LIVE_OF_RETRY_MS.length - 1)]);
+        if (missed.current < LIVE_OF_RETRY_MS.length) timer = setTimeout(again, LIVE_OF_RETRY_MS[missed.current]);
         missed.current += 1;
-        off = onOpen?.(again);
+        off = onOpen?.(woken);
+        window.addEventListener("focus", woken);
       },
     );
     return () => {
       live = false;
       if (timer) clearTimeout(timer);
       off?.();
+      window.removeEventListener("focus", woken);
     };
     // `ask` and `onOpen` are rebuilt each render; the tab's item and a retry are what change the answer.
     // eslint-disable-next-line react-hooks/exhaustive-deps

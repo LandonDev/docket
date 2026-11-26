@@ -90,7 +90,8 @@ every form of one file, so an add-in's `document.url`, Word's `FullName` and the
   (the `file-head` container) it reads "Here" or "Live"; its `aria-label` keeps the whole name. Until
   `work.office.live.of` answers, the control's place is kept by an unseen, disabled copy for the app the file's name
   implies (`appOfName`), so a late answer moves nothing. A missed answer keeps the last one and is asked again
-  (`useLiveOf`: after `LIVE_OF_RETRY_MS`, 2, 5, 15, then every 30 s, and at once when the link opens again).
+  (`useLiveOf`: after `LIVE_OF_RETRY_MS`, 2, 5, 15 and 30 s, then no more by the clock; a window focus or the link
+  opening again asks at once and starts the steps over).
 - The header's line in a live tab (`liveLine`): "In Team RecWell"; "Opening in Word…" with a 4px bar along the
   header's foot while the guest comes up (stages: the file's page, Office's editor frame, ready); "Signing in to
   Microsoft…" while the guest is on another site, never the site's address. It never says saved: Office does. A
