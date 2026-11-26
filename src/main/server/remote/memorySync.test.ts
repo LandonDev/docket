@@ -1,4 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
+import { lstat, readFile } from 'node:fs/promises'
+import { webcrypto } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +11,11 @@ import { flushStallLog, recordSlowRequest, setStallLog, withRequestNotes } from 
 import { MEMORY_NO_WINDOWS, MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory } from './memorySync'
 import { encodeProjectDir } from './memorySet'
 import { TOMBSTONE_MS } from './memoryMerge'
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...fs, lstat: vi.fn(fs.lstat), readFile: vi.fn(fs.readFile) }
+})
 
 let root: string
 let mac: string
@@ -192,6 +199,89 @@ it('writes scan, hash and reconciliation notes on both slow-request lines', asyn
   } finally {
     setStallLog(null)
   }
+})
+
+describe('manifest hashes', () => {
+  it('stats every time, reads only after a metadata change, and sends a harness edit', async () => {
+    const rel = boxMem('one.md')
+    const path = join(box, rel)
+    put(box, rel, 'one', T0)
+    const { link } = pair()
+    const exchange = (entries: { relPath: string; sha256: string; size: number; mode: number; mtime: number }[] = []) =>
+      link.request<{ push: { sha256: string; dataBase64: string }[] }>('memory.exchange', {
+        from: 'env_mac', home: mac, generation: 'g1', entries, tombstones: []
+      })
+    const { push: [first] } = await exchange()
+    const peerFile = { relPath: macMem('one.md'), sha256: first.sha256, size: 3, mode: 0o644, mtime: T0 }
+    const digest = vi.spyOn(webcrypto.subtle, 'digest')
+    try {
+      vi.mocked(lstat).mockClear()
+      vi.mocked(readFile).mockClear()
+      expect((await exchange([peerFile])).push).toEqual([])
+      expect(vi.mocked(lstat).mock.calls.filter(([name]) => name === path)).toHaveLength(1)
+      expect(vi.mocked(readFile).mock.calls.filter(([name]) => name === path)).toHaveLength(0)
+      expect(digest).toHaveBeenCalledTimes(0)
+
+      utimesSync(path, new Date(T0 + 1000), new Date(T0 + 1000))
+      expect((await exchange([peerFile])).push).toEqual([])
+      expect(vi.mocked(readFile).mock.calls.filter(([name]) => name === path)).toHaveLength(1)
+      expect(digest).toHaveBeenCalledTimes(1)
+      expect((await exchange([peerFile])).push).toEqual([])
+      expect(digest).toHaveBeenCalledTimes(1)
+
+      put(box, rel, 'two', T0 + 2000)
+      expect((await exchange([peerFile])).push).toMatchObject([{ dataBase64: Buffer.from('two').toString('base64') }])
+    } finally {
+      digest.mockRestore()
+    }
+  })
+
+  it('drops a missing file from the hash table before it can be recreated with the same metadata', async () => {
+    const rel = boxMem('one.md')
+    const { receiver, link } = pair()
+    put(box, rel, 'one', T0)
+    const params = { from: 'env_mac', home: mac, generation: 'g1', entries: [], tombstones: [] }
+    await link.request('memory.exchange', params)
+    rmSync(join(box, rel))
+    await link.request('memory.exchange', params)
+    expect(receiver['cache'].size).toBe(0)
+    put(box, rel, 'two', T0)
+    const again = await link.request<{ push: { dataBase64: string }[] }>('memory.exchange', params)
+    expect(again.push).toMatchObject([{ dataBase64: Buffer.from('two').toString('base64') }])
+  })
+
+  it('starts two changed reads and holds the third until a slot opens', async () => {
+    const { receiver } = pair()
+    const files = ['one', 'two', 'three'].map((name) => join(box, boxMem(name + '.md')))
+    for (const name of ['one', 'two', 'three']) put(box, boxMem(name + '.md'), name, T0)
+    vi.mocked(readFile).mockClear()
+    const actual = vi.mocked(readFile).getMockImplementation()!
+    const finish: (() => void)[] = []
+    let firstPair!: () => void
+    const started = new Promise<void>((resolve) => { firstPair = resolve })
+    vi.mocked(readFile).mockImplementation(async (...args) => {
+      if (files.includes(String(args[0])) && finish.length < 2) {
+        await new Promise<void>((resolve) => {
+          finish.push(resolve)
+          if (finish.length === 2) firstPair()
+        })
+      }
+      return actual(...args)
+    })
+    const scan = receiver.conflicts()
+    try {
+      await started
+      const reads = () => vi.mocked(readFile).mock.calls.filter(([name]) => files.includes(String(name)))
+      expect(reads()).toHaveLength(2)
+      for (const release of finish) release()
+      await scan
+      expect(reads()).toHaveLength(3)
+    } finally {
+      for (const release of finish) release()
+      await scan
+      vi.mocked(readFile).mockImplementation(actual)
+    }
+  })
 })
 
 describe('changes after the first sync', () => {

@@ -150,14 +150,13 @@ export interface HashEntry {
   native?: boolean
 }
 
+export function manifestHash(st: Stats, data: Buffer, sha: string): HashEntry {
+  return { size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, sha, ...(isMachO(data) ? { native: true } : {}) }
+}
+
 export interface HashCache {
   get(key: string): HashEntry | undefined
   set(key: string, value: HashEntry): void
-}
-
-export interface ManifestHashTimings {
-  hashMs: number
-  hashed: number
 }
 
 export interface Skipped {
@@ -178,6 +177,15 @@ export function reachableUnderHome(real: string, realHome: string): boolean {
   return within(real, realHome) && !SENSITIVE_UNDER_HOME.some((d) => within(real, join(realHome, d)))
 }
 
+interface ManifestFile {
+  relPath: string
+  path: string
+  real: string
+  stat: Stats
+}
+
+export type ScanManifestFiles = (files: readonly ManifestFile[]) => Promise<readonly (HashEntry | undefined)[]>
+
 /**
  * Walk the set under `home`. A symlink is followed (a skill linked in from
  * a checkout is the usual case) only when its real target is inside HOME
@@ -188,13 +196,14 @@ export function reachableUnderHome(real: string, realHome: string): boolean {
  */
 export async function buildManifest(
   home: string,
-  opts: { rules?: readonly SetRule[]; cache?: HashCache; maxBytes?: number; between?: () => Promise<void>; timings?: ManifestHashTimings } = {}
+  opts: { rules?: readonly SetRule[]; cache?: HashCache; maxBytes?: number; between?: () => Promise<void>; fileScan?: { scan?: ScanManifestFiles; accepts: (relPath: string) => boolean } } = {}
 ): Promise<Manifest> {
   const rules = opts.rules ?? HARNESS_SET
   const maxBytes = opts.maxBytes ?? MAX_FILE_BYTES
   const between = opts.between ?? (() => untilLoopIdle())
   const entries: HarnessEntry[] = []
   const skipped: Skipped[] = []
+  const files: ManifestFile[] = []
   let realHome: string
   try {
     realHome = await realpath(home)
@@ -204,7 +213,7 @@ export async function buildManifest(
   const reachable = (real: string): boolean => reachableUnderHome(real, realHome)
 
   const addFile = async (relPath: string, abs: string, st: Stats): Promise<void> => {
-    if (!inSet(relPath, rules)) return
+    if (!inSet(relPath, rules) || opts.fileScan?.accepts(relPath) === false) return
     if (st.size > maxBytes) {
       skipped.push({ relPath, reason: 'too-large' })
       return
@@ -216,29 +225,36 @@ export async function buildManifest(
       skipped.push({ relPath, reason: 'unreadable' })
       return
     }
+    const file = { relPath, path: abs, real, stat: st }
+    if (opts.fileScan?.scan) {
+      files.push(file)
+      return
+    }
     let hit = opts.cache?.get(real)
     if (!(hit && hit.size === st.size && hit.mtimeMs === st.mtimeMs && hit.ino === st.ino)) {
-      const started = opts.timings ? performance.now() : 0
       let data: Buffer
       try {
         data = await readFile(abs)
       } catch {
-        skipped.push({ relPath, reason: 'unreadable' })
+        recordFile(file, undefined)
         return
       }
-      hit = { size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, sha: sha256(data), ...(isMachO(data) ? { native: true } : {}) }
-      if (opts.timings) {
-        opts.timings.hashMs += performance.now() - started
-        opts.timings.hashed++
-      }
+      hit = manifestHash(st, data, sha256(data))
       opts.cache?.set(real, hit)
     }
-    if (hit.native) {
+    recordFile(file, hit)
+  }
+
+  const recordFile = ({ relPath, stat: st }: ManifestFile, hash: HashEntry | undefined): void => {
+    if (!hash) {
+      skipped.push({ relPath, reason: 'unreadable' })
+      return
+    }
+    if (hash.native) {
       skipped.push({ relPath, reason: 'native-binary' })
       return
     }
-    const sha = hit.sha
-    entries.push({ relPath, size: st.size, sha256: sha, mode: st.mode & 0o777, mtime: Math.floor(st.mtimeMs) })
+    entries.push({ relPath, size: st.size, sha256: hash.sha, mode: st.mode & 0o777, mtime: Math.floor(st.mtimeMs) })
   }
 
   /**
@@ -313,9 +329,13 @@ export async function buildManifest(
     const st = await follow(rule.root, abs)
     if (st?.isDirectory()) await walk(rule.root, abs, new Set())
   }
+  if (opts.fileScan?.scan) {
+    const hashes = await opts.fileScan?.scan(files)
+    for (const [index, file] of files.entries()) recordFile(file, hashes[index])
+  }
   // A tree nested in another (never in HARNESS_SET, possible in a widened set) lists a file once.
   const unique = new Map(entries.map((e) => [e.relPath, e]))
-  const claudeJson = await readClaudeJsonKeys(join(home, CLAUDE_JSON))
+  const claudeJson = opts.fileScan ? undefined : await readClaudeJsonKeys(join(home, CLAUDE_JSON))
   return { entries: [...unique.values()].sort((a, b) => (a.relPath < b.relPath ? -1 : a.relPath > b.relPath ? 1 : 0)), skipped, ...(claudeJson ? { claudeJson } : {}) }
 }
 

@@ -1,5 +1,6 @@
-import { randomBytes, randomUUID } from 'node:crypto'
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { randomBytes, randomUUID, webcrypto } from 'node:crypto'
+import { chmodSync, existsSync, lstatSync, mkdirSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { homedir, hostname } from 'node:os'
 import { basename, dirname, join, sep } from 'node:path'
 import type { ClientRequest, ServerPush } from '@shared/contract'
@@ -21,7 +22,7 @@ import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { remapper, stripSlash, type HistoryMapping } from '../pathMap'
 import { noteRequest } from '../stalls'
 import { realSpelling } from './fence'
-import { decodeText, pruneEmptyDirs, sha256, type HashCache } from './harnessSet'
+import { decodeText, manifestHash, pruneEmptyDirs, type HashEntry } from './harnessSet'
 import { decide, pruneTombstones, unionIndex, type Decision, type LedgerRow } from './memoryMerge'
 import {
   MEMORY_INDEX,
@@ -74,8 +75,8 @@ export const MEMORY_STATUS_KEY = 'memory.sync.status'
 export const MEMORY_PERIOD_MS = 5 * 60_000
 const IDLE_DEBOUNCE_MS = 3_000
 /** A settle (here, or a nudge from there) syncs a host at most this often:
- *  a fleet settles threads every few seconds, and each sync walks and
- *  hashes the whole set. The first goes after IDLE_DEBOUNCE_MS. */
+ *  a fleet settles threads every few seconds, and each sync walks
+ *  the whole set. The first goes after IDLE_DEBOUNCE_MS. */
 export const SETTLE_GAP_MS = 30_000
 /** The key the nudge to the hosts linked here coalesces under. */
 const NUDGE_KEY = '\0nudge'
@@ -122,12 +123,13 @@ class MemoryTimings {
   hashed = 0
   files = 0
 
-  hash(data: Buffer): string {
+  async hashWork<T>(run: () => Promise<T>): Promise<T> {
     const started = performance.now()
-    const hash = sha256(data)
-    this.hashMs += performance.now() - started
-    this.hashed++
-    return hash
+    try {
+      return await run()
+    } finally {
+      this.hashMs += performance.now() - started
+    }
   }
 
   note(): void {
@@ -192,7 +194,12 @@ export const MEMORY_NO_WINDOWS = 'memory sync takes no Windows host yet: its pat
 const within = (path: string, root: string): boolean => path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
 
 export class MemorySync {
-  private readonly cache = new Map<string, { size: number; mtimeMs: number; ino: number; sha: string }>()
+  private cache = new Map<string, HashEntry>()
+  private cacheVersion = 0
+  private scanQueue: Promise<unknown> = Promise.resolve()
+  // Reads and digests share two slots across all peers and scans on this host.
+  private readonly contentSlots = [Promise.resolve(), Promise.resolve()]
+  private nextContentSlot = 0
   private readonly syncing = new Map<string, Promise<void>>()
   private readonly again = new Set<string>()
   private readonly statuses = new Map<string, SessionMeta['status']>()
@@ -331,7 +338,7 @@ export class MemorySync {
   async conflicts(): Promise<MemoryConflict[]> {
     const home = this.home()
     const out: MemoryConflict[] = []
-    for (const entry of (await listMemory(home, { cache: this.cache as HashCache })).entries) {
+    for (const entry of (await this.manifest(home)).entries) {
       const parsed = parseConflictName(entry.relPath)
       if (!parsed) continue
       const of = join(dirname(entry.relPath), stripConflict(basename(entry.relPath)))
@@ -428,9 +435,9 @@ export class MemorySync {
     return join(this.deps.dataDir, 'memory-sync')
   }
 
-  private loadState(): State {
+  private async loadState(): Promise<State> {
     try {
-      const parsed = JSON.parse(readFileSync(join(this.syncDir, 'state.json'), 'utf8')) as State
+      const parsed = JSON.parse(await readFile(join(this.syncDir, 'state.json'), 'utf8')) as State
       if (parsed.version === STATE_VERSION && parsed.peers) return { version: STATE_VERSION, peers: parsed.peers, tombstones: parsed.tombstones ?? {} }
     } catch {
       /* none yet */
@@ -526,6 +533,7 @@ export class MemorySync {
       const t = new Date(mtime)
       utimesSync(tmp, t, t)
       renameSync(tmp, dest)
+      this.dropHash(dest)
       return true
     } catch (err) {
       rmSync(tmp, { force: true })
@@ -538,6 +546,7 @@ export class MemorySync {
     try {
       const st = lstatSync(dest.path)
       if (!st.isFile() && !st.isSymbolicLink()) return false
+      this.dropHash(dest.path)
       unlinkSync(dest.path)
       pruneEmptyDirs(dirname(dest.path), dest.root, rmdirSync)
       return true
@@ -553,22 +562,86 @@ export class MemorySync {
     return text === null ? data : Buffer.from(remapper(mapping).text(text), 'utf8')
   }
 
-  private fileOf(relPath: string, entry: MemoryEntry, timings?: MemoryTimings): MemoryFile {
-    const started = timings ? performance.now() : 0
-    const data = readFileSync(join(this.home(), relPath))
-    if (timings) timings.hashMs += performance.now() - started
-    return { relPath, mtime: entry.mtime, sha256: timings ? timings.hash(data) : sha256(data), mode: entry.mode & 0o777, dataBase64: data.toString('base64') }
+  private dropHash(path: string): void {
+    this.cacheVersion++
+    this.cache.delete(realSpelling(path))
   }
 
-  private async manifest(home: string, timings?: MemoryTimings) {
-    const started = timings ? performance.now() : 0
-    const hashBefore = timings?.hashMs ?? 0
-    const manifest = await listMemory(home, { cache: this.cache, timings })
-    if (timings) {
-      timings.statMs += performance.now() - started - (timings.hashMs - hashBefore)
-      timings.files += manifest.entries.length
-    }
-    return manifest
+  private content<T>(run: () => Promise<T>): Promise<T> {
+    const slot = this.nextContentSlot
+    this.nextContentSlot = (slot + 1) % this.contentSlots.length
+    const next = this.contentSlots[slot].then(run)
+    this.contentSlots[slot] = next.then(() => {}, () => {})
+    return next
+  }
+
+  private async digest(data: Buffer, timings?: MemoryTimings): Promise<string> {
+    const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', data)).toString('hex')
+    if (timings) timings.hashed++
+    return hash
+  }
+
+  private hash(data: Buffer, timings?: MemoryTimings): Promise<string> {
+    const run = () => this.content(() => this.digest(data, timings))
+    return timings ? timings.hashWork(run) : run()
+  }
+
+  private readContent(path: string, timings: MemoryTimings): Promise<Buffer> {
+    return timings.hashWork(() => this.content(() => readFile(path)))
+  }
+
+  private async fileOf(relPath: string, entry: MemoryEntry, timings?: MemoryTimings): Promise<MemoryFile> {
+    const run = () => this.content(async () => {
+      const data = await readFile(join(this.home(), relPath))
+      const sha256 = await this.digest(data, timings)
+      return { relPath, mtime: entry.mtime, sha256, mode: entry.mode & 0o777, dataBase64: data.toString('base64') }
+    })
+    return timings ? timings.hashWork(run) : run()
+  }
+
+  private manifest(home: string, timings?: MemoryTimings) {
+    const scan = this.scanQueue.then(async () => {
+      const started = performance.now()
+      const hashBefore = timings?.hashMs ?? 0
+      const version = this.cacheVersion
+      const next = new Map<string, HashEntry>()
+      const manifest = await listMemory(home, async (files) => {
+        const hashes = new Array<HashEntry | undefined>(files.length)
+        const needsHash: number[] = []
+        for (const [index, file] of files.entries()) {
+          const hit = this.cache.get(file.real)
+          if (hit && hit.size === file.stat.size && hit.mtimeMs === file.stat.mtimeMs) hashes[index] = hit
+          else needsHash.push(index)
+        }
+        for (let i = 0; i < needsHash.length; i += 2) {
+          const batch = needsHash.slice(i, i + 2)
+          const run = async () => {
+            await Promise.all(batch.map((index) => this.content(async () => {
+              const file = files[index]
+              const data = await readFile(file.path).catch(() => undefined)
+              if (data) hashes[index] = manifestHash(file.stat, data, await this.digest(data, timings))
+            })))
+          }
+          if (timings) await timings.hashWork(run)
+          else await run()
+        }
+        for (const [index, file] of files.entries()) {
+          const hash = hashes[index]
+          if (hash) next.set(file.real, hash)
+        }
+        return hashes
+      })
+      // A landing during the scan can preserve an old mtime. Never publish
+      // hashes read before that write. The next scan rebuilds the table.
+      if (version === this.cacheVersion) this.cache = next
+      if (timings) {
+        timings.statMs += performance.now() - started - (timings.hashMs - hashBefore)
+        timings.files += manifest.entries.length
+      }
+      return manifest
+    })
+    this.scanQueue = scan.catch(() => {})
+    return scan
   }
 
   // ── the driver ─────────────────────────────────────────────────────────
@@ -578,9 +651,9 @@ export class MemorySync {
     const link = this.deps.peers.get(environmentId)
     if (!link?.connected) return null
     const home = this.home()
-    // The walk first: the state is read and written with no wait between.
-    const manifest = await listMemory(home, { cache: this.cache as HashCache })
-    const state = this.loadState()
+    // Read the manifest before deciding or landing any of this round.
+    const manifest = await this.manifest(home)
+    const state = await this.loadState()
     this.skipped = manifest.skipped.length
     const byPath = new Map(manifest.entries.map((e) => [e.relPath, e]))
     this.noticeDeletions(state, environmentId, new Set(byPath.keys()))
@@ -608,7 +681,7 @@ export class MemorySync {
       for (const relPath of answer.pull) {
         const entry = byPath.get(relPath)
         if (!entry) throw new Error(`${link.env.name} asked for ${relPath}, which is not in the manifest`)
-        const file = this.fileOf(relPath, entry)
+        const file = await this.fileOf(relPath, entry)
         if (file.dataBase64.length > MEMORY_MAX_WIRE_BYTES * 2) continue
         if (frames[frames.length - 1].length >= MEMORY_FILES_PER_FRAME || bytes + file.dataBase64.length > MEMORY_FILES_FRAME_BYTES) {
           frames.push([])
@@ -617,45 +690,48 @@ export class MemorySync {
         frames[frames.length - 1].push(file)
         bytes += file.dataBase64.length
       }
-      // The receiver's files whose side won: landed here, translated.
-      if (answer.home.startsWith('/')) this.notePeerHome(environmentId, answer.home, answer.workRoot)
-      const mapping = this.translationFor(answer.home, answer.workRoot)
-      const landed: Record<string, string> = {}
-      let written = 0
-      for (const file of answer.push) {
-        const data = Buffer.from(file.dataBase64, 'base64')
-        if (sha256(data) !== file.sha256) throw new Error(`${file.relPath} from ${link.env.name} does not match its hash`)
-        const localRel = translateMemoryPath(file.relPath, mapping)
-        const dest = this.destination(localRel)
-        if ('refused' in dest) {
-          this.log(`refused ${JSON.stringify(file.relPath)} from ${link.env.name}: ${dest.refused}`)
-          continue
+      const { landed, removed, written } = await this.serial(async () => {
+        // Land and remove in order, without interleaving another incoming commit.
+        if (answer.home.startsWith('/')) this.notePeerHome(environmentId, answer.home, answer.workRoot)
+        const mapping = this.translationFor(answer.home, answer.workRoot)
+        const landed: Record<string, string> = {}
+        let written = 0
+        for (const file of answer.push) {
+          const data = Buffer.from(file.dataBase64, 'base64')
+          if (await this.hash(data) !== file.sha256) throw new Error(`${file.relPath} from ${link.env.name} does not match its hash`)
+          const localRel = translateMemoryPath(file.relPath, mapping)
+          const out = this.translated(localRel, data, mapping)
+          const sha = await this.hash(out)
+          const dest = this.destination(localRel)
+          if ('refused' in dest) {
+            this.log(`refused ${JSON.stringify(file.relPath)} from ${link.env.name}: ${dest.refused}`)
+            continue
+          }
+          const current = byPath.get(localRel)
+          if (current?.sha256 === sha) {
+            landed[file.relPath] = current.sha256
+            ledger[localRel] = { remote: file.sha256, local: current.sha256 }
+            continue
+          }
+          if (!this.land(dest.path, out, file.mode & 0o777, file.mtime)) continue
+          landed[file.relPath] = sha
+          ledger[localRel] = { remote: file.sha256, local: sha }
+          delete state.tombstones[localRel]
+          byPath.set(localRel, { relPath: localRel, size: out.length, sha256: sha, mode: file.mode & 0o777, mtime: file.mtime })
+          written++
         }
-        const out = this.translated(localRel, data, mapping)
-        const current = byPath.get(localRel)
-        if (current?.sha256 === sha256(out)) {
-          landed[file.relPath] = current.sha256
-          ledger[localRel] = { remote: file.sha256, local: current.sha256 }
-          continue
+        const removed: string[] = []
+        for (const relPath of answer.remove) {
+          const dest = this.destination(relPath)
+          if ('refused' in dest) continue
+          this.unlink(dest)
+          removed.push(relPath)
+          delete ledger[relPath]
+          byPath.delete(relPath)
+          state.tombstones[relPath] ??= { at: this.now() }
         }
-        if (!this.land(dest.path, out, file.mode & 0o777, file.mtime)) continue
-        const sha = sha256(out)
-        landed[file.relPath] = sha
-        ledger[localRel] = { remote: file.sha256, local: sha }
-        delete state.tombstones[localRel]
-        byPath.set(localRel, { relPath: localRel, size: out.length, sha256: sha, mode: file.mode & 0o777, mtime: file.mtime })
-        written++
-      }
-      const removed: string[] = []
-      for (const relPath of answer.remove) {
-        const dest = this.destination(relPath)
-        if ('refused' in dest) continue
-        this.unlink(dest)
-        removed.push(relPath)
-        delete ledger[relPath]
-        byPath.delete(relPath)
-        state.tombstones[relPath] ??= { at: this.now() }
-      }
+        return { landed, removed, written }
+      })
       let done: MemoryFilesAnswer | null = null
       for (let i = 0; i < frames.length; i++) {
         const last = i === frames.length - 1
@@ -665,7 +741,7 @@ export class MemorySync {
       }
       // The driver's ledger: what it has now, so a later deletion here is noticed.
       for (const [relPath, entry] of byPath) ledger[relPath] = { remote: ledger[relPath]?.remote ?? '', local: entry.sha256 }
-      this.saveState(state)
+      await this.serial(() => this.saveState(state))
       const result = done!
       const conflicts = carried + result.conflicts
       this.record(environmentId, { files: result.files, syncedAt: this.now(), error: null, conflicts })
@@ -700,7 +776,7 @@ export class MemorySync {
     this.generation = null
     const home = this.home()
     const mine = new Map((await this.manifest(home, timings)).entries.map((e) => [e.relPath, e]))
-    const state = this.loadState()
+    const state = await this.loadState()
     this.notePeerHome(params.from, params.home, params.workRoot)
     const mapping = this.translationFor(params.home, params.workRoot)
     this.noticeDeletions(state, params.from, new Set(mine.keys()))
@@ -731,8 +807,8 @@ export class MemorySync {
     const push: MemoryFile[] = []
     const remove: string[] = []
     const now = this.now()
-    const sendMine = (localRel: string, entry: MemoryEntry): void => {
-      const file = this.fileOf(localRel, entry, timings)
+    const sendMine = async (localRel: string, entry: MemoryEntry): Promise<void> => {
+      const file = await this.fileOf(localRel, entry, timings)
       push.push(file)
       g.pushed.set(localRel, file.sha256)
     }
@@ -764,21 +840,23 @@ export class MemorySync {
           g.landings.set(remote!.relPath, { localRel, entry: remote!, as: 'union' })
           break
         case 'push':
-          sendMine(localRel, local!)
+          await sendMine(localRel, local!)
           if (d.keep === 'conflict') {
             pull.push(remote!.relPath)
             g.landings.set(remote!.relPath, { localRel, entry: remote!, as: 'conflict' })
           }
           break
         case 'delete-local': {
-          const dest = this.destination(localRel)
+          let dest = this.destination(localRel)
           if ('refused' in dest) break
           if (d.keep === 'conflict') {
             const copy = conflictName(localRel, this.hostName(), now)
-            const data = readFileSync(dest.path)
+            const data = await this.readContent(dest.path, timings)
+            dest = this.destination(localRel)
+            if ('refused' in dest) break
             if (this.land(join(home, copy), data, local!.mode & 0o777, local!.mtime)) {
               g.conflicts++
-              sendMine(copy, { ...local!, relPath: copy })
+              await sendMine(copy, { ...local!, relPath: copy })
             }
           }
           if (this.unlink(dest)) g.deleted++
@@ -812,7 +890,7 @@ export class MemorySync {
     for (const file of params.files) {
       if (!g.landings.has(file.relPath)) throw new Error(`memory.files: ${file.relPath} is not a file this generation asked for`)
       const data = Buffer.from(file.dataBase64, 'base64')
-      if (timings.hash(data) !== file.sha256) throw new Error(`memory.files: ${file.relPath} does not match its hash`)
+      if (await this.hash(data, timings) !== file.sha256) throw new Error(`memory.files: ${file.relPath} does not match its hash`)
       g.staged.set(file.relPath, { file, data })
     }
     if (!params.done) return { files: 0, written: 0, deleted: 0, conflicts: 0, merged: 0, again: false }
@@ -825,7 +903,7 @@ export class MemorySync {
 
   private async commit(g: Generation, params: MemoryFilesParams, timings: MemoryTimings): Promise<MemoryFilesAnswer> {
     const home = this.home()
-    const state = this.loadState()
+    const state = await this.loadState()
     const ledger = this.ledgerOf(state, g.from)
     const now = this.now()
     let written = 0
@@ -838,18 +916,19 @@ export class MemorySync {
         // The driver skipped it (changed under it, over the budget): the next round asks again.
         continue
       }
+      const out = this.translated(landing.localRel, staged.data, g.mapping)
+      const outSha = await this.hash(out, timings)
+      const mode = staged.file.mode & 0o777
       const dest = this.destination(landing.localRel)
       if ('refused' in dest) continue
-      const out = this.translated(landing.localRel, staged.data, g.mapping)
-      const outSha = timings.hash(out)
-      const mode = staged.file.mode & 0o777
       let current: Buffer | null = null
       try {
-        current = readFileSync(dest.path)
+        current = await this.readContent(dest.path, timings)
       } catch {
         current = null
       }
       if (landing.as === 'conflict') {
+        if ('refused' in this.destination(landing.localRel)) continue
         const copy = join(home, conflictName(landing.localRel, g.fromName, now))
         if (this.land(copy, out, mode, staged.file.mtime)) {
           g.conflicts++
@@ -857,7 +936,9 @@ export class MemorySync {
         }
         continue
       }
-      if (current && timings.hash(current) === outSha) {
+      const currentSha = current ? await this.hash(current, timings) : null
+      if ('refused' in this.destination(landing.localRel)) continue
+      if (currentSha === outSha) {
         // The same bytes once translated: a no-op, remembered as synced.
         ledger[landing.localRel] = { remote: staged.file.sha256, local: outSha }
         continue
@@ -875,8 +956,9 @@ export class MemorySync {
           const exists = (file: string): boolean => existsSync(join(home, dir, file)) || theirFiles.has(join(dir, file))
           const union = staged.file.mtime >= myMtime ? unionIndex(theirText, myText, exists) : unionIndex(myText, theirText, exists)
           const unionBuf = Buffer.from(union, 'utf8')
-          const unionSha = timings.hash(unionBuf)
-          if (unionSha !== timings.hash(current!)) {
+          const unionSha = await this.hash(unionBuf, timings)
+          if (unionSha !== currentSha) {
+            if ('refused' in this.destination(landing.localRel)) continue
             if (!this.land(dest.path, unionBuf, mode, Math.max(staged.file.mtime, myMtime, now))) continue
             written++
           }

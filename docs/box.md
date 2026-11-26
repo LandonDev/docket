@@ -1049,7 +1049,11 @@ agreed on last time; and the host's own tombstones. Slow requests for
 content read and hash time (`hash`), reconciliation and state work
 (`peer`), files found (`files`), and hashes taken (`hashed`).
 
-The rules:
+Each exchange checks every memory file's size and mtime, since harnesses
+write these files directly. The host keeps one digest per scanned path
+in memory. It reuses the digest when size and mtime match and drops paths
+the scan no longer finds. File reads and SHA-256 run asynchronously, two
+at a time. A transfer still hashes the bytes it sends or verifies.
 
 - unchanged on both sides since the last sync: nothing; same bytes once
   translated: nothing, remembered as synced
