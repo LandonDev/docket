@@ -6,7 +6,7 @@ import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { MessageMultiple } from "../../chrome/icons";
 import { cn } from "../../lib/cn";
 import { CanvasSeat } from "../canvas/CanvasSeat";
-import { sectorName } from "../shell/actions";
+import { useJobName } from "../jobName";
 import { sessionWaits } from "../shell/lifeos";
 import type { WorkViewProps } from "../views/registry";
 import { ChatList } from "./ChatList";
@@ -56,12 +56,14 @@ export function View(props: WorkViewProps) {
   const start = useCallback((chip: ContextChip) => startThread(chip), [startThread]);
   const seat = useMemo(() => ({ env: props.env, onAsk: start }), [props.env, start]);
   useOpened(workspaceId);
+  // The job as he reads it, its workspace's name ("Purdue Esports"), never the sector's word.
+  const jobName = useJobName(props.env);
   // A failed session is the frame's to say (its sign-in or its line), with nothing pulsing under it.
   if (!lifeos.client && !sessionWaits(lifeos)) return null;
   return (
     <MessagesDataProvider value={data}>
       <StartThreadProvider value={start}>
-        <MessagesScreen workspaceId={workspaceId} job={sectorName(sector)} seat={seat} />
+        <MessagesScreen workspaceId={workspaceId} job={jobName(sector)} seat={seat} />
       </StartThreadProvider>
     </MessagesDataProvider>
   );

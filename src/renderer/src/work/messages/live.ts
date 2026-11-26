@@ -15,6 +15,7 @@ import { openItem } from "../canvas/store";
 import { discardItem, editItem, fetchItem, notSentWords, outboxNow, sendItem, useOutbox, wantOutboxItem, wentOut, type HostItem } from "../outbox/store";
 import { lifeosHostName, sessionWaits, sessionWords, useLifeosQuery, type LifeosQuery, type LifeosSession } from "../shell/lifeos";
 import { connectingWords } from "../shell/lifeosWords";
+import { useHostLinkDown } from "../shell/hostLinkDown";
 import type { MessagesData, Paged, ThreadDraft } from "./data";
 import { discardRefusal } from "./drafts";
 import { chatFileSource, fileVerb, viewKind } from "./files";
@@ -41,11 +42,25 @@ function useQuery<T>(session: LifeosSession, name: string, args: Record<string, 
 }
 
 /**
+ * A live query that keeps its last answer for the same `key` while the host's link is down: the frame's line over the
+ * view names the host (`HostLinkLine`), so the rows stay under it, never a "did not load" with a Retry that can only
+ * fail. A failure on an open link is said as before.
+ */
+function useKeptWhileDown<T>(env: string, key: string, query: LifeosQuery<T>): LifeosQuery<T> {
+  const kept = useRef<{ key: string; value: T } | null>(null);
+  if (query.status === "ready") kept.current = { key, value: query.value };
+  const linkDown = !!useHostLinkDown(env);
+  if (query.status === "failed" && linkDown && kept.current?.key === key) return { status: "ready", value: kept.current.value };
+  return query;
+}
+
+/**
  * One paged live query, grown in place: `more` asks for `step` more, and
  * while the bigger answer is on its way the smaller one stays on screen.
- * `reset` names what the pages belong to; a new one starts over.
+ * `reset` names what the pages belong to; a new one starts over. While the
+ * host's link is down a failed read keeps the rows it last had (`useKeptWhileDown`).
  */
-function usePaged<T>(session: LifeosSession, name: string, args: Record<string, unknown> | null, step: number, reset: string): LifeosQuery<Paged<T>> {
+function usePaged<T>(session: LifeosSession, env: string, name: string, args: Record<string, unknown> | null, step: number, reset: string): LifeosQuery<Paged<T>> {
   const [want, setWant] = useState({ reset, count: step });
   const count = want.reset === reset ? want.count : step;
   const query = useQuery<Page<T>>(session, name, args ? { ...args, paginationOpts: { numItems: count, cursor: null } } : null);
@@ -62,10 +77,11 @@ function usePaged<T>(session: LifeosSession, name: string, args: Record<string, 
     return { rows: ready.page, done: ready.isDone, more };
   }, [ready, reset, step]);
   if (value) held.current = { reset, value };
-  if (!args) return { status: "loading" };
-  if (query.status === "failed") return query;
-  if (value) return { status: "ready", value };
   const kept = held.current?.reset === reset ? held.current.value : null;
+  const linkDown = !!useHostLinkDown(env);
+  if (!args) return { status: "loading" };
+  if (query.status === "failed") return linkDown && kept ? { status: "ready", value: kept } : query;
+  if (value) return { status: "ready", value };
   return kept ? { status: "ready", value: kept } : { status: "loading" };
 }
 
@@ -103,15 +119,15 @@ export function liveData(session: LifeosSession, sector: SectorKey, env: string,
     });
   };
   return {
-    useChats: (filter: ChatFilter) => usePaged<ChatRow>(session, "chats:list", { sector, filter }, CHAT_PAGE, filter),
+    useChats: (filter: ChatFilter) => usePaged<ChatRow>(session, env, "chats:list", { sector, filter }, CHAT_PAGE, filter),
     useUnread: () => {
       const unread = useLifeosQuery<{ count: number }>(session, "chats:unread", { sector });
       return unread.status === "ready" ? unread.value.count : null;
     },
     useChat: (id: string | null) => {
-      return useQuery<ChatDetail | null>(session, "chats:get", id ? { id } : null);
+      return useKeptWhileDown(env, id ?? "", useQuery<ChatDetail | null>(session, "chats:get", id ? { id } : null));
     },
-    useMessages: (chatId: string | null) => usePaged<ChatMessage>(session, "chats:messages", chatId ? { chatId } : null, MESSAGE_PAGE, chatId ?? ""),
+    useMessages: (chatId: string | null) => usePaged<ChatMessage>(session, env, "chats:messages", chatId ? { chatId } : null, MESSAGE_PAGE, chatId ?? ""),
     useSources: () => {
       const rows = useLifeosQuery<SourceRow[]>(session, "sources:list", {});
       const value = rows.status === "ready" ? rows.value : null;

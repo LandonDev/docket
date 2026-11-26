@@ -123,9 +123,9 @@ function ListHead({ filter, searching, onFilter }: { filter: ChatFilter; searchi
   const unread = useMessagesData().useUnread();
   const rows = (): MenuRow[] => CHAT_FILTERS.map((f) => ({ kind: "item", id: f, label: FILTER_ROW[f], checked: f === filter }));
   // A search reads the whole job, so the head says "Messages" while it runs. The job's unread count stands only where it
-  // counts what is listed: beside All and Unread.
+  // counts what is listed: beside All and Unread, never over a search's hits.
   const shown = searching ? "all" : filter;
-  const count = shown === "all" || shown === "unread" ? unread : null;
+  const count = !searching && (shown === "all" || shown === "unread") ? unread : null;
   return (
     <div className="flex h-11 shrink-0 items-center px-2">
       <RowsMenu

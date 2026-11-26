@@ -65,7 +65,7 @@ describe("the list", () => {
     expect(title.className).not.toContain("muted");
   });
 
-  it("shows the job's count beside All and Unread alone, and names Messages while a search runs", () => {
+  it("shows the job's count beside All and Unread alone, and names Messages with no count while a search runs", () => {
     mount({}, null);
     const unread = String(CHATS.filter((c) => c.unread).length);
     expect(head().textContent).toBe(`Messages${unread}`);
@@ -73,8 +73,9 @@ describe("the list", () => {
     expect(head().textContent).toBe("Direct");
     act(() => patchPage(WS, { filter: "unread" }));
     expect(head().textContent).toBe(`Unread${unread}`);
+    // Council round 1 (R1-B10): over a search's hits the job's unread count would count what is not listed.
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "controller" } });
-    expect(head().textContent).toBe(`Messages${unread}`);
+    expect(head().textContent).toBe("Messages");
   });
 
   it("wears the focus ring until a row is active, and opens the active row's menu from the keys", async () => {
@@ -163,6 +164,14 @@ describe("the conversation", () => {
     await flush();
     const marks = screen.getAllByRole("separator").filter((el) => el.getAttribute("aria-label")?.includes("New"));
     expect(marks).toHaveLength(1);
+  });
+
+  // Council round 1 (R1-B9): the person's name is a 24px target, its press reaching past the 20px line.
+  it("gives the toolbar's person name a press 2px past its line each way", () => {
+    mount({}, "c_dana");
+    const name = screen.getByRole("button", { name: "Dana Lee" });
+    expect(name.className).toContain("after:-inset-y-0.5");
+    expect(name.className).toContain("leading-5");
   });
 
   it("keeps the toolbar's Back when the conversation does not load under 640px, with Retry", () => {

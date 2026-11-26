@@ -457,7 +457,12 @@ The look is docs/DESIGN.md "The Messages view".
   that fell because their control went are taken up. Under 640px the pane
   counts as inside the conversation, so Back does not take them first. Sources that did not load make
   an empty list say it did not load. A conversation that fails keeps its
-  toolbar, so the way back stays under 640px.
+  toolbar, so the way back stays under 640px. While the host's link is down
+  a failed read keeps the list's rows and an open conversation as last read
+  (live.ts `useKeptWhileDown`, `usePaged`): the frame names the host over the
+  view with Retry, never "Messages did not load" with a Retry that can only
+  fail. An empty list names the job by its workspace (`useJobName`), and the
+  head's unread count stands beside All and Unread but never over a search.
 - **Pictures and files.** A message's `listed` files are asked for as it
   mounts (the column draws only what is near the window), once a window's
   life while the ask is on its way or taken; an ask LifeOS did not take says

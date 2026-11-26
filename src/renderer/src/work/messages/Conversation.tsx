@@ -276,7 +276,8 @@ function Toolbar({
               <Skeleton className="h-3 w-32 self-center" />
             ) : null
           ) : person ? (
-            <Button variant="link" className="h-auto min-w-0 shrink p-0 text-[13px] font-semibold text-foreground" onClick={() => openWorkView({ workspaceId, view: "people", person })}>
+            // Its press reaches 2px past the 20px line each way, a 24px target, and the name does not move.
+            <Button variant="link" className="h-auto min-w-0 shrink p-0 text-[13px] leading-5 font-semibold text-foreground after:absolute after:inset-x-0 after:-inset-y-0.5" onClick={() => openWorkView({ workspaceId, view: "people", person })}>
               <span className="truncate">{chat.name}</span>
             </Button>
           ) : (

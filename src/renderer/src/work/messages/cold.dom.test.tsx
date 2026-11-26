@@ -13,6 +13,10 @@ import { CHATS } from "./fixtures";
 import { resetPages } from "./page";
 
 vi.mock("../shell/open", () => ({ openConnections: () => {} }));
+vi.mock("../../lib/tcserver/workspaces", async (original) => ({
+  ...(await original<object>()),
+  useWorkspaces: () => [{ id: "ws", name: "TempCode proof Cosmic", environmentId: "box", sector: "cosmic", kind: "work", path: "/w" }],
+}));
 
 const { registry } = await import("../../lib/connection");
 const { View } = await import("./MessagesView");
@@ -61,6 +65,13 @@ describe("the view from a cold start", () => {
     // React says so on the console when a component's hooks change between renders.
     expect(failed.mock.calls.flat().join(" ")).not.toMatch(/hooks|Rendered more/i);
     failed.mockRestore();
+  });
+
+  // Council round 1 (R1-B8): a job is its workspace's name, never the sector's word.
+  it("names the job by its workspace when no chat is linked to it", () => {
+    const live: LifeosSession = { environmentId: "box", sector: "cosmic", state: "connected", client: client({ "chats:list": { page: [], isDone: true, continueCursor: "" }, "chats:unread": { count: 0 }, "sources:list": [] }) };
+    render(<View {...props(live)} />);
+    expect(screen.getByText("No chat is linked to TempCode proof Cosmic")).toBeTruthy();
   });
 
   it("draws nothing under a session that failed: the frame says why", () => {
