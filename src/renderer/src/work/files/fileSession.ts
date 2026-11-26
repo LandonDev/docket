@@ -416,11 +416,19 @@ export class FileSession {
         // The folder said something changed while this save was out: the look is part of the save, and the line
         // moves only once it is back: Saved when the file holds his write, the change line when it does not.
         if (this.noted !== noted && !this.conflicted) {
-          const now = await this.look();
+          // Looked at again while notices keep coming: a look ends only when none came while it was out.
+          let now: FileBytes | null | undefined;
+          let seen: number;
+          do {
+            seen = this.noted;
+            now = await this.look();
+          } while (now !== undefined && this.noted !== seen && !this.disposed);
           this.saving = null;
           this.sentAt = null;
           if (this.disposed) return;
-          if (now === undefined || now?.version === this.version) return this.line();
+          // A look that failed says nothing of saving, as a failed read does: never Saved unproven.
+          if (now === undefined) return this.host.saved(null);
+          if (now?.version === this.version) return this.line();
           if (now && !this.dirty) return void (await this.load());
           this.conflicted = true;
           this.gone = now === null;

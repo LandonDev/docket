@@ -397,6 +397,46 @@ describe("a text file open", () => {
     expect(h.lines.at(-1)).toMatchObject({ state: "saved", at: h.file.changed });
   });
 
+  it("a second folder notice while the look after a save is out reads again; Saved only for a look that shows his write (Sol S11)", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    const host = (h.session as unknown as { host: FileSessionHost }).host;
+    const real = host.request.bind(host);
+    let looks = 0;
+    host.request = async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      const got = await real<T>(method, params);
+      if (method === "work.files.write") void h.session.check();
+      // The first look shows his write; before its answer is back, another writer replaces the file and the folder says so.
+      if (method === "work.files.read" && params.length === 1 && h.calls.some((c) => c.method === "work.files.write") && looks++ === 0) {
+        h.theirs("theirs\n");
+        void h.session.check();
+      }
+      return got;
+    };
+    h.session.edit("mine\n");
+    await h.fire();
+    for (let i = 0; i < 8; i++) await Promise.resolve();
+    expect(h.session.getSnapshot()).toMatchObject({ is: "text", text: "theirs\n" });
+    expect(h.lines.at(-1)).toMatchObject({ state: "saved", at: h.file.changed });
+  });
+
+  it("a look after a save that fails never says Saved (Sol S11)", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    const host = (h.session as unknown as { host: FileSessionHost }).host;
+    const real = host.request.bind(host);
+    host.request = async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      if (method === "work.files.read" && params.length === 1 && h.calls.some((c) => c.method === "work.files.write")) throw new Error("The request timed out.");
+      const got = await real<T>(method, params);
+      if (method === "work.files.write") void h.session.check();
+      return got;
+    };
+    h.session.edit("mine\n");
+    await h.fire();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    expect(h.lines.at(-1)?.state ?? null).not.toBe("saved");
+  });
+
   it("keeps an unlisted open copy writable after a scoped look and a failed look", async () => {
     const h = standIn("first\n", { unlisted: true });
     await h.session.load();
