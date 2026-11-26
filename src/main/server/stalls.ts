@@ -175,6 +175,16 @@ function resetPushes(): void {
   metaIds.clear()
 }
 
+/** The host's startup marks, once per stage, on the async stall log. */
+export function bootStamps() {
+  const marked = new Set<string>()
+  return (stage: 'listening' | 'hello-ready' | 'resumed-first' | 'resumed', count?: number, elapsed = process.uptime() * 1000): void => {
+    if (marked.has(stage)) return
+    marked.add(stage)
+    write(`boot ${stage}${count === undefined ? '' : ` n=${count}`} ms=${Math.round(elapsed)}`, false)
+  }
+}
+
 /** A send's phase line (sendSpans.ts): the send-time picture rides with it. */
 export function recordSendSpan(body: string): void {
   write(body)

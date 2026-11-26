@@ -184,7 +184,8 @@ it('resumes recorded threads four at a time, children first, with the restart nu
   sends.clear()
   holdBoots = true
   const notices: { count: number; at: number }[] = []
-  const resumer = new BootResumer({ store, registry, gapMs: 0, now: () => 777, log: () => {} })
+  const stampBoot = vi.fn()
+  const resumer = new BootResumer({ store, registry, gapMs: 0, now: () => 777, log: () => {}, stampBoot })
   resumer.onDone((n) => notices.push(n))
   const run = resumer.run()
   await settle()
@@ -220,6 +221,10 @@ it('resumes recorded threads four at a time, children first, with the restart nu
   expect(resumer.notice).toEqual({ count: 6, at: 777 })
   // A second run is the first one.
   expect(await resumer.run()).toBe(result)
+  expect(stampBoot.mock.calls).toEqual([
+    ['resumed-first', undefined, expect.any(Number)],
+    ['resumed', 6, expect.any(Number)]
+  ])
 })
 
 it('a boot with nothing recorded resumes nothing and announces nothing', async () => {

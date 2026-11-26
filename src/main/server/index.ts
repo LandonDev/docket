@@ -217,6 +217,7 @@ import {
   setBufferedBytes,
   setLaneStats,
   setRunningCount,
+  bootStamps,
   setStallLog,
   startStallMonitor,
   recordLoopBlock,
@@ -2346,7 +2347,8 @@ export async function startServer(
   admission.start()
   // Threads the last shutdown cut mid-turn come back once everything
   // listens (run() below); the renderer hears the count once per boot.
-  const bootResumer = new BootResumer({ store, registry })
+  const stampBoot = bootStamps()
+  const bootResumer = new BootResumer({ store, registry, stampBoot })
   // Fold catch-up: sessions whose sidebar folds are missing or behind
   // their log (first boot after upgrade, a crash, an older build) heal in
   // the background, newest first, without blocking the first list.
@@ -4603,11 +4605,15 @@ export async function startServer(
 
   await new Promise<void>((resolve, reject) => {
     httpServer.once('error', reject)
-    httpServer.listen(0, '127.0.0.1', () => resolve())
+    httpServer.listen(0, '127.0.0.1', () => {
+      stampBoot('listening')
+      resolve()
+    })
   })
   const address = httpServer.address()
   const port = typeof address === 'object' && address ? address.port : 0
   ownPort = port
+  stampBoot('hello-ready')
   await restartRemote()
   // Servers and gateway up: the threads cut by the last shutdown resume now.
   // Queued threads (scheduler.ts) start only once that resume is done, so a

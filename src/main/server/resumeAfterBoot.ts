@@ -1,5 +1,6 @@
 import type { Store } from './db'
 import type { SessionRegistry } from './sessions'
+import type { bootStamps } from './stalls'
 
 /**
  * Threads cut mid-turn by a shutdown come back at the next boot.
@@ -54,6 +55,7 @@ export interface BootResumerDeps {
   gapMs?: number
   now?: () => number
   log?: (line: string) => void
+  stampBoot?: ReturnType<typeof bootStamps>
 }
 
 export const BOOT_RESUME_WIDTH = 4
@@ -83,13 +85,16 @@ export class BootResumer {
   }
 
   private async resumeAll(): Promise<BootResumeResult> {
-    const { store, registry } = this.deps
+    const { store, registry, stampBoot } = this.deps
     const now = this.deps.now ?? Date.now
     const log = this.deps.log ?? ((line: string) => console.log(line))
     const at = now()
     const result: BootResumeResult = { resumed: [], queued: [], skipped: [], failed: [], at }
     const rows = store.listResumeAfterBoot()
-    if (rows.length === 0) return result
+    if (rows.length === 0) {
+      stampBoot?.('resumed', 0)
+      return result
+    }
 
     // Decide what still qualifies before any harness boots; the rest is
     // cleared at once so a restart mid-resume never replays it.
@@ -117,6 +122,7 @@ export class BootResumer {
     const width = Math.max(1, this.deps.width ?? BOOT_RESUME_WIDTH)
     const gapMs = this.deps.gapMs ?? BOOT_RESUME_GAP_MS
     let next = 0
+    let lastResumedAt: number | undefined
     const worker = async (): Promise<void> => {
       while (next < queue.length) {
         const item = queue[next++]!
@@ -133,6 +139,10 @@ export class BootResumer {
           // a skipped or failed one settled its row through its status.
           const resumed = await registry.resumeStopped(item.id, { restartedAt: item.restartedAt })
           ;(resumed ? result.resumed : result.skipped).push(item.id)
+          if (resumed && stampBoot) {
+            lastResumedAt = process.uptime() * 1000
+            if (result.resumed.length === 1) stampBoot('resumed-first', undefined, lastResumedAt)
+          }
           if (!resumed) store.clearResumeAfterBoot([item.id])
         } catch (error) {
           result.failed.push(item.id)
@@ -145,6 +155,7 @@ export class BootResumer {
       }
     }
     await Promise.all(Array.from({ length: Math.min(width, queue.length) }, worker))
+    stampBoot?.('resumed', result.resumed.length, lastResumedAt)
 
     log(`[resume] ${result.resumed.length} resumed, ${result.queued.length} queued at the cap, ${result.skipped.length} skipped, ${result.failed.length} failed`)
     if (result.resumed.length > 0) {

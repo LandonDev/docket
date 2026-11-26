@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { configure } from 'aliax-core'
 import { WebSocket } from 'ws'
 import type { RunningServer } from './index'
+import { flushStallLog } from './stalls'
 
 /**
  * A boot on a host whose inotify watches are spent: every fs.watch throws
@@ -75,6 +76,18 @@ describe('a boot with every watch refused', () => {
     expect((await ask('session.list')).ok).toBe(true)
     const health = await fetch(`http://127.0.0.1:${server.remote!.port}/healthz`)
     expect(await health.text()).toBe('ok')
+  })
+
+  it('records listening, hello readiness and an empty resume pass once despite multiple sockets', async () => {
+    expect((await ask('session.list')).ok).toBe(true)
+    expect((await ask('session.list')).ok).toBe(true)
+    await flushStallLog()
+    const lines = readFileSync(join(root, 'logs', 'stalls.log'), 'utf8').split('\n').filter((line) => line.includes(' boot '))
+    expect(lines).toEqual([
+      expect.stringMatching(/ boot listening ms=\d+$/),
+      expect.stringMatching(/ boot hello-ready ms=\d+$/),
+      expect.stringMatching(/ boot resumed n=0 ms=\d+$/)
+    ])
   })
 
   it('names each refused watch in doctor.get, with what covers it', async () => {
