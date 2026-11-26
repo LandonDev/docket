@@ -223,7 +223,7 @@ the first paint.
   nothing moves under the pointer. A row's name and its state share one wrapping line (`NAME_LINE`, rowParts.tsx):
   a state that does not fit beside the name goes whole to the hidden second line, never a stub, and the name keeps
   the line. Last change by folds under 640px of list, so a 1,024px window keeps names whole; Where, in a search, a
-  lens or Trash, is the list's second fact there and stays to 560px (`data-files-where`). Home's "where" is one
+  lens or Trash, is the list's second fact there and stays to 480px of list, 128px wide under 640px, since two results of one name differ only by it (`data-files-where`). Home's "where" is one
   160px column, folded under 640px of Home as By is, before a state would go. A file's header keeps the name and its line 16rem where the line has presses: past
   that the presses, ⋯ and Ask take a second row at the end (`data-files-head-presses`), so neither is cut to a stub.
   The name, where a press renames it, takes 24px over its 20px line; it cuts in its own span, so the heading clips

@@ -252,12 +252,15 @@ function Trail({ trail, name, onGo, onEmpty }: { trail: readonly FileCrumb[]; na
 /**
  * The columns' widths, shared by the heads and the rows. Who changed it is the first to go as the list narrows, under
  * 640px, so a 1,024px window keeps the names whole; where a file lives (`data-files-where` on the list's container)
- * stays to 560px; when it changed stays beside the name longest.
+ * stays to 480px, 128px wide under 640px, since two results of one name differ only by it (a 1,024px window's search
+ * list is about 540px); when it changed stays beside the name longest.
  */
-const COL_BY = "hidden w-40 shrink-0 @[640px]/files-list:block @[560px]/files-list:in-data-[files-where]:block";
+const COL_BY =
+  "hidden w-40 shrink-0 @[640px]/files-list:block @[480px]/files-list:in-data-[files-where]:block @max-[640px]/files-list:in-data-[files-where]:w-32";
 const COL_CHANGED = "hidden w-32 shrink-0 text-end @[360px]/files-list:block";
 /** A busy row's words, in By's and Changed's room: Changed's alone where By has gone, none under 360px. */
-const COL_BUSY = "hidden w-32 shrink-0 @[360px]/files-list:flex @[640px]/files-list:w-74 @[560px]/files-list:in-data-[files-where]:w-74";
+const COL_BUSY =
+  "hidden w-32 shrink-0 @[360px]/files-list:flex @[640px]/files-list:w-74 @[480px]/files-list:in-data-[files-where]:w-66 @[640px]/files-list:in-data-[files-where]:w-74";
 
 /** A column's head that sorts: a press sorts by it, a second press turns the order round. */
 function SortHead({ by, label, sort, onSort, className }: { by: FileSortBy; label: string; sort: FileSort; onSort(next: FileSort): void; className: string }) {

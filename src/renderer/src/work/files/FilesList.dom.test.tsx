@@ -221,14 +221,15 @@ describe("rows his acts are changing", () => {
 });
 
 describe("a list of files from many places", () => {
-  it("names Where in its second column, which stays to 560px of list", () => {
+  /** The live walk (S9): a 1,024px window's search list is about 540px, and two results named alike lost the one fact between them. */
+  it("names Where in its second column, which stays to 480px of list, 128px wide under 640px", () => {
     keepPageLook(PAGE.at, {});
     const where = { place: "Esports Staff", name: "Events", trail: [] };
     draw({ listing: listing({ entries: ENTRIES.map((e) => ({ ...e, where })) }) });
     const list = document.querySelector<HTMLElement>("[data-files-list]")!;
     expect(list.parentElement!.hasAttribute("data-files-where")).toBe(true);
     const head = [...document.querySelectorAll('[role="columnheader"]')].find((el) => el.textContent === "Where")!;
-    expect(head.className.split(" ")).toContain("@[560px]/files-list:in-data-[files-where]:block");
+    expect(head.className.split(" ")).toEqual(expect.arrayContaining(["@[480px]/files-list:in-data-[files-where]:block", "@max-[640px]/files-list:in-data-[files-where]:w-32"]));
   });
 });
 
@@ -269,9 +270,9 @@ describe("the list's columns", () => {
     expect(document.querySelector("[data-files-body]")!.className).not.toContain("@container/files-list");
     expect(document.querySelector("[data-files-details]")!.className).toContain("@[640px]/files-body:block");
     // Who changed it folds under 640px of list (a window of 1,024px): the names keep their endings first. Where a file
-    // lives (a search, a lens) is the list's second fact there and stays to 560px.
+    // lives (a search, a lens) is the list's second fact there and stays to 480px.
     const by = [...document.querySelectorAll('[role="columnheader"]')].find((el) => el.textContent === "Last change by")!;
-    expect(by.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "w-40", "@[640px]/files-list:block", "@[560px]/files-list:in-data-[files-where]:block"]));
+    expect(by.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "w-40", "@[640px]/files-list:block", "@[480px]/files-list:in-data-[files-where]:block"]));
     expect(list.parentElement!.hasAttribute("data-files-where")).toBe(false);
   });
 });
