@@ -228,7 +228,9 @@ function startMonitor(server: RunningServer, createWindow: () => void): void {
   })
 }
 
-export function registerAppshots(server: RunningServer, createWindow: () => void): void {
+/** The appshot handlers, before the first window opens (index.ts boot order): a window's renderer announces
+ *  `appshot-ready` once, when it mounts, and may do so before the server is up. */
+export function registerAppshotIpc(): void {
   ipcMain.handle('appshot-permissions', (_e, prompt?: boolean) => permissions(!!prompt))
   // Dev-only: push a fake attachment down the real routing path and report
   // which window took it, so window scoping can be checked without the helper.
@@ -240,6 +242,10 @@ export function registerAppshots(server: RunningServer, createWindow: () => void
     })
   // The renderer announces its listeners are mounted; queued captures flush.
   ipcMain.on('appshot-ready', (e) => appshotReady(e.sender))
+}
+
+/** The hotkey monitor and the first prompt, once the server is up: they read its appshot settings. */
+export function startAppshots(server: RunningServer, createWindow: () => void): void {
   if (!armed()) return
   startMonitor(server, createWindow)
   app.on('will-quit', () => {

@@ -17,7 +17,7 @@ import { configureAliax, upstream } from './aliax'
 import { loadEnvironmentId } from './server/remote/environment'
 import { aliaxCallCounts, registerAliaxHandlers, registerAliaxPages, vaultStartFreshHooks } from './aliaxPages'
 import { givenComputerHooks } from './server/devices/given'
-import { registerAppshots } from './appshots'
+import { registerAppshotIpc, startAppshots } from './appshots'
 import { EditorLauncher, defaultEditorLaunchDeps, editorChoice, type EditorTarget } from './editorLaunch'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import { isProdData } from './server/processGuard'
@@ -386,6 +386,8 @@ function registerWindowHandlers(): void {
     registerCapture(serverUp.promise.then((running) => ({ work: running.workSwitch, port: () => running.port })))
   }
   if (!app.isPackaged) registerDebug()
+  // A window announces appshot-ready once, as it mounts: its listener exists before the first window does.
+  if (process.platform === 'darwin' && !headless) registerAppshotIpc()
   // The port answers once the server is up: a window made before it waits, and asks once (lib/tcserver/link.ts).
   ipcMain.handle('server-port', async () => (await serverUp.promise).port)
   // The launch mirror (src/main/server/launchMirror.ts): the renderer paints the rail from it before any socket
@@ -500,7 +502,7 @@ function onServerUp(running: RunningServer): void {
   }
   // A given computer's pins and identity went with the old vault: it is no longer given (devices/given.ts).
   vaultStartFreshHooks.push(() => givenComputerHooks.current?.startFresh())
-  if (process.platform === 'darwin' && !headless) registerAppshots(running, createWindow)
+  if (process.platform === 'darwin' && !headless) startAppshots(running, createWindow)
 
   if (headless) {
     // No window: the local socket's port goes to a file for an operator on
