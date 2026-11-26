@@ -40,7 +40,8 @@ type Props = {
   mascotName: string | null;
   /** The key the default mascot is hashed from. */
   mascotProject: string;
-  onSave: (look: GroupLook) => void;
+  /** Awaited: a refusal stays in the dialog. */
+  onSave: (look: GroupLook) => void | Promise<void>;
   /** A logo was set or removed (the caller reloads its logos). */
   onLogoChange?: () => void;
   onClose: () => void;
@@ -101,7 +102,7 @@ function CustomizeForm({
       else if (logoProject && logo.kind === "remove") await clearProjectLogo(environmentId, logoProject);
       if (logo.kind !== "keep") onLogoChange?.();
       const index = color === CUSTOM ? null : Number(color);
-      onSave({
+      await onSave({
         // Empty clears the name back to the project's own.
         name: name.trim(),
         colorIndex: index === 0 ? null : index,

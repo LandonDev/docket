@@ -314,6 +314,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     method: z.literal('project.setStartOn'),
     params: z.object({ projectId: z.string(), startOn: StartOnSchema.nullable() })
   }),
+  // The workspace's name alone: its folder and path stay (sessions.ts renameWorkspace).
+  z.object({
+    id: z.string(),
+    method: z.literal('workspace.rename'),
+    params: z.object({ workspaceId: z.string(), name: z.string() })
+  }),
   z.object({
     id: z.string(),
     method: z.literal('workspace.setAccounts'),

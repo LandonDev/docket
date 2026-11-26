@@ -3325,6 +3325,11 @@ export async function startServer(
               registry.setProjectPreamble(req.params.projectId, req.params.preamble, req.params.enabled)
             sendFrame({ id: req.id, ok: true, result: null })
             break
+          case 'workspace.rename':
+            // A linked workspace is renamed on its settings home first (projectSettingsSync.ts).
+            await projectSettings.renameWorkspace(req.params.workspaceId, req.params.name)
+            sendFrame({ id: req.id, ok: true, result: null })
+            break
           case 'workspace.setPreamble':
             registry.setWorkspacePreamble(req.params.workspaceId, req.params.preamble, req.params.enabled)
             sendFrame({ id: req.id, ok: true, result: null })

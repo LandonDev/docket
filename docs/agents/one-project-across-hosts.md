@@ -82,6 +82,21 @@ names the far child).
   PreambleDialog, rename, archive every copy, delete asking about the other
   copy) act on the home over its link, footer "Saved on <host>", Save off
   with the reason while the home is out of reach.
+- **A workspace's name.** `workspace.rename { workspaceId, name }` (operate)
+  changes the name alone: the folder on disk is never renamed and `path`
+  never changes. The name is trimmed; an empty one or one over 80 characters
+  (`WORKSPACE_NAME_MAX`) is refused. A linked workspace's name follows its
+  settings home like a project's: a rename on the Mac goes to the box first
+  (`ProjectSettingsSync.renameWorkspace`), then the Mac's row takes the
+  box's name, so one call shows on the box's windows, the Mac's and the
+  phone; with the box offline it is refused with the same words and nothing
+  is written. The Mac's follower reads the box's `workspace.list` on every
+  pull and its `workspaces` push, and the home's name wins, so a host that
+  was offline catches up at link-up. An unlinked workspace, or a Work one, is
+  renamed on its own host alone. The rail shows `workspace.name` (no longer
+  the folder's) unless this window saved a label; Rename… (first in the
+  row's menu) and Customize…'s name both call it and clear that label.
+  Nothing keys on the name. Test: `remote/workspaceRename.pair.test.ts`.
 - **One rail.** `lib/linkedRail.ts` (`mergeRailSections`, restored from
   a39cc107 and keyed by `linkId`) joins copies into one row led by this
   machine's copy, the other copies aliased to the leader's keys

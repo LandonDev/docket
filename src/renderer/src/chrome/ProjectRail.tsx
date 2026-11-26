@@ -1,6 +1,6 @@
 import { keyHint } from "../lib/keys";
 import { registry, useEnvironments } from "../lib/connection";
-import { environmentOfCwd } from "../lib/tcserver/projects";
+import { environmentOfCwd, renameWorkspace } from "../lib/tcserver/projects";
 import { aliasKeys, mergeRailSections, splitWorkRows, type RailItem } from "../lib/linkedRail";
 import { HostsRow } from "./HostRows";
 import { AwayRow } from "./AwayRow";
@@ -16,6 +16,7 @@ import {
   MessageSquare,
   MoreHorizontal,
   Outbox,
+  Pencil,
   Pin,
   PinOff,
   Plus,
@@ -93,6 +94,7 @@ import { warmWorkPlace, workPlaceRows } from "../lib/workPlaces";
 import { diffWords, useWorkspaceMarks, WorkspaceMarkTrigger } from "./WorkspaceRowMarks";
 import type { WorkspaceMark } from "../lib/sidebarRows";
 import { RemoveProjectDialog } from "./RemoveProjectDialog";
+import { RenameWorkspaceDialog } from "./RenameWorkspaceDialog";
 import { DevModeSlot, TabVisitNav } from "./TitleBar";
 import { UpdateRow, useUpdateRowState } from "./UpdateRow";
 import { SignInRow, useSignInTarget } from "./SignInRow";
@@ -132,6 +134,8 @@ export function railRowAsksGit(selectedPath: string | null, workspace: { kind?: 
 
 /** The folder picker's title when it adds a workspace (⌘O's says "Open project"). */
 export const ADD_WORKSPACE = "Add workspace";
+/** The row menu's Rename…: the workspace's name, not its folder's. */
+const RENAME = "rename";
 
 const REVEAL_LABEL = IS_MAC
   ? "Reveal in Finder"
@@ -267,6 +271,9 @@ export function ProjectRail({
   // share a basename stay apart.
   const workspaces = useWorkspaces();
   const labelKey = (path: string) => workspaceLabelKey(workspaces, path, projectName(path));
+  /** A row's name: a label of this window's own, else the workspace's (workspace.rename), else its folder's. */
+  const nameOf = (path: string, projectKey = labelKey(path)) =>
+    resolveTabGroupLabel(projectKey, groupLabels, workspaceByPath(workspaces, path)?.name ?? basename(path));
   const [groupLabels, setGroupLabels] = useState(loadTabGroupLabels);
   useEffect(() => {
     const refresh = () => setGroupLabels(loadTabGroupLabels());
@@ -284,6 +291,7 @@ export function ProjectRail({
   const addOpen = menuPath === WORK_ADD_MENU;
   const openPort = useSyncExternalStore(addOpen ? hearPort : noPort, () => (addOpen ? workRailPort.get() : null));
   const [customizing, setCustomizing] = useState<{ path: string; projectKey: string } | null>(null);
+  const [renaming, setRenaming] = useState<{ workspaceId: string; name: string; projectKey: string } | null>(null);
   const projectMenu = useRef<((at: { x: number; y: number; id: string | null }) => void) | null>(null);
   const [removing, setRemoving] = useState<{
     path: string;
@@ -343,7 +351,7 @@ export function ProjectRail({
     kind: "project",
     path,
     paths: rowOf(path)?.paths ?? [path],
-    name: resolveTabGroupLabel(projectKey, groupLabels, basename(path)),
+    name: nameOf(path, projectKey),
   });
 
   useEffect(() => {
@@ -367,14 +375,14 @@ export function ProjectRail({
 
   const openProjectMenu = (path: string, x: number, y: number) => projectMenu.current?.({ x, y, id: path });
 
-  /** A project's menu: Customize… (the look), then pin, reveal, the fleet switches, archive and delete. */
+  /** A project's menu: Rename… and Customize… (the look), then pin, reveal, the fleet switches, archive and delete. */
   const projectMenuRows = (path: string | null): MenuRow[] | null => {
     if (!path) return null;
     if (path === WORK_ADD_MENU) return (openPort ?? workRailPort.get())?.addRows() ?? null;
     const projectKey = labelKey(path);
     // With Work on, a code workspace links to a LifeOS sector from its own menu; a Work workspace's is set when it is made.
     const sector = workOn && !workRows.some((row) => row.paths.some((p) => sameProjectPath(p, path))) ? (workRailPort.get()?.sectorRows(path) ?? []) : [];
-    return groupMenuRows({
+    const rows = groupMenuRows({
       actions: false,
       extra: sector.concat(projectMenuExtraItems(
         pinnedPaths.some((pinned) => (rowOf(path)?.paths ?? [path]).some((p) => sameProjectPath(pinned, p))),
@@ -382,6 +390,8 @@ export function ProjectRail({
         batchCounts(sessionStore.metas(), { catalog: workspaceStore.getSnapshot(), lastSeen: loadLastSeen(), floor: seenFloor(), scope: projectScope(path, projectKey) }),
       )),
     });
+    // A folder the catalog has not listed yet has no workspace to rename.
+    return workspaceByPath(workspaces, path) ? [{ kind: "item", id: RENAME, label: "Rename…", icon: Pencil }, ...rows] : rows;
   };
 
   const onProjectRename = (projectKey: string, label: string) => {
@@ -460,7 +470,9 @@ export function ProjectRail({
       return;
     }
     const projectKey = labelKey(path);
-    if (action === CUSTOMIZE) setCustomizing({ path, projectKey });
+    const workspace = workspaceByPath(workspaces, path);
+    if (action === RENAME && workspace) setRenaming({ workspaceId: workspace.id, name: nameOf(path, projectKey), projectKey });
+    else if (action === CUSTOMIZE) setCustomizing({ path, projectKey });
     else if (action === "pin" || action === "unpin") onTogglePin(path);
     else if (action === "reveal") void revealPath(path);
     else if (action === "read") markRead(path);
@@ -472,7 +484,7 @@ export function ProjectRail({
     } else if (action === "delete") {
       setRemoving({
         path,
-        name: resolveTabGroupLabel(projectKey, groupLabels, basename(path)),
+        name: nameOf(path, projectKey),
       });
     }
   };
@@ -484,11 +496,7 @@ export function ProjectRail({
         if (action.kind === "menu") {
           openProjectMenu(action.path, action.x, action.y);
         } else {
-          const projectKey = labelKey(action.path);
-          setRemoving({
-            path: action.path,
-            name: resolveTabGroupLabel(projectKey, groupLabels, basename(action.path)),
-          });
+          setRemoving({ path: action.path, name: nameOf(action.path) });
         }
       }),
     [groupLabels, workspaces],
@@ -805,7 +813,7 @@ export function ProjectRail({
         <CustomizeGroupDialog
           environmentId={environmentOfCwd(customizing.path) ?? registry.primary().environmentId}
           groupId={customizing.projectKey}
-          label={resolveTabGroupLabel(customizing.projectKey, groupLabels, basename(customizing.path))}
+          label={nameOf(customizing.path, customizing.projectKey)}
           colorIndex={resolveTabGroupColorIndex(customizing.projectKey, groupColors, groupCustomColors)}
           customColor={resolveTabGroupCustomColor(customizing.projectKey, groupCustomColors)}
           currentColor={resolveTabGroupColor(customizing.projectKey, groupColors, groupCustomColors, customizing.projectKey)}
@@ -813,13 +821,28 @@ export function ProjectRail({
           logoProject={customizing.projectKey}
           mascotName={resolveTabGroupMascot(customizing.projectKey, groupMascots)}
           mascotProject={customizing.projectKey}
-          onSave={(look) => {
-            onProjectRename(customizing.projectKey, look.name);
+          onSave={async (look) => {
+            // A workspace's name is its own (workspace.rename), one for every window; a folder not listed yet keeps a label.
+            const workspace = workspaceByPath(workspaces, customizing.path);
+            if (!workspace) onProjectRename(customizing.projectKey, look.name);
+            else {
+              if (look.name && look.name !== workspace.name) await renameWorkspace(workspace.id, look.name);
+              onProjectRename(customizing.projectKey, "");
+            }
             if (look.customColor) onProjectCustomColorChange(customizing.projectKey, look.customColor);
             else onProjectColorChange(customizing.projectKey, look.colorIndex);
             onProjectMascotChange(customizing.projectKey, look.mascot);
           }}
           onClose={() => setCustomizing(null)}
+        />
+      ) : null}
+      {renaming ? (
+        <RenameWorkspaceDialog
+          workspaceId={renaming.workspaceId}
+          name={renaming.name}
+          // A label of this window's own would hide the new name.
+          onRenamed={() => onProjectRename(renaming.projectKey, "")}
+          onClose={() => setRenaming(null)}
         />
       ) : null}
       {removing ? (
@@ -1002,7 +1025,7 @@ function WorkspaceRow({
   const offline = useHostsOffline(item.hosts);
   // Labels, colours and mascots key by the link's leader (lib/linkedRail.ts).
   const projectKey = workspaceLabelKey(workspaces, item.path, projectName(item.path));
-  const name = resolveTabGroupLabel(projectKey, groupLabels, basename(item.path));
+  const name = resolveTabGroupLabel(projectKey, groupLabels, workspace?.name ?? basename(item.path));
   const look = workspaceLook(projectKey, groupLooks);
   const dragging = sortable.draggingId === item.path;
   const dropping = sortable.draggingId && sortable.toIndex === index && sortable.fromIndex !== null;

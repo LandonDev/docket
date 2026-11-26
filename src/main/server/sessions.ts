@@ -91,12 +91,13 @@ const REFUSAL_FRESH_MS = 2 * 60_000
 const FOLD_LAND_MS = 2_000
 const isDelta = (event: AgentEvent): boolean =>
   (event.type === 'assistant-text' || event.type === 'thinking') && event.delta
-import type {
-  ProjectCleanup,
-  ProjectMeta,
-  ProjectMode,
-  ThreadType,
-  WorkspaceMeta
+import {
+  WORKSPACE_NAME_MAX,
+  type ProjectCleanup,
+  type ProjectMeta,
+  type ProjectMode,
+  type ThreadType,
+  type WorkspaceMeta
 } from '@shared/domain'
 import { BUILT_IN_DRIVERS } from './drivers'
 import { touchWarm } from './drivers/warm'
@@ -2322,6 +2323,18 @@ export class SessionRegistry {
   /** A workspace's LifeOS sector (work.lifeos.link), told to every client in the `workspaces` push. */
   setWorkspaceSector(workspaceId: string, sector: string | null): void {
     this.store.setWorkspaceSector(workspaceId, sector)
+    this.notifyCatalog('workspaces')
+  }
+
+  /** The workspace's name alone, trimmed: its folder is not moved and its path never changes. */
+  renameWorkspace(workspaceId: string, name: string): void {
+    const t = name.trim()
+    if (!t) throw new Error('refused: a workspace needs a name')
+    if (t.length > WORKSPACE_NAME_MAX) throw new Error(`refused: a workspace name is at most ${WORKSPACE_NAME_MAX} characters`)
+    const ws = this.store.listWorkspaces().find((w) => w.id === workspaceId)
+    if (!ws) throw new Error(`unknown workspace: ${workspaceId}`)
+    if (ws.name === t) return
+    this.store.renameWorkspace(workspaceId, t)
     this.notifyCatalog('workspaces')
   }
 

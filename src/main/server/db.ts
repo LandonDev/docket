@@ -1586,6 +1586,10 @@ export class Store {
     this.stmt(`DELETE FROM projects WHERE id = ?`).run(id)
   }
 
+  renameWorkspace(id: string, name: string): void {
+    this.stmt(`UPDATE workspaces SET name = ? WHERE id = ?`).run(name, id)
+  }
+
   renameProject(id: string, name: string): void {
     this.stmt(`UPDATE projects SET name = ? WHERE id = ?`).run(name, id)
   }

@@ -51,8 +51,9 @@ const MAC_PATH = "/Users/landon/IdeaProjects/temp-code";
 const BOX_PATH = "/srv/agents/work/temp-code";
 const ONLY_BOX = "/srv/agents/work/only-box";
 
+// Named by its folder, as the host names a workspace it adds.
 const ws = (id: string, path: string, environmentId: string, linkId: string | null): WorkspaceMeta =>
-  ({ id, name: id, path, git: true, githubRepo: null, createdAt: 1, environmentId, linkId }) as WorkspaceMeta;
+  ({ id, name: path.split("/").pop()!, path, git: true, githubRepo: null, createdAt: 1, environmentId, linkId }) as WorkspaceMeta;
 const WORKSPACES: WorkspaceMeta[] = [
   ws("w-mac", MAC_PATH, "local", "wl_tc"),
   ws("w-box", BOX_PATH, "env_box", "wl_tc"),
@@ -85,11 +86,15 @@ const METAS = [
   meta("box-old", "env_box", "w-box", 200, { status: "waiting" }),
 ];
 
+/** Each host's calls, `workspace.rename` among them. */
+const calls: { environmentId: string; method: string; params: unknown }[] = [];
+
 class FakeLink implements Link {
   profile = "local" as const;
   connected = true;
   constructor(readonly environmentId: string) {}
-  request<T>(method: string): Promise<T> {
+  request<T>(method: string, params?: unknown): Promise<T> {
+    calls.push({ environmentId: this.environmentId, method, params });
     if (method === "workspace.list") return Promise.resolve(WORKSPACES.filter((w) => w.environmentId === this.environmentId) as T);
     if (method === "project.list") return Promise.resolve([] as T);
     if (method === "session.list") return Promise.resolve(METAS.filter((m) => m.environmentId === this.environmentId) as T);
@@ -124,6 +129,7 @@ afterEach(() => {
   sessionStore.reset();
   workspaceStore.reset();
   localStorage.clear();
+  calls.length = 0;
   vi.restoreAllMocks();
 });
 
@@ -432,6 +438,48 @@ describe("the rail", () => {
     expect(headers(root)).toContain("Pinned");
     const pinnedRow = workspaceRows(root).find((r) => r.querySelector('[aria-label="Unpin workspace"]'));
     expect(pinnedRow?.querySelector("button")?.textContent).toBe("only-box");
+  });
+
+  it("Rename… leads the row's menu, before Customize…, and renames the workspace on its host, not a label", async () => {
+    const { waitFor, within } = await import("@testing-library/react");
+    const { loadTabGroupLabels, saveTabGroupLabel } = await import("../lib/tabGroups");
+    vi.spyOn(registry, "linkOf").mockImplementation((id) => new FakeLink(id));
+    // A label this window saved earlier would hide the new name.
+    saveTabGroupLabel("w-mac", "Old label");
+    const root = await mountRail([LOCAL, BOX]);
+    fireEvent.click(workspaceRows(root)[0].querySelector<HTMLButtonElement>('[aria-label="Workspace options"]')!);
+    const items = within(await screen.findByRole("menu")).getAllByRole("menuitem").map((item) => item.textContent);
+    expect(items.slice(0, 2)).toEqual(["Rename…", "Customize…"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename…" }));
+    const field = (await screen.findByRole("textbox", { name: "Name" })) as HTMLInputElement;
+    expect(screen.getByRole("dialog", { name: "Rename workspace" })).toBeTruthy();
+    expect(field.value).toBe("Old label");
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, "Old label".length]);
+    fireEvent.change(field, { target: { value: "  Docket " } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    });
+    expect(calls.filter((c) => c.method === "workspace.rename")).toEqual([
+      { environmentId: "local", method: "workspace.rename", params: { workspaceId: "w-mac", name: "Docket" } },
+    ]);
+    expect(loadTabGroupLabels()["w-mac"]).toBeUndefined();
+  });
+
+  it("Customize…'s name is the workspace's too: one rename on its host, and no label of this window's own", async () => {
+    const { within } = await import("@testing-library/react");
+    const { loadTabGroupLabels } = await import("../lib/tabGroups");
+    vi.spyOn(registry, "linkOf").mockImplementation((id) => new FakeLink(id));
+    const root = await mountRail([LOCAL, BOX]);
+    fireEvent.click(workspaceRows(root)[0].querySelector<HTMLButtonElement>('[aria-label="Workspace options"]')!);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Customize…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Customize" });
+    fireEvent.change(within(dialog).getAllByRole("textbox")[0], { target: { value: "Docket" } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    });
+    expect(calls.filter((c) => c.method === "workspace.rename").map((c) => c.params)).toEqual([{ workspaceId: "w-mac", name: "Docket" }]);
+    expect(loadTabGroupLabels()["w-mac"]).toBeUndefined();
   });
 });
 

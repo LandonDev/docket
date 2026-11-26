@@ -69,6 +69,16 @@ export async function renameProject(
   await workspaceStore.refresh(link);
 }
 
+/** The workspace's name alone; its host sends a linked one to the settings home first. */
+export async function renameWorkspace(
+  workspaceId: string,
+  name: string,
+): Promise<void> {
+  const link = linkOfWorkspace(workspaceId);
+  await link.request("workspace.rename", { workspaceId, name: name.trim() });
+  await workspaceStore.refresh(link);
+}
+
 export async function setProjectAccounts(
   projectId: string,
   pins: AccountPins,

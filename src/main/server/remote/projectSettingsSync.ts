@@ -1,5 +1,5 @@
 import type { ServerPush } from '@shared/contract'
-import type { ProjectMeta } from '@shared/domain'
+import type { ProjectMeta, WorkspaceMeta } from '@shared/domain'
 import { headlessOf, ProjectSettingsBundleSchema, settingsHomeOf, type HostBuild, type ProjectSettingsBundle } from '@shared/projectLinks'
 import type { Peers } from './peers'
 
@@ -22,6 +22,10 @@ import type { Peers } from './peers'
  *    home's bundle is written here, so the next pull has nothing to do. A
  *    home out of reach refuses the write and nothing is written here.
  *
+ * A linked workspace's name follows the same home (`workspace.rename`):
+ * the home's name wins on link-up, on its `workspaces` push and in the
+ * periodic pull, and a rename here goes to the home first (`renameWorkspace`).
+ *
  * Which peer holds a copy is remembered per peer in the settings table
  * (`PEER_KEY`), so a Mac that boots with the box down still knows the box is
  * the home and refuses instead of writing what the next pull would undo.
@@ -37,6 +41,8 @@ interface PeerRecord {
   /** headlessOf the peer's last hello; absent from a record older than the field */
   headless?: boolean | null
   projects: { id: string; workspaceId: string; linkId: string; name: string }[]
+  /** its linked workspaces; absent from a record older than the field */
+  workspaces?: { id: string; linkId: string; name: string }[]
 }
 
 type Link = NonNullable<ReturnType<Peers['get']>>
@@ -52,6 +58,8 @@ export interface ProjectSettingsSyncDeps {
     getProject(projectId: string): ProjectMeta | null
     getProjectSettings(projectId: string): ProjectSettingsBundle
     setProjectSettings(projectId: string, bundle: ProjectSettingsBundle, at?: number): void
+    listWorkspaces(): WorkspaceMeta[]
+    renameWorkspace(workspaceId: string, name: string): void
   }
   store: { getSetting(key: string): string | null; setSetting(key: string, value: string | null): void }
   peers: Pick<Peers, 'get' | 'all'>
@@ -101,10 +109,11 @@ export class ProjectSettingsSync {
     this.schedule(id)
   }
 
-  /** A peer's `projects` push: remember its catalog and follow it. Never consumes the push. */
+  /** A peer's `projects` or `workspaces` push: remember its catalog and follow it. Never consumes the push. */
   onPeerPush(from: string, push: ServerPush): boolean {
-    if (push.push !== 'projects') return false
-    this.remember(from, push.projects)
+    if (push.push === 'projects') this.remember(from, push.projects)
+    else if (push.push === 'workspaces') this.rememberWorkspaces(from, push.workspaces)
+    else return false
     this.schedule(from)
     return false
   }
@@ -165,6 +174,22 @@ export class ProjectSettingsSync {
       if (local.settingsUpdatedAt != null && theirStamp <= local.settingsUpdatedAt) continue
       await this.apply(link, local.id, peer.id)
     }
+    await this.followNames(id, link)
+  }
+
+  /** Each linked workspace whose home is this peer takes the home's name. */
+  private async followNames(id: string, link: Link): Promise<void> {
+    const linked = this.deps.registry.listWorkspaces().filter((w) => w.linkId)
+    if (linked.length === 0) return
+    const theirs = await link.request<WorkspaceMeta[]>('workspace.list')
+    this.rememberWorkspaces(id, theirs)
+    const byLink = new Map(theirs.filter((w) => w.linkId).map((w) => [w.linkId!, w]))
+    for (const local of linked) {
+      const peer = byLink.get(local.linkId!)
+      if (!peer || peer.name === local.name || this.homeOf(local.linkId!) !== id) continue
+      this.deps.registry.renameWorkspace(local.id, peer.name)
+      this.log(`${link.env.name}: followed the name ${peer.name}`)
+    }
   }
 
   /** The home's bundle, written here under the local id with the home's stamp. */
@@ -200,13 +225,27 @@ export class ProjectSettingsSync {
   }
 
   private remember(id: string, projects: ProjectMeta[]): void {
-    const link = this.deps.peers.get(id)
-    const record: PeerRecord = {
-      platform: link?.build?.platform ?? this.record(id)?.platform ?? null,
-      headless: headlessOf(link?.build) ?? this.record(id)?.headless ?? null,
+    this.write(id, {
       projects: projects
         .filter((p) => p.linkId)
         .map((p) => ({ id: p.id, workspaceId: p.workspaceId, linkId: p.linkId!, name: p.name }))
+    })
+  }
+
+  private rememberWorkspaces(id: string, workspaces: WorkspaceMeta[]): void {
+    this.write(id, {
+      workspaces: workspaces.filter((w) => w.linkId).map((w) => ({ id: w.id, linkId: w.linkId!, name: w.name }))
+    })
+  }
+
+  private write(id: string, patch: Partial<Pick<PeerRecord, 'projects' | 'workspaces'>>): void {
+    const link = this.deps.peers.get(id)
+    const prior = this.record(id)
+    const record: PeerRecord = {
+      platform: link?.build?.platform ?? prior?.platform ?? null,
+      headless: headlessOf(link?.build) ?? prior?.headless ?? null,
+      projects: patch.projects ?? prior?.projects ?? [],
+      workspaces: patch.workspaces ?? prior?.workspaces
     }
     const raw = JSON.stringify(record)
     if (raw !== this.deps.store.getSetting(`${PEER_KEY}${id}`)) this.deps.store.setSetting(`${PEER_KEY}${id}`, raw)
@@ -221,7 +260,8 @@ export class ProjectSettingsSync {
   homeOf(linkId: string): string {
     const copies = [{ environmentId: this.deps.environmentId }]
     for (const link of this.deps.peers.all()) {
-      if (this.record(link.id)?.projects.some((p) => p.linkId === linkId)) copies.push({ environmentId: link.id })
+      const r = this.record(link.id)
+      if (r?.projects.some((p) => p.linkId === linkId) || r?.workspaces?.some((w) => w.linkId === linkId)) copies.push({ environmentId: link.id })
     }
     return settingsHomeOf(copies, this.buildOf) ?? this.deps.environmentId
   }
@@ -270,6 +310,27 @@ export class ProjectSettingsSync {
       this.log(`${r.link.env.name}: ${err instanceof Error ? err.message : String(err)}`)
     }
     return true
+  }
+
+  /**
+   * A workspace's rename: a linked workspace whose home is a peer is renamed
+   * there first, then here, so the next pull has nothing to do; a home out of
+   * reach refuses and nothing is written. Otherwise it is renamed here.
+   */
+  async renameWorkspace(workspaceId: string, name: string): Promise<void> {
+    const local = this.deps.registry.listWorkspaces().find((w) => w.id === workspaceId)
+    const home = local?.linkId ? this.homeOf(local.linkId) : this.deps.environmentId
+    const link = home === this.deps.environmentId ? undefined : this.deps.peers.get(home)
+    const copy = link && this.record(home)?.workspaces?.find((w) => w.linkId === local!.linkId)
+    if (!link || !copy) return this.deps.registry.renameWorkspace(workspaceId, name)
+    if (!link.connected) throw new Error(refusal(local!.name, link.env.name))
+    try {
+      await link.request('workspace.rename', { workspaceId: copy.id, name })
+    } catch (err) {
+      if (!link.connected) throw new Error(refusal(local!.name, link.env.name))
+      throw err
+    }
+    this.deps.registry.renameWorkspace(workspaceId, name)
   }
 }
 

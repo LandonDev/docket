@@ -169,6 +169,7 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   // operate
   'workspace.create': 'operate',
   'workspace.delete': 'operate',
+  'workspace.rename': 'operate',
   'workspace.setSnapshot': 'operate',
   'project.create': 'operate',
   'project.rename': 'operate',

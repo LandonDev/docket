@@ -130,6 +130,8 @@ export const RELAY_METHODS: Partial<Record<ClientRequest['method'], 'link' | 'sc
   // a new Work workspace from the phone's Work band, on the host the lane names (milestone 46)
   'workspace.create': 'link',
   'workspace.icon': 'link',
+  // a rename from the phone, on the host the lane names; that host forwards it to the settings home
+  'workspace.rename': 'link',
   'workspace.root': 'link',
   'project.list': 'link',
   'project.changes': 'link',

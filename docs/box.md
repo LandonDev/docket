@@ -4877,6 +4877,18 @@ Tests: `remote/projectSettingsSync.test.ts` (the pull, an older stamp, a
 rename and an archive following, the forwarded write, the refusal, the cold
 refusal) and the linked-project case in `projectPreamble.test.ts`.
 
+A linked workspace's name follows the same home. `workspace.rename`
+(operate) changes the name alone: the folder and `path` stay as they were,
+the name is trimmed, and an empty one or one over 80 characters is refused.
+On the Mac the call goes to the box first and the Mac's row then takes the
+box's name; with the box down it is refused with the same words. The
+follower reads the box's `workspace.list` on each pull and on the box's
+`workspaces` push, and the box's name wins, so a Mac that was offline
+catches up at link-up. One call on the box, for example
+`node scripts/box/tc-local.mjs workspace.rename '{"workspaceId":"…","name":"Docket"}'`,
+renames the box's row, its windows and the phone at once, and the Mac's
+row on the push. Test: `remote/workspaceRename.pair.test.ts`.
+
 ### One project across hosts: new threads start on the box
 
 A new thread in a project linked across hosts starts on the box unless

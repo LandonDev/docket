@@ -869,8 +869,10 @@ A project note opens in LifeOS desktop's markdown editor exactly as before
 while `blockDocs` is off. With it on, the note sheet asks
 `projectDocs.open`; a note that is a document opens in the shared editor
 (`SharedDocEditor`, loaded on first use), at
-`wss://tempcode.landonhale.com/w/doc/<id>` (`VITE_WORK_SERVICE_URL` changes
-it) with a token from LifeOS's own `docs.collabToken`, its threads read
+`wss://docket.landonhale.com/w/doc/<id>`, LifeOS's default since its commit
+a01f03e (`VITE_WORK_SERVICE_URL` changes it; the old
+`tempcode.landonhale.com` still reaches the same service) with a token from
+LifeOS's own `docs.collabToken`, its threads read
 and written through `docs.*`. Two things must happen before that socket
 opens on the real box: the owner applies the tunnel rule
 (scripts/box/ingress.yml), and TempCode's setting `work.lifeos.jwks` holds

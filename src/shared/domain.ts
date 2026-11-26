@@ -24,6 +24,9 @@ export type ThreadType = z.infer<typeof ThreadTypeSchema>
 export const ProjectModeSchema = z.enum(['worktree', 'local'])
 export type ProjectMode = z.infer<typeof ProjectModeSchema>
 
+/** The longest name `workspace.rename` takes; the folder keeps its own. */
+export const WORKSPACE_NAME_MAX = 80
+
 export interface WorkspaceMeta {
   id: string
   name: string
