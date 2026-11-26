@@ -273,3 +273,8 @@
   kept current after each commit. The Work column's rows still read
   `activeSessionId` off their actions (work/shell/WorkColumnRows.tsx).
   Tested by `tallyRender` counts (WorkspaceSessions.rail.dom.test.tsx).
+  The column's row cache lives by scope outside the mount
+  (lib/workspaceSessions.ts `rowCacheFor`): the column remounts on a
+  workspace switch (Sidebar.tsx keys it by scope), and a switch back hands
+  its memoized cards the rows and groups they had; `keepRowCaches` drops a
+  scope's cache once its workspace is gone.

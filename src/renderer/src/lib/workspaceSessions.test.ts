@@ -5,7 +5,9 @@ import {
   cardThreads,
   groupWorkspaceSessions,
   housedIds,
+  keepRowCaches,
   rowCache,
+  rowCacheFor,
   startedPlan,
   threadRow,
   type RowCache,
@@ -401,6 +403,31 @@ describe("groupWorkspaceSessions with a row cache", () => {
     expect(p1(second)).not.toBe(p1(first));
     expect(p1(second).project.name).toBe("P1 renamed");
     expect(p1(second).threads[0]).toBe(p1(first).threads[0]);
+  });
+});
+
+describe("the column's caches by scope", () => {
+  it("a switch to another workspace and back hands the first its rows and groups again", () => {
+    const a = meta("a", { projectId: "p1", cwd: "/wt/p1" });
+    const other = meta("o", { projectId: "pb", cwd: "/wt/pb" });
+    const metas = [a, other];
+    const inWa = groupWorkspaceSessions(metas, projects, workspaces, "wa", {}, 0, rowCacheFor("wa"));
+    groupWorkspaceSessions(metas, projects, workspaces, "wb", {}, 0, rowCacheFor("wb"));
+    // The column remounts per scope: a new mount takes the scope's cache again.
+    const back = groupWorkspaceSessions(metas, projects, workspaces, "wa", {}, 0, rowCacheFor("wa"));
+    expect(back.projects).toBe(inWa.projects);
+    expect(back.projects[0]!.threads[0]).toBe(inWa.projects[0]!.threads[0]);
+  });
+
+  it("keeps a cache only for the scopes he has", () => {
+    const wa = rowCacheFor("wa");
+    expect(rowCacheFor("wa")).toBe(wa);
+    const gone = rowCacheFor("gone");
+    keepRowCaches(new Set(["wa", "home"]));
+    expect(rowCacheFor("wa")).toBe(wa);
+    expect(rowCacheFor("gone")).not.toBe(gone);
+    keepRowCaches(new Set());
+    expect(rowCacheFor("wa")).not.toBe(wa);
   });
 });
 

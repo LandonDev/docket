@@ -122,6 +122,23 @@ export const rowCache = (): RowCache => ({
   last: null,
 });
 
+/** The column's caches by scope, outside its mount: the column remounts on a
+ *  workspace switch (chrome/Sidebar.tsx keys it by scope), and a switch back
+ *  hands its memoized cards the rows and groups they had. Bounded by the
+ *  scopes he has: `keepRowCaches` drops the others. */
+const scopeCaches = new Map<string, RowCache>();
+
+export function rowCacheFor(scope: string): RowCache {
+  let cache = scopeCaches.get(scope);
+  if (!cache) scopeCaches.set(scope, (cache = rowCache()));
+  return cache;
+}
+
+/** Drops every scope's cache but these (the workspaces he has, the home, Work Chats). */
+export function keepRowCaches(scopes: ReadonlySet<string>): void {
+  for (const scope of scopeCaches.keys()) if (!scopes.has(scope)) scopeCaches.delete(scope);
+}
+
 const sameList = <T>(a: readonly T[] | undefined, b: readonly T[] | undefined): boolean =>
   a === b ||
   (!!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]));

@@ -97,7 +97,8 @@ import {
   cardThreads,
   groupWorkspaceSessions,
   withLifeosCards,
-  rowCache,
+  keepRowCaches,
+  rowCacheFor,
   type ProjectGroup,
   type ThreadRow,
 } from "../lib/workspaceSessions";
@@ -1560,7 +1561,9 @@ export default function WorkspaceSessions({
   );
   const lastSeen = useLastSeen();
   const seenFloor = useSeenFloor();
-  const [cache] = useState(rowCache);
+  // The scope's cache outlives this mount (keyed by scope, Sidebar.tsx): a switch back reuses its rows.
+  const [cache] = useState(() => rowCacheFor(workspaceId ?? "home"));
+  useEffect(() => keepRowCaches(new Set(["home", WORK_CHATS, ...workspaces.map((w) => w.id)])), [workspaces]);
   const groups = useMemo(
     () =>
       groupWorkspaceSessions(
