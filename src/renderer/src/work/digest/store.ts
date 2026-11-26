@@ -40,6 +40,8 @@ export type DigestView = {
   loaded: boolean;
   /** hosts whose ledger did not come back */
   errors: { environmentId: string; error: string }[];
+  /** some host's ledger did come back, so an empty list is that host's nothing, not nothing known */
+  answered?: boolean;
 };
 
 const hosts = new Map<string, HostState>();
@@ -182,6 +184,7 @@ function view(): DigestView {
     settings: newestSettings(states.flatMap((h) => (h.state.settings ? [h.state.settings] : []))),
     loaded: on.length > 0 && on.every((id) => hosts.get(id)?.loaded),
     errors: states.filter((h) => h.state.error).map((h) => ({ environmentId: h.environmentId, error: h.state.error! })),
+    answered: states.some((h) => h.state.loaded && !h.state.error),
   };
   return snapshot;
 }

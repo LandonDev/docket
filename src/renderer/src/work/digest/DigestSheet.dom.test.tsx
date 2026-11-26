@@ -120,6 +120,16 @@ describe("the list", () => {
     expect(screen.queryByText(/^Nothing since/)).toBeNull();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
+
+  it("with one host silent and another answering with nothing, says the other's nothing over the silent one (council R2-A9)", async () => {
+    w().down.add("mac");
+    w().rows.set("box", []);
+    render(<Sheet />);
+    expect(await screen.findByText("The Mac did not answer.")).toBeTruthy();
+    expect(screen.queryByText("The digest did not load")).toBeNull();
+    expect(screen.getByText(/^Nothing since/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
 });
 
 describe("the store", () => {

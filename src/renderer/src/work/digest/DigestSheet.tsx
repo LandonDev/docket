@@ -108,11 +108,12 @@ export function DigestList({
   if (!view.loaded) return <ListSkeleton />;
   const sections = listSections(view, now);
   if (sections.length === 0) {
-    // With a host unheard, nothing here is not known to be nothing.
+    // With a host unheard, nothing here is not known to be nothing; what the others said is.
     return unanswered ? (
       <Empty>
         <EmptyHeader>
-          <EmptyTitle>The digest did not load</EmptyTitle>
+          {/* A host that answered with nothing is heard: its nothing leads, the silent one under it. */}
+          <EmptyTitle>{view.answered ? emptyLine(now) : "The digest did not load"}</EmptyTitle>
           <EmptyDescription>{asSentence(unanswered)}</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
