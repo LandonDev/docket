@@ -5,6 +5,7 @@ import { DialogFooter } from "../../chrome/ConfirmDialog";
 import { ChevronRight } from "../../chrome/icons";
 import { Modal } from "../../chrome/Modal";
 import { Tip } from "../../components/tip";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../../components/ui/breadcrumb";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
@@ -274,26 +275,29 @@ export function Folders({ workspaceId, target, entries, onInto, onPlaces, end, f
   const trail: FileCrumb[] = listing.trail.length ? listing.trail : [{ name: target.name, at: target.at }];
   return (
     <>
-      <nav aria-label="Folder" className="flex min-w-0 shrink-0 items-center gap-0.5 pb-1">
-        <Button variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={onPlaces}>
-          Places
-        </Button>
-        {trail.map((crumb, i) => (
-          <span key={i} className="flex min-w-0 items-center gap-0.5">
-            <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
-            {i === trail.length - 1 ? (
-              <span aria-current="page" className="truncate px-2 text-xs font-medium text-foreground">
-                {crumb.name}
-              </span>
-            ) : (
-              <Button variant="ghost" size="xs" className="min-w-0 text-muted-foreground" onClick={() => onInto({ copy: target.copy, at: crumb.at, name: crumb.name })}>
-                <span className="truncate">{crumb.name}</span>
-              </Button>
-            )}
-          </span>
-        ))}
+      {/* The shared Breadcrumb at the dialog's 12px, its 14px chevrons; New Folder (`end`) stands at its end, outside the list. */}
+      <Breadcrumb aria-label="Folder" className="flex shrink-0 items-center gap-0.5 pb-1">
+        <BreadcrumbList className="min-h-0 flex-nowrap text-xs">
+          <BreadcrumbItem className="shrink-0">
+            <BreadcrumbLink className="max-w-none shrink-0 text-xs font-medium" onClick={onPlaces}>
+              Places
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          {trail.map((crumb, i) => (
+            <BreadcrumbItem key={i}>
+              <BreadcrumbSeparator className="[&_svg]:size-3.5" />
+              {i === trail.length - 1 ? (
+                <BreadcrumbPage className="max-w-none font-medium">{crumb.name}</BreadcrumbPage>
+              ) : (
+                <BreadcrumbLink className="max-w-none text-xs font-medium" onClick={() => onInto({ copy: target.copy, at: crumb.at, name: crumb.name })}>
+                  {crumb.name}
+                </BreadcrumbLink>
+              )}
+            </BreadcrumbItem>
+          ))}
+        </BreadcrumbList>
         {end ? <span className="ms-auto flex shrink-0 items-center">{end}</span> : null}
-      </nav>
+      </Breadcrumb>
       <div ref={setScroller} role="listbox" aria-label={`Folders in ${target.name}`} className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto">
         {first}
         {/* A read with no rows is the bones, but his Retry keeps "did not load" with that Retry spinning. */}

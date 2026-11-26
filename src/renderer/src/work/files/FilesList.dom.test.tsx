@@ -75,13 +75,13 @@ describe("cut text", () => {
       await tooltipChunk.load();
     });
     draw();
-    expect(document.querySelector('[aria-current="page"]')!.getAttribute("data-slot")).not.toBe("tooltip-trigger");
+    expect(document.querySelector('[data-trail-step=folder] [aria-current="location"]')!.getAttribute("data-slot")).not.toBe("tooltip-trigger");
     expect(row("Budget.xlsx").querySelector("[data-files-name]")!.getAttribute("data-slot")).not.toBe("tooltip-trigger");
     cleanup();
     vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(400);
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
     draw();
-    await waitFor(() => expect(document.querySelector('[aria-current="page"]')!.getAttribute("data-slot")).toBe("tooltip-trigger"));
+    await waitFor(() => expect(document.querySelector('[data-trail-step=folder] [aria-current="location"]')!.getAttribute("data-slot")).toBe("tooltip-trigger"));
     expect(row("Budget.xlsx").querySelector("[data-files-name]")!.getAttribute("data-slot")).toBe("tooltip-trigger");
   });
 });

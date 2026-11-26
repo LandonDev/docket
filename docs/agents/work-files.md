@@ -211,7 +211,10 @@ the first paint.
   rowParts.tsx). The end never shrinks (an ellipsis shows at any part of a
   pixel lost); it takes the room it needs but 1.5em, and the trail's folder
   likewise takes the bar but the least its steps above keep
-  (`--trail-above`, Page.tsx `Trail`).
+  (`--trail-above`, Page.tsx `Trail`). The trail is the shared `Breadcrumb`
+  (components/ui/breadcrumb.tsx), a `nav` named Folder holding an ordered
+  list whose last step is `aria-current`, drawn at the bar's 13px with 14px
+  chevrons; Move to…'s and Save As's walk wears the same part at 12px.
 - Narrow places give way whole (the Work polish's round two). The sidebar laid over the list under 640px of view
   floats (`shadow-overlay`) and closes as a layer does, on Escape and on a press elsewhere in the view
   (`usePeekClose`, files/sidebarPeek.ts; Escape from inside it gives the toggle the focus). An open place's fold
