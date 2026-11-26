@@ -3,8 +3,8 @@ import { EventEmitter } from 'node:events'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-import { BoxChromium, HEADED_BLOCKED, chromiumArgs, clearHeadedPrefs, findChromium, headedPrefs, mergePrefs, treePids, treeRssMb, withoutPrefs, writeHeadedPrefs } from './chromium'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { BoxChromium, HEADED_BLOCKED, IDLE_STOP_MS, chromiumArgs, clearHeadedPrefs, findChromium, headedPrefs, mergePrefs, treePids, treeRssMb, withoutPrefs, writeHeadedPrefs } from './chromium'
 import type { BoxWindowManager } from './xwm'
 
 const dirs: string[] = []
@@ -261,6 +261,47 @@ describe('the box browser', () => {
       expect(existsSync(join(b.profile, 'Default', 'Preferences')), how).toBe(false)
       if (how === 'the display fails') expect(logs.join('\n')).toContain('its display did not start (no X here); it runs headless')
       await b.stop()
+    }
+  })
+
+  it('is gone 11 minutes after its last use with no viewer; a viewer or a held step (busy) and each use put the stop off (a fake clock)', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] })
+    try {
+      const MIN = 60_000
+      expect(IDLE_STOP_MS).toBe(10 * MIN)
+      let busy = false
+      const fake = fakeBrowser()
+      const b = new BoxChromium({ root: tmp(), bin: () => '/bin/chromium', spawn: fake.spawn, video: () => null, rssMb: () => 100, busy: () => busy, testing: async () => false })
+      const stops: string[] = []
+      b.onStop((why) => stops.push(why))
+      // left alone after one use: up at 9 minutes, gone by 11, once, for idleness
+      await b.endpoint()
+      await vi.advanceTimersByTimeAsync(9 * MIN)
+      expect(b.running).toBe(true)
+      await vi.advanceTimersByTimeAsync(2 * MIN)
+      expect(b.running).toBe(false)
+      expect(stops).toEqual(['idle'])
+      // a use at 5 minutes puts it off: up at 11, gone at 16
+      await b.endpoint()
+      await vi.advanceTimersByTimeAsync(5 * MIN)
+      await b.endpoint()
+      await vi.advanceTimersByTimeAsync(6 * MIN)
+      expect(b.running).toBe(true)
+      await vi.advanceTimersByTimeAsync(5 * MIN)
+      expect(b.running).toBe(false)
+      // a viewer or a held step holds it up for as long as it lasts; once it ends, ten more minutes and it is gone
+      await b.endpoint()
+      busy = true
+      await vi.advanceTimersByTimeAsync(45 * MIN)
+      expect(b.running).toBe(true)
+      busy = false
+      await vi.advanceTimersByTimeAsync(11 * MIN)
+      expect(b.running).toBe(false)
+      expect(stops).toEqual(['idle', 'idle', 'idle'])
+      // one start for each use after a stop, never one for a tick of the clock
+      expect(fake.calls).toHaveLength(3)
+    } finally {
+      vi.useRealTimers()
     }
   })
 
