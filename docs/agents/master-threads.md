@@ -329,6 +329,13 @@ this is the short one.
   only once the last ask is 45 s old: the host's watch outlives it by a
   minute and pushes what moved meanwhile. A new socket while parked asks
   on the next show (master/useBoard.dom.test.tsx).
+  The host answers at once with what it holds (boardDigest.ts `board`): a
+  child whose first tail read (its newest 400 rows, once a boot) is not in
+  yet answers without its last words and question, and they follow as its
+  `board` push once the read lands; the asking socket watches the master
+  from its ask (boardWatch.ts), so the push reaches it. A first open after
+  a host boot waits on no child's rows (batch.test.ts "answers before a
+  slow tail read resolves").
 - **The master stays live until the batch is done.** A master whose batch
   is open (`Batches.open`: children exist and not all are done, or the
   engine is at work) takes `watching` in place of `idle` when its turn

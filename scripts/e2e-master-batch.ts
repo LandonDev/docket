@@ -318,6 +318,11 @@ check('no child left queued', childrenOf().every((k) => k.status !== 'queued'), 
 
 // ── the board in one answer (batch.board), read as the host serves it ───
 const boardDigests = hostBoardDigests(registry, store, () => true)
+// The first answer goes at once; each child's last words follow as its `board` push once its tail read lands.
+const pushedLast = new Map<string, string | undefined>()
+boardDigests.onPush((p) => pushedLast.set(p.sessionId, p.digest.last))
+await boardDigests.board(master.id, () => batches.get(master.id))
+await sleep(600)
 const board = await boardDigests.board(master.id, () => batches.get(master.id))
 check('batch.board answers the four children here with the state', board.children.length === 4 && [a, r, p, b].every((k) => board.children.some((c) => c.id === k.id)) && board.state.masterId === master.id, board.children.map((c) => c.title).join(', '))
 // The first line of a child's last reply, as its row shows it (the model may say more than it was asked).
@@ -326,6 +331,7 @@ const lastWords = (id: string): string =>
     .filter((e): e is Extract<AgentEvent, { type: 'assistant-text' }> => e.type === 'assistant-text' && !e.delta && !e.parentCallId && !!e.text.trim())
     .at(-1)?.text.trim().split('\n')[0]?.trim() ?? ''
 check("batch.board's digests carry each child's last words from its own rows", /research done:\s*blue/i.test(board.digests[r.id]?.last ?? '') && [r, b].every((k) => !!lastWords(k.id) && board.digests[k.id]?.last === lastWords(k.id)), JSON.stringify({ r: board.digests[r.id], b: board.digests[b.id], bSaid: lastWords(b.id) }))
+check('the first answer did not wait on the tail reads: their words came as pushes', [r, b].every((k) => pushedLast.get(k.id) === lastWords(k.id)), JSON.stringify(Object.fromEntries(pushedLast)))
 
 // ── 3. child a lands ─────────────────────────────────────────────────────
 console.log('\n[3] child a again, typecheck green: merged')

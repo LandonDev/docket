@@ -142,14 +142,24 @@ export class BoardDigests {
     return this.detach
   }
 
-  /** The board: the children here, their digests, the batch's state, all
-   *  read once the first tail reads are in (a push sent meanwhile is never
-   *  newer than the answer). */
+  /** The board: the children here, their digests, the batch's state, at
+   *  once, with what this host holds. A child whose first tail read is not
+   *  in yet answers without its last words and question; they follow as
+   *  its `board` push once the read lands (the asking socket watches the
+   *  master from its ask, boardWatch.ts), so a first open after a boot
+   *  waits on no child's rows. */
   async board(masterId: string, state: () => BatchState): Promise<BatchBoard> {
-    await Promise.all(this.deps.children(masterId).map((c) => this.ensureLines(c.id)))
     const children = this.deps.children(masterId)
     const digests: Record<string, BoardDigest> = {}
-    for (const child of children) digests[child.id] = this.digest(child)
+    for (const child of children) {
+      if (!this.lines.has(child.id)) {
+        void this.ensureLines(child.id).then(() => {
+          const lines = this.lines.get(child.id)
+          if (lines?.last || lines?.questions.size) this.touch(child.id, masterId)
+        })
+      }
+      digests[child.id] = this.digest(child)
+    }
     return { children, digests, state: state() }
   }
 

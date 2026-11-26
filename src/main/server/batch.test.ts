@@ -1595,9 +1595,19 @@ describe('the board: batch.board, digests and their watchers', () => {
   }
 
   const state = (masterId: string) => ({ masterId, steps: [], landed: [], pending: [], held: [], blocked: null, finishedAt: null }) as unknown as BatchState
+  /** The board asked once and its children's first tail reads landed (their pushes dropped). */
+  const opened = async (h: ReturnType<typeof board>) => {
+    await h.digests.board('m', () => state('m'))
+    await vi.advanceTimersByTimeAsync(250)
+    h.pushes.length = 0
+  }
 
   it("answers the master's children here with a digest each from the host's own folds, and the state", async () => {
+    vi.useFakeTimers()
     const h = board()
+    await h.digests.board('m', () => state('m'))
+    // The tail reads land as pushes (the test below); a later answer has them.
+    await vi.advanceTimersByTimeAsync(250)
     const answer = await h.digests.board('m', () => state('m'))
     expect(answer.children.map((c) => c.id)).toEqual(['a', 'r', 'x'])
     expect(answer.state.masterId).toBe('m')
@@ -1634,7 +1644,7 @@ describe('the board: batch.board, digests and their watchers', () => {
   it("one child's moves inside the window become one push of its new digest; an unchanged digest is never sent", async () => {
     vi.useFakeTimers()
     const h = board()
-    await h.digests.board('m', () => state('m'))
+    await opened(h)
     // Three rows and a meta push for a, inside 250 ms.
     h.todos.set('a', [{ status: 'completed', name: 'Read the brief' }, { status: 'completed', name: 'Write the view' }])
     h.append(h.row('a', 5, { type: 'tool-call', callId: 't2', name: 'TodoWrite', input: {} } as AgentEvent))
@@ -1667,6 +1677,43 @@ describe('the board: batch.board, digests and their watchers', () => {
     expect(h.pushes.at(-1)).toEqual({ masterId: 'm', sessionId: 'r', digest: { state: 'Four read' } })
   })
 
+  it('answers before a slow tail read resolves, and the digest follows as one push', async () => {
+    vi.useFakeTimers()
+    const h = board()
+    let release!: () => void
+    const gate = new Promise<void>((r) => (release = r))
+    const slow = new BoardDigests({
+      children: (m) => [...h.sessions.values()].filter((s) => s.masterId === m),
+      meta: (id) => h.sessions.get(id) ?? null,
+      masterOf: (id) => h.sessions.get(id)?.masterId ?? null,
+      todos: () => null,
+      notesText: () => null,
+      readTail: async (id) => {
+        await gate
+        return h.tails.get(id) ?? []
+      },
+      watched: () => true
+    })
+    const got: BoardPush[] = []
+    slow.onPush((p) => got.push(p))
+    let answered = false
+    const answer = slow.board('m', () => state('m')).then((a) => ((answered = true), a))
+    await vi.advanceTimersByTimeAsync(0)
+    // The read still waits: the answer is in, with what the host held.
+    expect(answered).toBe(true)
+    expect((await answer).digests).toEqual({ a: {}, r: {}, x: { failure: 'Rate limited until 14:00' } })
+    expect(got).toHaveLength(0)
+    release()
+    await vi.advanceTimersByTimeAsync(250)
+    expect(got).toEqual([
+      { masterId: 'm', sessionId: 'a', digest: { last: 'Wrote the view.' } },
+      { masterId: 'm', sessionId: 'r', digest: { question: 'Which market first?' } }
+    ])
+    // Nothing more follows.
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(got).toHaveLength(2)
+  })
+
   it("a row that lands while a child's first read is in flight is folded in and pushed once the read is in", async () => {
     vi.useFakeTimers()
     const h = board()
@@ -1695,8 +1742,8 @@ describe('the board: batch.board, digests and their watchers', () => {
     const answer = slow.board('m', () => state('m'))
     // The row arrives through the registry's listener while the tail read waits.
     for (const l of appended) l(h.row('a', 9, { type: 'assistant-text', text: 'Mid-read.', delta: false, msgId: 'm9', blockIndex: 0 } as AgentEvent))
+    expect((await answer).digests.a.last).toBeUndefined()
     release()
-    expect((await answer).digests.a.last).toBe('Mid-read.')
     await vi.advanceTimersByTimeAsync(250)
     expect(got.find((p) => p.sessionId === 'a')?.digest.last).toBe('Mid-read.')
   })
@@ -1717,7 +1764,7 @@ describe('the board: batch.board, digests and their watchers', () => {
     vi.useFakeTimers()
     let watching = false
     const h = board({ watched: () => watching })
-    await h.digests.board('m', () => state('m'))
+    await opened(h)
     h.append(h.row('a', 5, { type: 'assistant-text', text: 'Unseen.', delta: false, msgId: 'm2', blockIndex: 0 } as AgentEvent))
     vi.advanceTimersByTime(1_000)
     expect(h.pushes).toHaveLength(0)
@@ -1730,7 +1777,7 @@ describe('the board: batch.board, digests and their watchers', () => {
     vi.useFakeTimers()
     let watching = true
     const h = board({ watched: () => watching })
-    await h.digests.board('m', () => state('m'))
+    await opened(h)
     const said = (seq: number, text: string) => h.append(h.row('a', seq, { type: 'assistant-text', text, delta: false, msgId: `m${seq}`, blockIndex: 0 } as AgentEvent))
     said(5, 'A')
     vi.advanceTimersByTime(250)
