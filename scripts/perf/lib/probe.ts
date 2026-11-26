@@ -143,6 +143,8 @@ export interface Sample {
   after: Counts
   /** the wire's own bytes and round trips, where the link is shaped */
   wire?: { up: number; down: number; turns: number }
+  /** round trips to LifeOS up to usable, by who asked, where the sandbox sits behind its hop: the window, and the host on its own */
+  lifeos?: { window: number; host: number }
   error?: string
 }
 
@@ -160,11 +162,15 @@ export interface MeasureOptions {
 export const settled = (selector: string): string => `window.__perf.settled(${JSON.stringify(selector)})`
 
 /** One timed press. */
-export async function measure(page: Window, counter: Counter, link: { reset(): { up: number; down: number; turns: number } } | undefined, options: MeasureOptions): Promise<Sample> {
+export async function measure(
+  page: Window, counter: Counter, link: { reset(): { up: number; down: number; turns: number } } | undefined, options: MeasureOptions,
+  lifeosLink?: { resetClasses(): Record<string, { turns: number }> }
+): Promise<Sample> {
   await page.eval(PROBE)
   await page.eval(`window.__perf.arm(${JSON.stringify(options.region)}, () => (${options.usable}))`)
   counter.take()
   link?.reset()
+  lifeosLink?.resetClasses()
   let error: string | undefined
   try {
     await options.press()
@@ -174,11 +180,12 @@ export async function measure(page: Window, counter: Counter, link: { reset(): {
   }
   const counts = counter.take()
   const wire = link?.reset()
+  const asked = lifeosLink?.resetClasses()
   const read = await page.eval<{ first: number | null; usable: number | null; longest: number }>('window.__perf.read()')
   await new Promise((resolve) => setTimeout(resolve, 1000))
   const after = counter.take()
   await page.eval('window.__perf.stop?.()')
-  return { first: read.first, usable: read.usable, longest: Math.round(read.longest), counts, after, ...(wire ? { wire: { up: wire.up, down: wire.down, turns: wire.turns } } : {}), ...(error ? { error } : {}) }
+  return { first: read.first, usable: read.usable, longest: Math.round(read.longest), counts, after, ...(wire ? { wire: { up: wire.up, down: wire.down, turns: wire.turns } } : {}), ...(asked ? { lifeos: { window: asked.window?.turns ?? 0, host: asked.host?.turns ?? 0 } } : {}), ...(error ? { error } : {}) }
 }
 
 /** The middle of three (or of however many ran): by usable time, an unfinished press last. */

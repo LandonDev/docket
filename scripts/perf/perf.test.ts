@@ -39,6 +39,12 @@ describe('the budgets and the rows', () => {
     expect(chosen({ rows: ['list-*'], shapes: ['B1'] }).map((row) => row.id)).toEqual(['list-B1'])
     expect(chosen({ rows: ['view-Mail', 'list-*'], shapes: ['A'] }).map((row) => row.id)).toEqual(['view-Mail', 'list-A'])
   })
+
+  it('a run takes the rows of its own family: a pair is stood up for Work or for code', () => {
+    expect(chosen({}).every((row) => (row.family ?? 'work') === 'work')).toBe(true)
+    expect(chosen({ family: 'code' }).every((row) => row.family === 'code')).toBe(true)
+    expect(chosen({ family: 'code', rows: ['view-*'] })).toEqual([])
+  })
 })
 
 describe('the kit keeps to itself', () => {
@@ -62,11 +68,17 @@ describe('the kit keeps to itself', () => {
     expect(lastCores(8, 4)).toBe('0-3')
     expect(coreCount('24-31')).toBe(8)
     expect(coreCount('0,2,4-6')).toBe(5)
-    expect(parseLink(undefined)).toEqual({ delayMs: 30, rateMbit: 10 })
+    // His Wi-Fi by default: one chunk in eight 50 to 90 ms late; a plain link compares with the pass before.
+    expect(parseLink(undefined)).toEqual({ delayMs: 30, rateMbit: 10, jitter: { every: 8, minMs: 50, maxMs: 90, seed: 8 } })
+    expect(parseLink('60/10/j8')).toEqual(parseLink(undefined))
     expect(parseLink('40/8')).toEqual({ delayMs: 20, rateMbit: 8 })
+    expect(parseLink('40/8/j4')).toMatchObject({ delayMs: 20, rateMbit: 8, jitter: { every: 4 } })
     expect(parseLink('none')).toBeNull()
     expect(() => parseLink('fast')).toThrow()
-    expect(flags([])).toMatchObject({ load: 24, seconds: 60, keep: false })
+    expect(() => parseLink('60/10/jitter')).toThrow()
+    expect(flags([])).toMatchObject({ load: 40, lifeosMs: 40, family: 'work', seconds: 60, keep: false })
+    expect(flags(['--family', 'code', '--lifeos', '0'])).toMatchObject({ family: 'code', lifeosMs: 0 })
+    expect(() => flags(['--family', 'play'])).toThrow()
     expect(() => flags(['--cores', '0;rm'])).toThrow()
   })
 })

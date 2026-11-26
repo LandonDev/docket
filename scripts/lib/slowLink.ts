@@ -20,12 +20,23 @@ import { connect, createServer, type Server, type Socket } from 'node:net'
 
 const TICK_MS = 20
 
+/** His Wi-Fi's spikes: one chunk in `every` arrives `minMs` to `maxMs` late, from a seeded sequence. */
+export interface Jitter {
+  every: number
+  minMs: number
+  maxMs: number
+  seed?: number
+}
 export interface Shape {
   /** one-way delay, ms */
   delayMs: number
   /** cap each direction, Mbit/s; 0 for none */
   rateMbit: number
+  /** late chunks, each direction by its own sequence; none when absent */
+  jitter?: Jitter
 }
+/** One ping in eight at 100 to 147 ms on a 54 ms link (his Mac, Nov 26): 50 to 90 ms more for that chunk. */
+export const HIS_JITTER: Jitter = { every: 8, minMs: 50, maxMs: 90, seed: 8 }
 export interface Counters {
   /** client→server bytes */
   up: number
@@ -44,24 +55,61 @@ export interface SlowLink {
   counters(): Counters
   /** The counts since the last reset, then zero. */
   reset(): Counters
+  /** The counts since the last reset by `classify`'s name for each connection, then zero. Empty with no classifier. */
+  resetClasses(): Record<string, Counters>
   /** Cut: every open connection is dropped and new ones refused until `cut(false)` (a socket lost, the far end still up). */
   cut(on: boolean): void
+  /** A pause that keeps every socket: nothing arrives either way for `ms`, then all of it in order (a Wi-Fi roam). */
+  stall(ms: number): void
+  /**
+   * A dead link with no close: bytes both ways are dropped and no FIN or reset is sent, to open connections and to
+   * new ones (a lid shut, Wi-Fi gone). `blackhole(false)` resets the connections that lost bytes, as the far end
+   * does to a stream it no longer knows, and lets new ones through.
+   */
+  blackhole(on: boolean): void
   close(): Promise<void>
 }
 
 const HIGH_WATER = 1 << 20
 
+/** A small seeded generator (mulberry32): the same seed gives the same late chunks, run after run. */
+export function seeded(seed: number): () => number {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
 /** One direction of the link: every connection's chunks in that direction take turns on its wire. */
-class Wire {
+export class Wire {
   private freeAt = 0
-  constructor(private readonly shape: Shape) {}
-  /** When a chunk of `n` bytes handed over now arrives at the far end. */
-  arrival(n: number): number {
-    const now = performance.now()
+  private last = 0
+  private random: (() => number) | null = null
+  private seed: number | undefined
+  /** Nothing arrives before this (a stall). */
+  heldUntil = 0
+  constructor(private readonly shape: Shape, private readonly salt = 0) {}
+  /** The extra delay of the next chunk: 0 for seven in eight. */
+  private late(): number {
+    const jitter = this.shape.jitter
+    if (!jitter || jitter.every < 1) return 0
+    if (!this.random || this.seed !== jitter.seed) {
+      this.seed = jitter.seed
+      this.random = seeded((jitter.seed ?? 1) * 2 + this.salt)
+    }
+    return this.random() < 1 / jitter.every ? jitter.minMs + this.random() * (jitter.maxMs - jitter.minMs) : 0
+  }
+  /** When a chunk of `n` bytes handed over at `now` arrives at the far end: never before the chunk ahead of it. */
+  arrival(n: number, now = performance.now()): number {
     const start = Math.max(now, this.freeAt)
     const end = this.shape.rateMbit > 0 ? start + (n * 8) / (this.shape.rateMbit * 1000) : start
     this.freeAt = end
-    return end + this.shape.delayMs
+    this.last = Math.max(this.last, this.heldUntil, end + this.shape.delayMs + this.late())
+    return this.last
   }
 }
 
@@ -99,7 +147,7 @@ class Lane {
         if (this.ended && !this.to.destroyed) this.to.end()
         return
       }
-      const wait = head.at - performance.now()
+      const wait = Math.max(head.at, this.wire.heldUntil) - performance.now()
       if (wait > 0.5) {
         this.timer = setTimeout(() => ((this.timer = null), this.drain()), Math.ceil(wait))
         return
@@ -117,15 +165,23 @@ class Lane {
  * refuses a page's socket whose Host is not its own (remote/listener.ts), so a relay on a port of its own says the
  * target's address in place of its own.
  */
-export function startSlowLink(opts: { listen: number; target: number; host?: string; hostHeader?: string; shape?: Partial<Shape> }): Promise<SlowLink> {
-  const shape: Shape = { delayMs: opts.shape?.delayMs ?? 20, rateMbit: opts.shape?.rateMbit ?? 8 }
-  const upWire = new Wire(shape)
-  const downWire = new Wire(shape)
+/**
+ * `classify`: names each connection from its first request's head (who is asking: a page, a host's own client), so
+ * `resetClasses` can say whose round trips they were.
+ */
+export function startSlowLink(opts: { listen: number; target: number; host?: string; hostHeader?: string; shape?: Partial<Shape>; classify?: (head: string) => string }): Promise<SlowLink> {
+  const shape: Shape = { delayMs: opts.shape?.delayMs ?? 20, rateMbit: opts.shape?.rateMbit ?? 8, ...(opts.shape?.jitter ? { jitter: opts.shape.jitter } : {}) }
+  const upWire = new Wire(shape, 0)
+  const downWire = new Wire(shape, 1)
   const zero = (): Counters => ({ up: 0, down: 0, turns: 0, conns: 0, ms: 0 })
   let count = zero()
+  let classes = new Map<string, Counters>()
   let since = performance.now()
   const open = new Set<Socket>()
+  /** Connections that lost bytes to a blackhole: reset when it lifts. */
+  const lost = new Set<() => void>()
   let cut = false
+  let hole = false
 
   const server: Server = createServer((client) => {
     if (cut) return void client.destroy()
@@ -139,29 +195,56 @@ export function startSlowLink(opts: { listen: number; target: number; host?: str
     const down = new Lane(downWire, upstream, client)
     // A connection's last direction: a client burst after the server spoke is the next round trip.
     let last: 'up' | 'down' | null = null
-    // The first request's head, held until it is whole when its Host is to be said again.
-    let head: Buffer | null = opts.hostHeader ? Buffer.alloc(0) : null
+    // The first request's head, held until it is whole when its Host is to be said again or its asker named.
+    let head: Buffer | null = opts.hostHeader || opts.classify ? Buffer.alloc(0) : null
+    // This connection's class counts; what it sent before its head was whole is added once it is named.
+    let mine: Counters | null = null
+    const early = zero()
+    const named = (text: string): void => {
+      const name = opts.classify!(text)
+      mine = classes.get(name) ?? zero()
+      classes.set(name, mine)
+      mine.conns++
+      mine.up += early.up
+      mine.turns += early.turns
+    }
+    const dropped = (): boolean => {
+      if (!hole) return false
+      lost.add(done)
+      return true
+    }
+    // A connection opened into a blackhole never truly opened: it is reset when the hole lifts.
+    if (hole) lost.add(done)
     client.on('data', (d: Buffer) => {
+      if (dropped()) return
       count.up += d.length
       if (last !== 'up') count.turns++
+      const tally = mine ?? early
+      tally.up += d.length
+      if (last !== 'up') tally.turns++
       last = 'up'
       if (head) {
         head = Buffer.concat([head, d])
         const end = head.indexOf('\r\n\r\n')
         if (end < 0 && head.length < 64 * 1024) return
-        d = end < 0 ? head : withHost(head, end, opts.hostHeader!)
+        if (opts.classify) named(head.subarray(0, end < 0 ? head.length : end).toString('latin1'))
+        d = end < 0 || !opts.hostHeader ? head : withHost(head, end, opts.hostHeader)
         head = null
       }
       up.push(d)
     })
     upstream.on('data', (d: Buffer) => {
+      if (dropped()) return
       count.down += d.length
+      if (mine) mine.down += d.length
       last = 'down'
       down.push(d)
     })
-    client.on('end', () => up.end())
-    upstream.on('end', () => down.end())
-    const done = (): void => {
+    // A blackholed end is not passed on: the other side hears nothing at all.
+    client.on('end', () => (hole ? void lost.add(done) : up.end()))
+    upstream.on('end', () => (hole ? void lost.add(done) : down.end()))
+    function done(): void {
+      lost.delete(done)
       up.stop()
       down.stop()
       for (const s of [client, upstream]) {
@@ -189,9 +272,23 @@ export function startSlowLink(opts: { listen: number; target: number; host?: str
           since = performance.now()
           return was
         },
+        resetClasses() {
+          const ms = Math.round(performance.now() - since)
+          const was = Object.fromEntries([...classes].map(([name, c]) => [name, { ...c, ms }]))
+          // Connections still open keep counting into their own object: zero them in place.
+          for (const c of classes.values()) Object.assign(c, zero())
+          return was
+        },
         cut(on) {
           cut = on
           if (on) for (const s of open) s.destroy()
+        },
+        stall(ms) {
+          upWire.heldUntil = downWire.heldUntil = Math.max(upWire.heldUntil, performance.now() + ms)
+        },
+        blackhole(on) {
+          hole = on
+          if (!on) for (const reset of [...lost]) reset()
         },
         close: () =>
           new Promise<void>((done) => {

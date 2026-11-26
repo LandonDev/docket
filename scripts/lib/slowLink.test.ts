@@ -1,6 +1,6 @@
 import { createServer, connect, type Server, type Socket } from 'node:net'
 import { afterEach, describe, expect, it } from 'vitest'
-import { startSlowLink, type SlowLink } from './slowLink'
+import { HIS_JITTER, seeded, startSlowLink, Wire, type SlowLink } from './slowLink'
 
 let echo: Server | null = null
 let link: SlowLink | null = null
@@ -105,5 +105,112 @@ describe('the Host a relay presents', () => {
     // What follows on the connection goes as sent.
     socket.write('Host: later')
     expect((await read(11)).toString()).toBe('Host: later')
+  })
+})
+
+describe("his Wi-Fi's late chunks", () => {
+  const arrivals = (seed: number, count = 8000): number[] => {
+    const wire = new Wire({ delayMs: 30, rateMbit: 0, jitter: { ...HIS_JITTER, seed } })
+    // A chunk every 200 ms on a clock of its own, so no spike holds the next chunk back: the arrival minus the
+    // hand-over minus the delay is the lateness.
+    return Array.from({ length: count }, (_, i) => wire.arrival(100, i * 200))
+  }
+
+  it('keeps every chunk behind the one before it', () => {
+    const wire = new Wire({ delayMs: 30, rateMbit: 0, jitter: HIS_JITTER })
+    // Chunks 5 ms apart: a late one would be passed by the next dozen without the rule.
+    const at = Array.from({ length: 4000 }, (_, i) => wire.arrival(100, i * 5))
+    for (let i = 1; i < at.length; i++) expect(at[i]).toBeGreaterThanOrEqual(at[i - 1]!)
+    expect(at.some((t, i) => t - i * 5 - 30 >= 50)).toBe(true)
+  })
+
+  it('makes one chunk in eight 50 to 90 ms late, and the same ones for the same seed', () => {
+    const at = arrivals(8)
+    const late = at.map((t, i) => t - i * 200 - 30)
+    const spikes = late.filter((ms) => ms >= 50).length
+    expect(spikes).toBeGreaterThan(8000 / 8 * 0.8)
+    expect(spikes).toBeLessThan(8000 / 8 * 1.2)
+    expect(Math.max(...late)).toBeLessThanOrEqual(90)
+    expect(Math.min(...late)).toBe(0)
+    const mean = late.reduce((sum, ms) => sum + ms, 0) / late.length
+    // 70 ms an eighth of the time is 8.75 ms.
+    expect(mean).toBeGreaterThan(7.5)
+    expect(mean).toBeLessThan(10)
+    expect(arrivals(8)).toEqual(at)
+    expect(arrivals(9)).not.toEqual(at)
+  })
+
+  it('adds nothing with no jitter, and the generator repeats', () => {
+    const wire = new Wire({ delayMs: 30, rateMbit: 0 })
+    expect(wire.arrival(100, 1000)).toBe(1030)
+    const a = seeded(5)
+    const b = seeded(5)
+    expect([a(), a(), a()]).toEqual([b(), b(), b()])
+  })
+})
+
+describe('a stall and a dead link', () => {
+  it('a stall holds both ways for its time and then delivers everything in order, the socket kept', async () => {
+    link = await startSlowLink({ listen: 0, target: await echoServer(), shape: { delayMs: 0, rateMbit: 0 } })
+    const c = await client(link.port)
+    c.socket.write('a')
+    await c.read(1)
+    link.stall(150)
+    const t0 = performance.now()
+    c.socket.write('bc')
+    c.socket.write('de')
+    expect((await c.read(4)).toString()).toBe('bcde')
+    expect(performance.now() - t0).toBeGreaterThanOrEqual(145)
+    expect(c.socket.destroyed).toBe(false)
+    expect(link.counters().conns).toBe(1)
+  })
+
+  it('a blackhole drops bytes both ways with no close, and resets what lost bytes when it lifts', async () => {
+    let served = 0
+    link = await startSlowLink({ listen: 0, target: await echoServer(), shape: { delayMs: 0, rateMbit: 0 } })
+    echo!.on('connection', () => served++)
+    const c = await client(link.port)
+    c.socket.write('a')
+    await c.read(1)
+    let closed = false
+    let got = 0
+    c.socket.on('close', () => (closed = true))
+    c.socket.on('data', (d: Buffer) => (got += d.length))
+    link.blackhole(true)
+    c.socket.write('lost')
+    await new Promise((ok) => setTimeout(ok, 120))
+    // Nothing came back and nobody was told.
+    expect(got).toBe(0)
+    expect(closed).toBe(false)
+    link.blackhole(false)
+    await new Promise((ok) => setTimeout(ok, 60))
+    expect(closed).toBe(true)
+    // A new connection passes.
+    const again = await client(link.port)
+    again.socket.write('b')
+    expect((await again.read(1)).toString()).toBe('b')
+  })
+})
+
+describe('whose round trips', () => {
+  it("counts each connection under the name its first request's head gives it", async () => {
+    const target = await echoServer()
+    link = await startSlowLink({ listen: 0, target, shape: { delayMs: 0, rateMbit: 0 }, classify: (head) => (/^user-agent:.*Chrome/im.test(head) ? 'window' : 'host') })
+    const page = await client(link.port)
+    const head = 'GET / HTTP/1.1\r\nUser-Agent: Mozilla/5.0 Chrome/140\r\n\r\n'
+    page.socket.write(head)
+    await page.read(head.length)
+    page.socket.write('x')
+    await page.read(1)
+    const host = await client(link.port)
+    const plain = 'GET / HTTP/1.1\r\nUser-Agent: node\r\n\r\n'
+    host.socket.write(plain)
+    await host.read(plain.length)
+    const by = link.resetClasses()
+    expect(by.window).toMatchObject({ conns: 1, turns: 2, up: head.length + 1, down: head.length + 1 })
+    expect(by.host).toMatchObject({ conns: 1, turns: 1, up: plain.length })
+    host.socket.write('y')
+    await host.read(1)
+    expect(link.resetClasses().host).toMatchObject({ turns: 1, up: 1, down: 1 })
   })
 })

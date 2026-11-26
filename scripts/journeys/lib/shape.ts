@@ -10,6 +10,7 @@ import { dummyLibrary, gioStub } from './files'
 import { seedFakeAccount, startFakeProvider, type MailReplyFixture } from './fakeProvider'
 import { until, Window } from './window'
 import { relay, shapedRelay } from './relay'
+import type { Shape as LinkShape } from '../../lib/slowLink'
 import { settingsOpen } from './settings'
 import { FIRST_MAIL, ZONE } from './lifeosSeed'
 import type { Sandbox } from './lifeos'
@@ -24,7 +25,7 @@ export const KEY_CAPS = {
 } as const
 
 type Seat = 'win' | 'box' | 'desk' | 'given' | 'giver'
-type Instance = {
+export type Instance = {
   name: Seat
   home: string
   data: string
@@ -199,6 +200,8 @@ export class Pair {
   private winRelay?: Awaited<ReturnType<typeof relay>>
   /** The shaped hop between win and box, when the run slowed it (`open`'s `link`). */
   windowLink?: Awaited<ReturnType<typeof shapedRelay>>
+  /** The same between desk and box: a third machine's link to the box is his tunnel too. */
+  deskLink?: Awaited<ReturnType<typeof shapedRelay>>
   private tmpRoot?: string
   private chromiumTmp?: string
   private launchOptions: LaunchOptions = {}
@@ -262,7 +265,12 @@ export class Pair {
     }
   }
 
-  async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; chromium?: string; zone?: string; browser?: boolean; link?: { delayMs: number; rateMbit: number }; provider?: typeof startFakeProvider } = {}): Promise<Workspace> {
+  /**
+   * `work: false` stands the pair up for code alone: Work stays off on every instance and the workspace returned is
+   * a plain one on a scratch git repo (`codeProject`). `beforeStart` runs for each instance once its folders exist
+   * and before its process starts (a seeded database for box).
+   */
+  async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; chromium?: string; zone?: string; browser?: boolean; link?: LinkShape; provider?: typeof startFakeProvider; work?: boolean; beforeStart?: (inst: Instance) => void | Promise<void> } = {}): Promise<Workspace> {
     // Electron's singleton uses a Unix socket under TMPDIR. Keep its path short even when evidence is nested.
     const tmpRoot = this.tmpRoot = mkdtempSync('/tmp/tcj-')
     this.win = await instance(this.root, tmpRoot, 'win')
@@ -277,6 +285,11 @@ export class Pair {
     if (options.link) {
       this.winRelay = this.windowLink = await shapedRelay(this.box.remote, options.link)
       this.relays.push(this.winRelay)
+      if (this.desk) {
+        // Its own hop, with its own late chunks: two machines do not share one Wi-Fi.
+        this.deskLink = await shapedRelay(this.box.remote, { ...options.link, ...(options.link.jitter ? { jitter: { ...options.link.jitter, seed: (options.link.jitter.seed ?? 1) + 100 } } : {}) })
+        this.relays.push(this.deskLink)
+      }
     } else if (options.cut) {
       // A hop with no delay that presents box's own Host, as his tunnel does: box refuses a page's socket with another.
       this.winRelay = await shapedRelay(this.box.remote, { delayMs: 0, rateMbit: 0 })
@@ -319,6 +332,7 @@ export class Pair {
       fakeOrigin: this.fakeProvider?.url.origin,
       publicOrigin: this.guestOrigin ?? (options.hosted ? 'http://127.0.0.1:' + this.box.workPort : undefined)
     }
+    if (options.beforeStart) for (const inst of this.instances) await options.beforeStart(inst)
     for (const inst of this.instances) this.start(inst, this.bin, this.launchOptions, inst === this.box ? tools : undefined)
     this.window = await Window.attach(this.win.debug!, this.abort.signal)
     const wait = (label: string, test: () => unknown | Promise<unknown>) => until(label, 90_000, test, this.abort.signal)
@@ -343,8 +357,9 @@ export class Pair {
       await this.page.clickOn('[role="dialog"] button', 'Skip')
     }
     for (const inst of this.instances) inst.host = (await this.rpc<{ environmentId: string }>(inst, 'remote.status')).environmentId
-    for (const inst of this.instances) await this.rpc(inst, 'work.set', { enabled: true })
-    if (this.sandbox) {
+    const work = options.work !== false
+    if (work) for (const inst of this.instances) await this.rpc(inst, 'work.set', { enabled: true })
+    if (work && this.sandbox) {
       await this.rpc(this.box, 'work.lifeos.setToken', { token: this.sandbox.deviceToken })
       await wait('box signed in to sandbox LifeOS', async () =>
         (await this.rpc<{ lifeos: { state: string } }>(this.box, 'work.lifeos.status')).lifeos.state === 'connected')
@@ -354,7 +369,7 @@ export class Pair {
       await wait('win signed in to sandbox LifeOS', async () =>
         (await this.rpc<{ lifeos: { state: string } }>(this.win, 'work.lifeos.status')).lifeos.state === 'connected')
     }
-    const workspace = await this.workspace(name, options.sector)
+    const workspace = work ? await this.workspace(name, options.sector) : await this.codeProject(name)
     await this.link(this.win)
     if (this.desk) await this.link(this.desk)
     await this.page.eval('window.__docket.loadSavedEnvironments()')
@@ -390,6 +405,27 @@ export class Pair {
     return { id, path, name }
   }
 
+  /**
+   * A plain workspace of box on a scratch git repo under box's own work root, never this checkout: `files` tracked
+   * files in a tree of folders (the pickers' list), committed once.
+   */
+  async codeProject(name: string, files = 200): Promise<Workspace> {
+    const path = join(this.box.work, name.toLowerCase().replace(/[^a-z0-9]+/g, '-'))
+    mkdirSync(path, { recursive: true })
+    for (let i = 0; i < files; i++) {
+      const dir = join(path, 'src', `area${i % 40}`, `part${Math.floor(i / 40) % 25}`)
+      mkdirSync(dir, { recursive: true })
+      writeFileSync(join(dir, `file${i}.ts`), `export const n${i} = ${i}\n`)
+    }
+    writeFileSync(join(path, 'README.md'), `# ${name}\n\nA scratch project of a perf run.\n`)
+    const git = (...args: string[]): void => void execFileSync('git', ['-c', 'user.name=Perf', '-c', 'user.email=perf@example.test', '-c', 'commit.gpgsign=false', '-C', path, ...args], { stdio: 'ignore', timeout: 120_000, env: { PATH: process.env.PATH, HOME: this.box.home, GIT_CONFIG_NOSYSTEM: '1' } })
+    git('init', '-q', '-b', 'main')
+    git('add', '-A')
+    git('commit', '-q', '-m', 'A scratch project')
+    const { id } = await this.rpc<Workspace>(this.box, 'workspace.create', { path, name })
+    return { id, path, name }
+  }
+
   async mint(kind: keyof typeof KEY_CAPS, name: string): Promise<{ token: string; id: string }> {
     this.abort.signal.throwIfAborted()
     // Finish reading a mint even if a child exits, so the finally can revoke it.
@@ -403,7 +439,8 @@ export class Pair {
 
   private async link(inst: Instance): Promise<void> {
     const { token: key } = await this.mint('owner', `Journey ${inst.name}`)
-    await this.rpc(inst, 'remote.environments.add', { url: `http://127.0.0.1:${inst === this.win ? this.winRelay?.port ?? this.box.remote : this.box.remote}`, key, name: 'box' })
+    const hop = inst === this.win ? this.winRelay : inst === this.desk ? this.deskLink : undefined
+    await this.rpc(inst, 'remote.environments.add', { url: `http://127.0.0.1:${hop?.port ?? this.box.remote}`, key, name: 'box' })
     await until(`${inst.name} registers with box`, 90_000, async () => {
       const rows = await this.rpc<{ environmentId: string; registered: boolean }[]>(inst, 'macBridge.policy.get')
       return rows.some((row) => row.environmentId === this.box.host && row.registered)

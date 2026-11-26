@@ -10,6 +10,7 @@ import { freePort } from '../../e2e-work-lib'
 import { mainCheckout } from './record'
 import { seedDeadline, seedLifeos } from './lifeosSeed'
 import { until } from './window'
+import { shapedRelay } from './relay'
 
 const SOURCE = '/srv/agents/work/lifeos'
 const WORK_KIT = '/srv/agents/work/work-kit'
@@ -29,8 +30,13 @@ export type Sandbox = {
   query: LifeosRead
   /** a write as the owner, for a walk that makes its own records (J63's second job's project) */
   mutate<T>(fn: string, args?: Args): Promise<T>
+  /** The delayed hop every client reaches this LifeOS through, when the run asked for one (`front`). */
+  link?: Awaited<ReturnType<typeof shapedRelay>>
   stop(): Promise<void>
 }
+
+/** Who asks LifeOS through the front hop: a window's page, or a host's own client (no browser's User-Agent). */
+export const lifeosAsker = (head: string): string => (/^user-agent:.*(Chrome|Electron)/im.test(head) ? 'window' : /^user-agent:\s*Bun\//im.test(head) ? 'kit' : 'host')
 
 const exec = promisify(execFile)
 
@@ -189,7 +195,13 @@ async function startMcp(folder: string, siteUrl: string, env: NodeJS.ProcessEnv,
   }
 }
 
-export async function startSandbox(walkFolder: string, signal?: AbortSignal, tools = false): Promise<Sandbox> {
+/**
+ * `front`: his real LifeOS is a round trip across the internet, the sandbox answers from loopback. With `front`
+ * every client reaches the sandbox through one hop that delays each way by `delayMs` once the seed is in, and
+ * counts round trips by who asked. The backend names that hop as its own origin, so the addresses it hands out
+ * (a file's upload and download) go through it too.
+ */
+export async function startSandbox(walkFolder: string, signal?: AbortSignal, tools = false, front?: { delayMs: number }): Promise<Sandbox> {
   const runs = join(mainCheckout(resolve(import.meta.dir, '../../..')), '.temp-code/journeys')
   const walk = realpathSync(walkFolder)
   if (dirname(dirname(walk)) !== runs || walk !== walkFolder) throw new Error('LifeOS sandbox requires its own journey walk folder')
@@ -209,7 +221,9 @@ export async function startSandbox(walkFolder: string, signal?: AbortSignal, too
   const port = await freePort()
   let sitePort = await freePort()
   while (port === sitePort) sitePort = await freePort()
-  const url = `http://127.0.0.1:${port}`
+  // The hop carries no delay until the seed is in.
+  const link = front ? await shapedRelay(port, { delayMs: 0, rateMbit: 0 }, lifeosAsker) : undefined
+  const url = `http://127.0.0.1:${link?.port ?? port}`
   const siteUrl = `http://127.0.0.1:${sitePort}`
   const name = `journey-${randomUUID()}`
   const identity = ['--instance-name', name, '--instance-secret', randomBytes(32).toString('hex')]
@@ -249,8 +263,9 @@ export async function startSandbox(walkFolder: string, signal?: AbortSignal, too
       await mcp?.stop()
     } finally {
       await child.stop()
+      await link?.stop()
       const { stdout } = await exec('ss', ['-H', '-ltn'], { cwd: folder, env, timeout: 3000 })
-      const ports = [port, sitePort, ...(mcp ? [mcp.port] : [])]
+      const ports = [port, sitePort, ...(link ? [link.port] : []), ...(mcp ? [mcp.port] : [])]
       if (stdout.split('\n').some((line) => ports.some((p) => line.trim().split(/\s+/)[3]?.endsWith(':' + p)))) {
         throw new Error(`A sandbox listener remains on ports ${ports.join(', ')}`)
       }
@@ -310,7 +325,11 @@ export async function startSandbox(walkFolder: string, signal?: AbortSignal, too
     })
     if (!waits.page.some(({ subject }) => subject === 'Spring LAN unanswered room request')) throw new Error('LifeOS did not list the unanswered mail')
     if (tools) mcp = await startMcp(folder, siteUrl, cliEnv, signal)
-    return { url, siteUrl, mcpUrl: mcp?.url ?? siteUrl + '/mcp', deviceToken, mintDevice, query, mutate, seedDeadline: (title, startsAt) => seedDeadline(internal, title, startsAt), stop }
+    if (link && front) {
+      link.shape.delayMs = front.delayMs
+      link.resetClasses()
+    }
+    return { url, siteUrl, mcpUrl: mcp?.url ?? siteUrl + '/mcp', deviceToken, mintDevice, query, mutate, seedDeadline: (title, startsAt) => seedDeadline(internal, title, startsAt), ...(link ? { link } : {}), stop }
   } catch (error) {
     await stop()
     throw error

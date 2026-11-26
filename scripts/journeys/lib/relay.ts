@@ -41,14 +41,22 @@ export async function relay(host: string, target: number) {
 }
 
 /** The same hop with a delay and a rate each way (scripts/lib/slowLink.ts): his tunnel, for the perf kit. */
-export async function shapedRelay(target: number, shape: Shape) {
+export async function shapedRelay(target: number, shape: Shape, classify?: (head: string) => string) {
   // The box sees its own address, as it does behind his tunnel: a page's socket with another Host is refused.
-  const link = await startSlowLink({ listen: 0, target, hostHeader: `127.0.0.1:${target}`, shape })
+  const link = await startSlowLink({ listen: 0, target, hostHeader: `127.0.0.1:${target}`, shape, ...(classify ? { classify } : {}) })
   return {
     port: link.port,
+    /** The live shape: a row may change the delay or the rate while it runs. */
+    shape: link.shape,
     cut: (on: boolean) => link.cut(on),
+    /** Nothing either way for `ms`, the sockets kept. */
+    stall: (ms: number) => link.stall(ms),
+    /** A dead link with no close, until `blackhole(false)`. */
+    blackhole: (on: boolean) => link.blackhole(on),
     stop: () => link.close(),
     /** Bytes and round trips on the wire since the last reset, then zero. */
-    reset: (): Counters => link.reset()
+    reset: (): Counters => link.reset(),
+    /** The same by who asked, where the hop names its connections. */
+    resetClasses: (): Record<string, Counters> => link.resetClasses()
   }
 }

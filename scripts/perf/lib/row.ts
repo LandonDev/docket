@@ -10,14 +10,26 @@ import { measure, type Counter, type MeasureOptions, type Sample } from './probe
 
 export type Workspace = Awaited<ReturnType<Pair['workspace']>>
 
+/** What scripts/perf/seed-box.ts put in box before it started (a code-family run). */
+export interface Seeded {
+  workspaceId: string
+  projectId: string
+  path: string
+  threads: { id: string; title: string; rows: number }[]
+}
+
 export interface PerfCtx {
   pair: Pair
   page: Window
   counter: Counter
-  /** the job with the seeded LifeOS sector */
+  /** the job with the seeded LifeOS sector; in the code family, the seeded workspace */
   workspace: Workspace
   /** a second job, to switch to and from */
   other: Workspace
+  /** what the pair was stood up for */
+  family: 'work' | 'code'
+  /** the seeded threads of a code-family run */
+  seeded?: Seeded
   repo: string
   folder: string
   /** One timed press. */
@@ -29,6 +41,8 @@ export interface PerfCtx {
 export interface Row {
   id: string
   title: string
+  /** the pair it runs on: Work's (the default) or the code family's (`--family code`) */
+  family?: 'work' | 'code'
   /** what the pair must have for it: the LifeOS sandbox, the loopback provider, a third machine */
   needs?: { sandbox?: boolean; fake?: boolean; desk?: boolean }
   /** The presses, each a sample; a row that cannot run throws its reason. */
@@ -40,7 +54,7 @@ export const PRESSES = 3
 export function perfCtx(base: Omit<PerfCtx, 'time' | 'at'>): PerfCtx {
   return {
     ...base,
-    time: (options) => measure(base.page, base.counter, base.pair.windowLink, options),
+    time: (options) => measure(base.page, base.counter, base.pair.windowLink, options, base.pair.sandbox?.link),
     at: (shape) => ({ pair: base.pair, shape, workspace: base.workspace, folder: base.folder })
   }
 }

@@ -2,13 +2,18 @@
  * Times what he does in Work, in his shape: a window paired by a remote key to a host that holds the job, the link
  * between them slowed to his tunnel, the host loaded by stand-in threads, all of it on a few cores of this machine.
  *
- *   bun run perf [--rows view-*,list-A] [--shape A,B1] [--link 60/10|none] [--load 24|0] [--cores 24-31]
- *                [--seconds 60] [--label before] [--keep] [--list]
+ *   bun run perf [--family work|code] [--rows view-*,list-A] [--shape A,B1] [--link 60/10/j8|60/10|none]
+ *                [--lifeos 40|0] [--load 40|0] [--cores 24-31] [--seconds 60] [--label before] [--keep] [--list]
  *
  * It is built on the journeys' own harness (scripts/journeys/lib): `win` is a windowed isolated instance under
  * xvfb driven over CDP, `box` a headless one that holds the Work workspace, `desk` a third machine, each with its
  * own data, its own empty WINVM_DIR and an environment stripped to PATH and locale. It needs a built tree
  * (`heavy bunx electron-vite build`) and runs through the queue: `.temp-code/bin/heavy bun run perf …`.
+ *
+ * `--family code` stands the pair up for the rest of Docket: Work off, a plain workspace on a scratch git repo of
+ * 20,000 files and seeded threads (scripts/perf/seed-box.ts: one of 30,000 rows), the stand-ins plain code threads.
+ * The link carries his Wi-Fi's late chunks by default (`j8`: one chunk in eight 50 to 90 ms late), and the LifeOS
+ * sandbox answers through a hop of 40 ms each way that also counts the host's own LifeOS round trips.
  *
  * One pair a run, many rows in it, and at most `--seconds` of measured work (the sum of each press's pressed-to-
  * usable time): rows past that are written "not run" and taken by the next run. While it measures it asks the
@@ -21,18 +26,23 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { availableParallelism } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
+import { HIS_JITTER, type Shape as LinkShape } from '../lib/slowLink'
 import { startSandbox } from '../journeys/lib/lifeos'
 import { SECTOR } from '../journeys/lib/lifeosSeed'
 import { mainCheckout } from '../journeys/lib/record'
-import { Pair, words } from '../journeys/lib/shape'
+import { Pair, words, type Instance } from '../journeys/lib/shape'
 import { guardLiveBox } from './lib/guard'
 import { perfProvider, startLoad } from './lib/load'
 import { Counter, middle, type Sample, type SocketKind } from './lib/probe'
-import { perfCtx, type Row } from './lib/row'
+import { perfCtx, type Row, type Seeded } from './lib/row'
+import { SEED_WORKSPACE } from './lib/seedNames'
 import { rowsMatching } from './rows'
 
-export const LINK = { delayMs: 30, rateMbit: 10 }
-export const LOAD = 24
+export const LINK: LinkShape = { delayMs: 30, rateMbit: 10, jitter: HIS_JITTER }
+/** LifeOS's own distance, ms each way: his real one is a round trip across the internet. */
+export const LIFEOS_MS = 40
+export const LOAD = 40
+export type Family = 'work' | 'code'
 export const CORES = 8
 export const SECONDS = 60
 
@@ -51,8 +61,11 @@ export interface RunResults {
   at: string
   commit: string
   label?: string
-  /** there-and-back delay in ms and the rate each way in Mbit/s; null with no slowing */
-  link: { rttMs: number; rateMbit: number } | null
+  /** there-and-back delay in ms and the rate each way in Mbit/s, and one chunk in `jitter` late; null with no slowing */
+  link: { rttMs: number; rateMbit: number; jitter?: number } | null
+  /** ms each way in front of the LifeOS sandbox; absent in runs before the hop existed */
+  lifeosMs?: number
+  family?: Family
   load: number
   cores: string
   rows: RowResult[]
@@ -64,7 +77,9 @@ export interface RunResults {
 export interface Flags {
   rows?: string[]
   shapes?: string[]
-  link: { delayMs: number; rateMbit: number } | null
+  link: LinkShape | null
+  lifeosMs: number
+  family: Family
   load: number
   cores: string
   seconds: number
@@ -73,13 +88,16 @@ export interface Flags {
   list: boolean
 }
 
-/** `60/10` is 60 ms there and back at 10 Mbit/s each way; `none` leaves the link alone. */
+/**
+ * `60/10` is 60 ms there and back at 10 Mbit/s each way; `/j8` adds his Wi-Fi's late chunks, one in eight
+ * (the default is `60/10/j8`); `none` leaves the link alone.
+ */
 export function parseLink(text: string | undefined): Flags['link'] {
   if (text === undefined) return LINK
   if (text === 'none') return null
-  const match = text.match(/^(\d+)\/(\d+(?:\.\d+)?)$/)
-  if (!match) throw new Error('--link is <ms there and back>/<Mbit a second>, or none')
-  return { delayMs: Number(match[1]) / 2, rateMbit: Number(match[2]) }
+  const match = text.match(/^(\d+)\/(\d+(?:\.\d+)?)(?:\/j(\d+))?$/)
+  if (!match) throw new Error('--link is <ms there and back>/<Mbit a second>[/j<one chunk in N late>], or none')
+  return { delayMs: Number(match[1]) / 2, rateMbit: Number(match[2]), ...(match[3] ? { jitter: { ...HIS_JITTER, every: Number(match[3]) } } : {}) }
 }
 
 /** The last `count` cores: the live service and the other threads' jobs start from the first. */
@@ -90,6 +108,7 @@ export function flags(args: string[]): Flags {
     args,
     options: {
       rows: { type: 'string' }, shape: { type: 'string' }, link: { type: 'string' }, load: { type: 'string' }, cores: { type: 'string' },
+      family: { type: 'string' }, lifeos: { type: 'string' },
       seconds: { type: 'string' }, label: { type: 'string' }, keep: { type: 'boolean' }, list: { type: 'boolean' }
     }
   })
@@ -100,22 +119,44 @@ export function flags(args: string[]): Flags {
   }
   const cores = values.cores ?? lastCores(CORES)
   if (!/^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(cores)) throw new Error('--cores is a taskset list, as 24-31')
+  const family = values.family ?? 'work'
+  if (family !== 'work' && family !== 'code') throw new Error('--family is work or code')
   return {
     rows: values.rows?.split(','), shapes: values.shape?.split(','), link: parseLink(values.link),
+    lifeosMs: number('lifeos', values.lifeos, LIFEOS_MS), family,
     load: number('load', values.load, LOAD), cores, seconds: number('seconds', values.seconds, SECONDS),
     label: values.label, keep: !!values.keep, list: !!values.list
   }
 }
 
-/** The rows a run takes: by id pattern, then by the shape a row's id ends in (a row with no shape runs in any). */
-export function chosen(f: Pick<Flags, 'rows' | 'shapes'>): Row[] {
+/**
+ * The rows a run takes: of its family (a pair is stood up for Work or for code, never both), by id pattern, then by
+ * the shape a row's id ends in (a row with no shape runs in any).
+ */
+export function chosen(f: Pick<Flags, 'rows' | 'shapes'> & { family?: Family }): Row[] {
   const shape = (id: string): string | undefined => id.match(/-(A|B1|B2)$/)?.[1]
-  return rowsMatching(f.rows).filter((row) => !f.shapes || !shape(row.id) || f.shapes.includes(shape(row.id)!))
+  return rowsMatching(f.rows).filter((row) => (row.family ?? 'work') === (f.family ?? 'work') && (!f.shapes || !shape(row.id) || f.shapes.includes(shape(row.id)!)))
 }
 
 /** How many cores of a taskset list. */
 export const coreCount = (list: string): number =>
   list.split(',').reduce((n, part) => n + (part.includes('-') ? Number(part.split('-')[1]) - Number(part.split('-')[0]) + 1 : 1), 0)
+
+/**
+ * Seeds box's data folder before it starts (scripts/perf/seed-box.ts, bundled and run under node as the other
+ * server scripts are), from an environment of its own: the scratch repo, the workspace and the seeded threads.
+ */
+function seedBox(repo: string, inst: Instance): Seeded {
+  const quiet = { cwd: repo, encoding: 'utf8' as const, timeout: 300_000 }
+  execFileSync('bun', ['scripts/bundle-server.ts', 'scripts/perf/seed-box.ts'], { ...quiet, stdio: ['ignore', 'ignore', 'inherit'] })
+  const out = execFileSync('node', [join(repo, 'scripts/.out/seed-box.mjs')], {
+    ...quiet, stdio: ['ignore', 'pipe', 'ignore'],
+    env: { PATH: process.env.PATH, HOME: inst.home, TMPDIR: inst.tmp, PERF_SEED_DATA: inst.data, PERF_SEED_REPO: join(inst.work, 'perf-code') }
+  })
+  const line = out.trim().split('\n').findLast((text) => text.startsWith('{'))
+  if (!line) throw new Error('The seed of box printed no result')
+  return JSON.parse(line) as Seeded
+}
 
 function machine(): RowResult['machine'] {
   let anonGiB: number | null = null
@@ -156,7 +197,8 @@ async function main(): Promise<number> {
   const results: RunResults = {
     id, at: new Date().toISOString(), commit: execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: repo, encoding: 'utf8' }).trim(),
     ...(f.label ? { label: f.label } : {}),
-    link: f.link ? { rttMs: f.link.delayMs * 2, rateMbit: f.link.rateMbit } : null, load: f.load, cores: f.cores, rows: [], guard: []
+    link: f.link ? { rttMs: f.link.delayMs * 2, rateMbit: f.link.rateMbit, ...(f.link.jitter ? { jitter: f.link.jitter.every } : {}) } : null,
+    lifeosMs: f.lifeosMs, family: f.family, load: f.load, cores: f.cores, rows: [], guard: []
   }
   const save = (): void => writeFileSync(join(out, 'results.json'), JSON.stringify(results, null, 2) + '\n')
   const pair = new Pair(repo, folder)
@@ -166,15 +208,20 @@ async function main(): Promise<number> {
   process.on('SIGTERM', onSignal)
   const stop = new Promise<never>((_, reject) => pair.abort.signal.addEventListener('abort', () => reject(pair.abort.signal.reason), { once: true }))
   void stop.catch(() => undefined)
-  console.log(`Perf run ${id}: ${rows.length} rows, link ${f.link ? `${f.link.delayMs * 2} ms, ${f.link.rateMbit} Mbit/s` : 'unslowed'}, ${f.load} stand-in threads, cores ${f.cores}`)
+  console.log(`Perf run ${id} (${f.family}): ${rows.length} rows, link ${f.link ? `${f.link.delayMs * 2} ms, ${f.link.rateMbit} Mbit/s${f.link.jitter ? `, one chunk in ${f.link.jitter.every} late` : ''}` : 'unslowed'}, LifeOS ${f.lifeosMs} ms each way, ${f.load} stand-in threads, cores ${f.cores}`)
   try {
     const need = (key: 'sandbox' | 'fake' | 'desk'): boolean => rows.some((row) => row.needs?.[key])
-    if (need('sandbox')) pair.sandbox = await startSandbox(folder, pair.abort.signal, false)
+    if (need('sandbox')) pair.sandbox = await startSandbox(folder, pair.abort.signal, false, f.lifeosMs > 0 ? { delayMs: f.lifeosMs } : undefined)
+    const code = f.family === 'code'
+    let seeded: Seeded | undefined
     // The load's streams outlast the run: the provider ends each after an hour.
-    const workspace = await pair.open(need('desk'), `Perf ${id.slice(-6)}`, {
-      fake: true, localTools: true, sector: SECTOR, ...(f.link ? { link: f.link } : {}), provider: perfProvider(3600)
+    const opened = await pair.open(need('desk'), `Perf ${id.slice(-6)}`, {
+      fake: true, localTools: true, sector: SECTOR, ...(f.link ? { link: f.link } : {}), provider: perfProvider(3600),
+      ...(code ? { work: false, beforeStart: (inst) => { if (inst.name === 'box') seeded = seedBox(repo, inst) } } : {})
     })
-    const other = await pair.workspace(`Perf other ${id.slice(-6)}`, 'life')
+    // In the code family the job is the seeded workspace; the scratch one `open` made is the one to switch to.
+    const workspace = seeded ? { id: seeded.workspaceId, path: seeded.path, name: SEED_WORKSPACE } : opened
+    const other = code ? opened : await pair.workspace(`Perf other ${id.slice(-6)}`, 'life')
     const lifeos = pair.sandbox ? new URL(pair.sandbox.url).port : ''
     const link = String(pair.windowLink?.port ?? pair.box.remote)
     const kindOf = (url: string): SocketKind => {
@@ -186,12 +233,12 @@ async function main(): Promise<number> {
     await pair.page.reload()
     await pair.page.until('the window link to box again', 60_000, () => pair.page.eval(
       `window.__docket?.registry.has(${JSON.stringify(pair.box.host)}) && window.__docket.registry.statusOf(${JSON.stringify(pair.box.host)}).transport === 'open'`))
-    if (pair.sandbox) await pair.checkSeededMail(workspace)
+    if (pair.sandbox && !code) await pair.checkSeededMail(workspace)
     if (f.load > 0) {
-      const busy = await pair.workspace(`Perf load ${id.slice(-6)}`, 'ref')
-      await startLoad(pair, busy.id, f.load)
+      const busy = code ? await pair.codeProject(`Perf load ${id.slice(-6)}`, 20) : await pair.workspace(`Perf load ${id.slice(-6)}`, 'ref')
+      await startLoad(pair, busy.id, f.load, code ? 'code' : 'work')
     }
-    const ctx = perfCtx({ pair, page: pair.page, counter, workspace, other, repo, folder })
+    const ctx = perfCtx({ pair, page: pair.page, counter, workspace, other, repo, folder, family: f.family, ...(seeded ? { seeded } : {}) })
     let spent = 0
     for (const row of rows) {
       pair.abort.signal.throwIfAborted()

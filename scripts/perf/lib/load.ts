@@ -64,12 +64,18 @@ export function perfProvider(seconds: number): typeof startFakeProvider {
   }
 }
 
-/** Starts `count` stand-in threads streaming in a workspace of box; resolves once each has its first content. */
-export async function startLoad(pair: Pair, workspaceId: string, count: number): Promise<string[]> {
+/**
+ * Starts `count` stand-in threads streaming in a workspace of box; resolves once each has its first content.
+ * `scope` is the kind of thread: Work's (the default) or a plain code thread. The isolated instance's running cap
+ * is raised first to hold them all with `room` to spare, on that instance alone, so no row is timed behind the
+ * cap by accident (the cap's own row lowers it on purpose).
+ */
+export async function startLoad(pair: Pair, workspaceId: string, count: number, scope: 'work' | 'code' = 'work', room = 8): Promise<string[]> {
+  await pair.rpc(pair.box, 'admission.set', { cap: count + room })
   const ids: string[] = []
   for (let i = 0; i < count; i++) {
     const { id } = await pair.rpc<{ id: string }>(pair.box, 'session.create', {
-      workspaceId, title: `Stand-in ${i + 1}`, provider: 'claude', permission: 'auto', threadType: 'chat', scope: 'work'
+      workspaceId, title: `Stand-in ${i + 1}`, provider: 'claude', permission: 'auto', threadType: 'chat', ...(scope === 'work' ? { scope: 'work' } : {})
     })
     ids.push(id)
     // Four at a time: a start is the heaviest thing a thread does, and his box starts them a few at once.
