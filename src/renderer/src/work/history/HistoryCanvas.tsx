@@ -176,14 +176,16 @@ function VersionRow({ v, all, names, now, shared, picked, picking, onPick, onCom
 }
 
 function BranchRow({ b, names, onOpen }: { b: HistoryBranch; names: Record<string, string>; onOpen(): void }) {
-  const who = whoWords(b.authors, names);
+  const line = branchWords(b, names);
   const n = b.diff.rows.length + Number(!!b.diff.page?.length);
   return (
     <ItemButton onClick={onOpen} className="min-h-[52px] flex-nowrap p-2 text-[13px] hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]">
       <span className="w-4 shrink-0" />
       <Author principal={b.authors[0]} name={names[b.authors[0] ?? ""] ?? "Someone"} />
       <span className="flex min-w-0 grow flex-col gap-0.5">
-        <span className="truncate text-[13px] leading-5">{branchWords(b, names)}</span>
+        <TruncateTip text={line}>
+          <span className="truncate text-[13px] leading-5">{line}</span>
+        </TruncateTip>
         <span className="truncate text-xs leading-4 text-muted-foreground">{n === 1 ? "1 change" : `${n} changes`}</span>
       </span>
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{dayTime(b.editedAt)}</span>
