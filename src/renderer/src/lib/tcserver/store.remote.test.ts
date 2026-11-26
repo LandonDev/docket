@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sessionStore, type Link } from "./store";
+import { openStamps } from "../openStamps";
 import { ConnectionLostError } from "../connection";
 import { newSession } from "../session";
 import type { EventRow, ServerPush, SessionMeta } from "./types";
@@ -260,6 +261,22 @@ describe("remote profile: history", () => {
     expect(sessionStore.get("s1")?.blocks).toHaveLength(12);
     expect(sessionStore.hasOlderHistory("s1")).toBe(false);
     expect(sessionStore.isComplete("s1")).toBe(true);
+  });
+
+  it("a cold load stamps the open's clock: its ask leaving, its answer, its rows folded, once each and in order", async () => {
+    const seen: string[] = [];
+    const spies = (["asked", "answered", "folded"] as const).map((k) =>
+      vi.spyOn(openStamps, k).mockImplementation((id: string) => void seen.push(`${k} ${id}`)),
+    );
+    try {
+      link.pages = [[wireMeta({ id: "s1" })]];
+      link.events.set("s1", turns("s1"));
+      await boot(link);
+      await sessionStore.ensureLoaded("s1");
+      expect(seen).toEqual(["asked s1", "answered s1", "folded s1"]);
+    } finally {
+      for (const spy of spies) spy.mockRestore();
+    }
   });
 
   it("ensureComplete pages the whole history in", async () => {

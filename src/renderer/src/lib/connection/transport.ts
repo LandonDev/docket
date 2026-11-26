@@ -1,5 +1,6 @@
 import type { ServerFrame, ServerPush } from "@server/shared/contract";
 import type { WireProfile } from "@server/shared/wire";
+import { frameRing } from "./frameRing";
 import type { CloseReason, Hello } from "./types";
 
 /** What the transport needs from a WebSocket; tests hand in a fake. */
@@ -219,6 +220,8 @@ export class Transport {
   }
 
   private onMessage(data: string): void {
+    // The parse is part of the handling: a megabyte answer's JSON.parse is a long task of its own.
+    const start = performance.now();
     this.bytesIn += data.length;
     this.lastFrameAt = Date.now();
     let frame: ServerFrame;
@@ -246,6 +249,7 @@ export class Transport {
         return;
       }
       for (const l of this.pushListeners) l(frame);
+      frameRing.note("push", frame.push, start, performance.now());
       return;
     }
     const p = this.pending.get(frame.id);
@@ -255,6 +259,7 @@ export class Transport {
     this.noteAnswer(Date.now() - p.sentAt, false, p.timeoutMs);
     if (frame.ok) p.resolve(frame.result);
     else p.reject(new Error(frame.error));
+    frameRing.note("answer", p.method, start, performance.now());
   }
 
   private onSocketClose(ws: SocketLike, event?: { code?: number; reason?: string }): void {

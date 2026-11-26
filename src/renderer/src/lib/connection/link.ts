@@ -1,5 +1,6 @@
 import type { ServerPush } from "@server/shared/contract";
 import type { WireProfile } from "@server/shared/wire";
+import { openStamps } from "../openStamps";
 import { ConnectionLostError, READ_TIMEOUT_MS, SLOW_MS, TimeoutError, type RequestOptions, type Transport } from "./transport";
 
 /** Waits between retries of a failed load or read: 1, 2, 4, 8, then 15 s. */
@@ -186,6 +187,7 @@ export class EnvLink implements Link {
         for (const l of this.closeListeners) l();
       }),
     ];
+    openStamps.linkOpened(this.environmentId);
     for (const l of [...this.openListeners]) l();
   }
 

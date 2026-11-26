@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectionLostError, TimeoutError, Transport, requestTimeoutMs, type SocketLike } from "./transport";
+import { frameRing } from "./frameRing";
 import type { CloseReason } from "./types";
 
 class FakeSocket implements SocketLike {
@@ -91,6 +92,19 @@ describe("Transport", () => {
     expect(ws.last()).toMatchObject({ method: "session.pause", params: { sessionId: "s" }, lane: "ui" });
     void t.request("session.events", { sessionId: "s" });
     expect("lane" in ws.last()).toBe(false);
+  });
+
+  it("every handled push and answer takes a slot in the frame ring, named for the stall line's cause", async () => {
+    const { t, ws } = await opened();
+    const ever = (): string | undefined => frameRing.overlapping(-Infinity, Infinity);
+    ws.receive({ push: "session-removed", sessionIds: ["s1"] });
+    expect(ever()).toBe("push:session-removed");
+    void t.request("session.events", { sessionId: "s1" });
+    ws.receive({ id: ws.last().id, ok: true, result: [] });
+    expect(ever()).toBe("answer:session.events");
+    // An answer nobody waits for (a late reply past its deadline) handles nothing.
+    ws.receive({ id: "999", ok: true, result: [] });
+    expect(ever()).toBe("answer:session.events");
   });
 
   it("streams pushes but keeps hello to itself", async () => {

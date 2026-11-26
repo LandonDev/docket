@@ -4,6 +4,7 @@ import type { SessionMeta, SessionStatus } from "../../../lib/tcserver/types";
 import { marksAtRest } from "../../../lib/threadStripModel";
 import { rowState } from "../../../lib/sidebarRows";
 import {
+  BatchHolder,
   batchChildrenOf,
   batchFromPush,
   blockedLine,
@@ -476,5 +477,20 @@ describe("boardShown", () => {
 
   it("is off with no rows once every step settled", () => {
     expect(boardShown({ rows: [] }, stepRunning({ steps: steps("passed", "failed", "skipped") }))).toBe(false);
+  });
+});
+
+describe("the board's open clock", () => {
+  it("stamps the first answer once: a later answer, a push or a renew moves nothing", () => {
+    let clock = 10;
+    const holder = new BatchHolder("m1", () => clock);
+    holder.set(emptyBatch("m1"));
+    expect(holder.answeredAt).toBeNull();
+    clock = 250;
+    holder.set(emptyBatch("m1"), { loaded: true });
+    clock = 900;
+    holder.set(emptyBatch("m1"), { loaded: true });
+    holder.set(emptyBatch("m1"), { children: [] });
+    expect(holder.answeredAt).toBe(250);
   });
 });

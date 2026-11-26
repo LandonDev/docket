@@ -24,6 +24,7 @@ import { HISTORY_PAGE_ROWS } from "@server/shared/wireBudgets";
 import type { ContextUsage } from "../contextUsage";
 import { emptyThread } from "./todos";
 import { CatchUpLane } from "./catchUp";
+import { openStamps } from "../openStamps";
 import type { EventRow, QueuedMessage, ServerPush, SessionMeta, SessionStatus, WireSessionMeta } from "./types";
 
 /**
@@ -1735,8 +1736,10 @@ class SessionStore {
         entry.held ??= [];
         entry.resyncHold = false;
       },
+      asked: () => openStamps.asked(id),
       page: async (page: EventsPage) => {
         if (this.entries.get(id) !== entry) return;
+        openStamps.answered(id);
         entry.answered = true;
         const coldOpen = entry.coldOpen;
         entry.coldOpen = false;
@@ -1749,6 +1752,7 @@ class SessionStore {
           entry.head = { beforeSeq: page.rows[0].seq, since: [], previews: new Map(), fetching: false, waiters: [], page: null };
         }
         await this.foldSliced(entry, page.rows);
+        openStamps.folded(id);
       },
       end: () => {
         const held = entry.held;

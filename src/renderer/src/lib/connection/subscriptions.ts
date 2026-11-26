@@ -15,6 +15,8 @@ export type SubscriptionHandlers = {
   begin?(): void;
   /** May fold in slices across tasks; `end` waits for it. */
   page(page: EventsPage): void | Promise<void>;
+  /** The history request is leaving now (after any subscribe it waited on): the open's clock (openStamps.ts). */
+  asked?(): void;
   end?(): void;
   /** `session.subscribe` was refused: the session is gone from the host. */
   gone?(reason: string): void;
@@ -148,6 +150,7 @@ export class Subscriptions {
         // The owner retries a failed resume itself (the store's load, the
         // next replacement session), so the link does not ask again here.
         let result: EventRow[] | EventsPage;
+        handlers.asked?.();
         try {
           result = await this.link.request<EventRow[] | EventsPage>(
             "session.events",

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EnvLink, RETRY_BACKOFF_MS, retryDelay } from "./link";
+import { openStamps } from "../openStamps";
 import { ConnectionLostError, TimeoutError, type Transport } from "./transport";
 
 /** A transport the test answers by hand; the link only sees its surface. */
@@ -49,6 +50,18 @@ describe("EnvLink", () => {
   it("backs off 1, 2, 4, 8 then 15 s", () => {
     expect(RETRY_BACKOFF_MS).toEqual([1000, 2000, 4000, 8000, 15000]);
     expect([0, 1, 2, 3, 4, 5, 9].map(retryDelay)).toEqual([1000, 2000, 4000, 8000, 15000, 15000, 15000]);
+  });
+
+  it("counts each socket it is given for the open's clock: a second one is a reconnect", () => {
+    const link = new EnvLink("box-count", "remote");
+    expect(openStamps.linkOpens("box-count")).toBe(0);
+    const first = new Scripted();
+    link.setSession(first.asTransport());
+    link.setSession(first.asTransport());
+    first.drop();
+    link.setSession(null);
+    link.setSession(new Scripted().asTransport());
+    expect(openStamps.linkOpens("box-count")).toBe(2);
   });
 
   it("asks a safe read again on a new socket after the old one dropped", async () => {

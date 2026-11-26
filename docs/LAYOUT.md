@@ -1804,7 +1804,8 @@ brought into view even when it moved section meanwhile.
   the sections as their own header rows); a row is memoized on its ref,
   host and landed mark and reads its own meta and digest, so one child's
   activity renders that row alone. The first complete paint is reported
-  once per open as `board-paint master=<id> n=<rows> ms=<n>`.
+  once per open as `board-paint master=<id> n=<rows> ms=<n> answer=<ms> render=<ms>`:
+  the wait for `batch.board`'s first answer, then the answer to the paint.
 - **A plan and its build are one row** (`foldRows` in `useMasterModel.ts`):
   a build whose `planThreadId` names a thread of the batch takes that plan's
   row, keyed by the plan's id and titled with the plan's title, so the row

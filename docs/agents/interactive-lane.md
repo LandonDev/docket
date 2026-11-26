@@ -53,7 +53,8 @@
   `lane=bulk:<running>/<held> pool=<ms>` (the last thread-pool probe, a
   `stat` a second; `<age>ms+` while it is still out), and a slow-request
   line names its lane and, in bulk, `gate=<ms>` waited or `gate=joined`; the renderer reports `first-paint
-  session=<id> host=<env> ms=<n>` past 500 ms (lib/firstPaint.ts).
+  session=<id> host=<env> ms=<n> why= queued= fetch= fold= text=` past 500 ms, timed from the press, and
+  every open in an hourly `first-paint-hist` line (lib/firstPaint.ts; the words in docs/box.md).
 - The host's own jobs pause on `yieldUntilIdle` (cold mover, turn index
   backfill, fold sweep, mirror backfill, archive and attachment sweeps) or
   run through `whenLoopIdle` (liveness sweep, headroom.json save, accounts

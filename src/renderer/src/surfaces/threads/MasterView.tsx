@@ -6,6 +6,7 @@ import { useThreadMenu } from "../../chrome/useThreadMenu";
 import { MoreHorizontal, Plus } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
+import { boardPaintLine } from "../../lib/firstPaint";
 import { useEnvironments, useEnvironmentStatuses } from "../../lib/connection/status";
 import * as commands from "../../lib/tcserver/commands";
 import type { SessionMeta } from "../../lib/tcserver/types";
@@ -74,7 +75,8 @@ import { blockedReason } from "@shared/batchWords";
  * mounts only the rows on screen: the list is virtualized with the
  * sections as their own header rows, each row memoized on its own data.
  * Its first complete paint is reported once per open as
- * `board-paint master=<id> n=<rows> ms=<since mount>` (stall.report).
+ * `board-paint master=<id> n=<rows> ms=<since mount> answer=<ms> render=<ms>` (stall.report): the
+ * wait for `batch.board`'s first answer, then the answer to the paint.
  *
  * The master's own subagents (spawn_agent, not its batch) sit where every
  * thread's do: the right panel's Agents section and the pulse line above
@@ -224,11 +226,11 @@ const BoardList = memo(function BoardList({
 });
 
 /** The board's first complete paint, once per open, to this machine's stall log. */
-function reportBoardPaint(masterId: string, rows: number, ms: number): void {
+function reportBoardPaint(line: string): void {
   try {
     void registry
       .primary()
-      .request("stall.report", { line: `board-paint master=${masterId} n=${rows} ms=${Math.round(ms)}` })
+      .request("stall.report", { line })
       .catch(() => undefined);
   } catch {
     // No local link yet (web mode before connect): the report is a nicety.
@@ -426,8 +428,10 @@ function MasterBoardView(props: ThreadViewProps) {
     if (painted.current || !loaded || openId || !showBoard) return;
     painted.current = true;
     const n = layout.rows.length;
-    paintFrame.current = requestAnimationFrame(() => reportBoardPaint(session.id, n, performance.now() - openedAt.current));
-  }, [loaded, openId, showBoard, layout, session.id]);
+    paintFrame.current = requestAnimationFrame(() =>
+      reportBoardPaint(boardPaintLine(session.id, n, openedAt.current, batch.answeredAt, performance.now())),
+    );
+  }, [loaded, openId, showBoard, layout, session.id, batch]);
   // A board that leaves before its frame paints reports nothing: the line is
   // about a paint the person saw.
   useEffect(

@@ -7,11 +7,17 @@
  * and its target, the session/event pushes of the last second, the
  * requests still pending, the running thread count and the visibility
  * state, and goes to `<userData>/logs/stalls.log` through `stall.report`.
+ * A long task's line ends `cause=push:<name>` or `cause=answer:<method>`, the
+ * newest frame from a host whose handling overlapped the task (the frame ring,
+ * connection/frameRing.ts), else `cause=none`.
  * At most LINES_PER_SECOND lines a second; nothing allocates per push.
+ * It also writes the first-paint histogram's line once an hour (firstPaint.ts).
  */
 import { LIVE_STATUSES } from "@shared/session-lifecycle";
 import { onPerfMark } from "./perfMarks";
 import { registry } from "./connection";
+import { frameRing } from "./connection/frameRing";
+import { FIRST_PAINT_HIST_MS, firstPaintHistogram } from "./firstPaint";
 import { sessionStore } from "./tcserver/store";
 
 export const STALL_MS = 150;
@@ -25,6 +31,8 @@ export interface StallContext {
   pendingMethods(): string[];
   runningCount(): number;
   visibility(): string;
+  /** The frame a task from `start` to `end` ran for (`push:<name>`, `answer:<method>`), if any. */
+  frameAt(start: number, end: number): string | undefined;
 }
 
 export interface StallRecorderOptions {
@@ -36,7 +44,8 @@ export interface StallRecorderOptions {
 }
 
 export interface StallRecorder {
-  longtask(durationMs: number): void;
+  /** `startMs` is the entry's startTime; without it the task is taken to have just ended. */
+  longtask(durationMs: number, startMs?: number): void;
   /** A switch began: measured to the next paint and remembered for later lines. */
   switched(name: string, target: string | undefined): void;
   /** Once a second: settles the push window and the line budget. */
@@ -57,7 +66,7 @@ export function createStallRecorder(options: StallRecorderOptions): StallRecorde
   let lastSecond = { session: 0, event: 0 };
   let live = true;
 
-  const write = (head: string): void => {
+  const write = (head: string, tail = ""): void => {
     if (!live || budget <= 0) return;
     budget -= 1;
     const cur = options.ctx.pushes();
@@ -72,13 +81,15 @@ export function createStallRecorder(options: StallRecorderOptions): StallRecorde
         : "-";
     const pending = options.ctx.pendingMethods().slice(0, 12).join(",") || "-";
     options.report(
-      `${head} switch=${sw} pushes=session:${pushes.session},event:${pushes.event} pending=${pending} running=${options.ctx.runningCount()} visibility=${options.ctx.visibility()}`,
+      `${head} switch=${sw} pushes=session:${pushes.session},event:${pushes.event} pending=${pending} running=${options.ctx.runningCount()} visibility=${options.ctx.visibility()}${tail}`,
     );
   };
 
   return {
-    longtask(durationMs) {
-      if (durationMs >= STALL_MS) write(`longtask ${Math.round(durationMs)}ms`);
+    longtask(durationMs, startMs) {
+      if (durationMs < STALL_MS) return;
+      const start = startMs ?? now() - durationMs;
+      write(`longtask ${Math.round(durationMs)}ms`, ` cause=${options.ctx.frameAt(start, start + durationMs) ?? "none"}`);
     },
     switched(name, target) {
       const at = now();
@@ -117,24 +128,27 @@ export function liveStallContext(): StallContext {
       return running;
     },
     visibility: () => (typeof document === "undefined" ? "-" : document.visibilityState),
+    frameAt: (start, end) => frameRing.overlapping(start, end),
   };
 }
 
-/** Once per window: the longtask observer, the switch timer and the reporter. */
+/** Once per window: the longtask observer, the switch timer, the first-paint histogram's hour and the reporter. */
 export function installStallRecorder(): () => void {
-  const recorder = createStallRecorder({
-    ctx: liveStallContext(),
-    report: (line) => void registry.primary().request("stall.report", { line }).catch(() => {}),
-  });
+  const report = (line: string): void => void registry.primary().request("stall.report", { line }).catch(() => {});
+  const recorder = createStallRecorder({ ctx: liveStallContext(), report });
   const offMark = onPerfMark((name, id) => {
     if (SWITCH_MARKS.has(name)) recorder.switched(name, id);
   });
   const timer = setInterval(() => recorder.tick(), 1000);
+  const hourly = setInterval(() => {
+    const line = firstPaintHistogram.flush();
+    if (line) report(line);
+  }, FIRST_PAINT_HIST_MS);
   let observer: PerformanceObserver | null = null;
   if (typeof PerformanceObserver === "function") {
     try {
       observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) recorder.longtask(entry.duration);
+        for (const entry of list.getEntries()) recorder.longtask(entry.duration, entry.startTime);
       });
       observer.observe({ type: "longtask", buffered: false });
     } catch {
@@ -144,6 +158,7 @@ export function installStallRecorder(): () => void {
   return () => {
     offMark();
     clearInterval(timer);
+    clearInterval(hourly);
     observer?.disconnect();
     recorder.dispose();
   };

@@ -117,3 +117,8 @@
   under /tmp/tc-transcript-measure on its own display; never the user's
   data). docs/TRANSCRIPT.md has the rules, the budget and the before/after
   table.
+- In the field, each pane's first rows are timed from the press that opened
+  the thread (lib/firstPaint.ts, the stamps in lib/openStamps.ts): an
+  hourly `first-paint-hist` line counts every open, and an open past 500 ms
+  writes `first-paint … why= queued= fetch= fold= text=` to stalls.log
+  (the words in docs/box.md).

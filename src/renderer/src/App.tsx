@@ -58,6 +58,7 @@ import {
   isHtmlRenderOverlayOpen,
 } from "./surfaces/HtmlRenderOverlay";
 import { perfMark } from "./lib/perfMarks";
+import { openStamps } from "./lib/openStamps";
 import { IS_MAC } from "./lib/platform";
 import { updateStore } from "./lib/updateStore";
 import { displayAttachments, prepareAttachments } from "./lib/attachments";
@@ -694,6 +695,7 @@ export default function App() {
   /** `behind`: the app switches the pane under what is on screen (after an archive or a delete): a Work view stays up. */
   const activateTab = useCallback((id: string, o: { behind?: boolean } = {}) => {
     perfMark("tab-switch", id);
+    if (!o.behind) openStamps.press(workspaceTabsStore.getState().tabs.find((entry) => entry.id === id)?.focusedId ?? id);
     // A thread picked leaves a Work view and any page over the threads (Today, the Outbox…), in the same tick as the
     // tab switch, so the thread that was under them is never shown, and so marked read, on the way.
     if (!o.behind) {
@@ -1695,6 +1697,7 @@ export default function App() {
       // history holds that seq (lib/transcriptJump.ts), whether the thread is
       // already on screen or opens below.
       perfMark("open-click", sessionId);
+      openStamps.press(sessionId);
       // A thread he picks (the column, the rail, a list) is his latest choice, as a Work view is (lib/workSwitch.ts);
       // one that waits on its transcript opens only if nothing was chosen meanwhile.
       const mine = o.behind ? null : choose();
@@ -1748,6 +1751,7 @@ export default function App() {
    *  window with no pane to split opens it the ordinary way. */
   const onOpenSessionBeside = useCallback(
     async (sessionId: string, seq?: number) => {
+      openStamps.press(sessionId);
       if (seq !== undefined) requestTranscriptJump(sessionId, seq);
       const sourceId = currentActiveTab()?.focusedId;
       const session = await ensureOpenSession(sessionId);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createFrameRing } from "./connection/frameRing";
 import { createStallRecorder, STALL_MS, type StallContext } from "./stallRecorder";
 
 function harness() {
@@ -6,11 +7,13 @@ function harness() {
   let clock = 1000;
   const pushes = { session: 0, event: 0 };
   const paints: (() => void)[] = [];
+  const ring = createFrameRing(4);
   const ctx: StallContext = {
     pushes: () => ({ ...pushes }),
     pendingMethods: () => ["session.events", "queue.list"],
     runningCount: () => 4,
     visibility: () => "visible",
+    frameAt: (start, end) => ring.overlapping(start, end),
   };
   const recorder = createStallRecorder({
     ctx,
@@ -20,6 +23,7 @@ function harness() {
   });
   return {
     lines,
+    ring,
     pushes,
     recorder,
     advance: (ms: number) => (clock += ms),
@@ -36,7 +40,7 @@ describe("stall recorder (renderer)", () => {
     h.advance(400);
     h.recorder.longtask(320);
     expect(h.lines).toEqual([
-      "longtask 320ms switch=tab-switch:tab-9@400ms pushes=session:30,event:120 pending=session.events,queue.list running=4 visibility=visible",
+      "longtask 320ms switch=tab-switch:tab-9@400ms pushes=session:30,event:120 pending=session.events,queue.list running=4 visibility=visible cause=none",
     ]);
   });
 
@@ -86,5 +90,26 @@ describe("stall recorder (renderer)", () => {
     h.recorder.dispose();
     h.recorder.longtask(200);
     expect(h.lines).toHaveLength(11);
+  });
+
+  it("a long task names the answer or push it ran for, the newest that overlapped it, else none", () => {
+    const h = harness();
+    h.ring.note("push", "session-meta", 100, 101);
+    h.ring.note("answer", "session.events", 1_000, 1_020);
+    h.recorder.longtask(400, 990);
+    h.recorder.longtask(200, 5_000);
+    // No start: the task is taken to have just ended (the clock reads 1000), so 800..1000, which meets the answer.
+    h.recorder.longtask(200);
+    expect(h.lines.map((l) => l.split(" cause=")[1])).toEqual(["answer:session.events", "none", "answer:session.events"]);
+    expect(h.lines[0]).toMatch(/^longtask 400ms switch=- .* pending=session\.events,queue\.list running=4 visibility=visible cause=answer:session\.events$/);
+  });
+
+  it("a switch line carries no cause", () => {
+    const h = harness();
+    h.ring.note("answer", "session.events", 1_000, 1_020);
+    h.recorder.switched("tab-switch", "tab-2");
+    h.advance(900);
+    h.paint();
+    expect(h.lines[0]).not.toContain("cause=");
   });
 });

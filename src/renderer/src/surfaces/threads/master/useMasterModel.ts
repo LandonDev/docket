@@ -517,7 +517,12 @@ export class BatchHolder {
   private state: BatchState;
   private answer: BoardAnswer = { children: NO_METAS, loaded: false };
   private readonly listeners = new Set<() => void>();
-  constructor(masterId: string) {
+  /** When the first answer came in (`performance.now()`): the board's open clock (`board-paint answer=`). */
+  answeredAt: number | null = null;
+  constructor(
+    masterId: string,
+    private readonly now: () => number = () => performance.now(),
+  ) {
     this.state = emptyBatch(masterId);
   }
   readonly get = (): BatchState => this.state;
@@ -530,6 +535,7 @@ export class BatchHolder {
       const children = answer.children ?? this.answer.children;
       const loaded = this.answer.loaded || !!answer.loaded;
       if (children !== this.answer.children || loaded !== this.answer.loaded) {
+        if (loaded && !this.answer.loaded) this.answeredAt = this.now();
         this.answer = { children, loaded };
         moved = true;
       }

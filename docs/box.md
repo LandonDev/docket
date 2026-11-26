@@ -3227,11 +3227,36 @@ All times below are in milliseconds.
   `max` is the largest sum of those three phases for one batch.
 
 Both stall report scripts read these stamps and keep the older formats.
-They also read the renderer's
-`[renderer] first-paint session=<id> host=<env> ms=<ms> why=<open|restore|reconnect> queued=<ms> fetch=<ms> fold=<ms> text=<ms>`,
-`[renderer] first-paint-hist n=<n> p50=<ms> p90=<ms> p95=<ms> max=<ms> open=<n> restore=<n> reconnect=<n>`,
-`[renderer] longtask <ms>ms cause=<push:<name>|answer:<method>|none>`,
-and `[renderer] board-paint session=<id> ms=<ms> answer=<ms> render=<ms>`.
+They also read the window's lines below.
+
+The window's own lines come through `stall.report` and read
+`[renderer] …` (src/renderer/src/lib/stallRecorder.ts, firstPaint.ts):
+
+- `longtask <n>ms switch=<mark>:<target>@<ms>ms|- pushes=session:<n>,event:<n>
+  pending=<methods>|- running=<n> visibility=<state> cause=<push:<name>|answer:<method>|none>`:
+  a task of 150 ms or more; `cause` is the newest frame from a host whose
+  handling overlapped the task (a ring of the last 32 frames, written by
+  each socket's message handler, lib/connection/frameRing.ts).
+- `switch <mark>:<target> <n>ms …` the same words but `cause`: a tab, page
+  or open press whose next paint came 150 ms or more after it.
+- `first-paint session=<id> host=<env> ms=<n> why=<open|restore|reconnect>
+  queued=<ms> fetch=<ms> fold=<ms> text=<ms>`: a pane's first rows later
+  than 500 ms. The clock starts at the press that opened the thread (a rail
+  row, a tab, a history pick, a search hit; the pane's mount when nothing
+  was pressed). `why` is open for a press, reconnect when the rows came
+  after the host's link came back, restore for the rest (a pane shown at
+  launch or by a window restore). The parts add up to `ms`: press to the
+  transcript ask leaving (the open hold, the catch-up lane), the ask to its
+  answer (retries included, so a lost answer reads as a fetch of ~31 s),
+  folding the answer's rows, and the fold to the painted rows. A part the
+  open did not need is 0.
+- `first-paint-hist n=<n> p50=<ms> p90=<ms> p95=<ms> max=<ms> open=<n>
+  restore=<n> reconnect=<n>`: once an hour, every pane's first paint in
+  that hour, slow or not, from fixed buckets (a percentile is its bucket's
+  upper bound, never past `max`); nothing for an hour with none.
+- `board-paint master=<id> n=<rows> ms=<n> answer=<ms> render=<ms>`: a
+  master's board, once per open; `answer` until `batch.board` first
+  answered, `render` from that answer to the painted board.
 
 ### A disk stall froze the loop
 
@@ -3330,7 +3355,7 @@ add the column here. What the proofs measured on the Mac:
 | Lane | `session.focus`, request lanes, duplicate reads joined | `script:e2e-interactive-lane`: focused reads p95 3.4 ms during 200 bulk requests; 15 git children instead of 600 |
 | Stats | the index and the bundle in the stats worker (`statsWorker.js`, `statsEngine.ts`, `statsHost.ts`); main forwards samples and app events and never opens stats.db; a worker gone leaves Stats `unavailable` with its last bundle | `script:e2e-stats-loop`: the box's logs indexed on the loop and through the worker, the loop's worst lag under each |
 | Honest loading | `loading`, `slow` and `failed` instead of an empty thread; request deadlines and retries | `script:e2e-loading-states`: about 1,000 samples, never the empty state |
-| Board | `batch.board` answers children, a digest per child and the batch state in one reply; `board` and `batch` pushes (log deltas) go only to sockets watching the master; virtualized, memoized rows | MasterView test: 300 rows mount only the visible window, one child's change re-renders one row; `script:e2e-master-batch` asserts the answer; the renderer logs `board-paint master= n= ms=` |
+| Board | `batch.board` answers children, a digest per child and the batch state in one reply; `board` and `batch` pushes (log deltas) go only to sockets watching the master; virtualized, memoized rows | MasterView test: 300 rows mount only the visible window, one child's change re-renders one row; `script:e2e-master-batch` asserts the answer; the renderer logs `board-paint master= n= ms= answer= render=` |
 | Gateway process | the byte path in an Electron utility process, respawned on its ports | `script:e2e-gateway-process`: killed mid-stream, back on the same port, the turn finished; warm start cold 338 ms, warm 67 ms first token |
 | Admission | a running cap sized from memory | `script:e2e-queue`: a cap of two over six threads, oldest first, Start now past it |
 

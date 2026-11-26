@@ -210,6 +210,24 @@ describe("Subscriptions", () => {
     expect(subs.isLive("s1")).toBe(false);
   });
 
+  it("tells its owner the moment the history request leaves, after the subscribe it waited on", async () => {
+    const link = new FakeLink();
+    const subs = new Subscriptions(link);
+    const a = owner(0);
+    a.handlers.asked = () => a.log.push(`asked out=${link.pendingOf("session.events").length}`);
+    subs.add("s1", a.handlers);
+    const p = subs.resume("s1", { tail: 300 });
+    await flush();
+    expect(a.log).toEqual(["begin"]);
+    link.answer("session.subscribe", {});
+    await flush();
+    expect(a.log).toEqual(["begin", "asked out=0"]);
+    expect(link.pendingOf("session.events")).toHaveLength(1);
+    link.answer("session.events", [row(1)]);
+    await p;
+    expect(a.log).toEqual(["begin", "asked out=0", "page reset=false rows=1", "end"]);
+  });
+
   it("over a remote link a cold open subscribes inside the history request: one round trip", async () => {
     const link = new FakeLink("remote");
     const subs = new Subscriptions(link);
