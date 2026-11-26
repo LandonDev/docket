@@ -95,7 +95,11 @@ import { summarizeSwitch, switchMarkdown, type SwitchClick, type SwitchView } fr
 import { displayInterval, SCROLLERS, scrollMarkdown, summarizeFrames, wheelPlan, type FrameRun, type ScrollResult, type ScrollSurface } from './lib/soakScroll'
 import { SETUP_OFFERED_KEY } from '../src/renderer/src/surfaces/setup/setupFlow'
 import { readBuildStamp, waitForGateBuild } from './lib/gateBuild'
-import { slowLink } from './lib/slowLink'
+import { slowLink, startSlowLink } from './lib/slowLink'
+import { parseSoakLink } from './lib/soakLink'
+import { isQuietScene } from './lib/soakJudge'
+import { recordDay, recordIdle, recordLong, type QuietCtx } from './lib/soakQuietRun'
+import { REACT_HOOK } from './lib/soakIdle'
 import { recordReconnect, type ReconnectSeed } from './lib/soakReconnectRun'
 
 /** The reconnect scene's own options, taken out before the shared parse. */
@@ -107,8 +111,11 @@ const reconnectValue = (name: string): number | undefined => {
 const args = parseSoakArgs(process.argv.slice(2).filter((a, i, all) => a !== '--why' && a !== '--still' && !RECONNECT_VALUES.includes(a) && !RECONNECT_VALUES.includes(all[i - 1])))
 /** --still (reconnect): the streams add their rows through the cut and pause once the socket is back, so the window's long tasks are the catch-up's alone. */
 const still = process.argv.includes('--still')
-/** --link <KiB/s> (reconnect): the window reaches the host through a relay that gives it this much a second (scripts/lib/slowLink.ts), as the Mac's tunnel to the box. */
-const linkKiB = reconnectValue('--link')
+/** --link <KiB/s> or <ms there and back>/<Mbit a second> (any scene on the synthetic host): the window reaches the host through a relay (scripts/lib/soakLink.ts), as the Mac's tunnel to the box. */
+const linkArg = process.argv.includes('--link') ? process.argv[process.argv.indexOf('--link') + 1] : undefined
+const link = linkArg === undefined ? null : parseSoakLink(linkArg)
+if (link && args.host !== 'synthetic') throw new Error('--link shapes the link to the synthetic host: the box is never relayed')
+const linkKiB = link?.form === 'kib' ? link.bytesPerSec / 1024 : undefined
 /** --probe-every <ms> (reconnect): the window is brought forward this often (the supervisor's foreground probe), as his clicks did. */
 const probeEveryMs = reconnectValue('--probe-every')
 let linkRelay: { peak(): number; resetPeak(): void } | undefined
@@ -286,7 +293,8 @@ function launchEnv(): Record<string, string> {
     TEMP_CODE_HEADLESS: '0',
     TEMP_CODE_CLAIM_SHIM: '0',
     TEMP_CODE_WARM_HARNESS: '0',
-    TEMP_CODE_SOAK_WINDOW: '1',
+    // The idle scene measures the window as the app throttles it (shown, hidden): the soak's unthrottled window would not hide.
+    TEMP_CODE_SOAK_WINDOW: args.scene === 'idle' ? '0' : '1',
     TEMP_CODE_ALIAX_DATA_DIR: join(userData, 'aliax'),
     ALIAX_CREDENTIAL_BACKEND: 'file',
     CLAUDE_CONFIG_DIR: join(home, '.claude'),
@@ -436,7 +444,7 @@ const PAGE_STATS = `(() => ({
 }))()`
 
 // ── the host and the pairing ─────────────────────────────────────────────
-type Shown = { environmentId: string; masterId: string; threadId: string; history?: ReconnectSeed }
+type Shown = { environmentId: string; masterId: string; threadId: string; children?: string[]; history?: ReconnectSeed }
 
 /** How the synthetic host runs: bun with the electron stub on Linux (relative
  *  paths from the checkout, which the host's port sweep knows for a proof);
@@ -483,21 +491,30 @@ async function startSynthetic(c: Cdp): Promise<Shown> {
     })
     soakHost!.on('exit', (code) => fail(new Error(`the synthetic host exited (${code}); its log (${hostLog}) ends:\n${tail()}`)))
   })
-  const host = JSON.parse(line) as { baseUrl: string; environmentId: string; masterId: string; focusedId: string; key: string; history?: ReconnectSeed }
+  const host = JSON.parse(line) as { baseUrl: string; environmentId: string; masterId: string; focusedId: string; key: string; children: string[]; history?: ReconnectSeed }
   let url = host.baseUrl
-  if (linkKiB) {
+  if (link) {
     const target = new URL(host.baseUrl)
-    const relay = await slowLink({ host: target.hostname, port: Number(target.port) }, linkKiB * 1024)
-    linkRelay = relay
-    process.once('exit', () => relay.close())
-    url = `${target.protocol}//127.0.0.1:${relay.port}`
-    log(`the window reaches the host at ${linkKiB} KiB/s`)
+    let port: number
+    if (link.form === 'kib') {
+      const relay = await slowLink({ host: target.hostname, port: Number(target.port) }, link.bytesPerSec)
+      linkRelay = relay
+      process.once('exit', () => relay.close())
+      port = relay.port
+    } else {
+      // The perf kit's relay: a delay and a rate each way, the host's own address said to it (startSlowLink).
+      const relay = await startSlowLink({ listen: 0, target: Number(target.port), host: target.hostname, hostHeader: target.host, shape: { delayMs: link.delayMs, rateMbit: link.rateMbit }, ...link.options })
+      process.once('exit', () => void relay.close())
+      port = relay.port
+    }
+    url = `${target.protocol}//127.0.0.1:${port}`
+    log(`the window reaches the host at ${link.words}`)
   }
   await c.eval(
     `window.__docket.registry.primary().request('remote.environments.add', ${JSON.stringify({ url, key: host.key, name: 'soak' })}).then(() => window.__docket.loadSavedEnvironments(window.__docket.registry.primary())).then(() => true)`
   )
   log(`paired with the synthetic host ${host.environmentId}`)
-  return { environmentId: host.environmentId, masterId: host.masterId, threadId: host.focusedId, history: host.history }
+  return { environmentId: host.environmentId, masterId: host.masterId, threadId: host.focusedId, children: host.children, history: host.history }
 }
 
 async function pairBox(c: Cdp): Promise<Shown> {
@@ -646,6 +663,8 @@ async function skipFirstRun(c: Cdp): Promise<void> {
   const mark = `localStorage.setItem(${JSON.stringify(SETUP_OFFERED_KEY)}, '1'); window.__soakFirstRunOffered = true`
   await c.send('Page.enable')
   await c.send('Page.addScriptToEvaluateOnNewDocument', { source: mark })
+  // The idle scene counts React's components a push renders through a stand-in for DevTools' hook (soakIdle.ts).
+  if (args.scene === 'idle') await c.send('Page.addScriptToEvaluateOnNewDocument', { source: REACT_HOOK })
   await c.send('Page.reload')
   await waitFor(c, 'window.__soakFirstRunOffered === true', 30_000, 'the window loaded again with the first run marked as offered')
 }
@@ -728,6 +747,13 @@ async function main(): Promise<void> {
   }
   if (args.scene === 'scroll') {
     await recordScroll(c)
+    return
+  }
+  if (isQuietScene(args.scene)) {
+    if (!soakHost || !shown.children) throw new Error(`the ${args.scene} scene needs the synthetic host`)
+    const ctx: QuietCtx = { c, label: args.label, root: ROOT, host: soakHost, rendererPid: renderer.pid, quietId: shown.threadId, children: shown.children, longRows: shown.history?.['soak-long']?.rows, cpuSeconds, log, waitFor }
+    const ok = await (args.scene === 'idle' ? recordIdle(ctx) : args.scene === 'long' ? recordLong(ctx) : recordDay(ctx))
+    process.exitCode = ok ? 0 : 1
     return
   }
 

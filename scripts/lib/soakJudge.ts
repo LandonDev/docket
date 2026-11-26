@@ -31,7 +31,10 @@ import { SCROLL_SURFACES, type ScrollSurface } from './soakScroll'
 export type SoakHostKind = 'synthetic' | 'box'
 export type SoakBuild = 'prod' | 'dev'
 export type SoakView = 'board' | 'stream' | 'split'
-export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scroll' | 'scenarios' | 'reconnect'
+export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scroll' | 'scenarios' | 'reconnect' | 'idle' | 'long' | 'day'
+/** The scenes with a settled chat on screen beside forty running threads, each run as its own steps (scripts/lib/soakQuietRun.ts). */
+export const QUIET_SCENES = ['idle', 'long', 'day'] as const
+export const isQuietScene = (scene: SoakScene): scene is (typeof QUIET_SCENES)[number] => (QUIET_SCENES as readonly string[]).includes(scene)
 
 export interface SoakArgs {
   host: SoakHostKind
@@ -101,11 +104,17 @@ export function parseSoakArgs(argv: readonly string[]): SoakArgs {
   const host = (flag('--host') ?? 'synthetic') as SoakHostKind
   const build = (flag('--build') ?? 'prod') as SoakBuild
   const scene = (flag('--scene') ?? 'board') as SoakScene
-  if (!['board', 'chat', 'typing', 'switch', 'send', 'scroll', 'scenarios', 'reconnect'].includes(scene)) throw new Error('--scene is board, chat, typing, switch, send, scroll, scenarios or reconnect')
+  if (!['board', 'chat', 'typing', 'switch', 'send', 'scroll', 'scenarios', 'reconnect', 'idle', 'long', 'day'].includes(scene)) throw new Error('--scene is board, chat, typing, switch, send, scroll, scenarios, reconnect, idle, long or day')
+  if (isQuietScene(scene)) {
+    if (host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
+    // Judged by judgeIdle, judgeLong and judgeDay; scripts/gate.ts has no row for them yet.
+    if (gate) throw new Error(`--scene ${scene} has no gate row yet: run it by hand`)
+    if (['--view', '--minutes', '--every', '--cpu-report-only'].some((arg) => argv.includes(arg))) throw new Error(`--scene ${scene} shows its quiet chat and runs its own steps: drop --view, --minutes, --every and --cpu-report-only`)
+  }
   // The send scene sends: never into the box's own threads.
   if ((scene === 'chat' || scene === 'scenarios' || scene === 'send' || scene === 'reconnect') && host !== 'synthetic') throw new Error(`--scene ${scene} is a synthetic host`)
   if (scene === 'scenarios' && gate) throw new Error('--scene scenarios is a recording, never the gate')
-  const view = (flag('--view') ?? (scene === 'reconnect' ? 'split' : scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' || scene === 'switch' || scene === 'send' || scene === 'scroll' ? 'board' : 'stream')) as SoakView
+  const view = (flag('--view') ?? (isQuietScene(scene) ? 'stream' : scene === 'reconnect' ? 'split' : scene === 'board' ? (gate ? 'split' : 'board') : scene === 'typing' || scene === 'switch' || scene === 'send' || scene === 'scroll' ? 'board' : 'stream')) as SoakView
   if (scene === 'typing' && view !== 'board') throw new Error("--scene typing types into the master's composer beside its board: its view is board")
   if ((scene === 'chat' || scene === 'scenarios') && view !== 'stream') throw new Error(`--scene ${scene} has one thread: its view is stream`)
   if ((scene === 'typing' || scene === 'switch' || scene === 'send' || scene === 'scroll') && (argv.includes('--minutes') || argv.includes('--every'))) throw new Error(`--scene ${scene} runs its own steps, not a window: drop --minutes and --every`)
@@ -253,7 +262,7 @@ export interface SoakRule {
 /** Each scene's highest renderer CPU on the Mac, the figure its bound covers with a margin. */
 export const MAC_CPU_SEEN = { board: 29.6, chat: 24.4 } as const
 /** The scenes the gate judges by its window's rule; `typing` has TYPING_RULE, `switch` SWITCH_RULE, `send` SEND_RULE, `scroll` SCROLL_RULE, and `scenarios` is a recording, judged by eye. */
-export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing' | 'switch' | 'send' | 'scroll' | 'reconnect'>
+export type GateScene = Exclude<SoakScene, 'scenarios' | 'typing' | 'switch' | 'send' | 'scroll' | 'reconnect' | 'idle' | 'long' | 'day'>
 
 export const GATE_CPU_PCT: Record<GateScene, number> = { board: 33, chat: 27 }
 

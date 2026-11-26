@@ -8,7 +8,7 @@
 - `bun scripts/measure-renderer-soak.ts` soaks a built tree's window
   (`--build prod|dev`, `--host synthetic|box`, `--view board|stream|split`,
   `--minutes`, `--every`, `--label`, `--tree`, `--gate`, `--scene
-  board|chat|typing|switch|send|scroll|scenarios|reconnect` (switch: the rail's two workspaces
+  board|chat|typing|switch|send|scroll|scenarios|reconnect|idle|long|day` (switch: the rail's two workspaces
   clicked in turn, each click timed to its column and strip and to its
   landing thread's rows, `--workspaces a,b`, `--clicks`, scripts/lib/soakSwitch.ts,
   a hand-run scene; docs/box.md "Switching workspaces"; send: messages sent
@@ -110,13 +110,71 @@
     `scripts/lib/soakJudge.ts`. The publish tier's row
     `renderer-soak-reconnect` runs `--gate --scene reconnect --still`.
   - `--link <KiB/s>` puts a relay between the window and the host
-    (scripts/lib/slowLink.ts) that gives the window that many bytes a
+    (scripts/lib/slowLink.ts `slowLink`) that gives the window that many bytes a
     second, as the Mac's tunnel to the box; its backlog is reported as
-    `linkHeldBytes` and judged like a socket's. `--probe-every <ms>` brings
+    `linkHeldBytes` and judged like a socket's. The kit's form, `--link
+    <ms there and back>/<Mbit a second>` (`60/10`), shapes the link of any
+    scene on the synthetic host through `startSlowLink`, as `bun run perf`
+    does (half the round trip each way, the host's own Host said to it); a
+    part after the rate is looked up in `LINK_PARTS` (scripts/lib/soakLink.ts)
+    and rides into `startSlowLink`'s options as it is. That form keeps no
+    backlog, so the reconnect scene reports no `linkHeldBytes` under it. The
+    box is never relayed. `--probe-every <ms>` brings
     the window forward that often (`registry.probeAll('foreground')`), as
     his clicks did. See
     [.temp-code/plans/landed/F-reconnect-catchup/before.md](../../.temp-code/plans/landed/F-reconnect-catchup/before.md)
     for the Linux baseline.
+- `--scene idle`, `--scene long` and `--scene day` (hand runs on the
+  synthetic host, no gate row yet; budgets D17, D20, D04, D05, D11, D12 and
+  D18 of scripts/perf/budgets.ts): the window shows a settled chat while
+  forty threads run behind it, their metas moving every 4 s each (ten a
+  second in all, the most the host's coalescer flushes a window; soakLoad.ts
+  IDLE_PROFILE). Each writes /tmp/tc-soak/<label>.json and .md and is judged
+  by its own rule (scripts/lib/soakIdle.ts, soakLong.ts, soakDay.ts; the CDP
+  side is scripts/lib/soakQuietRun.ts; scripts/soak-idle-long-day.test.ts).
+  - idle: three phases of 20 s: focused (`Page.bringToFront`), visible but
+    not focused (a second app window opened over it, `window.api.win.create`;
+    xvfb has no window manager and Chromium tracks no occlusion on Linux, so
+    the covered window stays visible, as on Windows; a Mac covered whole is
+    hidden instead), and hidden (`window.api.win.hide`). The scene runs the
+    window throttled as the app does (TEMP_CODE_SOAK_WINDOW off for it alone:
+    the soak's unthrottled window never reads hidden). Each phase reads the
+    renderer's CPU, the running animations (`document.getAnimations()`, by
+    name, element and whether on screen) beside the working rows on screen
+    (a spinner's row in the viewport), the store's flushes (its `bump` wrapped
+    on the instance `window.__docket.sessionStore` holds: its own ms, and to
+    the end of the React commits it caused), and, with the load held, five
+    meta pushes one at a time of a running thread in a second workspace no
+    screen shows (the host's stdin `meta`), each counted by the components
+    its flushes rendered. The count comes from a stand-in for React DevTools'
+    global hook installed before the page loads (`REACT_HOOK`): armed, it
+    walks each commit's tree as DevTools does (a subtree whose child list did
+    not change was not visited; a component fiber new or with PerformedWork
+    rendered). `IDLE_RULE`: 5%, 3% and 1% of a core, running animations no
+    more than the working rows on screen while seen, a flush at p95 within
+    2 ms, a push 3 components at most.
+  - long: one agent-shaped thread of 30,000 rows in two turns, its last one
+    live (`perfThread`, scripts/lib/ios-perf-seeds.ts, written straight to the
+    event log), beside the forty. A cold open from its rail row (click to
+    three rows of it readable in the viewport, none still unparsed), every
+    long task in the 15 s after and a CPU profile of them
+    (`<label>.open.cpuprofile`, for scripts/profile-summary.ts); 10 s of
+    deltas into the live turn (the host's stdin `stream 10000`), traced into
+    main-thread ms a frame (`frameMainMs`); a jump to seq 5,000, older than
+    the loaded tail, through `window.__docket.open(id, { seq })` (the jump a
+    search hit asks, lib/transcriptJump.ts): whether its row lands and when;
+    then to the top by "Load earlier messages", each press timed to the
+    store's next page, stopped after 180 s. `LONG_RULE`: readable within
+    1.2 s, no task over 100 ms in the 15 s after the open, none over 50 ms
+    and 4 ms of main thread a frame at p95 while streaming, the hit within
+    2 s.
+  - day: every running thread streams with 400 rows of history; ten are
+    opened one after another (`window.__docket.open`) and left inside one
+    50 s window. Heap after GC at the start and the end, and the store's
+    census (`STORE_CENSUS`): transcripts loaded against the panes mounted and
+    the raw rows (`rows`, the remote profile's kept log) each loaded one
+    keeps. `DAY_RULE`: heap no more than 6 MB up, loaded no more than mounted
+    plus six.
 - A push re-renders only what it changed, and these keep it so: an equal
   `session` push schedules no flush (store `mergeMeta` returns whether it
   changed anything); a thread row keeps its object while it reads the same

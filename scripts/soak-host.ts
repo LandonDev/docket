@@ -21,11 +21,14 @@ import type { SoakDriver } from './lib/soakLoad'
 // `--scene scenarios`: one quiet chat that plays the no-jerk timeline when a
 // line "go" arrives on stdin, writing `{"step": label, "at": ms, "clicks"?}` per
 // step (the clicks are the soak's to perform in the window).
+// `--scene idle`, `long`, `day`: a settled chat on screen beside forty running threads (soakHost.ts);
+// idle answers a line "meta" with one meta change of the thread no screen shows, `{"meta": n}`, and long
+// answers "stream <ms>" by streaming into its long thread's live turn that long, `{"streamed": {…}}`.
 // A line "pause" or "resume" holds or restarts every stream of the load,
 // answered `{"paused": true}` or `{"resumed": true}` once it holds.
 const argAfter = (name: string): string | undefined => (process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined)
 const named = argAfter('--scene')
-const host = await startSoakHost(named === 'chat' || named === 'typing' || named === 'switch' || named === 'send' || named === 'scroll' || named === 'scenarios' || named === 'reconnect' ? named : 'board', { history: Number(argAfter('--history') ?? 5_000), thought: process.argv.includes('--thought') })
+const host = await startSoakHost(named === 'chat' || named === 'typing' || named === 'switch' || named === 'send' || named === 'scroll' || named === 'scenarios' || named === 'reconnect' || named === 'idle' || named === 'long' || named === 'day' ? named : 'board', { history: Number(argAfter('--history') ?? 5_000), thought: process.argv.includes('--thought') })
 const started = Date.now()
 let driver: SoakDriver | null = null
 if (host.scene !== 'scenarios') {
@@ -33,7 +36,7 @@ if (host.scene !== 'scenarios') {
   driver = host.startLoad(undefined, burstMs > 0 ? { everyMs: burstMs } : null)
 }
 // The controls stay in this process. The window receives the seed and key.
-const { reconnect, ...ready } = host
+const { reconnect, metaOffscreen, streamLong, ...ready } = host
 process.stdout.write(JSON.stringify({ ready: true, ...ready }) + '\n')
 const answer = (line: object): boolean => process.stdout.write(JSON.stringify(line) + '\n')
 createInterface({ input: process.stdin }).on('line', (line) => {
@@ -48,6 +51,10 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       answer({ wire })
     }, still ? () => driver?.pause() : undefined)
     answer({ began: phase, start })
+  } else if (command === 'meta' && metaOffscreen) {
+    answer({ meta: metaOffscreen() })
+  } else if (/^stream \d+$/.test(command) && streamLong) {
+    void streamLong(Number(command.split(' ')[1])).then((streamed) => answer({ streamed }))
   } else if (command === 'go' && host.scene === 'scenarios') {
     host.playScenarios((step) => answer({ step: step.label, at: Date.now() - started, clicks: step.clicks }))
   } else if (command === 'pause' && driver) {

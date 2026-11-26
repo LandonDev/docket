@@ -50,6 +50,7 @@
  * of paying what the pause would have owed.
  */
 
+import type { AgentEvent } from '../../src/shared/events'
 import { RECONNECT_PROFILE } from './soakReconnect'
 
 export type SoakKind = 'meta' | 'delta' | 'tool' | 'log' | 'settle' | 'resume' | 'edit' | 'flood'
@@ -98,8 +99,10 @@ export const SOAK_PROFILE: SoakProfile = profile()
  *  `send` is the board's load with the master's history grown long, sent into;
  *  `scroll` is the same with the rail and the workspace column grown past a screen, scrolled;
  *  `scenarios` plays the no-jerk timeline on one chat instead of a load (scripts/lib/soakScenarios.ts);
- *  `reconnect` keeps three of six long threads streaming through a cut and reload. */
-export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scroll' | 'scenarios' | 'reconnect'
+ *  `reconnect` keeps three of six long threads streaming through a cut and reload;
+ *  `idle`, `long` and `day` hold RUNNING_THREADS running threads behind a quiet thread on screen (IDLE_PROFILE,
+ *  LONG_PROFILE, DAY_PROFILE). */
+export type SoakScene = 'board' | 'chat' | 'typing' | 'switch' | 'send' | 'scroll' | 'scenarios' | 'reconnect' | 'idle' | 'long' | 'day'
 
 export const CHAT_PROFILE: SoakProfile = {
   children: 1,
@@ -129,7 +132,54 @@ export const TYPING_PROFILE: SoakProfile = {
   ]
 }
 
+/** The running threads of the idle, long and day scenes: his box on a busy day. */
+export const RUNNING_THREADS = 40
+/** Each running thread's meta moves every 4 s: 10 meta changes a second in all, the most the host's
+ *  coalescer flushes to one window (a frame a 100 ms, src/shared/wireBudgets.ts). */
+export const RUNNING_META_PER_SECOND = 0.25
+const runningMetas = (): SoakStream[] =>
+  Array.from({ length: RUNNING_THREADS }, (_, child) => ({ kind: 'meta' as const, child, perSecond: RUNNING_META_PER_SECOND, phase: child / RUNNING_THREADS }))
+
+/** `--scene idle`: the running threads' metas and nothing else; no stream reaches the window. */
+export const IDLE_PROFILE: SoakProfile = { children: RUNNING_THREADS, focused: 0, streamers: [], streams: runningMetas() }
+
+/** `--scene long`: the idle scene's load; the long thread sits after the running ones, at this index. */
+export const LONG_INDEX = RUNNING_THREADS
+export const LONG_PROFILE: SoakProfile = { children: RUNNING_THREADS + 1, focused: 0, streamers: [], streams: runningMetas() }
+/** The long thread's own stream, started on the host's `stream <ms>` line: 20 deltas a second, a call every 2 s. */
+export const LONG_STREAM_PROFILE: SoakProfile = {
+  children: RUNNING_THREADS + 1,
+  focused: LONG_INDEX,
+  streamers: [],
+  streams: [
+    { kind: 'delta', child: LONG_INDEX, perSecond: 20, phase: 0 },
+    { kind: 'tool', child: LONG_INDEX, perSecond: 0.5, phase: 0.5 }
+  ]
+}
+
+/** `--scene day`: every running thread streams (2 deltas a second, a call every 10 s) and its meta moves. */
+export const DAY_DELTAS_PER_SECOND = 2
+export const DAY_PROFILE: SoakProfile = {
+  children: RUNNING_THREADS,
+  focused: 0,
+  streamers: [],
+  streams: [
+    ...runningMetas(),
+    ...Array.from({ length: RUNNING_THREADS }, (_, child) => ({ kind: 'delta' as const, child, perSecond: DAY_DELTAS_PER_SECOND, phase: child / RUNNING_THREADS })),
+    ...Array.from({ length: RUNNING_THREADS }, (_, child) => ({ kind: 'tool' as const, child, perSecond: 0.1, phase: child / RUNNING_THREADS }))
+  ]
+}
+
+/** A perfThread with its last turn left open: the closing `turn-complete` and idle status dropped. */
+export function liveTail(events: AgentEvent[]): AgentEvent[] {
+  const last = events.length - 1
+  if (events[last]?.type !== 'status' || events[last - 1]?.type !== 'turn-complete') throw new Error('perfThread ends otherwise than a turn-complete and an idle status')
+  return events.slice(0, last - 1)
+}
 export function profileOf(scene: SoakScene): SoakProfile {
+  if (scene === 'idle') return IDLE_PROFILE
+  if (scene === 'long') return LONG_PROFILE
+  if (scene === 'day') return DAY_PROFILE
   if (scene === 'typing') return TYPING_PROFILE
   if (scene === 'reconnect') return RECONNECT_PROFILE
   return scene === 'chat' || scene === 'scenarios' ? CHAT_PROFILE : SOAK_PROFILE

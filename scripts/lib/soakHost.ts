@@ -42,6 +42,13 @@
  * projects, six settled chats with history, one of them 400 rows long), for
  * the soak to switch between in the rail.
  *
+ * The idle, long and day scenes (`startSoakHost('idle' | 'long' | 'day')`) put a settled chat on screen
+ * (SOAK_QUIET) beside RUNNING_THREADS running threads whose metas move (soakLoad.ts IDLE_PROFILE). Idle adds a
+ * running thread in a second workspace no screen shows (SOAK_OFFSCREEN), moved once by each `metaOffscreen()`;
+ * long adds the agent-shaped thread of LONG_ROWS rows in LONG_TURNS turns, its last turn live (SOAK_LONG, written
+ * straight to the event log as the reconnect scene's history is), streamed into by `streamLong(ms)`; day gives
+ * every running thread DAY_HISTORY_ROWS of history and streams them all (DAY_PROFILE).
+ *
  * No thread has a harness: the registry's boot, send and liveness sweep are
  * stood in for, so nothing spawns a CLI or flips a seeded row to stopped.
  *
@@ -64,11 +71,23 @@ import { reconnectHistory, reconnectLiveRows } from './soakReconnect'
 import { watchReconnectSocket } from './soakReconnectHost'
 import { playScenarios, type ScenarioStep } from './soakScenarios'
 import { batchRowMidRun, withShellLog } from './ios-seeds'
-import { profileOf, startLoad, TYPING_EDIT_PATHS, TYPING_FLOOD_POOL, TYPING_FLOOD_SIZE, TYPING_SETTLERS, type BurstCadence, type SoakClock, type SoakDriver, type SoakEmit, type SoakScene } from './soakLoad'
+import { perfThread } from './ios-perf-seeds'
+import { liveTail, LONG_INDEX, LONG_STREAM_PROFILE, profileOf, RUNNING_THREADS, startLoad, TYPING_EDIT_PATHS, TYPING_FLOOD_POOL, TYPING_FLOOD_SIZE, TYPING_SETTLERS, type BurstCadence, type SoakClock, type SoakDriver, type SoakEmit, type SoakScene } from './soakLoad'
 
 export const SOAK_MASTER = 'soak-master'
 export const SOAK_CHAT = 'soak-chat'
 export const SOAK_SCENARIOS = 'soak-scenarios'
+/** The idle, long and day scenes: the settled chat on screen, the running threads, the thread no screen shows
+ *  (in a second workspace), the agent-shaped long thread. */
+export const SOAK_QUIET = 'soak-quiet'
+export const SOAK_OFFSCREEN = 'soak-offscreen'
+export const SOAK_LONG = 'soak-long'
+export const soakRunningId = (i: number): string => `soak-run-${String(i).padStart(2, '0')}`
+/** The long thread: agent-shaped, rows in two turns, the last one live (perfThread, scripts/lib/ios-perf-seeds.ts). */
+export const LONG_ROWS = 30_000
+export const LONG_TURNS = 2
+/** Each running thread's history in the day scene, so a loaded transcript holds what a day's thread does. */
+export const DAY_HISTORY_ROWS = 400
 export const soakChildId = (i: number): string => `soak-child-${String(i).padStart(2, '0')}`
 /** The scroll scene's rail and column: workspaces and projects past a screen of each. */
 const SCROLL_WORKSPACES = 30
@@ -143,6 +162,10 @@ export interface SoakHost {
   /** The scenarios scene: plays the no-jerk timeline once on its chat, from now; returns a stop. */
   playScenarios(onStep?: (step: ScenarioStep) => void): () => void
   reconnect?: ReturnType<typeof watchReconnectSocket>
+  /** Idle scene: one meta change of the thread no screen shows (SOAK_OFFSCREEN); answers its count. */
+  metaOffscreen?(): number
+  /** Long scene: streams into the long thread's live turn for `ms`, then answers what it sent. */
+  streamLong?(ms: number): Promise<Record<string, number>>
   history?: Record<string, { rows: number; eventBytes: number }>
   close(): Promise<void>
 }
@@ -223,6 +246,45 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
         registry.append(id, { type: 'user-text', text: 'Run the next set of export checks.' })
         registry.append(id, { type: 'status', status: 'running' })
       }
+    }
+  } else if (scene === 'idle' || scene === 'long' || scene === 'day') {
+    await registry.create({ ...base, id: SOAK_QUIET, threadType: 'chat', title: 'Read the inbox query' })
+    for (let turn = 0; turn < 6; turn++) {
+      registry.append(SOAK_QUIET, { type: 'user-text', text: `Turn ${turn + 1}: how does the inbox query its rows?` })
+      registry.append(SOAK_QUIET, { type: 'assistant-text', text: PROSE, delta: false, msgId: `${SOAK_QUIET}-a${turn}`, blockIndex: 0 })
+      registry.append(SOAK_QUIET, { type: 'turn-complete' })
+    }
+    registry.append(SOAK_QUIET, { type: 'status', status: 'idle' })
+    children = Array.from({ length: RUNNING_THREADS }, (_, i) => soakRunningId(i))
+    for (const [i, id] of children.entries()) {
+      await registry.create({ ...base, id, threadType: 'implementation', title: TITLES[i % TITLES.length]! })
+      if (scene === 'day') {
+        for (const event of liveTail(perfThread(id, { rows: DAY_HISTORY_ROWS, turns: 2, seed: 100 + i }))) server.store.appendEvent(id, event)
+        server.store.flushEvents()
+        registry.append(id, { type: 'status', status: 'running' })
+      } else {
+        registry.append(id, { type: 'user-text', text: `${TITLES[i % TITLES.length]}.`, newPass: true })
+        seedThread(id)
+      }
+    }
+    if (scene === 'long') {
+      await registry.create({ ...base, id: SOAK_LONG, threadType: 'implementation', title: 'Index the calls across the fold' })
+      for (const event of liveTail(perfThread(SOAK_LONG, { rows: LONG_ROWS, turns: LONG_TURNS, seed: 31 }))) server.store.appendEvent(SOAK_LONG, event)
+      server.store.flushEvents()
+      registry.append(SOAK_LONG, { type: 'status', status: 'running' })
+      children.push(SOAK_LONG)
+      if (children.length - 1 !== LONG_INDEX) throw new Error('the long thread is not at LONG_INDEX')
+      history = { [SOAK_LONG]: { rows: server.store.lastSeq(SOAK_LONG), eventBytes: 0 } }
+    }
+    if (scene === 'idle') {
+      // A running thread in a workspace the window never opens: its meta pushes reach no row on screen.
+      const away = join(root, 'elsewhere')
+      mkdirSync(away)
+      const awayWs = await registry.createWorkspace(away, 'elsewhere')
+      const awayProject = await registry.createProject(awayWs.id, 'elsewhere', 'local')
+      await registry.create({ ...base, projectId: awayProject.id, id: SOAK_OFFSCREEN, threadType: 'implementation', title: 'Check the nightly export' })
+      registry.append(SOAK_OFFSCREEN, { type: 'user-text', text: 'Check the nightly export.', newPass: true })
+      seedThread(SOAK_OFFSCREEN)
     }
   } else if (scene === 'chat') {
     await registry.create({ ...base, id: SOAK_CHAT, threadType: 'chat', title: TITLES[0]! })
@@ -388,6 +450,9 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
   }
   let driver: SoakDriver | null = null
 
+  const quiet = scene === 'idle' || scene === 'long' || scene === 'day'
+  let offscreenTokens = 40_000
+  let offscreenPushes = 0
   const reconnect = scene === 'reconnect'
     ? watchReconnectSocket(server.remote.port, () => Object.fromEntries(children.map((id) => [id, server.store.lastSeq(id)])))
     : undefined
@@ -395,16 +460,39 @@ export async function startSoakHost(scene: SoakScene = 'board', opts: { history?
     baseUrl: `http://127.0.0.1:${server.remote.port}`,
     environmentId: server.environmentId,
     scene,
-    masterId: scene === 'chat' || scene === 'reconnect' ? '' : SOAK_MASTER,
+    masterId: scene === 'chat' || scene === 'reconnect' || quiet ? '' : SOAK_MASTER,
     reconnect,
     history,
     children,
-    focusedId: children[profile.focused]!,
+    focusedId: quiet ? SOAK_QUIET : children[profile.focused]!,
     streamerIds: profile.streamers.map((i) => children[i]!),
     projectId: project.id,
     workspaceId: workspace.id,
     keyId: created.key.id,
     key: created.token,
+    ...(scene === 'idle'
+      ? {
+          metaOffscreen() {
+            offscreenTokens += 1_337
+            append(SOAK_OFFSCREEN, { type: 'context', tokens: offscreenTokens, window: 1_000_000 })
+            return ++offscreenPushes
+          }
+        }
+      : {}),
+    ...(scene === 'long'
+      ? {
+          streamLong(ms: number) {
+            const stream = startLoad(apply, undefined, LONG_STREAM_PROFILE)
+            return new Promise<Record<string, number>>((done) =>
+              setTimeout(() => {
+                stream.stop()
+                const counts = stream.counts()
+                done({ delta: counts.delta, tool: counts.tool })
+              }, ms)
+            )
+          }
+        }
+      : {}),
     playScenarios(onStep) {
       return playScenarios((event) => append(SOAK_SCENARIOS, event), onStep, undefined, () => registry.markStatusForProof(SOAK_SCENARIOS, 'running'))
     },
