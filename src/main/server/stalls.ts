@@ -31,7 +31,7 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { appendFile, mkdir, rename, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { loadavg } from 'node:os'
-import { monitorEventLoopDelay } from 'node:perf_hooks'
+import { createHistogram, monitorEventLoopDelay } from 'node:perf_hooks'
 import type { InFlightRequest, LoopLag } from '@shared/contract'
 import { withRequestMemo } from './requestMemo'
 
@@ -236,6 +236,38 @@ export function timed<T>(label: string, fn: () => T): T {
   }
 }
 
+const flushTimes = {
+  ser: createHistogram(),
+  write: createHistogram(),
+  commit: createHistogram()
+}
+let flushRows = 0
+let flushMax = 0
+
+/** A completed transaction and the serialization already done when its rows were appended. */
+export function recordFlush(rows: number, ser: number, writeMs: number, commit: number): void {
+  if (!file) return
+  flushRows += rows
+  flushMax = Math.max(flushMax, ser + writeMs + commit)
+  flushTimes.ser.record(Math.max(1, Math.round(ser * 1e6)))
+  flushTimes.write.record(Math.max(1, Math.round(writeMs * 1e6)))
+  flushTimes.commit.record(Math.max(1, Math.round(commit * 1e6)))
+}
+
+export function recordSlowFlush(ms: number, ser: number, writeMs: number, commit?: number): void {
+  if (ms >= TIMED_MS) write(`timed event flush ${Math.round(ms)}ms ser=${Math.round(ser)} write=${Math.round(writeMs)} commit=${commit === undefined ? '-' : Math.round(commit)}${requestNotesField()}`)
+}
+
+/** The flushes that committed this hour, then clear the counters. */
+export function flushesLine(): string | null {
+  if (!flushRows) return null
+  const p95 = (key: keyof typeof flushTimes): number => Math.round(flushTimes[key].percentile(95) / 1e6)
+  const line = `flush n=${flushTimes.ser.count} rows=${flushRows} ser.p95=${p95('ser')} write.p95=${p95('write')} commit.p95=${p95('commit')} max=${Math.round(flushMax)}`
+  for (const histogram of Object.values(flushTimes)) histogram.reset()
+  flushRows = flushMax = 0
+  return line
+}
+
 /** A WAL checkpoint the worker ran: logged when it took TIMED_MS or more. */
 export function recordCheckpoint(schema: string, frames: number, ms: number): void {
   if (ms >= TIMED_MS) write(`checkpoint schema=${schema} frames=${frames} ms=${Math.round(ms)}`)
@@ -324,6 +356,8 @@ export function startStallMonitor(): () => void {
       workCallsAt = Date.now()
       const calls = workCallsLine()
       if (calls) write(calls, false)
+      const flushes = flushesLine()
+      if (flushes) write(flushes, false)
     }
   }, SAMPLE_MS)
   timer.unref()

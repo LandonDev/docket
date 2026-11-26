@@ -24,6 +24,7 @@ import {
   recordBackpressure,
   pushesField,
   recordCheckpoint,
+  recordSlowFlush,
   recordSendSpan,
   recordSlowRequest,
   reportRendererStall,
@@ -192,6 +193,11 @@ describe('stall recorder', () => {
     expect((await log()).trim()).toMatch(/ pushes=meta:5\/3ids\(accounts:3,status:1\),event:1 running=3 /)
     resetPushesForTests()
     expect(pushesField()).toBe('pushes=meta:0,event:0')
+  })
+
+  it('records the existing slow flush with all three phase fields', async () => {
+    recordSlowFlush(TIMED_MS, 2, 17, 33)
+    expect((await log()).trim()).toMatch(/ timed event flush \d+ms ser=\d+ write=\d+ commit=\d+ inflight=/)
   })
 
   it('a send span line rides with the context', async () => {

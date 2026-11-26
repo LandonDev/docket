@@ -7,7 +7,7 @@ import {
   type WorkspaceSnapshot
 } from '@shared/contract-m3a'
 import { mkdirSync } from 'node:fs'
-import { timed } from './stalls'
+import { recordFlush, recordSlowFlush, timed } from './stalls'
 import { ftsQuery, THREADS_SQL, TURN_ROW_SQL, TurnIndex, turnText, WORK_ROWS_SQL, type BackfillOptions } from './turnIndex'
 import type { EventReader } from './dbWorkers'
 import { dirname } from 'node:path'
@@ -755,6 +755,7 @@ export class Store {
     type: AgentEvent['type']
     table: 'events' | 'cold.events'
   }[] = []
+  private pendingSerializeMs = 0
   private flushScheduled = false
   private stmt(sql: string): StatementSync {
     let st = this.stmts.get(sql)
@@ -1272,7 +1273,9 @@ export class Store {
     this.nextSeq.set(sessionId, seq + 1)
     // A row for a cold session lands in the cold file, where its log is.
     const table = this.eventsTable(sessionId)
+    const serializeAt = performance.now()
     const payload = JSON.stringify(event)
+    this.pendingSerializeMs += performance.now() - serializeAt
     this.pendingEvents.push({ sessionId, seq, ts, payload, text: turnText(event), type: event.type, table })
     if (!this.flushScheduled) {
       this.flushScheduled = true
@@ -1295,7 +1298,9 @@ export class Store {
     this.flushScheduled = false
     if (this.pendingEvents.length === 0) return
     const rows = this.pendingEvents
+    const serializeMs = this.pendingSerializeMs
     this.pendingEvents = []
+    this.pendingSerializeMs = 0
     try {
       this.db.exec('BEGIN')
     } catch (error) {
@@ -1303,53 +1308,61 @@ export class Store {
       if ((error as NodeJS.ErrnoException).code === 'ERR_INVALID_STATE') return
       throw error
     }
+    const writeAt = performance.now()
+    let commitAt: number | undefined
+    let committed = false
+    let end: number
     try {
-      // Named in stalls.log: a long commit here is the WAL checkpoint the
-      // writer ran inline (dbWorkers.ts moves it off the loop) or the disk.
-      timed('event flush', () => {
-        for (const row of rows) {
-          const insert = this.stmtFor(`INSERT INTO ${row.table} (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`, [row.payload])
-          try {
-            insert.run(row.sessionId, row.seq, row.ts, row.payload)
-          } catch (error) {
-            if (!/constraint/i.test(String((error as Error).message))) throw error
-            // Something else wrote this session's log: re-seed from disk once.
-            const seq = this.maxSeq(row.sessionId) + 1
-            insert.run(row.sessionId, seq, row.ts, row.payload)
-            this.nextSeq.set(row.sessionId, seq + 1)
-            row.seq = seq
-          }
+      for (const row of rows) {
+        const insert = this.stmtFor(`INSERT INTO ${row.table} (session_id, seq, ts, payload) VALUES (?, ?, ?, ?)`, [row.payload])
+        try {
+          insert.run(row.sessionId, row.seq, row.ts, row.payload)
+        } catch (error) {
+          if (!/constraint/i.test(String((error as Error).message))) throw error
+          // Something else wrote this session's log: re-seed from disk once.
+          const seq = this.maxSeq(row.sessionId) + 1
+          insert.run(row.sessionId, seq, row.ts, row.payload)
+          this.nextSeq.set(row.sessionId, seq + 1)
+          row.seq = seq
         }
-        const flags = new Map<string, { user: number; completed: number; stopped: number }>()
-        for (const row of rows) {
-          const type = row.type
-          // The stop mark (lastTurnStopped): an error row stamped stopped sets
-          // it, a user row or a completed turn clears it; -1 leaves it.
-          const stopped =
-            type === 'user-text' || type === 'turn-complete' ? 0 : type === 'error' && isStoppedPayload(row.payload) ? 1 : -1
-          if (type !== 'user-text' && type !== 'turn-complete' && stopped < 0) continue
-          const flag = flags.get(row.sessionId) ?? { user: -1, completed: -1, stopped: -1 }
-          if (type === 'user-text') flag.user = 1
-          else if (type === 'turn-complete') flag.completed = 1
-          if (stopped >= 0) flag.stopped = stopped
-          flags.set(row.sessionId, flag)
-        }
-        for (const [id, flag] of flags) {
-          this.stmt(`INSERT INTO session_folds (session_id, folded_seq, fold_version, has_user_text, has_completed_turn, last_turn_stopped)
-            VALUES (?, 0, 0, ?, ?, MAX(?, 0)) ON CONFLICT(session_id) DO UPDATE SET
-            has_user_text = MAX(has_user_text, excluded.has_user_text),
-            has_completed_turn = MAX(has_completed_turn, excluded.has_completed_turn),
-            last_turn_stopped = CASE WHEN ? >= 0 THEN ? ELSE last_turn_stopped END`)
-            .run(id, flag.user, flag.completed, flag.stopped, flag.stopped, flag.stopped)
-        }
-        this.turnIndex.insertLanded(rows)
-        this.db.exec('COMMIT')
-      })
+      }
+      const flags = new Map<string, { user: number; completed: number; stopped: number }>()
+      for (const row of rows) {
+        const type = row.type
+        // The stop mark (lastTurnStopped): an error row stamped stopped sets
+        // it, a user row or a completed turn clears it; -1 leaves it.
+        const stopped =
+          type === 'user-text' || type === 'turn-complete' ? 0 : type === 'error' && isStoppedPayload(row.payload) ? 1 : -1
+        if (type !== 'user-text' && type !== 'turn-complete' && stopped < 0) continue
+        const flag = flags.get(row.sessionId) ?? { user: -1, completed: -1, stopped: -1 }
+        if (type === 'user-text') flag.user = 1
+        else if (type === 'turn-complete') flag.completed = 1
+        if (stopped >= 0) flag.stopped = stopped
+        flags.set(row.sessionId, flag)
+      }
+      for (const [id, flag] of flags) {
+        this.stmt(`INSERT INTO session_folds (session_id, folded_seq, fold_version, has_user_text, has_completed_turn, last_turn_stopped)
+          VALUES (?, 0, 0, ?, ?, MAX(?, 0)) ON CONFLICT(session_id) DO UPDATE SET
+          has_user_text = MAX(has_user_text, excluded.has_user_text),
+          has_completed_turn = MAX(has_completed_turn, excluded.has_completed_turn),
+          last_turn_stopped = CASE WHEN ? >= 0 THEN ? ELSE last_turn_stopped END`)
+          .run(id, flag.user, flag.completed, flag.stopped, flag.stopped, flag.stopped)
+      }
+      this.turnIndex.insertLanded(rows)
+      commitAt = performance.now()
+      this.db.exec('COMMIT')
+      end = performance.now()
+      committed = true
     } catch (error) {
+      end = performance.now()
       this.db.exec('ROLLBACK')
       for (const row of rows) this.nextSeq.delete(row.sessionId)
       console.error('[db] event flush failed, rows dropped:', rows.length, error)
     }
+    const writeMs = (commitAt ?? end) - writeAt
+    const commitMs = commitAt === undefined ? undefined : end - commitAt
+    recordSlowFlush(end - writeAt, serializeMs, writeMs, commitMs)
+    if (committed && commitMs !== undefined) recordFlush(rows.length, serializeMs, writeMs, commitMs)
   }
 
   // ── workspaces & projects ──────────────────────────────────────────

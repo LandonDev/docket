@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { flushesLine, flushStallLog, setStallLog } from './stalls'
 import { openDb, Store } from './db'
 import { frameJson } from './wire'
 import type { AgentEvent, SessionMeta } from '@shared/events'
@@ -76,6 +80,25 @@ describe('batched event log', () => {
     await tick()
     // The scheduled flush found nothing left to do.
     expect(counts.exec.filter((s) => s === 'BEGIN')).toHaveLength(1)
+  })
+
+  it('counts each committed batch and its rows in the flush window', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'flush-window-'))
+    setStallLog(dir)
+    try {
+      store.insertSession(meta('a'))
+      store.appendEvent('a', delta('x'))
+      store.appendEvent('a', delta('y'))
+      await tick()
+      store.appendEvent('a', delta('z'))
+      await tick()
+      expect(flushesLine()).toMatch(/^flush n=2 rows=3 ser.p95=\d+ write.p95=\d+ commit.p95=\d+ max=\d+$/)
+      expect(flushesLine()).toBeNull()
+    } finally {
+      await flushStallLog()
+      setStallLog(null)
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   it('one hundred deltas in a tick are one transaction and one seq read', async () => {
