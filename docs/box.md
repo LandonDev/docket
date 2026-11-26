@@ -5009,6 +5009,19 @@ pull whose read went out before such a write never writes its older answer
 over it. The box keeps a rule for a model it cannot run: Muse Wonder Full's
 policy is stored there although its own Muse list is empty.
 
+Global Plans (`plans`) and Reviews (`review`) share the same home.
+Each seeds once, even if rules and defaults synced before the upgrade.
+The box's existing set wins. When the box has no set, the first follower
+with a local set can seed it during its first sync. The Mac then follows
+box edits and uses that copy for its own threads. Per-project overrides
+still use `projectSettingsSync`.
+
+Global `plans.get` and `review.get` include `home: { name, online }` when
+another host holds the set. A global write goes there and refuses when the
+link is down. A box that omits `rulesSync.plans` or `rulesSync.review` from
+its hello, or rejects the corresponding RPC as unsupported, leaves that
+set local and the getter omits `home`.
+
 One copy is not enough on its own, because each host runs only what its CLIs
 serve. On 2026-11-05 the two copies were byte-identical, Muse Wonder Full
 approved for everyone from Low to Extra high, and still a box thread's table
@@ -5053,7 +5066,9 @@ exchange and an older box), `peerCatalogs.test.ts`, the peer-catalog cases in
 renderer's `lib/tcserver/rules.test.ts`, `Orchestration.dom.test.tsx` and
 `ThreadDefaults.dom.test.tsx`. Proof: `bun run script:e2e-rules-sync` (two
 headless instances; only the one playing the Mac serves Muse rows, through
-`TEMP_CODE_PROBED_CATALOG`; build first).
+`TEMP_CODE_PROBED_CATALOG`; build first). Run
+`bun run script:e2e-rules-sync --settings-only` for Plans and Reviews on two
+isolated Bun hosts without a build.
 
 ### Add-ons and skills: one copy, on the box
 

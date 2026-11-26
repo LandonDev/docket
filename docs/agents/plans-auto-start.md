@@ -41,3 +41,18 @@
   in-process registry; `scripts/lib/electron-stub.ts` is the Bun preload
   that stands in for the claude driver's `nativeImage` import, so such a
   proof runs without an Electron runtime, on the box too).
+
+
+## Where the settings live
+
+The box holds the global Plans set when both hosts support it. On first sync,
+the box's set wins if it has one. If the box has no set, it takes this
+computer's set. Builds on this computer then follow the box's set, including
+for projects that use the global settings. A project's own set still follows
+its project home.
+
+`plans.get` includes `home: { name, online }` when another host holds the
+global set. A global `plans.set` goes to that host and refuses while it is
+offline. An older box without `rulesSync.plans` leaves the set local and the
+reply omits `home`. The settings keys are still `plans` and
+`plans:project:<id>`.

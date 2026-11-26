@@ -66,6 +66,10 @@
   `/usr/local/bin` (macOS) or `~/.bun/bin` and `~/.local/bin` (elsewhere)
   first when the PATH lacks them; a publish once died `command not found:
   bun` without it.
+- RulesSync keeps one copy of orchestration rules, thread defaults, global
+  Plans and global Reviews on the box. Only rules and defaults also share
+  workspace overrides. A box without the corresponding Plans or Reviews
+  hello feature leaves that setting local. See [One copy on the box](../box.md#orchestration-rules-and-thread-defaults-one-copy-on-the-box).
 - Harness config (commands, agents, `~/.claude/hooks`, settings.json,
   plugins, Codex prompts, config and `~/.codex/hooks.json`, Muse settings and
   hooks, two keys of ~/.claude.json) is mirrored Mac → box by the Mac's main

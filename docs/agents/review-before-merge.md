@@ -8,6 +8,14 @@
   models the orchestration rules approve and this machine can run), blockOn
   `confirmed` | `any`, maxMinutes 15). RPCs `review.get` (override, global,
   effective + source), `review.set`, `review.override` (approve).
+- The box holds the global Reviews set when both hosts support it.
+  On first sync the box's set wins if it has one. If the box has no set,
+  it takes this computer's set. Local threads then use that set unless
+  the project overrides it. A project's override still follows its own
+  project home. Global `review.get` includes `home: { name, online }`
+  when another host holds the set. Global `review.set` refuses while that
+  host is offline. With an older box that lacks `rulesSync.review`, reads
+  and writes use the local set and the reply omits `home`.
 - The hook is the `merge_branch` app tool (`src/main/server/mergeReview.ts`,
   the git side in `mergeBranch.ts`), on every thread, claude in-process and
   codex over the bridge: it fast-forwards the project branch to the named

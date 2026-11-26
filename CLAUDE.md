@@ -257,8 +257,7 @@ Read the file a task touches before changing that subject.
 - **Background work and watching** — background tasks on the session row, the
   Watching state, the Activity section (src/shared/watch.ts, lib/activity.ts).
   [docs/agents/background-work-and-watching.md](docs/agents/background-work-and-watching.md)
-- **Review before merge** — the `merge_branch` tool's optional reviewer and
-  gate (src/main/server/mergeReview.ts). [docs/agents/review-before-merge.md](docs/agents/review-before-merge.md)
+- **Review before merge** — the `merge_branch` reviewer and gate. The box keeps global Reviews. [docs/agents/review-before-merge.md](docs/agents/review-before-merge.md)
 - **The desktop transcript** — a viewport window (AgentTranscript.tsx,
   lib/transcriptWindow.ts), the streaming reveal, markdown in a worker.
   [docs/agents/desktop-transcript.md](docs/agents/desktop-transcript.md)
@@ -292,8 +291,7 @@ Read the file a task touches before changing that subject.
   [docs/agents/menu-bar.md](docs/agents/menu-bar.md)
 - **The fleet switches** — Pause, Resume, Stop and Archive done over a scope
   (`session.batch`, lib/threadBatch.ts). [docs/agents/fleet-switches.md](docs/agents/fleet-switches.md)
-- **Plans and the auto-start** — `plan_complete` and the build the host starts
-  (src/main/server/planFlow.ts). [docs/agents/plans-auto-start.md](docs/agents/plans-auto-start.md)
+- **Plans and the auto-start** — `plan_complete` and the build it starts. The box keeps global Plans. [docs/agents/plans-auto-start.md](docs/agents/plans-auto-start.md)
 - **One build per plan, the project plan** — the `project-plan` thread type
   (docs/PROJECT-PLAN.md). [docs/agents/plans-project-plan.md](docs/agents/plans-project-plan.md)
 - **Master threads** — a pinned master's batch of root threads, the queue and

@@ -16,11 +16,14 @@
  *    host it is refused naming `environmentId: "mac"`; with it, the box
  *    sends it to mac (before this fix the box refused it either way)
  *  - a rule set on the box reaches mac
+ *  - global Plans and Reviews follow the box and writes on mac land there
  *  - mac restarted keeps both rules and still names the box as the home
  *  - with the box down a mac write is refused naming the box, nothing is
  *    written on mac, and rules.get says the home is offline (what the
  *    Orchestration page reads to turn its controls off)
- * Run: bun scripts/e2e-rules-sync.ts   (build first: electron-vite build)
+ * Run: bun run script:e2e-rules-sync   (build first: electron-vite build)
+ * For the Plans and Reviews proof without a build: add --settings-only.
+ * This runs two isolated Bun server processes through the same peer wire.
  * Nothing here touches /Applications/TempCode.app, a real HOME, the real
  * Aliax vault, the gateway marker or the box's live temp-code.service.
  */
@@ -29,9 +32,35 @@ import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSyn
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import type { PlanState, ReviewState } from '../src/shared/contract'
+import { DEFAULT_PLAN_SETTINGS } from '../src/shared/plans'
+import { DEFAULT_REVIEW_SETTINGS } from '../src/shared/review'
 import { E2E_APP_TOKEN_SEED, withAppToken } from './lib/appToken'
 
 const REPO = resolve(import.meta.dir, '..')
+const settingsOnly = process.argv.includes('--settings-only')
+
+const hostArg = process.argv.indexOf('--settings-host')
+if (hostArg !== -1) {
+  const dataDir = process.argv[hostArg + 1]
+  if (!dataDir || dataDir !== process.env.TEMP_CODE_USER_DATA || !/\/tc-rules-sync-e2e-[^/]+\/(mac|box)-data$/.test(dataDir))
+    throw new Error('A proof host needs a scratch TEMP_CODE_USER_DATA')
+  const { configure } = await import('aliax-core')
+  configure({
+    dataDir: join(dataDir, 'aliax'),
+    fetch: async (url) => { throw new Error(`unexpected fetch ${url}`) },
+    secrets: { mode: 'chromiumKey', keychainItem: 'Rules sync proof' },
+    appName: 'rules-sync-e2e'
+  })
+  const { startServer } = await import('../src/main/server/index')
+  const { publishLocalPort } = await import('../src/main/headless')
+  const host = await startServer(join(dataDir, 'temp-code.db'), { dataDir, claimShim: false })
+  publishLocalPort(dataDir, host.port)
+  await new Promise<void>((done) => process.once('SIGTERM', done))
+  await host.close()
+  process.exit(0)
+}
+
 const KEEP = process.env.TC_RS_KEEP === '1'
 let failures = 0
 const check = (name: string, ok: boolean, detail = ''): boolean => {
@@ -42,7 +71,7 @@ const check = (name: string, ok: boolean, detail = ''): boolean => {
 const log = (m: string): void => console.log(`      ${m}`)
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
-if (!existsSync(join(REPO, 'out', 'main', 'index.js'))) {
+if (!settingsOnly && !existsSync(join(REPO, 'out', 'main', 'index.js'))) {
   console.error('out/main is missing: run electron-vite build first')
   process.exit(2)
 }
@@ -95,8 +124,11 @@ writeFileSync(
 
 function launch(inst: Inst): void {
   const env: Record<string, string> = {
-    ...(process.env as Record<string, string>),
+    PATH: process.env.PATH ?? '/usr/bin:/bin',
     HOME: inst.home,
+    XDG_CONFIG_HOME: join(inst.home, '.config'),
+    XDG_DATA_HOME: join(inst.home, '.local/share'),
+    XDG_CACHE_HOME: join(inst.home, '.cache'),
     TMPDIR: inst.tmp,
     WINVM_DIR: `${inst.data}/no-vm`,
     TEMP_CODE_USER_DATA: inst.data,
@@ -116,13 +148,13 @@ function launch(inst: Inst): void {
   }
   if (inst.name === 'mac') env.TEMP_CODE_PROBED_CATALOG = museCatalog
   else env.TEMP_CODE_PROBED_CATALOG = join(root, 'box-muse.json')
-  delete env.ELECTRON_RUN_AS_NODE
-  delete env.TEMP_CODE_DEBUG_PORT
   const electron = join(REPO, 'node_modules', '.bin', 'electron')
   const argv =
-    process.platform === 'linux'
-      ? ['xvfb-run', '-a', '-s', '-screen 0 1280x800x24 -nolisten tcp', 'dbus-run-session', '--', electron, '.']
-      : [electron, '.']
+    settingsOnly
+      ? [process.execPath, '--preload', 'scripts/lib/electron-stub.ts', 'scripts/e2e-rules-sync.ts', '--settings-host', inst.data]
+      : process.platform === 'linux'
+        ? ['xvfb-run', '-a', '-s', '-screen 0 1280x800x24 -nolisten tcp', 'dbus-run-session', '--', electron, '.']
+        : [electron, '.']
   const proc = spawn(argv[0], argv.slice(1), { cwd: REPO, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true })
   proc.stdout?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
   proc.stderr?.on('data', (c: Buffer) => appendFileSync(inst.log, c))
@@ -184,6 +216,8 @@ interface RulesAnswer {
   home?: { name: string; online: boolean } | null
 }
 const rulesOf = (inst: Inst): Promise<RulesAnswer> => rpc<RulesAnswer>(inst, 'rules.get', { workspaceId: null })
+const plansOf = (inst: Inst): Promise<PlanState> => rpc<PlanState>(inst, 'plans.get', { projectId: null })
+const reviewOf = (inst: Inst): Promise<ReviewState> => rpc<ReviewState>(inst, 'review.get', { projectId: null })
 
 function kill(inst: Inst): void {
   if (!inst.proc?.pid) return
@@ -211,26 +245,12 @@ process.on('SIGINT', () => void cleanup().then(() => process.exit(130)))
 
 const upOf = (inst: Inst): Promise<boolean> => until(`${inst.name} up`, 90_000, () => existsSync(join(inst.data, 'server.json')))
 
-launch(mac)
-launch(box)
-try {
-  const up = (await upOf(mac)) && (await upOf(box))
-  if (!check('both headless instances published their local socket', up)) throw new Error(`no server.json; logs ${mac.log} ${box.log}`)
-  const macId = (await rpc<{ environmentId: string }>(mac, 'remote.status')).environmentId
-  const boxId = (await rpc<{ environmentId: string }>(box, 'remote.status')).environmentId
-  log(`mac ${macId}, box ${boxId} on :${box.remote}; logs ${mac.log} ${box.log}`)
+async function proveCatalogAndRules(): Promise<void> {
   const served = await until("mac's probe answered its Muse rows", 30_000, async () => {
     const catalog = await rpc<{ muse?: { models: { id: string }[] } }>(mac, 'catalog.get')
     return !!catalog.muse?.models.some((m) => m.id === FULL)
   })
   check('mac serves Muse Wonder Full and the box serves no Muse row', served && !(await rpc<{ muse?: { models: unknown[] } }>(box, 'catalog.get')).muse?.models.length)
-
-  // ── 1. pair: the box becomes the home ─────────────────────────────────
-  const key = await rpc<{ token: string }>(box, 'remote.keys.create', { name: 'mac (e2e)', audience: 'client', caps: ['read', 'operate', 'approve', 'admin'] })
-  await rpc(mac, 'remote.environments.add', { url: `http://127.0.0.1:${box.remote}`, key: key.token, name: 'box' })
-  const homed = await until("mac's rules follow the box", 60_000, async () => (await rulesOf(mac)).home?.name === 'box')
-  check('rules.get on mac names the box as the home, online', homed && (await rulesOf(mac)).home?.online === true, JSON.stringify((await rulesOf(mac)).home))
-  check('rules.get on the box names no home: its copy is the one', !(await rulesOf(box)).home)
 
   // ── 2. a rule for a model only mac runs, set on mac ───────────────────
   const base = (await rulesOf(mac)).rules
@@ -277,15 +297,60 @@ try {
     again && after?.rules.conduct.maxParallel === 8 && after.rules.models[`muse:${FULL}`]?.approved === true,
     JSON.stringify(after?.home)
   )
+}
 
-  // ── 6. the box goes down ──────────────────────────────────────────────
+launch(mac)
+launch(box)
+try {
+  const up = (await upOf(mac)) && (await upOf(box))
+  if (!check('both headless instances published their local socket', up)) throw new Error(`no server.json; logs ${mac.log} ${box.log}`)
+  const macId = (await rpc<{ environmentId: string }>(mac, 'remote.status')).environmentId
+  const boxId = (await rpc<{ environmentId: string }>(box, 'remote.status')).environmentId
+  log(`mac ${macId}, box ${boxId} on :${box.remote}; logs ${mac.log} ${box.log}`)
+  // Pair: the box becomes the home.
+  const key = await rpc<{ token: string }>(box, 'remote.keys.create', { name: 'mac (e2e)', audience: 'client', caps: ['read', 'operate', 'approve', 'admin'] })
+  await rpc(mac, 'remote.environments.add', { url: `http://127.0.0.1:${box.remote}`, key: key.token, name: 'box' })
+  const homed = await until("mac's rules follow the box", 60_000, async () => (await rulesOf(mac)).home?.name === 'box')
+  check('rules.get on mac names the box as the home, online', homed && (await rulesOf(mac)).home?.online === true, JSON.stringify((await rulesOf(mac)).home))
+  check('rules.get on the box names no home: its copy is the one', !(await rulesOf(box)).home)
+
+  // The linked side can edit both global sets. The box owns the result.
+  const plans = await until('Plans and Reviews name the box', 15_000, async () => {
+    const [plan, review] = await Promise.all([plansOf(mac), reviewOf(mac)])
+    return plan.home?.name === 'box' && plan.home.online && review.home?.name === 'box' && review.home.online
+  })
+  check('Plans and Reviews name the box on the linked side', plans)
+  check('the box answers without a home for Plans and Reviews', !(await plansOf(box)).home && !(await reviewOf(box)).home)
+  await rpc(mac, 'plans.set', { projectId: null, settings: { ...DEFAULT_PLAN_SETTINGS, autoImplement: false } })
+  await rpc(mac, 'review.set', { projectId: null, settings: { ...DEFAULT_REVIEW_SETTINGS, beforeMerge: true } })
+  check('a Plans write on mac turns off auto-start on the box', (await plansOf(box)).settings.autoImplement === false)
+  check('a Reviews write on mac turns on Review before merge on the box', (await reviewOf(box)).settings.beforeMerge === true)
+
+  await rpc(box, 'plans.set', { projectId: null, settings: { ...DEFAULT_PLAN_SETTINGS, autoImplement: false, archiveAfterStart: false } })
+  await rpc(box, 'review.set', { projectId: null, settings: { ...DEFAULT_REVIEW_SETTINGS, beforeMerge: true, maxMinutes: 24 } })
+  check('the linked side follows edits from the box', await until('mac follows Plans and Reviews', 15_000, async () =>
+    (await plansOf(mac)).settings.archiveAfterStart === false && (await reviewOf(mac)).settings.maxMinutes === 24
+  ))
+
+  if (!settingsOnly) await proveCatalogAndRules()
+
+  // The linked side keeps its last values while the box is down.
   await killHard(box)
   const offline = await until('mac sees the box offline', 60_000, async () => (await rulesOf(mac)).home?.online === false)
   check('rules.get on mac says the home is offline', offline)
   const current = (await rulesOf(mac)).rules
   const refused = await errorOf(rpc(mac, 'rules.set', { workspaceId: null, rules: { ...current, conduct: { ...current.conduct, maxParallel: 16 } } }))
   check('a mac write with the box down is refused naming the box', refused.startsWith('refused:') && refused.includes('live on box') && refused.includes('offline'), refused)
-  check('nothing was written on mac', (await rulesOf(mac)).rules.conduct.maxParallel === 8)
+  check('nothing was written on mac', (await rulesOf(mac)).rules.conduct.maxParallel === current.conduct.maxParallel)
+  const settingsOffline = await until('Plans and Reviews see the box offline', 15_000, async () =>
+    (await plansOf(mac)).home?.online === false && (await reviewOf(mac)).home?.online === false
+  )
+  check('Plans and Reviews see the box offline', settingsOffline)
+  for (const method of ['plans.set', 'review.set'] as const) {
+    const why = await errorOf(rpc(mac, method, { projectId: null, settings: null }))
+    check(`${method} refuses while the box is down`, why.startsWith('refused:') && why.includes('live on box') && why.includes('offline'), why)
+  }
+  check('the linked side keeps the last Plans and Reviews sets', (await plansOf(mac)).settings.archiveAfterStart === false && (await reviewOf(mac)).settings.maxMinutes === 24)
   check('no instance logged an uncaught error', !/Uncaught|unhandledRejection/.test(logOf(mac) + logOf(box)))
 } catch (err) {
   check('the run completed', false, err instanceof Error ? err.message : String(err))
