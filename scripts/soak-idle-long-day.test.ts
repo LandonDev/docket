@@ -92,6 +92,15 @@ describe('judgeIdle', () => {
     expect(v.verdicts.find((x) => x.what.startsWith('unfocused: running'))!.got).toBe(37)
   })
 
+  it("the gate's form reports CPU and still fails an animation off screen or a push that renders", () => {
+    const hot = [phase('focused', { cpuS: 2 }), phase('unfocused', { cpuS: 2 }), phase('hidden', { cpuS: 1 })]
+    const reported = judgeIdle(hot, IDLE_RULE, { cpuReportOnly: true })
+    expect(reported.ok).toBe(true)
+    expect(reported.verdicts.filter((x) => x.what.includes('CPU')).every((x) => x.reportOnly && !x.ok)).toBe(true)
+    expect(judgeIdle([phase('focused', { running: 78, rows: 40 }), phase('unfocused'), phase('hidden')], IDLE_RULE, { cpuReportOnly: true }).ok).toBe(false)
+    expect(judgeIdle([phase('focused', { rendered: [64] }), phase('unfocused'), phase('hidden')], IDLE_RULE, { cpuReportOnly: true }).ok).toBe(false)
+  })
+
   it('fails a run that timed no push or missed a phase', () => {
     const none = phase('focused', { rendered: [] })
     expect(judgeIdle([none, phase('unfocused'), phase('hidden')]).verdicts.find((x) => x.what.startsWith('focused: components'))!.ok).toBe(false)

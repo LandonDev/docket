@@ -378,7 +378,7 @@ export const STEPS: Step[] = [
     capMs: SOAK_CAP_MS,
     // The same lane, after the reconnect scene: one instance at a time.
     lane: 'build',
-    why: "a settled chat on screen while 40 threads run behind it, focused, behind a second window and hidden (D17, D20): no more running animations than working rows on screen, a meta flush within 2 ms at p95, one meta push of a thread no screen shows rendering 3 components at most, and the renderer's CPU a phase against D17's bounds (scripts/measure-renderer-soak.ts --gate --scene idle, 3 min at most)",
+    why: "a settled chat on screen while 40 threads run behind it, focused, behind a second window and hidden (D17, D20): no more running animations than working rows on screen, a meta flush within 2 ms at p95, one meta push of a thread no screen shows rendering 3 components at most; the renderer's CPU a phase is reported against D17's 5, 3 and 1 % until a run on the Mac sizes the gate's (scripts/measure-renderer-soak.ts --gate --scene idle, 3 min at most)",
     mac: true,
     paths: SOAK_PATHS
   },

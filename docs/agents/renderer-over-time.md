@@ -124,9 +124,11 @@
     his clicks did. See
     [.temp-code/plans/landed/F-reconnect-catchup/before.md](../../.temp-code/plans/landed/F-reconnect-catchup/before.md)
     for the Linux baseline.
-- `--scene idle`, `--scene long` and `--scene day` (hand runs on the
-  synthetic host, no gate row yet; budgets D17, D20, D04, D05, D11, D12 and
-  D18 of scripts/perf/budgets.ts): the window shows a settled chat while
+- `--scene idle`, `--scene long` and `--scene day` (on the synthetic host;
+  budgets D17, D20, D04, D05, D11, D12 and D18 of scripts/perf/budgets.ts;
+  idle and long are publish rows, `renderer-soak-idle` and
+  `renderer-soak-long`, run as `--gate --scene idle|long` on each scene's own
+  clock, `QUIET_GATE_BUDGET_MS` in soakJudge.ts; the day is a hand run): the window shows a settled chat while
   forty threads run behind it, their metas moving every 4 s each (ten a
   second in all, the most the host's coalescer flushes a window; soakLoad.ts
   IDLE_PROFILE). Each writes /tmp/tc-soak/<label>.json and .md and is judged
@@ -152,7 +154,10 @@
     not change was not visited; a component fiber new or with PerformedWork
     rendered). `IDLE_RULE`: 5%, 3% and 1% of a core, running animations no
     more than the working rows on screen while seen, a flush at p95 within
-    2 ms, a push 3 components at most.
+    2 ms, a push 3 components at most. The gate's form reports the CPU
+    against its bound and passes whatever it reads (`judgeIdle(..., {
+    cpuReportOnly })`): on the box the fixed renderer reads 9.6, 10.2 and
+    3.9 % (perf2 M8's report), and a run on the Mac sizes the gate's.
   - long: one agent-shaped thread of 30,000 rows in two turns, its last one
     live (`perfThread`, scripts/lib/ios-perf-seeds.ts, written straight to the
     event log), beside the forty. A cold open from its rail row (click to
@@ -167,7 +172,8 @@
     store's next page, stopped after 180 s. `LONG_RULE`: readable within
     1.2 s, no task over 100 ms in the 15 s after the open, none over 50 ms
     and 4 ms of main thread a frame at p95 while streaming, the hit within
-    2 s.
+    2 s. Under `--gate` the scene climbs to no top and the jump (D12) is
+    reported, not judged (`judgeLong(result, LONG_RULE, true)`).
   - day: every running thread streams with 400 rows of history; ten are
     opened one after another (`window.__docket.open`) and left inside one
     50 s window. Heap after GC at the start and the end, and the store's
@@ -262,6 +268,43 @@
   by transform alone, every 3 s) beside its three-dot mark (`WorkingMark`),
   both Web Animations on the document timeline that the compositor runs,
   unmounted or still in a hidden pane or document. A streaming code block colours on a 150 ms throttle.
+  A spinner holds no running animation where no one can see it (perf2 M8):
+  in a parked pane (`usePaneVisible`), while the document is hidden
+  (`useDocumentVisible`), or off screen (one shared IntersectionObserver in
+  spinner.tsx). It turns from its mount as before, the observer stops a box
+  that is out of view, and a turn started again sits on the document
+  timeline from 0, so it comes back in phase
+  (components/ui/spinner.gate.dom.test.tsx).
+- No work for a screen no one sees (perf2 M8). A meta push of one thread
+  reaches only the readers of that thread. Chrome that draws a few threads
+  of many reads them through lib/tcserver/metaSelect.ts, never
+  `useSessionMetas()`: `useSessionMetasWhere(keep)` is the metas `keep`
+  holds, filtered again only when a changed id was held or is now kept (the
+  flush's `ids`, so a push elsewhere costs a look at its own id);
+  `useSessionMetasDerived(derive, same)` keeps the value it drew while
+  `same` says the new one reads alike; `useSessionTree(root)` walks a tree
+  by parent and hears a flush only when `affected` names its root. The
+  banners (`BANNER_HELD`), the column (`columnHolds`), the title bar
+  (`stripHolds`) and the rail's Working rows (`sameWorkingRows`; an open
+  tooltip reads the live meta) use them, and `useActivity` reads its tree
+  so. `keep` must hold every meta its reader reads. A pane hears only its
+  own session: `useSession`, `useSessionChrome`, `useSessionStatus` and
+  `useSessionBusy` subscribe through `subscribeSession(id)`, told only when
+  `get(id)` is another object; the open-session list keeps its array while
+  every open session is the object it was; the right panel takes the
+  session as `sameSessionChrome` keeps it (ThreadView.tsx `PaneRightPanel`).
+  Off React: the Dock badge is counted on macOS alone and only when a
+  counting fact of a changed meta moved (lib/dockBadge.ts `countingFacts`,
+  `badgePasses`); the launch mirror writer visits the flush's changed ids
+  and writes nothing for a push of transient fields (`sameSummary`); the
+  draft writer and the pending-approval index read only sessions that are
+  new objects (`approvalVisits`). Tests count it:
+  lib/tcserver/metaPush.dom.test.tsx (no listener, no render for a push
+  elsewhere), metaSelect.test.ts, dockBadge.install.test.ts,
+  store.approvals.test.ts, launchMirror.test.ts and subscriptions.test.ts.
+  Still visible on purpose, so not done: spinners turning in a visible but
+  unfocused window, and the meta flush's rate while unfocused (the owner's
+  call: both change what he sees).
 - A switch costs what changed, nothing more (perf2 M3). The seen map is
   written once after a switch, not on its path, and its readers hear only
   a mark that flips a thread's unread state (read-and-unread.md). A

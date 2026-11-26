@@ -65,7 +65,7 @@ const verdictRows = (verdicts: readonly Verdict[]): string[] => ['| reading | go
 function finish(ctx: QuietCtx, scene: string, record: object, verdict: { ok: boolean; verdicts: Verdict[] }, md: string[]): boolean {
   writeFileSync(join(ctx.root, `${ctx.label}.json`), JSON.stringify({ label: ctx.label, scene, platform: process.platform, ...record, verdict }, null, 1))
   writeFileSync(join(ctx.root, `${ctx.label}.md`), [...md, '', ...verdictRows(verdict.verdicts)].join('\n') + '\n')
-  for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : '✗'} ${v.what}: ${v.got} (limit ${v.limit})`)
+  for (const v of verdict.verdicts) console.log(`${v.ok ? '✓' : v.reportOnly ? '·' : '✗'} ${v.what}: ${v.got} (limit ${v.limit}${!v.ok && v.reportOnly ? ', reported' : ''})`)
   console.log(`${verdict.ok ? 'passed' : 'FAILED'}: ${ctx.root}/${ctx.label}.md`)
   return verdict.ok
 }
@@ -137,7 +137,7 @@ export async function recordIdle(ctx: QuietCtx): Promise<boolean> {
     log(`${phase} (${state.visibility}, ${state.focus ? 'focused' : 'not focused'}): CPU ${summary.cpuPct}%, ${census.running} running animations (${census.onScreen} on screen) for ${census.workingRows} working rows on screen, ${summary.flushes.count} flushes p50 ${summary.flushes.ms.p50} / p95 ${summary.flushes.ms.p95} ms, a push renders ${summary.pushes.map((p) => p.rendered).join(', ')}`)
   }
   host.close()
-  const verdict = judgeIdle(phases)
+  const verdict = judgeIdle(phases, IDLE_RULE, { cpuReportOnly: ctx.gate })
   const md = [
     `# ${ctx.label}: idle scene, ${ctx.children.length} running threads behind a settled chat (${process.platform})`,
     '',
