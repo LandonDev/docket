@@ -14,11 +14,20 @@ import type { ThreadRow } from "../../lib/workspaceSessions";
  * (two lines, newest first, the time gone while it works) and the archived row (a count, the list, Restore).
  */
 
-const store = vi.hoisted(() => ({ metas: [] as SessionMeta[], asked: [] as string[] }));
+const store = vi.hoisted(() => ({ metas: [] as SessionMeta[], asked: [] as string[], listeners: new Set<(changes: { ids: ReadonlySet<string> }) => void>(), reckoned: 0 }));
 vi.mock("../../lib/tcserver/store", async (original) => ({
   ...(await original<object>()),
-  sessionStore: { ensureArchivedWork: (id: string) => (store.asked.push(id), Promise.resolve()), metas: () => store.metas, onMetaChange: () => () => {} },
+  sessionStore: {
+    ensureArchivedWork: (id: string) => (store.asked.push(id), Promise.resolve()),
+    metas: () => store.metas,
+    metaOf: (id: string) => store.metas.find((m) => m.id === id) ?? null,
+    onMetaChange: (l: (changes: { ids: ReadonlySet<string> }) => void) => (store.listeners.add(l), () => void store.listeners.delete(l)),
+  },
 }));
+vi.mock("./columnModel", async (original) => {
+  const real = await original<typeof import("./columnModel")>();
+  return { ...real, archivedThreads: (...args: Parameters<typeof real.archivedThreads>) => (store.reckoned++, real.archivedThreads(...args)) };
+});
 const CATALOG = vi.hoisted(() => ({ projects: [{ id: "m-lan", name: "Spring LAN", workspaceId: "w-job", environmentId: "local" }], workspaces: [{ id: "w-job", name: "Purdue Esports", path: "/w/Purdue Esports", kind: "work", environmentId: "local" }], loaded: true }));
 vi.mock("../../lib/tcserver/workspaces", async (original) => {
   const real = await original<{ workspaceStore: object }>();
@@ -357,6 +366,35 @@ describe("the archived row", () => {
     store.metas = [];
     rerender(<ArchivedRow scope={{ scope: "~work", environmentIds: ["box"] }} onOpen={() => {}} />);
     expect(container.textContent).toBe("");
+  });
+});
+
+describe("the archived row's reckoning (perf M11)", () => {
+  const meta = (over: Partial<SessionMeta>): SessionMeta =>
+    ({ id: "x", title: "T", status: "idle", updatedAt: 1, createdAt: 1, cwd: "/w/Purdue Esports", environmentId: "local", scope: "work", archived: false, threadType: "chat", workspaceId: "w-job", ...over }) as SessionMeta;
+  const push = (next: SessionMeta[], ...ids: string[]): void => {
+    store.metas = next;
+    act(() => {
+      for (const l of [...store.listeners]) l({ ids: new Set(ids) });
+    });
+  };
+
+  it("a push for a thread that is not archived does not run archivedThreads; one for an archived thread does", () => {
+    const old = meta({ id: "old", archived: true });
+    store.metas = [old, meta({ id: "live" })];
+    render(<ArchivedRow scope={{ scope: "w-job", environmentIds: ["local"] }} onOpen={() => {}} />);
+    expect(screen.getByRole("button", { name: "1 archived" })).toBeTruthy();
+    const before = store.reckoned;
+    for (let i = 0; i < 4; i++) push([old, meta({ id: "live", updatedAt: 10 + i })], "live");
+    expect(store.reckoned).toBe(before);
+    // The live thread archived: reckoned again, counted.
+    push([old, meta({ id: "live", archived: true, updatedAt: 20 })], "live");
+    expect(store.reckoned).toBe(before + 1);
+    expect(screen.getByRole("button", { name: "2 archived" })).toBeTruthy();
+    // An archived thread put back: reckoned again.
+    push([old, meta({ id: "live", updatedAt: 21 })], "live");
+    expect(store.reckoned).toBe(before + 2);
+    expect(screen.getByRole("button", { name: "1 archived" })).toBeTruthy();
   });
 });
 

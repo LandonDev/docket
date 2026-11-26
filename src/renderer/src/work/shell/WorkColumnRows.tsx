@@ -1,4 +1,4 @@
-import { memo, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { memo, useContext, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { HostGlyph } from "../../chrome/HostGlyph";
 import { useHostsOffline } from "../../chrome/hostOffline";
 import { Outbox } from "../../chrome/icons";
@@ -23,6 +23,7 @@ import { setSessionArchived } from "../../lib/sessionStore";
 import { sessionStore } from "../../lib/tcserver/store";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import type { WorkThreadItem } from "../../lib/sidebarRows";
+import type { SessionMeta } from "../../lib/tcserver/types";
 import { archivedThreads, quietWords, targetWords, threadLead, threadLine, threadTime, workProjectRows, type ArchivedThread, type WorkLead, type WorkProjectRow } from "./columnModel";
 import { useColumnProjects } from "./columnProjects";
 import { projectsBack, useProjectsHere } from "../projects/here";
@@ -277,10 +278,60 @@ export const WorkThreadRow = memo(function WorkThreadRow({ row, project, actions
 export type ArchivedScope = { scope: string | readonly string[]; environmentIds: readonly string[] };
 
 /**
+ * The scope's archived ids as a store a column reads (perf M11): `archivedThreads` runs over the metas only when a
+ * change could move the answer, a meta archived now or one already in it, or a new catalog; a push for a thread that
+ * is not archived and was not, the common case while threads stream, keeps the last answer. A metas array that moved
+ * with no change heard (a reset) reads again.
+ */
+export function archivedWatch(scope: string | readonly string[]): { subscribe: (listener: () => void) => () => void; snapshot: () => string; read: () => ArchivedThread[] } {
+  const kept: { metas: readonly SessionMeta[] | null; catalog: object | null; joined: string; ids: ReadonlySet<string>; heard: Set<string> | null } = {
+    metas: null,
+    catalog: null,
+    joined: "",
+    ids: new Set(),
+    heard: null,
+  };
+  const read = (): ArchivedThread[] => {
+    const { projects, workspaces } = workspaceStore.getSnapshot();
+    return archivedThreads(sessionStore.metas(), scope, projects, workspaces);
+  };
+  const snapshot = (): string => {
+    const metas = sessionStore.metas();
+    const catalog = workspaceStore.getSnapshot();
+    if (metas === kept.metas && catalog === kept.catalog) return kept.joined;
+    const heard = kept.heard;
+    kept.heard = null;
+    // Only threads that are not archived and were not moved: the answer stands.
+    if (catalog === kept.catalog && kept.metas && heard && [...heard].every((id) => !kept.ids.has(id) && !sessionStore.metaOf(id)?.archived)) {
+      kept.metas = metas;
+      return kept.joined;
+    }
+    const ids = read().map((thread) => thread.id);
+    kept.metas = metas;
+    kept.catalog = catalog;
+    kept.ids = new Set(ids);
+    kept.joined = ids.join("\n");
+    return kept.joined;
+  };
+  const subscribe = (listener: () => void): (() => void) => {
+    const offMetas = sessionStore.onMetaChange((changes) => {
+      if (kept.metas) for (const id of changes.ids) (kept.heard ??= new Set()).add(id);
+      listener();
+    });
+    const offCatalog = workspaceStore.subscribe(listener);
+    return () => {
+      offMetas();
+      offCatalog();
+    };
+  };
+  return { subscribe, snapshot, read };
+}
+
+/**
  * The scope's archived threads, asked of its hosts once, in an idle slot after the column mounts (archived Work
  * threads alone: `session.list {archived, scope: "work"}`), never in the first paint. It renders again only when
- * the scope's archived ids change, never on another thread's push (docs/agents/renderer-over-time.md); the list
- * itself is read when it opens.
+ * the scope's archived ids change, never on another thread's push (docs/agents/renderer-over-time.md), and reckons
+ * them again only when a change touches an archived thread (`archivedWatch`); the list itself is read when it opens.
  */
 export function useArchivedThreads({ scope, environmentIds }: ArchivedScope): { ids: readonly string[]; list: () => ArchivedThread[] } {
   const hosts = environmentIds.join("\n");
@@ -288,23 +339,10 @@ export function useArchivedThreads({ scope, environmentIds }: ArchivedScope): { 
   useEffect(() => {
     if (hosts) whenIdle(() => hosts.split("\n").forEach((id) => void sessionStore.ensureArchivedWork(id)));
   }, [hosts]);
-  const read = useCallback((): ArchivedThread[] => {
-    const { projects, workspaces } = workspaceStore.getSnapshot();
-    return archivedThreads(sessionStore.metas(), key.includes("\n") ? key.split("\n") : key, projects, workspaces);
-  }, [key]);
-  const joined = useSyncExternalStore(
-    (listener) => {
-      const offMetas = sessionStore.onMetaChange(listener);
-      const offCatalog = workspaceStore.subscribe(listener);
-      return () => {
-        offMetas();
-        offCatalog();
-      };
-    },
-    () => read().map((thread) => thread.id).join("\n"),
-  );
+  const watch = useMemo(() => archivedWatch(key.includes("\n") ? key.split("\n") : key), [key]);
+  const joined = useSyncExternalStore(watch.subscribe, watch.snapshot);
   const ids = useMemo(() => (joined ? joined.split("\n") : []), [joined]);
-  return { ids, list: read };
+  return { ids, list: watch.read };
 }
 
 /**
