@@ -253,7 +253,8 @@ class Rig {
         const { port, pid } = JSON.parse(status) as { port: number; pid: number }
         if (app.pid && ownsPid(pid, app.pid) && Number.isInteger(port) && port > 0 && port <= 65535) {
           this.box.port = port
-          const hello = await openClient(`ws://127.0.0.1:${port}/`, 1000, { signal: this.signal, hello: true })
+          const remaining = Math.max(1, deadline - performance.now())
+          const hello = await openClient(`ws://127.0.0.1:${port}/`, Math.min(1000, remaining), { signal: this.signal, hello: true })
           hello.close()
           return performance.now() - this.started
         }
@@ -280,7 +281,8 @@ class Rig {
   }
 
   async remote(key = this.remoteKey!, signal = this.signal, onPush?: (message: { push?: string; projectId?: string }) => void) {
-    const url = await remoteSocketUrl(`http://127.0.0.1:${this.remotePort}`, key, signal)
+    const ticketDeadline = AbortSignal.any([signal, AbortSignal.timeout(1500)])
+    const url = await remoteSocketUrl(`http://127.0.0.1:${this.remotePort}`, key, ticketDeadline)
     const socket = await openClient(url, 1500, { signal, hello: true, onPush })
     this.sockets.add(socket)
     return socket
@@ -793,7 +795,7 @@ async function measureBoot(rig: Rig, result: Result): Promise<void> {
     )
     const layout = bootLayout(rig.options.seedSize)
     const from = Date.now() - (performance.now() - rig.started)
-    while (resumed.size < THREADS && performance.now() - rig.started < MAX_MS) {
+    while ((resumed.size < THREADS || rig.streams < THREADS) && performance.now() - rig.started < MAX_MS) {
       rig.signal.throwIfAborted()
       for (let index = 0; index < THREADS; index++) {
         const id = BOOT_PREFIX + index
@@ -801,7 +803,7 @@ async function measureBoot(rig: Rig, result: Result): Promise<void> {
         const row = query.get(id, bootRows(layout, index))
         if (row && row.ts <= from + MAX_MS) resumed.set(id, Math.max(0, row.ts - from))
       }
-      if (resumed.size < THREADS) await sleep(250, undefined, { signal: rig.signal })
+      if (resumed.size < THREADS || rig.streams < THREADS) await sleep(250, undefined, { signal: rig.signal })
     }
     result.details.resumed = Object.fromEntries(resumed)
     const focused = resumed.get(BOOT_PREFIX + '0') ?? null
