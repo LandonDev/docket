@@ -839,8 +839,11 @@
   `viewRow`, `answer`, `decline`, every one `via: .phone`. The app's
   Work/OutboxRequestSheet.swift holds `OutboxRequestCenter` (RootView's
   `OutboxRequestSheetHost`), the sheet and the transcript's
-  `OutboxRequestInline` (ActionGroup.swift); Work/OutboxDiscard.swift is
-  Discard's alert with its reason (`outboxDiscardPrompt`), which then calls
+  `OutboxRequestInline` (ActionGroup.swift). Row detail pages update the
+  sheet's open-row count through a binding. The sheet shows send status
+  over the detail page and clears it when the list returns.
+  Work/OutboxDiscard.swift shows Discard's alert with a reason
+  (`outboxDiscardPrompt`), which then calls
   `OutboxPresses.discard(_:reason:)`. Every press is drawn by its own
   KeyMay row: Send, Edit and Discard by `.outboxSend`, Send Later by
   `.outboxDecide`, the timed bar by `.outboxSendNow` and `.outboxCancelSend`,

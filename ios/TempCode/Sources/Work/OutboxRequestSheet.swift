@@ -306,7 +306,7 @@ struct OutboxRequestSheet: View {
             Section {
                 ForEach(request.rows, id: \.ref) { row in
                     let (ticked, rowPhase) = look(row, held: held)
-                    RequestRowView(row: row, request: request, client: client, ticked: ticked, phase: rowPhase, closed: request.state != .open, toggle: { toggle(row) }, opened: { fresh[OutboxModel.key($0.ref)] = $0 })
+                    RequestRowView(row: row, request: request, client: client, ticked: ticked, phase: rowPhase, closed: request.state != .open, rowsOpen: $rowsOpen, toggle: { toggle(row) }, opened: { fresh[OutboxModel.key($0.ref)] = $0 })
                 }
             }
         }
@@ -421,6 +421,7 @@ private struct RequestRowView: View {
     let phase: Phase
     /// The request is over: a row his press did not take reads "Left out".
     var closed = false
+    @Binding var rowsOpen: Int
     let toggle: () -> Void
     let opened: (OutboxRequestRow) -> Void
     @ScaledMetric(relativeTo: .body) private var tickSize: CGFloat = 22
