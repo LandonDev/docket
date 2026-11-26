@@ -457,7 +457,7 @@ private struct DashBlockView: View {
                         Text(figure.value ?? "–").font(.title2.weight(.semibold)).monospacedDigit()
                         Text(figure.label).textStep(.meta).foregroundStyle(.secondary)
                         // The figure's line under its number reads at the 4.5:1 floor (baseline w39), as the Outbox's stamps do.
-                        if let sub = figure.sub { Text(sub).textStep(.stamp) }
+                        if let sub = figure.sub { Text(sub).textStep(.stamp, tint: Color(.label)) }
                     }
                 }
             }
@@ -488,7 +488,7 @@ private struct DashBlockView: View {
                             .frame(height: 8)
                         }
                         .frame(height: 8)
-                        Text(bar.value.formatted()).textStep(.stamp).monospacedDigit()
+                        Text(bar.value.formatted()).textStep(.stamp, tint: Color(.label))
                     }
                 }
             }
@@ -586,7 +586,9 @@ private struct CompareView: View {
                         changeText(row).font(.body).padding(.vertical, 2)
                     }
                 } header: {
-                    Text("\(stats.added) added, \(stats.removed) removed, \(stats.changed) changed").textStep(.meta).monospacedDigit()
+                    if let counts = HistoryRestore.counts(added: stats.added, removed: stats.removed, changed: stats.changed) {
+                        Text(counts).textStep(.meta).monospacedDigit()
+                    }
                 }
             }
             .listStyle(.plain)

@@ -39,7 +39,7 @@ struct CaptureSheet: View {
     @State private var targets: [ShareTargets.Target] = []
     @State private var saving = false
     @State private var queued: String?
-    /// Why the files could not be queued at all.
+    /// Why the files could not be picked, or queued, at all.
     @State private var filesError: String?
     @State private var landed = 0
     @FocusState private var typing: Bool
@@ -119,7 +119,14 @@ struct CaptureSheet: View {
                 }
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
-                if case .success(let urls) = result { take(urls) }
+                // A picker that failed says so in the files' footer, as a file that would not copy does.
+                switch result {
+                case .success(let urls):
+                    filesError = nil
+                    take(urls)
+                case .failure:
+                    filesError = "Could not read the files you picked."
+                }
             }
             .onChange(of: photos) { _, items in
                 guard !items.isEmpty else { return }

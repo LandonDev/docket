@@ -246,8 +246,9 @@ struct CommentsSheet: View {
                     .transition(.opacity)
             }
         }
-        // The send mark's edge, not its hit area, lines up with the field's inset.
-        .padding(.leading, 12)
+        // The field starts at the sheet's text edge, where the quote, the comments and the hairline start; the send
+        // mark's edge, not its hit area, lines up with the field's inset.
+        .padding(.leading, Layout.textEdge)
         .padding(.trailing, 4)
         .padding(.top, 6)
         .padding(.bottom, 4)

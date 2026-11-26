@@ -34,6 +34,15 @@ struct FilesGoToTests {
         #expect(FilesGoToRules.empty(text: "budget", rows: 2, failed: [], asking: false) == nil)
     }
 
+    /// The rows answer the words they were asked for: typed past, they are neither drawn nor taken by Search.
+    @Test func rowsAnswerOnlyTheirOwnWords() {
+        #expect(FilesGoToRules.current(answered: "budget", text: "budget"))
+        #expect(FilesGoToRules.current(answered: "budget", text: " budget "))
+        #expect(FilesGoToRules.current(answered: "", text: ""))
+        #expect(!FilesGoToRules.current(answered: "budget", text: "budget memo"))
+        #expect(!FilesGoToRules.current(answered: nil, text: ""))
+    }
+
     /// One spelling of a size on every phone screen (round 1, R1-F15): "KB", never "kB" beside it.
     @Test func aSizeHasOneSpelling() {
         #expect(FilesRules.size(15_389) == ByteCountFormatter.string(fromByteCount: 15_389, countStyle: .file))

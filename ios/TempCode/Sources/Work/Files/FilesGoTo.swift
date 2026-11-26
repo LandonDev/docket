@@ -4,7 +4,8 @@ import TempCodeContract
 
 /// Go to (⌘P, the desktop's): a field, and the names each job's host has seen that hold every word, recents
 /// first (`work.files.names`, twenty a job from its table, never a walk). The next keystroke cancels the asks
-/// still out. A folder pushes its list, a file opens; the sheet goes either way.
+/// still out, and rows answering older words are neither drawn nor opened. A folder pushes its list, a file opens; the
+/// sheet goes either way.
 struct FilesGoTo: View {
     @Environment(AppModel.self) private var model
     @Environment(ShellNavigator.self) private var navigator
@@ -14,10 +15,15 @@ struct FilesGoTo: View {
     @State private var rows: [FilesFound.Row] = []
     /// The jobs whose host could not look up the names, by name.
     @State private var failed: [String] = []
+    /// The words `rows` and `failed` answer.
+    @State private var answered: String?
     @State private var asking = true
     @FocusState private var focused: Bool
 
     var body: some View {
+        let current = FilesGoToRules.current(answered: answered, text: text)
+        let rows = current ? self.rows : []
+        let failed = current ? self.failed : []
         NavigationStack {
             List {
                 // A host that could not look is said beside what the others found, with Try Again.
@@ -42,7 +48,9 @@ struct FilesGoTo: View {
             }
             .listStyle(.plain)
             .overlay {
-                if let empty = FilesGoToRules.empty(text: text, rows: rows.count, failed: failed, asking: asking) {
+                if rows.isEmpty, failed.isEmpty, asking || !current {
+                    ProgressView()
+                } else if let empty = FilesGoToRules.empty(text: text, rows: rows.count, failed: failed, asking: asking || !current) {
                     ContentUnavailableView(empty, systemImage: "arrow.forward.circle")
                 }
             }
@@ -62,7 +70,7 @@ struct FilesGoTo: View {
 
     private func ask() async {
         asking = true
-        let words = text.trimmingCharacters(in: .whitespaces)
+        let words = FilesGoToRules.query(text)
         if !words.isEmpty { try? await Task.sleep(for: .milliseconds(150)) }
         guard !Task.isCancelled else { return }
         var answers: [(job: FilesRoot.Job, entries: [FileEntry]?)] = []
@@ -78,6 +86,7 @@ struct FilesGoTo: View {
         guard !Task.isCancelled else { return }
         // Each host ranks its own; across jobs the order of the jobs holds; a host that failed is named, never empty.
         (rows, failed) = FilesGoToRules.merge(answers, order: jobs)
+        answered = words
         asking = false
     }
 

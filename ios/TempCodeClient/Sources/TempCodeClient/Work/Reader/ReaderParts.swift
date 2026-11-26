@@ -99,6 +99,12 @@ public enum HistoryRestore {
         case .unknown: "Restore sent"
         }
     }
+
+    /// A compare's head: only the counts above zero ("2 changed"), nil when nothing changed.
+    public static func counts(added: Int, removed: Int, changed: Int) -> String? {
+        let parts = [(added, "added"), (removed, "removed"), (changed, "changed")].filter { $0.0 > 0 }
+        return parts.isEmpty ? nil : parts.map { "\($0.0) \($0.1)" }.joined(separator: ", ")
+    }
 }
 
 /// Ask lands him on the thread's Chat (docs/IOS-DESIGN.md "A file on the phone"). Seating the file in a new

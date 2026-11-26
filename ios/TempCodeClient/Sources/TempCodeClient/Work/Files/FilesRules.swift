@@ -666,6 +666,17 @@ public enum FilesGoToRules {
         return (rows, ranked.filter { $0.entries == nil }.map(\.job.name))
     }
 
+    /// The words a lookup asks for: the field's text, trimmed.
+    public static func query(_ text: String) -> String {
+        text.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The answer on hand is for the field's text now: only then are its rows drawn, tapped, or taken by Search, so
+    /// a name typed past them never opens the last words' first match.
+    public static func current(answered: String?, text: String) -> Bool {
+        answered == query(text)
+    }
+
     /// The sheet's empty words once nothing is out: "Nothing Recent" or "No Names Match"; nil while rows show, while
     /// it asks, or where a host failed (its line says so instead).
     public static func empty(text: String, rows: Int, failed: [String], asking: Bool) -> String? {

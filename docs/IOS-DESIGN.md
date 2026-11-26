@@ -2675,7 +2675,10 @@ milestone 46 built, where it lives now:
   "Changed since asked" for a row that changed since the ask, which starts
   unticked and can be ticked only once he opens it (the chevron pushes the
   item as it will go, and opening it asks the host for a fresh receipt,
-  `request.view`). A tick is the receipt the host issued for the row as
+  `request.view`; a read that fails says "Not opened" and why, with Try
+  Again beside it). A read again that fails over the request on screen
+  (a push from another device) puts its reason and Try Again above the
+  head until a read lands. A tick is the receipt the host issued for the row as
   drawn, never the item: a reload that moves a row's receipt or marks it
   changed clears its tick, and a row opened through `request.view` starts
   unticked until he ticks it. The foot is two wide glass capsules, Not Now
@@ -2898,9 +2901,11 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   the driver ("You are driving" or "The agent is driving") with Take Over
   or Hand Back, and an act it holds as the one prominent glass button,
   which opens the held detail; a form's responses
-  (each answer under its question); a dashboard's blocks; history as a
-  version list, each opening a compare with now (what went struck through
-  in red, what came underlined in green). A held mail shows as it will go;
+  (each answer under its question); a dashboard's blocks (a figure's line
+  under its number and a chart's values at the stamp size in the label
+  ink); history as a version list, each opening a compare with now, headed
+  by the counts above zero alone ("2 changed"; `HistoryRestore.counts`),
+  what went struck through in red, what came underlined in green. A held mail shows as it will go;
   once sent, the rule his edits suggest is one muted line with Add Rule.
 - **The live picture** (`Work/Items/LivePicture.swift`, docs/agents/live-video.md):
   the computer an agent drives as video, in the field corner with the
@@ -2974,7 +2979,8 @@ phone"):
   cut in the middle, the size as a stamp; swipe to remove), with Job (a
   picker of the jobs a file can go to, each with its dot) when there is more
   than one, and the footer saying where they went ("2 files go to Purdue.")
-  or what could not be read. Last, one section of plain rows: Scan Receipt
+  or what could not be read, a Files picker that failed too ("Could not read
+  the files you picked."). Last, one section of plain rows: Scan Receipt
   (`doc.viewfinder`), Add Photos (`photo.on.rectangle`, the system's photo
   picker) and Add Files (`doc`, the system's file picker). Cancel keeps the
   draft; Save is the one confirm, a spinner while it goes, the success
@@ -3097,9 +3103,12 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   any other failed read says "Can’t Open <name>" with the reason and Try
   Again. The reason is the host's sentence alone, never the wire's code
   word ("internal: …", `FilesRules.sentence`). Pull to refresh.
-- **Presses**: the context menu holds Star (Unstar), Rename…, Move…,
-  Copy… and, under a divider, Delete; swipe leading stars, swipe trailing
-  deletes (never a full swipe). A Trash row holds Put Back alone. Each is
+- **Presses**: the context menu holds Star (Unstar), Add to Thread…,
+  Rename…, Move…, Copy… and, under a divider, Delete; swipe leading stars,
+  swipe trailing deletes (never a full swipe). Add to Thread… opens the
+  job's open Work threads, pinned first then the newest; a tap puts the
+  file's chip in that thread's box and opens it, nothing sent. A file row
+  dragged onto a thread's box gives the same chip. A Trash row holds Put Back alone. Each is
   offered only where `FilesRules.offers` says the place does it for this
   key (a key without operate sees none; a shared place asks approve), and
   a refusal the host still gives shows in an alert as the host words it.
@@ -3130,7 +3139,10 @@ Files (the files pillar's F9, docs/agents/work-files.md "The phone"):
   `opening`), then the reader as for any file.
 - **Go To** is a sheet with the search field focused: as he types, the
   names each job's host has seen (`work.files.names`, recents first with
-  no words); Return takes the first. A folder pushes, a file opens.
+  no words); Return takes the first. Rows stand only for the words they
+  answered: typed past them, they go and a spinner waits for the new
+  answer, so Return never opens an older match. A folder pushes, a file
+  opens.
 - **Search** is the system field on every list. On Files it filters the
   rows the phone already holds at once (every word, case and accents
   ignored), then takes each job's host's search as it answers, newest
@@ -3188,8 +3200,7 @@ or an Excel file in the hosted editor (the desktop's own editor saves those;
 the phone says "Edit it on your computer" and still shows its comments and
 changes); Files' Empty Trash, tabs, the columns view and making a saved
 search (the desktop's alone for now); a change to a computer's files
-reached through the job's host (made on that computer); Add to Thread and
-the drop into a thread's box (M4a).
+reached through the job's host (made on that computer).
 
 ### Today
 
@@ -3555,8 +3566,9 @@ under a "Resolved" section header. A thread is the words it was left on in
 quotation marks (meta, three lines), then each comment: who (title step,
 semibold) and when (`AgoText`) on one line, the words under it; replies are
 set in by the 16 pt indent and nothing else. The bottom bar holds one field
-("Add a comment"; a tap on a thread turns it to "Reply" with a "Replying to
-…" line and its close) and the 28 pt send mark in a 44 pt target. Words in
+("Add a comment", starting at the text edge with the quote and the comments;
+a tap on a thread turns it to "Reply" with a "Replying to …" line and its
+close) and the 28 pt send mark in a 44 pt target. Words in
 the field keep their target: a tap on another thread, or the thread
 resolving, moves only an empty field; his press on the close turns a reply
 into a new comment. The field is locked while a post is on its way. Swipe:
@@ -3585,7 +3597,8 @@ with the host's words under it in the destructive text ink. A sheet's cell
 the host found changed since the agent saw it says so the same way from the
 first read and has no Accept swipe; with only such rows left, Accept All is
 off. A failed read is the system's unavailable view with the host's words and
-Try Again.
+Try Again; over rows on screen (a reread on a revision push) it is one line
+above them, the host's words with Try Again, until a read lands.
 
 **Highlights, notes and fields** (a PDF): his highlights are a neutral wash of
 the paper's ink over each line, with the system's note glyph at the first
@@ -3747,7 +3760,8 @@ any app into a Work workspace's own folder.
   photos" and their pictures in a row. A file that could not be read is said
   in the group's footer ("Could not read Photo.heic.", "Could not read 2 of 3
   files."); Save takes the rest.
-- **Workspace**: his Work workspaces as rows, each led by its sector's 8 pt
+- **Job**: his Work workspaces as rows, under the header "Job" as in
+  Capture, each led by its sector's 8 pt
   dot, the name in the label ink, the last used checked with the tinted
   checkmark and first in the list; never used, the job open in the app is
   checked; with neither, none is, and Save waits for his pick (never the

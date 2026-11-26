@@ -168,6 +168,13 @@ struct ReaderLayerTests {
         #expect(!HistoryRestore.restores("v9", in: versions))
     }
 
+    @Test func `a compare heads its changes with the counts above zero alone`() {
+        #expect(HistoryRestore.counts(added: 0, removed: 0, changed: 2) == "2 changed")
+        #expect(HistoryRestore.counts(added: 1, removed: 0, changed: 3) == "1 added, 3 changed")
+        #expect(HistoryRestore.counts(added: 1, removed: 2, changed: 3) == "1 added, 2 removed, 3 changed")
+        #expect(HistoryRestore.counts(added: 0, removed: 0, changed: 0) == nil)
+    }
+
     @Test func `a restore on his own document is written with its Undo; on a shared one it waits as suggestions`() {
         let direct = HistoryRestore.outcome(.direct(.init(versionId: "v4", beforeVersionId: "v3b")))
         #expect(direct == .written(undo: "v3b"))

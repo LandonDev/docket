@@ -220,6 +220,7 @@ struct OutboxRequestSheet: View {
             let answer = try await client.work.request(requestId)
             if request == nil { ticks = RequestSheetModel.initialTicks(answer) }
             request = answer
+            loadError = nil
         } catch {
             loadError = ActionError.wrap(error).message
         }
@@ -270,6 +271,21 @@ struct OutboxRequestSheet: View {
         let thread = client.session(request.sessionId)?.title
         let held = RequestSheetModel.reconcile(ticks, with: request)
         return List {
+            // A read again that failed over the request as it showed: the failure with Try Again above it, until a
+            // read lands, so old ticks never pass for current ones.
+            if let loadError {
+                Section {
+                    HStack(spacing: Layout.rowGap) {
+                        Text(loadError)
+                            .textStep(.meta, tint: Tint.destructiveText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: Layout.rowGap)
+                        PillButton("Try Again") { Task { await load() } }
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: Layout.textEdge, bottom: 8, trailing: Layout.textEdge))
+                    .accessibilityIdentifier("outbox-request-reread-failed")
+                }
+            }
             Section {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(RequestSheetModel.head(request, ticked: held))
@@ -530,9 +546,15 @@ private struct RequestRowDetail: View {
                             Text(effect).font(.subheadline).foregroundStyle(Color(.label)).fixedSize(horizontal: false, vertical: true)
                         }
                         if row.changed {
-                            Text(viewError.map { "Not opened: \($0)" } ?? (current.receipt == nil ? "Reading it as it stands now…" : "Changed since asked. Tick it to include it as it stands now."))
-                                .textStep(.meta, tint: viewError == nil ? Color(.label) : Tint.destructiveText)
-                                .fixedSize(horizontal: false, vertical: true)
+                            HStack(spacing: Layout.rowGap) {
+                                Text(viewError.map { "Not opened: \($0)" } ?? (current.receipt == nil ? "Reading it as it stands now…" : "Changed since asked. Tick it to include it as it stands now."))
+                                    .textStep(.meta, tint: viewError == nil ? Color(.label) : Tint.destructiveText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                if viewError != nil {
+                                    Spacer(minLength: Layout.rowGap)
+                                    PillButton("Try Again") { viewError = nil; Task { await readRow() } }
+                                }
+                            }
                         }
                         ForEach(OutboxModel.notes(item, held: { HeldTime.of($0) })) { note in
                             Text(note.text)
@@ -575,18 +597,21 @@ private struct RequestRowDetail: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            // Opening a changed row is what lets him press it: the host issues its receipt at what he sees now.
-            guard row.changed, row.open, row.result == nil, shown == nil else { return }
-            do {
-                let next = try await client.work.viewRow(request.id, ref: row.ref)
-                shown = next
-                opened(next)
-            } catch {
-                viewError = ActionError.wrap(error).message
-            }
-        }
+        .task { await readRow() }
         .accessibilityIdentifier("outbox-request-row")
+    }
+
+    /// Opening a changed row is what lets him press it: the host issues its receipt at what he sees now. Try Again
+    /// asks once more.
+    private func readRow() async {
+        guard row.changed, row.open, row.result == nil, shown == nil else { return }
+        do {
+            let next = try await client.work.viewRow(request.id, ref: row.ref)
+            shown = next
+            opened(next)
+        } catch {
+            viewError = ActionError.wrap(error).message
+        }
     }
 }
 

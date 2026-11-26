@@ -87,7 +87,7 @@ struct ShareSheetView: View {
                     .accessibilityIdentifier("share-workspace")
                 }
             } header: {
-                Text("Workspace")
+                Text("Job")
             } footer: {
                 if case .waiting(let words) = model.phase { Text(words) }
             }

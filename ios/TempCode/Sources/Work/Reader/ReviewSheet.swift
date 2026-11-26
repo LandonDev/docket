@@ -28,6 +28,25 @@ struct ReviewSheet: View {
                         .textStep(.meta)
                         .listRowSeparator(.hidden)
                 }
+                // A read again that failed over changes on screen: the host's words and Try Again above them, kept
+                // until a read lands.
+                if !review.rows.isEmpty, let failure = review.failure {
+                    HStack(spacing: Layout.rowGap) {
+                        Text(failure)
+                            .textStep(.meta, tint: Tint.destructiveText)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: Layout.rowGap)
+                        if retrying {
+                            ProgressView()
+                        } else {
+                            PillButton("Try Again") { Task { await retry() } }
+                        }
+                    }
+                    .listRowInsets(Layout.rowInsets)
+                    .listRowSeparator(.hidden, edges: .top)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("review-reread-failed")
+                }
                 ForEach(review.groups) { group in
                     Section {
                         ForEach(group.rows) { row in
