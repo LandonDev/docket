@@ -190,7 +190,9 @@ as it would a sheet; side by side Escape leaves it open. Three views, kept in th
   over its column. The bar: History (back to the list), the two pickers in
   one column, then who made the current change and Previous, `n/N`, Next.
   More holds the layout switch and "Restore the older version". The current
-  change is the 1px foreground 40% outline on its own words. Each side's
+  change is the 1px foreground 40% outline: on changed words in a line it
+  sits on the tint's own edge (`CUR_WORDS`, no offset), so the spaces round
+  them still read; on a whole block 2px out. Each side's
   block is drawn in its own style, so the newer side looks as the line
   under it says: a heading on its level's step, a paragraph in the Title
   style on the title step (18/26 semibold, 16/24 side by side), and its
@@ -200,8 +202,16 @@ as it would a sheet; side by side Escape leaves it open. Three views, kept in th
   one stepper with Reject and Accept, a line saying whose suggestions they
   are or which version a restore brings back.
 
+A view with nothing to show because its read failed (the versions, a
+compare, a review's suggestions) is the centred `OpenFailed`, "Couldn't
+open this history" with the reason and Retry, never a red line over a blank
+pane; the bar then holds no Compare. The state line is for a read that
+failed while what it showed stays: suggestions that did not load over the
+listed versions, the versions under a drawn compare.
+
 The prototype's third view ("A list of changes") and people in the bar are
-not built.
+not built. The preview page `HistoryCanvas.preview.tsx` draws the list,
+suggestions waiting, no versions, and the two failures.
 
 ## On the phone
 
@@ -216,7 +226,7 @@ Proven by tests: `formats/diff/diff.test.ts`,
 `collab-server/{history,versions}.test.ts` (work-kit);
 `work/history/history.test.ts` (the service in process, a `.tcdoc` and a
 fake LifeOS), `work/service/service.test.ts` (the write route's choice),
-`work/history/HistoryCanvas.dom.test.tsx` (the pane). Seen running: an
+`work/history/HistoryCanvas.dom.test.tsx` (the pane, its failures among it). Seen running: an
 isolated instance under xvfb, its own Work service on a `.tcdoc`, the canvas
 opened through `work.canvas.open` (`.temp-code/plans/landed/M19/`).
 

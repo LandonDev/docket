@@ -21,6 +21,8 @@ export type Layout = "one" | "sxs";
 type Side = "both" | "left" | "right";
 
 const CUR = "rounded-[2px] outline-1 outline-offset-2 outline-[color-mix(in_srgb,var(--foreground)_40%,transparent)]";
+/** The current change in a line of words: the outline on the tint's own edge, so the spaces round it still read. */
+const CUR_WORDS = "outline-1 outline-offset-0 outline-[color-mix(in_srgb,var(--foreground)_40%,transparent)]";
 const INS = "rounded-[2px] bg-(--add-bg) box-decoration-clone";
 // Removed words keep 70% of the ink, so they read on the tint in both themes.
 const DEL = "rounded-[2px] bg-(--del-bg) box-decoration-clone text-(--soft-foreground) line-through decoration-[color-mix(in_srgb,var(--destructive)_70%,transparent)]";
@@ -51,7 +53,7 @@ function changed(segments: readonly InlineSegment[], side: Side, cur: boolean): 
       // Taken words then new ones read as two: a space's width between them, as the prototype draws it, with no space in the text.
       const after = s.op === "+" && all[i - 1]?.op === "-";
       return (
-        <span key={i} className={cn(s.op === "+" ? INS : DEL, after && "ms-1.5", cur && CUR)}>
+        <span key={i} className={cn(s.op === "+" ? INS : DEL, after && "ms-1.5", cur && CUR_WORDS)}>
           {inner}
         </span>
       );
@@ -136,7 +138,7 @@ function Block({ block, other, row, mark, side, compact, number, cur }: BlockPro
   // A changed block draws its words' change: the older side's runs against the newer's.
   const ops = !mark && other ? row?.inline : undefined;
   const words = ops ? changed(side === "left" ? inlineSegments(block.runs, other!.runs, ops) : inlineSegments(other!.runs, block.runs, ops), side, cur) : plain(block.runs);
-  const text = mark ? <span className={cn(mark === "add" ? INS : DEL, cur && CUR)}>{words}</span> : words;
+  const text = mark ? <span className={cn(mark === "add" ? INS : DEL, cur && CUR_WORDS)}>{words}</span> : words;
   const media = ["image", "video", "audio", "file"].includes(block.type);
   const lead =
     block.type === "bulletListItem" ? (

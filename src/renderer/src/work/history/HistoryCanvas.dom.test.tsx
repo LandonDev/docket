@@ -40,6 +40,7 @@ const host = vi.hoisted(() => ({
   failBranches: false,
   failRestore: false,
   failVersions: false,
+  failCompare: false,
   /** while set, the suggestions' read waits on it */
   branchesGate: null as Promise<void> | null,
   toasts: [] as string[],
@@ -60,6 +61,7 @@ vi.mock("../../lib/connection", async (original) => {
         return { versions: VERSIONS, shared: false, names };
       }
       if (method === "work.history.compare") {
+        if (host.failCompare) throw new Error("The box did not answer");
         const diff = diffBlocks(OLD, NEW);
         for (const row of diff.rows) row.by = [AGENT];
         return { diff, names };
@@ -109,6 +111,7 @@ beforeEach(async () => {
   host.branchesGate = null;
   host.failRestore = false;
   host.failVersions = false;
+  host.failCompare = false;
   host.toasts = [];
   await new Promise<void>((done) => openMenus(done));
 });
@@ -155,6 +158,10 @@ describe("the history canvas", () => {
     // The bar: back to History, the two pickers, who made the change and the count.
     expect(bar().textContent).toContain("Venue for the spring LAN");
     expect(within(bar()).getByText("1/3")).toBeTruthy();
+    // Changed words in a line are outlined on their tint's own edge, so the spaces round them still read.
+    const words = [...container.querySelectorAll<HTMLElement>('[data-row="0"] .outline-1')];
+    expect(words.map((w) => w.textContent)).toEqual(["8:00", "7:30"]);
+    for (const w of words) expect(w.className).toContain("outline-offset-0");
     fireEvent.click(within(bar()).getByRole("button", { name: "Next change" }));
     await waitFor(() => expect(within(bar()).getByText("2/3")).toBeTruthy());
     // The current change is outlined where it is written: the added block's words, and nothing of the first change.
@@ -252,11 +259,46 @@ describe("the history canvas", () => {
     await waitFor(() => expect(container.querySelector("[data-canvas-state]")).toBeNull());
   });
 
-  it("says suggestions that did not load on a review's state line, and draws no bones under it", async () => {
+  it("says suggestions that did not load for a review in the body, centred with Retry, with no line and no bones", async () => {
     host.failBranches = true;
     const review = await seat({ view: "review", branchId: "b1" });
-    await waitFor(() => expect(review.container.querySelector("[data-canvas-state='failed']")?.textContent).toContain("The suggestions did not load"));
+    await waitFor(() => expect(review.container.querySelector("[data-canvas-failed]")?.textContent).toContain("Couldn't open this history"));
+    expect(review.container.querySelector("[data-canvas-state]")).toBeNull();
     expect(review.container.querySelector("[data-canvas-body] [data-slot=skeleton]")).toBeNull();
+  });
+
+  it("says versions that did not load in the body, centred with Retry, never a red line over a blank pane", async () => {
+    host.failVersions = true;
+    const { container } = await seat();
+    const failed = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>("[data-canvas-failed]");
+      expect(found?.textContent).toContain("Couldn't open this history");
+      return found!;
+    });
+    expect(failed.textContent).toContain("did not answer");
+    expect(container.querySelector("[data-canvas-state]")).toBeNull();
+    // Nothing to pick from: no Compare waiting in the bar over it.
+    expect(container.querySelector("[data-canvas-bar]")?.textContent ?? "").not.toContain("Compare");
+    host.failVersions = false;
+    fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByText("Wrote the morning")).toBeTruthy());
+    expect(container.querySelector("[data-canvas-failed]")).toBeNull();
+  });
+
+  it("says a compare that did not load in the body, centred with Retry, and its line is gone", async () => {
+    host.failCompare = true;
+    const { container } = await seat({ view: "compare", from: "v1", to: "v2" });
+    const failed = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>("[data-canvas-failed]");
+      expect(found?.textContent).toContain("Couldn't open this history");
+      return found!;
+    });
+    expect(container.querySelector("[data-canvas-state]")).toBeNull();
+    expect(container.querySelector("[data-canvas-body] [data-slot=skeleton]")).toBeNull();
+    host.failCompare = false;
+    fireEvent.click(within(failed).getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(container.querySelector("[data-row]")).toBeTruthy());
+    expect(container.querySelector("[data-canvas-failed]")).toBeNull();
   });
 
   it("says a refused restore once, as a toast, and leaves the state line to a source that cannot be reached", async () => {

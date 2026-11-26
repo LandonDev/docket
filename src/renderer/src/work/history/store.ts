@@ -130,11 +130,11 @@ export function historyActions(env: string, source: CanvasSource): HistoryAction
   };
 }
 
-/** For a preview page or a test: an answer as if the host had given it. */
-export function seedHistory(env: string, source: CanvasSource, seed: { versions?: HistoryVersions; branches?: HistoryBranches; compares?: Array<[string, string, HistoryCompare]> }): void {
+/** For a preview page or a test: an answer as if the host had given it, or a read that failed (a string: its reason). */
+export function seedHistory(env: string, source: CanvasSource, seed: { versions?: HistoryVersions | string; branches?: HistoryBranches | string; compares?: Array<[string, string, HistoryCompare | string]> }): void {
   const seeded = (key: string, method: string, params: Record<string, unknown>, value: unknown) => {
     asks.set(key, { env, method, params: { source, ...params }, gen: 1 });
-    put(key, { value, error: null });
+    put(key, typeof value === "string" ? { value: null, error: value } : { value, error: null });
   };
   if (seed.versions) seeded(keyOf(env, source, "versions"), "work.history.versions", {}, seed.versions);
   if (seed.branches) seeded(keyOf(env, source, "branches"), "work.history.branches", {}, seed.branches);

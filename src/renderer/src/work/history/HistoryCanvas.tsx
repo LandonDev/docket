@@ -13,6 +13,7 @@ import { cn } from "../../lib/cn";
 import { dayTime } from "../../lib/duration";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { TypeGlyph } from "../../surfaces/threads/TypeGlyph";
+import { OpenFailed } from "../canvas/FetchState";
 import { sayError } from "../canvas/frame";
 import type { CanvasBodyProps, CanvasShell, MoreEntry } from "../canvas/kind";
 import { History } from "../icons";
@@ -203,18 +204,28 @@ function List({ env, source, state, setState, shell }: CanvasBodyProps<HistorySt
   const picked = state?.picked ?? [];
   const set = (patch: Partial<HistoryState>) => setState({ ...state, ...patch });
 
+  const v = versions.value;
+  // The line is for a read that failed while the list stays; with nothing to list the body says it (`OpenFailed`).
   useEffect(() => {
     shell.statusLine(
-      versions.error
-        ? { tone: "failed", word: "History did not load", detail: versions.error, action: { label: "Retry", run: versions.retry } }
-        : branches.error
-          ? { tone: "failed", word: "Suggestions did not load", detail: branches.error, action: { label: "Retry", run: branches.retry } }
-          : null,
+      !v
+        ? null
+        : versions.error
+          ? { tone: "failed", word: "History did not load", detail: versions.error, action: { label: "Retry", run: versions.retry } }
+          : branches.error
+            ? { tone: "failed", word: "Suggestions did not load", detail: branches.error, action: { label: "Retry", run: branches.retry } }
+            : null,
     );
-  }, [shell, versions.error, versions.retry, branches.error, branches.retry]);
+  }, [shell, v, versions.error, versions.retry, branches.error, branches.retry]);
 
-  const v = versions.value;
-  if (!v) return versions.error ? null : <ListSkeleton />;
+  if (!v)
+    return versions.error ? (
+      <div className="flex min-h-full flex-col">
+        <OpenFailed kind="history" why={versions.error} onRetry={versions.retry} />
+      </div>
+    ) : (
+      <ListSkeleton />
+    );
   const pending = branches.value?.branches ?? [];
   if (v.versions.length === 0 && pending.length === 0) return <EmptyState title="No versions yet" />;
   const names = { ...v.names, ...branches.value?.names };
@@ -299,21 +310,24 @@ function CompareView({ env, source, item, state, setState, shell }: CanvasBodyPr
       : [],
     width,
   );
-  // The diff's failure first; a diff drawn without its versions (no pickers, no names) says that on the same line.
+  const diff = compare.value?.diff;
+  // A compare with no diff to show says so in the body (`OpenFailed`). The line is for one that failed while the diff
+  // stays, or for a diff drawn without its versions (no pickers, no names).
   useEffect(() => {
     shell.statusLine(
-      compare.error
-        ? { tone: "failed", word: "The compare did not load", detail: compare.error, action: { label: "Retry", run: compare.retry } }
-        : versions.error
-          ? { tone: "failed", word: "The versions did not load", detail: versions.error, action: { label: "Retry", run: versions.retry } }
-          : null,
+      !diff && compare.error
+        ? null
+        : compare.error
+          ? { tone: "failed", word: "The compare did not load", detail: compare.error, action: { label: "Retry", run: compare.retry } }
+          : versions.error
+            ? { tone: "failed", word: "The versions did not load", detail: versions.error, action: { label: "Retry", run: versions.retry } }
+            : null,
     );
-  }, [shell, compare.error, compare.retry, versions.error, versions.retry]);
+  }, [shell, diff, compare.error, compare.retry, versions.error, versions.retry]);
   useEffect(() => bringIntoView(ref.current, current), [ref, current, layout, compare.value]);
   useEffect(() => {
     if (state?.shown !== layout) setState({ ...state, shown: layout });
   }, [layout, state, setState]);
-  const diff = compare.value?.diff;
   const v = versions.value;
   return (
     <div ref={ref} className="flex min-h-full flex-col">
@@ -329,7 +343,9 @@ function CompareView({ env, source, item, state, setState, shell }: CanvasBodyPr
         </div>
       ) : null}
       {!diff ? (
-        compare.error ? null : (
+        compare.error ? (
+          <OpenFailed kind="history" why={compare.error} onRetry={compare.retry} />
+        ) : (
           <CompareSkeleton layout={layout} />
         )
       ) : diff.rows.length === 0 && !diff.page?.length ? (
@@ -355,9 +371,10 @@ function ReviewView({ env, source, item, state, setState, shell }: CanvasBodyPro
   const current = Math.min(state?.current ?? 0, Math.max(0, count - 1));
   const actions = useMemo(() => historyActions(env, source), [env, source]);
   useLayoutEntry(shell, layout, set, [], width);
+  // With no suggestions to show the body says it (`OpenFailed`); the line is for a read that failed while they stay.
   useEffect(() => {
-    shell.statusLine(branches.error ? { tone: "failed", word: "The suggestions did not load", detail: branches.error, action: { label: "Retry", run: branches.retry } } : null);
-  }, [shell, branches.error, branches.retry]);
+    shell.statusLine(branches.error && branch ? { tone: "failed", word: "The suggestions did not load", detail: branches.error, action: { label: "Retry", run: branches.retry } } : null);
+  }, [shell, branch, branches.error, branches.retry]);
   // A branch that is done (accepted or rejected whole) leaves the list.
   useEffect(() => {
     if (branches.value && !branch) setState({ ...state, view: "list", branchId: undefined });
@@ -384,7 +401,7 @@ function ReviewView({ env, source, item, state, setState, shell }: CanvasBodyPro
   useEffect(() => bringIntoView(ref.current, current), [ref, current, layout, branch]);
   return (
     <div ref={ref} className="flex min-h-full flex-col">
-      {branch ? <CompareDoc diff={branch.diff} layout={layout} current={current} title={item.title} /> : branches.error ? null : <CompareSkeleton layout={layout} />}
+      {branch ? <CompareDoc diff={branch.diff} layout={layout} current={current} title={item.title} /> : branches.error ? <OpenFailed kind="history" why={branches.error} onRetry={branches.retry} /> : <CompareSkeleton layout={layout} />}
     </div>
   );
 }
@@ -448,8 +465,9 @@ export function Bar({ env, source, state, setState }: CanvasBodyProps<HistorySta
   if (view === "list") {
     const picked = state?.picked ?? [];
     const list = versions.value?.versions ?? [];
-    // There from the first frame, so ticking a version never pushes the list down; waiting for two ticks. Gone only when there are not two versions to compare.
-    if (versions.value && list.length < 2) return null;
+    // There from the first frame, so ticking a version never pushes the list down; waiting for two ticks. Gone only when there are not two versions to compare,
+    // or no list to pick them from (the read failed: the body says so).
+    if ((versions.value && list.length < 2) || (!versions.value && versions.error)) return null;
     // The older of the two on the left.
     const [a, b] = [...picked].sort((x, y) => list.findIndex((v) => v.id === y) - list.findIndex((v) => v.id === x));
     return (
