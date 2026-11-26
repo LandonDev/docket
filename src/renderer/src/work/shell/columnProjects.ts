@@ -22,6 +22,23 @@ export function setColumnProjects(workspaceId: string, rows: readonly ColumnProj
   for (const listener of listeners) listener();
 }
 
+/** The jobs whose LifeOS projects are still on their way (the head's first read is out): their Projects rows draw bones. */
+const reading = new Set<string>();
+
+export function setColumnProjectsReading(workspaceId: string, on: boolean): void {
+  if (reading.has(workspaceId) === on) return;
+  if (on) reading.add(workspaceId);
+  else reading.delete(workspaceId);
+  for (const listener of listeners) listener();
+}
+
+export function useColumnProjectsReading(workspaceId: string): boolean {
+  return useSyncExternalStore(
+    (listener) => (listeners.add(listener), () => void listeners.delete(listener)),
+    () => reading.has(workspaceId),
+  );
+}
+
 export function useColumnProjects(workspaceId: string): readonly ColumnProject[] {
   return useSyncExternalStore(
     (listener) => (listeners.add(listener), () => void listeners.delete(listener)),

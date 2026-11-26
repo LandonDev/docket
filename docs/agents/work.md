@@ -286,6 +286,10 @@ Settings → Work.
   `withLifeosCards` adds a `lifeos:<id>` row for each one no project mirrors
   yet, and its first thread calls `work.project.open`, which makes the mirror,
   "Mirrors follow LifeOS" below), then any other project of the workspace.
+  While the head's first read is out (`setColumnProjectsReading`) and no row
+  is known, two rows' bones stand under the heading; while the job's host has
+  neither listed its threads nor painted them from the launch mirror, and
+  its link is not down, Threads is its heading over two rows' bones.
   The lead slot is the most pressing of its root threads' (`projectLead`:
   asks, failed, held, working), the end its target date, red once passed;
   rows sort by target, none last, so nothing moves for what threads do;

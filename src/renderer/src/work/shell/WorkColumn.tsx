@@ -9,7 +9,7 @@ import { openWorkView, setLifeosProjects, useWorkView, workColumnPort, workStart
 import { addContextChip, contextChipsOf, startAboutChip } from "../canvas/chips";
 import { rowOfView, type WorkViewDef, workColumnViews } from "../views/registry";
 import { openLifeosProject } from "./actions";
-import { setColumnProjects, type ColumnProject } from "./columnProjects";
+import { setColumnProjects, setColumnProjectsReading, type ColumnProject } from "./columnProjects";
 import { HOLD, KeptRegion, useKeptRegion, useLifeosQuery, useLifeosSession } from "./lifeos";
 import { shell, shellStore, threadsCovered } from "../../stores/shell";
 
@@ -53,6 +53,12 @@ export function WorkColumnHead({ workspace }: { workspace: WorkspaceMeta }) {
     setLifeosProjects(workspace.id, rows);
     setColumnProjects(workspace.id, rows);
   }, [rows, sector, workspace.id]);
+  // While the first read is out the Projects rows draw bones, never a bare heading that reads as no projects.
+  const reading = !!sector && listed.status === "loading";
+  useEffect(() => {
+    setColumnProjectsReading(workspace.id, reading);
+    return () => setColumnProjectsReading(workspace.id, false);
+  }, [reading, workspace.id]);
   useLayoutEffect(() => {
     workColumnPort.set({
       async openProject(_workspaceId, lifeosProjectId) {

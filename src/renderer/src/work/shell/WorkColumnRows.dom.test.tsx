@@ -14,7 +14,7 @@ import type { ThreadRow } from "../../lib/workspaceSessions";
  * (two lines, newest first, the time gone while it works) and the archived row (a count, the list, Restore).
  */
 
-const store = vi.hoisted(() => ({ metas: [] as SessionMeta[], asked: [] as string[], listeners: new Set<(changes: { ids: ReadonlySet<string> }) => void>(), reckoned: 0 }));
+const store = vi.hoisted(() => ({ metas: [] as SessionMeta[], asked: [] as string[], listeners: new Set<(changes: { ids: ReadonlySet<string> }) => void>(), reckoned: 0, listed: ["local"] as string[] }));
 vi.mock("../../lib/tcserver/store", async (original) => ({
   ...(await original<object>()),
   sessionStore: {
@@ -22,6 +22,9 @@ vi.mock("../../lib/tcserver/store", async (original) => ({
     metas: () => store.metas,
     metaOf: (id: string) => store.metas.find((m) => m.id === id) ?? null,
     onMetaChange: (l: (changes: { ids: ReadonlySet<string> }) => void) => (store.listeners.add(l), () => void store.listeners.delete(l)),
+    subscribe: () => () => {},
+    listedEnvironmentIds: () => store.listed,
+    isMirrored: () => false,
   },
 }));
 vi.mock("./columnModel", async (original) => {
@@ -38,7 +41,7 @@ vi.mock("../../lib/sessionStore", async (original) => ({ ...(await original<obje
 vi.mock("../../lib/hoverPrefetch", async (original) => ({ ...(await original<object>()), whenIdle: (fn: () => void) => fn() }));
 
 const { ArchivedRow, WorkProjectsSection, WorkThreadsSection } = await import("./WorkColumnRows");
-const { setColumnProjects } = await import("./columnProjects");
+const { setColumnProjects, setColumnProjectsReading } = await import("./columnProjects");
 const { setProjectsBack, setProjectsHere } = await import("../projects/here");
 
 afterEach(() => {
@@ -49,6 +52,7 @@ afterEach(() => {
   setProjectsBack("w-job", null);
   store.metas = [];
   store.asked = [];
+  store.listed = ["local"];
   restored.length = 0;
 });
 
@@ -215,6 +219,18 @@ describe("the Projects section", () => {
     expect(workViewNow()).toBeNull();
   });
 
+  it("draws two rows' bones under the heading while LifeOS's first read is out, and the rows once they land (council R1-A2)", () => {
+    setColumnProjects("w-bones", []);
+    act(() => setColumnProjectsReading("w-bones", true));
+    const view = render(<WorkProjectsSection workspaceId="w-bones" linked groups={[]} onOpen={() => {}} />);
+    expect(view.container.querySelectorAll("[data-project-bones] > span")).toHaveLength(2);
+    act(() => {
+      setColumnProjects("w-bones", [{ id: "lan", name: "Spring LAN", status: "active", targetDate: null }]);
+      setColumnProjectsReading("w-bones", false);
+    });
+    expect(view.container.querySelector("[data-project-bones]")).toBeNull();
+  });
+
   it("is a plain heading in a job with no LifeOS sector, and nothing there with no project", () => {
     const { container, rerender } = render(<Section linked={false} />);
     expect(screen.queryByRole("button", { name: "Projects" })).toBeNull();
@@ -321,6 +337,14 @@ describe("the Threads section", () => {
   it("is nothing with no thread and nothing archived", () => {
     const { container } = render(<WorkThreadsSection items={[]} actions={actions()} requested={30} onMore={() => {}} archived={scope} />);
     expect(container.textContent).toBe("");
+  });
+
+  it("draws its heading over two rows' bones while the job's host has not listed its threads (council R1-A2)", () => {
+    store.listed = [];
+    const { container } = render(<WorkThreadsSection items={[]} actions={actions()} requested={30} onMore={() => {}} archived={scope} />);
+    expect(screen.getByRole("heading", { name: "Threads" })).toBeTruthy();
+    expect(container.querySelector("[data-work-threads]")!.getAttribute("aria-busy")).toBe("true");
+    expect(container.querySelectorAll("[data-thread-bones] > span")).toHaveLength(2);
   });
 });
 

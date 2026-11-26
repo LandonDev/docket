@@ -10,6 +10,7 @@ import { useTruncated } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
+import { Skeleton } from "../../components/ui/skeleton";
 import { ROW_OPEN, ROW_SHOWS } from "../../components/ui/press";
 import { yields } from "../../components/ui/reveal";
 import { STATUS_WORD, StatusMark } from "../../components/ui/status";
@@ -25,7 +26,9 @@ import { workspaceStore } from "../../lib/tcserver/workspaces";
 import type { WorkThreadItem } from "../../lib/sidebarRows";
 import type { SessionMeta } from "../../lib/tcserver/types";
 import { archivedThreads, quietWords, targetWords, threadLead, threadLine, threadTime, workProjectRows, type ArchivedThread, type WorkLead, type WorkProjectRow } from "./columnModel";
-import { useColumnProjects } from "./columnProjects";
+import { useColumnProjects, useColumnProjectsReading } from "./columnProjects";
+import { linkIsDown } from "./hostLinkDown";
+import { registry } from "../../lib/connection/registry";
 import { projectsBack, useProjectsHere } from "../projects/here";
 import type { ProjectGroup } from "../../lib/workspaceSessions";
 import { choose, openWorkView, stillChosen, useWorkView } from "../../lib/workSwitch";
@@ -78,6 +81,7 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
 }) {
   // LifeOS's rows for the job, with each one's state and target, as the column's head keeps them.
   const lifeos = useColumnProjects(workspaceId);
+  const reading = useColumnProjectsReading(workspaceId);
   const projects = useMemo(() => workProjectRows(groups, lifeos), [groups, lifeos]);
   const [quietOpen, setQuietOpen] = useState(false);
   const shown = useWorkView();
@@ -122,6 +126,8 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
       ) : (
         <h3 className={HEADING}>Projects</h3>
       )}
+      {/* LifeOS's first read still out: rows in their shape, never a bare heading that reads as none. */}
+      {reading && projects.rows.length === 0 && projects.quiet.length === 0 ? <RowBones rows={2} /> : null}
       {projects.rows.map((row) => (
         <ProjectRow key={row.id} row={row} now={now} selected={isShown(row, current)} onOpen={openShown} />
       ))}
@@ -136,6 +142,20 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
     </section>
   );
 });
+
+/** A project row's shape while LifeOS's projects are on their way: the lead's dot and a name, 28px each. */
+function RowBones({ rows }: { rows: number }) {
+  return (
+    <div aria-hidden data-project-bones className="flex flex-col gap-1">
+      {Array.from({ length: rows }, (_, i) => (
+        <span key={i} className="flex h-7 items-center gap-2 px-3">
+          <Skeleton className="size-3 shrink-0 rounded-full" />
+          <Skeleton className={cn("h-3", i % 2 ? "w-16" : "w-24")} />
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /** Whether a project's page is the one the Projects view shows. */
 const isShown = (row: WorkProjectRow, project: string | null): boolean => !!project && row.lifeosProjectId === project;
@@ -186,6 +206,15 @@ export const WorkThreadsSection = memo(function WorkThreadsSection({
 }) {
   const rows = items.map((item) => item.row);
   const { shown, hidden } = windowRows(rows, requested, actions.activeSessionId);
+  const listing = useThreadsListing(archived.environmentIds);
+  // The job's host has not listed its threads yet (a cold start): the heading over two rows in their shape.
+  if (items.length === 0 && listing)
+    return (
+      <section aria-label="Threads" aria-busy data-work-threads className={SECTION}>
+        <h3 className={HEADING}>Threads</h3>
+        <ThreadBones />
+      </section>
+    );
   // With no live thread the heading stands over the archived row alone, and over nothing with none archived.
   if (items.length === 0) return <ArchivedRow scope={archived} onOpen={actions.onOpen} headed />;
   return (
@@ -199,6 +228,50 @@ export const WorkThreadsSection = memo(function WorkThreadsSection({
     </section>
   );
 });
+
+/**
+ * Whether a job's threads are still on their way: one of its hosts has neither listed its threads on this socket nor
+ * painted them from the launch mirror, and its link is not known to be down (a host that is away lists nothing, and
+ * its bones would stand for ever).
+ */
+function useThreadsListing(environmentIds: readonly string[]): boolean {
+  return useSyncExternalStore(listingChanges, () => {
+    const listed = sessionStore.listedEnvironmentIds();
+    return environmentIds.some((id) => !listed.includes(id) && !sessionStore.isMirrored(id) && !linkIsDown(registry.statusOf(id)));
+  });
+}
+
+const listingChanges = (listener: () => void): (() => void) => {
+  const offStore = sessionStore.subscribe(listener);
+  const offLinks = registry.subscribe(listener);
+  return () => {
+    offStore();
+    offLinks();
+  };
+};
+
+/** Two threads' shape, 48px each as a row is: the lead, the title's line and the line under it. */
+function ThreadBones() {
+  return (
+    <div aria-hidden data-thread-bones className="flex flex-col gap-1">
+      {["w-3/4", "w-1/2"].map((width) => (
+        <span key={width} className="flex gap-2 px-3 py-1.5">
+          <span className="grid h-5 w-4 shrink-0 place-items-center">
+            <Skeleton className="size-3 rounded-full" />
+          </span>
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="flex h-5 items-center">
+              <Skeleton className={cn("h-3", width)} />
+            </span>
+            <span className="flex h-4 items-center">
+              <Skeleton className="h-2.5 w-1/3" />
+            </span>
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /**
  * One thread, two lines: the lead (its provider at rest), its title, its type when not a chat, and its time (none
