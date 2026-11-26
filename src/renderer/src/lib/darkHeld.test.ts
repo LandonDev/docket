@@ -39,7 +39,7 @@ describe("dark, held as it was", () => {
   it("gives every token that is held in dark a light value of its own, so light is never the thing held back", () => {
     const light = declarations(readFileSync(join(__dirname, "../index.css"), "utf8"), "html.theme-light");
     // The names under "Held in dark" in index.css: each has two values on purpose.
-    const HELD = ["--link-color", "--near-foreground", "--soft-foreground", "--ink-35", "--ink-38", "--ink-40", "--ink-45", "--ink-50", "--ink-55", "--ink-muted-60", "--diff-context-dim", "--diff-context-strong", "--pr-code-keyword", "--pr-code-type", "--slide-stage", "--slide-stage-inset", "--mark-tile", "--sheet-shadow", "--calendar-selected", "--calendar-today", "--radius", "--ring-duration", "--chrome-hover", "--chrome-hover-ghost", "--skeleton", "--skeleton-matte", "--check-edge", "--outline-field-edge", "--field-readonly", "--hover-fill", "--hover-fill-field", "--hover-fill-file"];
+    const HELD = ["--link-color", "--near-foreground", "--soft-foreground", "--ink-35", "--ink-38", "--ink-40", "--ink-45", "--ink-50", "--ink-55", "--ink-muted-60", "--diff-context-dim", "--diff-context-strong", "--pr-code-keyword", "--pr-code-type", "--slide-stage", "--slide-stage-inset", "--mark-tile", "--sheet-shadow", "--calendar-selected", "--calendar-today", "--radius", "--ring-duration", "--chrome-hover", "--chrome-hover-ghost", "--skeleton", "--skeleton-matte", "--skeleton-stage", "--media-ground", "--matte-muted-foreground", "--check-edge", "--outline-field-edge", "--field-readonly", "--hover-fill", "--hover-fill-field", "--hover-fill-file"];
     for (const name of HELD) {
       expect(root.has(name), `${name} in :root`).toBe(true);
       expect(light.has(name), `${name} in html.theme-light`).toBe(true);

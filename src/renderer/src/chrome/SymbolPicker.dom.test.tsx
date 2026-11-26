@@ -118,4 +118,38 @@ describe("SymbolPicker", () => {
     expect(row.querySelector(".w-24")).toBeTruthy();
     answer.next = null;
   });
+
+  // Council round 4 (S F9.1): the last query's rows stayed live while a new search ran, and Enter opened one.
+  it("drops the last query's rows the moment the words change, says Searching…, and Enter opens nothing until the answer lands", async () => {
+    vi.useFakeTimers();
+    const onOpen = vi.fn();
+    await act(async () => {
+      render(<SymbolPicker projectId="p1" onOpen={onOpen} onClose={vi.fn()} />);
+    });
+    const field = screen.getByRole("textbox", { name: "Go to symbol" });
+    fireEvent.change(field, { target: { value: "sym" } });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(screen.getAllByRole("option").length).toBe(6);
+    let land: (rows: unknown) => void = () => {};
+    answer.next = () => new Promise((resolve) => { land = resolve; });
+    fireEvent.change(field, { target: { value: "other" } });
+    expect(screen.queryAllByRole("option")).toEqual([]);
+    expect(screen.getByText("Searching…")).toBeTruthy();
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onOpen).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(screen.getByText("Searching…")).toBeTruthy();
+    await act(async () => {
+      land([{ ...symbols[3], name: "otherThing" }]);
+    });
+    expect(screen.getAllByRole("option").length).toBe(1);
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onOpen).toHaveBeenCalledWith("/srv/app/src/file3.ts", { line: 4, column: 1 });
+    vi.useRealTimers();
+    answer.next = null;
+  });
 });

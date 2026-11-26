@@ -379,7 +379,7 @@ function MediaBody({
     };
     return (
       <div
-        className={cn("relative h-full min-h-0 overflow-auto", !fit && FOCUS_RING)}
+        className={cn("relative h-full min-h-0 overflow-auto bg-media-ground", !fit && FOCUS_RING)}
         tabIndex={fit ? undefined : 0}
         aria-label={fit ? undefined : `${name} at actual size`}
       >
@@ -412,7 +412,7 @@ function MediaBody({
 
   if (media.kind === "video") {
     return (
-      <div className="grid h-full min-h-0 place-items-center p-4">
+      <div className="grid h-full min-h-0 place-items-center bg-media-ground p-4">
         <video
           ref={ref}
           src={assetHref(media.url)}
@@ -454,7 +454,7 @@ function ImageBones() {
       data-image-bones
       className="pointer-events-none absolute inset-4 animate-in fade-in fill-mode-both duration-(--dur-base) [--tw-animation-delay:var(--dur-slow)]"
     >
-      <Skeleton className="size-full rounded-none" />
+      <Skeleton className="size-full rounded-none bg-skeleton-stage" />
     </div>
   );
 }
@@ -476,12 +476,12 @@ function FailureState({
   const [busy, setBusy] = useState(false);
   const [title, line] =
     failure === "missing"
-      ? [`Couldn’t open ${name}`, missingFileText(hostName)]
+      ? [`Couldn't open ${name}`, missingFileText(hostName)]
       : failure === "unreachable"
-        ? [`Couldn’t open ${name}`, `${hostName ?? "The host"} is out of reach.`]
+        ? [`Couldn't open ${name}`, `${hostName ?? "The computer"} did not answer.`]
         : media.kind === "image"
-          ? [`Can’t show ${name}`, `This ${media.mime.replace(/^image\//, "").toUpperCase()} image isn’t supported here.`]
-          : [`Can’t play ${name}`, "Its codec isn’t supported here."];
+          ? [`Can't show ${name}`, `This ${media.mime.replace(/^image\//, "").toUpperCase()} image isn't supported here.`]
+          : [`Can't play ${name}`, `This ${media.kind === "audio" ? "audio file" : "video"} can't play here.`];
   // A retry can bring a file or a host back, never a codec.
   const retry = failure !== "unsupported" && onReload;
   return (

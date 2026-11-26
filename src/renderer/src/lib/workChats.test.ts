@@ -127,4 +127,10 @@ describe("a linked Work workspace's projects", () => {
     expect(sidebarItems(none, false, true)).toEqual([]);
     expect(sidebarItems(none, false).map((i) => i.kind)).toEqual(["empty"]);
   });
+
+  it("give an empty Work Chats the home's one No chats, above its archived row", () => {
+    const none = { projects: [], archived: [], chats: [] };
+    expect(sidebarItems(none, true, false, "chats").map((i) => i.kind)).toEqual(["no-chats", "work-archived"]);
+    expect(sidebarItems(none, true, false, null).map((i) => i.kind)).toEqual(["no-chats"]);
+  });
 });

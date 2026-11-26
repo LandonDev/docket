@@ -1,17 +1,18 @@
 // A preview frame for `bun run ui:preview src/renderer/src/chrome/CommandPopover.preview.tsx#SlashMenuPreview`:
 // SlashMenuPreview draws open command and mention rows. Keyboard navigation is covered by the composer DOM tests.
 import { CommandPopover, type PopoverMatches } from "./CommandPopover";
+import { previewProject } from "../lib/previewHost.preview";
 
 
 /** `typed` is what the stand-in field shows, so each fixture's field matches its menu. */
-export function SlashMenuPreview({ matches, active, typed = "/re" }: { matches: PopoverMatches; active: number; typed?: string }) {
+export function SlashMenuPreview({ matches, active, typed = "/re", projectId = null }: { matches: PopoverMatches; active: number; typed?: string; projectId?: string | null }) {
   // The preview's jsdom has no scrollIntoView, which the active row's effect calls.
   const element = document.defaultView?.Element;
   if (element && !element.prototype.scrollIntoView) element.prototype.scrollIntoView = () => {};
   return (
     <div className="flex w-full max-w-[560px] flex-col justify-end" style={{ height: 360 }}>
       <div className="relative">
-        <CommandPopover matches={matches} active={active} projectId={null} projects={[]} onActive={() => {}} onAccept={() => {}} />
+        <CommandPopover matches={matches} active={active} projectId={projectId} projects={[{ ...previewProject, environmentId: "local", id: "other", name: "Office helper door and guest agent split" }]} onActive={() => {}} onAccept={() => {}} />
         <div className="h-[46px] rounded-xl border border-border bg-card px-3 py-3 text-[14px] leading-[22px]">{typed}</div>
       </div>
     </div>

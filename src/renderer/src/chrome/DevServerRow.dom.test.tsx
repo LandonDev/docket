@@ -112,4 +112,16 @@ describe("DevServerRow", () => {
     expect(open.getAttribute("aria-current")).toBe("true");
     expect(row.className).toContain("bg-muted");
   });
+
+  it("a long name wraps in its column, never cut, and Stop keeps its place beside it", () => {
+    const { container } = render(<DevServerRow server={{ ...server, title: "Vite dev server for the notes app" }} />);
+    const name = container.querySelector("[data-dev-server-title]")!;
+    expect(name.textContent).toBe("Vite dev server for the notes app");
+    expect(name.className).not.toContain("truncate");
+    expect(name.className).toContain("break-words");
+    const title = container.querySelector('[data-slot="item-title"]')!;
+    expect(title.className.split(/\s+/)).toContain("line-clamp-none");
+    expect(title.className.split(/\s+/)).not.toContain("line-clamp-1");
+    expect(container.querySelector('[data-slot="item"]')!.className).toContain("flex-nowrap");
+  });
 });

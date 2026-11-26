@@ -30,11 +30,12 @@ import {
   Trash2,
   Desktop,
 } from "./icons";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useDragResize } from "../hooks/useDragResize";
 import { useSashKeys } from "../hooks/useSashKeys";
 import { useInboxUnseen } from "../hooks/useInboxUnseen";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
+import { OVERFLOW_FADE_Y_EDGE, useOverflowEdges } from "../hooks/useOverflowEdges";
 import { useSortable } from "../hooks/useSortable";
 import { useTabGroupLogos } from "../hooks/useTabGroupLogos";
 import {
@@ -324,6 +325,17 @@ export function ProjectRail({
     name: string;
   } | null>(null);
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
+  // The list's cut edge over the foot fades over 24px (DESIGN "Shadow"): one hook on the list, none on a row; the
+  // list's box is watched too, so a section that opens or a workspace added sets the edge without a scroll.
+  const listEdges = useOverflowEdges<HTMLDivElement>("y", { content: true });
+  const attachList = useCallback(
+    (el: HTMLDivElement | null) => {
+      lockOverscroll(el);
+      scrollRef.current = el;
+      listEdges(el);
+    },
+    [lockOverscroll, listEdges],
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const groupLogos = useTabGroupLogos();
   const groupLooks = useMemo(
@@ -718,11 +730,9 @@ export function ProjectRail({
       ) : (
         <>
           <div
-            ref={(el) => {
-              lockOverscroll(el);
-              scrollRef.current = el;
-            }}
-            className="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none pb-2"
+            ref={attachList}
+            data-rail-list
+            className={`flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto overscroll-none pb-2 ${OVERFLOW_FADE_Y_EDGE}`}
           >
             <RowsContextMenu
               label="Workspace actions"
@@ -735,7 +745,7 @@ export function ProjectRail({
               }}
               openRef={projectMenu}
             >
-            <div className="contents">
+            <div className="flex shrink-0 flex-col">
             <div className="shrink-0 px-2">{topIds.map(topRow)}</div>
             {rows.pinned.length > 0 ? (
               <ProjectSection

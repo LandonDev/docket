@@ -197,7 +197,23 @@ describe("the capture window", () => {
     fireEvent.keyDown(field(), { key: "Enter", ctrlKey: true });
     await flush();
     expect(field().value).toBe("");
-    expect(screen.getByRole("alert").textContent).toBe("Filed. The thread did not start: No model is signed in");
+    expect(screen.getByRole("alert").textContent).toBe("Filed. The thread did not start. No model is signed in");
+  });
+
+  // Council round 4 (S F10.1): the start call's raw text rode after "Filed".
+  it("adds the cause after a thread that did not start only in words, never the start call's own text", async () => {
+    for (const [threadError, said] of [
+      ["session.create: socket hang up at /srv/agents/work/x", "Filed. The thread did not start"],
+      ["spawn claude ENOENT", "Filed. The thread did not start. A program this computer needs for this is missing there."],
+    ] as const) {
+      answer = () => Promise.resolve({ taskId: "t1", kept: [], threadError });
+      await open();
+      fireEvent.change(field(), { target: { value: "Plan it" } });
+      fireEvent.keyDown(field(), { key: "Enter", ctrlKey: true });
+      await flush();
+      expect(screen.getByRole("alert").textContent).toBe(said);
+      cleanup();
+    }
   });
 
   it("leaves a dragged link to the field, and ignores keys while a composition is open", async () => {

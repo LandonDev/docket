@@ -534,11 +534,13 @@ describe('NewProjectDialog', () => {
     const local = screen.getByRole('button', { name: 'Local' })
     expect(worktree.getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByLabelText('Branch')).toBeTruthy()
-    expect(screen.getByText('Own branch and folder.')).toBeTruthy()
+    // A one-line fragment ends in no period (council round 4, O F9.1).
+    expect(screen.getByText('Own branch and folder')).toBeTruthy()
 
     fireEvent.click(local)
     expect(local.getAttribute('aria-pressed')).toBe('true')
     expect(screen.queryByLabelText('Branch')).toBeNull()
+    expect(screen.getByText(`Works directly in ${MAC_WS.name}`)).toBeTruthy()
     // Pressing the chosen mode again keeps it: a mode is never unset.
     fireEvent.click(local)
     expect(local.getAttribute('aria-pressed')).toBe('true')

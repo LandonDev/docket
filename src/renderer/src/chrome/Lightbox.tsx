@@ -69,7 +69,7 @@ function Slide({ item }: { item: LightboxItem }) {
   if (state.kind === 'failed') {
     return (
       <p data-lightbox-state="failed" className="text-sm text-muted-foreground">
-        Couldn’t open {item.name}
+        Couldn't open {item.name}
       </p>
     )
   }

@@ -199,7 +199,7 @@ tooltip and accessible description, never a second line: Type "Stop or
 wait for the turn to end" while the thread is live, Mac bridge "Set on the parent thread" or "Loading", a refused
 move its host's reason. A row that could only be refused for good is not
 drawn: Resources… shows only while the thread holds something it could
-remove. The thread's rows include Dev server, checked
+remove, and no "Move to <host>…" where the other host's key is not admin. The thread's rows include Dev server, checked
 while the Dev servers pane is open (only when a host can serve the
 project). A master's rows carry, right after Remove as master, New batch
 thread… and Add existing thread…: the batch's add sheet and adopt dialog
@@ -236,7 +236,7 @@ of the right panel's Changes section, not the header's.
 | Return toast | `AwayReturn` in `chrome/AwayReturn.tsx`, mounted once with the app's toasts | when a live `away` push turns a host's Away from on to off (never the state read at a link's open, so never at boot), each host's tally that lands in the next 3 s joins one sonner toast (`away-return`): "Decided without you in 4 threads" ("in 1 thread"), with Review. No decisions anywhere, no toast. Review opens `AwayReviewDialog` (the dialogs chunk): a `Modal` "Decided while you were away", one `ItemButton` per thread, most decisions first: its `TypeGlyph`, title, `HostGlyph` with two or more hosts, and "3 decisions" muted `tabular-nums`. A click opens the thread and closes the list |
 | Usage meter | `chrome/UsageMeter.tsx` on `src/shared/usageMeter.ts` (`meterFor`), the foot's last block | one 28px ghost row per provider with accounts, its own `railrow` container at the 12px inset, hovering and lit while open on `chrome-hover-ghost` (the hovered group's step in light, as the rail rows; dark holds the ghost button's 7%): the provider glyph, an 80px 4px `Progress` (56px in a rail under 15rem) of the pooled share (the mean room over every account routing could pick, each account's room its tighter of 5h and week; expired and unreported accounts left out; amber below 10%), then "in 2h" (the next refill) in 12px `text-muted-foreground`, or "Limited 3m" in `text-warning` while every account is throttled, on one line at any width; before any report an empty track and no text. A provider whose every account answered that its plan has no caps (Cursor's "no usage caps on this plan", `NO_CAPS_NOTE`) has no row; an account still unanswered, expired or whose poll failed keeps the empty track. No account name. Hover (the tooltip's delays), click or Enter opens a `Popover` to the right: the provider and "62% left", one row per usage window (5h, Week, each per-model cap) with its refill, the share left ("62% left", as an Accounts cell says it) and bar, and one muted foot line, "3 accounts with room". It moves on the `accounts` push alone |
 | Settings list | `SettingsNav` in `chrome/SettingsRail.tsx` | while settings are open the rail's list is the pages as 28px RailRows under RailHeadings, then the workspaces (another host's names its host as muted trailing text; two of one name on one host each name where they sit there: the shortest end of the parent folder's path that tells them apart, "work" or "me/work", else the whole path, `workspaceHint`), and Back as the foot's one row |
-| Workspace column | `chrome/Sidebar.tsx` | column two holds the workspace's project cards, then its loose chats and archived projects (`WorkspaceSessions`), under one 40px header (a 40px content box with its hairline under it, as the title bar's rows, so its buttons sit on the strip's y 6 line): the workspace's name (Chats at the home) in 13px medium, New thread (Tooltip ⌘N) and the workspace ⋯ menu. No tabs: files and changes are the right panel's Files and Changes sections; ⌘P still goes to a file. While the rail is collapsed the header is the column's top row (the traffic lights' room at its start on macOS; Back, Forward and the toggle are the title bar's) and the rail's foot sits under the threads. The column's own element scrolls the list (the virtualizer's scroll element, as state); across Settings and Back it keeps, per workspace, its offset (re-applied as the rows measure when the list first lays out shorter than it was, until it fits or the person scrolls), its list pages and the Chats fold, and does not replay the selection's reveal. A project card lists no thread rows of its own, only the read-only lines of `cardLines` for what needs saying; a project's threads are picked from the title bar's strip and its ⋯ menu's Recent threads…; only the Chats and Archived folds keep thread rows (a loose chat has no project to go to), each a 32px `ThreadRowView` leading with its type's tinted glyph (`TypeGlyph`, 12px in the 16px lead column) and ending in its status glyph; its subagents one step in, the lead column left empty, then the role's plain glyph. The thread rows are bare: no resting fill, `bg-chrome-hover` on hover and `bg-sidebar-group-selected` while selected; a fold's heading has no fill open or folded. A fold that follows the cards (`spaced` from `sidebarItems`, lib/sidebarRows.ts) starts 16px below them (`pt-3` on the list's 4px gap), a new group; at the home and in a workspace with no projects it starts at the top. A right-click on any thread row opens that thread's menu, and an inline rename ended by Enter or Escape gives focus back to the row's or card's ⋯ At the home the loose chats are no fold: the column's header already says Chats and holds New thread, so the rows stand under it with no heading (`headed` on the chats item); with no chat at all, the home's column is one `Empty`, "No chats" with New chat (`no-chats`). |
+| Workspace column | `chrome/Sidebar.tsx` | column two holds the workspace's project cards, then its loose chats and archived projects (`WorkspaceSessions`), under one 40px header (a 40px content box with its hairline under it, as the title bar's rows, so its buttons sit on the strip's y 6 line): the workspace's name (Chats at the home) in 13px medium, New thread (Tooltip ⌘N) and the workspace ⋯ menu. No tabs: files and changes are the right panel's Files and Changes sections; ⌘P still goes to a file. While the rail is collapsed the header is the column's top row (the traffic lights' room at its start on macOS; Back, Forward and the toggle are the title bar's) and the rail's foot sits under the threads. The column's own element scrolls the list (the virtualizer's scroll element, as state); across Settings and Back it keeps, per workspace, its offset (re-applied as the rows measure when the list first lays out shorter than it was, until it fits or the person scrolls), its list pages and the Chats fold, and does not replay the selection's reveal. A project card lists no thread rows of its own, only the read-only lines of `cardLines` for what needs saying; a project's threads are picked from the title bar's strip and its ⋯ menu's Recent threads…; only the Chats and Archived folds keep thread rows (a loose chat has no project to go to), each a 32px `ThreadRowView` leading with its type's tinted glyph (`TypeGlyph`, 12px in the 16px lead column) and ending in its status glyph; its subagents one step in, the lead column left empty, then the role's plain glyph. The thread rows are bare: no resting fill, `bg-chrome-hover` on hover and `bg-sidebar-group-selected` while selected; a fold's heading has no fill open or folded. A fold that follows the cards (`spaced` from `sidebarItems`, lib/sidebarRows.ts) starts 16px below them (`pt-3` on the list's 4px gap), a new group; at the home and in a workspace with no projects it starts at the top. A right-click on any thread row opens that thread's menu, and an inline rename ended by Enter or Escape gives focus back to the row's or card's ⋯ At the home the loose chats are no fold: the column's header already says Chats and holds New thread, so the rows stand under it with no heading (`headed` on the chats item); with no chat at all, the home's column is one `Empty`, "No chats" with New chat (`no-chats`), and so is an empty Work Chats column, above its archived row. |
 | Project card | `ProjectCardView` / `ProjectCard` in `chrome/WorkspaceSessions.tsx` on `cardLines`, `cardCounts` and `projectCardAriaLabel` (lib/sidebarRows.ts) | one `ItemButton surface="group"` with no border or shadow, `rounded-lg`, `px-3 py-2`, on its own resting fill (`bg-sidebar-group`), `bg-sidebar-group-hover` on hover and `bg-sidebar-group-selected` while selected (`aria-current`) or pressed, 4px from the next card, never animated. A 20px line: the name always in 13px `font-medium` foreground (an unread thread says so by its own line's weight and in the card's accessible name, never by the name; a 6px dot before the time says it only while no unread line shows, its line past the page) and its last-active time in 12px muted `tabular-nums`, which gives way to ⋯ on hover and focus. A 16px branch line 2px under it: the branch glyph and the branch (else "local checkout"), then "worktree" in medium weight 4px on; a local checkout, the default, says no mode. Then 24px read-only lines in 12px, aligned under the name: each master with something to say as a block (its line with the batch's done tally, its working subagents in the fleet's words, its batch threads one step in with working as a dot, the master's line spinning while anything in the block works, since the block has one moving mark at its head, "N queued"), then the working roots (the spinner or the watching ring, the type's tinted glyph, the title, the host glyph while the column's threads span two or more hosts, the elapsed past 3 s; an implementation thread's tally and task 4px apart under it), the paused ones (Paused and the frozen elapsed, a `StatusMark` word and its muted detail), the unread ones (no mark, the title's weight); a thread housed in a master prints only in its block. One page of lines, then "N more" on the card's fill under them (a 28px row of 13px words laid over a 28px room the card keeps, 4px in from its sides, so it reads as the card's and is still no button inside the card's button; its label on the lines' titles at 52px from the card's edge: the 12px inset, the 12px mark and the 12px type glyph 8px apart; a thread list's "N more" is one of its 32px rows, its label on their titles at 36px). Last, a count line when there is something to count: "1 needs you" in amber and "N failed" in red with their glyphs, then "N dormant, N archived" as one muted comma run 8px on, where a fact that does not fit gives way whole, from the last, never cut to "1 do…" (a thread inside a master is never dormant), a glyph-led count 8px from the one before it; the menu's fleet switches, Pause all, Resume all and Stop all, act on the project and its linked copies through `requestThreadBatch` (a `projects` scope; Pause and Stop confirm), and its "Archive N dormant threads" (and the workspace menu's) counts those roots and takes each master it archives with its settled batch (lib/archiveDormant.ts, loaded when the row is picked), as a root takes its subagents, while a batch thread that still works stays, a root on the card and in the strip from then on; "No threads" for a project with none; paused is never counted. A click or Enter anywhere on it, a line included, selects the project (App's `onSelectProjectCard`); lines never open a thread. A double-click renames it in place; ⋯ and a right-click open the same menu. Its accessible name says what needs saying ("Alpha, 1 needs you, 2 working, 3 unread"). Dimmed under the offline tint when every copy's host is out of reach. The Archived fold's project rows keep `ProjectRowView`, a 32px fold, its threads one step in (16px) under its name |
 
 **Containers and items.** A container is a workspace row in the rail and a
@@ -479,8 +479,10 @@ Pace, Daily output, Model mix, Top projects, Cache hit rate, Busiest hours,
 Tools used, each a `PageSection`; Cache hit rate and Busiest hours name
 their window in a description, and the rest read the last 30 days. A
 section with nothing to draw is one `PageEmpty` line ("Nothing yet" where
-its description already names the window, "Nothing in the last 30 days"
-elsewhere). The page's line says "12K turns in the last 30 days, updated
+its description names the window, "Nothing in the last 30 days"
+elsewhere, Cache hit rate included while it has no rate to describe).
+Pace says the share used, as Accounts says what is left: "Ends near 72%
+used at this pace, resets in 3 hours". The page's line says "12K turns in the last 30 days, updated
 5:30 PM" (`dayTime`: a weekday only for an earlier day); with no turns in
 the 30 days but older logs indexed, the body is one `Empty`, "Nothing in the
 last 30 days", unless Busiest hours has turns in its 60 days: then the page
@@ -649,7 +651,7 @@ drawer's map, the orchestrator log's state, the classic diff pane) are gone.
     default branch confirms. Then the index: Staged and Changes headed
     only when both have rows, each row the file's type icon, its name with
     the folder after it (cut from its start, "…/chrome/rail", so its last
-    folder stays), and `+n −n` (New, Deleted; a file in both groups counts each group's
+    folder stays whole; where not even "…/rail" fits, no folder), and `+n −n` (New, Deleted; a file in both groups counts each group's
     own lines, `stagedCounts`/`unstagedCounts` from the host), over which
     Unstage or Discard and Stage lie on the hover reveal (the counts hold
     their place at rest and give way, so the name never reflows; at once on
@@ -736,7 +738,8 @@ Refresh; Notes' field and New note), its rows `ItemButton sm` in `p-1`,
 container query on the detail's scroller) with 24px between its sections (the meta
 line, the 16px title 8px under it, its facts 8px under that, the actions
 16px under them). An inbox row is two lines (20px over 16px, 54px); a note's
-three (its project and time, its title, its first words). The facts of a
+three (its project and time, its title, its first words), or, with no project,
+two (its title with its time at the line's end, its first words). The facts of a
 line (an inbox row's #7 and author, the detail's ref, states and source, the
 detail's people, its update time and branches under the title) are one comma
 run through `Facts` (a note's detail shows its project's mark alone over the
@@ -749,13 +752,14 @@ hides the open note leaves the detail blank and clearing it brings the note
 back, while a note whose own edit stops it matching stays listed. Nothing selected draws no detail, since the list
 already says why: its skeleton while it loads (`SurfaceSkeleton` kind
 `rows`, the row's own shape), else its one `EmptyState`, centred in the
-list's column in both pages, which says "Nothing matches" (Notes: "No
-matching notes") with Clear filters when the person narrowed it, "Nothing
+list's column in both pages, which says "Nothing matches", its line
+"Filters are narrowing this list", with Clear filters when the person narrowed it, "Nothing
 open in temp-code" with Show all workspaces when the Inbox shows one
 workspace of several, and else its title alone. A failure is one red 12px
 line under the list's head, rows listed or not (`FailLine`,
 surfaces/FailLine.tsx): plain words ("Couldn't load Linear issues",
-"Couldn't read owner/repo", "Couldn't make a note"), the program's own text
+"Couldn't read owner/repo", "Couldn't make a note"; a note's failed save,
+"Couldn't save this note", under its title), the program's own text
 on hover alone; a failed source hides its repos' lines. Notes with no note
 to show says a failed read as its `EmptyState` ("Couldn't load notes on the
 box") with Retry. The detail says its own failures the same way, one line a
@@ -791,6 +795,9 @@ row: an excerpt whose match lies past its first 24 characters starts a word
 before it after "…", and it keeps at least half the row while the thread's
 name cuts first (a note's row too). Go to File and Go to Symbol are the same
 list in a picker dialog (chrome/PickerDialog.tsx) whose rows are menu rows.
+Go to Symbol draws only the rows of the words now typed: from the first key of
+new words the old rows go and the picker says "Searching…" until their answer
+lands, so Enter never opens a result of the last query.
 
 ### The viewers
 
@@ -988,7 +995,9 @@ upload is its chip's red Failed, and the line under the chips says only why,
 in words (`attachLine`: "Not connected", our own reasons as written, else
 "Couldn't attach the file"; never a failure's raw text), a failed pick or paste the same;
 a send nothing took keeps the words and says "Not sent", with the caller's
-reason after a colon when it has one), then one row:
+reason after a colon when it has one; a send, steer or queued message the host
+refuses after the field cleared says the same as the thread's system line,
+the host's words through `notSentWords`, never their raw text), then one row:
 `+` (28px) at the left, the field, Send (a 28px circle) at the right, 6px
 from the box's sides and 8px from its top and bottom (the box's 12px radius
 less 6 is the controls' 6px), so the empty box is 46px with its hairline.
@@ -1194,8 +1203,8 @@ the project, a server runs or the pane is open. Switching is instant.
   above the dev servers live on the hosts right now, grouped under their
   threads (a 12px muted heading per thread), and the picked one's console
   filling the rest. A row (chrome/DevServerRow.tsx) is what it is in plain
-  words with the host glyph, its address and "Open on the Mac :5174" under
-  it, Stop at its end. In the pane the row picks its console through an
+  words with the host glyph (the name wraps in its column, never cut), its
+  address and "Open on the Mac :5174" under it, Stop at its end. In the pane the row picks its console through an
   open control laid over it (`ROW_HOLDS`: Enter or Space picks too), the
   address and Stop its own buttons above it. The address is the row's Open control ("Open
   localhost:5199", "Open in browser" on hover); a server on another host
@@ -1240,7 +1249,10 @@ nothing under it repeats them.
   with Revert and Stage once no change is left to review. A failed save
   is the failed `StatusMark`: its glyph, "Save failed" medium in red and
   the reason regular and muted after it, whole on hover only while cut
-  (`TruncateTip`, "Save failed: EACCES" as one string), no Tab stop.
+  (`TruncateTip`, "Save failed: The disk on the box is full." as one
+  string), no Tab stop. The reason is a known cause in `workErrorWords`'
+  file-write words; an unknown one leaves "Save failed" alone, never the
+  raw error or a path.
   There is no footer and nothing floats over the text.
 - **The body**: the editor, or for Markdown the preview and the source
   swapped in place. Loading is a `Skeleton` of code lines under the
@@ -1629,8 +1641,11 @@ are `implementationBoard.ts`.
 Header: the report's title (else the thread's, else "Research"), said
 once, with the angles, sources and searches as one comma run, and a button
 opening the report file. Under it the report's `StatusMark` and summary
-while it is written, its body once complete;
+while it is written, its body once complete (over it "1 angle still
+running" while an angle runs or starts; one waiting on an answer is not
+counted);
 then the angles, each opening its agent, live ones saying what they do,
+one waiting on an answer marked Needs you,
 their findings opening the file, and under each query its sources (the
 favicon, the title, the host, the claim; the address in a tooltip).
 

@@ -162,8 +162,10 @@ export function CapturePage({ host, bridge }: { host: CaptureHost; bridge: Captu
       .then(
         (filed: CaptureFiled) => {
           // Filed, but the thread he asked for did not start: say so; the task stands, so the draft stays clear.
+          // Its cause follows in words when it is one the app knows, never the start call's own text (S F10.1, round 4).
           if (filed.threadError) {
-            setError(`Filed. The thread did not start: ${filed.threadError}`);
+            const why = workErrorWords(new Error(filed.threadError), { host: "this computer" });
+            setError(`Filed. The thread did not start${why ? `. ${why}` : ""}`);
             bridge.failed();
           }
         },

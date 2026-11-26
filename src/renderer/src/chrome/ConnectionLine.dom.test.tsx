@@ -36,6 +36,15 @@ describe("ConnectionLine", () => {
     open.mockRestore();
   });
 
+  it("says the link in linkWords, never the transport's own text (a dropped socket, a refused connect)", () => {
+    for (const lastError of ["the socket dropped", "could not connect"]) {
+      degraded = { kind: "offline", status: { ...(status as object), transport: "offline", lastError } as never };
+      const { unmount } = render(<ConnectionLine environmentId="env_box" />);
+      expect(screen.getByRole("status").textContent).toBe("The box is offlineRetry");
+      unmount();
+    }
+  });
+
   it("spins the one Spinner while the host reconnects, with no pulse", () => {
     degraded = { kind: "reconnecting", status };
     const { container } = render(<ConnectionLine environmentId="env_box" />);

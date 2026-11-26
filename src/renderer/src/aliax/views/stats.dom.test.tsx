@@ -54,6 +54,12 @@ describe("Stats", () => {
     expect(busiest.textContent).not.toContain("30 days");
   });
 
+  it("names Cache hit rate's 30 days on its empty line when no rate gives it a description", () => {
+    render(<StatsView data={{ ...STATS, cacheDaily: [], totals: { ...STATS.totals, cache_read: 0, input: 0, cache_write: 0 } }} status={null} />);
+    const cache = screen.getByRole("region", { name: "Cache hit rate" });
+    expect(cache.querySelector("[data-slot=page-empty]")!.textContent).toBe("Nothing in the last 30 days");
+  });
+
   it("says a pace headline as two facts, the title medium, 4px apart", () => {
     render(<StatsView data={STATS} status={null} />);
     const headline = screen.getByRole("region", { name: "Pace" }).querySelector("[data-slot=pace-series] p")!;

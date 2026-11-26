@@ -81,6 +81,9 @@ light one is built is "The light theme".
 | `chrome-hover`, `chrome-hover-ghost` | the hover fill of a row, a tab or a quiet control on the chrome, and of a ghost button there | `foreground` 5%, 7% | `sidebar-group-hover` |
 | `skeleton` | a loading bone | `muted` | `foreground` 8% over what it lies on |
 | `skeleton-matte` | a loading bone on `matte` (a computer's picture on its way, full screen and the pop-out) | `skeleton` | `background` 16% |
+| `skeleton-stage` | a loading bone on `stage` (a picture, a page or a media frame on its way: `bg-skeleton-stage` on `Skeleton`) | `skeleton` | `foreground` 12% |
+| `matte-muted-foreground` | quieter words on `matte` (a show's "End of show" in the presenter's view) | `muted-foreground` | `background` 60%, on `matte` (7.4:1) |
+| `media-ground` | the ground a video or a picture plays on in a pane (the file pane's media, Work's player) | `background` | `stage` |
 | `check-edge` | an unchecked checkbox's or radio's edge | `input` | `foreground` 50% (3:1) |
 | `outline-field-edge` | the edge of an outline button that stands as a field beside one (`t-raise-field`: a date field beside a select) | `border` | `input` |
 | `field-readonly` | a read-only field's words | `foreground` | `muted-foreground` |
@@ -489,6 +492,15 @@ sits in a column. Where a time can be another day's (the Computer
 section's group headings, its "As it was at" lines and a step's time in
 its facts: the journal keeps 30 days) it names its day, `dayTime`:
 "2:02 PM" today, "Mon 2:02 PM" within the week, "Nov 3, 2:02 PM" before.
+A time he sets is a `TimeField` (components/ui/time-field.tsx), never
+`<Input type="time">`, which writes "06:00 PM" beside Chromium's clock
+glyph: a text field that shows the same form ("6:00 PM", tabular), reads
+what he types on Enter or when he leaves it ("6", "6p", "18:00",
+"6:30 pm"; an hour with no AM or PM is the 24-hour clock's), and gives
+words that are no time the last time back. A press, ↓ or typing drops the
+quarter hours under it in the popover's list, those that begin with what
+he typed, the set one ticked with a muted check and in view. Its value is
+a time input's own ("18:00", "" for none), beside `DateField`'s.
 
 ### Spacing
 
@@ -525,7 +537,7 @@ Monaco's suggest, hover and usages, each on the popover's fill, hairline and
 12px radius). Docked chrome and cards have no shadow, the segmented control's
 pill included; their depth is the gray step and the hairline
 (`lib/depthGuard.test.ts`). A scroller cut at an edge (the file tabs, the dock
-bar) fades that edge over 24px (`useOverflowEdges`) instead of a hard stop. The one exception is a raised button (`default`, `secondary`,
+bar, the rail's list over its foot) fades that edge over 24px (`useOverflowEdges`) instead of a hard stop. The one exception is a raised button (`default`, `secondary`,
 `destructive`): it carries its own stack, a lip, an edge and a soft drop
 (`--raise-primary`, `--raise-secondary`, `--raise-destructive`, with their
 `-lit` and `-lifted` steps, a value per theme), on a fill layer behind its
@@ -1269,6 +1281,12 @@ Every computer being driven now, on every connected host, in one place
   one press. It has no Pop out or Full screen until it has a picture.
 - **Nothing driven** is the one `EmptyState`: "Nothing is being driven",
   "A browser or an app an agent is using shows here, live." No action.
+  While a connected computer has not answered, the page is a bone in the
+  stage's shape (16 by 10, at most 960px wide) instead; a computer's failed
+  read counts as its answer, so the wait ends. With every computer away it
+  is "Not connected to the box" (each named mid-line, "the box and
+  Studio") with no line; with some away, the idle line names them in the
+  description's place ("Not connected to Studio.").
 - **Full screen** (`FullWindow`, lib/fullWindow.ts, its own chunk; main's
   fullScreen.ts): one computer over his whole display. The window itself
   goes full screen (on a Mac on this Space, at once, with no menu bar or
@@ -2552,14 +2570,16 @@ Around the canvas:
   is a bcc ("Not on this thread: …. Bcc: …."); the words at 13/20, twelve
   lines then Show all; Put in reply, secondary, which opens the full
   composer when the card had to tell, and Discard, a ghost trash glyph); a rewrite of his reply (words taken out and put in, the review
-  tints; Take and Leave); rows to act on (36px rows: a tick, the subject
+  tints; Take and Leave); rows to act on (a head that says what the rows
+  are, "Billing notices", never their count; 36px rows: a tick, the subject
   at 13px, the sender and the date at 12px muted; one press in the foot
-  names the count, "Archive 3"; a row still reading its mail draws a tick,
+  names the verb and the count, "Archive 3"; a row still reading its mail draws a tick,
   subject and date bone, and the press says its verb alone, inactive,
   until every row has answered); a task or an event (one 44px row: a 14px
   glyph, the title at 13px medium, one 12px muted line, Add…; after his
   Add, an event's Queued mark until the calendar has it, then Added with
-  Open, or the refusal in red in the line's place with Add… again). A mail or a
+  Open Agenda (LifeOS's row names no event to stand on; a task's Added has
+  Open), or the refusal in red in the line's place with Add… again). A mail or a
   person named in an answer is a 20px chip on `muted` at radius 6 with a
   12px glyph.
   Mail's settings are flat groups of 44px rows; in Settings they are a
@@ -2702,7 +2722,14 @@ Around the canvas:
   Follow up once the event is over) is a pointer's shortcut out of the Tab
   order, drawn on hover over the title's end on the row's own fill, its
   first 12px fading the title out, so the title runs the row's width at
-  rest. ↑ ↓ move between rows in Tasks and Agenda as in People. Under
+  rest. ↑ ↓ move between rows in Tasks and Agenda as in People. New
+  event is the small dialog, so Day stands over the two times (its fields
+  share one row only from 420px, more than the small dialog's body
+  leaves). With no calendar of the job that takes events it is the one
+  muted line, the job's name and "has no calendar that takes new
+  events.", with no
+  fields, no Add and no Cancel: the title's × or Escape closes it, and
+  what he typed comes back if a calendar does. Under
   Waiting a task's second line is the name alone: the heading says the
   rest. A closed task's sheet says so at its foot as a fact, "Done Nov 24"
   (or "Done yesterday") where LifeOS kept the time, else "Marked done";
@@ -2766,8 +2793,8 @@ Around the canvas:
   sentence of what goes and to whom (the event stands above it and is not
   named again; a proposal says his reply turns to Maybe, as the calendar
   makes it; a move of an event with guests says they are told the new
-  time), then Day, From and To (New event's fields, on one row from 400px
-  of the dialog, else Day over the two times) for a proposal
+  time), then Day, From and To (on one row from 400px of the dialog, else
+  Day over the two times) for a proposal
   or a move, and a Note for a decline or a proposal; the foot is Back and
   Send (Move for a move). The times start filled: the earlier event with
   the latest quarter hour that still ends a drive before the later one
@@ -3480,7 +3507,8 @@ host anything per row: the rows read the session summaries (`workOutcome`) and L
   A title or second line the column cuts is said whole in a tip on hover and focus, only while one is cut.
   Right-click or ⋯ (over the time on hover) is the thread's menu; a double-click renames it. **Work Chats** draws
   the code rows (its state at the row's end) with the same two marks: the provider in the lead, a type other than
-  chat after the title.
+  chat after the title. With nothing listed it is the home's one `Empty`, "No chats" with New chat (a Work chat),
+  above the archived row.
 - **Archived**: a quiet row on the names' column at the end of Threads, "3 archived", opening the archived list
   (`ThreadListPopover`, Restore on hover) of the job's threads, loose and in projects; a pick restores and opens
   the thread. Work Chats ends its list with the same row. Nothing while none are archived.
@@ -3521,7 +3549,9 @@ docs/agents/work.md "What a thread left him"). It is the transcript's own top, i
   page) or, loose in a job, the job's name, a 12px chevron, then the thread's type glyph (14px, tinted, as a code
   chip leads with it) 6px before the title in 13px medium; no strip of thread chips. The head is where a chat says
   its type, since its row does not. A Work Chat shows its type glyph and title alone, the glyph on the 18px a code
-  heading starts at; an unsent draft has no glyph. A code thread's bar and transcript are unchanged (pixel-diffed).
+  heading starts at; an unsent draft has no glyph. While a Work view (Mail) or place (Today) covers the thread,
+  the bar is the job's dot and its project or name alone: no chevron, no type and no title of a thread not on
+  screen. A code thread's bar and transcript are unchanged (pixel-diffed).
 - **The right panel** lists Results but opens on them only when he picks them.
 
 #### A Work draft
@@ -3916,8 +3946,8 @@ the room sees, and the presenter's view. One state moves both.
   the next show. With none, "None" in 13px muted.
 - **The strip** at the foot is 60px on `sidebar` under a hairline, 12px
   inset: every slide a 58px picture in the 3px frame at radius 6 with its
-  number 12px tabular before it, the current one on `muted` and kept in the
-  middle, a hidden slide at 45%. A press jumps. G hands it the keyboard:
+  number 12px tabular before it, the current one on `sidebar-group-selected`
+  with its number in foreground and kept in the middle, a hidden slide at 45%. A press jumps. G hands it the keyboard:
   the arrows then move along it and Return jumps; at every other time the
   arrows are the show's, so a thumbnail is never a Tab stop. With no
   presenter's view, G opens the slideshow's own picker.
@@ -4039,8 +4069,9 @@ opening puts the focus on Edit.
   on it. A page that could not be drawn says so on the paper in `paper-ink-2`
   with a ghost Retry. From 20 pages a thumbnail rail stands at the start:
   76px (60px under a 640px canvas), thumbnails 44 wide (52 for a slide), the
-  number under each in 12px tabular muted, the page being read on `muted`; a
-  press goes to that page.
+  number under each in 12px tabular muted, the page being read on
+  `sidebar-group-selected` with its number in foreground; a press goes to
+  that page.
 - **Who drew it** is one line over the first sheet, as wide as the paper, at
   least 24px tall and 8px above it, 12/16 muted: "As drawn here" for our
   own drawing (LibreOffice on the file's host, never named), "As Word draws
@@ -4378,13 +4409,13 @@ his hands and leaves no trace on what he was searching from.
   with times lands after one without; Recent, with nothing typed, has no
   times and gives the room to its titles.
   What has passed says how long ago ("2d"); an event says its time today
-  and its day otherwise ("Jan 12"), never a year and never on two lines.
+  ("All day" for one with no time) and its day otherwise ("Jan 12"), never a year and never on two lines.
   Under 480px (only /ui in a narrow browser: the desktop window is never
   under 800) the fact goes rather than stand as a stub, and the job is its
   dot alone. A file kept in
   the cloud wears Files' cloud mark after its name.
-- **The job** is the sector dot and the job's name in 12px muted, in an
-  80px column so the names line up (a longer name is cut); never a chip. It is drawn only
+- **The job** is the sector dot and the job's name in 12px muted, in a
+  112px column so the names line up (a longer name is cut); never a chip. It is drawn only
   while the results can mix places (All jobs, with more than one job in
   reach, or one job and a thread of the Work Chats among its rows, which
   reads "Work Chats"). Scoped to one job the column is gone.
@@ -4813,7 +4844,8 @@ section adds no words). A key that may not use a press does not get it: the
 control is not drawn (`useLinkMay`, `THREAD_MENU_METHODS`), or, where the
 place would be empty and he must know why, it says who can ("Send from a
 computer that manages the box", "Answer from a computer that manages the
-box", in an approval's pair's place and a question's Skip and Continue,
+box", in an approval's pair's place, where it wraps rather than cuts the
+host's name, and a question's Skip and Continue,
 whose set keeps Back and Next so each question can be read); the composer's refusal rides Send's tooltip as well, so it stands once typed words hide the field's. A press
 that acts in this window alone (a draft's permission mode, Cut, Start pass, which only arms the composer) is never
 held. The window's own rows (Open, Pin, Reveal, Copy path, the order) stay.
@@ -4922,7 +4954,7 @@ never cut (`StatusMark`'s `wrap`).
 | Toast (sonner, on `--layer-toast`; index.css overrides its 400-500ms defaults, out-specifying its injected stylesheet) | rise and fade, `--dur-base` `--ease-out`, no height or shadow transition | fade, `--dur-fast` `--ease-exit` | fade, `--dur-fast` |
 | Right panel (a toggle in place; the thread takes its width at once, so no frame lays out the transcript) | slides in from the row's right edge (`translate-x-full`→0) and fades, `--dur-slow` `--ease-out`; mounted open (a tab switch, a launch) it is just there; a section's body fades `--dur-fast` | drawn over the thread, inert: a quarter of its width back out and a fade, `--dur-fast` `--ease-exit` | fade only |
 | Rail | no width animation; content fades `--dur-fast` | same | same |
-| The composer's slash and @ menu (transitions; the entry is `@starting-style`; open while a `/` or `@` is typed, with nothing to pick one muted 28px row, "No matches" (on a bare `/` with no commands at all, "No commands"), or "Loading…" while the project's files or the host's commands are read, or "Couldn't load commands" in red when the host gave no list, which Escape closes and the next `/` asks again; a failed read of the project's files is "Couldn't search files", muted, in the empty row or one row under the names already in hand, and the next `@` reads again) | fade + rise 4px from the box's edge, `--dur-base` `--ease-out`; a row keeps its element as the filter narrows, and the frame's height follows the list on the same transition | its last rows stay, inert, while it fades 1px back down, `--dur-fast` `--ease-exit`; typing it open again turns it back | fade only |
+| The composer's slash and @ menu (transitions; the entry is `@starting-style`; open while a `/` or `@` is typed, with nothing to pick one muted 28px row, "No matches" (on a bare `/` with no commands at all, "No commands"), or "Loading…" while the project's files or the host's commands are read, or "Couldn't load commands" in red when the host gave no list, which Escape closes and the next `/` asks again; a failed read of the project's files is "Couldn't search files" (Work's, its own words), in red as the `/` menu's, in the empty row or one row under the names already in hand, and the next `@` reads again; a long file or note name ends in an ellipsis, its folder giving way first, and another project's name beside a thread's title is cut before the title is) | fade + rise 4px from the box's edge, `--dur-base` `--ease-out`; a row keeps its element as the filter narrows, and the frame's height follows the list on the same transition | its last rows stay, inert, while it fades 1px back down, `--dur-fast` `--ease-exit`; typing it open again turns it back | fade only |
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press, a raised button (`default`, `secondary`, `destructive`) | its fill layer scales 0.985 (0.997 × 0.985 full width) while the label stays put, `--dur-fast` | release, `--dur-hover` | none |
 | Press, ghost, link, outline and every row (a rail row, an Item, a toggle, a tab, a hover action, a board row, a task list's header, a row control around the composer) | the fill steps to `foreground/12` at once; nothing scales (`ROW_PRESS` in components/ui/press.ts for a row drawn by hand, `ROW_CONTROL` in chrome/composerRow.ts for the quiet controls under and over the composer's box); a control floating on its own fill (jump to latest) lays `foreground/12` over that fill instead | back over `--dur-hover` | same |

@@ -35,7 +35,7 @@ import {
 import { Kbd } from "../components/ui/kbd";
 import { Spinner } from "../components/ui/spinner";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
-import type { LazyPopoverProps, MenuAt, MenuRow, MenuRowsKind, RowsContextMenuProps, RowsMenuProps } from "./menuRows";
+import { tidy, type LazyPopoverProps, type MenuAt, type MenuRow, type MenuRowsKind, type RowsContextMenuProps, type RowsMenuProps } from "./menuRows";
 
 /** The primitives behind components/ui/lazy-menus.tsx, the menus and
  *  popovers the first paint draws by their parts. */
@@ -78,9 +78,11 @@ const PARTS = {
   },
 } as const;
 
-/** The rows of one menu. A label heads a group that runs to the next
- *  separator or label (Base UI wants a group label inside its group). */
-export function MenuRows({ items, onPick, kind }: { items: readonly MenuRow[]; onPick: (id: string) => void; kind: MenuRowsKind }) {
+/** The rows of one menu, tidied here (no separator first, last, doubled or
+ *  under a label), so no caller has to. A label heads a group that runs to
+ *  the next separator or label (Base UI wants a group label inside its group). */
+export function MenuRows({ items: given, onPick, kind }: { items: readonly MenuRow[]; onPick: (id: string) => void; kind: MenuRowsKind }) {
+  const items = tidy(given);
   const { Group, Label, Sep, Radios } = PARTS[kind];
   // Once one row has a glyph, a row without one keeps the 14px column empty: every label starts on one edge.
   const glyphs = items.some((row) => (row.kind === "item" || row.kind === "sub") && !!row.icon);

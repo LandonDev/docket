@@ -102,19 +102,23 @@ describe("FileHeader", () => {
   it("says a save only while it runs or when it failed", () => {
     const { container, rerender } = render(<FileHeader folder={null} save={{ status: "saving" }} />);
     expect(container.textContent).toBe("Saving…");
-    rerender(<FileHeader folder={null} save={{ status: "error", message: "EACCES" }} />);
-    // The failed mark: its glyph, the word "Save failed" in medium red, the error regular and muted after it.
+    rerender(<FileHeader folder={null} save={{ status: "error", message: "The disk on the box is full." }} />);
+    // The failed mark: its glyph, the word "Save failed" in medium red, the worded cause regular and muted after it.
     const mark = container.querySelector<HTMLElement>('[data-slot="status-mark"]')!;
     expect(mark.getAttribute("data-state")).toBe("failed");
     expect(mark.querySelector('[data-slot="status-glyph"]')).not.toBeNull();
     expect(mark.querySelector('[data-slot="status-word"]')!.textContent).toBe("Save failed");
     const detail = mark.querySelector<HTMLElement>('[data-slot="status-detail"]')!;
-    expect(detail.textContent).toBe("EACCES");
+    expect(detail.textContent).toBe("The disk on the box is full.");
     expect(detail.className).toContain("truncate");
     expect(container.textContent).not.toContain("Save failed:");
     // A mark that fits is no Tab stop and mounts no tooltip that repeats it (TruncateTip).
     expect(mark.hasAttribute("tabindex")).toBe(false);
     expect(mark.getAttribute("data-slot")).not.toBe("tooltip-trigger");
+    // An unknown cause (the editor words it as "") is "Save failed" alone: no detail, no colon.
+    rerender(<FileHeader folder={null} save={{ status: "error", message: "" }} />);
+    expect(container.textContent).toBe("Save failed");
+    expect(container.querySelector('[data-slot="status-detail"]')).toBeNull();
     rerender(<FileHeader folder={null} save={{ status: "saved" }} />);
     expect(container.textContent).toBe("");
     rerender(<FileHeader folder={null} save={{ status: "idle" }} />);
@@ -127,7 +131,7 @@ describe("FileHeader", () => {
         folder="src"
         diff={diff()}
         markdown={{ mode: "source", onModeChange: vi.fn() }}
-        save={{ status: "error", message: "disk full" }}
+        save={{ status: "error", message: "The disk on the box is full." }}
       />,
     );
     expect(container.querySelector("[title]")).toBeNull();

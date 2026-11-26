@@ -57,7 +57,7 @@ describe("FileNoteBar", () => {
       await Promise.resolve();
     });
     expect(openWithEditor).toHaveBeenCalledWith(editor);
-    expect(probe.container.textContent).toContain("Couldn’t open: No editor found");
+    expect(probe.container.textContent).toContain("Couldn't open: No editor found");
     expect(alert().className).toContain("bg-destructive/10");
   });
 

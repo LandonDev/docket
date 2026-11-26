@@ -47,43 +47,38 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
   const search = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
-  const [rows, setRows] = useState<WorkspaceSymbolRow[]>([]);
-  const [loading, setLoading] = useState(false);
+  /** The last answer and the words it answers: rows of an older query are never drawn, nor opened by Enter (S F9.1, round 4). */
+  const [answer, setAnswer] = useState<{ key: string; rows: WorkspaceSymbolRow[]; failure: "none" | "failed" | null } | null>(null);
+  const trimmed = query.trim();
+  const key = `${projectId ?? ""}\n${trimmed}`;
+  const current = answer?.key === key ? answer : null;
+  const rows = current?.rows ?? [];
   /** A failure is said as one, never as "No matching symbols". */
-  const [failure, setFailure] = useState<"none" | "failed" | null>(null);
+  const failure = current?.failure ?? null;
+  // From the first key of a new query: the old rows go, and the picker says "Searching…" until its answer lands.
+  const searching = !!projectId && !!trimmed && !current;
 
   useEffect(() => {
-    const trimmed = query.trim();
-    if (!projectId || !trimmed) {
-      setRows([]);
-      setLoading(false);
-      return;
-    }
+    if (!projectId || !trimmed) return;
     let cancelled = false;
-    setLoading(true);
-    setFailure(null);
     const timer = window.setTimeout(() => {
       void import("../surfaces/monaco/lsp/providers")
         .then(({ workspaceSymbols }) => workspaceSymbols(projectId, trimmed))
         .then((next) => {
           if (cancelled) return;
-          setRows(next);
+          setAnswer({ key: `${projectId}\n${trimmed}`, rows: next, failure: null });
           setActive(0);
         })
         .catch((err: { symbolSearch?: "none" | "failed" }) => {
           if (cancelled) return;
-          setRows([]);
-          setFailure(err?.symbolSearch === "none" ? "none" : "failed");
-        })
-        .finally(() => {
-          if (!cancelled) setLoading(false);
+          setAnswer({ key: `${projectId}\n${trimmed}`, rows: [], failure: err?.symbolSearch === "none" ? "none" : "failed" });
         });
     }, SETTLE_MS);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [projectId, query]);
+  }, [projectId, trimmed]);
 
   const listId = useId();
   const pick = (row: WorkspaceSymbolRow) => {
@@ -115,7 +110,7 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
     ? "Open a project to search symbols"
     : !query.trim()
       ? "Type a symbol name"
-      : loading && rows.length === 0
+      : searching
         ? "Searching…"
         : failure === "none"
           ? "No language server is running for this project"

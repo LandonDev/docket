@@ -4,7 +4,7 @@
  * and no project plan chip shows, and it is the thread's crumb with no strip
  * of chips. A code thread in front keeps all three.
  */
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -42,6 +42,8 @@ vi.mock("./ThreadMenu", () => ({
 
 import { ThreadHeader } from "./ThreadHeader";
 import { sessionStore } from "../lib/tcserver/store";
+import { openWorkView } from "../lib/workSwitch";
+import { shell } from "../stores/shell";
 
 afterEach(cleanup);
 
@@ -92,6 +94,26 @@ describe("ThreadHeader", () => {
     expect(strip.dataset.heading).toBe("t1");
     // The crumb ends on the thread's type, beside its title.
     expect(screen.getByTestId("crumb").dataset.type).toBe("chat");
+    scope.work = false;
+  });
+
+  it("a Work view or place over a Work thread: the bar is the job alone, no chevron, no type and no title", () => {
+    scope.work = true;
+    for (const [open, close] of [
+      [() => openWorkView({ workspaceId: "w1", view: "mail" }), () => openWorkView(null)],
+      [() => shell.openWorkPlace("today"), () => shell.openWorkPlace(null)],
+    ] as const) {
+      act(open);
+      const { unmount } = mount();
+      expect(screen.getByTestId("strip").dataset.heading).toBe("");
+      expect(screen.getByTestId("crumb").dataset.last).toBe("true");
+      expect(screen.getByTestId("crumb").dataset.type).toBe("none");
+      // The view closes: the thread's crumb and title come back.
+      act(close);
+      expect(screen.getByTestId("strip").dataset.heading).toBe("t1");
+      expect(screen.getByTestId("crumb").dataset.type).toBe("chat");
+      unmount();
+    }
     scope.work = false;
   });
 

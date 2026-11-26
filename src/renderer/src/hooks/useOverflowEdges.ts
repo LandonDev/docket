@@ -14,6 +14,11 @@ export const OVERFLOW_FADE =
 export const OVERFLOW_FADE_Y =
   "data-overflow-start:[--fade-start:32px] data-overflow-end:[--fade-end:32px] [mask-image:linear-gradient(180deg,transparent_0px,var(--foreground)_var(--fade-start,0px),var(--foreground)_calc(100%_-_var(--fade-end,0px)),transparent_100%)]";
 
+/** A column's own cut edge (the rail's list over its foot): 24px at a top or
+ *  bottom edge with more past it, as a strip's (docs/DESIGN.md "Shadow"). */
+export const OVERFLOW_FADE_Y_EDGE =
+  "data-overflow-start:[--fade-start:24px] data-overflow-end:[--fade-end:24px] [mask-image:linear-gradient(180deg,transparent_0px,var(--foreground)_var(--fade-start,0px),var(--foreground)_calc(100%_-_var(--fade-end,0px)),transparent_100%)]";
+
 export type OverflowAxis = "x" | "y";
 
 /**
@@ -21,9 +26,11 @@ export type OverflowAxis = "x" | "y";
  * is more of it past that edge, so the cut edge can fade and say so: a
  * horizontal strip by default, a column with `axis: "y"`. Written straight
  * to the element on scroll and resize, never through React state, and
- * nothing runs at rest.
+ * nothing runs at rest. With `content`, a resize of the scroller's first
+ * child counts too (a list that grows or folds inside a scroller whose own
+ * box stays put).
  */
-export function useOverflowEdges<T extends HTMLElement>(axis: OverflowAxis = "x") {
+export function useOverflowEdges<T extends HTMLElement>(axis: OverflowAxis = "x", { content = false }: { content?: boolean } = {}) {
   const cleanup = useRef<(() => void) | null>(null);
   return useCallback(
     (el: T | null) => {
@@ -35,12 +42,13 @@ export function useOverflowEdges<T extends HTMLElement>(axis: OverflowAxis = "x"
       el.addEventListener("scroll", read, { passive: true });
       const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(read);
       ro?.observe(el);
+      if (content && el.firstElementChild) ro?.observe(el.firstElementChild);
       cleanup.current = () => {
         el.removeEventListener("scroll", read);
         ro?.disconnect();
       };
     },
-    [axis],
+    [axis, content],
   );
 }
 

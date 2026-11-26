@@ -81,6 +81,33 @@ describe("the Markdown editor and the disk race", () => {
   const button = (container: HTMLElement, name: string) =>
     [...container.querySelectorAll("button")].find((b) => b.textContent === name) ?? null;
 
+  it("a failed save says its cause in words, or Save failed alone, never the raw error or its path", async () => {
+    const { cm, container } = await mount();
+    type(cm, 2, "mine");
+    // A refused write leaves the disk as it was.
+    h.onWrite = () => {
+      h.disk.set(PATH, base);
+      throw new Error("EACCES: permission denied, open '/w/notes.md'");
+    };
+    await act(async () => {
+      await flushEditor(PATH).catch(() => false);
+    });
+    await waitFor(() => expect(container.querySelector('[data-slot="status-mark"]')).not.toBeNull());
+    const mark = container.querySelector<HTMLElement>('[data-slot="status-mark"]')!;
+    expect(mark.textContent).toContain("Save failed");
+    expect(mark.textContent).toContain("could not change the file in that folder");
+    expect(mark.textContent).not.toMatch(/EACCES|\/w\/notes/);
+    h.onWrite = () => {
+      h.disk.set(PATH, base);
+      throw new Error("ERR_SOMETHING_ODD at /w/notes.md");
+    };
+    type(cm, 3, "again");
+    await act(async () => {
+      await flushEditor(PATH).catch(() => false);
+    });
+    await waitFor(() => expect(container.querySelector('[data-slot="status-mark"]')!.textContent).toBe("Save failed"));
+  });
+
   it("merges a disk change on other lines and writes both in one write", async () => {
     const { cm, container } = await mount();
     type(cm, 2, "mine");

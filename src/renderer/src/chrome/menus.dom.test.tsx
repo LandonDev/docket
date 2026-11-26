@@ -208,6 +208,16 @@ describe("the menu row rule", () => {
   });
 });
 
+describe("MenuRows tidies its rows", () => {
+  it("draws no separator first, last, doubled or under a label, in a submenu too", async () => {
+    const item = (id: string): MenuRow => ({ kind: "item", id, label: id });
+    const { list } = await openDropdown([{ kind: "sep" }, item("a"), { kind: "sep" }, { kind: "sep" }, item("b"), { kind: "label", label: "L" }, { kind: "sep" }, item("c"), { kind: "sep" }]);
+    const parts = [...list.querySelectorAll("[role='separator'], [role='menuitem'], [role='group']")].filter((el) => el.parentElement === list).map((el) => el.getAttribute("role"));
+    expect(parts).toEqual(["menuitem", "separator", "menuitem", "group"]);
+    expect(within(list).getByRole("group").querySelector("[role='separator']")).toBeNull();
+  });
+});
+
 describe("tidy", () => {
   it("drops separators first, last, doubled and under a label", () => {
     const item = (id: string): MenuRow => ({ kind: "item", id, label: id });

@@ -74,6 +74,9 @@ const BUSY_WIDTHS =
  * the spinner's slot. `align="end"` sets the words at the reserved width's
  * end, for a button at a row's end whose word stands over something (the
  * slot's Stop over Send); the spinner then appears before them.
+ * `align="start"` hangs them on the reserved width's start, for a leading
+ * ghost whose word lines up with the text above it (the Outbox's Discard);
+ * busy, the spinner comes first and the word follows it.
  */
 function BusyLabel({
   busy,
@@ -84,11 +87,11 @@ function BusyLabel({
   busy: boolean;
   label: string;
   busyLabel?: string;
-  align?: "center" | "end";
+  align?: "start" | "center" | "end";
 }) {
   return (
     <span data-slot="busy-label" data-busy={busy || undefined} data-idle={label} data-busy-text={busyLabel} className={BUSY_WIDTHS}>
-      <span className={cn("inline-flex items-center gap-1", align === "end" ? "justify-end" : "justify-center")}>
+      <span className={cn("inline-flex items-center gap-1", align === "end" ? "justify-end" : align === "start" ? "justify-start" : "justify-center")}>
         {busy ? (
           <>
             <Spinner aria-hidden style={{ width: "var(--busy-space, 1rem)", height: "var(--busy-space, 1rem)" }} />

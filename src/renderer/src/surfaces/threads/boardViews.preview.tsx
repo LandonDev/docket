@@ -248,7 +248,7 @@ export function ResearchStates() {
     const template = FIXTURE_ROWS[0].meta;
     seedPreviewThreads([
       { ...template, id: "a1", parentId: "report-complete", masterId: null, status: "running", title: "Bundler" },
-      { ...template, id: "a2", parentId: "report-complete", masterId: null, status: "idle", title: "Cache" },
+      { ...template, id: "a2", parentId: "report-complete", masterId: null, status: "waiting", title: "Cache" },
     ], {}, (method, params) => method === "file.read" ? docs.get(String(params.path)) ?? null : null);
   }, []);
 

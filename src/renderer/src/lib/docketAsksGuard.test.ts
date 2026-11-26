@@ -5,6 +5,7 @@ import type { ClientRequest } from "@shared/contract";
 import { capabilityRefusal, requiredCapability, type Capability } from "@shared/capabilities";
 import { THREAD_MENU_METHODS, threadMenuRows } from "./threadMenu";
 import { CORE_METHODS } from "./linkMayCore";
+import { moveTargets } from "./threadMove";
 
 /**
  * D5: on every Docket surface outside Work and Settings, a control that can only be refused is held while its host's
@@ -323,6 +324,20 @@ describe("Docket's asks", () => {
       ),
     );
     expect(missing).toEqual([]);
+  });
+
+  // The thread menu's Move to …: `session.move` goes to this machine's own server (`local`), which asks the other
+  // host as admin, so the key it needs is the other host's admin key, not a row of the core table above.
+  it("draws no Move to … for a key that is not admin on the other host, and holds it while that host's link is down", () => {
+    const env = (id: string, name: string) => ({ id, name, routes: [], credentialRef: null });
+    const envs = [env("local", "This Mac"), env("env_box", "box")];
+    const hello = (caps: string[]) => ({ transport: "open" as const, lastHello: { environmentId: "x", contract: 1, caps: caps as never } });
+    const thread = { id: "t", environmentId: "env_box", status: "idle" };
+    expect(moveTargets(thread, envs, (id) => (id === "env_box" ? hello(["read"]) : hello(["admin"])), false)).toEqual([]);
+    expect(moveTargets(thread, envs, (id) => (id === "env_box" ? { transport: "reconnecting" as const, lastHello: null } : hello(["admin"])), false)).toEqual([
+      { environmentId: "local", name: "This Mac", ok: false, reason: "box is not connected" },
+    ]);
+    expect(requiredCapability({ method: "session.move" })).toBe("local");
   });
 
   it("draws none of the thread menu's host verbs for a key that may only read", () => {

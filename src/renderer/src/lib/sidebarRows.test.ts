@@ -88,7 +88,7 @@ describe("sidebarItems", () => {
 
   it("ends Work Chats' list with its archived row, and leaves a code workspace's column as it was", () => {
     expect(sidebarItems(groups({ chats: rows(1) }), true, false, "chats").map((i) => i.kind)).toEqual(["chats", "work-archived"]);
-    expect(sidebarItems(groups(), true, false, "chats").map((i) => i.kind)).toEqual(["work-archived"]);
+    expect(sidebarItems(groups(), true, false, "chats").map((i) => i.kind)).toEqual(["no-chats", "work-archived"]);
     expect(sidebarItems(groups({ projects: [group("a")], chats: rows(1) }), false, false, null).map((i) => i.kind)).toEqual(["project", "chats"]);
   });
 
@@ -106,8 +106,8 @@ describe("sidebarItems", () => {
 
   it("an empty home says No chats, one chat brings its section, never the empty hint", () => {
     expect(sidebarItems(groups(), true)).toEqual([{ kind: "no-chats", key: "no-chats" }]);
-    // Work Chats keeps its own column: no home empty state there.
-    expect(sidebarItems(groups(), true, false, "chats").map((i) => i.kind)).toEqual(["work-archived"]);
+    // An empty Work Chats says the same, above its archived row.
+    expect(sidebarItems(groups(), true, false, "chats").map((i) => i.kind)).toEqual(["no-chats", "work-archived"]);
     expect(sidebarItems(groups({ chats: rows(1) }), true).map((i) => i.kind)).toEqual(["chats"]);
     // The column's header says Chats at the home; a workspace's loose chats keep their fold.
     const headed = (items: ReturnType<typeof sidebarItems>) => items.map((i) => (i.kind === "chats" ? i.headed : null));

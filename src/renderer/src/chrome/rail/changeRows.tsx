@@ -13,15 +13,26 @@ export function Counts({ status, additions, deletions, className }: { status?: s
 }
 
 /** A file's name with its folder after it, the folder truncating first and from its start
- *  ("…renderer/src/lib"), so its last folder is what stays: laid out right to left, the path
- *  held in its order between two left-to-right marks, so a leading "." never jumps to the end. */
+ *  ("…renderer/src/lib"), so its last folder is what stays: the leading part laid out right to
+ *  left, held in its order between two left-to-right marks, so a leading "." never jumps to the end.
+ *  Where not even the last folder would show whole, the folder is dropped: the line wraps, and the
+ *  one-line box hides what wrapped (no measuring, no hook per row). */
 export function FileName({ relative, muted }: { relative: string; muted?: boolean }) {
   const name = basename(relative);
   const dir = relative.includes("/") ? relative.slice(0, relative.lastIndexOf("/")) : "";
+  const cut = dir.lastIndexOf("/");
+  const lead = cut < 0 ? "" : dir.slice(0, cut + 1);
+  const last = cut < 0 ? dir : dir.slice(cut + 1);
   return (
-    <span className="flex min-w-0 items-baseline gap-2">
-      <span className={cn("shrink-0 truncate text-[13px]", muted ? "text-muted-foreground" : "text-foreground")}>{name}</span>
-      {dir ? <span dir="rtl" className="min-w-0 truncate text-left text-xs text-muted-foreground">{`\u200E${dir}\u200E`}</span> : null}
+    <span className="flex h-5 min-w-0 flex-wrap items-baseline gap-x-2 overflow-hidden leading-5">
+      <span className={cn("max-w-full shrink-0 truncate text-[13px]", muted ? "text-muted-foreground" : "text-foreground")}>{name}</span>
+      {dir ? (
+        // The lead keeps room for its whole ellipsis ("…/rail"): less, and the folder wraps away.
+        <span data-slot="file-folder" className={cn("grow basis-0 items-baseline text-xs text-muted-foreground", lead ? "grid grid-cols-[minmax(1em,max-content)_max-content]" : "flex")}>
+          {lead ? <span dir="rtl" className="min-w-0 truncate text-left">{`\u200E${lead}\u200E`}</span> : null}
+          <span>{last}</span>
+        </span>
+      ) : null}
     </span>
   );
 }

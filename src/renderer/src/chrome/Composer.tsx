@@ -432,8 +432,9 @@ export function Composer({
     const rows = workMentions.lead ? [...workHits, ...fileHits, ...threadHits, ...noteHits] : [...fileHits, ...threadHits, ...noteHits, ...workHits]
     // A failed file read is said, never a bare "No matches"; Work's own failure, in its state's words, keeps the line.
     const workFailed = workMentions.note !== undefined && workMentions.note !== 'Loading…'
-    const note = filesFailedFor === executionCwd && !workFailed ? "Couldn't search files" : workMentions.note
-    return { mode: 'file', rows, loading, note }
+    const filesFailed = filesFailedFor === executionCwd
+    const note = filesFailed && !workFailed ? "Couldn't search files" : workMentions.note
+    return { mode: 'file', rows, loading, note, failed: filesFailed || workFailed }
   }, [executionCwd, fileHits, filesFailedFor, filesFor, mentionOpen, mentionQuery, notes, threads, workMentions.rows, workMentions.lead, workMentions.note])
   const matches = commandOpen ? commandMatches : mentionMatches
   const rows = matches?.rows.length ?? 0

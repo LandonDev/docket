@@ -402,7 +402,7 @@ export function NewProjectDialog({
             </Field>
             <FieldRow
               label="Mode"
-              description={mode === "worktree" ? "Own branch and folder." : `Works directly in ${workspace.name}.`}
+              description={mode === "worktree" ? "Own branch and folder" : `Works directly in ${workspace.name}`}
             >
               <ChoiceToggle
                 label="Mode"

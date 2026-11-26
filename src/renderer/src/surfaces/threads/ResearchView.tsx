@@ -44,11 +44,13 @@ const subscribeMeta = (listener: () => void): (() => void) =>
 /** A child that has settled: not running, starting or waiting. */
 const settled = (status: SessionStatus | undefined): boolean =>
   status !== "running" && status !== "starting" && status !== "waiting";
+/** A child at work: running or starting (one waiting on an answer needs him, it is not running). */
+const working = (status: SessionStatus | undefined): boolean => status === "running" || status === "starting";
 
-/** How many of the spawned angles have settled (a primitive, for useSyncExternalStore). */
-function useSettledCount(agents: string[]): number {
+/** How many of the spawned angles `is` holds for (a primitive, for useSyncExternalStore). */
+function useAngleCount(agents: string[], is: (status: SessionStatus | undefined) => boolean): number {
   return useSyncExternalStore(subscribeMeta, () =>
-    agents.reduce((n, id) => n + (settled(sessionStore.metaOf(id)?.status) ? 1 : 0), 0),
+    agents.reduce((n, id) => n + (is(sessionStore.metaOf(id)?.status) ? 1 : 0), 0),
   );
 }
 
@@ -107,8 +109,8 @@ export function ResearchView(props: ThreadViewProps) {
   // Angles: every spawned child, boarded or not, plus the root's own research.
   const agents = session.thread?.agents ?? NO_AGENTS;
   const angles = useMemo(() => mergeAngles(board, agents), [board, agents]);
-  const done = useSettledCount(agents);
-  const liveAngles = agents.length - done;
+  const done = useAngleCount(agents, settled);
+  const liveAngles = useAngleCount(agents, working);
 
   // The report file, polled like the plan document.
   const doc = usePlanFile(session.planPath, running) ?? "";
@@ -318,7 +320,7 @@ function AngleGroup({
   onOpenFile: OpenFileFn;
 }) {
   const agent = useAngleAgent(angle.agentId);
-  const live = agent.status === "running" || agent.status === "starting";
+  const live = working(agent.status);
   const label = self ? "Direct research" : (agent.title ?? angle.label);
   // The child's findings file (its planPath), polled like the report.
   const filePath = useSyncExternalStore(subscribeMeta, () =>
@@ -331,7 +333,7 @@ function AngleGroup({
       <ItemContent>
         <ItemTitle>{label}</ItemTitle>
       </ItemContent>
-      {live ? <StatusMark state="working" detail={angleStatus(agent.blocks)} /> : null}
+      {live ? <StatusMark state="working" detail={angleStatus(agent.blocks)} /> : agent.status === "waiting" ? <StatusMark state="waiting" /> : null}
     </>
   );
   return (

@@ -90,6 +90,18 @@ describe("the workspace column", () => {
     expect(screen.getByRole("button", { name: "Workspace options" }).getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("names Work Chats' ⋯ by its column, not as a workspace's", () => {
+    Object.assign(where, { cwd: "~work", workspaceId: null });
+    try {
+      mount();
+      expect(screen.getByRole("heading", { name: "Work Chats" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Work Chats options" }).getAttribute("aria-haspopup")).toBe("menu");
+      expect(screen.queryByRole("button", { name: "Workspace options" })).toBeNull();
+    } finally {
+      Object.assign(where, { cwd: "/w/alpha", workspaceId: "w1" });
+    }
+  });
+
   it("keeps a 40px content box under its hairline, as the title bar's rows do, so its controls sit on the strip's line", () => {
     mount();
     const header = screen.getByRole("heading", { name: "alpha" }).parentElement!;

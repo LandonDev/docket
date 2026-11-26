@@ -56,8 +56,10 @@ export type PopoverMatches =
       rows: AtMatch[];
       /** The project's files, or the first Work answer, are still on their way. */
       loading?: boolean;
-      /** One muted line under the rows, or in place of "No matches": Work's answer still coming ("Loading…"), or the kinds it could not search. */
+      /** One line under the rows, or in place of "No matches": Work's answer still coming ("Loading…"), or the kinds it could not search. */
       note?: string;
+      /** The note says a read failed (the files, or Work): it takes the red the `/` menu's failed list does. */
+      failed?: boolean;
     };
 
 /** A row's group: a Work thing's kind, else its own kind. */
@@ -199,7 +201,7 @@ export function CommandPopover({
             role="option"
             aria-selected={false}
             aria-disabled
-            className={`${ROW} ${!rows.loading && rows.mode === "command" && rows.failed ? "text-destructive" : "text-muted-foreground"}`}
+            className={`${ROW} ${!rows.loading && rows.failed && (rows.mode === "command" || rows.note) ? "text-destructive" : "text-muted-foreground"}`}
           >
             {rows.loading ? "Loading…" : rows.mode === "command" && rows.failed ? "Couldn't load commands" : rows.mode === "command" && rows.query === "" ? "No commands" : (rows.mode === "file" && rows.note) || "No matches"}
           </div>
@@ -269,9 +271,10 @@ export function CommandPopover({
                     {label}
                     <div {...rowProps(n)}>
                       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="shrink-0">{base}</span>
+                      <span className="min-w-0 truncate">{base}</span>
                       {dir ? (
-                        <span className="min-w-0 truncate text-xs text-muted-foreground">{dir}</span>
+                        // The folder gives way first; the name is cut, with its ellipsis, only once the folder is gone.
+                        <span className="min-w-0 shrink-[99] truncate text-xs text-muted-foreground">{dir}</span>
                       ) : null}
                     </div>
                   </div>
@@ -291,7 +294,7 @@ export function CommandPopover({
                     </span>
                     <span className="min-w-0 truncate">{t.title}</span>
                     {projectName ? (
-                      <span className="shrink-0 text-xs text-muted-foreground">{projectName}</span>
+                      <span className="min-w-0 max-w-[40%] shrink-[2] truncate text-xs text-muted-foreground">{projectName}</span>
                     ) : null}
                     <span className="ml-auto shrink-0 pl-2 text-xs tabular-nums text-muted-foreground">
                       {timeAgo(t.updatedAt)}
@@ -301,8 +304,8 @@ export function CommandPopover({
               );
             })}
         {rows.mode === "file" && rows.rows.length > 0 && rows.note ? (
-          // What is still coming, or could not be searched, says so in one muted row under what is here.
-          <div data-command-note role="option" aria-selected={false} aria-disabled className={`${ROW} text-muted-foreground`}>
+          // What is still coming says so in one muted row under what is here; what could not be searched, in red.
+          <div data-command-note role="option" aria-selected={false} aria-disabled className={`${ROW} ${rows.failed ? "text-destructive" : "text-muted-foreground"}`}>
             {rows.note}
           </div>
         ) : null}

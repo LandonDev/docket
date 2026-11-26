@@ -66,10 +66,11 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
     >
       {picks ? <ItemButton data-row-open aria-label={server.title} aria-current={picked || undefined} onClick={onPick} className={ROW_OPEN} /> : null}
       <ItemContent className={cn("min-w-0 gap-0.5", picks && ROW_SHOWS)}>
-        <ItemTitle className="min-w-0 max-w-full">
-          <span className="min-w-0 truncate">{server.title}</span>
-          {/* Its host's name on hover. */}
-          <span className="pointer-events-auto inline-flex">
+        {/* The name wraps in its column, never cut (a narrow dock still reads it whole); Stop keeps its place. */}
+        <ItemTitle className="line-clamp-none min-w-0 max-w-full">
+          <span data-dev-server-title className="text-pretty break-words">{server.title}</span>
+          {/* Its host's name on hover, after the name's last word. */}
+          <span className="pointer-events-auto ms-2 inline-flex align-middle">
             <HostGlyph environmentId={port?.environmentId ?? server.environmentId} />
           </span>
         </ItemTitle>

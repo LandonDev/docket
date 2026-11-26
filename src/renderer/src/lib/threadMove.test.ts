@@ -16,15 +16,21 @@ describe("moveTargets", () => {
     expect(moveTargets({ ...idle, environmentId: "env_box" }, ENVS, all, false).map((t) => [t.name, t.ok])).toEqual([["This Mac", true]]);
   });
 
-  it("names why a target is out of reach: a busy thread, a link down, a key that is not admin", () => {
+  it("names why a target is held: a busy thread, a link down", () => {
     expect(moveTargets({ ...idle, status: "running" }, ENVS, () => open(), false)[0]).toMatchObject({ ok: false, reason: expect.stringMatching(/working/) });
     const boxDown = (id: string): Status => (id === "env_box" ? { transport: "reconnecting", lastHello: null } : open());
     expect(moveTargets(idle, ENVS, boxDown, false)[0]).toEqual({ environmentId: "env_box", name: "box", ok: false, reason: "box is not connected" });
-    const readKey = (id: string): Status => (id === "env_box" ? open(["read", "operate"]) : open());
-    expect(moveTargets({ ...idle, environmentId: "env_box" }, ENVS, readKey, false)[0]).toMatchObject({ ok: false, reason: "the key for box is not an admin key" });
     const macDown = (id: string): Status => (id === "local" ? { transport: "offline", lastHello: null } : open());
     expect(moveTargets(idle, ENVS, macDown, false)[0]).toMatchObject({ ok: false, reason: "this Mac's server is not connected" });
     expect(moveTargets(idle, ENVS, () => open(), true)[0]).toMatchObject({ ok: false, reason: "a move is already running" });
+  });
+
+  it("offers no target where the other host's key is not an admin key, even while the thread is busy", () => {
+    const readKey = (id: string): Status => (id === "env_box" ? open(["read"]) : open());
+    expect(moveTargets({ ...idle, environmentId: "env_box" }, ENVS, readKey, false)).toEqual([]);
+    expect(moveTargets({ ...idle, environmentId: "env_box", status: "running" }, ENVS, readKey, false)).toEqual([]);
+    // From the Mac: the box is no target, box two (admin) still is.
+    expect(moveTargets(idle, ENVS, readKey, false).map((t) => t.name)).toEqual(["box two"]);
   });
 
   it("offers nothing where there is no desktop server (the /ui page)", () => {

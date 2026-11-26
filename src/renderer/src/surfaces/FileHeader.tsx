@@ -107,8 +107,8 @@ function SaveWord({ save }: { save: SaveState }) {
   // The failed mark with its word and the error as its detail; the whole of
   // it on hover only while the detail is cut, as one plain string.
   return (
-    <TruncateTip text={plainStatus("Save failed", save.message)}>
-      <StatusMark state="failed" word="Save failed" detail={save.message} className="max-w-64" />
+    <TruncateTip text={plainStatus("Save failed", save.message || undefined)}>
+      <StatusMark state="failed" word="Save failed" detail={save.message || undefined} className="max-w-64" />
     </TruncateTip>
   );
 }

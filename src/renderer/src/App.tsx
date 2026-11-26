@@ -2,6 +2,7 @@ import { APP_NAME } from "@shared/appName";
 import { NO_RELEASE_NOTES } from "./lib/releaseNotes";
 import { markKeyNav } from "./lib/navByKey";
 import { registry } from "./lib/connection";
+import { notSentWords } from "./lib/dialogErrorWords";
 import { environmentOfCwd } from "./lib/tcserver/projects";
 import { copiesOf, newThreadContext, preferredHost } from "./lib/projectHostChoice";
 import {
@@ -2673,10 +2674,7 @@ export default function App() {
               serverCommands.runSettingsFor(current),
             );
           } catch (error: unknown) {
-            noteSystem(
-              sessionId,
-              error instanceof Error ? error.message : "Could not queue the message",
-            );
+            noteSystem(sessionId, notSentWords(error, registry.environment(current.environmentId)?.name));
           }
         })();
         return;
@@ -2709,12 +2707,7 @@ export default function App() {
               { text, attachments: visible },
             );
           } catch (error: unknown) {
-            noteSystem(
-              sessionId,
-              error instanceof Error
-                ? error.message
-                : `${current.harness} could not steer the active turn`,
-            );
+            noteSystem(sessionId, notSentWords(error, registry.environment(current.environmentId)?.name));
           }
         })();
         return;
@@ -2832,10 +2825,7 @@ export default function App() {
           }
         } catch (error: unknown) {
           if (turnGen.current.get(sessionId) !== gen) return;
-          noteSystem(
-            sessionId,
-            error instanceof Error ? error.message : `${current.harness} adapter failed`,
-          );
+          noteSystem(sessionId, notSentWords(error, registry.environment(current.environmentId)?.name));
         } finally {
           if (turnGen.current.get(sessionId) !== gen) return;
           setSessions((prev) =>

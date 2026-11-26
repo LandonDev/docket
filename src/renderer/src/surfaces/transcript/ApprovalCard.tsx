@@ -128,7 +128,8 @@ export function ApprovalCard({
   }
   return (
     <div ref={registerToastSeat} data-toast-seat="" data-slot="approval" className="flex min-h-7 in-data-[table]:min-h-8 min-w-0 items-center gap-2 in-data-[table]:px-3 in-data-[table]:py-1.5 font-sans">
-      <span data-approval-mark className="flex w-3.5 shrink-0 justify-center">
+      {/* On the first line's 28px axis, so who can answer may wrap under it (S F3.1, round 4). */}
+      <span data-approval-mark className="flex h-7 w-3.5 shrink-0 items-center justify-center self-start">
         <StatusMark state="waiting" word={false} />
       </span>
       <WaitingChoices words={choiceWords(approval)} decide={decide} />
@@ -145,7 +146,7 @@ function WaitingChoices({ words, decide }: { words: { allow: string; deny: strin
   const host = useTranscriptHost();
   const held = useHostHeld(host);
   const may = useLinkMay(host ?? "", "session.approve");
-  if (!may) return <span className="min-w-0 truncate text-[13px] leading-5 text-muted-foreground">{approveElsewhere(registry.environment(host ?? "")?.name ?? host ?? "")}</span>;
+  if (!may) return <span data-approve-elsewhere className="min-w-0 py-1 text-[13px] leading-5 text-pretty text-muted-foreground">{approveElsewhere(registry.environment(host ?? "")?.name ?? host ?? "")}</span>;
   const buttons = (
     <>
       <Button size="sm" disabled={!!held} onClick={() => decide("allow")}>

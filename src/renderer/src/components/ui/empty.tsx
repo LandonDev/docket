@@ -3,9 +3,11 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@renderer/lib/cn";
 
 /** The one empty state: a title, one line of guidance, at most one action.
- *  No illustration, no dashed box; it sits in the space the content will. */
+ *  No illustration, no dashed box; it sits in the space the content will.
+ *  The title fills its line and wraps only what runs past it (`text-pretty`,
+ *  never two even halves); the guidance under it is balanced. */
 function Empty({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="empty" className={cn("mx-auto flex w-full min-w-0 max-w-sm flex-1 flex-col items-center justify-center gap-4 p-6 text-center text-balance", className)} {...props} />;
+  return <div data-slot="empty" className={cn("mx-auto flex w-full min-w-0 max-w-sm flex-1 flex-col items-center justify-center gap-4 p-6 text-center", className)} {...props} />;
 }
 
 function EmptyHeader({ className, ...props }: ComponentProps<"div">) {
@@ -27,11 +29,11 @@ function EmptyMedia({ className, variant = "default", ...props }: ComponentProps
 }
 
 function EmptyTitle({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="empty-title" className={cn("text-sm font-medium text-foreground", className)} {...props} />;
+  return <div data-slot="empty-title" className={cn("text-sm font-medium text-pretty text-foreground", className)} {...props} />;
 }
 
 function EmptyDescription({ className, ...props }: ComponentProps<"div">) {
-  return <div data-slot="empty-description" className={cn("text-[13px] leading-5 text-muted-foreground [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-foreground", className)} {...props} />;
+  return <div data-slot="empty-description" className={cn("text-[13px] leading-5 text-balance text-muted-foreground [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-foreground", className)} {...props} />;
 }
 
 function EmptyContent({ className, ...props }: ComponentProps<"div">) {

@@ -55,6 +55,19 @@ describe("BusyLabel", () => {
     expect(inner()).toContain("justify-end");
     expect(inner()).not.toContain("justify-center");
   });
+
+  it("align start hangs its words on the reserved width's start, at rest and busy", () => {
+    const { container, rerender } = render(<BusyLabel busy={false} label="Discard" busyLabel="Discarding…" align="start" />);
+    const inner = () => container.querySelector("[data-slot=busy-label]")!.firstElementChild!;
+    expect(inner().className).toContain("justify-start");
+    expect(inner().className).not.toMatch(/justify-(center|end)/);
+    expect(inner().textContent).toBe("Discard");
+    rerender(<BusyLabel busy label="Discard" busyLabel="Discarding…" align="start" />);
+    expect(inner().className).toContain("justify-start");
+    // Busy, the spinner leads and the word follows it.
+    expect(inner().firstElementChild!.getAttribute("data-slot")).toBe("spinner");
+    expect(inner().textContent).toBe("Discarding…");
+  });
 });
 describe("spinners in buttons", () => {
   it("take the size of the icon they replace: 12px in xs buttons, 14px in sm", () => {

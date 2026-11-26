@@ -20,6 +20,8 @@ import { useThreadMenu } from "./useThreadMenu";
 import { workHeadChunk } from "../surfaces/chunks";
 import { useMasterIds } from "../lib/masterThread";
 import { useWorkSessionId } from "../lib/workRow";
+import { useWorkView } from "../lib/workSwitch";
+import { useShell } from "../stores/shell";
 import { sessionStore } from "../lib/tcserver/store";
 
 // The crumb is Work's: it rides the head's chunk, so a code thread loads none of it and the first paint holds none.
@@ -140,15 +142,19 @@ export function ThreadHeader({
   // An unsent Work draft: the bar is its crumb alone, the job's dot and its project, until it is sent.
   const draftWhere = useDraftWhere(work ? (activeChip?.id ?? onScreenId) : null);
   const workHeading = work && !draftWhere && activeChip;
+  // A Work view (Mail) or place (Today) over the thread: the bar names the job alone, not the thread it covers.
+  const viewOver = useWorkView() !== null;
+  const placeOver = useShell((s) => s.workPlace !== null);
+  const covered = !!workHeading && (viewOver || placeOver);
   return (
     <>
       <ThreadHeaderStrip
         model={
           workHeading || draftWhere
-            ? { ...model, live: [], dormant: [], list: [...model.live, ...model.dormant], heading: workHeading ? activeChip : null }
+            ? { ...model, live: [], dormant: [], list: [...model.live, ...model.dormant], heading: workHeading && !covered ? activeChip : null }
             : model
         }
-        crumb={workHeading ? <WorkCrumb thread={activeChip.thread} type={activeChip.thread.threadType ?? null} /> : draftWhere ? <WorkCrumb thread={draftWhere} last /> : undefined}
+        crumb={covered ? <WorkCrumb thread={activeChip.thread} last /> : workHeading ? <WorkCrumb thread={activeChip.thread} type={activeChip.thread.threadType ?? null} /> : draftWhere ? <WorkCrumb thread={draftWhere} last /> : undefined}
         planReady={planReady}
         renamingId={renamingId}
         onSelect={onSelect}

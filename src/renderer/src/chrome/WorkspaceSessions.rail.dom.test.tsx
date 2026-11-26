@@ -36,6 +36,7 @@ vi.mock("../lib/tcserver/workspaces", async (importOriginal) => ({
 }));
 
 import WorkspaceSessions, { forgetColumnMemory } from "./WorkspaceSessions";
+import { WORK_CHATS } from "../lib/tcserver/workspaces";
 import { devRenders } from "../lib/devRenders";
 
 const chat = (i: number): SessionMeta =>
@@ -421,6 +422,19 @@ describe("the home with no chat", () => {
     h.metas = [];
     const onNewChat = vi.fn();
     render(<Column shown onNewChat={onNewChat} />);
+    await act(async () => {});
+    expect(screen.getAllByText("No chats")).toHaveLength(1);
+    expect(screen.getByText("No chats").closest('[data-slot="empty"]')).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    });
+    expect(onNewChat).toHaveBeenCalledWith(null);
+  });
+
+  it("an empty Work Chats column says the same No chats, whose New chat starts a chat there", async () => {
+    h.metas = [];
+    const onNewChat = vi.fn();
+    render(<Column shown scope={WORK_CHATS} onNewChat={onNewChat} />);
     await act(async () => {});
     expect(screen.getAllByText("No chats")).toHaveLength(1);
     expect(screen.getByText("No chats").closest('[data-slot="empty"]')).not.toBeNull();

@@ -288,9 +288,9 @@ export function NotesView({
         ) : visible.length === 0 ? (
           query.trim() ? (
             <EmptyState
-              title="No matching notes"
-              line="The filter is narrowing this list"
-              action={{ label: "Clear filter", onClick: () => setQuery("") }}
+              title="Nothing matches"
+              line="Filters are narrowing this list"
+              action={{ label: "Clear filters", onClick: () => setQuery("") }}
             />
           ) : (
             <EmptyState title="No notes yet" action={{ label: "New note", onClick: () => void onCreate() }} />
@@ -438,8 +438,9 @@ function NoteCard({
         active ? "bg-muted" : "hover:bg-foreground/5",
       )}
     >
-      <span className="flex items-center gap-2 text-xs leading-4 text-muted-foreground">
-        {project ? (
+      {/* The time rides the workspace's line; a note with none has no such line, so it rides the title's. */}
+      {project ? (
+        <span className="mb-1 flex items-center gap-2 text-xs leading-4 text-muted-foreground">
           <span className="min-w-0 flex-1">
             <NoteProjectMark
               project={project}
@@ -449,14 +450,15 @@ function NoteCard({
               customColors={customColors}
             />
           </span>
-        ) : (
-          <span className="min-w-0 flex-1" />
-        )}
-        {time ? <span className="shrink-0 tabular-nums">{time}</span> : null}
+          {time ? <span className="shrink-0 tabular-nums">{time}</span> : null}
+        </span>
+      ) : null}
+      <span className="flex min-w-0 items-baseline gap-2">
+        <TruncateTip text={note.title}>
+          <span data-row-title className="block min-w-0 flex-1 truncate text-[13px] font-medium leading-5 text-foreground">{note.title}</span>
+        </TruncateTip>
+        {time && !project ? <span data-row-time className="shrink-0 text-xs leading-4 tabular-nums text-muted-foreground">{time}</span> : null}
       </span>
-      <TruncateTip text={note.title}>
-        <span data-row-title className="mt-1 block truncate text-[13px] font-medium leading-5 text-foreground">{note.title}</span>
-      </TruncateTip>
       {preview ? (
         <span className="mt-0.5 line-clamp-1 text-xs leading-4 text-muted-foreground">{preview}</span>
       ) : null}
@@ -571,7 +573,7 @@ function NoteEditor({
       }
       onSavedRef.current(saved);
     } catch (err: unknown) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(rawError(err));
     }
   }, [environmentId]);
 
@@ -680,9 +682,8 @@ function NoteEditor({
               }}
             />
           ) : null}
-          {saveError ? (
-            <p className="mt-2 text-xs text-destructive">{saveError}</p>
-          ) : null}
+          {/* Plain words; the host's own text on hover alone (S F7.1, round 4). */}
+          {saveError ? <FailLine words="Couldn't save this note" detail={saveError} className="mt-2" /> : null}
         </header>
         <Tabs value={mode} onValueChange={(next) => setMode(next as typeof mode)}>
           <TabsList

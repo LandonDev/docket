@@ -192,7 +192,9 @@ said, then Scan Receipt, Add Photos and Add Files.
   start its thread) again. Words cannot be added while a Save is on its
   way: the field and the hold wait for its answer, which clears them.
   A thread that did not start (`threadError`) is said in the sheet; the task
-  is filed.
+  is filed. The desktop's capture window says "Filed. The thread did not
+  start", then the cause only in words (`workErrorWords`), never the start
+  call's own text.
 - **Code.** Client package `Work/Capture/`: `VoiceNote` (the draft, the host,
   the key; `CaptureHost`, which `WorkHost` is) and `Dictation` (hold, prepare,
   listen, finish, refused, failed; `SpeechSource`, which `OnDeviceSpeech`

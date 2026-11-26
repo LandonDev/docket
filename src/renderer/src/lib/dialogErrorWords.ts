@@ -30,3 +30,12 @@ export function dialogErrorWords(err: unknown, host?: string): string {
   // A plain first word is raised; a file's or a program's name ("index.lock", "simctl: …") keeps its case.
   return /^[a-z]+\b(?![.\/_-]\w|:)/.test(line) ? `${line.charAt(0).toUpperCase()}${line.slice(1)}` : line;
 }
+
+/**
+ * A send, steer or queued message the host refused after the field cleared, as the thread's system line:
+ * the composer's own form ("Not sent: …", chrome/Composer.tsx `refusalWords`), the cause worded once.
+ */
+export function notSentWords(err: unknown, host?: string): string {
+  const why = dialogErrorWords(err, host);
+  return why ? `Not sent: ${why}` : "Not sent";
+}

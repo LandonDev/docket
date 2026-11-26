@@ -24,7 +24,7 @@ const card = (
 };
 const FABLE_CAP = "throwaway@example.com hit its cap for Fable";
 const THRASH = "The context window keeps filling up";
-const THRASH_CAUSE = "4 compactions in 6 minutes; the first request held 167k of a 200k window";
+const THRASH_CAUSE = "4 compactions in 6 minutes; the first request held 167k of a 200k window.";
 
 export const fixtures = [
   {
@@ -51,15 +51,15 @@ export const fixtures = [
       false,
     ),
   },
-  { name: "Network", props: card("network", "The provider could not be reached", "The connection dropped before the first reply") },
+  { name: "Network", props: card("network", "The provider could not be reached", "The connection dropped or was refused: a network change here, or an outage on their side.") },
   { name: "Harness crashed", props: card("harness_crashed", "The Claude Code process died mid-turn", "The conversation can pick up from its last message.") },
   {
     name: "Retrying, the buttons at rest",
-    props: card("network", "The provider could not be reached", "The connection dropped before the first reply", { pending: "retry", outcome: null }),
+    props: card("network", "The provider could not be reached", "The connection dropped or was refused: a network change here, or an outage on their side.", { pending: "retry", outcome: null }),
   },
   {
     name: "After an action, its outcome under the buttons",
-    props: card("rate_limited", "Account work hit its 5-hour limit", "It resets at 4:15 PM", { pending: null, outcome: "Routed to personal; it starts on the next turn" }),
+    props: card("rate_limited", "Account work hit its 5-hour limit", "The usage window is spent until it resets; another account with room can take the thread.", { pending: null, outcome: "Routed to personal; it starts on the next turn" }),
   },
   { name: "A thrashing window, 1M on offer", props: card("context_thrash", THRASH, THRASH_CAUSE, undefined, undefined, true) },
   {
@@ -68,6 +68,6 @@ export const fixtures = [
   },
   {
     name: "A thrashing window the CLI stopped, no 1M",
-    props: card("context_thrash", THRASH, "Claude Code stopped after the context refilled to its limit 3 times in a row", undefined, undefined, false),
+    props: card("context_thrash", THRASH, "Claude Code stopped after the context refilled to its limit 3 times in a row.", undefined, undefined, false),
   },
 ];

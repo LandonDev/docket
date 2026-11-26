@@ -105,6 +105,7 @@ describe("MediaGate", () => {
     expect(img.getAttribute("loading")).toBe("lazy");
     expect(img.getAttribute("alt")).toBe("shot.png");
     expect(img.className).toContain("outline-image-outline");
+    expect(img.closest(".bg-media-ground")).not.toBeNull();
     expect(img.className).not.toContain("rounded");
     expect(container.querySelector("video, footer")).toBeNull();
     expect(container.querySelector('[data-testid="editor"]')).toBeNull();
@@ -162,6 +163,7 @@ describe("MediaGate", () => {
     // A load is a skeleton in the shape of what comes, never a spinner and a word.
     expect(line.textContent).toBe("");
     expect(line.getAttribute("aria-label")).toBe("Loading image");
+    expect(line.querySelector('[data-slot="skeleton"]')!.classList).toContain("bg-skeleton-stage");
     expect(line.querySelector('[data-slot="skeleton"]')).not.toBeNull();
     expect(line.querySelector('[data-slot="spinner"]')).toBeNull();
     expect(line.className).toContain("[--tw-animation-delay:var(--dur-slow)]");
@@ -193,6 +195,8 @@ describe("MediaGate", () => {
     expect(el.className).toContain("outline-image-outline");
     expect(el.classList).toContain("focus-ring");
     expect(el.className).not.toMatch(/focus-visible:ring/);
+    // The video plays on the media ground a picture does: the page in dark, `stage` in light.
+    expect(el.parentElement!.classList).toContain("bg-media-ground");
     expect(container.querySelector('[aria-label="Image size"]')).toBeNull();
     expect(container.querySelector("header")!.textContent).toContain("5.0 MB");
   });
@@ -276,7 +280,7 @@ describe("a media element that fails", () => {
 
   it("says a file the host no longer has is missing there, and Retry brings it back", async () => {
     const { container } = await failOn("/tmp/shot.png", image, () => Promise.resolve(null), "env_box");
-    expect(container.textContent).toContain("Couldn’t open shot.png");
+    expect(container.textContent).toContain("Couldn't open shot.png");
     // The host mid-line in lower case (`nameInLine`), and no size or size switch on a file that did not open.
     expect(container.textContent).toContain("No such file on the box.");
     expect(container.querySelector("header")).not.toBeNull();
@@ -316,9 +320,9 @@ describe("a media element that fails", () => {
     expect(css).toMatch(/html\.theme-light\s*\{[^}]*color-scheme:\s*light;/);
   });
 
-  it("says the host is out of reach when it cannot be asked", async () => {
+  it("says the host did not answer when it cannot be asked, in the house words", async () => {
     const { container } = await failOn("/tmp/shot.png", image, () => Promise.reject(new Error("link down")), "env_box");
-    expect(container.textContent).toContain("The box is out of reach.");
+    expect(container.textContent).toContain("The box did not answer.");
     expect(retry(container)).toBeDefined();
   });
 
@@ -326,21 +330,21 @@ describe("a media element that fails", () => {
     const fresh = { ...image, url: image.url.replace("0123", "4567") };
     const { container } = await failOn("/tmp/shot.png", image, () => Promise.resolve(fresh), "env_box");
     expect(container.querySelector("img")!.getAttribute("src")).toBe(fresh.url);
-    expect(container.textContent).not.toContain("Couldn’t");
+    expect(container.textContent).not.toContain("Couldn't");
   });
 
   it("says an image the host still serves is not supported, with no Retry", async () => {
     const heic = { ...image, mime: "image/heic" };
     const { container } = await failOn("/repo/photo.heic", heic, () => Promise.resolve(heic));
-    expect(container.textContent).toContain("Can’t show photo.heic");
-    expect(container.textContent).toContain("This HEIC image isn’t supported here.");
+    expect(container.textContent).toContain("Can't show photo.heic");
+    expect(container.textContent).toContain("This HEIC image isn't supported here.");
     expect(retry(container)).toBeUndefined();
   });
 
   it("says a video it cannot decode cannot play", async () => {
     const { container } = await failOn("/repo/clip.mp4", video, () => Promise.resolve(video), undefined, "video");
-    expect(container.textContent).toContain("Can’t play clip.mp4");
-    expect(container.textContent).toContain("Its codec isn’t supported here.");
+    expect(container.textContent).toContain("Can't play clip.mp4");
+    expect(container.textContent).toContain("This video can't play here.");
   });
 });
 

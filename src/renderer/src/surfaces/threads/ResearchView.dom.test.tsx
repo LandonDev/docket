@@ -156,6 +156,21 @@ describe("the research view", () => {
     expect(onOpenFile).toHaveBeenCalledWith("/repo/.temp-code/reports/a1.md");
   });
 
+  it("an angle waiting on an answer shows Needs you, and the report counts only running angles as still running", () => {
+    seed();
+    metas.a1 = { ...metas.a1, status: "waiting" };
+    metas.a2 = { status: "running", title: "Cache angle" };
+    docs[REPORT] = "---\ntitle: Build speed\nstatus: complete\n---\nthe findings";
+    render(<ResearchView {...props(session())} />);
+    const waiting = screen.getByRole("button", { name: /Bundler angle/ });
+    expect(waiting.textContent).toContain("Needs you");
+    expect(waiting.textContent).not.toContain("Working");
+    expect(screen.getByRole("button", { name: /Cache angle/ }).textContent).toContain("Working");
+    expect(screen.getByText("1 angle still running")).toBeTruthy();
+    // Waiting is not settled either: neither angle is done.
+    expect(document.querySelector("[data-detail]")?.textContent).toMatch(/^0 of 2 angles/);
+  });
+
   it("a source opens its address, shows its host and its claim", () => {
     seed();
     const open = vi.spyOn(window, "open").mockImplementation(() => null);

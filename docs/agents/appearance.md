@@ -146,6 +146,9 @@ time:
 | A hover on the chrome is the hovered group's step, lighter than the selected one, as in light | `--chrome-hover` and `--chrome-hover-ghost` in `:root` to `var(--sidebar-group-hover)` |
 | A loading bone shows on a card and a popover as it does on the page | `--skeleton` in `:root` to a wash of foreground (light has 8%) |
 | A bone on matte is a light wash, as in light | `--skeleton-matte` in `:root` to `color-mix(in srgb, var(--background) 16%, transparent)` |
+| A bone on the stage ground is a firmer wash, as in light | `--skeleton-stage` in `:root` to `color-mix(in srgb, var(--foreground) 12%, transparent)` |
+| Quieter words on matte read 4.5:1 | nothing: dark's `--matte-muted-foreground` is `muted-foreground`, already 7.3:1 on black; light's own value (`background` 60%) draws the same grey. Held by name only, so a later change to dark's muted ink leaves it alone |
+| A video and a picture in a pane play on the stage ground | `--media-ground` in `:root` to `var(--stage)` |
 | A read-only field's words step back to muted | `--field-readonly` in `:root` to `var(--muted-foreground)` |
 | An unchecked checkbox and radio have an edge at 3:1 | `--check-edge` in `:root` to a foreground mix that reaches it (about 37%), and drop its `HELD_IN_DARK` rows |
 | An outline button that stands as a field takes the field's edge | `--outline-field-edge` in `:root` to `var(--input)` |

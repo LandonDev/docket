@@ -321,7 +321,7 @@ function SidebarComponent({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  aria-label="Workspace options"
+                  aria-label={atWorkChats ? "Work Chats options" : "Workspace options"}
                   {...dialogsChunk.intent}
                   className="text-muted-foreground hover:text-foreground"
                 >

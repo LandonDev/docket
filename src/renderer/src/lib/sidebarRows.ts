@@ -80,7 +80,8 @@ export function sidebarItems(
   if (groups.archived.length)
     items.push({ kind: "archived", key: "archived", groups: groups.archived, spaced });
   if (!items.length && !home && !work) items.push({ kind: "empty", key: "empty" });
-  if (!items.length && home && !work && workColumn === null) items.push({ kind: "no-chats", key: "no-chats" });
+  // The home or Work Chats with nothing listed: the one "No chats" with New chat (a Work chat there), above Work's archived row.
+  if (!items.length && home && !work) items.push({ kind: "no-chats", key: "no-chats" });
   if (workColumn === "chats") items.push({ kind: "work-archived", key: "work-archived" });
   return items;
 }

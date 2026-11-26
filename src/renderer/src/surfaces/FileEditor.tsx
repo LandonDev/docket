@@ -58,6 +58,8 @@ import { syncWatchedMtime, watchFile } from "../lib/fileWatch";
 import { hostOfCwd } from "../lib/tcserver/projects";
 import { openFailureText } from "../lib/pathHost";
 import { registry } from "../lib/connection";
+import { nameInLine } from "../lib/hostWords";
+import { workErrorWords } from "../lib/workErrorWords";
 import { displayPath } from "../lib/paths";
 import type { EditorNavigation } from "../lib/search";
 import { MarkdownPreview } from "./AgentMarkdown";
@@ -359,7 +361,9 @@ export function FileEditor({
         }
         return result.text;
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        // A known cause in the file-write words (EACCES, ENOSPC, a lost answer), else "Save failed" alone: never the raw text or a path.
+        const name = registry.environment(host)?.name;
+        const message = workErrorWords(error, { host: name ? nameInLine(name) : undefined, write: true });
         if (generation === saveGeneration.current) {
           setSaveState({ status: "error", message });
         }
@@ -565,7 +569,7 @@ export function EditorOpenError({ name, line, onRetry }: { name: string; line: s
   return (
     <Empty className="h-full">
       <EmptyHeader>
-        <EmptyTitle>Couldn’t open {name}</EmptyTitle>
+        <EmptyTitle>Couldn't open {name}</EmptyTitle>
         <EmptyDescription>{line}</EmptyDescription>
       </EmptyHeader>
       <EmptyContent>

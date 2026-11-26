@@ -54,7 +54,11 @@ describe("a waiting approval on a host that is away", () => {
     status = { ...IDLE_STATUS, transport: "open", lastHello: hello(["read", "operate"]) };
     draw(block());
     expect(screen.queryByRole("button", { name: "Allow" })).toBeNull();
-    expect(screen.getByText("Answer from a computer that manages the box")).toBeTruthy();
+    const line = screen.getByText("Answer from a computer that manages the box");
+    // It wraps rather than cuts (council round 4, S F3.1): the host's name comes last; the mark keeps the first line's axis.
+    expect(line.className.split(" ")).not.toContain("truncate");
+    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "py-1", "leading-5"]));
+    expect(document.querySelector("[data-approval-mark]")!.className.split(" ")).toEqual(expect.arrayContaining(["h-7", "self-start", "items-center"]));
   });
 
   it("subscribes to nothing once settled", () => {

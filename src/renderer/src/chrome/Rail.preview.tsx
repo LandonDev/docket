@@ -1,5 +1,6 @@
 // bun run ui:preview src/renderer/src/chrome/Rail.preview.tsx#RailShipped
 // bun run ui:preview src/renderer/src/chrome/Rail.preview.tsx#RailHostAway
+// bun run ui:preview src/renderer/src/chrome/Rail.preview.tsx#RailShort
 // These pages mount ProjectRail. Resize, drag and popup positioning need interaction.
 import { useEffect, useState, type ReactNode } from "react";
 import { addPreviewHost, previewCwd, previewNoop, previewNow, previewProject, previewSession, previewWorkspace } from "../lib/previewHost.preview";
@@ -115,11 +116,11 @@ export function RailPreviewData({ away, archived, home, children }: {
   return <CardNowContext.Provider value={previewNow}>{data ? children(data) : null}</CardNowContext.Provider>;
 }
 
-export function RailShipped({ away = false }: { away?: boolean }) {
+export function RailShipped({ away = false, height = "h-[800px]" }: { away?: boolean; height?: string }) {
   return (
     <RailPreviewData away={away}>
       {({ recents }) => (
-        <div className="flex h-[800px]">
+        <div className={`flex ${height}`}>
           <ProjectRail
             cwd={previewCwd} recents={recents} activeSessionId="preview-cache"
             onSelectProject={previewNoop} onOpenProject={previewNoop} onRemoveProject={previewNoop}
@@ -134,4 +135,20 @@ export function RailShipped({ away = false }: { away?: boolean }) {
 
 export function RailHostAway() {
   return <RailShipped away />;
+}
+
+/** A short window: the list runs under the foot, its cut edge fading over 24px. The preview has no layout to measure,
+ *  so it marks the list as the hook would once it measured more below. */
+export function RailShort() {
+  const mark = (root: HTMLDivElement | null) => {
+    if (!root) return;
+    const set = () => root.querySelector("nav[aria-label='Workspaces'] .overflow-y-auto")?.setAttribute("data-overflow-end", "");
+    set();
+    new MutationObserver(set).observe(root, { childList: true, subtree: true });
+  };
+  return (
+    <div ref={mark}>
+      <RailShipped height="h-[400px]" />
+    </div>
+  );
 }

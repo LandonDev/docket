@@ -33,7 +33,8 @@ export function paceLine(p: PaceSeries): { text: string; warning: boolean } {
   if (p.projectedPercent === null) return { text: "No cycle running", warning: false };
   const left = timeLeft(hoursLeft(p));
   if (p.projectedPercent > 100) return { text: `Will run out before the reset in ${left}`, warning: true };
-  return { text: `Ends near ${p.projectedPercent}% at this pace, resets in ${left}`, warning: p.projectedPercent > 85 };
+  // "used": Accounts and the usage popover say a window as what is left, so the share here is named.
+  return { text: `Ends near ${p.projectedPercent}% used at this pace, resets in ${left}`, warning: p.projectedPercent > 85 };
 }
 
 /** The headings, in order, while the bundle loads. */
@@ -56,7 +57,8 @@ function Section({ title, description, children }: { title: string; description?
 
 /** A section with no data in the 30 days its query reads. A section whose
  *  description already names its window (Cache hit rate, Busiest hours'
- *  60 days) says Nothing yet, so the window is said once. */
+ *  60 days) says Nothing yet, so the window is said once; one drawn with
+ *  no description (Cache hit rate with no rate to print) names it here. */
 function NoData({ named = false }: { named?: boolean }) {
   return <PageEmpty>{named ? "Nothing yet" : "Nothing in the last 30 days"}</PageEmpty>;
 }
@@ -307,7 +309,7 @@ export function StatsView({ data, status }: { data: StatsBundle | null; status: 
 
       <Section title="Cache hit rate" description={cacheDenominator > 0 ? `${cacheHit}% of input served from cache, 30 days` : undefined}>
         {data.cacheDaily.length === 0 ? (
-          <NoData named />
+          <NoData named={cacheDenominator > 0} />
         ) : (
           <ChartFrame label="Cache hit rate">
             <LineChart data={data.cacheDaily} margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>

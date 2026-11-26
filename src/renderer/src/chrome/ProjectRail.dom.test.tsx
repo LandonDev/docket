@@ -91,3 +91,36 @@ describe("Remove workspace", () => {
     expect(dialog.getAttribute("aria-busy")).toBeNull();
   });
 });
+
+describe("the rail's list over its foot", () => {
+  it("fades its cut bottom edge over 24px while more of the list is under the foot, and none once scrolled to its end", () => {
+    const observed: Element[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe(el: Element) {
+          observed.push(el);
+        }
+        disconnect() {}
+        unobserve() {}
+      },
+    );
+    render(<ProjectRail cwd="~" recents={[]} busyPaths={new Set()} onSelectProject={() => {}} onOpenProject={() => {}} />);
+    const list = document.querySelector<HTMLElement>("[data-rail-list]")!;
+    expect(list.className).toContain("data-overflow-end:[--fade-end:24px]");
+    expect(list.className).toContain("data-overflow-start:[--fade-start:24px]");
+    // The list's own box and its rows' box are watched: a section that grows sets the edge with no scroll.
+    expect(observed).toContain(list);
+    expect(observed).toContain(list.firstElementChild);
+    Object.defineProperty(list, "clientHeight", { value: 300, configurable: true });
+    Object.defineProperty(list, "scrollHeight", { value: 700, configurable: true });
+    fireEvent.scroll(list);
+    expect(list.hasAttribute("data-overflow-end")).toBe(true);
+    expect(list.hasAttribute("data-overflow-start")).toBe(false);
+    list.scrollTop = 400;
+    fireEvent.scroll(list);
+    expect(list.hasAttribute("data-overflow-end")).toBe(false);
+    expect(list.hasAttribute("data-overflow-start")).toBe(true);
+    vi.unstubAllGlobals();
+  });
+});

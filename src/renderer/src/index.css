@@ -274,6 +274,18 @@
      pop-out): the bone here, as it was; in light, whose bone is a dark wash
      that vanishes on black, a wash of the light page instead. */
   --skeleton-matte: var(--skeleton);
+  /* A bone on `stage` (a picture, a page or a media frame on its way): the
+     bone here, as it was; in light, where the 8% wash all but vanishes on
+     the grey stage, a firmer 12%. */
+  --skeleton-stage: var(--skeleton);
+  /* The ground a video or a picture plays on in a pane (the file pane's
+     media, Work's player): the page here, as it was; `stage` in light, so a
+     video sits on the ground a picture of its tab kind does. */
+  --media-ground: var(--background);
+  /* Quieter words on `matte` (a show's "End of show" in the presenter's
+     view): muted-foreground here, as it was (7.3:1); in light, whose muted
+     ink is dark and reads 2.9:1 on black, a light grey that reads as dark's. */
+  --matte-muted-foreground: var(--muted-foreground);
   /* An unchecked checkbox's or radio's edge is the field's hairline here, as
      it was; in light it is a control's outline at 3:1, so the box is found. */
   --check-edge: var(--input);
@@ -458,6 +470,9 @@ html.theme-light {
   --chrome-hover-ghost: var(--sidebar-group-hover);
   --skeleton: color-mix(in srgb, var(--foreground) 8%, transparent);
   --skeleton-matte: color-mix(in srgb, var(--background) 16%, transparent);
+  --skeleton-stage: color-mix(in srgb, var(--foreground) 12%, transparent);
+  --media-ground: var(--stage);
+  --matte-muted-foreground: color-mix(in srgb, var(--background) 60%, transparent);
   --check-edge: color-mix(in srgb, var(--foreground) 50%, transparent);
   --outline-field-edge: var(--input);
   --find-miss: var(--muted-foreground);
@@ -560,6 +575,9 @@ html.theme-light {
   --color-chrome-hover-ghost: var(--chrome-hover-ghost);
   --color-skeleton: var(--skeleton);
   --color-skeleton-matte: var(--skeleton-matte);
+  --color-skeleton-stage: var(--skeleton-stage);
+  --color-media-ground: var(--media-ground);
+  --color-matte-muted-foreground: var(--matte-muted-foreground);
   --color-check-edge: var(--check-edge);
   --color-find-miss: var(--find-miss);
   --color-find-miss-edge: var(--find-miss-edge);

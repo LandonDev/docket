@@ -1,6 +1,6 @@
 // Fixtures for `bun run ui:preview src/renderer/src/chrome/CommandPopover.preview.tsx#SlashMenuPreview`.
 // Static capture shows the visible rows. Typing and keyboard selection need interaction.
-import { previewSession } from "../lib/previewHost.preview";
+import { previewProject, previewSession } from "../lib/previewHost.preview";
 
 const cmd = (name: string, description: string, source: string, scope = "user") => ({ name, description, source, scope });
 
@@ -39,10 +39,21 @@ export default [
     name: "An @ whose file read failed, with names in hand",
     props: {
       active: 0, typed: "@notes",
-      matches: { mode: "file", note: "Couldn't search files", rows: [
+      matches: { mode: "file", note: "Couldn't search files", failed: true, rows: [
         { kind: "file", file: { name: "notes.ts", path: "/projects/field-notes/src/notes.ts", relative: "src/notes.ts" } },
       ] },
     },
   },
-  { name: "An @ whose file read failed, nothing in hand", props: { active: 0, typed: "@zzz", matches: { mode: "file", rows: [], note: "Couldn't search files" } } },
+  { name: "An @ whose file read failed, nothing in hand", props: { active: 0, typed: "@zzz", matches: { mode: "file", rows: [], note: "Couldn't search files", failed: true } } },
+  {
+    name: "Long names: a file, a note, and a thread of another project",
+    props: {
+      active: 0, typed: "@migrat", projectId: previewProject.id,
+      matches: { mode: "file", rows: [
+        { kind: "file", file: { name: "a.ts", path: "/p/a.ts", relative: "src/main/server/work/office/vm/migrations/2026-11-24-split-the-office-helper-door-from-the-guest-agent.ts" } },
+        { kind: "note", file: { name: "Migration checklist for the office helper door and the guest agent, with every step", path: "migration-notes", relative: "Migration checklist" } },
+        { kind: "thread", session: previewSession({ id: "preview-at-foreign", title: "Migrate the office helper door to its own process", projectId: "other" }) },
+      ] },
+    },
+  },
 ];

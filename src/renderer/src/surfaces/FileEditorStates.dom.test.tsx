@@ -20,7 +20,7 @@ describe("the editor's waiting states", () => {
     const { container, getByRole } = render(
       <EditorOpenError name="App.tsx" line="No such file on box." onRetry={onRetry} />,
     );
-    expect(container.querySelector('[data-slot="empty-title"]')!.textContent).toBe("Couldn’t open App.tsx");
+    expect(container.querySelector('[data-slot="empty-title"]')!.textContent).toBe("Couldn't open App.tsx");
     expect(container.querySelector('[data-slot="empty-description"]')!.textContent).toBe("No such file on box.");
     fireEvent.click(getByRole("button", { name: "Retry" }));
     expect(onRetry).toHaveBeenCalledOnce();

@@ -207,13 +207,14 @@ describe("the notes view", () => {
     }
   });
 
-  it("a filter that matches nothing says so and Clear filter lists the notes again", async () => {
+  // Council round 4 (O F7.1): Inbox's words, one way for both pages (DESIGN "Loading and empty states").
+  it("a filter that matches nothing says so in the Inbox's words and Clear filters lists the notes again", async () => {
     const view = await mount();
     const filter = view.getByLabelText("Filter notes") as HTMLInputElement;
     fireEvent.change(filter, { target: { value: "zzz" } });
-    expect(view.getByText("No matching notes")).toBeTruthy();
-    expect(view.getByText("The filter is narrowing this list")).toBeTruthy();
-    fireEvent.click(view.getByRole("button", { name: "Clear filter" }));
+    expect(view.getByText("Nothing matches")).toBeTruthy();
+    expect(view.getByText("Filters are narrowing this list")).toBeTruthy();
+    fireEvent.click(view.getByRole("button", { name: "Clear filters" }));
     expect(filter.value).toBe("");
     expect(view.getByRole("button", { name: /Deploy/ })).toBeTruthy();
   });
@@ -223,7 +224,7 @@ describe("the notes view", () => {
     fireEvent.click(view.getByRole("button", { name: /Deploy/ }));
     const filter = view.getByLabelText("Filter notes") as HTMLInputElement;
     fireEvent.change(filter, { target: { value: "zzz" } });
-    expect(view.getByText("No matching notes")).toBeTruthy();
+    expect(view.getByText("Nothing matches")).toBeTruthy();
     expect(view.queryByLabelText("Note title")).toBeNull();
     expect(view.queryByRole("button", { name: "Delete" })).toBeNull();
     fireEvent.change(filter, { target: { value: "gate" } });
@@ -324,6 +325,39 @@ describe("the notes view", () => {
     // A bottom edge, clear at rest, that focus-field inks with the ring.
     expect(title).toContain("border-b");
     expect(title).toContain("border-transparent");
+  });
+
+  // Council round 4 (O F7.2): a note with no workspace drew its time alone on a line above its title.
+  it("sets a note's time on its workspace's line, and on its title's line when it has no workspace", async () => {
+    const saved = h.notes;
+    h.notes = [{ ...saved[1], sourceCwd: "/Users/me/IdeaProjects/practice-gateway" } as (typeof saved)[number], saved[0]];
+    h.workspaces = [{ id: "w1", environmentId: "local", name: "Proof gateway", path: "/Users/me/IdeaProjects/practice-gateway", git: true, createdAt: 1 }];
+    try {
+      const view = await mount();
+      const withPlace = view.getByRole("button", { name: /Deploy/ });
+      const bare = view.getByRole("button", { name: /Gate notes/ });
+      // With a workspace: two lines, the time beside the workspace's name, none beside the title.
+      expect(withPlace.querySelector("[data-row-title]")!.parentElement!.querySelector("[data-row-time]")).toBeNull();
+      expect(withPlace.textContent).toContain("Proof gateway");
+      // With none: the title's line holds the time, and nothing stands above the title.
+      const titleLine = bare.querySelector("[data-row-title]")!.parentElement!;
+      expect(titleLine.querySelector("[data-row-time]")).not.toBeNull();
+      expect(bare.firstElementChild).toBe(titleLine);
+    } finally {
+      h.notes = saved;
+      h.workspaces = [];
+    }
+  });
+
+  // Council round 4 (S F7.1): a failed save printed the host's rejection as it came.
+  it("says a failed save in plain words, the host's own text on hover alone", async () => {
+    vi.mocked(upsertNote).mockRejectedValueOnce(new Error("notes.upsert: EACCES: permission denied, open '/srv/notes/deploy.md'"));
+    const view = await mount();
+    fireEvent.click(view.getByRole("button", { name: /Deploy/ }));
+    fireEvent.change(view.getByLabelText("Note title"), { target: { value: "Deploy now" } });
+    const line = await waitFor(() => view.getByText("Couldn't save this note"), { timeout: 2000 });
+    expect(line.getAttribute("data-slot")).toBe("fail-line");
+    expect(view.container.textContent).not.toContain("EACCES");
   });
 
   it("seats its empty state where the Inbox seats its own: centred in the list's column", async () => {

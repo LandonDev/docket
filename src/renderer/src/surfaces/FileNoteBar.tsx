@@ -22,7 +22,7 @@ export function noteTone(_note: FileNote, readOnly: boolean, failed: boolean): A
 export function FileNoteBar({ note, readOnly = false }: { note: FileNote; readOnly?: boolean }) {
   const [failure, setFailure] = useState<string | null>(null);
   const action = note.action;
-  const text = failure ? `Couldn’t open: ${failure}` : note.text;
+  const text = failure ? `Couldn't open: ${failure}` : note.text;
   const run = () => {
     if (!action) return;
     setFailure(null);

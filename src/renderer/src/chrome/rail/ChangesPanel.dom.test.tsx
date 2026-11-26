@@ -243,11 +243,30 @@ describe("ChangesPanel", () => {
     h.index = indexOf({ files: [file(".temp-code/plans/a.ts")] });
     const { container } = mount();
     await flush();
-    const folder = [...container.querySelectorAll<HTMLElement>("span[dir=rtl]")].find((s) => s.textContent?.includes("plans"))!;
-    expect(folder.className).toContain("truncate");
-    expect(folder.className).toContain("text-left");
+    const lead = [...container.querySelectorAll<HTMLElement>("span[dir=rtl]")].find((s) => s.textContent?.includes("temp-code"))!;
+    expect(lead.className).toContain("truncate");
+    expect(lead.className).toContain("text-left");
     // The path keeps its order between two left-to-right marks: a leading "." stays in front.
-    expect(folder.textContent).toBe("\u200E.temp-code/plans\u200E");
+    expect(lead.textContent).toBe("\u200E.temp-code/\u200E");
+    // The last folder is never cut: it sits after the lead, whole.
+    const folder = lead.parentElement!;
+    expect(folder.getAttribute("data-slot")).toBe("file-folder");
+    expect(folder.textContent).toBe("\u200E.temp-code/\u200Eplans");
+    expect(folder.lastElementChild!.className).not.toContain("truncate");
+  });
+
+  it("drops a row's folder where not even its last part would show: it wraps onto a line the row hides", async () => {
+    h.index = indexOf({ files: [file("src/renderer/src/lib/rightPanel.ts"), file("lib/a.ts")] });
+    const { container } = mount();
+    await flush();
+    const folders = [...container.querySelectorAll<HTMLElement>('[data-slot="file-folder"]')];
+    expect(folders.map((f) => f.textContent)).toEqual(["\u200Esrc/renderer/src/\u200Elib", "lib"]);
+    const line = folders[0]!.parentElement!.className.split(/\s+/);
+    expect(line).toEqual(expect.arrayContaining(["flex-wrap", "h-5", "overflow-hidden"]));
+    // The folder asks for no room of its own: it fits beside the name, or wraps away whole.
+    expect(folders[0]!.className.split(/\s+/)).toEqual(expect.arrayContaining(["basis-0", "grow", "grid-cols-[minmax(1em,max-content)_max-content]"]));
+    // The name truncates only past the whole row.
+    expect(folders[0]!.previousElementSibling!.className.split(/\s+/)).toEqual(expect.arrayContaining(["max-w-full", "truncate"]));
   });
 
   it("names the groups only when both have rows", async () => {

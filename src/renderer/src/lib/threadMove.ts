@@ -44,6 +44,9 @@ export function threadBlocker(t: MovableThread): string | null {
  * Where a thread could go, each with why not when it cannot: a move runs
  * between this machine and one saved host (never host to host), needs the
  * desktop's server and the other host connected, and an admin key there.
+ * A connected host whose key is not an admin key is no target at all: a
+ * control the key may not use is not drawn (DESIGN "Loading and empty
+ * states"); one held by a link that is down stays, with the link's words.
  */
 export function moveTargets(
   t: MovableThread,
@@ -56,20 +59,20 @@ export function moveTargets(
   const remote = t.environmentId === LOCAL_ENVIRONMENT_ID ? null : environments.find((e) => e.id === t.environmentId);
   const local = statusOf(LOCAL_ENVIRONMENT_ID);
   const blocker = moving ? "a move is already running" : threadBlocker(t);
-  return candidates.map((e) => {
+  return candidates.flatMap((e): MoveTarget[] => {
     const peer = e.id === LOCAL_ENVIRONMENT_ID ? remote : e;
     const peerStatus = peer ? statusOf(peer.id) : null;
     const caps: Capability[] = peerStatus?.lastHello?.caps ?? [];
+    const connected = !!peer && !!peerStatus && peerStatus.transport === "open" && !!peerStatus.lastHello;
+    if (connected && !caps.includes("admin")) return [];
     const why =
       blocker ??
       (local.transport !== "open" || !local.lastHello
         ? "this Mac's server is not connected"
-        : !peer || !peerStatus || peerStatus.transport !== "open"
+        : !connected
           ? `${peer?.name ?? "the other host"} is not connected`
-          : !caps.includes("admin")
-            ? `the key for ${peer.name} is not an admin key`
-            : null);
-    return why ? { environmentId: e.id, name: e.name, ok: false, reason: why } : { environmentId: e.id, name: e.name, ok: true };
+          : null);
+    return [why ? { environmentId: e.id, name: e.name, ok: false, reason: why } : { environmentId: e.id, name: e.name, ok: true }];
   });
 }
 

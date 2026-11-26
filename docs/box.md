@@ -1379,7 +1379,8 @@ the right of the thread header names the host it runs on (status dot), and
 its menu has **Move to box…** on a Mac thread or **Move to This Mac…** on a
 box thread. The item is disabled with its reason while the thread (or any
 subagent) is working, paused, waiting on an approval or has queued messages,
-while either link is down, or when the saved key is not admin. Rows in the
+or while either link is down; where the saved key is not admin there is no
+item at all (a control the key may not use is not drawn). Rows in the
 sidebar carry a small host badge once the window talks to two or more hosts.
 While a move runs the chip says `Moving to box…`; the result is one sonner
 toast, `Moved "<title>" to box` (or `Couldn't move "<title>" to box` with the

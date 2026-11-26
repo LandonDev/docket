@@ -87,7 +87,9 @@ export type MenuRow =
       contentLabel?: string;
     };
 
-/** No separator first, last or twice in a row, and none under a label. */
+/** No separator first, last or twice in a row, and none under a label.
+ *  `MenuRows` (menuBody.tsx) tidies every menu it draws; a caller needs this
+ *  only to count or test its rows. */
 export function tidy(rows: readonly MenuRow[]): MenuRow[] {
   const out: MenuRow[] = [];
   for (const row of rows) {

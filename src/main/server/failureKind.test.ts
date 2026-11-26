@@ -300,7 +300,7 @@ describe('context_thrash', () => {
     expect(classifyFailure(ctx({ message: CLI_LINE }))).toMatchObject({
       kind: 'context_thrash',
       summary: 'The context window keeps filling up',
-      cause: 'Claude Code stopped after the context refilled to its limit 3 times in a row'
+      cause: 'Claude Code stopped after the context refilled to its limit 3 times in a row.'
     })
   })
 
@@ -308,12 +308,26 @@ describe('context_thrash', () => {
     expect(classifyFailure(ctx({ message: 'context thrash: 4 compactions in 6 min; first request 167k of 200k' }))).toMatchObject({
       kind: 'context_thrash',
       summary: 'The context window keeps filling up',
-      cause: '4 compactions in 6 minutes; the first request held 167k of a 200k window'
+      cause: '4 compactions in 6 minutes; the first request held 167k of a 200k window.'
     })
-    expect(classifyFailure(ctx({ provider: 'codex', model: 'gpt-6.1-sol', message: 'context thrash: 4 compactions in 1 min' })).cause).toBe('4 compactions in 1 minute')
+    expect(classifyFailure(ctx({ provider: 'codex', model: 'gpt-6.1-sol', message: 'context thrash: 4 compactions in 1 min' })).cause).toBe('4 compactions in 1 minute.')
   })
 
   it('is a kind of the schema', () => {
     expect(FailureKindSchema.options).toContain('context_thrash')
+  })
+})
+
+// Council round 4 (O F3.1): the card's cause read "…no reason." for one kind and "…in a row" for another.
+describe('every cause', () => {
+  it('is a sentence that ends in a period, for every kind and its variants', () => {
+    const messages = ['', 'context thrash: 4 compactions in 6 min; first request 167k of 200k', 'context thrash: 4 compactions in 1 min', 'Claude Code: context refilled', 'Credit balance is too low', 'error_max_turns', 'something odd']
+    const causes = new Set<string>([fallbackFailure().cause])
+    for (const kind of FailureKindSchema.options)
+      for (const message of messages)
+        for (const room of [true, false, null])
+          for (const over of [{}, { provider: 'codex', model: 'gpt-6.1-sol' }, { account: 'work' }] as Partial<FailureContext>[])
+            causes.add(describeFailure(kind, ctx({ message, ...over }), room).cause)
+    expect([...causes].filter((c) => !/[.?!]$/.test(c))).toEqual([])
   })
 })

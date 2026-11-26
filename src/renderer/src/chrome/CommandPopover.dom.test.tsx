@@ -173,4 +173,37 @@ describe("CommandPopover", () => {
     for (const c of MENU_ROW.split(" ")) expect(row.className).toContain(c);
     expect(row.className).toContain("rounded-lg");
   });
+
+  // Council round 4 (O F4.2): the `@` menu's failed read was muted where the `/` menu's was red.
+  it("says a failed `@` read in the red the `/` menu's failed list takes, in the empty row and under the rows in hand", () => {
+    const { container, rerender } = render(<CommandPopover matches={{ mode: "file", rows: [], note: "Couldn't search files", failed: true }} {...props} />);
+    const empty = container.querySelector<HTMLElement>("[data-command-empty]")!;
+    expect(empty.textContent).toBe("Couldn't search files");
+    expect(empty.className).toContain("text-destructive");
+    rerender(<CommandPopover matches={{ mode: "file", rows: [{ kind: "file", file: file("src/a.ts") }], note: "Couldn't search files", failed: true }} {...props} />);
+    expect(container.querySelector<HTMLElement>("[data-command-note]")!.className).toContain("text-destructive");
+    // Work's answer still on its way is no failure: muted.
+    rerender(<CommandPopover matches={{ mode: "file", rows: [{ kind: "file", file: file("src/a.ts") }], note: "Loading…" }} {...props} />);
+    const note = container.querySelector<HTMLElement>("[data-command-note]")!;
+    expect(note.className).toContain("text-muted-foreground");
+    expect(note.className).not.toContain("text-destructive");
+  });
+
+  // Council round 4 (S F4.1): a long file or note name ran off the edge with no ellipsis; a long project name crowded the title.
+  it("cuts a long file or note name with an ellipsis, the folder giving way first, and caps another project's name under the title", () => {
+    const thread = { kind: "thread", session: { id: "t", title: "A long thread title", status: "idle", projectId: "p2", updatedAt: 1 } as SessionMeta } as const;
+    const note = { kind: "note", file: { name: "A very long note name", path: "n", relative: "n" } } as const;
+    const projects = [{ id: "p2", name: "Another project" }] as never;
+    const { container } = render(<CommandPopover matches={{ mode: "file", rows: [{ kind: "file", file: file("src/deep/folder/a-long-name.ts") }, note, thread] }} {...props} projects={projects} />);
+    const [fileRow, noteRow, threadRow] = [...container.querySelectorAll<HTMLElement>("[role=option]")];
+    const [name, folder] = [...fileRow.querySelectorAll("span")];
+    expect(name.textContent).toBe("a-long-name.ts");
+    expect(name.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    expect(folder.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "truncate", "shrink-[99]"]));
+    const noteName = [...noteRow.querySelectorAll("span")].find((s) => s.textContent === "A very long note name")!;
+    expect(noteName.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
+    const project = [...threadRow.querySelectorAll("span")].find((s) => s.textContent === "Another project")!;
+    expect(project.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "truncate", "max-w-[40%]"]));
+    expect(project.className.split(" ")).not.toContain("shrink-0");
+  });
 });

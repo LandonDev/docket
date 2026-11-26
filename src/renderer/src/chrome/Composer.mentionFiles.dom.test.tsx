@@ -65,9 +65,11 @@ describe("the @ menu over a failed file read", () => {
     // The names in hand still match, with the failure said under them.
     expect(menu()?.textContent).toContain("app.ts");
     expect(container.querySelector("[data-command-note]")?.textContent).toBe("Couldn't search files");
+    expect(container.querySelector("[data-command-note]")?.className).toContain("text-destructive");
     // Nothing matches: the failure, never "No matches".
     await typeAll(field, "@zzqx");
     expect(container.querySelector("[data-command-empty]")?.textContent).toBe("Couldn't search files");
+    expect(container.querySelector("[data-command-empty]")?.className).toContain("text-destructive");
     // Closed, then opened again: the read is asked again, and its answer clears the line.
     h.load.mockResolvedValueOnce(files);
     await typeAll(field, "");

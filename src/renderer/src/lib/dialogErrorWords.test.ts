@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { dialogErrorWords } from "./dialogErrorWords";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { dialogErrorWords, notSentWords } from "./dialogErrorWords";
 
 describe("dialogErrorWords", () => {
   it("words the link, a silent host and a refused key, naming the host mid-line", () => {
@@ -32,5 +34,16 @@ describe("dialogErrorWords", () => {
     expect(dialogErrorWords(new Error("Name is taken."))).toBe("Name is taken.");
     expect(dialogErrorWords("")).toBe("");
     expect(dialogErrorWords(null)).toBe("");
+  });
+
+  it("words a send the host refused after the field cleared in the composer's form, never the host's raw text", () => {
+    expect(notSentWords(new Error("not connected"), "The box")).toBe("Not sent: The box is not connected. Try again once it is back.");
+    expect(notSentWords(new Error("connection closed"))).toBe("Not sent: Its host is not connected. Try again once it is back.");
+    expect(notSentWords(new Error("The server did not queue the message"), "The box")).toBe("Not sent: The server did not queue the message");
+    expect(notSentWords(undefined)).toBe("Not sent");
+    // App.tsx's three catches (queue, steer, send) all take this form.
+    const app = readFileSync(resolve(__dirname, "../App.tsx"), "utf8");
+    expect(app.match(/noteSystem\(sessionId, notSentWords\(error, /g)?.length).toBe(3);
+    expect(app).not.toMatch(/adapter failed|could not steer the active turn|Could not queue the message/);
   });
 });

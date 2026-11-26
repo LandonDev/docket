@@ -72,6 +72,8 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
       // The ladder's two upper steps (a completion's detail, a signature, a quote): muted-foreground in light.
       ...pairs(["--ink-50", "--ink-55"], [...PAGE, "--popover", "--muted"]),
       { ink: "--background", on: "--foreground" },
+      // Quieter words on the matte (a show's "End of show"): `matte-muted-foreground`, light's own grey.
+      { ink: "--matte-muted-foreground", on: "--matte", base: "--matte" },
       // A read-only field's words, on a dialog, the page and a card.
       ...pairs(["--field-readonly"], [...PAGE, "--popover"]),
       // Text on a hovered row, tab or control on the chrome (`chrome-hover`), and on a hovered outline button, select or attachment (`hover-fill`).
@@ -117,6 +119,8 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
       ...pairs(["--border"], EDGE_GROUNDS),
       // A loading bone is found against what it lies on: the page, the rail, a card.
       ...EDGE_GROUNDS.map((base) => ({ ink: "--skeleton", on: base, base })),
+      // A bone on the stage ground (a picture, a page, a media frame on its way): `skeleton-stage`.
+      { ink: "--skeleton-stage", on: "--stage", base: "--stage" },
       { ink: "--paper-rule", on: "--paper", base: "--paper" },
       { ink: "--page-rule", on: "--page", base: "--page" },
       { ink: "--page-edge", on: "--stage", base: "--stage" },
@@ -279,5 +283,14 @@ describe("the contrast contract", () => {
     // A thin edge is measured as drawn, over its ground, never as its own colour.
     expect(ratio(light, "--border", "--background")).toBeLessThan(2);
     for (const tier of TIERS) for (const p of tier.pairs) for (const [, theme] of THEMES) expect((theme.has(p.ink) || !p.ink.startsWith("--")) && (theme.has(p.on) || !p.on.startsWith("--")), `${p.ink} on ${p.on}`).toBe(true);
+  });
+});
+
+// A bone on `stage` stands out from it at least as well as the page's bone stands out from the page, in both themes.
+describe("a bone on stage", () => {
+  it("is found on the grey stage as the page's bone is on the page", () => {
+    for (const [name, theme] of THEMES) {
+      expect(ratio(theme, "--skeleton-stage", "--stage", "--stage"), name).toBeGreaterThanOrEqual(ratio(theme, "--skeleton", "--background", "--background"));
+    }
   });
 });

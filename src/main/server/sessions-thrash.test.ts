@@ -98,7 +98,7 @@ describe('the thrash guard', () => {
     expect(errs).toHaveLength(1)
     expect(errs[0].message).toBe('context thrash: 4 compactions in 6 min; first request 167k of 200k')
     expect(errs[0].stopped).toBeUndefined()
-    expect(errs[0].failure).toMatchObject({ kind: 'context_thrash', summary: 'The context window keeps filling up', cause: '4 compactions in 6 minutes; the first request held 167k of a 200k window' })
+    expect(errs[0].failure).toMatchObject({ kind: 'context_thrash', summary: 'The context window keeps filling up', cause: '4 compactions in 6 minutes; the first request held 167k of a 200k window.' })
     expect(registry.get(id)?.status).toBe('error')
   })
 

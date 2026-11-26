@@ -210,7 +210,9 @@ routed to (aliax-core's `forward`). Two listeners:
   167k of 200k`, the first context reading after the harness's boot, and
   fails the row), and Claude Code's own "Autocompact is thrashing" line is
   the same kind. Summary "The context window keeps filling up"
-  (`CONTEXT_THRASH_SUMMARY`); the card offers Continue with 1M context
+  (`CONTEXT_THRASH_SUMMARY`), the cause the count as a sentence ("4 compactions
+  in 6 minutes; …window.": every kind's cause ends in a period, a summary never,
+  failureKind.test.ts "every cause"); the card offers Continue with 1M context
   (`use-1m`: `session.tune { context1m }` then `session.continue`) when
   `supportsContext1m` and the thread is not on 1M yet, then Continue on
   another model and Retry; the phone another model and Retry. A batch child

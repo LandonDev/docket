@@ -308,9 +308,10 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext, room: bo
     }
     case 'context_thrash': {
       const row = parseContextThrashRow(ctx.message)
-      if (!row) return { summary: CONTEXT_THRASH_SUMMARY, cause: `${harness} stopped after the context refilled to its limit 3 times in a row` }
+      // A cause is a sentence and ends in a period, as every kind's does (council round 4, O F3.1).
+      if (!row) return { summary: CONTEXT_THRASH_SUMMARY, cause: `${harness} stopped after the context refilled to its limit 3 times in a row.` }
       const span = `${row.count} compactions in ${row.minutes} ${row.minutes === 1 ? 'minute' : 'minutes'}`
-      return { summary: CONTEXT_THRASH_SUMMARY, cause: row.first && row.window ? `${span}; the first request held ${row.first} of a ${row.window} window` : span }
+      return { summary: CONTEXT_THRASH_SUMMARY, cause: row.first && row.window ? `${span}; the first request held ${row.first} of a ${row.window} window.` : `${span}.` }
     }
     case 'unknown': {
       // No reason at all reads as the renderer's fallback, word for word; a
