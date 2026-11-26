@@ -61,8 +61,16 @@
 - Opening a box thread is round trips (about 200 ms each from the Mac),
   not bytes: over a remote link a cold open is ONE request,
   `session.events { tail, subscribe: true }`, answered `subscribed: true`
-  (an older host omits it and the client subscribes and folds the gap);
-  the store keeps the last `KEEP_RECENT` (6) transcripts whose panes left
+  (an older host omits it and the client subscribes and folds the gap).
+  That ask has a deadline matched to its size, COLD_OPEN_DEADLINE_MS (8 s,
+  lib/connection/subscriptions.ts): past it a second ask goes at once
+  without `subscribe`, the first kept, and whichever answers first is
+  folded, the other dropped (`firstOfTwo`); a winning page that does not
+  say `subscribed` subscribes after it and folds the gap, and
+  `session.subscribe` is one subscription a socket and thread, so each
+  push comes once. Before (M0, 2026-11-26): an answer lost on a live link
+  painted at 31.3 s (the link's 30 s deadline, then the store's retry).
+  The store keeps the last `KEEP_RECENT` (6) transcripts whose panes left
   loaded and subscribed, so a switch back sends nothing (a chat a Work dock
   shows counts as a mounted pane, `sessionStore.showApart`); the markdown
   worker parses one commit's texts newest first. docs/TRANSCRIPT.md

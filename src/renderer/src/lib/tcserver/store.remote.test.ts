@@ -82,11 +82,24 @@ class RemoteLink implements Link {
   pageRows = 4;
   /** While set, every session.events answer waits here until released. */
   holdEvents: (() => void)[] | null = null;
+  /** The next session.events alone waits here until released (an answer lost on a live link). */
+  holdNext: (() => void)[] | null = null;
+  /** The host's subscriptions on this socket: one a thread, whatever asked for it. */
+  subscribed = new Set<string>();
   private pushListeners = new Set<(push: ServerPush) => void>();
   private openListeners = new Set<() => void>();
 
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
+    const p = params as { sessionId?: string; subscribe?: boolean } | undefined;
+    if (method === "session.subscribe" || (method === "session.events" && p?.subscribe)) this.subscribed.add(p!.sessionId!);
+    if (method === "session.unsubscribe") this.subscribed.delete(p!.sessionId!);
+    const next = this.holdNext;
+    if (method === "session.events" && next) {
+      this.holdNext = null;
+      const answer = this.answer<T>(method, params);
+      return new Promise<T>((resolve) => next.push(() => resolve(answer)));
+    }
     const hold = this.holdEvents;
     if (method === "session.events" && hold) {
       const answer = this.answer<T>(method, params);
@@ -157,6 +170,11 @@ class RemoteLink implements Link {
   }
   push(p: ServerPush): void {
     for (const l of this.pushListeners) l(p);
+  }
+  /** A row appended on the host: in the log, and pushed once to a socket subscribed to its thread. */
+  append(r: EventRow): void {
+    this.events.set(r.sessionId, [...(this.events.get(r.sessionId) ?? []), r]);
+    if (this.subscribed.has(r.sessionId)) this.push({ push: "event", row: r });
   }
   open(): void {
     for (const l of this.openListeners) l();
@@ -570,6 +588,63 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(blocks[0].text).toBe("prompt 1");
     expect(blocks.at(-1)!.text).toBe("answer 1000");
     expect(yields).toBeGreaterThan(100);
+  });
+});
+
+describe("remote profile: a cold open's lost answer", () => {
+  afterEach(() => vi.useRealTimers());
+
+  /** s1 listed, its first session.events held; returns the release of that answer. */
+  async function lostOpen(): Promise<(() => void)[]> {
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.events.set("s1", turns("s1", 2));
+    link.pageRows = 300;
+    await boot(link);
+    vi.useFakeTimers();
+    const first: (() => void)[] = [];
+    link.holdNext = first;
+    void sessionStore.ensureLoaded("s1", "load").catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(link.count("session.events")).toBe(1);
+    return first;
+  }
+
+  const texts = (): string[] => sessionStore.get("s1")!.blocks.map((b) => b.text ?? "");
+
+  it("a link that never answers the first ask paints by the second at the deadline, each row once", async () => {
+    await lostOpen();
+    // A row lands while both asks are out: it is pushed (the first ask subscribed) and in the second's page.
+    link.append(row("s1", 5, { type: "user-text", text: "prompt 3" }));
+    await vi.advanceTimersByTimeAsync(8_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(link.count("session.events")).toBeGreaterThanOrEqual(2);
+    expect(sessionStore.get("s1")!.load?.phase).toBe("loaded");
+    expect(texts()).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "prompt 3"]);
+    expect(link.subscribed).toEqual(new Set(["s1"]));
+    link.append(row("s1", 6, { type: "assistant-text", text: "answer 3", delta: false }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(texts()).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "prompt 3", "answer 3"]);
+  });
+
+  it("the first answer landing after the second: each row folded once, each later push received once", async () => {
+    const first = await lostOpen();
+    await vi.advanceTimersByTimeAsync(8_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(texts()).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2"]);
+    for (const release of first) release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(texts()).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2"]);
+    const pushes: number[] = [];
+    const off = link.onPush((p) => p.push === "event" && pushes.push(p.row.seq));
+    link.append(row("s1", 5, { type: "user-text", text: "prompt 3" }));
+    await vi.advanceTimersByTimeAsync(0);
+    off();
+    expect(pushes).toEqual([5]);
+    expect(texts()).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "prompt 3"]);
+    // The second ask did not subscribe; the host holds one subscription.
+    const events = link.calls.filter((c) => c.method === "session.events").map((c) => c.params as { subscribe?: boolean });
+    expect(events.filter((e) => e.subscribe)).toHaveLength(1);
+    expect(link.subscribed).toEqual(new Set(["s1"]));
   });
 });
 

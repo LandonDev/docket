@@ -39,6 +39,53 @@ export function asPage(result: EventRow[] | EventsPage, tailFirst: boolean): Eve
 
 export const RESUME_CONCURRENCY = 4;
 
+/** A cold open's deadline: its answer is a tail of at most TAIL_BYTES (1 MiB,
+ *  about 150 KiB on the deflated socket), the same 8 s that marks a host slow.
+ *  An answer not here by then was lost or is stuck; the link's own deadline
+ *  (30 s) is for a read of any size. */
+export const COLD_OPEN_DEADLINE_MS = 8_000;
+
+const realTimer = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The first answer of `first`, or, once `deadline` passes with it still out,
+ * of `first` and a second ask made then, whichever lands first. The first is
+ * never given up: a late answer that wins is kept. Both failing fails with
+ * the last failure; the loser's outcome is dropped.
+ */
+export function firstOfTwo<T>(
+  first: Promise<T>,
+  again: () => Promise<T>,
+  deadline: Promise<void>,
+): Promise<{ answer: T; second: boolean }> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let out = 1;
+    let asked = false;
+    const won = (answer: T, second: boolean): void => {
+      if (settled) return;
+      settled = true;
+      resolve({ answer, second });
+    };
+    const lost = (err: unknown): void => {
+      if (settled) return;
+      out--;
+      // Before the deadline a failure is the open's, as it always was.
+      if (out === 0 || !asked) {
+        settled = true;
+        reject(err);
+      }
+    };
+    first.then((answer) => won(answer, false), lost);
+    void deadline.then(() => {
+      if (settled) return;
+      asked = true;
+      out++;
+      again().then((answer) => won(answer, true), lost);
+    });
+  });
+}
+
 /**
  * The durable `session.subscribe` set of one environment. A subscription
  * belongs to the socket that made it, so on every replacement session
@@ -59,6 +106,8 @@ export class Subscriptions {
   constructor(
     readonly link: Link,
     private readonly concurrency = RESUME_CONCURRENCY,
+    /** The clock of COLD_OPEN_DEADLINE_MS. */
+    private readonly timer: (ms: number) => Promise<void> = realTimer,
   ) {
     this.detach = [
       link.onOpen(() => this.live.clear()),
@@ -150,13 +199,21 @@ export class Subscriptions {
         // The owner retries a failed resume itself (the store's load, the
         // next replacement session), so the link does not ask again here.
         let result: EventRow[] | EventsPage;
+        const params = { sessionId, afterSeq, ...(tailFirst ? { tail: options.tail } : {}) };
+        const ask = (extra: { subscribe?: true }): Promise<EventRow[] | EventsPage> =>
+          this.link.request<EventRow[] | EventsPage>("session.events", { ...params, ...extra }, { retry: false });
         handlers.asked?.();
         try {
-          result = await this.link.request<EventRow[] | EventsPage>(
-            "session.events",
-            { sessionId, afterSeq, ...(tailFirst ? { tail: options.tail } : {}), ...(together ? { subscribe: true } : {}) },
-            { retry: false },
-          );
+          const first = ask(together ? { subscribe: true } : {});
+          // A cold open past its deadline asks again at once, the first kept:
+          // whichever lands first is folded, the other dropped. The second
+          // goes without `subscribe` (the first asked for it), so the host
+          // holds one subscription; a page that does not say `subscribed`
+          // subscribes after it and folds the gap, as for an older host
+          // (`session.subscribe` is one subscription a socket and thread).
+          result = tailFirst
+            ? (await firstOfTwo(first, () => ask({}), this.timer(COLD_OPEN_DEADLINE_MS))).answer
+            : await first;
         } catch (err) {
           // The host may have subscribed before the answer was lost: a live
           // subscription the set does not know would fold pushes into a

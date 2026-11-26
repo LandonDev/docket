@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ServerPush } from "@server/shared/contract";
 import type { Link } from "./link";
-import { Subscriptions, asPage, type SubscriptionHandlers } from "./subscriptions";
+import { COLD_OPEN_DEADLINE_MS, Subscriptions, asPage, firstOfTwo, type SubscriptionHandlers } from "./subscriptions";
 import { flush } from "./testing";
 
 class FakeLink implements Link {
@@ -42,6 +42,13 @@ class FakeLink implements Link {
     const i = this.calls.findIndex((c) => c.method === method && !("done" in c));
     if (i < 0) throw new Error(`no pending ${method}`);
     const call = this.calls[i];
+    Object.assign(call, { done: true });
+    call.resolve(value);
+  }
+  /** Answer the newest unanswered call of `method`. */
+  answerLast(method: string, value: unknown): void {
+    const call = this.calls.filter((c) => c.method === method && !("done" in c)).at(-1);
+    if (!call) throw new Error(`no pending ${method}`);
     Object.assign(call, { done: true });
     call.resolve(value);
   }
@@ -278,6 +285,106 @@ describe("Subscriptions", () => {
     await expect(p).rejects.toThrow("timed out");
     expect(link.pendingOf("session.unsubscribe")).toEqual([{ sessionId: "s1" }]);
     expect(subs.isLive("s1")).toBe(false);
+  });
+
+  /** A deadline the test passes by hand; it records what it was asked to wait. */
+  function handTimer() {
+    const asked: number[] = [];
+    let pass = (): void => undefined;
+    const timer = (ms: number): Promise<void> => {
+      asked.push(ms);
+      return new Promise<void>((resolve) => (pass = resolve));
+    };
+    return { timer, asked, pass: () => pass() };
+  }
+
+  it("a cold open whose answer never comes asks again at its deadline, without subscribe; rows fold once and the gap after", async () => {
+    const link = new FakeLink("remote");
+    const clock = handTimer();
+    const subs = new Subscriptions(link, undefined, clock.timer);
+    const a = owner(0);
+    subs.add("s1", a.handlers);
+    const p = subs.resume("s1", { tail: 300 });
+    await flush();
+    expect(clock.asked).toEqual([COLD_OPEN_DEADLINE_MS]);
+    expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 0, tail: 300, subscribe: true }]);
+    clock.pass();
+    await flush();
+    expect(link.pendingOf("session.events")).toEqual([
+      { sessionId: "s1", afterSeq: 0, tail: 300, subscribe: true },
+      { sessionId: "s1", afterSeq: 0, tail: 300 },
+    ]);
+    link.answerLast("session.events", { rows: [row(5), row(6)], moreBefore: true, moreAfter: false, reset: false });
+    await flush();
+    // The second page does not say it subscribed: one `session.subscribe` (the host keeps one a socket and thread), then the gap.
+    expect(link.pendingOf("session.subscribe")).toEqual([{ sessionId: "s1" }]);
+    link.answer("session.subscribe", {});
+    await flush();
+    expect(link.pendingOf("session.events").at(-1)).toEqual({ sessionId: "s1", afterSeq: 6 });
+    link.answerLast("session.events", { rows: [row(7)], moreBefore: false, moreAfter: false, reset: false });
+    const page = await p;
+    expect(page.rows.map((r) => r.seq)).toEqual([5, 6]);
+    expect(a.log).toEqual(["begin", "page reset=false rows=5,6", "page reset=false rows=7", "end"]);
+    expect(subs.isLive("s1")).toBe(true);
+    // The first answer, landing at last, folds nothing and drops no subscription.
+    link.answer("session.events", { rows: [row(5), row(6), row(7)], moreBefore: true, moreAfter: false, reset: false, subscribed: true });
+    await flush();
+    expect(a.log).toEqual(["begin", "page reset=false rows=5,6", "page reset=false rows=7", "end"]);
+    expect(link.pendingOf("session.unsubscribe")).toEqual([]);
+    expect(link.calls.filter((c) => c.method === "session.events")).toHaveLength(3);
+  });
+
+  it("a cold open's first answer past the deadline but before the second wins, and the second's is dropped", async () => {
+    const link = new FakeLink("remote");
+    const clock = handTimer();
+    const subs = new Subscriptions(link, undefined, clock.timer);
+    const a = owner(0);
+    subs.add("s1", a.handlers);
+    const p = subs.resume("s1", { tail: 300 });
+    await flush();
+    clock.pass();
+    await flush();
+    link.answer("session.events", { rows: [row(5), row(6)], moreBefore: true, moreAfter: false, reset: false, subscribed: true });
+    await p;
+    link.answer("session.events", { rows: [row(5), row(6)], moreBefore: true, moreAfter: false, reset: false });
+    await flush();
+    expect(a.log).toEqual(["begin", "page reset=false rows=5,6", "end"]);
+    expect(link.calls.map((c) => c.method)).toEqual(["session.events", "session.events"]);
+    expect(subs.isLive("s1")).toBe(true);
+  });
+
+  it("an answer inside the deadline asks once; a resume from a cursor has no deadline of its own", async () => {
+    const link = new FakeLink("remote");
+    const clock = handTimer();
+    const subs = new Subscriptions(link, undefined, clock.timer);
+    subs.add("s1", owner(0).handlers);
+    const p = subs.resume("s1", { tail: 300 });
+    await flush();
+    link.answer("session.events", { rows: [row(5)], moreBefore: true, moreAfter: false, reset: false, subscribed: true });
+    await p;
+    clock.pass();
+    await flush();
+    void subs.resume("s1");
+    await flush();
+    expect(clock.asked).toEqual([COLD_OPEN_DEADLINE_MS]);
+    expect(link.calls.filter((c) => c.method === "session.events")).toHaveLength(2);
+  });
+
+  it("firstOfTwo: a failure before the deadline is the open's; after it, the other ask may still win; both failing fails", async () => {
+    let pass = (): void => undefined;
+    const deadline = (): Promise<void> => new Promise<void>((r) => (pass = r));
+    await expect(firstOfTwo(Promise.reject(new Error("gone")), () => Promise.resolve(1), deadline())).rejects.toThrow("gone");
+    let failFirst = (_e: Error): void => undefined;
+    const late = firstOfTwo(new Promise<number>((_r, j) => (failFirst = j)), () => Promise.resolve(2), deadline());
+    pass();
+    await flush();
+    failFirst(new Error("timed out"));
+    await expect(late).resolves.toEqual({ answer: 2, second: true });
+    const both = firstOfTwo(new Promise<number>((_r, j) => (failFirst = j)), () => Promise.reject(new Error("second")), deadline());
+    pass();
+    await flush();
+    failFirst(new Error("first"));
+    await expect(both).rejects.toThrow("first");
   });
 
   it("two resumes in flight for one session share the fetch", async () => {
