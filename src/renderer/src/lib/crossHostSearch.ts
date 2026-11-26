@@ -177,8 +177,8 @@ export type SearchHost = {
 
 export type RunOptions = {
   hosts: readonly SearchHost[];
-  /** The sources to ask one host, each a promise of its hits. */
-  sources: (host: SearchHost) => Promise<AppSearchHit[]>[];
+  /** The sources to ask one host, each a promise of its hits; `signal` aborts once a newer query replaced this one. */
+  sources: (host: SearchHost, signal: AbortSignal) => Promise<AppSearchHit[]>[];
   onUpdate: (snapshot: SearchSnapshot) => void;
   now?: () => number;
 };
@@ -187,11 +187,14 @@ export type RunOptions = {
  *  answer, so results stream in host by host and source by source. An
  *  offline host is skipped at once; a host whose every source fails is
  *  failed with the first error; one failed source among others is
- *  tolerated. Returns a cancel: nothing is published after it. */
+ *  tolerated. Returns a cancel: nothing is published after it, and each
+ *  source's signal aborts, so a host drops the reads a newer query replaced. */
 export function runCrossHostSearch(options: RunOptions): () => void {
   const now = options.now ?? (() => performance.now());
   const start = now();
   let cancelled = false;
+  // Aborted by the cancel: each host's bulk reads still waiting or running are dropped there (request.cancel).
+  const stop = new AbortController();
   const hits = new Map<string, AppSearchHit[]>();
   const progress = new Map<string, HostProgress>();
   const publish = (): void => {
@@ -215,7 +218,7 @@ export function runCrossHostSearch(options: RunOptions): () => void {
       continue;
     }
     progress.set(host.environmentId, { environmentId: host.environmentId, name: host.name, state: "searching", elapsedMs: 0 });
-    const sources = options.sources(host);
+    const sources = options.sources(host, stop.signal);
     if (sources.length === 0) {
       progress.set(host.environmentId, { environmentId: host.environmentId, name: host.name, state: "done", elapsedMs: 0 });
       continue;
@@ -256,6 +259,7 @@ export function runCrossHostSearch(options: RunOptions): () => void {
   queueMicrotask(publish);
   return () => {
     cancelled = true;
+    stop.abort();
   };
 }
 

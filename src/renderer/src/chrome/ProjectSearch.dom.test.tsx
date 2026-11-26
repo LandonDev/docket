@@ -68,7 +68,12 @@ describe("ProjectSearch", () => {
     expect(h.searchProject).toHaveBeenLastCalledWith(
       "local",
       expect.objectContaining({ query: "gate", caseSensitive: true, wholeWord: false, regex: true }),
+      expect.any(AbortSignal),
     );
+    // A newer query replaced the older ones: each earlier ask's signal is aborted, the last one's not.
+    const signals = h.searchProject.mock.calls.map((call: unknown[]) => call[2] as AbortSignal);
+    expect(signals.slice(0, -1).every((s) => s.aborted)).toBe(true);
+    expect(signals.at(-1)?.aborted).toBe(false);
     view.unmount();
   });
 

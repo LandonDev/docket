@@ -217,3 +217,111 @@ it('overdue requests bypass lag but stop at twice the running cap', async () => 
   await Promise.all(asks)
   gate.dispose()
 })
+
+describe('LaneGate.cancel (request.cancel)', () => {
+  /** A gate the lag holds shut until `open()`: every bulk request waits. */
+  function held(): { gate: LaneGate; open: () => void } {
+    let lag = 1_000
+    const gate = new LaneGate({ lag: () => lag, maxWaitMs: 60_000 })
+    return {
+      gate,
+      open: () => {
+        lag = 0
+        vi.advanceTimersByTime(60)
+      }
+    }
+  }
+
+  it('a cancelled bulk read leaves the queue, never runs, and its asker hears no answer', async () => {
+    vi.useFakeTimers()
+    const { gate, open } = held()
+    const task = vi.fn(async () => 'answer')
+    const asked = gate.run('bulk', 'search.project\0q', task, '1\0a1')
+    const outcome = asked.then(
+      () => 'answered',
+      (e: Error) => e.name
+    )
+    expect(gate.stats().held).toBe(1)
+    expect(gate.cancel('1\0a1')).toBe(true)
+    expect(gate.stats().held).toBe(0)
+    expect(gate.cancelled).toBe(1)
+    open()
+    await flush()
+    expect(task).not.toHaveBeenCalled()
+    expect(await outcome).toBe('LaneCancelled')
+    gate.dispose()
+  })
+
+  it("a cancel naming another socket's request id changes nothing and is refused", async () => {
+    vi.useFakeTimers()
+    const { gate, open } = held()
+    const task = vi.fn(async () => 'answer')
+    const asked = gate.run('bulk', 'search.project\0q', task, '1\0a1')
+    expect(gate.cancel('2\0a1')).toBe(false)
+    expect(gate.stats().held).toBe(1)
+    open()
+    expect(await asked).toBe('answer')
+    expect(task).toHaveBeenCalledTimes(1)
+    // Answered, it is no one's to cancel.
+    expect(gate.cancel('1\0a1')).toBe(false)
+    gate.dispose()
+  })
+
+  it('a cancel of a write is refused, and the write runs', async () => {
+    vi.useFakeTimers()
+    const { gate, open } = held()
+    const write = vi.fn(async () => 'deployed')
+    // A write never joins (no key), so it is never its socket's to cancel.
+    const asked = gate.run('bulk', bulkKey(req('host.deploy', {})), write, '1\0w1')
+    expect(gate.cancel('1\0w1')).toBe(false)
+    open()
+    expect(await asked).toBe('deployed')
+    gate.dispose()
+  })
+
+  it('refuses a request outside the bulk lane', async () => {
+    const gate = new LaneGate({ lag: () => 0 })
+    const asked = gate.run('normal', 'session.list\0null', async () => 'list', '1\0n1')
+    expect(gate.cancel('1\0n1')).toBe(false)
+    expect(await asked).toBe('list')
+  })
+
+  it("one socket's cancel leaves a joined asker's read running; the last cancel aborts the running read", async () => {
+    vi.useFakeTimers()
+    const gate = new LaneGate({ lag: () => 0 })
+    const answer = deferred<string>()
+    let signal!: AbortSignal
+    const task = vi.fn((s: AbortSignal) => {
+      signal = s
+      return answer.promise
+    })
+    const first = gate.run('bulk', 'search.project\0q', task, '1\0a1')
+    const joined = gate.run('bulk', 'search.project\0q', task, '2\0b1')
+    expect(task).toHaveBeenCalledTimes(1)
+    first.catch(() => undefined)
+    expect(gate.cancel('1\0a1')).toBe(true)
+    expect(signal.aborted).toBe(false)
+    // A later duplicate still joins the run another socket wants.
+    const third = gate.run('bulk', 'search.project\0q', task, '3\0c1')
+    expect(gate.cancel('3\0c1')).toBe(true)
+    third.catch(() => undefined)
+    expect(signal.aborted).toBe(false)
+    answer.resolve('rows')
+    expect(await joined).toBe('rows')
+    // Now running alone: its one asker's cancel tells it to stop.
+    const stop = deferred<string>()
+    let stopping!: AbortSignal
+    const lone = gate.run('bulk', 'search.project\0other', (s) => {
+      stopping = s
+      return stop.promise
+    }, '1\0a2')
+    lone.catch(() => undefined)
+    expect(gate.cancel('1\0a2')).toBe(true)
+    expect(stopping.aborted).toBe(true)
+    // A new ask of the same read starts its own run rather than joining the stopping one.
+    const fresh = vi.fn(async () => 'fresh')
+    expect(await gate.run('bulk', 'search.project\0other', fresh, '1\0a3')).toBe('fresh')
+    stop.resolve('late')
+    gate.dispose()
+  })
+})

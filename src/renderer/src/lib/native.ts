@@ -164,12 +164,16 @@ function whenServerOpen(link: ServerLink): Promise<void> {
   });
 }
 
-async function rpc<T>(environmentId: string, method: string, params?: unknown): Promise<T> {
+async function rpc<T>(environmentId: string, method: string, params?: unknown, options?: CallOptions): Promise<T> {
   if (!router) throw new Error(`server router not bound (${method})`);
   const link = router.linkOf(environmentId);
   await whenServerOpen(link);
-  return link.request<T>(method, params);
+  if (options?.signal?.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
+  return link.request<T>(method, params, options?.signal ? { signal: options.signal } : undefined);
 }
+
+/** What a caller may add to a server command: a signal that drops a read a newer one replaced (transport.ts). */
+export type CallOptions = { signal?: AbortSignal };
 
 type PassthroughCommand = Exclude<
   ServerCommand,
@@ -246,13 +250,13 @@ const serverMethods: Record<PassthroughCommand, string> = {
 
 // ── Command maps ───────────────────────────────────────────────────────────
 
-type ServerBacked = (environmentId: string, args: Args) => Promise<unknown>;
+type ServerBacked = (environmentId: string, args: Args, options?: CallOptions) => Promise<unknown>;
 
 const serverBacked: Record<ServerCommand, ServerBacked> = {
   ...(Object.fromEntries(
     Object.entries(serverMethods).map(([command, method]) => [
       command,
-      (environmentId: string, args: Args) => rpc(environmentId, method, args),
+      (environmentId: string, args: Args, options?: CallOptions) => rpc(environmentId, method, args, options),
     ]),
   ) as Record<ServerCommand, ServerBacked>),
 
@@ -357,10 +361,11 @@ export async function invokeOn<T = unknown>(
   environmentId: string,
   command: ServerCommand,
   args?: Record<string, unknown>,
+  options?: CallOptions,
 ): Promise<T> {
   const impl = serverBacked[command];
   if (!impl) throw notPorted(command);
-  return (await impl(environmentId, args)) as T;
+  return (await impl(environmentId, args, options)) as T;
 }
 
 /** The user's editor on this machine (null where none can run: web mode, a headless host). */

@@ -59,7 +59,8 @@ export function editorPathsEqual(a: string, b: string): boolean {
   return normalizeEditorPath(a) === normalizeEditorPath(b);
 }
 
-export function searchProject(environmentId: string, options: ProjectSearchOptions,
+/** `signal`: a newer query replaced this one; the host drops or stops it (`request.cancel`). */
+export function searchProject(environmentId: string, options: ProjectSearchOptions, signal?: AbortSignal,
 ): Promise<ProjectSearchResult> {
-  return invokeOn<ProjectSearchResult>(environmentId, "search_project", { options });
+  return invokeOn<ProjectSearchResult>(environmentId, "search_project", { options }, signal ? { signal } : undefined);
 }

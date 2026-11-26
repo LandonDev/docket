@@ -934,6 +934,16 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
   // pushes go first on this host. One per connection; a closed socket drops it.
   z.object({
     id: z.string(),
+    method: z.literal('request.cancel'),
+    // A bulk read this same socket sent and no longer wants (a newer query
+    // replaced it): the host's lane drops it while it waits, or tells a running
+    // search to stop, and its answer is never sent. Any other id is refused
+    // (src/main/server/lane.ts). An older host answers a bad request, which the
+    // window ignores.
+    params: z.object({ id: z.string() })
+  }),
+  z.object({
+    id: z.string(),
     method: z.literal('session.focus'),
     // `shown`: the thread the window's focused pane displays, whatever the
     // window's focus or the person's attention; only the push coalescer

@@ -360,7 +360,8 @@ import { closeAllLiveWatchers, onLiveEdit } from './livediff'
 import { AnswerParts, carriesBytes, eventsWindowMs, frameJson, profileFor, PushCoalescer, SocketBudget, remoteDeflateOptions, sessionEvents, sessionPage } from './wire'
 import { PARTS_HELLO, readAck } from '@shared/answerParts'
 import { FocusSet } from './focus'
-import { bulkKey, LaneGate, laneOf, type Lane } from './lane'
+import { bulkKey, CANCEL_REFUSED, LaneCancelled, LaneGate, laneOf, type Lane } from './lane'
+import { withRequestSignal } from './requestSignal'
 import { ListChangeLog } from './listChanges'
 import { LaunchMirror } from './launchMirror'
 import { chainRestart, type RemoteRestart } from './remote/restarts'
@@ -2899,6 +2900,11 @@ export async function startServer(
         // refusal is one typed error that never carries the path. Ahead of
         // the lane gate: a bulk request never joins one it may not make.
         await fenceCaller(req)
+        // A cancel names a bulk read of this socket's alone (lane.ts): the gate keys it by socket and id.
+        if (req.method === 'request.cancel') {
+          const cancelled = laneGate.cancel(`${connection}\0${req.params.id}`)
+          return sendFrame(cancelled ? { id: req.id, ok: true, result: { cancelled: true } } : { id: req.id, ok: false, error: CANCEL_REFUSED })
+        }
         // The lane gate (lane.ts): interactive and normal run now; bulk waits
         // its turn and a duplicate shares the answer of the one before it.
         lane = laneOf(req, focus)
@@ -2907,13 +2913,20 @@ export async function startServer(
           // closes (they want it); this socket's own request is dropped once
           // it closed (a watch must not register for a closed socket).
           const key = bulkKey(req)
-          const answer = await laneGate.run(lane, key, () => {
-            gateMs = Date.now() - startedAt
-            return key === null && socketClosed ? Promise.resolve(null) : captureAnswer(req)
-          })
+          const answer = await laneGate.run(
+            lane,
+            key,
+            (signal) => {
+              gateMs = Date.now() - startedAt
+              return key === null && socketClosed ? Promise.resolve(null) : withRequestSignal(signal, () => captureAnswer(req))
+            },
+            `${connection}\0${req.id}`
+          )
           if (answer) sendFrame({ ...answer, id: req.id })
         } else await serve(req, sendFrame)
       } catch (err) {
+        // Cancelled by its own socket: no answer goes out.
+        if (err instanceof LaneCancelled) return
         sendFrame({
           id: req.id,
           ok: false,

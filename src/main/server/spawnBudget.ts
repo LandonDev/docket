@@ -185,15 +185,22 @@ const decode = (bytes: Uint8Array | undefined, encoding: ExecOptions['encoding']
 function execNow(file: string, args: readonly string[], options: ExecOptions): { child: BrokerChild; result: Promise<ExecResult<string | Buffer>> } {
   const encoding = options.encoding === undefined ? 'utf8' : options.encoding
   let child!: BrokerChild
+  // `signal` as execFile takes it: an abort kills the child (a cancelled search's git grep).
+  const stop = (): void => {
+    child?.kill('SIGTERM')
+  }
   const result = new Promise<ExecResult<string | Buffer>>((resolve, reject) => {
     announce(file, args)
     child = execBroker.run(file, args, 'exec', brokerOptions(options, false, true), (outcome) => {
+      options.signal?.removeEventListener('abort', stop)
       const stdout = decode(outcome.stdout, encoding)
       const stderr = decode(outcome.stderr, encoding)
       if (outcome.error) reject(Object.assign(brokerError(outcome.error, [file, ...args].join(' ')), { stdout, stderr }))
       else resolve({ stdout, stderr })
     })
     trackChild(child)
+    if (options.signal?.aborted) stop()
+    else options.signal?.addEventListener('abort', stop, { once: true })
   })
   return { child, result }
 }

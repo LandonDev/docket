@@ -87,6 +87,8 @@ export function ProjectSearch({
     }
 
     let cancelled = false;
+    // A newer query drops this one on the host too (request.cancel).
+    const stop = new AbortController();
     const timer = window.setTimeout(() => {
       setLoading(true);
       setError(null);
@@ -98,7 +100,7 @@ export function ProjectSearch({
         regex,
         include: include.trim() || undefined,
         exclude: exclude.trim() || undefined,
-      })
+      }, stop.signal)
         .then((result) => {
           if (cancelled) return;
           setMatches(result.matches);
@@ -117,6 +119,7 @@ export function ProjectSearch({
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      stop.abort();
     };
   }, [environmentId, caseSensitive, cwd, exclude, include, query, regex, wholeWord]);
 

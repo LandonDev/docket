@@ -417,6 +417,24 @@ describe("runCrossHostSearch", () => {
     expect(snapshots[3].progress.find((p) => p.name === "mac")).toMatchObject({ state: "done", elapsedMs: 1250 });
   });
 
+  it("aborts every host's signal on cancel, so the host drops the reads a newer query replaced", async () => {
+    const signals: AbortSignal[] = [];
+    const cancel = runCrossHostSearch({
+      hosts: [
+        { environmentId: "a", name: "a", online: true },
+        { environmentId: "b", name: "b", online: true },
+      ],
+      sources: (_host, signal) => {
+        signals.push(signal);
+        return [new Promise<AppSearchHit[]>(() => {})];
+      },
+      onUpdate: () => {},
+    });
+    expect(signals.map((s) => s.aborted)).toEqual([false, false]);
+    cancel();
+    expect(signals.map((s) => s.aborted)).toEqual([true, true]);
+  });
+
   it("tolerates one failed source, fails a host whose every source failed, and publishes nothing after cancel", async () => {
     const snapshots: SearchSnapshot[] = [];
     const ok = deferred<AppSearchHit[]>();

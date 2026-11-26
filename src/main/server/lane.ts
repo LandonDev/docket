@@ -27,6 +27,13 @@ import { currentLag } from './stalls'
  * always runs, in its turn, so a subscribe, unsubscribe, subscribe never
  * loses the last one. After BULK_MAX_WAIT_MS, lag no longer holds a request; at most twice
  * the normal cap may run.
+ *
+ * `request.cancel {id}` (index.ts) names a bulk read the same socket sent: its
+ * answer is never sent, and once no asker is left the read leaves the queue,
+ * or, running, its signal aborts (search.ts stops its git grep or scan). The
+ * gate knows a read only by its socket and id, so a cancel naming another
+ * socket's request, a write, a subscription or anything outside the bulk lane
+ * changes nothing and is refused.
  */
 
 export type Lane = 'interactive' | 'normal' | 'bulk'
@@ -40,6 +47,8 @@ export const BULK_RUNNING = 2
 export const BULK_LAG_MS = 50
 export const BULK_MAX_WAIT_MS = 20_000
 const BULK_POLL_MS = 50
+/** The signal of a request no cancel can reach. */
+const NEVER_ABORTED = new AbortController().signal
 
 const BULK_METHODS: ReadonlySet<string> = new Set([
   // The git status reads the changes panel and the rail poll.
@@ -105,14 +114,34 @@ export function bulkKey(req: ClientRequest): string | null {
   return `${req.method}\0${digest}`
 }
 
-interface Entry {
-  key: string | null
-  enqueuedAt: number
-  run: () => Promise<unknown>
-  promise: Promise<unknown>
+/** One asker of a bulk request: the first, or one that joined it. */
+interface Waiter {
+  /** `socket\0requestId` for a read its socket may cancel; null for anything else. */
+  owner: string | null
   resolve: (value: unknown) => void
   reject: (error: unknown) => void
 }
+
+interface Entry {
+  key: string | null
+  enqueuedAt: number
+  run: (signal: AbortSignal) => Promise<unknown>
+  waiters: Set<Waiter>
+  /** Aborted when every asker of a running read cancelled it (search.ts stops). */
+  controller: AbortController
+  started: boolean
+}
+
+/** A bulk read its own socket cancelled (`request.cancel`): nothing is sent for it. */
+export class LaneCancelled extends Error {
+  constructor() {
+    super('cancelled')
+    this.name = 'LaneCancelled'
+  }
+}
+
+/** The one refusal of a cancel naming no read of this socket's that waits or runs in the bulk lane. */
+export const CANCEL_REFUSED = 'request.cancel names no bulk read of this socket waiting or running'
 
 export interface LaneGateOptions {
   maxRunning?: number
@@ -146,25 +175,70 @@ export class LaneGate {
   }
 
   /** Run `task` in its lane: at once unless bulk; a bulk duplicate of `key`
-   *  shares the first one's outcome, and a null key never joins. */
-  run<T>(lane: Lane, key: string | null, task: () => Promise<T>): Promise<T> {
-    if (lane !== 'bulk') return task()
+   *  shares the first one's outcome, and a null key never joins. `owner`
+   *  (`socket\0requestId`) makes a read cancellable by that socket alone. */
+  run<T>(lane: Lane, key: string | null, task: (signal: AbortSignal) => Promise<T>, owner: string | null = null): Promise<T> {
+    if (lane !== 'bulk') return task(NEVER_ABORTED)
+    // Only a read that may join (a key) is its socket's to cancel.
+    const cancellable = key !== null ? owner : null
     const known = key === null ? undefined : this.byKey.get(key)
     if (known) {
       this.joins++
-      return known.promise as Promise<T>
+      return this.wait(known, cancellable) as Promise<T>
     }
-    let resolve!: (value: unknown) => void
-    let reject!: (error: unknown) => void
-    const promise = new Promise<unknown>((res, rej) => {
-      resolve = res
-      reject = rej
-    })
-    const entry: Entry = { key, enqueuedAt: this.now(), run: task, promise, resolve, reject }
+    const entry: Entry = { key, enqueuedAt: this.now(), run: task, waiters: new Set(), controller: new AbortController(), started: false }
+    const promise = this.wait(entry, cancellable)
     if (key !== null) this.byKey.set(key, entry)
     this.waiting.push(entry)
     this.pump()
     return promise as Promise<T>
+  }
+
+  /**
+   * `request.cancel`: the socket's own bulk read `owner` stops waiting for
+   * its answer, which is never sent. The last asker gone, a waiting read
+   * leaves the queue and a running one is told to stop (its signal). False,
+   * and nothing changed, for any other id: another socket's request, a
+   * write, a subscription, one not in the bulk lane or already answered.
+   */
+  cancel(owner: string): boolean {
+    const found = this.owners.get(owner)
+    if (!found) return false
+    const { entry, waiter } = found
+    this.owners.delete(owner)
+    entry.waiters.delete(waiter)
+    waiter.reject(new LaneCancelled())
+    if (entry.waiters.size > 0) return true
+    // No one wants it: a later duplicate starts its own.
+    if (entry.key !== null && this.byKey.get(entry.key) === entry) this.byKey.delete(entry.key)
+    if (entry.started) entry.controller.abort()
+    else {
+      const at = this.waiting.indexOf(entry)
+      if (at >= 0) this.waiting.splice(at, 1)
+      this.cancelled++
+    }
+    return true
+  }
+
+  /** Bulk reads dropped from the queue by a cancel before they ran, since the gate was made. */
+  cancelled = 0
+
+  private readonly owners = new Map<string, { entry: Entry; waiter: Waiter }>()
+
+  private wait(entry: Entry, owner: string | null): Promise<unknown> {
+    return new Promise<unknown>((resolve, reject) => {
+      const waiter: Waiter = { owner, resolve, reject }
+      entry.waiters.add(waiter)
+      if (owner !== null) this.owners.set(owner, { entry, waiter })
+    })
+  }
+
+  private settle(entry: Entry, outcome: (waiter: Waiter) => void): void {
+    for (const waiter of entry.waiters) {
+      if (waiter.owner !== null && this.owners.get(waiter.owner)?.waiter === waiter) this.owners.delete(waiter.owner)
+      outcome(waiter)
+    }
+    entry.waiters.clear()
   }
 
   /** Bulk requests running and waiting, for the stall line. */
@@ -203,16 +277,22 @@ export class LaneGate {
 
   private start(entry: Entry): void {
     this.running++
+    entry.started = true
     let settled: Promise<unknown>
     try {
-      settled = entry.run()
+      settled = entry.run(entry.controller.signal)
     } catch (error) {
       settled = Promise.reject(error)
     }
-    settled.then(entry.resolve, entry.reject).finally(() => {
-      this.running--
-      if (entry.key !== null) this.byKey.delete(entry.key)
-      this.pump()
-    })
+    settled
+      .then(
+        (value) => this.settle(entry, (w) => w.resolve(value)),
+        (error) => this.settle(entry, (w) => w.reject(error))
+      )
+      .finally(() => {
+        this.running--
+        if (entry.key !== null && this.byKey.get(entry.key) === entry) this.byKey.delete(entry.key)
+        this.pump()
+      })
   }
 }

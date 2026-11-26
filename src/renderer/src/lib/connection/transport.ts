@@ -28,7 +28,15 @@ export type RequestOptions = {
   timeoutMs?: number;
   /** A person's click: the host runs it in its interactive lane (src/main/server/lane.ts). */
   lane?: "ui";
+  /** Aborted, the request rejects at once with an AbortError, its answer is dropped, and the host is
+   *  told (`request.cancel`): a bulk read leaves its queue or stops; anything else the host refuses. */
+  signal?: AbortSignal;
 };
+
+/** A request its caller aborted (`RequestOptions.signal`). */
+export function abortError(): Error {
+  return Object.assign(new Error("aborted"), { name: "AbortError" });
+}
 
 /** A request whose answer did not come inside its deadline. */
 export class TimeoutError extends Error {
@@ -171,16 +179,35 @@ export class Transport {
    *  reply that comes later is dropped. */
   request<T>(method: string, params?: unknown, options: RequestOptions = {}): Promise<T> {
     if (this.state !== "open" || !this.ws) return Promise.reject(new ConnectionLostError("not connected"));
+    const signal = options.signal;
+    if (signal?.aborted) return Promise.reject(abortError());
     const id = String(this.nextId++);
     const timeoutMs = options.timeoutMs ?? requestTimeoutMs(method, params);
     return new Promise<T>((resolve, reject) => {
+      const abort = (): void => {
+        const p = this.pending.get(id);
+        if (!p) return;
+        this.pending.delete(id);
+        // An answer arriving in parts for a request no one waits on is dropped with it.
+        this.parts.delete(id);
+        clearTimeout(p.timer);
+        reject(abortError());
+        // Fire and forget: the host's answer to the cancel itself matches no pending request.
+        if (this.state === "open" && this.ws) this.ws.send(JSON.stringify({ id: String(this.nextId++), method: "request.cancel", params: { id } }));
+      };
+      const settle = <V>(done: (value: V) => void) => (value: V): void => {
+        signal?.removeEventListener("abort", abort);
+        done(value);
+      };
       const timer = setTimeout(() => {
         this.parts.delete(id);
         if (!this.pending.delete(id)) return;
+        signal?.removeEventListener("abort", abort);
         this.noteAnswer(timeoutMs, true, timeoutMs);
         reject(new TimeoutError(method, timeoutMs));
       }, timeoutMs);
-      this.pending.set(id, { method, press: options.lane === "ui", sentAt: Date.now(), timeoutMs, timer, resolve: resolve as (v: unknown) => void, reject });
+      this.pending.set(id, { method, press: options.lane === "ui", sentAt: Date.now(), timeoutMs, timer, resolve: settle(resolve as (v: unknown) => void), reject: settle(reject) });
+      signal?.addEventListener("abort", abort, { once: true });
       this.ws!.send(JSON.stringify(options.lane ? { id, method, params, lane: options.lane } : { id, method, params }));
     });
   }

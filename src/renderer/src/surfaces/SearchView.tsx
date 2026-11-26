@@ -291,7 +291,7 @@ export function SearchView({
       cancel = runCrossHostSearch({
         hosts,
         onUpdate: setSnapshot,
-        sources: (host) => {
+        sources: (host, signal) => {
           const id = host.environmentId;
           const metasById = new Map<string, ThreadMeta>(
             sessionStore
@@ -300,7 +300,7 @@ export function SearchView({
               .map((meta) => [meta.id, { id: meta.id, cwd: meta.cwd, harness: meta.provider as HarnessId, title: meta.title, updatedAt: meta.updatedAt }]),
           );
           const sources: Promise<AppSearchHit[]>[] = [
-            invokeOn<{ hits: Parameters<typeof transcriptHits>[1] }>(id, "search_sessions", { query: text, limit: TRANSCRIPT_LIMIT }).then(
+            invokeOn<{ hits: Parameters<typeof transcriptHits>[1] }>(id, "search_sessions", { query: text, limit: TRANSCRIPT_LIMIT }, { signal }).then(
               (result) =>
                 transcriptHits(
                   id,
@@ -314,7 +314,7 @@ export function SearchView({
           const fileCwd = fileCwdOf(id);
           if (fileCwd) {
             sources.push(
-              searchProject(id, { cwd: fileCwd, query: text }).then((result) =>
+              searchProject(id, { cwd: fileCwd, query: text }, signal).then((result) =>
                 hitsFromContentMatches(result.matches).map((hit) => ({ ...hit, id: `content:${id}:${hit.path}:${hit.line}:${hit.column}`, host: id })),
               ),
             );

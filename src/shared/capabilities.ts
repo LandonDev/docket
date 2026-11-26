@@ -159,6 +159,8 @@ export const METHOD_CAPABILITY: Record<ClientRequest['method'], MethodCapability
   'notes.search': 'read',
   'search.project': 'read',
   'session.search': 'read',
+  // Cancel one of the socket's own bulk reads (lane.ts): reach no wider than the read it names.
+  'request.cancel': 'read',
   'session.list': 'read',
   'session.changes': 'read',
   'session.events': 'read',

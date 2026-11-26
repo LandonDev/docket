@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { searchProject, setSearchDenied } from './search'
+import { withRequestSignal } from './requestSignal'
 
 let root: string
 beforeEach(async () => {
@@ -125,5 +126,22 @@ it('reports nothing from a denied directory, in a repository or out of one, and 
     expect((await relatives(root)).some((r) => r.includes('history'))).toBe(true)
   } finally {
     setSearchDenied(() => [])
+  }
+})
+
+it('stops when every asker cancelled the read (the lane aborts its signal), and searches as before when not', async () => {
+  const stopped = new AbortController()
+  stopped.abort()
+  await expect(withRequestSignal(stopped.signal, () => searchProject({ cwd: root, query: 'alpha' }))).rejects.toMatchObject({ name: 'AbortError' })
+  // Outside a git repository the scan stops between files.
+  const plain = await mkdtemp(join(tmpdir(), 'tc-search-plain-'))
+  try {
+    await writeFile(join(plain, 'a.txt'), 'alpha\n')
+    await expect(withRequestSignal(stopped.signal, () => searchProject({ cwd: plain, query: 'alpha' }))).rejects.toMatchObject({ name: 'AbortError' })
+    const live = new AbortController()
+    const found = await withRequestSignal(live.signal, () => searchProject({ cwd: plain, query: 'alpha' }))
+    expect(found.matches.map((m) => m.relative)).toEqual(['a.txt'])
+  } finally {
+    await rm(plain, { recursive: true, force: true })
   }
 })

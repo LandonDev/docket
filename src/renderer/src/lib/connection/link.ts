@@ -115,7 +115,7 @@ export class EnvLink implements Link {
       try {
         return await this.once<T>(method, params, options);
       } catch (e) {
-        if (!retry || !isConnectionFailure(e) || attempt >= RETRY_BACKOFF_MS.length) throw e;
+        if (!retry || options.signal?.aborted || !isConnectionFailure(e) || attempt >= RETRY_BACKOFF_MS.length) throw e;
         await this.nextChance(retryDelay(attempt));
       }
     }
@@ -127,6 +127,7 @@ export class EnvLink implements Link {
     return session.request<T>(method, params, {
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
       ...(options.lane ? { lane: options.lane } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
     });
   }
 

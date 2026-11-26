@@ -4,6 +4,7 @@ import { homedir } from 'node:os'
 import { join, resolve, sep } from 'node:path'
 import { glob } from 'tinyglobby'
 import type { ProjectSearchOptions, ProjectSearchResult } from '@shared/contract-m3a'
+import { requestSignal } from './requestSignal'
 
 const MAX_MATCHES = 500
 const MAX_FILE_BYTES = 512 * 1024
@@ -70,7 +71,8 @@ function parseGrep(
 async function gitGrep(
   root: string,
   query: string,
-  options: ProjectSearchOptions
+  options: ProjectSearchOptions,
+  signal?: AbortSignal
 ): Promise<ProjectSearchResult | null> {
   // --untracked: new files count before their first `git add`.
   const args = ['-C', root, 'grep', '--untracked', '-z', '-n', '-I', '--no-color']
@@ -88,10 +90,12 @@ async function gitGrep(
     const { stdout } = await execFileP('git', args, {
       encoding: 'buffer',
       timeout: 10_000,
-      maxBuffer: 32 * 1024 * 1024
+      maxBuffer: 32 * 1024 * 1024,
+      ...(signal ? { signal } : {})
     })
     return parseGrep(stdout, root, query, options)
   } catch (error) {
+    if (signal?.aborted) throw cancelledSearch()
     if (error && typeof error === 'object' && 'code' in error && error.code === 1)
       return { matches: [], truncated: false }
     return null
@@ -137,7 +141,8 @@ async function indexedFiles(root: string, options: ProjectSearchOptions): Promis
 async function scanFiles(
   root: string,
   query: string,
-  options: ProjectSearchOptions
+  options: ProjectSearchOptions,
+  signal?: AbortSignal
 ): Promise<ProjectSearchResult> {
   const result: ProjectSearchResult = { matches: [], truncated: false }
   // Invalid expressions reject rather than masquerading as no matches.
@@ -148,6 +153,8 @@ async function scanFiles(
       )
     : null
   for (const relative of await indexedFiles(root, options)) {
+    // Every socket that asked cancelled it (lane.ts): stop between files.
+    if (signal?.aborted) throw cancelledSearch()
     const path = join(root, relative)
     let content: string
     try {
@@ -170,6 +177,8 @@ async function scanFiles(
   }
   return result
 }
+
+const cancelledSearch = (): Error => Object.assign(new Error('search cancelled'), { name: 'AbortError' })
 
 let deniedDirs: () => string[] = () => []
 
@@ -203,7 +212,9 @@ export async function searchProject(options: ProjectSearchOptions): Promise<Proj
   if (!query) return { matches: [], truncated: false }
   const root = resolve(expandHome(options.cwd))
   if (!(await stat(root)).isDirectory()) throw new Error(`${root}: Not a directory`)
-  const result = await withoutDenied(root, (await gitGrep(root, query, options)) ?? (await scanFiles(root, query, options)))
+  // A bulk read's signal (requestSignal.ts): a cancel from every asker stops the grep or the scan.
+  const signal = requestSignal()
+  const result = await withoutDenied(root, (await gitGrep(root, query, options, signal)) ?? (await scanFiles(root, query, options, signal)))
   return withMtimes(result)
 }
 

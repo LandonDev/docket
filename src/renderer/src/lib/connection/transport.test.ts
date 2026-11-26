@@ -93,6 +93,33 @@ describe("Transport", () => {
     expect(t.pendingMethods()).toEqual([]);
   });
 
+  it("an aborted request rejects at once, drops its late answer and tells the host once with request.cancel", async () => {
+    const { t, ws } = await opened();
+    const stop = new AbortController();
+    const asked = t.request("session.search", { query: "a" }, { signal: stop.signal });
+    const sent = ws.last();
+    stop.abort();
+    await expect(asked).rejects.toMatchObject({ name: "AbortError" });
+    expect(ws.last()).toMatchObject({ method: "request.cancel", params: { id: sent.id } });
+    expect(t.pendingMethods()).toEqual([]);
+    const count = ws.sent.length;
+    // The host's late answer and its reply to the cancel match nothing pending.
+    ws.receive({ id: sent.id, ok: true, result: { hits: [] } });
+    ws.receive({ id: ws.last().id, ok: true, result: { cancelled: true } });
+    stop.abort();
+    expect(ws.sent.length).toBe(count);
+    // Already aborted: nothing goes out.
+    await expect(t.request("session.search", {}, { signal: stop.signal })).rejects.toMatchObject({ name: "AbortError" });
+    expect(ws.sent.length).toBe(count);
+    // Answered first, an abort sends nothing.
+    const later = new AbortController();
+    const answered = t.request("session.search", {}, { signal: later.signal });
+    ws.receive({ id: ws.last().id, ok: true, result: 1 });
+    await expect(answered).resolves.toBe(1);
+    later.abort();
+    expect(ws.sent.length).toBe(count + 1);
+  });
+
   it("a click's lane rides beside the method; a plain request carries none", async () => {
     const { t, ws } = await opened();
     void t.request("session.pause", { sessionId: "s" }, { lane: "ui" });
