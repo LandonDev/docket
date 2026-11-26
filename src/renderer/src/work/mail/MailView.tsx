@@ -5,6 +5,7 @@ import "work-kit/mail/styles.css";
 import "./mail.css";
 import { openWorkView, useWorkView } from "../../lib/workSwitch";
 import { sessionWaits } from "../shell/lifeos";
+import { useHostLinkDown } from "../shell/hostLinkDown";
 import type { WorkViewProps } from "../views/registry";
 import { clampList, LIST_WIDTH, MailBones, readListWidth } from "./bones";
 import { mailClientFor, RevealMailbox, startNudge } from "./client";
@@ -145,14 +146,15 @@ export function MailScreen({
   const kit = useMailKit();
   const pane = mailPaneOf(id);
   const env = files?.env;
+  const sendHeld = useHostLinkDown(env);
   const toggleChat = useCallback(() => patch(id, { chat: !pageOf(id).chat, chatAt: null }), [id]);
   const placed = useMemo(() => {
     // A draft asked for this workspace's Mail (`writeMail(draft, id)`) is heard here and in no other job's.
-    let base = env ? { ...placedKit(kit, { env, pane }), onMailto: (hear: (draft: MailtoDraft) => void) => onMailto(hear, id) } : kit;
+    let base = env ? { ...placedKit(kit, { env, pane }), sendHeld, onMailto: (hear: (draft: MailtoDraft) => void) => onMailto(hear, id) } : kit;
     if (onNudge) base = { ...base, nudge: onNudge };
     if (chat) base = { ...base, paneEnd: () => <AskButton pressed={page.chat} onPress={toggleChat} />, bulkEnd: (ids: string[]) => <AskButton glyph pressed={page.chat} onPress={() => patch(id, { chat: true, chatAt: { box: page.box, threadId: null, subject: null, query: null, picked: ids } })} /> };
     return base === kit ? null : base;
-  }, [kit, env, pane, onNudge, chat, page.chat, page.box, toggleChat, id]);
+  }, [kit, env, pane, sendHeld, onNudge, chat, page.chat, page.box, toggleChat, id]);
   const client = useMailClient();
   const accounts = client.useMailAccounts();
   // An account kept from before that is gone now: all of them, quietly.

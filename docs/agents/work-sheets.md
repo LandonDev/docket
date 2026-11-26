@@ -1643,6 +1643,7 @@ suggestions are LifeOS rows, in his own store, not on this host.
 range at the view's rev, edits batched from the rev the grid stands on, a
 conflict caught up with `since`, pushes), `grid.ts` (work-kit's
 `SheetCanvas`, its worker as a `?worker` chunk), `model.ts`, `host.ts`.
+Sheet tabs and Add sheet have 24px targets. The grid keeps its hidden caret inputs out of the Tab order through mount and refresh.
 
 - **Edits the host never answered are kept on this computer** (work-files.md "Drafts survive a crash"): the batch on
   its way and the queue, by the file's revision (and a shared .csv's cache, `rev@gen`), through `SheetSync.journalTo`

@@ -56,6 +56,7 @@ describe("a project's link on the guest's page", () => {
     render(<GuestApp />);
     expect(await first("Book the ballroom")).toBeTruthy();
     expect(line().textContent).toMatch(/Spring LAN.*Landon Hale.*Can view.*until/);
+    expect(screen.getAllByText("Spring LAN", { exact: true })).toHaveLength(1);
     expect(within(line()).getByRole("tab", { name: "Board" })).toBeTruthy();
     expect(within(line()).queryByRole("button", { name: /Back/ })).toBeNull();
     // Under the line the page is the sheets' stage wherever a document is drawn as sheets (DocPage.tsx).

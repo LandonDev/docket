@@ -94,7 +94,7 @@ runs the same guard on its own lock.
 
 ## Bumping the pin
 
-The Work polish pin is `b475436d93034483edde8aad91301a2bbba3ae26`. It keeps
+The Work polish pin is `25ea17a8def82cb0ea5b046b86e998423e380e0a`. It keeps
 `WORK_KIT_API` at 3. The pin needs a signed Docket release.
 
 A bump is one commit that changes four files: package.json, bun.lock,

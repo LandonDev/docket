@@ -1030,8 +1030,8 @@
   `seedSearchM4`, `seedM5` (scripts/lib/ios-work-seeds.ts).
 - Tasks, Agenda and Away by kind (M1c of "All of Work on the iPhone"). Tasks and Agenda
   are places of the Work tab (`WorkPlace.shipped`), drawn by Work/Life/LifePlaceScreen.swift
-  as LifeKitUI's own screen in the detail (`ShellPaths.lifePlaces`: Mail, Tasks, Agenda
-  take the detail and are wide). The client package's `LifeReach` (Work/Life/LifeReach.swift,
+  as LifeKitUI's own screen in the detail. Overdue task dates use Today’s warning ink.
+  Mail, Tasks and Agenda take the wide detail (`ShellPaths.lifePlaces`). The client package's `LifeReach` (Work/Life/LifeReach.swift,
   LifeReachTests) decides where they read: the whole LifeOS session (`work.lifeos.jwt {}`)
   signed by the Work home when the phone knows it, else the first open host that holds a
   job and whose key may sign; a host whose whole-session call fails goes in `refused` and

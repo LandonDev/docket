@@ -17,6 +17,7 @@ import { reopenLifeos, sessionWaits, sessionWords, useLifeosSession } from "../s
 import { downIsSilence, downOf, useDownPress } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
 import { useHostLive } from "../shell/lifeosLive";
+import { useHostLinkDown } from "../shell/hostLinkDown";
 import { DownEmpty } from "../shell/DownEmpty";
 import { RuleLine } from "../rules/RuleLine";
 import { mailClientFor, RevealMailbox } from "./client";
@@ -58,7 +59,8 @@ export function Body({ item, source, env, shell }: CanvasBodyProps) {
     shell.statusLine(silent ? { tone: "failed", word: words, wrap: true, detail: "The draft is kept in LifeOS", action: { label: "Retry", run: retry } } : null);
   }, [shell, silent, words, env, sector]);
   // A file of the mail it answers opens as another item of this pane (files.ts).
-  const kit = useMemo(() => placedKit(tempcodeMailKit, { env, pane: item.sessionId }), [env, item.sessionId]);
+  const sendHeld = useHostLinkDown(env);
+  const kit = useMemo(() => ({ ...placedKit(tempcodeMailKit, { env, pane: item.sessionId }), sendHeld }), [env, item.sessionId, sendHeld]);
   if (source.at !== "lifeos" || source.table !== "outbox") return <EmptyState title="This mail could not be shown" />;
   // Any other down state is said once, with the press that can help, if any (`downPress`), or who can.
   if (down && !silent)

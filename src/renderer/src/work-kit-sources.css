@@ -275,6 +275,7 @@
 @source "../../../node_modules/work-kit/src/sheet/grid/pointing.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/selection.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/state.ts";
+@source "../../../node_modules/work-kit/src/sheet/grid/tab-focus.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/theme.ts";
 @source "../../../node_modules/work-kit/src/sheet/grid/univer.ts";
 @source "../../../node_modules/work-kit/src/sheet/index.ts";

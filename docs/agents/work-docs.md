@@ -274,6 +274,8 @@ above the scroller, so the text scrolls under it and Preview covers it. Its
 layers are held inside the body. The slot is marked `data-editor-keys`, so
 ⌘B in the size field is bold and not the sidebar.
 
+The style control shows the starting paragraph’s style as soon as the document opens. An empty document’s prompt starts below its title.
+
 - **What it sets.** Undo and Redo; the paragraph's style (Normal text,
   Title, Subtitle, Heading 1 to 3, Quote, Caption, and a file's own); the
   font and its size in points; Bold, Italic, Underline; text colour and

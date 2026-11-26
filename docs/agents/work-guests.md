@@ -278,7 +278,8 @@ The guest's project facts start with its state. The sector and its comma stay ou
 - **The page** (`src/hosted/guest/ProjectPage.tsx`): the shared project
   screens (work-kit/projects) on work-kit's read-only client
   (`createGuestProjectsClient`), which says no to every right, so no
-  control is drawn and Activity is left out. The page line holds the
+  control is drawn and Activity is left out. The page line names the project
+  once and holds the
   screens' List or Board switch; there is no way back to a list of
   projects. It asks `/open` again every 15 seconds and when the window
   comes forward, so a task an agent changed shows then, and so does a

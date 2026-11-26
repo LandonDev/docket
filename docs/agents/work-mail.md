@@ -70,6 +70,8 @@ older client) is refused for a row that has either, so nothing goes unseen:
   written since; the host says that refusal as "The draft changed after you
   pressed Send…", never as LifeOS's stack, and asks nothing again.
 
+When the Work host link drops, Send and its menu stay in place and cannot be pressed. Their shared tip gives the host link’s reason. The keyboard shortcut waits for the link too.
+
 **Undo for a held draft is a wait in the window.** The hold has no queue to
 pull a mail back from, so for a draft that goes through it the composer
 (work-kit, `kit.holdsSend`) saves the draft as he sees it, shows "Sending
@@ -759,7 +761,8 @@ the open Duo.
 - **Waiting on** is the bar's hourglass, LifeKitUI's `MailWaitingScreen`:
   Nudge is `work.mail.nudge` and opens the drafting thread; Dismiss and its
   Undo are LifeOS's `mailWaits:dismiss` and `putBack`. Put off is the
-  desktop's alone.
+  desktop's alone. At accessibility text sizes, recipient names wrap above
+  the elapsed time.
 - **A mail he timed** in Mail is in the Outbox's Scheduled section, and its
   item has Cancel Send, Reschedule and Send Now (`work.mail.cancel`,
   `reschedule`, `sendNow`). Send Now is gated (Touch ID or the passcode),
