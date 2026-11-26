@@ -58,3 +58,17 @@ describe("RenderCache", () => {
     expect(c.weight).toBe(4);
   });
 });
+
+describe("treeBytes and a cache bounded by bytes", () => {
+  it("weighs a tree by what it holds, not its source, and the cache evicts by that weight", async () => {
+    const { RenderCache, treeBytes } = await import("./renderCache");
+    const text = "a **bold** word and `code`";
+    const tree = { type: "root", children: [{ type: "element", tagName: "p", properties: {}, children: [{ type: "text", value: "a " }, { type: "element", tagName: "strong", properties: {}, children: [{ type: "text", value: "bold" }] }, { type: "text", value: " word and " }, { type: "element", tagName: "code", properties: {}, children: [{ type: "text", value: "code" }] }] }] };
+    const bytes = treeBytes(tree);
+    expect(bytes).toBeGreaterThan(10 * text.length);
+    const cache = new RenderCache<typeof tree>(100, bytes * 3);
+    for (let i = 0; i < 10; i++) cache.set(`k${i}`, tree, treeBytes(tree));
+    expect(cache.size).toBe(3);
+    expect(cache.weight).toBeLessThanOrEqual(bytes * 3);
+  });
+});

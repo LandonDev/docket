@@ -16,14 +16,22 @@
  * Both key on the block's text (the vfile is built from that same string).
  * Streaming blocks use the plain plugin lists and never touch the cache;
  * only a settled AgentMarkdown passes these in. The cache is bounded by
- * the RenderCache limits below (chars of markdown source).
+ * the RenderCache limits below: 4,000 trees and HAST_CACHE_BYTES of their
+ * estimated size (`treeBytes`), not their source.
  */
 import type { Root as HastRoot } from "hast";
 import type { Root as MdastRoot } from "mdast";
 import type { Plugin } from "unified";
-import { RenderCache } from "./renderCache";
+import { RenderCache, treeBytes } from "./renderCache";
 
-export const hastCache = new RenderCache<HastRoot>(4000, 6_000_000);
+/** The settled trees' bound, in estimated bytes: about 6 MB of markdown source as it parses. */
+export const HAST_CACHE_BYTES = 48 * 2 ** 20;
+export const hastCache = new RenderCache<HastRoot>(4000, HAST_CACHE_BYTES);
+
+/** Keep a block's tree, weighed by what it holds. */
+export function keepHast(text: string, tree: HastRoot): void {
+  hastCache.set(text, tree, treeBytes(tree));
+}
 
 /** Parses that reached the real parser — a test asserts a remount adds none. */
 export const parseStats = { parses: 0 };
@@ -45,7 +53,7 @@ export const restoreHast: Plugin<[], HastRoot, HastRoot> = function () {
     const text = String(file);
     const hit = hastCache.get(text);
     if (hit) return hit;
-    hastCache.set(text, tree, text.length);
+    keepHast(text, tree);
     return undefined;
   };
 };

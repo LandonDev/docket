@@ -21,7 +21,7 @@
  *   cache answers it) instead of parsed on the main thread.
  */
 import { useEffect, useMemo, useReducer, useRef } from "react";
-import { hastCache } from "./markdownCache";
+import { hastCache, keepHast } from "./markdownCache";
 import { digestOf, type ParsedBlock } from "./markdownPipeline";
 
 interface Request {
@@ -105,7 +105,7 @@ function getWorker(): Worker {
       if (!req) return;
       const texts: string[] = [];
       for (const block of e.data.blocks ?? []) {
-        hastCache.set(block.text, block.hast, block.text.length);
+        keepHast(block.text, block.hast);
         texts.push(block.text);
       }
       if (!broken) {

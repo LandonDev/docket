@@ -11,12 +11,13 @@ import { characterEntities } from "character-entities";
 import { provideCharacterEntities } from "./decodeNamed";
 import { digestOf, parseMarkdownBlocks, type ParsedBlock } from "./markdownPipeline";
 import { createWorkerQueue, type WorkerMessage } from "./markdownWorkerQueue";
-import { RenderCache } from "./renderCache";
+import { RenderCache, treeBytes } from "./renderCache";
 
 // No document here: micromark's `&amp;` decoder reads this table (decodeNamed.ts).
 provideCharacterEntities(characterEntities);
 
-const done = new RenderCache<ParsedBlock[]>(4000, 6_000_000);
+/** The worker's own kept results, bounded as the window's hast cache is (markdownCache.ts HAST_CACHE_BYTES). */
+const done = new RenderCache<ParsedBlock[]>(4000, 48 * 2 ** 20);
 
 function parse(text: string): ParsedBlock[] {
   const key = digestOf(text);
@@ -27,7 +28,7 @@ function parse(text: string): ParsedBlock[] {
     } catch {
       blocks = [];
     }
-    done.set(key, blocks, text.length);
+    done.set(key, blocks, treeBytes(blocks));
   }
   return blocks;
 }
