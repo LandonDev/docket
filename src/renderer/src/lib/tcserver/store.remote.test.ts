@@ -638,6 +638,44 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1", "late 2", "late 3"]);
   });
 
+  it("an unload between two slices of a replay's fold stops the fold: reopening starts from the tail, not inside the old page (Sol S12)", async () => {
+    const others = ["r0", "r1", "r2", "r3", "r4", "r5"];
+    link.pages = [[wireMeta({ id: "s" }), wireMeta({ id: "t" }), ...others.map((id) => wireMeta({ id }))]];
+    link.events.set("s", turns("s", 2));
+    await boot(link);
+    sessionStore.setMounted(["s", "t"]);
+    await sessionStore.ensureLoaded("s");
+    link.events.set("s", [...turns("s", 2), ...turns("s", 2, 5)]);
+    link.pageRows = 8;
+    const gate: (() => void)[] = [];
+    link.holdEvents = gate;
+    link.open();
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(gate.length).toBeGreaterThan(0);
+    // With its replay out, s leaves the page, six others after it: outside every kept set, still loaded.
+    sessionStore.setMounted(["t", ...others]);
+    sessionStore.setMounted(["t"]);
+    // Every clock read moves 10 ms, so the fold yields after each row; the unload pass runs in the first yield.
+    let t = 0;
+    let armed = true;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => {
+      if (armed) {
+        armed = false;
+        setTimeout(() => (sessionStore as unknown as { unloadOutsideMounted(): void }).unloadOutsideMounted(), 0);
+      }
+      return (t += 10);
+    });
+    link.holdEvents = null;
+    for (const release of gate) release();
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+    clock.mockRestore();
+    expect(sessionStore.get("s")!.loaded).toBe(false);
+    const before = link.calls.length;
+    await sessionStore.ensureLoaded("s");
+    const asked = link.calls.slice(before).find((c) => c.method === "session.events" && (c.params as { sessionId: string }).sessionId === "s")!;
+    expect(asked.params).toMatchObject({ afterSeq: 0, tail: expect.any(Number) });
+  });
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];

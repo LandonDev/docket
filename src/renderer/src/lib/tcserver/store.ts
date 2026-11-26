@@ -188,6 +188,8 @@ type Entry = {
   held: EventRow[] | null;
   /** Held since the host's `resync` push, before the replay's own hold: the replay runs through it. */
   resyncHold?: boolean;
+  /** Times this entry was unloaded: a fold that yielded across one stops (its rows are no longer this fold's). */
+  unloads?: number;
   /** The replay of its gap on its way, and the socket it runs on: one on a newer socket waits it out. */
   replaying?: { socket: number; run: Promise<unknown> } | null;
   /** The part of the log before the tail that painted first: the rows
@@ -1576,6 +1578,7 @@ class SessionStore {
   private unload(entry: Entry): boolean {
     if (!entry.meta || entry.loading) return false;
     if (entry.session.blocks.some((b) => b.pending)) return false;
+    entry.unloads = (entry.unloads ?? 0) + 1;
     this.settleHead(entry);
     this.subsOf(entry)?.remove(entry.meta.id);
     entry.loaded = false;
@@ -1928,6 +1931,7 @@ class SessionStore {
    *  the last slice, so nothing folds between two of a page's rows. */
   private async foldSliced(entry: Entry, rows: EventRow[]): Promise<void> {
     let sliceAt = performance.now();
+    const unloads = entry.unloads ?? 0;
     for (let i = 0; i < rows.length; ) {
       // One builder a slice: the thread's blocks copy once a slice, not once a row (a 1 MiB gap page
       // into a long thread was rows × blocks). Built again after each yield, from what the entry holds
@@ -1952,7 +1956,8 @@ class SessionStore {
       this.landFold(entry, after);
       if (i >= rows.length) return;
       await yieldToWindow();
-      if (this.entries.get(entry.session.id) !== entry) return;
+      // Unloaded while it yielded (same entry, cleared): the rest would move a cursor that starts over.
+      if (this.entries.get(entry.session.id) !== entry || (entry.unloads ?? 0) !== unloads) return;
       sliceAt = performance.now();
     }
   }
