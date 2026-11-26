@@ -536,7 +536,7 @@ function seedProject(rig: Rig, store: Store): void {
   store.insertWorkspace({ id: SECOND_WORKSPACE, name: 'Host bench two', path: other, git: false, createdAt })
   store.setWorkspaceAccounts(WORKSPACE, { claude: PRACTICE_ACCOUNTS[0] })
   store.setWorkspaceAccounts(SECOND_WORKSPACE, { claude: PRACTICE_ACCOUNTS[1] })
-  store.insertProject({ id: PROJECT, name: 'Host bench', workspaceId: WORKSPACE, mode: 'local', branch: null, cwd: rig.repo, createdAt })
+  store.insertProject({ id: PROJECT, name: 'Host bench', workspaceId: WORKSPACE, mode: 'local', branch: null, cwd: rig.repo, createdAt, archived: false })
 }
 
 function persistRows(db: ReturnType<typeof openDb>, id: string, events: ReturnType<typeof perfThread>): void {
@@ -870,6 +870,26 @@ async function measureFlush(rig: Rig, result: Result): Promise<void> {
   result.rows.push({ metric: 'logged flush time', ms: loopMs })
 }
 
+export async function writeWatchBurst(
+  checkout: string,
+  worktrees: readonly string[],
+  signal: AbortSignal,
+  write = writeFile
+): Promise<{ watched: number; ignored: number }> {
+  const watchedPath = join(checkout, 'watched-change.txt')
+  const writesPerWorktree = 24
+  await Promise.all(worktrees.map(async (folder) => {
+    // A visible file is written by each writer. Its events should coalesce.
+    signal.throwIfAborted()
+    await write(watchedPath, 'Scratch change\n')
+    for (let i = 0; i < writesPerWorktree; i++) {
+      signal.throwIfAborted()
+      await write(join(folder, `change-${i}.txt`), 'Scratch change\n')
+    }
+  }))
+  return { watched: worktrees.length, ignored: worktrees.length * writesPerWorktree }
+}
+
 async function measureWatch(rig: Rig, result: Result): Promise<void> {
   const base = join(rig.repo, '.claude', 'worktrees')
   mkdirSync(base, { recursive: true })
@@ -880,30 +900,25 @@ async function measureWatch(rig: Rig, result: Result): Promise<void> {
     git(rig, 'worktree', 'add', '--quiet', '--detach', path, 'HEAD')
     writers.push(path)
   }
-  const pushes = new Map<string, number>()
+  let pushes = 0
   const client = await rig.remote(undefined, rig.signal, ({ push, projectId }) => {
-    if (push && (projectId === PROJECT || /^(file-event|git-changed)$/.test(push))) {
-      pushes.set(push, (pushes.get(push) ?? 0) + 1)
-    }
+    if (push === 'file-event' && projectId === PROJECT) pushes++
   })
   try {
     const watch = await client.request('fs.watch', { projectId: PROJECT, subscribe: true }, 1500)
     if (!watch.frame?.ok) throw new Error(watch.frame?.error ?? 'fs.watch did not answer')
-    const { watches } = await rig.rpc<{ watches: { held: number } }>(rig.box, 'doctor.get')
-    pushes.clear()
+    const { watches } = await rig.rpc<{ watches: { held: number; roots: { root: string; held: number }[] } }>(rig.box, 'doctor.get')
+    if (!watches.roots.some(({ root, held }) => root === rig.repo && held > 0)) throw new Error('The scratch checkout watcher did not start')
+    pushes = 0
     await measureLoop(rig, result, 5000, async () => {
-      await Promise.all(writers.map(async (folder) => {
-        for (let i = 0; i < 25; i++) {
-          rig.signal.throwIfAborted()
-          await writeFile(join(folder, `change-${i}.txt`), 'Scratch change\n')
-        }
-      }))
+      const { watched, ignored } = await writeWatchBurst(rig.repo, writers, rig.signal)
+      Object.assign(result.details, { fileChanges: watched + ignored, watchedWrites: watched, ignoredWrites: ignored })
     })
-    result.details.fileChanges = writers.length * 25
     result.details.watches = watches
-    result.details.pushes = Object.fromEntries(pushes)
-    result.rows.push({ metric: 'file pushes', count: [...pushes.values()].reduce((a, b) => a + b, 0) })
+    result.details.pushes = { 'file-event': pushes }
+    result.rows.push({ metric: 'file pushes', count: pushes })
     result.rows.push({ metric: 'folder watches', count: watches.held })
+    if (pushes !== 1) throw new Error(`Expected one coalesced file push, got ${pushes}`)
   } finally {
     rig.close(client)
   }

@@ -3128,7 +3128,9 @@ See [the host bench](agents/work-perf.md#the-headless-host-bench) for the
 scenes, output files, and boot fixtures. Use `--profile-after 0` on
 `--scene settle` to capture the ten seconds when the streams finish. The
 loop scene lets you choose when those ten seconds start. The bench
-keeps the profile next to the run's JSON.
+keeps the profile next to the run's JSON. In `--scene watch`, a subscribed
+client counts file events from 40 writes to one watched path while 960
+writes go to ignored worktrees. The scene expects one file event.
 
 On 2026-11-23 at about 7:45 p.m. Central, load 27 to 35 on 32 cores, the
 Mac timed out on six connects (its hello waits 4 s) and the box answered

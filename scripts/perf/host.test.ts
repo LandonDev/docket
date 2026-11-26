@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { seedFakeAccount } from '../journeys/lib/fakeProvider'
 import { describe, expect, it } from 'vitest'
-import { bootLayout, bootRows, copyIndexRows, expectedTailStart, hostFlags, HOST_SCENES, lastAllowedCores, onceInOrder, over, percentile, stallSlices } from './host'
+import { bootLayout, bootRows, copyIndexRows, expectedTailStart, hostFlags, HOST_SCENES, lastAllowedCores, onceInOrder, over, percentile, stallSlices, writeWatchBurst } from './host'
 import { restoreCopyPaths, stageCopyPaths } from './lib/copyPaths'
 import { loadStream } from './lib/load'
 import { requireScrubbed } from './scrubCopy'
@@ -159,6 +159,19 @@ describe('timing and row counts', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+
+  it('writes one watched file and ignored worktree files in a 1,000-write burst', async () => {
+    const checkout = '/scratch/repo'
+    const worktrees = Array.from({ length: 40 }, (_, i) => join(checkout, '.claude/worktrees', `writer-${i}`))
+    const writes: string[] = []
+    const counts = await writeWatchBurst(checkout, worktrees, new AbortController().signal, async (path) => {
+      writes.push(String(path))
+    })
+    expect(counts).toEqual({ watched: 40, ignored: 960 })
+    expect(writes).toHaveLength(1000)
+    expect(writes.filter((path) => path === join(checkout, 'watched-change.txt'))).toHaveLength(40)
+    for (const folder of worktrees) expect(writes.filter((path) => path.startsWith(folder + '/'))).toHaveLength(24)
   })
 
   it('ends every loopback stream on the same signal with one stop frame each', async () => {
