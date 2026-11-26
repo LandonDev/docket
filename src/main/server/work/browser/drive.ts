@@ -57,6 +57,13 @@ const bareUrl = (url: string): string => {
   }
 }
 
+/** Told each time he takes a browser (`drive(…, 'owner')`): a parked carrier session waits on this, not on a clock. */
+const ownerTakes = new Set<() => void>()
+export function onOwnerTakes(listener: () => void): () => void {
+  ownerTakes.add(listener)
+  return () => void ownerTakes.delete(listener)
+}
+
 export class DriveStore {
   constructor(private readonly db: DatabaseSync) {}
 
@@ -102,7 +109,9 @@ export class DriveStore {
   drive(sessionId: string, driver: BrowserDriver, now = Date.now()): BrowserState {
     const was = this.get(sessionId)
     if (was.driver === driver && !was.needs && was.since) return was
-    return this.put({ ...was, driver, needs: null, since: now })
+    const next = this.put({ ...was, driver, needs: null, since: now })
+    if (driver === 'owner') for (const listener of [...ownerTakes]) listener()
+    return next
   }
 
   needs(sessionId: string, needs: string, actor: string, now = Date.now()): BrowserState {

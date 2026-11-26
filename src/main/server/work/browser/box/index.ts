@@ -12,7 +12,7 @@ import type { PreviewSessions, PreviewTarget } from '../../../computer/preview'
 import { ComputerSessions } from '../../../computer/sessions'
 import type { SettingsStore } from '../../../computer/verdicts'
 import type { WorkCtx, WorkTool } from '../../modules'
-import { DriveStore } from '../drive'
+import { DriveStore, onOwnerTakes } from '../drive'
 import type { ComputerSessionRow } from '@shared/contract-computer'
 import type { VideoRelay } from '../../../video/relay'
 import type { VideoRpc } from '../../../video/rpc'
@@ -399,16 +399,13 @@ export interface CarrierComputer {
   clear(origins: readonly string[]): Promise<void>
   /**
    * Between two operations, the session kept with a page of its own (msforms carrier/wire.ts): the browser's hold
-   * (`useBoxBrowser`) is given back, and `lost` runs within seconds once he takes the browser, which loses the lease
-   * for good as a read would.
+   * (`useBoxBrowser`) is given back, and `lost` runs as soon as he takes the browser (`onOwnerTakes`), which loses the
+   * lease for good as a read would.
    */
   park?(lost: () => void): void
   /** The hold taken again for the next operation; false when the lease is lost, he drives now, or the browser's service started again. */
   resume?(): boolean
 }
-
-/** How often a parked carrier session looks whether he took the browser. */
-export const PARK_WATCH_MS = 5_000
 
 /**
  * A session marked as the carrier's (`carrierSession`), on this host's box browser; null where there is none. Made
@@ -420,9 +417,9 @@ export function carrierComputer(): CarrierComputer | null {
   const session = carrierSession()
   let release: (() => void) | null = useBoxBrowser()
   const service = liveService
-  let watching: ReturnType<typeof setInterval> | null = null
+  let watching: (() => void) | null = null
   const unwatch = (): void => {
-    if (watching) clearInterval(watching)
+    watching?.()
     watching = null
   }
   /**
@@ -468,12 +465,15 @@ export function carrierComputer(): CarrierComputer | null {
       release?.()
       release = null
       unwatch()
-      watching = setInterval(() => {
-        if (admitted()) return
+      // By event (perf M11): his taking a browser (`DriveStore.drive`) reads the lease once; no clock reads the
+      // database while it is parked. Told after the caller has parked it, never inside its own call.
+      const look = (): void => {
+        if (!watching || admitted()) return
         unwatch()
         lost()
-      }, PARK_WATCH_MS)
-      watching.unref?.()
+      }
+      watching = onOwnerTakes(() => queueMicrotask(look))
+      queueMicrotask(look)
     },
     resume: () => {
       unwatch()

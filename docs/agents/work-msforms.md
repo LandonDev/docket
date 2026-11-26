@@ -56,7 +56,8 @@ to do in the page.
   well keeps its form's builder open, and the session waits parked with that page alone for the next operation on the
   form. At most two (`KEEP_MAX`), the oldest closed first; the session ends after three idle minutes (`KEEP_MS`). While
   parked it gives back the browser's hold (`park`, box/index.ts), so the idle and memory stops count it as idle, and it
-  ends within five seconds of his taking the browser (`PARK_WATCH_MS`), which loses its lease as a read would; the
+  ends as he takes the browser (`onOwnerTakes` in browser/drive.ts tells it; no clock reads the database while it is
+  parked), which loses its lease as a read would; the
   next operation takes it only through `resume`, which refuses a lost lease, his driving now, or a browser service
   started again. A kept page is never driven as it stood: Forms tells an open builder nothing of a change made
   elsewhere (live: a kept page still read Accept responses off after he turned it on in another window), so the
