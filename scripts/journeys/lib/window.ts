@@ -137,7 +137,8 @@ export class Window {
       for (const el of document.querySelectorAll(${JSON.stringify(selector)})) {
         if (el.closest('[inert], [aria-hidden="true"]') || el.matches(':disabled, [aria-disabled="true"]')) continue;
         const label = el.getAttribute('aria-label') ?? el.querySelector('[data-menu-label]')?.textContent ?? spoken(el);
-        if (${text !== undefined} && label.trim() !== ${JSON.stringify(text ?? '')}) continue;
+        // A row's spoken name may go on with what it is doing ("Perf 2zlLrP, working", workspaceRowAriaLabel): the name before the comma is its name.
+        if (${text !== undefined} && label.trim() !== ${JSON.stringify(text ?? '')} && !label.trim().startsWith(${JSON.stringify((text ?? '') + ', ')})) continue;
         const r = el.getBoundingClientRect();
         const x = r.x + r.width / 2, y = r.y + r.height / 2;
         if (r.width && r.height && el.contains(document.elementFromPoint(x, y))) return { x, y };

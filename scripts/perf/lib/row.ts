@@ -32,6 +32,8 @@ export interface PerfCtx {
   seeded?: Seeded
   repo: string
   folder: string
+  /** Takes the window's picture when a press never became usable, before anything tidies it */
+  stuck?: () => Promise<void>
   /** One timed press. */
   time(options: MeasureOptions): Promise<Sample>
   /** The journeys' context for a shape, for their place helpers (`showPlace`, `fileAt`). */
@@ -54,7 +56,11 @@ export const PRESSES = 3
 export function perfCtx(base: Omit<PerfCtx, 'time' | 'at'>): PerfCtx {
   return {
     ...base,
-    time: (options) => measure(base.page, base.counter, base.pair.windowLink, options, base.pair.sandbox?.link),
+    time: async (options) => {
+      const sample = await measure(base.page, base.counter, base.pair.windowLink, options, base.pair.sandbox?.link)
+      if (sample.usable === null) await base.stuck?.()
+      return sample
+    },
     at: (shape) => ({ pair: base.pair, shape, workspace: base.workspace, folder: base.folder })
   }
 }

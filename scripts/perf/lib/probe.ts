@@ -61,7 +61,60 @@ export const PROBE = `(() => {
   };
 })()`
 
+/**
+ * In the page: when the window's ask of a method on its link to box came back answered. `WebSocket.prototype.send`
+ * is wrapped once to note the ids of the asks of `window.__perfWatch` and hear their answers; `window.__perfAnswered`
+ * is the page's time of the last one answered ok, and 0 until then. A save line that never leaves "Saved" (it says
+ * Saving… only past 600 ms) is timed by the answer to the write behind it.
+ */
+export const watchAsks = (method: string): string => `(() => {
+  window.__perfWatch = ${JSON.stringify(method)};
+  window.__perfAnswered = 0;
+  if (WebSocket.prototype.__perfSend) return;
+  const send = WebSocket.prototype.__perfSend = WebSocket.prototype.send;
+  const asked = new Set();
+  WebSocket.prototype.send = function (data) {
+    try {
+      if (typeof data === 'string' && data.includes(window.__perfWatch)) {
+        const frame = JSON.parse(data);
+        if (frame.method === window.__perfWatch) {
+          asked.add(String(frame.id));
+          if (!this.__perfHeard) {
+            this.__perfHeard = true;
+            this.addEventListener('message', (event) => {
+              if (typeof event.data !== 'string' || !event.data.startsWith('{')) return;
+              try {
+                const answer = JSON.parse(event.data);
+                if (!asked.delete(String(answer.id))) return;
+                if (answer.ok) window.__perfAnswered = performance.now();
+              } catch {}
+            });
+          }
+        }
+      }
+    } catch {}
+    return send.call(this, data);
+  };
+})()`
+
 export type SocketKind = 'box' | 'lifeos' | 'own' | 'other'
+
+/**
+ * Which of the window's sockets a URL is, by its port: the link to box (the shaped hop's, and box's own behind it),
+ * LifeOS (the front hop the run puts before the sandbox, the backend behind it and its site), the window's own host.
+ * The window reaches LifeOS at the address its host hands it, the front hop's (`TEMP_CODE_LIFEOS_URL`); the backend's
+ * own port counts too, so a socket that went round the hop is still LifeOS's. Pure.
+ */
+export function socketKind(url: string, ports: { box: number[]; lifeos: number[]; own: number[] }): SocketKind {
+  let port: number
+  try {
+    const parsed = new URL(url)
+    port = Number(parsed.port || (parsed.protocol === 'wss:' ? 443 : 80))
+  } catch {
+    return 'other'
+  }
+  return ports.box.includes(port) ? 'box' : ports.lifeos.includes(port) ? 'lifeos' : ports.own.includes(port) ? 'own' : 'other'
+}
 export interface Counts {
   /** round trips to the host over the link, by method */
   t: Record<string, number>
@@ -182,6 +235,8 @@ export interface Sample {
   after: Counts
   /** the wire's own bytes and round trips, where the link is shaped */
   wire?: { up: number; down: number; turns: number }
+  /** bytes the window sent box a second while it ran (a typing row) */
+  upPerSecond?: number
   /** round trips to LifeOS up to usable, by who asked, where the sandbox sits behind its hop: the window, and the host on its own */
   lifeos?: { window: number; host: number }
   error?: string

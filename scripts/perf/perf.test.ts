@@ -2,16 +2,17 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { BUDGETS, budgetsOf, covers } from './budgets'
+import { BUDGETS, budgetsOf, covers, familyOf } from './budgets'
 import { DISK_PRESSED, guardLiveBox, GUARD_EVERY_MS, ioPressure, LIVE_SLOWED, slowed } from './lib/guard'
 import { guardedArgs, wrapped } from './guarded'
 import { LOAD_DELTAS_A_SECOND, loadStream } from './lib/load'
-import { askedTwice, askKey, countFrame, middle, type Counts, type Sample } from './lib/probe'
+import { askedTwice, askKey, countFrame, middle, socketKind, watchAsks, type Counts, type Sample } from './lib/probe'
+import { p95 } from './rows/files'
 import { ROWS, rowsMatching } from './rows'
 import { LOST_MEASURED_MS, pressAgain, WIRE_TAP } from './rows/code'
 import { cleanupLists } from '../journeys/lib/shape'
 import { chosen, coreCount, flags, lastCores, parseLink, type RunResults } from './run'
-import { asks, latest, perfTable, withSection } from './table'
+import { asks, latest, lifeosAsks, linkWords, perfTable, withSection } from './table'
 
 const HERE = __dirname
 const sources = (dir = HERE): string[] => readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
@@ -201,6 +202,22 @@ describe('the counts', () => {
     expect(counts).toEqual({ t: {}, tAll: 0, c: 2, up: 0, down: 0 })
   })
 
+  it("a window's socket is the link to box, LifeOS through its front hop or round it, or its own host, by port", () => {
+    const ports = { box: [43475, 40133], lifeos: [37071, 36001, 39043], own: [40501] }
+    expect(socketKind('ws://127.0.0.1:43475/ws?ticket=abc', ports)).toBe('box')
+    // The address the host hands the window is the front hop's: the run must count it as LifeOS (2026-11-26).
+    expect(socketKind('ws://127.0.0.1:37071/api/1.49.0/sync', ports)).toBe('lifeos')
+    expect(socketKind('ws://127.0.0.1:36001/api/1.49.0/sync', ports)).toBe('lifeos')
+    expect(socketKind('ws://127.0.0.1:40501/', ports)).toBe('own')
+    expect(socketKind('wss://lifeos.example.test/api/sync', ports)).toBe('other')
+    expect(socketKind('not a url', ports)).toBe('other')
+    // A LifeOS socket's Pong to the server's Ping is a turn on the hop but never a C: the hop's count runs above C.
+    const counts = zero()
+    countFrame(counts, socketKind('ws://127.0.0.1:37071/api/1.49.0/sync', ports), true, '{"type":"Event","eventType":"Pong"}')
+    countFrame(counts, socketKind('ws://127.0.0.1:37071/api/1.49.0/sync', ports), true, '{"type":"ModifyQuerySet","baseVersion":1}')
+    expect(counts.c).toBe(1)
+  })
+
   it('an ask sent twice with the same params is named once with its count; the request id and other params tell asks apart', () => {
     const counts = zero()
     const asks = new Map<string, number>()
@@ -216,6 +233,40 @@ describe('the counts', () => {
     expect(askedTwice(asks)).toEqual(['2× session.list {"archived":false}', '3× hello'])
     expect(askKey('git.diffIndex', { cwd: '/x' })).toBe('git.diffIndex {"cwd":"/x"}')
     expect(askedTwice(new Map([['a', 1]]))).toEqual([])
+  })
+
+  it("hears the answer to the window's own ask of one method, and no other", () => {
+    class FakeSocket {
+      sent: string[] = []
+      private heard: ((event: { data: string }) => void)[] = []
+      send(data: string): void { this.sent.push(data) }
+      addEventListener(_type: string, fn: (event: { data: string }) => void): void { this.heard.push(fn) }
+      answer(data: string): void { for (const fn of this.heard) fn({ data }) }
+    }
+    const page = { performance: { now: () => 1234 } } as Record<string, unknown>
+    const run = (code: string): void => new Function('window', 'WebSocket', 'performance', code)(page, FakeSocket, page.performance)
+    run(watchAsks('work.files.write'))
+    const socket = new FakeSocket()
+    socket.send('{"id":"7","method":"work.files.list","params":{}}')
+    socket.send('{"id":"8","method":"work.files.write","params":{}}')
+    expect(socket.sent).toHaveLength(2)
+    socket.answer('{"id":"7","ok":true}')
+    expect(page.__perfAnswered).toBe(0)
+    socket.answer('{"id":"8","ok":false,"error":"refused"}')
+    expect(page.__perfAnswered).toBe(0)
+    socket.send('{"id":"9","method":"work.files.write","params":{}}')
+    socket.answer('{"id":"9","ok":true}')
+    expect(page.__perfAnswered).toBe(1234)
+    // Armed again for the next press, the send is wrapped once.
+    run(watchAsks('work.files.write'))
+    expect(page.__perfAnswered).toBe(0)
+  })
+
+  it('a typing row reads the 95th of its key times by rank', () => {
+    expect(p95([])).toBeNull()
+    expect(p95([5])).toBe(5)
+    expect(p95(Array.from({ length: 20 }, (_, i) => i + 1))).toBe(19)
+    expect(p95([30, 10, 20])).toBe(30)
   })
 
   it('the middle press is the middle by usable time, an unfinished press last', () => {
@@ -337,10 +388,28 @@ describe('the table', () => {
       { id: 'open-pdf-B2', title: 'x', samples: [], machine: { load: 1, anonGiB: null }, notRun: 'desk exited early' },
       row('view-Today', null)
     ])])
-    expect(table).toContain('| B05a | `list-A` | 300 ms | 250 ms | 250 ms | 125 ms | 12 ms | 1 T (work.files.list), 3 C | 0 T, 0 C | 2 kB | 60 ms, 10 Mbit/s, 24 threads; load 19.5, 41.2 GiB |')
+    expect(table).toContain('| B05a | `list-A` | 300 ms | 250 ms | 250 ms | 125 ms | 12 ms | – | 1 T (work.files.list), 3 C | – | 0 T, 0 C | 2 kB | 60 ms, 10 Mbit/s, 24 threads; load 19.5, 41.2 GiB |')
     expect(table).toContain('| B11 | `open-pdf-B2` | 1.5 s | not run: desk exited early |')
     expect(table).toContain('never usable (timed out)')
     expect(table).toContain('- **B05b** List a folder in a VM library:')
+  })
+
+  it("carries the longest task after usable, LifeOS's round trips by who asked and the link's late chunks where a run has them", () => {
+    const later = { ...sample(300), longestAfter: 140, lifeos: { window: 2, host: 5 } }
+    const table = perfTable([{ ...run('2026-11-26T10:00:00Z', [{ id: 'view-Mail', title: 'x', samples: [later], middle: later, machine: { load: 3, anonGiB: 50 } }]), link: { rttMs: 60, rateMbit: 10, jitter: 8 } }])
+    expect(table).toContain('| 12 ms | 140 ms | 0 T, 3 C | 2 / 5 | 0 T, 0 C | 2 kB | 60 ms, 10 Mbit/s, 1 chunk in 8 late, 24 threads;')
+    expect(lifeosAsks(undefined)).toBe('–')
+    expect(linkWords(null)).toBe('unslowed')
+  })
+
+  it("lists as not timed only the budgets of the families its runs stood the pair up for", () => {
+    const work = perfTable([run('2026-11-26T10:00:00Z', [row('list-A', 250)])])
+    expect(work).toContain('- **B05b**')
+    expect(work).not.toContain('- **D02**')
+    const code = perfTable([{ ...run('2026-11-26T10:00:00Z', [row('board-open', 120)]), family: 'code' }])
+    expect(code).toContain('- **D02**')
+    expect(code).not.toContain('- **B05b**')
+    expect(BUDGETS.filter((b) => familyOf(b) === 'work').every((b) => b.id.startsWith('B'))).toBe(true)
   })
 
   it('replaces its own section of a file and leaves the rest', () => {

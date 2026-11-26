@@ -1,4 +1,6 @@
+import { revealView } from '../../journeys/lib/more'
 import { thrice, type PerfCtx, type Row } from '../lib/row'
+import { gone, paneReady, shownIn, typing, type Picker } from './code'
 import { BONES, settled, type Sample } from '../lib/probe'
 
 const RAIL = 'nav [data-rail-path] button'
@@ -24,11 +26,11 @@ const view = (label: typeof VIEWS[number]): Row => ({
   id: 'view-' + label,
   title: `Switch to ${label} from another view of the job (the first press is its first time)`,
   needs: { sandbox: true },
-  run: (ctx) => thrice(ctx, () => ({
-    region: region(label),
-    usable: settled(region(label)),
-    press: () => ctx.page.clickOn(VIEW, label)
-  }), () => shown(ctx, label === 'Files' ? 'Mail' : 'Files'))
+  run: (ctx) => thrice(ctx, async () => {
+    // A view past the column's four daily rows sits under More: the fold is opened before the timed press, which is the view's own row.
+    await revealView(ctx.page, VIEW, label)
+    return { region: region(label), usable: settled(region(label)), press: () => ctx.page.clickOn(VIEW, label) }
+  }, () => shown(ctx, label === 'Files' ? 'Mail' : 'Files'))
 })
 
 const place = ([label, root]: typeof PLACES[number]): Row => ({
@@ -124,4 +126,84 @@ const launch: Row = {
   }
 }
 
-export const VIEW_ROWS: Row[] = [...VIEWS.map(view), ...PLACES.map(place), switchWorkspace, returned, launch]
+const SHEET = '[data-slot=sheet-content]'
+const digestDrawn = `(() => {
+  const sheet = [...document.querySelectorAll(${JSON.stringify(SHEET)})].find((e) => e.getClientRects().length && !e.hasAttribute('data-ending-style'));
+  return !!sheet && sheet.querySelector('[data-slot=sheet-title]')?.textContent.trim() === 'Digest' && ${settled(SHEET)};
+})()`
+
+/**
+ * The Digest (B24) to its sheet drawn. The native menu's Go → Digest is the OS's and cannot be pressed over CDP, so
+ * the row presses Settings → Work's "Open the digest", which opens the same sheet (`openDigestSheet`); the menu's
+ * cold load of the digest's chunk is not in it.
+ */
+const digest: Row = {
+  id: 'digest-open',
+  title: 'Open the Digest (Settings → Work → Open the digest) to its sheet drawn',
+  needs: { sandbox: true },
+  run: (ctx) => thrice(ctx, () => ({ region: 'body', usable: digestDrawn, press: () => ctx.page.clickOn('[data-app-settings] button', 'Open the digest') }), async () => {
+    await ctx.page.dismissPopups()
+    await ctx.page.until('the Digest sheet closed', 10_000, async () => !await ctx.page.eval(digestDrawn))
+    await ctx.page.eval(`window.dispatchEvent(new CustomEvent('docket:open-settings', { detail: 'work' }))`)
+    await ctx.page.until('Open the digest', 20_000, () => ctx.page.centre('[data-app-settings] button', 'Open the digest'))
+  }).finally(() => ctx.page.dismissPopups().catch(() => undefined))
+}
+
+/**
+ * A Work thread of the job opened from its row in the column, to its rows: the first press a thread this window never
+ * showed, the next two back to it from the Files view.
+ */
+const workThread: Row = {
+  id: 'work-thread-open',
+  title: "Open a Work thread from the job's column to its rows (the first press never seen)",
+  needs: { sandbox: true, fake: true },
+  run: async (ctx) => {
+    const { id } = await ctx.pair.rpc<{ id: string }>(ctx.pair.box, 'session.create', {
+      workspaceId: ctx.workspace.id, title: 'Practice cones', provider: 'claude', permission: 'auto', threadType: 'chat', scope: 'work'
+    })
+    await ctx.pair.rpc(ctx.pair.box, 'session.send', { sessionId: id, text: 'What time is practice?' }, 60_000)
+    const row = `[data-work-thread=${JSON.stringify(id)}] [data-row-open]`
+    return thrice(ctx, () => ({ region: 'main', usable: paneReady(id), press: () => ctx.page.clickOn(row), wait: 30_000 }), async () => {
+      await shown(ctx, 'Files')
+      await ctx.page.until('the thread in the column', 30_000, () => ctx.page.centre(row))
+    })
+  }
+}
+
+const SEARCH = '[data-work-search]'
+/**
+ * Work search (⌘⇧K, Ctrl+Shift+K here) opened three times to its field ready (a fresh profile has no Recent rows),
+ * then five keys typed, each to the rows for what is typed with every source answered (`keyMs`, `asksPerKey`).
+ */
+const workSearch: Picker = {
+  id: 'work-search',
+  title: 'Open Work search (Ctrl+Shift+K) to its field ready; then type "sprin", a key at a time',
+  region: SEARCH,
+  shown: `${shownIn(SEARCH)} && !!document.activeElement?.closest(${JSON.stringify(SEARCH)})`,
+  open: (ctx) => ctx.page.key('Control+Shift+K'),
+  close: async (ctx) => {
+    if (await ctx.page.eval(shownIn(SEARCH))) await ctx.page.key('Escape')
+    await gone(ctx, 'Work search', SEARCH)
+  },
+  query: 'sprin',
+  ready: (typed) => `document.querySelector('${SEARCH} input')?.value === ${JSON.stringify(typed)} && document.querySelectorAll('${SEARCH} [role="option"]').length > 0 && !document.querySelector('${SEARCH} [data-work-search-busy]')`
+}
+const searchRow: Row = {
+  id: workSearch.id,
+  title: workSearch.title,
+  needs: { sandbox: true },
+  run: async (ctx) => {
+    await shown(ctx, 'Mail')
+    const samples = await thrice(ctx, () => ({ region: workSearch.region, usable: workSearch.shown, press: () => workSearch.open(ctx) }), async (i) => {
+      if (i > 0) await workSearch.close(ctx)
+    })
+    try {
+      if (samples.length === 3 && samples.every((sample) => sample.usable !== null)) Object.assign(samples[2]!, await typing(ctx, workSearch))
+    } finally {
+      await workSearch.close(ctx)
+    }
+    return samples
+  }
+}
+
+export const VIEW_ROWS: Row[] = [...VIEWS.map(view), ...PLACES.map(place), switchWorkspace, returned, launch, digest, workThread, searchRow]

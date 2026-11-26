@@ -37,7 +37,7 @@ import { BROWSER_PROMPT, fakeMessage, mailReplyTool, seedFakeAccount, startFakeP
 import { pdfFacts } from './lib/preview'
 import { letterPaper, printViewer } from './lib/print'
 import { AppOpenProof } from './lib/appOpen'
-import { closeSelectedFile, dummyLibrary, dummyPdf, fixtures, gioStub, holds, rowAt } from './lib/files'
+import { closeFileTabs, closeSelectedFile, dummyLibrary, openedAs, openRow, dummyPdf, fixtures, gioStub, holds, rowAt } from './lib/files'
 import { holderFolder, selectFolderTab } from './lib/place'
 import { explainsMissingContent, searchVerdict } from './lib/search'
 import { cellValue, falseSaveLine } from './lib/sheet'
@@ -504,6 +504,20 @@ it('drives the context menu and selection with mouse events', async () => {
   expect(send.mock.calls.at(-1)).toEqual(['Input.dispatchMouseEvent', { type: 'mouseMoved', x: 3, y: 2 }])
 })
 
+it("finds a row by its name whole or before the comma that says what it is doing, never by a longer name", async () => {
+  const row = (label: string, y: number) => ({
+    label, closest: () => null, matches: () => false, getAttribute: (name: string) => (name === 'aria-label' ? label : null), querySelector: () => null,
+    getBoundingClientRect: () => ({ x: 0, y, width: 10, height: 10 }), contains: () => true, scrollIntoView: () => undefined
+  })
+  const rows = [row('Perf other 2zlLrP', 0), row('Perf 2zlLrP, working', 20)]
+  const document = { querySelectorAll: () => rows, elementFromPoint: () => null }
+  const page = Object.assign(Object.create(Window.prototype) as Window, {
+    eval: async (expression: string) => new Function('document', 'return ' + expression)(document)
+  })
+  expect(await page.centre('nav button', 'Perf 2zlLrP')).toEqual({ x: 5, y: 25 })
+  expect(await page.centre('nav button', 'Perf')).toBeNull()
+})
+
 it('reloads and returns only once the new page runs, never on the old page', async () => {
   // The old page answers a check until the reload lands: its marker goes with it.
   const window: { __journeyOldPage?: boolean } = {}
@@ -646,16 +660,63 @@ it('carries one transfer through the row drag and dispatches the desktop File by
   await expect(file?.text()).resolves.toBe('Blue')
 })
 
-it('closes the selected file by id even if its title changed on import', async () => {
-  const evalInPage = vi.fn().mockResolvedValueOnce('imported-doc').mockResolvedValueOnce(true)
-  const clickOn = vi.fn()
+it('closes the selected file by its id with Ctrl+W, answering a close that asks first', async () => {
+  let open = true
+  const asks = { at: { x: 4, y: 5 } as { x: number; y: number } | null }
+  const evals: string[] = []
   const page = {
-    eval: evalInPage, clickOn,
-    until: async (_label: string, _ms: number, test: () => Promise<unknown>) => { expect(await test()).toBeTruthy() }
+    eval: vi.fn(async (expression: string) => {
+      evals.push(expression)
+      if (expression.includes("getAttribute('data-files-tab')")) return 'imported-doc'
+      if (expression.startsWith('!document.querySelector')) return !open
+      return undefined
+    }),
+    key: vi.fn(async () => undefined),
+    centre: vi.fn(async (_selector: string, text?: string) => (text === 'Close Anyway' ? asks.at : null)),
+    click: vi.fn(async () => { open = false }),
+    until: async (_label: string, _ms: number, test: () => Promise<unknown>) => { for (let i = 0; i < 3; i++) if (await test()) return; throw new Error('Timed out') }
   } as unknown as Window
   await closeSelectedFile(page)
-  expect(clickOn).toHaveBeenCalledWith('[data-menu-id="imported-doc"] [data-files-tab-close]')
-  expect(evalInPage.mock.calls[1]?.[0]).toContain('imported-doc')
+  expect(page.key).toHaveBeenCalledWith('Control+w')
+  expect(evals.some((e) => e.includes('[data-files-tab=\\"imported-doc\\"]') && e.includes('focus()'))).toBe(true)
+  expect(page.click).toHaveBeenCalledWith({ x: 4, y: 5 })
+  // A tab that stays says what is over its close button.
+  open = true
+  asks.at = null
+  ;(page.eval as ReturnType<typeof vi.fn>).mockImplementation(async (expression: string) =>
+    expression.includes("getAttribute('data-files-tab')") ? 'stuck-doc' : expression.startsWith('!document') ? false : expression.includes('elementFromPoint') ? 'div[role="dialog"]: "Saving"' : undefined)
+  await expect(closeSelectedFile(page)).rejects.toThrow('over its close button: div[role="dialog"]: "Saving"')
+})
+
+it('closes every file tab of the shown view, one at a time, and stops when none is left', async () => {
+  let open = 2
+  const pressed: string[] = []
+  const page = {
+    centre: vi.fn(async (selector: string) => (selector.includes('data-tab-kind="file"') && open > 0 ? { x: open, y: 1 } : null)),
+    click: vi.fn(async () => undefined),
+    eval: vi.fn(async (expression: string) => (expression.includes("getAttribute('data-files-tab')") ? 'tab-' + open : expression.startsWith('!document') ? true : undefined)),
+    key: vi.fn(async (chord: string) => { pressed.push(chord); open-- }),
+    until: async (_label: string, _ms: number, test: () => Promise<unknown>) => { await test() }
+  } as unknown as Window
+  expect(await closeFileTabs(page)).toBe(2)
+  expect(pressed).toEqual(['Control+w', 'Control+w'])
+})
+
+it('opens a row by its double-click, and presses again when the first opened nothing', async () => {
+  let presses = 0
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  const page = {
+    steadyPoint: async () => ({ x: 1, y: 2 }),
+    click: vi.fn(async () => { presses++ }),
+    eval: vi.fn(async (expression: string) => expression.includes('data-tab-kind="file"') && presses >= 2),
+    until: async (_label: string, _ms: number, test: () => Promise<unknown>) => { if (!await test()) throw new Error('Timed out') }
+  } as unknown as Window
+  await openRow(page, 'Practice notes.txt')
+  expect(page.click).toHaveBeenCalledTimes(2)
+  expect(page.click).toHaveBeenCalledWith({ x: 1, y: 2 }, 2)
+  expect(warn).toHaveBeenCalledOnce()
+  warn.mockRestore()
+  expect(openedAs('Practice plan.tcdoc')).toContain('"Practice plan"')
 })
 
 it('puts the fake profile and its sealed credential in the run vault', () => {

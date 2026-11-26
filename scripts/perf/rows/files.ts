@@ -7,6 +7,7 @@ import { INPUT } from '../../journeys/lib/lifeosJourney'
 import { fileAt, goPlace, holderFolder, selectFolderTab, showPlace } from '../../journeys/lib/place'
 import { FILES_FIELD } from '../../journeys/lib/search'
 import type { Shape } from '../../journeys/lib/shape'
+import { watchAsks } from '../lib/probe'
 import { thrice, type PerfCtx, type Row } from '../lib/row'
 
 /** Where a file may sit: the job's own folder on box, a library on the window's machine, one on a third machine. */
@@ -133,6 +134,10 @@ async function dummy(ctx: PerfCtx, shape: Shape, kind: Kind): Promise<string> {
     await ctx.page.until('the new document name field', 20_000, () => ctx.page.eval('document.activeElement?.matches("[data-files-row] input")'))
     await ctx.page.typeKeys(name.replace(/\.tcdoc$/, ''))
     await ctx.page.key('Enter')
+    // The list is drawn again as the name lands: a double-click across that draw opens nothing, so the row waits
+    // for the name field gone and the new row still for a second before anything presses it.
+    await ctx.page.until('the new document listed', 20_000, async () => !await ctx.page.eval('!!document.querySelector("[data-files-row] input")') && !!await rowAt(ctx.page, name))
+    await new Promise((resolve) => setTimeout(resolve, 1000))
   }
   return name
 }
@@ -173,6 +178,15 @@ const tab = (kind: Kind): Row => ({
   }
 })
 
+/** The visible save line's state and words. */
+const SAVE_LINE = `[...document.querySelectorAll('[data-files-save-line]')].find((e) => e.getClientRects().length)`
+
+/**
+ * The first key to a save line that says saved. In the job's own folder (A) the line keeps "Saved" while a write is
+ * out and says Saving… only past 600 ms (fileSession.ts), so a quick save never leaves "Saved": there the line counts
+ * once the write behind his keys came back from box (`watchAsks`). A copy of another computer's file (B1, B2) says
+ * "Saving to …" while it goes, and is saved once its line says Saved again.
+ */
 const saved = (shape: Shape): Row => ({
   id: 'saved-text-' + shape,
   title: `Type in a text file: the first key to a save line that says saved (${shape})`,
@@ -185,15 +199,18 @@ const saved = (shape: Shape): Row => ({
     return thrice(ctx, async (i) => {
       await ctx.page.clickOn(TEXT_EDITOR)
       await ctx.page.key('Control+End')
-      // The line must first say something other than saved, or the old line would pass.
       return {
         region: '[data-files-save-line]',
-        usable: `window.__perfDirty === true && /^Saved/.test([...document.querySelectorAll('[data-files-save-line]')].find((e) => e.getClientRects().length)?.textContent.trim() ?? '')`,
+        usable: shape === 'A'
+          ? `window.__perfAnswered > 0 && ${SAVE_LINE}?.getAttribute('data-files-save-line') === 'saved'`
+          : `window.__perfDirty === true && /^Saved/.test(${SAVE_LINE}?.textContent.trim() ?? '')`,
         press: async () => {
-          await ctx.page.eval(`(() => {
+          if (shape === 'A') await ctx.page.eval(watchAsks('work.files.write'))
+          // The line must first say something other than saved, or the old line would pass.
+          else await ctx.page.eval(`(() => {
             window.__perfDirty = false;
             const seen = new MutationObserver(() => {
-              const line = [...document.querySelectorAll('[data-files-save-line]')].find((e) => e.getClientRects().length)?.textContent.trim() ?? '';
+              const line = ${SAVE_LINE}?.textContent.trim() ?? '';
               if (!/^Saved/.test(line)) { window.__perfDirty = true; seen.disconnect(); }
             });
             seen.observe(document.body, { subtree: true, childList: true, characterData: true });
@@ -205,6 +222,136 @@ const saved = (shape: Shape): Row => ({
     }).finally(() => closeSelectedFile(ctx.page).catch(() => undefined))
   }
 })
+
+/**
+ * Save As on a document of the job's folder (B14): his name typed and Just a copy ticked in the sheet, then Save to
+ * the sheet closed with the copy made. Neither a linked save nor a copy opens a tab of the new file (the document
+ * stays open), so the row ends where Save As does, and the file on disk is checked after each press.
+ */
+const SAVE_AS = '[data-save-as]'
+const saveAs: Row = {
+  id: 'save-as-A',
+  title: 'Save As on an open document: Save in the sheet to the sheet closed and the copy made',
+  needs: needs('A'),
+  run: async (ctx) => {
+    const name = await dummy(ctx, 'A', 'document')
+    await shown(ctx, 'A')
+    await openRow(ctx.page, name)
+    await ctx.page.until('the document open', 90_000, () => ctx.page.eval(KINDS.document.usable))
+    const stamp = Date.now().toString(36).slice(-4)
+    const copy = (i: number): string => `Practice plan copy ${stamp}-${i + 1}`
+    const samples = await thrice(ctx, async (i) => {
+      await ctx.page.clickOn('[data-canvas-bar] button', 'Save As…')
+      await ctx.page.until('the Save As sheet', 20_000, () => ctx.page.centre('#save-as-name'))
+      await ctx.page.clickOn('#save-as-name')
+      await ctx.page.key('Control+a')
+      await ctx.page.typeKeys(copy(i))
+      if (await ctx.page.eval(`document.querySelector('${SAVE_AS} [role="checkbox"]')?.getAttribute('aria-checked') !== 'true'`)) await ctx.page.clickOn(`${SAVE_AS} [role="checkbox"]`)
+      return {
+        region: 'body',
+        usable: `!document.querySelector(${JSON.stringify(SAVE_AS)})`,
+        press: () => ctx.page.clickOn(`${SAVE_AS} button[data-dialog-confirm]`),
+        wait: 30_000
+      }
+    })
+    // The sheet closed with its copy made, or it says it did not.
+    for (const [i, sample] of samples.entries()) {
+      if (sample.usable !== null && !existsSync(fileAt(ctx.at('A'), copy(i) + '.docx'))) sample.error = `the sheet closed but ${copy(i)}.docx was not made`
+    }
+    await ctx.page.dismissPopups()
+    await closeSelectedFile(ctx.page).catch(() => undefined)
+    return samples
+  }
+}
+
+/**
+ * A far Word file's first stage line (B08, "a stage line within 300 ms"): the press to the first words its tab says
+ * of the open (its header's line), on the third machine.
+ */
+const stage = (shape: Shape): Row => ({
+  id: 'stage-word-' + shape,
+  title: `Open a Word file on another computer: the press to its first stage line (${shape})`,
+  needs: needs(shape),
+  run: async (ctx) => {
+    const name = await dummy(ctx, shape, 'word')
+    return thrice(ctx, async () => {
+      const at = await ctx.page.steadyPoint(name + ' row', () => rowAt(ctx.page, name), 40_000)
+      return { region: '[data-files-file], [data-files-main]', usable: `(${SAVE_LINE}?.textContent.trim() ?? '').length > 0`, press: () => ctx.page.click(at, 2), wait: 30_000 }
+    }, async (i) => {
+      if (i > 0) await closeSelectedFile(ctx.page)
+      await shown(ctx, shape)
+    }).finally(() => closeSelectedFile(ctx.page).catch(() => undefined))
+  }
+})
+
+/** The long text file's size, and how many keys a typing row types into it. */
+export const LONG_TEXT = 90_000
+export const TYPED_KEYS = 20
+
+/** The page's time from each key to the frame after the editor changed for it: rAF, then a task after its paint. */
+export const KEY_FRAMES = (selector: string): string => `(() => {
+  const k = window.__perfKeys = { times: [], pending: null };
+  addEventListener('keydown', (e) => { if (window.__perfKeys === k) k.pending = e.timeStamp; }, true);
+  const after = new MessageChannel();
+  const queued = [];
+  after.port1.onmessage = () => { const t = queued.shift(); if (t !== undefined) k.times.push(performance.now() - t); };
+  new MutationObserver(() => {
+    if (k.pending === null) return;
+    const t = k.pending;
+    k.pending = null;
+    requestAnimationFrame(() => { queued.push(t); after.port2.postMessage(0); });
+  }).observe(document.querySelector(${JSON.stringify(selector)}), { subtree: true, childList: true, characterData: true });
+})()`
+
+/** The 95th of a set of times, by rank. Pure. */
+export const p95 = (times: number[]): number | null => {
+  if (!times.length) return null
+  const order = [...times].sort((a, b) => a - b)
+  return order[Math.min(order.length - 1, Math.ceil(order.length * 0.95) - 1)]!
+}
+
+/**
+ * Typing in a 90,000-character text file of the job's folder: twenty keys at his pace, each from its key to the frame
+ * after the editor changed. One sample: usable is the p95, `keyMs` each key; its counts are what the window sent box
+ * meanwhile (bytes to main go over IPC, which CDP does not see).
+ */
+const typeLong: Row = {
+  id: 'type-long-text-A',
+  title: `Type ${TYPED_KEYS} keys into a ${LONG_TEXT.toLocaleString('en-US')}-character text file: each key to its frame`,
+  needs: needs('A'),
+  run: async (ctx) => {
+    const name = 'Practice long notes.txt'
+    const file = fileAt(ctx.at('A'), name)
+    if (!existsSync(file)) writeFileSync(file, Array.from({ length: Math.ceil(LONG_TEXT / 80) }, (_, i) => `Line ${i}: the practice plan for the park, its cones, its drills and its notes.`.padEnd(79, '.') + '\n').join('').slice(0, LONG_TEXT))
+    await shown(ctx, 'A')
+    await openRow(ctx.page, name)
+    try {
+      // A long file's editor is taller than the window, so its centre is never on screen: it is focused, not clicked.
+      await ctx.page.until('the text editor', 60_000, () => ctx.page.eval(`!!document.querySelector(${JSON.stringify(TEXT_EDITOR)})?.getClientRects().length`))
+      await ctx.page.eval(`document.querySelector(${JSON.stringify(TEXT_EDITOR)}).focus()`)
+      await ctx.page.key('Control+End')
+      await ctx.page.eval(KEY_FRAMES('[data-files-file]'))
+      ctx.counter.take()
+      const started = Date.now()
+      for (const key of ' practice'.padEnd(TYPED_KEYS, 's').slice(0, TYPED_KEYS)) {
+        await ctx.page.key(key)
+        await new Promise((resolve) => setTimeout(resolve, 80))
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      const counts = ctx.counter.take()
+      const seconds = (Date.now() - started) / 1000
+      const times = (await ctx.page.eval<number[]>('window.__perfKeys.times')).map((t) => Math.round(t))
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      return [{
+        first: null, usable: p95(times), longest: 0, counts, after: ctx.counter.take(), keyMs: times,
+        upPerSecond: Math.round(counts.up / seconds),
+        ...(times.length < TYPED_KEYS ? { error: `${TYPED_KEYS - times.length} of ${TYPED_KEYS} keys drew no frame` } : {})
+      }]
+    } finally {
+      await closeSelectedFile(ctx.page).catch(() => undefined)
+    }
+  }
+}
 
 /** Ask beside a file: the press to a box he can type in, then his first words to the first content back. */
 const askBox: Row = {
@@ -281,5 +428,6 @@ export const FILE_ROWS: Row[] = [
     (kind === 'document' ? (['A'] as Shape[]) : PLACES).map((shape) => open(kind, shape))),
   ...(['document', 'workbook', 'deck', 'pdf'] as const).map(tab),
   ...PLACES.map(saved),
+  saveAs, stage('B2'), typeLong,
   askBox, askFirst, reconnect
 ]

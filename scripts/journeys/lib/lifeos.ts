@@ -22,6 +22,8 @@ type Args = Record<string, Value>
 export type LifeosRead = <T>(fn: string, args?: Args) => Promise<T>
 export type Sandbox = {
   url: string
+  /** the backend's own address behind the front hop (the same as `url` with no hop) */
+  backendUrl: string
   siteUrl: string
   mcpUrl: string
   deviceToken: string
@@ -329,7 +331,7 @@ export async function startSandbox(walkFolder: string, signal?: AbortSignal, too
       link.shape.delayMs = front.delayMs
       link.resetClasses()
     }
-    return { url, siteUrl, mcpUrl: mcp?.url ?? siteUrl + '/mcp', deviceToken, mintDevice, query, mutate, seedDeadline: (title, startsAt) => seedDeadline(internal, title, startsAt), ...(link ? { link } : {}), stop }
+    return { url, backendUrl: `http://127.0.0.1:${port}`, siteUrl, mcpUrl: mcp?.url ?? siteUrl + '/mcp', deviceToken, mintDevice, query, mutate, seedDeadline: (title, startsAt) => seedDeadline(internal, title, startsAt), ...(link ? { link } : {}), stop }
   } catch (error) {
     await stop()
     throw error

@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { WebSocketServer } from 'ws'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { attach, ownsProofRecord, proofPrefix, proofRpc, Run, sessionIds, watchProofChild, withinDeadline } from './e2e-work-lib'
+import { attach, freePort, ownsProofRecord, proofPrefix, proofRpc, reservedRange, Run, sessionIds, watchProofChild, withinDeadline } from './e2e-work-lib'
 import { proofPeerLink, slideParagraphs } from './lib/proofPeerLink'
 import { WorkProofChildren } from './lib/workProofChildren'
 import { VmProofWire } from './lib/vmProofWire'
@@ -245,5 +245,29 @@ describe('the Work proof catalogue', () => {
       expect(reach?.trim()).toBeTruthy()
       if (command?.startsWith('E2E_REAL_LIFEOS=1')) expect(reach).toContain('LifeOS')
     }
+  })
+})
+
+describe('a reserved loopback port', () => {
+  it("is taken below the kernel's ephemeral range, where no listen(0) of an instance lands", () => {
+    expect(reservedRange('32768\t60999\n')).toEqual({ from: 20_768, to: 32_767 })
+    expect(reservedRange('15000 60999')).toEqual({ from: 10_000, to: 14_999 })
+    expect(reservedRange(null)).toBeNull()
+    expect(reservedRange('1024 65535')).toBeNull()
+  })
+
+  it('is a port free to listen on, inside that range on Linux', async () => {
+    const port = await freePort()
+    let text: string | null = null
+    try {
+      text = readFileSync('/proc/sys/net/ipv4/ip_local_port_range', 'utf8')
+    } catch {
+      // not Linux
+    }
+    const range = reservedRange(text)
+    if (range) expect(port >= range.from && port <= range.to).toBe(true)
+    const server = createServer()
+    await new Promise<void>((ok) => server.listen(port, '127.0.0.1', ok))
+    await new Promise((ok) => server.close(ok))
   })
 })

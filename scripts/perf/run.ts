@@ -27,13 +27,14 @@ import { availableParallelism } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { HIS_JITTER, type Shape as LinkShape } from '../lib/slowLink'
+import { closeFileTabs } from '../journeys/lib/files'
 import { startSandbox } from '../journeys/lib/lifeos'
 import { SECTOR } from '../journeys/lib/lifeosSeed'
 import { mainCheckout } from '../journeys/lib/record'
 import { Pair, words, type Instance } from '../journeys/lib/shape'
 import { guardLiveBox } from './lib/guard'
 import { perfProvider, startSplitLoad } from './lib/load'
-import { Counter, middle, type Sample, type SocketKind } from './lib/probe'
+import { Counter, middle, socketKind, type Sample, type SocketKind } from './lib/probe'
 import { perfCtx, type Row, type Seeded } from './lib/row'
 import { SEED_WORKSPACE } from './lib/seedNames'
 import { rowsMatching } from './rows'
@@ -169,6 +170,13 @@ function machine(): RowResult['machine'] {
   return { load: Number(readFileSync('/proc/loadavg', 'utf8').split(' ')[0]), anonGiB }
 }
 
+/** Popups dismissed and every file tab closed after a row. */
+async function tidy(page: Pair['page']): Promise<void> {
+  await page.dismissPopups()
+  await closeFileTabs(page)
+  await page.dismissPopups()
+}
+
 const measured = (samples: Sample[]): number => samples.reduce((ms, s) => ms + (s.usable ?? 30_000), 0)
 
 async function main(): Promise<number> {
@@ -222,12 +230,12 @@ async function main(): Promise<number> {
     // In the code family the job is the seeded workspace; the scratch one `open` made is the one to switch to.
     const workspace = seeded ? { id: seeded.workspaceId, path: seeded.path, name: SEED_WORKSPACE } : opened
     const other = code ? opened : await pair.workspace(`Perf other ${id.slice(-6)}`, 'life')
-    const lifeos = pair.sandbox ? new URL(pair.sandbox.url).port : ''
-    const link = String(pair.windowLink?.port ?? pair.box.remote)
-    const kindOf = (url: string): SocketKind => {
-      const port = new URL(url).port
-      return port === link ? 'box' : lifeos && port === lifeos ? 'lifeos' : port === String(pair.win.port) ? 'own' : 'other'
-    }
+    const port = (url: string | undefined): number[] => (url ? [Number(new URL(url).port)] : [])
+    const kindOf = (url: string): SocketKind => socketKind(url, {
+      box: [pair.windowLink?.port ?? pair.box.remote, pair.box.remote],
+      lifeos: [...port(pair.sandbox?.url), ...port(pair.sandbox?.backendUrl), ...port(pair.sandbox?.siteUrl)],
+      own: [pair.win.port]
+    })
     const counter = new Counter(pair.page, kindOf)
     // The sockets opened before the counter was there are opened again under it.
     await pair.page.reload()
@@ -239,9 +247,13 @@ async function main(): Promise<number> {
       const busy = async (n: number) => code ? pair.codeProject(`Perf load ${n} ${id.slice(-6)}`, 20) : pair.workspace(`Perf load ${n} ${id.slice(-6)}`, n === 1 ? 'ref' : 'ref-two')
       await startSplitLoad(pair, [(await busy(1)).id, (await busy(2)).id], f.load, { scope: code ? 'code' : 'work', room: 8 })
     }
-    const ctx = perfCtx({ pair, page: pair.page, counter, workspace, other, repo, folder, family: f.family, ...(seeded ? { seeded } : {}) })
+    let current = ''
+    // What the window showed the moment a press never became usable, before the row tidies: the picture says which wait was wrong.
+    const stuck = (): Promise<void> => pair.page.shot(join(out, current + '.png')).catch(() => undefined)
+    const ctx = perfCtx({ pair, page: pair.page, counter, workspace, other, repo, folder, family: f.family, stuck, ...(seeded ? { seeded } : {}) })
     let spent = 0
     for (const row of rows) {
+      current = row.id
       pair.abort.signal.throwIfAborted()
       const result: RowResult = { id: row.id, title: row.title, samples: [], machine: machine() }
       results.rows.push(result)
@@ -255,14 +267,13 @@ async function main(): Promise<number> {
         spent += measured(result.samples)
         const m = result.middle
         console.log(`ROW ${row.id}: ${m?.usable == null ? 'never usable' : Math.round(m.usable) + ' ms'}, T ${m?.counts.tAll ?? '-'}, C ${m?.counts.c ?? '-'}${m?.error ? ' (' + m.error + ')' : ''}`)
-        // What the window showed when a press never became usable: the picture says which wait was wrong.
-        if (result.samples.some((sample) => sample.usable === null)) await pair.page.shot(join(out, row.id + '.png')).catch(() => undefined)
       } catch (error) {
         result.notRun = words(error)
         console.error(`ROW ${row.id} did not run: ${result.notRun}`)
         await pair.page.shot(join(out, row.id + '.png')).catch(() => undefined)
-        await pair.page.dismissPopups().catch(() => undefined)
       }
+      // What a row left open (a menu, a dialog, a file's tab) never stands in front of the next one.
+      await tidy(pair.page).catch((error) => console.error(`After ${row.id}: ${words(error)}`))
       save()
     }
   } catch (error) {

@@ -75,9 +75,25 @@ export function rowAt(page: Window, name: string): Promise<{ x: number; y: numbe
   })()`)
 }
 
+/** In the page: a file's tab of that name is open, or the folder of that name is the one shown. */
+export const openedAs = (name: string): string => `(() => {
+  const name = ${JSON.stringify(shown(name))};
+  return [...document.querySelectorAll('[data-files-tab][data-tab-kind="file"]')].some((t) => t.textContent.includes(name))
+    || document.querySelector('[data-files-bar] [aria-current="page"]')?.textContent.trim() === name;
+})()`
+
+/**
+ * A row opened by its double-click, as he would; a double-click that opened nothing in 8 s (the list drawn again
+ * between its two clicks) is pressed again, twice at most, and said on the log, never hidden.
+ */
 export async function openRow(page: Window, name: string): Promise<void> {
-  const point = await page.steadyPoint(name + ' row', () => rowAt(page, name), 30_000)
-  await page.click(point, 2)
+  for (let tries = 0; ; tries++) {
+    const point = await page.steadyPoint(name + ' row', () => rowAt(page, name), 30_000)
+    await page.click(point, 2)
+    const opened = await page.until(name + ' open', 8_000, () => page.eval(openedAs(name))).then(() => true, () => false)
+    if (opened || tries === 2) return
+    console.warn(`openRow: the double-click on ${name} opened nothing in 8 s; pressed again`)
+  }
 }
 
 export async function closeTab(page: Window, name: string): Promise<void> {
@@ -99,15 +115,66 @@ export function holds(file: string, word: string): boolean {
     .some((text) => text.replace(/<[^>]+>/g, '').includes(word))
 }
 
+/** What a close may ask first, and the answer that lets the tab go: a copy whose changes have not reached its file, or edits only in the tab (copyClose.ts). */
+export const CLOSE_ANSWERS = ['Close Anyway', 'Discard']
+
+/** What sits over a tab's close button, in words: the element the pointer would hit, and the dialog or menu it is in. */
+export const overClose = (id: string): string => `(() => {
+  const close = document.querySelector('[data-files-tab=' + CSS.escape(${JSON.stringify(id)}) + ']')?.parentElement?.querySelector('[data-files-tab-close]');
+  if (!close) return 'no close button';
+  const r = close.getBoundingClientRect();
+  const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+  if (!hit) return 'nothing at ' + Math.round(r.x) + ',' + Math.round(r.y);
+  if (close.contains(hit)) return 'the close button itself';
+  const holder = hit.closest('[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [data-slot]');
+  const name = (el) => el.tagName.toLowerCase() + [...el.attributes].filter((a) => a.name !== 'class' && a.name !== 'style').map((a) => '[' + a.name + (a.value ? '="' + a.value.slice(0, 40) + '"' : '') + ']').join('');
+  return name(hit) + (holder && holder !== hit ? ' in ' + name(holder) : '') + ': ' + JSON.stringify((holder ?? hit).innerText?.trim().slice(0, 80) ?? '');
+})()`
+
+/**
+ * Closes the selected file's tab as he would from the keyboard: focus on the tab, Ctrl+W (the view's own close,
+ * chords.ts), and the answer that lets it go if the close asks first. It waits on the tab's own id, so a title that
+ * changed on import still closes; a tab that stays says what sits over its close button.
+ */
 export async function closeSelectedFile(page: Window): Promise<void> {
   const selected = '[data-files-tab][data-tab-kind="file"][aria-selected="true"]'
   let id: string | null = null
   await page.until('the selected file tab', 10_000, async () => (id = await page.eval(
     `document.querySelector(${JSON.stringify(selected)})?.getAttribute('data-files-tab') ?? null`
   )))
-  const tab = `[data-menu-id=${JSON.stringify(id)}]`
-  await page.clickOn(tab + ' [data-files-tab-close]')
-  await page.until('the selected file tab to close', 12_000, () =>
-    page.eval(`!document.querySelector(${JSON.stringify(tab)})`)
-  )
+  const tab = `[data-files-tab=${JSON.stringify(id)}]`
+  await page.eval(`document.querySelector(${JSON.stringify(tab)})?.focus()`)
+  await page.key('Control+w')
+  try {
+    await page.until('the file tab to close', 12_000, async () => {
+      if (await page.eval(`!document.querySelector(${JSON.stringify(tab)})`)) return true
+      for (const answer of CLOSE_ANSWERS) {
+        const at = await page.centre('[role="alertdialog"] button, [role="dialog"] button', answer)
+        if (at) {
+          await page.click(at)
+          break
+        }
+      }
+      return false
+    })
+  } catch (error) {
+    const over = await page.eval<string>(overClose(id!)).catch(() => 'unknown')
+    throw new Error(`${error instanceof Error ? error.message : String(error)} (over its close button: ${over})`)
+  }
+}
+
+/**
+ * Every file tab of the shown Files view closed, each by `closeSelectedFile`: what one walk or perf row left open
+ * never stands in front of the next. A view not on screen holds no tabs to close.
+ */
+export async function closeFileTabs(page: Window, most = 8): Promise<number> {
+  const any = '[data-files-tab][data-tab-kind="file"]'
+  let closed = 0
+  for (; closed < most; closed++) {
+    const at = await page.centre(any)
+    if (!at) break
+    await page.click(at)
+    await closeSelectedFile(page)
+  }
+  return closed
 }

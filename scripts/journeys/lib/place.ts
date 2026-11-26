@@ -37,8 +37,13 @@ export async function showPlace(context: Context): Promise<void> {
 export async function goPlace(context: Context): Promise<void> {
   const { page } = context.pair
   if (context.shape === 'A' || context.shape === 'K' || context.shape === 'U') {
-    await page.clickOn('[data-files-sidebar] button', context.workspace.name)
-    return
+    const shownNow = `document.querySelector('[data-files-bar] [aria-current="page"]')?.textContent.trim() === ${JSON.stringify(context.workspace.name)}`
+    // A press that the view undid (it showed Home again) is pressed again, twice at most, and said on the log.
+    for (let tries = 0; ; tries++) {
+      await page.clickOn('[data-files-sidebar] button', context.workspace.name)
+      if (await page.until(context.workspace.name + ' folder shown', 8_000, () => page.eval(shownNow)).then(() => true, () => false) || tries === 2) return
+      console.warn(`goPlace: the press on ${context.workspace.name} in the sidebar left ${await page.eval(`document.querySelector('[data-files-bar] [aria-current="page"]')?.textContent.trim() ?? 'no folder'`)} shown; pressed again`)
+    }
   }
   await page.clickOn('[data-files-sidebar] button', context.shape === 'B1' ? 'Journey Teams L1' : 'Journey Teams L2')
   await openRow(page, 'General')

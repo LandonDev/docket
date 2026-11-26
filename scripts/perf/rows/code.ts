@@ -389,7 +389,7 @@ const boardOpen: Row = {
   })
 }
 
-interface Picker {
+export interface Picker {
   id: string
   title: string
   /** the picker's rows: their first change after a key is its first sign */
@@ -406,16 +406,16 @@ interface Picker {
   ready(typed: string): string
 }
 
-const shownIn = (selector: string): string =>
+export const shownIn = (selector: string): string =>
   `[...document.querySelectorAll(${JSON.stringify(selector)})].some((el) => el.getClientRects().length && !el.closest('[inert], [aria-hidden="true"], [data-ending-style]'))`
-const gone = async (ctx: PerfCtx, what: string, selector: string): Promise<void> =>
+export const gone = async (ctx: PerfCtx, what: string, selector: string): Promise<void> =>
   ctx.page.until(what + ' closed', 10_000, async () => !await ctx.page.eval(shownIn(selector)))
 
 /**
  * D16: five keys typed one at a time, each timed from its key to the rows for what is typed so far (the region's first
  * change, then the picker's own test), with the host asks each key sent up to 150 ms after its rows.
  */
-async function typing(ctx: PerfCtx, picker: Picker): Promise<Pick<Sample, 'keyMs' | 'asksPerKey'>> {
+export async function typing(ctx: PerfCtx, picker: Picker): Promise<Pick<Sample, 'keyMs' | 'asksPerKey'>> {
   const keyMs: (number | null)[] = []
   const asksPerKey: number[] = []
   for (let i = 0; i < picker.query.length; i++) {

@@ -8,7 +8,7 @@
  * their reason: a row is never written as met without a number.
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { BUDGETS, budgetsOf } from './budgets'
+import { BUDGETS, budgetsOf, familyOf } from './budgets'
 import type { Sample } from './lib/probe'
 import type { RowResult, RunResults } from './run'
 
@@ -37,10 +37,17 @@ export function latest(runs: RunResults[]): { row: RowResult; run: RunResults }[
   return [...by.values()]
 }
 
+/** `1 / 2`: LifeOS's round trips up to usable, the window's then the host's own, where the sandbox sat behind its hop. */
+export const lifeosAsks = (sample: Sample | undefined): string => (sample?.lifeos ? `${sample.lifeos.window} / ${sample.lifeos.host}` : '–')
+
+/** The link a run had, in words: its delay and rate, and its late chunks. */
+export const linkWords = (link: RunResults['link']): string =>
+  link ? `${link.rttMs} ms, ${link.rateMbit} Mbit/s${link.jitter ? `, 1 chunk in ${link.jitter} late` : ''}` : 'unslowed'
+
 export function perfTable(runs: RunResults[]): string {
   const out = [
-    '| Budget | Row | Budget says | First press | Middle press | First sign | Longest task | Asks to usable | Asks in the next second | From the host | Machine |',
-    '|---|---|---|---|---|---|---|---|---|---|---|'
+    '| Budget | Row | Budget says | First press | Middle press | First sign | Longest task | Longest after | Asks to usable | LifeOS: window / host | Asks in the next second | From the host | Machine |',
+    '|---|---|---|---|---|---|---|---|---|---|---|---|---|'
   ]
   for (const { row, run } of latest(runs)) {
     const ids = budgetsOf(row.id)
@@ -48,13 +55,15 @@ export function perfTable(runs: RunResults[]): string {
     const says = ids.map((b) => b.budget).join(' / ') || '–'
     const m = row.middle
     if (row.notRun || !m) {
-      out.push(`| ${budget} | \`${row.id}\` | ${says} | not run: ${row.notRun ?? 'no press finished'} | | | | | | | |`)
+      out.push(`| ${budget} | \`${row.id}\` | ${says} | not run: ${row.notRun ?? 'no press finished'} | | | | | | | | | |`)
       continue
     }
-    const shape = `${run.link ? `${run.link.rttMs} ms, ${run.link.rateMbit} Mbit/s` : 'unslowed'}, ${run.load} threads; load ${row.machine.load}${row.machine.anonGiB === null ? '' : `, ${row.machine.anonGiB} GiB`}`
-    out.push(`| ${budget} | \`${row.id}\` | ${says} | ${ms(row.samples[0]?.usable)} | ${m.usable == null ? `never usable (${m.error ?? 'timed out'})` : ms(m.usable)} | ${ms(m.first)} | ${ms(m.longest)} | ${asks(m)} | ${m.after.tAll} T, ${m.after.c} C | ${kb(m.wire?.down ?? m.counts.down)} | ${shape} |`)
+    const shape = `${linkWords(run.link)}, ${run.load} threads; load ${row.machine.load}${row.machine.anonGiB === null ? '' : `, ${row.machine.anonGiB} GiB`}`
+    out.push(`| ${budget} | \`${row.id}\` | ${says} | ${ms(row.samples[0]?.usable)} | ${m.usable == null ? `never usable (${m.error ?? 'timed out'})` : ms(m.usable)} | ${ms(m.first)} | ${ms(m.longest)} | ${ms(m.longestAfter)} | ${asks(m)} | ${lifeosAsks(m)} | ${m.after.tAll} T, ${m.after.c} C | ${kb(m.wire?.down ?? m.counts.down)} | ${shape} |`)
   }
-  out.push('', 'Not timed on the pair, or only in part:', '', ...BUDGETS.filter((b) => b.off).map((b) => `- **${b.id}** ${b.what}: ${b.off}`))
+  // Only the budgets of the families these runs stood the pair up for: a Work table lists Work's.
+  const families = new Set(runs.map((run) => run.family ?? 'work'))
+  out.push('', 'Not timed on the pair, or only in part:', '', ...BUDGETS.filter((b) => b.off && families.has(familyOf(b))).map((b) => `- **${b.id}** ${b.what}: ${b.off}`))
   return out.join('\n')
 }
 

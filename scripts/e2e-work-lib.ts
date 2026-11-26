@@ -94,15 +94,48 @@ export function watchProofChild(child: Pick<ChildProcess, 'once'>, label: string
   })
 }
 
+/**
+ * The ports a reserved port is taken from: below the kernel's ephemeral range, where no `listen(0)` lands. A port
+ * reserved by listening on 0 and let go is the kernel's to hand out again, and an instance's own `listen(0)` took one
+ * (box's gateway took box's Work port: every Work document read "Offline", 2026-11-26). Null where the range is not
+ * Linux's file, and the port is then the kernel's pick as before.
+ */
+export function reservedRange(text: string | null): { from: number; to: number } | null {
+  const low = Number(text?.trim().split(/\s+/)[0])
+  if (!Number.isInteger(low) || low <= 12_000) return null
+  return { from: Math.max(10_000, low - 12_000), to: low - 1 }
+}
+
+/** Fixed ports of the box's own that may be bound later: the Windows rig's SSH (22220) and the standing VM's (22230). */
+export const KEPT_PORTS = new Set([22220, 22230])
+
+const tryPort = (port: number, signal: AbortSignal): Promise<number | null> => new Promise((ok, fail) => {
+  const s = createServer()
+  s.once('error', (error: NodeJS.ErrnoException) => (error.code === 'EADDRINUSE' || error.code === 'EACCES' ? ok(null) : fail(error)))
+  s.listen({ port, host: '127.0.0.1', signal }, () => {
+    const { port: got } = s.address() as { port: number }
+    s.close((error) => error ? fail(error) : ok(got))
+  })
+})
+
 export const freePort = (): Promise<number> =>
-  withinDeadline('reserve a loopback port', 5000, (signal) => new Promise((ok, fail) => {
-    const s = createServer()
-    s.once('error', fail)
-    s.listen({ port: 0, host: '127.0.0.1', signal }, () => {
-      const { port } = s.address() as { port: number }
-      s.close((error) => error ? fail(error) : ok(port))
-    })
-  }))
+  withinDeadline('reserve a loopback port', 5000, async (signal) => {
+    let text: string | null = null
+    try {
+      text = readFileSync('/proc/sys/net/ipv4/ip_local_port_range', 'utf8')
+    } catch {
+      // not Linux
+    }
+    const range = reservedRange(text)
+    for (let tries = 0; range && tries < 50; tries++) {
+      const pick = range.from + Math.floor(Math.random() * (range.to - range.from + 1))
+      const port = KEPT_PORTS.has(pick) ? null : await tryPort(pick, signal)
+      if (port) return port
+    }
+    const port = await tryPort(0, signal)
+    if (!port) throw new Error('No loopback port was free')
+    return port
+  })
 
 export function proofRpc<T>(port: number, method: string, params: unknown, ms = 120_000, parent?: AbortSignal): Promise<T> {
   return withinDeadline(method, ms, (signal) => new Promise<T>((resolve, reject) => {
