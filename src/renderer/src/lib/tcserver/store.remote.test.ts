@@ -87,6 +87,8 @@ class RemoteLink implements Link {
   holdEvents: (() => void)[] | null = null;
   /** The next session.events alone waits here until released (an answer lost on a live link). */
   holdNext: (() => void)[] | null = null;
+  /** While set, every session.list and session.changes answer waits here until released. */
+  holdList: (() => void)[] | null = null;
   /** The host's subscriptions on this socket: one a thread, whatever asked for it. */
   subscribed = new Set<string>();
   private pushListeners = new Set<(push: ServerPush) => void>();
@@ -102,6 +104,11 @@ class RemoteLink implements Link {
       this.holdNext = null;
       const answer = this.answer<T>(method, params);
       return new Promise<T>((resolve) => next.push(() => resolve(answer)));
+    }
+    const lists = this.holdList;
+    if ((method === "session.list" || method === "session.changes") && lists) {
+      const answer = this.answer<T>(method, params);
+      return new Promise<T>((resolve) => lists.push(() => resolve(answer)));
     }
     const hold = this.holdEvents;
     if (method === "session.events" && hold) {
@@ -471,6 +478,37 @@ describe("remote profile: the catch-up after a reconnect", () => {
     for (const id of ["a", "b", "c"]) {
       expect(sessionStore.get(id)!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1"]);
     }
+  });
+
+  it("after a new socket the shown thread's replay goes out before session.list answers, once, and its rows fold once", async () => {
+    link.pages = [[wireMeta({ id: "a" }), wireMeta({ id: "s" })]];
+    for (const id of ["a", "s"]) link.events.set(id, turns(id, 2));
+    await boot(link);
+    sessionStore.followShown({ shown: () => "s", onChange: () => () => {} });
+    sessionStore.setMounted(["a", "s"]);
+    for (const id of ["a", "s"]) await sessionStore.ensureLoaded(id);
+    // Cut: the shown thread gains a turn on the host.
+    link.events.set("s", [...turns("s", 2), ...turns("s", 1, 5).map((r, i) => ({ ...r, event: { ...r.event, text: `late ${i}` } as EventRow["event"] }))]);
+    link.holdList = [];
+    const start = link.calls.length;
+    link.open();
+    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+    const since = (method: string, id?: string): number =>
+      link.calls.slice(start).filter((c) => c.method === method && (!id || (c.params as { sessionId?: string }).sessionId === id)).length;
+    // The list is still out, and the shown thread's page is already asked; the other pane waits for the list.
+    expect(since("session.list") + since("session.changes")).toBeGreaterThan(0);
+    expect(link.holdList).not.toHaveLength(0);
+    expect(since("session.events", "s")).toBe(1);
+    expect(since("session.events", "a")).toBe(0);
+    expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1"]);
+    // The list answers: the other pane replays, the shown one is not asked again, and nothing folds twice.
+    const held = link.holdList!;
+    link.holdList = null;
+    for (const release of held) release();
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(since("session.events", "s")).toBe(1);
+    expect(since("session.events", "a")).toBe(1);
+    expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1"]);
   });
 
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */

@@ -616,7 +616,9 @@ class SessionStore {
     const list = (): void => {
       // Transcripts asked for while the host was away load now, beside the list.
       this.kickWanted(link.environmentId);
-      entry.listed = this.resync(link)
+      // The hello named the host: the thread on screen replays its gap now, beside the list, not after it.
+      const early = this.replayShown(link.environmentId);
+      entry.listed = this.resync(link, early)
         .then(() => this.registryRef?.markFresh?.(link.environmentId, true))
         .catch(() => undefined)
         .then(() => {
@@ -1327,12 +1329,12 @@ class SessionStore {
    *  loaded there), then replay any gap for the sessions whose panes are
    *  mounted. Runs once per replacement session of that environment. A
    *  host with a cursor here resumes from it instead (`resumeList`). */
-  async resync(link: Link): Promise<void> {
+  async resync(link: Link, early?: ReadonlySet<string>): Promise<void> {
     const environmentId = link.environmentId;
     if (!this.attached.has(environmentId)) return;
     if (await this.resumeList(link)) {
       this.settleDrafts(environmentId);
-      await this.replayMounted(environmentId);
+      await this.replayMounted(environmentId, early);
       return;
     }
     const lists = await Promise.all([
@@ -1355,11 +1357,27 @@ class SessionStore {
     this.mirrored.delete(environmentId);
     this.bumpMeta();
     this.settleDrafts(environmentId);
-    await this.replayMounted(environmentId);
+    await this.replayMounted(environmentId, early);
   }
 
-  /** After a list or a resume: the transcripts on screen replay their gap. */
-  private async replayMounted(environmentId: string): Promise<void> {
+  /** On a new socket, before the list: each loaded thread on screen replays its gap at once. Their ids, which
+   *  the list's own replay (`replayMounted`) then leaves alone, so each asks once. */
+  private replayShown(environmentId: string): Set<string> {
+    const early = new Set<string>();
+    for (const entry of this.entries.values()) {
+      if (!entry.loaded || entry.load.phase !== "loaded" || entry.meta?.environmentId !== environmentId) continue;
+      if (!this.onScreen(entry.session.id)) continue;
+      early.add(entry.session.id);
+      void this.replayGap(entry, "resync").then(
+        () => this.bump(),
+        () => undefined,
+      );
+    }
+    return early;
+  }
+
+  /** After a list or a resume: the transcripts on screen replay their gap (those in `early` already are). */
+  private async replayMounted(environmentId: string, early?: ReadonlySet<string>): Promise<void> {
     // Only the transcripts on screen replay their gap; a loaded one whose
     // tab is no longer mounted is dropped and fetched again if it comes
     // back. A reconnect once replayed every transcript ever opened — 2,560
@@ -1369,6 +1387,7 @@ class SessionStore {
     const replay: Entry[] = [];
     for (const entry of this.entries.values()) {
       if (!entry.loaded || !entry.meta || entry.meta.environmentId !== environmentId) continue;
+      if (early?.has(entry.meta.id)) continue;
       if (!keep || keep.has(entry.meta.id)) replay.push(entry);
       // A transcript the unload refuses (busy, a send pending) keeps its
       // rows, so it replays its gap like a kept one: a resync's hold on it

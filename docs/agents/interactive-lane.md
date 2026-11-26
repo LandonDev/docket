@@ -59,6 +59,13 @@
   line names its lane and, in bulk, `gate=<ms>` waited or `gate=joined`; the renderer reports `first-paint
   session=<id> host=<env> ms=<n> why= queued= fetch= fold= text=` past 500 ms, timed from the press, and
   every open in an hourly `first-paint-hist` line (lib/firstPaint.ts; the words in docs/box.md).
+- After a new socket (its hello has named the host), each loaded thread on
+  screen replays its gap at once, beside `session.changes` and
+  `session.list`, not after them (store.ts `replayShown`); the list's own
+  replay (`replayMounted`) leaves those alone, so each asks once, and the
+  rest take turns in the catch-up lane as before (catchUp.ts). Its rows fold
+  once and in order by seq whatever the list answers after
+  (store.remote.test.ts).
 - The host's own jobs pause on `yieldUntilIdle` (cold mover, turn index
   backfill, fold sweep, mirror backfill, archive and attachment sweeps) or
   run through `whenLoopIdle` (liveness sweep, headroom.json save, accounts
