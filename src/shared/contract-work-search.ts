@@ -34,6 +34,7 @@ export const SearchHitSchema = z.object({
   detail: z.string().max(500).optional(),
   snippet: z.string().max(SEARCH_SNIPPET).optional(),
   at: z.number().optional(),
+  allDay: z.literal(true).optional(),
   workspaceId: z.string().max(200).nullable(),
   open: SearchOpenSchema,
   chip: ContextChipSchema.optional(),

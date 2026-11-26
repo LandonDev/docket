@@ -8924,19 +8924,21 @@ public struct WorkSearchHit: Codable, Hashable, Sendable {
     public let detail: String?
     public let snippet: String?
     public let at: Double?
+    public let allDay: Bool?
     public let workspaceId: String?
     public let open: WorkSearchOpen
     public let chip: ContextChip?
     public let cloud: Bool?
     public let openedAt: Double?
 
-    public init(key: String, kind: String, title: String, detail: String? = nil, snippet: String? = nil, at: Double? = nil, workspaceId: String?, open: WorkSearchOpen, chip: ContextChip? = nil, cloud: Bool? = nil, openedAt: Double? = nil) {
+    public init(key: String, kind: String, title: String, detail: String? = nil, snippet: String? = nil, at: Double? = nil, allDay: Bool? = nil, workspaceId: String?, open: WorkSearchOpen, chip: ContextChip? = nil, cloud: Bool? = nil, openedAt: Double? = nil) {
         self.key = key
         self.kind = kind
         self.title = title
         self.detail = detail
         self.snippet = snippet
         self.at = at
+        self.allDay = allDay
         self.workspaceId = workspaceId
         self.open = open
         self.chip = chip
@@ -8945,7 +8947,7 @@ public struct WorkSearchHit: Codable, Hashable, Sendable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case key, kind, title, detail, snippet, at, workspaceId, open, chip, cloud, openedAt
+        case key, kind, title, detail, snippet, at, allDay, workspaceId, open, chip, cloud, openedAt
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -8956,6 +8958,7 @@ public struct WorkSearchHit: Codable, Hashable, Sendable {
         try container.encodeIfPresent(detail, forKey: .detail)
         try container.encodeIfPresent(snippet, forKey: .snippet)
         try container.encodeIfPresent(at, forKey: .at)
+        try container.encodeIfPresent(allDay, forKey: .allDay)
         try container.encode(workspaceId, forKey: .workspaceId)
         try container.encode(open, forKey: .open)
         try container.encodeIfPresent(chip, forKey: .chip)

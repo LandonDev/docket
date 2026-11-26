@@ -349,7 +349,7 @@ host alone).
 both tiers over the thread's own reach and answers plain lines under kind
 headings: a LifeOS row with `table:id` for the LifeOS tools (a document
 listed under Files too: `docs:id`), a thread by its id, a file by its
-place. Dates use `hisZone(ctx)`. An event also names its time and zone. `limit` holds a kind as a whole, across its sources. `kinds:
+place. Dates use `hisZone(ctx)`. An event also names its time and zone, or "all day" for one with no time (`allDay` on its hit). `limit` holds a kind as a whole, across its sources. `kinds:
 ["doc"]` also finds the documents a job's Files lists. It ends with one
 line a source it could not search, and says "Nothing found" only when some
 source searched. It has no argument that names a job, a workspace or a sector. One

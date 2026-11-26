@@ -166,6 +166,12 @@ describe('events', () => {
     expect([EVENTS_BACK_DAYS, EVENTS_AHEAD_DAYS]).toEqual([30, 120])
     expect(eventsWindow(1000 * DAY)).toEqual({ from: 970 * DAY, to: 1120 * DAY })
   })
+  it('carry all day on an event with no time, and nothing on one with a time', async () => {
+    const rig = makeRig()
+    rig.rows['events:range'] = [{ _id: 'd1', sector: 'purdue', title: 'Budget day', startsAt: now + DAY, allDay: true }, rows[0]]
+    const hits = await event.search(ask('budget'), rig.ctx)
+    expect(hits.map((h) => h.allDay)).toEqual([true, undefined])
+  })
   it('are found by a place with its accents aside', async () => {
     const rig = makeRig()
     rig.rows['events:range'] = rows

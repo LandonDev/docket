@@ -18,11 +18,12 @@ import { dayOf, hisZone, timeIn } from '../clock'
 const LIMIT = 5
 const LIMIT_MAX = 20
 
-/** A hit's day in his zone, with the named time for an event. */
-export function whenWords(hit: Pick<SearchHit, 'kind' | 'at'>, zone: string): string | null {
+/** A hit's day in his zone, with the named time for an event ("all day" for one with none). */
+export function whenWords(hit: Pick<SearchHit, 'kind' | 'at' | 'allDay'>, zone: string): string | null {
   if (hit.at === undefined) return null
   const day = dayOf(zone, hit.at)
-  return hit.kind === 'event' ? `${day} ${timeIn(zone, hit.at, 'named')}` : day
+  if (hit.kind !== 'event') return day
+  return hit.allDay ? `${day}, all day` : `${day} ${timeIn(zone, hit.at, 'named')}`
 }
 
 /** How the thread goes on from a hit: a LifeOS row as `table:id` for the LifeOS tools, a thread by its id, a file by its place in words. */

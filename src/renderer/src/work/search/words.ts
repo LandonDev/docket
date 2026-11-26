@@ -60,14 +60,15 @@ export function factOf(hit: SearchHit, now = Date.now(), query = ""): string | u
 const clock = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" });
 const monthDay = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
-/** When an event is: today's as a time, any other as its day. Never a year: an event is found only within months of today. */
-export function eventWords(at: number, now = Date.now()): string {
+/** When an event is: today's as a time ("All day" when it has none), any other as its day. Never a year: an event is found only within months of today. */
+export function eventWords(at: number, now = Date.now(), allDay = false): string {
   const date = new Date(at);
-  return date.toDateString() === new Date(now).toDateString() ? clock.format(date) : monthDay.format(date);
+  if (date.toDateString() !== new Date(now).toDateString()) return monthDay.format(date);
+  return allDay ? "All day" : clock.format(date);
 }
 
 /** The time at a row's end; none for a task (its due day is its fact). */
 export function timeOf(hit: SearchHit, now = Date.now()): string | undefined {
   if (hit.at === undefined || hit.kind === "task") return undefined;
-  return hit.kind === "event" || hit.at > now ? eventWords(hit.at, now) : ageWords(hit.at, now);
+  return hit.kind === "event" || hit.at > now ? eventWords(hit.at, now, hit.allDay) : ageWords(hit.at, now);
 }

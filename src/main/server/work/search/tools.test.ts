@@ -231,6 +231,8 @@ describe("a hit's time as a thread reads it", () => {
     expect(whenWords({ kind: 'mail', at: game }, 'America/Chicago')).toBe('2026-11-27')
     expect(whenWords({ kind: 'mail', at: game }, 'UTC')).toBe('2026-11-28')
     expect(whenWords({ kind: 'mail' }, 'America/Chicago')).toBeNull()
+    const day = Date.UTC(2026, 10, 27, 6)
+    expect(whenWords({ kind: 'event', at: day, allDay: true }, 'America/Chicago')).toBe('2026-11-27, all day')
   })
 })
 

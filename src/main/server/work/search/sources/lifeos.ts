@@ -22,7 +22,7 @@ export { EVENTS_AHEAD_DAYS, EVENTS_BACK_DAYS, eventsWindow } from './window'
 export type Person = { _id: string; name: string; notes?: string; sectors?: string[]; identities?: { kind?: string; value?: string; email?: string }[] }
 export type MailThread = { _id: string; sector?: string; subject: string; snippet?: string; senders?: string[]; lastMessageAt?: number }
 export type Task = { _id: string; sector?: string; title: string; description?: string; dueAt?: number; status?: string; key?: string }
-export type Event = { _id: string; sector?: string; title: string; startsAt: number; location?: string; description?: string }
+export type Event = { _id: string; sector?: string; title: string; startsAt: number; allDay?: boolean; location?: string; description?: string }
 type Doc = { _id: string; sector?: string; title: string; editedAt?: number }
 type Project = { _id: string; sector?: string; name: string; description?: string; status?: string }
 
@@ -118,6 +118,7 @@ export const eventHit = (e: Event, workspaceId: string): SearchHit => ({
   title: e.title,
   ...(e.location ? { detail: e.location } : {}),
   at: e.startsAt,
+  ...(e.allDay ? { allDay: true as const } : {}),
   workspaceId,
   open: view('agenda', { event: e._id }),
   chip: lifeosChip('event', 'events', e._id, e.title, mentionExcerpt([e.location, e.description].filter(Boolean).join('. ')))

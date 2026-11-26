@@ -22,6 +22,14 @@ describe("a row's words", () => {
     // short enough for the time's column: never two lines
     expect(next.length).toBeLessThanOrEqual(7);
   });
+  it("says All day for today's event with no time, and its day on any other: never midnight", () => {
+    const today = new Date(2026, 10, 23).getTime();
+    expect(eventWords(today, now, true)).toBe("All day");
+    expect(timeOf(hit({ kind: "event", at: today, allDay: true }), now)).toBe("All day");
+    const later = new Date(2026, 10, 25).getTime();
+    expect(timeOf(hit({ kind: "event", at: later, allDay: true }), now)).toBe(eventWords(later, now));
+    expect(timeOf(hit({ kind: "event", at: later, allDay: true }), now)).not.toMatch(/12:00/);
+  });
   it("gives an event its day and what has passed its age; a task has no time, its due day is its fact", () => {
     expect(timeOf(hit({ kind: "event", at: new Date(2027, 0, 12).getTime() }), now)).toBe(eventWords(new Date(2027, 0, 12).getTime(), now));
     expect(timeOf(hit({ at: now - 2 * DAY }), now)).toBe("2d");

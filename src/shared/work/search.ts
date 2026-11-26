@@ -33,6 +33,8 @@ export interface SearchHit {
   /** the matched words in their line, at most `SEARCH_SNIPPET` characters; drawn in the fact's place */
   snippet?: string
   at?: number
+  /** an event with no time: its row says "All day" today, else its date, never midnight */
+  allDay?: true
   /** the job; null: Work Chats */
   workspaceId: string | null
   open: SearchOpen
