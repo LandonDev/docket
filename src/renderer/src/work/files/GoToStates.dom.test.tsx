@@ -201,7 +201,7 @@ describe("Go to by keyboard", () => {
     fireEvent.change(field(), { target: { value: "spring" } });
     await settle();
     const fact = screen.getByRole("option", { name: /Spring LAN/ }).querySelector<HTMLElement>("[data-files-goto-fact]")!;
-    expect(fact.className.split(" ")).toEqual(expect.arrayContaining(["shrink-[8]", "min-w-[6em]"]));
+    expect(fact.className.split(" ")).toEqual(expect.arrayContaining(["shrink-[8]", "min-w-[8em]"]));
     expect(fact.className).not.toContain("shrink-0");
     const cut = fact.querySelector("[data-middle-cut]")!;
     expect(cut.querySelector("[data-middle-tail]")!.textContent).toBe("\u00a0› Marketing");
