@@ -101,6 +101,7 @@ export const Face: ProjectsKit["Face"] = ({ name, size, className }) => (
 
 const kit: ProjectsKit = {
   SectorMark: () => null,
+  hideProjectSector: true,
   Face,
   // A page in a browser names no keys of the app.
   Hint: ({ children }) => children,

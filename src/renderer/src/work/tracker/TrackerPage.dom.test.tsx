@@ -102,7 +102,7 @@ describe("the tracker", () => {
       ],
     }];
     render(body({ waitingOnly: true, jobs }));
-    const next = (id: string) => document.querySelector(`[data-project='${id}'] [data-part=next]`)?.textContent;
+    const next = (id: string) => document.querySelector(`[data-project='${id}'] [data-part=next] .truncate`)?.textContent;
     expect(next("p-wait")).toBe("1 task late");
     expect(next("p-late")).toContain("Order shirts");
     cleanup();

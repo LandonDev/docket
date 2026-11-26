@@ -80,8 +80,8 @@ Five groups, one a job in the order the first host lists them: its sector's dot 
 work-kit's `ProjectFactsRow` in `ProjectFactsTable` with the Threads column on: Project, Next (late in red with how
 late, due today in the foreground), Waiting on (a name and an age), Threads (the lead's `OutcomeMark` and its outcome
 words, its tip the thread's title and those words, `threadTip`, for a cell cut short; empty when the lead has
-nothing to say), Done ("2 of 7"), Target. Under 760px the kit's table turns each row
-into two lines. Loading is `ProjectFactsBones` under the header.
+nothing to say), Done ("2 of 7"), Target. Below 56rem of table width, the facts flow under the project name and show Next and Waiting on labels. Waiting on
+describes the project's longest wait. Loading is `ProjectFactsBones` under the header.
 
 - **Presses.** The row opens the project's page in its job (`openProjectPage`: the window enters the job as a press
   on its rail row would, then `openWorkView({workspaceId, view: "projects", project})`). The Threads cell opens the

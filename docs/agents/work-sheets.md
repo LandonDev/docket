@@ -1655,6 +1655,9 @@ conflict caught up with `since`, pushes), `grid.ts` (work-kit's
   A: on the branch `pin-a-formula-commit`, needs a signed release; until the pin moves, the cell editor alone), are
   ended into the queue before a close, quit or reload.
 
+- **Tab while the grid draws.** The visible formula bar can take focus while the canvas loads. Once the
+  grid can show cell focus, the canvas joins the tab order. Univer focuses its hidden editor when it
+  needs to capture typing.
 - **Find and Replace in the grid** (work-kit's find bar, from work-kit v97). The body asks the canvas for `find` and,
   where its handle has one (`handle.find.available`), answers the `find` work command, so Edit → Find… and ⌘F open the
   grid's own bar, on a sheet he can only read too; Replace is offered only where he may edit, and writes as any typed

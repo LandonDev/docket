@@ -107,6 +107,7 @@
 @source "../../../node_modules/work-kit/src/formats/clipboard/index.ts";
 @source "../../../node_modules/work-kit/src/formats/diff/carry.ts";
 @source "../../../node_modules/work-kit/src/formats/diff/index.ts";
+@source "../../../node_modules/work-kit/src/formats/diff/runs.ts";
 @source "../../../node_modules/work-kit/src/formats/diff/words.ts";
 @source "../../../node_modules/work-kit/src/formats/html/index.ts";
 @source "../../../node_modules/work-kit/src/lifeos/api.ts";

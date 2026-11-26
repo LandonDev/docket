@@ -201,6 +201,7 @@ A link's item may be a LifeOS project (`table: 'projects'`): one named
 guest views the project until the link ends. It is made from Share on the
 project's bar or in its settings, or asked for by an agent with
 `guest_link {projectId, name, days}`, held as any other.
+The guest's project facts start with its state. The sector and its comma stay out.
 
 - **What the guest gets** is LifeOS's `projects:guestView`, the one place
   the cut is made: the project's name, state and description, its figures,
@@ -216,7 +217,9 @@ project's bar or in its settings, or asked for by an agent with
   the document's live room, whose state keeps the words that were deleted
   and the marks of his comments, and carries every reader's caret. A guest
   of a whole project is shown none of that: the service reads the
-  document as it stands (`collab.read`) and hands its markdown; main signs
+  document as it stands (`collab.read`) and hands its markdown. The first
+  paint shows the words and table cells without markdown marks. Later,
+  the rich text view draws the lists and tables. Main signs
   no token for a document of a project's link and the link has no document
   socket. A sheet keeps its socket (a sheet's state holds no history), on
   a view token.

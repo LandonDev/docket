@@ -510,7 +510,8 @@ place for a LifeOS document). What it tells the pane:
   open the editor's own find (work-kit `find`, `onFind`): a small bar at the
   text's top right with the count ("3 of 17", "No results"), Match case,
   Whole word, the two arrows, and Replace and Replace all on a document he
-  may edit. Every match is a tint drawn on the text, never written into it;
+  may edit. In a narrow pane the controls move below their fields so both
+stay in reach. Every match is a tint drawn on the text, never written into it;
   a replace is one step of undo. The body answers `find` and opens the bar
   through the handle the editor hands it. Enter and ⇧Enter step, Escape
   closes it and leaves the match in hand chosen. A project's page and a

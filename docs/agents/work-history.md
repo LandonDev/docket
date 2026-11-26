@@ -61,7 +61,8 @@ go through `diffBlocks`:
   it goes to the one writer between the two sides when there is only one.
   A side kept as blocks (after a compaction) has no items: no `by`.
 
-A styled document's formatting is compared with its words. A row that
+Compare checks a styled document's formatting on the words both versions
+keep, even when words are added or removed. A row that
 changed beside its words says how, under its block, in a 12px muted line
 (work-kit `changeWords`: "Heading 1 becomes Title", "11 pt becomes 14 pt",
 "Line spacing set to 2"). The page beside the text (the named styles, the

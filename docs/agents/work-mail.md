@@ -222,7 +222,9 @@ Snoozed, Archive, Trash, then Mail settings), Filter, New mail and search are th
 head, inside work-kit, and Start thread is in the reader's More (a `mail`
 chip, `{at: 'lifeos', table: 'mailThreads', id}`; the first send links the
 thread to the mail). Which mailbox, which mail was open and the composer
-stay per workspace while the window lives (`MailPage`).
+stay per workspace while the window lives (`MailPage`). The reader leaves
+the tab order while a full composer covers it. Closing the composer returns
+focus to the control in hand. The offline note wraps when the list is narrow.
 
 A sender, and each known person in a message's Details, opens their page
 in People when the address is one of the sector's people (work-kit's

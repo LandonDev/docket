@@ -93,6 +93,9 @@ runs the same guard on its own lock.
 
 ## Bumping the pin
 
+The Work polish pin is `b475436d93034483edde8aad91301a2bbba3ae26`. It keeps
+`WORK_KIT_API` at 3. The pin needs a signed Docket release.
+
 A bump is one commit that changes four files: package.json, bun.lock,
 `ios/TempCode/project.yml` (the phone's WorkKit `revision:` is the same commit)
 and the tracked `ios/TempCode/TempCode.xcodeproj/project.pbxproj`, whose one

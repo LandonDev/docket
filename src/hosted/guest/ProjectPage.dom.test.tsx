@@ -71,6 +71,7 @@ describe("a project on the guest's page", () => {
   it("draws the project, its tasks and its documents, and no control that writes", async () => {
     const { view, slot } = await mount();
     expect(await screen.findByRole("heading", { name: "Spring LAN" })).toBeTruthy();
+    expect(document.querySelector("[data-part=facts]")?.textContent?.trim()).toBe("Active");
     expect(screen.getByText("Book the ballroom")).toBeTruthy();
     expect(screen.getByText("Network for 64 seats")).toBeTruthy();
     expect(screen.getByText("Run of show")).toBeTruthy();
