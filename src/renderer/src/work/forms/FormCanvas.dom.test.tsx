@@ -138,6 +138,8 @@ describe("the form kind", () => {
     expect(screen.getByDisplayValue("Spring LAN registration")).toBeTruthy();
     expect([...document.querySelectorAll("[data-q]")].map((q) => q.getAttribute("data-q"))).toEqual(["name", "game", "diet"]);
     expect(screen.getByRole("tab", { name: "Questions" }).getAttribute("aria-selected")).toBe("true");
+    // Council round 6, sitting E (Sol): both tabs reach the track's whole 24px.
+    for (const name of ["Questions", "Responses"]) expect(screen.getByRole("tab", { name }).className).toContain("after:-inset-y-0.5");
     fireEvent.click(screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(formHost.publish).toHaveBeenCalledTimes(1));
     const link = await found("[data-form-link] a");

@@ -1,7 +1,7 @@
 import { downOf, downWords } from "../shell/lifeosDown";
 import { connectingWords } from "../shell/lifeosWords";
 import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RoutineRow, RoutineRun } from "@shared/contract-work-routines";
 import { ChevronLeft, Plus } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -147,6 +147,19 @@ export function View({ env, workspace }: WorkViewProps) {
     backFrom.current = null;
   }, [picked]);
   newForm.useAnswer(() => !linkDown && setForm({ row: null }));
+  // Whether the detail stands beside the list (40rem of view and over): there the first routine's detail is open before
+  // any pick, so its row is the current one for a reader too, as its fill says.
+  const [pane, setPane] = useState<HTMLDivElement | null>(null);
+  const [wide, setWide] = useState(false);
+  useLayoutEffect(() => {
+    if (!pane) return;
+    const measure = () => setWide(pane.clientWidth >= 40 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [pane]);
 
   const rows = useMemo(() => {
     if (load.status !== "ready") return [];
@@ -179,7 +192,7 @@ export function View({ env, workspace }: WorkViewProps) {
       ) : (
         <div className="flex h-full min-h-0 flex-col">
           {load.failed ? <ViewStateLine word="Routines did not load" detail={load.failed} onRetry={retry} /> : null}
-          <div className="@container/routines flex min-h-0 flex-1">
+          <div ref={setPane} className="@container/routines flex min-h-0 flex-1">
             {/* A list of buttons, the picked one marked current: Tab moves through them, as a listbox's arrows would not. */}
             <ul
               ref={list}
@@ -192,7 +205,7 @@ export function View({ env, workspace }: WorkViewProps) {
             >
               {rows.map((r) => (
                 <li key={r.id} className="flex flex-col">
-                  <RoutineItem lifeosWait={lifeosWait} row={r} current={r.id === current?.id} picked={r.id === picked} onPick={() => setPicked(r.id)} />
+                  <RoutineItem lifeosWait={lifeosWait} row={r} current={r.id === current?.id} picked={r.id === picked} open={r.id === current?.id && (r.id === picked || wide)} onPick={() => setPicked(r.id)} />
                 </li>
               ))}
             </ul>
@@ -211,10 +224,11 @@ export function View({ env, workspace }: WorkViewProps) {
 }
 
 /**
- * A row. `current` is the routine the detail shows: wide, the picked one or the first; `picked`, the one he chose. Under
- * 640px the list stands alone until he picks, so only a picked row is marked open there (its ground and `aria-current`).
+ * A row. `current` is the routine the detail shows: wide, the picked one or the first; `picked`, the one he chose; `open`,
+ * the current one wherever its detail is on screen. Under 640px the list stands alone until he picks, so only a picked
+ * row is marked open there (its ground and `aria-current`); wide, the first is, before any pick.
  */
-function RoutineItem({ row, current, picked, onPick, lifeosWait }: { row: RoutineRow; current: boolean; picked: boolean; onPick: () => void; lifeosWait: string | null }) {
+function RoutineItem({ row, current, picked, open, onPick, lifeosWait }: { row: RoutineRow; current: boolean; picked: boolean; open: boolean; onPick: () => void; lifeosWait: string | null }) {
   const mark = rowMark(row);
   const line = rowLine(row);
   const shown = row.waiting === LIFEOS_WAIT && lifeosWait ? line.replace(/waiting on LifeOS$/, midLine(lifeosWait)) : line;
@@ -225,7 +239,7 @@ function RoutineItem({ row, current, picked, onPick, lifeosWait }: { row: Routin
       <ItemButton
         ref={ref}
         data-routine-row={row.id}
-        aria-current={picked ? "true" : undefined}
+        aria-current={open ? "true" : undefined}
         onClick={onPick}
         className={cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5", current && !picked && "@max-[40rem]/routines:bg-transparent @max-[40rem]/routines:hover:bg-foreground/5")}
       >

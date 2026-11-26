@@ -6,7 +6,7 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasShell } from "../canvas/kind";
-import { ResponseTable, responseName } from "./responses";
+import { HALF_TAB, ResponseTable, responseName } from "./responses";
 
 afterEach(() => {
   cleanup();
@@ -22,6 +22,13 @@ function size(el: HTMLElement, { width, scrollWidth, scrollLeft }: { width: numb
   Object.defineProperty(el, "scrollWidth", { configurable: true, value: scrollWidth });
   el.scrollLeft = scrollLeft;
 }
+
+/** Council round 6, sitting E (Sol): the 24px track insets its pill 2px, so the tabs took 20px. */
+it("gives a form bar's tabs the track's whole 24px", () => {
+  expect(HALF_TAB).toContain("after:absolute");
+  expect(HALF_TAB).toContain("after:-inset-y-0.5");
+  expect(HALF_TAB).toContain("after:content-['']");
+});
 
 describe("the answers' table", () => {
   it("marks the edge that has more past it, and the wrapper fades that edge", () => {

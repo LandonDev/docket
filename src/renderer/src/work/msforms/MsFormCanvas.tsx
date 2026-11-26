@@ -15,7 +15,7 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import { sayError } from "../canvas/frame";
 import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps, CanvasShell, MoreEntry } from "../canvas/kind";
-import { ResponsesSkeleton, ResponseTable } from "../forms/responses";
+import { HALF_TAB, ResponsesSkeleton, ResponseTable } from "../forms/responses";
 import { LiveBody } from "../office/live/LiveBody";
 import { LiveCover } from "../office/live/cover";
 import { liveAskUrl, liveLayer } from "../office/live/layer";
@@ -333,10 +333,10 @@ export function Bar(props: Props) {
       <Tabs value={half} onValueChange={(next) => store.set({ half: next as Half })} className="mx-1 shrink-0 gap-0">
         <TabsList aria-label="Half" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
           <TabsIndicator />
-          <TabsTrigger value="form" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
+          <TabsTrigger value="form" className={`${TABS_PILL_TRIGGER} ${HALF_TAB}`}>
             Form
           </TabsTrigger>
-          <TabsTrigger value="responses" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
+          <TabsTrigger value="responses" className={`${TABS_PILL_TRIGGER} ${HALF_TAB}`}>
             Responses
             {view.unseen ? <span className="text-muted-foreground tabular-nums">{view.unseen}</span> : null}
           </TabsTrigger>

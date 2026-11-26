@@ -43,7 +43,7 @@ vi.mock("../../components/ui/toaster", async (original) => ({ ...(await original
 
 // The dialog's rules by the date field's value; the field itself is proven in components/ui and work/dateField.dom.test.tsx.
 vi.mock("../../components/ui/date-field", async () => ({ DateField: (await import("../../work/testDateField")).DateFieldStandIn }));
-const { Head, View, setMoneyPeriod } = await import("./MoneyView");
+const { Head, View, receiptName, setMoneyPeriod } = await import("./MoneyView");
 const { CHANGED_WORDS } = await import("./api");
 const { ALL_ROWS, EMPTY_READ, NOVEMBER, readOf } = await import("./money.fixtures");
 
@@ -223,6 +223,18 @@ describe("the Money view", () => {
     expect(pair.className).toContain("grid-cols-2");
     expect(pair.className).toContain("@max-[30rem]/entry:grid-cols-1");
     expect(pair.closest(".\\@container\\/entry")).toBeTruthy();
+  });
+
+  /** Council round 6, sitting E (Sol): every paperclip said "Open receipt", so a reader could not tell whose it opens. */
+  it("names each receipt press by its entry and day, one name a receipt", async () => {
+    mount();
+    await settle();
+    const clips = screen.getAllByRole("button", { name: /^Open receipt/ });
+    expect(clips.length).toBeGreaterThan(1);
+    const names = clips.map((c) => c.getAttribute("aria-label"));
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toContain(receiptName(NOVEMBER.find((r) => r.receipt && r.who === "Corner Fuel")!));
+    expect(names.every((n) => /^Open receipt: .+, [A-Z][a-z]{2} \d+, \d{4}$/.test(n!))).toBe(true);
   });
 
   it("says the ledger changed and reads again when a write names a row that moved", async () => {

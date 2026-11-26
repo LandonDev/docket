@@ -726,6 +726,10 @@ const keyOfRow = (row: LedgerRow): string => `${row.row}:${sigOf(row)}`;
 const openRow = (row: LedgerRow): void => set({ dialog: { kind: "row", row } });
 
 /** One entry, drawn again only when its row changed. */
+/** A row's paperclip, by the entry it belongs to: "Open receipt: Corner Fuel, Nov 20, 2026". */
+export const receiptName = (row: Pick<LedgerRow, "who" | "date">): string =>
+  `Open receipt: ${[row.who || "Entry", row.date ? formatDay(row.date) : null].filter(Boolean).join(", ")}`;
+
 const EntryRow = memo(function EntryRow({ row, place, onReceipt }: { row: LedgerRow; place: TableRowPlace; onReceipt: (receipt: NonNullable<LedgerRow["receipt"]>) => void }) {
   // The row is one press over its cells, so a Who or Category it cuts reads whole in the press's own tip, no stop of its own.
   const { ref: whoRef, cut: whoCut } = useTruncated(row.who);
@@ -758,9 +762,12 @@ const EntryRow = memo(function EntryRow({ row, place, onReceipt }: { row: Ledger
       </TableCell>
       <TableCell className="last:pr-2 text-end">
         {row.receipt ? (
-          <Button variant="ghost" size="icon-xs" aria-label="Open receipt" className="relative z-10 text-muted-foreground" onClick={() => onReceipt(row.receipt!)}>
-            <Paperclip />
-          </Button>
+          // Named by its entry, so each paperclip says whose receipt it opens.
+          <Tip label={receiptName(row)}>
+            <Button variant="ghost" size="icon-xs" aria-label={receiptName(row)} className="relative z-10 text-muted-foreground" onClick={() => onReceipt(row.receipt!)}>
+              <Paperclip />
+            </Button>
+          </Tip>
         ) : null}
       </TableCell>
     </TableRow>

@@ -1260,7 +1260,7 @@ Every computer being driven now, on every connected host, in one place
   takes the page's width, never a fit to nothing. Connecting: the last picture under a
   lighter wash, which fades out over `--dur-base` once the first frame is
   on the canvas; nothing moves. Lost (the host's link down): "Reconnecting
-  to The box", "Try 2 of 5", then "The picture stopped" with Retry; no
+  to the box…" (the host as a line says it, `nameInLine`), "Try 2 of 5", then "The picture stopped" with Retry; no
   stream is asked for meanwhile. Not set up: "The Windows VM is not set
   up" on the bare box, and the bar's one press goes to Settings. The
   keeper's own work (a restart, going back to a restore point, a move to

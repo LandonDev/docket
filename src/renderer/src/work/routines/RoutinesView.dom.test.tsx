@@ -286,6 +286,22 @@ describe("the Routines view", () => {
     expect(document.activeElement).toBe(pick);
   });
 
+  /** Council round 6, sitting E (Sol): wide, the first routine's detail was open and its row filled, but no reader heard it current. */
+  it("wide, marks the routine whose detail is open current before any pick, then the picked one alone", async () => {
+    host.list = async () => ({ routines: [row(), row({ id: "r2", name: "Evening wrap", createdAt: 2 })] });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(900);
+    render(<View {...props} />);
+    await settle();
+    const first = screen.getByRole("button", { name: /Morning brief/ });
+    const second = screen.getByRole("button", { name: /Evening wrap/ });
+    expect(first.getAttribute("aria-current")).toBe("true");
+    expect(second.getAttribute("aria-current")).toBeNull();
+    fireEvent.click(second);
+    expect(first.getAttribute("aria-current")).toBeNull();
+    expect(second.getAttribute("aria-current")).toBe("true");
+    vi.restoreAllMocks();
+  });
+
   it("narrow, shows the list until a pick, then the detail with a way back", async () => {
     render(<View {...props} />);
     await settle();

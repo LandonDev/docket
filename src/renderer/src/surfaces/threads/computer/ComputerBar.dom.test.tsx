@@ -93,6 +93,17 @@ describe("the computer's bar", () => {
     expect(screen.getByText("Allow Frame.io to be used?").className).toContain("text-foreground");
     // a question then a place would read "…be used?, Landon's MacBook": the strip and the thread say where
     expect([...document.querySelector('[data-slot="facts"]')!.children].map((c) => c.textContent)).toEqual(["Allow Frame.io to be used?"]);
+    // Council round 6, sitting E (Sol): under 480px the sentence gives way, so the question keeps a waiting mark there,
+    // a keyboard stop named by the question; wider, the sentence says it and the mark stays hidden.
+    const mark = document.querySelector<HTMLElement>("[data-bar-asking]")!;
+    expect(mark.getAttribute("aria-label")).toBe("Allow Frame.io to be used?");
+    expect(mark.tabIndex).toBe(0);
+    expect(mark.className).toContain("hidden");
+    expect(mark.className).toContain("@max-[480px]/bar:inline-flex");
+    expect(document.querySelector('[data-slot="facts"]')!.className).toContain("@max-[480px]/bar:hidden");
+    cleanup();
+    render(<ComputerBar tile={tile()} />);
+    expect(document.querySelector("[data-bar-asking]")).toBeNull();
     cleanup();
     render(<ComputerBar tile={vmTile({ pictureOnly: true })} vm={awake} />);
     expect(screen.getByText(NO_LIVE_PICTURE)).not.toBeNull();

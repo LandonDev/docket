@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent,
 import type { WinvmPoint, WinvmState } from "@server/shared/contract-work-winvm";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Kbd } from "@renderer/components/ui/kbd";
+import { StatusMark } from "@renderer/components/ui/status";
 import { loadToast } from "@renderer/components/ui/toaster";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
 import { Tip, TruncateTip } from "@renderer/components/tip";
@@ -495,6 +496,14 @@ export function ComputerBar({ tile, linkLost = false, name, onOpenSession, onToo
             <span className={cn("max-w-[50%] shrink-0 truncate leading-5 font-medium", TITLE_ROOM, small ? "text-xs" : "text-[13px]")}>{title}</span>
           )}
         </TruncateTip>
+        {asking && line && !small ? (
+          // Under 480px the sentence gives way to the title; the card's question keeps its mark there, whole in its tip.
+          <Tip label={line}>
+            <span tabIndex={0} role="img" aria-label={line} data-bar-asking className="focus-ring hidden shrink-0 rounded-sm @max-[480px]/bar:inline-flex">
+              <StatusMark state="waiting" word={false} />
+            </span>
+          </Tip>
+        ) : null}
         {small ? null : <BarSentence parts={parts} words={words} />}
       </div>
       <span data-slot="computer-reads" className="flex shrink-0 items-center gap-0.5">

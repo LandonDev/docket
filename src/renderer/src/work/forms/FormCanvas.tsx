@@ -24,7 +24,7 @@ import { AddOption } from "./AddOption";
 import { AddQuestion } from "./AddQuestion";
 import { linkFormHost, type FormHost } from "./host";
 import { answerBars, chartQuestion, liveView, optionDiff, plural, resolvePick, shownQuestions, TYPE_WORDS, type Pick, type Shown } from "./model";
-import { ResponsesSkeleton, ResponseTable as SharedResponseTable } from "./responses";
+import { HALF_TAB, ResponsesSkeleton, ResponseTable as SharedResponseTable } from "./responses";
 import { forgetWithItems } from "../canvas/gone";
 export { responseKeys } from "./responses";
 
@@ -279,11 +279,11 @@ export function Bar(props: Props) {
       >
         <TabsList aria-label="Half" className="relative p-0.5 group-data-[orientation=horizontal]/tabs:h-6">
           <TabsIndicator />
-          <TabsTrigger value="questions" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
+          <TabsTrigger value="questions" className={`${TABS_PILL_TRIGGER} ${HALF_TAB}`}>
             Questions
             {away ? <Waiting n={waiting} /> : null}
           </TabsTrigger>
-          <TabsTrigger value="responses" className={`${TABS_PILL_TRIGGER} px-2 text-xs`}>
+          <TabsTrigger value="responses" className={`${TABS_PILL_TRIGGER} ${HALF_TAB}`}>
             Responses
           </TabsTrigger>
         </TabsList>

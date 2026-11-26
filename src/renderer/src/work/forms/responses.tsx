@@ -10,6 +10,12 @@ import type { CanvasShell } from "../canvas/kind";
 import { plural, submittedTime } from "./model";
 
 /**
+ * A form bar's Questions (or Form) and Responses tabs: the 24px track insets its pill 2px, so each tab's press reaches
+ * 2px over and under it to take the track's whole 24px.
+ */
+export const HALF_TAB = "px-2 text-xs after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-['']";
+
+/**
  * The answers' table scrolls sideways inside its own box (the table's container): while more of it lies past an edge,
  * that edge fades over 24px, so a pane narrower than the table says it goes on. The flags sit on the container
  * (`useOverflowEdges`); the mask is the wrapper's, the same ramp as `OVERFLOW_FADE`.
