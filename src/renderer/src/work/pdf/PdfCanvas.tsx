@@ -172,12 +172,13 @@ function useFeeds(
   const mode = view?.mode;
   const missing = view?.missing;
   const name = view?.name;
+  const xfaOnly = view?.xfaOnly;
   useEffect(() => {
-    // A moved file is read only: there is nothing for the agent to do to it.
-    if (!mode || missing) return shell.mode(null);
+    // A moved file is read only, and a form only Adobe's apps fill takes no edits here: nothing for the agent to do to either.
+    if (!mode || missing || xfaOnly) return shell.mode(null);
     shell.mode({ value: mode, set: (next) => void run(host.mode(next), "Couldn't change what the agent does") });
     return () => shell.mode(null);
-  }, [shell, host, mode, missing, run]);
+  }, [shell, host, mode, missing, xfaOnly, run]);
 
   useEffect(() => {
     if (!view) return shell.statusLine(null);

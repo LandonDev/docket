@@ -308,6 +308,8 @@ describe("the PDF kind", () => {
     expect(line.textContent).toBe("Only Adobe's apps fill this form");
     expect(line.textContent).not.toContain("XFA");
     expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
+    // A form Docket cannot fill offers no choice about the agent's edits (council R3-A4).
+    expect(screen.queryByRole("button", { name: /Agent suggests/ })).toBeNull();
   });
 
   it("ticks a checkbox at the press, before the host answers, and puts it back when the host refuses", async () => {
