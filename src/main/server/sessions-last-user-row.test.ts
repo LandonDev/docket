@@ -24,11 +24,11 @@ it('recovers a queued message through the last-user-row lookup, with its first-m
   store.appendEvent(session.id, { type: 'assistant-text', text: 'reply', delta: false })
   store.updateSession(session.id, { status: 'queued' })
   expect(await registry.startQueued(session.id)).toBe(true)
-  expect(send).toHaveBeenLastCalledWith(session.id, 'first', { attachments: undefined, echoed: { first: true } })
+  expect(send).toHaveBeenLastCalledWith(session.id, 'first', { attachments: undefined, echoed: { first: true }, ts: expect.any(Number) })
   store.appendEvent(session.id, { type: 'user-text', text: 'latest', attachments: [{ path: '/tmp/a.png', name: 'a.png', kind: 'image' }] })
   store.appendEvent(session.id, { type: 'assistant-text', text: '"user-text"', delta: false })
   expect(await registry.startQueued(session.id)).toBe(true)
-  expect(send).toHaveBeenLastCalledWith(session.id, 'latest', { attachments: [{ path: '/tmp/a.png', name: 'a.png', kind: 'image' }], echoed: { first: false } })
+  expect(send).toHaveBeenLastCalledWith(session.id, 'latest', { attachments: [{ path: '/tmp/a.png', name: 'a.png', kind: 'image' }], echoed: { first: false }, ts: expect.any(Number) })
   expect(lookup).toHaveBeenCalledTimes(2)
 })
 

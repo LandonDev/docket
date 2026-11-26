@@ -302,6 +302,11 @@ export function openDb(path: string): DatabaseSync {
     `ALTER TABLE session_folds ADD COLUMN has_user_text INTEGER NOT NULL DEFAULT -1`,
     `ALTER TABLE session_folds ADD COLUMN has_completed_turn INTEGER NOT NULL DEFAULT -1`,
     `ALTER TABLE session_folds ADD COLUMN last_turn_stopped INTEGER NOT NULL DEFAULT 0`,
+    // The seqs of a log's last two user rows, kept as rows land (flushEvents): -1 not known yet (a fold from before
+    // these columns, or rows that changed under the store), 0 none. Reading them replaces a walk of the log from its
+    // end to its last user row, which is the whole log for a subagent that was told once (1.6 s for 179,000 rows).
+    `ALTER TABLE session_folds ADD COLUMN last_user_seq INTEGER NOT NULL DEFAULT -1`,
+    `ALTER TABLE session_folds ADD COLUMN prev_user_seq INTEGER NOT NULL DEFAULT -1`,
     // A plan's completion and the handoff links (plans.ts): when the
     // planner called plan_complete, the build started from the plan, the
     // plan a build came from, and the thread that started this one.
@@ -367,6 +372,13 @@ export function openDb(path: string): DatabaseSync {
   db.exec(`CREATE INDEX IF NOT EXISTS sessions_parent ON sessions(parent_id)`)
   db.exec(`CREATE INDEX IF NOT EXISTS sessions_routine_run ON sessions(routine_run_id) WHERE routine_run_id IS NOT NULL`)
   db.exec(`CREATE INDEX IF NOT EXISTS sessions_work_scope ON sessions(scope) WHERE scope = 'work'`)
+  // A project's and a workspace's threads, the list by archived and age, and the cold mover's backlog were each a
+  // scan of every session (16,000 on the box, 3 to 12 ms an ask); each index builds in under 10 ms there.
+  db.exec(`CREATE INDEX IF NOT EXISTS sessions_project ON sessions(project_id)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS sessions_workspace ON sessions(workspace_id)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS sessions_list ON sessions(archived, created_at)`)
+  db.exec(`CREATE INDEX IF NOT EXISTS sessions_to_cold ON sessions(updated_at) WHERE archived = 1 AND cold = 0`)
+  db.exec(`CREATE INDEX IF NOT EXISTS sessions_to_hot ON sessions(id) WHERE archived = 0 AND cold = 1`)
   // Master threads (CLAUDE.md "Master threads"): the pin lives on the
   // thread, several per project. A database from the project-pin days
   // carries its one pin over the first time this column is added.
@@ -1081,8 +1093,9 @@ export class Store {
     const ids = (sql: string): string[] =>
       (this.stmt(sql).all() as unknown as { id: string }[]).map((r) => r.id)
     return {
-      toCold: ids(`SELECT id FROM sessions WHERE archived = 1 AND cold = 0 ORDER BY updated_at`),
-      toHot: ids(`SELECT id FROM sessions WHERE archived = 0 AND cold = 1`)
+      // Each by its own small index (the sessions that wait, never every archived one).
+      toCold: ids(`SELECT id FROM sessions INDEXED BY sessions_to_cold WHERE archived = 1 AND cold = 0 ORDER BY updated_at`),
+      toHot: ids(`SELECT id FROM sessions INDEXED BY sessions_to_hot WHERE archived = 0 AND cold = 1`)
     }
   }
 
@@ -1255,7 +1268,7 @@ export class Store {
     const tier = this.stmt(`SELECT cold FROM sessions WHERE id = ?`)
     for (const id of ids) {
       this.nextSeq.delete(id)
-      this.stmt(`UPDATE session_folds SET has_user_text = -1, has_completed_turn = -1, last_turn_stopped = 0 WHERE session_id = ?`).run(id)
+      this.stmt(`UPDATE session_folds SET has_user_text = -1, has_completed_turn = -1, last_turn_stopped = 0, last_user_seq = -1, prev_user_seq = -1 WHERE session_id = ?`).run(id)
       if (this.moving === id) this.moving = null
       const r = tier.get(id) as { cold: number } | undefined
       if (r?.cold) this.coldIds.add(id)
@@ -1309,14 +1322,28 @@ export class Store {
     return rows.map((r) => ({ sessionId, seq: Number(r.seq), ts: Number(r.ts), event: JSON.parse(r.payload) as AgentEvent }))
   }
 
+  /**
+   * The seqs of a log's last two user rows (0: none), from the fold row where the flush keeps them; read from the
+   * log once where they are not known, and kept. `need` says how much the caller reads: the last alone, or both.
+   */
+  private userSeqs(sessionId: string, need: 'last' | 'both'): { last: number; prev: number } {
+    const kept = this.stmt(`SELECT last_user_seq AS last, prev_user_seq AS prev FROM session_folds WHERE session_id = ?`).get(sessionId) as
+      { last: number; prev: number } | undefined
+    if (kept && kept.last >= 0 && (need === 'last' || kept.last === 0 || kept.prev >= 0)) return { last: kept.last, prev: Math.max(kept.prev, 0) }
+    const rows = this
+      .stmt(`SELECT seq FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND json_extract(payload, '$.type') = 'user-text' ORDER BY seq DESC LIMIT 2`)
+      .all(sessionId) as unknown as { seq: number }[]
+    const found = { last: Number(rows[0]?.seq ?? 0), prev: Number(rows[1]?.seq ?? 0) }
+    // Kept on the fold row, made here as the flush makes one (folded to nothing yet) where the session has none.
+    this.stmt(`INSERT INTO session_folds (session_id, folded_seq, fold_version, last_user_seq, prev_user_seq) VALUES (?, 0, 0, ?, ?)
+      ON CONFLICT(session_id) DO UPDATE SET last_user_seq = excluded.last_user_seq, prev_user_seq = excluded.prev_user_seq`).run(sessionId, found.last, found.prev)
+    return found
+  }
+
   /** The seq of the last user turn in a session's log, null when it has none. */
   lastUserTurnSeq(sessionId: string): number | null {
-    const r = this
-      .stmt(
-        `SELECT MAX(seq) AS seq FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND json_extract(payload, '$.type') = 'user-text'`
-      )
-      .get(sessionId) as { seq: number | null }
-    return r.seq ?? null
+    this.flushEvents()
+    return this.userSeqs(sessionId, 'last').last || null
   }
 
   /** Remember sessions to resume at the next boot; a session already
@@ -1420,27 +1447,49 @@ export class Store {
           row.seq = seq
         }
       }
-      const flags = new Map<string, { user: number; completed: number; stopped: number }>()
+      const flags = new Map<string, { user: number; completed: number; stopped: number; last: number; prev: number; whole: boolean }>()
       for (const row of rows) {
         const type = row.type
+        // A batch that holds a log's first row knows every user row the log has.
+        if (row.seq === 1) {
+          const begun = flags.get(row.sessionId) ?? { user: -1, completed: -1, stopped: -1, last: 0, prev: 0, whole: true }
+          begun.whole = true
+          flags.set(row.sessionId, begun)
+        }
         // The stop mark (lastTurnStopped): an error row stamped stopped sets
         // it, a user row or a completed turn clears it; -1 leaves it.
         const stopped =
           type === 'user-text' || type === 'turn-complete' ? 0 : type === 'error' && isStoppedPayload(row.payload) ? 1 : -1
         if (type !== 'user-text' && type !== 'turn-complete' && stopped < 0) continue
-        const flag = flags.get(row.sessionId) ?? { user: -1, completed: -1, stopped: -1 }
-        if (type === 'user-text') flag.user = 1
+        const flag = flags.get(row.sessionId) ?? { user: -1, completed: -1, stopped: -1, last: 0, prev: 0, whole: false }
+        if (type === 'user-text') {
+          flag.user = 1
+          flag.prev = flag.last
+          flag.last = row.seq
+        }
         else if (type === 'turn-complete') flag.completed = 1
         if (stopped >= 0) flag.stopped = stopped
         flags.set(row.sessionId, flag)
       }
       for (const [id, flag] of flags) {
-        this.stmt(`INSERT INTO session_folds (session_id, folded_seq, fold_version, has_user_text, has_completed_turn, last_turn_stopped)
-          VALUES (?, 0, 0, ?, ?, MAX(?, 0)) ON CONFLICT(session_id) DO UPDATE SET
+        // The last two user rows. A batch that saw the log begin knows them outright (0: none). Otherwise: with no
+        // user row in the batch the fold row keeps what it has; with one, its own last becomes the one before;
+        // with two or more, both are this batch's. A new fold row for a log not seen from its start says -1.
+        const known = flag.whole ? 0 : -1
+        this.stmt(`INSERT INTO session_folds (session_id, folded_seq, fold_version, has_user_text, has_completed_turn, last_turn_stopped, last_user_seq, prev_user_seq)
+          VALUES (?, 0, 0, ?, ?, MAX(?, 0), ?, ?) ON CONFLICT(session_id) DO UPDATE SET
           has_user_text = MAX(has_user_text, excluded.has_user_text),
           has_completed_turn = MAX(has_completed_turn, excluded.has_completed_turn),
-          last_turn_stopped = CASE WHEN ? >= 0 THEN ? ELSE last_turn_stopped END`)
-          .run(id, flag.user, flag.completed, flag.stopped, flag.stopped, flag.stopped)
+          last_turn_stopped = CASE WHEN ? >= 0 THEN ? ELSE last_turn_stopped END,
+          prev_user_seq = CASE WHEN ? THEN excluded.prev_user_seq WHEN excluded.prev_user_seq > 0 THEN excluded.prev_user_seq
+            WHEN excluded.last_user_seq > 0 THEN last_user_seq ELSE prev_user_seq END,
+          last_user_seq = CASE WHEN ? OR excluded.last_user_seq > 0 THEN excluded.last_user_seq ELSE last_user_seq END`)
+          .run(
+            id, flag.user, flag.completed, flag.stopped,
+            flag.last > 0 ? flag.last : known, flag.prev > 0 ? flag.prev : known,
+            flag.stopped, flag.stopped,
+            flag.whole ? 1 : 0, flag.whole ? 1 : 0
+          )
       }
       this.turnIndex.insertLanded(rows)
       commitAt = performance.now()
@@ -1952,14 +2001,14 @@ export class Store {
   }
 
   /** The most recent user row, and whether it is the log's first user row.
-   * Only two matching rows cross SQL, even for a long transcript. */
+   * One row crosses SQL, by its key: where it is comes from the fold row (`userSeqs`). */
   lastUserRow(sessionId: string): (EventRow & { first: boolean }) | null {
     this.flushEvents()
-    const rows = this.stmt(`SELECT seq, ts, payload FROM ${this.eventsTable(sessionId)}
-      WHERE session_id = ? AND json_extract(payload, '$.type') = 'user-text' ORDER BY seq DESC LIMIT 2`)
-      .all(sessionId) as unknown as { seq: number; ts: number; payload: string }[]
-    const row = rows[0]
-    return row ? { sessionId, seq: row.seq, ts: row.ts, event: JSON.parse(row.payload) as AgentEvent, first: rows.length === 1 } : null
+    const { last, prev } = this.userSeqs(sessionId, 'both')
+    if (!last) return null
+    const row = this.stmt(`SELECT seq, ts, payload FROM ${this.eventsTable(sessionId)} WHERE session_id = ? AND seq = ?`).get(sessionId, last) as
+      { seq: number; ts: number; payload: string } | undefined
+    return row ? { sessionId, seq: Number(row.seq), ts: Number(row.ts), event: JSON.parse(row.payload) as AgentEvent, first: prev === 0 } : null
   }
 
   /** The project preamble the session's first message carried, or null

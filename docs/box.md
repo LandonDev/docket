@@ -3344,6 +3344,24 @@ grant counts), `work_held_acts_owed` (the tasks a sent act owes),
 M5, `work_canvas_items_by_workspace`. src/main/server/db-work-indexes.test.ts
 holds each query to `SEARCH`, never `SCAN`, by its own plan.
 
+The rest of the sessions table's asks (the whole-app pass, 2026-11-26, planned
+on a scrubbed copy of the box's data: 16,023 sessions, a longest thread of
+179,477 rows): `sessions_project` and `sessions_workspace` (a project's and a
+workspace's threads), `sessions_list` (archived, created: the session list)
+and the cold mover's backlog through two small partial indexes named in its
+queries (`sessions_to_cold`, `sessions_to_hot`). Each was a scan of every
+session, 3 to 12 ms an ask; each index builds in under 10 ms on that copy,
+so all are made at start. A log's last user row was found by walking the log
+from its end (`lastUserTurnSeq`, `lastUserRow`: instant when he wrote last,
+the whole log for a subagent that was told once, 1.6 s for those 179,477
+rows): the seqs of the last two user rows are now kept on the fold row as
+rows land (`session_folds.last_user_seq`, `prev_user_seq`; -1 not known yet,
+0 none; `flushEvents`, `userSeqs`), read from the log once where they are
+not known and reset when rows change under the store (`forgetSessions`).
+Left as they are: notes search (a scan of 3,741 notes, 16 ms), the turn
+index's backfill list (background, never on an ask's path).
+src/main/server/db-user-rows.test.ts holds the plans and the counts.
+
 A window's catalog refresh reads every scope's thread defaults in one
 `defaults.list` (the global set under `''`, each workspace by id) where
 the host's hello names `defaults.list` in its features; an older host, or
