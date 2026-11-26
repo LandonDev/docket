@@ -369,6 +369,8 @@ describe('readOutward: clicks', () => {
     const mail = screen(`app "Mail" · window "Inbox" · 800×600\n[1] window "Inbox"\n  [2] toolbar\n    [3] button "Reply"\n    [4] button "Forward"`, MAIL)
     expect(readOutward(steps({ action: 'left_click', element: 4 }), browser)).toBeNull()
     expect(readOutward(steps({ action: 'left_click', element: 4 }), mail)).toMatchObject({ label: 'Forward' })
+    const aside = screen(`app "Aside" · window "News" · 800×600\n[1] window "News"\n  [2] toolbar\n    [3] button "Back"\n    [4] button "Forward"`, { bundleId: 'at.studio.AsideBrowser', name: 'Aside' })
+    expect(readOutward(steps({ action: 'left_click', element: 4 }), aside)).toBeNull()
   })
 
   it('does not hold a right click or a scroll on Send', () => {

@@ -11,6 +11,8 @@ const initial = JSON.parse(fixture('wire/initialize.response.json')).result
 const streamJpeg = JSON.parse(fixture('wire/notify-capture-frame.json')).params.data
 const startedAt = Date.now()
 let clipboardText = null
+// FAKE_BROWSER_NAVIGATES=<url>: a Webby step that runs moves its tab there
+let navigatedTo = null
 const epoch = 'e-' + Array.from({ length: 8 }, () => randomInt(36).toString(36)).join('')
 const frame = { x: 100, y: 100, w: 800, h: 670 }
 const space = { width: 1280, height: 1072, scale: 1.6 }
@@ -620,7 +622,10 @@ function actionResult(ctx, params, method, wasCancelled = false) {
   const closed = ctx.app.name === 'Closey' && steps.some((s, i) => s.status === 'ok' && actions[i].action === 'left_click' && s.element?.line === 'button "close"')
   if (closed) ctx.app.windows = ctx.app.windows.filter((w) => w.id !== ctx.window.id)
   if (ctx.menusLeftOpen) result.menusLeftOpen = ctx.menusLeftOpen
+  if (ctx.app.name === 'Webby' && process.env.FAKE_BROWSER_NAVIGATES && steps.some((s) => s.status === 'ok')) navigatedTo = process.env.FAKE_BROWSER_NAVIGATES
   if (wasCancelled) result.observationError = cancelled()
+  // the closing read checks the address the request carried, as the service's checkBrowser does
+  else if (params.observe?.mode !== 'none' && params.browserUrl && navigatedTo && params.browserUrl !== navigatedTo) result.observationError = failure('browser_refused', 'refused: the browser tab’s address changed or could not be verified.')
   else if (closed && !ctx.app.windows.length) result.observationError = failure('window_not_found', 'Closey has no window open.', { reason: 'gone' })
   else if (closed) result.observation = observation({ ...ctx, window: ctx.app.windows[0] }, { ...params.observe, mode: 'full' }, 'action')
   else if (params.observe?.mode !== 'none' && ctx.app.name === 'Secret' && process.env.FAKE_SECRET_NO_OBS === '1') result.observationError = failure('timeout', 'Secret did not answer.')
@@ -743,7 +748,7 @@ function handle({ id, method, params = {} }) {
       if (ctx.app.name !== 'Webby') return reply(id, { browser: false })
       const proofClock = process.env.FAKE_BROWSER_CLOCK === 'missing' ? undefined :
         { elapsedUs: 5_000_000, sleepUpperUs: 20 }
-      return reply(id, { browser: true, url: process.env.FAKE_BROWSER_URL || undefined, proofClock })
+      return reply(id, { browser: true, url: navigatedTo ?? (process.env.FAKE_BROWSER_URL || undefined), proofClock })
     }
     case 'state.get': case 'action.run': case 'action.batch': case 'capture.screenshot': case 'capture.stream.start': case 'capture.video.start': case 'input.probe': {
       const ctx = target(params)

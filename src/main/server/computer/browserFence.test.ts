@@ -282,3 +282,22 @@ it('allows an ordinary address on a peer port once all peer sets are fresh', asy
   const h = make(false, 'http://192.168.40.11:8191/', () => ({ ...origins(), linkedEndpoints: [linkedPeer] }))
   expect((await h.run('computer_observe', { app: 'Webby' })).isError).toBe(false)
 })
+
+it('reads a tab a step moved to another page at its new address, checked again', async () => {
+  const h = computerHarness({ origins, env: { FAKE_BROWSER_URL: 'https://ordinary.test/', FAKE_BROWSER_NAVIGATES: 'https://ordinary.test/next' } })
+  open.push(h)
+  const act = await h.run('computer_act', { app: 'Webby', action: 'key', text: 'Enter' })
+  expect(act.isError).toBe(false)
+  expect(act.body).not.toContain('could not be verified')
+  const reads = h.requests().filter((req) => req.method === 'state.get')
+  expect(reads.map((req) => req.params.browserUrl)).toEqual(['https://ordinary.test/next'])
+})
+
+it('still refuses to read a tab a step moved onto the app’s own page', async () => {
+  const h = computerHarness({ origins, env: { FAKE_BROWSER_URL: 'https://ordinary.test/', FAKE_BROWSER_NAVIGATES: 'http://127.0.0.1:7677/ui' } })
+  open.push(h)
+  const act = await h.run('computer_act', { app: 'Webby', action: 'key', text: 'Enter' })
+  expect(act.body).toBe('observation failed: refused: the browser tab is off limits or its address could not be verified.')
+  expect(h.requests().some((req) => req.method === 'state.get')).toBe(false)
+  expect(await h.run('computer_observe', { app: 'Webby' })).toMatchObject({ isError: true, body: TEMPCODE_ORIGIN_REFUSAL })
+})

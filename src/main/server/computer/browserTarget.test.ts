@@ -29,3 +29,20 @@ describe('the computer tools refuse the app’s own web routes on both public na
     expect(await refusedBrowserTarget({ browser: true, url: 'https://share.landonhale.com/g/x' }, box('https://tempcode.landonhale.com'))).toBeNull()
   })
 })
+
+describe('an old native service that cannot read an address keeps every known browser off limits', () => {
+  it.each([
+    ['at.studio.AsideBrowser', 'Aside'],
+    ['com.google.Chrome', 'Google Chrome'],
+    ['com.apple.Safari', 'Safari']
+  ])('%s', async (bundleId, name) => {
+    const { knownBrowser } = await import('./policy')
+    expect(knownBrowser({ bundleId, name })).toBe(true)
+  })
+
+  it('leaves an app that only has the word in a longer name alone', async () => {
+    const { knownBrowser } = await import('./policy')
+    expect(knownBrowser({ bundleId: 'com.example.Asides', name: 'Asides' })).toBe(false)
+    expect(knownBrowser({ bundleId: 'com.apple.TextEdit', name: 'TextEdit' })).toBe(false)
+  })
+})

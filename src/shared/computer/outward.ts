@@ -204,6 +204,7 @@ export const BROWSER_BUNDLES: readonly string[] = [
   'org.mozilla.firefox',
   'com.vivaldi.Vivaldi',
   'com.operasoftware.Opera',
+  'at.studio.AsideBrowser',
   // the box's own Chromium (work/browser/box): its service names it so
   'org.chromium.Chromium',
   // Windows, by exe (§29.2)

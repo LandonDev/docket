@@ -1625,6 +1625,9 @@ async function runActions(host: RunHost, run: ActionsRun): Promise<StepsResult &
     from = failedAt
   }
 
+  // a step that moved the tab to another page fails the batch's closing read, which holds the address checked before
+  // it: read once more, the new address checked as any read's is (§17.6)
+  if (ranAny && observationError?.kind === 'browser_refused' && !observationError.reason) observationError = undefined
   // a batch that ended before its last segment, or a refusal after steps that ran: read the window once
   if (ranAny && !observation && !observationError && !signal.aborted) {
     try {

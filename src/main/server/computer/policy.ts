@@ -266,7 +266,7 @@ export async function refusedBrowserTarget(target: { browser: boolean; url?: str
 
 /** Old native services cannot read a browser address. Known browsers stay off limits until the service is updated. */
 export function knownBrowser(app: { bundleId: string | null; name: string }): boolean {
-  return /chrome|chromium|safari|firefox|msedge|microsoft edge|brave|opera|vivaldi|waterfox|librewolf|zen browser|floorp|tor browser|thebrowser\.browser|\barc\b|\borion\b/i.test(`${app.bundleId ?? ''} ${app.name}`)
+  return /chrome|chromium|safari|firefox|msedge|microsoft edge|brave|opera|vivaldi|waterfox|librewolf|zen browser|floorp|tor browser|thebrowser\.browser|\barc\b|\borion\b|\baside(browser)?\b/i.test(`${app.bundleId ?? ''} ${app.name}`)
 }
 
 const promptsOf = (id: string): 'prompts' | 'windows-prompts' => (WINDOWS_PROMPT_EXES.includes(id) ? 'windows-prompts' : 'prompts')

@@ -59,7 +59,7 @@ extension ComputerService {
             let source = modules.windows
             let identity = "\(target.app.bundleId ?? "") \(target.app.name)"
             let browser = source.chromium(pid: target.pid) ||
-                identity.range(of: #"chrome|chromium|safari|firefox|msedge|microsoft edge|brave|opera|vivaldi|waterfox|librewolf|zen browser|floorp|tor browser|thebrowser\.browser|\barc\b|\borion\b"#,
+                identity.range(of: #"chrome|chromium|safari|firefox|msedge|microsoft edge|brave|opera|vivaldi|waterfox|librewolf|zen browser|floorp|tor browser|thebrowser\.browser|\barc\b|\borion\b|\baside(browser)?\b"#,
                                options: [.regularExpression, .caseInsensitive]) != nil
             guard browser else { return .init(browser: false) }
             let id = target.windowID
