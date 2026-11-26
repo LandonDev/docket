@@ -3,12 +3,17 @@ import { makeFunctionReference } from "convex/server";
 import type { ContextChip } from "@shared/work";
 import { formatDue, formatStamp, formatTime } from "work-kit/views/lib/format";
 import { Search, X } from "../../chrome/icons";
+import { useTruncated } from "../../components/tip";
 import { Button } from "../../components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { ItemButton } from "../../components/ui/item";
 import { ROW_PRESS } from "../../components/ui/press";
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
+import { registry } from "../../lib/connection";
+import { nameInLine } from "../../lib/hostWords";
+import { workErrorWords } from "../../lib/workErrorWords";
 import { BackTitle } from "../shell/BackTitle";
 import { moveBetweenRows } from "../rowKeys";
 import { chordKey } from "../../lib/keys";
@@ -195,9 +200,10 @@ function SearchField({ workspaceId }: { workspaceId: string }) {
 
 /**
  * A LifeOS read that failed, with Retry: his press asks LifeOS once while the failure stays, Retry spinning in place;
- * an answer starts the live read again (`onBack`), a failure says its own words where the old ones stood.
+ * an answer starts the live read again (`onBack`), a failure says its own words where the old ones stood. The error is
+ * said in Work's words (`workErrorWords`), and LifeOS's raw text (a query name, a request id, a stack) never at all.
  */
-function ReadFailed({ title, error, session, name, args, onBack }: { title: string; error: string; session: LifeosSession; name: string; args: Record<string, unknown>; onBack(): void }) {
+function ReadFailed({ title, error, env, session, name, args, onBack }: { title: string; error: string; env: string; session: LifeosSession; name: string; args: Record<string, unknown>; onBack(): void }) {
   const [retrying, setRetrying] = useState(false);
   const [failedAgain, setFailedAgain] = useState(false);
   const retry = (): void => {
@@ -209,7 +215,9 @@ function ReadFailed({ title, error, session, name, args, onBack }: { title: stri
       .then(onBack, () => setFailedAgain(true))
       .finally(() => setRetrying(false));
   };
-  return <EmptyState title={title} line={failedAgain ? undefined : error} action={{ label: "Retry", busy: retrying, onClick: retry }} />;
+  const host = registry.environment(env)?.name;
+  const line = failedAgain ? "" : workErrorWords(error, host ? { host: nameInLine(host) } : {});
+  return <EmptyState title={title} line={line || undefined} action={{ label: "Retry", busy: retrying, onClick: retry }} />;
 }
 
 /** The view, read anew (its live reads too) once a Retry's own read has answered. */
@@ -242,15 +250,15 @@ function PeopleBody({ again, ...props }: WorkViewProps & { again(): void }) {
   if (!props.lifeos.client && !sessionWaits(props.lifeos)) return null;
   if (person) return <PersonPageView {...props} person={person} faces={faces} />;
   if (!props.lifeos.client) return <ListSkeleton />;
-  if (directory.status === "failed") return <ReadFailed title="People did not load" error={directory.error} session={props.lifeos} name="people:directory" args={{ sector: props.sector }} onBack={again} />;
+  if (directory.status === "failed") return <ReadFailed title="People did not load" error={directory.error} env={props.env} session={props.lifeos} name="people:directory" args={{ sector: props.sector }} onBack={again} />;
   if (!rows) return <ListSkeleton />;
   return <PeopleList workspaceId={workspaceId} rows={rows} faces={faces} />;
 }
 
 function ListSkeleton() {
   return (
-    // At the list's own insets, so the names do not step sideways when the list lands.
-    <div aria-busy className="mx-auto flex w-full max-w-[720px] flex-col gap-2 px-6 py-5">
+    // At the list's own insets and its 32px rows, so the names neither step sideways nor jump when the list lands.
+    <div aria-busy className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-5">
       {[44, 32, 52, 38, 46].map((w, i) => (
         <div key={i} className="flex h-8 items-center gap-2">
           <Skeleton className="size-6 rounded-full" />
@@ -296,16 +304,28 @@ const idOfPerson = (p: DirectoryPerson): string => p._id;
 
 /** One person's row, drawn again only when what it shows changed: the minute's tick hands it the same stamp words. */
 const PersonRow = memo(function PersonRow({ workspaceId, person: p, picture, stamp, place }: { workspaceId: string; person: DirectoryPerson; picture: string | undefined; stamp: string | null; place: RowPlace }) {
+  // A name or address the row cuts is said whole on its hover and focus, only while one is cut (Today's rule).
+  const words = useTruncated(`${p.name}\n${p.emails[0] ?? ""}`);
   return (
     <div role="listitem" {...place}>
-      <ItemButton data-person-row={p._id} size="xs" onClick={() => setPlace(workspaceId, { person: p._id })} className={cn("-mx-2 h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap gap-2 rounded-md text-[13px]", ROW_PRESS)}>
-        <Face name={p.name} picture={picture} size="row" />
-        <span className="flex min-w-0 flex-1 items-baseline gap-1">
-          <span className="shrink-0 truncate text-foreground">{p.name}</span>
-          {p.emails[0] ? <span className="min-w-0 truncate text-xs text-muted-foreground">{p.emails[0]}</span> : null}
-        </span>
-        {stamp ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{stamp}</span> : null}
-      </ItemButton>
+      <Tooltip disabled={!words.cut}>
+        <TooltipTrigger
+          render={
+            <ItemButton data-person-row={p._id} size="xs" onClick={() => setPlace(workspaceId, { person: p._id })} className={cn("-mx-2 h-8 w-[calc(100%+16px)] min-w-0 flex-nowrap gap-2 rounded-md text-[13px]", ROW_PRESS)}>
+              <Face name={p.name} picture={picture} size="row" />
+              <span ref={words.ref} className="flex min-w-0 flex-1 items-baseline gap-1">
+                <span className="shrink-0 truncate text-foreground">{p.name}</span>
+                {p.emails[0] ? <span className="min-w-0 truncate text-xs text-muted-foreground">{p.emails[0]}</span> : null}
+              </span>
+              {stamp ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{stamp}</span> : null}
+            </ItemButton>
+          }
+        />
+        <TooltipContent side="top" align="start">
+          {p.name}
+          {p.emails[0] ? <span className="block">{p.emails[0]}</span> : null}
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 });
@@ -400,7 +420,7 @@ function PersonPageRead(
   const page = useLifeosQuery<PersonPage | null>(props.lifeos, "people:page", { id: props.person, sector: props.sector, shared });
   const answered = useAnswered(props.env, props.workspace.id, page.status === "ready" ? page.value?.person.emails : undefined);
   if (page.status === "failed")
-    return <ReadFailed title="This page did not load" error={page.error} session={props.lifeos} name="people:page" args={{ id: props.person, sector: props.sector, shared }} onBack={props.again} />;
+    return <ReadFailed title="This page did not load" error={page.error} env={props.env} session={props.lifeos} name="people:page" args={{ id: props.person, sector: props.sector, shared }} onBack={props.again} />;
   // Held until the links are read too, so the page lands once rather than growing a section.
   if (page.status === "loading" || (directory.status === "loading" && !name)) return <PageSkeleton />;
   // A page kept from a window before this one whose person is gone: the list, quietly.
@@ -475,7 +495,8 @@ export function PersonPageBody({
         </div>
       </header>
       {person.notes.trim() ? <p className="mt-4 max-w-[65ch] text-sm leading-[22px] whitespace-pre-line text-foreground select-text">{person.notes.trim()}</p> : null}
-      {pageIsQuiet(page) && !answered.length ? <p className="mt-6 text-[13px] text-muted-foreground">Nothing open with {person.name}.</p> : null}
+      {/* The page's title names them just above: the line does not again. */}
+      {pageIsQuiet(page) && !answered.length ? <p className="mt-6 text-[13px] text-muted-foreground">Nothing open with them.</p> : null}
 
       <Section label="Mail" show={page.mail.length > 0}>
         {page.mail.map((m) => (

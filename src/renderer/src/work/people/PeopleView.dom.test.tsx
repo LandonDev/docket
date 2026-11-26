@@ -13,7 +13,7 @@ import type { WorkViewProps } from "../views/registry";
 if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => [];
 
 const NOW = new Date(2026, 10, 23, 12).getTime();
-const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: Record<string, unknown> }[], page: null as unknown, directoryFails: false, pageFails: false, once: [] as { args: unknown; answer(): void; fail(e: Error): void }[] }));
+const lifeos = vi.hoisted(() => ({ asked: [] as { name: string; args: Record<string, unknown> }[], page: null as unknown, directoryFails: false, pageFails: false, pageError: "LifeOS refused the page", once: [] as { args: unknown; answer(): void; fail(e: Error): void }[] }));
 const directory = [
   { _id: "p_maya", name: "Maya Chen", emails: ["maya@school.edu"], lastAt: NOW - 3_600_000 },
   { _id: "p_tom", name: "Tom Beck", emails: ["tom@school.edu"] },
@@ -24,7 +24,7 @@ vi.mock("../shell/lifeos", async (original) => ({
     lifeos.asked.push({ name, args });
     if (name === "people:directory") return lifeos.directoryFails ? { status: "failed", error: "LifeOS refused" } : { status: "ready", value: directory };
     if (name === "mail:faces") return { status: "ready", value: [] };
-    if (name === "people:page") return lifeos.pageFails ? { status: "failed", error: "LifeOS refused the page" } : { status: "ready", value: lifeos.page };
+    if (name === "people:page") return lifeos.pageFails ? { status: "failed", error: lifeos.pageError } : { status: "ready", value: lifeos.page };
     return { status: "loading" };
   },
 }));
@@ -108,6 +108,30 @@ describe("the list", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
   });
 
+  // Council round 1 (R1-B30): an address the row cuts is said whole on the row's focus, only while it is cut.
+  it("says a cut address whole in the row's tip", async () => {
+    const { tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    const wide = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.textContent === "maya@school.edu" && this.classList.contains("truncate") ? 300 : 100;
+    });
+    const box = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    try {
+      const { container } = mount();
+      await act(async () => {
+        container.querySelector<HTMLElement>('[data-person-row="p_maya"]')!.focus();
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe("Maya Chenmaya@school.edu");
+    } finally {
+      wide.mockRestore();
+      box.mockRestore();
+    }
+  });
+
   it("says when the list did not load", () => {
     lifeos.directoryFails = true;
     mount();
@@ -188,6 +212,24 @@ describe("a person's page", () => {
     expect(files.opened).toEqual([[{ id: "ws", environmentId: "box" }, { ref: { at: "msform", host: "box", workspaceId: "ws", formId: "f1", tenant: "purdue0" }, name: "Spring LAN sign-up" }]]);
   });
 
+  // Council round 1 (R1-B26): LifeOS's raw error (a query name, a request id, a stack) never reaches the page.
+  it("says a failed page in Work's words, never LifeOS's raw text", async () => {
+    setPlace("ws", { person: "p_maya" });
+    lifeos.page = mayaPage;
+    lifeos.pageFails = true;
+    lifeos.pageError = '[CONVEX Q(people:page)] [Request ID: 0846947f66bcde6d] Server Error Uncaught ConvexError: {"code":"unauthenticated"}\n    at resolveOwner (../../convex/functions.ts:815:17)';
+    try {
+      const { container } = mount();
+      await screen.findByRole("button", { name: "Retry" });
+      expect(screen.getByText("This page did not load")).toBeTruthy();
+      expect(container.textContent).not.toContain("CONVEX");
+      expect(container.textContent).not.toContain("functions.ts");
+    } finally {
+      lifeos.pageFails = false;
+      lifeos.pageError = "LifeOS refused the page";
+    }
+  });
+
   /** Council round 12 (the walk): This page did not load had no Retry. */
   it("reads a person's page again on Retry, the failure kept and Retry spinning until LifeOS answers", async () => {
     setPlace("ws", { person: "p_maya" });
@@ -255,12 +297,13 @@ describe("a person's page", () => {
     expect(started).toEqual([{ kind: "person", label: "Maya Chen", ref: { at: "lifeos", table: "people", id: "p_maya" } }]);
   });
 
-  it("says when nothing is open with them, by name, and when they are not one of the sector's people", async () => {
+  // Council round 1 (R1-B29): the page's title names them just above; the line does not again.
+  it("says when nothing is open with them, and when they are not one of the sector's people", async () => {
     lifeos.page = { ...mayaPage, mail: [], coming: [], tasks: [], shared: [], person: { ...mayaPage.person, notes: "" } };
     setPlace("ws", { person: "p_maya" });
     const first = mount();
     await act(async () => {});
-    expect(screen.getByText("Nothing open with Maya Chen.")).toBeTruthy();
+    expect(screen.getByText("Nothing open with them.")).toBeTruthy();
     first.unmount();
     lifeos.page = null;
     mount();
