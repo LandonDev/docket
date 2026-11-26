@@ -3,7 +3,8 @@ import { MacThreadTokens } from '../../src/main/server/macTools'
 import { FIRST_BYTE_MS, REPLY, SEND_DELTAS, SEND_DELTA_MS, SEND_MARK, answerWord, sendAnswer, sendNonce, sendStream } from '../journeys/lib/fakeProvider'
 import { frameFacts, gaps, methodsUntil, percentile, spread, tally, type WireEvent } from './lib/frames'
 import { asksByPlace, bulkWindow, openParts } from './rows/link'
-import { bridgeToken } from './rows/links'
+import { FAR_ROWS, SLOW_HOST_MS, bridgeToken } from './rows/links'
+import { BUDGETS } from './budgets'
 import { nextSend, parseSendLine, sendLineAfter } from './rows/send'
 import { LOAD_PROMPT, isLoadTurn, splitLoad } from './lib/load'
 
@@ -174,5 +175,13 @@ describe('the wire log’s arithmetic', () => {
     const box = new MacThreadTokens(seed)
     expect(box.check('s1', bridgeToken(seed, 's1'))).toBe(true)
     expect(box.check('s2', bridgeToken(seed, 's1'))).toBe(false)
+  })
+
+  it('times search across hosts on the code pair with desk, its hop stalled longer than the budget lets the slow host hold the rest', () => {
+    const row = FAR_ROWS.find((r) => r.id === 'search-hosts')!
+    expect(row).toMatchObject({ family: 'code', needs: { desk: true } })
+    expect(BUDGETS.find((b) => b.id === 'L11')).toMatchObject({ rows: ['search-hosts'] })
+    expect(BUDGETS.find((b) => b.id === 'L11')?.off).toBeUndefined()
+    expect(SLOW_HOST_MS).toBeGreaterThan(2000)
   })
 })

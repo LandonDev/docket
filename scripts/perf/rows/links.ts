@@ -6,12 +6,18 @@
  * makes (TEMP_CODE_MAC_TOKEN_SEED, isolated instances alone). Box refuses it from a window (`mac.listDir is
  * local-only`, as of Nov 26), so the driver asks box over loopback and the sample says one shaped leg (`legs: 1`);
  * the window's own ask is tried first, so a box that takes it there is timed with both legs.
- * L10 (a code-only offer) and L11 (search with one slow host) are written `off` in budgets.ts with the reason.
+ * L10 (a code-only offer) is written `off` in budgets.ts with the reason.
+ *
+ * L11 (`search-hosts`): Search across hosts with one slow. The window saves desk as a second host, by a key minted
+ * on desk, behind a hop of its own (the desktop window has no relayed hosts, so desk's hop to box, `deskLink`, is not
+ * on the window's way to desk); that hop is stalled 5 s under the search's last key, so desk answers late. Timed:
+ * the last key to the first rows, and to the settled state (no host still searching).
  */
 import { createHmac } from 'node:crypto'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Instance } from '../../journeys/lib/shape'
+import { KEY_CAPS, type Instance } from '../../journeys/lib/shape'
+import { shapedRelay } from '../../journeys/lib/relay'
 import { percentile } from '../lib/frames'
 import { PRESSES, type PerfCtx, type Row } from '../lib/row'
 import type { Counts } from '../lib/probe'
@@ -179,4 +185,76 @@ const peerRelink: Row = {
   }
 }
 
-export const FAR_ROWS: Row[] = [peerCall, farFolder, peerRelink]
+/** How long desk's hop holds everything under a search's last key. */
+export const SLOW_HOST_MS = 5000
+const SEARCH = '[data-app-search]'
+const SEARCH_QUERY = 'folds'
+const searchShown = `[...document.querySelectorAll(${JSON.stringify(SEARCH)})].some((el) => el.getClientRects().length && !el.closest('[inert], [aria-hidden="true"], [data-ending-style]'))`
+const searchValue = `(document.querySelector(${JSON.stringify(SEARCH + ' input')})?.value ?? '')`
+const searching = `!!document.querySelector(${JSON.stringify(SEARCH + ' [aria-label="Searching"]')})`
+
+const slowHosts = new WeakMap<object, { hop: Awaited<ReturnType<typeof shapedRelay>>; name: string }>()
+
+/** Once a run: desk saved in the window's host as a second host, behind a hop of its own, and online in the window. */
+async function slowHost(ctx: PerfCtx): Promise<{ hop: Awaited<ReturnType<typeof shapedRelay>>; name: string }> {
+  const kept = slowHosts.get(ctx.pair)
+  if (kept) return kept
+  const desk = ctx.pair.desk
+  if (!desk) throw new Error('The search row needs desk (`needs: { desk: true }`)')
+  const name = 'Perf desk'
+  const key = await ctx.pair.rpc<{ token: string }>(desk, 'remote.keys.create', { name: 'Perf search', audience: 'client', caps: KEY_CAPS.owner }, 15_000)
+  const hop = await shapedRelay(desk.remote, { delayMs: 27, rateMbit: 10 })
+  ctx.pair.later(async () => hop.stop())
+  const saved = await ctx.pair.rpc<{ id: string }>(ctx.pair.win, 'remote.environments.add', { url: `http://127.0.0.1:${hop.port}`, key: key.token, name })
+  // the window reads its host's saved hosts at its link's open and when Settings asks, as Add host does after it adds
+  await ctx.page.eval('window.__docket.loadSavedEnvironments()')
+  await ctx.page.until('desk online in the window', 60_000, () =>
+    ctx.page.eval<boolean>(`(() => { const r = window.__docket.registry; return r.has(${JSON.stringify(saved.id)}) && r.statusOf(${JSON.stringify(saved.id)}).transport === 'open'; })()`)
+  )
+  const made = { hop, name }
+  slowHosts.set(ctx.pair, made)
+  return made
+}
+
+/** L11: Search opened, "fold" typed, desk's hop stalled, then the last key: to its first rows, and to settled. */
+const searchHosts: Row = {
+  id: 'search-hosts',
+  family: 'code',
+  needs: { desk: true },
+  title: 'Search across hosts with one slow host: desk stalled 5 s; the last key of "folds" to its first rows, and to every host answered',
+  run: async (ctx) => {
+    const { hop } = await slowHost(ctx)
+    const samples: LinkSample[] = []
+    for (let i = 0; i < PRESSES; i++) {
+      await ctx.page.key('Control+k')
+      await ctx.page.until('Search open', 10_000, () => ctx.page.eval<boolean>(searchShown))
+      for (const k of SEARCH_QUERY.slice(0, -1)) await ctx.page.key(k)
+      // the words before the last key never reach a host: the search waits 200 ms after a key
+      hop.stall(SLOW_HOST_MS)
+      let settled: number | null = null
+      let error: string | undefined
+      const sample = await ctx.time({
+        region: '[data-search-results]',
+        usable: `${searchValue} === ${JSON.stringify(SEARCH_QUERY)} && document.querySelectorAll(${JSON.stringify(SEARCH + ' [data-search-row]')}).length > 0`,
+        press: () => ctx.page.key(SEARCH_QUERY.at(-1)!),
+        wait: 5000,
+        settle: 0
+      })
+      try {
+        await ctx.page.until('every host answered', SLOW_HOST_MS + 15_000, async () => !await ctx.page.eval<boolean>(searching))
+        settled = Math.round(await ctx.page.eval<number>('performance.now() - window.__perf.pressed'))
+      } catch (cause) {
+        error = String((cause as Error)?.message ?? cause)
+      }
+      const states = await ctx.page.eval<string[]>(`[...document.querySelectorAll(${JSON.stringify(SEARCH + ' [data-host-state]')})].map((el) => el.getAttribute('data-host-state'))`)
+      samples.push({ ...sample, link: { settled, stallMs: SLOW_HOST_MS, hosts: states.length, done: states.filter((s) => s === 'done').length }, ...(error ? { error } : {}) })
+      await ctx.page.key('Escape')
+      await ctx.page.until('Search closed', 10_000, async () => !await ctx.page.eval<boolean>(searchShown))
+      // the stall is over before the next press
+      await sleep(SLOW_HOST_MS)
+    }
+    return samples
+  }
+}
+
+export const FAR_ROWS: Row[] = [peerCall, farFolder, peerRelink, searchHosts]
