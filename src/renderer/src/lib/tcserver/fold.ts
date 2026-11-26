@@ -8,13 +8,14 @@ import {
   toolTitle,
 } from "../harness/claudeProtocol";
 import {
-  appendStatusBlock,
-  attachApprovalBlock,
-  resumeTurnClock,
-  sealLastStream,
-  settleOpenTools,
-  stopStreamingBlocks,
+  approvalBlockAfter,
+  isOpenTool,
+  isUnsettledTool,
+  normalizeLabel,
+  toolBlockAfter,
   upsertToolBlock,
+  type ApprovalAttach,
+  type ToolPatch,
 } from "../harness/toolBlock";
 import type { EventRow, ServerAttachment } from "./types";
 import { isOmittedBody } from "@server/shared/wire";
@@ -63,45 +64,422 @@ export function emptyFold(): FoldState {
 }
 
 /** Timestamp of the last stamped block — how a dead turn is recognized. */
-function lastBlockTs(blocks: Block[]): number | undefined {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const ts = blocks[i].ts;
+function lastBlockTs(d: Draft): number | undefined {
+  for (let i = d.length - 1; i >= 0; i--) {
+    const ts = d.at(i).ts;
     if (ts !== undefined) return ts;
   }
   return undefined;
 }
 
-/** New blocks land at the tail unstamped; give them their round, todo and time. */
-function stampTail(blocks: Block[], thread: ThreadState, ts: number | undefined): Block[] {
-  let end = blocks.length;
-  while (end > 0 && blocks[end - 1].round === undefined) end--;
-  if (end === blocks.length) return blocks;
-  const next = blocks.slice();
-  for (let i = end; i < next.length; i++) {
-    next[i] = {
-      ...next[i],
-      round: thread.round,
-      todo: thread.activeTodo,
-      ...(ts !== undefined && next[i].ts === undefined ? { ts } : {}),
-      ...(thread.inPass ? { pass: true } : {}),
-    };
+/**
+ * The blocks one fold writes. A single push (`foldEvent`) copies the array
+ * on its first write, as an immutable update must; a page (`foldPage`)
+ * copies it once for all its rows and writes in place after that, with
+ * indexes that answer "the block of call X" and "the open blocks" without
+ * walking the thread. Every read of a block goes through `at`, so
+ * `foldProbe.visits` counts the work a fold does by blocks touched.
+ */
+class Draft {
+  arr: Block[];
+  private owned = false;
+  /** Writes since `beginRow`, and since the draft began. */
+  rowWrites = 0;
+  writes = 0;
+  /** Page mode only: kept across rows, built on first use. */
+  private index: {
+    byCall: Map<string, number>;
+    byId: Map<string, number>;
+    pending: number;
+    orphans: number;
+    lastUser: number;
+  } | null = null;
+  /** Page mode only: no block below each mark is streaming / an unsettled
+   *  call / an open section of the person's (`closeUserTurns`). */
+  private marks = { stream: 0, open: 0, users: 0 };
+
+  constructor(
+    base: Block[],
+    readonly page: boolean,
+  ) {
+    this.arr = base;
   }
-  return next;
+
+  get length(): number {
+    return this.arr.length;
+  }
+
+  at(i: number): Block {
+    foldProbe.visits++;
+    return this.arr[i];
+  }
+
+  beginRow(): void {
+    this.rowWrites = 0;
+  }
+
+  /** The array has left in a state: the next write copies it first. */
+  share(): void {
+    this.owned = false;
+  }
+
+  private own(): Block[] {
+    if (!this.owned) {
+      foldProbe.visits += this.arr.length;
+      this.arr = this.arr.slice();
+      this.owned = true;
+    }
+    return this.arr;
+  }
+
+  set(i: number, block: Block): void {
+    const arr = this.own();
+    if (this.index) this.unindex(arr[i]);
+    arr[i] = block;
+    this.noted(block, i);
+    this.rowWrites++;
+    this.writes++;
+  }
+
+  push(block: Block): void {
+    const arr = this.own();
+    arr.push(block);
+    this.noted(block, arr.length - 1);
+    this.rowWrites++;
+    this.writes++;
+  }
+
+  /** The whole array replaced (a removal): the indexes start again. */
+  replace(next: Block[]): void {
+    foldProbe.visits += next.length;
+    this.arr = next;
+    this.owned = true;
+    this.index = null;
+    this.marks = { stream: 0, open: 0, users: 0 };
+    this.rowWrites++;
+    this.writes++;
+  }
+
+  private unindex(old: Block | undefined): void {
+    const ix = this.index!;
+    if (old?.pending) ix.pending--;
+    if (old && isOrphanApproval(old)) ix.orphans--;
+  }
+
+  private noted(block: Block, i: number): void {
+    if (this.page) {
+      if (block.streaming && i < this.marks.stream) this.marks.stream = i;
+      if (i < this.marks.open && isUnsettledTool(block)) this.marks.open = i;
+      if (i < this.marks.users && isOpenUser(block)) this.marks.users = i;
+    }
+    const ix = this.index;
+    if (!ix) return;
+    const callId = block.tool?.callId;
+    if (callId && (ix.byCall.get(callId) ?? -1) < i) ix.byCall.set(callId, i);
+    if ((ix.byId.get(block.id) ?? -1) < i) ix.byId.set(block.id, i);
+    if (block.pending) ix.pending++;
+    if (isOrphanApproval(block)) ix.orphans++;
+    if (block.role === "user" && i > ix.lastUser) ix.lastUser = i;
+  }
+
+  private indexed() {
+    if (!this.page) return null;
+    if (!this.index) {
+      const ix = { byCall: new Map<string, number>(), byId: new Map<string, number>(), pending: 0, orphans: 0, lastUser: -1 };
+      this.index = ix;
+      foldProbe.visits += this.arr.length;
+      this.arr.forEach((b, i) => {
+        if (b.tool?.callId) ix.byCall.set(b.tool.callId, i);
+        ix.byId.set(b.id, i);
+        if (b.pending) ix.pending++;
+        if (isOrphanApproval(b)) ix.orphans++;
+        if (b.role === "user") ix.lastUser = i;
+      });
+    }
+    return this.index;
+  }
+
+  private lastWhere(pred: (b: Block) => boolean, from = this.arr.length - 1, to = 0): number {
+    for (let i = from; i >= to; i--) if (pred(this.at(i))) return i;
+    return -1;
+  }
+
+  firstWhere(pred: (b: Block) => boolean): number {
+    for (let i = 0; i < this.arr.length; i++) if (pred(this.at(i))) return i;
+    return -1;
+  }
+
+  /** The last block of a call. Call ids are one block each (nothing in the
+   *  fold makes a second), so this is also the first. */
+  byCall(callId: string): number {
+    const ix = this.indexed();
+    if (ix) {
+      const i = ix.byCall.get(callId);
+      if (i === undefined) return -1;
+      if (this.at(i)?.tool?.callId === callId) return i;
+    }
+    return this.lastWhere((b) => b.tool?.callId === callId);
+  }
+
+  byId(id: string): number {
+    const ix = this.indexed();
+    if (ix) {
+      const i = ix.byId.get(id);
+      if (i === undefined) return -1;
+      if (this.at(i)?.id === id) return i;
+    }
+    return this.lastWhere((b) => b.id === id);
+  }
+
+  lastWhereBy(pred: (b: Block) => boolean): number {
+    return this.lastWhere(pred);
+  }
+
+  /** The first pending block (of this text, when given). */
+  firstPending(text?: string): number {
+    const ix = this.indexed();
+    if (ix && ix.pending === 0) return -1;
+    return this.firstWhere((b) => !!b.pending && (text === undefined || b.text === text));
+  }
+
+  /** Whether an approval card with no call id waits for one: when none
+   *  does, a call's title cannot match one. */
+  mayHaveOrphans(): boolean {
+    const ix = this.indexed();
+    return !ix || ix.orphans > 0;
+  }
+
+  lastUser(): number {
+    const ix = this.indexed();
+    if (ix) {
+      if (ix.lastUser < 0) return -1;
+      if (this.at(ix.lastUser).role === "user") return ix.lastUser;
+    }
+    return this.lastWhere((b) => b.role === "user");
+  }
+
+  /** Each block from `mark` up that `pred` holds, rewritten by `fix`; the
+   *  mark then passes them all (page mode). */
+  sweep(mark: "stream" | "open" | "users", pred: (b: Block) => boolean, fix: (b: Block) => Block): void {
+    const from = this.page ? this.marks[mark] : 0;
+    for (let i = from; i < this.arr.length; i++) {
+      const b = this.at(i);
+      if (pred(b)) this.set(i, fix(b));
+    }
+    if (this.page) this.marks[mark] = this.arr.length;
+  }
+}
+
+function isOrphanApproval(block: Block): boolean {
+  return block.role === "tool" && !!block.approval && !block.tool?.callId;
+}
+
+function isOpenUser(block: Block): boolean {
+  return block.role === "user" && block.doneTs === undefined && !block.pending;
+}
+
+/** What a fold touched, in blocks: read, copied or indexed. Tests read it
+ *  to hold the fold to work in proportion to its rows. */
+export const foldProbe = { visits: 0 };
+
+/** The fields of a fold beside its blocks, written in place by `foldRow`. */
+type Scalars = Omit<FoldState, "blocks">;
+
+/** A finished text or reasoning stream at the tail stops streaming before
+ *  anything is appended after it (toolBlock.ts `sealLastStream`). */
+function sealLast(d: Draft): void {
+  const n = d.length;
+  if (n === 0) return;
+  const last = d.at(n - 1);
+  if (last.streaming && (last.role === "assistant" || last.role === "reasoning")) d.set(n - 1, { ...last, streaming: false });
+}
+
+function append(d: Draft, block: Block): void {
+  sealLast(d);
+  d.push(block);
+}
+
+/** toolBlock.ts `appendStatusBlock`, in place: true when it appended. */
+function appendStatus(d: Draft, text: string, id: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  let last: Block | undefined;
+  for (let i = d.length - 1; i >= 0 && !last; i--) {
+    const b = d.at(i);
+    if (b.role !== "reasoning") last = b;
+  }
+  if (last?.role === "system" && last.text === trimmed) return false;
+  append(d, { id, role: "system", text: trimmed });
+  return true;
+}
+
+/** toolBlock.ts `upsertToolBlock`, in place. */
+function upsertTool(d: Draft, cwd: string, patch: ToolPatch, id: string): void {
+  let index = patch.callId ? d.byCall(patch.callId) : -1;
+  if (index < 0) {
+    const needle = normalizeLabel(patch.title || "");
+    if (needle && d.mayHaveOrphans()) {
+      index = d.firstWhere(
+        (b) => b.role === "tool" && !!b.approval && !b.tool?.callId && normalizeLabel(b.text || b.tool?.title || "") === needle,
+      );
+    }
+  }
+  if (index < 0) {
+    append(d, toolBlockAfter(undefined, cwd, patch, id));
+    return;
+  }
+  const prev = d.at(index);
+  const next = toolBlockAfter(prev, cwd, patch, id);
+  if (next !== prev) d.set(index, next);
+}
+
+/** toolBlock.ts `attachApprovalBlock`, in place. */
+function attachApproval(d: Draft, cwd: string, event: ApprovalAttach, id: string): void {
+  let index = -1;
+  if (event.callId) {
+    index = d.byCall(event.callId);
+  } else {
+    // No call id: only a call from this turn still waiting on its result can
+    // be the one asked about (toolBlock.ts `findToolForApproval`).
+    const start = d.lastUser() + 1;
+    const candidate = (b: Block) => b.role === "tool" && !b.approval && isOpenTool(b);
+    if (event.name) {
+      for (let i = d.length - 1; i >= start && index < 0; i--) {
+        const b = d.at(i);
+        if (candidate(b) && b.tool?.name === event.name) index = i;
+      }
+    }
+    if (index < 0) {
+      const needle = normalizeLabel(event.title);
+      const unmatched: number[] = [];
+      for (let i = d.length - 1; i >= start; i--) {
+        const b = d.at(i);
+        if (!candidate(b)) continue;
+        unmatched.push(i);
+        if (needle && normalizeLabel(b.text || b.tool?.title || "") === needle) {
+          index = i;
+          break;
+        }
+      }
+      if (index < 0 && unmatched.length === 1) index = unmatched[0];
+    }
+  }
+  if (index >= 0) d.set(index, approvalBlockAfter(d.at(index), cwd, event, id));
+  else append(d, approvalBlockAfter(undefined, cwd, event, id));
+}
+
+/** toolBlock.ts `stopStreamingBlocks`: every stream stops, and the open
+ *  turn of the person's gets its duration. */
+function stopStreams(d: Draft, now: number): void {
+  d.sweep("stream", (b) => !!b.streaming, (b) => ({ ...b, streaming: false }));
+  const u = d.lastUser();
+  if (u < 0) return;
+  const user = d.at(u);
+  if (user.durationMs != null || user.startedAt == null) return;
+  d.set(u, { ...user, durationMs: Math.max(0, now - user.startedAt) });
+}
+
+/** toolBlock.ts `settleOpenTools`. */
+function settleTools(d: Draft): void {
+  d.sweep("open", isUnsettledTool, (b) => ({ ...b, streaming: false, tool: { ...b.tool, status: "cancelled" } }));
+}
+
+/** toolBlock.ts `resumeTurnClock`. */
+function resumeClock(d: Draft, now: number): void {
+  const i = d.lastUser();
+  if (i < 0) return;
+  const block = d.at(i);
+  if (block.durationMs == null || block.startedAt == null) return;
+  const { durationMs, doneTs, stoppedTs: _stopped, ...rest } = block;
+  // An error already resumed from (older than the turn's current start)
+  // leaves a later pause's span to the pause rule below.
+  let error: Block | undefined;
+  for (let j = d.length - 1; j > i; j--) {
+    const b = d.at(j);
+    if (b.role !== "system") break;
+    if (b.id.startsWith("err:")) {
+      error = b;
+      break;
+    }
+  }
+  if (error && (error.ts ?? Infinity) >= block.startedAt) {
+    d.set(i, { ...rest, startedAt: now });
+    return;
+  }
+  if (doneTs !== undefined && _stopped === undefined) return;
+  d.set(i, { ...rest, startedAt: now - durationMs });
 }
 
 /** The turn ending closes every open user section — each gets its own
  *  timer. `stopped`: the host put the turn down with its harness gone, and
  *  a Resume carries the span on (resumeTurnClock). */
-function closeUserTurns(blocks: Block[], ts: number, stopped = false): Block[] {
-  let next = blocks;
-  for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i];
-    if (b.role === "user" && b.doneTs === undefined && !b.pending) {
-      if (next === blocks) next = blocks.slice();
-      next[i] = { ...b, doneTs: ts, ...(stopped ? { stoppedTs: ts } : {}) };
-    }
+function closeUserTurns(d: Draft, ts: number, stopped = false): void {
+  d.sweep("users", isOpenUser, (b) => ({ ...b, doneTs: ts, ...(stopped ? { stoppedTs: ts } : {}) }));
+}
+
+/** New blocks land at the tail unstamped; give them their round, todo and time. */
+function stampTail(d: Draft, thread: ThreadState, ts: number | undefined): void {
+  let end = d.length;
+  while (end > 0 && d.at(end - 1).round === undefined) end--;
+  for (let i = end; i < d.length; i++) {
+    const b = d.at(i);
+    d.set(i, {
+      ...b,
+      round: thread.round,
+      todo: thread.activeTodo,
+      ...(ts !== undefined && b.ts === undefined ? { ts } : {}),
+      ...(thread.inPass ? { pass: true } : {}),
+    });
   }
-  return next;
+}
+
+/** The open compaction's row, by the id the start stamped; -1 when none is open. */
+function openCompactionIndex(d: Draft, thread: ThreadState): number {
+  return thread.compactionId ? d.byId(thread.compactionId) : -1;
+}
+
+/** The open compaction's row takes its outcome in place, wherever it sits. */
+function closeCompaction(d: Draft, idx: number, text: string, meta: Partial<CompactionMeta>): void {
+  const row = d.at(idx);
+  d.set(idx, { ...row, text, compaction: { ...row.compaction, ...meta } as CompactionMeta });
+}
+
+/** Stamp the child on the status row just appended (a repeat note appends nothing). */
+function withAgent(d: Draft, agent: NonNullable<Block["agent"]>): void {
+  if (d.length === 0) return;
+  const last = d.at(d.length - 1);
+  if (last.role !== "system" || last.agent?.id === agent.id) return;
+  d.set(d.length - 1, { ...last, agent });
+}
+
+/**
+ * The host spawned a child: the call that asked for it gains the id, so the
+ * call's row is the one row of the spawn. The newest spawn_agent call of
+ * the turn with room left takes it; a repeat changes nothing. False when no
+ * call in the turn asked (an older log): the caller appends a row instead.
+ */
+function stampSpawn(d: Draft, id: string): boolean {
+  const start = d.lastUser() + 1;
+  let target = -1;
+  for (let i = d.length - 1; i >= start; i--) {
+    const tool = d.at(i).tool;
+    if (!tool?.name || shortName(tool.name) !== "spawn_agent") continue;
+    const spawned = tool.spawned ?? [];
+    if (spawned.includes(id)) return true;
+    if (target < 0 && spawned.length < spawnsAskedFor(tool)) target = i;
+  }
+  if (target < 0) return false;
+  const b = d.at(target);
+  d.set(target, { ...b, tool: { ...b.tool, spawned: [...(b.tool?.spawned ?? []), id] } });
+  return true;
+}
+
+/** A subagent step under a spawning call: the parent's chip counts it. */
+function countSubStep(d: Draft, parentCallId: string): void {
+  const idx = d.byCall(parentCallId);
+  if (idx < 0) return;
+  const parent = d.at(idx);
+  d.set(idx, { ...parent, tool: { ...parent.tool, subCount: (parent.tool?.subCount ?? 0) + 1 } });
 }
 
 export function foldAll(
@@ -109,7 +487,7 @@ export function foldAll(
   cwd: string,
   state: FoldState = emptyFold(),
 ): FoldState {
-  return rows.reduce((acc, row) => foldEvent(acc, row, cwd), state);
+  return foldPage(state, rows, cwd);
 }
 
 type UserTurnExtra = {
@@ -128,7 +506,8 @@ export function foldOptimisticUser(
 ): FoldState {
   const now = Date.now();
   const thread = { ...state.thread };
-  beginTurn(thread, now, lastBlockTs(state.blocks), newPass);
+  const d = new Draft(state.blocks, false);
+  beginTurn(thread, now, lastBlockTs(d), newPass);
   const block: Block = {
     id: `pending:${state.nextId}`,
     role: "user",
@@ -141,13 +520,9 @@ export function foldOptimisticUser(
     ...(extra?.secondOpinion ? { secondOpinion: extra.secondOpinion } : {}),
     ...(extra?.noteCard ? { noteCard: extra.noteCard } : {}),
   };
-  return {
-    ...state,
-    busy: true,
-    nextId: state.nextId + 1,
-    thread,
-    blocks: stampTail([...sealLastStream(state.blocks), block], thread, now),
-  };
+  append(d, block);
+  stampTail(d, thread, now);
+  return { ...state, busy: true, nextId: state.nextId + 1, thread, blocks: d.arr };
 }
 
 /** The echo takes the optimistic row's place on screen: its key (the row
@@ -209,68 +584,10 @@ export function reconcilePending(state: FoldState, pending: Block[]): FoldState 
 const OPEN_STATUSES = new Set(["starting", "running", "waiting"]);
 const COMPACTION_STOPPED = "Compaction stopped";
 
-/** The open compaction's row, by the id the start stamped; -1 when none is open. */
-function openCompactionIndex(blocks: Block[], thread: ThreadState): number {
-  if (!thread.compactionId) return -1;
-  for (let i = blocks.length - 1; i >= 0; i--) if (blocks[i].id === thread.compactionId) return i;
-  return -1;
-}
-
-/** The open compaction's row takes its outcome in place, wherever it sits. */
-function closeCompaction(blocks: Block[], idx: number, text: string, meta: Partial<CompactionMeta>): Block[] {
-  const next = blocks.slice();
-  const row = next[idx];
-  next[idx] = { ...row, text, compaction: { ...row.compaction, ...meta } as CompactionMeta };
-  return next;
-}
-
-/** Stamp the child on the status row just appended (a repeat note appends nothing). */
-function withAgent(blocks: Block[], agent: NonNullable<Block["agent"]>): Block[] {
-  const last = blocks[blocks.length - 1];
-  if (last?.role !== "system" || last.agent?.id === agent.id) return blocks;
-  const next = blocks.slice();
-  next[next.length - 1] = { ...last, agent };
-  return next;
-}
-
 /** How many children a spawn_agent call asked for: its `agents` list, else one. */
 function spawnsAskedFor(tool: NonNullable<Block["tool"]>): number {
   const input = asRecord(tool.input ?? tool.partialInput);
   return Array.isArray(input?.agents) ? Math.max(1, input.agents.length) : 1;
-}
-
-/**
- * The host spawned a child: the call that asked for it gains the id, so the
- * call's row is the one row of the spawn. The newest spawn_agent call of
- * the turn with room left takes it; a repeat changes nothing. Null when no
- * call in the turn asked (an older log): the caller appends a row instead.
- */
-function stampSpawn(blocks: Block[], id: string): Block[] | null {
-  let start = blocks.length;
-  while (start > 0 && blocks[start - 1].role !== "user") start--;
-  let target = -1;
-  for (let i = blocks.length - 1; i >= start; i--) {
-    const tool = blocks[i].tool;
-    if (!tool?.name || shortName(tool.name) !== "spawn_agent") continue;
-    const spawned = tool.spawned ?? [];
-    if (spawned.includes(id)) return blocks;
-    if (target < 0 && spawned.length < spawnsAskedFor(tool)) target = i;
-  }
-  if (target < 0) return null;
-  const next = blocks.slice();
-  const b = next[target];
-  next[target] = { ...b, tool: { ...b.tool, spawned: [...(b.tool?.spawned ?? []), id] } };
-  return next;
-}
-
-/** A subagent step under a spawning call: the parent's chip counts it. */
-function countSubStep(blocks: Block[], parentCallId: string): Block[] {
-  const idx = findLastIndex(blocks, (b) => b.tool?.callId === parentCallId);
-  if (idx < 0) return blocks;
-  const next = blocks.slice();
-  const parent = next[idx];
-  next[idx] = { ...parent, tool: { ...parent.tool, subCount: (parent.tool?.subCount ?? 0) + 1 } };
-  return next;
 }
 
 /** Remote profile: bytes of the OmittedBody values inside `value` (0 when none). */
@@ -322,22 +639,119 @@ export function foldEvent(
   row: EventRow,
   cwd: string,
 ): FoldState {
-  const e = row.event;
   const persisted = !row.ephemeral && row.seq >= 0;
   // A row already folded (a live push that history then repeats) is a no-op.
   if (persisted && row.seq <= state.lastSeq) return state;
-  let { blocks, busy, context, nextId, thread } = state;
-  const lastSeq = persisted ? Math.max(state.lastSeq, row.seq) : state.lastSeq;
+  const d = new Draft(state.blocks, false);
+  const { blocks: _blocks, ...rest } = state;
+  const s: Scalars = { ...rest };
+  foldRow(d, s, row, cwd);
+  if (d.writes > 0 && (row.event.type === "assistant-text" || row.event.type === "thinking")) {
+    carryPendingApprovalIndex(state.blocks, d.arr);
+  }
+  if (
+    d.writes === 0 &&
+    s.busy === state.busy &&
+    s.context === state.context &&
+    s.lastSeq === state.lastSeq &&
+    s.nextId === state.nextId &&
+    s.thread === state.thread
+  ) {
+    return state;
+  }
+  return { blocks: d.arr, busy: s.busy, context: s.context, lastSeq: s.lastSeq, nextId: s.nextId, thread: s.thread };
+}
+
+/**
+ * A page of rows folded at once: the state is the one folding them one by
+ * one with `foldEvent` gives (same blocks, ids and seqs), but the blocks are
+ * copied once for the page rather than once a row, and a call's block, a
+ * keyed text and the open blocks are found by index, not by walking the
+ * thread. Folding N rows into M blocks costs about N + M, not N × M. A live
+ * push keeps `foldEvent`.
+ */
+export function foldPage(state: FoldState, rows: readonly EventRow[], cwd: string): FoldState {
+  const builder = new FoldBuilder(state, cwd);
+  for (const row of rows) builder.add(row);
+  return builder.state();
+}
+
+/**
+ * `foldPage` a row at a time, for a caller that gives the window back
+ * between slices of a long page: `state()` hands out the state so far and
+ * the next `add` copies the blocks once more before it writes.
+ */
+export class FoldBuilder {
+  private readonly d: Draft;
+  private readonly s: Scalars;
+  private last: FoldState;
+
+  constructor(
+    state: FoldState,
+    private readonly cwd: string,
+  ) {
+    this.last = state;
+    this.d = new Draft(state.blocks, true);
+    const { blocks: _blocks, ...rest } = state;
+    this.s = { ...rest };
+  }
+
+  add(row: EventRow): void {
+    if (!row.ephemeral && row.seq >= 0 && row.seq <= this.s.lastSeq) return;
+    foldRow(this.d, this.s, row, this.cwd);
+  }
+
+  state(): FoldState {
+    const { d, s, last } = this;
+    if (
+      d.arr === last.blocks &&
+      s.busy === last.busy &&
+      s.context === last.context &&
+      s.lastSeq === last.lastSeq &&
+      s.nextId === last.nextId &&
+      s.thread === last.thread
+    ) {
+      return last;
+    }
+    d.share();
+    this.last = { blocks: d.arr, busy: s.busy, context: s.context, lastSeq: s.lastSeq, nextId: s.nextId, thread: s.thread };
+    return this.last;
+  }
+}
+
+/**
+ * "Load earlier": the older page in front of the rows already kept, folded
+ * from the start through one builder. Exact: the board's rounds and todos
+ * (`Block.round`, `Block.todo`) and the thread state count from the first
+ * row, so a fold that joined the page's blocks to the kept ones would stamp
+ * the kept ones wrong; this refolds the kept rows, but each page costs its
+ * rows and blocks once (not rows × blocks, as a refold a row at a time did).
+ */
+export function foldOlder(older: readonly EventRow[], kept: readonly EventRow[], cwd: string): FoldState {
+  const builder = new FoldBuilder(emptyFold(), cwd);
+  for (const row of older) builder.add(row);
+  for (const row of kept) builder.add(row);
+  return builder.state();
+}
+
+/** One row into the draft and the fields beside it. */
+function foldRow(d: Draft, s: Scalars, row: EventRow, cwd: string): void {
+  const e = row.event;
+  const persisted = !row.ephemeral && row.seq >= 0;
+  d.beginRow();
+  const rowThread = s.thread;
+  if (persisted) s.lastSeq = Math.max(s.lastSeq, row.seq);
   // A persisted row mints ids from its seq, so a block gets the same id
   // whether it folded from a tail-first paint or from the whole log.
   let minted = 0;
   const fresh = (prefix: string): string =>
-    persisted ? `${prefix}:${row.seq}${minted++ ? `.${minted}` : ""}` : `${prefix}:${nextId++}`;
-  /** Copy-on-write view of the thread state. */
+    persisted ? `${prefix}:${row.seq}${minted++ ? `.${minted}` : ""}` : `${prefix}:${s.nextId++}`;
+  /** Copy-on-write view of the thread state (one copy a row). */
   const th = (): ThreadState => {
-    if (thread === state.thread) thread = { ...state.thread };
-    return thread;
+    if (s.thread === rowThread) s.thread = { ...rowThread };
+    return s.thread;
   };
+  const last = (): Block | undefined => (d.length > 0 ? d.at(d.length - 1) : undefined);
 
   // In-harness subagent output: its tool calls show as ordinary tool
   // blocks (nesting arrives later); its prose stays out of the main flow.
@@ -371,14 +785,13 @@ export function foldEvent(
               },
             }
           : {};
-      let idx = blocks.findIndex((b) => b.pending && b.text === e.text);
-      if (idx < 0) idx = blocks.findIndex((b) => b.pending);
+      let idx = d.firstPending(e.text);
+      if (idx < 0) idx = d.firstPending();
       const id = `u:${row.seq}`;
       if (idx >= 0) {
         // The optimistic push already ran beginTurn — just claim the block.
-        const { pending: _pending, ...prev } = blocks[idx];
-        blocks = blocks.slice();
-        blocks[idx] = {
+        const { pending: _pending, ...prev } = d.at(idx);
+        d.set(idx, {
           ...prev,
           id,
           // The row on screen keeps its key: the echo renames the block, not the row.
@@ -394,25 +807,22 @@ export function foldEvent(
             : attachments
               ? { attachments }
               : {}),
-        };
+        });
       } else {
-        beginTurn(th(), row.ts, lastBlockTs(blocks), stamp.newPass);
-        blocks = [
-          ...sealLastStream(blocks),
-          {
-            id,
-            role: "user",
-            text: e.text,
-            startedAt: row.ts,
-            ...(persisted ? { seq: row.seq } : {}),
-            ...turn,
-            ...preamble,
-            ...steer,
-            ...(attachments ? { attachments } : {}),
-          },
-        ];
+        beginTurn(th(), row.ts, lastBlockTs(d), stamp.newPass);
+        append(d, {
+          id,
+          role: "user",
+          text: e.text,
+          startedAt: row.ts,
+          ...(persisted ? { seq: row.seq } : {}),
+          ...turn,
+          ...preamble,
+          ...steer,
+          ...(attachments ? { attachments } : {}),
+        });
       }
-      busy = true;
+      s.busy = true;
       break;
     }
     case "assistant-text":
@@ -425,55 +835,52 @@ export function foldEvent(
           : null;
       let idx = -1;
       if (key) {
-        idx = findLastIndex(blocks, (b) => b.id === key);
+        idx = d.byId(key);
       } else {
-        const last = blocks.length - 1;
-        if (blocks[last]?.role === role && blocks[last].streaming) idx = last;
+        const tail = last();
+        if (tail?.role === role && tail.streaming) idx = d.length - 1;
       }
       if (idx < 0) {
         if (e.delta && !e.text) break;
-        blocks = [
-          ...sealLastStream(blocks),
-          {
-            id: key ?? fresh(role === "assistant" ? "a" : "r"),
-            role,
-            text: e.text,
-            streaming: e.delta,
-            ...(persisted && role === "assistant" ? { seq: row.seq } : {}),
-            // A thought counts its seconds from its first delta, which is
-            // ephemeral and so never reaches stampTail's `ts`; its end is its
-            // final row, so a settled one reads "Thought for 12s".
-            ...(role === "reasoning" ? { startedAt: row.ts, ...(e.delta ? {} : { doneTs: row.ts }) } : {}),
-          },
-        ];
+        append(d, {
+          id: key ?? fresh(role === "assistant" ? "a" : "r"),
+          role,
+          text: e.text,
+          streaming: e.delta,
+          ...(persisted && role === "assistant" ? { seq: row.seq } : {}),
+          // A thought counts its seconds from its first delta, which is
+          // ephemeral and so never reaches stampTail's `ts`; its end is its
+          // final row, so a settled one reads "Thought for 12s".
+          ...(role === "reasoning" ? { startedAt: row.ts, ...(e.delta ? {} : { doneTs: row.ts }) } : {}),
+        });
         break;
       }
-      const cur = blocks[idx];
+      const cur = d.at(idx);
       const text = e.delta ? cur.text + e.text : e.text;
       if (text === cur.text && cur.streaming === e.delta) break;
-      blocks = blocks.slice();
-      blocks[idx] = {
+      d.set(idx, {
         ...cur,
         text,
         streaming: e.delta,
         ...(role === "reasoning" && !e.delta && cur.doneTs === undefined ? { doneTs: row.ts } : {}),
-      };
+      });
       break;
     }
     case "tool-call": {
       if (!nested) {
         // Plan-tool calls move the todo model first, so this block and
         // everything after it belong to the newly in-progress todo.
-        const next = { ...thread };
-        if (applyTodoCall(next, e)) thread = next;
+        const next = { ...s.thread };
+        if (applyTodoCall(next, e)) s.thread = next;
       }
       const input = asRecord(e.input) ?? {};
       const title = e.display
         ? [e.display.app, e.display.action].filter(Boolean).join(": ")
         : toolTitle(e.name, input);
-      const prevCall = blocks[findLastIndex(blocks, (b) => b.tool?.callId === e.callId)];
-      blocks = upsertToolBlock(
-        blocks,
+      const prevIdx = d.byCall(e.callId);
+      const prevCall = prevIdx >= 0 ? d.at(prevIdx) : undefined;
+      upsertTool(
+        d,
         cwd,
         {
           callId: e.callId,
@@ -495,24 +902,23 @@ export function foldEvent(
         },
         e.callId,
       );
-      if (e.parentCallId && !e.partial) {
-        blocks = countSubStep(blocks, e.parentCallId);
-      }
+      if (e.parentCallId && !e.partial) countSubStep(d, e.parentCallId);
       if (persisted) {
-        const idx = findLastIndex(blocks, (b) => b.tool?.callId === e.callId);
-        if (idx >= 0 && blocks[idx].ts === undefined && blocks[idx].round !== undefined) {
-          if (blocks === state.blocks) blocks = blocks.slice();
-          blocks[idx] = { ...blocks[idx], ts: row.ts };
+        const idx = d.byCall(e.callId);
+        if (idx >= 0) {
+          const b = d.at(idx);
+          if (b.ts === undefined && b.round !== undefined) d.set(idx, { ...b, ts: row.ts });
         }
       }
       break;
     }
     case "tool-result": {
       if (!nested) {
-        const next = { ...thread };
-        if (applyTaskResult(next, e)) thread = next;
+        const next = { ...s.thread };
+        if (applyTaskResult(next, e)) s.thread = next;
       }
-      const prev = blocks[findLastIndex(blocks, (b) => b.tool?.callId === e.callId)];
+      const prevIdx = d.byCall(e.callId);
+      const prev = prevIdx >= 0 ? d.at(prevIdx) : undefined;
       const name = prev?.tool?.name ?? "tool";
       const input = prev?.tool?.input ?? prev?.tool?.partialInput;
       const output = outputText(e.output);
@@ -520,8 +926,8 @@ export function foldEvent(
         ...(e.reauth ? { reauth: e.reauth } : {}),
         ...omittedAfter(prev, row, omittedBytes(e.output)),
       };
-      blocks = upsertToolBlock(
-        blocks,
+      upsertTool(
+        d,
         cwd,
         {
           callId: e.callId,
@@ -534,18 +940,18 @@ export function foldEvent(
         e.callId,
       );
       {
-        const idx = findLastIndex(blocks, (b) => b.tool?.callId === e.callId);
-        if (idx >= 0 && blocks[idx].doneTs === undefined) {
-          if (blocks === state.blocks) blocks = blocks.slice();
-          blocks[idx] = { ...blocks[idx], doneTs: row.ts };
+        const idx = d.byCall(e.callId);
+        if (idx >= 0) {
+          const b = d.at(idx);
+          if (b.doneTs === undefined) d.set(idx, { ...b, doneTs: row.ts });
         }
       }
       break;
     }
     case "approval-request": {
       const input = asRecord(e.input) ?? {};
-      blocks = attachApprovalBlock(
-        blocks,
+      attachApproval(
+        d,
         cwd,
         {
           requestId: e.requestId,
@@ -561,13 +967,13 @@ export function foldEvent(
       );
       {
         const bytes = omittedBytes(e.input);
-        const idx = bytes > 0 ? findLastIndex(blocks, (b) => b.approval?.requestId === e.requestId) : -1;
-        if (idx >= 0 && blocks[idx].tool) {
-          if (blocks === state.blocks) blocks = blocks.slice();
-          blocks[idx] = { ...blocks[idx], tool: { ...blocks[idx].tool, ...omittedAfter(blocks[idx], row, bytes) } };
+        const idx = bytes > 0 ? d.lastWhereBy((b) => b.approval?.requestId === e.requestId) : -1;
+        if (idx >= 0) {
+          const b = d.at(idx);
+          if (b.tool) d.set(idx, { ...b, tool: { ...b.tool, ...omittedAfter(b, row, bytes) } });
         }
       }
-      busy = true;
+      s.busy = true;
       break;
     }
     case "approval-resolved": {
@@ -575,32 +981,31 @@ export function foldEvent(
       // records who decided, never a third state.
       const decided = e.allow ? "allow" : "deny";
       const auto = e.auto === true;
-      const idx = findLastIndex(blocks, (b) => b.approval?.requestId === e.requestId);
+      const idx = d.lastWhereBy((b) => b.approval?.requestId === e.requestId);
       if (idx < 0) break;
-      const cur = blocks[idx].approval;
+      const b = d.at(idx);
+      const cur = b.approval;
       if (cur?.decided === decided && !!cur.auto === auto) break;
-      blocks = blocks.slice();
-      blocks[idx] = {
-        ...blocks[idx],
+      d.set(idx, {
+        ...b,
         approval: { requestId: e.requestId, decided, ...(auto ? { auto } : {}), ...(cur?.choices ? { choices: cur.choices } : {}) },
-      };
+      });
       break;
     }
     case "steer": {
       // The last row per steer wins; a row for a steer the window never
       // saw (its user row outside the loaded page) changes nothing.
-      const idx = findLastIndex(blocks, (b) => b.steerId === e.steerId);
+      const idx = d.lastWhereBy((b) => b.steerId === e.steerId);
       if (idx < 0) break;
-      blocks = blocks.slice();
-      blocks[idx] = {
-        ...blocks[idx],
+      d.set(idx, {
+        ...d.at(idx),
         steer: {
           state: e.state,
           ts: row.ts,
           ...(e.how ? { how: e.how } : {}),
           ...(e.reason ? { reason: e.reason } : {}),
         },
-      };
+      });
       break;
     }
     case "question-request": {
@@ -612,63 +1017,59 @@ export function foldEvent(
       const title = e.questions[0]?.header?.trim() || "Question";
       // The harness's own tool call (claude's AskUserQuestion) already has a
       // block; the card attaches to it instead of standing beside it.
-      const idx = e.callId ? findLastIndex(blocks, (b) => b.tool?.callId === e.callId) : -1;
+      const idx = e.callId ? d.byCall(e.callId) : -1;
       if (idx >= 0) {
-        const prev = blocks[idx];
-        blocks = blocks.slice();
-        blocks[idx] = {
+        const prev = d.at(idx);
+        d.set(idx, {
           ...prev,
           text: title,
           streaming: true,
           tool: { ...prev.tool, title, kind: "question", status: "running" },
           question,
-        };
+        });
       } else {
-        blocks = [
-          ...sealLastStream(blocks),
-          {
-            id: `q:${e.requestId}`,
-            role: "tool",
-            text: title,
-            streaming: true,
-            tool: { callId: e.callId, title, kind: "question", status: "running" },
-            question,
-          },
-        ];
+        append(d, {
+          id: `q:${e.requestId}`,
+          role: "tool",
+          text: title,
+          streaming: true,
+          tool: { callId: e.callId, title, kind: "question", status: "running" },
+          question,
+        });
       }
-      busy = true;
+      s.busy = true;
       break;
     }
     case "question-resolved": {
-      const idx = findLastIndex(blocks, (b) => b.question?.requestId === e.requestId);
+      const idx = d.lastWhereBy((b) => b.question?.requestId === e.requestId);
       if (idx < 0) break;
-      const prev = blocks[idx];
-      blocks = blocks.slice();
-      blocks[idx] = {
+      const prev = d.at(idx);
+      d.set(idx, {
         ...prev,
         streaming: false,
         tool: { ...prev.tool, status: e.answers ? "completed" : "cancelled" },
         question: { ...prev.question!, answers: e.answers },
-      };
+      });
       break;
     }
     case "status": {
-      busy = OPEN_STATUSES.has(e.status);
+      s.busy = OPEN_STATUSES.has(e.status);
       // A turn that ends or pauses with a compaction open: it stopped there.
-      if (!busy && (thread.compacting || thread.compactionId)) {
-        const open = openCompactionIndex(blocks, thread);
-        if (open >= 0) blocks = closeCompaction(blocks, open, COMPACTION_STOPPED, { phase: "stopped", endedAt: row.ts });
+      if (!s.busy && (s.thread.compacting || s.thread.compactionId)) {
+        const open = openCompactionIndex(d, s.thread);
+        if (open >= 0) closeCompaction(d, open, COMPACTION_STOPPED, { phase: "stopped", endedAt: row.ts });
         const t = th();
         t.compacting = false;
         t.compactionId = null;
       }
       if (e.status === "paused") {
         // The turn clock freezes with the work; resuming restarts it.
-        blocks = stopStreamingBlocks(blocks, row.ts);
-      } else if (!busy) {
-        blocks = settleOpenTools(stopStreamingBlocks(blocks, row.ts));
+        stopStreams(d, row.ts);
+      } else if (!s.busy) {
+        stopStreams(d, row.ts);
+        settleTools(d);
       } else {
-        blocks = resumeTurnClock(blocks, row.ts);
+        resumeClock(d, row.ts);
       }
       // Logged end-of-turn signals close the turn even when the
       // turn-complete event itself was lost (crash between the two).
@@ -677,27 +1078,27 @@ export function foldEvent(
       // ends it as well: the harness is gone, and Resume opens a new one.
       if (
         (e.status === "idle" || e.status === "error" || e.status === "watching" || e.status === "stopped") &&
-        (thread.turnOpen || thread.inPass)
+        (s.thread.turnOpen || s.thread.inPass)
       ) {
         const t = th();
         t.turnOpen = false;
         t.inPass = false;
-        blocks = closeUserTurns(blocks, row.ts, e.status === "stopped");
+        closeUserTurns(d, row.ts, e.status === "stopped");
       }
       // "awaiting approval"/"awaiting answer" already show as cards.
       if (e.detail && e.status !== "waiting") {
-        const before = blocks;
-        blocks = appendStatusBlock(blocks, e.detail, fresh("s"));
         // The check on idle background tasks is a step of the work, not a row.
-        if (blocks !== before && e.detail === BACKGROUND_CHECK_WORDS) {
-          blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], backgroundCheck: true };
+        if (appendStatus(d, e.detail, fresh("s")) && e.detail === BACKGROUND_CHECK_WORDS) {
+          d.set(d.length - 1, { ...d.at(d.length - 1), backgroundCheck: true });
         }
       }
       break;
     }
     case "turn-complete": {
-      blocks = closeUserTurns(settleOpenTools(stopStreamingBlocks(blocks, row.ts)), row.ts);
-      busy = false;
+      stopStreams(d, row.ts);
+      settleTools(d);
+      closeUserTurns(d, row.ts);
+      s.busy = false;
       const t = th();
       t.turnOpen = false;
       t.inPass = false;
@@ -706,23 +1107,21 @@ export function foldEvent(
       break;
     }
     case "context":
-      context = mergeContextUsage(context, { used: e.tokens, window: e.window });
+      s.context = mergeContextUsage(s.context, { used: e.tokens, window: e.window });
       break;
     case "error":
-      blocks = [
-        ...stopStreamingBlocks(blocks, row.ts),
-        {
-          id: `err:${row.seq}`,
-          role: "system",
-          text: e.message,
-          ts: row.ts,
-          ...(e.stopped ? { stopped: true } : {}),
-          ...(e.failure ? { failure: e.failure } : {}),
-        },
-      ];
+      stopStreams(d, row.ts);
+      d.push({
+        id: `err:${row.seq}`,
+        role: "system",
+        text: e.message,
+        ts: row.ts,
+        ...(e.stopped ? { stopped: true } : {}),
+        ...(e.failure ? { failure: e.failure } : {}),
+      });
       if (e.stopped) {
-        blocks = settleOpenTools(blocks);
-        busy = false;
+        settleTools(d);
+        s.busy = false;
         th().stopped = true;
       }
       break;
@@ -733,39 +1132,42 @@ export function foldEvent(
         // holds in a row read the same); a merged-anyway row settles the
         // hold it names.
         const review = e.review;
-        blocks = [...sealLastStream(blocks), { id: `notice:${row.seq}`, role: "system", text: e.message, review }];
+        append(d, { id: `notice:${row.seq}`, role: "system", text: e.message, review });
         if (review.outcome === "merged-anyway") {
-          for (let i = blocks.length - 2; i >= 0; i--) {
-            const r = blocks[i].review;
+          for (let i = d.length - 2; i >= 0; i--) {
+            const b = d.at(i);
+            const r = b.review;
             if (r && r.runId === review.runId && r.outcome === "held" && !r.resolved) {
-              blocks[i] = { ...blocks[i], review: { ...r, resolved: true } };
+              d.set(i, { ...b, review: { ...r, resolved: true } });
               break;
             }
           }
         }
       } else if (e.kind === "gate" && e.gate) {
         // A gate run's row: its own card, never folded into the status line.
-        blocks = [...sealLastStream(blocks), { id: `notice:${row.seq}`, role: "system", text: e.message, gate: e.gate }];
+        append(d, { id: `notice:${row.seq}`, role: "system", text: e.message, gate: e.gate });
       } else if (e.kind === "away") {
         // What the thread decided or the host answered while the person was
         // away: a row each, even when two read the same.
         const notice = e.away ? { kind: e.kind, away: e.away } : { kind: e.kind };
-        blocks = [...sealLastStream(blocks), { id: `notice:${row.seq}`, role: "system", text: e.message, notice }];
-      } else {
+        append(d, { id: `notice:${row.seq}`, role: "system", text: e.message, notice });
+      } else if (appendStatus(d, e.message, `notice:${row.seq}`)) {
         // A batch's or an account's notice keeps its kind, so it draws typed.
-        const next = appendStatusBlock(blocks, e.message, `notice:${row.seq}`);
-        if (next !== blocks) next[next.length - 1] = { ...next[next.length - 1], notice: { kind: e.kind } };
-        blocks = next;
+        d.set(d.length - 1, { ...d.at(d.length - 1), notice: { kind: e.kind } });
       }
       break;
     case "errors-cleared": {
       // Continue settled every error shown so far; the system rows that
       // followed the last one (status detail, stopped note) go with it.
-      let end = blocks.length;
-      while (end > 0 && blocks[end - 1].role === "system") end--;
-      const kept = blocks.slice(0, end).filter((b) => !b.id.startsWith("err:"));
-      if (kept.length !== blocks.length) blocks = kept;
-      if (thread.stopped) th().stopped = false;
+      let end = d.length;
+      while (end > 0 && d.at(end - 1).role === "system") end--;
+      const kept: Block[] = [];
+      for (let i = 0; i < end; i++) {
+        const b = d.at(i);
+        if (!b.id.startsWith("err:")) kept.push(b);
+      }
+      if (kept.length !== d.length) d.replace(kept);
+      if (s.thread.stopped) th().stopped = false;
       break;
     }
     case "compaction": {
@@ -773,11 +1175,11 @@ export function foldEvent(
       // One row per compaction: the CLI repeats its start every 30 s while
       // it compacts (rows on disk keep the repeats), and a message can land
       // between the start and the outcome.
-      const open = openCompactionIndex(blocks, thread);
+      const open = openCompactionIndex(d, s.thread);
       if (e.phase === "start") {
         if (open >= 0) break;
         const id = fresh("s");
-        blocks = [...sealLastStream(blocks), { id, role: "system", text: COMPACTING_WORDS, compaction: { ...meta, startedAt: row.ts } }];
+        append(d, { id, role: "system", text: COMPACTING_WORDS, compaction: { ...meta, startedAt: row.ts } });
         const t = th();
         t.compacting = true;
         t.compactionId = id;
@@ -786,14 +1188,14 @@ export function foldEvent(
           e.phase === "done"
             ? "Context compacted"
             : `Compaction failed${e.error ? `: ${e.error}` : ""}`;
-        if (open >= 0) blocks = closeCompaction(blocks, open, note, meta);
-        else blocks = [...sealLastStream(blocks), { id: fresh("s"), role: "system", text: note, compaction: meta }];
+        if (open >= 0) closeCompaction(d, open, note, meta);
+        else append(d, { id: fresh("s"), role: "system", text: note, compaction: meta });
         // The meter drops with the transcript: the next turn's reading
         // confirms, but the user should not wait for it.
         if (e.phase === "done" && e.postTokens !== undefined) {
-          context = mergeContextUsage(context, { used: e.postTokens });
+          s.context = mergeContextUsage(s.context, { used: e.postTokens });
         }
-        if (thread.compacting || thread.compactionId) {
+        if (s.thread.compacting || s.thread.compactionId) {
           const t = th();
           t.compacting = false;
           t.compactionId = null;
@@ -802,18 +1204,19 @@ export function foldEvent(
       break;
     }
     case "plan":
-      blocks = [...sealLastStream(blocks), { id: `p:${row.seq}`, role: "plan", text: e.text }];
+      append(d, { id: `p:${row.seq}`, role: "plan", text: e.text });
       break;
     case "turn-pass":
       // The completed-turn pass opens here; blocks fold as pass work
       // until its turn-complete (or a status end) closes it.
-      blocks = stampTail(appendStatusBlock(blocks, `Pass: ${e.actions.join(", ")}`, fresh("s")), thread, row.ts);
+      appendStatus(d, `Pass: ${e.actions.join(", ")}`, fresh("s"));
+      stampTail(d, s.thread, row.ts);
       th().inPass = true;
       break;
     case "agent-report":
-      blocks = appendStatusBlock(blocks, `Agent ${e.title}: ${e.status}`, fresh("s"));
+      appendStatus(d, `Agent ${e.title}: ${e.status}`, fresh("s"));
       // The batch's own report names the master itself: it reads as the batch and links nowhere.
-      blocks = withAgent(blocks, {
+      withAgent(d, {
         id: e.agentId,
         title: e.title,
         status: e.status,
@@ -823,26 +1226,22 @@ export function foldEvent(
     case "background-task":
       // A task that settled is a step of the run it woke (the driver never
       // emits one for ambient housekeeping); live work is the Activity section.
-      blocks = [
-        ...sealLastStream(blocks),
-        {
-          id: fresh("t"),
-          role: "system",
-          text: e.description,
-          task: { id: e.taskId, label: e.description, status: e.status },
-        },
-      ];
+      append(d, {
+        id: fresh("t"),
+        role: "system",
+        text: e.description,
+        task: { id: e.taskId, label: e.description, status: e.status },
+      });
       break;
     case "background-tasks":
       // No row: the live set is the right panel's Activity section.
       break;
     case "plan-handoff": {
       // The plan's quiet record of its build: a row that links to the thread.
-      blocks = appendStatusBlock(blocks, `${e.how === "auto" ? "Implementation started" : "Build started"}: ${e.title}`, fresh("s"));
-      const last = blocks[blocks.length - 1];
-      if (last?.role === "system") {
-        blocks = blocks.slice();
-        blocks[blocks.length - 1] = { ...last, planHandoff: { id: e.sessionId, title: e.title, how: e.how } };
+      appendStatus(d, `${e.how === "auto" ? "Implementation started" : "Build started"}: ${e.title}`, fresh("s"));
+      const tail = last();
+      if (tail?.role === "system") {
+        d.set(d.length - 1, { ...tail, planHandoff: { id: e.sessionId, title: e.title, how: e.how } });
       }
       break;
     }
@@ -850,21 +1249,18 @@ export function foldEvent(
       // On the call, a child on another host is named as the call's result
       // names it (`<env>:<id>`); the fallback row keeps the id the store knows.
       const id = e.environmentId ? `${e.environmentId}:${e.childSessionId}` : e.childSessionId;
-      const stamped = stampSpawn(blocks, id);
-      if (stamped) {
-        blocks = stamped;
-      } else {
-        blocks = appendStatusBlock(blocks, `Spawned agent ${e.childSessionId}`, fresh("s"));
-        blocks = withAgent(blocks, { id: e.childSessionId });
+      if (!stampSpawn(d, id)) {
+        appendStatus(d, `Spawned agent ${e.childSessionId}`, fresh("s"));
+        withAgent(d, { id: e.childSessionId });
       }
-      if (!thread.agents.includes(e.childSessionId)) {
+      if (!s.thread.agents.includes(e.childSessionId)) {
         const t = th();
         t.agents = [...t.agents, e.childSessionId];
       }
       break;
     }
     case "goal":
-      blocks = appendStatusBlock(blocks, `Goal ${e.phase}: ${e.condition}`, fresh("s"));
+      appendStatus(d, `Goal ${e.phase}: ${e.condition}`, fresh("s"));
       break;
     case "research-source": {
       // Kept whole for the research board; a repeat callId only enriches
@@ -889,23 +1285,7 @@ export function foldEvent(
       break;
   }
 
-  if (blocks !== state.blocks) blocks = stampTail(blocks, thread, persisted ? row.ts : undefined);
-
-  if (blocks !== state.blocks && (e.type === "assistant-text" || e.type === "thinking")) {
-    carryPendingApprovalIndex(state.blocks, blocks);
-  }
-
-  if (
-    blocks === state.blocks &&
-    busy === state.busy &&
-    context === state.context &&
-    lastSeq === state.lastSeq &&
-    nextId === state.nextId &&
-    thread === state.thread
-  ) {
-    return state;
-  }
-  return { blocks, busy, context, lastSeq, nextId, thread };
+  if (d.rowWrites > 0) stampTail(d, s.thread, persisted ? row.ts : undefined);
 }
 
 export function fromServerAttachment(a: ServerAttachment): Attachment {

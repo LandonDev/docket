@@ -55,30 +55,38 @@ export function upsertToolBlock(
   id?: string,
 ): Block[] {
   const index = findToolIndex(blocks, patch);
-  if (index < 0) {
+  if (index < 0) return [...sealLastStream(blocks), toolBlockAfter(undefined, cwd, patch, id)];
+  const prev = blocks[index];
+  const next = toolBlockAfter(prev, cwd, patch, id);
+  if (next === prev) return blocks;
+  const out = blocks.slice();
+  out[index] = next;
+  return out;
+}
+
+/** The block a tool patch makes: a new one when there is no `prev`, else
+ *  `prev` patched, or `prev` itself when the patch changes nothing. */
+export function toolBlockAfter(prev: Block | undefined, cwd: string, patch: ToolPatch, id?: string): Block {
+  if (!prev) {
     const detail = capToolDetail(patch.detail);
     const preview = fillPreview(patch.preview, patch.kind, patch.title);
     const label = finalToolLabel(cwd, patch.kind, displayLabel(patch), preview);
-    return [
-      ...sealLastStream(blocks),
-      {
-        id: id ?? crypto.randomUUID(),
-        role: "tool",
-        text: label,
-        streaming: patch.streaming,
-        tool: {
-          callId: patch.callId,
-          title: label,
-          kind: patch.kind,
-          status: patch.status,
-          ...(detail ? { detail } : {}),
-          ...(preview ? { preview } : {}),
-          ...(patch.extra ?? {}),
-        },
+    return {
+      id: id ?? crypto.randomUUID(),
+      role: "tool",
+      text: label,
+      streaming: patch.streaming,
+      tool: {
+        callId: patch.callId,
+        title: label,
+        kind: patch.kind,
+        status: patch.status,
+        ...(detail ? { detail } : {}),
+        ...(preview ? { preview } : {}),
+        ...(patch.extra ?? {}),
       },
-    ];
+    };
   }
-  const prev = blocks[index];
   const detail = capToolDetail(patch.detail) ?? prev.tool?.detail;
   const preview = fillPreview(
     mergeToolPreview(patch.preview, prev.tool?.preview),
@@ -103,10 +111,9 @@ export function upsertToolBlock(
     prev.tool?.detail === detail &&
     samePreview(prev.tool?.preview, preview)
   ) {
-    return blocks;
+    return prev;
   }
-  const next = blocks.slice();
-  next[index] = {
+  return {
     ...prev,
     text: label,
     streaming: patch.streaming,
@@ -121,7 +128,6 @@ export function upsertToolBlock(
       ...(patch.extra ?? {}),
     },
   };
-  return next;
 }
 
 /** Attach an approval to the tool block it guards, or append one for it. */
@@ -134,7 +140,16 @@ export function attachApprovalBlock(
   const index = findToolForApproval(blocks, event);
   if (index >= 0) {
     const next = blocks.slice();
-    const prev = next[index];
+    next[index] = approvalBlockAfter(next[index], cwd, event, id);
+    return next;
+  }
+  return [...sealLastStream(blocks), approvalBlockAfter(undefined, cwd, event, id)];
+}
+
+/** The block an approval makes: `prev` (the call it guards) with the card
+ *  attached, or a new block of its own when there is none. */
+export function approvalBlockAfter(prev: Block | undefined, cwd: string, event: ApprovalAttach, id?: string): Block {
+  if (prev) {
     const preview = mergeToolPreview(event.preview, prev.tool?.preview);
     const label =
       finalToolLabel(
@@ -143,7 +158,7 @@ export function attachApprovalBlock(
         preferLabel(event.title, prev.tool?.title, prev.text),
         preview,
       ) || prev.text;
-    next[index] = {
+    return {
       ...prev,
       text: label || prev.text,
       tool: prev.tool
@@ -167,28 +182,24 @@ export function attachApprovalBlock(
           : prev.tool,
       approval: approvalOf(event),
     };
-    return next;
   }
   const preview = event.preview;
   const label =
     finalToolLabel(cwd, event.kind, preferLabel(event.title), preview) ||
     kindTitle(event.kind);
-  return [
-    ...sealLastStream(blocks),
-    {
-      id: id ?? crypto.randomUUID(),
-      role: "tool",
-      text: label,
-      tool: {
-        ...(event.callId ? { callId: event.callId } : {}),
-        title: label,
-        kind: event.kind,
-        ...(preview ? { preview } : {}),
-        ...(event.name ? { name: event.name, input: event.input } : {}),
-      },
-      approval: approvalOf(event),
+  return {
+    id: id ?? crypto.randomUUID(),
+    role: "tool",
+    text: label,
+    tool: {
+      ...(event.callId ? { callId: event.callId } : {}),
+      title: label,
+      kind: event.kind,
+      ...(preview ? { preview } : {}),
+      ...(event.name ? { name: event.name, input: event.input } : {}),
     },
-  ];
+    approval: approvalOf(event),
+  };
 }
 
 function findToolForApproval(blocks: Block[], event: ApprovalAttach): number {
@@ -316,7 +327,8 @@ export function appendStatusBlock(
 ): Block[] {
   const trimmed = text.trim();
   if (!trimmed) return blocks;
-  const last = [...blocks].reverse().find((block) => block.role !== "reasoning");
+  let last: Block | undefined;
+  for (let i = blocks.length - 1; i >= 0 && !last; i--) if (blocks[i].role !== "reasoning") last = blocks[i];
   if (last?.role === "system" && last.text === trimmed) return blocks;
   return [
     ...sealLastStream(blocks),
@@ -365,13 +377,18 @@ export function isOpenTool(block: Block): boolean {
   return !status || OPEN_TOOL_STATUSES.has(status);
 }
 
+/** A call shown running that a turn's end cancels (`settleOpenTools`). */
+export function isUnsettledTool(block: Block): boolean {
+  const status = block.tool?.status?.toLowerCase();
+  return !!block.tool && !!status && OPEN_TOOL_STATUSES.has(status);
+}
+
 /** The turn is over: a call still shown running will never finish. */
 export function settleOpenTools(blocks: Block[]): Block[] {
   let next = blocks;
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
-    const status = block.tool?.status?.toLowerCase();
-    if (!block.tool || !status || !OPEN_TOOL_STATUSES.has(status)) continue;
+    if (!isUnsettledTool(block)) continue;
     if (next === blocks) next = blocks.slice();
     next[i] = { ...block, streaming: false, tool: { ...block.tool, status: "cancelled" } };
   }
