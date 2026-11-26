@@ -17,7 +17,7 @@ import { KindGlyph } from "./KindGlyph";
 import { readsSession } from "./lifeosPlace";
 import { homeLists, shownName, type Sidebar } from "./model";
 import { busyOf, type Busy } from "./busy";
-import { RowState, RowWords, WhereWords } from "./rowParts";
+import { NAME_LINE, RowState, RowWords, WhereWords } from "./rowParts";
 
 /**
  * Home (docs/DESIGN.md "The Files place"): the page a new tab opens on. Three short lists from the workspace's
@@ -44,22 +44,26 @@ function HomeList({ title, entries, busy, held, onOpen }: { title: string; entri
         return (
           <Button key={entry.key} variant="ghost" data-files-home-row={entry.key} disabled={!!opening || (held && readsSession(entry))} className="h-9 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-[13px] font-normal" onClick={() => onOpen(entry)}>
             <KindGlyph kind={entry.kind} />
-            {/* Its own width as its basis (`flex-auto`), so a state beside it gives way first (`RowWords`). */}
-            <span className="min-w-0 flex-auto truncate text-start text-foreground">{shownName(entry.name)}</span>
-            {/* A change a thread holds for his press says its verb; the row opens the held item, not the file. */}
-            {/* A state gives way before the name, cut, whole on hover (`RowWords`), as in the folder's list. */}
-            {opening ? (
-              <RowWords data-files-busy="" busy words={opening.word} cut={CUT} />
-            ) : entry.held ? (
-              <RowWords tone="warning" words={`${HELD_WORDS[entry.held.verb] ?? "A change"} waits for you`} cut={CUT} />
-            ) : entry.unsent ? (
-              // A closed copy whose changes its file did not take: the row opens it again, with its own presses.
-              <RowWords tone="warning" words="Not saved" cut={CUT} />
-            ) : (
-              <RowState entry={entry} cut={CUT} />
-            )}
+            {/* The name and its state on one wrapping line (`NAME_LINE`): a state that does not fit goes whole, the name
+                keeping the line, as in the folder's list. */}
+            <span className={`${NAME_LINE} flex-auto items-center gap-x-2`}>
+              <span className="min-w-0 truncate text-start text-foreground">{shownName(entry.name)}</span>
+              {/* A change a thread holds for his press says its verb; the row opens the held item, not the file. */}
+              {opening ? (
+                <RowWords data-files-busy="" busy words={opening.word} cut={CUT} />
+              ) : entry.held ? (
+                <RowWords tone="warning" words={`${HELD_WORDS[entry.held.verb] ?? "A change"} waits for you`} cut={CUT} />
+              ) : entry.unsent ? (
+                // A closed copy whose changes its file did not take: the row opens it again, with its own presses.
+                <RowWords tone="warning" words="Not saved" cut={CUT} />
+              ) : (
+                <RowState entry={entry} cut={CUT} />
+              )}
+            </span>
             {entry.where ? (
-              <span className="hidden max-w-[30%] shrink-0 truncate text-xs text-muted-foreground @[480px]/files-home:block">
+              // One column on every row, as the folder list's By: 160px, so each row's place starts at one x. It folds
+              // under 640px of Home, as By does, before a state beside a name would.
+              <span data-files-home-where className="hidden w-40 shrink-0 truncate text-start text-xs text-muted-foreground @[640px]/files-home:block">
                 <WhereWords where={entry.where} />
               </span>
             ) : null}

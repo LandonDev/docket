@@ -13,6 +13,7 @@ import { KindGlyph } from "./KindGlyph";
 import { shownName, tabEnds, tabMin, tabShrink } from "./model";
 import { TabName } from "../canvas/TabName";
 import { setDragLabel, setSideOver } from "./rowParts";
+import { SIDEBAR_TOGGLE } from "./sidebarPeek";
 
 /**
  * The Files place's tab row (docs/DESIGN.md "The Files place"): the workspace's open tabs on the canvas tab row's
@@ -26,6 +27,9 @@ import { setDragLabel, setSideOver } from "./rowParts";
 export const TAB_SPRING_MS = 600;
 
 const tabId = (id: string): string => `files-tab-${id}`;
+/** Under a tab's close, where it lies over the name: the hovered tab's fill (`foreground` 5% on `sidebar`), the name
+ *  fading into it over 12px. */
+export const CLOSE_OVER = "rounded-e-sm ps-3 bg-[linear-gradient(to_right,transparent,color-mix(in_srgb,var(--foreground)_5%,var(--sidebar))_12px)]";
 export const filesPanelId = (id: string): string => `files-panel-${id}`;
 
 /** Mouse wheels only emit deltaY; turn it sideways. Trackpad swipes keep native scrolling. */
@@ -138,7 +142,7 @@ export function TabRow({
   return (
     <div data-files-tabrow className="flex h-9 shrink-0 items-center gap-1 border-b border-border bg-sidebar px-1.5">
       <Tip label={sidebarOpen ? "Hide Sidebar" : "Show Sidebar"}>
-        <Button variant="ghost" size="icon-sm" aria-label={sidebarOpen ? "Hide Sidebar" : "Show Sidebar"} aria-pressed={sidebarOpen} className="shrink-0 text-muted-foreground" onClick={onSidebar}>
+        <Button variant="ghost" size="icon-sm" {...{ [SIDEBAR_TOGGLE]: "" }} aria-label={sidebarOpen ? "Hide Sidebar" : "Show Sidebar"} aria-pressed={sidebarOpen} className="shrink-0 text-muted-foreground" onClick={onSidebar}>
           <PanelLeft />
         </Button>
       </Tip>
@@ -241,16 +245,16 @@ export function TabRow({
                     onAuxClick={(event) => {
                       if (event.button === 1) onClose(tab.id);
                     }}
-                    // The close control lies over the tab's end: every tab keeps its room, so a name is cut at one
-                    // point and nothing moves under the pointer when the close appears.
-                    className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 pe-7`}
+                    // The selected tab keeps its close's room. Another tab spends that room on its name; its close lies
+                    // over the name's end on hover, on the tab's own fill, so nothing moves under the pointer.
+                    className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 ${active ? "pe-7" : "pe-2"}`}
                   >
                     <KindGlyph kind={tab.kind === "page" ? "folder" : kindOfEntry(name).kind} tinted={false} className="size-3.5 shrink-0" />
                     <TabName name={shownName(name)} keep={ends[index]} titleRef={titleRef} />
                   </Button>
                 )}
               </TitleTip>
-              <div className={`absolute end-0.5 top-0.5 ${active ? "" : reveal("dock-tab", { row: true })}`}>
+              <div className={`absolute end-0.5 top-0.5 ${active ? "" : `${CLOSE_OVER} ${reveal("dock-tab", { row: true })}`}`}>
                 <Button variant="ghost" size="icon-xs" data-files-tab-close aria-label={`Close ${shownName(name)}`} tabIndex={active ? 0 : -1} className="text-muted-foreground" onClick={() => onClose(tab.id)}>
                   <X />
                 </Button>

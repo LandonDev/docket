@@ -200,7 +200,8 @@ the first paint.
   `MoveDialog.tsx`; `GoTo.tsx` and `Home.tsx`; `FileTabView.tsx` a file's
   header over the kind's own `CanvasPane`, its second file (`SideFile.tsx`)
   and its docked chat (`Dock.tsx`, `dockThread.ts`); `KindGlyph.tsx` a
-  kind's glyph in its tint; `chords.ts` and `bindings.ts` the keys.
+  kind's glyph in its tint (a sheet's is the XLS page, `Xls01Icon` as `Table` in work/icons.tsx, the pair of the
+  document's DOC page, wherever Work shows a sheet; Insert's table is `TableInsert`); `chords.ts` and `bindings.ts` the keys.
 - Names that share a start are cut in their middle (decision 13 of the files
   pass): `tabEnds` (canvas/tabShrink.ts) finds, for each open tab, the word
   where its name parts from its nearest neighbour's, and `MiddleCut`
@@ -211,6 +212,19 @@ the first paint.
   pixel lost); it takes the room it needs but 1.5em, and the trail's folder
   likewise takes the bar but the least its steps above keep
   (`--trail-above`, Page.tsx `Trail`).
+- Narrow places give way whole (the Work polish's round two). The sidebar laid over the list under 640px of view
+  floats (`shadow-overlay`) and closes as a layer does, on Escape and on a press elsewhere in the view
+  (`usePeekClose`, files/sidebarPeek.ts; Escape from inside it gives the toggle the focus). An open place's fold
+  chevron is quiet, never a pressed square. The selected tab keeps its close's room; another spends that room on
+  its name, and its close lies over the name's end on hover, on the tab's own fill (`CLOSE_OVER`, TabRow.tsx), so
+  nothing moves under the pointer. A row's name and its state share one wrapping line (`NAME_LINE`, rowParts.tsx):
+  a state that does not fit beside the name goes whole to the hidden second line, never a stub, and the name keeps
+  the line. Last change by folds under 640px of list, so a 1,024px window keeps names whole; Where, in a search, a
+  lens or Trash, is the list's second fact there and stays to 560px (`data-files-where`). Home's "where" is one
+  160px column, folded under 640px of Home as By is, before a state would go. A file's header keeps the name and its line 16rem where the line has presses: past
+  that the presses, ⋯ and Ask take a second row at the end (`data-files-head-presses`), so neither is cut to a stub.
+  A kind's Offline names the computer that is not answering ("The box is not answering. 3 changes wait here",
+  `offlineNamed` in fileText.ts); a download says "Downloading… 2.1 of 8.4 MB" in the header as in the row.
 - An empty place gets its first tab from `tabOpen {first: true}`: the host
   makes it only while there is none, so two windows that open the place
   together make one tab between them.
@@ -2568,8 +2582,8 @@ over a file that changed there.
     that read is out keeps his words on the version they were made on, and the line says the file changed, with
     Reload and Keep Both (`edits`, a count `load` compares across its read). Keys typed while Keep Both is out are
     not in the copy it made: the editor and the journal keep them, nothing is read over them, and the line still
-    offers Reload and Keep Both (`keepMine` lets go only the text it sent). A failed send is said ("Offline. 2
-    changes wait here", "Not saved. …", Retry) until a send is answered: his next key never turns the line back to
+    offers Reload and Keep Both (`keepMine` lets go only the text it sent). A failed send is said ("The box is not
+    answering. 2 changes wait here", the frame naming the computer; "Not saved. …"; Retry) until a send is answered: his next key never turns the line back to
     Saved (`failure`, kept on the session as a sheet keeps `sendError`); a send out a while says Saving….
   - A copy's item that goes by any way (its tab's close, the pane's own Close, a stray the start's check drops) is
     kept with its record and sent (`copiesLeft`, from the module's `itemsRemoved`); the office pillar's drop of a
@@ -2611,7 +2625,9 @@ picks, and stays linked to that file: each later edit is written to it.
   which draws none of its own (never twice). Also File → Save As… (⇧⌘S; the menu row keeps the old id `save_word`,
   answered through `useWorkCommands`), the document's More beside a thread, and the ⋯ of a Files tab. Each asks
   `openSaveAs(itemId)` (work/files/saveAsPort.ts); the document's body draws the sheet for the item asked. Save as Word
-  to… is gone: one way to do one thing.
+  to… is gone: one way to do one thing, and Move to…'s dialog has no `word` verb. `SaveAs.preview.tsx` draws the
+  live sheet (`SaveAsFolder`: a .doc's folder, its drops line, the first page's bone, the footer's line;
+  `SaveAsPlaces`: the places, a team over its channels).
 - **The sheet** (`SaveAsDialog`, work/files/SaveAs.tsx; its look is docs/DESIGN.md "Save As…"): Name (the stem; the
   extension is the format's), Format (a menu of `SAVE_AS_FORMATS`, src/shared/work/saveAs.ts, Word first, the one he
   saved in last chosen), one muted line of what the format drops, counted from the editor as Preview counts it
@@ -3182,8 +3198,8 @@ share, listing a folder of 300 entries did not answer in 30 s and opening a 5 MB
   progress gives way first, its words cut at the By column's width and gone from sight under 360px of list
   (still read out), the spinner staying, the whole of it in a tip. Every state a row says in words beside its
   name takes the same part (`RowWords`, files/rowParts.tsx): "3 suggestions", "Sam Ortiz is in it", and on
-  Home the opening progress and a held change's "Move waits for you" give way before the name, cut, whole in
-  a tip. Opening is one of his acts that mark rows (files/busy.ts: a map by row key, so two at once keep their own
+  Home the opening progress and a held change's "Move waits for you" give way before the name, whole, never a
+  stub (`NAME_LINE`), and whole in a tip. Opening is one of his acts that mark rows (files/busy.ts: a map by row key, so two at once keep their own
   words; `ActsOf.busy` and `OpenFrom.busy`): a rename says "Renaming…" and draws the name he typed until the
   answer, without TempCode's own ending as every row's name (`shownName`), a move "Moving…", a copy "Copying…", a delete "Deleting…", a download "Downloading… 2.1 of 8.4 MB"
   where the file's size is known. A rename, a move or a delete that went keeps its rows' words `SETTLE_MS`

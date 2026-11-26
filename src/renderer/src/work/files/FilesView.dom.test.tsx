@@ -616,8 +616,14 @@ describe("tabs", () => {
     await waitFor(() => expect(rows()).toContain("Budget.xlsx"));
     fireEvent.doubleClick(row("Budget.xlsx"));
     await waitFor(() => expect(tabNames()).toEqual(["Dummy Esports", "Budget.xlsx"]));
-    // Every tab keeps its close's room, selected or not, so a name is cut at one point and nothing moves on hover.
-    for (const tab of document.querySelectorAll("[data-files-tab]")) expect(tab.className.split(" ")).toContain("pe-7");
+    // The selected tab keeps its close's room; another spends it on its name, its close drawn over the name's end on
+    // the tab's own fill, so nothing moves on hover.
+    for (const tab of document.querySelectorAll<HTMLElement>("[data-files-tab]")) {
+      const selected = tab.getAttribute("aria-selected") === "true";
+      expect(tab.className.split(" ")).toContain(selected ? "pe-7" : "pe-2");
+      const close = tab.closest("[class*='group/dock-tab']")!.querySelector("[data-files-tab-close]")!.parentElement!;
+      expect(close.className.includes("color-mix(in_srgb,var(--foreground)_5%,var(--sidebar))")).toBe(!selected);
+    }
     expect(calls(host, "work.files.open")).toMatchObject([{ params: { workspaceId: "w1", name: "Budget.xlsx", key: "file:env_box:/w/Budget.xlsx" } }]);
     await waitFor(() => expect(screen.getByTestId("pane").textContent).toBe("sheet: Budget.xlsx"));
     const header = document.querySelector("[data-files-header]")!;
@@ -973,6 +979,42 @@ describe("the sidebar", () => {
       expect(over.contains(hide)).toBe(false);
       expect(document.querySelector("[data-files-tabrow]")!.contains(hide)).toBe(true);
       fireEvent.click(hide);
+      expect(screen.queryByRole("navigation", { name: "Places" })).toBeNull();
+    } finally {
+      width.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("narrow, closes the sidebar laid over the list on Escape and on a press outside it, floating over the list", async () => {
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-files-view") ? 400 : 0;
+    });
+    try {
+      await mount();
+      const show = screen.getByRole("button", { name: "Show Sidebar" });
+      fireEvent.click(show);
+      const over = document.querySelector<HTMLElement>("[data-files-sidebar-over]")!;
+      expect(over.className).toContain("shadow-overlay");
+      // A press inside it, or on the toggle, leaves it open: the toggle's own click hides it.
+      fireEvent.pointerDown(within(over).getByRole("navigation", { name: "Places" }));
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Hide Sidebar" }));
+      expect(screen.getByRole("navigation", { name: "Places" })).toBeTruthy();
+      // Escape from inside closes it and gives the toggle the focus.
+      const row = within(over).getAllByRole("button")[0]!;
+      row.focus();
+      fireEvent.keyDown(row, { key: "Escape" });
+      expect(screen.queryByRole("navigation", { name: "Places" })).toBeNull();
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Show Sidebar" }));
+      // A press on the list closes it.
+      fireEvent.click(screen.getByRole("button", { name: "Show Sidebar" }));
+      expect(screen.getByRole("navigation", { name: "Places" })).toBeTruthy();
+      fireEvent.pointerDown(document.querySelector("[data-files-tabrow]")!.nextElementSibling ?? document.querySelector("[data-files-view]")!);
       expect(screen.queryByRole("navigation", { name: "Places" })).toBeNull();
     } finally {
       width.mockRestore();

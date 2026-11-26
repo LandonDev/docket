@@ -189,16 +189,16 @@ describe("a row being opened", () => {
     const key = "file:env_box:/w/Events/Budget.xlsx";
     draw({ busy: new Map([[key, { word: "Opening… 8.0 of 20 MB" }]]) });
     const busy = row("Budget.xlsx").querySelector<HTMLElement>("[data-files-busy]")!;
-    expect(busy.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "w-32", "@[360px]/files-list:flex", "@[560px]/files-list:w-74"]));
+    expect(busy.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "w-32", "@[360px]/files-list:flex", "@[640px]/files-list:w-74"]));
     expect(busy.querySelector('[data-slot="spinner"]')).not.toBeNull();
-    expect(busy.querySelector("span.truncate")!.textContent).toBe("Opening… 8.0 of 20 MB");
+    expect(busy.querySelector("[data-row-words]")!.textContent).toBe("Opening… 8.0 of 20 MB");
     // Who and when give it their room while it lasts.
     expect(row("Budget.xlsx").textContent).not.toContain("Nov");
     // Narrow: the spinner by the name, which keeps first claim; the words in the row for a reader, at no width.
     const narrow = row("Budget.xlsx").querySelector<HTMLElement>("[data-files-busy-narrow]")!;
     expect(narrow.className.split(" ")).toEqual(expect.arrayContaining(["shrink-[999]", "@[360px]/files-list:hidden"]));
     expect(narrow.querySelector('[data-slot="spinner"]')).not.toBeNull();
-    expect(narrow.querySelector("span.truncate")!.className.split(" ")).toContain("max-w-0");
+    expect(narrow.querySelector("[data-row-words]")!.className.split(" ")).toContain("max-w-0");
   });
 });
 
@@ -220,19 +220,41 @@ describe("rows his acts are changing", () => {
   });
 });
 
+describe("a list of files from many places", () => {
+  it("names Where in its second column, which stays to 560px of list", () => {
+    keepPageLook(PAGE.at, {});
+    const where = { place: "Esports Staff", name: "Events", trail: [] };
+    draw({ listing: listing({ entries: ENTRIES.map((e) => ({ ...e, where })) }) });
+    const list = document.querySelector<HTMLElement>("[data-files-list]")!;
+    expect(list.parentElement!.hasAttribute("data-files-where")).toBe(true);
+    const head = [...document.querySelectorAll('[role="columnheader"]')].find((el) => el.textContent === "Where")!;
+    expect(head.className.split(" ")).toContain("@[560px]/files-list:in-data-[files-where]:block");
+  });
+});
+
+describe("a row's name and its state", () => {
+  it("share one wrapping 20px line, so a state that does not fit beside the name goes whole, never a stub", () => {
+    draw();
+    const name = row("Budget.xlsx").querySelector<HTMLElement>("[data-files-name]")!;
+    const line = name.closest("span.flex-wrap") as HTMLElement;
+    expect(line).not.toBeNull();
+    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["h-5", "overflow-hidden", "flex-1", "items-baseline"]));
+  });
+});
+
 describe("a row's state in words", () => {
   /** Council round 7 (both seats, Files 1): "3 suggestions" and "<Name> is in it" were shrink-0 and pushed the name out of a narrow list. */
   it.each([
     [{ is: "suggestions", count: 3 }, "3 suggestions"],
     [{ is: "present", who: "Sam Ortiz" }, "Sam Ortiz is in it"],
-  ] as const)("gives way to the name, cut, its words whole in the row: %o", async (state, words) => {
+  ] as const)("gives way to the name, its words whole in the row: %o", async (state, words) => {
     const { RowState } = await import("./rowParts");
     const { container } = render(<RowState entry={{ ...file("Budget.xlsx"), state } as never} />);
     const outer = container.firstElementChild as HTMLElement;
     expect(outer.className).toContain("min-w-0");
     expect(outer.className).toContain("shrink-[999]");
     expect(outer.className).not.toContain("shrink-0");
-    expect(outer.querySelector("span.truncate")!.textContent).toBe(words);
+    expect(outer.querySelector("[data-row-words]")!.textContent).toBe(words);
   });
 });
 
@@ -246,6 +268,11 @@ describe("the list's columns", () => {
     expect(document.querySelector("[data-files-body]")!.className).toContain("@container/files-body");
     expect(document.querySelector("[data-files-body]")!.className).not.toContain("@container/files-list");
     expect(document.querySelector("[data-files-details]")!.className).toContain("@[640px]/files-body:block");
+    // Who changed it folds under 640px of list (a window of 1,024px): the names keep their endings first. Where a file
+    // lives (a search, a lens) is the list's second fact there and stays to 560px.
+    const by = [...document.querySelectorAll('[role="columnheader"]')].find((el) => el.textContent === "Last change by")!;
+    expect(by.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "w-40", "@[640px]/files-list:block", "@[560px]/files-list:in-data-[files-where]:block"]));
+    expect(list.parentElement!.hasAttribute("data-files-where")).toBe(false);
   });
 });
 
@@ -270,7 +297,9 @@ describe("Move to…", () => {
       expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual(["Dummy Esports", "General"]);
       // The team is a heading row over its channel, one level in, with the sidebar's glyphs.
       expect(screen.getByRole("presentation").textContent).toBe("Esports Staff");
-      expect(screen.getByRole("option", { name: "General" }).className).toContain("ps-6");
+      // The button's own icon inset must not win over the level: its `has-[>svg:first-child]` inset is the level's too.
+      expect(screen.getByRole("option", { name: "General" }).className.split(" ")).toEqual(expect.arrayContaining(["ps-6", "has-[>svg:first-child]:ps-6"]));
+      expect(screen.getByRole("option", { name: "General" }).className.split(" ")).not.toContain("has-[>svg:first-child]:ps-2");
     } finally {
       delete listingSeams.fetch;
     }
@@ -355,8 +384,9 @@ describe("Home", () => {
     expect(busy.querySelector('[data-slot="spinner"]')).not.toBeNull();
     expect(busy.className).toContain("shrink-[999]");
     expect(busy.className).not.toContain("shrink-0");
-    // The name's basis is its own width, so the state's shrink is what gives way.
-    expect(opening.querySelector("span.truncate")!.className).toContain("flex-auto");
+    // The name and its state share one wrapping 20px line, which takes the row's room: a state that does not fit goes
+    // to its hidden second line whole, never a stub.
+    expect(opening.querySelector("span.truncate")!.parentElement!.className.split(" ")).toEqual(expect.arrayContaining(["flex-wrap", "h-5", "overflow-hidden", "flex-auto"]));
     const heldWords = [...document.querySelector(`[data-files-home-row="${held.key}"]`)!.querySelectorAll("span")].find((el) => el.textContent === "Rename waits for you")!;
     expect(heldWords.closest(".shrink-\\[999\\]")).not.toBeNull();
     // A row that says a state gives its date up first in a narrow page (under 400px of Home); every row's date goes
@@ -370,7 +400,7 @@ describe("Home", () => {
     expect(date(plainRow)).not.toContain("@[400px]/files-home:block");
     // Under 360px of Home a state's words go whole, no stub; they stay in the row's text (Files 2).
     for (const [row, words] of [[opening, "Opening…"], [heldRow, "Rename waits for you"]] as const) {
-      const cut = [...row.querySelectorAll("span.truncate")].find((el) => el.textContent === words)!;
+      const cut = [...row.querySelectorAll("[data-row-words]")].find((el) => el.textContent === words)!;
       expect(cut.className.split(" ")).toEqual(expect.arrayContaining(["max-w-0", "@[360px]/files-home:max-w-40"]));
     }
   });
@@ -389,13 +419,26 @@ describe("Home, a closed copy his file did not take", () => {
   });
 });
 
+describe("Home, where a file lives", () => {
+  it("is one 160px column on every row, so each row's place starts at one x", async () => {
+    const { HomePage } = await import("./Home");
+    const where = (name: string, w: string) => ({ ...file(name), where: { place: "Esports Staff", name: w, trail: [] } });
+    render(<HomePage panelId="p1" home={{ waiting: [], starred: [], recent: [where("Budget.xlsx", "Events"), where("A much longer sponsor list name.xlsx", "General")] }} error={null} busy={null} bar={null} onRetry={() => undefined} onOpen={() => undefined} />);
+    const cols = [...document.querySelectorAll<HTMLElement>("[data-files-home-where]")];
+    expect(cols).toHaveLength(2);
+    // It folds under 640px of Home, as By does in the list, before a state beside a name would go.
+    for (const col of cols) expect(col.className.split(" ")).toEqual(expect.arrayContaining(["w-40", "shrink-0", "truncate", "hidden", "@[640px]/files-home:block"]));
+    for (const col of cols) expect(col.className).not.toContain("max-w-[30%]");
+  });
+});
+
 describe("Home, a row's state", () => {
   it("goes from sight whole under 360px of Home, as the folder's list does its progress", async () => {
     const { HomePage } = await import("./Home");
     const suggested = { ...file("Budget.xlsx"), state: { is: "suggestions" as const, count: 3 } };
     render(<HomePage panelId="p1" home={{ waiting: [], starred: [], recent: [suggested] }} error={null} busy={null} bar={null} onRetry={() => undefined} onOpen={() => undefined} />);
     const row = document.querySelector(`[data-files-home-row="${suggested.key}"]`)!;
-    const words = [...row.querySelectorAll("span.truncate")].find((el) => el.textContent === "3 suggestions")!;
+    const words = [...row.querySelectorAll("[data-row-words]")].find((el) => el.textContent === "3 suggestions")!;
     expect(words.className.split(" ")).toEqual(expect.arrayContaining(["max-w-0", "@[360px]/files-home:max-w-40"]));
   });
 });

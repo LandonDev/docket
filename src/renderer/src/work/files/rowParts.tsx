@@ -52,9 +52,11 @@ export const stepHow = (event: Pick<KeyboardEvent, "shiftKey">): PickHow => (eve
 
 /**
  * A row's state in words, beside its name (opening from another computer, suggestions waiting, someone in it, a held
- * change): the name has first claim on the row, so the words give way first (`shrink-[999]`), cut, with the whole of
- * them on hover and in the row's text for a reader. `busy` leads them with the 12px spinner, which stays when the words
- * have no room; `cut` narrows the words further where a list says how (Page.tsx and Home.tsx, by their width).
+ * change): the name has first claim on the row, so the words give way first (`shrink-[999]`), with the whole of them on
+ * hover and in the row's text for a reader. Beside a name they give way whole, never a stub: the name and its state
+ * share one wrapping line (`NAME_LINE`), so state words that do not fit go to its hidden second line. `busy` leads them
+ * with the 12px spinner, which stays when the words have no room; `cut` narrows the words further where a list says how
+ * (Page.tsx and Home.tsx, by their width).
  */
 export function RowWords({ words, tone = "muted", busy = false, cut, ...data }: { words: string; tone?: "muted" | "warning"; busy?: boolean; cut?: string; [data: `data-${string}`]: string | undefined }) {
   return (
@@ -64,11 +66,18 @@ export function RowWords({ words, tone = "muted", busy = false, cut, ...data }: 
         className={`flex min-w-0 shrink-[999] items-center gap-1.5 self-center overflow-hidden text-xs tabular-nums ${tone === "warning" ? "text-warning" : "text-muted-foreground"} ${busy ? "min-w-3" : ""}`}
       >
         {busy ? <Spinner className="size-3 shrink-0" /> : null}
-        <span className={`truncate ${cut ?? ""}`}>{words}</span>
+        <span data-row-words className={`truncate ${cut ?? ""}`}>{words}</span>
       </span>
     </Tip>
   );
 }
+
+/**
+ * A row's name and its one state on one 20px line that wraps (QuickLook's "where" does the same): a state that does not
+ * fit beside the name goes to the hidden second line whole, never cut to a stub, and the name keeps the line, cut only
+ * where it is itself too long. The row's tooltip and its text for a reader keep the words.
+ */
+export const NAME_LINE = "flex h-5 min-w-0 flex-wrap overflow-hidden leading-5";
 
 /** The one state a row shows, at most: a cloud mark, suggestions waiting, someone in it, a thread writing it. `cut` as `RowWords`'. */
 export function RowState({ entry, cut }: { entry: FileEntry; cut?: string }) {

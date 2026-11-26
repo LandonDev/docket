@@ -67,7 +67,7 @@ import {
   type PlaceCopy,
 } from "./model";
 import { busyOf, type Busy, type RowBusy } from "./busy";
-import { dragging, dragProps, dropVerb, heldRow, howOf, NameField, onNameOf, ROWS_MIME, RowState, RowWords, setDragging, setDragLabel, stepHow, whenDragEnds, WhereWords, type RowDrag, type ShapeProps } from "./rowParts";
+import { dragging, dragProps, dropVerb, heldRow, howOf, NAME_LINE, NameField, onNameOf, ROWS_MIME, RowState, RowWords, setDragging, setDragLabel, stepHow, whenDragEnds, WhereWords, type RowDrag, type ShapeProps } from "./rowParts";
 import type { PictureFrom } from "./previews";
 import { QuickLook } from "./QuickLook";
 import { FileColumns, FileGrid } from "./Shapes";
@@ -242,11 +242,15 @@ function Trail({ trail, name, onGo, onEmpty }: { trail: readonly FileCrumb[]; na
   );
 }
 
-/** The columns' widths, shared by the heads and the rows. Who changed it is the first to go as the list narrows; when it changed stays beside the name longest. */
-const COL_BY = "hidden w-40 shrink-0 @[560px]/files-list:block";
+/**
+ * The columns' widths, shared by the heads and the rows. Who changed it is the first to go as the list narrows, under
+ * 640px, so a 1,024px window keeps the names whole; where a file lives (`data-files-where` on the list's container)
+ * stays to 560px; when it changed stays beside the name longest.
+ */
+const COL_BY = "hidden w-40 shrink-0 @[640px]/files-list:block @[560px]/files-list:in-data-[files-where]:block";
 const COL_CHANGED = "hidden w-32 shrink-0 text-end @[360px]/files-list:block";
 /** A busy row's words, in By's and Changed's room: Changed's alone where By has gone, none under 360px. */
-const COL_BUSY = "hidden w-32 shrink-0 @[360px]/files-list:flex @[560px]/files-list:w-74";
+const COL_BUSY = "hidden w-32 shrink-0 @[360px]/files-list:flex @[640px]/files-list:w-74 @[560px]/files-list:in-data-[files-where]:w-74";
 
 /** A column's head that sorts: a press sorts by it, a second press turns the order round. */
 function SortHead({ by, label, sort, onSort, className }: { by: FileSortBy; label: string; sort: FileSort; onSort(next: FileSort): void; className: string }) {
@@ -348,8 +352,9 @@ const FileRow = memo(function FileRow({
       {...(drag ? { draggable: dragFrom && entry.kind !== "form" } : {})}
     >
       <KindGlyph kind={entry.kind} />
-      {/* The state is a detail of the name: 4px after it, on its baseline (a glyph keeps the centre line). */}
-      <span className="flex min-w-0 flex-1 items-baseline gap-1">
+      {/* The state is a detail of the name: 4px after it, on its baseline (a glyph keeps the centre line); where it does
+          not fit beside the name it goes whole (`NAME_LINE`). */}
+      <span className={`${renaming ? "flex" : NAME_LINE} min-w-0 flex-1 items-baseline gap-x-1`}>
         {renaming ? (
           <NameField name={entry.name} folder={!!entry.folder} onDone={(next) => live.current.onRenamed(entry, next)} />
         ) : (
@@ -1221,13 +1226,16 @@ export function PageView({
   else if (shape === "gallery") body = <FileGallery {...shapeProps} from={pics} {...(onFetch ? { onFetch } : {})} />;
   else if (shape === "beside") body = <FileBeside {...shapeProps} from={pics} seat={inTrash ? null : sessionHeld?.size && seat ? { ...seat, can: (entry) => !sessionHeld.has(entry.key) && seat.can(entry) } : seat} onParent={toParent} {...(onFetch ? { onFetch } : {})} />;
   else {
+    const second = inTrash ? "Was in" : manyPlaces && acts?.place.kind !== "made" ? "Where" : "Last change by";
     const folder =
       shape === "grid" ? (
         <FileGrid {...shapeProps} size={tile} from={pics} onParent={toParent} />
       ) : (
         // The list's columns leave by the list's own width, with the details pane beside it or not.
-        <div className="@container/files-list flex min-h-0 min-w-0 flex-1 flex-col">
-          <Head sort={sort} second={inTrash ? "Was in" : manyPlaces && acts?.place.kind !== "made" ? "Where" : "Last change by"} {...(inTrash ? { when: "Deleted" } : {})} onSort={(next) => setLook({ ...look, sort: next })} />
+        // Where a file lives (a search, a lens, Trash's Was in) is the list's second fact and stays to 560px; who last
+        // changed it goes under 640px (`COL_BY`).
+        <div data-files-where={second !== "Last change by" || undefined} className="@container/files-list flex min-h-0 min-w-0 flex-1 flex-col">
+          <Head sort={sort} second={second} {...(inTrash ? { when: "Deleted" } : {})} onSort={(next) => setLook({ ...look, sort: next })} />
           <FileList {...shapeProps} compact={compact} heads={heads} onParent={toParent} bulk={!!acts && chosen.length >= 2} />
         </div>
       );
