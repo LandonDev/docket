@@ -1,7 +1,7 @@
 /** Headless host measurements. Run through .temp-code/bin/heavy --low. */
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -117,6 +117,11 @@ export function over(slices: readonly Slice[], threshold: number, from: number, 
   return slices.filter(({ at, ms }) => ms > threshold && at >= from && at <= to)
 }
 
+export function copyIndexRows(log: string): number | null {
+  const match = /^\[boot\] \d+ turn-index done (\d+) rows$/m.exec(log)
+  return match ? Number(match[1]) : null
+}
+
 export function lastAllowedCores(list: string): string {
   return list.trim().split(',').flatMap((span) => {
     const [first, last = first] = span.split('-').map(Number)
@@ -181,8 +186,8 @@ type Result = {
 }
 
 class Rig {
-  readonly root = mkdtempSync('/tmp/docket-host-')
-  readonly repo = join(this.root, 'repo')
+  readonly root: string
+  readonly repo: string
   readonly seed = randomBytes(32).toString('hex')
   readonly signal: AbortSignal
   readonly finishStreams = new AbortController()
@@ -202,6 +207,9 @@ class Rig {
 
   constructor(readonly options: Options, readonly abort: AbortController, copy: string | undefined, remotePort: number, chromium?: string) {
     this.signal = abort.signal
+    // The copy's private /tmp is mounted after this folder is created.
+    this.root = mkdtempSync(copy ? '/srv/agents/tmp/docket-host-' : '/tmp/docket-host-')
+    this.repo = join(this.root, 'repo')
     this.data = copy ?? join(this.root, 'data')
     this.remotePort = remotePort
     this.boxLog = join(this.root, 'box.log')
@@ -210,6 +218,7 @@ class Rig {
     const bin = join(this.root, 'bin')
     const vm = join(this.root, 'no-vm')
     for (const dir of [home, tmp, bin, vm, this.data, this.repo]) mkdirSync(dir, { recursive: true })
+    if (copy) mkdirSync(join(this.root, 'copy-data'))
     this.env = {
       ...isolatedEnvironment(process.env),
       PATH: [bin, '/srv/agents/home/.local/bin', process.env.PATH].join(':'),
@@ -261,7 +270,25 @@ class Rig {
     this.started = performance.now()
     const args = sampleLoop ? [`--inspect=127.0.0.1:${this.inspectPort}`, '.'] : ['.']
     // Like the box service, a private X server also supports Chromium's hidden windows.
-    const app = this.spawn('xvfb-run', ['-a', '-s', '-screen 0 1440x900x24 -nolisten tcp', 'dbus-run-session', '--', electron, ...args], this.boxLog)
+    const launcher = ['xvfb-run', '-a', '-s', '-screen 0 1440x900x24 -nolisten tcp', 'dbus-run-session', '--', electron, ...args]
+    // The copy can still name real workspaces. Its background mirror sweep
+    // must only be able to write to the copy and this run's scratch paths.
+    const argv = this.options.copy ? [
+      'unshare', '--map-current-user', '--mount', '--keep-caps', 'bash', '-ec', `
+        repo="$PWD"
+        mount --rbind / /
+        mount --bind -- "$1" "$1"
+        mount --bind -- "$2" "$1/copy-data"
+        mount -o remount,bind,ro /
+        mount -t tmpfs -o mode=1777 tmpfs /tmp
+        cd /
+        cd "$repo"
+        export TEMP_CODE_USER_DATA="$1/copy-data"
+        shift 2
+        exec "$@"
+      `, 'docket-host-copy', this.root, this.data, ...launcher
+    ] : launcher
+    const app = this.spawn(argv[0]!, argv.slice(1), this.boxLog)
     app.once('exit', (code, signal) => this.abort.abort(new Error(`box exited (${signal ?? code})${this.bootLogTail()}`)))
     const deadline = this.started + MAX_MS
     while (performance.now() < deadline) {
@@ -287,6 +314,19 @@ class Rig {
 
   private bootLogTail(): string {
     return this.options.copy ? '' : '\n' + read(this.boxLog).slice(-4000)
+  }
+
+  async waitForCopyIndex(): Promise<number | null> {
+    // Hello precedes the background catch-up. Let it finish before the
+    // second copy boot, without adding its wait to the hello measurement.
+    const deadline = this.started + MAX_MS
+    while (performance.now() < deadline) {
+      this.signal.throwIfAborted()
+      const rows = copyIndexRows(read(this.boxLog))
+      if (rows !== null) return rows
+      await sleep(250, undefined, { signal: this.signal })
+    }
+    return null
   }
 
   get dbPath(): string {
@@ -399,9 +439,27 @@ class Rig {
       await sleep(100)
     }
     const remaining = instancePids(this.root)
+    if (!remaining.length && this.options.copy && appPid) this.cleanCopyIdentity(appPid)
     const failed = stopped.find((item) => item.status === 'rejected')
     if (failed) throw failed.reason
     return remaining
+  }
+
+  private cleanCopyIdentity(appPid: number): void {
+    // The scrub gate confirmed there was no identity or profile lock
+    // before our launch. Remove only this finished run's temporary markers.
+    const serverFile = join(this.data, 'server.json')
+    const server = read(serverFile)
+    if (server && (JSON.parse(server) as { pid?: number }).pid !== appPid) throw new Error('The copy published a different owner during shutdown')
+    for (const name of ['environment.json', 'server.json']) rmSync(join(this.data, name), { force: true })
+    const lock = join(this.data, 'SingletonLock')
+    try {
+      if (readlinkSync(lock).endsWith(`-${appPid}`)) {
+        for (const name of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) rmSync(join(this.data, name), { force: true })
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
   }
 }
 
@@ -814,6 +872,7 @@ async function measureBoot(rig: Rig, result: Result): Promise<void> {
   if (rig.options.copy) {
     result.measuredMs = hello
     result.details.mode = 'scrubbed copy, hello only'
+    result.details.copyIndexRows = await rig.waitForCopyIndex()
     return
   }
   const { Database } = await import('bun:sqlite')

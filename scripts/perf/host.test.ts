@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bootLayout, bootRows, hostFlags, HOST_SCENES, lastAllowedCores, onceInOrder, over, percentile, stallSlices } from './host'
+import { bootLayout, bootRows, copyIndexRows, hostFlags, HOST_SCENES, lastAllowedCores, onceInOrder, over, percentile, stallSlices } from './host'
 import { loadStream } from './lib/load'
 import { requireScrubbed } from './scrubCopy'
 
@@ -87,6 +87,13 @@ describe('timing and row counts', () => {
     expect(over(slices, 50, from, to)).toHaveLength(2)
     expect(over(slices, 100, from, to)).toHaveLength(1)
     expect(over(slices, 50, from + 1, to)).toHaveLength(1)
+  })
+
+  it('reads only the completed boot index count, including zero', () => {
+    expect(copyIndexRows('[boot] 100 turn-index start')).toBeNull()
+    expect(copyIndexRows('[boot] 100 turn-index done 0 rows')).toBe(0)
+    expect(copyIndexRows('[boot] 100 turn-index start\n[boot] 200 turn-index done 42 rows')).toBe(42)
+    expect(copyIndexRows('[boot] 100 turn-index done 42 rows with unrelated text')).toBeNull()
   })
 
   it('ends every loopback stream on the same signal with one stop frame each', async () => {
