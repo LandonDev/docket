@@ -1766,6 +1766,7 @@ class SessionStore {
     const id = entry.session.id;
     return {
       cursor: () => entry.lastSeq,
+      shown: () => this.onScreen(id),
       begin: () => {
         // Rows held since a resync push stay held: they fold after the page.
         entry.held ??= [];

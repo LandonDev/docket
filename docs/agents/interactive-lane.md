@@ -16,7 +16,11 @@
 - Requests sort into lanes (src/main/server/lane.ts): interactive (names an
   interactive thread, or the renderer marked it `lane: 'ui'`: send,
   approve, answer, stop, pause, resume, start now, archive, the fleet
-  switches), bulk (project.changes, project.compare, git.diffStats,
+  switches, or a `session.events` that says `shown: true`: the window asks
+  for a thread on screen, its pane's or one he pressed whose pane is still
+  mounting, before `session.focus` names it; the word picks a lane and
+  nothing else, the fence and the key's capabilities are checked as for
+  any ask, it widens no focus set, and an older host ignores it), bulk (project.changes, project.compare, git.diffStats,
   git.diffIndex, search.project, session.search, github.*, resources.*,
   doctor.get, fs.watch, the deploy, publish and sync methods), normal (the
   rest). `checkpoint.status` and `commands.list` are normal: a window asks

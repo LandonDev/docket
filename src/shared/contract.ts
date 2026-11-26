@@ -864,7 +864,12 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
       // Subscribe this socket first, in the same request: a cold open over
       // a remote link costs one round trip instead of two. The page says
       // `subscribed: true`; an older host ignores the flag.
-      subscribe: z.boolean().optional()
+      subscribe: z.boolean().optional(),
+      // The thread is on screen in the asking window (its pane, or a press
+      // whose pane is mounting): the host serves the ask on its interactive
+      // lane (lane.ts). It changes a lane, never a right; an older host
+      // ignores it.
+      shown: z.boolean().optional()
     })
   }),
   // One persisted row whole, bodies and all: what a remote connection asks

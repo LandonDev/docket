@@ -15,6 +15,8 @@ export type SubscriptionHandlers = {
   begin?(): void;
   /** May fold in slices across tasks; `end` waits for it. */
   page(page: EventsPage): void | Promise<void>;
+  /** The thread is on screen in this window: its asks say `shown`, and the host serves them on its interactive lane. */
+  shown?(): boolean;
   /** The history request is leaving now (after any subscribe it waited on): the open's clock (openStamps.ts). */
   asked?(): void;
   end?(): void;
@@ -199,7 +201,12 @@ export class Subscriptions {
         // The owner retries a failed resume itself (the store's load, the
         // next replacement session), so the link does not ask again here.
         let result: EventRow[] | EventsPage;
-        const params = { sessionId, afterSeq, ...(tailFirst ? { tail: options.tail } : {}) };
+        const params = {
+          sessionId,
+          afterSeq,
+          ...(tailFirst ? { tail: options.tail } : {}),
+          ...(handlers.shown?.() ? { shown: true } : {}),
+        };
         const ask = (extra: { subscribe?: true }): Promise<EventRow[] | EventsPage> =>
           this.link.request<EventRow[] | EventsPage>("session.events", { ...params, ...extra }, { retry: false });
         handlers.asked?.();
@@ -235,7 +242,7 @@ export class Subscriptions {
             await subscribe();
             const gap = await this.link.request<EventRow[] | EventsPage>(
               "session.events",
-              { sessionId, afterSeq: handlers.cursor() },
+              { sessionId, afterSeq: handlers.cursor(), ...(handlers.shown?.() ? { shown: true } : {}) },
               { retry: false },
             );
             if (this.handlers.get(sessionId) === handlers) await handlers.page(asPage(gap, false));

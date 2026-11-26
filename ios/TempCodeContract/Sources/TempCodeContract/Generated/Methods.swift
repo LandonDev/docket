@@ -140,8 +140,9 @@ public enum Methods {
             public let tail: Int?
             public let limit: Int?
             public let subscribe: Bool?
+            public let shown: Bool?
 
-            public init(sessionId: String, afterSeq: Int? = nil, afterTs: Int? = nil, beforeSeq: Int? = nil, tail: Int? = nil, limit: Int? = nil, subscribe: Bool? = nil) {
+            public init(sessionId: String, afterSeq: Int? = nil, afterTs: Int? = nil, beforeSeq: Int? = nil, tail: Int? = nil, limit: Int? = nil, subscribe: Bool? = nil, shown: Bool? = nil) {
                 self.sessionId = sessionId
                 self.afterSeq = afterSeq
                 self.afterTs = afterTs
@@ -149,6 +150,7 @@ public enum Methods {
                 self.tail = tail
                 self.limit = limit
                 self.subscribe = subscribe
+                self.shown = shown
             }
         }
 

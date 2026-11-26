@@ -9,7 +9,8 @@ import { currentLag } from './stalls'
  *   - `interactive`: a request naming a thread someone is looking at
  *     (focus.ts: its log, sends, queue, notes, checkpoint state, a focused
  *     master's batch), or one the renderer marked `lane: 'ui'` (a person's
- *     click: send, approve, answer, stop, pause, resume, start now, archive);
+ *     click: send, approve, answer, stop, pause, resume, start now, archive),
+ *     or a `session.events` that says `shown` (the window's open);
  *   - `bulk`: the polls and walks nobody waits on second by second: the git
  *     status reads, the searches, GitHub, thread resources, the doctor,
  *     file watches, and the deploy, publish and sync methods;
@@ -89,6 +90,9 @@ export function laneOf(req: ClientRequest, interactive: InteractiveSet): Lane {
   const sessionId = namedSession(req)
   if (sessionId !== null && interactive.isInteractive(sessionId)) return 'interactive'
   if (req.lane === 'ui') return 'interactive'
+  // A window's read of the thread it shows, before its pane has said so with
+  // `session.focus`: the word picks a lane; the socket's reach is checked as for any ask.
+  if (req.method === 'session.events' && req.params?.shown === true) return 'interactive'
   return isBulkMethod(req.method) ? 'bulk' : 'normal'
 }
 

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ClientRequest } from '@shared/contract'
+import { ClientRequestSchema, type ClientRequest } from '@shared/contract'
+import { capabilityRefusal, type Capability } from '@shared/capabilities'
 import { FocusSet } from './focus'
 import { BULK_MAX_WAIT_MS, bulkKey, LaneGate, laneOf } from './lane'
 import { setLagForTests } from './stalls'
@@ -34,6 +35,26 @@ afterEach(() => {
 
 describe('laneOf', () => {
   const focus = focusSet()
+
+  it('a session.events that says shown is interactive; one without it is as before', () => {
+    expect(laneOf(req('session.events', { sessionId: 'elsewhere', afterSeq: 0, tail: 300, shown: true }), focus)).toBe('interactive')
+    expect(laneOf(req('session.events', { sessionId: 'elsewhere', afterSeq: 0, tail: 300 }), focus)).toBe('normal')
+    expect(laneOf(req('session.events', { sessionId: 'elsewhere', afterSeq: 0, shown: false }), focus)).toBe('normal')
+    // The word is session.events' alone: another method that carries it keeps its own lane.
+    expect(laneOf(req('git.diffIndex', { cwd: '/repo', shown: true }), focus)).toBe('bulk')
+    // It names no thread for the rest of the host: the focus set is unchanged.
+    expect(focus.isInteractive('elsewhere')).toBe(false)
+  })
+
+  it('shown changes a lane, never a right: the wire keeps it, and every key is refused or let through as without it', () => {
+    const parsed = ClientRequestSchema.parse({ id: '1', method: 'session.events', params: { sessionId: 's', tail: 300, shown: true } })
+    expect(parsed.method === 'session.events' && parsed.params.shown).toBe(true)
+    const keys: Capability[][] = [['read'], ['read', 'pending'] as Capability[], ['read', 'device'] as Capability[], ['read', 'operate', 'admin']]
+    for (const caps of keys) {
+      const plain = capabilityRefusal(caps, { method: 'session.events', params: { sessionId: 's', afterSeq: 0, tail: 300 } })
+      expect(capabilityRefusal(caps, { method: 'session.events', params: { sessionId: 's', afterSeq: 0, tail: 300, shown: true } }), caps.join()).toBe(plain)
+    }
+  })
 
   it('a request naming a focused thread is interactive, whatever its method', () => {
     for (const method of ['session.events', 'session.send', 'session.subscribe', 'session.context', 'queue.list', 'session.notes.get', 'checkpoint.status'])

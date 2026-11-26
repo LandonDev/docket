@@ -70,6 +70,10 @@
   `session.subscribe` is one subscription a socket and thread, so each
   push comes once. Before (M0, 2026-11-26): an answer lost on a live link
   painted at 31.3 s (the link's 30 s deadline, then the store's retry).
+  Every ask of the subscription set for a thread on screen (the store's
+  `onScreen`: the focused pane's, a view's, a press's) says `shown: true`,
+  and the host serves it on its interactive lane
+  (docs/agents/interactive-lane.md).
   The store keeps the last `KEEP_RECENT` (6) transcripts whose panes left
   loaded and subscribed, so a switch back sends nothing (a chat a Work dock
   shows counts as a mounted pane, `sessionStore.showApart`); the markdown

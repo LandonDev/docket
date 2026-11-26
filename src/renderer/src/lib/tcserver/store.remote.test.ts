@@ -522,6 +522,16 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(asked()).toEqual(["bg", "b"]);
   });
 
+  it("an ask for a thread on screen says shown; a background one does not", async () => {
+    const { asked } = await backgroundOut();
+    sessionStore.pressOnScreen("b");
+    void sessionStore.ensureLoaded("b", "load").catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["bg", "b"]);
+    const shownOf = link.calls.filter((c) => c.method === "session.events").map((c) => (c.params as { shown?: boolean }).shown);
+    expect(shownOf).toEqual([undefined, true]);
+  });
+
   it("a press ends at the next press: the thread he left waits its turn again", async () => {
     const { asked } = await backgroundOut();
     sessionStore.pressOnScreen("b");
