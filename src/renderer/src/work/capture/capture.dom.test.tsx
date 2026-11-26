@@ -389,6 +389,21 @@ describe("the draft", () => {
     // The foot's inset is the field's: 16px.
     expect(container.querySelector("[data-capture] > div.border-t")!.className).toContain("px-4");
   });
+
+  it("keeps Job and the presses on one 48px row, and under 640px gives the presses a row of their own before anything overlaps", () => {
+    const { container } = render(<CaptureView text="" files={[]} sector="life" status="ready" error={null} canFile={false} onText={() => {}} onSector={() => {}} onRemoveFile={() => {}} onFile={() => {}} />);
+    const foot = container.querySelector<HTMLElement>("[data-capture-foot]")!;
+    // 8 + 32 + 8: one row of 32px controls is the 48px foot.
+    expect(foot.className.split(/\s+/)).toEqual(expect.arrayContaining(["@container/foot", "py-2", "px-4", "border-t"]));
+    const row = foot.firstElementChild as HTMLElement;
+    const classes = row.className.split(/\s+/);
+    expect(classes).toEqual(expect.arrayContaining(["flex", "min-h-8", "@max-[40rem]/foot:flex-wrap"]));
+    // At 640px and over it never wraps, so Job gives way (its long names cut) before the presses move.
+    expect(classes).not.toContain("flex-wrap");
+    const presses = screen.getByRole("button", { name: /Start thread/ }).parentElement!;
+    expect(presses.contains(screen.getByRole("button", { name: "File" }))).toBe(true);
+    expect(presses.className.split(/\s+/)).toEqual(expect.arrayContaining(["ms-auto", "shrink-0", "justify-end", "@max-[40rem]/foot:w-full"]));
+  });
 });
 
 describe("the socket", () => {

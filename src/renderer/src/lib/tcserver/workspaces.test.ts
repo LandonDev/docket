@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { registry } from "../connection";
 import type { Link } from "./store";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WorkspaceMeta } from "./types";
-import { projectIndex, projectOf, scopeKey, workspaceByPath, workspaceIdOf, workspaceIndex, workspaceStore } from "./workspaces";
+import { projectIndex, projectOf, scopeKey, workspaceByPath, workspaceIdOf, workspaceIndex, workspaceNameAt, workspaceStore } from "./workspaces";
 import { createProject, createWorkspace } from "./projects";
 
 const ws = (over: Partial<WorkspaceMeta> = {}): WorkspaceMeta => ({
@@ -373,5 +373,21 @@ describe("thread defaults", () => {
     link.request = answer;
     await workspaceStore.loadDefaults("local", "w1");
     expect(workspaceStore.getSnapshot().defaultsStale.size).toBe(0);
+  });
+});
+
+describe("workspaceNameAt", () => {
+  it("names a workspace's folder as the rail does: this window's label, else the workspace's own name", () => {
+    const all = [ws({ id: "w1", name: "TempCode proof gateway", path: "/home/me/practice-gateway" })];
+    expect(workspaceNameAt(all, "/home/me/practice-gateway", {})).toBe("TempCode proof gateway");
+    expect(workspaceNameAt(all, "/home/me/practice-gateway/", {})).toBe("TempCode proof gateway");
+    expect(workspaceNameAt(all, "/home/me/practice-gateway", { w1: "Gateway" })).toBe("Gateway");
+    expect(workspaceNameAt(all, "/home/me/practice-gateway", { w1: "  " })).toBe("TempCode proof gateway");
+  });
+  it("is null for a folder no workspace is, so the surface says the folder's name", () => {
+    const all = [ws({ id: "w1", path: "/home/me/repo" })];
+    expect(workspaceNameAt(all, "/home/me/other", {})).toBeNull();
+    expect(workspaceNameAt(all, "/home/me/repo/src", {})).toBeNull();
+    expect(workspaceNameAt(all, null, {})).toBeNull();
   });
 });

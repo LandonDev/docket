@@ -5,11 +5,19 @@ import { BusyLabel, Button } from "../components/ui/button";
 import { Item, ItemActions, ItemButton, ItemContent, ItemTitle } from "../components/ui/item";
 import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../components/ui/press";
 import { cn } from "../lib/cn";
+import { registry } from "../lib/connection";
 import { openUrl, portOpen } from "../lib/devPorts";
-import { stopLiveServer, type LiveServer } from "../lib/devServers";
+import { dialogErrorWords } from "../lib/dialogErrorWords";
+import { DID_NOT_STOP, stopLiveServer, type LiveServer } from "../lib/devServers";
 import { macBridgeStore } from "../lib/macBridge";
 import { isWebMode } from "../lib/nativeWeb";
 import { HostGlyph } from "./HostGlyph";
+
+/** A failed Stop in a person's words: what failed, then why when the host said more than that it did not stop. */
+function stopFailWords(err: unknown, environmentId: string): string {
+  const why = dialogErrorWords(err, registry.environment(environmentId)?.name);
+  return why && why !== DID_NOT_STOP ? `Couldn't stop the server. ${why}` : "Couldn't stop the server";
+}
 
 /**
  * One live dev server (docs/box.md "Dev servers on the box"), a row of the
@@ -31,7 +39,7 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
     setStopping(true);
     setError(null);
     void stopLiveServer(server)
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)))
+      .catch((err: unknown) => setError(stopFailWords(err, server.environmentId)))
       .finally(() => setStopping(false));
   };
   const link = (text: string, url: string, name: string) => (
@@ -75,8 +83,9 @@ export function DevServerRow({ server, picked = false, onPick }: { server: LiveS
             {open && !local ? link(`${open.label} :${open.port}`, open.url, `${open.label}, port ${open.port}`) : null}
           </div>
         ) : null}
-        {error || server.stopping ? (
-          <div className={`truncate text-xs ${error ? "text-destructive" : "text-muted-foreground"}`}>{error ?? server.stopping}</div>
+        {error ? <div className="text-xs text-pretty break-words text-destructive">{error}</div> : null}
+        {!error && server.stopping ? (
+          <div className="truncate text-xs text-muted-foreground">{server.stopping}</div>
         ) : null}
       </ItemContent>
       <ItemActions className={cn(picks && ROW_CONTROLS)}>

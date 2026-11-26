@@ -9,6 +9,7 @@ const fs = vi.hoisted(() => ({
   slow: {} as Record<string, Promise<void>>,
   created: [] as string[],
   silent: false,
+  broken: new Set<string>(),
 }));
 
 vi.mock("../lib/connection", () => ({
@@ -20,6 +21,7 @@ vi.mock("../lib/fs", () => ({
   listDir: async (_env: string, path: string): Promise<FsEntry[]> => {
     if (fs.pending) await fs.pending;
     if (fs.slow[path]) await fs.slow[path];
+    if (fs.broken.has(path)) throw new Error("The box did not answer.");
     return (fs.tree[path] ?? []).map((name) => ({ name, path: `${path}/${name}`, isDir: true }) as FsEntry);
   },
   createPath: async (_env: string, parent: string, name: string) => {
@@ -39,6 +41,7 @@ describe("RemoteFolderDialog", () => {
     fs.slow = {};
     fs.created = [];
     fs.silent = false;
+    fs.broken = new Set();
   });
   afterEach(cleanup);
 
@@ -85,6 +88,41 @@ describe("RemoteFolderDialog", () => {
     await flush();
     expect((screen.getByLabelText("Folder path") as HTMLInputElement).value).toBe("/srv/agents/work/cosmic");
     expect(within(frame).getAllByRole("button").map((b) => b.textContent)).toEqual(["plugins"]);
+  });
+
+  // council-3 S F9.1: a subfolder that fails to list keeps the last good list, with Retry for that subfolder.
+  it("keeps the last good list when a subfolder fails to list, and Retry beside the error reads that subfolder again", async () => {
+    fs.tree["/srv/agents/work/cosmic"] = ["plugins"];
+    fs.broken.add("/srv/agents/work/cosmic");
+    render(<RemoteFolderDialog environmentId="box" onClose={() => {}} onPick={() => {}} />);
+    await flush();
+    const dialog = screen.getByRole("dialog");
+    const frame = () => dialog.querySelector("[data-remote-folders]") as HTMLElement;
+    fireEvent.click(within(frame()).getByRole("button", { name: "cosmic" }));
+    await flush();
+    expect(within(dialog).queryByText("No folders")).toBeNull();
+    expect(within(frame()).getAllByRole("button").map((b) => b.textContent)).toEqual(["temp-code", "cosmic"]);
+    expect((within(dialog).getByLabelText("Folder path") as HTMLInputElement).value).toBe("/srv/agents/work");
+    expect(within(dialog).getByText("The box did not answer.")).toBeTruthy();
+    fs.broken.clear();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(within(frame()).getAllByRole("button").map((b) => b.textContent)).toEqual(["plugins"]);
+    expect((within(dialog).getByLabelText("Folder path") as HTMLInputElement).value).toBe("/srv/agents/work/cosmic");
+    expect(within(dialog).queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("a first listing that fails draws no list, only the error with Retry", async () => {
+    fs.broken.add("/srv/agents/work");
+    render(<RemoteFolderDialog environmentId="box" onClose={() => {}} onPick={() => {}} />);
+    await flush();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.querySelector("[data-remote-folders]")).toBeNull();
+    expect(within(dialog).queryByText("No folders")).toBeNull();
+    fs.broken.clear();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    await flush();
+    expect(within(dialog.querySelector("[data-remote-folders]") as HTMLElement).getAllByRole("button").map((b) => b.textContent)).toEqual(["temp-code", "cosmic"]);
   });
 
   it("Use this folder picks the typed path once the exit has played", async () => {

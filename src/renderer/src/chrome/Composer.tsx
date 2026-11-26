@@ -306,6 +306,8 @@ export function Composer({
   const [files, setFiles] = useState<ProjectFile[]>(() => peekProjectFiles(executionCwd) ?? [])
   // The folder `files` was read for: until it is this one, an `@` with no other match reads Loading….
   const [filesFor, setFilesFor] = useState<string | null>(() => (peekProjectFiles(executionCwd) ? executionCwd : null))
+  // The folder whose last file read failed: `@` says so, keeps the names in hand, and its next open reads again.
+  const [filesFailedFor, setFilesFailedFor] = useState<string | null>(null)
   const [notes, setNotes] = useState<Note[]>(() => peekNotes(hostOfCwd(executionCwd)) ?? [])
 
   attachmentsRef.current = attachments
@@ -428,8 +430,11 @@ export function Composer({
     const loading = looksLikeProject(executionCwd) && filesFor !== executionCwd
     // A Work thread is about mail, tasks and the rest more than its folder's files: those lead there.
     const rows = workMentions.lead ? [...workHits, ...fileHits, ...threadHits, ...noteHits] : [...fileHits, ...threadHits, ...noteHits, ...workHits]
-    return { mode: 'file', rows, loading, note: workMentions.note }
-  }, [executionCwd, fileHits, filesFor, mentionOpen, mentionQuery, notes, threads, workMentions.rows, workMentions.lead, workMentions.note])
+    // A failed file read is said, never a bare "No matches"; Work's own failure, in its state's words, keeps the line.
+    const workFailed = workMentions.note !== undefined && workMentions.note !== 'Loading…'
+    const note = filesFailedFor === executionCwd && !workFailed ? "Couldn't search files" : workMentions.note
+    return { mode: 'file', rows, loading, note }
+  }, [executionCwd, fileHits, filesFailedFor, filesFor, mentionOpen, mentionQuery, notes, threads, workMentions.rows, workMentions.lead, workMentions.note])
   const matches = commandOpen ? commandMatches : mentionMatches
   const rows = matches?.rows.length ?? 0
   // Mounted from the first `/` or `@` on, so its close keeps its fade.
@@ -592,9 +597,13 @@ export function Composer({
     const load = () =>
       void loadProjectFiles(executionCwd, true)
         .then((next) => {
-          if (!cancelled) setFiles(next)
+          if (cancelled) return
+          setFiles(next)
+          setFilesFailedFor(null)
         })
-        .catch(() => undefined)
+        .catch(() => {
+          if (!cancelled) setFilesFailedFor(executionCwd)
+        })
         .finally(() => {
           if (!cancelled) setFilesFor(executionCwd)
         })

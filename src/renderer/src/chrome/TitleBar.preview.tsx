@@ -5,6 +5,8 @@ import { previewCwd, previewNoop, previewNow, previewSession, previewWorkspace }
 import { webApi } from "../lib/nativeWeb";
 import type { StripChip } from "./ThreadHeaderStrip";
 import { TitleBar } from "./TitleBar";
+import { projectStore } from "../stores/project";
+import { shellStore } from "../stores/shell";
 import type { ThreadHeaderProps } from "./ThreadHeader";
 
 function chip(id: string, title: string, live = true, status: StripChip["status"] = "idle"): StripChip {
@@ -25,19 +27,32 @@ const headerBase: Omit<ThreadHeaderProps, "railOpen"> = {
   onToggleRail: previewNoop, onSetType: previewNoop,
 };
 
-export function TitleBarPreview({ platform = "linux", railOpen = true }: { platform?: "linux" | "win32"; railOpen?: boolean }) {
+/** `home` draws the home with the rail folded: the Chats column beside the bar names the place. */
+export function TitleBarPreview({ platform = "linux", railOpen = true, home = false }: { platform?: "linux" | "win32"; railOpen?: boolean; home?: boolean }) {
   const [ready, setReady] = useState(false);
   useLayoutEffect(() => {
     const previous = window.api;
     window.api = { ...webApi, platform };
+    if (home) {
+      projectStore.setState({ projectCwd: "~" });
+      shellStore.setState({ projectRailOpen: false });
+    }
     setReady(true);
     return () => { window.api = previous; };
-  }, [platform]);
+  }, [platform, home]);
   return ready ? (
     <TitleBar
-      activeId="cache" cwd={previewCwd} header={{ ...headerBase, railOpen }}
+      activeId={home ? "" : "cache"} cwd={home ? "~" : previewCwd}
+      header={home ? { ...headerBase, railOpen: false, running: 0, model: { activeId: null, live: [], dormant: [] } } : { ...headerBase, railOpen }}
+      onSelectProject={home ? previewNoop : undefined} onOpenInbox={home ? previewNoop : undefined}
+      onOpenNotes={home ? previewNoop : undefined} onOpenSettings={home ? previewNoop : undefined}
       onToggleSidebar={previewNoop} onNew={previewNoop} onShowTerminal={previewNoop}
       onNewTerminal={previewNoop} onGoToFile={previewNoop}
     />
   ) : null;
+}
+
+/** The home with the rail folded, on a page of its own (it sets the shared stores). */
+export function TitleBarHomePreview() {
+  return <TitleBarPreview home />;
 }

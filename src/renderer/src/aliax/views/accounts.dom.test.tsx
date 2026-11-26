@@ -379,6 +379,21 @@ describe("AccountsView", () => {
       expect(rowOf("Work").querySelectorAll('[data-slot="usage-cell"]')).toHaveLength(1);
       expect(rowOf("Work").querySelector('[data-slot="account-controls"] > span[aria-hidden]')?.className).toContain("w-8");
     });
+
+    it("says each cell's number as the share left, the bar's meaning, never a bare percent", () => {
+      render(
+        <AccountsView
+          {...props}
+          views={services()}
+          usage={{ "claude-code": [report] }}
+          headroom={{ "claude-code": { "a@x.com": { room: 0.4, ratePerMin: 2 } as never } }}
+        />,
+      );
+      const row = screen.getByText("Main").closest('[data-slot="page-row"]') as HTMLElement;
+      const values = [...row.querySelectorAll('[data-slot="usage-cell"]')].map((cell) => cell.firstElementChild!.lastElementChild!.textContent);
+      expect(values.length).toBeGreaterThan(0);
+      for (const value of values) expect(value).toMatch(/^\d+% left$/);
+    });
   });
 
   it("renders the page fixture on the table width, the limited account saying so", () => {

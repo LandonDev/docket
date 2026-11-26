@@ -82,13 +82,27 @@ type Rect = { top: number; bottom: number; left: number; right: number };
  * What the stack sits above: a waiting card while it is wholly in view in its
  * scroller (its top from the card, its sides from the anchor's column), else
  * the anchor itself. A card scrolled out of view, cut by the scroller's edge
- * or folded shut seats nothing, and the footer takes the stack back.
+ * or folded shut seats nothing, and the footer takes the stack back. The
+ * stack (`stack` px tall) never rises above 8px under the scroller's top, so
+ * over a card that fills the transcript it lies on the card's empty upper
+ * edge, never over the title bar; where it cannot fit in the scroller at all
+ * the footer takes it.
  */
-export function seatRect(anchor: Rect, card: Rect | null, view: { top: number; bottom: number } | null): Rect {
+export function seatRect(anchor: Rect, card: Rect | null, view: { top: number; bottom: number } | null, stack = 0): Rect {
   if (!card || card.bottom - card.top <= 0 || card.top >= anchor.top) return anchor;
   if (view && (card.top < view.top || card.bottom > view.bottom + 1)) return anchor;
+  const top = view ? Math.max(card.top, view.top + ABOVE + stack + ABOVE) : card.top;
+  if (top >= anchor.top) return anchor;
   // Named, not spread: a DOMRect's sides are getters on its prototype, and a spread of one has no right edge.
-  return { top: card.top, bottom: anchor.bottom, left: anchor.left, right: anchor.right };
+  return { top, bottom: anchor.bottom, left: anchor.left, right: anchor.right };
+}
+
+/** The resting stack's height: the front toast and the 8px edge of each one behind it. */
+export function stackHeight(toaster: Element | null): number {
+  const front = toaster?.querySelector<HTMLElement>('[data-sonner-toast][data-front="true"]');
+  if (!front) return 0;
+  const behind = toaster!.querySelectorAll('[data-sonner-toast][data-visible="true"]:not([data-removed="true"])').length - 1;
+  return front.offsetHeight + Math.max(0, behind) * ABOVE;
 }
 
 /** The nearest ancestor that scrolls: the transcript a card sits in. */
@@ -100,7 +114,7 @@ function scrollerOf(el: HTMLElement): HTMLElement | null {
 }
 
 /** The measured inset for the current anchor, kept as it resizes or moves. */
-function useToastInset(): ToastInset {
+function useToastInset(toaster: HTMLElement | null): ToastInset {
   const version = useSyncExternalStore(subscribeToastAnchor, toastAnchorVersion, () => 0);
   const [inset, setInset] = useState<ToastInset>({ bottom: INSIDE, right: INSIDE, width: TOAST_WIDTH });
   useEffect(() => {
@@ -111,7 +125,7 @@ function useToastInset(): ToastInset {
     const measure = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const rect = anchor ? seatRect(anchor.getBoundingClientRect(), card?.getBoundingClientRect() ?? null, scroller?.getBoundingClientRect() ?? null) : null;
+        const rect = anchor ? seatRect(anchor.getBoundingClientRect(), card?.getBoundingClientRect() ?? null, scroller?.getBoundingClientRect() ?? null, card ? stackHeight(toaster) : 0) : null;
         const next = toastInset(viewport(), rect);
         setInset((prev) => (prev.bottom === next.bottom && prev.right === next.right && prev.width === next.width ? prev : next));
       });
@@ -124,6 +138,9 @@ function useToastInset(): ToastInset {
       if (anchor.parentElement) observer?.observe(anchor.parentElement);
     }
     if (card) observer?.observe(card);
+    // Over a card the stack's own height sets its seat: measure again as toasts come, go or change.
+    const toasts = card && toaster && typeof MutationObserver !== "undefined" ? new MutationObserver(measure) : null;
+    if (toaster) toasts?.observe(toaster, { childList: true, subtree: true });
     // A popup seat (the composer's menu) rises 4px on a transform no observer sees: measure again where it lands.
     card?.addEventListener("transitionend", measure);
     scroller?.addEventListener("scroll", measure, { passive: true });
@@ -131,11 +148,12 @@ function useToastInset(): ToastInset {
     return () => {
       cancelAnimationFrame(frame);
       observer?.disconnect();
+      toasts?.disconnect();
       card?.removeEventListener("transitionend", measure);
       scroller?.removeEventListener("scroll", measure);
       window.removeEventListener("resize", measure);
     };
-  }, [version]);
+  }, [version, toaster]);
   return inset;
 }
 
@@ -157,10 +175,12 @@ function ToastGlyph({ state }: { state: ThreadState }) {
  *  kind with two presses that stays until answered (docs/DESIGN.md
  *  "Restraint"). It sits above the focused thread's strip, never over a control. */
 export function Toaster(props: ToasterProps) {
-  const { width, ...offset } = useToastInset();
+  const [toaster, setToaster] = useState<HTMLElement | null>(null);
+  const { width, ...offset } = useToastInset(toaster);
   return (
     <Suspense fallback={null}>
       <Sonner
+        ref={setToaster}
         position="bottom-right"
         gap={8}
         offset={offset}
@@ -171,7 +191,7 @@ export function Toaster(props: ToasterProps) {
           info: <Info className="size-3.5" />,
           warning: <ToastGlyph state="waiting" />,
           error: <ToastGlyph state="failed" />,
-          loading: <Spinner />,
+          loading: <Spinner className="size-3.5" />,
           // The app's own X (chrome/icons), not sonner's 12px one.
           close: <X className="size-3.5" />,
         }}
@@ -184,7 +204,8 @@ export function Toaster(props: ToasterProps) {
             title: "!font-medium !leading-5",
             description: "!text-xs !leading-4 !text-muted-foreground",
             // The glyph's own box, 8px from the title (the toast's gap), not sonner's 16px box and margins.
-            icon: "!h-5 !w-auto !m-0",
+            // At least the 14px glyph column: sonner's loader is absolute and would leave the slot 0px wide.
+            icon: "!h-5 !w-auto !min-w-3.5 !m-0",
             // A 24px ghost at the top right, centred on the title's line (sonner's 16px inset
             // plus half the 20px line, less half the 24px button: 14px): no circle, no second
             // focus band, no timing of sonner's.

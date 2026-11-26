@@ -8,6 +8,7 @@ import {
   continueSession,
   FocusSignal,
   pauseAllRunning,
+  pauseAllWhereMay,
   sessionBatch,
   runSettingsFor,
   setGoal,
@@ -712,6 +713,31 @@ describe("run settings on queued messages", () => {
   it("queueAdd spreads the settings it is given", async () => {
     await queueAdd("s1", "later", [], { provider: "codex", model: "gpt-6-astra", reasoning: "high" });
     expect(link.of("queue.add")[0]).toEqual({ sessionId: "s1", text: "later", provider: "codex", model: "gpt-6-astra", reasoning: "high" });
+  });
+});
+
+describe("pauseAllWhereMay", () => {
+  it("asks only the hosts whose key may pause, never one that can only refuse", async () => {
+    const asked: string[] = [];
+    const environments = vi.spyOn(registry, "environments").mockReturnValue([{ id: "env_mac" }, { id: "env_box" }] as never);
+    const statusOf = vi.spyOn(registry, "statusOf").mockImplementation(((id: string) =>
+      id === "env_box"
+        ? { transport: "open", lastHello: { environmentId: "env_box", contract: 1, caps: ["read"], key: { id: "reader" } } }
+        : { transport: "open", lastHello: null }) as never);
+    const linkOf = vi.spyOn(registry, "linkOf").mockImplementation(((id: string) => ({
+      request: async (method: string) => {
+        asked.push(`${id} ${method}`);
+        return { attempted: [], succeeded: [], failed: [] };
+      },
+    })) as never);
+    try {
+      await pauseAllWhereMay();
+      expect(asked).toEqual(["env_mac session.pauseAllRunning"]);
+    } finally {
+      environments.mockRestore();
+      statusOf.mockRestore();
+      linkOf.mockRestore();
+    }
   });
 });
 

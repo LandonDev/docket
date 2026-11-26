@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { normalizeProjectPath } from "../recents";
 import { aliasKeys } from "../linkedRail";
+import { resolveTabGroupLabel } from "../tabGroups";
 import { registry, type Link } from "../connection";
 import { whenOpen, withDeadline } from "../connection/openRead";
 import type { ProjectMeta, ServerPush, ThreadDefaults, WireProjectMeta, WireWorkspaceMeta, WorkspaceIcon, WorkspaceMeta } from "./types";
@@ -126,6 +127,21 @@ export function workspaceLabelKey(
 ): string {
   const id = workspaceByPath(workspaces, path)?.id;
   return id ? aliasKeys(workspaces).workspaceId(id) : fallback;
+}
+
+/**
+ * The name the rail gives the workspace at `path` (a label this window saved, else the workspace's own name,
+ * `workspace.rename`), or null when no workspace is that folder: then a surface says the folder's name.
+ * Search and Notes name a workspace by it, so one thing has one name (LAYOUT "Workspace row").
+ */
+export function workspaceNameAt(
+  workspaces: readonly WorkspaceMeta[],
+  path: string | null | undefined,
+  labels: Record<string, string>,
+): string | null {
+  const workspace = workspaceByPath(workspaces, path);
+  if (!workspace) return null;
+  return resolveTabGroupLabel(aliasKeys(workspaces).workspaceId(workspace.id), labels, workspace.name);
 }
 
 export function projectOf(

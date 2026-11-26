@@ -186,6 +186,14 @@ export const DOCKET_ASKS: readonly DocketAsk[] = [
     linkDown: ["chrome/HostRows.dom.test.tsx", "holds a host's submenu while the host is away, its state the reason"],
   },
   {
+    method: "session.pauseAllRunning",
+    need: "operate",
+    control: "the title bar's thread menu's Pause all",
+    file: "chrome/ShellTitleBar.tsx",
+    readKey: ["lib/threadStripModel.test.ts", "leaves out the running roots on a host whose key may not pause"],
+    linkDown: { notHeld: "spans every host: its count and its press leave out a host whose key may not pause (lib/tcserver/commands.ts pauseAllWhereMay), a host away refuses and the press toasts" },
+  },
+  {
     method: "resources.remove",
     need: "operate",
     control: "Resources…' Remove",

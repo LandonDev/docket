@@ -5,6 +5,7 @@ import { DRAFT_TITLE_MAX, accessParams, type Attachment, type Block, type Runtim
 import { policyForMode } from "./access";
 import { needsUpload, uploadAttachment } from "../attachmentUpload";
 import { registry, type Link } from "../connection";
+import { linkMay } from "../linkMayCore";
 import { sessionStore } from "./store";
 import { workspaceStore } from "./workspaces";
 import { draftHost } from "./draftHost";
@@ -669,6 +670,12 @@ export async function interrupt(sessionId: string, options: { subtree?: boolean 
 /** Pause every running thread at once. */
 export function pauseAllRunning(environmentId: string): Promise<SessionBatchResult> {
   return registry.linkOf(environmentId).request<SessionBatchResult>("session.pauseAllRunning");
+}
+
+/** The title bar's Pause all: every running thread on each host whose key may pause, never a host that can only refuse. */
+export function pauseAllWhereMay(): Promise<void> {
+  const hosts = registry.environments().filter((e) => linkMay(e.id, "session.pauseAllRunning"));
+  return Promise.all(hosts.map((e) => pauseAllRunning(e.id))).then(() => undefined);
 }
 
 export type SessionBatchAction = "pause" | "resume" | "stop" | "archive";

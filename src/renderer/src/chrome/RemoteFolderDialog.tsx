@@ -87,6 +87,20 @@ function FolderSkeleton() {
   );
 }
 
+/** A read that failed: its words, and Retry at the line's end for the read that failed. */
+function ErrorRetry({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <ErrorLine error={error} />
+      </div>
+      <Button variant="secondary" size="sm" className="-my-1.5 shrink-0" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  );
+}
+
 function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPending }: Props & { hostName?: string; pending: boolean; setPending: (on: boolean) => void }) {
   const close = useModalClose();
   // The work root is a host read: it waits for the link, and past 10 s says the host did not answer, with Retry.
@@ -100,7 +114,11 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
       : dialogErrorWords(new Error(rootRead.error), hostName)
     : null;
   const [dir, setDir] = useState<string | null>(null);
+  // The last listing that came back: a folder that fails to list leaves it on screen.
   const [entries, setEntries] = useState<FsEntry[] | null>(null);
+  const [listing, setListing] = useState(false);
+  // The folder whose listing failed, for Retry beside its words.
+  const [failed, setFailed] = useState<{ path: string; error: string } | null>(null);
   const [typed, setTyped] = useState("");
   const [newFolder, setNewFolder] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -115,7 +133,8 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
   const load = useCallback(
     async (path: string) => {
       const n = ++latest.current;
-      setEntries(null);
+      setListing(true);
+      setFailed(null);
       setError(null);
       try {
         const listed = await listDir(environmentId, path);
@@ -125,9 +144,9 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
         setTyped(path);
       } catch (err) {
         if (n !== latest.current) return;
-        setEntries([]);
-        setError(dialogErrorWords(err));
+        setFailed({ path, error: dialogErrorWords(err) });
       }
+      if (n === latest.current) setListing(false);
     },
     [environmentId],
   );
@@ -163,6 +182,7 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
     if (!folder || !dir) return;
     setPending(true);
     setError(null);
+    setFailed(null);
     try {
       const made = await createPath(environmentId, dir, folder, true);
       setPending(false);
@@ -211,8 +231,9 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
                 })}
               </BreadcrumbList>
             </Breadcrumb>
-            <div className="flex min-h-0 flex-col rounded-lg border border-border" data-remote-folders>
-              {loading || entries === null ? (
+            {/* A first listing that failed draws no list: the error and its Retry say it all. */}
+            {!loading && !listing && entries === null ? null : <div className="flex min-h-0 flex-col rounded-lg border border-border" data-remote-folders>
+              {loading || listing || entries === null ? (
                 <div className="p-1">
                   <FolderSkeleton />
                 </div>
@@ -242,7 +263,7 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
             {newFolder === null ? (
               <div className="flex items-center gap-2">
                 <Input
@@ -291,14 +312,9 @@ function FolderPicker({ environmentId, hostName, onClose, onPick, pending, setPe
           </>
         ) : null}
         {rootError ? (
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <ErrorLine error={rootError} />
-            </div>
-            <Button variant="secondary" size="sm" className="-my-1.5 shrink-0" onClick={() => void rootRead.retry()}>
-              Retry
-            </Button>
-          </div>
+          <ErrorRetry error={rootError} onRetry={() => void rootRead.retry()} />
+        ) : failed ? (
+          <ErrorRetry error={failed.error} onRetry={() => void load(failed.path)} />
         ) : (
           <ErrorLine error={error} />
         )}

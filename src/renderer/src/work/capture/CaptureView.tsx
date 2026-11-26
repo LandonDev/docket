@@ -124,18 +124,23 @@ export const CaptureView = forwardRef<HTMLTextAreaElement, CaptureViewProps>(fun
         // A state, not a fault: muted, and no press here (ruling 29); the fix is on Connections.
         <p className="px-4 pb-2 text-xs text-muted-foreground">{down.words}</p>
       ) : null}
-      <div className="flex h-12 items-center gap-2 border-t border-border px-4">
-        <ChoiceToggle label="Job" fit value={p.sector} options={SECTOR_CHOICES.map((value) => ({ value, label: choiceLabel(value, p.jobs) }))} onChange={p.onSector} />
-        <span className="flex-1" />
-        <Button variant="secondary" size="sm" disabled={off} onClick={() => p.onFile(true)}>
-          Start thread
-          <Kbd size="sm" aria-hidden="true" className="border-transparent bg-transparent text-muted-foreground">
-            {keyHint("mod+return")}
-          </Kbd>
-        </Button>
-        <Button size="sm" disabled={off} onClick={() => p.onFile(false)}>
-          File
-        </Button>
+      {/* One 48px row, Job giving way first (its long names cut), in the 680px window; under 640px, where seven
+          whole short names and the presses no longer fit, the presses take a row of their own at its end. */}
+      <div data-capture-foot className="@container/foot border-t border-border px-4 py-2">
+        <div className="flex min-h-8 items-center gap-2 @max-[40rem]/foot:flex-wrap">
+          <ChoiceToggle label="Job" fit value={p.sector} options={SECTOR_CHOICES.map((value) => ({ value, label: choiceLabel(value, p.jobs) }))} onChange={p.onSector} />
+          <div className="ms-auto flex shrink-0 items-center justify-end gap-2 @max-[40rem]/foot:w-full">
+            <Button variant="secondary" size="sm" disabled={off} onClick={() => p.onFile(true)}>
+              Start thread
+              <Kbd size="sm" aria-hidden="true" className="border-transparent bg-transparent text-muted-foreground">
+                {keyHint("mod+return")}
+              </Kbd>
+            </Button>
+            <Button size="sm" disabled={off} onClick={() => p.onFile(false)}>
+              File
+            </Button>
+          </div>
+        </div>
       </div>
       {p.dragging ? (
         <div

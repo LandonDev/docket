@@ -1,4 +1,5 @@
 import { HostGlyph } from "../../../chrome/HostGlyph";
+import { TruncateTip } from "../../../components/tip";
 import { Button } from "../../../components/ui/button";
 import { StatusMark } from "../../../components/ui/status";
 import type { SessionMeta } from "../../../lib/tcserver/types";
@@ -8,7 +9,7 @@ import { ModelLine } from "../ModelMark";
 import { AgentNumbersLine } from "./rowBits";
 import type { NumberPart } from "./useFleetModel";
 
-/** The header: the role glyph and title, the status as on the row but in
+/** The header: the role glyph and title (its whole on hover while cut), the status as on the row but in
  *  full (working says the word on a still dot, its phase is the transcript's),
  *  and the numbers line led by the host, model, effort and branch. */
 export function AgentDetailHeader({
@@ -26,12 +27,16 @@ export function AgentDetailHeader({
   onOpen?: () => void;
 }) {
   const Glyph = AGENT_GLYPHS[meta.agentType];
+  const title = meta.title || "Subagent";
   return (
     <div className="flex shrink-0 items-start gap-3 py-4 pr-12 pl-5">
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex min-w-0 items-center gap-2">
           {Glyph ? <Glyph className="size-4 shrink-0 text-muted-foreground" /> : null}
-          <h2 className="truncate text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">{meta.title || "Subagent"}</h2>
+          {/* Cut by the sheet's width, the whole name is on hover, as on the agent's row. */}
+          <TruncateTip text={title}>
+            <h2 className="truncate text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">{title}</h2>
+          </TruncateTip>
         </div>
         {/* Working is the word alone on a still dot: the transcript's working line holds the one moving mark and the phase. */}
         <StatusMark

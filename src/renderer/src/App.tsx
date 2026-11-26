@@ -3081,7 +3081,7 @@ export default function App() {
       onSetRules: onHeaderSetRules,
       onRestore: onRestoreThread,
       onNew: onHeaderNew,
-      onPauseAll: () => Promise.all(registry.environments().map((e) => serverCommands.pauseAllRunning(e.id))).then(() => undefined),
+      onPauseAll: serverCommands.pauseAllWhereMay,
       onToggleRail: () => {
         const id = rightPanel.focused();
         if (id) rightPanel.toggle(id);

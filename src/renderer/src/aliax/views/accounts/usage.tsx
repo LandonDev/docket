@@ -188,7 +188,8 @@ export function UsageBars({
           <Bar
             key={w.label}
             label={label}
-            value={`${left}%`}
+            // The share left, as the bar fills with it and the popover says it: never a bare percent read as used.
+            value={`${left}% left`}
             valueClass={toneFor(w, now)}
             percent={left}
             fill={fillFor(w, now)}
@@ -202,7 +203,7 @@ export function UsageBars({
       {rate ? (
         <Bar
           label="Rate"
-          value={rate.tone === "limited" ? "Limited" : rate.tone === "muted" ? "" : `${rate.percent}%`}
+          value={rate.tone === "limited" ? "Limited" : rate.tone === "muted" ? "" : `${rate.percent}% left`}
           valueClass={RATE_TEXT[rate.tone]}
           percent={rate.percent}
           fill={RATE_FILL[rate.tone]}

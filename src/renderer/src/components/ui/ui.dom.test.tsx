@@ -22,7 +22,7 @@ import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxItem, ComboboxList, C
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true }));
+vi.mock("@renderer/hooks/paneVisibility", () => ({ usePaneVisible: () => true, useDocumentVisible: () => true }));
 
 afterEach(cleanup);
 

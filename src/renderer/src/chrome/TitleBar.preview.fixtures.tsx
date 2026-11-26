@@ -4,3 +4,7 @@ export default [
   { name: "Linux window controls", props: {} },
   { name: "Windows caption space", props: { platform: "win32", railOpen: false } },
 ];
+
+// bun run ui:preview src/renderer/src/chrome/TitleBar.preview.tsx#TitleBarHomePreview --shot --fresh
+// Its own page: it sets the stores the bar reads, which every fixture on a page shares.
+export const TitleBarHomePreviewFixtures = [{ name: "The home, rail folded", props: { home: true } }];

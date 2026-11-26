@@ -1,7 +1,8 @@
 // bun run ui:preview src/renderer/src/surfaces/NotesView.preview.tsx#NotesPreview
 // NotesPreview draws the real list and detail. Editing, navigation and resize need interaction.
-import { addPreviewHost, previewNoop, previewNow, previewCwd } from "../lib/previewHost.preview";
+import { addPreviewHost, previewNoop, previewNow, previewCwd, previewWorkspace } from "../lib/previewHost.preview";
 import type { Note } from "../lib/notes";
+import { workspaceStore } from "../lib/tcserver/workspaces";
 import { NotesView } from "./NotesView";
 
 const notes: Note[] = [
@@ -9,9 +10,14 @@ const notes: Note[] = [
   { id: "release", slug: "release-checklist", title: "Release checklist", body: "Open the notes list on both computers.", createdAt: previewNow, updatedAt: previewNow },
 ];
 let shown: "loading" | "populated" | "empty" = "populated";
-await addPreviewHost({ id: "local", name: "This computer", answers: {
+const host = await addPreviewHost({ id: "local", name: "This computer", answers: {
   "notes.list": () => shown === "loading" ? new Promise(() => {}) : shown === "empty" ? [] : notes,
+  // The note's folder is a workspace, which the note names as the rail does ("Field Notes").
+  "workspace.list": () => [previewWorkspace],
+  "project.list": () => [],
 } });
+workspaceStore.attach(host);
+await workspaceStore.refresh(host);
 
 export function NotesPreview({ state = "populated" }: { state?: typeof shown }) {
   shown = state;

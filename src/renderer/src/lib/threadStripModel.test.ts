@@ -14,6 +14,7 @@ import {
   projectRootThreads,
   railMasters,
   runningRoots,
+  pausableRoots,
   splitThreads,
   type StripThread,
 } from "./threadStripModel";
@@ -289,6 +290,18 @@ describe("runningRoots", () => {
       thread("d", { status: "running" }),
     ];
     expect(runningRoots(all).map((t) => t.id)).toEqual(["a"]);
+  });
+});
+
+describe("pausableRoots", () => {
+  it("leaves out the running roots on a host whose key may not pause", () => {
+    const all = [
+      { ...thread("a", { treeHasLiveWork: true }), environmentId: "env_mac" },
+      { ...thread("b", { treeHasLiveWork: true }), environmentId: "env_box" },
+      thread("c", { treeHasLiveWork: true }),
+    ];
+    expect(pausableRoots(all, new Set(["env_box"])).map((t) => t.id)).toEqual(["a", "c"]);
+    expect(pausableRoots(all, new Set()).map((t) => t.id)).toEqual(["a", "b", "c"]);
   });
 });
 

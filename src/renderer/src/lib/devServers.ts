@@ -456,11 +456,14 @@ export function useLiveDevServers(): LiveServer[] {
 }
 
 /** Stop a live server on its host: a run's process group, or the ledger row's process. Throws when it did not stop (failed, or waiting for its host). */
+/** A Stop the host answered with no reason: the server is still running. */
+export const DID_NOT_STOP = 'It did not stop'
+
 export async function stopLiveServer(server: LiveServer): Promise<void> {
   if (server.runId) await stopDevServer(server.environmentId, server.runId)
   else if (server.resource) {
     const [result] = await removeThreadResources(server.resource.sessionId, [server.resource.id])
-    if (result && result.outcome !== 'removed') throw new Error(result.note ?? (result.outcome === 'waiting' ? 'Waiting for its host' : 'It did not stop'))
+    if (result && result.outcome !== 'removed') throw new Error(result.note ?? (result.outcome === 'waiting' ? 'Waiting for its host' : DID_NOT_STOP))
   }
 }
 

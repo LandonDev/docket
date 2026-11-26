@@ -82,7 +82,7 @@ describe("a window's colour", () => {
     const picker = listbox.closest("[data-account-picker]") ?? listbox;
     expect(picker.querySelector(".text-danger, .bg-danger, .text-success, .bg-success, .text-destructive, .bg-destructive")).toBeNull();
     const [low, roomy] = within(listbox).getAllByRole("option");
-    expect(within(low).getByText("3%").className).toContain("text-warning");
-    expect(within(roomy).getByText("90%").className).toContain("text-muted-foreground");
+    expect(within(low).getByText("3% left").className).toContain("text-warning");
+    expect(within(roomy).getByText("90% left").className).toContain("text-muted-foreground");
   });
 });

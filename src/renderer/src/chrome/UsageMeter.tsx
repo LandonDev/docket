@@ -144,7 +144,7 @@ export function MeterDetails({ provider, meter, now }: MeterProps) {
                 {future(w.resetsAt, now) ? (
                   <span className="text-xs text-muted-foreground tabular-nums">in {untilShort(w.resetsAt, now)}</span>
                 ) : null}
-                <span className="ms-auto text-[13px] text-foreground tabular-nums">{percent(w.share)}%</span>
+                <span className="ms-auto text-[13px] text-foreground tabular-nums">{percent(w.share)}% left</span>
               </div>
               <Progress value={percent(w.share)} fill={fillOf(w.share)} aria-label={`${w.name} left`} />
             </div>

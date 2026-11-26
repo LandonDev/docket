@@ -322,6 +322,26 @@ describe("TitleBar's controls", () => {
     });
   });
 
+  it("names the place once: no project picker beside the home's Chats column, the picker where nothing else names it", () => {
+    const rail = shellStore.getState().projectRailOpen;
+    const at = projectStore.getState().projectCwd;
+    shellStore.setState({ projectRailOpen: false });
+    try {
+      // The home: the Chats column beside the bar names the place.
+      projectStore.setState({ projectCwd: "~" });
+      bar({ cwd: "~", onSelectProject: vi.fn() });
+      expect(screen.queryByText("No project")).toBeNull();
+      cleanup();
+      // No workspace and not the home: nothing else names the place.
+      projectStore.setState({ projectCwd: "" });
+      bar({ cwd: "", onSelectProject: vi.fn() });
+      expect(screen.getByText("No project")).toBeTruthy();
+    } finally {
+      shellStore.setState({ projectRailOpen: rail });
+      projectStore.setState({ projectCwd: at });
+    }
+  });
+
   it("keeps the traffic lights' 78px only on macOS", () => {
     const rail = shellStore.getState().projectRailOpen;
     const at = projectStore.getState().projectCwd;

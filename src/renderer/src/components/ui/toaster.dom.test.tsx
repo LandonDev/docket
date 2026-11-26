@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadToast, seatRect, TOAST_WIDTH, Toaster, toastInset } from "./toaster";
+import { loadToast, seatRect, stackHeight, TOAST_WIDTH, Toaster, toastInset } from "./toaster";
 import { refreshToastAnchor, registerToastSeat, seatedSession, subscribeToastAnchor, toastAnchor, toastSeatOver } from "../../lib/toastAnchor";
 import { QuestionCard } from "../../surfaces/QuestionCard";
 import { ChatFooter } from "../../surfaces/threads/chatSlots";
@@ -167,6 +167,37 @@ describe("a waiting card's seat", () => {
     expect(seatRect(footer, null, view)).toBe(footer);
   });
 
+  it("never lifts the stack above the scroller's top: over a card that fills the transcript it lies on the card's upper edge (council 3 F9.1)", () => {
+    // The walk's question card: its top 70px under the transcript's, its foot (Skip, Continue) just over the strip.
+    const tall = { top: 143, bottom: 498, left: 476, right: 974 };
+    const pane = { top: 73, bottom: 590 };
+    const strip = { top: 600, bottom: 700, left: 460, right: 990 };
+    const window = { width: 1000, height: 700 };
+    for (const stack of [TOAST_H, TOAST_H + 24]) {
+      const seat = seatRect(strip, tall, pane, stack);
+      const inset = toastInset(window, seat);
+      const top = window.height - inset.bottom - stack;
+      // Inside the pane, 8px under its top: never over the shelf's tabs or the title bar.
+      expect(top).toBeGreaterThanOrEqual(pane.top + 8);
+      // Still clear of the card's foot, where its controls are.
+      expect(window.height - inset.bottom).toBeLessThan(tall.bottom - 48);
+    }
+    // A card with room above it keeps its seat 8px over its top.
+    expect(seatRect(strip, { ...tall, top: 300 }, pane, TOAST_H).top).toBe(300);
+  });
+
+  it("gives the seat to the footer where the stack cannot fit in the scroller at all", () => {
+    expect(seatRect(footer, { top: 520, bottom: 744, left: 336, right: 1104 }, view, 700)).toBe(footer);
+  });
+
+  it("measures the resting stack: the front toast and 8px for each one behind it", () => {
+    expect(stackHeight(null)).toBe(0);
+    const section = document.createElement("section");
+    section.innerHTML = '<ol><li data-sonner-toast data-visible="true" data-front="true"></li><li data-sonner-toast data-visible="true" data-front="false"></li><li data-sonner-toast data-visible="true" data-front="false" data-removed="true"></li><li data-sonner-toast data-visible="false" data-front="false"></li></ol>';
+    Object.defineProperty(section.querySelector('[data-front="true"]')!, "offsetHeight", { value: 72 });
+    expect(stackHeight(section)).toBe(72 + 8);
+  });
+
   it("a waiting question card seats the stack above itself; answered, back above the strip", async () => {
     const question = { sessionId: "s1", requestId: "q1", questions: [{ header: "Route", question: "Which route?", options: [{ label: "West" }, { label: "River" }] }] };
     const onAnswer = () => new Promise<void>(() => {});
@@ -296,6 +327,25 @@ describe("a toast's buttons and motion", () => {
     const icon = document.querySelector<HTMLElement>("[data-sonner-toast] [data-icon]")!;
     expect(icon.classList).toContain("!m-0");
     expect(icon.classList).toContain("!w-auto");
+  });
+
+  it("gives a loading toast's spinner the glyph column every other toast's glyph sits in (council 3 F9.2)", async () => {
+    render(<Toaster />);
+    const toast = await loadToast();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      toast.loading("Reading the route notes…");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const icon = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>("[data-sonner-toast] [data-icon]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    // Sonner's loader is absolute: without a floor the slot is 0px wide and the spinner sits 7px left of the column.
+    expect(icon.classList).toContain("!min-w-3.5");
+    const spinner = icon.querySelector<HTMLElement>(".sonner-loader > span")!;
+    expect(spinner.className).toContain("size-3.5");
   });
 
   it("speaks the status vocabulary: a warning is waiting's amber glyph, an error failed's red one", async () => {

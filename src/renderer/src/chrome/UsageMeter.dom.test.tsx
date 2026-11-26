@@ -275,6 +275,8 @@ describe('UsageMeter', () => {
     expect(head.className.split(/\s+/)).not.toContain('gap-2')
     expect(body.textContent).toContain('Week')
     expect(body.textContent).toContain('40% left')
+    // Each window's number is the share left, as the head's is: one meaning on the rail and on Accounts.
+    for (const w of body.querySelectorAll('[data-window]')) expect(w.firstElementChild!.lastElementChild!.textContent).toMatch(/^\d+% left$/)
     expect(body.textContent).toContain('2 accounts with room')
     expect(body.textContent).not.toMatch(/@x\.com|Main|Max 20x/)
   })

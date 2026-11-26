@@ -126,6 +126,25 @@ describe("TranscriptOutline", () => {
     expect(onLoadEarlier).toHaveBeenCalledOnce();
   });
 
+  it("Earlier messages starts its words on the rows' text edge, its spinner after them", () => {
+    render(<TranscriptOutline {...base} turns={oneDay} hasOlder onLoadEarlier={() => new Promise<void>(() => {})} />);
+    const head = screen.getByRole("button", { name: "Earlier messages" });
+    const row = nav().querySelector<HTMLElement>("[data-jump-key]")!;
+    // The rows' inset: the same size, the same padding, the words at the start.
+    expect(head.dataset.slot).toBe("button");
+    for (const cls of ["px-2.5", "justify-start"]) {
+      expect(head.classList.contains(cls)).toBe(true);
+      expect(row.classList.contains(cls)).toBe(true);
+    }
+    // The busy label centres its words in a width that keeps the spinner's slot; here they sit at its start
+    // (the row reversed, packed to its end) so the slot is never a gap before them, at rest or loading.
+    expect(head.classList.contains("[&_[data-slot=busy-label]>span]:flex-row-reverse")).toBe(true);
+    expect(head.classList.contains("[&_[data-slot=busy-label]>span]:justify-end")).toBe(true);
+    fireEvent.click(head);
+    const inner = head.querySelector('[data-slot="busy-label"] > span')!;
+    expect(inner.firstElementChild?.getAttribute("data-slot")).toBe("spinner");
+  });
+
   describe("the fold", () => {
     it("opens by default, the chevron saying what it does and which list it folds", () => {
       render(<TranscriptOutline {...base} turns={oneDay} />);

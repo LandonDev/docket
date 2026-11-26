@@ -9,8 +9,15 @@ const pace = (left: number, projected: number): PaceSeries =>
 
 describe("Stats pace line", () => {
   it("says one hour in the singular, more in the plural", () => {
-    expect(paceLine(pace(1.2, 40)).text).toBe("Ends near 40% at this pace, 1 hour left");
-    expect(paceLine(pace(2, 120)).text).toBe("Will run out, 2 hours left");
+    expect(paceLine(pace(1.2, 40)).text).toBe("Ends near 40% at this pace, resets in 1 hour");
+    expect(paceLine(pace(2, 120)).text).toBe("Will run out before the reset in 2 hours");
+  });
+
+  it("names the time as the reset's, never as when the limit runs out", () => {
+    const out = paceLine(pace(72, 140)).text;
+    expect(out).toBe("Will run out before the reset in 3 days");
+    expect(out).not.toMatch(/, \d+ \w+ left$/);
+    expect(paceLine(pace(72, 60)).text).toBe("Ends near 60% at this pace, resets in 3 days");
   });
 
   it("rounds before it picks the word", () => {

@@ -58,6 +58,10 @@ vi.mock("../lib/tcserver/store", async () => {
   };
 });
 vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => h.workspaces, useWorkspaceIcon: () => undefined }));
+// The rail's name for a workspace's folder (workspaceNameAt, proven in workspaces.test.ts): its own name here.
+vi.mock("../hooks/useWorkspaceNameAt", () => ({
+  useWorkspaceNameAt: () => (path: string) => h.workspaces.find((workspace) => workspace.path === path)?.name ?? null,
+}));
 vi.mock("../lib/tcserver/projects", () => ({
   hostOfCwd: (cwd: string) => (cwd.startsWith("/work") ? "env_box" : "local"),
   environmentOfCwd: (cwd: string) => (cwd.startsWith("/work") ? "env_box" : "local"),
@@ -252,6 +256,28 @@ describe("SearchView across hosts", () => {
     view.unmount();
   });
 
+  it("names a workspace as the rail does, never by its folder, and a folder no workspace is by its own name", async () => {
+    const before = h.workspaces;
+    h.workspaces = [{ ...before[0], name: "Proof gateway" }, before[1]];
+    const workspaceRecents = [{ path: "/Users/me/app", lastOpened: 2 }, { path: "/Users/me/gateway-kit", lastOpened: 1 }] as never;
+    const view = render(<SearchView open cwd="/Users/me/app" recents={workspaceRecents} {...props()} />);
+    try {
+      await search(view, "gateway");
+      const thread = rows(view).find((row) => row.dataset.kind === "conversation")!;
+      expect(thread.textContent).toContain("Proof gateway");
+      expect(thread.textContent).not.toContain("app");
+      const projects = rows(view).filter((row) => row.dataset.kind === "project").map((row) => row.textContent);
+      // The workspace's own name, its typed word marked; the folder no workspace holds keeps its name.
+      expect(projects).toContain("Proof gateway");
+      expect(projects).toContain("gateway-kit");
+      const named = rows(view).find((row) => row.dataset.kind === "project" && row.textContent === "Proof gateway")!;
+      expect(named.querySelector("mark")?.textContent?.toLowerCase()).toBe("gateway");
+    } finally {
+      view.unmount();
+      h.workspaces = before;
+    }
+  });
+
   it("opens a hit where it lives on Enter and beside on ⌘↩; arrows move the active row", async () => {
     const p = props();
     const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...p} />);
@@ -330,6 +356,23 @@ describe("SearchView across hosts", () => {
     expect(failed.lastElementChild!.className).toContain("text-destructive");
     view.unmount();
     h.statuses = new Map([["env_box", { transport: "open", fresh: true }]]);
+  });
+
+  it("no results after a partial failure says which host never searched, not a bare No results", async () => {
+    // The box is offline; this Mac searches and finds nothing.
+    h.statuses = new Map();
+    h.invokeOn.mockImplementation((_env: string, method: string) => Promise.resolve(method === "notes_list" ? [] : { hits: [], truncated: false }));
+    h.searchProject.mockImplementation(() => Promise.resolve({ matches: [], truncated: false }));
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    try {
+      await search(view, "zzqx");
+      const empty = view.container.querySelector('[data-slot="empty"]')!;
+      expect(empty.textContent).toContain("No results");
+      expect(empty.textContent).toContain("box is offline");
+    } finally {
+      view.unmount();
+      h.statuses = new Map([["env_box", { transport: "open", fresh: true }]]);
+    }
   });
 
   it("while every host is still out and no hit has landed, the results are the rows' skeleton", async () => {

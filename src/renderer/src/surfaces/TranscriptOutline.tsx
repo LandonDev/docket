@@ -113,7 +113,9 @@ export const TranscriptOutline = memo(function TranscriptOutline({
               <LoadEarlierButton
                 variant="ghost"
                 size="sm"
-                className="w-full justify-start font-normal text-muted-foreground"
+                // Its words on the rows' text edge: the busy label keeps the spinner's slot in its width, so its
+                // words sit at the start and the spinner, while it loads, follows them (never pushes them).
+                className="w-full justify-start font-normal text-muted-foreground [&_[data-slot=busy-label]>span]:flex-row-reverse [&_[data-slot=busy-label]>span]:justify-end"
                 onLoad={onLoadEarlier}
                 label="Earlier messages"
               />

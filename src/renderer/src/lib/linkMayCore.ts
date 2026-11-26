@@ -34,6 +34,7 @@ const NEEDS = {
   "session.killBackground": "operate",
   "session.notes.set": "operate",
   "session.pause": "operate",
+  "session.pauseAllRunning": "operate",
   "session.permission": "approve",
   "session.rename": "operate",
   "session.resume": "operate",

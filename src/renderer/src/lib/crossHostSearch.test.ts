@@ -7,6 +7,7 @@ import {
   formatSeconds,
   hostTimingWord,
   offlineLine,
+  unsearchedLine,
   foldMessageHits,
   hostToken,
   hostsMatching,
@@ -577,5 +578,16 @@ describe("hit builders and labels", () => {
     expect(offlineLine([off("The box")])).toBe("The box is offline");
     expect(offlineLine([off("The box"), off("Studio"), off("Mac")])).toBe("The box, Studio and Mac are offline");
     expect(offlineLine([{ environmentId: "b", name: "box", state: "failed", elapsedMs: 0, detail: "x" }])).toBeNull();
+  });
+
+  it("says what a settled search did not search: offline hosts, then those that did not answer", () => {
+    const row = (name: string, state: "done" | "skipped" | "failed" | "searching", detail?: string) => ({ environmentId: name, name, state, elapsedMs: 0, ...(detail ? { detail } : {}) });
+    expect(unsearchedLine([row("Mac", "done"), row("Studio", "done")])).toBeNull();
+    expect(unsearchedLine([row("Mac", "done"), row("Studio", "failed", "EPIPE")])).toBe("Studio did not answer");
+    expect(unsearchedLine([row("Mac", "done"), row("Studio", "searching")])).toBe("Studio did not answer");
+    expect(unsearchedLine([row("Mac", "skipped", "offline"), row("Studio", "done"), row("Air", "failed", "x")])).toBe("Mac is offline and Air did not answer");
+    expect(unsearchedLine([row("Mac", "skipped", "offline"), row("Air", "skipped", "offline"), row("Studio", "done")])).toBe("Mac and Air are offline");
+    // The raw reason never reaches the line.
+    expect(unsearchedLine([row("Studio", "failed", "EPIPE"), row("Mac", "done")])).not.toContain("EPIPE");
   });
 });

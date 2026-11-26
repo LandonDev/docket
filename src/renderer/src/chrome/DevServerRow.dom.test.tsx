@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LiveServer } from "../lib/devServers";
 
 const h = vi.hoisted(() => ({ stop: vi.fn(() => Promise.resolve()), open: vi.fn() }));
-vi.mock("../lib/devServers", () => ({ stopLiveServer: h.stop }));
+vi.mock("../lib/devServers", () => ({ stopLiveServer: h.stop, DID_NOT_STOP: "It did not stop" }));
 vi.mock("./HostGlyph", () => ({ HostGlyph: () => null }));
 vi.mock("../lib/devPorts", async (importOriginal) => ({ ...(await importOriginal<typeof import("../lib/devPorts")>()), openUrl: h.open }));
 
@@ -57,6 +57,26 @@ describe("DevServerRow", () => {
     expect(open.textContent).toBe("Open on the Mac :5174");
     expect(screen.queryByRole("button", { name: /localhost:5173/ })).toBeNull();
     expect(screen.getByText("localhost:5173").tagName).toBe("SPAN");
+  });
+
+  it("a failed Stop says so in a person's words, never the raw error, on a line that wraps", async () => {
+    h.stop.mockImplementationOnce(() => Promise.reject(new Error("devServer.stop: socket closed")));
+    render(<DevServerRow server={server} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    });
+    const line = screen.getByText(/^Couldn't stop the server/);
+    expect(line.textContent).toBe("Couldn't stop the server. Its host is not connected. Try again once it is back.");
+    expect(line.className).not.toContain("truncate");
+    expect(line.className).toContain("break-words");
+    cleanup();
+    // A Stop the host answered with no reason says only what failed.
+    h.stop.mockImplementationOnce(() => Promise.reject(new Error("It did not stop")));
+    render(<DevServerRow server={server} />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    });
+    expect(screen.getByText(/^Couldn't stop the server/).textContent).toBe("Couldn't stop the server");
   });
 
   it("a server already stopping keeps Stop off with a spinner", () => {

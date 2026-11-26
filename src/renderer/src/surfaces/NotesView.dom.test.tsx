@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
   pending: null as Promise<unknown> | null,
+  workspaces: [] as { id: string; environmentId: string; name: string; path: string; git: boolean; createdAt: number }[],
   notes: [
     { id: "n1", slug: "gate-notes", title: "Gate notes", body: "The gate holds a merge.", createdAt: 1, updatedAt: 2 },
     { id: "n2", slug: "deploy", title: "Deploy", body: "Ship on green.", createdAt: 1, updatedAt: 1 },
@@ -28,6 +29,10 @@ vi.mock("../lib/connection", async (importOriginal) => ({
   registry: { primary: () => ({ environmentId: "local" }), environment: () => ({ name: "The box" }) },
 }));
 vi.mock("../hooks/useTabGroupLogos", () => ({ useTabGroupLogos: () => ({}) }));
+vi.mock("../lib/tcserver/workspaces", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/tcserver/workspaces")>()),
+  useWorkspaces: () => h.workspaces,
+}));
 vi.mock("./AgentMarkdown", () => ({
   AgentMarkdown: ({ text }: { text: string }) => <div data-markdown>{text}</div>,
   MarkdownSourceHighlight: ({ text }: { text: string }) => <span>{text}</span>,
@@ -64,6 +69,20 @@ describe("the notes view", () => {
     expect((view.getByLabelText("Note title") as HTMLInputElement).value).toBe("Deploy");
     fireEvent.change(filter, { target: { value: "gate" } });
     expect(view.queryByRole("button", { name: /Deploy/ })).toBeNull();
+  });
+
+  it("names a note's workspace as the rail does, not by its folder", async () => {
+    const saved = h.notes;
+    h.notes = [{ ...saved[1], sourceCwd: "/Users/me/IdeaProjects/practice-gateway" } as (typeof saved)[number]];
+    h.workspaces = [{ id: "w1", environmentId: "local", name: "Proof gateway", path: "/Users/me/IdeaProjects/practice-gateway", git: true, createdAt: 1 }];
+    try {
+      const view = await mount();
+      expect(view.getAllByText("Proof gateway").length).toBeGreaterThan(0);
+      expect(view.queryByText("practice-gateway")).toBeNull();
+    } finally {
+      h.notes = saved;
+      h.workspaces = [];
+    }
   });
 
   it("sets a note's project glyph 8px from its name", async () => {

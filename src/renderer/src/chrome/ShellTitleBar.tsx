@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, type ComponentProps } from "react";
+import { memo, useEffect, useMemo, useSyncExternalStore, type ComponentProps } from "react";
 import { sameData, useKept } from "../lib/keptValue";
 import { resolveSessionContext } from "../lib/projectContext";
 import { usePanelRoom, useRightPanel } from "../lib/rightPanel";
@@ -35,15 +35,23 @@ import {
 import {
   inProjectScope,
   looseScopeOf,
-  runningRoots,
+  pausableRoots,
   stripRootThreads,
   type StripScope,
 } from "../lib/threadStripModel";
 import { copiesOf } from "../lib/projectHostChoice";
+import { linkMay } from "../lib/linkMayCore";
+import { registry } from "../lib/connection/registry";
 import { usePlanReady } from "../hooks/usePlanReady";
 import type { ThreadHeaderProps } from "./ThreadHeader";
 import type { ArchivedThread, ChipThread } from "./ThreadHeaderStrip";
 import { TitleBar } from "./TitleBar";
+
+/** The hosts whose key may not Pause all, one id a line: a string, so the bar renders only when that set moves. */
+const pauseRefusedHosts = (): string =>
+  registry.environments().flatMap((e) => (linkMay(e.id, "session.pauseAllRunning") ? [] : [e.id])).join("\n");
+
+const onRegistry = (fn: () => void) => registry.subscribe(fn);
 
 /** The header's handlers; the rest of ThreadHeaderProps is derived here. */
 export type HeaderEvents = Pick<
@@ -236,9 +244,11 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
   const archivedThreads = useKept(archivedNext, sameData);
 
   const cost = sessions.find((session) => session.id === activeSessionId)?.thread?.cost ?? null;
+  // Pause all counts only what it may pause: a read key's host can only refuse it (linkMay).
+  const pauseRefused = useSyncExternalStore(onRegistry, pauseRefusedHosts);
   const running = useMemo(
-    () => runningRoots(stripRootThreads(chipThreads, stripScope)).length,
-    [chipThreads, stripScope],
+    () => pausableRoots(stripRootThreads(chipThreads, stripScope), new Set(pauseRefused.split("\n"))).length,
+    [chipThreads, pauseRefused, stripScope],
   );
   const headerProps = useMemo<ThreadHeaderProps>(
     () => ({

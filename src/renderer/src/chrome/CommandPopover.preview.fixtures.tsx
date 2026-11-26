@@ -35,4 +35,14 @@ export default [
     },
   },
   { name: "An @ while the project's files are read", props: { active: 0, typed: "@", matches: { mode: "file", rows: [], loading: true } } },
+  {
+    name: "An @ whose file read failed, with names in hand",
+    props: {
+      active: 0, typed: "@notes",
+      matches: { mode: "file", note: "Couldn't search files", rows: [
+        { kind: "file", file: { name: "notes.ts", path: "/projects/field-notes/src/notes.ts", relative: "src/notes.ts" } },
+      ] },
+    },
+  },
+  { name: "An @ whose file read failed, nothing in hand", props: { active: 0, typed: "@zzz", matches: { mode: "file", rows: [], note: "Couldn't search files" } } },
 ];

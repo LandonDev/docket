@@ -336,15 +336,18 @@ export function searchSessionMessages(
   return hits.sort(byScoreThenRecency);
 }
 
+/** `nameOf`: the rail's name for a workspace's folder (`workspaceNameAt`), so a workspace is found and shown by
+ *  the name the rail gives it; a folder no workspace is keeps its own name. The path still matches either. */
 export function searchRecentProjects(
   recents: RecentProject[],
   query: string,
+  nameOf: (path: string) => string | null = () => null,
 ): ProjectHit[] {
   const needle = query.trim();
   if (!needle) return [];
   const hits: ProjectHit[] = [];
   for (const recent of recents) {
-    const name = projectName(recent.path);
+    const name = nameOf(recent.path) ?? projectName(recent.path);
     const nameHit = fuzzyMatch(needle, name);
     const pathHit = nameHit ? null : fuzzyMatch(needle, recent.path);
     const match = nameHit ?? pathHit;

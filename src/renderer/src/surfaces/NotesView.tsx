@@ -51,7 +51,8 @@ import {
   loadTabGroupCustomColors,
   loadTabGroupMascots,
 } from "../lib/tabGroups";
-import { useWorkspaces } from "../lib/tcserver/workspaces";
+import { useWorkspaces, workspaceNameAt } from "../lib/tcserver/workspaces";
+import { useTabGroupLabels } from "../hooks/useTabGroupLabels";
 import { projectName } from "../lib/paths";
 import { AgentMarkdown, MarkdownSourceHighlight } from "./AgentMarkdown";
 
@@ -379,9 +380,12 @@ function NoteProjectMark({
   customColors,
 }: { project: string } & ProjectMarks) {
   // A note names its folder; its look is saved under the workspace's key,
-  // as the rail saves it, when a workspace of that name is known.
+  // as the rail saves it, when a workspace of that name is known, and then
+  // it says the workspace's name as the rail does.
   const workspaces = useWorkspaces();
+  const labels = useTabGroupLabels();
   const workspace = workspaces.find((each) => projectName(each.path) === project);
+  const name = workspace ? workspaceNameAt(workspaces, workspace.path, labels) ?? project : project;
   const key = workspace ? aliasKeys(workspaces).workspaceId(workspace.id) : project;
   const look = workspaceLook(key, { logos, mascots, colors, customColors });
   return (
@@ -395,7 +399,7 @@ function NoteProjectMark({
         className="size-3.5 shrink-0"
         mascotClassName="size-3 shrink-0"
       />
-      <span className="min-w-0 truncate">{project}</span>
+      <span className="min-w-0 truncate">{name}</span>
     </span>
   );
 }

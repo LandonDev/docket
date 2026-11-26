@@ -330,10 +330,10 @@ function TitleBarComponent({
   // top row and meet the live row's line and hairline.
   const columnBeside = !projectless || projectCwd === "~" || projectCwd === WORK_CHATS;
   const railNav = railClosed && columnBeside;
-  // An open project is labeled in the rail. Without a project the rail is
-  // gone, so the picker stays here.
-  const showProjectButton =
-    railClosed && Boolean(onSelectProject) && !showCurrentProject;
+  // An open project is labeled in the rail, and a column beside the bar (the
+  // home's Chats, Work Chats) names its own place. With neither, the rail is
+  // gone and nothing names the place, so the picker stays here.
+  const showProjectButton = railClosed && Boolean(onSelectProject) && !columnBeside;
   // The rail's stand-ins while it is closed: they lead the end group, 2px
   // apart like the rest of it, so Panel stays last whether the rail is open
   // or not. The strip's + opens the type chooser, so a project's

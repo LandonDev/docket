@@ -41,6 +41,7 @@ import {
   browseHits,
   hostTimingWord,
   offlineLine,
+  unsearchedLine,
   hostsMatching,
   mergeCrossHost,
   noteHits,
@@ -72,6 +73,7 @@ import { sessionDisplayTitle, type HarnessId } from "../lib/session";
 import { environmentOfCwd, hostOfCwd } from "../lib/tcserver/projects";
 import { sessionStore } from "../lib/tcserver/store";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
+import { useWorkspaceNameAt } from "../hooks/useWorkspaceNameAt";
 import { EmptyState } from "./SurfaceSkeleton";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tip } from "../components/tip";
@@ -172,6 +174,7 @@ export function SearchView({
     [environments, parsed.hosts],
   );
   const workspaces = useWorkspaces();
+  const workspaceNameAt = useWorkspaceNameAt();
   const pairs = useMemo(() => pairWorkspaces(workspaces), [workspaces]);
   const currentHost = hostOfCwd(cwd);
 
@@ -275,14 +278,14 @@ export function SearchView({
         );
       }
       hits.push(
-        ...searchRecentProjects(recents, text)
+        ...searchRecentProjects(recents, text, workspaceNameAt)
           .map((hit) => ({ ...hit, host: environmentOfCwd(hit.path) ?? registry.primaryEnvironmentId }))
           .filter((hit) => hit.host === host),
       );
       out.set(host, hits);
     }
     return out;
-  }, [askedHosts, currentHost, cwd, files, metas, recents, sessions, text]);
+  }, [askedHosts, currentHost, cwd, files, metas, recents, sessions, text, workspaceNameAt]);
 
   // Every asked host, in parallel: its transcripts (FTS), its copy of the
   // project (contents, and names when it is not this host's), its notes.
@@ -555,9 +558,10 @@ export function SearchView({
         ) : failed && hits.length === 0 ? (
           <EmptyState title="No host answered" line={offlineLine(progress) ?? undefined} />
         ) : noResults ? (
+          // A host that never searched is said first: "No results" alone would claim it had nothing.
           <EmptyState
             title="No results"
-            line={filtered ? "Filters are narrowing this search" : undefined}
+            line={(!browsing && unsearchedLine(progress)) || (filtered ? "Filters are narrowing this search" : undefined)}
             action={filtered ? { label: "Clear filters", onClick: clearFilters } : undefined}
           />
         ) : searching && hits.length === 0 ? (
@@ -651,6 +655,7 @@ function ResultList({
   const { activeRef, onMouseMove, onRowEnter } = usePointerHighlight<HTMLButtonElement>({ active, items: hits, onActive });
 
   const nameOf = (id: string): string => environments.find((env) => env.id === id)?.name ?? id;
+  const workspaceNameAt = useWorkspaceNameAt();
 
   return (
     <div
@@ -661,7 +666,7 @@ function ResultList({
     >
       {hits.map((hit, index) => {
         const highlighted = index === active;
-        const row = rowCopy(hit, query);
+        const row = rowCopy(hit, query, workspaceNameAt);
         return (
           <ItemButton
             key={hit.id}
@@ -745,12 +750,14 @@ export function leadToMatch(text: string, query: string): string {
   return `…${text.slice(from)}`;
 }
 
-function rowCopy(hit: AppSearchHit, query: string): RowCopy {
+/** `workspaceNameAt`: the rail's name for a workspace's folder, so a row names a workspace as the rail does
+ *  and a folder no workspace is by its own name. */
+function rowCopy(hit: AppSearchHit, query: string, workspaceNameAt: (path: string) => string | null): RowCopy {
   if (hit.kind === "conversation") {
     return {
       icon: <TypeGlyph type={hit.threadType} className="size-3.5" />,
       title: <MatchText text={hit.title} positions={hit.positions} />,
-      meta: projectName(hit.cwd),
+      meta: workspaceNameAt(hit.cwd) ?? projectName(hit.cwd),
       mono: false,
     };
   }
@@ -792,9 +799,11 @@ function rowCopy(hit: AppSearchHit, query: string): RowCopy {
       snippet: true,
     };
   }
+  // The match was made on the folder's name; under the workspace's own name the typed words are marked instead.
+  const name = workspaceNameAt(hit.path);
   return {
     icon: <FolderGlyph path={hit.path} className="size-3.5 shrink-0" mascotClassName="size-3 shrink-0" />,
-    title: <MatchText text={hit.name} positions={hit.positions} />,
+    title: name === null || name === hit.name ? <MatchText text={hit.name} positions={hit.positions} /> : <MatchText text={name} query={query} />,
     // A path is never on screen; the row's host mark names the computer where more than one answers.
     meta: "",
     mono: false,

@@ -27,12 +27,13 @@ export const timeLeft = (h: number): string => {
   return hours === 1 ? "1 hour" : `${hours} hours`;
 };
 
-/** The pace chart's headline in words; running low is amber, never red. */
+/** The pace chart's headline in words; running low is amber, never red. The time named is the reset's,
+ *  never when the limit runs out. */
 export function paceLine(p: PaceSeries): { text: string; warning: boolean } {
   if (p.projectedPercent === null) return { text: "No cycle running", warning: false };
   const left = timeLeft(hoursLeft(p));
-  if (p.projectedPercent > 100) return { text: `Will run out, ${left} left`, warning: true };
-  return { text: `Ends near ${p.projectedPercent}% at this pace, ${left} left`, warning: p.projectedPercent > 85 };
+  if (p.projectedPercent > 100) return { text: `Will run out before the reset in ${left}`, warning: true };
+  return { text: `Ends near ${p.projectedPercent}% at this pace, resets in ${left}`, warning: p.projectedPercent > 85 };
 }
 
 /** The headings, in order, while the bundle loads. */

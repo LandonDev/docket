@@ -41,7 +41,7 @@ export function tabGroupLogoDisplayRevision(): number {
 // from another window drops it. Callers get a copy: savers mutate what
 // they load, and the title bar keeps a loaded record in state.
 const records = new Map<string, Record<string, string>>();
-if (typeof window !== "undefined") {
+if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   window.addEventListener("storage", (event) => {
     if (event.key === null) records.clear();
     else records.delete(event.key);

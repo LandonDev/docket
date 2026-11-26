@@ -1069,7 +1069,7 @@ out of the first paint (chrome/menuRows.tsx). A label on hover is `Tip` or
 `TruncateTip`, never a `title=`. `TruncateTip` mounts no tooltip trigger
 while its text fits; it checks the element and any truncating text inside
 it on mount, text changes and resize. Its text breaks a word too long for
-the tip, such as a link. Activity labels, fleet goals, home
+the tip, such as a link. Activity labels, fleet goals, an agent sheet's name, home
 titles and split-view titles all use it. An Agents row's title and status
 line are measured the same way (`useTruncated`) but feed the row's one
 tooltip on its open control, which says what a line cuts with the model and
@@ -4922,7 +4922,7 @@ never cut (`StatusMark`'s `wrap`).
 | Toast (sonner, on `--layer-toast`; index.css overrides its 400-500ms defaults, out-specifying its injected stylesheet) | rise and fade, `--dur-base` `--ease-out`, no height or shadow transition | fade, `--dur-fast` `--ease-exit` | fade, `--dur-fast` |
 | Right panel (a toggle in place; the thread takes its width at once, so no frame lays out the transcript) | slides in from the row's right edge (`translate-x-full`→0) and fades, `--dur-slow` `--ease-out`; mounted open (a tab switch, a launch) it is just there; a section's body fades `--dur-fast` | drawn over the thread, inert: a quarter of its width back out and a fade, `--dur-fast` `--ease-exit` | fade only |
 | Rail | no width animation; content fades `--dur-fast` | same | same |
-| The composer's slash and @ menu (transitions; the entry is `@starting-style`; open while a `/` or `@` is typed, with nothing to pick one muted 28px row, "No matches" (on a bare `/` with no commands at all, "No commands"), or "Loading…" while the project's files or the host's commands are read, or "Couldn't load commands" in red when the host gave no list, which Escape closes and the next `/` asks again) | fade + rise 4px from the box's edge, `--dur-base` `--ease-out`; a row keeps its element as the filter narrows, and the frame's height follows the list on the same transition | its last rows stay, inert, while it fades 1px back down, `--dur-fast` `--ease-exit`; typing it open again turns it back | fade only |
+| The composer's slash and @ menu (transitions; the entry is `@starting-style`; open while a `/` or `@` is typed, with nothing to pick one muted 28px row, "No matches" (on a bare `/` with no commands at all, "No commands"), or "Loading…" while the project's files or the host's commands are read, or "Couldn't load commands" in red when the host gave no list, which Escape closes and the next `/` asks again; a failed read of the project's files is "Couldn't search files", muted, in the empty row or one row under the names already in hand, and the next `@` reads again) | fade + rise 4px from the box's edge, `--dur-base` `--ease-out`; a row keeps its element as the filter narrows, and the frame's height follows the list on the same transition | its last rows stay, inert, while it fades 1px back down, `--dur-fast` `--ease-exit`; typing it open again turns it back | fade only |
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press, a raised button (`default`, `secondary`, `destructive`) | its fill layer scales 0.985 (0.997 × 0.985 full width) while the label stays put, `--dur-fast` | release, `--dur-hover` | none |
 | Press, ghost, link, outline and every row (a rail row, an Item, a toggle, a tab, a hover action, a board row, a task list's header, a row control around the composer) | the fill steps to `foreground/12` at once; nothing scales (`ROW_PRESS` in components/ui/press.ts for a row drawn by hand, `ROW_CONTROL` in chrome/composerRow.ts for the quiet controls under and over the composer's box); a control floating on its own fill (jump to latest) lays `foreground/12` over that fill instead | back over `--dur-hover` | same |
@@ -5029,7 +5029,9 @@ ghost Remove), a red 12px line when something stops it, then a 48px row
 under a hairline, 16px in as the field is: the job as a `ChoiceToggle` named
 "Job" (Unsorted first, then the six by his jobs' names, the chosen one whole
 and the others cut at 72px where the row is short), and at the end Start thread (secondary, its key cap in
-muted ink: the one key not plain) and File (primary): a capture on
+muted ink: the one key not plain) and File (primary). Job gives way first; in a window under 672px (a
+display too narrow for 680), where seven whole short names and the two presses no longer fit, the presses take a
+second row at its end (a container query on the foot), so nothing overlaps and the window grows with its page. A capture on
 its way shows nothing, since the window is already gone and the next draft
 starts empty. While the host says LifeOS cannot take a capture, the line
 says why in the rule's words, this computer named ("Not signed in to LifeOS
@@ -5284,7 +5286,11 @@ and no wider than that column less 16px a side (`toastInset` in
 components/ui/toaster.tsx, measured from the footer `ChatFooter` registers in
 lib/toastAnchor.ts); while that thread's waiting card (a question, an
 approval) or the composer's open `/` or `@` menu is wholly in view, 8px above
-it instead (`registerToastSeat`, `seatRect`), back above the strip once he
+it instead (`registerToastSeat`, `seatRect`), though never higher than 8px
+under the top of the card's scroller: over a card that fills the transcript
+the stack lies on the card's empty upper edge, clear of the title bar and the
+card's foot, and where the stack (`stackHeight`) cannot fit in the scroller at
+all it sits above the strip; back above the strip once he
 answers, scrolls it away or the menu closes; a thread with no rows yet (a
 draft docked in a split, a held thread, one still loading) seats the stack
 above its footer all the same; on a

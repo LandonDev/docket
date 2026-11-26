@@ -157,6 +157,22 @@ describe("searchRecentProjects", () => {
     );
     expect(hits.map((hit) => hit.name)).toEqual(["agent-terminal"]);
   });
+
+  it("finds and names a workspace by the rail's name, and still by its folder", () => {
+    const recents = [
+      { path: "/Users/me/code/practice-gateway", openedAt: 2 },
+      { path: "/Users/me/code/other", openedAt: 1 },
+    ];
+    const nameOf = (path: string) => (path.endsWith("practice-gateway") ? "Proof gateway" : null);
+    const byName = searchRecentProjects(recents, "proof", nameOf);
+    expect(byName.map((hit) => hit.name)).toEqual(["Proof gateway"]);
+    expect(byName[0].positions.length).toBeGreaterThan(0);
+    // The folder's name still finds it (through its path), shown by the workspace's name, nothing marked.
+    const byFolder = searchRecentProjects(recents, "practice", nameOf);
+    expect(byFolder.map((hit) => hit.name)).toEqual(["Proof gateway"]);
+    expect(byFolder[0].positions).toEqual([]);
+    expect(searchRecentProjects(recents, "other", nameOf).map((hit) => hit.name)).toEqual(["other"]);
+  });
 });
 
 describe("merge and group", () => {

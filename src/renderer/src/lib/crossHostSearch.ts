@@ -622,6 +622,20 @@ export function offlineLine(progress: readonly HostProgress[]): string | null {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]} are offline`;
 }
 
+/** What a settled search did not search, for its empty state when some hosts answered: the hosts that
+ *  are offline, then those that failed or never answered in time ("Mac is offline and the box did not
+ *  answer"), each by its own name, as `offlineLine` says it. Null when every host searched. */
+export function unsearchedLine(progress: readonly HostProgress[]): string | null {
+  const and = (names: string[]) => (names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`);
+  const offline = progress.filter((row) => row.state === "skipped" && row.detail === "offline").map((row) => row.name);
+  const silent = progress.filter((row) => row.state === "failed" || row.state === "searching").map((row) => row.name);
+  const parts = [
+    offline.length > 0 ? `${and(offline)} ${offline.length === 1 ? "is" : "are"} offline` : null,
+    silent.length > 0 ? `${and(silent)} did not answer` : null,
+  ].filter((part): part is string => part !== null);
+  return parts.length > 0 ? parts.join(" and ") : null;
+}
+
 export function formatSeconds(ms: number): string {
   if (ms < 1000) return `${Math.max(1, Math.round(ms))} ms`;
   return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`;

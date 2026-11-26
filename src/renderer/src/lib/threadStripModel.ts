@@ -383,6 +383,11 @@ export function runningRoots<T extends StripThread>(threads: readonly T[]): T[] 
   return threads.filter((t) => !t.parentId && !t.archived && !!t.treeHasLiveWork);
 }
 
+/** The running roots Pause all may pause: none on a host whose key may not (`refused`, its ids). */
+export function pausableRoots<T extends StripThread & { environmentId?: string }>(threads: readonly T[], refused: ReadonlySet<string>): T[] {
+  return runningRoots(threads).filter((t) => !t.environmentId || !refused.has(t.environmentId));
+}
+
 function freshestFirst(a: StripThread, b: StripThread): number {
   return b.updatedAt - a.updatedAt;
 }
