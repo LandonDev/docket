@@ -18,14 +18,22 @@
   (src/main/bootMirror.ts: a read-only connection opened and closed before
   the server opens the database, which also says whether Work is on here);
   once the server is up it answers from the server's connection, as before,
-  and the hosts no longer saved are forgotten then. With no mirror to read
-  (a first launch) the ask waits for the server. When the answer lands,
+  and the hosts no longer saved are forgotten then (best effort,
+  `forgetUnsavedHosts`). With no mirror to read (a first launch), or a WAL
+  file whose -wal or -shm is gone (a clean close: a read-only open would
+  make them, `walSidecarsMissing`), the ask waits for the server; the file
+  is never opened immutable. A server that does not start rejects the ask,
+  like every call waiting for it, and the app quits with code 1. When the answer lands,
   `hydrateFromLaunchMirror` registers the saved hosts in the registry so the
   rail has their sections, and seeds the session and workspace stores; only
   then is environment zero added (`initServerLink`) and the first render's
   workspace read started, so the order is the one the synchronous read had.
   The port ask (`server-port`) is one invoke that main answers once the
-  server is up; the renderer asks once. A key route whose ticket mint
+  server is up; the renderer asks once (native.ts `getServerPort`, shared).
+  The saved layout's read (`workspace.getSnapshot`) waits for that answer
+  before its 15 s socket deadline starts, and a read that failed holds the
+  slot's saves for the launch, so a slow boot never writes a default layout
+  over his tabs (lib/workspaceSnapshotRead.test.ts). A key route whose ticket mint
   needs the local link waits for it (`registry.primaryOpen`) instead of
   failing its first attempt into a backoff. Then the sockets open and each
   host reconciles: `session.changes { afterSeq, generation }` (contract.ts;
@@ -49,11 +57,15 @@
   workspaces and projects, accounts, the Work switch, the model catalog, the
   shown thread and its focus, and on the local host the saved hosts); the
   rest waits for `afterOpen`: the inbox, dev servers, port forwards, host
-  jobs, computer sessions and history, thread resources, Away's state and
-  the providers' doctor run in an idle slot once the window is usable
-  (`markUsable` at `tc:rail-complete`, the rail whole; a hidden window runs
-  them at once), one at a time on a remote host, and only
-  if no close came since that open. One `doctor.get` answers both the
+  jobs, computer sessions and history, thread resources, a saved host's Away
+  state (the primary host's is read at once: its switch acts on it) and the
+  providers' doctor run in an idle slot (at most `IDLE_TIMEOUT_MS`, 1 s)
+  once the shell has painted from the primary host (`markUsable` at
+  `tc:ready`) or `RELEASE_AFTER_MS` (3 s) after the first such task,
+  whichever is first, so a saved host that never answers holds nothing; a
+  hidden window runs them at once; one at a time on a remote host; and only
+  on the transport that queued them, with no close since (a route swapped
+  with no close between asks once). One `doctor.get` answers both the
   connect report and which CLIs are installed (`probeDoctor` shares the
   ask). lib/tcserver/openPhase.test.ts counts a host's asks on open by
   phase for the stores main.tsx connects and the parts App starts, with no

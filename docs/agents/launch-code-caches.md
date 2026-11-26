@@ -110,10 +110,14 @@
   single-instance lock, the privileged schemes, ready, every IPC handler a
   window may call (one that needs the server waits for it: `server-port`,
   the editor, the capture key, the accounts pages' `aliax:*`, the mirror's
-  writes), `migrateLocalStorage`, `registerOfficeLive`, and the launch
+  writes, the appshot listener; a Dock click, the Dock menu's and the
+  menu's New Window wait in `windowsGate`, windowGate.ts, until the next
+  two end), `migrateLocalStorage`, `registerOfficeLive`, and the launch
   mirror's read-only boot read (src/main/bootMirror.ts,
   [launch-mirror.md](launch-mirror.md)). Then `openSavedWindows` and
-  `startServer` at once. Work's code (work/load.ts `loadWork`) loads at once
+  `startServer` at once. A `startServer` that rejects settles everything
+  waiting for the server with its error and quits with code 1 (before, a
+  failed start left a process with no window). Work's code (work/load.ts `loadWork`) loads at once
   only while Work is on for this host (the boot read says); else it waits
   for the first window up (`ready-to-show`, or the window gone), its
   `workAfter`, so its compile never holds the first paint, and with Work off
