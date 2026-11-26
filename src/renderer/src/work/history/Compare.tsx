@@ -208,11 +208,11 @@ function OneLine({ line, rows, current, number }: { line: DiffLine; rows: readon
   );
 }
 
-/** What a change did beside the words, under its block: "Heading 1 becomes Normal text", "11 pt becomes 14 pt". */
+/** What a change did beside the words, under its block: "Heading 1 becomes Normal text · 11 pt becomes 14 pt". */
 function FormatWords({ row }: { row: DiffRow | null }) {
   const words = row ? changeWords(row) : [];
   if (words.length === 0) return null;
-  return <div data-format-words className="-mt-0.5 mb-1 text-xs leading-4 text-muted-foreground">{words.join(", ")}</div>;
+  return <div data-format-words className="-mt-0.5 mb-1 text-xs leading-4 text-muted-foreground">{words.join(" · ")}</div>;
 }
 
 const Gap = () => <div aria-hidden className="mt-1 h-[calc(100%-4px)] min-h-[22px] rounded-[4px] bg-(--diff-gap)" />;
@@ -264,10 +264,9 @@ export function CompareDoc({ diff, layout, current, title }: { diff: BlockDiff; 
     );
   };
   return (
-    // The rule between the columns runs the body's whole height, however short a side is.
-    <div className="relative grid grow grid-cols-[minmax(0,1fr)_minmax(0,1fr)] content-start pb-12 text-sm leading-[22px] [overflow-wrap:anywhere] select-text before:absolute before:inset-y-0 before:start-1/2 before:w-px before:bg-border">
-      <div className="px-4 pt-5 text-base leading-6 font-semibold tracking-[-0.01em]">{title}</div>
-      <div className="px-4 pt-5 text-base leading-6 font-semibold tracking-[-0.01em]">{title}</div>
+    // The rule between the columns runs the body's whole height, however short a side is. No title over the columns: the
+    // tab names the item, and the picker over each column names its version (DESIGN "Compare and History").
+    <div className="relative grid grow grid-cols-[minmax(0,1fr)_minmax(0,1fr)] content-start pt-5 pb-12 text-sm leading-[22px] [overflow-wrap:anywhere] select-text before:absolute before:inset-y-0 before:start-1/2 before:w-px before:bg-border">
       {lines.map((line, i) => (
         <div key={`${line.id}:${i}`} className="contents">
           <div data-row={line.row ?? undefined} className="px-4">

@@ -55,7 +55,7 @@ vi.mock("../../lib/connection", async (original) => {
     request: async (method: string, params: Record<string, unknown> = {}) => {
       if (!method.startsWith("work.history.")) return host.current!.link.request(method, params);
       host.calls.push({ method, params });
-      const names = { owner: "You", "agent:env_box:t1": "Venue for the spring LAN" };
+      const names = { owner: "You", dana: "Dana Lee", "agent:env_box:t1": "Venue for the spring LAN" };
       if (method === "work.history.versions") {
         if (host.failVersions) throw new Error("The box did not answer");
         return { versions: VERSIONS, shared: false, names };
@@ -90,7 +90,7 @@ vi.mock("../../lib/connection", async (original) => {
 
 import { CanvasSeat } from "../canvas/CanvasSeat";
 import { canvasOf, keepState, resetCanvasStore } from "../canvas/store";
-import { layoutOf, type HistoryState } from "./HistoryCanvas";
+import { branchWords, layoutOf, restoreWords, type HistoryState } from "./HistoryCanvas";
 
 const ITEM: CanvasItem = canvasItem("h1", { kind: "history", title: "Spring LAN run of show", source: { at: "file", host: "local", path: "/work/Run of show.tcdoc" } });
 
@@ -316,6 +316,41 @@ describe("the history canvas", () => {
     const row = (await screen.findByText("3 changes")).closest("button")!;
     expect(row.getAttribute("data-slot")).toBe("item");
     expect(row.className).toContain("focus-ring");
+  });
+
+  it("a row's face is its first author's own, never the letters of the joined names", async () => {
+    const was = VERSIONS[1]!.by;
+    VERSIONS[1]!.by = ["owner", "dana"];
+    try {
+      await seat();
+      const line = await screen.findByText("You and Dana Lee");
+      const row = line.closest("[aria-selected]") as HTMLElement;
+      expect(row.querySelector('[data-slot="avatar"]')!.textContent).toBe("Y");
+    } finally {
+      VERSIONS[1]!.by = was;
+    }
+  });
+
+  it("at rest the time alone holds a row's end: Compare and Restore lie over it on the row's own fill", async () => {
+    await seat();
+    const row = (await screen.findByText("Wrote the morning")).closest("[aria-selected]") as HTMLElement;
+    const acts = row.querySelector("[data-version-acts]") as HTMLElement;
+    expect(acts.className).toContain("absolute");
+    expect(acts.className).toContain("bg-(--row-fill)");
+    expect(row.className).toContain("bg-(--row-fill)");
+    expect(within(acts).getByRole("button", { name: "Compare", hidden: true })).toBeTruthy();
+  });
+
+  it("a waiting restore says which version it brings back, the bar's own words", async () => {
+    const at = Date.UTC(2026, 10, 18, 21, 5);
+    expect(restoreWords({ label: `Restore ${at}` })).toMatch(/^Restoring the .* version$/);
+    expect(restoreWords({ label: "Suggestions" })).toBeNull();
+    expect(branchWords({ label: "Suggestions", authors: ["owner", "dana"] }, { owner: "You", dana: "Dana Lee" })).toBe("You and Dana Lee");
+    host.branches = [{ id: "b1", baseVersionId: "v2", authors: ["owner"], label: `Restore ${VERSIONS[1]!.at}`, at: 1, editedAt: NOW, diff: diffBlocks(OLD, NEW) }];
+    await seat();
+    await screen.findByText("Waiting for you");
+    expect(screen.queryByText(/waiting for you$/)).toBeNull();
+    expect(screen.getByText(/^Restoring the .* version$/)).toBeTruthy();
   });
 
   it("draws one column under two 420px sides, whatever was chosen", () => {

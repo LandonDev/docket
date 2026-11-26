@@ -337,7 +337,7 @@ function PageFact({ itemId }: { itemId: string }) {
   const at = usePageAt(itemId);
   if (!at) return null;
   return (
-    <span data-doc-page data-narrow-hide className="ms-auto shrink-0 px-1.5 text-xs text-muted-foreground tabular-nums">
+    <span data-doc-page data-narrow-hide className="shrink-0 px-1.5 text-xs text-muted-foreground tabular-nums">
       Page {at.page.toLocaleString("en-US")} of {at.count.toLocaleString("en-US")}
     </span>
   );
@@ -364,8 +364,11 @@ export function Bar({ item, source, env }: CanvasBodyProps<DocState>) {
   return (
     <>
       {workspace ? <DocSaveControls workspace={workspace} source={source} itemId={item.id} /> : null}
-      <ShareButton env={env} source={source} kind="document" title={item.title} itemId={item.id} workspaceId={item.workspaceId} purdue={workspace?.sector === "purdue"} />
-      <PageFact itemId={item.id} />
+      {/* Share and the page fact end the bar together: one push to the end, never two that split the room between them. */}
+      <span data-doc-bar-end className="ms-auto flex min-w-0 items-center gap-0.5">
+        <ShareButton env={env} source={source} kind="document" title={item.title} itemId={item.id} workspaceId={item.workspaceId} purdue={workspace?.sector === "purdue"} />
+        <PageFact itemId={item.id} />
+      </span>
     </>
   );
 }

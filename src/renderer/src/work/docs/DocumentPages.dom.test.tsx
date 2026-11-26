@@ -250,6 +250,10 @@ describe("Page 2 of 5 in the kind's bar", () => {
     expect(el.className).toContain("tabular-nums");
     expect(el.className).toContain("text-muted-foreground");
     expect(el.hasAttribute("data-narrow-hide")).toBe(true);
+    // It ends the bar with Share, in one group pushed to the end: the fact itself never pushes, so Share never stands alone mid-bar.
+    expect(el.className).not.toContain("ms-auto");
+    expect(el.parentElement!.hasAttribute("data-doc-bar-end")).toBe(true);
+    expect(el.parentElement!.className).toContain("ms-auto");
   });
 
   it("goes while Preview is open, which says the page of what it drew, and is back on Edit where the editor is", async () => {

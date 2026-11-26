@@ -8,6 +8,7 @@ import { reveal, yields } from "../../components/ui/reveal";
 import { Empty, EmptyHeader, EmptyTitle } from "../../components/ui/empty";
 import { ItemButton } from "../../components/ui/item";
 import { Skeleton } from "../../components/ui/skeleton";
+import { TruncateTip } from "../../components/tip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { cn } from "../../lib/cn";
 import { dayTime } from "../../lib/duration";
@@ -56,6 +57,17 @@ export function whoWords(by: readonly string[], names: Record<string, string>): 
   if (all.length === 0) return "Someone";
   if (all.length <= 2) return all.join(" and ");
   return `${all[0]}, ${all[1]} and ${all.length - 2} more`;
+}
+
+/** A restore waiting for him, by the version it brings back ("Restoring the Wed 3:05 PM version"); null for any other branch. */
+export function restoreWords(b: Pick<HistoryBranch, "label">): string | null {
+  const at = b.label.match(/^Restore (\d+)$/);
+  return at ? `Restoring the ${dayTime(Number(at[1]))} version` : b.label.startsWith("Restore") ? "Restoring an older version" : null;
+}
+
+/** A waiting branch's line: what a restore brings back, else who suggested it. */
+export function branchWords(b: Pick<HistoryBranch, "label" | "authors">, names: Record<string, string>): string {
+  return restoreWords(b) ?? whoWords(b.authors, names);
 }
 
 const CAUSE_WORDS: Record<HistoryVersion["cause"], string> = {
@@ -131,28 +143,33 @@ async function restoreTo(target: HistoryVersion, actions: ReturnType<typeof hist
 
 function VersionRow({ v, all, names, now, shared, picked, picking, onPick, onCompare, onRestore }: { v: HistoryVersion; all: readonly HistoryVersion[]; names: Record<string, string>; now: boolean; shared: boolean; picked: boolean; picking: boolean; onPick(): void; onCompare(): void; onRestore(): void }) {
   const who = whoWords(v.by, names);
+  const why = versionWords(v, all);
   return (
-    <div aria-selected={picked} className={cn("group/row relative flex min-h-[52px] items-center gap-3 rounded-lg p-2", picked ? "bg-muted" : "hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]")}>
+    // The row's fill is a variable its presses lie on, so where they cover the line's end they read as the row, not a patch.
+    <div aria-selected={picked} className={cn("group/row relative flex min-h-[52px] items-center gap-3 rounded-lg bg-(--row-fill) p-2", picked ? "[--row-fill:var(--muted)]" : "[--row-fill:var(--background)] hover:[--row-fill:color-mix(in_srgb,var(--foreground)_5%,var(--background))]")}>
       <span className={cn("flex", !(picking || picked) && reveal("row", { row: true }))}>
         <Checkbox aria-label={`Pick the ${dayTime(v.at)} version`} checked={picked} onCheckedChange={onPick} />
       </span>
-      <Author principal={v.by[0]} name={who} />
+      <Author principal={v.by[0]} name={names[v.by[0] ?? ""] ?? "Someone"} />
       <span className="flex min-w-0 grow flex-col gap-0.5">
-        <span className={cn("truncate text-[13px] leading-5", now && "font-semibold")}>{who}</span>
-        <span className="truncate text-xs leading-4 text-muted-foreground">{versionWords(v, all)}</span>
+        <TruncateTip text={who}>
+          <span className={cn("truncate text-[13px] leading-5", now && "font-semibold")}>{who}</span>
+        </TruncateTip>
+        <TruncateTip text={why}>
+          <span className="truncate text-xs leading-4 text-muted-foreground">{why}</span>
+        </TruncateTip>
       </span>
-      <span className="grid shrink-0 items-center justify-items-end text-xs text-muted-foreground tabular-nums">
-        <span className={cn("[grid-area:1/1]", yields("row"))}>{dayTime(v.at)}</span>
-        <span className={cn("flex gap-1 [grid-area:1/1]", reveal("row", { row: true, overlay: true }))}>
-          <Button variant="ghost" size="xs" onClick={onCompare}>
-            Compare
+      {/* At rest the time alone holds the row's end, so who and why run up to it; Compare and Restore lie over the end when they show. */}
+      <span className={cn("shrink-0 text-xs text-muted-foreground tabular-nums", yields("row"))}>{dayTime(v.at)}</span>
+      <span data-version-acts className={cn("absolute end-2 top-1/2 flex -translate-y-1/2 gap-1 rounded-md bg-(--row-fill) ps-1", reveal("row", { row: true, overlay: true }))}>
+        <Button variant="ghost" size="xs" onClick={onCompare}>
+          Compare
+        </Button>
+        {now ? null : (
+          <Button variant="ghost" size="xs" onClick={onRestore}>
+            {shared ? "Suggest restore" : "Restore"}
           </Button>
-          {now ? null : (
-            <Button variant="ghost" size="xs" onClick={onRestore}>
-              {shared ? "Suggest restore" : "Restore"}
-            </Button>
-          )}
-        </span>
+        )}
       </span>
     </div>
   );
@@ -164,9 +181,9 @@ function BranchRow({ b, names, onOpen }: { b: HistoryBranch; names: Record<strin
   return (
     <ItemButton onClick={onOpen} className="min-h-[52px] flex-nowrap p-2 text-[13px] hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]">
       <span className="w-4 shrink-0" />
-      <Author principal={b.authors[0]} name={who} />
+      <Author principal={b.authors[0]} name={names[b.authors[0] ?? ""] ?? "Someone"} />
       <span className="flex min-w-0 grow flex-col gap-0.5">
-        <span className="truncate text-[13px] leading-5">{b.label.startsWith("Restore") ? "Restore, waiting for you" : who}</span>
+        <span className="truncate text-[13px] leading-5">{branchWords(b, names)}</span>
         <span className="truncate text-xs leading-4 text-muted-foreground">{n === 1 ? "1 change" : `${n} changes`}</span>
       </span>
       <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{dayTime(b.editedAt)}</span>
@@ -478,8 +495,7 @@ export function Bar({ env, source, state, setState }: CanvasBodyProps<HistorySta
   }
   if (view === "review") {
     const branch = branches.value?.branches.find((b) => b.id === state?.branchId);
-    const restoring = branch?.label.match(/^Restore (\d+)$/);
-    const what = !branch ? null : restoring ? `Restoring the ${dayTime(Number(restoring[1]))} version` : `Suggested by ${whoWords(branch.authors, branches.value?.names ?? {})}`;
+    const what = !branch ? null : restoreWords(branch) ?? `Suggested by ${whoWords(branch.authors, branches.value?.names ?? {})}`;
     return (
       <>
         {back}

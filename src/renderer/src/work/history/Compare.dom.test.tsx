@@ -23,10 +23,18 @@ describe("a formatting change in a compare", () => {
   it("is said in words under its block, in one column and once, on the newer side, side by side", () => {
     const one = render(<CompareDoc diff={diff} layout="one" current={0} title="Budget" />);
     const said = [...one.container.querySelectorAll("[data-format-words]")].map((el) => el.textContent);
-    expect(said).toEqual(["Heading 1 becomes Title", "Line spacing set to 2, Font set to Cambria, 11 pt becomes 14 pt"]);
+    expect(said).toEqual(["Heading 1 becomes Title", "Line spacing set to 2 · Font set to Cambria · 11 pt becomes 14 pt"]);
     cleanup();
     const two = render(<CompareDoc diff={diff} layout="two" current={0} title="Budget" />);
     expect([...two.container.querySelectorAll("[data-format-words]")].map((el) => el.textContent)).toEqual(said);
+  });
+
+  it("names the item once: one column under its title, side by side with no title over either column", () => {
+    const one = render(<CompareDoc diff={diff} layout="one" current={0} title="Budget" />);
+    expect(one.getAllByText("Budget")).toHaveLength(1);
+    cleanup();
+    const two = render(<CompareDoc diff={diff} layout="sxs" current={0} title="Budget" />);
+    expect(two.queryAllByText("Budget")).toHaveLength(0);
   });
 
   it("says nothing under a block whose words alone changed", () => {

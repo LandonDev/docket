@@ -65,7 +65,7 @@ Compare checks a styled document's formatting on the words both versions
 keep, even when words are added or removed. A row that
 changed beside its words says how, under its block, in a 12px muted line
 (work-kit `changeWords`: "Heading 1 becomes Title", "11 pt becomes 14 pt",
-"Line spacing set to 2"). The page beside the text (the named styles, the
+"Line spacing set to 2"), several joined with " · ". The page beside the text (the named styles, the
 theme, the page set-up, the header and footer) is compared where both sides
 can still be read whole, and said as one last step, "Page formatting"
 (`BlockDiff.page`, work-kit `pageWords`: "Style Title: 22 pt becomes 30 pt",
@@ -177,10 +177,14 @@ its tab. Where the tab has no room for the two side by side, History lies
 over the file, and Escape closes it first (before a full window's Escape),
 as it would a sheet; side by side Escape leaves it open. Three views, kept in the item's state:
 
-- **The list**: pending branches first ("Waiting for you"), then versions,
+- **The list**: pending branches first ("Waiting for you"; a restore there
+  says the version it brings back, "Restoring the Wed 3:05 PM version", the
+  review's bar words), then versions,
   newest first, each row who and why (the label, else the cause in words)
-  with the time; on hover the time gives way to Compare (against now) and
-  Restore (not on the newest). A checkbox picks two; Compare in the bar
+  with the time, a cut name or reason whole in a tip; the face is the first
+  author's own. At rest the time alone holds the row's end; on hover the time
+  gives way to Compare (against now) and Restore (not on the newest), which
+  lie over the row's end on its own fill (`--row-fill`). A checkbox picks two; Compare in the bar
   opens them. A restore of his own document is written at once and the bar
   says so with Undo; on a shared one it opens the restore's review.
 - **The compare**: read only, no mode. One column by default, each change
@@ -188,7 +192,7 @@ as it would a sheet; side by side Escape leaves it open. Three views, kept in th
   `del-bg`, new ones on `add-bg`, a whole block tinted when added or
   taken); side by side once the body has 840px (420px a side), the older
   left, a `diff-gap` blank where a side has nothing, each version named
-  over its column. The bar: History (back to the list), the two pickers in
+  over its column by its picker and no title over either. The bar: History (back to the list), the two pickers in
   one column, then who made the current change and Previous, `n/N`, Next.
   More holds the layout switch and "Restore the older version". The current
   change is the 1px foreground 40% outline: on changed words in a line it
