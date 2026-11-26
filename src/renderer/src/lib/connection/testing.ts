@@ -88,6 +88,11 @@ export class FakeTransport {
   pendingMethods(): string[] {
     return this.requests.map((r) => r.method);
   }
+  /** A press in the ui lane waits (the fake takes no options, so the test says so). */
+  uiPending = false;
+  pressPending(): boolean {
+    return this.uiPending;
+  }
   onPush(): () => void {
     return () => undefined;
   }

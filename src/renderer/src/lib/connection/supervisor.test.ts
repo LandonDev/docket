@@ -476,7 +476,7 @@ describe("Supervisor heartbeat never cuts a healthy link (M6 review, finding 9)"
     expect(h.transports).toHaveLength(1);
   });
 
-  it("while a press is out it waits three misses more (35 s) before closing; with only a safe read out, 20 s", async () => {
+  it("while a press is out it waits three misses more (35 s) before closing; with a read or a read mark out, 20 s", async () => {
     const held = await openOne(true);
     void held.live.request("work.outbox.decide", { ids: ["held_1"] }).catch(() => undefined);
     await held.h.clock.advance(HEARTBEAT_MS + HEARTBEAT_MISSES * HEARTBEAT_MISS_MS);
@@ -487,10 +487,18 @@ describe("Supervisor heartbeat never cuts a healthy link (M6 review, finding 9)"
     expect(asks(held.live)).toBe(HEARTBEAT_MISSES + HEARTBEAT_GRACE_MISSES);
     await held.h.clock.advance(1);
     expect(held.live.state).toBe("closed");
-    const read = await openOne(true);
-    void read.live.request("session.events", { sessionId: "s" }).catch(() => undefined);
-    await read.h.clock.advance(HEARTBEAT_MS + HEARTBEAT_MISSES * HEARTBEAT_MISS_MS);
-    expect(read.live.state).toBe("closed");
+    // A window's own bookkeeping write (a read mark) and a read earn no grace: closed at 20 s.
+    for (const method of ["session.events", "session.markRead"]) {
+      const read = await openOne(true);
+      void read.live.request(method, { sessionId: "s" }).catch(() => undefined);
+      await read.h.clock.advance(HEARTBEAT_MS + HEARTBEAT_MISSES * HEARTBEAT_MISS_MS);
+      expect(read.live.state).toBe("closed");
+    }
+    // A press sent in the ui lane earns it.
+    const press = await openOne(true);
+    press.live.uiPending = true;
+    await press.h.clock.advance(HEARTBEAT_MS + HEARTBEAT_MISSES * HEARTBEAT_MISS_MS);
+    expect(press.live.state).toBe("open");
   });
 });
 

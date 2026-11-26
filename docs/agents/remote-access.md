@@ -210,9 +210,11 @@
   miss (judged a macrotask after its deadline, so a frame the busy window
   had not yet dispatched counts), and two misses in a row close the socket
   (`local`) and redial at once: a dead link is found 20 s after its last
-  frame. While a call nothing asks again is out (anything outside
-  `SAFE_READS`: a send, a press), three misses more are allowed (35 s),
-  so a host stalled a few seconds does not lose that call's answer. Any frame counts,
+  frame. While a press of his is out (a request in the `ui` lane, or an
+  Outbox or send-now decision: supervisor.ts `PRESS_METHODS`), three
+  misses more are allowed (35 s), so a host stalled a few seconds does not
+  lose that press's answer; a window's own bookkeeping (a read mark, a
+  focus) earns none. Any frame counts,
   a push or part of a long answer. A hidden window sends no heartbeat
   (`ConnectionRegistry.setVisible`, from the window hooks), and coming on
   screen probes as before. A dial that reached no hello, or a socket the

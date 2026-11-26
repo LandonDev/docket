@@ -1,5 +1,4 @@
 import type { WireProfile } from "@server/shared/wire";
-import { SAFE_READS } from "./link";
 import { Transport } from "./transport";
 import {
   IDLE_STATUS,
@@ -45,9 +44,12 @@ export const HEARTBEAT_MS = 10_000;
 export const HEARTBEAT_MISS_MS = 5_000;
 /** Misses in a row that close the socket and redial: a dead link is found 20 s after its last frame. */
 export const HEARTBEAT_MISSES = 2;
-/** More misses allowed while a call that is never asked again (a write, a press: anything outside SAFE_READS) is
- *  out: a host stalled for a few seconds should not lose that call's answer to our close. 35 s from the last frame. */
+/** More misses allowed while a person's press is out (sent in the `ui` lane, or one of PRESS_METHODS): a host
+ *  stalled for a few seconds should not lose that press's answer to our close. 35 s from the last frame. A
+ *  window's own bookkeeping (a read mark, a focus) earns none: the dead-link row waited 35 s behind a read mark. */
 export const HEARTBEAT_GRACE_MISSES = 3;
+/** His decisions that go outside the `ui` lane: the Outbox's and the send-now presses. */
+export const PRESS_METHODS = /^work\.outbox\.|\.sendNow$/;
 /** The heartbeat's ask: answered from memory, with no effect, to any key (capability `read`). */
 export const HEARTBEAT_METHOD = "away.get";
 /**
@@ -494,10 +496,9 @@ export class Supervisor {
     }, this.options.heartbeatMissMs ?? HEARTBEAT_MISS_MS);
   }
 
-  /** A call is out on the session that nothing asks again after a close: its answer is worth a longer wait. */
+  /** A press of his is out on the session, which nothing sends again after a close: its answer is worth a longer wait. */
   private holdsUnrepeatable(session: Transport): boolean {
-    const probe = this.options.probeMethod ?? PROBE_METHOD;
-    return (session.pendingMethods?.() ?? []).some((m) => m !== HEARTBEAT_METHOD && m !== probe && !SAFE_READS.has(m));
+    return (session.pressPending?.() ?? false) || (session.pendingMethods?.() ?? []).some((m) => PRESS_METHODS.test(m));
   }
 
   private clearHeartbeat(): void {

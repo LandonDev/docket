@@ -101,6 +101,16 @@ describe("Transport", () => {
     expect("lane" in ws.last()).toBe(false);
   });
 
+  it("says a press is out while a ui-lane request waits, and not for a plain one", async () => {
+    const { t, ws } = await opened();
+    void t.request("session.markRead", { items: [] }).catch(() => undefined);
+    expect(t.pressPending()).toBe(false);
+    void t.request("session.send", { sessionId: "s" }, { lane: "ui" }).catch(() => undefined);
+    expect(t.pressPending()).toBe(true);
+    ws.receive({ id: ws.last().id, ok: true, result: null });
+    expect(t.pressPending()).toBe(false);
+  });
+
   it("every handled push and answer takes a slot in the frame ring, named for the stall line's cause", async () => {
     const { t, ws } = await opened();
     const ever = (): string | undefined => frameRing.overlapping(-Infinity, Infinity);

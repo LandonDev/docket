@@ -122,6 +122,8 @@ export class Transport {
     string,
     {
       method: string;
+      /** A person's press (`lane: "ui"`): the heartbeat waits longer for its answer. */
+      press: boolean;
       sentAt: number;
       timeoutMs: number;
       timer: ReturnType<typeof setTimeout>;
@@ -173,7 +175,7 @@ export class Transport {
         this.noteAnswer(timeoutMs, true, timeoutMs);
         reject(new TimeoutError(method, timeoutMs));
       }, timeoutMs);
-      this.pending.set(id, { method, sentAt: Date.now(), timeoutMs, timer, resolve: resolve as (v: unknown) => void, reject });
+      this.pending.set(id, { method, press: options.lane === "ui", sentAt: Date.now(), timeoutMs, timer, resolve: resolve as (v: unknown) => void, reject });
       this.ws!.send(JSON.stringify(options.lane ? { id, method, params, lane: options.lane } : { id, method, params }));
     });
   }
@@ -187,6 +189,12 @@ export class Transport {
 
   private noteAnswer(ms: number, timedOut: boolean, timeoutMs: number): void {
     for (const l of this.answerListeners) l(ms, timedOut, timeoutMs);
+  }
+
+  /** Whether a person's press (sent in the `ui` lane) still waits on its reply. */
+  pressPending(): boolean {
+    for (const p of this.pending.values()) if (p.press) return true;
+    return false;
   }
 
   /** Methods still waiting on a reply, oldest first. */
