@@ -1,4 +1,4 @@
-import type { MsFormHistoryRow, MsFormResponses, MsFormView } from "@shared/contract-work-msforms";
+import type { MsApplyStage, MsFormHistoryRow, MsFormResponses, MsFormView } from "@shared/contract-work-msforms";
 import type { OutboxItem } from "@shared/contract-work-outbox";
 import type { HeldRef } from "@shared/work";
 import type { MsFormCheck } from "@shared/work/msforms";
@@ -27,6 +27,8 @@ export interface MsFormHost {
   /** The answers workbook as Files names it, remembered as Excel for the web for the open that follows. */
   workbook(): Promise<{ ref: { at: "file"; host: string; path: string }; name: string }>;
   watch(on: (view: MsFormView | null) => void): () => void;
+  /** Where a write of changes stands in Forms (`work.msforms.applying`), and null once it ended. */
+  applying(on: (stage: MsApplyStage | null) => void): () => void;
 }
 
 export function linkMsFormHost(env: string, at: { workspaceId: string; formId: string }): MsFormHost {
@@ -53,6 +55,11 @@ export function linkMsFormHost(env: string, at: { workspaceId: string; formId: s
     seen: () => ask("work.msforms.seen"),
     history: () => ask("work.msforms.history"),
     workbook: () => ask("work.msforms.workbook"),
+    applying(on) {
+      return link().onPush((push) => {
+        if (push.push === "work.msforms.applying" && push.workspaceId === at.workspaceId && push.formId === at.formId) on(push.stage);
+      });
+    },
     watch(on) {
       const offPush = link().onPush((push) => {
         if (push.push === "work.msforms" && push.workspaceId === at.workspaceId && push.formId === at.formId) on(push.view);

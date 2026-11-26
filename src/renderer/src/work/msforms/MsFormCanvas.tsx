@@ -1,10 +1,11 @@
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { MsFormResponses, MsFormView } from "@shared/contract-work-msforms";
+import type { MsApplyStage, MsFormResponses, MsFormView } from "@shared/contract-work-msforms";
 import type { CanvasItem } from "@shared/work";
 import { CHECK_WORDS, isOther, MSFORM_CHECKS, type MsFormCheck } from "@shared/work/msforms";
 import { Check, Copy, ExternalLink, RefreshCw } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Spinner } from "../../components/ui/spinner";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { Tip, TruncateTip } from "../../components/tip";
@@ -87,6 +88,21 @@ function hostFor(props: Props): MsFormHost {
 }
 const useSlot = (store: Store): Slot => useSyncExternalStore(store.subscribe, store.get);
 
+/** What the change line says while changes are written in Forms (`work.msforms.applying`), as the making line says a make's stage. */
+export function applyStageWords(s: MsApplyStage): string {
+  if (s.stage === "opening") return "Opening the form in Forms…";
+  if (s.stage === "checking") return "Checking Accept responses…";
+  if (s.stage === "reading") return "Reading the form back…";
+  return s.of > 1 ? `Making change ${s.at} of ${s.of}…` : "Making the change…";
+}
+
+/** Where a write of this form's changes stands, while one runs. */
+function useApplying(host: MsFormHost): MsApplyStage | null {
+  const [stage, setStage] = useState<MsApplyStage | null>(null);
+  useEffect(() => host.applying(setStage), [host]);
+  return stage;
+}
+
 /** How long after his last key a change by the agent waits for his Reload instead of reloading the guest. */
 export const TYPING_QUIET_MS = 10_000;
 
@@ -118,6 +134,7 @@ export function Body(props: Props) {
   useReloadOnChange(item.id, view, store);
   useChrome(shell, host, store, view, changed, item.id, props.env);
   const current = useReview(shell, host, store, view, half);
+  const applying = useApplying(host);
   useEffect(() => {
     shell.ready?.(!!view);
   }, [shell, view]);
@@ -128,22 +145,30 @@ export function Body(props: Props) {
   const waiting = view.suggestions[current];
   const why = waiting?.held ?? waiting?.reason;
   const guest = <LiveBody itemId={item.id} ask={{ forms: { tenant: view.tenant, formId: view.formId, page: "design" } }} app="forms" covered={cover.covered} full={cover.full} />;
-  if (!waiting) return guest;
+  if (!waiting && !applying) return guest;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* The change the stepper stands on, in words: Forms' own page cannot outline it. */}
-      <div data-msform-change className="flex min-h-8 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
-        <span className="min-w-0 truncate text-foreground">{waiting.words}</span>
-        {/* Agent writes held it: why, before the agent's own reason; whole on hover when cut */}
-        {why ? (
-          <Tooltip>
-            <TooltipTrigger render={<span className="min-w-0 truncate text-muted-foreground">{why}</span>} />
-            <TooltipContent>
-              <span className="min-w-0 break-words">{why}</span>
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-      </div>
+      {applying ? (
+        // While changes are written in Forms, the line says where it stands, in the making line's shape (Files' New → Form).
+        <div data-msform-applying role="status" className="flex min-h-8 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
+          <Spinner className="size-3 shrink-0" />
+          <span className="min-w-0 truncate text-foreground">{applyStageWords(applying)}</span>
+        </div>
+      ) : waiting ? (
+        // The change the stepper stands on, in words: Forms' own page cannot outline it.
+        <div data-msform-change className="flex min-h-8 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
+          <span className="min-w-0 truncate text-foreground">{waiting.words}</span>
+          {/* Agent writes held it: why, before the agent's own reason; whole on hover when cut */}
+          {why ? (
+            <Tooltip>
+              <TooltipTrigger render={<span className="min-w-0 truncate text-muted-foreground">{why}</span>} />
+              <TooltipContent>
+                <span className="min-w-0 break-words">{why}</span>
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+        </div>
+      ) : null}
       {guest}
     </div>
   );

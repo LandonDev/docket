@@ -1558,7 +1558,12 @@ The kinds, each a hand-made body built from components/ui:
   muted line "Closed 12:00 PM" with Reopen. Collect responses is held, as
   Publish is; Close form and Reopen are not. Responses is our form's
   Responses (forms/responses.tsx), its summary saying "as of" once when the
-  read is old. A change the agent made reloads a guest he has not typed in
+  read is old. While changes are written in Forms (his Accept, or a thread
+  under Agent writes) the line above the page says where the write stands,
+  in the making line's shape, a 12px spinner and the stage in 13px words
+  ("Opening the form in Forms…", "Making change 2 of 3…", "Reading the
+  form back…"); the waiting change's words give way to it, one line, never
+  two, and come back when it ends. A change the agent made reloads a guest he has not typed in
   for ten seconds; otherwise the state line says "Changed by the agent"
   with Reload. More holds Open in Browser, Open the Workbook once Forms
   made it (Excel for the web in a Files tab), Question History… (a dialog of

@@ -68,7 +68,7 @@ const RESPONSES: MsFormResponses = {
 
 function hostOf(view: MsFormView, over: Partial<MsFormHost> = {}): MsFormHost {
   const same = () => vi.fn(async () => view);
-  return { get: same(), collect: same(), close: same(), mode: same(), check: same(), review: same(), responses: vi.fn(async () => RESPONSES), refresh: same(), seen: same(), watch: () => () => undefined, ...over };
+  return { get: same(), collect: same(), close: same(), mode: same(), check: same(), review: same(), responses: vi.fn(async () => RESPONSES), refresh: same(), seen: same(), watch: () => () => undefined, applying: () => () => undefined, ...over };
 }
 const shell = (): CanvasShell => ({ review: vi.fn(), selection: vi.fn(), presence: vi.fn(), mode: vi.fn(), statusLine: vi.fn(), written: vi.fn(), detail: vi.fn(), openHistory: vi.fn(), held: vi.fn(), more: vi.fn(), ready: vi.fn() });
 let n = 0;
@@ -213,6 +213,9 @@ describe("the sums", () => {
   });
 });
 
+/** The line that says where a write in Forms stands. */
+const line = () => document.querySelector("[data-msform-applying]");
+
 describe("an agent's waiting changes", () => {
   it("are stepped from the bar's stepper, said in words above the page, and Accept runs exactly that change", async () => {
     const view: MsFormView = {
@@ -233,5 +236,31 @@ describe("an agent's waiting changes", () => {
     expect(host.review).toHaveBeenCalledWith(["s1"], []);
     await act(async () => void (await review.reject("all")));
     expect(host.review).toHaveBeenLastCalledWith([], ["s1", "s2"]);
+  });
+
+  it("while they are written in Forms, the line above the page says where it stands, then gives way", async () => {
+    let tell!: (s: Parameters<Parameters<MsFormHost["applying"]>[0]>[0]) => void;
+    const view: MsFormView = { ...BASE, suggestions: [{ id: "s1", change: { op: "remove", at: 0 }, words: 'Remove "Which night works?"', by: "agent:env:t1", at: 0 }] };
+    const host = hostOf(view, { applying: (on) => ((tell = on), () => undefined) });
+    render(<Body {...props(host)} />);
+    expect(await screen.findByText('Remove "Which night works?"')).toBeTruthy();
+    act(() => tell({ stage: "opening" }));
+    expect(line()?.textContent).toBe("Opening the form in Forms…");
+    act(() => tell({ stage: "changing", at: 2, of: 3 }));
+    expect(line()?.textContent).toBe("Making change 2 of 3…");
+    // the change's own words give way while it runs: one line, never two
+    expect(screen.queryByText('Remove "Which night works?"')).toBeNull();
+    act(() => tell(null));
+    expect(line()).toBeNull();
+    expect(screen.getByText('Remove "Which night works?"')).toBeTruthy();
+  });
+
+  it("a thread's write under Agent writes says its stage too, with nothing waiting", async () => {
+    let tell!: (s: Parameters<Parameters<MsFormHost["applying"]>[0]>[0]) => void;
+    const host = hostOf(BASE, { applying: (on) => ((tell = on), () => undefined) });
+    render(<Body {...props(host)} />);
+    await waitFor(() => expect(host.get).toHaveBeenCalled());
+    act(() => tell({ stage: "checking" }));
+    await waitFor(() => expect(line()?.textContent).toBe("Checking Accept responses…"));
   });
 });

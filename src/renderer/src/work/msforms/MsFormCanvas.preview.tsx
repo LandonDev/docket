@@ -1,7 +1,7 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/msforms/MsFormCanvas.preview.tsx#MsFormPreview --props '{"state":"draft"}'`:
 // the Microsoft form kind alone in the canvas pane, its host a stand-in. States: `draft` (Collect responses),
 // `collecting` (the link, Copy and Close form), `closed` (the closed line and Reopen), `responses` (the answers)
-// and `loading`. The Form half is the Office-live guest, which a preview window cannot draw: it shows the guest's
+// `loading`, `waiting` (an agent's change on the stepper) and `applying` (that change being written). The Form half is the Office-live guest, which a preview window cannot draw: it shows the guest's
 // own "Open in Forms on the Web" stand-in. Rendered by nothing in the app.
 import type { MsFormResponses, MsFormView } from "@shared/contract-work-msforms";
 import type { CanvasBodyProps } from "../canvas/kind";
@@ -9,7 +9,7 @@ import { CanvasKindAt, usePressNamed } from "../kit.preview";
 import type { MsFormHost } from "./host";
 import { Bar, Body } from "./MsFormCanvas";
 
-type State = "draft" | "collecting" | "closed" | "responses" | "loading";
+type State = "draft" | "collecting" | "closed" | "responses" | "loading" | "waiting" | "applying";
 
 const FORM = "Ob0wQVN8nEGx5YdY1tY_IQaWFXVrVqJAiq2zrvrFVrNURDVET1gyWlpLNkJXOUsyWEJXNFlKMzMxVC4u";
 const BASE: MsFormView = {
@@ -68,6 +68,8 @@ function viewOf(state: State): MsFormView {
   const link = `https://forms.cloud.microsoft/Pages/ResponsePage.aspx?id=${FORM}`;
   if (state === "collecting" || state === "responses") return { ...BASE, state: "collecting", link, count: 3, unseen: state === "collecting" ? 2 : 0, settings: { ...BASE.settings, accepting: true } };
   if (state === "closed") return { ...BASE, state: "closed", link, count: 3, closedAt: Date.now() - 3_600_000 };
+  if (state === "waiting" || state === "applying")
+    return { ...BASE, suggestions: [{ id: "s1", change: { op: "add", question: { title: "When?", type: "date", required: true } }, words: 'Add a Date "When?", required', reason: "Dana asked for a date", by: "agent:env:t1", at: 0 }] };
   return BASE;
 }
 
@@ -88,6 +90,10 @@ function hostOf(state: State): MsFormHost {
     history: async () => [{ rev: 2, at: Date.now() - 3_600_000, by: "agent:env:t1", words: ['Add a Date "When?", required'] }],
     workbook: async () => ({ ref: { at: "file", host: "env", path: "/RecWell/Esports/Spring intramural sign-up.xlsx" }, name: "Spring intramural sign-up.xlsx" }),
     watch: () => () => undefined,
+    applying: (on) => {
+      if (state === "applying") on({ stage: "changing", at: 2, of: 3 });
+      return () => undefined;
+    },
   };
 }
 
