@@ -12,7 +12,12 @@ const state = vi.hoisted(() => ({
   pull: vi.fn(async () => null),
   settings: vi.fn(),
   invoke: vi.fn(async () => undefined),
+  /** D5: whether the window's key may build on the host. */
+  mayBuild: true,
+  held: null as string | null,
 }));
+vi.mock("../../lib/linkMayCore", () => ({ useLinkMay: () => state.mayBuild }));
+vi.mock("../../lib/connection/degraded", () => ({ useHostHeld: () => state.held }));
 
 vi.mock("../../lib/tcserver/workspaces", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/tcserver/workspaces")>()),
@@ -263,6 +268,42 @@ describe("BuildPanel", () => {
     await flush();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(state.cancel).toHaveBeenCalledWith("p1");
+  });
+
+  // rightpanel-03: a key that may not build sees the log and the outputs, never Build or Cancel.
+  it("offers a key that may not build no Build and no Cancel", async () => {
+    state.mayBuild = false;
+    try {
+      render(<BuildPanel projectId="p1" />);
+      await flush();
+      expect(screen.queryByRole("button", { name: "Build" })).toBeNull();
+      cleanup();
+      state.build = { run: run({ status: "running", endedAt: undefined }), lines: [] };
+      render(<BuildPanel projectId="p1" />);
+      await flush();
+      expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    } finally {
+      state.mayBuild = true;
+    }
+  });
+
+  // Round 2: Build and Cancel go to the host; held in place while it is away.
+  it("holds Build and Cancel while the host is away", async () => {
+    state.held = "The box is offline";
+    try {
+      render(<BuildPanel projectId="p1" />);
+      await flush();
+      const build = screen.getByRole("button", { name: "Build" }) as HTMLButtonElement;
+      expect(build.disabled).toBe(true);
+      expect(build.closest("[data-held]")).not.toBeNull();
+      cleanup();
+      state.build = { run: run({ status: "running", endedAt: undefined }), lines: [] };
+      render(<BuildPanel projectId="p1" />);
+      await flush();
+      expect((screen.getByRole("button", { name: "Cancel" }) as HTMLButtonElement).disabled).toBe(true);
+    } finally {
+      state.held = null;
+    }
   });
 
   it("reveals an output through the native reveal", async () => {

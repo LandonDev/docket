@@ -5,6 +5,9 @@ import { SERVICE_OF, isPickedProvider } from "@server/shared/accounts";
 import { supportsContext1m } from "@server/shared/catalog";
 import { AccountsPopover } from "../chrome/AccountsPopover";
 import { LOCAL_ENVIRONMENT_ID } from "../lib/connection/registry";
+import { useHostHeld } from "../lib/connection/degraded";
+import { HeldTip } from "../components/heldTip";
+import { useLinkMay } from "../lib/linkMayCore";
 import { scopeOf } from "../lib/accountScope";
 import {
   failureActions,
@@ -40,6 +43,9 @@ export interface FailureCardState {
   outcome: string | null;
 }
 
+/** The actions that ask the thread's host; signing in and the Accounts page are this computer's own. */
+const HOST_ACTIONS: ReadonlySet<FailureActionId> = new Set(["retry", "route", "pick-model", "use-1m", "pick-account"]);
+
 export function FailureCardView({
   failure,
   actions,
@@ -48,6 +54,7 @@ export function FailureCardView({
   onAction,
   busy,
   renderAction,
+  held = null,
 }: {
   failure: Failure;
   actions: FailureAction[];
@@ -58,6 +65,8 @@ export function FailureCardView({
   busy?: boolean;
   /** Wraps an action's button (Pick another account in its accounts popover). */
   renderAction?: (id: FailureActionId, button: ReactElement) => ReactNode;
+  /** The host away (D5): the actions that go to it are held, this their tooltip. */
+  held?: string | null;
 }) {
   const pendingLabel = (id: FailureActionId): string => {
     switch (id) {
@@ -93,18 +102,20 @@ export function FailureCardView({
           <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
             {actions.map((action, i) => {
               const pending = state.pending === action.id;
+              const waits = held && HOST_ACTIONS.has(action.id) ? held : null;
               const button = (
                 <Button
                   key={action.id}
                   size="sm"
                   variant={i === 0 ? "default" : "secondary"}
                   data-failure-action={action.id}
-                  disabled={busy || state.pending !== null}
+                  disabled={busy || state.pending !== null || !!waits}
                   onClick={() => onAction(action.id)}
                 >
                   <BusyLabel busy={pending} label={action.label} busyLabel={pendingLabel(action.id) || action.label} />
                 </Button>
               );
+              if (waits) return <HeldTip key={action.id} held={waits}>{button}</HeldTip>;
               const wrapped = renderAction?.(action.id, button);
               return wrapped ? <Fragment key={action.id}>{wrapped}</Fragment> : button;
             })}
@@ -140,6 +151,9 @@ export function FailureCard({
 }) {
   const meta = useSessionMeta(sessionId);
   const environmentId = meta?.environmentId ?? LOCAL_ENVIRONMENT_ID;
+  const held = useHostHeld(environmentId);
+  // A key that may not continue the thread is offered none of the actions that go to its host (D5).
+  const mayContinue = useLinkMay(environmentId, "session.continue");
   const provider = meta?.provider ?? "claude";
   const latest = canRetry && meta?.failure?.kind === failure.kind && meta.failure.account === failure.account
     ? meta.failure
@@ -152,7 +166,9 @@ export function FailureCard({
     ...(latest.roomElsewhere === undefined ? {} : { roomElsewhere: latest.roomElsewhere }),
   };
   // These continue the work, which only a host that can continue does.
-  const actions = failureActions(failure.kind, ctx).filter((a) => canRetry || (a.id !== "retry" && a.id !== "pick-model" && a.id !== "use-1m"));
+  const actions = failureActions(failure.kind, ctx)
+    .filter((a) => canRetry || (a.id !== "retry" && a.id !== "pick-model" && a.id !== "use-1m"))
+    .filter((a) => mayContinue || !HOST_ACTIONS.has(a.id));
   const note = failureNote(failure.kind, ctx);
   const [state, setState] = useState<FailureCardState>({ pending: null, outcome: null });
   const [picking, setPicking] = useState(false);
@@ -238,6 +254,7 @@ export function FailureCard({
       state={state}
       onAction={onAction}
       busy={busy}
+      held={held}
       renderAction={(id, button) =>
         id === "pick-account" && scope && accounts && accounts.profiles.length > 0 ? (
           <AccountsPopover

@@ -188,6 +188,28 @@ describe("HostsRow", () => {
     expect(onAdd).toHaveBeenCalledWith("env_box");
   });
 
+  // rail-05: every verb in a host's submenu goes to that host, so a host away holds the submenu, its state the reason.
+  it("holds a host's submenu while the host is away, its state the reason", async () => {
+    hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: status("reconnecting", "linux") });
+    render(<HostsRow onAddWorkspace={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Hosts:/ }));
+    await act(flush);
+    const [here, box] = [...document.querySelectorAll('[data-menu-row^="host:"]')];
+    expect(box.getAttribute("aria-disabled")).toBe("true");
+    expect(here.getAttribute("aria-disabled")).not.toBe("true");
+    expect(box.getAttribute("aria-description")).toBe("Reconnecting to box…");
+  });
+
+  // D5: a key that may only read is offered no verb its host would refuse: Switch to alone.
+  it("offers a read key's host Switch to alone", async () => {
+    const read = { ...status("open", "linux"), lastHello: { environmentId: "x", contract: 1, caps: ["read"], key: { id: "k", name: "Laptop" } } } as EnvironmentStatus;
+    hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: read });
+    render(<HostsRow onAddWorkspace={() => {}} />);
+    await openHost(/^box/);
+    const names = within(screen.getByRole("menu", { name: "box actions" })).getAllByRole("menuitem").map((el) => el.textContent);
+    expect(names).toEqual(["Switch to box"]);
+  });
+
   it("the host on screen has no Switch to", async () => {
     hosts([LOCAL, BOX], {});
     render(<HostsRow onAddWorkspace={() => {}} />);

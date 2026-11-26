@@ -348,14 +348,15 @@ export const RUNTIME_MODE_LABEL: Record<RuntimeMode, string> = {
   "full-access": "Full access",
 };
 
-// Supervised is Claude Code's default mode: a read-only command (ls, git
-// status) runs without a card; an edit, or a command that changes things,
-// asks. The words say that, and not more than the rules do.
+// The words Settings → Thread defaults says for the same three policies
+// (SETTINGS's lib/settings/access.ts): one sentence each, the composer's
+// picker and Settings alike. Sends, posts and payments wait for his press
+// whatever the mode (the hold), so Full access says so.
 export const RUNTIME_MODE_HINT: Record<RuntimeMode, string> = {
-  supervised: "Ask before edits and commands that change things.",
-  "auto-accept-edits": "Auto-approve edits, ask before other actions.",
-  auto: "Auto-approve edits, ask before other actions.",
-  "full-access": "Allow commands and edits without prompts.",
+  supervised: "Asks before every step",
+  "auto-accept-edits": "Asks before anything but edits",
+  auto: "Asks before anything but edits",
+  "full-access": "Asks before nothing. Sends, posts and payments still wait.",
 };
 
 export type Session = {

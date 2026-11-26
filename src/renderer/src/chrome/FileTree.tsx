@@ -1,5 +1,8 @@
 import { modOrCtrl } from "../lib/keys";
 import { registry } from "../lib/connection";
+import { useLinkMay } from "../lib/linkMayCore";
+import { useHostHeld } from "../lib/connection/degraded";
+import { HeldTip } from "../components/heldTip";
 import { useEditorConfig } from "../lib/editorConfig";
 import { editorLabelFor, openInEditor } from "../lib/openInEditor";
 import { environmentOfCwd } from "../lib/tcserver/projects";
@@ -72,7 +75,7 @@ import { displayPath, parentPath, rebasePath } from "../lib/paths";
 import { IS_MAC } from "../lib/platform";
 import type { GitStatusMap } from "../hooks/useGitFileStatuses";
 import { shortcutFor } from "../lib/settings";
-import { RowsContextMenu, type MenuRow } from "./menuRows";
+import { RowsContextMenu, tidy, type MenuRow } from "./menuRows";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { useConfirm } from "./ConfirmDialog";
 import { editorChunk, mediaChunk } from "../surfaces/chunks";
@@ -165,6 +168,8 @@ function explorerItems(
   clip: Clip | null,
   canOpenTerminal: boolean,
   editorLabel: string | null = null,
+  writes = true,
+  held: string | null = null,
 ): MenuRow[] {
   const pasteParent = target.isDir ? target.path : parentPath(target.path);
   const pasteBlocked =
@@ -190,8 +195,14 @@ function explorerItems(
   if (editorLabel && !target.isDir) rows.push({ kind: "item", id: "open-editor", label: editorLabel, icon: ExternalLink, shortcut: shortcutFor("Files", "Open in Editor") });
   if (canOpenTerminal) rows.push({ kind: "item", id: "open-terminal", label: "Open in terminal", icon: Terminal });
   if (!isWebMode()) rows.push({ kind: "item", id: "reveal", label: REVEAL_LABEL, icon: FolderOpen });
-  return rows;
+  // A key that may only read (D5, rightpanel-03): no verb that changes the host's files.
+  if (!writes) return tidy(rows.filter((row) => row.kind !== "item" || !WRITE_VERBS.has(row.id)));
+  // The host away: those verbs are held, its state the reason; Cut only marks a file here, so it stays.
+  return held ? rows.map((row) => (row.kind === "item" && WRITE_VERBS.has(row.id) && row.id !== "cut" ? { ...row, disabled: true, reason: held } : row)) : rows;
 }
+
+/** The tree's verbs that change files on the host (fs.createPath, movePath, copyPath, renamePath, deletePath: operate). */
+const WRITE_VERBS: ReadonlySet<string> = new Set(["new-file", "new-folder", "cut", "paste", "duplicate", "rename", "delete"]);
 
 /** A tree row's menu id: the kind and the path, read back by `targetOfMenuId`. */
 function menuIdOf(entry: { path: string; isDir: boolean }): string {
@@ -207,6 +218,9 @@ export function FileTree({
   gitStatuses,
 }: Props) {
   const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
+  const mayWrite = useLinkMay(environmentId, "fs.createPath");
+  // Round 2: while the host is away its writes are held, the link's words their tooltip.
+  const held = useHostHeld(environmentId);
   const editorConfig = useEditorConfig();
   const confirm = useConfirm();
   const [expanded, setExpanded] = useState(() => loadExpanded(cwd));
@@ -488,6 +502,9 @@ export function FileTree({
     const isDir = isDirAt(cwd, path);
     const mod = modOrCtrl(e);
     const key = e.key.toLowerCase();
+    // A read key's tree copies paths and opens files; the keys that change files do nothing it could be refused.
+    if (!mayWrite && (e.key === "F2" || e.key === "Delete" || e.key === "Backspace" || (mod && (key === "x" || key === "v")))) return;
+    if (held && (e.key === "F2" || e.key === "Delete" || e.key === "Backspace" || (mod && key === "v"))) return;
     if (mod && !e.altKey && !e.shiftKey && key === "c") {
       if (isRoot) return;
       e.preventDefault();
@@ -667,7 +684,7 @@ export function FileTree({
         <RowsContextMenu
           label="File actions"
           lazyMount
-          rowsFor={(id) => explorerItems(targetOf(id), clip, !!onOpenTerminal, editorLabelFor(targetOf(id).path, editorConfig))}
+          rowsFor={(id) => explorerItems(targetOf(id), clip, !!onOpenTerminal, editorLabelFor(targetOf(id).path, editorConfig), mayWrite, held)}
           onPick={(pick, id) => void runAction(pick, targetOf(id))}
           onOpenChange={(open, id) => open && openMenu(targetOf(id))}
         >
@@ -683,12 +700,20 @@ export function FileTree({
             className="flex h-9 shrink-0 items-center justify-end gap-0.5 px-3"
             onContextMenu={(e) => e.stopPropagation()}
           >
-            <HeaderButton label="New file" onClick={() => startCreate(false)}>
-              <FilePlus className="size-3.5" />
-            </HeaderButton>
-            <HeaderButton label="New folder" onClick={() => startCreate(true)}>
-              <FolderPlus className="size-3.5" />
-            </HeaderButton>
+            {mayWrite ? (
+              <>
+                <HeldTip held={held}>
+                  <HeaderButton label="New file" disabled={!!held} onClick={() => startCreate(false)}>
+                    <FilePlus className="size-3.5" />
+                  </HeaderButton>
+                </HeldTip>
+                <HeldTip held={held}>
+                  <HeaderButton label="New folder" disabled={!!held} onClick={() => startCreate(true)}>
+                    <FolderPlus className="size-3.5" />
+                  </HeaderButton>
+                </HeldTip>
+              </>
+            ) : null}
             <HeaderButton
               label="Collapse all"
               onClick={() => {
@@ -733,10 +758,12 @@ export function FileTree({
 function HeaderButton({
   label,
   onClick,
+  disabled,
   children,
 }: {
   label: string;
   onClick: () => void;
+  disabled?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -748,6 +775,7 @@ function HeaderButton({
             size="icon-xs"
             className="text-muted-foreground hover:text-foreground"
             aria-label={label}
+            disabled={disabled}
             onMouseDown={(e) => e.preventDefault()}
             onClick={onClick}
           />

@@ -119,6 +119,8 @@ vi.mock("../../lib/connection", async (importOriginal) => ({
     linkOf: (id: string) => (id === "box" ? boxLink : link),
     primaryEnvironmentId: "local",
     primary: () => link,
+    // The window's own socket: no key, so every verb is offered (lib/linkMay.ts).
+    statusOf: () => ({ transport: "open", lastHello: null }),
     onLink: (listener: (link: unknown, event: string) => void) => {
       listener(link, "added");
       return () => {};
@@ -140,6 +142,8 @@ vi.mock("../../lib/tcserver/store", async (importOriginal) => {
 vi.mock("../../lib/connection/status", () => ({
   useEnvironments: () => hosts.environments,
   useEnvironmentStatuses: () => hosts.statuses,
+  // The window's own socket: no key, so the board offers every verb (lib/linkMay.ts).
+  useEnvironmentStatus: () => ({ transport: "open", lastHello: null }),
 }));
 vi.mock("../../lib/tcserver/workspaces", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/tcserver/workspaces")>()),
@@ -2067,7 +2071,9 @@ describe("the batch across hosts", () => {
     expect(home.textContent).not.toContain("The box");
     expect(box.getAttribute("data-host")).toBe("box");
     expect(box.getAttribute("data-host-offline")).toBe("true");
-    expect(box.className).toContain("opacity-50");
+    // boards-04: muted by its title's role, never the row as an opacity; its verbs give way to Message alone.
+    expect(box.className).not.toContain("opacity-50");
+    expect(box.querySelector("[data-row-title]")!.className).toContain("text-muted-foreground");
     // Every row draws its host's glyph, the name on hover; the offline row says so instead.
     expect(home.querySelector("[data-row-title] + [data-host-glyph]")?.getAttribute("aria-label")).toBe("This Mac");
     const glyph = box.querySelector("[data-row-title] + [data-host-glyph]")!;

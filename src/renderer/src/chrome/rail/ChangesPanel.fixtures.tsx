@@ -1,7 +1,7 @@
 // Fixtures for `bun run ui:preview src/renderer/src/chrome/rail/ChangesPanel.tsx#ChangesView`. Static folds hold their open state.
 import type { GitDiffIndex } from "../../lib/fs";
 import type { AgainstModel } from "./ChangesAgainst";
-import { changesRules, type ChangesView, type ChangesActions } from "./ChangesPanel";
+import { HELD, READ_ONLY, changesRules, type ChangesView, type ChangesActions } from "./ChangesPanel";
 
 const noop = () => {};
 const actions: ChangesActions = {
@@ -116,9 +116,10 @@ const against = (over: Partial<AgainstModel> = {}): AgainstModel => ({
 });
 
 export const changesPreviewCases = [
-  { name: "Host away, cached index", props: base(mixed) },
-  { name: "Read-only key, cached index", props: base(mixed, "Update panel") },
-  { name: "Failed index read, same skeleton as loading", props: base(null) },
+  { name: "Host away, cached index: every control held", props: base(mixed, "Update panel", { busy: HELD, rules: changesRules(mixed, null, "Update panel", true) }) },
+  { name: "Read-only key: no control that writes", props: base(mixed, "", { busy: READ_ONLY, rules: changesRules(mixed, null, "", true) }) },
+  { name: "Failed index read, nothing cached: one red line with Retry", props: base(null, "", { failed: true, actions: { ...actions, retry: noop } }) },
+  { name: "Failed index read over the last good rows", props: base(mixed, "", { failed: true, actions: { ...actions, retry: noop } }) },
 ];
 
 export default [

@@ -21,6 +21,9 @@ vi.mock("../../lib/tcserver/store", () => ({
   },
 }));
 vi.mock("../../lib/tcserver/commands", () => ({ readFile: async () => "" }));
+const key = vi.hoisted(() => ({ may: true, held: null as string | null }));
+vi.mock("../../lib/linkMayCore", () => ({ useLinkMay: () => key.may }));
+vi.mock("../../lib/connection/degraded", () => ({ useHostHeld: () => key.held }));
 vi.mock("../../lib/tcserver/plans", () => ({ implementPlan: vi.fn() }));
 vi.mock("../../chrome/ModelPicker", () => ({ ModelPicker: () => null }));
 vi.mock("../../chrome/ModelSettings", () => ({ ModelSettings: () => null }));
@@ -118,6 +121,32 @@ describe("PlanView for a project plan", () => {
     expect([...document.querySelectorAll("[data-md]")].map((m) => m.textContent).join("")).not.toContain("status: complete");
     const outline = screen.getByRole("navigation", { name: "Outline" });
     expect([...outline.querySelectorAll("button")].map((b) => b.textContent)).toEqual(["Acme", "Goals", "Milestones", "Risks"]);
+  });
+
+  // boards-03 (D5): Start build makes a thread on the host; a key that may not start one is not offered it.
+  it("offers no Start build to a key that may not start a thread", () => {
+    key.may = false;
+    try {
+      doc = "# Plan\n\n## Tasks\n- [ ] a\n";
+      render(<PlanView {...props(session({ threadType: "planning", planPath: "/repo/.temp-code/plan-x.md" }))} />);
+      expect(screen.queryByRole("button", { name: "Start build" })).toBeNull();
+    } finally {
+      key.may = true;
+    }
+  });
+
+  // Round 2: the build is a thread on the plan's host; Start build waits while that host is away.
+  it("holds Start build while the plan's host is away", () => {
+    key.held = "The box is offline";
+    try {
+      doc = "# Plan\n\n## Tasks\n- [ ] a\n";
+      render(<PlanView {...props(session({ threadType: "planning", planPath: "/repo/.temp-code/plan-x.md" }))} />);
+      const start = screen.getByRole("button", { name: "Start build" }) as HTMLButtonElement;
+      expect(start.disabled).toBe(true);
+      expect(start.closest("[data-held]")).not.toBeNull();
+    } finally {
+      key.held = null;
+    }
   });
 
   it("an ordinary plan's header has Start build and counts its tasks", () => {

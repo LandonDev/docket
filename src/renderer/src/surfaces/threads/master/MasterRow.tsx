@@ -1,5 +1,6 @@
 import { memo, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { Button } from "../../../components/ui/button";
+import { linkMay } from "../../../lib/linkMayCore";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "../../../components/ui/collapsible";
 import { Item } from "../../../components/ui/item";
 import { ROW_PRESS } from "../../../components/ui/press";
@@ -255,6 +256,8 @@ export function MasterRowView({
       onOpen(meta.id);
     }
   };
+  // Read with the row's own render (a map lookup, no subscription): the board's offline fact, then the key.
+  const refused = !!host?.offline || !linkMay(meta.environmentId, "session.pause");
   const verb =
     meta.status === "queued"
       ? { label: "Start now", icon: Play, failed: "start it now", run: () => commands.startNow(meta.id) }
@@ -283,7 +286,6 @@ export function MasterRowView({
         // A press on a control inside the row (its actions, the task bar) is
         // that control's: the row keeps its hover fill.
         "[&:has(button:active)]:bg-foreground/5",
-        host?.offline && "opacity-50",
       )}
       data-status={meta.status}
       data-type={meta.threadType ?? undefined}
@@ -303,7 +305,8 @@ export function MasterRowView({
         ) : null}
       </span>
       <span className="flex h-5 min-w-0 items-center gap-2">
-        <span className={cn("min-w-16 shrink-[1000] truncate text-[13px] font-medium", quiet ? "text-muted-foreground" : "text-foreground")} data-row-title>
+        {/* A row whose host is away reads muted by its title's role, never the whole row as an opacity (boards-04). */}
+        <span className={cn("min-w-16 shrink-[1000] truncate text-[13px] font-medium", quiet || host?.offline ? "text-muted-foreground" : "text-foreground")} data-row-title>
           {title || "Untitled"}
         </span>
         {hostGlyph(meta.environmentId, host?.offline ? `${host.name} is offline` : undefined)}
@@ -358,12 +361,13 @@ export function MasterRowView({
         <RowAction label="Message" onClick={() => onOpen(meta.id, true)}>
           <MessageSquare />
         </RowAction>
-        {verb ? (
+        {/* A host away, or a key that may not, would refuse the verb and the menu's: Message alone stays, it opens the mirror (D5). */}
+        {verb && !refused ? (
           <RowAction label={verb.label} onClick={() => void verb.run().catch((err: unknown) => actionFailed(verb.failed, meta.title || "Untitled", err))}>
             <verb.icon />
           </RowAction>
         ) : null}
-        <RowsMenu
+        {refused ? null : <RowsMenu
           label="Thread actions"
           tip={{ label: "More" }}
           trigger={
@@ -375,7 +379,7 @@ export function MasterRowView({
           onPick={(pick) => menu.onPick(meta.id, pick)}
           onOpenChange={(open) => menu.onOpenChange(meta.id, open)}
           align="start"
-        />
+        />}
       </span>
     </Item>
   );

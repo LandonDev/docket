@@ -21,6 +21,9 @@ export function loadToast(): Promise<ToastApi> {
 /** What a toast's raised button resets of sonner's own button (its fill, 4px
  *  radius, size and colour, which sonner writes on the element). */
 const TOAST_BUTTON = "!h-6 !rounded-md !bg-transparent !px-2 !text-xs !font-medium !transition-[opacity] !duration-(--dur-fast)";
+/** A toast's action and cancel, also for a toast that draws its own pair (a held approval, chrome/ApprovalToasts.tsx). */
+export const TOAST_ACTION = cn(buttonVariants({ variant: "default", size: "xs" }), TOAST_BUTTON, "!text-primary-foreground");
+export const TOAST_CANCEL = cn(buttonVariants({ variant: "secondary", size: "xs" }), TOAST_BUTTON, "!text-secondary-foreground");
 
 const Sonner = lazy(() => import("sonner").then((m) => ({ default: m.Toaster })));
 
@@ -171,8 +174,8 @@ export function Toaster(props: ToasterProps) {
               "!left-auto !right-2 !top-3.5 !size-6 !transform-none !rounded-md !border-0 !bg-transparent !shadow-none !text-muted-foreground hover:!bg-foreground/7 hover:!text-foreground !transition-none",
             // Our raised buttons: sonner's own button paints a background, a 4px radius
             // and its own sizes, so those are reset for the raise's fill layer to show.
-            actionButton: cn(buttonVariants({ variant: "default", size: "xs" }), TOAST_BUTTON, "!text-primary-foreground"),
-            cancelButton: cn(buttonVariants({ variant: "secondary", size: "xs" }), TOAST_BUTTON, "!text-secondary-foreground"),
+            actionButton: TOAST_ACTION,
+            cancelButton: TOAST_CANCEL,
           },
         }}
         style={

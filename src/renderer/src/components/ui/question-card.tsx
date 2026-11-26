@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 import { cn } from "@renderer/lib/cn";
 import { Check } from "@renderer/chrome/icons";
 import { Button } from "./button";
+import { HeldTip } from "../heldTip";
 import { Kbd, KbdGroup } from "./kbd";
 
 /** The submit chord as caps: ⌘ ⏎ on a Mac, Ctrl Enter elsewhere. */
@@ -113,6 +114,7 @@ export function QuestionCard({
   onSubmitAnswers,
   onSkip,
   showProgress = questions.length > 1,
+  held = null,
   className,
 }: {
   icon?: ReactNode;
@@ -122,6 +124,8 @@ export function QuestionCard({
   onSkip?: () => void;
   /** "2 of 3" at the title row's end; off for a single question. */
   showProgress?: boolean;
+  /** Why the answer cannot go now (the host away): Skip and Continue are held, this their tooltip. */
+  held?: string | null;
   className?: string;
 }) {
   const id = useId();
@@ -172,6 +176,7 @@ export function QuestionCard({
       go(1);
       return;
     }
+    if (held) return;
     onSubmitAnswers?.(
       questions.map((entry, index) =>
         (picked[index] ?? []).map((choice) => (entry.options[choice]?.freeform ? (typed[index] ?? "") : (entry.options[choice]?.label ?? ""))),
@@ -334,11 +339,15 @@ export function QuestionCard({
           </AnimatePresence>
         </MotionConfig>
         {onSkip ? (
-          <Button variant="secondary" size="sm" onClick={onSkip}>
-            Skip
-          </Button>
+          <HeldTip held={held}>
+            <Button variant="secondary" size="sm" disabled={!!held} onClick={onSkip}>
+              Skip
+            </Button>
+          </HeldTip>
         ) : null}
-        <Button size="sm" disabled={!answered} onClick={submit} className="gap-0">
+        {/* Next only moves the card: only the last press, which sends, waits for the host. */}
+        <HeldTip held={last ? held : null}>
+        <Button size="sm" disabled={!answered || (last && !!held)} onClick={submit} className="gap-0">
           <MotionConfig reducedMotion={motionRule}>
             <AnimatePresence initial={false}>
               <MorphLabel key={last ? "continue" : "next"}>{last ? "Continue" : "Next"}</MorphLabel>
@@ -352,6 +361,7 @@ export function QuestionCard({
             ))}
           </KbdGroup>
         </Button>
+        </HeldTip>
       </div>
     </div>
   );

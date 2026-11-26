@@ -158,10 +158,11 @@ describe("AddMenu", () => {
     expect(onAttach).toHaveBeenCalledOnce();
   });
 
-  it("Attach files is disabled where the harness takes no attachments", async () => {
+  // composer-26: never a dead row; the harness that takes no files has none.
+  it("has no Attach files row where the harness takes no attachments", async () => {
     add({ attachable: false });
     const menu = await openAdd();
-    expect(within(menu).getByRole("menuitem", { name: "Attach files" }).getAttribute("aria-disabled")).toBe("true");
+    expect(within(menu).queryByRole("menuitem", { name: "Attach files" })).toBeNull();
   });
 });
 

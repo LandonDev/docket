@@ -11,6 +11,10 @@ export type AccessPickerProps = {
   onClose?: () => void;
   /** The composer's row under the box: 24px, 12px muted (`ROW_CONTROL`). */
   quiet?: boolean;
+  /** The modes this window's key may give (D5): all three unless the host would refuse one. */
+  modes?: readonly RuntimeMode[];
+  /** The thread's host away (D5): the select is held; its owner wraps it in `HeldTip`. */
+  disabled?: boolean;
 };
 
 export const ACCESS_ICONS: Record<RuntimeMode, typeof Lock> = {
@@ -59,6 +63,7 @@ export function AccessPicker(props: AccessPickerProps) {
             size="sm"
             aria-label={`Permission mode: ${RUNTIME_MODE_LABEL[value]}`}
             className={accessTriggerClass(props.quiet ?? false)}
+            disabled={props.disabled}
             onOpen={open}
           />
         }

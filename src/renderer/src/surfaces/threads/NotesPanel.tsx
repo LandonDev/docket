@@ -1,5 +1,8 @@
 import { COPIED_MS } from "../../lib/clipboard";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useLinkMay } from "../../lib/linkMayCore";
+import { useHostHeld } from "../../lib/connection/degraded";
+import { HeldTip } from "../../components/heldTip";
 import { emptyNotes, notesAsBrief, notesEmpty } from "@shared/notes";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
@@ -40,6 +43,9 @@ export function notesSaveWhy(error: unknown): string | null {
  */
 export function NotesBody({ session }: { session: Session }) {
   const doc = useThreadNotes(session.environmentId, session.id);
+  const mayEdit = useLinkMay(session.environmentId, "session.notes.set");
+  // Round 2: an edit begun while the host is away could only end in a failed save; Edit waits, the link's words its tooltip.
+  const held = useHostHeld(session.environmentId);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState<SaveState>("idle");
@@ -148,7 +154,8 @@ export function NotesBody({ session }: { session: Session }) {
       remoteChanged={remoteChanged}
       title={session.title}
       cwd={session.cwd}
-      onEdit={beginEdit}
+      onEdit={mayEdit ? beginEdit : undefined}
+      held={held}
       onDone={finishEdit}
       onChange={onChange}
       onLoadTheirs={reload}
@@ -180,6 +187,7 @@ export function NotesView({
   title,
   cwd,
   onEdit,
+  held = null,
   onDone,
   onChange,
   onLoadTheirs,
@@ -198,7 +206,10 @@ export function NotesView({
   remoteChanged: boolean;
   title: string;
   cwd?: string;
-  onEdit: () => void;
+  /** Absent for a key that may not write the notes (D5): read only, no Edit. */
+  onEdit?: () => void;
+  /** The host away (D5): Edit and Start the notes are held, this their tooltip. */
+  held?: string | null;
   onDone: () => void;
   onChange: (text: string) => void;
   onLoadTheirs: () => void;
@@ -212,11 +223,15 @@ export function NotesView({
         <EmptyHeader>
           <EmptyTitle>No notes yet</EmptyTitle>
         </EmptyHeader>
-        <EmptyContent>
-          <Button variant="secondary" size="sm" onClick={onEdit}>
-            Start the notes
-          </Button>
-        </EmptyContent>
+        {onEdit ? (
+          <EmptyContent>
+            <HeldTip held={held}>
+              <Button variant="secondary" size="sm" disabled={!!held} onClick={onEdit}>
+                Start the notes
+              </Button>
+            </HeldTip>
+          </EmptyContent>
+        ) : null}
       </Empty>
     );
   }
@@ -247,11 +262,13 @@ export function NotesView({
                 <Button variant="ghost" size="sm" onClick={onDone}>
                   Done
                 </Button>
-              ) : (
-                <IconAction label="Edit notes" onClick={onEdit}>
-                  <Pencil className="size-3.5" />
-                </IconAction>
-              )}
+              ) : onEdit ? (
+                <HeldTip held={held}>
+                  <IconAction label="Edit notes" disabled={!!held} onClick={onEdit}>
+                    <Pencil className="size-3.5" />
+                  </IconAction>
+                </HeldTip>
+              ) : null}
             </div>
           )}
         </div>

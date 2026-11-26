@@ -127,7 +127,7 @@ check failing quietly until the next one that has it.
 ## Install
 
 **The first screen.** A fresh install (no saved hosts, no workspaces, no accounts) opens on one
-screen, "Paste the link from your Mac" (surfaces/setup/SetupFirstRun.tsx, its own lazy chunk), with
+screen, "Paste the setup link" (surfaces/setup/SetupFirstRun.tsx, its own lazy chunk), with
 Continue and Skip; Settings → Add a computer… → **Use a setup link on this PC** opens the same later. The steps that follow,
 LifeOS's install among them, are docs/agents/pc-setup.md "The setup link". Docket's own `setup.exe`
 stays the one installer: LifeOS is a step of that screen, never a part of the NSIS bundle, and it never

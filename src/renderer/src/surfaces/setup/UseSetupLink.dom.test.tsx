@@ -43,7 +43,7 @@ describe("UseSetupLinkDialog", () => {
     try {
       render(<UseSetupLinkDialog first onClose={() => {}} />);
       expect(screen.getByRole("button", { name: "Skip" })).toBeTruthy();
-      fireEvent.change(screen.getByLabelText("Paste the link from your Mac"), { target: { value: ` ${LINK} ` } });
+      fireEvent.change(screen.getByLabelText("Paste the setup link"), { target: { value: ` ${LINK} ` } });
       fireEvent.click(screen.getByRole("button", { name: "Continue" }));
 
       // Nothing moves before the press: only the peek went.
@@ -107,7 +107,7 @@ describe("UseSetupLinkDialog", () => {
     try {
       render(<UseSetupLinkDialog onClose={() => {}} />);
       expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
-      fireEvent.change(screen.getByLabelText("Paste the link from your Mac"), { target: { value: LINK } });
+      fireEvent.change(screen.getByLabelText("Paste the setup link"), { target: { value: LINK } });
       fireEvent.click(screen.getByRole("button", { name: "Continue" }));
       expect(await screen.findByText("This link was used at 3:04 PM")).toBeTruthy();
     } finally {

@@ -2,6 +2,6 @@
  *  select in the app on Base UI's select, and the checkbox the composer's
  *  draft row draws (chrome/MasterCheck.tsx), none of it in the first paint. */
 export { ChoiceSelect } from "./choice-select-body";
-export { ChoiceCombobox } from "./choice-combobox-body";
+export { ChoiceCombobox, TextCombobox } from "./choice-combobox-body";
 export { AccessPickerSelect, SettingSelect, ThreadTypeSelect } from "../chrome/composerSelects";
 export { Checkbox } from "./ui/checkbox";

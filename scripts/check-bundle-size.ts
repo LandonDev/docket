@@ -64,6 +64,8 @@ export const NEVER_IN_ENTRY = [
   'src/shared/computer/protocol.ts',
   'src/shared/computer/descriptions.ts',
   'src/shared/computer/confirmSchema.ts',
+  // The full capability table imports every Work contract (333 kB); first paint asks lib/linkMayCore.ts (D5).
+  'src/shared/capabilities.ts',
   // surfaces
   'src/renderer/src/surfaces/SettingsView.tsx',
   'src/renderer/src/surfaces/AliaxPagesView.tsx',

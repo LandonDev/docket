@@ -337,6 +337,10 @@ tab row or the sidebar's place rows: there the glyph is `muted-foreground`.
 | `kind-text` | text | oklch(0.76 0.015 270) | oklch(0.5 0.012 270) |
 | `kind-folder` | folder | oklch(0.78 0.035 250) | oklch(0.48 0.035 250) |
 
+A sheet's glyph is the XLS page (`Xls01Icon`, `Table` in work/icons.tsx),
+the pair of the document's DOC page, everywhere Work shows a sheet; Insert's
+table keeps the table glyph (`TableInsert`).
+
 Archive and other have no tint: they stay `muted-foreground`. Text and
 folder are near neutral (chroma under 0.04): plain text needs no hue, and a
 folder holds files of every kind, so it must not look like one of them.
@@ -1044,7 +1048,7 @@ Every form or decision dialog has one shape: `Modal` (or `ModalPanel` when a par
 `Dialog` and `AlertDialog`, and every form dialog has their one shape:
 `Modal`, `ModalBody` and `DialogFooter`, 448px or wider, a hairline over
 the footer, Cancel then the verb, an action of the dialog's own at the
-footer's start; a field's label is `Field` over it, a choice a `FieldRow`. A confirm has the same shape (448px, the 20px inset, the hairline over Cancel and the verb, its red line in the body) with no close and no room kept for one. A single choice of a few is `ChoiceToggle`, a 32px track like the select beside it; where each choice needs a line of words it is a `RadioGroup` of `RadioChoice` rows, and a list too long to scan is a `ChoiceCombobox`, a select with a field that filters. A dialog's subtitle is one line and says the whole of itself on hover while it is cut. A sheet is for a long form or picker
+footer's start; a field's label is `Field` over it, a choice a `FieldRow`. A confirm has the same shape (448px, the 20px inset, the hairline over Cancel and the verb, its red line in the body) with no close and no room kept for one. A single choice of a few is `ChoiceToggle`, a 32px track like the select beside it; where each choice needs a line of words it is a `RadioGroup` of `RadioChoice` rows, and a list too long to scan is a `ChoiceCombobox`, a select with a field that filters. A text field whose answer is often one of a few known ones (who was paid) is a `TextCombobox`: the field itself, which keeps whatever he types, with the rows that hold his words under it in the combobox's popup; it forces no pick, Escape shuts the rows and keeps the words, and Enter with no row highlighted submits the form. A dialog's subtitle is one line and says the whole of itself on hover while it is cut. A sheet is for a long form or picker
 that would not fit a dialog. A menu (`DropdownMenu`, `ContextMenu`) is
 verbs; a popover is content (a picker, a preview, a list of accounts). A
 menu's rows are `MenuRow` data rendered by `RowsMenu` (from a trigger) or
@@ -1363,7 +1367,9 @@ thread; nothing answers inside the canvas.
   computer: "The box is not connected. Try again once it is back.") when
   there is one, and Retry (`OpenFailed`, work/canvas/FetchState.tsx); never a red line
   over a blank pane. The document, the sheet, the PDF, the deck, the
-  media viewer and the meeting all draw it; a Keynote file he must export
+  media viewer and the meeting all draw it, as do History and its Compare
+  ("Couldn't open this history") and a document the editor could not open
+  ("Couldn't open this document"); a Keynote file he must export
   first has no Retry. The state line stays for a failure that leaves
   content shown (a picture the deck could not draw, a version beside the
   one shown, a task not filed).
@@ -1422,7 +1428,10 @@ thread; nothing answers inside the canvas.
   may not change; "Moved." and "The copy from Nov 16, 9:12 AM" on a PDF
   whose file moved), is the quiet line: 12px muted, the word
   medium, its one press a link, a hairline under (`QuietLine`, tone
-  `quiet`). A document gone offline asks nothing of him either: its quiet
+  `quiet`). A sheet he can only read, or whose file moved, ends that line
+  with History (`StatusLine.history`) and its bar offers none, so the sheet
+  has one row above the grid, as a read-only deck's line ends with Present.
+  A document gone offline asks nothing of him either: its quiet
   line ("Offline." and "Edits stay here until the box is back.", naming
   the computer) is laid over the text's 32px top padding, never above it,
   so the text does not move when the link blinks; it shows after 1.5 s. In
@@ -1983,12 +1992,16 @@ Around the canvas:
   cause with its one press. The sidebar folds with the toggle that starts
   the tab row, and by itself under 640px of view, where the toggle lays it
   over the list from under the tab row down, so the same toggle hides it.
+  Laid over, it floats (`shadow-overlay`) and closes as a layer does, on
+  Escape (which gives the toggle the focus) and on a press elsewhere in
+  the view.
   The **tab row** is the canvas tab row's own: 36px on `sidebar`, 28px
   chips at radius 6, 2px apart, a 14px kind glyph in `muted-foreground`
   (never tinted: no tab row's is), the name, the selected tab
-  `sidebar-group-selected`; a
-  close control on the tab under the pointer and on the selected one; then
-  a quiet +. A tab is a folder he is browsing or a file open as itself. A
+  `sidebar-group-selected`; the selected tab keeps its close's room and
+  draws its close there, and a tab not selected spends that room on its
+  name and, on hover, draws its close over the name's end on the hovered
+  tab's own fill, so nothing moves under the pointer; then a quiet +. A tab is a folder he is browsing or a file open as itself. A
   folder opens in the tab he is in; a file opens in a tab of its own beside
   the tab it came from, never twice, and closing it returns there. No dirty
   dot: the save line says where each file stands (a Teams Word file's says
@@ -2068,7 +2081,9 @@ Around the canvas:
   rows at radius 6 (28px compact), only the rows on screen mounted past
   80: the kind's 16px glyph in its tint ("File kind tints"), the 13px name
   (semibold while a thread made it and he has not opened it), then one
-  state at most, 4px after the name on its baseline (a 12px cloud mark, an
+  state at most, 4px after the name on its baseline (where it does not fit
+  beside the name it goes whole to a hidden second line, never a stub, and
+  the name keeps the line: a 12px cloud mark, an
   amber count of suggestions, "Dana is in it", a spinner while a thread
   writes; a glyph keeps the centre line; while his own act changes a row,
   the list's spinner and its verb until the host answers, each row its
@@ -2082,8 +2097,10 @@ Around the canvas:
   head keeps the room the list's scroll bar takes, so Changed ends on its
   dates' edge; a
   name the list cuts has its whole text in a tooltip. Who goes first as
-  the list narrows (under 560px of the list itself, a details pane beside
-  it not counted), then when (under 360px). Folders come first. Grouped, each group's first row carries a
+  the list narrows (under 640px of the list itself, a details pane beside
+  it not counted), so a 1,024px window keeps names whole; Where, the second
+  fact in a search, a lens or Trash, stays to 560px; then when goes (under
+  360px). Folders come first. Grouped, each group's first row carries a
   28px heading over it (12px medium muted) on the rows' title edge, 8px clear of the group above.
   With Show Details on, a 288px pane at the list's right (past 640px of
   the folder's body) shows the one selected file's picture in a 160px box on `stage`,
@@ -2210,7 +2227,9 @@ Around the canvas:
   **Home** is the page a new tab opens on: three short lists (Waiting on
   you, Starred, Recent) in a 768px column, 36px rows that open on one
   press; a file shows once, in the first list it belongs to, and a list
-  with nothing in it is left out. A row being opened shows the list's
+  with nothing in it is left out. Where a row's file lives is one 160px
+  column, so every row's place starts at one x; it folds under 640px of
+  Home, as a folder's Who does, before a state would go. A row being opened shows the list's
   spinner and word; a row that says a state gives its date up first in a
   narrow page (under 400px), and under 360px every row's date goes and a
   state's words go with it, whole, as in a folder's list.
@@ -2279,10 +2298,13 @@ Around the canvas:
   press is the first row of ⋯, so the name and its line keep room beside the first; a line cut even so has its whole
   words in a tooltip, and is a Tab stop unless its folder is a press. A bar with no ⋯, a side file's or the Beside
   seat's, always draws both presses: Reload alone would drop his edits. Under 520px of the Beside seat a line with
-  presses has the first row to itself, whole, and the presses and Open in a Tab take a second row at the end). The name is a press that renames it in place. ⋯ holds
+  presses has the first row to itself, whole, and the presses and Open in a Tab take a second row at the end). Where the
+  line has presses the name and its line keep 16rem: past that the presses, ⋯ and Ask take a second row at the end, so
+  neither is cut to a stub. The name is a press that renames it in place. ⋯ holds
   its row's verbs (one greyed says why in its tooltip: on a computer this window reaches only through another host,
   "Purdue PC is reached through the box. Change its files on Purdue PC itself."), then Download, Save As… (a
-  document), Save as Template… (a file the template shelf keeps) and a Word file's own choice (Save to Word
+  document), Save as Template… (a file the template shelf keeps; its dialog is titled "Save as Template", as New's
+  From a Template… opens "New from a Template") and a Word file's own choice (Save to Word
   Automatically, or Ask Before Saving to Word), then Full Window and Close Tab, always last; Star reads Remove Star
   while the file is starred. Full Window fills
   the app's window with the file, its way back in the header and on
@@ -2352,8 +2374,7 @@ Around the canvas:
   starts. The thread from before, found behind a fresh draft, takes the
   draft's place only while it is empty, in place, never a fade. A host out
   of reach is said once, in the connection line over the box; the field
-  keeps its own placeholder and send waits (a code thread's field says it
-  too). Where the tab's body
+  keeps its own placeholder and send waits, in a code thread as in Work. Where the tab's body
   cannot keep the file at 440px beside it, the dock lies over the whole
   body instead, its head and Close where they were. Before it would lie
   over the file, Files folds its own sidebar: while the dock is open the
@@ -3752,14 +3773,18 @@ the host's own words.
 quiet line sits above the stage: 12px muted words, a 12px inset, 4px above
 and below, a hairline under it, then at most one press 8px after the
 words, a link button in the same 12px with its busy label (the spinner in
-its own reserved place, the press off while it runs), and Present at the
-line's far end (owner item 32), so the deck has one row above it, not a
-bar holding only Present over the line. An import and a Google deck read
+its own reserved place, the press off while it runs), and at the line's
+far end the stage's zoom (on the slide, where the pane has 560px) and
+Present (owner item 32). Its kind's bar draws nothing, so the deck has one
+row above it, not a bar holding only Present over the line. An import and a Google deck read
 "Read only", then "Make a copy to edit". A Google deck changed in Drive
 since it was read reads "Changed in Google", then "Read again"; one Drive
-could not be reached for reads "Couldn't reach Google", "This is the copy
-from 1:40 PM" in regular muted (the time the host read it from Drive,
-owner item 33; a date before today), then "Read again". A mail's file in a Files tab
+could not be reached for reads "Copy from 1:40 PM" (the time the host read
+it from Drive, owner item 33; a date before today), then "Couldn't reach
+Google" in regular muted, then "Read again": the time leads, so it stays
+whole beside a thread, and the reason gives way, with its whole words in
+a tip. With no time known it reads "Couldn't reach Google", then "Read
+again" (`noticeOf`, work/slides/slideFileActions.tsx). A mail's file in a Files tab
 keeps the press alone: its header already says Read only. A failed press
 is one toast. More keeps Make a copy to edit, and for Google Read again
 from Google and Open in Google; Save to Google Slides is there for a deck
@@ -4684,7 +4709,9 @@ Inbox, Notes and the folder picker.
 Work's glyphs live in a second catalog, `src/renderer/src/work/icons.tsx`,
 made with the chrome's own wrapper, so the stroke is the same 1.5px; it
 rides Work's lazy chunks. chrome/icons.test.ts allows the deep Hugeicons
-imports in those two files alone.
+imports in those two files alone. A glyph both need (Bold, Italic, Underline
+and Link, for a format row outside Work) is the same catalog glyph in each,
+held equal by that test.
 
 Provider marks may share an asset (Muse Code uses Meta's). `chrome/icons.test.ts`
 checks that every `HARNESS_ICONS` entry names an asset in `assets/providers`,
@@ -4718,6 +4745,31 @@ or menu, no match is one muted row, never `Empty`. A lazy surface falls back
 to a `SurfaceSkeleton` kind, and a small section's wait is `LoadingLine`
 (both in surfaces/SurfaceSkeleton.tsx, beside `EmptyState`). Text that is
 being produced shimmers (`WorkingText`); nothing else does.
+
+No control is offered that its host can only refuse. While a host's link is
+not open (past the 1.5 s grace, counted from the drop, not from a control's
+mount) the presses that go to it are held: disabled in place, their tooltip
+the link's words (`useHostHeld`, `HeldTip`; a menu row's `reason`), and no
+new line where the line over the composer already says why (the Changes
+section adds no words). A key that may not use a press does not get it: the
+control is not drawn (`useLinkMay`, `THREAD_MENU_METHODS`), or, where the
+place would be empty and he must know why, it says who can ("Send from a
+computer that manages the box", "Answer from a computer that manages the
+box"); the composer's refusal rides Send's tooltip as well, so it stands once typed words hide the field's. A press
+that acts in this window alone (a draft's permission mode, Cut, Start pass, which only arms the composer) is never
+held. The window's own rows (Open, Pin, Reveal, Copy path, the order) stay.
+`lib/docketAsksGuard.test.ts` lists every such control with its renders for a
+read key and for a link that is down. A link's state is worded once,
+`linkWords` (lib/connection/degraded.ts): "Reconnecting to the box in 5 s"
+(the seconds only on the line over the composer, which alone ticks),
+"Connecting to the box…", "The box is offline", "This computer is offline",
+"The box is not the host this computer paired with" (with Pair again), "The
+box no longer accepts this key"; never the transport's own text. The line sits
+on the box row's 6px inset, its glyph on `+`'s 28px axis and its words on the
+field's, wraps rather than cuts, and its Retry spins from the press until the
+link moves on. A failed read keeps the last good rows and says so in one red
+line with Retry ("Couldn't read the changes", "The box did not answer"),
+never the loading bones or an empty state standing in for it.
 
 A LifeOS session that is down is said once on a screen, in the session's
 words with the computer named (`sessionWords`), and never again by a line

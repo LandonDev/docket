@@ -245,6 +245,22 @@ describe("the pane while a transcript loads", () => {
     expect(retryLoad).toHaveBeenCalledWith("s1");
   });
 
+  // A press is answered at once: the line's Retry spins until the store starts a new read (the Ask dock shares it).
+  it("spins Retry from its press until the next read starts", () => {
+    const failed = session({ phase: "failed", since: NOW - 5_000, attempt: 3, retryAt: NOW + 4_000 });
+    const { rerender } = pane(failed);
+    fireEvent.click(screen.getByRole("button", { name: "Retry now" }));
+    const pressed = screen.getByRole("button", { name: "Retry now" }) as HTMLButtonElement;
+    expect(pressed.disabled).toBe(true);
+    expect(pressed.querySelector('[data-busy="true"]')).not.toBeNull();
+    rerender(
+      <SessionActionsContext.Provider value={actions}>
+        <SessionPane {...paneProps(session({ phase: "slow", since: NOW, attempt: 4 }))} />
+      </SessionActionsContext.Provider>,
+    );
+    expect(screen.getByRole("button", { name: "Retry" }).querySelector('[data-busy="true"]')).toBeNull();
+  });
+
   it("a host that is down says so once, above the composer, not here too", () => {
     block.degraded = { kind: "reconnecting" };
     pane(session({ phase: "failed", since: NOW, attempt: 1, error: "connection closed", retryAt: NOW + 1_000 }));

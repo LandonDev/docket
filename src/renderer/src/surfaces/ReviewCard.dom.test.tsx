@@ -13,6 +13,8 @@ import type { Block } from "../lib/session";
 import { TranscriptSessionContext } from "./transcriptSession";
 import { ReviewCard, detailOf, mergeErrorWords } from "./ReviewCard";
 import { CARD_SHAPE } from "./QuestionCard";
+import { registry } from "../lib/connection";
+import { sessionStore } from "../lib/tcserver/store";
 
 const finding = (file: string, line: number, summary: string, scenario = ""): ReviewFinding => ({
   file,
@@ -146,5 +148,28 @@ describe("ReviewCard", () => {
     expect(chevron.getAttribute("class")).not.toContain("text-muted-foreground");
     fireEvent.click(trigger);
     expect(trigger.querySelector("svg")!.getAttribute("class")).toContain("rotate-90");
+  });
+});
+
+describe("Merge anyway and the thread's host (D5)", () => {
+  const held = () => review({ outcome: "held", merged: false, blocking: [finding("x.ts", 1, "Bad")] });
+  const box = (status: object) => {
+    vi.spyOn(sessionStore, "environmentOf").mockReturnValue("env_box");
+    vi.spyOn(registry, "environmentsSnapshot").mockReturnValue([{ id: "env_box", name: "The box", routes: [], credentialRef: null }]);
+    vi.spyOn(registry, "statusOf").mockReturnValue(status as never);
+    vi.spyOn(registry, "statuses").mockReturnValue(new Map([["env_box", status as never]]));
+  };
+  afterEach(() => vi.restoreAllMocks());
+
+  it("is held while the host is away", () => {
+    box({ transport: "offline", lastHello: null, lastError: null, nextRetryAt: null });
+    mount(held());
+    expect((screen.getByRole("button", { name: "Merge anyway" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("is not offered to a key that may not approve", () => {
+    box({ transport: "open", lastHello: { environmentId: "env_box", contract: 3, caps: ["read", "operate"], key: { id: "k", name: "Laptop" } } });
+    mount(held());
+    expect(screen.queryByRole("button", { name: "Merge anyway" })).toBeNull();
   });
 });

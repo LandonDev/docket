@@ -241,3 +241,18 @@ describe("QuestionCard", () => {
     expect(onAnswer).toHaveBeenCalledWith("q1", [["Count them"]]);
   });
 });
+
+// transcript-09 (D5): a key that may not answer gets Skip and Continue held, who can as their reason.
+describe("a waiting question for a key that may not answer", () => {
+  afterEach(() => vi.restoreAllMocks());
+  it("holds Skip and Continue", async () => {
+    const { registry } = await import("../lib/connection");
+    const { sessionStore } = await import("../lib/tcserver/store");
+    vi.spyOn(sessionStore, "environmentOf").mockReturnValue("env_box");
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open", lastHello: { environmentId: "env_box", contract: 3, caps: ["read"], key: { id: "k", name: "Laptop" } } } as never);
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box", routes: [], credentialRef: null });
+    render(<QuestionCard question={meta([spec("Which?", ["A", "B"])])} />);
+    expect((screen.getByRole("button", { name: "Skip" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: /^Continue/ }).closest("[data-held]")).not.toBeNull();
+  });
+});

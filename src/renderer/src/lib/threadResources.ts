@@ -27,14 +27,24 @@ export const threadResourcesStore = store
 const linkOf = (sessionId: string) => sessionStore.linkFor(sessionId)
 
 export async function loadThreadResources(sessionId: string): Promise<ThreadResource[]> {
+  return readThreadResources(sessionId).catch(() => store.getState().bySession[sessionId] ?? [])
+}
+
+/**
+ * The read the Resources… form waits on: the host's rows, or a failure when its link is down or it did not answer,
+ * so the form never stands an empty list in for a host it could not ask (edges-26). An older host without the
+ * method answers as an empty ledger.
+ */
+export async function readThreadResources(sessionId: string): Promise<ThreadResource[]> {
   const link = linkOf(sessionId)
-  if (!link?.connected) return store.getState().bySession[sessionId] ?? []
+  if (!link?.connected) throw new Error('the thread\'s host is not connected')
   try {
     const { resources } = await link.request<{ resources: ThreadResource[] }>('resources.list', { sessionId, includeRemoved: true })
     store.setState((s) => ({ bySession: { ...s.bySession, [sessionId]: resources } }))
     return resources
-  } catch {
-    return store.getState().bySession[sessionId] ?? [] // an older host without the method
+  } catch (err) {
+    if (/unknown method/i.test(err instanceof Error ? err.message : String(err))) return store.getState().bySession[sessionId] ?? []
+    throw err
   }
 }
 

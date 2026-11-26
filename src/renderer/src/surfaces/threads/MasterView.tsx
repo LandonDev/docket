@@ -1,5 +1,7 @@
 import { measureElement, useVirtualizer, type Virtualizer, type VirtualizerOptions } from "@tanstack/react-virtual";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from "react";
+import { useLinkMay } from "../../lib/linkMayCore";
+import { useHostHeld } from "../../lib/connection/degraded";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsContextMenu, RowsMenu } from "../../chrome/menuRows";
 import { useThreadMenu } from "../../chrome/useThreadMenu";
@@ -290,6 +292,11 @@ function MasterBoardView(props: ThreadViewProps) {
   const hostNames = useMemo(() => new Map(environments.map((e) => [e.id, e.name])), [environments]);
   // One host object per host, so a row's props stay the same while its host does.
   const masterHost = session.environmentId;
+  // D5 (boards-03): the foot's Edit… and Stop go to the master's host; a key that may not has neither.
+  const maySetRules = useLinkMay(masterHost, "batch.setRules");
+  const mayStopStep = useLinkMay(masterHost, "batch.stopStep");
+  // Round 2: both go to the master's host; held while it is away.
+  const footHeld = useHostHeld(masterHost);
   const hostOf = useMemo(() => {
     const cache = new Map<string, RowHost | null>();
     return (environmentId: string): RowHost | null => {
@@ -595,7 +602,7 @@ function MasterBoardView(props: ThreadViewProps) {
             />
         </AgentSummaryContext.Provider>
       </BoardDigestContext.Provider>
-      <LiveBatchFoot holder={batch} loaded={loaded} titleOf={titleOf} hostName={hostName} onSave={saveRules} onStop={stopStep} toastAnchor={!chatOpen} />
+      <LiveBatchFoot holder={batch} loaded={loaded} titleOf={titleOf} hostName={hostName} onSave={maySetRules ? saveRules : undefined} onStop={mayStopStep ? stopStep : undefined} held={footHeld} toastAnchor={!chatOpen} />
     </div>
   );
 

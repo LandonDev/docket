@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { degradedText, registry, useEnvironmentDegraded, useEnvironments, type Degraded } from "../lib/connection";
+import { identityChanged, linkWords, registry, useEnvironmentDegraded, useEnvironmentName, type Degraded, type EnvironmentStatus } from "../lib/connection";
 import { Spinner } from "../components/ui/spinner";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { shell } from "../stores/shell";
 import { settingsChunk } from "../surfaces/chunks";
 
@@ -12,19 +12,15 @@ import { settingsChunk } from "../surfaces/chunks";
  * a drop that comes back inside the grace period (lib/connection/degraded).
  */
 
-/** The reason a thread cannot take a message right now, or null. */
+/**
+ * The reason a thread cannot take a message right now, or null. The text holds still (no countdown), so the
+ * composer that reads it does not re-render once a second while a host reconnects; the seconds tick inside
+ * `ConnectionLine` alone.
+ */
 export function useEnvironmentBlock(environmentId: string): { degraded: Degraded | null; name: string; text: string | null } {
   const degraded = useEnvironmentDegraded(environmentId);
-  const name = useEnvironments().find((e) => e.id === environmentId)?.name ?? environmentId;
-  const counting = degraded?.kind === "reconnecting" && degraded.status.nextRetryAt !== null;
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!counting) return;
-    setNow(Date.now());
-    const t = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(t);
-  }, [counting, degraded?.status.nextRetryAt]);
-  return { degraded, name, text: degraded ? degradedText(name, degraded, now) : null };
+  const name = useEnvironmentName(environmentId);
+  return { degraded, name, text: degraded ? linkWords(name, degraded) : null };
 }
 
 /** The line's one action: a ghost button in the line's own 12px muted type,
@@ -32,32 +28,50 @@ export function useEnvironmentBlock(environmentId: string): { degraded: Degraded
 const ACTION = "h-5 px-1.5 text-xs font-normal text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-[''] hover:text-foreground";
 
 export function ConnectionLine({ environmentId }: { environmentId: string }) {
-  const { degraded, text } = useEnvironmentBlock(environmentId);
-  if (!degraded || !text) return null;
-  return <ConnectionLineView kind={degraded.kind} text={text} onRetry={() => registry.retry(environmentId)} onPair={() => shell.openSettings("remote")} />;
+  const degraded = useEnvironmentDegraded(environmentId);
+  const name = useEnvironmentName(environmentId);
+  const counting = degraded?.kind === "reconnecting" && degraded.status.nextRetryAt !== null;
+  const [now, setNow] = useState(Date.now());
+  // A press of Retry spins until the link's state moves on.
+  const [pressed, setPressed] = useState<EnvironmentStatus | null>(null);
+  useEffect(() => {
+    if (!counting) return;
+    setNow(Date.now());
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [counting, degraded?.status.nextRetryAt]);
+  if (!degraded) return null;
+  const retry = () => {
+    setPressed(degraded.status);
+    registry.retry(environmentId);
+  };
+  return <ConnectionLineView kind={degraded.kind} pair={identityChanged(degraded.status)} text={linkWords(name, degraded, now)} retrying={pressed === degraded.status} onRetry={retry} onPair={() => shell.openSettings("remote")} />;
 }
 
-export function ConnectionLineView({ kind, text, onRetry, onPair }: { kind: Degraded["kind"]; text: string; onRetry: () => void; onPair: () => void }) {
+export function ConnectionLineView({ kind, text, pair = false, retrying = false, onRetry, onPair }: { kind: Degraded["kind"]; text: string; pair?: boolean; retrying?: boolean; onRetry: () => void; onPair: () => void }) {
   const unauthorized = kind === "unauthorized";
   return (
+    // On the box row's 6px inset with its glyph on `+`'s 28px axis and its words on the field's.
     <div
       role="status"
       data-connection-line={kind}
-      className="mb-2 flex h-6 items-center gap-2 px-3 text-xs text-muted-foreground"
+      className="mb-2 flex min-h-6 items-center gap-1 px-1.5 text-xs text-muted-foreground"
     >
-      {unauthorized || kind === "offline" ? (
-        <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${unauthorized ? "bg-danger" : "bg-foreground/25"}`} />
-      ) : (
-        <Spinner aria-hidden className="size-3 text-muted-foreground" />
-      )}
-      <span className="min-w-0 flex-1 truncate">{text}</span>
-      {unauthorized ? (
-        <Button variant="ghost" size="xs" {...settingsChunk.intent} onClick={onPair} className={ACTION}>
+      <span aria-hidden className="flex w-7 shrink-0 justify-center">
+        {unauthorized || kind === "offline" ? (
+          <span className={`size-1.5 rounded-full ${unauthorized ? "bg-danger" : "bg-foreground/25"}`} />
+        ) : (
+          <Spinner aria-hidden className="size-3 text-muted-foreground" />
+        )}
+      </span>
+      <span className="min-w-0 flex-1 px-1 text-pretty">{text}</span>
+      {unauthorized || pair ? (
+        <Button variant="ghost" size="xs" {...settingsChunk.intent} onClick={onPair} className={`shrink-0 ${ACTION}`}>
           Pair again
         </Button>
       ) : kind !== "connecting" ? (
-        <Button variant="ghost" size="xs" onClick={onRetry} className={ACTION}>
-          Retry now
+        <Button variant="ghost" size="xs" onClick={onRetry} disabled={retrying} className={`shrink-0 ${ACTION}`}>
+          <BusyLabel busy={retrying} label="Retry" align="end" />
         </Button>
       ) : null}
     </div>

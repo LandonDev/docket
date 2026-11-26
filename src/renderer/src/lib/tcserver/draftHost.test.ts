@@ -106,7 +106,8 @@ describe("the window's session.create paths", () => {
       return /\.tsx?$/.test(name) && !/\.(test|preview|fixtures)\./.test(name) ? [path] : [];
     });
   it("are the ones listed, each choosing its host as noted", () => {
-    const found = files(root).filter((path) => /["']session\.create["']\s*,/.test(readFileSync(path, "utf8")));
+    // A call that sends it, never a table naming it (lib/threadMenu.ts's THREAD_MENU_METHODS).
+    const found = files(root).filter((path) => /\(\s*["']session\.create["']\s*,/.test(readFileSync(path, "utf8")));
     expect(found.map((path) => relative(root, path)).sort()).toEqual(Object.keys(CREATE_PATHS).sort());
     for (const [file, marker] of Object.entries(CREATE_PATHS)) expect(readFileSync(join(root, file), "utf8")).toContain(marker);
   });

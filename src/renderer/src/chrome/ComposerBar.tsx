@@ -15,6 +15,7 @@ import { SwapIcon } from "../motion/IconSwap";
 import { sessionStore } from "../lib/tcserver/store";
 import type { HarnessId, RuntimeMode } from "../lib/session";
 import { AccessPicker } from "./AccessPicker";
+import { HeldTip } from "../components/heldTip";
 import { ArrowUp, AtSign, CornerDownRight, ListPlus, Paperclip, Pause, Plus, Slash } from "./icons";
 
 /**
@@ -38,6 +39,8 @@ export function ComposerBar({
   onRuntimeModeChange,
   onClose,
   context,
+  accessModes,
+  accessHeld = null,
 }: {
   harness: HarnessId;
   /** The model button and its menu. */
@@ -47,13 +50,21 @@ export function ComposerBar({
   onClose: () => void;
   /** The context meter, before the permission mode. */
   context?: ReactNode;
+  /** The modes this window's key may give; null when it may set none (the select is not drawn). */
+  accessModes?: readonly RuntimeMode[] | null;
+  /** A thread's host away (D5): a pick would go to it, so the select is held, this its tooltip. */
+  accessHeld?: string | null;
 }) {
   return (
     <div data-composer-bar className="@container/composer-bar mt-1 flex h-6 min-w-0 items-center gap-1 px-1.5">
       {model}
       <div className="ms-auto flex shrink-0 items-center gap-1">
         {context}
-        {harness !== "fx" ? <AccessPicker quiet value={runtimeMode} onChange={onRuntimeModeChange} onClose={onClose} /> : null}
+        {harness !== "fx" && accessModes !== null ? (
+          <HeldTip held={accessHeld}>
+            <AccessPicker quiet value={runtimeMode} onChange={onRuntimeModeChange} onClose={onClose} modes={accessModes} disabled={!!accessHeld} />
+          </HeldTip>
+        ) : null}
       </div>
     </div>
   );
@@ -90,10 +101,13 @@ export function AddMenu({
         <TooltipContent>Add</TooltipContent>
       </Tooltip>
       <DropdownMenuContent side="top" align="start" finalFocus={() => fieldOf()} data-add-menu className="w-56" aria-label="Add">
-        <DropdownMenuItem disabled={!attachable} onClick={onAttach}>
-          <Paperclip />
-          Attach files
-        </DropdownMenuItem>
+        {/* A harness that takes no files has no row for them: never a dead one. */}
+        {attachable ? (
+          <DropdownMenuItem onClick={onAttach}>
+            <Paperclip />
+            Attach files
+          </DropdownMenuItem>
+        ) : null}
         <DropdownMenuItem onClick={() => onInsert("@")}>
           <AtSign />
           {work ? "Mention a task, mail, file or thread" : "Mention a file or thread"}

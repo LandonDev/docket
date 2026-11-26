@@ -195,6 +195,25 @@ describe("ApprovalToasts", () => {
     expect(onFocusSession).toHaveBeenCalledWith("s1");
   });
 
+  // edges-04: while the thread's host is away both presses are held, the host's state their tooltip; the toast stays.
+  it("holds Allow and Deny while the host is away and gives them back when it returns", async () => {
+    const onApproval = vi.fn();
+    const { rerender } = render(<ApprovalToasts notices={[{ ...notice, held: "The box is offline" }]} onFocusSession={vi.fn()} onApproval={onApproval} />);
+    await flushToast();
+    const held = vi.mocked(toast.warning).mock.calls[0][1] as unknown as { action: React.ReactElement; cancel?: unknown };
+    // Named, so sonner's merge into a live toast drops its Deny.
+    expect("cancel" in held && held.cancel === undefined).toBe(true);
+    const view = render(<>{held.action}</>);
+    const buttons = view.getAllByRole("button") as HTMLButtonElement[];
+    expect(buttons.map((b) => [b.textContent, b.disabled])).toEqual([["Deny", true], ["Allow", true]]);
+    expect(view.container.querySelector("[data-held]")).not.toBeNull();
+    rerender(<ApprovalToasts notices={[notice]} onFocusSession={vi.fn()} onApproval={onApproval} />);
+    await flushToast();
+    const live = vi.mocked(toast.warning).mock.calls.at(-1)![1] as unknown as Options;
+    live.action.onClick();
+    expect(onApproval).toHaveBeenLastCalledWith("s1", 7, "allow");
+  });
+
   it("dismisses the toast once the approval is answered", async () => {
     const props = { onFocusSession: vi.fn(), onApproval: vi.fn() };
     const { rerender } = render(<ApprovalToasts notices={[notice]} {...props} />);

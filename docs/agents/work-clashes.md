@@ -203,7 +203,12 @@ The pillar has no view of its own and no row in the column.
 - `open.ts`: `openClash({id, environmentId?, clash?})`, a small file any
   screen may import. `ClashHost.tsx`, mounted by the Work shell beside
   `PlaysHost` (`work/shell/WorkRailHost.tsx`), loads the dialog's chunk
-  `work-clash` on the first ask.
+  `work-clash` on the first ask. When Work goes off on every host the root
+  stops mounting the Work shell but keeps a second `ClashHost` (the
+  `work-clash-host` chunk, warmed while Work is on) in its place
+  (chrome/OnceOnSlot.tsx), so an open dialog stays rather than closing
+  under him; what it says with Work off is the dialog's. It remounts in that place: a step
+  in progress starts again.
 - `ClashDialog.tsx`: the two events and the drive, the ways out each allows,
   each way's one step. While it reads a clash it was not handed, a 12px bone
   holds the day line under the title and each event's bones end in a row of

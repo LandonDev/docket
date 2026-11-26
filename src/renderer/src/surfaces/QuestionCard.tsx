@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ComponentProps } from "react";
+import { registry, useHostHeld } from "../lib/connection";
+import { answerElsewhere, useLinkMay } from "../lib/linkMayCore";
+import { sessionStore } from "../lib/tcserver/store";
 import type { QuestionMeta } from "../lib/session";
 import { answer as answerQuestion } from "../lib/tcserver/commands";
 import { cn } from "../lib/cn";
@@ -88,7 +91,8 @@ export function QuestionCard({
         {/* Kept while the host has not taken the answer, so a refusal reopens it as it was. */}
         {/* Open, it seats the toast stack above itself: another thread's toast never covers Back, Skip and Next. */}
         <CollapsibleContent ref={done ? undefined : registerToastSeat} data-toast-seat={done ? undefined : ""} keepMounted={question.answers === undefined} className="collapsible-auto">
-          <Card
+          <LiveCard
+            sessionId={question.sessionId}
             className={cn(QUESTION_SHAPE, enter && QUESTION_ENTER)}
             icon={<StatusMark state="waiting" word={false} />}
             title={title}
@@ -105,6 +109,17 @@ export function QuestionCard({
       </Collapsible>
     </>
   );
+}
+
+/**
+ * The card while it waits: its host's link and the key are read here alone, so an answered set subscribes to
+ * nothing (D5). A key that may not answer gets the presses held with who can, as the host away gets its state.
+ */
+function LiveCard({ sessionId, ...props }: { sessionId: string } & ComponentProps<typeof Card>) {
+  const host = sessionStore.environmentOf(sessionId);
+  const held = useHostHeld(host);
+  const may = useLinkMay(host ?? "", "session.answer");
+  return <Card {...props} held={may ? held : answerElsewhere(registry.environment(host ?? "")?.name ?? host ?? "")} />;
 }
 
 /** A question's label ends its phrase with ":" (a question keeps its "?"), so the run reads "Approach: Fast, Small", never "Approach, Fast, Small". */

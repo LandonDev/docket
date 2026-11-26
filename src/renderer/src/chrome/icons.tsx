@@ -1,28 +1,17 @@
 /** Hugeicons chrome set. Glyphs are deep-imported so the 5MB catalog is not bundled. */
-import {
-  HugeiconsIcon,
-  type HugeiconsIconProps,
-  type IconSvgElement,
-} from "@hugeicons/react";
+import type { IconSvgElement } from "@hugeicons/react";
+import { wrap, type IconProps } from "./iconWrap";
 import Add01Icon from "@hugeicons/core-free-icons/Add01Icon";
 import AtIcon from "@hugeicons/core-free-icons/AtIcon";
 import Attachment01Icon from "@hugeicons/core-free-icons/Attachment01Icon";
 import CornerDownRightIcon from "@hugeicons/core-free-icons/CornerDownRightIcon";
 import CursorInWindowIcon from "@hugeicons/core-free-icons/CursorInWindowIcon";
-import CursorTextIcon from "@hugeicons/core-free-icons/CursorTextIcon";
-import HourglassIcon from "@hugeicons/core-free-icons/HourglassIcon";
-import MousePointerClickIcon from "@hugeicons/core-free-icons/MousePointerClickIcon";
-import ScanTextIcon from "@hugeicons/core-free-icons/ScanTextIcon";
-import ScrollVerticalIcon from "@hugeicons/core-free-icons/ScrollVerticalIcon";
 import SlashIcon from "@hugeicons/core-free-icons/SlashIcon";
 import AddSquareIcon from "@hugeicons/core-free-icons/AddSquareIcon";
 import AlertCircleIcon from "@hugeicons/core-free-icons/AlertCircleIcon";
 import AppWindowIcon from "@hugeicons/core-free-icons/AppWindowIcon";
-import Activity01Icon from "@hugeicons/core-free-icons/Activity01Icon";
-import Bug01Icon from "@hugeicons/core-free-icons/Bug01Icon";
 import Clock01Icon from "@hugeicons/core-free-icons/Clock01Icon";
 import Layers01Icon from "@hugeicons/core-free-icons/Layers01Icon";
-import ViewIcon from "@hugeicons/core-free-icons/ViewIcon";
 import WorkflowSquare01Icon from "@hugeicons/core-free-icons/WorkflowSquare01Icon";
 import FileCodeIcon from "@hugeicons/core-free-icons/FileCodeIcon";
 import ArchiveIcon from "@hugeicons/core-free-icons/ArchiveIcon";
@@ -30,18 +19,13 @@ import ArchiveRestoreIcon from "@hugeicons/core-free-icons/ArchiveRestoreIcon";
 import ArrowDown01Icon from "@hugeicons/core-free-icons/ArrowDown01Icon";
 import ArrowDown02Icon from "@hugeicons/core-free-icons/ArrowDown02Icon";
 import ArrowExpand01Icon from "@hugeicons/core-free-icons/ArrowExpand01Icon";
-import ArrowShrink01Icon from "@hugeicons/core-free-icons/ArrowShrink01Icon";
-import PictureInPicture01Icon from "@hugeicons/core-free-icons/PictureInPicture01Icon";
 import ArrowLeft01Icon from "@hugeicons/core-free-icons/ArrowLeft01Icon";
 import ArrowRight01Icon from "@hugeicons/core-free-icons/ArrowRight01Icon";
-import ArrowTurnForwardIcon from "@hugeicons/core-free-icons/ArrowTurnForwardIcon";
 import ArrowUp01Icon from "@hugeicons/core-free-icons/ArrowUp01Icon";
 import ArrowUp02Icon from "@hugeicons/core-free-icons/ArrowUp02Icon";
 import BlocksIcon from "@hugeicons/core-free-icons/BlocksIcon";
 import BotIcon from "@hugeicons/core-free-icons/BotIcon";
-import Camera01Icon from "@hugeicons/core-free-icons/Camera01Icon";
 import Cancel01Icon from "@hugeicons/core-free-icons/Cancel01Icon";
-import CaseSensitiveIcon from "@hugeicons/core-free-icons/CaseSensitiveIcon";
 import CircleArrowDown01Icon from "@hugeicons/core-free-icons/CircleArrowDown01Icon";
 import CheckListIcon from "@hugeicons/core-free-icons/CheckListIcon";
 import CircleIcon from "@hugeicons/core-free-icons/CircleIcon";
@@ -57,23 +41,14 @@ import LaptopIcon from "@hugeicons/core-free-icons/LaptopIcon";
 import CloudServerIcon from "@hugeicons/core-free-icons/CloudServerIcon";
 import ComputerIcon from "@hugeicons/core-free-icons/ComputerIcon";
 import ServerStack01Icon from "@hugeicons/core-free-icons/ServerStack01Icon";
-import ColorPickerIcon from "@hugeicons/core-free-icons/ColorPickerIcon";
 import Comment01Icon from "@hugeicons/core-free-icons/Comment01Icon";
 import CommentAdd01Icon from "@hugeicons/core-free-icons/CommentAdd01Icon";
 import ComputerTerminal01Icon from "@hugeicons/core-free-icons/ComputerTerminal01Icon";
 import Copy01Icon from "@hugeicons/core-free-icons/Copy01Icon";
-import Copy02Icon from "@hugeicons/core-free-icons/Copy02Icon";
-import ClipboardPasteIcon from "@hugeicons/core-free-icons/ClipboardPasteIcon";
-import Scissor01Icon from "@hugeicons/core-free-icons/Scissor01Icon";
 import Delete02Icon from "@hugeicons/core-free-icons/Delete02Icon";
-import DragDropVerticalIcon from "@hugeicons/core-free-icons/DragDropVerticalIcon";
 import ElectricPlugsIcon from "@hugeicons/core-free-icons/ElectricPlugsIcon";
-import BookOpen01Icon from "@hugeicons/core-free-icons/BookOpen01Icon";
-import File01Icon from "@hugeicons/core-free-icons/File01Icon";
-import FileAddIcon from "@hugeicons/core-free-icons/FileAddIcon";
 import FileTextIcon from "@hugeicons/core-free-icons/FileTextIcon";
 import FilePlusCornerIcon from "@hugeicons/core-free-icons/FilePlusCornerIcon";
-import FilterIcon from "@hugeicons/core-free-icons/FilterIcon";
 import Folder01Icon from "@hugeicons/core-free-icons/Folder01Icon";
 import FolderAddIcon from "@hugeicons/core-free-icons/FolderAddIcon";
 import FolderOpenIcon from "@hugeicons/core-free-icons/FolderOpenIcon";
@@ -82,17 +57,14 @@ import GitBranchIcon from "@hugeicons/core-free-icons/GitBranchIcon";
 import GitMergeIcon from "@hugeicons/core-free-icons/GitMergeIcon";
 import GithubIcon from "@hugeicons/core-free-icons/GithubIcon";
 import GitlabIcon from "@hugeicons/core-free-icons/GitlabIcon";
-import GitCompareIcon from "@hugeicons/core-free-icons/GitCompareIcon";
 import GitPullRequestIcon from "@hugeicons/core-free-icons/GitPullRequestIcon";
 import InboxIcon from "@hugeicons/core-free-icons/InboxIcon";
 import InboxUploadIcon from "@hugeicons/core-free-icons/InboxUploadIcon";
 import Briefcase01Icon from "@hugeicons/core-free-icons/Briefcase01Icon";
 import CalendarCheckIn01Icon from "@hugeicons/core-free-icons/CalendarCheckIn01Icon";
-import KeyboardIcon from "@hugeicons/core-free-icons/KeyboardIcon";
 import LayoutAlignRightIcon from "@hugeicons/core-free-icons/LayoutAlignRightIcon";
 import LinkSquare02Icon from "@hugeicons/core-free-icons/LinkSquare02Icon";
 import Login03Icon from "@hugeicons/core-free-icons/Login03Icon";
-import MagicWand01Icon from "@hugeicons/core-free-icons/MagicWand01Icon";
 import MessageMultiple01Icon from "@hugeicons/core-free-icons/MessageMultiple01Icon";
 import MinusSignIcon from "@hugeicons/core-free-icons/MinusSignIcon";
 import MoreHorizontalIcon from "@hugeicons/core-free-icons/MoreHorizontalIcon";
@@ -107,9 +79,7 @@ import PinIcon from "@hugeicons/core-free-icons/PinIcon";
 import PinOffIcon from "@hugeicons/core-free-icons/PinOffIcon";
 import PreferenceHorizontalIcon from "@hugeicons/core-free-icons/PreferenceHorizontalIcon";
 import Refresh01Icon from "@hugeicons/core-free-icons/Refresh01Icon";
-import RegexIcon from "@hugeicons/core-free-icons/RegexIcon";
 import ReplaceIcon from "@hugeicons/core-free-icons/ReplaceIcon";
-import RotateCcwIcon from "@hugeicons/core-free-icons/RotateCcwIcon";
 import Search01Icon from "@hugeicons/core-free-icons/Search01Icon";
 import Settings01Icon from "@hugeicons/core-free-icons/Settings01Icon";
 import SidebarRight01Icon from "@hugeicons/core-free-icons/SidebarRight01Icon";
@@ -124,42 +94,55 @@ import Target02Icon from "@hugeicons/core-free-icons/Target02Icon";
 import Tick02Icon from "@hugeicons/core-free-icons/Tick02Icon";
 import CheckmarkCircle02Icon from "@hugeicons/core-free-icons/CheckmarkCircle02Icon";
 import InformationCircleIcon from "@hugeicons/core-free-icons/InformationCircleIcon";
-import UndoIcon from "@hugeicons/core-free-icons/UndoIcon";
 import UngroupItemsIcon from "@hugeicons/core-free-icons/UngroupItemsIcon";
-import WholeWordIcon from "@hugeicons/core-free-icons/WholeWordIcon";
-import HammerIcon from "@hugeicons/core-free-icons/HammerIcon";
 import Wrench01Icon from "@hugeicons/core-free-icons/Wrench01Icon";
 import Moon02Icon from "@hugeicons/core-free-icons/Moon02Icon";
 import Sun03Icon from "@hugeicons/core-free-icons/Sun03Icon";
 import HelpCircleIcon from "@hugeicons/core-free-icons/HelpCircleIcon";
 import { forwardRef, type Ref } from "react";
 
-/** Props shared by every chrome icon. `icon` is filled in by the named wrappers. */
-export type IconProps = Omit<HugeiconsIconProps, "icon">;
+export { ICON_STROKE, wrap, type IconComponent, type IconProps } from "./iconWrap";
 
-export type IconComponent = ReturnType<typeof wrap>;
-
-/** Every chrome icon's stroke, docs/DESIGN.md "Iconography": a size fixes a glyph that reads thin, never a heavier stroke. */
-export const ICON_STROKE = 1.5;
-
-/** A glyph under a name: the stroke's default applied. A lazy surface's own glyphs (work/icons.tsx) are made with it, so they stay out of this module. */
-export function wrap(icon: IconSvgElement, name: string) {
-  const Component = forwardRef(function Icon(
-    { strokeWidth = ICON_STROKE, ...props }: IconProps,
-    ref: Ref<SVGSVGElement>,
-  ) {
-    return (
-      <HugeiconsIcon
-        ref={ref}
-        icon={icon}
-        strokeWidth={strokeWidth}
-        {...props}
-      />
-    );
-  });
-  Component.displayName = name;
-  return Component;
-}
+/*
+ * Glyphs no first-paint surface draws (the editor's find bar, the viewers, the dialogs, a format row): each is
+ * a module of its own under ./icons, made with a call the bundler may drop, so it rides the chunk that draws it
+ * and the first paint carries none of them. A glyph the first paint starts to draw may stay where it is: the
+ * bundler moves it. scripts/check-bundle-size.ts holds the budget they pay into.
+ */
+export { Activity } from "./icons/Activity";
+export { ArrowTurnForward } from "./icons/ArrowTurnForward";
+export { Bold } from "./icons/Bold";
+export { BookOpen } from "./icons/BookOpen";
+export { Bug } from "./icons/Bug";
+export { Camera } from "./icons/Camera";
+export { CaseSensitive } from "./icons/CaseSensitive";
+export { ClipboardPaste } from "./icons/ClipboardPaste";
+export { CopyPlus } from "./icons/CopyPlus";
+export { Eye } from "./icons/Eye";
+export { File } from "./icons/File";
+export { FilePlus } from "./icons/FilePlus";
+export { GitCompare } from "./icons/GitCompare";
+export { GripVertical } from "./icons/GripVertical";
+export { Hammer } from "./icons/Hammer";
+export { Hourglass } from "./icons/Hourglass";
+export { Italic } from "./icons/Italic";
+export { Keyboard } from "./icons/Keyboard";
+export { Link } from "./icons/Link";
+export { ListFilter } from "./icons/ListFilter";
+export { Minimize2 } from "./icons/Minimize2";
+export { MousePointerClick } from "./icons/MousePointerClick";
+export { MoveVertical } from "./icons/MoveVertical";
+export { PictureInPicture } from "./icons/PictureInPicture";
+export { Pipette } from "./icons/Pipette";
+export { Regex } from "./icons/Regex";
+export { RotateCcw } from "./icons/RotateCcw";
+export { ScanText } from "./icons/ScanText";
+export { Scissors } from "./icons/Scissors";
+export { TextCursor } from "./icons/TextCursor";
+export { Underline } from "./icons/Underline";
+export { Undo2 } from "./icons/Undo2";
+export { WandSparkles } from "./icons/WandSparkles";
+export { WholeWord } from "./icons/WholeWord";
 
 const stroke = {
   stroke: "currentColor",
@@ -194,13 +177,9 @@ const UnfoldVerticalIcon: IconSvgElement = [
   ["path", { d: "M7 17L12 22L17 17", ...stroke, key: "5" }],
 ];
 
-export const Activity = wrap(Activity01Icon, "Activity");
-export const Bug = wrap(Bug01Icon, "Bug");
 export const Clock = wrap(Clock01Icon, "Clock");
-export const Eye = wrap(ViewIcon, "Eye");
 export const Layers = wrap(Layers01Icon, "Layers");
 export const Workflow = wrap(WorkflowSquare01Icon, "Workflow");
-export const Camera = wrap(Camera01Icon, "Camera");
 export const FileCode = wrap(FileCodeIcon, "FileCode");
 export const Circle = wrap(CircleIcon, "Circle");
 export const GitFork = wrap(GitForkIcon, "GitFork");
@@ -221,11 +200,6 @@ export const AppWindow = wrap(AppWindowIcon, "AppWindow");
 /** Computer use: an app window driven by the agent (the Activity row, a computer call's row). */
 export const SquareMousePointer = wrap(CursorInWindowIcon, "SquareMousePointer");
 // A computer step's kind in the Computer section (surfaces/threads/computer/StepList.tsx).
-export const MousePointerClick = wrap(MousePointerClickIcon, "MousePointerClick");
-export const TextCursor = wrap(CursorTextIcon, "TextCursor");
-export const MoveVertical = wrap(ScrollVerticalIcon, "MoveVertical");
-export const ScanText = wrap(ScanTextIcon, "ScanText");
-export const Hourglass = wrap(HourglassIcon, "Hourglass");
 export const Archive = wrap(ArchiveIcon, "Archive");
 export const ArchiveRestore = wrap(ArchiveRestoreIcon, "ArchiveRestore");
 export const ArrowDownCircle = wrap(CircleArrowDown01Icon, "ArrowDownCircle");
@@ -237,10 +211,9 @@ export const Paperclip = wrap(Attachment01Icon, "Paperclip");
 export const Slash = wrap(SlashIcon, "Slash");
 export const ArrowDownLong = wrap(ArrowDown02Icon, "ArrowDownLong");
 export const ArrowUpLong = wrap(ArrowUp02Icon, "ArrowUpLong");
-export const ArrowTurnForward = wrap(ArrowTurnForwardIcon, "ArrowTurnForward");
 export const Blocks = wrap(BlocksIcon, "Blocks");
 export const Bot = wrap(BotIcon, "Bot");
-export const CaseSensitive = wrap(CaseSensitiveIcon, "CaseSensitive");
+// A format row outside Work (Mail's signature in Settings): the glyphs Work's editors draw (work/icons.tsx).
 export const Check = wrap(Tick02Icon, "Check");
 export const ChevronDown = wrap(ArrowDown01Icon, "ChevronDown");
 export const ChevronLeft = wrap(ArrowLeft01Icon, "ChevronLeft");
@@ -257,12 +230,7 @@ export const CloudServer = wrap(CloudServerIcon, "CloudServer");
 export const Desktop = wrap(ComputerIcon, "Desktop");
 export const Server = wrap(ServerStack01Icon, "Server");
 export const Copy = wrap(Copy01Icon, "Copy");
-export const CopyPlus = wrap(Copy02Icon, "CopyPlus");
-export const ClipboardPaste = wrap(ClipboardPasteIcon, "ClipboardPaste");
-export const Scissors = wrap(Scissor01Icon, "Scissors");
 export const ExternalLink = wrap(LinkSquare02Icon, "ExternalLink");
-export const File = wrap(File01Icon, "File");
-export const FilePlus = wrap(FileAddIcon, "FilePlus");
 export const FileText = wrap(FileTextIcon, "FileText");
 export const FilePlusCorner = wrap(FilePlusCornerIcon, "FilePlusCorner");
 export const FoldVertical = wrap(FoldVerticalIcon, "FoldVertical");
@@ -271,11 +239,9 @@ export const FolderOpen = wrap(FolderOpenIcon, "FolderOpen");
 export const FolderPlus = wrap(FolderAddIcon, "FolderPlus");
 export const GitBranch = wrap(GitBranchIcon, "GitBranch");
 export const GitMerge = wrap(GitMergeIcon, "GitMerge");
-export const GitCompare = wrap(GitCompareIcon, "GitCompare");
 export const GitHub = wrap(GithubIcon, "GitHub");
 export const GitLab = wrap(GitlabIcon, "GitLab");
 export const GitPullRequest = wrap(GitPullRequestIcon, "GitPullRequest");
-export const GripVertical = wrap(DragDropVerticalIcon, "GripVertical");
 export const Inbox = wrap(InboxIcon, "Inbox");
 /** The Outbox (Work): what waits for the person's press. */
 export const Outbox = wrap(InboxUploadIcon, "Outbox");
@@ -283,15 +249,11 @@ export const Outbox = wrap(InboxUploadIcon, "Outbox");
 export const Briefcase = wrap(Briefcase01Icon, "Briefcase");
 /** Work's weekly review (the rail's Review row). */
 export const CalendarCheck = wrap(CalendarCheckIn01Icon, "CalendarCheck");
-export const Keyboard = wrap(KeyboardIcon, "Keyboard");
-export const ListFilter = wrap(FilterIcon, "ListFilter");
 export const ListPlus = wrap(ListPlusIcon, "ListPlus");
 export const Lock = wrap(SquareLock02Icon, "Lock");
 export const LogIn = wrap(Login03Icon, "LogIn");
 export const LockOpen = wrap(SquareUnlock01Icon, "LockOpen");
 export const Maximize2 = wrap(ArrowExpand01Icon, "Maximize2");
-export const Minimize2 = wrap(ArrowShrink01Icon, "Minimize2");
-export const PictureInPicture = wrap(PictureInPicture01Icon, "PictureInPicture");
 export const MessageMultiple = wrap(MessageMultiple01Icon, "MessageMultiple");
 export const MessageSquare = wrap(Comment01Icon, "MessageSquare");
 export const MessageSquarePlus = wrap(CommentAdd01Icon, "MessageSquarePlus");
@@ -308,14 +270,10 @@ export const PenLine = wrap(PencilEdit01Icon, "PenLine");
 export const Pencil = wrap(PencilEdit02Icon, "Pencil");
 export const Pin = wrap(PinIcon, "Pin");
 export const PinOff = wrap(PinOffIcon, "PinOff");
-export const Pipette = wrap(ColorPickerIcon, "Pipette");
 export const Plug = wrap(ElectricPlugsIcon, "Plug");
-export const BookOpen = wrap(BookOpen01Icon, "BookOpen");
 export const Plus = wrap(Add01Icon, "Plus");
 export const RefreshCw = wrap(Refresh01Icon, "RefreshCw");
-export const Regex = wrap(RegexIcon, "Regex");
 export const Replace = wrap(ReplaceIcon, "Replace");
-export const RotateCcw = wrap(RotateCcwIcon, "RotateCcw");
 export const Search = wrap(Search01Icon, "Search");
 export const Settings = wrap(Settings01Icon, "Settings");
 export const SlidersHorizontal = wrap(
@@ -332,11 +290,7 @@ export const Target = wrap(Target02Icon, "Target");
 export const StickyNote = wrap(Note01Icon, "StickyNote");
 export const Terminal = wrap(ComputerTerminal01Icon, "Terminal");
 export const Trash2 = wrap(Delete02Icon, "Trash2");
-export const Undo2 = wrap(UndoIcon, "Undo2");
 export const UnfoldVertical = wrap(UnfoldVerticalIcon, "UnfoldVertical");
 export const Ungroup = wrap(UngroupItemsIcon, "Ungroup");
-export const WandSparkles = wrap(MagicWand01Icon, "WandSparkles");
-export const WholeWord = wrap(WholeWordIcon, "WholeWord");
-export const Hammer = wrap(HammerIcon, "Hammer");
 export const Wrench = wrap(Wrench01Icon, "Wrench");
 export const X = wrap(Cancel01Icon, "X");

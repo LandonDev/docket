@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import * as chrome from "./icons";
 import { ChevronRight, FilePlus, FoldVertical, ICON_STROKE, ListPlus, UnfoldVertical } from "./icons";
+import * as work from "../work/icons";
 
 const SRC = fileURLToPath(new URL("..", import.meta.url));
 // Two catalogs: the chrome's, in the first paint, and Work's, which rides Work's lazy chunks.
@@ -35,6 +37,9 @@ describe("hugeicons imports", () => {
         const spec = match[1];
         const allowedCatalog =
           (rel === CATALOGS[0] && (spec === "@hugeicons/react" || DEEP_ICON.test(spec))) ||
+          // The chrome catalog's wrapper, and its glyphs that ride the chunk that draws them (one module each).
+          (rel === "chrome/iconWrap.tsx" && spec === "@hugeicons/react") ||
+          (/^chrome\/icons\/[A-Z][A-Za-z0-9]+\.tsx$/.test(rel) && DEEP_ICON.test(spec)) ||
           (rel === CATALOGS[1] && DEEP_ICON.test(spec));
         if (allowedCatalog) continue;
         violations.push(`${rel}: ${spec}`);
@@ -42,6 +47,27 @@ describe("hugeicons imports", () => {
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("keeps a glyph the first paint does not draw in a module of its own, made with a call the bundler may drop", () => {
+    const dir = join(SRC, "chrome/icons");
+    const barrel = readFileSync(join(SRC, "chrome/icons.tsx"), "utf8");
+    const files = readdirSync(dir);
+    expect(files.length).toBeGreaterThan(30);
+    for (const file of files) {
+      const name = file.replace(/\.tsx$/, "");
+      const source = readFileSync(join(dir, file), "utf8");
+      // One glyph, one pure call: anything else (a second export, a side effect) would pin the module to the entry.
+      expect(source, file).toMatch(new RegExp(`^import \\w+ from "@hugeicons/core-free-icons/\\w+";\\nimport \\{ wrap \\} from "\\.\\./iconWrap";\\n\\n(?:/\\*\\*[^\\n]*\\*/\\n)?export const ${name} = /\\* @__PURE__ \\*/ wrap\\(\\w+, "${name}"\\);\\n$`));
+      expect(barrel, file).toContain(`export { ${name} } from "./icons/${name}";`);
+      expect((chrome as Record<string, unknown>)[name], file).toBeTruthy();
+    }
+  });
+
+  it("draws a format row's glyphs outside Work as Work's editors draw them", () => {
+    for (const name of ["Bold", "Italic", "Underline", "Link"] as const) {
+      expect(renderToStaticMarkup(createElement(chrome[name])), name).toBe(renderToStaticMarkup(createElement(work[name])));
+    }
   });
 
   it("draws fold/unfold as strokes, not filled chevrons", () => {
@@ -102,7 +128,7 @@ describe("icon strokes", () => {
     const found: string[] = [];
     for (const file of sourceFiles(SRC)) {
       const rel = relative(SRC, file).replaceAll("\\", "/");
-      if (!rel.endsWith(".tsx") || rel.endsWith(".test.tsx") || rel === CATALOGS[0] || rel.startsWith("aliax/charts/")) continue;
+      if (!rel.endsWith(".tsx") || rel.endsWith(".test.tsx") || rel === CATALOGS[0] || rel === "chrome/iconWrap.tsx" || rel.startsWith("aliax/charts/")) continue;
       const source = readFileSync(file, "utf8");
       for (const match of source.matchAll(/strokeWidth=/g)) {
         const tag = /<([A-Za-z][\w.]*)[^<]*$/.exec(source.slice(0, match.index))?.[1] ?? "";

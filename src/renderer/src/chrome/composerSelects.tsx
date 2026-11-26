@@ -21,12 +21,13 @@ type Opens = { defaultOpen?: boolean };
 
 const ACCESS_ITEMS = PICKER_RUNTIME_MODES.map((mode) => ({ value: mode, label: RUNTIME_MODE_LABEL[mode] }));
 
-export function AccessPickerSelect({ value: stored, onChange, onClose, quiet = false, defaultOpen }: AccessPickerProps & Opens) {
+export function AccessPickerSelect({ value: stored, onChange, onClose, quiet = false, modes = PICKER_RUNTIME_MODES, disabled, defaultOpen }: AccessPickerProps & Opens) {
   const value = shownRuntimeMode(stored);
   const toField = useRef(false);
   return (
     <Select
-      items={ACCESS_ITEMS}
+      disabled={disabled}
+      items={modes === PICKER_RUNTIME_MODES ? ACCESS_ITEMS : ACCESS_ITEMS.filter((item) => modes.includes(item.value))}
       value={value}
       defaultOpen={defaultOpen}
       onValueChange={(next) => {
@@ -56,7 +57,7 @@ export function AccessPickerSelect({ value: stored, onChange, onClose, quiet = f
         finalFocus={() => !toField.current}
         className="w-72 p-1"
       >
-        {PICKER_RUNTIME_MODES.map((mode) => {
+        {modes.map((mode) => {
           const ModeIcon = ACCESS_ICONS[mode];
           return (
             <SelectItem key={mode} value={mode} label={RUNTIME_MODE_LABEL[mode]} className="items-start py-1.5">

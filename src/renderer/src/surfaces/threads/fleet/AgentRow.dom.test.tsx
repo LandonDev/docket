@@ -349,5 +349,15 @@ describe("AgentRow", () => {
     fireEvent.click(getByRole("button", { name: "Stop" }));
     expect(h.interrupt).toHaveBeenCalledWith("ios-orch-a1", { subtree: true });
   });
+
+  // D5: a key that may only read is offered no Stop, as every other Stop.
+  it("draws no Stop for a key that may only read", async () => {
+    const { registry } = await import("../../../lib/connection");
+    const status = vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open", lastHello: { environmentId: "x", contract: 3, caps: ["read"], key: { id: "k", name: "Laptop" } } } as never);
+    const { meta } = row("Build the shell");
+    const { queryByRole } = render(<AgentRow agent={meta} onOpen={() => {}} />);
+    expect(queryByRole("button", { name: "Stop" })).toBeNull();
+    status.mockRestore();
+  });
 });
 

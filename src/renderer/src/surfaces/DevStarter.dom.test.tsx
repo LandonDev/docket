@@ -111,6 +111,24 @@ describe('DevStarter', () => {
     expect(run.disabled).toBe(true)
   })
 
+  // D5: Run asks the host. A key that may not start a server is offered no Run; a host away holds it.
+  it('draws no Run for a key that may only read, and holds it while the host is away', async () => {
+    const read = { transport: 'open', lastHello: { environmentId: 'env_mac', contract: 3, caps: ['read'], key: { id: 'k', name: 'Laptop' } } }
+    const status = vi.spyOn(registry, 'statusOf').mockReturnValue(read as never)
+    probe = mountProbe(<DevServerPanel projectId="p1" />)
+    await flush()
+    expect([...probe.container.querySelectorAll('button')].some((b) => b.textContent === 'Run')).toBe(false)
+    probe.unmount()
+    status.mockReturnValue({ transport: 'offline', lastHello: null, lastError: null, nextRetryAt: null } as never)
+    vi.spyOn(registry, 'statuses').mockReturnValue(new Map([['env_mac', { transport: 'offline' } as never]]))
+    vi.spyOn(registry, 'environmentsSnapshot').mockReturnValue([{ id: 'env_mac', name: 'This Mac', routes: [], credentialRef: null }])
+    probe = mountProbe(<DevServerPanel projectId="p1" />)
+    await flush()
+    const held = [...probe.container.querySelectorAll('button')].find((b) => b.textContent === 'Run') as HTMLButtonElement
+    expect(held.disabled).toBe(true)
+    expect(held.closest('[data-held]')).not.toBeNull()
+  })
+
   it('shows a skeleton in the target field while the host answers', async () => {
     vi.spyOn(registry, 'linkOf').mockImplementation(() => ({ request: () => new Promise(() => {}) }) as never)
     probe = mountProbe(<DevServerPanel projectId="p1" />)

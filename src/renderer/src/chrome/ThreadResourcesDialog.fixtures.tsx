@@ -13,9 +13,10 @@ const resources: ThreadResource[] = [
   { id: "wt", kind: "worktree", label: "Spring edition", identifier: "/projects/spring-edition", environmentId: "local", sessionId: thread.id, createdAt: 1, branch: null, removeRequestedAt: null, removedAt: null, note: null },
   { id: "sim", kind: "simulator", label: "Phone simulator", identifier: "preview-simulator", environmentId: "local", sessionId: thread.id, createdAt: 1, branch: null, removeRequestedAt: null, removedAt: null, note: null },
 ];
-const ids = ["listed", "removing", "loading"].map((state) => ({ ...thread, id: state }));
+const ids = ["listed", "removing", "loading", "offline", "empty"].map((state) => ({ ...thread, id: state }));
 seedPreviewThreads(ids, {}, (method, params) => {
-  if (method === "resources.list") return params.sessionId === "loading" ? previewPending : { resources };
+  // "offline": the host never answers the read, so the form says so with Retry (edges-26).
+  if (method === "resources.list") return params.sessionId === "loading" ? previewPending : params.sessionId === "offline" ? Promise.reject(new Error("timed out")) : { resources: params.sessionId === "empty" ? [] : resources };
   if (method === "resources.remove") return previewPending;
   return undefined;
 });
@@ -31,5 +32,5 @@ export function ResourcesPreview({ state = "listed" }: { state?: string }) {
 export function ArchiveResources() { return <ArchiveThreadDialog sessionId={thread.id} title="Check the bridge" resources={resources} onCancel={noop} onArchived={noop} />; }
 
 export const fixturesByExport = {
-  ResourcesPreview: ["loading", "listed", "removing", "offline"].map((state) => ({ name: state, props: { state } })),
+  ResourcesPreview: ["loading", "listed", "removing", "offline", "empty"].map((state) => ({ name: state, props: { state } })),
 };

@@ -15,6 +15,8 @@ vi.mock('../lib/threadResources', async (importOriginal) => {
   }
 })
 import { ArchiveThreadDialog, ThreadResourcesDialog } from './ThreadResourcesDialog'
+import { sessionStore } from '../lib/tcserver/store'
+import { registry } from '../lib/connection'
 
 vi.mock('../lib/tcserver/store', async (importOriginal) => {
   const real = await importOriginal<typeof import('../lib/tcserver/store')>()
@@ -89,12 +91,54 @@ describe('ThreadResourcesDialog', () => {
     expect(removeButton().disabled).toBe(false)
   })
 
+  const answering = (request: () => Promise<unknown>) =>
+    vi.spyOn(sessionStore, 'linkFor').mockReturnValue({ connected: true, request } as never)
+
   it('shows a loading line until the ledger answers, never an empty state', async () => {
+    const link = answering(() => Promise.resolve({ resources: [] }))
     open()
     expect(screen.getByRole('status').textContent).toBe('Loading…')
     await flush()
     expect(screen.queryByRole('status')).toBeNull()
     expect(document.body.textContent).toContain('Nothing left to remove.')
+    // Nothing listed, nothing to remove: no Remove beside it.
+    expect(screen.queryByRole('button', { name: /^Remove/ })).toBeNull()
+    link.mockRestore()
+  })
+
+  // D5: a key that may not remove reads the list with no Remove.
+  it('offers a key that may not remove the list and no Remove', async () => {
+    threadResourcesStore.setState({ bySession: { s1: [row({})] } })
+    vi.spyOn(sessionStore, 'environmentOf').mockReturnValue('env_box')
+    vi.spyOn(registry, 'statusOf').mockReturnValue({ transport: 'open', lastHello: { environmentId: 'env_box', contract: 3, caps: ['read'], key: { id: 'k', name: 'Laptop' } } } as never)
+    const link = answering(() => Promise.resolve({ resources: [row({})] }))
+    open()
+    await flush()
+    expect(checkbox(/ios\/home/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /^Remove/ })).toBeNull()
+    link.mockRestore()
+    vi.restoreAllMocks()
+  })
+
+  // edges-26: a read the host never answered is said as such, with Retry; never "Nothing left", never a Remove.
+  it('says the host did not answer when the read fails, and Retry asks again', async () => {
+    vi.spyOn(sessionStore, 'environmentOf').mockReturnValue('env_box')
+    vi.spyOn(registry, 'environment').mockReturnValue({ id: 'env_box', name: 'The box', routes: [], credentialRef: null })
+    let answer: () => Promise<unknown> = () => Promise.reject(new Error('timed out after 30000 ms'))
+    const link = answering(() => answer())
+    open()
+    await flush()
+    expect(document.body.textContent).toContain('The box did not answer')
+    expect(document.body.textContent).not.toContain('Nothing left')
+    expect(document.body.textContent).not.toContain('timed out')
+    expect(screen.queryByRole('button', { name: /^Remove/ })).toBeNull()
+    answer = () => Promise.resolve({ resources: [row({})] })
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await flush()
+    await flush()
+    expect(checkbox(/ios\/home/)).toBeTruthy()
+    link.mockRestore()
+    vi.restoreAllMocks()
   })
 
   it('removes the picked rows on their host and closes once the push leaves nothing', async () => {

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { ExternalLink, Square } from "../../../chrome/icons";
+import { linkMay } from "../../../lib/linkMayCore";
 import { useTruncated } from "../../../components/tip";
 import { Button } from "../../../components/ui/button";
 import { Item, ItemButton } from "../../../components/ui/item";
@@ -276,7 +277,8 @@ export function AgentRow({
       hostGlyph={storeHostGlyph}
       onOpen={onOpen}
       onOpenSession={onOpenSession ? () => onOpenSession(agent.id) : undefined}
-      onStop={() => stopAgent(agent)}
+      // A key that may not interrupt has no Stop, as every other Stop (D5); a map read, no subscription per row.
+      onStop={linkMay(agent.environmentId, "session.interrupt") ? () => stopAgent(agent) : undefined}
     />
   );
 }

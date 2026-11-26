@@ -147,7 +147,8 @@ describe("draftFromDefaults", () => {
 describe("permission words", () => {
   it("name each policy as the composer's permission picker does", () => {
     expect(PERMISSION_LABELS).toEqual({ safe: "Supervised", edits: "Auto-accept edits", auto: "Full access" });
-    expect(PERMISSION_HINTS.safe).toBe("Ask before edits and commands that change things.");
-    expect(PERMISSION_HINTS.auto).toBe("Allow commands and edits without prompts.");
+    expect(PERMISSION_HINTS.safe).toBe("Asks before every step");
+    expect(PERMISSION_HINTS.edits).toBe("Asks before anything but edits");
+    expect(PERMISSION_HINTS.auto).toBe("Asks before nothing. Sends, posts and payments still wait.");
   });
 });

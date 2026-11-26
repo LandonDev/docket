@@ -18,6 +18,8 @@ export type ApprovalToastNotice = Pick<PendingApprovalNotice, "sessionId" | "req
   title: string;
   /** Run now and Skip in Allow and Deny's place (Block.approval.choices). */
   choices?: "run-skip";
+  /** The thread's host away (D5): both presses held, this their tooltip. */
+  held?: string | null;
 };
 
 const approvalLabels = new WeakMap<Block, { cwd: string; label: string; tool: string }>();

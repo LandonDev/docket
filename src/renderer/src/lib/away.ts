@@ -121,9 +121,11 @@ export function usePlaceAwayKind(): AwayKind {
  * another's flip never sets the other kind back; and `enabled` (both on, as
  * this window sees it) for a host one release behind, which reads that alone
  * and which a current host ignores while a kind is named. A refusal (a key
- * without approve, a host from before Away) puts the row back and says so.
+ * without approve, a host from before Away) puts the row back and says so in
+ * the shared toast, unless `quiet` (a page that shows its own line). Answers
+ * whether the host saved the flip.
  */
-export async function setAway(change: Partial<AwayKinds>): Promise<void> {
+export async function setAway(change: Partial<AwayKinds>, { quiet = false }: { quiet?: boolean } = {}): Promise<boolean> {
   const kinds = { ...awayKinds(), ...change };
   const flip = awayStateOf(kinds, Date.now(), "");
   awayStore.setState({ pending: flip });
@@ -132,13 +134,15 @@ export async function setAway(change: Partial<AwayKinds>): Promise<void> {
     const { state } = await link.request<{ state: AwayState }>("away.set", { enabled: kinds.code && kinds.work, ...change });
     // The push follows with the tally; until it lands the answer is the state.
     const now = awayStore.getState();
-    if (now.pending !== flip) return;
+    if (now.pending !== flip) return true;
     const heard = now.hosts[registry.primaryEnvironmentId]?.state.at ?? -1;
     awayStore.setState({ pending: heard >= state.at ? null : state });
+    return true;
   } catch {
-    if (awayStore.getState().pending !== flip) return;
+    if (awayStore.getState().pending !== flip) return false;
     awayStore.setState({ pending: null });
-    void loadToast().then((toast) => toast.error("Couldn't change Away"));
+    if (!quiet) void loadToast().then((toast) => toast.error("Couldn't change Away"));
+    return false;
   }
 }
 

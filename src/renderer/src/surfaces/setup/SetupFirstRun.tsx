@@ -21,7 +21,7 @@ const offered = (): boolean => {
 
 /**
  * The first screen of a fresh install (no saved hosts, no workspaces, no
- * accounts): Paste the link from your Mac, once; and a setup under way opens
+ * accounts): Paste the setup link, once; and a setup under way opens
  * on its steps at every launch until it is done. Decided once a launch, from
  * the three counts and `devices.setup.state`.
  */

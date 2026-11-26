@@ -8,7 +8,7 @@ import { sessionStore } from "../lib/tcserver/store";
 import { saveComposerDraft } from "../lib/composerDrafts";
 import type { ComponentProps } from "react";
 import { addPreviewHost, previewCwd, previewNow, previewProject, previewSession, previewWorkspace } from "../lib/previewHost.preview";
-import { IDLE_STATUS, degradedText, type Degraded } from "../lib/connection";
+import { IDLE_STATUS, linkWords, type Degraded } from "../lib/connection";
 import { workspaceStore } from "../lib/tcserver/workspaces";
 import { ThreadTypeSelect, AccessPickerSelect } from "./composerSelects";
 import { AddMenu } from "./ComposerBar";
@@ -30,7 +30,8 @@ const answers = {
   "project.list": () => [previewProject],
   "session.events": () => ({ rows: [], moreBefore: false, moreAfter: false, reset: false, subscribed: true }),
 };
-const box = await addPreviewHost({ id: "local", name: "This computer", answers });
+// This window's own host may do everything; "Studio" below is the paired key that may only read.
+const box = await addPreviewHost({ id: "local", name: "This computer", caps: ["read", "operate", "approve", "admin"], answers });
 await addPreviewHost({ id: "studio", name: "Studio", caps: ["read"], answers: {
   "project.ensureLinked": () => ({ cwd: "/projects/field-notes" }),
 } });
@@ -83,7 +84,7 @@ export function DockedComposerPreview({
     sessionStore.mutate((prev) => [...prev.filter((entry) => entry.id !== id), session]);
   }
   if (draft || attachments.length > 0) saveComposerDraft(id, { segments: draft ? [{ text: draft }] : [], attachments });
-  const connection = degraded ? degradedText("Studio", {
+  const connection = degraded ? linkWords("Studio", {
     kind: degraded,
     status: { ...IDLE_STATUS, transport: degraded, nextRetryAt: previewNow + 5_000 },
   }, previewNow) : null;
@@ -113,15 +114,17 @@ export function DockedComposerPreview({
               onRuntimeModeChange={noop}
               onSubmit={noop}
               blocked={connection}
+              blockedSaid={!!connection}
               {...composerProps}
               topSlot={
-                queue.length > 0 ? (
-                  <MessageQueue sessionId={id} items={queue} paused={status === "paused"} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} />
+                queue.length > 0 || (degraded && connection) ? (
+                  <>
+                    {queue.length > 0 ? <MessageQueue sessionId={id} items={queue} paused={status === "paused"} onSteer={noop} onRemove={noop} onUpdate={noop} onReorder={noop} /> : null}
+                    {degraded && connection ? <ConnectionLineView kind={degraded} text={connection} onPair={noop} onRetry={noop} /> : null}
+                  </>
                 ) : undefined
               }
-            >
-              {degraded && connection ? <ConnectionLineView kind={degraded} text={connection} onPair={noop} onRetry={noop} /> : null}
-            </Composer>
+            />
           ),
         }}
       />

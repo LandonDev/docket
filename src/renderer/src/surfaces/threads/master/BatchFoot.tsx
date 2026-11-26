@@ -1,5 +1,6 @@
 import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
 import { tallyRender } from "../../../lib/devRenders";
+import { HeldTip } from "../../../components/heldTip";
 import { registerToastAnchor } from "../../../lib/toastAnchor";
 import type { BatchState } from "@server/shared/contract-batch";
 import { BusyLabel, Button } from "../../../components/ui/button";
@@ -40,6 +41,7 @@ export function BatchFoot({
   hostName,
   onSave,
   onStop,
+  held = null,
   toastAnchor = false,
   clock,
 }: {
@@ -50,8 +52,12 @@ export function BatchFoot({
   titleOf: (id: string) => string | undefined;
   /** A host's name by id, for a blocked child out of reach on it. */
   hostName?: (environmentId: string) => string | undefined;
-  onSave: (rules: Rules) => Promise<void>;
-  onStop: (stepId: string) => Promise<void>;
+  /** Absent for a key that may not change the rules (batch.setRules): no Edit… (D5). */
+  onSave?: (rules: Rules) => Promise<void>;
+  /** Absent for a key that may not stop a step (batch.stopStep): no Stop (D5). */
+  onStop?: (stepId: string) => Promise<void>;
+  /** The master's host away (D5): Edit… and Stop are held, this their tooltip. */
+  held?: string | null;
   /** The master's chat is folded: the toast stack sits above this foot, not over it. */
   toastAnchor?: boolean;
   /** A fixed instant for a preview of an in-flight step. */
@@ -75,7 +81,7 @@ export function BatchFoot({
   useLayoutEffect(() => {
     stopRef.current = onStop;
   });
-  const stopStep = useCallback((id: string) => stopRef.current(id), []);
+  const stopStep = useCallback((id: string) => stopRef.current?.(id) ?? Promise.resolve(), []);
   const fold = useCallback((id: string, hide: boolean) => {
     setFolded((prev) => {
       const next = new Set(prev);
@@ -97,9 +103,13 @@ export function BatchFoot({
       <div className="flex h-6 items-center gap-2">
         <h3 className="flex-1 text-xs font-medium text-muted-foreground">When done</h3>
         {/* The foot's trailing buttons end their word on the 12px edge the times keep (-me-2 takes the button's own 8px back). */}
-        <Button variant="ghost" size="xs" className="-me-2" onClick={() => setEditing(true)}>
-          Edit…
-        </Button>
+        {onSave ? (
+          <HeldTip held={held} className="-me-2">
+            <Button variant="ghost" size="xs" className={held ? undefined : "-me-2"} disabled={!!held} onClick={() => setEditing(true)}>
+              Edit…
+            </Button>
+          </HeldTip>
+        ) : null}
       </div>
       {blocked ? (
         <p className="text-xs text-destructive" data-blocked>
@@ -115,7 +125,8 @@ export function BatchFoot({
             detail={stepDetail(step, rules)}
             now={step.status === "running" ? now : 0}
             open={active?.id === step.id}
-            onStop={stopStep}
+            onStop={onStop ? stopStep : undefined}
+            held={held}
             onFold={fold}
           />
         ))}
@@ -125,7 +136,7 @@ export function BatchFoot({
         {rules.then === "archive-children" ? "Then archive the threads" : "Then notify you"}
       </p>
 
-      {editing ? <RulesDialog rules={rules} onClose={() => setEditing(false)} onSave={onSave} /> : null}
+      {editing && onSave ? <RulesDialog rules={rules} onClose={() => setEditing(false)} onSave={onSave} /> : null}
     </div>
   );
 }
@@ -163,7 +174,8 @@ type StepRowProps = {
   /** The clock, for the running step alone; 0 for the rest. */
   now: number;
   open: boolean;
-  onStop: (id: string) => Promise<void>;
+  onStop?: (id: string) => Promise<void>;
+  held: string | null;
   onFold: (id: string, hide: boolean) => void;
 };
 
@@ -189,12 +201,13 @@ const sameRow = (a: StepRowProps, b: StepRowProps): boolean =>
   a.now === b.now &&
   a.open === b.open &&
   a.onStop === b.onStop &&
+  a.held === b.held &&
   a.onFold === b.onFold &&
   a.detail.text === b.detail.text &&
   a.detail.label === b.detail.label &&
   sameStep(a.step, b.step);
 
-const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold }: StepRowProps) {
+const StepRow = memo(function StepRow({ step, detail, now, open, onStop, held, onFold }: StepRowProps) {
   const time = stepTime(step, now);
   const quiet = step.status === "pending" || step.status === "skipped";
   const failed = step.status === "failed";
@@ -204,7 +217,7 @@ const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold 
     if (stopping) return;
     setStopping(true);
     try {
-      await onStop(step.id);
+      await onStop?.(step.id);
     } finally {
       setStopping(false);
     }
@@ -227,11 +240,13 @@ const StepRow = memo(function StepRow({ step, detail, now, open, onStop, onFold 
             </span>
           ) : null}
         </span>
-        {step.status === "running" ? (
+        {step.status === "running" && onStop ? (
           // The word alone, as every Stop; the spinner joins it in its reserved slot while the stop runs.
-          <Button variant="ghost" size="xs" className="-me-2" onClick={() => void stop()} disabled={stopping} aria-busy={stopping || undefined}>
-            <BusyLabel busy={stopping} label="Stop" />
-          </Button>
+          <HeldTip held={held} className="-me-2">
+            <Button variant="ghost" size="xs" className={held ? undefined : "-me-2"} onClick={() => void stop()} disabled={stopping || !!held} aria-busy={stopping || undefined}>
+              <BusyLabel busy={stopping} label="Stop" />
+            </Button>
+          </HeldTip>
         ) : failed && hasConsole(step) ? (
           // One word whatever the state, so nothing moves under the pointer: the chevron says open or closed,
           // and the fill is its hover alone, never a pressed look while open (the one disclosure recipe).

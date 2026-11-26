@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
- * The host out of reach, said once (docs/DESIGN.md "Work: a thread's chat"): in a Work thread the connection line
- * over the box says it and the field keeps its own placeholder; a code thread's composer is unchanged, its field
- * still saying it too. Send waits in both.
+ * The host out of reach, said once (docs/DESIGN.md "Work: a thread's chat", composer-05): in every thread the
+ * connection line over the box says it and the field keeps its own placeholder (a Work dock's ask keeps its words).
+ * Send waits in both.
  */
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -39,10 +39,10 @@ afterEach(() => {
 });
 
 describe("a host out of reach in the composer", () => {
-  it("leaves a code thread's composer as it was: the field says it, send waits", () => {
+  it("says it once in a code thread: the line over the box, the field its own placeholder, send waits", () => {
     h.work = false;
     draw();
-    expect(h.props).toMatchObject({ blocked: "The box is offline", blockedSaid: false });
+    expect(h.props).toMatchObject({ blocked: "The box is offline", blockedSaid: true });
   });
 
   it("says it once in a Work thread: the line over the box, the field its own placeholder, send waits", () => {

@@ -308,8 +308,9 @@ import {
 import { PaneTree } from "./surfaces/PaneTree";
 import { SessionActionsContext, type SessionActions } from "./surfaces/threadChat";
 import { ProjectTerminalDock } from "./surfaces/ProjectTerminalDock";
-import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, setupHostChunk, terminalChunk, threadBannersChunk, workDigestChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk } from "./surfaces/chunks";
+import { aliaxChunk, awayReturnChunk, computersChunk, dialogsChunk, fullWindowChunk, popOutChunk, inboxChunk, notesChunk, pickersChunk, releaseNotesChunk, searchChunk, settingsChunk, setupHostChunk, terminalChunk, threadBannersChunk, workDigestChunk, workOutboxChunk, workSearchChunk, workPlacesChunk, workShellChunk, workClashChunk } from "./surfaces/chunks";
 import { beginRevealNavigation, cancelRevealReads, prepareRevealReads } from "./lib/revealRead";
+import { OnceOnSlot } from "./chrome/OnceOnSlot";
 import { choose, openWorkView, stillChosen, useWorkOn, useWorkView, workDockPort, workHome, workEnterPort, workFilePort, workOpenPort, workStartPort, workSwitch } from "./lib/workSwitch";
 import { warmWorkPlacesAtIdle, workPlaceLabel } from "./lib/workPlaces";
 import { returnOf } from "./lib/workReturn";
@@ -343,6 +344,7 @@ const FullWindow = fullWindowChunk.surface("FullWindow");
 const PopOut = popOutChunk.surface("PopOut");
 const WorkViewSurface = workShellChunk.surface("WorkViewSurface", <SurfaceSkeleton kind="page" label="Loading" />);
 const WorkRailHost = workShellChunk.surface("WorkRailHost");
+const WorkClashHost = workClashChunk.surface("ClashHost");
 import { inboxComposerCard, type InboxItem } from "./lib/githubTasks";
 import { threadPane, titleThread, windowTitle } from "./lib/windowTitle";
 import {
@@ -501,8 +503,11 @@ export default function App() {
   useEffect(() => {
     if (!workOn && workPlace) shell.openWorkPlace(null);
   }, [workOn, workPlace]);
+  // The Clash dialog's host is warm before Work can go off under an open one (chrome/OnceOnSlot.tsx).
   useEffect(() => {
-    if (workOn) warmWorkPlacesAtIdle();
+    if (!workOn) return;
+    warmWorkPlacesAtIdle();
+    workClashChunk.preload();
   }, [workOn]);
   const closeWorkPlace = useCallback(() => shell.openWorkPlace(null), []);
   const notesViewOpen = useShell((s) => s.notesViewOpen);
@@ -3794,8 +3799,10 @@ export default function App() {
             onToggleSidebar={onToggleSidebar}
           />
         ) : null}
-        {/* Work's half of the rail: the + menu's rows and the dialog it opens (work/shell/WorkRailHost.tsx). */}
-        {workOn ? <WorkRailHost onOpenWorkspace={onSelectProject} /> : null}
+        {/* Work's half of the rail: the + menu's rows and the dialog it opens (work/shell/WorkRailHost.tsx); an open clash stays once Work goes off. */}
+        <OnceOnSlot on={workOn} kept={<WorkClashHost />}>
+          <WorkRailHost onOpenWorkspace={onSelectProject} />
+        </OnceOnSlot>
         {settingsOpen ? (
           <SettingsView
             cwd={sidebarCwd}

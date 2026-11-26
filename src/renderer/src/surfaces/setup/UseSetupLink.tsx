@@ -136,7 +136,7 @@ function Paste({
       }}
     >
       <ModalBody>
-        <Field label="Paste the link from your Mac" error={error}>
+        <Field label="Paste the setup link" error={error}>
           <Input
             data-setup-field
             value={link}

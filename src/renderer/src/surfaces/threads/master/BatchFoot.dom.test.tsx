@@ -70,6 +70,26 @@ describe("BatchFoot", () => {
     expect(document.querySelector('[data-step="land"] [data-step-time]')).toBeNull();
     expect(document.querySelector('[data-step="gate"] [data-step-time]')?.textContent).toBe("1m 9s");
   });
+  // boards-03 (D5): a key that may not change the rules or stop a step gets neither press.
+  it("draws no Edit… and no Stop where the key may not use them", () => {
+    const state = failedGate();
+    const running: BatchState = { ...state, steps: state.steps.map((s) => (s.id === "gate" ? { ...s, status: "running", endedAt: undefined } : s)) };
+    render(<BatchFoot batch={running} titleOf={() => undefined} />);
+    expect(screen.queryByRole("button", { name: "Edit…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    expect(document.querySelector('[data-step="gate"]')).not.toBeNull();
+  });
+  // Round 2: both go to the master's host; held in place while it is away, the link's words their tooltip.
+  it("holds Edit… and Stop while the master's host is away", () => {
+    const state = failedGate();
+    const running: BatchState = { ...state, steps: state.steps.map((s) => (s.id === "gate" ? { ...s, status: "running", endedAt: undefined } : s)) };
+    render(<BatchFoot batch={running} titleOf={() => undefined} onSave={noop} onStop={noop} held="The box is offline" />);
+    for (const name of ["Edit…", "Stop"]) {
+      const button = screen.getByRole("button", { name }) as HTMLButtonElement;
+      expect(button.disabled).toBe(true);
+      expect(button.closest("[data-held]")?.className).toContain("-me-2");
+    }
+  });
   it("a running step's Stop is the word alone, its spinner in the slot BusyLabel holds while the stop runs", async () => {
     let finish: () => void = () => {};
     const onStop = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));

@@ -5,6 +5,11 @@ import type { GitDiffIndex, GitPr } from "../../lib/fs";
 
 const h = vi.hoisted(() => ({
   index: null as GitDiffIndex | null,
+  /** D5: the last read failed; the host's link held; the key may write. */
+  failed: false,
+  held: null as string | null,
+  may: true,
+  refresh: vi.fn(() => Promise.resolve()),
   /** useAgainst's answer for a project's checkout; its row pieces stay real. */
   against: null as unknown,
   revertChunkText: vi.fn((_head: string, _index: string, _pos: number) => "unstaged text"),
@@ -39,7 +44,9 @@ vi.mock("../../lib/fs", async (importOriginal) => ({
   ...h.git,
   notifyGitChanged: () => {},
 }));
-vi.mock("../../lib/gitIndexStore", () => ({ useGitIndex: () => h.index, refreshGitSnapshot: () => Promise.resolve() }));
+vi.mock("../../lib/gitIndexStore", () => ({ useGitIndexRead: () => ({ index: h.index, failed: h.failed }), refreshGitSnapshot: () => h.refresh() }));
+vi.mock("../../lib/connection/degraded", () => ({ useHostHeld: () => h.held }));
+vi.mock("../../lib/linkMayCore", () => ({ useLinkMay: () => h.may }));
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
 vi.mock("../../lib/tcserver/projects", () => ({
   environmentOfCwd: () => "local",
@@ -185,6 +192,9 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  h.failed = false;
+  h.held = null;
+  h.may = true;
   vi.unstubAllGlobals();
   if (offsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", offsetHeight);
   if (offsetWidth) Object.defineProperty(HTMLElement.prototype, "offsetWidth", offsetWidth);
@@ -470,6 +480,47 @@ describe("ChangesPanel", () => {
       await flush();
       expect(fn).toHaveBeenCalled();
     }
+  });
+
+  // rightpanel-01: with the host away every git control is held; the strip over the composer says why.
+  it("holds every git control while the host's link is not open", async () => {
+    h.held = "Reconnecting to the box…";
+    h.index = indexOf({ ahead: 2, behind: 1, files: [file("a.ts"), file("b.ts", { staged: true, unstaged: false })] });
+    mount();
+    await flush();
+    for (const name of ["Stage", "Unstage", "Discard", "Sync with origin/feat"]) expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Stage" }));
+    await flush();
+    expect(h.git.gitStageFile).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain("Reconnecting");
+  });
+
+  // rightpanel-03: a key that may only read is offered nothing that writes.
+  it("draws no control that writes for a key that may only read", async () => {
+    h.may = false;
+    h.index = indexOf({ ahead: 2, behind: 1, files: [file("a.ts"), file("b.ts", { staged: true, unstaged: false })] });
+    mount();
+    await flush();
+    for (const name of ["Stage", "Unstage", "Discard", "More git actions", "Sync with origin/feat"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Commit/ })).toBeNull();
+    expect(screen.getAllByRole("button", { name: /^Open the diff of/ }).length).toBe(2);
+  });
+
+  // rightpanel-02: a failed read keeps the last good rows and says so once, with Retry; never the loading bones.
+  it("says a failed read in one red line with Retry, over the last good rows", async () => {
+    h.failed = true;
+    h.index = null;
+    const { rerender } = mount();
+    await flush();
+    expect(screen.getByRole("alert").textContent).toContain("Couldn't read the changes");
+    expect(screen.queryByLabelText("Loading changes")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(h.refresh).toHaveBeenCalled();
+    h.index = indexOf({ files: [file("a.ts")] });
+    rerender(<ChangesPanel cwd="/p" onOpenDiff={onOpenDiff} onOpenFile={() => {}} />);
+    await flush();
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open the diff of a.ts" })).toBeTruthy();
   });
 
   it("Sync, Publish, Create PR and PR #n show by the rules", async () => {

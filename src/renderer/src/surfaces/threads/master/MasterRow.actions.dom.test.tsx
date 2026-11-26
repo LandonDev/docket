@@ -57,3 +57,35 @@ describe("a board row's state verb", () => {
     });
   }
 });
+
+// boards-03, -04 (D5): a row whose host is away, or whose key may not, keeps Message alone; it reads muted by role.
+describe("a board row the host would refuse", () => {
+  beforeEach(async () => {
+    sessionStore.reset();
+    sessionStore.attach(new FakeMetaLink());
+    await sessionStore.ready();
+  });
+  afterEach(() => {
+    cleanup();
+    sessionStore.reset();
+    vi.restoreAllMocks();
+  });
+  const meta = () => standInMeta({ sessionId: "c1", environmentId: "local", title: "Home screen", status: "running", provider: "claude", model: "claude-opus-5-5" }, "m");
+
+  it("keeps Message alone while its host is away, and dims the title by role, never the row by opacity", () => {
+    const { container } = render(<MasterRow rowRef={ref(meta())} landed={false} host={{ id: "local", name: "The box", offline: true } as never} onOpen={() => {}} menu={menu} />);
+    expect(screen.getByRole("button", { name: "Message" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Thread actions" })).toBeNull();
+    expect((container.firstElementChild as HTMLElement).className).not.toContain("opacity-50");
+    expect(container.querySelector("[data-row-title]")!.className).toContain("text-muted-foreground");
+  });
+
+  it("keeps Message alone for a key that may only read", async () => {
+    const { registry } = await import("../../../lib/connection");
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open", lastHello: { environmentId: "local", contract: 3, caps: ["read"], key: { id: "k", name: "Laptop" } } } as never);
+    render(<MasterRow rowRef={ref(meta())} landed={false} host={null} onOpen={() => {}} menu={menu} />);
+    expect(screen.getByRole("button", { name: "Message" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+  });
+});

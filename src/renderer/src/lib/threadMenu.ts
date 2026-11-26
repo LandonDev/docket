@@ -25,6 +25,7 @@ import {
 import { THREAD_LABELS, THREAD_MENU_ICONS, threadTypesFor } from "../surfaces/threads/threadTypes";
 import { masterMenuLabel } from "./masterThread";
 import type { SessionStatus, ThreadType } from "./tcserver/types";
+import type { CoreMethod } from "./linkMayCore";
 
 /**
  * A thread's menu, one list for every surface (the tab chip's right-click,
@@ -69,6 +70,33 @@ export type ThreadMenuFacts = {
   play?: boolean;
   /** A Work thread or draft (lib/workRow.ts): Work's two types, no Dev server, Resources… only when it has some. */
   work?: boolean;
+  /** What this window's key may ask the thread's host (`linkMay`, D5): a row it may not use is not drawn. Absent: all. */
+  may?: (method: CoreMethod) => boolean;
+};
+
+/** The host method each of the menu's verbs sends (shared/capabilities.ts judges it); rows absent here are this window's own. */
+export const THREAD_MENU_METHODS: Readonly<Record<string, CoreMethod>> = {
+  "new-pass": "session.create",
+  "start-now": "session.start",
+  rename: "session.rename",
+  type: "session.retype",
+  tune: "session.tune",
+  goal: "session.setGoal",
+  resume: "session.resume",
+  pause: "session.pause",
+  compact: "session.compact",
+  killBackground: "session.killBackground",
+  stop: "session.interrupt",
+  "mac-bridge": "macBridge.thread.set",
+  "mac-bridge-rules": "macBridge.thread.set",
+  "save-play": "session.create",
+  resources: "resources.remove",
+  master: "session.setMaster",
+  "batch-new": "session.create",
+  "batch-adopt": "batch.adopt",
+  "remove-queue": "session.archive",
+  archive: "session.archive",
+  delete: "session.delete",
 };
 
 export type ThreadMenuExtra = { open?: boolean; newPass?: boolean };
@@ -183,5 +211,6 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
   if (queued) rows.push({ kind: "item", id: "remove-queue", label: "Remove from queue", icon: X });
   else rows.push({ kind: "item", id: "archive", label: facts.resources ? "Archive…" : "Archive", icon: Archive });
   rows.push({ kind: "item", id: "delete", label: "Delete…", icon: Trash2, danger: true });
-  return tidy(rows);
+  const may = facts.may;
+  return tidy(may ? rows.filter((row) => row.kind === "sep" || row.kind === "label" || row.kind === "note" || !THREAD_MENU_METHODS[row.id] || may(THREAD_MENU_METHODS[row.id]!)) : rows);
 }

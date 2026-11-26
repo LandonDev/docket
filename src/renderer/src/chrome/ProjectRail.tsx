@@ -1,10 +1,11 @@
 import { keyHint } from "../lib/keys";
 import { registry, useEnvironments } from "../lib/connection";
+import { linkMay } from "../lib/linkMayCore";
 import { environmentOfCwd, renameWorkspace } from "../lib/tcserver/projects";
 import { aliasKeys, mergeRailSections, splitWorkRows, type RailItem } from "../lib/linkedRail";
 import { HostsRow } from "./HostRows";
 import { AwayRow } from "./AwayRow";
-import { useHostsOffline } from "./hostOffline";
+import { heldRows, hostsHeld, useHostsOffline } from "./hostOffline";
 import {
   Archive,
   ArrowDownLong,
@@ -107,7 +108,7 @@ import type { GitDiffStats } from "../lib/fs";
 import { shell, useShell, type AliaxPageId } from "../stores/shell";
 import { useComputersMark } from "../lib/computers";
 import { CUSTOMIZE, groupMenuRows } from "./TabGroupMenu";
-import { RowsContextMenu, type MenuRow } from "./menuRows";
+import { RowsContextMenu, tidy, type MenuRow } from "./menuRows";
 import { aliaxChunk, computersChunk, inboxChunk, notesChunk, searchChunk, settingsChunk, customizeChunk, workOutboxChunk, workSearchChunk, workShellChunk } from "../surfaces/chunks";
 import { openWorkSearch } from "../lib/workSearchPort";
 import { shortcutFor } from "../lib/settings";
@@ -138,6 +139,8 @@ export function railRowAsksGit(selectedPath: string | null, workspace: { kind?: 
 export const ADD_WORKSPACE = "Add workspace";
 /** The row menu's Rename…: the workspace's name, not its folder's. */
 const RENAME = "rename";
+/** The workspace menu's rows that never reach its host: they stay live while the host is away. */
+const KEEP_WHEN_AWAY: ReadonlySet<string> = new Set(["pin", "unpin", "reveal", "move-up", "move-down"]);
 
 const REVEAL_LABEL = IS_MAC
   ? "Reveal in Finder"
@@ -405,18 +408,24 @@ export function ProjectRail({
     const projectKey = labelKey(path);
     // With Work on, a code workspace links to a LifeOS sector from its own menu; a Work workspace's is set when it is made.
     const sector = workOn && !workRows.some((row) => row.paths.some((p) => sameProjectPath(p, path))) ? (workRailPort.get()?.sectorRows(path) ?? []) : [];
+    // With the row's host away its verbs are held, the host's state their reason; the look and the order stay his.
+    const held = hostsHeld(rowOf(path)?.hosts ?? []);
+    // A key that may only read (D5): the host verbs are not drawn at all, the window's own rows stay.
+    const hosts = (rowOf(path)?.hosts ?? []).filter((id): id is string => !!id);
+    const mayWrite = hosts.length === 0 || hosts.some((id) => linkMay(id, "session.archive"));
+    const keyRows = (rows: MenuRow[]): MenuRow[] => (mayWrite ? rows : tidy(rows.filter((row) => row.kind !== "item" || KEEP_WHEN_AWAY.has(row.id))));
     const rows = groupMenuRows({
       actions: false,
-      extra: sector.concat(projectMenuExtraItems(
+      extra: sector.concat(heldRows(keyRows(projectMenuExtraItems(
         pinnedPaths.some((pinned) => (rowOf(path)?.paths ?? [path]).some((p) => sameProjectPath(pinned, p))),
         Boolean(onRemoveProject),
         batchCounts(sessionStore.metas(), { catalog: workspaceStore.getSnapshot(), lastSeen: loadLastSeen(), floor: seenFloor(), scope: projectScope(path, projectKey) }),
         undefined,
         moveMenuRows(pinnedIds.includes(path) ? pinnedIds : projectIds, path),
-      )),
+      )), held, KEEP_WHEN_AWAY)),
     });
     // A folder the catalog has not listed yet has no workspace to rename.
-    return workspaceByPath(workspaces, path) ? [{ kind: "item", id: RENAME, label: "Rename…", icon: Pencil }, ...rows] : rows;
+    return workspaceByPath(workspaces, path) && mayWrite ? [...heldRows([{ kind: "item", id: RENAME, label: "Rename…", icon: Pencil }], held), ...rows] : rows;
   };
 
   const onProjectRename = (projectKey: string, label: string) => {

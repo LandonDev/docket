@@ -430,7 +430,7 @@ until the setup starts. Shapes: `SetupItems`, `SetupStep`, `SetupPeek`,
   `device-allow`, a held toast "<name> wants to join", the three words, Allow
   (`devices.setup.allow`) and Remove (`devices.setup.deny`).
 - **On the computer** (`surfaces/setup/`, the `setup` chunk): one dialog that
-  goes from the paste ("Paste the link from your Mac", Continue, and Skip on
+  goes from the paste ("Paste the setup link", Continue, and Skip on
   the first screen or Cancel from Settings) to "From <giver> at <host>: link to
   the box, …" with **Set up this PC** (this Mac on a Mac) and Cancel, then the
   steps, then **Ready**. Each step row shows its state; a failed one says its

@@ -23,7 +23,7 @@ import { rightPanel } from "../lib/rightPanel";
 import { commandMenuChunk, dialogsChunk, diffChunk, failureCardChunk, inboxChunk, messageQueueChunk, messageListChunk, notesChunk, pickersChunk, questionChunk, reviewChunk, rightPanelChunk, searchChunk, selectChunk, threadViewsChunk } from "./chunks";
 import { tooltipChunk } from "../components/ui/tooltip";
 import { preloadWhenIdle } from "../lib/lazyChunk";
-import { Button } from "../components/ui/button";
+import { BusyLabel, Button } from "../components/ui/button";
 import { Facts } from "./settings/hosts/Facts";
 import { EmptySession } from "./EmptySession";
 import { NoRowsLine } from "./NoRowsLine";
@@ -302,10 +302,16 @@ export function LoadLine({ name, load, onRetry }: { name: string; load: LoadStat
     const t = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, [ticking, load]);
-  return <LoadLineView name={name} load={load} now={now} onRetry={onRetry} />;
+  // A press spins until the store's read moves on (a new load), as the connection line's Retry does.
+  const [pressed, setPressed] = useState<LoadState | null>(null);
+  const retry = () => {
+    setPressed(load);
+    onRetry();
+  };
+  return <LoadLineView name={name} load={load} now={now} retrying={pressed === load} onRetry={retry} />;
 }
 
-export function LoadLineView({ name, load, now, onRetry }: { name: string; load: LoadState; now: number; onRetry: () => void }) {
+export function LoadLineView({ name, load, now, retrying = false, onRetry }: { name: string; load: LoadState; now: number; retrying?: boolean; onRetry: () => void }) {
   const parts = loadLineText(name, load, now);
   if (!parts) return null;
   return (
@@ -316,8 +322,8 @@ export function LoadLineView({ name, load, now, onRetry }: { name: string; load:
         className={`${columnClass()} flex h-6 items-center gap-2 text-xs text-muted-foreground`}
       >
         <Facts parts={parts} className="flex-1 flex-nowrap items-center [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:not(:first-child)]:shrink-0" />
-        <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry}>
-          {load.phase === "failed" ? "Retry now" : "Retry"}
+        <Button variant="ghost" size="xs" className="shrink-0" onClick={onRetry} disabled={retrying}>
+          <BusyLabel busy={retrying} label={load.phase === "failed" ? "Retry now" : "Retry"} align="end" />
         </Button>
       </div>
     </div>

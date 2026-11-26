@@ -90,6 +90,21 @@ afterEach(() => {
 });
 
 describe("gitIndexStore", () => {
+  // rightpanel-02: a failed read keeps the last good index and says it failed; the next good read clears it.
+  it("keeps the last good index through a failed read and clears the failure on the next", async () => {
+    const stop = holdGitSnapshot("/w/fail");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(getGitSnapshot("/w/fail")).toMatchObject({ index: { branch: "b1" } });
+    gitDiffIndex.mockImplementationOnce(() => Promise.reject(new Error("timed out")));
+    await refreshGitSnapshot("/w/fail");
+    expect(getGitSnapshot("/w/fail")).toMatchObject({ index: { branch: "b1" }, failed: true });
+    gitDiffIndex.mockImplementationOnce(() => Promise.resolve(index(1)));
+    await refreshGitSnapshot("/w/fail");
+    expect(getGitSnapshot("/w/fail").failed).toBeUndefined();
+    expect(getGitSnapshot("/w/fail").index?.branch).toBe("b1");
+    stop();
+  });
+
   it("loads once on hold, through the server watcher, and stops with the last holder", async () => {
     const a = holdGitSnapshot("/w/one", { log: true });
     const b = holdGitSnapshot("/w/one");

@@ -33,6 +33,13 @@ async function key(field: HTMLElement, name: string) {
 const trigger = (name: string) => document.querySelector<HTMLElement>(`[data-slot=combobox-trigger][aria-label="${name}"]`)!;
 
 describe("ChoiceCombobox", () => {
+  it("leaves a disabled trigger out of the Tab order, as a disabled ChoiceSelect is", () => {
+    const { rerender } = render(<ChoiceCombobox label="Build model" value="sol" options={OPTIONS} onChange={() => {}} disabled />);
+    expect(trigger("Build model").tabIndex).toBe(-1);
+    rerender(<ChoiceCombobox label="Build model" value="sol" options={OPTIONS} onChange={() => {}} />);
+    expect(trigger("Build model").tabIndex).toBe(0);
+  });
+
   it("shows the chosen option's label on a trigger in the select's box", () => {
     render(<ChoiceCombobox label="Build model" value="sol" options={OPTIONS} onChange={() => {}} size="sm" className="w-44" />);
     const field = trigger("Build model");

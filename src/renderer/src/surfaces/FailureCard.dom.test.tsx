@@ -179,6 +179,16 @@ describe("FailureCard wired", () => {
     probe.unmount();
   });
 
+  // D5: a key that may not continue the thread is offered none of the actions that go to its host.
+  it("offers a read key none of the actions that go to the host", async () => {
+    const { registry } = await import("../lib/connection/registry");
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "open", lastHello: { environmentId: "local", contract: 3, caps: ["read"], key: { id: "k", name: "Laptop" } } } as never);
+    const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("oauth_expired")} />);
+    expect(buttons(probe.container)).toEqual([]);
+    probe.unmount();
+    vi.restoreAllMocks();
+  });
+
   it("without the desktop bridge the sign-in is a note; Retry continues the thread", async () => {
     expect(canSignInHere("local")).toBe(false);
     const probe = mountProbe(<FailureCard sessionId="s1" failure={failure("oauth_expired")} />);

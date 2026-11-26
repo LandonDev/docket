@@ -27,6 +27,8 @@ import { onFileEvent, watchCwd } from "./projectWatch";
 export interface GitSnapshot {
   index: GitDiffIndex | null;
   log: GitLogEntry[] | null;
+  /** The last read failed: `index` and `log` are the last good ones (null if none came), never a failure's null. */
+  failed?: true;
 }
 
 const LOG_LIMIT = 8;
@@ -89,7 +91,7 @@ async function load(cwd: string, entry: Entry): Promise<void> {
         : entry.snapshot.log;
     const prev = entry.snapshot.index;
     if (prev && sameIndex(prev, index)) {
-      if (log !== entry.snapshot.log) publish(entry, { index: prev, log });
+      if (log !== entry.snapshot.log || entry.snapshot.failed) publish(entry, { index: prev, log });
     } else {
       publish(entry, { index, log });
       // Files whose git state moved may have moved on disk too (a checkout,
@@ -97,7 +99,8 @@ async function load(cwd: string, entry: Entry): Promise<void> {
       if (prev) invalidateWatchedFiles(changedFilePaths(prev, index));
     }
   } catch {
-    publish(entry, { index: null, log: null });
+    // Keep the last good index: a failed read never stands in as an empty or loading checkout (rightpanel-02).
+    if (!entry.snapshot.failed) publish(entry, { index: entry.snapshot.index, log: entry.snapshot.log, failed: true });
   } finally {
     entry.inFlight = false;
     if (entry.pending) {
@@ -215,6 +218,12 @@ const keyOf = (cwd: string | null | undefined, enabled: boolean): string | null 
 /** The checkout's index and log; rendering holds its watch open. Null cwd → empty. */
 export function useGitSnapshot(cwd: string | null | undefined): GitSnapshot {
   return useHeld(keyOf(cwd, true), true);
+}
+
+/** The checkout's index with whether its last read failed (the Changes section), no log fetch. */
+export function useGitIndexRead(cwd: string | null | undefined): { index: GitDiffIndex | null; failed: boolean } {
+  const snapshot = useHeld(keyOf(cwd, true), false);
+  return { index: snapshot.index, failed: !!snapshot.failed };
 }
 
 /** The checkout's index alone (no log fetch). Disabled → null, and no watch. */

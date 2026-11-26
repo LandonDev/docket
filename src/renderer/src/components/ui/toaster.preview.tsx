@@ -55,7 +55,7 @@ export function ToastPreview({ state = "approval" }: { state?: string }) {
           { sessionId: "proof", environmentId: "local", title: "Proof the print copy", error: "The box did not answer." },
         ],
       }]} /> : null}
-      {state === "approval" || state === "host away" || state === "waiting question" ? <ApprovalToasts notices={[{ sessionId: "guide", title: "Check the bridge", requestId: 1, tool: "Bash", label: state === "host away" ? "The box is offline" : "Run the route checks?" }]} onFocusSession={noop} onApproval={noop} /> : null}
+      {state === "approval" || state === "host away" || state === "waiting question" ? <ApprovalToasts notices={[{ sessionId: "guide", title: "Check the bridge", requestId: 1, tool: "Bash", label: "Run the route checks?", held: state === "host away" ? "The box is offline" : null }]} onFocusSession={noop} onApproval={noop} /> : null}
       {state === "allow" ? <AllowToasts notices={[{ pairingId: "preview", name: "Field laptop", words: ["map", "river", "birch"] }]} onAnswered={noop} /> : null}
     </div>
   );

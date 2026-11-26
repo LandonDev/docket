@@ -9,7 +9,8 @@
  * Separate documents keep html.theme-light and dark: selectors intact, without
  * iframes or CSS rewriting. Both embed out/renderer/assets/*.css when present;
  * --fresh compiles the app's own stylesheet from source in the built one's
- * place (about a second), so a class or a token newer than the build draws.
+ * place (about a second), so a class or a token newer than the build draws;
+ * a page under src/hosted gets its own sheet (guest.css) compiled the same way.
  * Adjacent component.fixtures.tsx carries [{ name, props, prepare?, now? }] (the
  * export-specific array, then the default, `fixtures`, or the first array).
  * A fixture can open a state through a real control before capture. --props supplies shared defaults, fixtures override them.
@@ -26,7 +27,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, dirname, extname, join, resolve } from 'node:path'
+import { basename, dirname, extname, join, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { createElement, type ComponentType } from 'react'
@@ -65,16 +66,27 @@ plugin({
   }
 })
 
-/** src/renderer/src/index.css compiled as the build compiles it (Tailwind
- *  over the renderer's sources), in about a second, with its font files
- *  addressed where they lie. */
-export async function freshStylesheet(): Promise<string> {
+/** The stylesheet a target's page loads: a hosted page's own (src/hosted/guest/guest.css, which imports the app's
+ *  and adds its folder's classes and rules), else the app's. */
+export function stylesheetFor(modulePath: string): string {
+  const dir = dirname(resolve(modulePath))
+  const hosted = relative(join(root, 'src/hosted'), dir)
+  if (hosted && !hosted.startsWith('..')) {
+    const own = readdirSync(dir).filter((file) => file.endsWith('.css')).sort()[0]
+    if (own) return join(dir, own)
+  }
+  return join(root, 'src/renderer/src/index.css')
+}
+
+/** A stylesheet (the app's index.css by default) compiled as the build compiles
+ *  it (Tailwind over the renderer's sources and the sheet's own @source), in
+ *  about a second, with its font files addressed where they lie. */
+export async function freshStylesheet(path = join(root, 'src/renderer/src/index.css')): Promise<string> {
   const { compile } = await import('@tailwindcss/node')
   const { Scanner } = await import('@tailwindcss/oxide')
-  const path = join(root, 'src/renderer/src/index.css')
   const compiler = await compile(await readFile(path, 'utf8'), { base: dirname(path), onDependency: () => {} })
   const css = compiler.build(new Scanner({ sources: [{ base: join(root, 'src/renderer'), pattern: '**/*', negated: false }, ...compiler.sources] }).scan())
-  return css.replaceAll('url("./assets/fonts/', `url("${pathToFileURL(join(root, 'src/renderer/src/assets/fonts')).href}/`)
+  return css.replace(/url\("(?:\.\.\/)*(?:\.\/)?(?:renderer\/src\/)?assets\/fonts\//g, `url("${pathToFileURL(join(root, 'src/renderer/src/assets/fonts')).href}/`)
 }
 
 type Props = Record<string, unknown>
@@ -211,8 +223,10 @@ async function clientMarkup(component: ComponentType<Props>, props: Props, fixtu
  *  popover, tooltip, dialog or sheet lives in a portal on the body. Each is
  *  drawn in place under its fixture, in a box that stands in for the window:
  *  a positioner loses the coordinates Floating UI gave it (jsdom measures
- *  nothing, so they are all the top left corner) and lies in the flow, and a
- *  dialog or sheet, which is fixed to the window, is fixed to the box. */
+ *  nothing, so they are all the top left corner) and lies in the flow, a
+ *  dialog, which is fixed to the window, is fixed to the box, and a side sheet
+ *  stands at its edge in the box's flow, as tall as its rows (in a fixture's
+ *  stage, fixed to the stage as a dialog is). */
 export function portalMarkup(portals: Element[]): string {
   let html = ''
   for (const portal of portals) {
@@ -286,7 +300,7 @@ async function main(): Promise<void> {
   // build's other sheets (the editors', Work's) are kept as they are.
   const fresh = values.fresh
   const sheets = await Promise.all(cssFiles.filter((file) => !(fresh && /^index-/.test(file))).map((file) => readFile(join(assets, file), 'utf8')))
-  const css = [...(fresh ? [await freshStylesheet()] : []), ...sheets].join('\n')
+  const css = [...(fresh ? [await freshStylesheet(stylesheetFor(modulePath))] : []), ...sheets].join('\n')
   if (!cssFiles.length && !fresh) console.log('No built stylesheet at out/renderer/assets/*.css; writing previews without it.')
 
   const markup = new Map<string, string>()
@@ -329,6 +343,11 @@ async function main(): Promise<void> {
           [data-preview-dialog-grid] { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 12px; }
           [data-preview-dialog-grid] > :not(.preview-portal) { display: none; }
           [data-preview-dialog-grid] > .preview-portal[data-preview-window] { position: relative; min-height: 460px; }
+          /* A side sheet open in a picture: at its edge and width, 12px in as in the window, and as tall as its rows, so the window
+             grows to hold it (in the app it is the window's height and its body scrolls); no stand-in stage is needed. In a stage
+             (data-preview-stage, a window of the fixture's own height) it stays fixed to that window. */
+          .preview-portal:not([data-preview-stage] > *) [data-slot="sheet-content"]:is([data-side="left"], [data-side="right"]) { position: relative; inset: auto; height: auto; margin: 12px; }
+          .preview-portal:not([data-preview-stage] > *) [data-slot="sheet-content"][data-side="right"] { margin-inline-start: auto; }
         `)),
       createElement('body', null,
         createElement('main', null,

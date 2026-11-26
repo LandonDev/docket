@@ -26,6 +26,8 @@ import { loadToast } from "./toastSync";
 import { FolderPlus, LogIn, Server, Settings } from "./icons";
 import { tidy, useMenuBody, type MenuRow } from "./menuRows";
 import { RailRow } from "./RailRow";
+import { hostsHeld } from "./hostOffline";
+import { linkMay } from "../lib/linkMayCore";
 
 /** A host's connection dot: quiet while open, amber while it tries or is slow, red refused. */
 export function toneOf(status: EnvironmentStatus, slow = false): string {
@@ -95,6 +97,7 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
         <HostsMenuRows
           environments={environments}
           words={new Map(environments.map((e) => [e.id, statuses.get(e.id) ? statusText(statuses.get(e.id)!, now, slow.has(e.id)) : "not connected"]))}
+          held={new Map(environments.map((e) => [e.id, hostsHeld([e.id])]))}
           onAddWorkspace={onAddWorkspace}
         />
       </DropdownMenuContent>
@@ -110,10 +113,13 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
 function HostsMenuRows({
   environments,
   words,
+  held,
   onAddWorkspace,
 }: {
   environments: readonly Environment[];
   words: ReadonlyMap<string, string>;
+  /** A host away holds its submenu, its link words the reason: every verb in it would be refused. */
+  held: ReadonlyMap<string, string | null>;
   onAddWorkspace: (environmentId: string) => void;
 }) {
   const Body = useMenuBody();
@@ -137,6 +143,7 @@ function HostsMenuRows({
           </span>
         ),
         contentLabel: `${name} actions`,
+        ...(held.get(id) ? { disabled: true, reason: held.get(id)! } : {}),
         trailing: (
           <>
             {words.get(id)}
@@ -145,11 +152,16 @@ function HostsMenuRows({
         ),
         items: tidy([
           ...(id !== currentId ? [{ kind: "item", id: `switch:${id}`, label: `Switch to ${name}`, icon: LogIn } as const] : []),
-          { kind: "item", id: `add:${id}`, label: "Add workspace here…", icon: FolderPlus },
-          { kind: "sep" },
-          ...batchMenuRows(batchCounts(metas, { ...sel, scope: hostScope(id) }), unread.ids.length).map((row) =>
-            row.kind === "item" ? { ...row, id: `${row.id}:${id}` } : row,
-          ),
+          // A key that may only read (D5) is offered no verb its host would refuse: Switch to alone.
+          ...(linkMay(id, "session.batch")
+            ? [
+                { kind: "item", id: `add:${id}`, label: "Add workspace here…", icon: FolderPlus } as const,
+                { kind: "sep" } as const,
+                ...batchMenuRows(batchCounts(metas, { ...sel, scope: hostScope(id) }), unread.ids.length).map((row) =>
+                  row.kind === "item" ? { ...row, id: `${row.id}:${id}` } : row,
+                ),
+              ]
+            : []),
         ]),
       };
     }),

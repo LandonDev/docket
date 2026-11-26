@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { TruncateTip, useTruncated } from "@renderer/components/tip";
+import { useLinkMay } from "../../lib/linkMayCore";
+import { useHostHeld } from "../../lib/connection/degraded";
+import { HeldTip } from "../../components/heldTip";
 import type { BuildRun, BuildTarget, EffectiveBuild, RemoteStatus } from "@server/shared/build";
 import { ChoiceSelect, type Choice } from "@renderer/components/choice-select";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
@@ -42,6 +45,9 @@ export function BuildPanel({ projectId }: { projectId: string }) {
   const project = useProjects().find((p) => p.id === projectId);
   const workspaceId = project?.workspaceId;
   const environmentId = project?.environmentId;
+  const mayBuild = useLinkMay(environmentId ?? "", "build.run");
+  // Round 2: Build and Cancel go to the project's host; held while it is away.
+  const held = useHostHeld(environmentId);
   const [effective, setEffective] = useState<EffectiveBuild | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   // Which branch to build: the project's own by default; another checkout
@@ -136,8 +142,9 @@ export function BuildPanel({ projectId }: { projectId: string }) {
       pullError={pullError}
       error={error}
       onPick={pick}
-      onBuild={() => void start()}
-      onCancel={() => void cancelBuild(projectId).catch(() => undefined)}
+      held={held}
+      onBuild={mayBuild ? () => void start() : undefined}
+      onCancel={mayBuild ? () => void cancelBuild(projectId).catch(() => undefined) : undefined}
       onFetch={() => void pull()}
       onSetCommand={() => workspaceId && openBuildSettings(workspaceId)}
       onReveal={(path) => void invoke("reveal_path", { path })}
@@ -173,6 +180,7 @@ export function BuildView({
   error,
   onPick,
   onBuild,
+  held = null,
   onCancel,
   onFetch,
   onSetCommand,
@@ -193,8 +201,11 @@ export function BuildView({
   pullError: string | null;
   error: string | null;
   onPick: (branch: string) => void;
-  onBuild: () => void;
-  onCancel: () => void;
+  /** Absent for a key that may not build (D5): no Build, no Cancel. */
+  onBuild?: () => void;
+  /** The project's host away (D5): Build and Cancel are held, this their tooltip. */
+  held?: string | null;
+  onCancel?: () => void;
   onFetch: () => void;
   onSetCommand: () => void;
   onReveal: (path: string) => void;
@@ -227,14 +238,18 @@ export function BuildView({
           ) : (
             <span className="flex-1" />
           )}
-          {running ? (
-            <Button size="sm" variant="secondary" onClick={onCancel}>
-              Cancel
-            </Button>
+          {!onBuild ? null : running ? (
+            <HeldTip held={held}>
+              <Button size="sm" variant="secondary" disabled={!!held} onClick={onCancel}>
+                Cancel
+              </Button>
+            </HeldTip>
           ) : effective === null ? null : (
-            <Button size="sm" disabled={!effective || pulling} onClick={onBuild}>
-              Build
-            </Button>
+            <HeldTip held={held}>
+              <Button size="sm" disabled={!effective || pulling || !!held} onClick={onBuild}>
+                Build
+              </Button>
+            </HeldTip>
           )}
         </div>
       </TooltipProvider>

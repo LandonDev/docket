@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
+import { Autocomplete as AutocompletePrimitive } from "@base-ui/react/autocomplete";
 import { Combobox as ComboboxPrimitive } from "@base-ui/react/combobox";
 import { Check, ChevronDown, Search } from "@renderer/chrome/icons";
 import { cn } from "@renderer/lib/cn";
 import { fullScreenHome } from "@renderer/lib/fullScreenHome";
-import { GroupInput, InputGroup } from "./input";
+import { GroupInput, Input, InputGroup } from "./input";
 import { MENU_ROW } from "./menu-row";
 import { SELECT_CHEVRON, SELECT_TRIGGER, SELECT_VALUE } from "./select-trigger";
 
@@ -14,6 +15,12 @@ import { SELECT_CHEVRON, SELECT_TRIGGER, SELECT_VALUE } from "./select-trigger";
  * highlight only when it moves, so a row that slides under a still pointer
  * never takes it from the keyboard. Lives in the select and menu chunks,
  * never the first paint. A short list with no search is `Select`.
+ *
+ * The field form (`ComboboxField`, `ComboboxFieldInput`, `ComboboxFieldItem`)
+ * keeps free text: the input itself is the combobox, its text is the value,
+ * and the popup under it only suggests (Base UI's Autocomplete, which shares
+ * the combobox's popup and list). Nothing is forced: a row taken fills the
+ * field, and words no row holds stay as typed.
  */
 const Combobox = ComboboxPrimitive.Root;
 
@@ -88,6 +95,32 @@ function ComboboxList({ className, ...props }: ComboboxPrimitive.List.Props) {
   );
 }
 
+/** The field form's root: the input's text is its value (`value`, `onValueChange`), the items are suggestions. */
+const ComboboxField = AutocompletePrimitive.Root;
+
+/** The field form's input: the one text field (`Input`), which is the combobox itself. `size="sm"` is the 28px row. */
+function ComboboxFieldInput({ className, size = "default", ...props }: Omit<ComboboxPrimitive.Input.Props, "size"> & { size?: "sm" | "default" }) {
+  return (
+    <AutocompletePrimitive.Input
+      data-slot="combobox-field"
+      data-size={size}
+      spellCheck={false}
+      autoComplete="off"
+      autoCorrect="off"
+      render={<Input className={cn(size === "sm" && "h-7 rounded-md", className)} />}
+      {...props}
+    />
+  );
+}
+
+const ITEM_ROW =
+  "relative flex w-full cursor-default select-none items-center rounded-lg leading-5 outline-hidden data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5";
+
+/** A suggestion under the field form: a menu row's box, the highlighted one the `muted` fill, no check (nothing is chosen). */
+function ComboboxFieldItem({ className, ...props }: AutocompletePrimitive.Item.Props) {
+  return <AutocompletePrimitive.Item data-slot="combobox-item" className={cn(MENU_ROW, ITEM_ROW, className)} {...props} />;
+}
+
 /** A row in a menu row's box; the highlighted row is the `muted` fill, the chosen one a still check at its end.
  *  `indicator={false}` for a row that ends in controls of its own and draws its check among them. */
 function ComboboxItem({ className, children, indicator = true, ...props }: ComboboxPrimitive.Item.Props & { indicator?: boolean }) {
@@ -96,7 +129,7 @@ function ComboboxItem({ className, children, indicator = true, ...props }: Combo
       data-slot="combobox-item"
       className={cn(
         MENU_ROW,
-        "relative flex w-full cursor-default select-none items-center rounded-lg leading-5 outline-hidden data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+        ITEM_ROW,
         indicator && "pe-8",
         className,
       )}
@@ -139,6 +172,9 @@ export {
   ComboboxCollection,
   ComboboxContent,
   ComboboxEmpty,
+  ComboboxField,
+  ComboboxFieldInput,
+  ComboboxFieldItem,
   ComboboxGroup,
   ComboboxItem,
   ComboboxLabel,

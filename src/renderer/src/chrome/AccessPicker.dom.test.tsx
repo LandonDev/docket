@@ -34,7 +34,7 @@ describe("AccessPicker", () => {
     render(<AccessPicker value="supervised" onChange={() => {}} onClose={() => {}} />);
     await openMenu();
     const option = screen.getByRole("option", { name: /Supervised/ });
-    expect(option.textContent).toContain("Ask before edits and commands that change things.");
+    expect(option.textContent).toContain("Asks before every step");
     expect(option.textContent).not.toContain("file changes");
   });
 

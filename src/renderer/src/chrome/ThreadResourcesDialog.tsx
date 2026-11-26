@@ -6,7 +6,7 @@ import {
   archiveThread,
   hostName,
   isRemovable,
-  loadThreadResources,
+  readThreadResources,
   removalClause,
   removeThreadResources,
   rowState,
@@ -17,6 +17,11 @@ import { DialogFooter, ErrorLine } from './ConfirmDialog'
 import { CheckRow } from './DialogField'
 import { Tip } from '../components/tip'
 import { Modal, ModalBody, useModalClose } from './Modal'
+import { Button } from '../components/ui/button'
+import { useHostHeld } from '../lib/connection/degraded'
+import { useLinkMay } from '../lib/linkMay'
+import { registry } from '../lib/connection/registry'
+import { sessionStore } from '../lib/tcserver/store'
 
 /**
  * Thread resources (docs/box.md "Thread resources"): the thread menu's
@@ -52,6 +57,12 @@ function ResourceCheck({ row, checked, disabled, onChange }: { row: ThreadResour
   )
 }
 
+/** "The box did not answer": a failed read in the host's name, never its transport text. */
+function didNotAnswer(environmentId: string | undefined): string {
+  const name = environmentId && registry.environment(environmentId) ? hostName(environmentId) : 'the host'
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} did not answer`
+}
+
 /** The thread menu's "Resources…": pick what goes, then Remove N. */
 export function ThreadResourcesDialog({ sessionId, title, onClose }: { sessionId: string; title: string; onClose: () => void }) {
   const [pending, setPending] = useState(false)
@@ -76,17 +87,32 @@ function ResourcesForm({
   const close = useModalClose()
   const rows = useThreadResources(sessionId).filter(isRemovable)
   const [loaded, setLoaded] = useState(false)
+  // The host did not answer the read: said as such with Retry, never "Nothing left" (edges-26).
+  const [readFailed, setReadFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
+  const environmentId = sessionStore.environmentOf(sessionId)
+  const held = useHostHeld(environmentId)
+  // A key that may not remove gets the list to read and no Remove (D5).
+  const mayRemove = useLinkMay(environmentId ?? '', 'resources.remove')
   const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set())
   const [removed, setRemoved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
-    void loadThreadResources(sessionId).finally(() => live && setLoaded(true))
+    setReadFailed(false)
+    void readThreadResources(sessionId).then(
+      () => live && setLoaded(true),
+      () => {
+        if (!live) return
+        setReadFailed(true)
+        setLoaded(true)
+      }
+    )
     return () => {
       live = false
     }
-  }, [sessionId])
+  }, [sessionId, attempt])
 
   // A removal that leaves nothing behind closes the form: its work is done.
   const empty = rows.length === 0
@@ -131,6 +157,13 @@ function ResourcesForm({
       <ModalBody className="gap-2" data-thread-resources={sessionId}>
         {empty && !loaded ? (
           <LoadingLine label="Loading…" />
+        ) : empty && readFailed ? (
+          <div className="flex items-center gap-2 py-1 text-[13px] text-destructive">
+            <span className="min-w-0 flex-1">{didNotAnswer(environmentId)}</span>
+            <Button variant="ghost" size="xs" onClick={() => setAttempt((n) => n + 1)}>
+              Retry
+            </Button>
+          </div>
         ) : empty ? (
           <p className="py-1 text-[13px] text-muted-foreground">Nothing left to remove.</p>
         ) : (
@@ -148,12 +181,14 @@ function ResourcesForm({
         )}
         <ErrorLine error={error} />
       </ModalBody>
+      {/* No Remove while nothing is listed; held, its reason the host's state, while the host is away. */}
       <DialogFooter
         onCancel={onClose}
-        confirmLabel={chosen.length ? `Remove ${chosen.length}` : 'Remove'}
+        confirmLabel={empty || !mayRemove ? undefined : chosen.length ? `Remove ${chosen.length}` : 'Remove'}
         danger
         pending={pending}
-        disabled={!chosen.length}
+        disabled={!chosen.length || !!held}
+        note={empty ? undefined : (held ?? undefined)}
       />
     </form>
   )

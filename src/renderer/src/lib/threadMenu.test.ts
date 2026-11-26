@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { MenuRow } from "../chrome/menuRows";
 import { THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes";
 import type { ThreadType } from "./tcserver/types";
-import { canCompact, threadMenuRows, type ThreadMenuFacts } from "./threadMenu";
+import { canCompact, THREAD_MENU_METHODS, threadMenuRows, type ThreadMenuFacts } from "./threadMenu";
+import { capabilityRefusal, requiredCapability } from "@shared/capabilities";
 
 const facts = (over: Partial<ThreadMenuFacts> = {}): ThreadMenuFacts => ({
   status: "idle",
@@ -251,5 +252,20 @@ describe("threadMenuRows for a Work thread", () => {
     const code = threadMenuRows(facts({ dev: { open: false }, resources: 1, removable: 1 }));
     expect(typesOf(code)).toEqual(["type:chat", "type:planning", "type:project-plan", "type:implementation", "type:orchestration", "type:research"]);
     expect(ids(code)).toEqual(expect.arrayContaining(["dev", "resources"]));
+  });
+});
+
+// boards-03 (D5): a key that may only read is offered no verb its host would refuse.
+describe("threadMenuRows for a key", () => {
+  it("draws only this window's own rows for a read key", () => {
+    const readOnly = (method: string) => capabilityRefusal(["read"], { method: method as never }) === null;
+    const all = threadMenuRows(facts({ status: "running", removable: 2, resources: 2 }), { open: true, newPass: true });
+    const shown = threadMenuRows(facts({ status: "running", removable: 2, resources: 2, may: readOnly }), { open: true, newPass: true });
+    expect(ids(all)).toEqual(expect.arrayContaining(["rename", "pause", "stop", "archive", "delete", "resources", "new-pass"]));
+    expect(ids(shown).filter((id) => id !== "—")).toEqual(["open"]);
+  });
+
+  it("names a host method for every verb it gates, each one the host's table knows", () => {
+    for (const [id, method] of Object.entries(THREAD_MENU_METHODS)) expect(requiredCapability({ method }), id).not.toBeUndefined();
   });
 });

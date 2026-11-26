@@ -1,5 +1,7 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { devPane, useDevPane } from "../lib/devPane";
+import { linkMay } from "../lib/linkMayCore";
+import { hostsHeld } from "./hostOffline";
 import { useDevRunning, useDevServable } from "../lib/devServers";
 import { bridgeableEnvironment, loadThreadBridge, setThreadBridge, useThreadBridge } from "../lib/macBridge";
 import { useMasterIds } from "../lib/masterThread";
@@ -10,7 +12,7 @@ import { useProjects, useWorkspaces } from "../lib/tcserver/workspaces";
 import { isWorkSession } from "../lib/workRow";
 import type { ThreadRules } from "@server/shared/rules";
 import type { SessionMeta, ThreadType } from "../lib/tcserver/types";
-import { threadMenuRows, type ThreadMenuExtra } from "../lib/threadMenu";
+import { THREAD_MENU_METHODS, threadMenuRows, type ThreadMenuExtra } from "../lib/threadMenu";
 import { archiveThread, isRemovable, liveResources, loadThreadResources, startThreadResources, useThreadResources } from "../lib/threadResources";
 import { leafIds } from "../lib/layout";
 import { actionFailed } from "../lib/threadActionToast";
@@ -141,7 +143,9 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
     const environmentId = t.environmentId;
     // Every root thread of a goal harness: the app's one dialog answers it.
     const goal = !t.parentId && GOAL_HARNESSES.has(session?.harness ?? meta?.provider ?? "") ? !!(session?.goal ?? metaOf(id)?.goal) : null;
-    return threadMenuRows(
+    // The host away holds every verb that goes to it, its state the reason; the window's own rows stay (D5).
+    const held = hostsHeld([environmentId]);
+    const rows = threadMenuRows(
       {
         status: t.status ?? "idle",
         treeHasLiveWork: session?.treeHasLiveWork,
@@ -164,9 +168,12 @@ export function useThreadMenu(handlers: ThreadMenuHandlers = {}): ThreadMenuApi 
         draft: sessionStore.isDraft(id),
         play: t.scope === "work" && !!t.workspaceId && !t.parentId && !!workPlayPort.get()?.maySave(environmentId),
         work: isWorkSession(t, workspaces),
+        // Read when the menu opens (rows are built then): a row the key may not use is not drawn (D5, boards-03).
+        may: (method) => linkMay(environmentId, method),
       },
       extra,
     );
+    return held ? rows.map((row) => (row.kind === "item" && THREAD_MENU_METHODS[row.id] ? { ...row, disabled: true, reason: held } : row)) : rows;
   };
 
   const onOpenChange = useCallback((id: string | null, open: boolean) => {

@@ -68,6 +68,27 @@ describe('ui-preview and import.meta.glob', () => {
   })
 })
 
+describe('ui-preview --fresh', () => {
+  it("compiles a hosted page's own stylesheet, so the classes only that page uses draw", () => {
+    // The script imports Bun's own module: it runs under bun, as every run of it does.
+    const probe = [
+      `const m = await import(${JSON.stringify(script)})`,
+      "const guest = m.stylesheetFor('src/hosted/guest/GuestApp.preview.tsx')",
+      'const css = await m.freshStylesheet(guest)',
+      "console.log(JSON.stringify({ guest, app: m.stylesheetFor('src/renderer/src/components/ui/button.tsx'), dvh: css.includes('.h-dvh'), sm: css.includes('.sm\\\\:inline'), loose: /url\\(\"(?!file:)[^\"]*assets\\/fonts\\//.test(css) }))",
+    ].join('\n')
+    const result = spawnSync('bun', ['-e', probe], { cwd: root, encoding: 'utf8', timeout: 60_000 })
+    expect(result.status, result.stderr).toBe(0)
+    expect(JSON.parse(result.stdout.trim().split('\n').at(-1)!)).toEqual({
+      guest: join(root, 'src/hosted/guest/guest.css'),
+      app: join(root, 'src/renderer/src/index.css'),
+      dvh: true,
+      sm: true,
+      loose: false
+    })
+  }, 60_000)
+})
+
 describe('ui-preview', () => {
   it("leaves nothing a publish would call a dirty tree: git ignores the sample folders, even one a killed run left", () => {
     const left = spawnSync('git', ['check-ignore', '-q', 'scripts/.ui-preview-test-AbC123/sample.tsx'], { cwd: root })
@@ -446,6 +467,9 @@ describe('preview layouts', () => {
     const html = output(name).dark
     expect(html).toMatch(/<div class="preview-portal" data-preview-window="">.*data-slot="sheet-content".*data-side="right".*Agent detail/s)
     expect(html).toContain('width: 672px')
+    // In the box's flow at its edge, as tall as its rows: the window grows to hold it, with no stage around it.
+    expect(html).toContain('.preview-portal:not([data-preview-stage] > *) [data-slot="sheet-content"]:is([data-side="left"], [data-side="right"]) { position: relative; inset: auto; height: auto; margin: 12px; }')
+    expect(html).toContain('.preview-portal:not([data-preview-stage] > *) [data-slot="sheet-content"][data-side="right"] { margin-inline-start: auto; }')
   })
 
   it('writes browser positioning only for a preview with measured details', () => {
@@ -481,7 +505,7 @@ it('can hold the clock for a preview', () => {
 it('draws the real decoded-image and agent-detail bodies in static previews', () => {
   for (const [target, name, words] of [
     ['surfaces/MediaViewer.fixtures.tsx#MediaViewerPreview', 'MediaViewerPreview', ['320 × 200', 'Before', 'After']],
-    ['surfaces/threads/fleet/AgentDetail.fixtures.tsx#AgentDetailPreview', 'AgentDetailPreview', ['The west trail needs a note', 'The box did not answer.', 'data-preview-window']],
+    ['surfaces/threads/fleet/AgentDetail.fixtures.tsx#AgentDetailPreview', 'AgentDetailPreview', ['The west trail needs a note', "Couldn't steer. Its computer isn't answering.", 'data-preview-window']],
     ['surfaces/threads/ActivitySection.tsx#ActivityRows', 'ActivityRows', ['All routes passed', 'Loading the output', "Couldn't read the output"]],
   ] as const) {
     const result = run(['src/renderer/src/' + target])

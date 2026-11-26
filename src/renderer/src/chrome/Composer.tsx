@@ -30,6 +30,8 @@ import { isCompacting, type ContextUsage } from '../lib/contextUsage'
 import { canCompact } from '../lib/threadMenu'
 import { compact as compactSession } from '../lib/tcserver/commands'
 import { ContextMeter } from './ContextMeter'
+import { useComposerAsks } from './composerAsks'
+import { HeldTip } from '../components/heldTip'
 import { loadProjectFiles, peekProjectFiles } from '../lib/fileIndex'
 import { buildMentionIndex, fileMentionParts } from '../lib/fileMentions'
 import {
@@ -339,6 +341,11 @@ export function Composer({
   const environmentId = (sessionId ? sessionStore.environmentOf(sessionId) : undefined) ?? metaEnvironmentId ?? projects.find((p) => p.id === projectId)?.environmentId ?? environmentOfCwd(executionCwd) ?? registry.primary().environmentId
   const { commands, loaded: commandsLoaded, failed: commandsFailed } = useSlashCommands(environmentId, harness, executionCwd, commandOpen)
   const attachmentsSupported = harnessSupportsAttachments(harness)
+  const isDraft = !sessionId || sessionStore.isDraft(sessionId)
+  const asks = useComposerAsks(environmentId, harness, isDraft)
+  // The caller's reason (the host away, said by the line over the box) wins; the key's or the host's own is said in the field.
+  const refused = blocked ?? asks.refusal
+  const fieldRefusal = blocked ? (blockedSaid ? null : blocked) : asks.refusal
   const commandsByName = useMemo(
     () => new Map(commands.map((c) => [c.name, c] as const)),
     [commands]
@@ -769,7 +776,7 @@ export function Composer({
   }, [admitAttachments, attachFailed, attachmentsSupported, enabled])
 
   const submit = (value: string, invert = false) => {
-    if (blocked || filing || uploadingRef.current) return
+    if (refused || filing || uploadingRef.current) return
     const text = composeInboxMessage(inboxCard, value)
     const files = attachments
     if (!text && files.length === 0 && !noteCard && !handoffCard && chips === 0) return
@@ -1040,8 +1047,8 @@ export function Composer({
               <ComposerInput
                 ref={inputRef}
                 placeholder={
-                  blocked && !blockedSaid
-                    ? blocked
+                  fieldRefusal
+                    ? fieldRefusal
                     : inboxCard
                     ? 'Add a note, or send to start…'
                     : noteCard
@@ -1072,12 +1079,15 @@ export function Composer({
                   onInputState(text, caret, chips)
                 }}
               />
-              <SendButton
-                intent={intent}
-                disabled={!!blocked || filing || (intent !== 'pause' && !sendable)}
-                onSubmit={(invert) => submit(inputRef.current?.value() ?? '', invert)}
-                onPause={() => onPause?.()}
-              />
+              {/* The key's or the host's own refusal rides Send's tooltip too: typed words hide the field's (D5). */}
+              <HeldTip held={blocked ? null : asks.refusal}>
+                <SendButton
+                  intent={intent}
+                  disabled={!!refused || filing || (intent !== 'pause' && !sendable)}
+                  onSubmit={(invert) => submit(inputRef.current?.value() ?? '', invert)}
+                  onPause={() => onPause?.()}
+                />
+              </HeldTip>
             </div>
           </div>
           {work ? (
@@ -1107,6 +1117,9 @@ export function Composer({
                 runtimeMode={runtimeMode}
                 onRuntimeModeChange={onRuntimeModeChange}
                 onClose={() => inputRef.current?.focus()}
+                accessModes={asks.accessModes}
+                // A draft's mode is the window's until it starts; a thread's goes to its host, held while it is away.
+                accessHeld={isDraft ? null : blocked}
                 model={
                   <ModelPicker
                     quiet
@@ -1126,7 +1139,7 @@ export function Composer({
                       usage={context}
                       busy={busy}
                       compacting={compacting}
-                      compactable={compactable}
+                      compactable={compactable && asks.mayCompact && !blocked}
                       onCompact={() => void compactSession(sessionId).catch((err) => console.warn('[context-meter]', err))}
                       finalFocus={fieldTarget}
                     />

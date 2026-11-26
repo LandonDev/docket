@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AwaySnapshot } from "@server/shared/contract-away";
 import { attachAwayLink, awayKinds, awayStore, onAwayPush, resetAwayForTest, setAway } from "./away";
 import { registry } from "./connection/registry";
+import * as toaster from "../components/ui/toaster";
 import type { ServerPush } from "./tcserver/types";
 
 /** A link that answers `away.get` with `snapshot` and lets the test push. */
@@ -79,6 +80,22 @@ describe("the away store", () => {
     expect(request).toHaveBeenCalledWith("away.set", { enabled: true, code: true });
     await setAway({ work: false });
     expect(request).toHaveBeenLastCalledWith("away.set", { enabled: false, work: false });
+    vi.restoreAllMocks();
+  });
+
+  it("answers whether the host saved the flip, and keeps the toast for a quiet caller", async () => {
+    const error = vi.fn();
+    vi.spyOn(toaster, "loadToast").mockResolvedValue({ error } as never);
+    const request = vi.fn(async () => ({ state: { enabled: true, code: true, work: true, at: 9, by: "env_mac" } }));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+    expect(await setAway({ code: true })).toBe(true);
+    request.mockRejectedValue(new Error("refused"));
+    expect(await setAway({ work: false }, { quiet: true })).toBe(false);
+    expect(awayStore.getState().pending).toBeNull();
+    await Promise.resolve();
+    expect(error).not.toHaveBeenCalled();
+    expect(await setAway({ work: false })).toBe(false);
+    await vi.waitFor(() => expect(error).toHaveBeenCalledWith("Couldn't change Away"));
     vi.restoreAllMocks();
   });
 });

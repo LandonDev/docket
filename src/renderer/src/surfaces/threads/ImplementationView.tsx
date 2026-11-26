@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
+import { useLinkMay } from "../../lib/linkMayCore";
 import { ChevronRight, FileText } from "../../chrome/icons";
 import { Counts } from "../../chrome/rail/changeRows";
 import { Button } from "../../components/ui/button";
@@ -179,6 +180,8 @@ export function ImplementationView(props: ThreadViewProps) {
 
   // A finished pass: the next message is a new pass, armed from the board.
   const passDone = !running && !waiting && allDone;
+  // D5 (boards-03): the next pass is a message to the host; a key that may not send gets no Start pass.
+  const mayPass = useLinkMay(session.environmentId, "session.send");
   const startNextPass = (): void => {
     props.onArmNewPass(true);
     setChatOpen(true);
@@ -350,7 +353,7 @@ export function ImplementationView(props: ThreadViewProps) {
           />
         ) : null}
 
-        {passDone && !composing ? (
+        {passDone && !composing && mayPass ? (
           <Button variant="secondary" size="sm" className="mt-4" onClick={startNextPass}>
             Start pass {passNum + 1}
           </Button>

@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Play } from "../../chrome/icons";
+import { useLinkMay } from "../../lib/linkMayCore";
+import { useHostHeld } from "../../lib/connection/degraded";
+import { HeldTip } from "../../components/heldTip";
 import { Button } from "../../components/ui/button";
 import { JumpList, type JumpHow } from "../../chrome/JumpList";
 import { StatusMark, threadStateOf } from "../../components/ui/status";
@@ -61,6 +64,9 @@ function findSpawned(
 export function PlanView(props: ThreadViewProps) {
   const { session } = props;
   const running = session.status === "running" || session.status === "starting";
+  // D5 (boards-03): the build is a new thread on the plan's host; a key that may not start one gets no Start build.
+  const mayStart = useLinkMay(session.environmentId, "session.create");
+  const startHeld = useHostHeld(session.environmentId);
   const waiting = session.status === "waiting";
   // A ticked milestone rewrites the file here: read it again at once.
   const [revision, setRevision] = useState(0);
@@ -179,11 +185,14 @@ export function PlanView(props: ThreadViewProps) {
     />
   ) : spawned ? (
     <HandoffButton spawned={spawned} onOpen={() => props.onOpenSession?.(spawned.id)} />
-  ) : !running && !waiting ? (
-    <Button size="sm" onClick={() => setStarting(true)}>
-      <Play />
-      Start build
-    </Button>
+  ) : !running && !waiting && mayStart ? (
+    // The build is a new thread on the plan's host: held while it is away, rather than a dialog whose start can only fail.
+    <HeldTip held={startHeld}>
+      <Button size="sm" disabled={!!startHeld} onClick={() => setStarting(true)}>
+        <Play />
+        Start build
+      </Button>
+    </HeldTip>
   ) : null;
 
   const board = (

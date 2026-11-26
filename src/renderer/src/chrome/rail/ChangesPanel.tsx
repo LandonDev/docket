@@ -43,7 +43,9 @@ import {
   type GitDiffIndex,
   type GitPr,
 } from "../../lib/fs";
-import { refreshGitSnapshot, useGitIndex } from "../../lib/gitIndexStore";
+import { refreshGitSnapshot, useGitIndexRead } from "../../lib/gitIndexStore";
+import { useHostHeld } from "../../lib/connection/degraded";
+import { useLinkMay } from "../../lib/linkMayCore";
 import { gitErrorWords } from "../../lib/gitErrorWords";
 import { generateCommitMessage, generatePrContent } from "../../lib/harness";
 import { openUrl } from "../../lib/native";
@@ -227,15 +229,20 @@ export function ChangesPanel({
   const project = projectForCwd(cwd, useProjects());
   const sessionActions = useContext(SessionActionsContext);
   const environmentId = environmentOfCwd(cwd) ?? registry.primary().environmentId;
-  const index = useGitIndex(cwd);
+  const { index, failed } = useGitIndexRead(cwd);
+  // D5: the controls ask the host the git calls go to. Held while its link is not open (the strip says why);
+  // not drawn for a key that may only read.
+  const held = useHostHeld(environmentId);
+  const mayWrite = useLinkMay(environmentId, "git.stageFile");
   const editorConfig = useEditorConfig();
   const { pr, reload: reloadPr } = usePrStatus(environmentId, cwd, index?.branch);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const shownBusy = busy ?? (!mayWrite ? READ_ONLY : held ? HELD : null);
   const [error, setError] = useState<string | null>(null);
   const [hunks, setHunks] = useState<Record<string, HunkSet | "loading">>({});
   const files = index?.files ?? [];
-  const rules = changesRules(index, pr, message, !!busy);
+  const rules = changesRules(index, pr, message, !!shownBusy);
   const against = useAgainst(project?.id ?? null, onOpenDiff);
   const drop = (key: string) =>
     setHunks((prev) => {
@@ -387,6 +394,7 @@ export function ChangesPanel({
         setBusy(null);
       }
     },
+    retry: () => void refreshGitSnapshot(cwd),
     commit: async (then) => {
       if (!rules.canCommit) return;
       if (then !== "none" && !(await confirmDefault(then === "pr" ? "pr" : "push"))) return;
@@ -411,8 +419,9 @@ export function ChangesPanel({
       index={index}
       pr={pr}
       rules={rules}
+      failed={failed && !held}
       selectedPath={selectedPath}
-      busy={busy}
+      busy={shownBusy}
       error={error}
       message={message}
       onMessage={setMessage}
@@ -426,7 +435,7 @@ export function ChangesPanel({
             variant="head"
             cwd={cwd}
             branch={index.branch ?? undefined}
-            enabled={!threadBusy}
+            enabled={!threadBusy && !held && mayWrite}
             tip={trackingWords(index)}
             onChange={sessionId ? () => sessionActions?.onBranchChange(sessionId) : undefined}
           />
@@ -457,7 +466,17 @@ export interface ChangesActions {
   generate: () => void;
   /** commit the index, then nothing, push, or push and open a pull request */
   commit: (then: "none" | "push" | "pr") => void;
+  /** read the index again after a failed read */
+  retry?: () => void;
 }
+
+/**
+ * `busy` while nothing runs but the host may not take a write (D5): `HELD` while its link is not open, every control
+ * disabled (the strip says why); `READ_ONLY` for a key that may only read, the write controls not drawn. Strings,
+ * so the row loop reads one compare and no new prop.
+ */
+export const HELD = "\0held";
+export const READ_ONLY = "\0read-only";
 
 /** The Changes section given its data (ChangesPanel; tests; ui:preview fixtures). */
 export function ChangesView({
@@ -475,10 +494,13 @@ export function ChangesView({
   against,
   branchPicker,
   rowsInFlow = false,
+  failed = false,
 }: {
   index: GitDiffIndex | null;
   pr: GitPr | null;
   rules: ChangesRules;
+  /** The last read failed: one red line with Retry over the last good rows (rightpanel-02). */
+  failed?: boolean;
   selectedPath?: string;
   busy: string | null;
   error: string | null;
@@ -499,7 +521,7 @@ export function ChangesView({
   const hasStaged = files.some((f) => f.staged);
   const compare = against?.compare;
   const hasAgainst = !!against;
-  const items = useMemo(() => changesItems(index, hasAgainst ? { compare } : undefined), [index, hasAgainst, compare]);
+  const items = useMemo(() => changesItems(index, hasAgainst ? { compare } : undefined, failed), [index, hasAgainst, compare, failed]);
   const fileItems = useMemo(() => {
     const byKey = new Map<string, { file: GitChangedFile; side: ChangeSide }>();
     for (const item of items) if (item.kind === "file") byKey.set(item.key, item);
@@ -510,7 +532,11 @@ export function ChangesView({
 
   const rowsFor = (id: string | null): MenuRow[] | null => {
     const row = id ? fileItems.get(id) : undefined;
-    return row ? fileMenuRows(row.file, row.side, actions.openInEditor ? editorLabel(row.file) : null) : null;
+    if (!row) return null;
+    const rows = fileMenuRows(row.file, row.side, actions.openInEditor ? editorLabel(row.file) : null);
+    // A read key gets the reading verbs alone; a host away holds the writing ones.
+    if (busy === READ_ONLY) return tidy(rows.filter((r) => r.kind !== "item" || r.id === "open" || r.id === "editor"));
+    return busy === HELD ? rows.map((r) => (r.kind === "item" && r.id !== "open" && r.id !== "editor" ? { ...r, disabled: true } : r)) : rows;
   };
   const pick = (verb: string, id: string | null): void => {
     const row = id ? fileItems.get(id) : undefined;
@@ -526,6 +552,15 @@ export function ChangesView({
     const body =
       item.kind === "loading" ? (
         <RowsSkeleton />
+      ) : item.kind === "failed" ? (
+        <p role="alert" className="flex h-7 items-center gap-2 px-2 text-xs text-destructive">
+          <span className="min-w-0 flex-1 truncate">Couldn't read the changes</span>
+          {actions.retry ? (
+            <Button variant="ghost" size="xs" onClick={actions.retry}>
+              Retry
+            </Button>
+          ) : null}
+        </p>
       ) : item.kind === "empty" ? (
         <Empty className="flex-none py-6">
           <EmptyHeader>
@@ -588,7 +623,7 @@ export function ChangesView({
           </div>
         </RowsContextMenu>
       </div>
-      {index && files.length > 0 ? (
+      {index && files.length > 0 && busy !== READ_ONLY ? (
         <TooltipProvider>
           <CommitFooter staged={hasStaged} message={message} onMessage={onMessage} rules={rules} busy={busy} actions={actions} />
         </TooltipProvider>
@@ -647,6 +682,8 @@ function TopRow({
   const hasUnstaged = files.some((f) => f.unstaged);
   const hasStaged = files.some((f) => f.staged);
   const branch = index.branch ?? "Detached HEAD";
+  // A key that may only read: the branch and an open PR stay, nothing that writes is drawn.
+  const writes = busy !== READ_ONLY;
   return (
     <div data-slot="section-top" className={cn("flex h-9 shrink-0 items-center gap-1 pr-3", branchPicker ? "pl-1.5" : "pl-3")}>
       {branchPicker ?? (
@@ -655,7 +692,7 @@ function TopRow({
           <TooltipContent>{trackingWords(index)}</TooltipContent>
         </Tooltip>
       )}
-      {rules.canPublish ? (
+      {!writes ? null : rules.canPublish ? (
         <Button variant="ghost" size="sm" disabled={!!busy} onClick={actions.sync}>
           <BusyLabel busy={busy === "sync"} label="Publish" />
         </Button>
@@ -676,7 +713,7 @@ function TopRow({
         <Button variant="ghost" size="sm" onClick={actions.viewPr}>
           PR #{pr.number}
         </Button>
-      ) : rules.canCreatePr ? (
+      ) : rules.canCreatePr && writes ? (
         <Tooltip>
           <TooltipTrigger render={<Button variant="ghost" size="sm" disabled={!!busy} onClick={actions.createPr} />}>
             <BusyLabel busy={busy === "pr"} label="Create PR" />
@@ -684,6 +721,7 @@ function TopRow({
           <TooltipContent>{index.defaultBranch ? `Into ${index.defaultBranch}` : "Open a pull request"}</TooltipContent>
         </Tooltip>
       ) : null}
+      {writes ? (
       <DropdownMenu>
         <Tooltip>
           <TooltipTrigger
@@ -721,6 +759,7 @@ function TopRow({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      ) : null}
     </div>
   );
 }
@@ -849,10 +888,10 @@ function FileRow({
         {rowBusy ? <Spinner className="size-3 text-muted-foreground" /> : null}
         {/* The counts hold the actions' place at rest and give way to them on the
             shared hover reveal: the actions lie over them, so the name never reflows. */}
-        <span data-counts-slot className={cn("flex justify-end", !rowBusy && [side === "staged" ? "min-w-6" : "min-w-12", ROW_YIELDS])}>
+        <span data-counts-slot className={cn("flex justify-end", !rowBusy && busy !== READ_ONLY && [side === "staged" ? "min-w-6" : "min-w-12", ROW_YIELDS])}>
           <Counts status={file.status} {...countsFor(file, side)} className="text-[13px]" />
         </span>
-        {rowBusy ? null : (
+        {rowBusy || busy === READ_ONLY ? null : (
           <span data-change-actions className={cn("absolute inset-y-0 right-0 flex items-center", ROW_REVEALS)}>
             {side === "staged" ? (
               <IconAction label="Unstage" disabled={!!busy} onClick={() => actions.unstage(file)}>

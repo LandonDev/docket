@@ -16,7 +16,10 @@ import { useOpenAgentDetail } from "./agentDetailContext";
 import { NoticeLine } from "./transcript/NoticeLine";
 import { CARD_SHAPE } from "./QuestionCard";
 import { Facts } from "./settings/hosts/Facts";
-import { useTranscriptSession } from "./transcriptSession";
+import { useTranscriptHost, useTranscriptSession } from "./transcriptSession";
+import { useHostHeld } from "../lib/connection/degraded";
+import { useLinkMay } from "../lib/linkMayCore";
+import { HeldTip } from "../components/heldTip";
 import { cn } from "../lib/cn";
 
 // The gate's notice rides this chunk with the review's (transcript/NoticeRow.tsx).
@@ -93,6 +96,10 @@ function HeldReview({
   onOpenFile?: OpenFileFn;
 }) {
   const sessionId = useTranscriptSession();
+  // D5: the override goes to the thread's host. Held while it is away; not offered to a key that may not approve.
+  const host = useTranscriptHost();
+  const held = useHostHeld(host);
+  const mayOverride = useLinkMay(host ?? "", "review.override");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [minorOpen, setMinorOpen] = useState(false);
@@ -134,9 +141,13 @@ function HeldReview({
         </Collapsible>
       ) : null}
       <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2">
-        <Button size="sm" disabled={pending || !sessionId} onClick={merge}>
-          <BusyLabel busy={pending} label="Merge anyway" busyLabel="Merging…" />
-        </Button>
+        {mayOverride ? (
+          <HeldTip held={held}>
+            <Button size="sm" disabled={pending || !sessionId || !!held} onClick={merge}>
+              <BusyLabel busy={pending} label="Merge anyway" busyLabel="Merging…" />
+            </Button>
+          </HeldTip>
+        ) : null}
         {openThread ? (
           <Button variant="ghost" size="sm" onClick={openThread}>
             Review thread

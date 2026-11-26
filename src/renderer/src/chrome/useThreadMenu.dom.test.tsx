@@ -117,6 +117,21 @@ describe("one thread menu on every surface", () => {
     expect(rail).toEqual(expect.arrayContaining(["Rename", "Pause", "Stop", "Delete…"]));
   });
 
+  // D5: the thread's host away holds every verb that goes to it, its state the reason; the window's own rows stay.
+  it("holds the host's verbs while the thread's host is away", async () => {
+    const { registry } = await import("../lib/connection/registry");
+    vi.spyOn(registry, "environment").mockReturnValue({ id: "local", name: "The box", routes: [], credentialRef: null });
+    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "offline", lastHello: null, lastError: null, nextRetryAt: null } as never);
+    thread("t1");
+    render(<Surfaces />);
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    const menu = await screen.findByRole("menu", { name: "Chip" });
+    const rename = [...menu.querySelectorAll('[role^="menuitem"]')].find((el) => el.textContent === "Rename")!;
+    expect(rename.getAttribute("aria-disabled")).toBe("true");
+    expect(rename.getAttribute("aria-description")).toBe("The box is offline");
+    vi.restoreAllMocks();
+  });
+
   it("Dev server is the thread's own row where a host can serve its project, and toggles the pane", async () => {
     thread("t1");
     dev.servable = true;

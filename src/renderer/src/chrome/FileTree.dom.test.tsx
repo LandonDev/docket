@@ -28,6 +28,9 @@ vi.mock("../lib/fs", () => ({
   revealPath: vi.fn(),
 }));
 vi.mock("../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) } }));
+const may = vi.hoisted(() => ({ write: true, held: null as string | null }));
+vi.mock("../lib/linkMayCore", () => ({ useLinkMay: () => may.write }));
+vi.mock("../lib/connection/degraded", () => ({ useHostHeld: () => may.held }));
 vi.mock("../lib/tcserver/projects", () => ({ environmentOfCwd: () => "local", hostOfCwd: () => "local" }));
 vi.mock("../lib/editorConfig", () => ({ useEditorConfig: () => null }));
 vi.mock("../lib/openInEditor", () => ({ editorLabelFor: () => null, openInEditor: vi.fn() }));
@@ -149,6 +152,43 @@ describe("FileTree", () => {
     // Each verb with its glyph, and the file tree's real keys.
     expect((await row("Rename")).el.querySelector("svg")).toBeTruthy();
     expect((await row("Rename")).el.querySelector("kbd")?.textContent).toBe("F2");
+  });
+
+  // rightpanel-03: a key that may only read opens and copies; nothing that changes the host's files is offered.
+  it("offers a read key no New file, New folder, Rename or Delete", async () => {
+    may.write = false;
+    try {
+      await mount();
+      expect(screen.queryByRole("button", { name: "New file" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "New folder" })).toBeNull();
+      expect(screen.getByRole("button", { name: "Collapse all" })).toBeTruthy();
+      fireEvent.contextMenu(screen.getByRole("treeitem", { name: /README\.md/ }));
+      expect((await row("Copy path")).disabled).toBe(false);
+      const labels = [...document.querySelectorAll('[role="menuitem"]')].map((el) => el.textContent ?? "");
+      for (const verb of ["Rename", "Delete", "New file", "Paste", "Duplicate", "Cut"]) expect(labels.some((l) => l.startsWith(verb))).toBe(false);
+    } finally {
+      may.write = true;
+    }
+  });
+
+  // Round 2: the host away holds every write in place, the link's words their reason; Copy path and Cut stay.
+  it("holds New file, New folder, Rename, Delete and Paste while the host is away", async () => {
+    may.held = "The box is offline";
+    try {
+      await mount();
+      for (const name of ["New file", "New folder"]) {
+        const button = screen.getByRole("button", { name }) as HTMLButtonElement;
+        expect(button.disabled).toBe(true);
+        expect(button.closest("[data-held]")).not.toBeNull();
+      }
+      fireEvent.contextMenu(screen.getByRole("treeitem", { name: /README\.md/ }));
+      expect((await row("Rename")).disabled).toBe(true);
+      expect((await row("Delete")).disabled).toBe(true);
+      expect((await row("Copy path")).disabled).toBe(false);
+      expect((await row("Cut")).disabled).toBe(false);
+    } finally {
+      may.held = null;
+    }
   });
 
   it("draws its rows on the panel's grid: 28px, 13px, rounded, inside the 12px inset", async () => {

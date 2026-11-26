@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ChoiceCombobox } from "./choice-combobox";
+import { useState } from "react";
+import { ChoiceCombobox, TextCombobox } from "./choice-combobox";
 import { resetSelects } from "./lazy-select";
 
 /** A select chunk this file holds back: cold until a test lets it land. */
@@ -50,5 +51,63 @@ describe("ChoiceCombobox before the select chunk lands", () => {
     expect(warm.dataset.size).toBe("sm");
     expect(warm.textContent).toContain("Opus 5.5");
     expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual(["Opus 5.5", "GPT-6.2 Sol"]);
+  });
+});
+
+describe("TextCombobox before the select chunk lands", () => {
+  function Who({ seen }: { seen?: (text: string) => void }) {
+    const [who, setWho] = useState("");
+    return (
+      <TextCombobox
+        label="Who"
+        value={who}
+        suggestions={["Staples", "Amazon"]}
+        size="sm"
+        className="w-44"
+        onChange={(text) => {
+          setWho(text);
+          seen?.(text);
+        }}
+      />
+    );
+  }
+
+  it("is an ordinary field of the same box that takes typing at once", () => {
+    const seen = vi.fn();
+    render(<Who seen={seen} />);
+    const cold = screen.getByRole("textbox", { name: "Who" }) as HTMLInputElement;
+    expect(cold.dataset.slot).toBe("combobox-field");
+    expect(cold.className).toContain("h-7");
+    expect(cold.className).toContain("w-44");
+    fireEvent.change(cold, { target: { value: "Sta" } });
+    expect(seen).toHaveBeenLastCalledWith("Sta");
+    expect(cold.value).toBe("Sta");
+  });
+
+  it("swaps in the suggesting field with the text, the keys and the caret where they were", async () => {
+    render(<Who />);
+    const cold = screen.getByRole("textbox", { name: "Who" }) as HTMLInputElement;
+    const coldClasses = cold.className;
+    await act(async () => {
+      cold.focus();
+      fireEvent.change(cold, { target: { value: "Amaz" } });
+      cold.setSelectionRange(2, 2);
+      fireEvent.select(cold);
+    });
+    await act(async () => chunk.release?.());
+    const warm = screen.getByRole("combobox", { name: "Who" }) as HTMLInputElement;
+    expect(warm).not.toBe(cold);
+    expect(warm.className).toBe(coldClasses);
+    expect(warm.value).toBe("Amaz");
+    expect(document.activeElement).toBe(warm);
+    expect([warm.selectionStart, warm.selectionEnd]).toEqual([2, 2]);
+  });
+
+  it("swaps in without taking the keys when it did not have them", async () => {
+    render(<Who />);
+    const { warmSelects } = await import("./lazy-select");
+    warmSelects();
+    await act(async () => chunk.release?.());
+    expect(screen.getByRole("combobox", { name: "Who" })).not.toBe(document.activeElement);
   });
 });

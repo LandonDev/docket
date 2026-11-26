@@ -18,6 +18,8 @@ export function foldKey(side: ChangeSide, relative: string): string {
 
 export type ChangesItem = (
   | { kind: "loading" }
+  /** The last read failed: one red line with Retry, over the last good rows if there are any. */
+  | { kind: "failed" }
   | { kind: "empty" }
   | { kind: "heading"; side: ChangeSide; label: "Staged" | "Changes"; count: number }
   | { kind: "file"; side: ChangeSide; file: GitChangedFile }
@@ -35,14 +37,17 @@ type Bare<T> = T extends unknown ? Omit<T, "gap"> : never;
 
 /** `against` is the Against group's comparison when the checkout is a
  *  project's (undefined while it loads), absent outside one. */
-export function changesItems(index: GitDiffIndex | null, against?: { compare: CompareResult | null | undefined }): ChangesItem[] {
+export function changesItems(index: GitDiffIndex | null, against?: { compare: CompareResult | null | undefined }, failed = false): ChangesItem[] {
   const out: ChangesItem[] = [];
   const group = (items: Bare<ChangesItem>[]) => {
     items.forEach((item, i) => out.push({ ...item, gap: i === 0 && out.length > 0 } as ChangesItem));
   };
   const files = index?.files ?? [];
-  if (!index) group([{ kind: "loading", key: "loading" }]);
-  else if (files.length === 0) group([{ kind: "empty", key: "empty" }]);
+  // A failed read is said once, over the last good rows; with none it stands alone, never the loading bones.
+  if (failed) out.push({ kind: "failed", key: "failed", gap: false });
+  if (!index) {
+    if (!failed) group([{ kind: "loading", key: "loading" }]);
+  } else if (files.length === 0) group([{ kind: "empty", key: "empty" }]);
   else {
     const staged = files.filter((f) => f.staged);
     const unstaged = files.filter((f) => f.unstaged);

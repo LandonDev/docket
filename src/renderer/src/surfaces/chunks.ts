@@ -118,6 +118,10 @@ export const workCanvasChunk = defineChunk("work-canvas", () => import("../work/
  *  Work workspace's page, the LifeOS session. Asked for only once a host has Work on, or on Settings → Work. */
 export const workShellChunk = defineChunk("work-shell", () => import("../work/shell"));
 
+/** The Clash dialog's host alone (work/clashes/ClashHost.tsx), for the root to keep once Work goes off on every host
+ *  with a clash open (chrome/OnceOnSlot.tsx). Warmed while Work is on; never asked for before. */
+export const workClashChunk = defineChunk("work-clash-host", () => import("../work/clashes/ClashHost"));
+
 /** Work's Outbox page, a Work thread's Results section and the return from Away (work/outbox). Asked for only by the
  *  rail's Outbox row, a Work thread's panel, or Away turning off while a host has Work on. */
 export const workOutboxChunk = defineChunk("work-outbox", () => import("../work/outbox"));
@@ -173,6 +177,7 @@ export const allChunks = {
   workCanvasChunk,
   failureCardChunk,
   workShellChunk,
+  workClashChunk,
   workOutboxChunk,
   workPlacesChunk,
   workSearchChunk,

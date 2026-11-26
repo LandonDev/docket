@@ -38,6 +38,12 @@ const compare = (over: Partial<CompareResult> = {}): CompareResult => ({
 const shape = (items: ReturnType<typeof changesItems>) => items.map((i) => `${i.gap ? "+" : ""}${i.key}`);
 
 describe("changesItems", () => {
+  it("says a failed read once: alone with no rows, never the loading bones, else over the last good rows", () => {
+    expect(shape(changesItems(null, undefined, true))).toEqual(["failed"]);
+    expect(shape(changesItems(indexOf([file("a.ts")]), undefined, true))).toEqual(["failed", "+u:a.ts"]);
+    expect(shape(changesItems(null))).toEqual(["loading"]);
+  });
+
   it("loads, then says nothing changed, with the Against group after a gap", () => {
     expect(shape(changesItems(null))).toEqual(["loading"]);
     expect(shape(changesItems(indexOf([]), { compare: undefined }))).toEqual(["empty", "+against"]);

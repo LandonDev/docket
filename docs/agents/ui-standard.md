@@ -135,7 +135,7 @@
   ticking up shows where it lands), under tsconfig.web.json so every renderer alias resolves,
   inside the built stylesheet in dark and light, written to /tmp/ui-preview
   or `--out <dir>`, `--fresh` compiling the stylesheet from source in the built one's place so a
-  class or token newer than `out/` draws, `--shot` adding PNGs at 864 and 400px through headless
+  class or token newer than `out/` draws (a page under src/hosted compiles its own, guest.css), `--shot` adding PNGs at 864 and 400px through headless
   Chrome (`TEMP_CODE_CHROME`, else Playwright's cached chrome-headless-shell),
   shown with `html_preview` or read as images; a `*.fixtures.tsx` beside the
   component renders each fixture); one
@@ -153,7 +153,9 @@ command runs by hand. A fixture may name its component in its first comment.
 A preview whose exports need different data can supply `fixturesByExport`
 in its adjacent fixture file. Use `--shot-widths 864,400,1200` on a single
 `ui:preview` to include a wider capture. An open portal sits below its
-fixture, or inside a window marked `data-preview-stage`.
+fixture, or inside a window marked `data-preview-stage`. A side sheet open
+outside a stage stands at its edge and width, as tall as its rows, so the
+whole sheet shows; in a stage it keeps the stage's height.
 A preview can export a numeric `previewClock` to hold elapsed time during
 the render.
 Run `bun scripts/ui-preview-pair.ts --shot --out /tmp/docket-pair` to

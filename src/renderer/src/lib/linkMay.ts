@@ -1,16 +1,17 @@
 import { capabilityRefusal, type Capability } from "@shared/capabilities";
 import type { ClientRequest } from "@shared/contract";
 import { registry, useEnvironmentStatus, useEnvironmentStatuses } from "./connection";
-import { nameInLine } from "./hostWords";
 
 type Method = ClientRequest["method"];
 
 /**
- * Whether this window's link to a host may make a request: the host's own rule (`capabilityRefusal`) asked of
+ * Whether this window's link to a host may make any request: the host's own rule (`capabilityRefusal`) asked of
  * the caps the host named in its hello. A control asks it before it is offered, so a press never ends in a
  * refusal he could not have avoided: it is hidden, or it says who can. It only hides or words a control; the
  * host's check stays the judge. The window's own socket holds no key and may do everything; a link that has
- * said no hello yet (connecting, offline) answers true, so nothing is hidden on a guess.
+ * said no hello yet (connecting, offline) answers true, so nothing is hidden on a guess. It imports the whole
+ * capability table (every Work schema with it): Work and the lazy chunks only. A first-paint control asks
+ * lib/linkMayCore.ts, whose table holds the methods Docket's own controls send.
  */
 export function linkMay(environmentId: string, method: Method, params?: unknown): boolean {
   return capsMay(registry.statusOf(environmentId).lastHello, method, params);
@@ -33,14 +34,5 @@ export function useLinksMay(): (environmentId: string, method: Method, params?: 
   return (environmentId, method, params) => capsMay(statuses.get(environmentId)?.lastHello, method, params);
 }
 
-/**
- * The one line Work shows in place of a section this window's key may not change: who can. Settings → Work's
- * switch says the same of several hosts (`elsewhereLine`).
- */
-export const managedElsewhere = (host: string): string => `Changed from a computer that manages ${nameInLine(host)}`;
-
-/**
- * Who can, for a LifeOS sign-in this window's key may not make on a host (its pairing, `work.lifeos.pairStart`, needs
- * admin): said by the act, since nothing was changed. A setting this window may not change keeps `managedElsewhere`.
- */
-export const signInElsewhere = (host: string): string => `Sign in from a computer that manages ${nameInLine(host)}`;
+/** Who can, by the act: one set of words, kept in the first-paint core (lib/linkMayCore.ts) and shared here. */
+export { managedElsewhere, signInElsewhere, sendElsewhere, approveElsewhere, answerElsewhere } from "./linkMayCore";

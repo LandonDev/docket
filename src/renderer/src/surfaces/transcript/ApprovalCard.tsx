@@ -10,6 +10,9 @@ import { useTranscriptHost } from "../transcriptSession";
 import type { ApprovalDecision } from "../../lib/harness";
 import { cn } from "../../lib/cn";
 import { registerToastSeat } from "../../lib/toastAnchor";
+import { registry, useHostHeld } from "../../lib/connection";
+import { approveElsewhere, useLinkMay } from "../../lib/linkMayCore";
+import { HeldTip } from "../../components/heldTip";
 import { type Block } from "../../lib/session";
 
 type Approval = NonNullable<Block["approval"]>;
@@ -123,18 +126,40 @@ export function ApprovalCard({
       </div>
     );
   }
-  const words = choiceWords(approval);
   return (
     <div ref={registerToastSeat} data-toast-seat="" data-slot="approval" className="flex min-h-7 in-data-[table]:min-h-8 min-w-0 items-center gap-2 in-data-[table]:px-3 in-data-[table]:py-1.5 font-sans">
       <span data-approval-mark className="flex w-3.5 shrink-0 justify-center">
         <StatusMark state="waiting" word={false} />
       </span>
-      <Button size="sm" onClick={() => decide("allow")}>
-        {words.allow}
-      </Button>
-      <Button size="sm" variant="secondary" onClick={() => decide("deny")}>
-        {words.deny}
-      </Button>
+      <WaitingChoices words={choiceWords(approval)} decide={decide} />
     </div>
   );
+}
+
+/**
+ * The waiting approval's two presses. The host's link and the key are read here, in the waiting branch alone, so
+ * a settled row under every action row subscribes to nothing (D5, transcript-09). While the host is away both are
+ * held, the host's state their tooltip; a key that may not approve gets who can, in the buttons' place.
+ */
+function WaitingChoices({ words, decide }: { words: { allow: string; deny: string }; decide: (decision: ApprovalDecision) => void }) {
+  const host = useTranscriptHost();
+  const held = useHostHeld(host);
+  const may = useLinkMay(host ?? "", "session.approve");
+  if (!may) return <span className="min-w-0 truncate text-[13px] leading-5 text-muted-foreground">{approveElsewhere(registry.environment(host ?? "")?.name ?? host ?? "")}</span>;
+  const buttons = (
+    <>
+      <Button size="sm" disabled={!!held} onClick={() => decide("allow")}>
+        {words.allow}
+      </Button>
+      <Button size="sm" variant="secondary" disabled={!!held} onClick={() => decide("deny")}>
+        {words.deny}
+      </Button>
+    </>
+  );
+  // Held, the pair shares one tooltip: a disabled button takes no pointer, so the wrapper takes the hover.
+  return held ? (
+    <HeldTip held={held}>
+      <span className="flex items-center gap-2">{buttons}</span>
+    </HeldTip>
+  ) : buttons;
 }

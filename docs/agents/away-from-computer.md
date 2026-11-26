@@ -95,7 +95,9 @@
   off. A flip names only the kinds it changes (`setAway`), so a window that
   missed another's flip never sets the other kind back; `enabled` rides
   along for an older host and a current one reads it only when no kind is
-  named (`flipKinds`). Every Mac call a Work thread makes says `scope:
+  named (`flipKinds`). `setAway` answers whether the host saved the flip;
+  a refusal puts the row back with the toast "Couldn't change Away", which
+  `{ quiet: true }` leaves to a page that shows its own line. Every Mac call a Work thread makes says `scope:
   'work'`, its background jobs' too (macTools.ts). Threads → Away for Code Threads and Away for
   Work Threads (checkbox rows, `MenuState.checked`; the Work row is
   `workOnly`), the away notice line folded into the run, and on the way

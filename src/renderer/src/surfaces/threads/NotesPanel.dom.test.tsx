@@ -13,6 +13,7 @@ const { pushListeners, request } = vi.hoisted(() => ({
   }),
 }));
 
+vi.mock("../../lib/linkMayCore", () => ({ useLinkMay: () => true }));
 vi.mock("../../lib/connection", () => {
   const link = {
     environmentId: "local",
@@ -48,7 +49,7 @@ if (!Element.prototype.getAnimations) Element.prototype.getAnimations = () => []
 
 import { resetNotesStore } from "../../lib/threadNotes";
 import type { Session } from "../../lib/session";
-import { NotesBody } from "./NotesPanel";
+import { NotesBody, NotesView } from "./NotesPanel";
 import { resetTooltips, tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 
 const session = { id: "s1", environmentId: "local", title: "Notes feature", cwd: "/p", status: "idle", blocks: [] } as unknown as Session;
@@ -179,6 +180,31 @@ describe("NotesBody", () => {
     await act(async () => answer({ text: "## Goal\n\nfirst\n", updatedAt: Date.now(), path: "/p/notes.md" }));
     expect(screen.queryByText("Save failed")).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  // rightpanel-03: a key that may not write the notes reads them, with no Edit and no "Start the notes".
+  it("offers a read key no Edit", () => {
+    const view = (text: string) =>
+      render(<NotesView loading={false} text={text} updatedAt={null} saving="idle" why={null} editing={false} draft="" remoteChanged={false} title="T" onDone={() => {}} onChange={() => {}} onLoadTheirs={() => {}} />);
+    view("# Plan\n\nShip it");
+    expect(screen.queryByRole("button", { name: "Edit notes" })).toBeNull();
+    cleanup();
+    view("");
+    expect(screen.getByText("No notes yet")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Start the notes" })).toBeNull();
+  });
+
+  // Round 2: an edit begun while the host is away could only fail to save; Edit and Start the notes wait.
+  it("holds Edit and Start the notes while the host is away", () => {
+    const view = (text: string) =>
+      render(<NotesView loading={false} text={text} updatedAt={null} saving="idle" why={null} editing={false} draft="" remoteChanged={false} title="T" onEdit={() => {}} held="The box is offline" onDone={() => {}} onChange={() => {}} onLoadTheirs={() => {}} />);
+    view("# Plan\n\nShip it");
+    const edit = screen.getByRole("button", { name: "Edit notes" }) as HTMLButtonElement;
+    expect(edit.disabled).toBe(true);
+    expect(edit.closest("[data-held]")).not.toBeNull();
+    cleanup();
+    view("");
+    expect((screen.getByRole("button", { name: "Start the notes" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("loading shows skeleton lines, not words", () => {

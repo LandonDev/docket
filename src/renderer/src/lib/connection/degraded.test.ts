@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEGRADED_GRACE_MS, degradedFor, degradedText } from "./degraded";
+import { DEGRADED_GRACE_MS, degradedFor, linkWords } from "./degraded";
 import { IDLE_STATUS, type EnvironmentStatus } from "./types";
 
 const at = (transport: EnvironmentStatus["transport"], extra: Partial<EnvironmentStatus> = {}): EnvironmentStatus => ({ ...IDLE_STATUS, transport, ...extra });
@@ -13,12 +13,21 @@ describe("degraded", () => {
     expect(degradedFor(at("unauthorized"), 0)?.kind).toBe("unauthorized");
     expect(degradedFor(at("offline"), 0)?.kind).toBe("offline");
   });
-  it("words each state with the retry countdown", () => {
+
+  // The one table of a link's words: the line, every held control's tooltip and the Hosts row read it.
+  it("words each state once, with the countdown only when asked and never the transport's text", () => {
     const now = 1_000_000;
-    expect(degradedText("box", { kind: "reconnecting", status: at("reconnecting", { nextRetryAt: now + 12_400 }) }, now)).toBe("box dropped; retrying in 13 s");
-    expect(degradedText("box", { kind: "reconnecting", status: at("reconnecting", { nextRetryAt: null }) }, now)).toBe("Reconnecting to box…");
-    expect(degradedText("box", { kind: "unauthorized", status: at("unauthorized") }, now)).toBe("box no longer accepts this key");
-    expect(degradedText("box", { kind: "offline", status: at("offline", { lastError: "network down" }) }, now)).toBe("box is offline: network down");
-    expect(degradedText("box", { kind: "connecting", status: at("connecting") }, now)).toBe("Connecting to box…");
+    const words = (kind: EnvironmentStatus["transport"], extra: Partial<EnvironmentStatus> = {}, when?: number, online = true) =>
+      linkWords("The box", { kind: kind as never, status: at(kind, extra) }, when, online);
+    expect(words("reconnecting", { nextRetryAt: now + 4_400 }, now)).toBe("Reconnecting to the box in 5 s");
+    expect(words("reconnecting", { nextRetryAt: now + 4_400 })).toBe("Reconnecting to the box…");
+    expect(words("reconnecting", { nextRetryAt: null }, now)).toBe("Reconnecting to the box…");
+    expect(words("connecting")).toBe("Connecting to the box…");
+    expect(words("offline", { lastError: "connect ECONNREFUSED 10.0.0.2:8443" })).toBe("The box is offline");
+    expect(words("offline", { lastError: "network down" }, undefined, false)).toBe("This computer is offline");
+    expect(words("offline", { lastError: "host identity changed: expected env_a, got env_b" })).toBe("The box is not the host this computer paired with");
+    expect(words("unauthorized")).toBe("The box no longer accepts this key");
+    expect(linkWords("studio", { kind: "offline", status: at("offline") })).toBe("Studio is offline");
+    expect(linkWords("MacBook", { kind: "connecting", status: at("connecting") })).toBe("Connecting to MacBook…");
   });
 });

@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
-import { registry, type Environment, type Link } from "../lib/connection";
+import { IDLE_STATUS, registry, type Environment, type EnvironmentStatus, type Link } from "../lib/connection";
 import { sessionStore } from "../lib/tcserver/store";
 import type { SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { workspaceStore } from "../lib/tcserver/workspaces";
@@ -121,9 +121,14 @@ function Pending() {
   return <output data-testid="pending">{pending ? JSON.stringify(pending) : ""}</output>;
 }
 
-async function mountTwoHosts(ui: React.ReactNode) {
+/** Each host's link open, as the app has it when the verbs are offered; `down` names hosts whose link is not. */
+async function mountTwoHosts(ui: React.ReactNode, down: readonly string[] = []) {
+  // One object per host, as the registry keeps them: a snapshot read must return the same one each time.
+  const statuses = new Map<string, EnvironmentStatus>(HOSTS.map((h) => [h.id, { ...IDLE_STATUS, transport: down.includes(h.id) ? "offline" : "open", fresh: true }]));
   vi.spyOn(registry, "environmentsSnapshot").mockReturnValue(HOSTS);
   vi.spyOn(registry, "environment").mockImplementation((id) => HOSTS.find((e) => e.id === id));
+  vi.spyOn(registry, "statusOf").mockImplementation((id) => statuses.get(id) ?? IDLE_STATUS);
+  vi.spyOn(registry, "statuses").mockReturnValue(statuses);
   for (const host of HOSTS) {
     workspaceStore.attach(link(host.id));
     sessionStore.attach(link(host.id));
@@ -160,5 +165,29 @@ describe("the fleet switches as mounted", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Pause all" }));
     const pending = JSON.parse(screen.getByTestId("pending").textContent ?? "null");
     expect(pending).toEqual({ action: "pause", scope: { kind: "host", environmentId: "env_box", name: "box" } });
+  });
+
+  // D5: with a host's link down its verbs are held, the link's words their reason; nothing is asked of it.
+  it("holds a down host's verbs with the link's words", async () => {
+    await mountTwoHosts(<HostsRow onAddWorkspace={noop} />, ["env_box"]);
+    fireEvent.click(screen.getByRole("button", { name: /^Hosts:/ }));
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    const box = await screen.findByRole("menuitem", { name: /^box/ });
+    expect(box.getAttribute("aria-disabled")).toBe("true");
+    expect(box.getAttribute("aria-description")).toBe("Box is offline");
+    expect(screen.getByTestId("pending").textContent).toBe("");
+  });
+
+  it("holds the project menu's switches while every copy's host is down", async () => {
+    await mountTwoHosts(
+      <ProjectRail cwd="~" recents={[{ path: MAC, openedAt: 2 }, { path: BOX, openedAt: 1 }]} onSelectProject={noop} onOpenProject={noop} />,
+      ["local", "env_box"],
+    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Workspace options" })[0]);
+    const pause = await screen.findByRole("menuitem", { name: "Pause all" });
+    expect(pause.getAttribute("aria-disabled")).toBe("true");
+    expect(pause.getAttribute("aria-description")).toBe("This Mac is offline");
+    fireEvent.click(pause);
+    expect(screen.getByTestId("pending").textContent).toBe("");
   });
 });

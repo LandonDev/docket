@@ -18,6 +18,8 @@ let metaById: Record<string, unknown> = {};
 vi.mock("../../lib/threads/agents", () => ({ useMetaById: (id: string | null) => (id ? (metaById[id] ?? null) : null) }));
 // FileRefMenu asks the native bridge which editor opens a file; jsdom has none.
 vi.mock("../../lib/editorConfig", () => ({ useEditorConfig: () => null }));
+const key = vi.hoisted(() => ({ may: true }));
+vi.mock("../../lib/linkMayCore", () => ({ useLinkMay: () => key.may }));
 vi.mock("../../lib/threadMentions", async (original) => ({
   ...(await original<typeof import("../../lib/threadMentions")>()),
   useTitlesOf: () => (id: string) => (id === "agent-7" ? "Fit worker" : undefined),
@@ -231,6 +233,17 @@ describe("the implementation board", () => {
     expect(document.querySelector("[data-md]")?.textContent).toBe("All done.");
     fireEvent.click(screen.getByRole("button", { name: "Start pass 2" }));
     expect(props.onArmNewPass).toHaveBeenCalledWith(true);
+  });
+
+  // boards-03 (D5): the next pass is a message to the host; a key that may not send is not offered it.
+  it("offers no Start pass to a key that may not send", () => {
+    key.may = false;
+    try {
+      view(session({ blocks: [first, edit("e", "src/a.ts", 0), { id: "z", role: "assistant", text: "All done.", round: 0 } as Block], todos: [todo("Write a", "completed")] }));
+      expect(screen.queryByRole("button", { name: "Start pass 2" })).toBeNull();
+    } finally {
+      key.may = true;
+    }
   });
 
   it("an earlier pass's record is one comma run, and its tally sits 4px from its counts", () => {

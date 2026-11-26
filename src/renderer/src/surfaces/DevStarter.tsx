@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import type { DevTarget } from "@server/shared/contract-devservers";
+import { useLinkMay } from "../lib/linkMayCore";
+import { useHostHeld } from "../lib/connection/degraded";
+import { HeldTip } from "../components/heldTip";
 import { ChoiceSelect } from "../components/choice-select";
 import { BusyLabel, Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
@@ -122,6 +125,8 @@ export function useDevStarter(projectId: string | null): DevStarterState {
 /** The Dev servers pane's starter: the target, Run, and with two or more hosts the host to run on. */
 export function DevStarter({ starter }: { starter: DevStarterState }) {
   const { hosts, envId, targets, target, starting, error } = starter;
+  const mayRun = useLinkMay(envId ?? "", "devServer.start");
+  const held = useHostHeld(envId ?? undefined);
   const options = (targets ?? []).map((t) => ({ value: t.id, label: targetLabel(t) }));
   return (
     <div data-dev-starter="" className="flex shrink-0 flex-col border-b border-border">
@@ -141,9 +146,14 @@ export function DevStarter({ starter }: { starter: DevStarterState }) {
         ) : (
           <ChoiceSelect label="Dev server target" size="sm" value="" options={NO_TARGETS} disabled onChange={noop} className="min-w-0 flex-1" />
         )}
-        <Button size="sm" disabled={!target || !envId || starting || starter.asking} onClick={() => void starter.run()}>
-          <BusyLabel busy={starting} label="Run" />
-        </Button>
+        {/* D5: Run asks the host; held while its link is not open, not drawn for a key that may not start a server. */}
+        {mayRun ? (
+          <HeldTip held={held}>
+            <Button size="sm" disabled={!target || !envId || starting || starter.asking || !!held} onClick={() => void starter.run()}>
+              <BusyLabel busy={starting} label="Run" />
+            </Button>
+          </HeldTip>
+        ) : null}
       </div>
       {starter.asking ? (
         <div data-dev-replace="" className="flex flex-col gap-2 px-3 pb-2">

@@ -1,5 +1,9 @@
-import { memo, useEffect, useRef, useState, type ComponentType } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { sessionStore } from "../../lib/tcserver/store";
 import { loadToast } from "../../components/ui/toaster";
+import { useLinkMay } from "../../lib/linkMayCore";
+import { useHostHeld } from "../../lib/connection/degraded";
+import { HeldTip } from "../../components/heldTip";
 import { Button } from "@renderer/components/ui/button";
 import { Collapsible, CollapsibleContent } from "@renderer/components/ui/collapsible";
 import { Item, ItemActions, ItemButton, ItemContent, ItemMedia } from "@renderer/components/ui/item";
@@ -59,8 +63,14 @@ const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 
 export function ActivitySection({ threadId }: { threadId: string }) {
   const { rows, meta } = useActivity(threadId);
+  // D5: Stop asks the thread's host (session.stopTask, devServer.stop: operate); a key that may not has no Stop.
+  const host = sessionStore.environmentOf(threadId);
+  const mayStop = useLinkMay(host ?? "", "session.stopTask");
+  // Round 2: one read of the host's link for the section, handed to each row's Stop (no subscription per row).
+  const held = useHostHeld(host);
+  const shown = useMemo(() => (mayStop ? rows : rows.map((row) => (row.stop ? { ...row, stop: undefined } : row))), [rows, mayStop]);
   if (!meta) return null;
-  return <ActivityRows threadId={threadId} rows={rows} meta={meta} />;
+  return <ActivityRows threadId={threadId} rows={shown} meta={meta} held={held} />;
 }
 
 /** The rows alone, given the join (ActivitySection; tests). */
@@ -70,9 +80,12 @@ export const ActivityRows = memo(function ActivityRows({
   meta,
   initialOpen = null,
   readLog = taskLog,
+  held = null,
 }: {
   threadId: string;
   rows: ActivityRow[];
+  /** The thread's host away (D5): every Stop is held, this its tooltip. */
+  held?: string | null;
   meta: Pick<SessionMeta, "status" | "background">;
   /** The row shown open at mount (a fixture's open fold). */
   initialOpen?: string | null;
@@ -104,6 +117,7 @@ export const ActivityRows = memo(function ActivityRows({
             onActivate={row.open ? () => activate(row) : undefined}
             live={shown}
             readLog={readLog}
+            held={held}
           />
         ))}
       </div>
@@ -120,8 +134,10 @@ function Row({
   onActivate,
   live,
   readLog,
+  held,
 }: {
   threadId: string;
+  held: string | null;
   row: ActivityRow;
   now: number;
   stale: boolean;
@@ -185,7 +201,13 @@ function Row({
         {now > 0 ? (
           <span className={cn("pointer-events-none text-xs leading-5 tabular-nums", stale ? "text-warning" : "text-muted-foreground")}>{minuteAge(now - row.since)}</span>
         ) : null}
-        {row.stop ? (
+        {row.stop && held ? (
+          <HeldTip held={held} className="pointer-events-auto">
+            <Button variant="ghost" size="icon-xs" className="text-muted-foreground" aria-label="Stop" disabled>
+              <Square className="size-2.5 fill-current" />
+            </Button>
+          </HeldTip>
+        ) : row.stop ? (
           <Tooltip>
             <TooltipTrigger
               render={

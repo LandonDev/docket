@@ -37,4 +37,4 @@ export {
 } from "./registry";
 export { useEnvironmentStatus, useEnvironmentStatuses, useEnvironments, useSlowEnvironments } from "./status";
 export { lastSeenAt, noteSeen, forgetSeen, trackLastSeen, useLastSeenAt } from "./lastSeen";
-export { DEGRADED_GRACE_MS, degradedFor, degradedText, useEnvironmentDegraded, type Degraded } from "./degraded";
+export { DEGRADED_GRACE_MS, degradedFor, identityChanged, linkWords, useEnvironmentDegraded, useEnvironmentName, useHostHeld, type Degraded } from "./degraded";
