@@ -610,7 +610,9 @@ export class MemorySync {
         const needsHash: number[] = []
         for (const [index, file] of files.entries()) {
           const hit = this.cache.get(file.real)
-          if (hit && hit.size === file.stat.size && hit.mtimeMs === file.stat.mtimeMs) hashes[index] = hit
+          // The same file as when its hash was taken: its size, its time and its inode (a file put in its place by a
+          // rename is another file, whatever its time says).
+          if (hit && hit.size === file.stat.size && hit.mtimeMs === file.stat.mtimeMs && hit.ino === file.stat.ino) hashes[index] = hit
           else needsHash.push(index)
         }
         for (let i = 0; i < needsHash.length; i += 2) {
