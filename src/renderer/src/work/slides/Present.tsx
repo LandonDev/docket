@@ -120,7 +120,8 @@ export function PresentButton({ onPresent, native = nativeShow() }: { onPresent(
         onPick={onPick}
         onOpenChange={(open) => open && readDisplays()}
         trigger={
-          <Button variant="secondary" size="icon-xs" className="w-5 rounded-s-none" aria-label="Ways to present">
+          // 20px wide beside Present; its press reaches 24px on its outer side, never over Present.
+          <Button variant="secondary" size="icon-xs" className="relative w-5 rounded-s-none after:absolute after:inset-y-0 after:start-0 after:-end-1 after:content-['']" aria-label="Ways to present">
             <ChevronDown />
           </Button>
         }

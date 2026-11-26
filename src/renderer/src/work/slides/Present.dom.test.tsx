@@ -14,6 +14,15 @@ afterEach(cleanup);
 
 const native = (displays: Awaited<ReturnType<ShowNative["displays"]>>): ShowNative => ({ displays: async () => displays, begin: async () => ({ audience: "tc-show-n1", presenter: "tc-show-n1-presenter" }), end: async () => undefined, onDisplayGone: () => () => undefined });
 
+describe("Present's two presses", () => {
+  /** The live walk (S9): Ways to present was 20px wide. Its press reaches 24px on its outer side and never over Present. */
+  it("give Ways to present a 24px press past its outer edge, none over Present", () => {
+    render(<PresentButton native={null} onPresent={() => undefined} />);
+    const more = screen.getByRole("button", { name: "Ways to present" }).className.split(" ");
+    expect(more).toEqual(expect.arrayContaining(["relative", "w-5", "after:absolute", "after:start-0", "after:-end-1"]));
+  });
+});
+
 describe("Present on the desktop", () => {
   it("offers In a window, and no choice of display with one display", async () => {
     const asks: PresentAsk[] = [];

@@ -70,6 +70,16 @@ describe("a file header's presses", () => {
     for (const label of ["Reload", "Ask"]) expect(presses.contains(within(header).getByRole("button", { name: label }))).toBe(true);
   });
 
+  /** The live walk (S9): the name's rename press was its 20px line, cut by its truncating heading. */
+  it("give the name's rename press 24px over its 20px line, cut in its own span so the heading clips nothing", () => {
+    width = 900;
+    render(<FileHeader name="Notes.md" line={null} where="Events" running={null} onRun={() => undefined} rows={[]} onPick={() => undefined} rename={{ on: false, start: () => undefined, done: () => undefined }} ask={{ disabled: false, pressed: false, run: () => undefined }} />);
+    const press = document.querySelector<HTMLElement>("[data-files-rename-name]")!;
+    expect(press.className.split(" ")).toEqual(expect.arrayContaining(["relative", "h-5", "after:absolute", "after:-inset-y-0.5"]));
+    expect(press.closest("h2")!.className.split(" ")).not.toContain("truncate");
+    expect(press.querySelector(".truncate")?.textContent).toBe("Notes.md");
+  });
+
   it("keep one row with no line press: the name gives way first", () => {
     vi.stubGlobal("ResizeObserver", Measured);
     render(<FileHeader name="Notes.md" line={null} where="Events" running={null} onRun={() => undefined} rows={[]} onPick={() => undefined} ask={{ disabled: false, pressed: false, run: () => undefined }} />);

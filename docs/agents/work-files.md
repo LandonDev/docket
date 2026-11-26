@@ -226,6 +226,8 @@ the first paint.
   lens or Trash, is the list's second fact there and stays to 560px (`data-files-where`). Home's "where" is one
   160px column, folded under 640px of Home as By is, before a state would go. A file's header keeps the name and its line 16rem where the line has presses: past
   that the presses, ⋯ and Ask take a second row at the end (`data-files-head-presses`), so neither is cut to a stub.
+  The name, where a press renames it, takes 24px over its 20px line; it cuts in its own span, so the heading clips
+  no part of the press.
   A kind's Offline names the computer that is not answering ("The box is not answering. 3 changes wait here",
   `offlineNamed` in fileText.ts); a download says "Downloading… 2.1 of 8.4 MB" in the header as in the row.
 - An empty place gets its first tab from `tabOpen {first: true}`: the host

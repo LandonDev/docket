@@ -237,8 +237,9 @@ export function FileHeader({
           ) : (
             <TruncateTip text={shownName(name)}>
               {rename ? (
-                <h2 className="min-w-0 truncate text-sm leading-5 font-semibold text-foreground">
-                  <Button variant="link" data-files-rename-name className="h-5 max-w-full min-w-0 justify-start rounded-sm p-0 text-sm leading-5 font-semibold hover:no-underline" onClick={rename.start}>
+                // The name cuts in its own span, so the press's 24px hit area (over its 20px line) is not cut by the heading.
+                <h2 className="min-w-0 text-sm leading-5 font-semibold text-foreground">
+                  <Button variant="link" data-files-rename-name className="relative h-5 max-w-full min-w-0 justify-start rounded-sm p-0 text-sm leading-5 font-semibold after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-[''] hover:no-underline" onClick={rename.start}>
                     <span className="truncate">{shownName(name)}</span>
                   </Button>
                 </h2>
