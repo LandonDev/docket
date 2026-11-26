@@ -106,19 +106,17 @@ export function Slipped({
 }
 
 /**
- * A fold of rows under one muted line, laid out as a job's heading is: its chevron in the gutter, its words on the
- * rows' edge, the count first ("3 older", "2 dealt with since"). The line lifts to the foreground on hover; only
- * the chevron's turn animates.
+ * A fold of rows under one muted line: its words on the rows' edge, the count first ("3 older", "2 dealt with
+ * since"), the chevron after them, since the job's dot is the only thing in the gutter. The line lifts to the
+ * foreground on hover; only the chevron's turn animates.
  */
 function Fold({ label, flush = false, startOpen = false, children }: { label: string; flush?: boolean; startOpen?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(startOpen);
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="focus-ring flex h-6 items-center rounded-sm text-xs text-muted-foreground hover:text-foreground">
-        <span className="grid size-4 place-items-center">
-          <ChevronRight aria-hidden className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
-        </span>
-        <span className="ms-2 tabular-nums">{label}</span>
+      <CollapsibleTrigger data-review-fold className="focus-ring ms-6 flex h-6 items-center gap-1 rounded-sm text-xs text-muted-foreground hover:text-foreground">
+        <span className="tabular-nums">{label}</span>
+        <ChevronRight aria-hidden className={cn("size-3", DISCLOSURE_CHEVRON, open && "rotate-90")} />
       </CollapsibleTrigger>
       {/* The panel clips, as `Leaving` does: at the rows' hover box, so a row behind the fold keeps its whole fill and ring. */}
       <CollapsibleContent className="-mx-2 px-2">

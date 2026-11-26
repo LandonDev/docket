@@ -6,6 +6,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
+import { cn } from "../../lib/cn";
 import { mayMarkRevealRead, onRevealReadChange } from "../../lib/revealRead";
 import { nameInLine } from "../../lib/hostWords";
 import { takeWorkPlaceAt, useWorkPlaceAt } from "../../lib/workPlaceAt";
@@ -261,10 +262,10 @@ export function ReviewPageView({
           ))}
           {/* A host that did not answer, and each source that feeds several sections: red lines in the same stack, the Retry on the first. */}
           {over.map((line, i) => (
-            <div key={line} className="flex items-start gap-3">
-              <PageError className="min-w-0 flex-1 py-0">{line}</PageError>
-              {/* The 28px button overhangs the 16px line evenly. */}
-              {i === 0 ? <span className="-my-1.5 flex shrink-0">{retry}</span> : null}
+            <div key={line} data-review-over className="flex items-start gap-3">
+              {/* A line with the press is the press's 28px tall, its words on the button's middle, as LifeOS's line is: the lines keep one rhythm. */}
+              <PageError className={cn("min-w-0 flex-1 py-0", i === 0 && "py-1.5")}>{line}</PageError>
+              {i === 0 ? <span className="flex shrink-0">{retry}</span> : null}
             </div>
           ))}
           {lastKnown ? (
@@ -283,7 +284,7 @@ export function ReviewPageView({
             </>
           ) : view.settled ? null : (
             <>
-              <HoursSkeleton />
+              <HoursSkeleton rows={view.jobs || undefined} />
               <RowsSkeleton title="Shipped" />
               <RowsSkeleton title="Slipped" tall />
             </>

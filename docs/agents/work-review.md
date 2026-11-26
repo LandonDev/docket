@@ -176,7 +176,9 @@ a slice is sized by bytes and a long row is never loaded.
 | Meetings | | ended, someone else on it, no mail to any of them since, no notes in Prep on any host | Follow up: the meeting's Prep page | a mark | None needed (a mark) |
 
 - A held mail that was sent is listed once, as the mail.
-- Tasks due before the week fold behind "12 older" per job (`splitOlder`).
+- Tasks due before the week fold behind "12 older" per job (`splitOlder`); the
+  fold's words stand on the rows' edge with the chevron after them, since the
+  job's dot is the only thing in the gutter.
 - Answers are kept from the day LifeOS began keeping them
   (`answeredSince`): the `mailAnswers` table gets a row where an answer
   clears a wait. Before that day there are simply no Answered rows.
@@ -416,7 +418,11 @@ under the `work-places` frame.
   as last known and its presses wait. `hostError` says why a host did not
   answer in his words; `errors[].kept` says its last answer still counts.
   While a named week is on its way (`useWorkPlaceAt`), the page draws bones
-  and neither reads nor marks seen the week it stood on. A host that is off is not counted, as its line says:
+  and neither reads nor marks seen the week it stood on. Hours' bones are one
+  row a job the window knows (`ReviewView.jobs`, from the rail's workspaces
+  before any host answers), so nothing under them jumps when the week lands.
+  The first lines under "So far, made …" keep one rhythm: a line with a press
+  (Retry, Sign in) is the press's 28px tall, never a button overhanging it. A host that is off is not counted, as its line says:
   what it answered before it went is kept for its return and not merged.
   `makeAgain` reads a week again with the page's first line saying
   "Making…". `MergedReview.known` says where an empty list is known to be

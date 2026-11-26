@@ -501,6 +501,30 @@ describe("the other states", () => {
     expect([ends("Shipped"), ends("Slipped")]).toEqual([6, 0]);
   });
 
+  it("draws Hours' bones one row a job the window knows, so nothing jumps when a one-job week lands (council R1-A12)", () => {
+    // The bones are for the eye alone (aria-hidden): found by their section, the first.
+    const rows = (root: HTMLElement) => root.querySelector("section")!.querySelectorAll(".h-8").length;
+    const { view, now } = fixtureView("loading");
+    expect(rows(draw("loading", { view: { ...view, jobs: 1 }, now }).container)).toBe(1);
+    cleanup();
+    expect(rows(draw("loading").container)).toBe(6);
+  });
+
+  it("keeps the first lines in one rhythm: the red line with Retry is Retry's height, never overhung (council R1-A14)", () => {
+    const { container } = draw("failed");
+    const over = container.querySelector("[data-review-over]")!;
+    expect(over.querySelector('[data-slot="page-error"], p')!.className).toContain("py-1.5");
+    expect(over.innerHTML).not.toContain("-my-1.5");
+  });
+
+  it("hangs nothing but the job's dot in the gutter: an older fold's words start on the rows' edge, the chevron after them (council R1-A13)", () => {
+    draw("full");
+    const fold = within(section("Slipped")).getByRole("button", { name: "3 older" });
+    expect(fold.className).toContain("ms-6");
+    expect(fold.firstElementChild!.textContent).toBe("3 older");
+    expect(fold.lastElementChild!.tagName.toLowerCase()).toBe("svg");
+  });
+
   it("claims no empty list while LifeOS has not answered", () => {
     const { view, now } = fixtureView("lifeos");
     const bare = { ...view, review: { ...view.review!, shipped: [], slipped: [] } };

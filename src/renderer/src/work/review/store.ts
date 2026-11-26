@@ -79,6 +79,8 @@ export type ReviewView = {
   errors: { environmentId: string; name: string; error: string; kept: boolean }[];
   /** Money's sums for the week, a job at a time, in cents: only the jobs whose ledger moved */
   money: ReadonlyMap<JobKey, JobMoney>;
+  /** the Work jobs this window knows before any host answers: Hours' bones draw one row each, so nothing jumps when the week lands */
+  jobs?: number;
 };
 
 /** What a job's ledger took in and paid out in the week, as Money sums it. */
@@ -321,6 +323,8 @@ function view(week: ReviewWeek): ReviewView {
       return host?.error ? [{ environmentId: id, name: hostName(id), error: host.error, kept: host.body !== null }] : [];
     }),
     money: moneyOf(week.from, parts),
+    // A job on two hosts is one row once merged: counted by its sector.
+    jobs: new Set(knownJobs(parts).map((job) => job.sector ?? job.key)).size,
   };
   snapshots.set(week.from, next);
   return next;
