@@ -20,18 +20,33 @@ public enum RoutineBands {
         }
     }
 
-    /// The stamp: "Until Tue, Nov 24" for a watch that ends on a day, else when it next runs.
+    /// The stamp: "Until Tue, Nov 24" for a watch that ends on a day, else when it next runs where that adds a fact.
+    /// A cadence that says its day and time ("Fridays at 4:00 PM", "Weekdays at 7:00 AM") is said once: a next run
+    /// inside the week it names takes no stamp; one a week or more away is its date ("Dec 4").
     public static func stamp(_ row: RoutinePhoneRow, now: Date = Date(), calendar: Calendar = .current) -> String {
         if row.ended { return "Ended" }
         if !row.enabled { return "Paused" }
         if row.running { return "Running" }
+        let style = Date.FormatStyle(locale: calendar.locale ?? .current, calendar: calendar, timeZone: calendar.timeZone)
         if row.kind == .watch, case .day(let until) = row.ends {
-            return "Until " + Date(timeIntervalSince1970: Double(until.at) / 1000).formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+            return "Until " + style.weekday(.abbreviated).month(.abbreviated).day().format(Date(timeIntervalSince1970: Double(until.at) / 1000))
         }
         guard let next = row.nextAt else { return "" }
         let date = Date(timeIntervalSince1970: Double(next) / 1000)
-        if calendar.isDate(date, inSameDayAs: now) { return date.formatted(date: .omitted, time: .shortened) }
-        return date.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: calendar.startOfDay(for: date)).day ?? 0
+        if days >= 7 { return style.month(.abbreviated).day().format(date) }
+        if says(row.words, date, style) { return "" }
+        if days == 0 { return style.hour().minute().format(date) }
+        return style.weekday(.abbreviated).hour().minute().format(date)
+    }
+
+    /// The cadence already names this run: its clock, and its day or a day that covers it (every day, weekdays).
+    static func says(_ words: String, _ date: Date, _ style: Date.FormatStyle) -> Bool {
+        let plain = { (text: String) in text.replacingOccurrences(of: "\u{202F}", with: " ").lowercased() }
+        let cadence = plain(words)
+        guard cadence.contains(plain(style.hour().minute().format(date))) else { return false }
+        let day = plain(style.weekday(.wide).format(date))
+        return cadence.contains(day) || ["every day", "daily", "weekdays", "every weekday"].contains { cadence.contains($0) }
     }
 }
 

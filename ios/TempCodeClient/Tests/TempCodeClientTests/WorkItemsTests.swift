@@ -234,6 +234,26 @@ struct WorkItemsTests {
         #expect(RoutineBands.stamp(bands.watches[0]).hasPrefix("Until "))
     }
 
+    /// A routine's cadence is said once: no stamp for a next run the words already name, a date for one a week or more
+    /// away, a time for a cadence that names none.
+    @Test func aRoutineSaysItsCadenceOnce() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Chicago")!
+        calendar.locale = Locale(identifier: "en_US")
+        let now = calendar.date(from: DateComponents(year: 2026, month: 11, day: 24, hour: 9, minute: 40))!
+        func at(_ day: Int, _ hour: Int, month: Int = 11) -> Int { Int(calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: hour))!.timeIntervalSince1970 * 1000) }
+        func row(_ words: String, next: Int) throws -> RoutinePhoneRow {
+            let json = #"{"id":"r","workspaceId":"w1","kind":"routine","name":"r","words":"\#(words)","ends":{"kind":"never"},"enabled":true,"proposed":false,"nextAt":\#(next),"lastAt":null,"running":false,"ended":false,"waiting":null}"#
+            return try JSONDecoder().decode(RoutinePhoneRow.self, from: Data(json.utf8))
+        }
+        func stamp(_ r: RoutinePhoneRow) -> String { RoutineBands.stamp(r, now: now, calendar: calendar).replacingOccurrences(of: "\u{202F}", with: " ") }
+        #expect(stamp(try row("Fridays at 4:00 PM", next: at(27, 16))) == "")
+        #expect(stamp(try row("Weekdays at 7:00 AM", next: at(25, 7))) == "")
+        #expect(stamp(try row("Every hour", next: at(24, 10))) == "10:00 AM")
+        #expect(stamp(try row("Every hour", next: at(25, 10))) == "Wed 10:00 AM")
+        #expect(stamp(try row("Fridays at 4:00 PM", next: at(4, 16, month: 12))) == "Dec 4")
+    }
+
     /// A Microsoft form as `work.msforms.list` answers it: the whole view, of which the phone reads six fields.
     private func msform(_ state: String, count: Int, link: String?, formId: String = "Ob0wQVN8nEGx5YdY1tY_IQaWFXVrVqJA") throws -> MsFormPhoneRow {
         let linked = link.map { "\"\($0)\"" } ?? "null"

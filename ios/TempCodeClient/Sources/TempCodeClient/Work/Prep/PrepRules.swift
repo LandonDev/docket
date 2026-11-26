@@ -99,9 +99,22 @@ public enum PrepRules {
     public static func timeWords(_ event: Page.Event, calendar: Calendar) -> String {
         if event.allDay { return "all day" }
         guard let end = event.endsAt, end > event.startsAt else { return clock(event.startsAt, calendar) }
-        let start = clock(event.startsAt, calendar), stop = clock(end, calendar)
-        let sameHalf = String(start.suffix(2)) == String(stop.suffix(2))
-        return "\(sameHalf ? String(start.dropLast(3)) : start) to \(stop)"
+        return span(event.startsAt, end, calendar: calendar)
+    }
+
+    /// A span of clock times, its AM or PM said once: "2:00 to 2:45 PM" within one half of the day, "11:30 AM to 12:15
+    /// PM" across noon or midnight. A clock with no such mark (a 24-hour clock) keeps both times whole. Prep's head and
+    /// a clash's events say it so.
+    public static func span(_ start: Double, _ end: Double, calendar: Calendar) -> String {
+        let from = clock(start, calendar), to = clock(end, calendar)
+        // The mark is the clock's last word when it holds no digit ("PM"); a clock that leads with it keeps both.
+        func mark(_ clock: String) -> (Substring, String.Index)? {
+            guard let space = clock.lastIndex(of: " ") else { return nil }
+            let word = clock[clock.index(after: space)...]
+            return word.contains(where: \.isNumber) ? nil : (word, space)
+        }
+        if let (a, space) = mark(from), let (b, _) = mark(to), a == b { return "\(from[..<space]) to \(to)" }
+        return "\(from) to \(to)"
     }
 
     /// "2:00 PM", with an ordinary space.

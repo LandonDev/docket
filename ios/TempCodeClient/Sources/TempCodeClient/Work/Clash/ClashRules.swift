@@ -38,12 +38,11 @@ public enum ClashRules {
         return "\(duration(minutes)) drive\(distance)"
     }
 
-    /// An event's time as the sheet says it: "Tue 2:00 to 3:00 PM".
+    /// An event's time as the sheet says it: "Tue 2:00 to 3:00 PM", "Tue 11:30 AM to 12:15 PM" (Prep's `span`).
     public static func timeLine(_ side: Side, calendar: Calendar) -> String {
-        let start = Date(timeIntervalSince1970: side.startsAt / 1000), end = Date(timeIntervalSince1970: side.endsAt / 1000)
+        let start = Date(timeIntervalSince1970: side.startsAt / 1000)
         let day = start.formatted(Date.FormatStyle(locale: calendar.locale ?? .current, calendar: calendar, timeZone: calendar.timeZone).weekday(.abbreviated))
-        let clock = Date.FormatStyle(locale: calendar.locale ?? .current, calendar: calendar, timeZone: calendar.timeZone).hour().minute()
-        return "\(day) \(clock.format(start)) to \(clock.format(end))"
+        return "\(day) \(PrepRules.span(side.startsAt, side.endsAt, calendar: calendar))"
     }
 
     /// The ways out the sheet offers for one event: decline and propose where LifeOS says the event allows them

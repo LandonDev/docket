@@ -29,6 +29,19 @@ private func drive(shortBy: Double = 23, measured: Bool = true) -> ClashPhoneRow
 }
 
 @Suite struct ClashRulesTests {
+    /// An event's time says its AM or PM once within one half of the day, both across noon, as Prep's head does.
+    @Test func `a clash's time says AM or PM once within one half of the day`() {
+        var us = utc
+        us.locale = Locale(identifier: "en_US")
+        let c = drive()
+        #expect(ClashRules.timeLine(c.a, calendar: us) == "Tue 2:00 to 3:00 PM")
+        #expect(PrepRules.span(day + 11.5 * hour, day + 12.25 * hour, calendar: us) == "11:30 AM to 12:15 PM")
+        #expect(PrepRules.span(day + 9 * hour, day + 10.5 * hour, calendar: us) == "9:00 to 10:30 AM")
+        var h24 = utc
+        h24.locale = Locale(identifier: "en_GB")
+        #expect(PrepRules.span(day + 14 * hour, day + 15 * hour, calendar: h24) == "14:00 to 15:00")
+    }
+
     @Test func `a route finds its clash by id, else the first live clash of the event a tell names`() {
         let list = [drive()]
         #expect(ClashRules.find("e1-e2", in: list, now: day)?.id == "e1-e2")
