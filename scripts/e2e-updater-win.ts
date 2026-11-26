@@ -18,7 +18,7 @@
  *      tc-computer.exe (scripts/build-tc-computer-win.ts), and packs
  *      the tree twice with electron-builder on the Windows config, unsigned: once at 1.0.N-1 ("old")
  *      and once at 1.0.N ("new"). Both carry app id dev.landon.tempcode.e2e, product name
- *      TempCodeE2E and a `tempcodeHarness` block (src/main/harness.ts) naming their userData, CDP
+ *      DocketE2E and a `tempcodeHarness` block (src/main/harness.ts) naming their userData, CDP
  *      port and feed, so the app the installer starts again comes up isolated too. Each packed app
  *      passes the release check (`win-stage.ts check-app`).
  *   2. Serves latest.yml, the new installer and its blockmap from 127.0.0.1:9231 on the box. One
@@ -42,7 +42,8 @@
  * program that exists, with the app id as its AUMID. The facts go to ROOT/facts.json too.
  *
  * Everything it writes on the box lives under ROOT; in the guest, under %LOCALAPPDATA%
- * (Programs\TempCodeE2E, tc-e2e, temp-code-harness-updater) of a throwaway overlay.
+ * (Programs\DocketE2E, or Programs\TempCodeE2E on --rename; tc-e2e, temp-code-harness-updater) of a
+ * throwaway overlay.
  */
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'

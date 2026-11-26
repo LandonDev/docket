@@ -196,8 +196,8 @@ else
   # 400 bytes a line, then whole lines up to 100,000 bytes (GitHub refuses a
   # body over 125,000 characters), the dropped ones counted on a last line.
   NOTES=$(git log --no-merges --pretty='- %s' ${PREV_TAG:+$PREV_TAG..}HEAD | grep -v '^- release: ' | cut -c1-400 | cap_release_notes 100000 "$PREV_TAG" || true)
-  [ -n "$NOTES" ] || NOTES="- TempCode $VERSION"
-  gh release create "v$VERSION" --repo "$REPO" --draft --title "TempCode $VERSION" --notes "$NOTES" >/dev/null
+  [ -n "$NOTES" ] || NOTES="- Docket $VERSION"
+  gh release create "v$VERSION" --repo "$REPO" --draft --title "Docket $VERSION" --notes "$NOTES" >/dev/null
   DRAFTED=1
 fi
 
@@ -271,7 +271,7 @@ pack_and_upload &
 PACK_PID=$!
 
 # ── sign ────────────────────────────────────────────────────────────────
-# One electron-builder call packs out/ into dist/mac-arm64/TempCode.app,
+# One electron-builder call packs out/ into dist/mac-arm64/$PRODUCT.app,
 # signs it and zips it (the dmg too on --dmg), writing latest-mac.yml and
 # the blockmap beside the zip. One call on purpose: electron-builder writes
 # Contents/Resources/app-update.yml, the feed config electron-updater reads,
@@ -279,12 +279,15 @@ PACK_PID=$!
 # (app-builder-lib PublishManager). A `--dir` pack followed by a
 # `--prepackaged` zip signs an app without that file; 1.0.278 shipped so and
 # every update check of the installed app failed with ENOENT. The zip of a
-# single call holds TempCode.app at its root, as ShipIt needs. It picks the
+# single call holds $PRODUCT.app at its root, as ShipIt needs. It picks the
 # certificate itself and rejects the full "Developer ID Application: ..."
 # string, so hand it just the name and team. The commit this build came
 # from rides in the bundled package.json (tempcodeBuild.sha;
 # src/main/buildInfo.ts reads it for the hello).
 begin sign
+# The bundle's and the files' name: electron-builder.yml's productName.
+PRODUCT=$(sed -n 's/^productName: //p' electron-builder.yml)
+[ -n "$PRODUCT" ] || { echo "electron-builder.yml names no productName" >&2; exit 1; }
 TARGETS=zip
 [ "$DMG" = 1 ] && TARGETS="zip dmg"
 # shellcheck disable=SC2086
@@ -293,14 +296,14 @@ bunx electron-builder --mac $TARGETS --arm64 --publish never \
   -c.mac.identity="${IDENTITY#Developer ID Application: }" \
   -c.mac.notarize="$([ "$NOTARIZE" = 1 ] && echo true || echo false)" \
   >"$STAGE/sign.log" 2>&1 || { tail -40 "$STAGE/sign.log" >&2; exit 1; }
-APP=$PWD/dist/mac-arm64/TempCode.app
+APP=$PWD/dist/mac-arm64/$PRODUCT.app
 [ -d "$APP" ] || { echo "electron-builder left no $APP" >&2; exit 1; }
 COMPUTER="$APP/Contents/Resources/app/resources/native/tc-computer"
 [ -f "$COMPUTER" ] || { echo "REFUSING TO PUBLISH $VERSION: signed app has no tc-computer" >&2; exit 1; }
 codesign --verify --strict -R="anchor apple generic and certificate leaf[subject.OU] = \"$TEAM\"" "$COMPUTER" >"$STAGE/computer-sign.log" 2>&1 || {
   echo "REFUSING TO PUBLISH $VERSION: tc-computer fails codesign --verify --strict for team $TEAM" >&2; exit 1
 }
-ZIP="dist/TempCode-$VERSION-arm64.zip"
+ZIP="dist/$PRODUCT-$VERSION-arm64.zip"
 [ -f "$ZIP" ] || { echo "electron-builder left no $ZIP" >&2; exit 1; }
 if [ ! -f dist/latest-mac.yml ]; then
   echo "latest-mac.yml written here (electron-builder left none)"
@@ -323,9 +326,9 @@ end
 set -- "$ZIP" dist/latest-mac.yml
 [ -f "$ZIP.blockmap" ] && set -- "$@" "$ZIP.blockmap"
 if [ "$DMG" = 1 ]; then
-  cp "dist/TempCode-$VERSION-arm64.dmg" "dist/TempCode-arm64.dmg"
-  set -- "$@" "dist/TempCode-$VERSION-arm64.dmg" "dist/TempCode-arm64.dmg"
-  [ -f "dist/TempCode-$VERSION-arm64.dmg.blockmap" ] && set -- "$@" "dist/TempCode-$VERSION-arm64.dmg.blockmap"
+  cp "dist/$PRODUCT-$VERSION-arm64.dmg" "dist/$PRODUCT-arm64.dmg"
+  set -- "$@" "dist/$PRODUCT-$VERSION-arm64.dmg" "dist/$PRODUCT-arm64.dmg"
+  [ -f "dist/$PRODUCT-$VERSION-arm64.dmg.blockmap" ] && set -- "$@" "dist/$PRODUCT-$VERSION-arm64.dmg.blockmap"
 fi
 if [ "$DRY" = 0 ]; then
   bg_phase upload "$STAGE/upload.log" gh release upload "v$VERSION" --repo "$REPO" --clobber "$@" &
@@ -337,9 +340,10 @@ fi
 # the installed app's designated requirement with
 # SecStaticCodeCheckValidityWithErrors (nested code, strict, all
 # architectures); the 1.0.205 install on 2026-10-10 failed exactly there.
-# /Applications/TempCode.app is the reference for a real publish when it is
-# there (same identity, same identifier, so the same requirement), else, and
-# always on a dry run, the signed app the zip was made from.
+# The installed app is the reference for a real publish when it is there,
+# /Applications/Docket.app or, from before the rename, /Applications/TempCode.app
+# (same identity, same identifier, so the same requirement), else, and always
+# on a dry run, the signed app the zip was made from.
 # scripts/sqrlcheck.swift makes the same call, compiled once per version of
 # the file into ~/Library/Caches/temp-code-release; without a Swift
 # toolchain, codesign --verify --deep --strict is the fallback.
@@ -349,26 +353,30 @@ refuse() {
 }
 begin check
 ditto -x -k "$ZIP" "$STAGE/unzipped" || refuse "the zip does not extract"
-[ -d "$STAGE/unzipped/TempCode.app" ] || refuse "the zip holds no TempCode.app"
+[ -d "$STAGE/unzipped/$PRODUCT.app" ] || refuse "the zip holds no $PRODUCT.app"
 # The feed config electron-updater reads at every check. Without it the
 # installed app can never see another release (1.0.278); with another repo
 # in it, it would update from somewhere else.
-FEED_FILE="$STAGE/unzipped/TempCode.app/Contents/Resources/app-update.yml"
+FEED_FILE="$STAGE/unzipped/$PRODUCT.app/Contents/Resources/app-update.yml"
 [ -f "$FEED_FILE" ] || refuse "the app in the zip has no Contents/Resources/app-update.yml (electron-updater's feed config)"
 for want in "provider: github" "owner: LandonDev" "repo: temp-code"; do
   grep -qx "$want" "$FEED_FILE" || refuse "Contents/Resources/app-update.yml does not say '$want'"
 done
 echo "app-update.yml names github LandonDev/temp-code"
 REFERENCE=$APP
-[ "$DRY" = 0 ] && [ -d /Applications/TempCode.app ] && REFERENCE=/Applications/TempCode.app
+if [ "$DRY" = 0 ]; then
+  for installed in /Applications/Docket.app /Applications/TempCode.app; do
+    if [ -d "$installed" ]; then REFERENCE=$installed; break; fi
+  done
+fi
 SQRL_DIR="$HOME/Library/Caches/temp-code-release"
 SQRL="$SQRL_DIR/sqrlcheck-$(shasum -a 256 scripts/sqrlcheck.swift | cut -c1-16)"
 if [ -x "$SQRL" ] || { mkdir -p "$SQRL_DIR" && swiftc -O -o "$SQRL.$$" scripts/sqrlcheck.swift 2>"$STAGE/swiftc.log" && mv "$SQRL.$$" "$SQRL"; }; then
-  "$SQRL" "$REFERENCE" "$STAGE/unzipped/TempCode.app" ||
+  "$SQRL" "$REFERENCE" "$STAGE/unzipped/$PRODUCT.app" ||
     refuse "the extracted zip fails Squirrel's validation against $REFERENCE"
 else
   echo "swiftc unavailable ($(head -1 "$STAGE/swiftc.log")); falling back to codesign --verify --deep --strict" >&2
-  codesign --verify --deep --strict "$STAGE/unzipped/TempCode.app" ||
+  codesign --verify --deep --strict "$STAGE/unzipped/$PRODUCT.app" ||
     refuse "the extracted zip fails codesign --verify --deep --strict"
 fi
 echo "zip validates"

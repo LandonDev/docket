@@ -1,5 +1,5 @@
 appId: dev.landon.tempcode
-productName: TempCode
+productName: Docket
 copyright: Copyright © 2026 Landon Hale
 directories:
   buildResources: build
@@ -89,7 +89,7 @@ mac:
     NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-    # One string for every app TempCode scripts: Office for Work's agents (docs/agents/work-office.md),
+    # One string for every app Docket scripts: Office for Work's agents (docs/agents/work-office.md),
     # Preview for Print… (src/main/printOut.ts) and Terminal after an account switch. Under the hardened runtime macOS asks only when the
     # entitlements also carry com.apple.security.automation.apple-events.
     NSAppleEventsUsageDescription: Docket drives Excel, Word, PowerPoint and Outlook for your agents, asks Preview to print what you print, and restarts your terminal sessions after switching accounts.
@@ -103,7 +103,7 @@ win:
   target:
     - target: nsis
       arch: x64
-    # For a PC that refuses the installer: unzip to %LOCALAPPDATA%\Programs\TempCode. A copy made
+    # For a PC that refuses the installer: unzip to %LOCALAPPDATA%\Programs\Docket. A copy made
     # this way does not update itself.
     - target: zip
       arch: x64
@@ -113,8 +113,9 @@ win:
   signtoolOptions:
     signingHashAlgorithms: [sha256]
     sign: ./build/sign-win.mjs
-# Per user, no admin: one click into %LOCALAPPDATA%\Programs\TempCode (build/installer.nsh names
-# the folder after the product). "Restart to update" runs the same installer with its own window.
+# Per user, no admin: one click into %LOCALAPPDATA%\Programs\Docket (build/installer.nsh names
+# the folder after the product; an install from before the rename keeps Programs\TempCode and
+# gets Docket.exe there). "Restart to update" runs the same installer with its own window.
 nsis:
   oneClick: true
   perMachine: false

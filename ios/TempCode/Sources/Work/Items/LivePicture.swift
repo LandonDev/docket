@@ -220,7 +220,7 @@ struct LivePicture: View {
 /// What a stream's place says, in the desktop's words (surfaces/threads/computer/Viewport.tsx).
 enum LiveWords {
     static let stopped = "The preview stopped"
-    static let permission = "Turn on Screen Recording for TempCode in System Settings"
+    static let permission = "Turn on Screen Recording for Docket in System Settings"
     /// `busy`: the box's one display shows another page; full screen takes it
     static let busy = "Another page is on screen"
 

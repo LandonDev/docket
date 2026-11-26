@@ -113,7 +113,7 @@ export function packedAppProblems(app: PackedApp): string[] {
 /** The files a Windows release adds to the GitHub release, by name. The feed (`latest.yml`) names the installer. */
 export function winReleaseFiles(version: string): { installer: string; blockmap: string; zip: string; feed: string } {
   const installer = `temp-code-${version}-setup.exe`
-  return { installer, blockmap: `${installer}.blockmap`, zip: `TempCode-${version}-win-x64.zip`, feed: 'latest.yml' }
+  return { installer, blockmap: `${installer}.blockmap`, zip: `Docket-${version}-win-x64.zip`, feed: 'latest.yml' }
 }
 
 /** What `latest.yml` says: its version and the installer it names with its checksum and size. */

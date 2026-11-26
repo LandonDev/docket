@@ -35,11 +35,11 @@
  *      notarization): once at package.json 1.0.N-1 ("old") and once at 1.0.N
  *      ("new"). package.json is patched for the first build and restored
  *      byte for byte. Both carry bundle id dev.landon.tempcode.e2e, product
- *      name TempCodeE2E, and a `tempcodeHarness` block (src/main/harness.ts)
+ *      name DocketE2E, and a `tempcodeHarness` block (src/main/harness.ts)
  *      naming their userData, CDP port and feed, so the app ShipIt relaunches
  *      without our environment comes up isolated too.
  *   2. Serves latest-mac.yml and the new zip from 127.0.0.1:9231.
- *   3. Installs the old copy at /private/tmp/tc-updater-e2e/TempCodeE2E.app,
+ *   3. Installs the old copy at /private/tmp/tc-updater-e2e/DocketE2E.app,
  *      launches it, and over CDP (9230) drives check → download → restart.
  *   4. Asserts: the process quit, ShipIt swapped the bundle (Info.plist says
  *      1.0.N), the relaunched app answers 1.0.N over CDP, and

@@ -16,7 +16,7 @@
  * own app, staged there until he restarts. Nothing else reaches users. The installed app updates from GitHub
  * releases only, which `bun run release:publish` (scripts/release-publish.sh)
  * cuts from a tagged commit after the `publish` tier — never install or swap
- * /Applications/TempCode.app from here. `--push` (a batch's release step on
+ * /Applications/Docket.app (TempCode.app before the rename) from here. `--push` (a batch's release step on
  * the box, batch.ts) pushes the branch and the new tag to origin after
  * tagging, so the Mac can publish the commit; the post-commit train never
  * passes it. Off macOS the gate skips its Mac-only publish steps (hub, ios,

@@ -74,7 +74,7 @@ scripts/win-vm/ssh.sh --ps 'Get-ChildItem $env:LOCALAPPDATA'   # PowerShell, sen
 scripts/win-vm/scp.sh dist/TempCode-setup.exe guest:Downloads/  # copy in (guest: is tcuser's home; -a for the admin)
 scripts/win-vm/scp.sh guest:AppData/Local/tc-run/x.log /tmp/    # copy out
 scripts/win-vm/run-in-session.sh notepad.exe                    # start a program ON the desktop
-scripts/win-vm/run-in-session.sh --wait --timeout 300 "%LOCALAPPDATA%\Programs\TempCode\TempCode.exe" --version
+scripts/win-vm/run-in-session.sh --wait --timeout 300 "%LOCALAPPDATA%\Programs\Docket\Docket.exe" --version
 scripts/win-vm/shot.sh /tmp/desktop.png   # a screenshot over QMP (default: /srv/agents/win-vm/shots/<time>.png)
 scripts/win-vm/down.sh                    # shut Windows down and stop the machine
 ```

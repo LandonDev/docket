@@ -3,14 +3,13 @@ import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * People read Docket (APP_NAME); the OS still shows TempCode (OS_APP_NAME).
+ * People read Docket (APP_NAME), and the OS shows it too (OS_APP_NAME).
  * Any other "TempCode" in code is a name another program keys on, a path or a
  * file, and is held here with its reason. A new one fails until it says Docket,
  * uses a constant, or joins this list.
  */
 const HELD: Record<string, [string, string][]> = {
   'src/shared/appName.ts': [
-    ["OS_APP_NAME = 'TempCode'", 'the bundle name macOS and Windows show'],
     ["KNOWN_APP_NAMES = ['Docket', 'TempCode']", 'the name an install from before the rename keeps']
   ],
   'src/main/printOut.ts': [["'TempCode-print'", 'a temp folder name']],
@@ -48,8 +47,7 @@ const HELD: Record<string, [string, string][]> = {
     ["'TempCode: the service", 'a task Windows lists (row 43)']
   ],
   'src/main/server/work/winvm/helperDoor.ts': [["'TempCode: the Office", 'a task Windows lists (row 43)']],
-  'ios/TempCode/Sources/Shell/InboxStore.swift': [['"TempCode/inbox"', 'a folder in the app group']],
-  'ios/TempCode/Sources/Work/Items/LivePicture.swift': [['for TempCode in System Settings', 'the Mac lists its bundle name under Screen Recording']]
+  'ios/TempCode/Sources/Shell/InboxStore.swift': [['"TempCode/inbox"', 'a folder in the app group']]
 }
 
 const root = join(__dirname, '../..')

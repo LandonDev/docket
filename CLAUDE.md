@@ -6,7 +6,7 @@ docs/agents/prompt-overhead.md). A new subject's long account goes in
 `docs/agents/<slug>.md`; this file gets one entry for it.
 
 ## One line: prod runs the newest published GitHub release
-- `/Applications/TempCode.app` runs the newest `v1.0.N` release on
+- `/Applications/Docket.app` (once TempCode.app) runs the newest `v1.0.N` release on
   github.com/LandonDev/temp-code (public). It updates itself through
   electron-updater: at launch, every 5 minutes, and when a window comes
   forward after 15 idle minutes it reads the feed's latest-mac.yml, offers
@@ -72,7 +72,7 @@ env -u ELECTRON_RUN_AS_NODE \
   extraMetadata) carries the same three TEMP_CODE_* keys into an app that
   Squirrel's ShipIt relaunches without our environment (src/main/harness.ts).
   Its Squirrel state lives in `~/Library/Caches/dev.landon.tempcode.e2e.ShipIt`.
-  Nothing of this touches /Applications/TempCode.app or its caches. `--win` is
+  Nothing of this touches the installed app or its caches. `--win` is
   the Windows pass, run on the box against the rig (docs/agents/windows-build.md).
 
 ## The user dogfoods master on the prod data
@@ -86,7 +86,7 @@ differs by origin, so it does not carry across; unread is the host's mark
 
 ## The prod worktree is retired
 ~/IdeaProjects/temp-code-prod, the old updater's checkout, is read by
-nothing. Never build into or swap /Applications/TempCode.app yourself.
+nothing. Never build into or swap the installed app yourself.
 
 ## Subjects: one entry each, the long account in docs/agents
 
@@ -120,7 +120,7 @@ Read the file a task touches before changing that subject.
   (`projects.preamble`), added to a thread's first message on every start
   path by `decidePreamble` (src/main/server/projectPreamble.ts).
   [docs/agents/project-preambles.md](docs/agents/project-preambles.md)
-- **Name and icon** — people read Docket, the OS shows TempCode
+- **Name and icon** — Docket everywhere, TempCode recognised
   (src/shared/appName.ts); `bun run icons`. [docs/agents/name-and-icon.md](docs/agents/name-and-icon.md)
 - **UI standard** — docs/DESIGN.md wins every conflict; Kobra on Base UI under
   src/renderer/src/components/ui, mapped in components/README.md; the guard
@@ -178,7 +178,7 @@ Read the file a task touches before changing that subject.
   ceiling (treewatch.ts, `watches` in doctor.get).
   [docs/agents/linux-agent-host.md](docs/agents/linux-agent-host.md)
 - **The Windows build** — an NSIS installer and a zip for x64, unsigned, per user with no admin
-  (`%LOCALAPPDATA%\Programs\TempCode`, data in `%LOCALAPPDATA%\temp-code`, the package's name); every Windows build
+  (`%LOCALAPPDATA%\Programs\Docket`, an old install `TempCode`; data in `%LOCALAPPDATA%\temp-code`, the package's name); every Windows build
   passes `--config build/electron-builder.win.yml` and stages the win32 Claude CLI first
   (scripts/win-stage.ts); every `release:publish` adds them once the Mac's release is live, never failing it (scripts/release-publish-win.sh, `--no-win`); the frame (src/main/windowFrame.ts), the
   updater's Windows path (only "Restart to update" installs there), one key map (`modKey`,

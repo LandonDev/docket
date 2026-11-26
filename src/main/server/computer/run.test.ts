@@ -411,7 +411,7 @@ describe('the service going and coming', () => {
   it('a missing Accessibility grant asks the system once per install and says where the switch is', async () => {
     const h = make()
     const first = await h.run('computer_observe', { app: 'NoAX' })
-    expect(first.body).toBe('TempCode lacks the Accessibility permission; the person turns it on under System Settings → Privacy & Security → Accessibility')
+    expect(first.body).toBe('Docket lacks the Accessibility permission; the person turns it on under System Settings → Privacy & Security → Accessibility')
     await h.run('computer_observe', { app: 'NoAX' })
     await settle()
     expect(count(h, 'permissions.request')).toBe(1)
@@ -426,7 +426,7 @@ describe('the service going and coming', () => {
     expect(obs.body).toMatch(/^app "NoShot"/)
     const shot = await h.run('computer_batch', { app: 'NoShot', actions: [{ action: 'screenshot' }] })
     expect(shot.steps[0]).toBe(
-      'screenshot · failed: TempCode lacks the Screen Recording permission; the person turns it on under System Settings → Privacy & Security → Screen & System Audio Recording'
+      'screenshot · failed: Docket lacks the Screen Recording permission; the person turns it on under System Settings → Privacy & Security → Screen & System Audio Recording'
     )
     await settle()
     expect(count(h, 'permissions.request')).toBe(1)

@@ -123,8 +123,9 @@ What the apps answer, as found live:
   Connections' row for the app reads "On the Mac, press Allow where macOS
   asks whether Excel may access files managed by OneDrive."
 
-macOS charges osascript's Apple Events to TempCode, so the Automation prompt
-reads "TempCode wants to control Microsoft Excel", once per app. The
+macOS charges osascript's Apple Events to Docket, so the Automation prompt
+reads "Docket wants to control Microsoft Excel" ("TempCode" on a build
+before the rename), once per app. The
 packaged app carries `NSAppleEventsUsageDescription` (electron-builder.yml;
 one string for Office, Preview's Print… and Terminal)
 and the `com.apple.security.automation.apple-events` entitlement

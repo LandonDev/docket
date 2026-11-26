@@ -805,7 +805,7 @@ publish script writes only after a successful install.
 | sign (one electron-builder `--mac zip` call: pack + codesign, 37,000 files, then the zip, latest-mac.yml and the blockmap) | inside the 4 to 6 min, with `ios/` in the bundle | 2m2s to sign plus 38 s to zip (311 MB) as two calls on 2026-10-21; one call since 2026-10-22 | same |
 | pack the box tarball | after the build, in line | 2 s, beside the sign (10.9 MB) | same |
 | notarization | 3 min on a good day, 35 on a bad one | none (`--notarize` brings it back) | |
-| ShipIt-style check | 1 to 2 min with the dmg mount | seconds, against /Applications/TempCode.app | same |
+| ShipIt-style check | 1 to 2 min with the dmg mount | seconds, against /Applications/Docket.app (else TempCode.app) | same |
 | upload | zip + dmg + tarball, 2 to 5 min | zip + blockmap + latest-mac.yml; the tarball went up earlier | not run in a dry run |
 | feed check | 5 s sleep + one fetch | the same | |
 | the installed app noticing | up to 30 min, then a click to download | at once: the script's own app fetches it (`phase ✓ update`), a box deploy pushes `release-available`; the poll is 5 min | GitHub served the 1.0.277 zip at 70 MB/s here: 311 MB in about 5 s |

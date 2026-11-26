@@ -1,6 +1,6 @@
 # The Windows build: install, update, frame and keys
 
-TempCode on Windows 11 as a desktop app: an installer that needs no admin, an updater, the
+Docket on Windows 11 as a desktop app: an installer that needs no admin, an updater, the
 Windows frame and Ctrl keys (milestone 12 of the Work plan). The host core under it (shells,
 process trees, links, the path fence) is milestone 13's, and a Windows host linked to the box is
 milestone 41's. Every Windows branch sits behind a platform check, and the Mac's build, release
@@ -118,7 +118,7 @@ The files:
 |---|---|
 | `temp-code-1.0.N-setup.exe` | the installer, about 300 MB |
 | `temp-code-1.0.N-setup.exe.blockmap` | its block map, for differential downloads |
-| `TempCode-1.0.N-win-x64.zip` | the app unpacked, for a PC that refuses the installer; a copy made this way does not update itself |
+| `Docket-1.0.N-win-x64.zip` (`TempCode-…` before the rename) | the app unpacked, for a PC that refuses the installer; a copy made this way does not update itself |
 | `latest.yml` | the feed file a Windows install reads, beside the Mac's `latest-mac.yml` |
 
 A release with no `latest.yml` (every one before 1.0.367, or one whose pass failed) leaves a Windows install's
@@ -129,13 +129,15 @@ check failing quietly until the next one that has it.
 **The first screen.** A fresh install (no saved hosts, no workspaces, no accounts) opens on one
 screen, "Paste the link from your Mac" (surfaces/setup/SetupFirstRun.tsx, its own lazy chunk), with
 Continue and Skip; Settings → Hosts → **Use a setup link…** opens the same later. The steps that follow,
-LifeOS's install among them, are docs/agents/pc-setup.md "The setup link". TempCode's own `setup.exe`
+LifeOS's install among them, are docs/agents/pc-setup.md "The setup link". Docket's own `setup.exe`
 stays the one installer: LifeOS is a step of that screen, never a part of the NSIS bundle, and it never
 runs again on an `--updated` reinstall.
 
-One click, per user: the installer writes `%LOCALAPPDATA%\Programs\TempCode` and asks for no
+One click, per user: the installer writes `%LOCALAPPDATA%\Programs\Docket` and asks for no
 admin. `build/installer.nsh` names the folder after the product (electron-builder's default for
-this mode is the package name, `temp-code`); an update keeps the folder the first install chose.
+this mode is the package name, `temp-code`); an update keeps the folder the first install chose,
+so an install from before the rename stays in `Programs\TempCode` with `Docket.exe` in it
+(docs/agents/name-and-icon.md "The update across the rename").
 Silent: `temp-code-1.0.N-setup.exe /S`. The Start menu and the desktop get a shortcut, and the
 shortcut's AppUserModelId is the app id (`dev.landon.tempcode`), which the app sets too
 (`APP_USER_MODEL_ID` in src/main/windowFrame.ts) so toasts and the taskbar group find it.
@@ -297,7 +299,7 @@ Seen in the rig on 2026-11-19, as the standard user, never elevated (`bun script
 
 Not seen: Snap Layouts on hovering maximise (milestone 43's pointer input can drive it, not yet tried); a
 real thread or a warm harness across the update (milestone 13); the real product's name
-(`TempCode`; the test builds are `TempCodeE2E`, the folder rule is the same); the zip.
+(`Docket`; the test builds are `DocketE2E`, the folder rule is the same); the zip.
 
 **The first published installer** (2026-11-23, .temp-code/plans/landed/F-windows-installer.md):
 
@@ -320,7 +322,9 @@ real thread or a warm harness across the update (milestone 13); the real product
   check, download, Restart to update with a bundled `claude.exe` running out of the install folder,
   the new app back in 82 s (it was six to eight minutes before the slim bundle).
 
-The driver, on the box: builds 1.0.N-1 and 1.0.N as `TempCodeE2E` with the harness block, serves
+The driver, on the box: builds 1.0.N-1 and 1.0.N as `DocketE2E` with the harness block (`--rename`
+builds the old one as `TempCodeE2E` and records the folder, program, shortcuts, uninstall entries
+and AUMID before and after), serves
 the new one from a local feed, installs the old one silently, starts it on the desktop, checks the
 frame, both themes, Alt, Ctrl+, and the key list over CDP, runs the bundled CLI, and drives the
 update until the relaunched app answers. `--busy` starts the bundled `claude.exe` from the install

@@ -142,7 +142,7 @@ for an older release shows “No release notes for this version”.
    moment the build is done and uploaded to the draft while the app is
    still being signed. The zip, its blockmap and latest-mac.yml go up to
    the draft while the zip is checked the way Squirrel's ShipIt will
-   (the `check` phase; against /Applications/TempCode.app when it is there
+   (the `check` phase; against /Applications/Docket.app, else TempCode.app, when one is there
    and never on a dry run; scripts/sqrlcheck.swift compiled once per version
    into ~/Library/Caches/temp-code-release) and refused
    without an app-update.yml naming github LandonDev/temp-code; a bundle
@@ -245,7 +245,8 @@ out/ when there is one, and keeps the count of files copied from node_modules un
 electron-builder.yml trims sources, docs and other platforms' binaries inside what ships. The
 numbers are in docs/release-gate.md "The publish, phase by phase".
 
-Never build into or swap /Applications/TempCode.app yourself: the installed
+Never build into or swap /Applications/Docket.app (TempCode.app before the
+rename, docs/agents/name-and-icon.md) yourself: the installed
 app replaces itself from the feed, and only from the feed.
 
 ## The build's heap

@@ -55,7 +55,16 @@ describe('release-publish.sh', () => {
 
   it('reads /Applications only in a real publish', () => {
     const reads = code.split('\n').filter((line) => line.includes('/Applications'))
-    expect(reads).toEqual(['[ "$DRY" = 0 ] && [ -d /Applications/TempCode.app ] && REFERENCE=/Applications/TempCode.app'])
+    expect(reads).toEqual(['  for installed in /Applications/Docket.app /Applications/TempCode.app; do'])
+    expect(code).toContain('if [ "$DRY" = 0 ]; then\n  for installed in /Applications/Docket.app /Applications/TempCode.app; do')
+  })
+
+  it("names the bundle and its files by electron-builder.yml's productName", () => {
+    expect(code).toContain("PRODUCT=$(sed -n 's/^productName: //p' electron-builder.yml)")
+    expect(code).toContain('APP=$PWD/dist/mac-arm64/$PRODUCT.app')
+    expect(code).toContain('ZIP="dist/$PRODUCT-$VERSION-arm64.zip"')
+    const named = code.split('\n').filter((line) => /\bTempCode\b/.test(line))
+    expect(named).toEqual(['  for installed in /Applications/Docket.app /Applications/TempCode.app; do'])
   })
 
   it('reads the feed once a second, for a minute at most, instead of a fixed wait', () => {

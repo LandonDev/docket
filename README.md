@@ -22,7 +22,7 @@ projects, threads, a code editor, terminals, git, and an inbox.
 ## Install
 
 Apple silicon Mac on macOS 12 or newer. Open the newest release above,
-download its zip (or its dmg, when it has one) and drag TempCode to
+download its zip (or its dmg, when it has one) and drag Docket to
 Applications. The app is signed with a Developer ID;
 the dmg is published on request (`bun run release:publish --dmg --notarize`).
 

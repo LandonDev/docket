@@ -528,7 +528,7 @@ marks a step only he can take; the rest a later thread can run.
   the Mac, with scratch files under /private/tmp only —
   1. Open Excel; make `/private/tmp/m28/xl-test.xlsx` with Sheet1 A1:C3
      values and C4 `=SUM(C1:C3)`. Ask the thread to call `office_files`;
-     click Allow once on "TempCode wants to control Microsoft Excel".
+     click Allow once on "Docket wants to control Microsoft Excel".
   2. `office_range_read 'Sheet1'!A1:C4`, then `office_range_write
      'Sheet1'!A1` with the read hash: written. Type in A1 in Excel, write
      again with the old hash: `conflict`, nothing written.

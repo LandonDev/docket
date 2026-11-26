@@ -52,7 +52,7 @@ describe('the Windows release file list', () => {
     expect(winReleaseFiles('1.0.412')).toEqual({
       installer: 'temp-code-1.0.412-setup.exe',
       blockmap: 'temp-code-1.0.412-setup.exe.blockmap',
-      zip: 'TempCode-1.0.412-win-x64.zip',
+      zip: 'Docket-1.0.412-win-x64.zip',
       feed: 'latest.yml'
     })
   })

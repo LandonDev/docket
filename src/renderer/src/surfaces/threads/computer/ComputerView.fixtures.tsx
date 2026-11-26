@@ -340,7 +340,7 @@ const fixtures: ComputerFixture[] = [
     name: "15. Live with Screen Recording off: the read text and the line that says what to turn on",
     props: base({
       sessions: [live],
-      viewport: { face: { kind: "text", text: READ_DOC }, label: "Untitled in TextEdit at 2:01 PM", line: <ViewportLine words="Turn on Screen Recording for TempCode in System Settings" /> },
+      viewport: { face: { kind: "text", text: READ_DOC }, label: "Untitled in TextEdit at 2:01 PM", line: <ViewportLine words="Turn on Screen Recording for Docket in System Settings" /> },
       running: [working("Clicking", "a text area")],
       ...listOf(own([call(AT - 3 * MIN, [step("read", "Read", "")], { read: "Read 41 elements", text: true, picture: { none: "permission" } })])),
       read: { open: false, text: null, above: true },

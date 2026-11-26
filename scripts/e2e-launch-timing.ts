@@ -67,7 +67,7 @@ import {
 
 const ROOT = '/private/tmp/tc-launch-timing'
 const APP_ID = 'dev.landon.tempcode.e2e'
-const PRODUCT = 'TempCodeE2E'
+const PRODUCT = 'DocketE2E'
 const DEBUG_PORT = 9234
 const USER_DATA = join(ROOT, 'userData')
 const COMPILE_CACHE = join(ROOT, 'compile-cache')

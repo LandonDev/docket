@@ -85,7 +85,7 @@ fi
 LATEST=$(gh api "repos/$REPO/releases/latest" --jq .tag_name 2>/dev/null || true)
 gh release upload "v$VERSION" --repo "$REPO" --clobber \
   "dist/temp-code-$VERSION-setup.exe" "dist/temp-code-$VERSION-setup.exe.blockmap" \
-  "dist/TempCode-$VERSION-win-x64.zip" >>"$LOG" 2>&1 || fail "the upload failed"
+  "dist/Docket-$VERSION-win-x64.zip" >>"$LOG" 2>&1 || fail "the upload failed"
 gh release upload "v$VERSION" --repo "$REPO" --clobber dist/latest.yml >>"$LOG" 2>&1 || fail "the upload of latest.yml failed"
 
 # What a Windows install will fetch, read back once a second for a minute.

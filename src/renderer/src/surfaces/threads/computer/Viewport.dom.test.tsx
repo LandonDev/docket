@@ -397,7 +397,7 @@ describe("the live viewport", () => {
     const cases: [string, string, boolean][] = [
       ["window-closed", "The window closed", false],
       ["minimized", "The window is minimized", true],
-      ["permission", "Turn on Screen Recording for TempCode in System Settings", false],
+      ["permission", "Turn on Screen Recording for Docket in System Settings", false],
       ["restarted", "The preview stopped", true],
       ["error", "The preview stopped", true],
     ];

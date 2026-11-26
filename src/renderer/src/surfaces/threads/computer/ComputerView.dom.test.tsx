@@ -1578,7 +1578,7 @@ describe("when the preview ends", () => {
     expect(box()!.tagName).toBe("PRE");
     expect(box()!.textContent).toBe("the newest read");
     // the text is an older step's than the open row: it says when it was read
-    expect(lineUnder()).toBe(`Turn on Screen Recording for TempCode in System Settings. As it was at ${lineTime(AT + 1400)}`);
+    expect(lineUnder()).toBe(`Turn on Screen Recording for Docket in System Settings. As it was at ${lineTime(AT + 1400)}`);
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     // the open row is still the newest step
     expect(words(openRow())).toBe("ClickedStep 2");
@@ -1586,7 +1586,7 @@ describe("when the preview ends", () => {
     // the newest step's own read needs no time
     mount(data([call(1, { picture: { none: "permission" }, text: true, read: "Read 46 elements", steps: [{ kind: "read", verb: "Read", object: "", inApp: "TextEdit", state: "ok" }] })], [entry()]));
     await flush();
-    expect(lineUnder()).toBe("Turn on Screen Recording for TempCode in System Settings");
+    expect(lineUnder()).toBe("Turn on Screen Recording for Docket in System Settings");
   });
 });
 

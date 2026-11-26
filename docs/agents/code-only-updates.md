@@ -283,7 +283,8 @@ builds before the bump.
   it cannot make) runs the bundle's code. `pickCode` never throws.
 - **The way back by hand.** Choosing Off forgets the tree; the next launch
   runs the bundle's code. If Settings itself is broken,
-  `open -a TempCode --args --tempcode-bundle-code` runs the bundle's code
+  `open -a Docket --args --tempcode-bundle-code` (`-a TempCode` on a
+  build before the rename) runs the bundle's code
   for one launch, and removing `<userData>/code/state.json` does it for
   good. A rollback to an older full release on the same base should remove
   that file too, or the newer staged tree keeps running over it.
