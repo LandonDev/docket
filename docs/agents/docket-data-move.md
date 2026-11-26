@@ -122,10 +122,14 @@ still a real file with the new name the same inode beside it.
   covers `docket-builds/*` (AppArmor matches the real path) and its checks
   follow links (`stat -L`), as do 90-verify.sh and box-probe.mjs;
   import-history.sh's guard compares real paths.
-- Left as they are: the history move's one-shots (scripts/mac/split-data-dir.sh,
-  cutover-run.sh, [history-move.md](../history-move.md)) take `temp-code/` to be
-  the real folder. Run them before the Mac's first launch of a build with the
-  move, or teach them the link first: after it, `split` would rename the link.
+- The history move's one-shots ([history-move.md](../history-move.md)):
+  scripts/mac/split-data-dir.sh reads and moves the real folder (`cd -P`) and
+  reads `docket.db` once the app has moved it, so after the move `split` sets
+  `Docket/` aside as `temp-code.moved-<date>` and leaves `temp-code` a link to
+  the fresh `Docket/`. It refuses a move left unfinished or held: two real
+  folders, or two real databases. cutover-run.sh looks for an open database
+  under either name. scripts/mac/splitDataDir.test.ts rehearses the split
+  and both refusals on a scratch HOME.
 
 ## What an older build sees
 
@@ -165,7 +169,7 @@ tree (`DOCKET_MOVE_REHEARSAL`).
 
 ## Proofs
 
-- `NODE_ENV=test bunx vitest run src/main/dataMove.test.ts src/main/dataMoveBoot.test.ts scripts/box/docketMove.test.ts src/main/server/buildDir.test.ts`:
+- `NODE_ENV=test bunx vitest run src/main/dataMove.test.ts src/main/dataMoveBoot.test.ts scripts/box/docketMove.test.ts src/main/server/buildDir.test.ts scripts/mac/splitDataDir.test.ts`:
   real temp folders and real SQLite with a WAL, a crash after every step,
   a refused rename, a refused link, a live holder, two launches at once, two
   folders, two databases, Windows junctions by the seam.

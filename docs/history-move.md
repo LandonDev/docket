@@ -275,7 +275,10 @@ rehearsal must preserve keys, pairings and browser sessions.
    every `remote.*` setting (including saved environments), machine settings,
    `environment.json`, `tls/`, `Local Storage/`, window and updater state,
    and an APFS clone of `stats.db`. It adds the box environment and leaves
-   history in `<data-dir>.moved-<current-date>`; nothing is deleted.
+   history in `<data-dir>.moved-<current-date>`; nothing is deleted. After
+   the move to Docket's names it splits the real folder, `Docket/`, sets the
+   history aside as `temp-code.moved-<current-date>` and leaves `temp-code`
+   a link to the fresh folder ([docket-data-move.md](agents/docket-data-move.md)).
    Check `remote_keys before=N after=N` and the pairing/session counts.
    The script compares every copied identity row before it swaps dirs.
 6. User reopens TempCode.app: the Mac host has no local history, and the

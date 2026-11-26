@@ -34,7 +34,11 @@ app_running() {
     lock=$(readlink "$data/SingletonLock"); pid=${lock##*-}
     kill -0 "$pid" 2>/dev/null && return 0
   fi
-  lsof -- "$data/temp-code.db" "$data/temp-code-cold.db" >/dev/null 2>&1 && return 0
+  # By either name, through the link the move to Docket's names leaves; lsof
+  # fails when one named file is missing, so only those that exist.
+  dbs=()
+  for f in temp-code.db temp-code-cold.db docket.db docket-cold.db; do [[ -f $data/$f ]] && dbs+=("$data/$f"); done
+  ((${#dbs[@]})) && lsof -- "${dbs[@]}" >/dev/null 2>&1 && return 0
   return 1
 }
 

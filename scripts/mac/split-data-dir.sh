@@ -27,14 +27,34 @@ today=$(date +%Y-%m-%d)
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 quit_check() {
-  if [[ $data -ef "$support/temp-code" || $data -ef "$support/TempCode" ]]; then
+  # After the move to Docket's names (docs/agents/docket-data-move.md),
+  # temp-code is a link to Docket: read and move the real folder, never the link.
+  real=$(cd -P -- "$data" && pwd) || die "$data is not a folder"
+  if [[ $real -ef "$support/temp-code" || $real -ef "$support/Docket" || $real -ef "$support/TempCode" ]]; then
     pgrep -fq '/Applications/(Docket|TempCode)\.app/Contents/MacOS/(Docket|TempCode)' && die 'the installed app is running; quit it first'
   fi
   pgrep -fq 'electron-vite|out/main/boot.js' && echo 'warning: a dev instance is running; make sure it is not on the prod data dir' >&2
-  if [[ -L $data/SingletonLock ]]; then
-    lock=$(readlink "$data/SingletonLock"); pid=${lock##*-}
-    kill -0 "$pid" 2>/dev/null && die "pid $pid still holds $data"
+  if [[ -L $real/SingletonLock ]]; then
+    lock=$(readlink "$real/SingletonLock"); pid=${lock##*-}
+    kill -0 "$pid" 2>/dev/null && die "pid $pid still holds $real"
   fi
+  # A move the app left unfinished or held: which copy holds the history is the app's call.
+  held="the move to Docket's names is unfinished or held; open the app once, read doctor.get's dataMove, quit it, and run this again"
+  if [[ ($real -ef "$support/temp-code" || $real -ef "$support/Docket") && ! -L "$support/temp-code" && -d "$support/Docket" && ! -L "$support/Docket" ]]; then
+    die "$support holds both temp-code and Docket as real folders: $held"
+  fi
+  for pair in 'temp-code.db docket.db' 'temp-code-cold.db docket-cold.db'; do
+    read -r old new <<< "$pair"
+    if [[ -f $real/$old && ! -L $real/$old && -f $real/$new && ! -L $real/$new ]]; then
+      die "$real holds both $old and $new: $held"
+    fi
+  done
+}
+
+# The real file of a database by its old name: docket.db once the app has moved it.
+db_of() {
+  local new=${1/temp-code/docket}
+  if [[ -f $real/$new && ! -L $real/$new ]]; then echo "$real/$new"; else echo "$real/$1"; fi
 }
 
 copy() {
@@ -42,14 +62,14 @@ copy() {
   mkdir -p "$staging"
   for name in temp-code.db temp-code-cold.db; do
     rm -f "$staging/$name"
-    sqlite3 -readonly "$data/$name" "VACUUM INTO '$staging/$name'"
+    sqlite3 -readonly "$(db_of "$name")" "VACUUM INTO '$staging/$name'"
     [[ $(sqlite3 "$staging/$name" 'PRAGMA quick_check') == ok ]] || die "$name copy failed its check"
     echo "copy $name $(du -h "$staging/$name" | cut -f1)"
   done
   R=(rsync -rltz --stats --rsync-path='sudo rsync')
   "${R[@]}" "$staging/temp-code.db" "$staging/temp-code-cold.db" "$box:$remote/" | grep -E 'transferred|Total transferred'
-  "${R[@]}" "$data/html-renders/" "$box:$remote/html-renders/" | grep -E 'transferred file size'
-  "${R[@]}" "$data/checkpoints/" "$box:$remote/checkpoints/" | grep -E 'transferred file size'
+  "${R[@]}" "$real/html-renders/" "$box:$remote/html-renders/" | grep -E 'transferred file size'
+  "${R[@]}" "$real/checkpoints/" "$box:$remote/checkpoints/" | grep -E 'transferred file size'
   while IFS= read -r root; do
     n=$(basename "$root")
     [[ -d $root/.temp-code ]] || continue
@@ -73,27 +93,27 @@ split() {
   # The box is already a saved environment when the Mac paired it in the app
   # (its remote.* rows are copied below); only a Mac that never did needs a
   # key minted on the box to add it here.
-  if [[ $(sqlite3 -readonly "$data/temp-code.db" "SELECT count(*) FROM settings WHERE key='remote.environments.$TC_BOX_ENV_ID'") == 1 ]]; then
+  if [[ $(sqlite3 -readonly "$(db_of temp-code.db)" "SELECT count(*) FROM settings WHERE key='remote.environments.$TC_BOX_ENV_ID'") == 1 ]]; then
     have_box=1
   else
     have_box=0
     [[ -n ${TC_BOX_KEY:-} ]] || die 'TC_BOX_KEY is required: the box is not a saved environment here yet (mint the key on the box)'
   fi
   origin=${TC_BOX_ORIGIN:-https://docket.landonhale.com}
-  moved="$data.moved-$today"
+  moved="$(dirname "$real")/$(basename "$data").moved-$today"
   [[ -e $moved ]] && die "$moved already exists"
-  fresh=$(mktemp -d "$data.split-XXXXXX")
+  fresh=$(mktemp -d "$real.split-XXXXXX")
   trap 'rm -rf -- "$fresh"' EXIT
   for f in environment.json window-state.json update-times.json .updaterId localstorage-migrated; do
-    [[ -f $data/$f ]] && cp -p "$data/$f" "$fresh/$f"
+    [[ -f $real/$f ]] && cp -p "$real/$f" "$fresh/$f"
   done
-  [[ -d "$data/Local Storage" ]] && cp -Rp "$data/Local Storage" "$fresh/"
-  [[ -d $data/tls ]] && cp -Rp "$data/tls" "$fresh/"
+  [[ -d "$real/Local Storage" ]] && cp -Rp "$real/Local Storage" "$fresh/"
+  [[ -d $real/tls ]] && cp -Rp "$real/tls" "$fresh/"
   # Aliax usage stats stay Mac-side: an APFS clone costs no space.
-  [[ -f $data/stats.db ]] && cp -c "$data/stats.db" "$fresh/stats.db"
+  [[ -f $real/stats.db ]] && cp -c "$real/stats.db" "$fresh/stats.db"
   # Copy exact table definitions and rows, including revoked/expired rows.
   # Keep salts, hashes and browser cookies paired with this host's identity.
-  python3 - "$data/temp-code.db" "$fresh/temp-code.db" <<'PY_IDENTITY'
+  python3 - "$(db_of temp-code.db)" "$fresh/temp-code.db" <<'PY_IDENTITY'
 import sqlite3, sys
 source, target = sys.argv[1:]
 with sqlite3.connect('file:' + source + '?mode=ro', uri=True) as old, sqlite3.connect(target) as new:
@@ -133,13 +153,13 @@ with sqlite3.connect(db) as c:
 print("box saved as environment", env_id)
 PY
   fi
-  mv "$data" "$moved"
-  if ! mv "$fresh" "$data"; then
-    mv "$moved" "$data"
+  mv "$real" "$moved"
+  if ! mv "$fresh" "$real"; then
+    mv "$moved" "$real"
     die 'could not install the fresh data dir; restored the original'
   fi
   trap - EXIT
-  echo "SPLIT DONE: history at $moved, fresh dir at $data ($(sqlite3 "$data/temp-code.db" 'SELECT count(*) FROM settings') settings rows)"
+  echo "SPLIT DONE: history at $moved, fresh dir at $data ($(sqlite3 "$real/temp-code.db" 'SELECT count(*) FROM settings') settings rows)"
 }
 
 case $phase in
