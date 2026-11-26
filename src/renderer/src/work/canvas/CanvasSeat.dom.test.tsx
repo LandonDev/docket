@@ -556,6 +556,22 @@ describe("the frame a kind drives through its shell", () => {
     expect(container.querySelector("[data-canvas-state]")).toBeNull();
   });
 
+  it("puts a wrapping word's detail on a line of its own under it, whole, so the reassurance is never the part cut", async () => {
+    const { shell, container } = await driven();
+    act(() => shell.statusLine({ tone: "failed", word: "Landon's MacBook Pro in the RecWell office did not answer", wrap: true, detail: "The draft is kept in LifeOS", action: { label: "Retry", run: () => {} } }));
+    const line = container.querySelector<HTMLElement>("[data-canvas-state='failed']")!;
+    const detail = line.querySelector<HTMLElement>("[data-canvas-detail]")!;
+    expect(detail.textContent).toBe("The draft is kept in LifeOS");
+    expect(detail.className).toContain("text-pretty");
+    expect(detail.className).not.toContain("truncate");
+    // Not also beside the word, cut.
+    expect(line.querySelector("[data-slot=status-detail]")).toBeNull();
+    // A word that does not wrap keeps its detail beside it on the one line.
+    act(() => shell.statusLine({ tone: "failed", word: "LifeOS did not answer", detail: "Read only, as of 2:04 PM" }));
+    expect(container.querySelector("[data-canvas-detail]")).toBeNull();
+    expect(container.querySelector("[data-slot=status-detail]")?.textContent).toBe("Read only, as of 2:04 PM");
+  });
+
   it("says a save's trouble once: beside a thread in the state line, in a Files tab in the save line alone", async () => {
     const { CanvasPane } = await import("./CanvasPane");
     const { NO_FEEDS } = await import("./frame");

@@ -284,7 +284,10 @@ What a kind should know:
 - The feeds: `review`, `selection({ chip, rect, tools })`, `presence`,
   `mode({ value, set?, note? })` (null: the kind has no mode; no `set`: the
   mode shows and cannot be switched), `statusLine` (`failed`, or `needs`
-  for the one amber case, a source that needs the person to sign in),
+  for the one amber case, a source that needs the person to sign in; with
+  `wrap`, a word that wraps (a long computer's name) puts its detail on a
+  12px muted line of its own under it, on the word's edge and wrapping too,
+  so "The draft is kept in LifeOS" is never the part cut off),
   `written({ text, undo? })` (what the agent last wrote directly, in the
   stepper's place), `detail` (one fact after a lone item's name: where a
   browser runs), `ready(open)` (whether the item has opened: History, which

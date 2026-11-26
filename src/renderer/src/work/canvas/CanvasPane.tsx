@@ -108,17 +108,31 @@ function LoudLine({ line }: { line: StatusLine }) {
   const action = line.action;
   // A host's reason is worded once, as the centred failure words it; a raw one shows no detail.
   const detail = useFailedWords(typeof line.detail === "string" ? line.detail : null) || null;
+  // A word that wraps (a long computer's name) takes the line's width: its detail is then a line of its own under it,
+  // on the word's edge, wrapping too, so what it says (that nothing is lost) is never the part cut off.
+  const under = !!line.wrap && !!detail;
+  const mark = (
+    <StatusMark
+      state={line.tone === "failed" ? "failed" : "waiting"}
+      word={line.word}
+      wrap={line.wrap}
+      detail={detail && !under ? <CutDetail text={detail} /> : null}
+      className={under ? "min-w-0" : "min-w-0 flex-1"}
+    />
+  );
   return (
     <div data-canvas-state={line.tone} role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
-      <StatusMark
-        state={line.tone === "failed" ? "failed" : "waiting"}
-        word={line.word}
-        wrap={line.wrap}
-        detail={
-          detail ? <CutDetail text={detail} /> : null
-        }
-        className="min-w-0 flex-1"
-      />
+      {under ? (
+        <span className="flex min-w-0 flex-1 flex-col">
+          {mark}
+          {/* Past the glyph's 14px and its 8px, where the word starts. */}
+          <span data-canvas-detail className="ps-5.5 text-xs text-pretty text-muted-foreground">
+            {detail}
+          </span>
+        </span>
+      ) : (
+        mark
+      )}
       {action ? (
         <Button
           variant="ghost"
