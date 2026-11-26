@@ -360,6 +360,7 @@ import { FocusSet } from './focus'
 import { bulkKey, LaneGate, laneOf, type Lane } from './lane'
 import { ListChangeLog } from './listChanges'
 import { LaunchMirror } from './launchMirror'
+import { chainRestart, type RemoteRestart } from './remote/restarts'
 import { peerDelay, peerDelayMs } from './peerDelay'
 import type { WireProfile } from '@shared/wire'
 import { originAllowed } from './originAllowed'
@@ -436,6 +437,8 @@ export interface RunningServer {
   remoteAuth: RemoteAuth
   /** The fixed port's listener, or null while remote access is off. */
   readonly remote: RemoteListener | null
+  /** Settles once the boot's owner browser endpoints are published (remote/restarts.ts); the boot does not wait for it. */
+  remotePublished: Promise<void>
   /** Live video (video/): the relay that joins a viewer to a feed, and where a source is added. */
   video: { relay: VideoRelay; rpc: VideoRpc }
   /** Computer use's RPC (computer/rpc.ts): who is driven where, which a test hands rows of its own (`setBox`). */
@@ -558,6 +561,7 @@ export async function startServer(
   // Work's code is loaded here, behind a guard, before anything of the host exists (work/load.ts): a pillar
   // or a package it needs that throws while it loads is left out and named, and this boot goes on.
   const workLoader = await loadWork()
+  bootMark('work-loaded')
   const db = openDb(dbPath)
   bootMark('db-open')
   // WAL checkpoints of both files run on a worker's own connection; the
@@ -568,6 +572,7 @@ export async function startServer(
   // writer opened WAL first, so the -shm file the read-only open needs is there.
   const reader = new EventReader(dbPath)
   const store = new Store(db, { reader })
+  bootMark('store')
   // The fixed port behind the tunnel (remote/listener.ts). An env override
   // beats the settings so a dev instance never fights the installed app
   // for 7677; '0' turns it off.
@@ -630,6 +635,7 @@ export async function startServer(
     }
   })
   const registry = new SessionRegistry(store)
+  bootMark('registry')
   const workProjectFacts = workFactsOf(registry)
   // The threads people are looking at (session.focus), widened to their
   // subagents and a focused master's batch: their requests and pushes go first.
@@ -996,6 +1002,7 @@ export async function startServer(
   // Rules, thread defaults, global Plans and Reviews: one copy, on the same home
   // (remote/rulesSync.ts); and what each linked host runs, which a spawn
   // there is checked against (peerCatalogs.ts).
+  bootMark('services-a')
   const peerCatalogs = new PeerCatalogs(store)
   setPeerCatalogs(peerCatalogs)
   const rulesSync = new RulesSync({
@@ -1512,6 +1519,7 @@ export async function startServer(
     if (offers.has(PORTS_OFFER)) portHost.macRegistered(id)
   })
   peerCalls.onDrop((id) => portHost.macDropped(id))
+  bootMark('services-b')
   const portTail = new PortTail({
     settle: (sessionId, callId, output) => threadPorts.settle(sessionId, callId, output),
     whenBound: (ids, ms) => portHost.whenBound(ids, ms),
@@ -2070,6 +2078,7 @@ export async function startServer(
     )
   computerBridgeHooks.current = computerBridge
   computerBridgeHooks.tokens = computerBridge ? computerBridgeTokens : null
+  bootMark('services-c')
   const computerRpc = new ComputerRpc(computer, () => computerWhy, computerBridge ? { bridge: computerBridge, tokens: computerBridgeTokens } : null, {
     setToolHold: (id, line) => registry.setToolHold(id, line)
   })
@@ -2485,6 +2494,7 @@ export async function startServer(
     },
     uploads
   })
+  bootMark('work-started')
   setAppWork({ tools: work.tools })
   void runDoctor() // warm the cache so the new-session modal opens ready
   // the probed harnesses ask their CLIs for models; the linked hosts hear the rows
@@ -2529,15 +2539,17 @@ export async function startServer(
   }
   const offLearnedBrowserOrigin = store.onSettingSet('remote.learnedOrigin', browserOriginChanged)
   const offPublicBrowserOrigin = store.onSettingSet('remote.publicOrigin', browserOriginChanged)
-  const restartRemote = (): Promise<void> => {
+  const restartRemote = (): Promise<void> => restartRemoteSteps().published
+  /** The fixed port again (remote/restarts.ts): the listener, then the owner endpoints once old proofs expired. */
+  const restartRemoteSteps = (): RemoteRestart => {
     ownerBrowserEndpoints.invalidate()
     remote?.closeBrowserSockets()
-    return (remoteRestart = remoteRestart.then(async () => {
+    const steps = chainRestart(remoteRestart, async () => {
       ownerBrowserEndpoints.invalidate()
       await remote?.close()
       remote = null
       const port = remotePortWanted()
-      if (port === null) return publishOwnerBrowserEndpoints()
+      if (port === null) return
       remote = await startRemoteListener({
         port,
         auth: remoteAuth,
@@ -2566,8 +2578,9 @@ export async function startServer(
         ui: createUiHandler({ rendererDir: join(options.appPath ?? process.cwd(), 'out', 'renderer'), assets: options.assets }),
         browserEndpoints: () => ownerBrowserEndpoints.current
       })
-      await publishOwnerBrowserEndpoints()
-    }))
+    }, publishOwnerBrowserEndpoints)
+    remoteRestart = steps.published
+    return steps
   }
   // The phones' push registrations forward to the hub (made below), or go
   // out from here when this host holds the APNs key (remote/apns.ts); a
@@ -4645,7 +4658,13 @@ export async function startServer(
   const port = typeof address === 'object' && address ? address.port : 0
   ownPort = port
   stampBoot('hello-ready')
-  await restartRemote()
+  bootMark('listening')
+  // The boot waits for the fixed port's listener, not for the endpoints' publish behind it: that waits out older
+  // browser proofs (1.5 s, ownerBrowserEndpoints.ts) and until it lands the endpoints read undefined, as in any restart.
+  const bootRemote = restartRemoteSteps()
+  const remotePublished = bootRemote.published.catch((err: unknown) => console.error('[remote] browser endpoints not published:', err))
+  await bootRemote.listening
+  bootMark('remote-ready')
   // Servers and gateway up: the threads cut by the last shutdown resume now.
   // Queued threads (scheduler.ts) start only once that resume is done, so a
   // restart never starts a queued batch on top of the resumed turns.
@@ -4748,6 +4767,7 @@ export async function startServer(
   notifier.onNotice((n) => relayServer.onNotice(n))
   notifier.start()
 
+  bootMark('server-ready')
   return {
     port,
     codeWindowMounted: () => codeUpdates.windowMounted(),
@@ -4777,6 +4797,7 @@ export async function startServer(
     get remote() {
       return remote
     },
+    remotePublished,
     hub,
     notifier,
     registry,

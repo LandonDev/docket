@@ -224,6 +224,7 @@ function cascadeFrom(win: BrowserWindow | null): WindowState {
 
 export function createWindow(opts: { slot?: string; from?: number } = {}): BrowserWindow {
   const slot = opts.slot ?? newSlot()
+  bootMark('window-create', slot)
   const state = loadStateFile().windows[slot] ?? cascadeFrom(targetWindow())
   const win = new BrowserWindow({
     width: state.width,

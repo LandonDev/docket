@@ -56,6 +56,8 @@ beforeAll(async () => {
       )
   })
   base = `http://127.0.0.1:${server.remote!.port}`
+  // The boot does not wait for its browser endpoints' publish (remote/restarts.ts); the exchange below reads them.
+  await server.remotePublished
 }, 60_000)
 afterAll(async () => {
   await server.close()

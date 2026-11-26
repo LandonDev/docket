@@ -298,6 +298,7 @@ app.whenReady().then(async () => {
           }
         : undefined
   })
+  bootMark('server-returned')
   if (!headless) {
     // Windows: the installer cannot replace a file a running child holds open, so "Restart to update" shuts
     // the app's work down before it starts the installer (update.ts); before-quit then has nothing left to do.
