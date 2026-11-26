@@ -1409,7 +1409,10 @@ check again after the app wait and between batch steps. The proof and the
 listener hold also apply on a standalone host.
 A peer that missed the update must confirm the new list before sending
 browser input. A changed or missing
-address stops a read or a later step with `browser_refused`. The host
+address stops a read or a later step with `browser_refused`. When an act's
+closing read is refused that way after steps ran, the host reads the window
+once more through `state.get`, which takes `browser.target` again, so the new
+page is read only if its address passes. The host
 refuses known browsers whose service cannot supply the address. This gate
 runs in every access and Away mode.
 

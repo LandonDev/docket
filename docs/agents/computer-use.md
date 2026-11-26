@@ -183,8 +183,11 @@ The service uses physical pixels for window geometry and input at every Windows 
   checks it again before reading or sending input. If a known browser
   cannot give the address, the call stops. This includes background tabs
   whose address the Mac cannot read before switching to them. If a step
-  changes the address, further steps and the closing read stop. A fresh
-  call checks the new address. Linked hosts share their listener ports,
+  changes the address, further steps stop. The closing read then runs
+  again at the new address, checked like any read's (run.ts `runActions`),
+  so a click that follows a link reads the next page and a TempCode page
+  stays refused. Aside (`at.studio.AsideBrowser`) is in the browser lists;
+  its reads stay refused until the service can name its tab's page. Linked hosts share their listener ports,
   LAN addresses and names, and tunnel names when they connect and on each
   heartbeat. Before browser input the host confirms the lists over the
   live peer links. A missing or stale list stops input on every site,
