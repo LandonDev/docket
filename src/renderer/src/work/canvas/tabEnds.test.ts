@@ -26,6 +26,8 @@ describe("where a tab's name keeps its end", () => {
     expect(tabEnds(["Bu one", "Bu two"])).toEqual([null, null]);
     expect(tabEnds(["Budget.xlsx", "Budget.xlsx"])).toEqual([null, null]);
     expect(tabEnds(["Events", "Events 2026"])).toEqual([null, 7]);
+    // A name another starts with whole keeps where it parts from the rest, never a stub at its end (council R3-A2).
+    expect(tabEnds(["TempCode proof Pages.pdf", "TempCode proof Canvas", "TempCode proof Canvas 1024 light"])).toEqual([15, 15, 22]);
   });
 
   it("reads letters the same in either case", () => {

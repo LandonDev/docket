@@ -31,7 +31,9 @@ export function tabEnds(names: readonly string[]): (number | null)[] {
   return lower.map((name, i) => {
     let shared = 0;
     lower.forEach((other, j) => {
-      if (j === i) return;
+      // A longer name that starts with this whole one ("Canvas", "Canvas 1024") says nothing of where this one parts
+      // from the rest: it is measured against the tabs it differs from.
+      if (j === i || (other.length > name.length && other.startsWith(name))) return;
       let at = 0;
       while (at < name.length && at < other.length && name[at] === other[at]) at++;
       shared = Math.max(shared, at);
