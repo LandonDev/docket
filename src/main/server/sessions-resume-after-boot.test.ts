@@ -1,9 +1,10 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { openDb, Store } from './db'
 import { SessionRegistry } from './sessions'
+import { flushStallLog, setStallLog } from './stalls'
 import type { DriverCtx, DriverHandle } from './drivers/types'
 import type { AgentEvent } from '../../shared/events'
 
@@ -439,4 +440,42 @@ it('resumes up to the running cap and leaves the rest queued with their nudge, s
   expect(sends.get(first!)![0]).toContain(`The host restarted during your turn at ${new Date(10).toISOString()}`)
   // No user row was added for the resume: the transcript keeps the one message.
   expect(registry.eventsAfter(first!, 0).filter((r) => r.event.type === 'user-text')).toHaveLength(1)
+})
+
+it('carries a capped send through the scheduler and stamps its first pushed content row once', async () => {
+  let cap = 1
+  registry.admission = { cap: () => cap, memoryLow: () => false }
+  await live()
+  const session = await registry.create({ cwd: root, provider: 'claude' })
+  setStallLog(root)
+  try {
+    await registry.send(session.id, 'send when there is room')
+    expect(store.getSession(session.id)?.status).toBe('queued')
+    expect(sends.has(session.id)).toBe(false)
+
+    // Only the observation clock moves here; the scheduler still runs as usual.
+    const releaseAt = Date.now() + 60_000
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(releaseAt)
+    try {
+      cap = 2
+      registry.scheduler.schedule()
+      await vi.waitFor(() => expect(sends.get(session.id)).toHaveLength(1))
+      // As a socket would, stamp when its already-subscribed row is sent.
+      const off = registry.subscribe(session.id, (row) => registry.stampSendRow(row))
+      try {
+        emits.get(session.id)!({ type: 'assistant-text', text: 'hello', delta: true })
+        emits.get(session.id)!({ type: 'assistant-text', text: 'again', delta: true })
+      } finally {
+        off()
+      }
+    } finally {
+      clock.mockRestore()
+    }
+    await flushStallLog()
+    const lines = (await readFile(join(root, 'stalls.log'), 'utf8')).split('\n').filter((line) => line.includes(`send session=${session.id} `))
+    expect(lines).toEqual([expect.stringMatching(/ queue=[1-9]\d* .* first-row=\d+ /)])
+  } finally {
+    await flushStallLog()
+    setStallLog(null)
+  }
 })

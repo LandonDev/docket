@@ -220,6 +220,7 @@ interface StreamState {
   phase: 'cli-starting' | 'initializing' | 'waiting-provider' | 'retrying' | null
   /** system/init has arrived once (the first send boots the CLI lazily) */
   initialized: boolean
+  mcpStartedAt?: number
   /** when the last message was pushed and the CLI has not spoken since (the first-output watchdog) */
   sentAt: number | null
   /** a message was pushed and its turn has not ended (its result is still to come) */
@@ -1007,6 +1008,10 @@ export function handleMessage(ctx: DriverCtx, state: StreamState, msg: SDKMessag
       if (msg.subtype === 'init') {
         ctx.setNativeId(msg.session_id)
         ctx.mark?.('init')
+        if (state.mcpStartedAt !== undefined) {
+          ctx.mcpTiming?.({ ms: performance.now() - state.mcpStartedAt, source: 'claude-init' })
+          state.mcpStartedAt = undefined
+        }
         state.initialized = true
         // The CLI is up; the request is out at the provider until message_start.
         if (state.phase !== 'retrying') setPhase(ctx, state, phaseAfterInit(state))
@@ -1956,6 +1961,7 @@ export const claudeDriver: HarnessDriver = {
     // A Work thread spawns cold: a process kept warm since an earlier start read the Work root before this one put it back.
     const warmable = session.scope !== 'work' && !session.nativeId && !!gw && !!endpoint && !!own && (gw.status().owner || endpoint.startsWith(own))
     options.spawnClaudeCodeProcess = (spawnOpts) => {
+      state.mcpStartedAt = performance.now()
       const spawned = spawnOrAdoptClaude(
         { command: spawnOpts.command, args: spawnOpts.args, cwd: spawnOpts.cwd, env: spawnOpts.env },
         (spawnOpts as { signal?: AbortSignal }).signal,

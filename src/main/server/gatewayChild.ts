@@ -1,6 +1,7 @@
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { configure, EXPIRY_MARGIN_MS, limitLabel, type Credential, type LimitInfo, type ServiceId, type UsageReport } from 'aliax-core'
+import type { GatewayTimings } from '@shared/contract'
 import { PROVIDER_OF } from '@shared/accounts'
 import { GatewayCore, type ControlPlane, type FailedOverInfo, type NetworkInfo, type RequestInfo, type ResponseInfo, type ScopedRequest } from './gatewayCore'
 import {
@@ -169,6 +170,10 @@ export class PortControl implements ControlPlane {
     if (info.thread) this.tell({ e: 'request', phase: 'start', info })
   }
 
+  onSendTiming(info: Parameters<NonNullable<ControlPlane['onSendTiming']>>[0]): void {
+    this.tell({ e: 'send-timing', info })
+  }
+
   onRequestEnd(info: RequestInfo): void {
     if (info.thread) this.tell({ e: 'request', phase: 'end', info })
   }
@@ -213,6 +218,7 @@ export function runGatewayChild(wire: Wire, deps: ChildDeps): { stop: () => Prom
   let trace = false
   let label = '[gateway]'
   let statsTimer: NodeJS.Timeout | null = null
+  let timingWindow: GatewayTimings | undefined
 
   const sendStats = (): void => {
     if (statsTimer || !core) return
@@ -220,7 +226,8 @@ export function runGatewayChild(wire: Wire, deps: ChildDeps): { stop: () => Prom
       statsTimer = null
       if (!core) return
       const s = core.status()
-      wire.post({ t: 'stats', routed: s.routed, error: s.error })
+      wire.post({ t: 'stats', routed: s.routed, error: s.error, ...(timingWindow && { timings: timingWindow }) })
+      timingWindow = undefined
     }, STATS_EVERY_MS)
   }
 
@@ -252,7 +259,11 @@ export function runGatewayChild(wire: Wire, deps: ChildDeps): { stop: () => Prom
       trace,
       shape: state.seams.shape ?? false,
       label,
-      pid: state.mainPid
+      pid: state.mainPid,
+      onTimingWindow: (timings) => {
+        timingWindow = timings
+        sendStats()
+      }
     })
     core.onStats = sendStats
     let port: number

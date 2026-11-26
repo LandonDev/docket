@@ -41,6 +41,9 @@ export interface UpstreamTrace {
   queued: boolean
   /** The gateway's client hung up (gatewayCore.ts `handle`): aborted, it cancels the upstream fetch too. */
   hangup?: AbortSignal
+  /** Gateway timing seams. A replay resets the first byte for its own answer. */
+  dispatch?: () => void
+  firstByteAt?: number
 }
 
 export const newTrace = (): UpstreamTrace => ({ reused: null, protocol: null, pool: null, queued: false })
@@ -337,6 +340,7 @@ export class Upstream {
 
   /** Keep the deadlines alive until the body ends or its reader cancels. */
   private async withDeadlines(fetch: Fetch, url: string, init?: RequestInit): Promise<Response> {
+    const trace = upstreamTrace.getStore()
     const abort = new AbortController()
     let body: TransformStreamDefaultController<Uint8Array> | undefined
     let idle: ReturnType<typeof setTimeout> | undefined
@@ -373,6 +377,10 @@ export class Upstream {
         aborted,
         Promise.resolve().then(() => {
           if (abort.signal.aborted) throw abort.signal.reason
+          if (trace?.dispatch) {
+            trace.firstByteAt = undefined
+            trace.dispatch()
+          }
           return fetch(url, { ...init, signal: abort.signal })
         }).then((response) => {
           // A fetch implementation may ignore the signal and reply late.
@@ -391,6 +399,8 @@ export class Upstream {
       const stream = new TransformStream<Uint8Array, Uint8Array>({
         start(controller) { body = controller },
         transform(chunk, controller) {
+          if (trace?.dispatch && trace.firstByteAt === undefined && chunk.byteLength > 0)
+            trace.firstByteAt = performance.now()
           resetIdle()
           controller.enqueue(chunk)
         },

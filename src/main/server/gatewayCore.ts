@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { createServer as createTlsServer } from 'node:https'
+import { createHistogram, type RecordableHistogram } from 'node:perf_hooks'
 import { Readable } from 'node:stream'
 import {
   fail,
@@ -24,8 +25,9 @@ import {
   type ServiceId,
   type UsageReport
 } from 'aliax-core'
+import type { GatewayTimings } from '@shared/contract'
 import { SERVICE_OF, type AccountProvider } from '@shared/accounts'
-import { newTrace, upstreamTrace } from './upstream'
+import { newTrace, upstreamTrace, type UpstreamTrace } from './upstream'
 import { GatewayControlTimeout } from './gatewayWire'
 import { shapeEnabled, shapeLine, startShape } from './gatewayShape'
 
@@ -83,9 +85,18 @@ export interface RoutingHooks {
   onRequestStart?: (info: RequestInfo) => void
   /** That request is done, however it ended; the wait clears. */
   onRequestEnd?: (info: RequestInfo) => void
+  onSendTiming?: (info: GatewaySendTiming) => void
 }
 
 /** One forwarded request going out (`start`) or done (`end`, answered, failed or cut): the host pairs them per thread. */
+export interface GatewaySendTiming {
+  thread: string
+  id: number
+  phase: 'gateway-dispatch' | 'first-byte'
+  /** Monotonic clock translated to a time origin shared across processes. */
+  at: number
+}
+
 export interface RequestInfo {
   id: number
   thread: string | null
@@ -168,10 +179,12 @@ export interface ControlPlane {
   onNetwork?(info: NetworkInfo): void
   onRequestStart?(info: RequestInfo): void
   onRequestEnd?(info: RequestInfo): void
+  onSendTiming?(info: GatewaySendTiming): void
 }
 
 export interface GatewayCoreOptions {
   control: ControlPlane
+  onTimingWindow?: (timings: GatewayTimings) => void
   /** The certificate the codex ports present; no codex ports without it. */
   tls: { cert: Buffer | string; key: Buffer | string } | null
   /** One line per forwarded request (TEMP_CODE_GATEWAY_TRACE=1). */
@@ -192,6 +205,27 @@ export interface CoreStatus {
   scopedPorts: Record<string, number>
 }
 
+const TIMING_WINDOW_MS = 60 * 60_000
+
+function sample(histogram: RecordableHistogram, ms: number): void {
+  histogram.record(Math.max(1, Math.round(ms * 1e6)))
+}
+
+function take(histogram: RecordableHistogram) {
+  const ms = (ns: number): number => Math.round(ns / 1e6)
+  const n = histogram.count
+  const stats = n
+    ? { n, p50: ms(histogram.percentile(50)), p95: ms(histogram.percentile(95)), max: ms(histogram.max) }
+    : { n, p50: 0, p95: 0, max: 0 }
+  histogram.reset()
+  return stats
+}
+
+/** Sampling endpoints only. Model discovery and token-count requests are not a send's dispatch. */
+function isSampling(method: string, path: string): boolean {
+  return method === 'POST' && /\/(?:messages|responses|chat\/completions)$/.test(path.split('?', 1)[0]!)
+}
+
 export class GatewayCore {
   private server: Server | null = null
   private port = 0
@@ -210,6 +244,16 @@ export class GatewayCore {
   private readonly label: string
   /** Numbers the trace lines, so a start and its finish read together. */
   private requestSeq = 0
+  private timingTimer: NodeJS.Timeout | null = null
+  private readonly outTimes = createHistogram()
+  private readonly byteTimes = createHistogram()
+
+  /** Take the finished latency window. A request can have dispatch without a response body. */
+  takeTimings(): GatewayTimings | null {
+    const out = take(this.outTimes)
+    const byte = take(this.byteTimes)
+    return out.n || byte.n ? { n: out.n, out, byte } : null
+  }
   /** Bumped whenever routed or the error changes, for a host that mirrors them. */
   onStats: (() => void) | null = null
 
@@ -234,6 +278,13 @@ export class GatewayCore {
     const server = createServer((req, res) => this.serve(req, res))
     this.port = await listen(server, port)
     this.server = server
+    if (this.options.onTimingWindow) {
+      this.timingTimer = setInterval(() => {
+        const timings = this.takeTimings()
+        if (timings) this.options.onTimingWindow?.(timings)
+      }, TIMING_WINDOW_MS)
+      this.timingTimer.unref()
+    }
     return this.port
   }
 
@@ -336,6 +387,8 @@ export class GatewayCore {
 
   /** Close every socket; streams in flight are cut. */
   async close(): Promise<void> {
+    if (this.timingTimer) clearInterval(this.timingTimer)
+    this.timingTimer = null
     const server = this.server
     this.server = null
     this.port = 0
@@ -404,8 +457,29 @@ export class GatewayCore {
     res.once('close', onClose)
     // The upstream fetch fills the trace record in: whether the request rode
     // a socket that had carried one before, and over which protocol.
-    const trace = { ...newTrace(), hangup: hangup.signal }
-    const relay = new RelayResponse(res) as unknown as ServerResponse
+    let bodyAt: number | undefined
+    const bodyComplete = (): void => { bodyAt = performance.now() }
+    if (rec.method === 'GET' || rec.method === 'HEAD' || req.readableEnded) bodyComplete()
+    else req.once('end', bodyComplete)
+    const thread = rec.thread
+    const sampling = thread !== null && isSampling(rec.method, parsed.rest)
+    let dispatched = false
+    const trace: UpstreamTrace = {
+      ...newTrace(),
+      hangup: hangup.signal,
+      dispatch: () => {
+        if (dispatched) return
+        dispatched = true
+        const at = performance.now()
+        if (bodyAt !== undefined) sample(this.outTimes, at - bodyAt)
+        if (sampling) c.onSendTiming?.({ thread, id: rec.id, phase: 'gateway-dispatch', at: performance.timeOrigin + at })
+      }
+    }
+    const relay = new RelayResponse(res, (outAt) => {
+      if (trace.firstByteAt === undefined) return
+      sample(this.byteTimes, outAt - trace.firstByteAt)
+      if (sampling) c.onSendTiming?.({ thread, id: rec.id, phase: 'first-byte', at: performance.timeOrigin + trace.firstByteAt })
+    }) as unknown as ServerResponse
     let out: Awaited<ReturnType<typeof forward>>
     try {
       out = await upstreamTrace.run(trace, () =>
@@ -413,6 +487,7 @@ export class GatewayCore {
       )
     } finally {
       res.off('close', onClose)
+      req.off('end', bodyComplete)
       end()
     }
     if (this.trace) {
@@ -596,8 +671,9 @@ export class HeldResponse {
  */
 export class RelayResponse {
   private closed = false
+  private firstByte = true
 
-  constructor(private readonly res: ServerResponse) {
+  constructor(private readonly res: ServerResponse, private readonly onFirstByte?: (at: number) => void) {
     res.once('close', () => {
       this.closed = true
     })
@@ -617,7 +693,11 @@ export class RelayResponse {
   }
 
   write(chunk: Buffer | string): boolean {
-    return this.gone ? true : this.res.write(chunk)
+    if (this.gone) return true
+    const at = this.byteOutAt(chunk)
+    const ready = this.res.write(chunk)
+    if (at !== undefined) this.onFirstByte?.(at)
+    return ready
   }
 
   once(event: string, fn: () => void): this {
@@ -640,8 +720,18 @@ export class RelayResponse {
   }
 
   end(data?: Buffer | string): this {
-    if (!this.gone) this.res.end(data)
+    if (!this.gone) {
+      const at = this.byteOutAt(data)
+      this.res.end(data)
+      if (at !== undefined) this.onFirstByte?.(at)
+    }
     return this
+  }
+
+  private byteOutAt(data?: Buffer | string): number | undefined {
+    if (!this.firstByte || !this.onFirstByte || !data?.length) return
+    this.firstByte = false
+    return performance.now()
   }
 }
 

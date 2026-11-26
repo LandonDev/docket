@@ -165,6 +165,7 @@ import { liveDiffOnStatus } from './livediff'
 import { recordSendSpan, timed, whenLoopIdle, yieldUntilIdle } from './stalls'
 import { FIRST_OUTPUT_GAVE_UP, FIRST_OUTPUT_SILENCE } from './drivers/silence'
 import { SendSpans } from './sendSpans'
+import type { GatewaySendTiming } from './gatewayCore'
 import { applyRowChange, buildSessionIndex, type SessionIndex } from './sessionIndex'
 import type { PickableChange } from './accounts'
 import {
@@ -1098,6 +1099,14 @@ export class SessionRegistry {
    *  holds — the path a send takes, past `after` and past the cap (the
    *  scheduler when the sibling settles or a slot frees; the strip's Start
    *  now). A boot-resume thread is resumed with its nudge instead. */
+  stampGatewaySend(info: GatewaySendTiming): void {
+    this.spans.gateway(info)
+  }
+
+  stampSendRow(row: EventRow): void {
+    this.spans.rowOut(row)
+  }
+
   async startQueued(sessionId: string): Promise<boolean> {
     const meta = this.store.getSession(sessionId)
     if (!meta || meta.status !== 'queued' || meta.archived) return false
@@ -1125,7 +1134,7 @@ export class SessionRegistry {
         this.append(sessionId, { type: 'status', status: 'idle' })
         return false
       }
-      await this.send(sessionId, row.event.text, { attachments: row.event.attachments, echoed: { first: row.first } })
+      await this.send(sessionId, row.event.text, { attachments: row.event.attachments, echoed: { first: row.first }, ts: row.ts })
       return true
     } finally {
       this.startingQueued.delete(sessionId)
@@ -3181,13 +3190,15 @@ export class SessionRegistry {
       steer?: boolean
       /** startWith's hook: the first message's user row is on disk */
       onStored?: () => void
+      /** Queue item's existing insertion time. */
+      ts?: number
       /** Who wrote the message; the user row carries it. Absent: the app. */
       by?: UserTextBy
     }
   ): Promise<void> {
     // The hook is startWith's alone: never on a queued item or a retry.
     if (this.closed) return
-    const { onStored, ...rest } = opts ?? {}
+    const { onStored, ts: queuedAt, ...rest } = opts ?? {}
     opts = rest
     let meta = this.store.getSession(sessionId)
     if (!meta) throw new Error(`unknown session: ${sessionId}`)
@@ -3195,9 +3206,8 @@ export class SessionRegistry {
     // A thread that may not run at all (a mail chat whose Mail did not load) refuses the message, nothing stored.
     const refused = this.turnRefusalOf?.(sessionId)
     if (refused) throw new Error(refused)
-    // The send's phase line (sendSpans.ts) opens here; a send that ends up
-    // queued instead of in a harness is dropped from it.
-    this.spans.begin(sessionId)
+    // The queue item's insertion time follows the send when the scheduler releases it.
+    this.spans.begin(sessionId, queuedAt)
     // A turn starts: a master the person stopped watching may watch again after it.
     this.stopWatching.delete(sessionId)
     // A new turn is never the old stop.
@@ -3315,8 +3325,10 @@ export class SessionRegistry {
     let handle: DriverHandle
     const hadHandle = this.handles.has(sessionId)
     const steerId = opts?.steerId
+    const handleAt = performance.now()
     try {
       handle = await this.handleFor(sessionId)
+      this.spans.handleWait(sessionId, performance.now() - handleAt)
     } catch (err) {
       this.spans.drop(sessionId)
       if (this.closed) return
@@ -3501,6 +3513,7 @@ export class SessionRegistry {
           : [shot]
       })
     const steer = steerId ? { steerId } : undefined
+    this.spans.handoff(sessionId, !!this.limits && (meta.provider === 'claude' || meta.provider === 'codex'))
     try {
       await handle.send(out, sendAttachments, steer)
       if (this.closed) return
@@ -4891,6 +4904,7 @@ export class SessionRegistry {
             this.spans.mark(sessionId, phase, note)
             if (phase === 'first-content') this.steerFallback(sessionId)
           },
+          mcpTiming: (timing) => this.spans.mcp(sessionId, timing),
           toolResultTail: (callId, output) => this.toolResultTail?.(sessionId, callId, output) ?? Promise.resolve(null),
           returnWhispers: (texts) => {
             if (this.closed) return
@@ -5099,6 +5113,7 @@ export class SessionRegistry {
     const warm = this.todoFoldOf(sessionId)
     const prev = this.folds.get(sessionId) ?? toFoldRow(sessionId, newFoldState())
     const row = this.store.appendEvent(sessionId, event)
+    this.spans.contentRow(row)
     this.lastActivity.set(sessionId, row.ts)
     if (event.type === 'user-text') this.lastUserSeq.set(sessionId, row.seq)
     let tasksMoved = false

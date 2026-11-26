@@ -90,6 +90,16 @@ describe('a boot with every watch refused', () => {
     ])
   })
 
+  it('includes the gateway’s latest completed timing window in doctor.get', async () => {
+    const timings = { n: 2, out: { n: 2, p50: 1, p95: 2, max: 2 }, byte: { n: 1, p50: 3, p95: 3, max: 3 } }
+    const status = vi.spyOn(server.gateway, 'status').mockReturnValue({ ...server.gateway.status(), timings })
+    try {
+      expect((await ask('doctor.get')).result).toMatchObject({ gateway: { timings } })
+    } finally {
+      status.mockRestore()
+    }
+  })
+
   it('names each refused watch in doctor.get, with what covers it', async () => {
     expect(refused.calls).toBeGreaterThan(0)
     const doctor = (await ask('doctor.get')).result as { watchFailures?: { what: string; error: string; fallback: string }[] }

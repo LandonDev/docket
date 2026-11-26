@@ -25,6 +25,7 @@ import {
   pushesField,
   recordCheckpoint,
   recordSlowFlush,
+  recordGatewayTimings,
   recordSendSpan,
   recordSlowRequest,
   reportRendererStall,
@@ -193,6 +194,11 @@ describe('stall recorder', () => {
     expect((await log()).trim()).toMatch(/ pushes=meta:5\/3ids\(accounts:3,status:1\),event:1 running=3 /)
     resetPushesForTests()
     expect(pushesField()).toBe('pushes=meta:0,event:0')
+  })
+
+  it('writes an hourly gateway line with both sample counts', async () => {
+    recordGatewayTimings({ n: 3, out: { n: 3, p50: 1, p95: 2, max: 3 }, byte: { n: 2, p50: 4, p95: 5, max: 6 } })
+    expect((await log()).trim()).toMatch(/ gateway n=3 out.p50=1 out.p95=2 out.max=3 byte.p50=4 byte.p95=5 byte.max=6 byte.n=2$/)
   })
 
   it('records the existing slow flush with all three phase fields', async () => {

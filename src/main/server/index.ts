@@ -2284,6 +2284,7 @@ export async function startServer(
       onRequestEnd: (info) => {
         if (info.thread) registry.providerRequest(info.thread, info.id, null)
       },
+      onSendTiming: (info) => registry.stampGatewaySend(info),
       // A dead sign-in answers 401 for good and core only fails over on 429:
       // the account leaves routing until it answers again, the request
       // replays under the best account with room, and with none left the
@@ -2682,6 +2683,10 @@ export async function startServer(
       const text = frameJson(allowed)
       if (carriesBytes(allowed, text)) ws.send(text, { compress: false })
       else ws.send(text)
+      if ('push' in allowed) {
+        if (allowed.push === 'event') registry.stampSendRow(allowed.row)
+        else if (allowed.push === 'events') for (const row of allowed.rows) registry.stampSendRow(row)
+      }
       socketBudget.poll()
       if (!backpressureLogged && ws.bufferedAmount > BACKPRESSURE_BYTES) {
         backpressureLogged = true
@@ -3233,16 +3238,19 @@ export async function startServer(
             peerCatalogs.set(req.params.from, req.params.catalog)
             sendFrame({ id: req.id, ok: true, result: { catalog: visibleCatalog() } })
             break
-          case 'doctor.get':
+          case 'doctor.get': {
+            const report = await runDoctor()
+            const java = await javaDoctor()
+            const { process, port, timings } = gateway.status()
             sendFrame({
               id: req.id,
               ok: true,
               result: {
-                ...(await runDoctor()),
-                java: await javaDoctor(),
+                ...report,
+                java,
                 loop: currentLag(),
                 inFlight: inFlightRequests(),
-                gateway: { ...gateway.status().process, port: gateway.status().port },
+                gateway: { ...process, port, ...(timings && { timings }) },
                 execBroker: execBroker.status(),
                 addonHost: addonHost.status(),
                 watches: watchStats(),
@@ -3252,6 +3260,7 @@ export async function startServer(
               } satisfies DoctorGetResult
             })
             break
+          }
           case 'doctor.profile':
             sendFrame({ id: req.id, ok: true, result: await profileHost(req.params) })
             break

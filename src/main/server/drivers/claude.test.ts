@@ -108,6 +108,16 @@ it("after the CLI's init a sent message waits for the provider until the model's
   expect(marks).toContainEqual({ phase: 'model', note: 'hit' })
 })
 
+it('samples the MCP snapshot once when the CLI sends its first init', () => {
+  const mcpTiming = vi.fn()
+  ctx.mcpTiming = mcpTiming
+  state.mcpStartedAt = performance.now()
+  const snapshot = msg({ type: 'system', subtype: 'init', session_id: 'n1', mcp_servers: [{ name: 'app', status: 'connected' }] })
+  handleMessage(ctx, state, snapshot)
+  handleMessage(ctx, state, snapshot)
+  expect(mcpTiming.mock.calls).toEqual([[{ ms: expect.any(Number), source: 'claude-init' }]])
+})
+
 it("an eager boot's init with nothing sent names no wait", () => {
   state.phase = 'cli-starting'
   handleMessage(ctx, state, init())

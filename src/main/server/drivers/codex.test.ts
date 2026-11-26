@@ -240,7 +240,8 @@ describe('codex app-server boot', () => {
     vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
     scripts.push(healthy)
     const marks: { phase: string; note?: string }[] = []
-    const handle = await codexDriver.start({ ...ctx(), mark: (phase, note) => marks.push({ phase, note }) })
+    const mcpTiming = vi.fn()
+    const handle = await codexDriver.start({ ...ctx(), mark: (phase, note) => marks.push({ phase, note }), mcpTiming })
     expect(marks).toEqual([{ phase: 'handle', note: 'cold' }])
     const notify = (method: string, params: Record<string, unknown>): void => {
       spawned[0].stdout.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\n')
@@ -259,10 +260,14 @@ describe('codex app-server boot', () => {
       { type: 'phase', phase: null }
     ])
     const delivered = marks.find((m) => m.phase === 'delivered')
-    expect(delivered?.note).toMatch(/^mcp=19\d\d$/)
+    expect(delivered?.note).toMatch(/^mcp=\d+$/)
+    expect(mcpTiming.mock.calls).toEqual([[{
+      source: 'codex-gate', ms: expect.any(Number), servers: new Map([['linear', expect.any(Number)]])
+    }]])
     // The gate is the first send's alone.
     await handle.send('again')
     expect(marks.filter((m) => m.phase === 'delivered')).toHaveLength(1)
+    expect(mcpTiming).toHaveBeenCalledTimes(1)
     await handle.dispose()
   })
 

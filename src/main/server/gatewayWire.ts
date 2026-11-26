@@ -1,5 +1,6 @@
 import type { Limit, LimitInfo, RoutedInfo, RouteScope, ServiceId, UsageReport } from 'aliax-core'
-import type { FailedOverInfo, NetworkInfo, RequestInfo, ResponseInfo, ScopedRequest } from './gatewayCore'
+import type { GatewayTimings } from '@shared/contract'
+import type { GatewaySendTiming, FailedOverInfo, NetworkInfo, RequestInfo, ResponseInfo, ScopedRequest } from './gatewayCore'
 
 /**
  * What main and the gateway's utility process say to each other over one
@@ -113,6 +114,7 @@ export type ChildEvent =
   | { e: 'failedOver'; info: FailedOverInfo }
   | { e: 'error'; message: string }
   | { e: 'network'; info: NetworkInfo }
+  | { e: 'send-timing'; info: GatewaySendTiming }
   | { e: 'request'; phase: 'start' | 'end'; info: RequestInfo }
   | { e: 'observeLimit'; serviceId: ServiceId; name: string; limit: Limit }
   | { e: 'pin'; serviceId: ServiceId; name: string }
@@ -131,7 +133,7 @@ export type WireMessage =
   | { t: 'ask'; id: number; call: ChildCall | MainCall }
   // child → main
   | { t: 'ready'; pid: number; port: number; scoped: { thread: string; port: number }[] }
-  | { t: 'stats'; routed: Record<string, number>; error: string | null }
+  | { t: 'stats'; routed: Record<string, number>; error: string | null; timings?: GatewayTimings }
   | { t: 'event'; event: ChildEvent }
   // both ways
   | Reply

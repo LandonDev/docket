@@ -1,3 +1,6 @@
+import type { EventRow } from '@shared/events'
+import type { GatewaySendTiming } from './gatewayCore'
+
 /**
  * One span per `session.send`, from the RPC's arrival to the first content
  * the harness produced: a stalls.log line that says WHERE a slow send spent
@@ -17,11 +20,10 @@
  *                  prefill, model → first-content the model's own time
  *   first-content  an assistant text, thinking delta or a tool call
  *
- * The line is written once per span: when `first-content` lands, or
- * SEND_SPAN_DEADLINE_MS after `accepted`, whichever first; a phase never
- * reached reads `-`. A new send on the same session flushes the span that
- * was open (two sends never share one), and a send the scheduler queued is
- * dropped without a line.
+ * The line waits for the first content row sent on a socket and, for a
+ * routed send, the gateway's first-byte stamp. The existing deadline or
+ * the next send writes any marks collected so far. A queued send opens a
+ * new span when it leaves the queue, carrying its wait separately.
  */
 export type SendPhase = 'accepted' | 'prepared' | 'handle' | 'delivered' | 'init' | 'first-message' | 'model' | 'first-content'
 
@@ -29,11 +31,31 @@ export const SEND_PHASES: readonly SendPhase[] = ['accepted', 'prepared', 'handl
 
 export const SEND_SPAN_DEADLINE_MS = 15_000
 
+export interface McpTiming {
+  ms: number
+  source: 'codex-gate' | 'codex-timeout' | 'claude-init' | 'muse-session'
+  servers?: ReadonlyMap<string, number>
+}
+
+interface SendTimings {
+  queue?: number
+  handleWait?: number
+  mcp?: McpTiming
+  'gateway-dispatch'?: number
+  'first-byte'?: number
+  'first-row'?: number
+}
+
 interface Span {
   startedAt: number
   at: Partial<Record<SendPhase, number>>
   note: Partial<Record<SendPhase, string>>
   timer: unknown
+  timings: SendTimings
+  outgoingAt?: number
+  gatewayExpected?: boolean
+  gatewayId?: number
+  firstRowSeq?: number
 }
 
 export interface SendSpanOptions {
@@ -66,10 +88,11 @@ export class SendSpans {
   }
 
   /** The RPC arrived: a span opens; one still open on the session is flushed first. */
-  begin(sessionId: string): void {
+  begin(sessionId: string, queuedAt?: number): void {
     this.flush(sessionId)
     const startedAt = this.now()
-    const span: Span = { startedAt, at: { accepted: 0 }, note: {}, timer: null }
+    const queue = queuedAt === undefined ? 0 : Math.max(0, startedAt - queuedAt)
+    const span: Span = { startedAt, at: { accepted: 0 }, note: {}, timer: null, timings: { queue } }
     span.timer = this.setTimer(() => this.flush(sessionId), this.deadlineMs)
     this.spans.set(sessionId, span)
   }
@@ -81,7 +104,52 @@ export class SendSpans {
     if (!span) return
     if (span.at[phase] === undefined) span.at[phase] = this.now() - span.startedAt
     if (note) span.note[phase] = note
-    if (phase === 'first-content') this.flush(sessionId)
+    this.maybeFlush(sessionId, span)
+  }
+
+  handoff(sessionId: string, gatewayExpected: boolean): void {
+    const span = this.spans.get(sessionId)
+    if (!span) return
+    span.outgoingAt = this.now()
+    span.gatewayExpected = gatewayExpected
+  }
+
+  handleWait(sessionId: string, ms: number): void {
+    const span = this.spans.get(sessionId)
+    if (span) span.timings.handleWait = ms
+  }
+
+  mcp(sessionId: string, timing: McpTiming): void {
+    const span = this.spans.get(sessionId)
+    if (span && !span.timings.mcp) span.timings.mcp = timing
+  }
+
+  gateway(info: GatewaySendTiming): void {
+    const span = this.spans.get(info.thread)
+    if (span?.outgoingAt === undefined || info.at < span.outgoingAt) return
+    if (info.phase === 'gateway-dispatch') span.gatewayId ??= info.id
+    if (span.gatewayId !== info.id) return
+    span.timings[info.phase] ??= info.at - span.startedAt
+    this.maybeFlush(info.thread, span)
+  }
+
+  /** Register the row before its subscribers get it, then stamp the first socket to send it. */
+  contentRow(row: EventRow): void {
+    const span = this.spans.get(row.sessionId)
+    if (span?.outgoingAt === undefined || span.firstRowSeq !== undefined || !isContentRow(row)) return
+    span.firstRowSeq = row.seq
+  }
+
+  rowOut(row: EventRow): void {
+    const span = this.spans.get(row.sessionId)
+    if (span?.firstRowSeq === undefined || row.seq < span.firstRowSeq || span.timings['first-row'] !== undefined || !isContentRow(row)) return
+    span.timings['first-row'] = this.now() - span.startedAt
+    this.maybeFlush(row.sessionId, span)
+  }
+
+  private maybeFlush(sessionId: string, span: Span): void {
+    if (span.timings['first-row'] !== undefined && span.at.delivered !== undefined &&
+      (!span.gatewayExpected || span.timings['first-byte'] !== undefined)) this.flush(sessionId)
   }
 
   /** The send never reached a harness (queued, held back): no line. */
@@ -92,13 +160,13 @@ export class SendSpans {
     this.spans.delete(sessionId)
   }
 
-  /** Write the span's line now (the deadline, first content, or a new send on the session). */
+  /** Write the span's line once. */
   flush(sessionId: string): void {
     const span = this.spans.get(sessionId)
     if (!span) return
     this.clearTimer(span.timer)
     this.spans.delete(sessionId)
-    this.options.write(formatSpan(sessionId, span.at, span.note))
+    this.options.write(formatSpan(sessionId, span.at, span.note, span.timings))
   }
 
   /** Open spans, for a test. */
@@ -108,12 +176,36 @@ export class SendSpans {
 }
 
 /** `send session=<id> accepted=0 prepared=12 handle=340(warm) … first-content=2100`; a missing phase reads `-`. */
-export function formatSpan(sessionId: string, at: Partial<Record<SendPhase, number>>, note: Partial<Record<SendPhase, string>> = {}): string {
+export function formatSpan(
+  sessionId: string,
+  at: Partial<Record<SendPhase, number>>,
+  note: Partial<Record<SendPhase, string>> = {},
+  timings: SendTimings = {}
+): string {
   const fields = SEND_PHASES.map((phase) => {
     const ms = at[phase]
     const value = ms === undefined ? '-' : String(Math.round(ms))
     const tag = note[phase]
     return `${phase}=${value}${tag ? `(${tag})` : ''}`
   })
-  return `send session=${sessionId} ${fields.join(' ')}`
+  const mcp = timings.mcp
+  const ms = (value: number | undefined): string | number => value === undefined ? '-' : Math.round(value)
+  const keys = [
+    `queue=${ms(timings.queue)}`,
+    `handle-wait=${ms(timings.handleWait)}`,
+    `mcp=${ms(mcp?.ms)}`,
+    `gateway-dispatch=${ms(timings['gateway-dispatch'])}`,
+    `first-byte=${ms(timings['first-byte'])}`,
+    `first-row=${ms(timings['first-row'])}`
+  ]
+  if (mcp) keys.push(`mcp.source=${mcp.source}`)
+  if (mcp?.servers?.size) {
+    const servers = [...mcp.servers].map(([name, duration]) => `${encodeURIComponent(Buffer.from(name).toString())}:${ms(duration)}`)
+    keys.push(`mcp.servers=${servers.join(',')}`)
+  }
+  return `send session=${sessionId} ${fields.concat(keys).join(' ')}`
+}
+
+function isContentRow(row: EventRow): boolean {
+  return row.event.type === 'assistant-text' || row.event.type === 'thinking' || row.event.type === 'tool-call'
 }

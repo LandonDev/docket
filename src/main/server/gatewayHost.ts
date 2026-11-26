@@ -1,4 +1,5 @@
 import { claim, isLive, readMarker, release, watchMarker, type ForwardHooks, type Owner, type RouteScope, type ServiceId } from 'aliax-core'
+import type { GatewayTimings } from '@shared/contract'
 import { PROVIDER_OF } from '@shared/accounts'
 import { setCodexCaCertificate } from './drivers/binaries'
 import { GatewayCore, OWNER, type ControlPlane, type RoutingHooks } from './gatewayCore'
@@ -6,6 +7,7 @@ import { InProcessControl } from './gatewayControl'
 import { answer, Calls, WireGone, type AccountsState, type ChildCall, type ChildEvent, type MainCall, type OutMark, type StartState, type Wire, type WireMessage } from './gatewayWire'
 import { loadTls, trustHint, type TlsMaterial } from './tls'
 import { shapeEnabled } from './gatewayShape'
+import { recordGatewayTimings } from './stalls'
 
 /**
  * temp-code's loopback gateway as the rest of the app sees it. Every Claude
@@ -72,6 +74,7 @@ export interface GatewayStatus {
   /** Who holds the marker instead of us, when someone live does. */
   standby: Owner | null
   routed: Record<string, number>
+  timings?: GatewayTimings
   error: string | null
   /** Whether codex threads can be given an https origin (null: no certificate). */
   tls: { caPath: string; source: TlsMaterial['source'] } | null
@@ -145,6 +148,12 @@ export class GatewayHost {
   /** Counts of children gone, and the live child's latest. */
   private routedDone: Record<string, number> = {}
   private routedLive: Record<string, number> = {}
+  private timings?: GatewayTimings
+
+  private recordTimings(timings: GatewayTimings): void {
+    this.timings = timings
+    recordGatewayTimings(timings)
+  }
   private childError: string | null = null
   private childPid = 0
   private restarts = 0
@@ -378,6 +387,7 @@ export class GatewayHost {
       owner: this.owner,
       standby: this.standby,
       routed: sum(this.routedDone, here?.routed ?? this.routedLive),
+      ...(this.timings && { timings: this.timings }),
       error: here ? (here.error ?? this.loadError) : (this.childError ?? this.loadError),
       tls: this.tls ? { caPath: this.tls.caPath, source: this.tls.source } : null,
       scopedPorts: Object.fromEntries([...this.scoped].map(([t, s]) => [t, s.port])),
@@ -427,7 +437,10 @@ export class GatewayHost {
 
   /** The byte path in this process, on the ports the child held (if it ever ran). */
   private async runHere(): Promise<void> {
-    const core = new GatewayCore({ control: this.control, tls: this.tls, shape: shapeEnabled() })
+    const core = new GatewayCore({
+      control: this.control, tls: this.tls, shape: shapeEnabled(),
+      onTimingWindow: (timings) => this.recordTimings(timings)
+    })
     try {
       this.port = await core.listen(this.port)
     } catch (e) {
@@ -533,6 +546,7 @@ export class GatewayHost {
       case 'stats':
         this.routedLive = m.routed
         this.childError = m.error
+        if (m.timings) this.recordTimings(m.timings)
         return
       case 'event':
         this.onEvent(m.event)
@@ -582,6 +596,9 @@ export class GatewayHost {
         return
       case 'network':
         this.control.onNetwork?.(event.info)
+        return
+      case 'send-timing':
+        this.control.onSendTiming?.(event.info)
         return
       case 'request':
         if (event.phase === 'start') this.control.onRequestStart?.(event.info)

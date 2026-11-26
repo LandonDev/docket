@@ -61,10 +61,12 @@ afterEach(async () => {
 
 describe('the muse driver over the fake host', () => {
   it('starts a session with the profile, the mode and the bridge, then runs a turn with text, thinking and a tool call', async () => {
-    const t = ctxFor()
+    const mcpTiming = vi.fn()
+    const t = ctxFor({}, { mcpTiming })
     const h = await museDriver.start(t.ctx)
     handles.push(h)
     expect(t.nativeIds).toEqual(['sess-1'])
+    expect(mcpTiming.mock.calls).toEqual([[{ ms: expect.any(Number), source: 'muse-session' }]])
     expect(h.alive?.()).toBe(true)
     expect(typeof h.pid?.()).toBe('number')
     await h.send('tool please')

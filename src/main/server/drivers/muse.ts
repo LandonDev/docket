@@ -426,8 +426,11 @@ async function start(ctx: DriverCtx): Promise<DriverHandle> {
     nativeId = res.session.sessionId
     ctx.setNativeId(nativeId)
   }
+  const mcpStartedAt = performance.now()
   try {
     await open()
+    // MSP acknowledges the configured session but does not report individual server startup.
+    ctx.mcpTiming?.({ ms: performance.now() - mcpStartedAt, source: 'muse-session' })
   } catch (err) {
     await host.close()
     throw err

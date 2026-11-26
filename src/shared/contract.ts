@@ -1417,6 +1417,12 @@ export interface DoctorReport {
   error?: string
 }
 
+export interface GatewayTimings {
+  n: number
+  out: { n: number; p50: number; p95: number; max: number }
+  byte: { n: number; p50: number; p95: number; max: number }
+}
+
 export type DoctorGetResult = Record<z.infer<typeof providerEnum>, DoctorReport> & {
   java: DoctorReport & {
     jdtls: boolean
@@ -1425,7 +1431,7 @@ export type DoctorGetResult = Record<z.infer<typeof providerEnum>, DoctorReport>
   loop: LoopLag
   inFlight: InFlightRequest[]
   /** Where the gateway's byte path runs: its own utility process (that pid, respawned `restarts` times) or the host's main process. */
-  gateway?: { mode: 'child' | 'in-process'; pid: number; restarts: number; port: number }
+  gateway?: { mode: 'child' | 'in-process'; pid: number; restarts: number; port: number; timings?: GatewayTimings }
   /** Where helper children (git, gh, ps) fork from: the exec broker's process (that pid, respawned `restarts` times) or the host's main process. */
   execBroker?: { mode: 'child' | 'in-process'; pid: number; restarts: number }
   /** The add-on host's utility process (addons/addonHost.ts): its pid while one serves, how often it was respawned, and whether it is down after three exits in a minute. */

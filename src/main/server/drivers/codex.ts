@@ -621,6 +621,10 @@ export const codexDriver: HarnessDriver = {
     // send waits for startup to settle (bounded), so /linear-style
     // plugins are callable from message one.
     const mcpStarting = new Set<string>()
+    const mcpStartedAt = new Map<string, number>()
+    const mcpServers = new Map<string, number>()
+    let mcpGateEndedAt: number | undefined
+    let mcpGateTimedOut = false
     /** A Work thread's app-server named an MCP server that is not the app's: no message is sent to it again. */
     let fenceBroken: string | null = null
     let mcpSettled: (() => void) | null = null
@@ -652,8 +656,13 @@ export const codexDriver: HarnessDriver = {
     let compactionFrom: number | null = null
     let compactionPending = false
     let firstTurnGate: Promise<void> | null = new Promise((resolve) => {
-      const bail = setTimeout(() => resolve(), 20_000)
+      const bail = setTimeout(() => {
+        mcpGateEndedAt ??= performance.now()
+        mcpGateTimedOut = true
+        resolve()
+      }, 20_000)
       mcpSettled = () => {
+        mcpGateEndedAt ??= performance.now()
         clearTimeout(bail)
         resolve()
       }
@@ -877,8 +886,14 @@ export const codexDriver: HarnessDriver = {
             mcpSettled = null
             break
           }
-          if (params.status === 'starting') mcpStarting.add(name)
-          else mcpStarting.delete(name)
+          if (params.status === 'starting') {
+            mcpStarting.add(name)
+            if (firstTurnGate && name && !mcpStartedAt.has(name)) mcpStartedAt.set(name, performance.now())
+          } else {
+            mcpStarting.delete(name)
+            const at = firstTurnGate ? mcpStartedAt.get(name) : undefined
+            if (at !== undefined && !mcpServers.has(name)) mcpServers.set(name, performance.now() - at)
+          }
           // Every server reached a terminal state — release the gate.
           if (mcpStarting.size === 0 && mcpSettled) {
             const release = mcpSettled
@@ -1306,6 +1321,8 @@ export const codexDriver: HarnessDriver = {
       }
     }
     for (let attempt = 1; ; attempt++) {
+      mcpStartedAt.clear()
+      mcpServers.clear()
       try {
         await boot(attempt)
         if (attempt > 1) console.log(`[codex] ${session.id}: app-server boot succeeded on attempt ${attempt}`)
@@ -1388,10 +1405,18 @@ export const codexDriver: HarnessDriver = {
         let gateMs: number | null = null
         if (firstTurnGate) {
           const gateFrom = Date.now()
+          const mcpWaitFrom = performance.now()
           emit({ type: 'phase', phase: 'initializing' })
           await Promise.all([firstTurnGate, waitForModel()])
           firstTurnGate = null
           gateMs = Date.now() - gateFrom
+          ctx.mcpTiming?.({
+            ms: Math.max(0, (mcpGateEndedAt ?? performance.now()) - mcpWaitFrom),
+            source: mcpGateTimedOut ? 'codex-timeout' : 'codex-gate',
+            servers: new Map(mcpServers)
+          })
+          mcpStartedAt.clear()
+          mcpServers.clear()
           emit({ type: 'phase', phase: null })
         }
         // Images are native input items (localImage); other files ride as

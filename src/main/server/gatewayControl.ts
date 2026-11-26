@@ -77,6 +77,10 @@ export class InProcessControl implements ControlPlane {
     this.hooks.onRequestStart?.(info)
   }
 
+  onSendTiming(info: Parameters<NonNullable<RoutingHooks['onSendTiming']>>[0]): void {
+    this.hooks.onSendTiming?.(info)
+  }
+
   onRequestEnd(info: RequestInfo): void {
     this.hooks.onRequestEnd?.(info)
   }

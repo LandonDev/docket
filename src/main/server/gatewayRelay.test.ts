@@ -97,6 +97,23 @@ it('20 deltas 50 ms apart reach the client as they arrive, spread over a second,
   expect(requestEvents(events, 'end')).toHaveLength(1)
 })
 
+it('counts one dispatch and first byte per request, including unscoped requests', async () => {
+  const { core, events } = await gatewayOver(() => new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array([65]))
+      controller.enqueue(new Uint8Array([66]))
+      controller.close()
+    }
+  }))
+  for (const path of ['/~t=one;a=a/v1/messages', '/v1/messages', '/~t=one;a=a/v1/messages/count_tokens']) {
+    const response = await fetch(`${core.url('claude')}${path}`, { method: 'POST', body: '{}' })
+    expect(await response.text()).toBe('AB')
+  }
+  expect(core.takeTimings()).toMatchObject({ n: 3, out: { n: 3 }, byte: { n: 3 } })
+  expect(core.takeTimings()).toBeNull()
+  expect(events.flatMap((e) => e.e === 'send-timing' ? [e.info.phase] : [])).toEqual(['gateway-dispatch', 'first-byte'])
+})
+
 it('a client that hangs up mid-answer ends its request at once and cancels the upstream, with no network record', async () => {
   const provider = ticking(20, null)
   const { core, events } = await gatewayOver(provider.stream)

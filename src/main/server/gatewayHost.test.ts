@@ -152,6 +152,26 @@ async function startHost(options: Partial<ConstructorParameters<typeof GatewayHo
 const post = (url: string): Promise<Response> => fetch(url, { method: 'POST', headers: { authorization: 'Bearer CLI' }, body: '{"model":"claude-opus-5-5"}' })
 
 describe('GatewayHost with its own process', () => {
+  it('mirrors one completed timing window from the child stats message', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    try {
+      const { control } = testControl({ marks: [] })
+      const onSendTiming = vi.fn()
+      const host = await startHost({ control: { ...control, onSendTiming }, spawnChild: realChildren().spawn })
+      const response = await post(`${host.url('claude')}/~t=stamps;a=A/v1/messages`)
+      expect(await response.text()).toBe('data: {"n":1}\n\ndata: {"n":2}\n\n')
+      await vi.waitFor(() => expect(onSendTiming).toHaveBeenCalledTimes(2))
+      expect(onSendTiming.mock.calls.map(([info]) => [info.thread, info.phase])).toEqual([
+        ['stamps', 'gateway-dispatch'], ['stamps', 'first-byte']
+      ])
+      expect(host.status().timings).toBeUndefined()
+      vi.advanceTimersByTime(60 * 60_000)
+      await vi.waitFor(() => expect(host.status().timings).toMatchObject({ n: 1, out: { n: 1 }, byte: { n: 1 } }))
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('can send a new profile to the child before the account update timer fires', async () => {
     const t = testControl({ marks: [] })
     const host = await startHost({ control: t.control, spawnChild: realChildren().spawn })

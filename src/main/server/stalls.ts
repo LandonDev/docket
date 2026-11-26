@@ -32,7 +32,7 @@ import { appendFile, mkdir, rename, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { loadavg } from 'node:os'
 import { createHistogram, monitorEventLoopDelay } from 'node:perf_hooks'
-import type { InFlightRequest, LoopLag } from '@shared/contract'
+import type { GatewayTimings, InFlightRequest, LoopLag } from '@shared/contract'
 import { withRequestMemo } from './requestMemo'
 
 export const STALL_MS = 150
@@ -234,6 +234,10 @@ export function timed<T>(label: string, fn: () => T): T {
     const ms = performance.now() - startedAt
     if (ms >= TIMED_MS) write(`timed ${label} ${Math.round(ms)}ms${requestNotesField()}`)
   }
+}
+
+export function recordGatewayTimings({ n, out, byte }: GatewayTimings): void {
+  write(`gateway n=${n} out.p50=${out.p50} out.p95=${out.p95} out.max=${out.max} byte.p50=${byte.p50} byte.p95=${byte.p95} byte.max=${byte.max} byte.n=${byte.n}`, false)
 }
 
 const flushTimes = {
