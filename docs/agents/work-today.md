@@ -248,7 +248,7 @@ export const source: TodaySource = { id: "money", section: { id: "money", title:
 - A **mark** says something about a row another source made, found by its
   key: its `note` leads the row's second line (a `late` note wins and is
   drawn in the failed tone), the row's own line (a meeting's place and
-  people) kept after it, "Overlaps Staff sync · CoRec 2212, with Dana Reyes"
+  people) kept after it, "Overlaps Staff sync" in the fault's tone, then "CoRec 2212, with Dana Reyes" muted 4px after it (no dot between: two facts that differ in colour; one comma sentence where the note is muted too, and in the row's name and tip)
   (`detailAfter`); a clash is said on both of its rows, each in its side's
   words, its `whenLine` takes the place of the row's own
   live line, `open` replaces the press and `act` leads the verbs. A mark

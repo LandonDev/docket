@@ -120,8 +120,8 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
   const stop = current ? 0 : -1;
   // A title, a second line or a job name the columns cut is said whole on hover and focus, only while one is cut.
   const words = useTruncated(`${row.title}\n${job ?? ""}\n${row.detail ?? ""}\n${row.detailAfter ?? ""}`);
-  // The second line's words: a mark's note, then the row's own place and people it would have covered.
-  const detail = [row.detail, row.detailAfter].filter(Boolean).join(" · ");
+  // The second line's words as one plain string (the row's name, its tip): a mark's note, then the row's own place and people it would have covered.
+  const detail = [row.detail, row.detailAfter].filter(Boolean).join(", ");
   const wideJob = useTruncated(job ?? "");
   // The row's name is its title and second line; its job and its time are read after it, as he sees them.
   const id = useId();
@@ -193,7 +193,8 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
               </span>
             ) : null}
             {row.detail ? <span className={cn(job && "@max-[30rem]/today:ms-1", row.detailLate && "text-destructive")}>{row.detail}</span> : null}
-            {row.detailAfter ? ` · ${row.detailAfter}` : null}
+            {/* The row's own line after a mark's note: 4px on where the note is in the fault's tone (two facts that differ in colour), else one comma sentence. */}
+            {row.detailAfter ? row.detailLate ? <span className="ms-1">{row.detailAfter}</span> : `, ${row.detailAfter}` : null}
           </span>
         ) : null}
       </span>

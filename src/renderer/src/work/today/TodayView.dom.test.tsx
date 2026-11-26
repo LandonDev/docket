@@ -1017,7 +1017,7 @@ describe("a source", () => {
     expect([...document.querySelectorAll("[data-today-section]")].map((s) => s.getAttribute("data-today-section"))).toEqual(["held", "money"]);
     // The mark's note leads the held row's second line, in the fault's tone; the row's own line stays after it.
     const heldRow = document.querySelector<HTMLElement>('[data-today-row="held:box:lifeos:o1"]')!;
-    expect(heldRow.textContent).toContain("Overlaps Staff sync · Sponsor deck");
+    expect(heldRow.textContent).toContain("Overlaps Staff syncSponsor deck");
     const row = document.querySelector<HTMLElement>('[data-today-row="owed:1"]')!;
     expect(row.textContent).toContain("Unify");
     fireEvent.click(within(row).getByRole("button", { name: "Remind" }));
