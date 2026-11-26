@@ -91,6 +91,18 @@ describe("the second phase's release and its socket", () => {
     await vi.advanceTimersByTimeAsync(10);
     expect(asks).toBe(1);
   });
+
+  it("a route swapped with no close between runs the queued work once, on the new socket", async () => {
+    const link = { ...fakeLink("env_box"), transport: { id: 1 } as unknown };
+    const asked: unknown[] = [];
+    const loader = () => afterOpen(link, () => void asked.push(link.transport));
+    loader(); // the fallback route opened
+    link.transport = { id: 2 }; // a better route adopted before the old one closed: onOpen again, no close
+    loader();
+    markUsable();
+    await flush();
+    expect(asked).toEqual([{ id: 2 }]);
+  });
 });
 
 /** The asks a host hears on open, by phase: the window's own loaders against a scripted socket. */

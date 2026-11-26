@@ -5,8 +5,8 @@
  * sessions and history, thread resources, another host's Away state, the providers' doctor) waits for
  * `afterOpen`: an idle slot once the window's shell has painted from its primary host (`markUsable` at tc:ready)
  * or `RELEASE_AFTER_MS` after the first such task, whichever is first, so no saved host that never answers holds
- * it; one at a time on a remote host; and only while the socket that opened is still the live one, so nothing is
- * asked twice for one open.
+ * it; one at a time on a remote host; and only while the transport that opened is still the live one, so nothing
+ * is asked twice for one open, a route swapped with no close between included.
  */
 
 import { LOCAL_ENVIRONMENT_ID } from "../connection/registry";
@@ -14,7 +14,9 @@ import { LOCAL_ENVIRONMENT_ID } from "../connection/registry";
 type OpenLink = {
   readonly environmentId: string;
   readonly connected: boolean;
-  /** A test's fake may have none: then only `connected` guards a later open. */
+  /** The live socket: replaced on every reconnect and every route swap (EnvLink `transport`). */
+  readonly transport?: unknown;
+  /** A test's fake may have none: then the transport and `connected` guard a later open. */
   onClose?(listener: () => void): () => void;
 };
 type Task = () => unknown;
@@ -51,7 +53,7 @@ function idleSlot(): Promise<void> {
   });
 }
 
-/** Each link's count of closes: a task queued on one open runs only if no close came since. */
+/** Each link's count of closes, for a fake with no transport: a task runs only if no close came since. */
 const closes = new WeakMap<OpenLink, { n: number }>();
 function closesOf(link: OpenLink): { n: number } {
   let held = closes.get(link);
@@ -71,8 +73,9 @@ const remoteChains = new Map<string, Promise<void>>();
 export function afterOpen(link: OpenLink, task: Task): void {
   const count = closesOf(link);
   const at = count.n;
+  const opened = link.transport;
   const run = async (): Promise<void> => {
-    if (count.n !== at || !link.connected) return;
+    if (count.n !== at || link.transport !== opened || !link.connected) return;
     try {
       await task();
     } catch {
