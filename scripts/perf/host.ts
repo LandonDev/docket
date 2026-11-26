@@ -26,15 +26,18 @@ export const HOST_SCENES = { connect: 'H01', loop: 'H02', read: 'H03', flush: 'H
 type Scene = keyof typeof HOST_SCENES
 const THREADS = 40
 const MAX_MS = 60_000
+const DEFAULT_MAX_LOAD = 40
+const MAX_ANON_GIB = 68
 const OFFLINE = 'http://127.0.0.1:9'
 const REPO = fileURLToPath(new URL('../..', import.meta.url))
-const USAGE = 'perf:host --scene connect|loop|read|flush|settle|watch [--browser] | --boot [--seed-size small|real | --copy <userData>]'
+const USAGE = 'perf:host --scene connect|loop|read|flush|settle|watch [--browser] | --boot [--seed-size small|real | --copy <userData>] [--max-load <n>]'
 
 export function hostFlags(args: string[]) {
   let scene: Scene | undefined
   let browser = false
   let seedSize: 'small' | 'real' | undefined
   let copy: string | undefined
+  let maxLoad = DEFAULT_MAX_LOAD
   const seen = new Set<string>()
   for (let i = 0; i < args.length; i++) {
     const flag = args[i]!
@@ -61,6 +64,12 @@ export function hostFlags(args: string[]) {
         seedSize = value
         break
       }
+      case '--max-load': {
+        const value = Number(args[++i])
+        if (!Number.isFinite(value) || value <= 0) throw new Error('--max-load takes a positive number')
+        maxLoad = value
+        break
+      }
       case '--copy':
         copy = args[++i]
         if (!copy || copy.startsWith('--')) throw new Error('--copy needs a userData path')
@@ -71,7 +80,7 @@ export function hostFlags(args: string[]) {
   }
   if (!scene || (browser && scene !== 'loop') || ((copy || seedSize) && scene !== 'boot') || (copy && seedSize))
     throw new Error(USAGE)
-  return { scene, browser, copy, seedSize: seedSize ?? 'small' }
+  return { scene, browser, copy, seedSize: seedSize ?? 'small', maxLoad }
 }
 
 /** Nearest rank, so even a single sample has a percentile. */
@@ -128,6 +137,11 @@ function loadOne(): number {
   return Number(read('/proc/loadavg').split(' ')[0])
 }
 
+function agentsAnonGiB(): number | null {
+  const bytes = /^anon (\d+)$/m.exec(read('/sys/fs/cgroup/agents.slice/memory.stat'))?.[1]
+  return bytes === undefined ? null : Number(bytes) / (1024 ** 3)
+}
+
 function ownsPid(pid: number, group: number): boolean {
   if (!Number.isInteger(pid) || pid <= 1) return false
   try {
@@ -156,6 +170,9 @@ type Result = {
   liveHelloMs?: (number | null)[]
   measuredMs?: number
   load1?: number
+  load1End?: number
+  anonGiB?: number | null
+  anonGiBEnd?: number | null
   streams?: number
   rows: Metric[]
   details: Record<string, unknown>
@@ -824,14 +841,13 @@ async function runScene(rig: Rig, result: Result): Promise<void> {
   const seed = await seedScene(rig)
   await rig.boot()
   rig.remoteKey = await rig.mint('Host bench reader')
-  await rig.rpc(rig.box, 'admission.set', { cap: THREADS })
   let workspace = WORKSPACE
   if (rig.options.browser) {
     await rig.rpc(rig.box, 'work.set', { enabled: true })
     workspace = (await rig.rpc<{ id: string }>(rig.box, 'workspace.create', { kind: 'work', sector: 'host-bench', name: 'Host bench browser' })).id
   }
   console.log('Starting 40 loopback streams')
-  const ids = await startLoad(rig, workspace, THREADS, { scope: rig.options.browser ? 'work' : 'code', signal: rig.signal })
+  const ids = await startLoad(rig, workspace, THREADS, { scope: rig.options.browser ? 'work' : 'code', signal: rig.signal, room: 0 })
   await waitForStreams(rig, ids)
   if (rig.options.browser) await openBrowser(rig, ids[0]!)
   console.log(`Measuring ${rig.options.scene} with 40 running threads`)
@@ -908,7 +924,11 @@ async function main(args: string[]): Promise<void> {
   process.on('SIGTERM', onTerm)
   try {
     result.load1 = loadOne()
-    if (!(result.load1 < 16)) throw new Error('Host load must be under 16')
+    result.anonGiB = agentsAnonGiB()
+    if (!Number.isFinite(result.load1) || result.load1 > options.maxLoad)
+      throw new Error(`Host load ${result.load1} exceeds the limit of ${options.maxLoad}`)
+    if (result.anonGiB !== null && result.anonGiB >= MAX_ANON_GIB)
+      throw new Error(`Agents slice anonymous memory is at least ${MAX_ANON_GIB} GiB`)
     const cpus = /^Cpus_allowed_list:\s*(.+)$/m.exec(read('/proc/self/status'))?.[1]
     if (!cpus) throw new Error('No Linux CPU affinity found')
     result.cores = lastAllowedCores(cpus)
@@ -928,7 +948,9 @@ async function main(args: string[]): Promise<void> {
     const checked = rig
     checks = setInterval(() => {
       const load = loadOne()
-      if (!(load < 16)) checked.abort.abort(new Error(`Host load crossed 16 (${load})`))
+      if (load > options.maxLoad) checked.abort.abort(new Error(`Host load crossed ${options.maxLoad} (${load})`))
+      const anon = agentsAnonGiB()
+      if (anon !== null && anon >= MAX_ANON_GIB) checked.abort.abort(new Error(`Agents slice anonymous memory reached ${MAX_ANON_GIB} GiB`))
       const pressure = Number(/^some avg10=([\d.]+)/m.exec(read('/proc/pressure/io'))?.[1] ?? 0)
       if (pressure > 30) checked.abort.abort(new Error(`Live I/O pressure crossed 30 (${pressure})`))
     }, 1000)
@@ -938,6 +960,8 @@ async function main(args: string[]): Promise<void> {
     result.error = words(abort.signal.aborted ? abort.signal.reason : error)
   } finally {
     clearInterval(checks)
+    result.load1End = loadOne()
+    result.anonGiBEnd = agentsAnonGiB()
     result.liveHelloMs = guard?.stop()
     if (rig) {
       result.streams = rig.streams
@@ -956,8 +980,10 @@ async function main(args: string[]): Promise<void> {
     process.off('SIGINT', onInt)
     process.off('SIGTERM', onTerm)
     writeFileSync(path, JSON.stringify(result, null, 2) + '\n')
-    console.table(result.rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [
-      key, typeof value === 'number' ? Math.round(value * 10) / 10 : value
+    const host = { load1: result.load1, load1End: result.load1End, anonGiB: result.anonGiB, anonGiBEnd: result.anonGiBEnd }
+    const rows = result.rows.length ? result.rows : [{ metric: options.scene }]
+    console.table(rows.map((row) => Object.fromEntries(Object.entries({ ...row, ...host }).map(([key, value]) => [
+      key, typeof value === 'number' ? Math.round(value * 100) / 100 : value
     ]))))
     console.log(path)
   }

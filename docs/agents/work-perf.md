@@ -88,16 +88,16 @@ file's tab), `saved-text-<shape>`, `ask-box`, `ask-first-content`, `reconnect`.
 
 ## The headless host bench
 
-Build the isolated app in the measurement worktree, then run one scene through the box queue while the one-minute load is below 16.
+Build the isolated app in the measurement worktree, then run one scene through the box queue while anonymous memory in the agents slice is below 68 GiB. The one-minute load limit defaults to 40 and can be set with `--max-load <n>`.
 
 ```sh
-.temp-code/bin/heavy --low bunx electron-vite build
-.temp-code/bin/heavy --low bun run perf:host --scene connect
-.temp-code/bin/heavy --low bun run perf:host --scene loop --browser
+.temp-code/bin/heavy bunx electron-vite build
+.temp-code/bin/heavy bun run perf:host --scene connect
+.temp-code/bin/heavy bun run perf:host --scene loop --browser
 bun run perf:host --list
 ```
 
-The bench pins itself, the headless Electron host, and its children to the last eight allowed CPUs. It makes its own scratch checkout, home, user data, ports, and empty VM folder. It gives the scratch host a cap of 40 and checks that all 40 dummy threads are running before it starts the scene. Remote sockets use keys minted by that host. The watchdog sends only hello to the live box. The bench stops if the watchdog trips, one-minute load reaches 16, or I/O pressure passes the plan's limit.
+The bench pins itself, the headless Electron host, and its children to the last eight allowed CPUs. It makes its own scratch checkout, home, user data, ports, and empty VM folder. It gives the scratch host a cap of 40 and checks that all 40 dummy threads are running before it starts the scene. Remote sockets use keys minted by that host. The watchdog sends only hello to the live box. The bench stops if the watchdog trips, one-minute load passes the configured limit, anonymous memory reaches 68 GiB, or I/O pressure passes the plan's limit.
 
 | Scene | What it records |
 | --- | --- |
@@ -109,7 +109,7 @@ The bench pins itself, the headless Electron host, and its children to the last 
 | `watch` (H09) | File pushes to one remote subscriber, folder watches, and blocks over 50 ms while 40 writers make 1,000 changes in scratch worktrees. |
 | `--boot` (H06) | Time to the first hello, the first and focused resumed threads, and all 40 resumed threads. The default seed is 48 threads and 6,000 rows. `--seed-size real` uses 2,000 threads and 1,000,000 rows, with 30,000 in the longest thread. |
 
-`--boot --copy <userData>` measures only hello on a scrubbed copy. It needs the scrub tool's marker check and an empty resume ledger. Boot writes to the supplied scratch copy and uses its own HOME, disables the remote listener, and routes model calls to loopback. The bench writes results, including failures, under the main checkout's `.temp-code/plans/perf2/runs/host-<scene>-<stamp>.json`.
+`--boot --copy <userData>` measures only hello on a scrubbed copy. It needs the scrub tool's marker check and an empty resume ledger. Boot writes to the supplied scratch copy and uses its own HOME, disables the remote listener, and routes model calls to loopback. Each result and table includes the one-minute load and agents slice anonymous memory at the start and end. The bench writes results, including failures, under the main checkout's `.temp-code/plans/perf2/runs/host-<scene>-<stamp>.json`.
 
 ## The pass's numbers
 

@@ -33,6 +33,16 @@ describe('host scene flags', () => {
     expect(() => hostFlags(args)).toThrow()
   })
 
+  it('defaults the load limit to 40 and accepts a positive override for scenes and boot', () => {
+    expect(hostFlags(['--scene', 'connect']).maxLoad).toBe(40)
+    expect(hostFlags(['--scene', 'loop', '--max-load', '22.5']).maxLoad).toBe(22.5)
+    expect(hostFlags(['--boot', '--max-load', '38']).maxLoad).toBe(38)
+  })
+
+  it.each(['0', '-1', 'Infinity', 'NaN', '--browser', ''])('refuses an invalid load limit %j', (limit) => {
+    expect(() => hostFlags(['--scene', 'loop', '--max-load', limit])).toThrow('--max-load takes a positive number')
+  })
+
   it('rejects a boot copy without a scrub marker', () => {
     expect(() => requireScrubbed('/tmp/host-bench-test-missing-scrub-marker')).toThrow()
   })

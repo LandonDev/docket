@@ -3104,7 +3104,7 @@ was rewritten with the new cursor.
 `bun run perf:host --list` lists the headless host benchmarks. They use a
 scratch Docket instance and a loopback provider, with 40 stand-in threads
 for the load scenes. Run one scene through the box queue while load is
-below 16. The run's only ask to the live service is the watchdog's hello.
+below the configured limit (40 by default). The run's only ask to the live service is the watchdog's hello.
 See [the host bench](agents/work-perf.md#the-headless-host-bench) for the
 scenes, output files, and boot fixtures.
 
