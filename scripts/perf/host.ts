@@ -196,6 +196,7 @@ class Rig {
   remoteKey?: string
   started = 0
   private inspectPort = 0
+  private appPid?: number
   private readonly boxLog: string
   readonly env: NodeJS.ProcessEnv
 
@@ -261,7 +262,7 @@ class Rig {
     const args = sampleLoop ? [`--inspect=127.0.0.1:${this.inspectPort}`, '.'] : ['.']
     // Like the box service, a private X server also supports Chromium's hidden windows.
     const app = this.spawn('xvfb-run', ['-a', '-s', '-screen 0 1440x900x24 -nolisten tcp', 'dbus-run-session', '--', electron, ...args], this.boxLog)
-    app.once('exit', (code, signal) => this.abort.abort(new Error(`box exited (${signal ?? code})\n${read(this.boxLog).slice(-4000)}`)))
+    app.once('exit', (code, signal) => this.abort.abort(new Error(`box exited (${signal ?? code})${this.bootLogTail()}`)))
     const deadline = this.started + MAX_MS
     while (performance.now() < deadline) {
       this.signal.throwIfAborted()
@@ -269,6 +270,7 @@ class Rig {
       try {
         const { port, pid } = JSON.parse(status) as { port: number; pid: number }
         if (app.pid && ownsPid(pid, app.pid) && Number.isInteger(port) && port > 0 && port <= 65535) {
+          this.appPid = pid
           this.box.port = port
           const remaining = Math.max(1, deadline - performance.now())
           const hello = await openClient(`ws://127.0.0.1:${port}/`, Math.min(1000, remaining), { signal: this.signal, hello: true })
@@ -280,7 +282,11 @@ class Rig {
       }
       await sleep(25, undefined, { signal: this.signal })
     }
-    throw new Error(`No hello from the headless instance\n${read(this.boxLog).slice(-4000)}`)
+    throw new Error(`No hello from the headless instance${this.bootLogTail()}`)
+  }
+
+  private bootLogTail(): string {
+    return this.options.copy ? '' : '\n' + read(this.boxLog).slice(-4000)
   }
 
   get dbPath(): string {
@@ -375,6 +381,13 @@ class Rig {
     for (const socket of this.sockets) socket.close()
     const stopped = await Promise.allSettled(this.services.reverse().map(async (service) => service.stop(true)))
     const groups = this.children.flatMap(({ pid }) => pid ? [-pid] : [])
+    // Give Electron on the scrubbed copy its chance to quit while its
+    // display and D-Bus still work. The second boot needs a closed profile.
+    const appPid = this.appPid
+    if (this.options.copy && appPid && groups.some((group) => ownsPid(appPid, -group))) {
+      signalPid(appPid, 'SIGTERM')
+      for (let pass = 0; pass < 30 && groups.some((group) => ownsPid(appPid, -group)); pass++) await sleep(100)
+    }
     for (const group of groups) signalPid(group, 'SIGTERM')
     if (groups.length) await sleep(750)
     for (const group of groups) signalPid(group, 'SIGKILL')
