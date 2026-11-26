@@ -199,7 +199,7 @@ import { codexTiersReady, probeCodexTiers, startCodexTiers } from './drivers/cod
 import { forgetClaudeTiers, startClaudeTiers } from './drivers/claudeTiers'
 import { forgetCodexVersion, installedCodexVersion } from './drivers/codexVersion'
 import { backfillMirrors, cappedThreadDigest, stopMirrors } from './mirror'
-import { bootMark } from './boot'
+import { bootMark, bootNote } from './boot'
 import { setLimitMissLog } from './limitText'
 import { setCodexBootFailureLog } from './drivers/codex'
 import { setupCgroupSplit } from './childPriority'
@@ -2870,7 +2870,7 @@ export async function startServer(
         const ms = Date.now() - startedAt
         countWorkCall(req.method, ms)
         if (isSlowRequest(req.method, ms)) {
-          bootMark('slow-request', `${req.method} ${ms}ms`)
+          bootNote('slow-request', `${req.method} ${ms}ms`)
           recordSlowRequest(req.method, ms, lane === null ? undefined : { lane, gateMs })
         }
       }

@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import type { ComputerSessionRow } from '@shared/contract-computer'
 import type { ComputerSessions } from '../../computer/sessions'
@@ -10,7 +11,8 @@ import { qmp, screendump } from './machine/qmp'
 import { configureComputerDrive } from '../../computer/drive'
 import { vmWheel } from './drive'
 import type { VmLease } from './lease'
-import { electronJpeg, qmpScreenshot, VM_COMPUTER, VmPicture } from './picture'
+import { bitmapJpeg, electronJpeg, qmpScreenshot, VM_COMPUTER, VmPicture } from './picture'
+import { ShotWorker, vmFrames } from './shotWorker'
 import { vmScreen } from './window'
 import { readMachineDevice, watchGuestScreen } from './guestScreen'
 import { VmDisplay } from './display'
@@ -49,6 +51,22 @@ export function wireVmPicture(o: {
     log: o.log
   })
   const device = () => readMachineDevice(p.run)
+  const shots = join(o.dataDir, 'winvm', 'picture', 'shots')
+  let shotsMade = false
+  const screenshot = qmpScreenshot(shots, async (file) => void (await qmp(p.qmp, screendump(file))))
+  // The 4 fps picture off the loop: QEMU writes raw pixels, a worker shrinks them, the loop encodes a tile's worth.
+  const frames = vmFrames({
+    dir: () => {
+      if (!shotsMade) mkdirSync(shots, { recursive: true, mode: 0o700 })
+      shotsMade = true
+      return shots
+    },
+    ppm: async (file) => void (await qmp(p.qmp, screendump(file, 'ppm'))),
+    worker: new ShotWorker(),
+    jpeg: bitmapJpeg,
+    fallback: async (maxEdge) => electronJpeg(await screenshot(), maxEdge),
+    log: o.log
+  })
   const picture = new VmPicture({
     state: () => winvmKeeper()?.state() ?? null,
     onState: onWinvmState,
@@ -56,8 +74,10 @@ export function wireVmPicture(o: {
     screen,
     hardwareCursor: () => readMachineDevice(p.run) === 'virtio',
     relay: o.video.relay,
-    screenshot: qmpScreenshot(join(o.dataDir, 'winvm', 'picture', 'shots'), async (file) => void (await qmp(p.qmp, screendump(file)))),
+    screenshot,
     jpeg: electronJpeg,
+    frame: frames.frame,
+    frameStop: frames.stop,
     ...(o.holder ? { holder: o.holder } : {}),
     display,
     device,

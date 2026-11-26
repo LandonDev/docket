@@ -193,7 +193,11 @@ describe('VideoRelay', () => {
     // before any input since he took over, any of his drive streams
     relay.setDriver('pane', true)
     expect([mac.id, pc.id].map((id) => relay.sentLastInput(id))).toEqual([true, true])
+    // nothing sent yet: no input is in flight
+    expect(relay.sinceInput('pane')).toBeNull()
     mac.socket.say(key)
+    expect(relay.sinceInput('pane')).toBeGreaterThanOrEqual(0)
+    expect(relay.sinceInput('pane')).toBeLessThan(1000)
     expect([mac.id, pc.id].map((id) => relay.sentLastInput(id))).toEqual([true, false])
     // a watch stream's input goes nowhere, so it moves nothing
     watch.socket.say(key)
@@ -207,8 +211,10 @@ describe('VideoRelay', () => {
     expect(relay.sentLastInput('nope')).toBe(false)
     // he hands back and takes over again: nobody's input is the last
     relay.setDriver('pane', false)
+    expect(relay.sinceInput('pane')).toBeNull()
     relay.setDriver('pane', true)
     expect(relay.sentLastInput(mac.id)).toBe(true)
+    expect(relay.sinceInput('pane')).toBeNull()
   })
 
   it('keeps what a viewer reads beside frames on its stream', () => {

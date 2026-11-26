@@ -100,7 +100,8 @@ export async function qmp(path: string, ...cmds: QmpCommand[]): Promise<unknown[
   }
 }
 
-export const screendump = (filename: string): QmpCommand => ({ execute: 'screendump', arguments: { filename, format: 'png' } })
+/** The screen to a file: PNG, or PPM (raw pixels, nothing for QEMU to compress). */
+export const screendump = (filename: string, format: 'png' | 'ppm' = 'png'): QmpCommand => ({ execute: 'screendump', arguments: { filename, format } })
 export const sendKey = (...keys: string[]): QmpCommand => ({ execute: 'send-key', arguments: { keys: keys.map((data) => ({ type: 'qcode', data })) } })
 export const powerdown: QmpCommand = { execute: 'system_powerdown' }
 export const quit: QmpCommand = { execute: 'quit' }

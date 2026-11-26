@@ -718,7 +718,13 @@ host and in the service; none of it runs on the box until its next deploy from m
 - `index.test.ts`: the methods through the Work router, the model refusal, the capability rows, the push,
   the stored setting, the point methods.
 - `window.test.ts`, `picture.test.ts`: QEMU's window arguments and environment, the machine with no window and why,
-  the VM's row, its video source and its 4 fps picture over fakes. `pictureLive.test.ts`: the box's QEMU drawing on
+  the VM's row, its video source and its 4 fps picture over fakes. The 4 fps picture is made off the server's loop
+  (`shotWorker.ts`, `shotWorker.test.ts`): QEMU writes the screen as PPM, a worker thread reads the file and shrinks
+  it to the tile's size (`ppmToBgra`), and the loop encodes only that small bitmap as JPEG, since Electron's encoder
+  lives in the main process alone; the first failure of that path puts the picture back on the PNG path for good
+  (`vmFrames`). No shot is taken within 500 ms of his input while he drives (`INPUT_QUIET_MS`, the relay's
+  `sinceInput`): a screendump holds QEMU, and so his pointer, for its time. Proven over fakes and a real worker
+  thread; its time on a real machine is not measured (it needs a VM). `pictureLive.test.ts`: the box's QEMU drawing on
   the VM's display through a real engine and the relay, where the tools are installed.
 - `points.test.ts`: points over a real qcow2 overlay on a backing image (qemu-img, qemu-io): the disk, the
   firmware variables and the TPM put back, newest first, a delete, no path for an id.

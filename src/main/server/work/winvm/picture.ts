@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ClientRequest } from '@shared/contract'
 import type { ComputerClickPush, ComputerFramePush, ComputerPreviewStart, ComputerSessionRow } from '@shared/contract-computer'
@@ -37,6 +37,8 @@ const isVm = (s: StreamInfo): boolean => s.tag === VM_COMPUTER
 /** The 4 fps picture's ids, which never meet the box browser's (`preview_N`). */
 const PREVIEW_PREFIX = 'vm-preview_'
 const PICTURE_MS = 250
+/** No shot within this long of his last input while he drives: a screendump holds QEMU, and so his pointer, for its time. */
+export const INPUT_QUIET_MS = 500
 
 export interface VmPictureDeps {
   /** the keeper's state, or null while Work is off */
@@ -47,11 +49,18 @@ export interface VmPictureDeps {
   setViewers(n: number): void
   hardwareCursor?: () => boolean
   screen: Pick<VmScreen, 'env' | 'size' | 'missingTool' | 'adopt' | 'engines'>
-  relay: Pick<VideoRelay, 'list' | 'onChange' | 'endWhere' | 'setDriver' | 'driving'>
+  relay: Pick<VideoRelay, 'list' | 'onChange' | 'endWhere' | 'setDriver' | 'driving' | 'sinceInput'>
   /** QMP's screenshot of the guest's screen, as PNG */
   screenshot(): Promise<Buffer>
   /** a PNG as a JPEG no longer than `maxEdge` on its long side, base64 */
   jpeg(png: Buffer, maxEdge: number): Promise<{ data: string; width: number; height: number }>
+  /**
+   * One frame of the screen for the 4 fps picture, made off the loop (shotWorker.ts `vmFrames`); without it the
+   * picture is `jpeg(screenshot())`, on the loop.
+   */
+  frame?(maxEdge: number): Promise<{ data: string; width: number; height: number }>
+  /** the last watcher of the 4 fps picture left: what `frame` keeps may go */
+  frameStop?(): void
   /** the thread that holds the machine now (B5's lease); null when none does */
   holder?: () => string | null
   /** the guest's size changes and the leases that wait for one (display.ts); without it the VM takes no size */
@@ -298,7 +307,7 @@ export class VmPreviews {
   private readonly gate: PreviewGate<ComputerFramePush>
 
   constructor(
-    private readonly d: Pick<VmPictureDeps, 'screenshot' | 'jpeg' | 'log' | 'now'>,
+    private readonly d: Pick<VmPictureDeps, 'screenshot' | 'jpeg' | 'frame' | 'frameStop' | 'log' | 'now'> & { relay?: Pick<VideoRelay, 'sinceInput'> },
     private readonly awake: () => boolean
   ) {
     this.gate = new PreviewGate(
@@ -379,15 +388,19 @@ export class VmPreviews {
     this.timer = null
     this.free = true
     this.size = { width: 0, height: 0 }
+    this.d.frameStop?.()
   }
 
   /** One shot, when the last went and none is under way. */
   private async shoot(): Promise<void> {
     if (!this.free || this.shooting || !this.watchers.size || !this.awake()) return
+    // His input is in flight: the tile keeps its last frame rather than hold the machine under his pointer.
+    const since = this.size.width ? (this.d.relay?.sinceInput(VM_COMPUTER) ?? null) : null
+    if (since !== null && since < INPUT_QUIET_MS) return
     this.shooting = true
     try {
       const edge = Math.max(...[...this.watchers.values()].map((w) => w.maxEdge))
-      const { data, width, height } = await this.d.jpeg(await this.d.screenshot(), edge)
+      const { data, width, height } = this.d.frame ? await this.d.frame(edge) : await this.d.jpeg(await this.d.screenshot(), edge)
       if (!this.watchers.size) return
       this.size = { width, height }
       this.free = false
@@ -400,19 +413,25 @@ export class VmPreviews {
   }
 }
 
-/** QMP's screenshot of the machine, through a file QEMU writes beside the picture's own (`dir`). */
+/** QMP's screenshot of the machine, through a file QEMU writes beside the picture's own (`dir`); read off the loop. */
 export function qmpScreenshot(dir: string, shot: (file: string) => Promise<void>): () => Promise<Buffer> {
   let n = 0
   return async () => {
-    mkdirSync(dir, { recursive: true, mode: 0o700 })
+    await mkdir(dir, { recursive: true, mode: 0o700 })
     const file = join(dir, `shot-${++n % 4}.png`)
     try {
       await shot(file)
-      return readFileSync(file)
+      return await readFile(file)
     } finally {
-      rmSync(file, { force: true })
+      await rm(file, { force: true })
     }
   }
+}
+
+/** A small BGRA bitmap as JPEG, base64: Electron's encoder, which only the main process has. */
+export async function bitmapJpeg({ bgra, width, height }: { bgra: Uint8Array; width: number; height: number }): Promise<string> {
+  const { nativeImage } = await import('electron')
+  return nativeImage.createFromBitmap(Buffer.from(bgra.buffer, bgra.byteOffset, bgra.byteLength), { width, height }).toJPEG(70).toString('base64')
 }
 
 /** Electron's own encoder, in the server's process. */

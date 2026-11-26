@@ -25,7 +25,7 @@ function fakeLease(): EngineLease & { released: number } {
   return l
 }
 
-function setup(o: { state?: WinvmState | null; display?: boolean; missingTool?: string | null; leases?: number; holder?: string | null; device?: 'vga' | 'virtio'; sizes?: boolean; hardwareCursor?: boolean } = {}) {
+function setup(o: { state?: WinvmState | null; display?: boolean; missingTool?: string | null; leases?: number; holder?: string | null; device?: 'vga' | 'virtio'; sizes?: boolean; hardwareCursor?: boolean; frame?: VmPictureDeps['frame']; frameStop?: () => void; sinceInput?: () => number | null } = {}) {
   let state: WinvmState | null = o.state === undefined ? awake() : o.state
   const listeners = new Set<(s: WinvmState | null) => void>()
   const viewers: number[] = []
@@ -54,7 +54,9 @@ function setup(o: { state?: WinvmState | null; display?: boolean; missingTool?: 
         }
       } as never
     },
-    relay,
+    relay: o.sinceInput ? Object.assign(Object.create(relay) as VideoRelay, { sinceInput: o.sinceInput }) : relay,
+    ...(o.frame ? { frame: o.frame } : {}),
+    ...(o.frameStop ? { frameStop: o.frameStop } : {}),
     hardwareCursor: () => o.hardwareCursor ?? true,
     screenshot: async () => {
       shots++
@@ -271,6 +273,38 @@ describe("the Windows VM's 4 fps picture", () => {
     const after = t.shots()
     await tick(600)
     expect(t.shots()).toBe(after)
+  })
+
+  it('takes its frames from the off-loop maker where there is one, and lets it go with the last watcher', async () => {
+    let made = 0
+    let stopped = 0
+    const t = setup({ frame: async (edge) => (made++, { data: 'ZnJhbWU=', width: edge, height: 400 }), frameStop: () => void stopped++ })
+    const sent: Push[] = []
+    const viewer = { connection: {}, send: (f: Push) => void sent.push(f) }
+    await t.picture.previews.handle(start(), viewer, access)
+    await tick(300)
+    expect(made).toBeGreaterThanOrEqual(1)
+    expect(t.shots()).toBe(0)
+    expect(sent.find((f): f is ComputerFramePush => f.push === 'computer-frame')).toMatchObject({ data: 'ZnJhbWU=', width: 640 })
+    await t.picture.previews.handle({ id: '3', method: 'computer.preview.stop', params: { preview: 'vm-preview_1' } } as ClientRequest, viewer, access)
+    expect(stopped).toBe(1)
+  })
+
+  it('takes no shot while his input is in flight, and shoots again once it is quiet', async () => {
+    let since: number | null = 100
+    const t = setup({ sinceInput: () => since })
+    const sent: Push[] = []
+    const viewer = { connection: {}, send: (f: Push) => void sent.push(f) }
+    // The first shot gives the tile its size, whatever he is doing.
+    await t.picture.previews.handle(start(), viewer, access)
+    for (const f of sent.filter((f): f is ComputerFramePush => f.push === 'computer-frame')) await t.picture.previews.handle({ id: '2', method: 'computer.preview.ack', params: { preview: f.preview, seq: f.seq } } as ClientRequest, viewer, access)
+    const first = t.shots()
+    await tick(600)
+    expect(t.shots()).toBe(first)
+    since = 900
+    await tick(600)
+    expect(t.shots()).toBeGreaterThan(first)
+    t.picture.previews.dropConnection(viewer.connection)
   })
 
   it('ends every watcher when the VM sleeps, and refuses a start then', async () => {

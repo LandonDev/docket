@@ -77,6 +77,8 @@ export class VideoRelay {
   private readonly driven = new Set<string>()
   /** the stream each group's last input came on, and who held it */
   private readonly lastInput = new Map<string, { stream: string; holder: StreamHolder }>()
+  /** When his last input came in for a group, on this process's clock (`performance.now()`). */
+  private readonly lastInputAt = new Map<string, number>()
   private readonly listeners = new Set<() => void>()
 
   constructor(private readonly opts: { maxUnsent?: number; unclaimedMs?: number; nowMicros?: () => number } = {}) {}
@@ -126,6 +128,7 @@ export class VideoRelay {
         } else if (type === MESSAGE_TYPES.ack) s.feed.ack(bytes)
         else if (type === MESSAGE_TYPES.input && this.drives(s)) {
           this.lastInput.set(s.group!, { stream: s.id, holder: s.holder })
+          this.lastInputAt.set(s.group!, performance.now())
           s.feed.input(bytes)
         }
       })
@@ -217,6 +220,7 @@ export class VideoRelay {
     }
     const was = this.driven.delete(group)
     this.lastInput.delete(group)
+    this.lastInputAt.delete(group)
     for (const s of [...this.streams.values()]) {
       if (s.group !== group || s.scope !== 'drive') continue
       if (!s.socket) {
@@ -244,6 +248,12 @@ export class VideoRelay {
   /** He drives `group` now. */
   driving(group: string): boolean {
     return this.driven.has(group)
+  }
+
+  /** Ms since his last input for `group` while he drives it; null when he does not, or has sent none since he took over. */
+  sinceInput(group: string): number | null {
+    const at = this.driven.has(group) ? this.lastInputAt.get(group) : undefined
+    return at === undefined ? null : performance.now() - at
   }
 
   list(): StreamInfo[] {
