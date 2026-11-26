@@ -33,6 +33,22 @@
   notes, the recent projects; no host search, spinner or foot). Enter
   opens where the hit lives, ⌘↩ in a new pane; nothing in the list
   animates.
+- What it costs a key: the threads and loaded transcripts it ranks in
+  memory are read when the query changes, not on every push, so a streamed
+  frame rescans nothing and a meta push starts no host search. The hosts
+  are asked 200 ms after the last key; a newer query aborts the older one's
+  asks, and each host drops them with `request.cancel` (interactive-lane.md).
+  The fan-out settles at the latest `HOST_DEADLINE_MS` (2 s) after it
+  starts: a host still searching then holds no spinner or "No results", and
+  its rows join the list when they come (its foot still reads "…" until
+  then). This project's file names come from the kept list (lib/fileIndex.ts:
+  four checkouts by host and cwd, asked again behind the paint when older
+  than 30 s or named by the window's git-changed event, dropped when the
+  link's key changes; names for ranking only, every open still goes through
+  the host's checks); a partner host's list is kept a minute. Ranking lower-cases
+  each path once a list and splits the query once a key (fuzzy.ts
+  `loweredPaths`, `prepareQuery`); Go to File and `@` rank past 5,000 paths
+  on the deferred query (lib/rankQuery.ts).
 - `session.search` runs on an FTS5 index per host (src/main/server/
   turnIndex.ts): `events_fts` / `cold.events_fts` over turn text, rowid
   `(ordinal << 32) | seq` through `turn_index`, filled on every event

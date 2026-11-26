@@ -209,7 +209,15 @@
   memoized. The composer keeps its session by `sameComposerChrome`
   (lib/session.ts `COMPOSER_FIELDS`, a proxy test fails on a read outside
   it) and reads its meta through `useSessionMetaValue`, one primitive at a
-  time, so a busy master's activity renders no composer. A parked
+  time, so a busy master's activity renders no composer. With its `/` or `@`
+  menu open it still renders for no push: the metas are read only in `@`
+  mode, through `useMentionThreads` (lib/mentionThreads.ts), which keeps
+  its thread rows until a push moves what a row draws; the file rows rank
+  on the query alone, and the popover reads its list's height once for each
+  new set of rows (`shapeOf` in chrome/CommandPopover.tsx;
+  Composer.menuPush.dom.test.tsx counts both). The model picker's host
+  catalog is kept 60 s a host (`CATALOG_TTL_MS`, lib/tcserver/catalog.ts;
+  a new socket asks again). A parked
   transcript (its tab behind `content-visibility: hidden`) reads and writes
   nothing on a resize or a push and catches up when it shows; its
   `--transcript-viewport` is written only when it moves (a custom property

@@ -39,7 +39,11 @@
   providers.update, fim and stall.report, never run for a remote caller);
   `session.create` with `permission: 'auto'` and `session.permission` need
   approve. The gate is `capabilityRefusal`, run in `attach()` before any
-  handler and again on every relayed lane (remote/relay.ts).
+  handler and again on every relayed lane (remote/relay.ts). `request.cancel`
+  needs read and reaches no wider than the read it names: only a bulk read
+  the same socket sent (lane.ts keys it by socket and id), never another
+  socket's, a write or a subscription; it is not a relayed method, so a
+  read sent over a relayed lane is not cancelled.
 - **`admin` never implies `give` or `device`** (docs/agents/pc-setup.md).
   `give` is credential control: `accounts.push`, `.confirm`, `.released`,
   `.removed` and a pull with `takeOver`. No key row stores it: the box's

@@ -46,7 +46,16 @@
   digest of params, from any socket) to the one waiting or running, runs a
   write or fs.watch each in its turn (dropped if its socket closed first),
   and runs anything that waited 20 s, up to twice the bulk cap at once. The
-  path fence runs before the gate.
+  path fence runs before the gate. `request.cancel {id}` (capability read)
+  names a bulk read the same socket sent: its answer is never sent; once no
+  socket waits on it, it leaves the queue, or, running, its signal aborts
+  (requestSignal.ts; search.ts kills its git grep or stops its scan between
+  files). The gate keys a read by socket and id, so another socket's id, a
+  write, fs.watch or anything outside the bulk lane is refused and changes
+  nothing; a socket that joined the same read keeps its answer. The window
+  sends it when a newer query replaces an older one (`RequestOptions.signal`
+  in transport.ts: Search's `session.search` and `search.project`, Find in
+  project).
 - Pushes: a socket's own focused thread's rows go at once; other threads'
   rows wait 33 ms, or 100 ms locally and 250 ms remotely while the loop
   lags (wire.ts `eventsWindowMs`). A socket whose send queue passes the
