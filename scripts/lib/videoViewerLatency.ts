@@ -11,6 +11,12 @@ import { parseHeader } from '../../src/shared/video/nsl1'
 import { recordedMessages, restamped } from './videoLoopFeed'
 import { percentile } from './videoProof'
 
+/**
+ * The box engine's own stream at the size the box ships, 2560×1600 (scale 2): 180 frames of a calm page, a keyframe
+ * then deltas, recorded by `bun scripts/e2e-box-video.ts --record <file> --frames 180 --scale 2`. The phone's fixture
+ * (fixtures/ios-test-server/box-stream.nsl1) stays at 1280×800, the size its Swift tests are written for.
+ */
+export const VIEWER_FIXTURE = 'scripts/fixtures/video/box-stream-2560.nsl1'
 const WARMUP_MS = 2400
 const SAMPLE_MS = 4000
 const FRAME_MS = 1000 / 60
@@ -139,7 +145,7 @@ export async function viewerLatency(root: string, before?: string): Promise<void
   if (!before || typeof Bun === 'undefined') throw new Error('Run with bun scripts/e2e-video-viewer.ts --latency <before-commit>')
   const baseline = execFileSync('git', ['rev-parse', '--verify', `${before}^{commit}`], { cwd: root, encoding: 'utf8' }).trim()
   const assets = await bundle(root, baseline)
-  const frames = recordedMessages(join(root, 'scripts/fixtures/ios-test-server/box-stream.nsl1'))
+  const frames = recordedMessages(join(root, VIEWER_FIXTURE))
   const work = mkdtempSync(join(tmpdir(), 'tc-viewer-latency-'))
   const phases: object[] = []
   const server = createServer((req, res) => {

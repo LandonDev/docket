@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { parseFrame } from '../../src/shared/video/nsl1'
 import { LoopFeed, recordedMessages, restamped } from './videoLoopFeed'
+import { VIEWER_FIXTURE } from './videoViewerLatency'
 
 const FIXTURE = join(__dirname, '../fixtures/ios-test-server/box-stream.nsl1')
 
@@ -15,6 +16,13 @@ describe('the recorded stream played as a live one', () => {
     const first = parseFrame(messages[0])
     expect(first).toMatchObject({ keyframe: true, sequence: 1, width: 1280, height: 800 })
     expect(messages.slice(1).every((m) => !parseFrame(m).keyframe)).toBe(true)
+  })
+
+  it("the viewer's fixture is the box's shipped size: 180 frames at 2560×1600, a keyframe first", () => {
+    const messages = recordedMessages(join(__dirname, '../..', VIEWER_FIXTURE))
+    expect(messages).toHaveLength(180)
+    expect(parseFrame(messages[0])).toMatchObject({ keyframe: true, sequence: 1, width: 2560, height: 1600 })
+    expect(messages.slice(1).every((m) => !parseFrame(m).keyframe && parseFrame(m).width === 2560)).toBe(true)
   })
 
   it('restamps a copy and leaves the access unit as it was', () => {
