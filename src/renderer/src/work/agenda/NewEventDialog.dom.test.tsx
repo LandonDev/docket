@@ -42,13 +42,13 @@ describe("New event", () => {
   it("gives Day a row of its own where the three fields do not fit, From and To together under it (council round 9)", () => {
     render(<NewEventDialog sector="purdue" startsAt={null} onClose={() => {}} />);
     const when = document.querySelector("[data-event-when]")!;
-    // The dialog's own width decides (a container query): one row from 400px, else Day over the two times.
+    // The dialog's own width decides (a container query): one row from 420px, the room the day in words needs beside two times, else Day over the two times.
     expect(when.className).toContain("@container/when");
     const grid = when.firstElementChild!;
-    expect(grid.className.split(" ")).toEqual(expect.arrayContaining(["grid-cols-2", "@[400px]/when:grid-cols-[minmax(0,1fr)_120px_120px]"]));
+    expect(grid.className.split(" ")).toEqual(expect.arrayContaining(["grid-cols-2", "@[420px]/when:grid-cols-[minmax(0,1fr)_120px_120px]"]));
     const [day, from, to] = [...grid.children];
     expect(day.textContent).toContain("Day");
-    expect(day.className.split(" ")).toEqual(expect.arrayContaining(["col-span-2", "@[400px]/when:col-span-1"]));
+    expect(day.className.split(" ")).toEqual(expect.arrayContaining(["col-span-2", "@[420px]/when:col-span-1"]));
     expect([from.textContent, to.textContent]).toEqual(["From", "To"]);
   });
 

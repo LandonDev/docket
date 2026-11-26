@@ -188,10 +188,10 @@ function Body({
         <Field label="Event">
           <Input autoFocus value={form.title} onChange={(e) => patch({ title: e.target.value })} autoComplete="off" />
         </Field>
-        {/* Day, From and To on one row where Day keeps room for its date; narrower, Day takes a row and the times share one. */}
+        {/* Day, From and To on one row where Day keeps room for its date in words (420px); narrower, Day takes a row and the times share one. */}
         <div data-event-when className="@container/when">
-          <div className="grid grid-cols-2 gap-2 @[400px]/when:grid-cols-[minmax(0,1fr)_120px_120px]">
-            <Field label="Day" className="col-span-2 @[400px]/when:col-span-1">
+          <div className="grid grid-cols-2 gap-2 @[420px]/when:grid-cols-[minmax(0,1fr)_120px_120px]">
+            <Field label="Day" className="col-span-2 @[420px]/when:col-span-1">
               <DateField required value={form.day} onChange={(day) => patch({ day })} />
             </Field>
             <Field label="From">
