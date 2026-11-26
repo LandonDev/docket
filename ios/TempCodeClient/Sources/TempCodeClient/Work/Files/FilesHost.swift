@@ -136,9 +136,13 @@ public final class FilesHost {
     }
 
     /// A folder or lens from its first page. A folder that changed between pages answers `stale`: read it again
-    /// from the top, once.
-    public func list(_ workspaceId: String, _ folder: FolderRef, through far: String? = nil) async {
+    /// from the top, once, with the same `wake`. Only his press wakes a sleeping VM for the read (`wake`):
+    /// `press` is true for his pull or Retry, false for a read no press asked for (a change's refresh, a push, a
+    /// next page gone stale), and nil for a screen's open, which is his press unless the folder already shows
+    /// a list read live (Back to it).
+    public func list(_ workspaceId: String, _ folder: FolderRef, through far: String? = nil, press: Bool? = nil) async {
         let slot = Self.slot(workspaceId, folder)
+        let wake = press ?? !(listings[slot]?.value.map { !$0.cached } ?? false)
         folders[slot] = (workspaceId, folder)
         if let far { farHosts[slot] = far }
         if listings[slot] == nil {
@@ -146,8 +150,8 @@ public final class FilesHost {
             if let page = kept?.page(environmentId, workspaceId, folder) { listings[slot] = .loaded(Listing(entries: page.entries, next: nil, trail: [], asOf: nil, cached: true)) } else { listings[slot] = .reading }
         }
         let asked = generation
-        var read = await WorkRead.of { try await self.page(workspaceId, folder, cursor: nil) }
-        if case .loaded(let page) = read, page.stale { read = await WorkRead.of { try await self.page(workspaceId, folder, cursor: nil) } }
+        var read = await WorkRead.of { try await self.page(workspaceId, folder, cursor: nil, wake: wake) }
+        if case .loaded(let page) = read, page.stale { read = await WorkRead.of { try await self.page(workspaceId, folder, cursor: nil, wake: wake) } }
         // The host refused the key while this was out: the answer lands nowhere.
         guard asked == generation else { return }
         switch read {
@@ -174,14 +178,15 @@ public final class FilesHost {
         defer { askingMore.remove(slot) }
         let page: Page
         do {
-            page = try await self.page(workspaceId, folder, cursor: cursor)
+            page = try await self.page(workspaceId, folder, cursor: cursor, wake: false)
         } catch {
             guard var now = listings[slot]?.value, now.next == cursor else { return }
             now.moreFailed = FilesRules.sentence(ActionError.wrap(error).message)
             listings[slot] = .loaded(now)
             return
         }
-        if page.stale { return await list(workspaceId, folder, through: farHosts[slot]) }
+        // No press asked for this page: the list again from the top wakes nothing.
+        if page.stale { return await list(workspaceId, folder, through: farHosts[slot], press: false) }
         // A newer read may have replaced the list meanwhile: append only to the one this cursor came from.
         guard var now = listings[slot]?.value, now.next == cursor else { return }
         now.entries += page.listing.entries.filter { row in !now.entries.contains { $0.key == row.key } }
@@ -195,13 +200,14 @@ public final class FilesHost {
         var stale: Bool { listing.stale == true }
     }
 
-    private func page(_ workspaceId: String, _ folder: FolderRef, cursor: String?) async throws -> Page {
+    /// One page; `wake` always says, so a host never takes a read without it for his press.
+    private func page(_ workspaceId: String, _ folder: FolderRef, cursor: String?, wake: Bool) async throws -> Page {
         if let far = farHosts[Self.slot(workspaceId, folder)] {
-            var params: [String: JSONValue] = ["at": try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(folder))]
+            var params: [String: JSONValue] = ["at": try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(folder)), "wake": .bool(wake)]
             if let cursor { params["cursor"] = .string(cursor) }
             return Page(listing: try await across(workspaceId, host: far, .workFilesList, params, as: FilesListing.self))
         }
-        return Page(listing: try await wire.request(Methods.WorkFilesList.self, .init(workspaceId: workspaceId, at: folder, cursor: cursor)))
+        return Page(listing: try await wire.request(Methods.WorkFilesList.self, .init(workspaceId: workspaceId, at: folder, cursor: cursor, wake: wake)))
     }
 
     /// The host's search over every place it has (F4). Until the host answers one, the screen filters the
@@ -277,7 +283,7 @@ public final class FilesHost {
     public func rename(_ workspaceId: String, _ entry: FileEntry, to name: String, in folder: FolderRef) async throws -> FileEntry? {
         let done = try await wire.request(Methods.WorkFilesRename.self, .init(workspaceId: workspaceId, ref: try fileRef(entry), name: name, op: FilesRules.op()))
         try refused(done)
-        await list(workspaceId, folder)
+        await list(workspaceId, folder, press: false)
         return done.entries.first
     }
 
@@ -286,7 +292,7 @@ public final class FilesHost {
     public func make(_ workspaceId: String, in folder: FolderRef, kind: Methods.WorkFilesMake.Params.Kind, name: String?) async throws -> FileEntry? {
         let done = try await wire.request(Methods.WorkFilesMake.self, .init(workspaceId: workspaceId, at: folder, kind: kind, name: name, op: FilesRules.op()))
         try refused(done)
-        await list(workspaceId, folder)
+        await list(workspaceId, folder, press: false)
         return done.entries.first
     }
 
@@ -309,7 +315,7 @@ public final class FilesHost {
     public func restore(_ workspaceId: String, _ ids: [String], in folder: FolderRef) async throws {
         let done = try await wire.request(Methods.WorkFilesRestore.self, .init(workspaceId: workspaceId, ids: ids, op: FilesRules.op()))
         try refused(done)
-        await list(workspaceId, folder)
+        await list(workspaceId, folder, press: false)
     }
 
     /// Uploads a file into `folder` (`work.files.upload`, then `attachment.chunk` in order and `commit`), its
@@ -336,7 +342,7 @@ public final class FilesHost {
             try Task.checkCancellation()
             _ = try await wire.request(Methods.AttachmentCommit.self, .init(uploadId: begun))
             uploads[slot]?.removeAll { $0.id == row.id }
-            await list(workspaceId, folder)
+            await list(workspaceId, folder, press: false)
         } catch {
             let wire = self.wire
             Task { _ = try? await wire.request(Methods.AttachmentAbort.self, .init(uploadId: begun)) }
@@ -395,7 +401,7 @@ public final class FilesHost {
 
     /// Lists again each folder of these that is shown.
     private func relist(_ workspaceId: String, _ folders: [FolderRef]) async {
-        for folder in folders where listings[Self.slot(workspaceId, folder)] != nil { await list(workspaceId, folder) }
+        for folder in folders where listings[Self.slot(workspaceId, folder)] != nil { await list(workspaceId, folder, press: false) }
     }
 
     /// Go to's rows for what he typed: names this host has seen, recents first (twenty at most, from its table).
@@ -482,7 +488,7 @@ public final class FilesHost {
         guard let at = value.at else { return }
         for (slot, folder) in folders where folder.workspaceId == value.workspaceId && FilesRules.key(folder.at) == at {
             guard listings[slot] != nil else { continue }
-            Task { await self.list(folder.workspaceId, folder.at, through: self.farHosts[slot]) }
+            Task { await self.list(folder.workspaceId, folder.at, through: self.farHosts[slot], press: false) }
         }
     }
 

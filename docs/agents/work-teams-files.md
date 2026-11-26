@@ -218,10 +218,11 @@ the kept rows in places/vmKept.ts).
   woken read lands, or fails, each workspace that asked hears one
   `work.files` push naming the folder, and a woken one also
   `work.office.files`, so the places say awake. A first page with no `wake`
-  (a window a release behind, the phone's tap on a folder) wakes it as
-  before, answered at once all the same; a next page with no `wake` (a
-  `cursor`: the phone's scroll, its share sheet's walk) never does, since no
-  press is meant there (sol review S9).
+  (a window a release behind, a phone a release behind, the phone's share
+  sheet) wakes it as before, answered at once all the same; a next page with
+  no `wake` (a `cursor`: the share sheet's walk) never does, since no press
+  is meant there (sol review S9). Today's phone always says `wake`, true only
+  for his press (docs/agents/ios-client.md "The Files place").
 - **His press.** The window sends `wake: true` only for the first page of a
   folder he just pressed for (a row, the trail, Back or Forward, a tab he
   picked, a new tab, a folder in Move to…: `pressFor`, store.ts, lapsing

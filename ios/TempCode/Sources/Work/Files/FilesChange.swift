@@ -249,7 +249,7 @@ private struct MoveFolderList: View {
         .listStyle(.plain)
         .overlay {
             if listing?.value == nil, case .failed(let message)? = listing {
-                FilesFailed(title: "Can’t Open \(target.title)", message: message) { Task { await files.list(choosing.from.workspaceId, target.folder) } }
+                FilesFailed(title: "Can’t Open \(target.title)", message: message) { Task { await files.list(choosing.from.workspaceId, target.folder, press: true) } }
             } else if listing?.value == nil {
                 ProgressView()
             }

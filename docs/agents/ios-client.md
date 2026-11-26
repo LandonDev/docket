@@ -1494,7 +1494,13 @@
   one per host, built by `WorkHost` over `SocketFilesWire`): each Work
   workspace's places (`work.files.places`), each folder or lens shown by
   `FilesHost.slot(workspace, folder)` as a `WorkRead<Listing>` a page at a
-  time (`list`, `more`; a `stale` page lists again from the top, a failed
+  time (`list`, `more`; every page says `wake`, true only for his press: a
+  screen's first open of a folder, his pull and Retry (`press: true` from
+  FolderScreen and FilesChange). Back to a folder already listed live, a
+  change's refresh, a push, a next page and the list again after a next page
+  went stale all say `wake: false`, so none of them wakes a sleeping VM (sol
+  review S9); a `stale` page lists again from the top with the first ask's
+  `wake`, a failed
   refresh keeps a shown list; a next page that fails keeps the rows and the
   cursor and says why in `Listing.moreFailed`, and `askingMore` holds the
   folders whose next page is out, the foot's spinner alone), the uploads under way per folder, and every

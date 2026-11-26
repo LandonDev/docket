@@ -66,7 +66,7 @@ struct FolderScreen: View {
                     }
                 } else if grid, gridOffered, query.isEmpty {
                     FilesGrid(client: client, workspaceId: workspaceId, entries: rows, menu: menu) { entry in open(entry) }
-                        .refreshable { await files.list(workspaceId, at, through: through) }
+                        .refreshable { await files.list(workspaceId, at, through: through, press: true) }
                 } else {
                     list(shown, rows: rows)
                 }
@@ -167,7 +167,7 @@ struct FolderScreen: View {
             }
         }
         .listStyle(.plain)
-        .refreshable { await files.list(workspaceId, at, through: through) }
+        .refreshable { await files.list(workspaceId, at, through: through, press: true) }
     }
 
     /// The place a row lives in: a lens's row, its own home.
@@ -282,7 +282,7 @@ struct FolderScreen: View {
 
     private func retry() async {
         await files.loadPlaces(workspaceId)
-        await files.list(workspaceId, at, through: through)
+        await files.list(workspaceId, at, through: through, press: true)
     }
 
     private func star(_ entry: FileEntry) async {

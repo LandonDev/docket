@@ -313,6 +313,28 @@ actor StubFilesWire: FilesWire {
         #expect(host.known("w1").map(\.name) == ["C.pdf"])
     }
 
+    @Test func `only his press wakes a sleeping machine: Back, a next page and its stale retry ask quietly`() async throws {
+        let wire = StubFilesWire()
+        let host = FilesHost(wire: wire, environmentId: "env_box", caps: full)
+        // The screen opens on his tap.
+        await wire.answer("work.files.list", #"{"entries":[\#(entry("A.pdf"))],"next":"c1"}"#)
+        await host.list("w1", root)
+        // Back to it: the screen's open again, over a list read live.
+        await wire.answer("work.files.list", #"{"entries":[\#(entry("A.pdf"))],"next":"c1"}"#)
+        await host.list("w1", root)
+        // A next page gone stale lists again from the top: no press asked for either.
+        await wire.answer("work.files.list", #"{"entries":[],"stale":true}"#)
+        await wire.answer("work.files.list", #"{"entries":[\#(entry("B.pdf"))]}"#)
+        await host.more("w1", root)
+        // His pull wakes, and the read again after a stale answer carries his press.
+        await wire.answer("work.files.list", #"{"entries":[],"stale":true}"#)
+        await wire.answer("work.files.list", #"{"entries":[\#(entry("C.pdf"))]}"#)
+        await host.list("w1", root, press: true)
+        let wakes = await wire.params("work.files.list").map { $0.contains(#""wake":true"#) ? true : $0.contains(#""wake":false"#) ? false : nil }
+        #expect(wakes == [true, false, false, false, true, true])
+        #expect(host.listing("w1", root)?.value?.entries.map(\.name) == ["C.pdf"])
+    }
+
     @Test func `a refused key takes every listing and place read of the host`() async throws {
         let wire = StubFilesWire()
         let host = FilesHost(wire: wire, environmentId: "env_box", caps: full)
