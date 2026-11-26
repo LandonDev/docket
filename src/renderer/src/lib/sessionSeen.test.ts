@@ -51,6 +51,7 @@ describe("sessionSeen", () => {
     mod.markSessionSeen("s1", 100);
     mod.markSessionSeen("s1", 50);
     expect(mod.loadLastSeen()).toEqual({ s1: 100 });
+    mod.flushLastSeen();
     expect(JSON.parse(data.get(KEY) ?? "{}")).toEqual({ s1: 100 });
   });
 
@@ -191,5 +192,111 @@ describe("sessionSeen with the hosts' marks", () => {
 
     off();
     expect(mod.loadLastSeen()).toEqual({ a: 30, b: 40, c: 30, d: 50 });
+  });
+});
+
+/** The old code's reader (before the write moved off the switch's path):
+ *  what an older app on the same userData does with the key. */
+function oldRead(raw: string | null): Record<string, number> {
+  const parsed = JSON.parse(raw ?? "{}") as Record<string, unknown>;
+  const out: Record<string, number> = {};
+  for (const [id, at] of Object.entries(parsed)) if (typeof at === "number" && Number.isFinite(at)) out[id] = at;
+  return out;
+}
+
+describe("sessionSeen on a switch", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+  });
+
+  it("writes localStorage 0 times on the switch's path and once after, in the old key and form", async () => {
+    const data = mockLocalStorage({ [KEY]: JSON.stringify({ a: 10, b: 10 }), [FLOOR_KEY]: "5" });
+    const writes: string[] = [];
+    const setItem = globalThis.localStorage.setItem;
+    globalThis.localStorage.setItem = (key: string, value: string) => {
+      writes.push(key);
+      setItem(key, value);
+    };
+    const mod = await load();
+    mod.loadLastSeen();
+    // The switch: the thread leaving, then the one arriving.
+    mod.markSessionSeen("a", 20);
+    mod.markSessionSeen("b", 30);
+    expect(mod.loadLastSeen()).toEqual({ a: 20, b: 30 });
+    expect(writes).toEqual([]);
+    vi.advanceTimersByTime(mod.SAVE_MS - 1);
+    expect(writes).toEqual([]);
+    vi.advanceTimersByTime(1);
+    expect(writes).toEqual([KEY]);
+    expect(oldRead(data.get(KEY) ?? null)).toEqual({ a: 20, b: 30 });
+    vi.advanceTimersByTime(10_000);
+    expect(writes).toEqual([KEY]);
+    vi.useRealTimers();
+  });
+
+  it("keeps a mark not yet written over another window's write, and writes both", async () => {
+    const data = mockLocalStorage({ [KEY]: JSON.stringify({ a: 10 }), [FLOOR_KEY]: "5" });
+    const target = new EventTarget();
+    Object.defineProperty(globalThis, "window", { configurable: true, value: target });
+    const mod = await load();
+    const off = mod.subscribeLastSeen(() => undefined);
+    mod.markSessionSeen("a", 20);
+    // Another window wrote its own mark meanwhile.
+    data.set(KEY, JSON.stringify({ a: 10, z: 99 }));
+    target.dispatchEvent(Object.assign(new Event("storage"), { key: KEY }));
+    expect(mod.loadLastSeen()).toEqual({ a: 20, z: 99 });
+    // The page going away writes what is held at once.
+    target.dispatchEvent(new Event("pagehide"));
+    expect(oldRead(data.get(KEY) ?? null)).toEqual({ a: 20, z: 99 });
+    off();
+    Reflect.deleteProperty(globalThis, "window");
+    vi.useRealTimers();
+  });
+
+  it("a switch between two read threads tells no reader; a switch to an unread one does", async () => {
+    mockLocalStorage({ [KEY]: JSON.stringify({ a: 100, b: 200 }), [FLOOR_KEY]: "5" });
+    const mod = await load();
+    const { createReadMarks } = await import("./readMarks");
+    const metas = new Map([
+      ["a", { id: "a", updatedAt: 100, readAt: 100 }],
+      ["b", { id: "b", updatedAt: 200, readAt: 200 }],
+      ["c", { id: "c", updatedAt: 300, readAt: 250 }],
+    ]);
+    let shown: string | null = "a";
+    const focus = new Set<() => void>();
+    const marks = createReadMarks({
+      metas: () => [...metas.values()],
+      metaOf: (id) => metas.get(id) ?? null,
+      environmentOf: () => "local",
+      onMetaChange: () => () => undefined,
+      linkOf: () => undefined,
+      attended: () => shown,
+      shown: () => shown,
+      onFocusChange: (l) => (focus.add(l), () => focus.delete(l)),
+    });
+    mod.installHostMarks(marks);
+    // Every reader (the rail's workspace marks, the Dock badge, the menu) hangs off this.
+    const readers = vi.fn();
+    mod.subscribeLastSeen(readers);
+    const before = mod.loadLastSeen();
+    const switchTo = (id: string) => {
+      shown = id;
+      for (const l of focus) l();
+      // stores/subscriptions.ts `syncFocus`: the leaving thread, then the arriving one.
+      for (const meta of metas.values()) mod.markSessionSeen(meta.id, meta.updatedAt);
+    };
+    switchTo("b");
+    switchTo("a");
+    expect(readers).not.toHaveBeenCalled();
+    expect(mod.loadLastSeen()).toBe(before);
+    expect(mod.loadLastSeen()).toMatchObject({ a: 100, b: 200 });
+    // c was unread: opening it is a change the readers hear.
+    switchTo("c");
+    expect(readers).toHaveBeenCalled();
+    expect(mod.loadLastSeen()).not.toBe(before);
+    expect(mod.loadLastSeen().c).toBe(300);
+    marks.dispose();
+    vi.useRealTimers();
   });
 });

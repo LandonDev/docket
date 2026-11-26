@@ -55,7 +55,7 @@ export type ReadMarks = HostMarks & { dispose(): void; flushNow(): Promise<void>
 export function createReadMarks(deps: ReadMarksDeps): ReadMarks {
   const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = deps.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(ids?: ReadonlySet<string>) => void>();
   /** Each mark-keeping host's mark, by thread. */
   const hostRead = new Map<string, number>();
   /** What this window sent and has not heard back yet, by thread. */
@@ -64,9 +64,10 @@ export function createReadMarks(deps: ReadMarksDeps): ReadMarks {
   let snapshot: SeenMap | null = null;
   let shownId = deps.shown();
 
-  const notify = () => {
+  /** `ids`: the threads whose overlay entry may have moved. */
+  const notify = (ids: ReadonlySet<string>) => {
     snapshot = null;
-    for (const listener of listeners) listener();
+    for (const listener of listeners) listener(ids);
   };
 
   /** Folds a meta's mark in; true when the overlay moved. */
@@ -127,7 +128,7 @@ export function createReadMarks(deps: ReadMarksDeps): ReadMarks {
   };
 
   const read = (ids: Iterable<string>, at?: number) => {
-    let moved = false;
+    const moved = new Set<string>();
     const touched = new Set<string>();
     for (const id of ids) {
       const meta = id ? deps.metaOf(id) : null;
@@ -141,10 +142,10 @@ export function createReadMarks(deps: ReadMarksDeps): ReadMarks {
       if (!queue) queues.set(environmentId, (queue = { items: new Map(), first: null, timer: null, offOpen: null }));
       queue.items.set(id, mark);
       touched.add(environmentId);
-      if (id !== shownId) moved = true;
+      if (id !== shownId) moved.add(id);
     }
     for (const environmentId of touched) schedule(environmentId);
-    if (moved) notify();
+    if (moved.size > 0) notify(moved);
   };
 
   // The thread the person looks at is read, and stays read as it moves.
@@ -155,11 +156,11 @@ export function createReadMarks(deps: ReadMarksDeps): ReadMarks {
   readAttended();
 
   const offMeta = deps.onMetaChange((ids) => {
-    let moved = false;
+    const moved = new Set<string>();
     // The on-screen thread is out of the overlay: its moves repaint nothing.
-    for (const id of ids) if (take(id, deps.metaOf(id)) && id !== shownId) moved = true;
+    for (const id of ids) if (take(id, deps.metaOf(id)) && id !== shownId) moved.add(id);
     if (attendedId && ids.has(attendedId)) readAttended();
-    if (moved) notify();
+    if (moved.size > 0) notify(moved);
   });
   const offFocus = deps.onFocusChange(() => {
     const leaving = attendedId;
@@ -169,8 +170,9 @@ export function createReadMarks(deps: ReadMarksDeps): ReadMarks {
     readAttended();
     const shown = deps.shown();
     if (shown !== shownId) {
+      const swapped = new Set([shownId, shown].filter((id): id is string => !!id));
       shownId = shown;
-      notify();
+      notify(swapped);
     }
   });
 
@@ -182,6 +184,13 @@ export function createReadMarks(deps: ReadMarksDeps): ReadMarks {
       // The window's own on-screen thread is the window's to say.
       if (shownId) delete out[shownId];
       return (snapshot = out);
+    },
+    markOf(id) {
+      const at = id === shownId ? undefined : hostRead.get(id);
+      return at === undefined ? undefined : Math.max(at, pending.get(id) ?? 0);
+    },
+    updatedAtOf(id) {
+      return deps.metaOf(id)?.updatedAt;
     },
     subscribe(listener) {
       listeners.add(listener);

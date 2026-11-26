@@ -27,7 +27,17 @@
   read path (`markSessionsSeen`, `markAllSeen`) sends too. Writes are per
   host, one request 1.5 s after the last mark and never more than 5 s after
   the first, held while the host's link is down and sent when it opens; a
-  write not yet heard back covers its thread meanwhile. The phone
+  write not yet heard back covers its thread meanwhile. The window's
+  own map stays one key and one form (`docket.tc.lastSeen`, `{id: ms}`,
+  which an older app on the same userData reads), but a switch writes it
+  once, `SAVE_MS` (250 ms) after the last mark and at `pagehide`, never on
+  the switch's path; a mark held when another window writes the key stays
+  over its read. The readers (the rail's marks, the Dock badge, the menu,
+  the column) hear a mark only when it moves a thread across its
+  `updatedAt`: an entry that moved without flipping is set in the snapshot
+  in place, so a switch between two read threads recomputes nothing
+  (sessionSeen.ts `settle`; the overlay names the threads it moved, and
+  answers `markOf` and `updatedAtOf`). The phone
   (ios/TempCodeClient `Client/ReadMarks.swift` and `EnvironmentClient`'s
   `seen`): the same overlay and coalescing, written by `markSeen` while the
   app is in the foreground with an operate key. Tests:
