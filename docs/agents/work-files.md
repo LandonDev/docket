@@ -874,7 +874,9 @@ Reload) is noted, and that read reads again before its text and its save
 line go in (`FileSession.noted`), so the line never says Saved for a file
 the folder has since replaced; his edits made meanwhile stay, and the line
 says the file changed. One that comes while a save waits for its answer
-is noted too, and the file is looked at again before the line says Saved.
+is noted too, and the save looks at the file again before it ends: the
+line says Saving until that look is back, then Saved when the file holds
+his write, else that the file changed.
 Before, a read whose answer crossed in parts was
 installed as Saved after the folder's push for a newer file had already
 passed it. Before, a plain file renamed from its open

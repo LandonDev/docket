@@ -353,6 +353,50 @@ describe("a text file open", () => {
     expect(last).toMatchObject({ state: "saved", at: h.file.changed });
   });
 
+  it("a routine folder notice during a save, the file holding his write: the line ends Saved, never stuck on Saving (Sol S11)", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    const host = (h.session as unknown as { host: FileSessionHost }).host;
+    const real = host.request.bind(host);
+    host.request = async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      const got = await real<T>(method, params);
+      // Our own write is what the folder announces.
+      if (method === "work.files.write") void h.session.check();
+      return got;
+    };
+    h.session.edit("mine\n");
+    await h.fire();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    expect(h.lines.at(-1)).toMatchObject({ state: "saved", at: h.file.changed });
+  });
+
+  it("while the look after a save is out, the line's own timer never says Saved (Sol S11)", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    const host = (h.session as unknown as { host: FileSessionHost }).host;
+    const real = host.request.bind(host);
+    let release: (() => void) | null = null;
+    host.request = async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      if (method === "work.files.read" && params.length === 1 && h.calls.some((c) => c.method === "work.files.write")) {
+        await new Promise<void>((r) => (release = r));
+      }
+      const got = await real<T>(method, params);
+      if (method === "work.files.write") void h.session.check();
+      return got;
+    };
+    h.session.edit("mine\n");
+    const saved = h.fire();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    expect(release).not.toBeNull();
+    // The clock moves on with the look still out: the line asks again, and must not call it Saved yet.
+    h.tick(60_000);
+    expect(h.lines.at(-1)?.state).not.toBe("saved");
+    release!();
+    await saved;
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    expect(h.lines.at(-1)).toMatchObject({ state: "saved", at: h.file.changed });
+  });
+
   it("keeps an unlisted open copy writable after a scoped look and a failed look", async () => {
     const h = standIn("first\n", { unlisted: true });
     await h.session.load();

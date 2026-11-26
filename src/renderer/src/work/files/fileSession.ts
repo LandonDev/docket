@@ -413,10 +413,22 @@ export class FileSession {
           else this.journal();
           this.pending = Math.max(0, this.pending - sent);
         }
+        // The folder said something changed while this save was out: the look is part of the save, and the line
+        // moves only once it is back: Saved when the file holds his write, the change line when it does not.
+        if (this.noted !== noted && !this.conflicted) {
+          const now = await this.look();
+          this.saving = null;
+          this.sentAt = null;
+          if (this.disposed) return;
+          if (now === undefined || now?.version === this.version) return this.line();
+          if (now && !this.dirty) return void (await this.load());
+          this.conflicted = true;
+          this.gone = now === null;
+          if (now) this.changed = now.changed;
+          return this.line();
+        }
         this.saving = null;
         this.sentAt = null;
-        // The folder said something changed while this save was out: the file is looked at before the line says Saved.
-        if (this.noted !== noted && !this.conflicted) return void (await this.check());
         this.line();
       } catch (err) {
         const lost = await digest;
@@ -468,6 +480,15 @@ export class FileSession {
    * The folder said something changed, or the window came forward: the file is looked at again. One that changed
    * with nothing waiting here is read again; with text waiting, the line says so and nothing is replaced.
    */
+  /** The file's first byte and version as the host holds it now: null when it is gone, undefined when the look failed. */
+  private async look(): Promise<FileBytes | null | undefined> {
+    try {
+      return await this.host.request<FileBytes>("work.files.read", { ...this.ref(), itemId: this.of.itemId, offset: 0, length: 1 });
+    } catch (err) {
+      return readGone(err) ? null : undefined;
+    }
+  }
+
   async check(): Promise<void> {
     // A read of the whole file is out (the first, or a reload): the change is noted, and that read reads again.
     // A read of the whole file is out (the first, or a reload), or a save is: the change is noted, and that read
