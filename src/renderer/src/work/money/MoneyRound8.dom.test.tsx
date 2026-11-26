@@ -105,7 +105,7 @@ describe("rows with money and no date", () => {
     await settle();
     const line = document.querySelector("[data-money-undated]") as HTMLElement;
     expect(line.textContent).toContain("Row 7 has money and no date Money can read, so no month or year counts it.");
-    expect(within(line).getByRole("button", { name: "Open ledger" })).toBeTruthy();
+    expect(within(line).getByRole("button", { name: "Open ledger" }).className).toContain("min-h-6");
   });
 
   it("are not said when every row has a date", async () => {

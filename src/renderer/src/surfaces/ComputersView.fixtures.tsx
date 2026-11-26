@@ -125,7 +125,7 @@ export const barStates: { name: string; props: ComputersPageProps }[] = [
   { name: "A thread drives: its title leads and goes to the thread", props: one(threadVm, vmShot, { reading: { delayMs: 33, fps: 58, link: "good" } }) },
   { name: "He drives: Keys, the menu, Hand back with its key cap", props: one(vm, vmShot, { reading: { delayMs: 31, fps: 60, link: "good" } }) },
   { name: "Link poor: the number gives way to two words", props: one(vm, vmShot, { reading: { delayMs: 212, fps: 22, link: "poor" } }) },
-  { name: "Lost: the last picture washed back while the page tries again", props: one(idleVm, plated({ title: "Reconnecting to The box", detail: "Try 2 of 5", spin: true, still: VM_STILL })) },
+  { name: "Lost: the last picture washed back while the page tries again", props: one(idleVm, plated({ title: "Reconnecting to the box…", detail: "Try 2 of 5", spin: true, still: VM_STILL })) },
   { name: "Not set up: the plate on the bare box, one press to Settings", props: one(resting(vmAt("none")), plated({ title: "The Windows VM is not set up" })) },
   { name: "The box's page on the stage: Take over, no VM menu", props: { tiles: [browser, mac], onOpenSession: noop, pictureOf, reading: { delayMs: 28, fps: 60, link: "good" } } },
   { name: "A Mac's window on the stage: Stop alone, in its own shape", props: { tiles: [{ ...mac, entry: { ...mac.entry, row: { ...mac.entry.row, lastCallAt: 40 } } }], onOpenSession: noop, pictureOf } },

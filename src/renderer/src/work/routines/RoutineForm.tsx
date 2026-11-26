@@ -10,6 +10,7 @@ import { ChoiceToggle, type ToggleChoice } from "../../components/choice-toggle"
 import { BusyLabel, Button } from "../../components/ui/button";
 import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
+import { TimeField } from "../../components/ui/time-field";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
 import { registry } from "../../lib/connection";
@@ -217,7 +218,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
               </Field>
               {repeat ? null : (
                 <Field label="At">
-                  <Input type="time" value={form.at} onChange={(e) => patchTrigger({ at: e.target.value })} />
+                  <TimeField required value={form.at} onChange={(at) => patchTrigger({ at })} />
                 </Field>
               )}
             </div>

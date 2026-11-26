@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { DashBlock, DashboardView, DashFigure, DashFormat, DashFrom, DashProposal, DashSheet } from "@shared/contract-work-dashboards";
 import { ExternalLink, RefreshCw } from "../../chrome/icons";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "../../components/ui/popover";
 import { Skeleton } from "../../components/ui/skeleton";
-import { Spinner } from "../../components/ui/spinner";
 import { Table as DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { TooltipProvider } from "../../components/ui/tooltip";
 import { Tip, TruncateTip } from "../../components/tip";
@@ -333,7 +332,9 @@ export function Bar(props: Props) {
   if (!view) return error ? null : <Skeleton data-dash-bar-bone className="h-3 w-30" />;
   // No "As of" over nothing: with no block drawn (a first read that failed, a page with none yet) the bar says no time.
   if (!view.asOf || !view.blocks.length || view.blocks.some((b) => b.proposed)) return null;
+  const reading = refreshing || lifeos.again;
   const refresh = (): void => {
+    if (reading) return;
     store.set({ refreshing: true });
     void host
       .refresh()
@@ -350,17 +351,14 @@ export function Bar(props: Props) {
     <span data-dash-asof className="ms-auto flex shrink-0 items-center gap-1 tabular-nums">
       {view.stale || missed ? <span className="font-medium text-foreground">Out of date</span> : null}
       <span>As of {dayTime(view.asOf)}</span>
-      {/* While it reads, the spinner takes the button's own 24px place, so nothing beside it moves. A read out (his Refresh,
-          or the read again once LifeOS is back) keeps it until the figures land, whatever this bar's own status reader says
-          of the cause saved before: that reader settles before the figures do. */}
-      {refreshing || lifeos.again ? (
-        <span role="status" aria-label="Reading the figures" className="flex size-6 items-center justify-center text-muted-foreground">
-          <Spinner className="size-3" />
-        </span>
-      ) : lifeos.down || lifeos.waits ? null : (
+      {/* While it reads, the spinner stands in the button's own icon, so nothing beside it moves and the keyboard stays on
+          it; a press then does nothing. A read out (his Refresh, or the read again once LifeOS is back) keeps it until the
+          figures land, whatever this bar's own status reader says of the cause saved before: that reader settles before the
+          figures do. */}
+      {!reading && (lifeos.down || lifeos.waits) ? null : (
         <Tip label="Refresh">
-          <Button variant="ghost" size="icon-xs" aria-label="Refresh" onClick={refresh} className="text-muted-foreground">
-            <RefreshCw />
+          <Button variant="ghost" size="icon-xs" aria-label={reading ? "Reading the figures" : "Refresh"} aria-disabled={reading || undefined} aria-busy={reading || undefined} onClick={refresh} className="text-muted-foreground [--busy-space:0.75rem]">
+            {reading ? <BusyLabel busy label="" /> : <RefreshCw />}
           </Button>
         </Tip>
       )}

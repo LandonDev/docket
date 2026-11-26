@@ -78,10 +78,10 @@ export type Place = { stage: true; room: Size } | { stage: false };
 /** The host's link drops: tried again this many times before the plate says the picture stopped, with Retry. */
 export const LOST_TRIES = 5;
 
-/** The plate while the host's link is down: "Reconnecting to The box", "Try 2 of 5"; past the last try, Retry. */
+/** The plate while the host's link is down: "Reconnecting to the box…" (the host as a line says it, `nameInLine`), "Try 2 of 5"; past the last try, Retry. */
 export function lostPlate(host: string, attempts: number): PlateProps & { retry: boolean } {
   if (attempts >= LOST_TRIES) return { title: "The picture stopped", retry: true };
-  return { title: `Reconnecting to ${host}`, detail: `Try ${attempts + 1} of ${LOST_TRIES}`, spin: true, retry: false };
+  return { title: `Reconnecting to ${nameInLine(host)}…`, detail: `Try ${attempts + 1} of ${LOST_TRIES}`, spin: true, retry: false };
 }
 
 /** A clock that ticks each second while `on`: a wake's count. */
@@ -277,7 +277,7 @@ export function Tile({ tile, picture, stage = true, onStage }: TileProps) {
   // a caption the strip cuts reads whole in the tile's press's tip
   const { ref: captionRef, cut } = useTruncated(caption);
   return (
-    <article data-slot="computer-tile" data-stage={stage || undefined} aria-label={tile.title} className={cn("relative flex min-w-0 flex-col", !stage && "gap-1.5 transition-transform duration-(--dur-fast) ease-(--ease-out) active:scale-[0.98]", FADE_IN)}>
+    <article data-slot="computer-tile" data-stage={stage || undefined} aria-label={tile.title} className={cn("relative flex min-w-0 flex-col", !stage && "gap-1.5 transition-transform duration-(--dur-fast) ease-(--ease-out) active:scale-[0.98] motion-reduce:active:scale-100", FADE_IN)}>
       {picture}
       {stage ? null : (
         <div ref={captionRef} className="flex min-w-0 flex-col">

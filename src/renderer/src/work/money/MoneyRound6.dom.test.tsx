@@ -161,6 +161,8 @@ describe("a mileage log that cannot be read", () => {
     const line = document.querySelector("[data-mileage-problem]") as HTMLElement;
     expect(line.textContent).toContain("The mileage log has no Date or Miles column, so its trips are not counted.");
     expect(document.querySelector("[data-money-figures]")).toBeTruthy();
+    // Council round 5, sitting E (Sol): the repair press is 24px high, not its 20px line of text.
+    expect(within(line).getByRole("button", { name: "Open mileage log" }).className).toContain("min-h-6");
     fireEvent.click(within(line).getByRole("button", { name: "Open mileage log" }));
     await waitFor(() => expect(asked("work.money.open")).toHaveLength(1));
     cleanup();

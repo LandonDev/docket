@@ -478,7 +478,7 @@ function Ledger({ env, workspaceId, read, label, year, reload, toConfirm }: { en
           <p data-mileage-problem className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted-foreground">
             <span>{mileageWords(mileage)}</span>
             {mileage.reason !== "outside" ? (
-              <Button variant="link" className="h-auto p-0 text-[13px] font-normal text-foreground" onClick={() => withToast(() => openBook(env, workspaceId, "mileage"))}>
+              <Button variant="link" className="h-auto min-h-6 p-0 text-[13px] font-normal text-foreground" onClick={() => withToast(() => openBook(env, workspaceId, "mileage"))}>
                 Open mileage log
               </Button>
             ) : null}
@@ -500,7 +500,7 @@ function UndatedLine({ env, workspaceId, problem }: { env: string; workspaceId: 
   return (
     <p data-money-undated={book} className="flex flex-wrap items-baseline gap-x-2 text-[13px] text-muted-foreground">
       <span>{undatedWords(problem.rows, book)}</span>
-      <Button variant="link" className="h-auto p-0 text-[13px] font-normal text-foreground" onClick={() => withToast(() => openBook(env, workspaceId, book))}>
+      <Button variant="link" className="h-auto min-h-6 p-0 text-[13px] font-normal text-foreground" onClick={() => withToast(() => openBook(env, workspaceId, book))}>
         {book === "mileage" ? "Open mileage log" : "Open ledger"}
       </Button>
     </p>

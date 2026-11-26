@@ -130,6 +130,25 @@ describe("the dashboard kind", () => {
     await waitFor(() => expect(dashHost.refresh).toHaveBeenCalledTimes(1));
   });
 
+  /** Council round 5, sitting E (Sol): Refresh became a spinner in a span while it read, so the keyboard fell off it. */
+  it("keeps Refresh where it is, focused, through its read: busy, a second press asks nothing, back to Refresh when the figures land", async () => {
+    open(page());
+    await found("[data-dashboard]");
+    let done!: () => void;
+    dashHost.refresh.mockImplementation(() => new Promise((resolve) => (done = () => resolve({ ...page(), itemId: item.id }))));
+    const press = screen.getByRole("button", { name: "Refresh" });
+    press.focus();
+    fireEvent.click(press);
+    await waitFor(() => expect(press.getAttribute("aria-busy")).toBe("true"));
+    expect(document.activeElement).toBe(press);
+    expect(press.getAttribute("aria-label")).toBe("Reading the figures");
+    fireEvent.click(press);
+    expect(dashHost.refresh).toHaveBeenCalledTimes(1);
+    await act(async () => done());
+    await waitFor(() => expect(press.getAttribute("aria-label")).toBe("Refresh"));
+    expect(document.activeElement).toBe(press);
+  });
+
   it("opens a figure's source: the sheet, the range, what it counts, and the way to it", async () => {
     open(page());
     await found("[data-dashboard]");
@@ -550,10 +569,10 @@ describe("a dashboard read from LifeOS sheets while LifeOS is down", () => {
     expect(document.querySelector("[data-canvas-state]")).toBeNull();
     expect(screen.queryByText("Couldn't read the figures")).toBeNull();
     expect(screen.queryByText(NOT_SIGNED_IN)).toBeNull();
-    expect(screen.getByRole("status", { name: "Reading the figures" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reading the figures" }).getAttribute("aria-busy")).toBe("true");
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
     await act(async () => done());
-    await waitFor(() => expect(screen.queryByRole("status", { name: "Reading the figures" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Reading the figures" })).toBeNull());
     expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy();
     expect(document.querySelector("[data-canvas-state]")).toBeNull();
   });

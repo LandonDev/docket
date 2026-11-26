@@ -146,6 +146,10 @@ describe("the Computers page", () => {
     const cell = [...grid.children].find((c) => !c.querySelector("[data-stage]"))!;
     expect(cell.className).toContain("[&>article>*:first-child]:mt-auto");
     expect(cell.className).not.toContain("last-child]:mt-auto");
+    // Council round 5, sitting E (Sol): a strip tile's press scale stood still under Reduced motion.
+    const pressed = cell.querySelector<HTMLElement>('[data-slot="computer-tile"]')!;
+    expect(pressed.className).toContain("active:scale-[0.98]");
+    expect(pressed.className).toContain("motion-reduce:active:scale-100");
     view.unmount();
   });
 
@@ -540,7 +544,9 @@ describe("driving from the page", () => {
   });
 
   it("says a lost link's tries, then that the picture stopped, with Retry", () => {
-    expect(lostPlate("The box", 1)).toMatchObject({ title: "Reconnecting to The box", detail: "Try 2 of 5", spin: true, retry: false });
+    // Council round 5, sitting E (Opus): the host mid-line as every link line says it, never "to The box".
+    expect(lostPlate("The box", 1)).toMatchObject({ title: "Reconnecting to the box…", detail: "Try 2 of 5", spin: true, retry: false });
+    expect(lostPlate("Studio", 0).title).toBe("Reconnecting to Studio…");
     expect(lostPlate("The box", LOST_TRIES)).toMatchObject({ title: "The picture stopped", retry: true });
     vi.spyOn(registry, "statuses").mockReturnValue(new Map([["box", {}]]) as never);
     vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "reconnecting", attempts: 5 } as never);

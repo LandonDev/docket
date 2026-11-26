@@ -342,6 +342,18 @@ describe("the Routines view", () => {
     expect(detail.querySelector("p.whitespace-pre-wrap")).toBeNull();
   });
 
+  /** Council round 5, sitting E (Sol): At was Chromium's time input ("07:00 AM", a clock glyph) under a list saying "7:00 AM". */
+  it("asks At in the shared time field, in his clock's one form", async () => {
+    host.list = async () => ({ routines: [row({ trigger: { on: "schedule", rrule: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;BYHOUR=7;BYMINUTE=0", tz: Intl.DateTimeFormat().resolvedOptions().timeZone } } as never)] });
+    render(<View {...props} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await settle();
+    const at = screen.getByLabelText("At") as HTMLInputElement;
+    expect(at.type).not.toBe("time");
+    expect(at.value).toBe("7:00 AM");
+  });
+
   describe("a routine that runs a host job", () => {
     const job = () => row({ name: "Week review", prompt: "", job: "review.make", jobName: "Makes the week's review", model: "opus", words: "Fridays at 4:00 PM", trigger: { on: "schedule", rrule: "FREQ=WEEKLY;BYDAY=FR;BYHOUR=16;BYMINUTE=0", tz: "UTC" } });
 
