@@ -6,6 +6,7 @@ import { MatchText } from "../../chrome/MatchText";
 import { RowsContextMenu, RowsMenu, type MenuIcon, type MenuRow } from "../../chrome/menuRows";
 import { PickerDialog, PickerNote, pickerRowClass } from "../../chrome/PickerDialog";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
+import { TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
@@ -633,7 +634,10 @@ export function Results({
                       <span data-job className="flex w-20 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-auto">
                         {/* The dot at its own 8px, so the name keeps the column's room. */}
                         {job ? <SectorDot sector={job.sector} className="size-2" /> : <span aria-hidden className="size-2 shrink-0" />}
-                        <span className="min-w-0 truncate max-[480px]:sr-only">{job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}</span>
+                        {/* Cut in its 80px, the name is said whole on hover. */}
+                        <TruncateTip text={job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}>
+                          <span className="min-w-0 truncate max-[480px]:sr-only">{job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}</span>
+                        </TruncateTip>
                       </span>
                     ) : null}
                     {timed ? <span data-time className="w-14 text-right text-xs whitespace-nowrap tabular-nums text-muted-foreground">{time}</span> : null}

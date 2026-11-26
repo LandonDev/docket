@@ -148,6 +148,31 @@ describe("Work search", () => {
     expect(list().querySelector("[data-time]")).toBeNull();
   });
 
+  it("says a job name its 80px column cuts whole on hover, and gives a name that fits no tip (council R2-A7)", async () => {
+    const { tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(60);
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.textContent === "Purdue" ? 90 : 60;
+    });
+    await mount();
+    await type("budget");
+    await land(asks.length - 1, answer([group("mail", "Mail", [hit("m1", "mail"), hit("m2", "mail", { workspaceId: "w-cosmic" })])]));
+    const name = (row: string) => list().querySelector<HTMLElement>(`[data-row="${row}"] [data-job] .truncate`)!;
+    const hover = async (el: HTMLElement) =>
+      act(async () => {
+        for (const type of ["pointerenter", "pointermove", "mouseenter", "mousemove", "mouseover"]) el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: type !== "pointerenter" && type !== "mouseenter" }), { pointerType: "mouse" }));
+        await new Promise((r) => setTimeout(r, 700));
+      });
+    await hover(name("hit:m2"));
+    expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
+    await hover(name("hit:m1"));
+    expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe("Purdue");
+  });
+
   it("fills groups under their headings in the fixed order, with the job at each row's end while jobs mix, and Return opens the highlighted row", async () => {
     await mount();
     await type("budget");

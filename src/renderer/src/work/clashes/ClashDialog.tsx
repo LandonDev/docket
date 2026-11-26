@@ -528,6 +528,8 @@ export function StepForm({
   const over = !cleared && !pending && event.endsAt <= now;
   // "Nothing was sent." is said only when that is known: after a Send of his that got no answer, the clash may be gone because the act went.
   const held = cleared && !lost ? "Nothing was sent." : over ? "This event is over." : stale ? "These events changed. Go back for a new time." : null;
+  // Nothing can go from an event that is over or a pair no longer clashing: its fields stay to be read, not changed; Back stays.
+  const locked = pending || over || (cleared && !lost);
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (pending) return;
@@ -554,20 +556,20 @@ export function StepForm({
           <div data-step-when className="@container/when">
             <div className="grid grid-cols-2 gap-2 @[400px]/when:grid-cols-[minmax(0,1fr)_112px_112px]">
               <Field label="Day" className="col-span-2 @[400px]/when:col-span-1">
-                <DateField required autoFocus disabled={pending} value={form.day} onChange={(day) => patch({ day })} />
+                <DateField required autoFocus disabled={locked} value={form.day} onChange={(day) => patch({ day })} />
               </Field>
               <Field label="From" hint={hints.from}>
-                <Input type="time" disabled={pending} aria-invalid={bad === "from" || undefined} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
+                <Input type="time" disabled={locked} aria-invalid={bad === "from" || undefined} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
               </Field>
               <Field label="To" hint={hints.to}>
-                <Input type="time" disabled={pending} aria-invalid={bad === "to" || undefined} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
+                <Input type="time" disabled={locked} aria-invalid={bad === "to" || undefined} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
               </Field>
             </div>
           </div>
         ) : null}
         {step.way !== "move" ? (
           <Field label="Note">
-            <Textarea autoFocus={!timed} disabled={pending} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
+            <Textarea autoFocus={!timed} disabled={locked} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} />
           </Field>
         ) : null}
         {down}

@@ -255,6 +255,9 @@ describe("the Clash dialog", () => {
       render(<StepForm clash={overlap()} step={{ side: "a", way: "decline" }} pending={false} onBack={() => {}} onSend={() => {}} />);
       expect(document.querySelector("[data-clash-step] [aria-live=polite] span:not(.invisible)")?.textContent).toBe("This event is over.");
       expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+      // Its note stays to be read, not changed; Back still takes him out (council R2-A8).
+      expect((screen.getByLabelText("Note") as HTMLTextAreaElement).disabled).toBe(true);
+      expect((screen.getByRole("button", { name: "Back" }) as HTMLButtonElement).disabled).toBe(false);
     } finally {
       vi.useRealTimers();
     }
