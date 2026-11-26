@@ -27,7 +27,7 @@ export function seedFakeAccount(dir: string, twoAccounts = false): void {
 }
 
 export const BROWSER_PROMPT = 'Keep this practice chat open while I count cones.'
-const REPLY = 'I have the practice list.'
+export const REPLY = 'I have the practice list.'
 
 export type FakeTool = { id: string; name: string; input: object }
 type Block = { type: string; text?: string; tool_use_id?: string; content?: string | { text?: string }[] }
@@ -97,4 +97,65 @@ export function startFakeProvider(onMessage: () => void, browserTurn?: Promise<v
       return reply?.(body, id) ?? new Response(fakeMessage(body.model ?? 'claude-haiku-5-5', mailReplyTool(body, mailReply?.()), id), { headers: { 'content-type': 'text/event-stream' } })
     }
   })
+}
+
+/** The perf run's provider answers a send's prompt with its first byte exactly this late: "our side" is the rest. */
+export const FIRST_BYTE_MS = 100
+/** The words a timed send carries, and the word its answer opens with: `PERF-SEND <nonce>` → `Answer-<nonce>`. */
+export const SEND_MARK = 'PERF-SEND'
+export const answerWord = (nonce: string): string => `Answer-${nonce}`
+/** The answer after its first word: a few deltas this far apart, as a real model's first words come; with it, REPLY. */
+export const SEND_DELTAS = [' have', ' the practice', ' list.']
+export const SEND_DELTA_MS = 20
+
+/** The newest send mark in a request's messages (the history carries the earlier ones first). */
+export function sendNonce(messages: unknown): string | undefined {
+  return [...JSON.stringify(messages ?? []).matchAll(new RegExp(`${SEND_MARK} ([A-Za-z0-9]+)`, 'g'))].at(-1)?.[1]
+}
+
+/**
+ * A short answer: message_start with the first delta in one chunk at once, the rest `SEND_DELTA_MS` apart. The words
+ * are REPLY (the rows of Work wait for them), led by a word naming the send's nonce when it has one, so a row can tell
+ * this answer from the thread's earlier ones. `sendAnswer` holds it back FIRST_BYTE_MS.
+ */
+export function sendStream(model: string, nonce: string | undefined, id = 'msg_perf_send'): ReadableStream<Uint8Array> {
+  const text = new TextEncoder()
+  const sse = (event: { type: string; [key: string]: unknown }): string => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`
+  const delta = (words: string): string => sse({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: words } })
+  const timers = new Set<ReturnType<typeof setTimeout>>()
+  const later = (fn: () => void, ms: number): void => {
+    const timer = setTimeout(() => { timers.delete(timer); fn() }, ms)
+    timers.add(timer)
+  }
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(text.encode(
+        sse({ type: 'message_start', message: { id, type: 'message', role: 'assistant', model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 1 } } }) +
+        sse({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }) +
+        delta((nonce ? answerWord(nonce) + ' ' : '') + 'I')))
+      SEND_DELTAS.forEach((words, i) => later(() => {
+        controller.enqueue(text.encode(delta(words)))
+        if (i < SEND_DELTAS.length - 1) return
+        controller.enqueue(text.encode(
+          sse({ type: 'content_block_stop', index: 0 }) +
+          sse({ type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } }) +
+          sse({ type: 'message_stop' })))
+        controller.close()
+      }, SEND_DELTA_MS * (i + 1)))
+    },
+    cancel() {
+      for (const timer of timers) clearTimeout(timer)
+      timers.clear()
+    }
+  })
+}
+
+/**
+ * The send's answer, its first byte (headers and the first chunk together) exactly FIRST_BYTE_MS after the request.
+ * The wait is before the response: Bun sends no headers for a stream whose first chunk comes from a timer, and the
+ * gateway's upstream then times out on them (box's logs/gateway-limits.jsonl, 2026-11-26).
+ */
+export async function sendAnswer(model: string, messages: unknown, id?: string): Promise<Response> {
+  await new Promise((resolve) => setTimeout(resolve, FIRST_BYTE_MS))
+  return new Response(sendStream(model, sendNonce(messages), id), { headers: { 'content-type': 'text/event-stream' } })
 }

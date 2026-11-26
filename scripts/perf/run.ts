@@ -32,7 +32,7 @@ import { SECTOR } from '../journeys/lib/lifeosSeed'
 import { mainCheckout } from '../journeys/lib/record'
 import { Pair, words, type Instance } from '../journeys/lib/shape'
 import { guardLiveBox } from './lib/guard'
-import { perfProvider, startLoad } from './lib/load'
+import { perfProvider, startSplitLoad } from './lib/load'
 import { Counter, middle, type Sample, type SocketKind } from './lib/probe'
 import { perfCtx, type Row, type Seeded } from './lib/row'
 import { SEED_WORKSPACE } from './lib/seedNames'
@@ -216,7 +216,7 @@ async function main(): Promise<number> {
     let seeded: Seeded | undefined
     // The load's streams outlast the run: the provider ends each after an hour.
     const opened = await pair.open(need('desk'), `Perf ${id.slice(-6)}`, {
-      fake: true, localTools: true, sector: SECTOR, ...(f.link ? { link: f.link } : {}), provider: perfProvider(3600),
+      fake: true, twoAccounts: f.load > 0, localTools: true, sector: SECTOR, ...(f.link ? { link: f.link } : {}), provider: perfProvider(3600),
       ...(code ? { work: false, beforeStart: (inst) => { if (inst.name === 'box') seeded = seedBox(repo, inst) } } : {})
     })
     // In the code family the job is the seeded workspace; the scratch one `open` made is the one to switch to.
@@ -235,8 +235,9 @@ async function main(): Promise<number> {
       `window.__docket?.registry.has(${JSON.stringify(pair.box.host)}) && window.__docket.registry.statusOf(${JSON.stringify(pair.box.host)}).transport === 'open'`))
     if (pair.sandbox && !code) await pair.checkSeededMail(workspace)
     if (f.load > 0) {
-      const busy = code ? await pair.codeProject(`Perf load ${id.slice(-6)}`, 20) : await pair.workspace(`Perf load ${id.slice(-6)}`, 'ref')
-      await startLoad(pair, busy.id, f.load, { scope: code ? 'code' : 'work', room: 8 })
+      // Two load workspaces, one a dummy account: one account's 32 upstream sockets cannot stream 40 (lib/load.ts).
+      const busy = async (n: number) => code ? pair.codeProject(`Perf load ${n} ${id.slice(-6)}`, 20) : pair.workspace(`Perf load ${n} ${id.slice(-6)}`, n === 1 ? 'ref' : 'ref-two')
+      await startSplitLoad(pair, [(await busy(1)).id, (await busy(2)).id], f.load, { scope: code ? 'code' : 'work', room: 8 })
     }
     const ctx = perfCtx({ pair, page: pair.page, counter, workspace, other, repo, folder, family: f.family, ...(seeded ? { seeded } : {}) })
     let spent = 0

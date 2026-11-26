@@ -102,6 +102,8 @@ function launch(repo: string, inst: Instance, seed: string, bin: string, options
     ...(inst.name === 'box' && options.publicOrigin ? { TEMP_CODE_WORK_PUBLIC_ORIGIN: options.publicOrigin } : {}),
     TEMP_CODE_APP_TOKEN_SEED: seed,
     TEMP_CODE_WORK_TOKEN_SEED: seed,
+    // The Mac bridge's thread tokens too, so a perf row can make one (isolated instances alone take it: macTools.ts).
+    TEMP_CODE_MAC_TOKEN_SEED: seed,
     AGENT_CLI_CREDENTIAL_STORE: 'file',
     PYTHONDONTWRITEBYTECODE: '1',
     NODE_ENV: 'production',
@@ -218,6 +220,8 @@ export class Pair {
   private tmpRoot?: string
   private chromiumTmp?: string
   private launchOptions: LaunchOptions = {}
+  /** The tools folder box was started with, for its restart. */
+  private boxTools?: string
   private bin = ''
   private givenWindow?: Window
   givenInstance?: Instance
@@ -285,7 +289,7 @@ export class Pair {
    * a plain one on a scratch git repo (`codeProject`). `beforeStart` runs for each instance once its folders exist
    * and before its process starts (a seeded database for box).
    */
-  async open(withDesk: boolean, name: string, options: { fake?: boolean; fakeDesk?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; withoutTools?: boolean; chromium?: string; zone?: string; browser?: boolean; link?: LinkShape; provider?: typeof startFakeProvider; work?: boolean; beforeStart?: (inst: Instance) => void | Promise<void> } = {}): Promise<Workspace> {
+  async open(withDesk: boolean, name: string, options: { fake?: boolean; fakeDesk?: boolean; twoAccounts?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; withoutTools?: boolean; chromium?: string; zone?: string; browser?: boolean; link?: LinkShape; provider?: typeof startFakeProvider; work?: boolean; beforeStart?: (inst: Instance) => void | Promise<void> } = {}): Promise<Workspace> {
     // Electron's singleton uses a Unix socket under TMPDIR. Keep its path short even when evidence is nested.
     const tmpRoot = this.tmpRoot = mkdtempSync('/tmp/tcj-')
     this.win = await instance(this.root, tmpRoot, 'win')
@@ -296,6 +300,7 @@ export class Pair {
     if (this.desk) this.l2 = dummyLibrary(this.desk.home, 'Journey Teams L2')
     const tools = !options.withoutTools && (!this.sandbox || options.localTools) && existsSync(join(TOOLS, 'state.json')) ? realpathSync(TOOLS) : undefined
     if (tools) linkTools(this.box.data)
+    this.boxTools = tools
     this.bin = gioStub(this.root)
     if (options.link) {
       this.winRelay = this.windowLink = await shapedRelay(this.box.remote, options.link)
@@ -326,7 +331,8 @@ export class Pair {
     }
     this.abort.signal.throwIfAborted()
     if (options.fake) {
-      seedFakeAccount(join(this.box.data, 'aliax'))
+      // Two dummy accounts on box when asked: each has its own upstream pool (the perf load splits its streams over them).
+      seedFakeAccount(join(this.box.data, 'aliax'), options.twoAccounts)
       if (options.capture) seedFakeAccount(join(this.win.data, 'aliax'))
       if (options.fakeDesk && this.desk) seedFakeAccount(join(this.desk.data, 'aliax'))
       const browserTurn = options.browser ? new Promise<void>(resolve => { this.finishFakeBrowserTurn = resolve }) : undefined
@@ -526,8 +532,19 @@ export class Pair {
     if (!inst.halted) return
     inst.halted = false
     if (inst === this.win) this.window?.close()
-    this.start(inst, this.bin, this.launchOptions)
-    if (inst === this.win) {
+    // Headless box says its local port in server.json: the one its last run left is not this run's.
+    if (inst === this.box) rmSync(join(inst.data, 'server.json'), { force: true })
+    this.start(inst, this.bin, this.launchOptions, inst === this.box ? this.boxTools : undefined)
+    if (inst === this.box) {
+      const file = join(inst.data, 'server.json')
+      await until('box’s own listener after relaunch', 90_000, () => {
+        try {
+          return existsSync(file) && (inst.port = (JSON.parse(readFileSync(file, 'utf8')) as { port: number }).port)
+        } catch {
+          return false // written as it is read
+        }
+      }, this.abort.signal)
+    } else if (inst === this.win) {
       this.window = await Window.attach(inst.debug!, this.abort.signal)
       await this.page.until('win’s own listener after relaunch', 30_000, async () =>
         (inst.port = (await this.page.eval<number>('window.api?.getServerPort?.()')) ?? 0))

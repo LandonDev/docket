@@ -43,7 +43,7 @@ Three things make the pair his shape:
   10 Mbit/s. It also counts the wire's own bytes and round trips for each press. It presents the box's own address
   as each connection's Host, as his tunnel's front door does: the box refuses a page's socket whose Host is not its
   own (remote/listener.ts), and without it the window never links.
-- **The load** (`--load 24`): stand-in Work threads inside `box`, each a real thread streaming five deltas a
+- **The load** (`--load 40`, the default): stand-in Work threads inside `box`, each a real thread streaming five deltas a
   second from the run's loopback provider (`scripts/perf/lib/load.ts`). It is load inside the isolated
   instance; the run records this machine's own load and the agents' slice beside every number.
 - **The cores** (`--cores`, the last eight by default, never more): the run pins itself with `taskset`, and
@@ -141,6 +141,55 @@ The rows (scripts/perf/rows/code.ts) press what he presses:
   the event its refreshes listen for, and counts the asks of the 2 s after.
 - `thread-open-lost` presses again only while its presses so far took under 30 s: today one press takes about 31 s,
   and a run measures 60 s at most.
+
+### Send and the links (`--family code`)
+
+The perf run's provider (`perfProvider`, scripts/perf/lib/load.ts) answers every prompt but a stand-in's turn with
+`sendAnswer` (scripts/journeys/lib/fakeProvider.ts): nothing for exactly `FIRST_BYTE_MS` (100 ms), then the
+headers and the first chunk together, then three more deltas 20 ms apart. The wait comes before the response: Bun
+sends no headers for a stream whose first chunk comes from a timer, and box's gateway gave up on them after 60 s.
+The words are the journeys' own reply, led by `Answer-<nonce>` when the prompt carries `PERF-SEND <nonce>`, so a
+row can tell this answer from the thread's earlier ones. Our side of send to first token is a row's usable time
+less those 100 ms (`ours`). Only a stand-in's own turn (the load's prompt, with tools: `isLoadTurn`) streams for
+the run; the title the harness asks beside it answers short. `PERF_PROVIDER_LOG=<file>` writes a line for each
+request the provider gets.
+
+**Forty stand-ins on two dummy accounts.** Box's gateway keeps 32 sockets to one origin for one account
+(src/main/server/upstream.ts `maxSockets`) and the pair's provider speaks HTTP/1.1, so each streaming stand-in
+holds one for its hour, where his provider's HTTP/2 carries them all on one. So the pair seeds box with two dummy
+accounts (`open`'s `twoAccounts`, `seedFakeAccount(dir, true)`) and `startSplitLoad` streams half the load in each of
+two load workspaces, each pinned to one account (`workspace.setAccounts`), as scripts/perf/host.ts does: 20
+sockets an account, room left for a row's send.
+
+- `scripts/perf/rows/send.ts` (G01 to G06): `send-first-token` types a line in a seeded thread and presses Enter
+  (three presses: the first harness cold, then live); `send-first-token-new` presses New Thread (Ctrl+N) first.
+  A sample keeps his own row on screen (`first`), the answer's first word (`usable`), `ours`, the window's asks
+  before the host had the turn (`beforeTurn`, up to the `session.send`), and the host's span for that send read
+  from the isolated box's `logs/stalls.log` (`send`: queue, handle-wait, mcp, gateway-dispatch, first-byte,
+  first-row and the phases; `handle`: live, warm or cold), and when `session.send` left the window (`sendLeft`).
+  `send-at-cap` cannot park his own send (a focused thread's send is admitted over the cap, scheduler.ts) nor free
+  a slot by an interrupt (the thread keeps its handle): it pins the cap to the running count, makes a background
+  thread and sends its first message on box, then raises the cap by one and times that to the parked turn started
+  (box's queued count back to 0), with first content from the host's span.
+- `scripts/perf/rows/link.ts` (L01 to L06): `link-open` (a reload: navigation start to the ticket asked and back,
+  the socket asked and open, the hello and the link open, from CDP's frames), `reconnect-code` (a 3 s cut while
+  box adds a turn: from the socket's open to the thread current), `catchup-40` (six threads open, a 5 s cut while
+  the load streams, then back with Retry pressed (`registry.retry`, so catch-up is timed without the redial's
+backoff): the 20 s after, the wire's bytes, the transcript asks by mounted, tab, rail and stand-in),
+  `stream-under-bulk` (two `fs.read`s of a 1.94 MiB file asked at once beside a streaming thread: the gaps
+  between its frames before, and from the frame before the read to the frame after it), `restart-box` (box halted and started again: its hello to the thread
+  current; `Pair.restart` takes box, reading its new server.json) and `dead-link` (the hop a black hole: until
+  the registry leaves `open`, up to 100 s). The two that stop things run last.
+- `scripts/perf/rows/links.ts` (L07 to L09, `needs: { desk: true }`): with Work off the call through box to desk
+  is the Mac bridge's `mac.listDir`, from a box thread with the bridge on desk and a folder desk shares with box;
+  its token comes from the pair's seed (`TEMP_CODE_MAC_TOKEN_SEED`, isolated instances alone). The box refuses
+  it from a window (`mac.listDir is local-only`), so the driver asks box over loopback: one shaped leg, box to desk.
+  `peer-call` (ten listings of a one-file folder a press), `far-folder` (one of 300), `peer-relink` (desk's hop
+  cut 3 s: to registered again, then the first call). A sample says `legs: 1` when the box would not take the
+  call from the window and the driver asked it over loopback.
+
+`scripts/perf/lib/frames.ts` (`WireLog`) keeps every WebSocket event of the window with CDP's own times on the
+epoch clock, for the rows that need more than the probe's counts. L10 and L11 are `off` in budgets.ts, with why.
 
 ## The pass's numbers
 
