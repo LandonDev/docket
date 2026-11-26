@@ -373,7 +373,7 @@ export function ItemNotes({ item, host, refused, unread, unreadError, onRetry, s
           {first !== undefined && onShowChanges ? (
             <>
               {" "}
-              <Button variant="link" size="xs" className="h-auto px-0 align-baseline text-[13px]" aria-expanded={showChanges} onClick={() => onShowChanges(!showChanges)}>
+              <Button variant="link" size="xs" className="relative h-auto px-0 align-baseline text-[13px] after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-['']" aria-expanded={showChanges} onClick={() => onShowChanges(!showChanges)}>
                 {showChanges ? "Hide changes" : "Show changes"}
               </Button>
             </>
@@ -397,12 +397,15 @@ export function ItemNotes({ item, host, refused, unread, unreadError, onRetry, s
     notes.push(
       <Note key="unread" alert={said.red} glyph={said.red ? <StatusMark state="failed" word={false} /> : <Plug className="size-3.5" />}>
         <span data-mail-unread={said.cause ?? "failed"}>
-          {said.words}
-          {said.action ? (
-            <Button variant="ghost" size="xs" className="-my-0.5 ms-1" disabled={said.busy} onClick={said.action.run}>
-              <BusyLabel busy={said.busy} label={said.action.label} />
-            </Button>
-          ) : null}
+          {/* The words and their press on one centred row, as the calendar act's DownLine: an inline button hangs under the line. */}
+          <span className="flex items-center gap-2">
+            <span className="min-w-0">{said.words}</span>
+            {said.action ? (
+              <Button variant="ghost" size="xs" className="-my-0.5 shrink-0" disabled={said.busy} onClick={said.action.run}>
+                <BusyLabel busy={said.busy} label={said.action.label} />
+              </Button>
+            ) : null}
+          </span>
           {said.elsewhere ? <span className="block">{said.elsewhere}</span> : null}
         </span>
         {said.dialog}

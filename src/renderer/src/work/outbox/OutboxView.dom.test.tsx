@@ -1237,6 +1237,8 @@ describe("the Outbox, rebuilt around how he decides", () => {
     expect(screen.getAllByText("Changed").length).toBeGreaterThan(0);
     const show = await within(detail()).findByRole("button", { name: "Show changes" });
     expect(detail().textContent).toMatch(/The thread rewrote this at /);
+    // A 20px link line, its press 24px tall (council R2-A5).
+    expect(show.className).toContain("after:-inset-y-0.5");
     fireEvent.click(show);
     const changes = detail().querySelector("[data-outbox-changes]")!;
     expect(changes.querySelector("ins")!.textContent).toContain("Budget.");

@@ -83,6 +83,10 @@ describe("a held mail's Retry", () => {
     setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] } as never);
     render(<HeldDetail item={MAIL} workspace="Purdue Esports" host="The box" onPressed={() => {}} onReview={() => {}} />);
     await waitFor(() => expect(note()?.textContent).toContain("The box did not answer"));
+    // Its press shares the words' row, centred on it, never hung under the line inside the words (council R2-A4).
+    const row = note()!.querySelector("button")!.parentElement!;
+    expect(row.className).toContain("items-center");
+    expect(row.textContent).toContain("The box did not answer");
     asked = [];
     await act(async () => void fireEvent.click(note()!.querySelector("button")!));
     expect(asked).toEqual(["work.lifeos.status", "work.outbox.get"]);
