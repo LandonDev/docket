@@ -65,7 +65,7 @@ import { resolvePin, type ResolvedPin, type RouteOptions } from './accountRoutin
 import type { AwayNotice, LimitWindow, PreambleStamp, UserTextBy } from '@shared/events'
 import type { UsageWindow } from 'aliax-core'
 import { foldEvent, foldLog, newFoldState, reviveTodo, serializeTodo, toFoldRow } from './folds'
-import { FOLD_VERSION, type FoldRow, type ResumeAfterBootRow } from './db'
+import { FOLD_VERSION, UNARCHIVE_CHUNK, type FoldRow, type ResumeAfterBootRow } from './db'
 
 /** How a harness words a 401 the gateway could not route around (codex: "workspace routing discovery unauthorized (401)"). */
 const UNAUTHORIZED_WORDING = /unauthorized|\(401\)/i
@@ -3254,6 +3254,8 @@ export class SessionRegistry {
       if (next) {
         meta = next
         this.notifyMeta(next)
+        // A long thread's cold rows and index rows are cleared behind the flip (cold.ts).
+        this.coldMover?.kick()
       }
     }
     // Typed goal control: codex parses no slash commands, so `/goal …` on
@@ -4280,11 +4282,32 @@ export class SessionRegistry {
       await this.stopTree(sessionId)
       await this.dropHandle(sessionId, { orphan: true })
     }
+    if (!archived) await this.warmForUnarchive(sessionId)
     const next = this.store.updateSession(sessionId, { archived })
     if (next) this.notifyMeta(next)
     // Its rows leave the hot file in the background; an unarchive moved
-    // them back inside updateSession, before anything reads the thread.
-    if (archived) this.coldMover?.kick()
+    // them back inside updateSession, before anything reads the thread,
+    // and a long thread left its cold rows for the mover to clear.
+    this.coldMover?.kick()
+  }
+
+  /**
+   * Ahead of an unarchive: a long thread's rows are copied back to the hot
+   * file in chunks, the loop left free between them, so the flip inside
+   * updateSession writes no payload. The thread stays archived and cold, and
+   * whole in the cold file, until that flip. A thread that is short, hot
+   * already or gone needs none of it.
+   */
+  private async warmForUnarchive(sessionId: string): Promise<void> {
+    if (!this.store.getSession(sessionId)?.archived || this.store.coldRowCount(sessionId) <= UNARCHIVE_CHUNK) return
+    for (let after = 0; ;) {
+      const { lastSeq, done } = this.store.warmToHot(sessionId, after, UNARCHIVE_CHUNK)
+      if (done) return
+      after = lastSeq
+      await yieldUntilIdle()
+      // Unarchived or deleted meanwhile by another path: its rows are where that path put them.
+      if (!this.store.getSession(sessionId)?.archived) return
+    }
   }
 
   /** Moves archived threads' rows to the cold file; set by the server. */

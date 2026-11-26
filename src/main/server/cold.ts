@@ -11,6 +11,10 @@ import { yieldUntilIdle } from './stalls'
  *   quiet loop awaited between them (yieldUntilIdle), so neither boot nor
  *   the loop waits on a 2M-row move. Resumable: a session half-moved when the app quit is in the
  *   backlog again next boot, and the copy is idempotent.
+ *   It also finishes what an unarchive of a long thread left for later
+ *   (`store.tidyBacklog()`): the thread's cold rows and their index rows,
+ *   cleared in the same bounded transactions, so reviving a 30,000-row
+ *   thread holds the loop for one small flip instead of 0.4 s.
  * - sweepArchive archives whole idle thread trees (root and descendants)
  *   after `idleDays` without a touch, sparing anything a person or a
  *   harness still holds, and drops their checkpoint dirs.
@@ -65,6 +69,15 @@ export class ColdMover {
         if (!this.store.getSession(id)?.archived) break
         const { moved, done } = this.store.moveToCold(id, batch)
         this.opts.onProgress?.({ sessionId: id, moved, done })
+        if (done) break
+        await yieldNow()
+      }
+      await yieldNow()
+    }
+    for (const id of this.store.tidyBacklog()) {
+      for (;;) {
+        const { cleared, done } = this.store.tidyCold(id, batch)
+        this.opts.onProgress?.({ sessionId: id, moved: cleared, done })
         if (done) break
         await yieldNow()
       }

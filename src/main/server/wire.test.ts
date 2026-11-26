@@ -301,6 +301,27 @@ describe('eventsPage over a real store', () => {
     expect(page.rows.map((r) => r.seq)).toEqual([191, 192, 193, 194, 195, 196, 197, 198, 199, 200])
   })
 
+  it('a resume from a cursor past the log starts over from the tail: the host lost rows the reader saw', () => {
+    seed(5, 10)
+    const page = eventsPage(store, { sessionId: 's', afterSeq: 14 })
+    expect(page.reset).toBe(true)
+    expect(page.rows.map((r) => r.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  })
+
+  it('a resume names the row it holds: the same row replays the gap, another row at that seq starts over', () => {
+    seed(5, 10)
+    const held = store.events('s', { afterSeq: 7, limit: 1 })[0]!
+    expect(held.seq).toBe(8)
+    const same = eventsPage(store, { sessionId: 's', afterSeq: 8, afterTs: held.ts })
+    expect(same.reset).toBe(false)
+    expect(same.rows.map((r) => r.seq)).toEqual([9, 10])
+    const other = eventsPage(store, { sessionId: 's', afterSeq: 8, afterTs: held.ts + 5000 })
+    expect(other.reset).toBe(true)
+    expect(other.rows.map((r) => r.seq)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    // A reader of an older build names no time: its cursor is taken at its word while the log reaches it.
+    expect(eventsPage(store, { sessionId: 's', afterSeq: 8 }).reset).toBe(false)
+  })
+
   it('resume past RESUME_ROWS falls back to a fresh tail with reset', () => {
     seed(400, 10)
     const page = eventsPage(store, { sessionId: 's', afterSeq: 10 })

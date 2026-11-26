@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { flushesLine, flushStallLog, setStallLog } from './stalls'
 import { openDb, Store } from './db'
-import { frameJson } from './wire'
+import { eventsPage, frameJson } from './wire'
 import type { AgentEvent, SessionMeta } from '@shared/events'
 
 /**
@@ -131,6 +131,67 @@ describe('batched event log', () => {
     store.insertSession(meta('a'))
     expect(store.appendEvent('a', { type: 'user-text', text: 'fresh' }).seq).toBe(1)
     expect(store.eventsAfter('a', 0).map((r) => [r.seq, (r.event as { text: string }).text])).toEqual([[1, 'fresh']])
+  })
+
+  it('a row is written at the tick after its append, never later: the gap a crash can lose is one tick', async () => {
+    store.insertSession(meta('a'))
+    const ran = (): number => counts.run['INSERT INTO events'] ?? 0
+    const before = ran()
+    store.appendEvent('a', { type: 'user-text', text: 'go' })
+    store.appendEvent('a', delta('x'))
+    expect(ran() - before).toBe(0)
+    // One turn of the loop: nothing waits behind a timer, a batch limit or another append.
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(ran() - before).toBe(2)
+    expect(counts.exec.filter((sql) => sql === 'COMMIT')).toHaveLength(1)
+  })
+
+  it('a crash between a push and its commit: the reader that saw the lost rows starts over, and no seq keeps two rows', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(1_000_000)
+      store.insertSession(meta('a'))
+      for (const text of ['one', 'two', 'three']) store.appendEvent('a', { type: 'user-text', text })
+      store.flushEvents()
+      // Pushed to a window, never written: the process dies before the tick's flush.
+      const seen = [store.appendEvent('a', delta('lost four')), store.appendEvent('a', delta('lost five'))]
+      expect(seen.map((row) => row.seq)).toEqual([4, 5])
+      // The next run of the host, some seconds on: it knows only what the disk holds, and gives 4 again.
+      vi.setSystemTime(1_009_000)
+      const next = new Store(db)
+      const again = next.appendEvent('a', { type: 'user-text', text: 'after the restart' })
+      expect(again.seq).toBe(4)
+      next.flushEvents()
+      // The window resumes from the last row it saw (seq 5, of the lost run): past the log, so it starts over.
+      const past = eventsPage(next, { sessionId: 'a', afterSeq: 5, afterTs: seen[1]!.ts })
+      expect(past.reset).toBe(true)
+      expect(past.rows.map((row) => [row.seq, (row.event as { text: string }).text])).toEqual([[1, 'one'], [2, 'two'], [3, 'three'], [4, 'after the restart']])
+      // A window that saw only the lost row 4 holds a seq the log now gives to another row: its time says so.
+      const taken = eventsPage(next, { sessionId: 'a', afterSeq: 4, afterTs: seen[0]!.ts })
+      expect(taken.reset).toBe(true)
+      expect(taken.rows.at(-1)).toMatchObject({ seq: 4, event: { text: 'after the restart' } })
+      // A window that saw nothing lost resumes in place: each row once.
+      const kept = eventsPage(next, { sessionId: 'a', afterSeq: 3, afterTs: 1_000_000 })
+      expect(kept.reset).toBe(false)
+      expect(kept.rows.map((row) => row.seq)).toEqual([4])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a flush serializes nothing inside its transaction: each row was made text at its append', async () => {
+    store.insertSession(meta('a'))
+    const stringify = vi.spyOn(JSON, 'stringify')
+    try {
+      store.appendEvent('a', { type: 'user-text', text: 'go' })
+      store.appendEvent('a', delta('x'))
+      const atAppend = stringify.mock.calls.length
+      expect(atAppend).toBeGreaterThanOrEqual(2)
+      store.flushEvents()
+      expect(stringify.mock.calls.length).toBe(atAppend)
+    } finally {
+      stringify.mockRestore()
+    }
   })
 
   it('a delta stream followed by the full block replays exactly as before', async () => {

@@ -425,6 +425,10 @@ function repairModelIds(db: DatabaseSync): void {
  * recomputes them. A persisted fold is otherwise sticky.
  */
 export const FOLD_VERSION = 2
+/** A thread with more cold rows than this comes back in chunks: one transaction of them all held the loop 0.37 s for 30,000 rows. */
+export const UNARCHIVE_CHUNK = 5_000
+/** `settings` keys naming the sessions whose cold rows and index rows `tidyCold` still has to clear. */
+export const COLD_TIDY_PREFIX = 'cold.tidy:'
 
 /** The derived outputs of a session's log — what the sidebar shows — so
  *  list() never reads events. `foldedSeq` is the highest event folded in;
@@ -933,7 +937,7 @@ export class Store {
     // A revived thread reads from the hot file again, so its rows come back
     // first: every path that unarchives (the archive toggle, a message into
     // an archived thread) goes through here.
-    if (cur.archived && !next.archived) this.moveToHot(id)
+    if (cur.archived && !next.archived) this.moveToHot(id, { tidyLater: this.coldRowCount(id) > UNARCHIVE_CHUNK })
     this.rowChanged({ id, row: next })
     return next
   }
@@ -1088,6 +1092,12 @@ export class Store {
    *  the session is `moving`, so readers settle it before reading. */
   moveToCold(sessionId: string, limit = 0): { moved: number; done: boolean } {
     this.flushEvents()
+    // Archived again before its tidy ended: what the tidy would have cleared is this move's to write over, and the
+    // turn index starts the session afresh (its rows sat in both files' indexes).
+    if (this.getSetting(COLD_TIDY_PREFIX + sessionId) !== null) {
+      this.stmt(`DELETE FROM settings WHERE key = ?`).run(COLD_TIDY_PREFIX + sessionId)
+      this.turnIndex.forget([sessionId])
+    }
     let upTo = Number.MAX_SAFE_INTEGER
     if (limit > 0) {
       const edge = this
@@ -1120,26 +1130,110 @@ export class Store {
     }
   }
 
-  /** Bring every cold row of a session back to the hot file, in one
-   *  transaction. Idempotent; a session split across the files (a move
-   *  that quit half-way) comes back whole. */
-  moveToHot(sessionId: string): number {
+  /** How many of a session's rows sit in the cold file. */
+  coldRowCount(sessionId: string): number {
+    this.flushEvents()
+    return (this.stmt(`SELECT COUNT(*) AS n FROM cold.events WHERE session_id = ?`).get(sessionId) as { n: number }).n
+  }
+
+  /**
+   * Ahead of an unarchive of a long thread: copy up to `limit` of its cold
+   * rows past `afterSeq` into the hot file, in one transaction, and change
+   * nothing else. The thread stays archived and cold, so every reader and
+   * every append still goes to the cold file, which stays whole; the copies
+   * are what `moveToHot` then finds in place, so its one transaction writes
+   * no payload again. A row is never changed once written, so a copy is the
+   * row. Returns the highest seq this chunk reached, and `done` once no cold
+   * row is past it.
+   */
+  warmToHot(sessionId: string, afterSeq: number, limit: number): { copied: number; lastSeq: number; done: boolean } {
+    this.flushEvents()
+    const edge = this
+      .stmt(`SELECT seq FROM cold.events WHERE session_id = ? AND seq > ? ORDER BY seq LIMIT 1 OFFSET ?`)
+      .get(sessionId, afterSeq, limit - 1) as { seq: number } | undefined
+    const upTo = edge?.seq ?? Number.MAX_SAFE_INTEGER
+    const copied = this
+      .stmt(
+        `INSERT OR IGNORE INTO events (session_id, seq, ts, payload)
+         SELECT session_id, seq, ts, payload FROM cold.events WHERE session_id = ? AND seq > ? AND seq <= ?`
+      )
+      .run(sessionId, afterSeq, upTo).changes
+    return { copied: Number(copied), lastSeq: edge?.seq ?? afterSeq, done: !edge }
+  }
+
+  /**
+   * Bring a session back to the hot file, in one transaction. Idempotent; a
+   * session split across the files (a move that quit half-way) comes back
+   * whole, and a row `warmToHot` already copied is found in place, not
+   * written again.
+   *
+   * `tidyLater` (a long thread): the transaction only makes the hot file
+   * whole and flips the session; its cold rows and the turn index's rows
+   * for them are left where they are, under a marker in `settings`, and
+   * `tidyCold` clears them in chunks behind it (cold.ts). The thread is hot
+   * and whole from the flip on; until the tidy ends a search of live
+   * threads may miss its older turns, and nothing else reads what is left.
+   */
+  moveToHot(sessionId: string, opts: { tidyLater?: boolean } = {}): number {
     this.flushEvents()
     this.db.exec('BEGIN')
     try {
       const moved = this
         .stmt(
-          `INSERT OR REPLACE INTO events (session_id, seq, ts, payload)
+          `INSERT OR IGNORE INTO events (session_id, seq, ts, payload)
            SELECT session_id, seq, ts, payload FROM cold.events WHERE session_id = ?`
         )
         .run(sessionId).changes
-      this.stmt(`DELETE FROM cold.events WHERE session_id = ?`).run(sessionId)
       this.stmt(`UPDATE sessions SET cold = 0 WHERE id = ?`).run(sessionId)
-      this.turnIndex.moveRows(sessionId, 'cold.events', 'events', 0, Number.MAX_SAFE_INTEGER)
+      if (opts.tidyLater) {
+        this.stmt(`INSERT OR REPLACE INTO settings (key, value) VALUES (?, '1')`).run(COLD_TIDY_PREFIX + sessionId)
+      } else {
+        this.stmt(`DELETE FROM cold.events WHERE session_id = ?`).run(sessionId)
+        this.stmt(`DELETE FROM settings WHERE key = ?`).run(COLD_TIDY_PREFIX + sessionId)
+        this.turnIndex.moveRows(sessionId, 'cold.events', 'events', 0, Number.MAX_SAFE_INTEGER)
+      }
       this.db.exec('COMMIT')
       this.coldIds.delete(sessionId)
       if (this.moving === sessionId) this.moving = null
       return Number(moved)
+    } catch (error) {
+      this.db.exec('ROLLBACK')
+      throw error
+    }
+  }
+
+  /** The sessions `moveToHot` left to tidy: hot and whole, their cold rows and index rows still to clear. */
+  tidyBacklog(): string[] {
+    return [...this.settingsWithPrefix(COLD_TIDY_PREFIX).keys()].map((key) => key.slice(COLD_TIDY_PREFIX.length)).filter(Boolean)
+  }
+
+  /**
+   * One chunk of a tidy: up to `limit` of the session's lowest cold rows go,
+   * and the turn index's rows for those seqs move to the hot file's index,
+   * in one transaction. A session that is gone, archived again or moving
+   * has nothing to tidy: `moveToCold` took the marker and the index back.
+   */
+  tidyCold(sessionId: string, limit: number): { cleared: number; done: boolean } {
+    this.flushEvents()
+    const row = this.stmt(`SELECT archived, cold FROM sessions WHERE id = ?`).get(sessionId) as { archived: number; cold: number } | undefined
+    const marker = COLD_TIDY_PREFIX + sessionId
+    if (!row || row.archived || row.cold || this.moving === sessionId) {
+      this.stmt(`DELETE FROM settings WHERE key = ?`).run(marker)
+      return { cleared: 0, done: true }
+    }
+    const span = this
+      .stmt(`SELECT MIN(seq) AS lo, MAX(seq) AS hi, COUNT(*) AS n FROM (SELECT seq FROM cold.events WHERE session_id = ? ORDER BY seq LIMIT ?)`)
+      .get(sessionId, limit) as { lo: number | null; hi: number | null; n: number }
+    this.db.exec('BEGIN')
+    try {
+      if (span.lo !== null && span.hi !== null) {
+        this.stmt(`DELETE FROM cold.events WHERE session_id = ? AND seq <= ?`).run(sessionId, span.hi)
+        this.turnIndex.moveRows(sessionId, 'cold.events', 'events', span.lo, span.hi)
+      }
+      const done = span.n < limit
+      if (done) this.stmt(`DELETE FROM settings WHERE key = ?`).run(marker)
+      this.db.exec('COMMIT')
+      return { cleared: span.n, done }
     } catch (error) {
       this.db.exec('ROLLBACK')
       throw error

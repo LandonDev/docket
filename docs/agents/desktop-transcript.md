@@ -74,7 +74,10 @@
   catches up in turns, never all at once (lib/tcserver/catchUp.ts
   `CatchUpLane`, one per remote host): each transcript resumes from the last
   seq it folded (`afterSeq`; the host answers the gap, or a fresh 1 MiB tail
-  past RESUME_ROWS or RESUME_BYTES); the thread the focused pane shows
+  past RESUME_ROWS or RESUME_BYTES, and also when the row at `afterSeq` is
+  gone or, where the reader names its time in `afterTs`, is another row: a
+  host that died between a row's push and its write gave that seq again,
+  wire.ts `eventsPageReads`); the thread the focused pane shows
   (`FocusSignal.shown`, `sessionStore.followShown`), and every thread a
   mounted view draws in front of him at any depth (`useSessionById`
   counts it on screen while mounted, `sessionStore.drawOnScreen`: a

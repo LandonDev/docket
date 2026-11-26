@@ -135,14 +135,16 @@ public enum Methods {
         public struct Params: Codable, Hashable, Sendable {
             public let sessionId: String
             public let afterSeq: Int?
+            public let afterTs: Int?
             public let beforeSeq: Int?
             public let tail: Int?
             public let limit: Int?
             public let subscribe: Bool?
 
-            public init(sessionId: String, afterSeq: Int? = nil, beforeSeq: Int? = nil, tail: Int? = nil, limit: Int? = nil, subscribe: Bool? = nil) {
+            public init(sessionId: String, afterSeq: Int? = nil, afterTs: Int? = nil, beforeSeq: Int? = nil, tail: Int? = nil, limit: Int? = nil, subscribe: Bool? = nil) {
                 self.sessionId = sessionId
                 self.afterSeq = afterSeq
+                self.afterTs = afterTs
                 self.beforeSeq = beforeSeq
                 self.tail = tail
                 self.limit = limit

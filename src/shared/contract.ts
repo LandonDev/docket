@@ -852,6 +852,10 @@ export const ClientRequestSchema = z.discriminatedUnion('method', [
     params: z.object({
       sessionId: z.string(),
       afterSeq: z.number().int().default(0),
+      // The time (`ts`) of the row the reader holds at `afterSeq`. A host that lost rows in a crash gives their seqs
+      // again: with this a resume from such a cursor starts over (`reset`) instead of skipping the new rows. An older
+      // host ignores it; without it the host still resets a cursor past its log.
+      afterTs: z.number().int().optional(),
       beforeSeq: z.number().int().optional(),
       tail: z.number().int().positive().optional(),
       // At most this many rows from afterSeq on: the renderer walks a long

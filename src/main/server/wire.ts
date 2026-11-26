@@ -290,6 +290,8 @@ export interface EventSource {
 export interface EventsParams {
   sessionId: string
   afterSeq?: number
+  /** the time of the row the reader holds at `afterSeq`: a resume checks it is still that row */
+  afterTs?: number
   beforeSeq?: number
   tail?: number
   limit?: number
@@ -362,8 +364,14 @@ function* eventsPageReads(params: EventWindow): Generator<EventRead, EventsPage,
     return { rows, moreBefore: rows.length > 0 && rows[0].seq > afterSeq + 1, moreAfter: false, reset: false }
   }
   if (afterSeq > 0 && params.beforeSeq === undefined && !params.limit) {
-    const raw = yield { afterSeq, limit: RESUME_ROWS + 1, wireBytes: RESUME_BYTES }
-    if (raw.length <= RESUME_ROWS) {
+    // The row the reader says it holds last. A row is pushed when it is appended and written a tick later (db.ts
+    // `appendEvent`): a host that died in between lost rows a window saw, and gave their seqs to the rows that came
+    // next. A cursor past the log, or on a row of another time, is such a window: it starts over from the tail
+    // rather than keep rows the log never held and miss the ones that took their places.
+    const held = (yield { afterSeq: afterSeq - 1, limit: 1 })[0]
+    const lost = held?.seq !== afterSeq || (params.afterTs !== undefined && held.ts !== params.afterTs)
+    const raw = lost ? [] : yield { afterSeq, limit: RESUME_ROWS + 1, wireBytes: RESUME_BYTES }
+    if (!lost && raw.length <= RESUME_ROWS) {
       const { rows, cut } = boundRows(raw, RESUME_BYTES, 'oldest')
       if (!cut) return { rows, moreBefore: false, moreAfter: false, reset: false }
     }

@@ -2848,6 +2848,16 @@ cold mover's first drain in server/index.ts and again hourly) indexes every
 session without a ready `turn_index` row, newest first, in transactions of
 5,000 event rows with a yield between them, marking it ready only when every
 row is in; and `moveToCold` / `moveToHot` carry the rows between the files.
+An unarchive of a thread with more than 5,000 cold rows (`UNARCHIVE_CHUNK`)
+no longer moves it in one transaction (0.37 s of the loop for 30,000 rows,
+timed Nov 26): the archive toggle first copies its rows back in chunks with
+the loop free between them (`warmToHot`, the thread still archived and whole
+in the cold file), the flip inside `updateSession` then finds them in place
+and only marks the session (`cold.tidy:<id>` in `settings`), and the cold
+mover clears its cold rows and moves its index rows in the same chunks
+behind it (`tidyCold`). A send into an archived long thread flips at once
+and tidies the same way. Archived again before the tidy ends, `moveToCold`
+takes the marker and the turn index starts that session afresh.
 A session whose rows changed under the store (`forgetSessions`, a move
 landing) is dropped and indexed again. While some session is not ready the
 search unions a scan of those sessions' rows only (a PK lookup per session),
