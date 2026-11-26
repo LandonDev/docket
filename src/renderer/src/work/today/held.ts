@@ -9,6 +9,7 @@ import { Outbox } from "../../chrome/icons";
 import { storeTitleOf } from "../../lib/threadMentions";
 import { shell } from "../../stores/shell";
 import { heldWhen } from "../outbox/when";
+import { itemFailWords } from "../outbox/failWords";
 import { openHeld } from "./store";
 import type { TodayAnswer, TodayEnv, TodayRow, TodaySection, TodaySource } from "./types";
 
@@ -83,7 +84,7 @@ export function heldRows(
     const key = heldKey(item);
     const job = jobOf(item);
     const { act, about } = rowWords(item);
-    const detail = item.state === "failed" ? (item.error ?? "Couldn't send") : item.state === "stale" ? "Out of date" : (about ?? item.account ?? undefined);
+    const detail = item.state === "failed" ? itemFailWords(item) : item.state === "stale" ? "Out of date" : (about ?? item.account ?? undefined);
     return {
       key,
       section: SECTION.id,

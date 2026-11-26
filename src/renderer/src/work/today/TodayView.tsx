@@ -484,29 +484,31 @@ function PageLine({ word, detail, note, failed = false, waits = false, action }:
   return (
     <div data-view-state={failed ? "failed" : waits ? "waits" : "needs"} role="status" aria-busy={waits || undefined} className={cn("min-h-8 items-center px-3 py-1 leading-5", ROW_GRID)}>
       <span className="flex h-5 items-center justify-center">{failed ? <StatusMark state="failed" word={false} aria-hidden /> : waits ? <Spinner aria-hidden className="size-3.5 text-muted-foreground" /> : null}</span>
-      {/* Cut on a narrow page, the detail is a Tab stop with its whole words in a tip (the canvas's `CutDetail`). A muted
-          line is the state itself: it wraps, never cut, and with no press it takes the columns the press would have. */}
-      {failed ? (
-        // The word is the state itself, a computer named in it: it wraps beside the press, never cut with no way to read it.
-        // A note (what a down session left out) is a muted line of its own under it.
-        <span className="flex min-w-0 flex-col">
-          <StatusMark state="failed" glyph={false} wrap word={word} detail={detail ? <CutDetail text={detail} /> : undefined} className="min-w-0" />
-          {[note ?? []].flat().map((line) => (line ? <span key={line} data-page-line-note className="text-xs text-pretty text-muted-foreground">{line}</span> : null))}
-        </span>
-      ) : (
-        <span data-page-line-words className={cn("min-w-0 text-xs text-pretty text-muted-foreground", !action && "col-span-3")}>
-          {word}
-          {/* Who can, where this window may not: its own line under the state. */}
-          {[note ?? []].flat().map((line) => (line ? <span key={line} className="block">{line}</span> : null))}
-        </span>
-      )}
-      <span className={cn("col-span-2 flex justify-end", !failed && !action && "hidden")}>
+      {/* The words and their one press share the three columns after the mark: the words take all the room up to the
+          press, whose label ends on the facts' edge, so a narrow page wraps them only where they truly run out. */}
+      <span className="col-span-3 flex min-w-0 items-center gap-3">
+        {/* Cut on a narrow page, the detail is a Tab stop with its whole words in a tip (the canvas's `CutDetail`). A muted
+            line is the state itself: it wraps, never cut. */}
+        {failed ? (
+          // The word is the state itself, a computer named in it: it wraps beside the press, never cut with no way to read it.
+          // A note (what a down session left out) is a muted line of its own under it.
+          <span className="flex min-w-0 flex-1 flex-col">
+            <StatusMark state="failed" glyph={false} wrap word={word} detail={detail ? <CutDetail text={detail} /> : undefined} className="min-w-0" />
+            {[note ?? []].flat().map((line) => (line ? <span key={line} data-page-line-note className="text-xs text-pretty text-muted-foreground">{line}</span> : null))}
+          </span>
+        ) : (
+          <span data-page-line-words className="min-w-0 flex-1 text-xs text-pretty text-muted-foreground">
+            {word}
+            {/* Who can, where this window may not: its own line under the state. */}
+            {[note ?? []].flat().map((line) => (line ? <span key={line} className="block">{line}</span> : null))}
+          </span>
+        )}
         {action ? (
           <Button
             variant="ghost"
             size="xs"
             // The label, not the button's box, ends on the facts' edge.
-            className="-me-2"
+            className="-me-2 shrink-0"
             disabled={running}
             onClick={() => {
               setRunning(true);

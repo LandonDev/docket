@@ -87,7 +87,8 @@ What a row does:
   the right, 520px, whose body is the Outbox's own `HeldDetail` (exported
   from work/outbox for this), with its Send, Edit, Discard and grant menu
   and its rule that Send waits until the whole item is on screen. After a
-  press the sheet shows the next held item, and closes after the last. The
+  press the sheet shows the next held item, and closes after the last; its
+  "1 of N" and the next item count as the rows do (`needsHim`: no send he scheduled or one under way). The
   next is picked from the order he saw (`nextHeld`), so a list the host
   refreshed while the press was out still hands the sheet on; the head
   counts the run by its own steps ("2 of 3": `heldDone` in today/store.ts,

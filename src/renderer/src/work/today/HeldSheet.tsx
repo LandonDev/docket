@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { needsHim } from "@shared/work";
 import { X } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Sheet, SheetClose, SheetContent } from "../../components/ui/sheet";
@@ -37,13 +38,14 @@ export function HeldSheet() {
   const item = waiting[at] ?? null;
   // What still waits: the host's list without the items his press already took. The list drops a sent item only
   // when its reload is back, a beat after the sheet has moved on, and the run's count must not wait for it.
+  // Counted as Today's rows are (`needsHim`): a send under way or one he scheduled is not his to decide again.
   const left = waiting.filter((i) => {
     const k = heldKey(i);
-    return !leaving.has(k) && !closing.has(k) && !gone.has(k);
+    return (needsHim(i) || i === item) && !leaving.has(k) && !closing.has(k) && !gone.has(k);
   }).length;
   // The order he sees, kept for the press: the host's list may drop the item before its answer is back.
   useLayoutEffect(() => {
-    if (at !== -1) runOrder = waiting.map(heldKey);
+    if (at !== -1) runOrder = waiting.filter((i) => needsHim(i) || i === waiting[at]).map(heldKey);
   }, [at, waiting]);
   // The place as the item's row names it (held.ts `placeOf`).
   const workspace = (i: HostItem): string => placeOf(i, (environmentId, workspaceId) => workspaces.find((w) => w.environmentId === environmentId && w.id === workspaceId)?.name) ?? "A Work workspace";
@@ -177,7 +179,8 @@ function afterPress(item: HostItem): void {
   // What still waits is the host's list without what his presses already took: the list may still hold an item he
   // sent a moment ago, and the sheet must never go back to it.
   const still = outboxNow()
-    .waiting.map(heldKey)
+    .waiting.filter(needsHim)
+    .map(heldKey)
     .filter((k) => !now.leaving.has(k) && !now.closing.has(k) && !now.gone.has(k));
   advanceHeld(nextHeld(key, runOrder, still));
 }
