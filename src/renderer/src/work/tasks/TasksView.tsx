@@ -25,6 +25,7 @@ import { type Task, type TaskActions, type TasksClient, viewsClients } from "./c
 import { useMinute } from "./minute";
 import { useKeptRows, WindowedRows, type RowPlace } from "../windowed";
 import { NewTaskDialog } from "./NewTaskDialog";
+import { OFFLINE_WORDS, useComputerOffline } from "./offline";
 import { shared, useShared } from "./store";
 import { sessionWaits } from "../shell/lifeos";
 import { downOf, useKeptOpen } from "../shell/lifeosDown";
@@ -329,6 +330,7 @@ function Lead({
   useThread: UseThread;
 }) {
   const doneHeld = !!heldWords;
+  const offline = useComputerOffline();
   const overdue = task.dueAt !== undefined && task.dueAt < now;
   const thread = useTaskThread(useThread, task._id);
   const lead = thread ? taskThreadMark(thread) : null;
@@ -368,11 +370,14 @@ function Lead({
               Done
             </Button>
           </Tip>
+          {/* Snooze writes to LifeOS itself: held only while this computer is offline, a Tab stop whose tip says so. */}
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>
-              Snooze
-              <ChevronDown />
-            </DropdownMenuTrigger>
+            <Tip label={OFFLINE_WORDS} disabled={!offline}>
+              <DropdownMenuTrigger disabled={offline} render={<Button size="sm" variant="ghost" focusableWhenDisabled className="aria-disabled:opacity-50" />}>
+                Snooze
+                <ChevronDown />
+              </DropdownMenuTrigger>
+            </Tip>
             <DropdownMenuContent align="start">
               {SNOOZE_CHOICES.map((choice: SnoozeChoice) => (
                 <DropdownMenuItem key={choice} onClick={() => actions.snooze(task, choice)}>
@@ -412,6 +417,8 @@ function TaskMenu({
   doneHeld: boolean;
 }) {
   const runPlay = playRunner();
+  // Snooze writes to LifeOS itself: held only while this computer is offline.
+  const offline = useComputerOffline();
   return (
     <ContextMenuContent>
       {thread === undefined ? null : thread ? <ContextMenuItem onClick={() => openThread(thread, () => onStart(task))}>Open thread</ContextMenuItem> : <ContextMenuItem onClick={() => onStart(task)}>Start thread</ContextMenuItem>}
@@ -421,7 +428,7 @@ function TaskMenu({
       <ContextMenuItem disabled={doneHeld} onClick={onDone}>Done</ContextMenuItem>
       <ContextMenuSeparator />
       {SNOOZE_CHOICES.map((choice: SnoozeChoice) => (
-        <ContextMenuItem key={choice} onClick={() => actions.snooze(task, choice)}>
+        <ContextMenuItem key={choice} disabled={offline} onClick={() => actions.snooze(task, choice)}>
           Snooze {SNOOZE_LABELS[choice].toLowerCase()}
         </ContextMenuItem>
       ))}

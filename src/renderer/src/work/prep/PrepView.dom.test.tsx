@@ -307,6 +307,38 @@ describe("a page with no one on it", () => {
   });
 });
 
+describe("Add people", () => {
+  // Council round 4, sitting B (Opus, the meeting's page 1): at 400px every address was cut with no way to read it.
+  it("says a cut name and address whole in the row's tip, on the box's focus, only while one is cut", async () => {
+    const { tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    const wide = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains("truncate") && (this.textContent ?? "").includes("@") ? 300 : 100;
+    });
+    const box = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    try {
+      await mount();
+      await act(async () => fireEvent.click(within(screen.getByTestId("head")).getByRole("button", { name: "More" })));
+      await act(async () => fireEvent.click(await screen.findByRole("menuitem", { name: "Add people…" })));
+      const dialog = await screen.findByRole("dialog", { name: "Add people" });
+      const row = [...dialog.querySelectorAll<HTMLElement>("[data-pick-row]")].find((r) => r.textContent?.includes("@"))!;
+      expect(row.hasAttribute("data-base-ui-tooltip-trigger")).toBe(true);
+      await act(async () => {
+        row.querySelector<HTMLElement>('[role="checkbox"]')!.focus();
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      const tip = document.querySelector('[data-slot="tooltip-content"]')?.textContent ?? "";
+      expect(tip).toContain("@");
+    } finally {
+      wide.mockRestore();
+      box.mockRestore();
+    }
+  });
+});
+
 describe("what does not load", () => {
   it("shows bones while the page is read, in the page's place", async () => {
     let land: (v: unknown) => void = () => {};

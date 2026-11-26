@@ -247,6 +247,25 @@ describe("the Tasks view", () => {
     }
   });
 
+  // Council round 4, sitting B (Sol, Tasks 1): Snooze writes to LifeOS itself, so it stood live while this computer was
+  // offline and hid the task before LifeOS could answer.
+  it("holds Snooze while this computer is offline, a Tab stop, and gives it back once online", async () => {
+    vi.useRealTimers();
+    const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    try {
+      render(<Tasks client={fakeTasksClient(rows)} place={{ environmentId: "box", id: "w", path: "/w" }} startThread={() => {}} />);
+      const snooze = () => screen.getByRole("button", { name: "Snooze" });
+      expect(snooze().getAttribute("aria-disabled")).toBe("true");
+      snooze().focus();
+      expect(document.activeElement).toBe(snooze());
+      online.mockReturnValue(true);
+      act(() => void window.dispatchEvent(new Event("online")));
+      expect(snooze().getAttribute("aria-disabled")).not.toBe("true");
+    } finally {
+      online.mockRestore();
+    }
+  });
+
   it("marks a row done after its tick holds, through the client", async () => {
     vi.useRealTimers();
     vi.useFakeTimers({ now });

@@ -257,7 +257,8 @@ export function MailScreen({
     giveBack.current = true;
     patch(id, { chat: false, chatAt: null });
   };
-  // The chat that lay over Mail has closed on Esc: focus goes to the press that opens it, else to the list.
+  // The chat has closed on Esc (where it lay over Mail) or on its Close chat: focus goes to the press that opens it,
+  // else to the list.
   useLayoutEffect(() => {
     if (open || !giveBack.current) return;
     giveBack.current = false;
@@ -319,7 +320,11 @@ export function MailScreen({
               chip={asked.chip}
               focus={asked.focus}
               onChipTaken={asked.taken}
-              onClose={() => patch(id, { chat: false, chatAt: null })}
+              // Close chat takes its own press away: focus goes where an Esc that closes it sends it (the opener, else the list).
+              onClose={() => {
+                giveBack.current = true;
+                patch(id, { chat: false, chatAt: null });
+              }}
             />
           </div>
         </>

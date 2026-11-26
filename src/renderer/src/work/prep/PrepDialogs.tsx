@@ -10,6 +10,8 @@ import { Progress } from "../../components/ui/progress";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { Textarea } from "../../components/ui/textarea";
+import { TruncateTip, useTruncated } from "../../components/tip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { modOrCtrl } from "../../lib/keys";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { hostInLine, useTranscriberSetUp } from "../meetings/setUp";
@@ -146,17 +148,7 @@ export function PeopleForm({
         <div role="group" aria-label="People" className="-mx-2 h-64 overflow-x-hidden overflow-y-auto">
           {shown.map((person) => {
             const key = addedKey(person);
-            return (
-              // The whole row takes the pointer; the box inside it takes the keyboard.
-              <div key={key} data-pick-row={key} className="flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-[13px] transition-colors duration-(--dur-hover) hover:bg-foreground/5" onClick={() => toggle(person)}>
-                <Checkbox aria-label={person.name} checked={ticked.has(key)} disabled={pending} onCheckedChange={() => toggle(person)} onClick={(e) => e.stopPropagation()} />
-                <Face name={person.name} picture={person.address ? pictureOf([person.address], faces) : undefined} size="row" />
-                <span className="flex min-w-0 flex-1 items-baseline gap-1">
-                  <span className="shrink-0 truncate text-foreground">{person.name}</span>
-                  {person.address ? <span className="min-w-0 truncate text-xs text-muted-foreground">{person.address}</span> : null}
-                </span>
-              </div>
-            );
+            return <PickRow key={key} person={person} rowKey={key} ticked={ticked.has(key)} pending={pending} picture={person.address ? pictureOf([person.address], faces) : undefined} onToggle={() => toggle(person)} />;
           })}
           {/* The directory is still on its way: its bones stand under whoever is already added, so a list half read never looks whole. */}
           {directory.status === "loading" ? <ListBones /> : null}
@@ -405,7 +397,9 @@ export function NotesForm({
             <Progress value={percent} aria-label={`Uploading ${upload.name}`} className="w-full items-center gap-x-2 gap-y-1">
               <span className="flex min-w-0 flex-1 items-center gap-1.5">
                 {percent === null ? <Spinner aria-hidden className="size-3 shrink-0" /> : null}
-                <span className="min-w-0 truncate">Uploading {upload.name}</span>
+                <TruncateTip text={`Uploading ${upload.name}`}>
+                  <span className="min-w-0 truncate">Uploading {upload.name}</span>
+                </TruncateTip>
               </span>
               {percent !== null ? <span className="shrink-0 tabular-nums">{percent}%</span> : null}
             </Progress>
@@ -450,5 +444,33 @@ export function NotesForm({
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+/**
+ * One person in Add people: the whole row takes the pointer, the box inside it the keyboard. A name or address the
+ * row cuts (at 400px every address) is said whole in the row's one tip, on its hover and the box's focus, only while
+ * one is cut (People's rule), so two people of one name can be told apart.
+ */
+function PickRow({ person, rowKey, ticked, pending, picture, onToggle }: { person: PrepAddedPerson; rowKey: string; ticked: boolean; pending: boolean; picture: string | undefined; onToggle(): void }) {
+  const address = person.address;
+  const { ref: cutRef, cut } = useTruncated(`${person.name}\n${address ?? ""}`);
+  return (
+    <Tooltip disabled={!cut}>
+      <TooltipTrigger
+        render={<div data-pick-row={rowKey} className="flex h-8 cursor-default items-center gap-2 rounded-md px-2 text-[13px] transition-colors duration-(--dur-hover) hover:bg-foreground/5" onClick={onToggle} />}
+      >
+        <Checkbox aria-label={person.name} checked={ticked} disabled={pending} onCheckedChange={onToggle} onClick={(e) => e.stopPropagation()} />
+        <Face name={person.name} picture={picture} size="row" />
+        <span ref={cutRef} className="flex min-w-0 flex-1 items-baseline gap-1">
+          <span className="shrink-0 truncate text-foreground">{person.name}</span>
+          {address ? <span className="min-w-0 truncate text-xs text-muted-foreground">{address}</span> : null}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="start">
+        {person.name}
+        {address ? <span className="block">{address}</span> : null}
+      </TooltipContent>
+    </Tooltip>
   );
 }

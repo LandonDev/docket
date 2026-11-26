@@ -293,6 +293,19 @@ describe("the chat beside the mail", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Ask" }));
   });
 
+  // Council round 4, sitting B (Sol, Mail 1): Close chat took its own focused press away and left focus on the page.
+  it("Close chat puts focus on the press that opens the chat, as Escape does", async () => {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 800 });
+    mount();
+    act(() => patch(ID(), { chat: true, threadId: threads[0].id }));
+    await waitFor(() => expect(dock()).not.toBeNull());
+    const close = screen.getByRole("button", { name: "Close chat" });
+    close.focus();
+    act(() => void fireEvent.click(close));
+    expect(dock()).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Ask" }));
+  });
+
   it("Escape in the composer of a chat beside Mail keeps the chat and gives the keys to the list", async () => {
     mount();
     act(() => patch(ID(), { chat: true }));
