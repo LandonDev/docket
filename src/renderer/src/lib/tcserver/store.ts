@@ -1974,9 +1974,11 @@ class SessionStore {
   }
 
   /** A transcript still held from a resync push whose replay never came (the host dropped, the entry left the kept set): its rows fold now. */
-  private releaseResyncHolds(environmentId: string): void {
+  private releaseResyncHolds(environmentId: string, socket?: number): void {
     for (const entry of this.entries.values()) {
       if (!entry.resyncHold || entry.meta?.environmentId !== environmentId) continue;
+      // A newer socket's hold is that socket's to release.
+      if (socket !== undefined && entry.heldOn !== socket) continue;
       // Its replay failed: what it holds may be past rows it never brought, so it waits for a replay that works.
       if (entry.heldFailed) continue;
       const held = entry.held;
@@ -2350,10 +2352,14 @@ class SessionStore {
           // The host shed this socket's pushes and asks for a replay: every
           // loaded transcript holds what arrives from here, so no row folds
           // past the ones the host dropped before the replay reads the cursor.
+          // The socket this resync came on: its cleanup releases only the holds that socket owns, and an older
+          // socket's hold is replaced (that host may never have kept its rows).
+          const socket = attached.opens;
           for (const entry of this.entries.values()) {
-            if (!entry.loaded || entry.held || entry.meta?.environmentId !== environmentId) continue;
+            if (!entry.loaded || entry.meta?.environmentId !== environmentId) continue;
+            if (entry.held && entry.heldOn === socket) continue;
             entry.held = [];
-            entry.heldOn = this.socketOf(entry);
+            entry.heldOn = socket;
             entry.resyncHold = true;
           }
           attached.listed = (attached.listed ?? Promise.resolve())
@@ -2362,7 +2368,7 @@ class SessionStore {
               if (this.attached.get(environmentId) === attached && attached.link.connected) return this.resync(attached.link);
             })
             .catch(() => undefined)
-            .then(() => this.releaseResyncHolds(environmentId));
+            .then(() => this.releaseResyncHolds(environmentId, socket));
         }
         break;
       }
