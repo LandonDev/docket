@@ -22,6 +22,8 @@ export interface VmState {
   cannot: string | null;
   /** the keeper's last failure, in words */
   error: string | null;
+  /** why no wake can go through on the host's build (it has no helper to copy in): said once, and no wake is asked */
+  blocked?: string | null;
   /** what it is doing now, in the keeper's words; null when settled */
   step?: string | null;
   /** when `state` last changed */
@@ -58,6 +60,7 @@ const vmOf = (s: WinvmState): VmState => ({
   state: s.state,
   cannot: s.cannot ?? null,
   error: s.error ?? null,
+  blocked: s.blocked ?? null,
   step: s.step ?? null,
   since: s.since,
   wakeMs: s.wakeMs ?? null,
@@ -69,6 +72,7 @@ const same = (a: VmState | undefined, b: VmState): boolean =>
   a.state === b.state &&
   a.cannot === b.cannot &&
   a.error === b.error &&
+  (a.blocked ?? null) === (b.blocked ?? null) &&
   a.step === b.step &&
   a.since === b.since &&
   a.wakeMs === b.wakeMs &&
@@ -129,6 +133,8 @@ export const WAKING_LINE = "Waking the Windows VM";
  * arrive apart) reads as waking, so the tile never leaves the page between the two.
  */
 export function restingVm(vm: VmState): { line: string; busy: boolean; wakes: boolean } {
+  // a build with no helper: no wake can go through, so none is asked (asking looped the page on 2026-11-25)
+  if (vm.blocked && vm.state !== "awake") return { line: vm.blocked, busy: false, wakes: false };
   switch (vm.state) {
     case "none":
       return { line: "Not set up: Settings → Work → Windows VM", busy: false, wakes: false };
@@ -174,6 +180,8 @@ export function wakeCount(since: number | undefined, wakeMs: number | null | und
  */
 export function vmPlate(vm: VmState, o: { wakes: boolean; now: number; failed?: string | null; since?: number }): VmPlateWords {
   const plate = (title: string, more: Partial<VmPlateWords> = {}): VmPlateWords => ({ title, detail: null, spin: false, bare: false, retry: false, ...more });
+  // no Retry: a wake cannot go through until the box runs another build
+  if (vm.blocked && vm.state !== "awake") return plate("Can't wake the Windows VM", { detail: vm.blocked });
   if (o.failed) return plate("Couldn't wake the Windows VM", { detail: o.failed, retry: true });
   const counting = (since: number | undefined): VmPlateWords => plate(WAKING_LINE, { spin: true, detail: wakeCount(since, vm.wakeMs, o.now) });
   switch (vm.state) {

@@ -1188,7 +1188,9 @@ Every computer being driven now, on every connected host, in one place
   up" on the bare box, and the bar's one press goes to Settings. The
   keeper's own work (a restart, going back to a restore point, a move to
   live resize) says its own words with a spinner and no press. A failed
-  wake says why, with Retry. "The preview stopped" and Retry are for a
+  wake says why, with Retry. A box build with no helper for the VM
+  (`blocked`): "Can't wake the Windows VM" and the cause, no spinner and
+  no press, and no wake is asked. "The preview stopped" and Retry are for a
   stream that truly ended with the host linked. The host keeps the desk
   as it goes to sleep (QMP's screenshot, a JPEG under
   `<userData>/winvm/picture/`, `work.winvm.still` under the rule its video

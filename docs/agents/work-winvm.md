@@ -151,7 +151,13 @@ At a thread's first call (B5), his Wake press, or by itself after a restart of t
    one request (an unknown method, which the service answers with an error before `initialize` too): only
    the answer counts, since the forward accepts a connection whether or not anything listens behind it.
 
-A box build with no `tc-computer.exe` wakes the machine and says so in `error`.
+A box build with no `tc-computer.exe` never starts the machine: wake, setup and live resize refuse before
+anything moves (`mayStart`, `NO_SERVICE`: "This update left out the Windows VM's helper. Redeploy the box from
+master."), and the state carries the words in `blocked`, beside the machine's own state. The Computers page then
+asks no wake and its plate says "Can't wake the Windows VM" with the cause and no press; Settings' Windows row
+shows it as its error. Until 2026-11-25 such a build started the machine, read awake beside the error, and every
+viewer's wake started the round again. A deploy no longer makes such a build (docs/box.md "What box-update does
+with it").
 
 ## The helper
 
@@ -623,9 +629,9 @@ In order, once the box runs a build with all of Track B:
    for the stop: the keeper's watcher hibernates the VM at a stop of the service by itself, proven on the rig
    (`e2e-winvm-stop.ts`), and the unit needs no `ExecStop`. It is for deploys: `box-update master` then builds
    `tc-computer.exe` into the build's `resources/native` (docs/box.md, "What box-update does with it"), and
-   the keeper copies that service into the guest at each wake. A `box-update v1.0.N` release asset carries
-   none, so deploy the box from master for the VM; with no service, setup and wake say the build has no
-   `tc-computer.exe`.
+   the keeper copies that service into the guest at each wake. `box-update v1.0.N` builds it too, from the
+   commit's own crate (the release asset carries none); with no service, setup and wake refuse with
+   `NO_SERVICE`.
 2. **Set it up**: Settings → Work → Windows VM → Set up. About ten minutes: the disk from the base image,
    Windows' admin steps, one restart. The row says each step; it ends Awake.
 3. **Per workspace**: a Work workspace's page → "Computer use on the Windows VM". On for a workspace made since

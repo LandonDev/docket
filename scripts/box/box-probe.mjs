@@ -113,7 +113,7 @@ const real = (path) => {
   }
 }
 if (process.env.TEMP_CODE_PROBE_WORK === '1' && real(data) !== real('/srv/agents/temp-code-data')) {
-  const work = await probeWork(localCaller(marker.port))
+  const work = await probeWork(localCaller(marker.port), { vmService: true })
   for (const note of work.notes) console.log(`PROBE NOTE: ${note}`)
   if (work.failures.length) throw Error(`a Work pillar did not load: ${work.failures.join('; ')}`)
   workLine = `work=ok in ${work.ms} ms`

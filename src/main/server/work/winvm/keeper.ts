@@ -147,7 +147,8 @@ const TIMEOUTS: Timeouts = { setupScript: 240_000, ready: 300_000, setupReady: 6
 export const SLEEP_AFTER_MS: Record<WinvmSleepAfter, number | null> = { '15m': 15 * 60_000, '30m': 30 * 60_000, '2h': 120 * 60_000, never: null }
 
 export const NOT_SET_UP = 'The Windows VM is not set up. Set it up in Settings → Work.'
-export const NO_SERVICE = "This box's build has no tc-computer.exe for the Windows VM."
+/** This build has no tc-computer.exe to copy in (a deploy that left it out): no wake, setup or move of the display starts the machine. */
+export const NO_SERVICE = "This update left out the Windows VM's helper. Redeploy the box from master."
 export const NO_DOOR = 'The service in the Windows VM did not answer.'
 export const NOT_HIBERNATED = 'Windows did not hibernate.'
 export const ONLY_ASLEEP = 'Restore points are made and used only while the Windows VM sleeps. Put it to sleep first.'
@@ -227,7 +228,7 @@ export class Keeper {
 
   state(): WinvmState {
     const display = this.displayNow()
-    return { state: this.name, step: this.step, error: this.error, cannot: this.d.machine.cannot(), sleepAfter: this.d.sleepAfter(), since: this.since, wakeMs: median(this.wakes), heldAsleep: this.heldAsleep && this.name === 'asleep', ...(display ? { display } : {}) }
+    return { state: this.name, step: this.step, error: this.error, cannot: this.d.machine.cannot(), blocked: this.d.serviceExe() ? null : NO_SERVICE, sleepAfter: this.d.sleepAfter(), since: this.since, wakeMs: median(this.wakes), heldAsleep: this.heldAsleep && this.name === 'asleep', ...(display ? { display } : {}) }
   }
 
   /** The guest's screen and his choice; none before it is set up. Only virtio takes a new size while it runs. */
@@ -372,8 +373,7 @@ export class Keeper {
       this.touch()
       if (this.name === 'awake' && this.link) return this.state()
       if (own && (this.heldAsleep || this.closedDown)) return this.state()
-      const cannot = this.d.machine.cannot()
-      if (cannot) throw new Error(cannot)
+      this.mayStart()
       if (!this.d.machine.hasDisk()) throw new Error(NOT_SET_UP)
       this.hold(false)
       const began = this.now()
@@ -502,6 +502,17 @@ export class Keeper {
     })
   }
 
+  /**
+   * Refuses, before anything moves, a change that would start the machine: this host cannot have it, or this build
+   * has no service to copy in. Started without one, the machine ran with its door shut and read awake beside the
+   * error, and every viewer's wake started the round again (2026-11-25, two tag deploys).
+   */
+  private mayStart(): void {
+    const cannot = this.d.machine.cannot()
+    if (cannot) throw new Error(cannot)
+    if (!this.d.serviceExe()) throw new Error(NO_SERVICE)
+  }
+
   private mustSleep(): void {
     const cannot = this.d.machine.cannot()
     if (cannot) throw new Error(cannot)
@@ -536,8 +547,7 @@ export class Keeper {
    */
   setup(): Promise<WinvmState> {
     return this.serial(async () => {
-      const cannot = this.d.machine.cannot()
-      if (cannot) throw new Error(cannot)
+      this.mayStart()
       let driver: string | null = null
       try {
         if (this.d.machine.hasDisk()) {
@@ -606,6 +616,7 @@ export class Keeper {
     if (!this.d.display) return NO_LIVE_RESIZE
     const cannot = this.d.machine.cannot()
     if (cannot) return cannot
+    if (!this.d.serviceExe()) return NO_SERVICE
     if (!this.d.machine.hasDisk()) return NOT_SET_UP
     if (held()) return HELD
     if (this.driving) return DRIVES

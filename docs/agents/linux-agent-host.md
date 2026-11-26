@@ -21,15 +21,18 @@
   tunnel maps `docket.landonhale.com` (and the old `tempcode.landonhale.com`) to its 7677. Deploy a ref with
   `ssh box 'box-update master'` (clone + build → trial → snapshot → commit,
   with rollback on failure) or `ssh box 'box-update v1.0.N'` (the release's
-  prebuilt `temp-code-out-1.0.N.tar.gz`, verified against its sha256, no
-  build); on both, node_modules are hardlinked from the current build when
+  prebuilt `temp-code-out-1.0.N.tar.gz`, verified against its sha256, and
+  no build but the Windows VM's `tc-computer.exe`, built from the commit's
+  own crate as master builds it); on both, node_modules are hardlinked from the current build when
   bun.lock is unchanged and installed otherwise (`BOX_UPDATE_FRESH_MODULES=1`
   forces the install); the build's `build-manifest.json` and the deploy log
   say which path ran (scripts/box/box-update-lib.sh, docs/box.md "Build
   once"); stage 85 installs the launcher and its library without
   restarting. The trial's probe also turns Work on in its scratch home and
   reads every pillar (scripts/box/probe-work.mjs): a pillar that did not load
-  fails the deploy, named with its error, before the switch; the commit tier's
+  fails the deploy, named with its error, before the switch, and so does a
+  build whose Windows VM keeper has no `tc-computer.exe` (`blocked` in
+  `work.winvm.state`); the commit tier's
   `boot-built` row asks the same of the built app with no box. Proof from the
   Mac is `bun scripts/e2e-box-remote.ts`.
 - Live video of the box's browser needs the `screen-relay` tool installed

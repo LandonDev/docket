@@ -399,7 +399,7 @@ export function WinvmView({ title, state, points, pointsError, onRetryPoints, sc
   ) : null;
   return (
     <PageSection title={title}>
-      <PageRow title="Windows" description={row.words} error={state.error ?? error ?? undefined}>
+      <PageRow title="Windows" description={row.words} error={state.blocked ?? state.error ?? error ?? undefined}>
         {press ? (
           <Button variant="secondary" size="sm" disabled={pressing} onClick={onPress}>
             <BusyLabel busy={pressing} label={PRESS_WORDS[press]} />

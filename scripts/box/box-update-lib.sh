@@ -8,9 +8,11 @@
 #   - for a v1.0.N ref, the release's temp-code-out-1.0.N.tar.gz (the out/
 #     the Mac built, package.json, release.json, bun.lock, scripts/box, a
 #     build-manifest.json), fetched with its sha256 and verified;
-#   - for master, a clone built with electron-vite as before, and
-#     tc-computer.exe cross-built into its resources/native (the Windows VM's
-#     service; a release tarball carries none);
+#   - for master, a clone built with electron-vite as before;
+#   - on both paths, tc-computer.exe (the Windows VM's service) cross-built
+#     into the build's resources/native from the commit's own crate: a release
+#     tarball carries none, so a tag deploy lays in the crate at its commit
+#     first (computer_source);
 #   - node_modules: a hardlinked copy of the current build's when bun.lock is
 #     byte-identical (modules_plan), else a fresh `bun install` with Electron's
 #     binary and the native modules rebuilt for Linux (build_script).
@@ -67,15 +69,26 @@ build_script() {
       '[[ -x node_modules/electron/dist/electron ]] || node node_modules/electron/install.js'
       'node_modules/.bin/electron-builder install-app-deps')
   fi
-  # tc-computer.exe for the Windows VM (src/main/server/work/winvm/serviceBin.ts), cross-built with cargo-xwin
-  # into the build's resources/native; a build without it still deploys, and the VM then has no service.
-  if [[ $source == source ]]; then
-    steps+=('node_modules/.bin/electron-vite build'
-      'bun scripts/build-tc-computer-win.ts --into resources/native || echo "WARN: tc-computer.exe was not built; the Windows VM has no service in this build" >&2')
-  fi
-  ((${#steps[@]})) || return 0
+  [[ $source == source ]] && steps+=('node_modules/.bin/electron-vite build')
+  # tc-computer.exe for the Windows VM (src/main/server/work/winvm/serviceBin.ts), cross-built with cargo-xwin into
+  # the build's resources/native on both paths. A build without it fails here: its keeper could never wake the VM
+  # (2026-11-25: two tag deploys shipped none and the Computers page looped on the wake).
+  steps+=('bun scripts/build-tc-computer-win.ts --into resources/native')
   printf 'set -euo pipefail\n'
   printf '%s\n' "${steps[@]}"
+}
+
+# computer_source <repo> <sha> <build>: native/tc-computer-win and scripts/build-tc-computer-win.ts as they are at
+# <sha>, laid into <build> from a shallow fetch of that one commit, for build_script's exe step on a release
+# asset (which carries the Mac's out/ alone). The fetch's own folder is removed either way.
+computer_source() {
+  local repo=$1 sha=$2 build=$3 git ok=0
+  git=$(mktemp -d "$build/.computer-src.XXXXXX") || return 1
+  if git -C "$git" init --quiet && git -C "$git" fetch --quiet --depth 1 "$repo" "$sha" &&
+     git -C "$git" archive -o "$git/src.tar" "$sha" -- native/tc-computer-win scripts/build-tc-computer-win.ts &&
+     tar -xf "$git/src.tar" -C "$build"; then ok=1; fi
+  rm -rf -- "$git"
+  ((ok)) || { echo "ERROR: could not lay in native/tc-computer-win at $sha from $repo" >&2; return 1; }
 }
 
 # fetch_asset <version> <dir> → downloads temp-code-out-<version>.tar.gz and

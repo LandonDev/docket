@@ -419,6 +419,17 @@ describe("the Windows VM in every state", () => {
     await act(async () => {});
     expect(tries).toBe(2);
   });
+
+  it("on a build with no helper, asks no wake on the stage and says the cause once, with no press (the page looped on 2026-11-25)", async () => {
+    const calls: string[] = [];
+    const blocked = "This update left out the Windows VM's helper. Redeploy the box from master.";
+    render(<RestingVmPicture host="box" vm={{ state: "asleep", cannot: null, error: null, blocked }} place={{ stage: true, room: { width: 800, height: 500 } }} wake={async () => void calls.push("wake")} />);
+    await act(async () => {});
+    expect(calls).toEqual([]);
+    expect(screen.getByRole("status").textContent).toBe("Can't wake the Windows VM");
+    expect(screen.getAllByText(blocked)).toHaveLength(1);
+    expect(screen.queryByRole("button")).toBeNull();
+  });
 });
 
 describe("driving from the page", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WinvmState } from "@server/shared/contract-work-winvm";
-import { displayOf, vmPlate, wakeCount, type VmState } from "./winvmWake";
+import { displayOf, restingVm, vmPlate, wakeCount, type VmState } from "./winvmWake";
 
 const at = (state: VmState["state"], more: Partial<VmState> = {}): VmState => ({ state, cannot: null, error: null, ...more });
 const plate = (vm: VmState, o: Partial<Parameters<typeof vmPlate>[1]> = {}) => vmPlate(vm, { wakes: false, now: 20_000, ...o });
@@ -14,6 +14,15 @@ describe("the VM's plate in each state", () => {
     expect(plate(at("waking", { since: 14_000 }))).toMatchObject({ title: "Waking the Windows VM", detail: "6 s", spin: true });
     expect(plate(at("none"))).toMatchObject({ title: "The Windows VM is not set up", bare: true });
     expect(plate(at("asleep"), { failed: "no door" })).toMatchObject({ title: "Couldn't wake the Windows VM", detail: "no door", retry: true });
+  });
+
+  it("a build with no helper: the cause, no spinner, no Retry, and no wake asked, in every state but awake", () => {
+    const blocked = "This update left out the Windows VM's helper. Redeploy the box from master.";
+    for (const state of ["asleep", "going-to-sleep", "waking", "none"] as const) {
+      expect(plate(at(state, { blocked }), { wakes: true, failed: "x" })).toEqual({ title: "Can't wake the Windows VM", detail: blocked, spin: false, bare: false, retry: false });
+      expect(restingVm(at(state, { blocked })).wakes).toBe(false);
+    }
+    expect(restingVm(at("asleep")).wakes).toBe(true);
   });
 
   it("the keeper's own work says its words, with no count: a restart, a move, going back to a point", () => {

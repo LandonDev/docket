@@ -55,8 +55,13 @@ export function localCaller(port, timeoutMs = 25_000) {
  * Work on, then each read in turn. `call(method, params)` answers or throws
  * the host's error. Answers `{ failures, notes, ms }`: a failure names the
  * read and the load error; a note is an error that is not one (kept for the log).
+ *
+ * `vmService`: the box's deploy trial also fails a build whose Windows VM
+ * keeper has no tc-computer.exe to copy in (`blocked` in work.winvm.state).
+ * 2026-11-25: two deploys from a release tag passed their trial with none, and
+ * the VM could not wake. The gate's boot asks not: a checkout has no exe.
  */
-export async function probeWork(call) {
+export async function probeWork(call, { vmService = false } = {}) {
   const started = Date.now()
   const failures = []
   const notes = []
@@ -77,5 +82,9 @@ export async function probeWork(call) {
   if (workspace?.id) await ask('files (work.files.places)', 'work.files.places', { workspaceId: workspace.id })
   const health = await ask('work.health', 'work.health', {})
   for (const fault of healthFaults(health)) failures.push(`work.health ${fault}`)
+  if (vmService) {
+    const vm = await ask('work.winvm.state', 'work.winvm.state', {})
+    if (vm?.blocked) failures.push(`work.winvm.state: ${vm.blocked}`)
+  }
   return { failures, notes, ms: Date.now() - started }
 }

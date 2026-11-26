@@ -307,8 +307,25 @@ describe('wake', () => {
     await expect(make({ disk: false }).keeper.wake()).rejects.toThrow(NOT_SET_UP)
     const r = make({ exe: null })
     await expect(r.keeper.wake()).rejects.toThrow(NO_SERVICE)
-    // the machine runs: it reads awake, with what went wrong
-    expect(r.keeper.state()).toMatchObject({ state: 'awake', error: NO_SERVICE })
+    // refused before the machine starts: it stays asleep, and its state names the cause in its own field, once
+    expect(r.machine.starts).toBe(0)
+    expect(r.keeper.state()).toMatchObject({ state: 'asleep', error: null, blocked: NO_SERVICE })
+    expect(r.pushes).toEqual([])
+  })
+
+  it('with no service in its build, never starts the machine, however often it is asked (the Computers page looped on 2026-11-25)', async () => {
+    const r = make({ exe: null, awakeAtStop: true })
+    for (let i = 0; i < 5; i++) await expect(r.keeper.wake()).rejects.toThrow(NO_SERVICE)
+    await expect(r.keeper.door()).rejects.toThrow(NO_SERVICE)
+    await expect(r.keeper.setup()).rejects.toThrow(NO_SERVICE)
+    expect(r.keeper.liveResizeRefusal(() => false)).toBe(NO_SERVICE)
+    // the wake after the deploy's restart is refused the same way, and not tried again
+    expect(await r.keeper.wakeAfterStop(0)).toMatchObject({ state: 'asleep', blocked: NO_SERVICE })
+    expect(r.machine.starts).toBe(0)
+    expect(r.states()).not.toContain('waking')
+    expect(r.states()).not.toContain('awake')
+    // a build with the service reads no block
+    expect(make().keeper.state().blocked).toBeNull()
   })
 
   it('fails when the door never keeps the knock, and closes the forward', async () => {
@@ -405,11 +422,14 @@ describe('the idle hibernate', () => {
   })
 
   it('counts its idle time from when it came awake, not from the keeper\'s start hours before, a failed setup too (1.0.356 hibernated a minute after setup)', async () => {
-    // the box's service has run for hours before he presses Set up, and the build has no service to copy in
-    const r = make({ disk: false, token: null, exe: null })
+    // the box's service has run for hours before he presses Set up, and the service's copy fails
+    const r = make({ disk: false, token: null })
+    r.guest.installService = async () => {
+      throw new Error('the copy failed')
+    }
     r.advance(4 * 3600_000)
-    await expect(r.keeper.setup()).rejects.toThrow(NO_SERVICE)
-    expect(r.keeper.state()).toMatchObject({ state: 'awake', error: NO_SERVICE })
+    await expect(r.keeper.setup()).rejects.toThrow('the copy failed')
+    expect(r.keeper.state()).toMatchObject({ state: 'awake', error: 'the copy failed' })
     r.advance(60_000)
     r.keeper.tick()
     // an idle hibernate the tick started would be done by now

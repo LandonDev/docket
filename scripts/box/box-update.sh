@@ -144,8 +144,8 @@ chown agents:agents "$candidate"
 chmod 750 "$candidate"
 # A published v1.0.N carries the out/ the Mac built (temp-code-out-1.0.N.tar.gz,
 # scripts/release-pack-out.sh): lay that in, verified against its sha256, and
-# build nothing. A release from before that asset existed, and master, are
-# cloned and built from source as before.
+# build only tc-computer.exe, from the commit's crate. A release from before
+# that asset existed, and master, are cloned and built from source as before.
 source_kind=source
 if [[ $ref =~ ^v1\.0\.[0-9]+$ ]]; then
   version=${ref#v}
@@ -155,6 +155,8 @@ if [[ $ref =~ ^v1\.0\.[0-9]+$ ]]; then
     sha=$(lib_as_agents unpack_asset "$tarball" "$candidate" "$version")
     as_agents rm -rf -- "$candidate/.asset"
     echo "SOURCE: release asset $(basename "$tarball") (sha256 verified) $sha"
+    # The asset is the Mac's out/ alone: the Windows VM's service is built here from the commit's crate (build_script).
+    lib_as_agents computer_source "$repo" "$sha" "$candidate"
   elif ((fetched == 3)); then
     echo "SOURCE: release $ref carries no temp-code-out asset; building from a clone"
   else
@@ -192,17 +194,13 @@ else
 fi
 # A failed build never touches current or the live unit.
 build=$(build_script "$source_kind" "$modules")
-if [[ -n $build ]]; then
-  echo "BUILD: $ref $sha ($source_kind, modules $modules)"
-  systemd-run --quiet --wait --pipe --collect --unit="temp-code-build-$$" \
-    --property=User=agents --property=Group=agents --property=Slice=agents.slice \
-    --property="WorkingDirectory=$candidate" --setenv="HOME=$home" --setenv="PATH=$path" \
-    /bin/bash -c "$build"
-else
-  echo "BUILD: skipped; $ref $sha is prebuilt and its modules are reused"
-fi
-[[ -f $candidate/out/main/boot.js && -x $candidate/node_modules/electron/dist/electron ]] ||
-  { echo 'ERROR: the candidate has no out/main/boot.js or no Electron binary' >&2; exit 1; }
+echo "BUILD: $ref $sha ($source_kind, modules $modules)"
+systemd-run --quiet --wait --pipe --collect --unit="temp-code-build-$$" \
+  --property=User=agents --property=Group=agents --property=Slice=agents.slice \
+  --property="WorkingDirectory=$candidate" --setenv="HOME=$home" --setenv="PATH=$path" \
+  /bin/bash -c "$build"
+[[ -f $candidate/out/main/boot.js && -x $candidate/node_modules/electron/dist/electron && -f $candidate/resources/native/tc-computer.exe ]] ||
+  { echo 'ERROR: the candidate has no out/main/boot.js, no Electron binary or no resources/native/tc-computer.exe' >&2; exit 1; }
 # A rollback past live resize: older code would wake a virtio Windows on std VGA (box-update-lib.sh).
 lib_as_agents vm_device_warning "$candidate" || true
 # The build's manifest: what it is and how it got here (the deploy-drift mark

@@ -84,6 +84,8 @@ export interface WinvmState {
   error: string | null
   /** why this host cannot have the VM at all (no base image, not the box); null when it can */
   cannot: string | null
+  /** why no wake or setup can go through on this build (it has no service to copy in): the page says it and asks for none; null when one can, absent from a host before it */
+  blocked?: string | null
   sleepAfter: WinvmSleepAfter
   /** when `state` last changed */
   since: number

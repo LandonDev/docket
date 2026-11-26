@@ -196,16 +196,64 @@ with tempfile.TemporaryDirectory(prefix='tc-build-once-') as temp:
     print('PASS: link_modules hardlinks the tree and refuses to overwrite one')
 
     steps = lambda source, modules: lib('build_script', source, modules).stdout
-    assert steps('asset', 'reuse') == ''
+    exe = 'bun scripts/build-tc-computer-win.ts --into resources/native\n'
+    # every path builds the Windows VM's service, and a failed build of it fails the deploy (no `|| echo`)
+    assert steps('asset', 'reuse') == 'set -euo pipefail\n' + exe
     assert steps('asset', 'install') == ('set -euo pipefail\nbun install --frozen-lockfile\n'
                                          '[[ -x node_modules/electron/dist/electron ]] || node node_modules/electron/install.js\n'
-                                         'node_modules/.bin/electron-builder install-app-deps\n')
-    exe = ('bun scripts/build-tc-computer-win.ts --into resources/native || echo "WARN: tc-computer.exe was not built; '
-           'the Windows VM has no service in this build" >&2\n')
+                                         'node_modules/.bin/electron-builder install-app-deps\n' + exe)
     assert steps('source', 'reuse') == 'set -euo pipefail\nnode_modules/.bin/electron-vite build\n' + exe
     assert steps('source', 'install').endswith('install-app-deps\nnode_modules/.bin/electron-vite build\n' + exe)
-    assert 'tc-computer' not in steps('asset', 'install')
-    print('PASS: build_script runs only the steps a path still needs')
+    print('PASS: build_script runs only the steps a path still needs, and tc-computer.exe on every path')
+
+    # A tag deploy end to end, up to the trial (2026-11-25: two left the box with no tc-computer.exe): the asset of
+    # a commit, its crate laid in from that commit and not a later one, and the build step leaves the exe where the
+    # keeper looks (serviceBin.ts: resources/native). A stand-in bun plays cargo-xwin.
+    git = lambda *a: subprocess.run(['git', '-C', str(origin), *a], text=True, capture_output=True, check=True,
+                                    env=dict(os.environ, GIT_AUTHOR_NAME='t', GIT_AUTHOR_EMAIL='t@t', GIT_COMMITTER_NAME='t',
+                                             GIT_COMMITTER_EMAIL='t@t')).stdout.strip()
+    origin = temp / 'origin'
+    origin.mkdir()
+    git('init', '--quiet')
+    (origin / 'native/tc-computer-win/src').mkdir(parents=True)
+    (origin / 'native/tc-computer-win/src/main.rs').write_text('// v1\n')
+    (origin / 'scripts').mkdir()
+    (origin / 'scripts/build-tc-computer-win.ts').write_text('// builds it\n')
+    (origin / 'README.md').write_text('not laid in\n')
+    git('add', '-A')
+    git('commit', '--quiet', '-m', 'one')
+    tagged = git('rev-parse', 'HEAD')
+    (origin / 'native/tc-computer-win/src/main.rs').write_text('// v2\n')
+    git('commit', '--quiet', '-am', 'two')
+    tag_tree = temp / 'tag-tree'
+    fake_tree(tag_tree, version='1.0.9', n=9)
+    pack(tag_tree, temp / 'feed/v1.0.9', '--sha', tagged)
+    server, base = serve(temp / 'feed')
+    try:
+        tag_tar = pathlib.Path(lib('fetch_asset', '1.0.9', str(temp / 'dl-tag'), env=dict(os.environ, BOX_UPDATE_ASSET_BASE=base)).stdout.strip())
+    finally:
+        server.shutdown()
+        server.server_close()
+    tag_build = temp / 'builds/tag'
+    tag_build.mkdir()
+    assert lib('unpack_asset', str(tag_tar), str(tag_build), '1.0.9').stdout.strip() == tagged
+    assert not (tag_build / 'native').exists()
+    lib('computer_source', 'file://%s' % origin, tagged, str(tag_build))
+    assert (tag_build / 'native/tc-computer-win/src/main.rs').read_text() == '// v1\n'
+    assert (tag_build / 'scripts/build-tc-computer-win.ts').is_file() and not (tag_build / 'README.md').exists()
+    assert not list(tag_build.glob('.computer-src.*'))
+    fakebin = temp / 'fakebin'
+    fakebin.mkdir()
+    (fakebin / 'bun').write_text('#!/bin/sh\n[ "$1" = scripts/build-tc-computer-win.ts ] && [ -d native/tc-computer-win ] || exit 9\n'
+                                 'mkdir -p "$3" && echo exe > "$3/tc-computer.exe"\n')
+    (fakebin / 'bun').chmod(0o755)
+    subprocess.run(['bash', '-c', steps('asset', 'reuse')], cwd=tag_build, check=True, timeout=60,
+                   env=dict(os.environ, PATH='%s:%s' % (fakebin, os.environ['PATH'])))
+    assert (tag_build / 'resources/native/tc-computer.exe').is_file()
+    missing = lib('computer_source', 'file://%s' % origin, 'f' * 40, str(tag_build), check=False)
+    assert missing.returncode == 1 and 'could not lay in native/tc-computer-win' in missing.stderr, missing
+    assert not list(tag_build.glob('.computer-src.*'))
+    print('PASS: a tag deploy lays in the crate at its own commit and builds tc-computer.exe into resources/native')
 
     lib('write_manifest', str(candidate), 'version=1.0.5', 'contract=json:7', 'sha=' + SHA, 'deploy.ref=v1.0.5',
         'deploy.source=asset', 'deploy.nodeModules=reused', 'deploy.modulesFrom=current', 'deploy.at=2026-10-21T00:00:00Z')

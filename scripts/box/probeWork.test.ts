@@ -63,6 +63,14 @@ describe('probeWork', () => {
     expect(pillar.failures).toEqual(['work.health slides: work: slides did not load: ReferenceError: z'])
   })
 
+  it("fails a deploy's build whose Windows VM keeper has no service to copy in, asked only for a deploy", async () => {
+    const blocked = { 'work.winvm.state': { state: 'none', cannot: 'The box has no Windows base image yet.', blocked: "This update left out the Windows VM's helper. Redeploy the box from master." } }
+    expect((await probeWork(host({ ...healthy, ...blocked }), { vmService: true })).failures).toEqual(["work.winvm.state: This update left out the Windows VM's helper. Redeploy the box from master."])
+    expect((await probeWork(host({ ...healthy, ...blocked }))).failures).toEqual([])
+    const served = { 'work.winvm.state': { state: 'none', cannot: 'The box has no Windows base image yet.', blocked: null } }
+    expect((await probeWork(host({ ...healthy, ...served }), { vmService: true })).failures).toEqual([])
+  })
+
   it('keeps an error that is not a load failure as a note, and passes', async () => {
     const r = await probeWork(host({ ...healthy, 'work.health': new Error('Work is off on this host') }))
     expect(r.failures).toEqual([])

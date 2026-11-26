@@ -314,7 +314,7 @@ function StageBar({ tile, vm, picture, onOpenSession, onTookOver, pictureRect, r
   const screen = isVm ? vmScreenSeam(tile.entry.host, vm ?? undefined) : null;
   // a poor link's way out: the lighter picture, where Windows takes it now
   const faster = screen?.canResize && screen.detail !== "faster" ? () => screen.onPick({ detail: "faster" }) : undefined;
-  const action = !isVm || !vm ? undefined : vm.state === "none" ? <OpenSettingsButton /> : vm.state === "asleep" && vm.heldAsleep ? <WakeButton host={tile.entry.host} /> : undefined;
+  const action = !isVm || !vm ? undefined : vm.state === "none" ? <OpenSettingsButton /> : vm.state === "asleep" && vm.heldAsleep && !vm.blocked ? <WakeButton host={tile.entry.host} /> : undefined;
   return (
     <ComputerBar
       tile={tile}

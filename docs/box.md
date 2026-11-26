@@ -4597,17 +4597,25 @@ both):
   candidate and checks what the box runs: the three bundles, package.json's
   version equal to N and its `tempcodeBuild.sha` equal to the manifest's,
   a contract version in the manifest. The probe reads version and contract
-  from the manifest, so the candidate needs no `src/`.
-- `box-update master` clones and runs `electron-vite build` as before, then
+  from the manifest, so the candidate needs no `src/`. The asset carries no
+  `tc-computer.exe`, so the launcher then lays in `native/tc-computer-win`
+  and `scripts/build-tc-computer-win.ts` as they are at the manifest's
+  commit (`computer_source`: a `--depth 1` fetch of that one commit, about
+  4 s, its folder removed after) for the exe step below.
+- `box-update master` clones and runs `electron-vite build` as before.
+- On both paths the build then runs
   `bun scripts/build-tc-computer-win.ts --into resources/native`: the
   Windows VM's service, cross-built with the agents user's cargo-xwin
   (`~/.cargo/bin`, the SDK under `~/.cache/cargo-xwin`), about 40 s cold.
   The keeper finds it through `tcComputerExe`
-  (src/main/server/work/winvm/serviceBin.ts). A failed exe build prints
-  `WARN: tc-computer.exe was not built` and the deploy goes on; the VM then
-  has no service. A `v1.0.N` asset carries none. The step lives in
-  box-update-lib.sh, so it runs only once stage 85 is reapplied
-  (`scripts/box/apply.sh --from 85 --through 85` from the Mac).
+  (src/main/server/work/winvm/serviceBin.ts). A failed exe build fails the
+  deploy before the trial, the launcher refuses a candidate with no
+  `resources/native/tc-computer.exe`, and the trial's probe fails a build
+  whose keeper reads `blocked` (probe-work.mjs `vmService`). Until
+  2026-11-25 a tag deploy built none, and the Windows VM could not wake.
+  The steps live in box-update.sh and box-update-lib.sh, so they run only
+  once stage 85 is reapplied (`scripts/box/apply.sh --from 85 --through 85`
+  from the Mac).
 - node_modules, on both paths: when the candidate's bun.lock is
   byte-identical to the current build's and that build has an Electron
   binary, the current tree is hardlinked into the candidate (`cp -al`, 0.7 s
@@ -4625,8 +4633,8 @@ both):
   manifest is for an operator and the deploy log). The log says which path
   ran: `SOURCE: release asset … (sha256 verified)` or `SOURCE: clone of
   master at …`, `MODULES: reused from <build> (bun.lock unchanged, …)` or
-  `MODULES: installing (<reason>)`, `BUILD: skipped; … is prebuilt and its
-  modules are reused` or `BUILD: <ref> <sha> (<source>, modules <plan>)`.
+  `MODULES: installing (<reason>)`, then `BUILD: <ref> <sha> (<source>,
+  modules <plan>)` (every path builds at least the exe).
 - Trial, snapshot, commit, rollback and retention are unchanged.
 
 **Expected deploy time** (measured on the box on 2026-10-21 with the 1.0.273
@@ -4635,8 +4643,8 @@ on every path and add about a minute):
 
 | Path | Lay out | node_modules | Build | Before the trial |
 | --- | --- | --- | --- | --- |
-| `v1.0.N`, bun.lock unchanged | download the 10 MB tarball, extract in 0.6 s | hardlinked, 1–5 s | none | under 30 s |
-| `v1.0.N`, bun.lock changed | same | `bun install`, Electron, native rebuild: 1–3 min | none | 1–3 min |
+| `v1.0.N`, bun.lock unchanged | download the 10 MB tarball, extract in 0.6 s, the crate's fetch 4 s | hardlinked, 1–5 s | `tc-computer.exe`, ~40 s cold | about 1 min |
+| `v1.0.N`, bun.lock changed | same | `bun install`, Electron, native rebuild: 1–3 min | same | 2–4 min |
 | `master`, bun.lock unchanged | clone, ~20 s | hardlinked, 1–5 s | `electron-vite build`, ~3 min | 3–4 min |
 | `master` with a changed bun.lock, or a release without the asset | clone | install, 1–3 min | build | 4–8 min (the whole deploy before this) |
 
@@ -4659,8 +4667,9 @@ copied. `BOX_UPDATE_ASSET_BASE=<url>` points the fetch at another feed
 (the proof's local server). Proofs: `python3 scripts/box/test-build-once.py`
 (no root: the pack step on a fake tree, the fetch over a local server with a
 present, absent, corrupt and unreachable asset, the unpack checks, the
-lockfile rule, the hardlinked copy, the build steps per path, the manifest
-merge and the probe's read), and the root rehearsal
+lockfile rule, the hardlinked copy, the build steps per path, a tag deploy
+that lays in the crate at its own commit and builds the exe into
+resources/native, the manifest merge and the probe's read), and the root rehearsal
 `scripts/box/test-history-maintenance.py` still drives the launcher end to
 end with a mocked build.
 
