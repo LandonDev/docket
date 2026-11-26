@@ -10,6 +10,7 @@ import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { dayTime } from "../../lib/duration";
 import { modOrCtrl } from "../../lib/keys";
+import { useShutsBar } from "../canvas/barHold";
 import { FailedHost, OpenFailed } from "../canvas/FetchState";
 import { Tip } from "../../components/tip";
 import { sayError } from "../canvas/frame";
@@ -255,9 +256,10 @@ export function PageSkeleton() {
   );
 }
 
-/** An encrypted file: one field and Open. */
+/** An encrypted file: one field and Open. The bar has nothing for it until it opens: its hold lets go. */
 function Locked({ wrong, onOpen }: { wrong: boolean; onOpen(password: string): void }) {
   const [password, setPassword] = useState("");
+  useShutsBar();
   return (
     <Empty>
       <EmptyHeader>

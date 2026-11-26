@@ -10,6 +10,7 @@ import { workErrorWords } from "../../lib/workErrorWords";
 import { DownEmpty, savedOfReason } from "../shell/DownEmpty";
 import { refreshLifeos } from "../shell/lifeos";
 import { useLiveDown } from "../shell/lifeosLive";
+import { useShutsBar } from "./barHold";
 import type { Fetch } from "./fetched";
 import { ItemBones } from "./ItemBones";
 
@@ -60,6 +61,8 @@ export function OpenFailed({
   instead?: { label: string; run(): void | Promise<unknown> } | undefined;
 }) {
   const said = useFailedWords(why);
+  // Nothing comes to the kind's bar while this stands in the body's place: its hold lets go.
+  useShutsBar();
   // An open the pane's host could not make because its LifeOS session is down (a LifeOS document or sheet, a mail's
   // attachment, a dashboard read from a LifeOS sheet) says that session's state by the host's live status, with the
   // rule's press; Retry is for silence alone, and the item is asked again once the host says connected.

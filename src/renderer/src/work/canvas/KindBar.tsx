@@ -31,17 +31,41 @@ export const BAR_TOOLS_ONLY = "has-[[data-canvas-tools]:empty]:hidden";
  * tools, `BarHold`), the bar keeps its 32px while those tools draw nothing, so the body never moves up and back as they
  * come and go (a bone, then nothing, then Share). The pane's own bone while the kind's code loads (`data-bar-bone`) does
  * not count: a kind whose `Bar` has nothing (a meeting with no recording) still has no bar. Read before paint, from the
- * tools slot itself, since a `Bar` that renders null is still a truthy element here.
+ * tools slot itself, since a `Bar` that renders null is still a truthy element here. A shut item (`shut`) lets the hold
+ * go: nothing will come to fill the row, so the bar is drawn only for what it holds.
  */
-function useHeld(slot: React.RefObject<HTMLElement | null>, others: boolean): boolean {
+function useHeld(slot: React.RefObject<HTMLElement | null>, others: boolean, shut: boolean): boolean {
   const [held, setHeld] = useState(false);
   useLayoutEffect(() => {
+    if (shut) {
+      if (held) setHeld(false);
+      return;
+    }
     if (held) return;
     const own = [...(slot.current?.childNodes ?? [])].some((node) => !(node instanceof Element && node.hasAttribute("data-bar-bone")));
     if (others || own) setHeld(true);
   });
-  return held;
+  return held && !shut;
 }
+
+/**
+ * Whether every tool in the slot is one the narrow form hides (`data-narrow-hide`: a read-only sheet's Share, which goes
+ * to More there). Such a bar with nothing else in it and no hold draws nothing in the narrow form, rather than an empty
+ * 32px band: by a container query on the box around the bar (`BAR_BOX`), so it is the same at run time and in a static
+ * render. Read before paint from the slot's children.
+ */
+function useNarrowOnly(slot: React.RefObject<HTMLElement | null>): boolean {
+  const [only, setOnly] = useState(false);
+  useLayoutEffect(() => {
+    const nodes = [...(slot.current?.childNodes ?? [])];
+    setOnly(nodes.length > 0 && nodes.every((node) => node instanceof Element && node.hasAttribute("data-narrow-hide")));
+  });
+  return only;
+}
+
+/** The box around the bar: the size container the bar's own narrow rule is read against from outside (the bar cannot hide itself by its own query). Its width is the bar's, so 580px of box is the bar's 560px content box. */
+const BAR_BOX = "@container/barbox min-w-0 shrink-0";
+const NARROW_GONE = "@max-[580px]/barbox:hidden";
 
 /**
  * Under this width of canvas the bar takes its narrow form: the other people go, the mode says "Suggests" or "Writes",
@@ -109,8 +133,14 @@ export function KindBar({
   lead,
   end,
   savedAt = null,
+  shut = false,
 }: {
   feeds: Feeds;
+  /**
+   * The item will not fill the bar as it stands: a centred failure or a password ask in the body's place (`useShutsBar`),
+   * or a quiet line that ends with History (an item he can only read). The hold lets go.
+   */
+  shut?: boolean;
   /** the time the save line beside the pane says (a Files tab): a written line at that minute does not say it again */
   savedAt?: number | null;
   tools?: ReactNode;
@@ -126,36 +156,39 @@ export function KindBar({
   const slot = useRef<HTMLDivElement | null>(null);
   const tight = useTight(slot, !!tools);
   const others = !!lead || !!end || barShown(feeds, false, !!onHistory || !!onDownload || !!onKeep);
-  const held = useHeld(slot, others);
+  const held = useHeld(slot, others, shut);
+  const narrowOnly = useNarrowOnly(slot);
   if (!others && !tools) return null;
   const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
   return (
     <TooltipProvider>
-      <div
-        data-canvas-bar
-        data-bar-held={held || undefined}
-        className={`@container/bar flex h-8 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b border-border bg-background pr-2 pl-3 text-xs text-muted-foreground ${others || held ? "" : BAR_TOOLS_ONLY}`}
-      >
-        {lead ? (
-          <div data-canvas-bar-lead className="flex min-w-0 shrink-[2] items-center gap-2">
-            {lead}
+      <div data-canvas-bar-box className={BAR_BOX}>
+        <div
+          data-canvas-bar
+          data-bar-held={held || undefined}
+          className={`@container/bar flex h-8 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-b border-border bg-background pr-2 pl-3 text-xs text-muted-foreground ${others || held ? "" : narrowOnly ? NARROW_GONE : BAR_TOOLS_ONLY}`}
+        >
+          {lead ? (
+            <div data-canvas-bar-lead className="flex min-w-0 shrink-[2] items-center gap-2">
+              {lead}
+            </div>
+          ) : null}
+          <People people={feeds.presence} />
+          {feeds.mode ? <Mode mode={feeds.mode} /> : null}
+          {/* The kind's tools take the free room, and are clipped to it: a tool given `ms-auto` sits at the end, before History and the stepper. */}
+          {tools ? (
+            <div ref={slot} data-canvas-tools data-tight={tight || undefined} className={`flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden ${TOOLS_NARROW}`}>
+              {tools}
+            </div>
+          ) : null}
+          {/* It gives up room only after the tools, and only through words: the group's name or a written line truncates; History, the count, Reject, Accept and Undo never shrink. */}
+          <div className="ms-auto flex min-w-0 items-center gap-2 @max-[560px]/bar:gap-1">
+            {onDownload ? <DownloadButton run={onDownload} /> : null}
+            {onKeep ? <KeepButton run={onKeep} /> : null}
+            {onHistory ? <HistoryButton onClick={onHistory} /> : null}
+            {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} savedAt={savedAt} /> : null}
+            {end}
           </div>
-        ) : null}
-        <People people={feeds.presence} />
-        {feeds.mode ? <Mode mode={feeds.mode} /> : null}
-        {/* The kind's tools take the free room, and are clipped to it: a tool given `ms-auto` sits at the end, before History and the stepper. */}
-        {tools ? (
-          <div ref={slot} data-canvas-tools data-tight={tight || undefined} className={`flex min-w-0 flex-1 items-center gap-0.5 overflow-hidden ${TOOLS_NARROW}`}>
-            {tools}
-          </div>
-        ) : null}
-        {/* It gives up room only after the tools, and only through words: the group's name or a written line truncates; History, the count, Reject, Accept and Undo never shrink. */}
-        <div className="ms-auto flex min-w-0 items-center gap-2 @max-[560px]/bar:gap-1">
-          {onDownload ? <DownloadButton run={onDownload} /> : null}
-          {onKeep ? <KeepButton run={onKeep} /> : null}
-          {onHistory ? <HistoryButton onClick={onHistory} /> : null}
-          {review ? <Stepper review={review} /> : feeds.written ? <Written line={feeds.written} savedAt={savedAt} /> : null}
-          {end}
         </div>
       </div>
     </TooltipProvider>
@@ -205,9 +238,16 @@ function ModeWords({ value }: { value: CanvasMode["value"] }) {
 
 function Mode({ mode }: { mode: CanvasMode }) {
   const set = mode.set;
+  // A fixed mode has no menu, so why it is fixed is its tip, a Tab stop for the keys as a quiet line's cut reason is.
   if (!set)
-    return (
-      <span className="shrink-0">
+    return mode.note ? (
+      <Tip label={mode.note}>
+        <span tabIndex={0} data-canvas-mode className="focus-ring shrink-0 rounded-sm">
+          <ModeWords value={mode.value} />
+        </span>
+      </Tip>
+    ) : (
+      <span data-canvas-mode className="shrink-0">
         <ModeWords value={mode.value} />
       </span>
     );

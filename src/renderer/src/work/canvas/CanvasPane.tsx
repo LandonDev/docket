@@ -7,6 +7,7 @@ import { StatusMark } from "../../components/ui/status";
 import type { Chunk } from "../../lib/lazyChunk";
 import type { Feeds } from "./frame";
 import { canvasPanelId, canvasTabId } from "./CanvasTabs";
+import { BarShut } from "./barHold";
 import { KindBar } from "./KindBar";
 import type { CanvasBodyProps, CanvasKindDef, CanvasKindModule, CanvasSelection, CanvasShell, StatusLine } from "./kind";
 import { CANVAS, kindDefOf } from "./registry";
@@ -237,8 +238,10 @@ export function CanvasPane({
   // A mail's attachment comes to the host first: the kind mounts once its bytes are there (fetched.ts).
   const fetched = useItemFetch(environmentId, item);
   const waiting = fetched && fetched.fetch.phase !== "ready" ? fetched.fetch : null;
+  // A body that cannot open until he acts tells the bar (`useShutsBar`): its hold lets go. Keyed by the item, so it starts open.
+  const [shut, setShut] = useState(false);
   // History where he can open it: in the bar, or at the end of a read-only item's quiet line (`StatusLine.history`).
-  const history = def.history && !historyOpen && module && !fetched && feeds.ready !== false ? shell.openHistory : undefined;
+  const history = def.history && !historyOpen && module && !fetched && feeds.ready !== false && !shut ? shell.openHistory : undefined;
   const line = feeds.status && !(saveLine && feeds.status.saving) ? feeds.status : null;
   const historyOnLine = !!history && line?.tone === "quiet" && !!line.history;
   const tools = waiting ? (waiting.phase === "fetching" ? <Skeleton aria-hidden data-bar-bone className="h-3 w-30" /> : undefined) : Bar ? <Bar {...props} /> : module || failed || def.bar === false ? undefined : <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />;
@@ -252,7 +255,7 @@ export function CanvasPane({
       {...(tabbed ? { role: "tabpanel", id: canvasPanelId(item.id), "aria-labelledby": canvasTabId(item.id) } : {})}
       className="flex min-h-0 min-w-0 flex-1 flex-col bg-background"
     >
-      {/* History is for an item that has opened: not while the kind's code loads, nor while the kind says it is opening or could not open. */}
+      {/* History is for an item that has opened: not while the kind's code loads, nor while the kind says it is opening or could not open, nor while the body says it is shut. */}
       {/* While the kind's code loads, the bar holds a bone where its tools will be, so the body does not drop 32px when the code lands; a load that failed holds none. */}
       <KindBar
         feeds={feeds}
@@ -263,13 +266,16 @@ export function CanvasPane({
         lead={barLead}
         end={barEnd}
         savedAt={saveLine && feeds.saved?.state === "saved" ? (feeds.saved.at ?? null) : null}
+        shut={shut || (!!line && line.tone === "quiet" && !!line.history)}
       />
       <FailedHost.Provider value={environmentId}>
         {line ? <StateLine line={line} onHistory={history} /> : null}
         <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
           {waiting ? <FetchState fetch={waiting} kind={item.kind} name={item.title} onRetry={fetched!.retry} /> : (
             <PaneShell.Provider value={shell}>
-              <Body {...props} />
+              <BarShut.Provider value={setShut}>
+                <Body {...props} />
+              </BarShut.Provider>
             </PaneShell.Provider>
           )}
         </div>

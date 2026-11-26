@@ -371,6 +371,21 @@ What a kind should know:
   being empty: a Word file while it becomes a document does, since the
   document has a bar, and it is no bone, which a failed import would leave
   standing.
+- A shut item lets the hold go, so no empty 32px band stands over it: the
+  centred failure (`OpenFailed`) and a PDF's password ask tell the pane
+  while they show (`useShutsBar`, `BarShut` in canvas/barHold.tsx, held in
+  `CanvasPane`'s state), and so does a quiet line that ends with History
+  (an item he can only read). The bar is then drawn only for what it still
+  holds, and History is not offered; Retry brings the kind's bone, and the
+  hold, back. One rule for the document, the PDF, the deck and the sheet.
+  A bar with no hold whose tools are all ones the narrow form hides
+  (`data-narrow-hide`: a read-only sheet's Share, which goes to More there)
+  draws nothing in the narrow form: a container query on the box around the
+  bar (`BAR_BOX`, `@container/barbox`, 580px of box being the bar's 560px
+  content box), since the bar cannot hide itself by its own query.
+- A mode he cannot change ("Agent suggests" with no menu) is a Tab stop
+  whose tip says why, where the kind gives a reason (`CanvasMode.note`:
+  "Others review this, so the agent's notes wait for you").
 - The kind's tools slot takes the bar's free room, so a tool given
   `ms-auto` sits at the slot's end, just before History and the stepper.
 - The bar is a size container (`@container/bar`), and under `BAR_NARROW`
