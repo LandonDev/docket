@@ -482,7 +482,7 @@ struct TodayScreen: View {
 
     static func empty(_ page: TodayModel.Page?) -> PlaceEmpty {
         switch page {
-        case .noJobs?: PlaceEmpty(title: "No Jobs Yet", line: "Link a Work workspace to LifeOS.")
+        case .noJobs?: PlaceEmpty(title: "No Jobs Yet", line: "Link a job to LifeOS.")
         case .clear(let line)?: PlaceEmpty(title: "All Clear", line: line ?? "Nothing needs you today.")
         default: PlaceEmpty(title: "Today")
         }

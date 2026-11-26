@@ -2754,7 +2754,8 @@ milestone 46 built, where it lives now:
   day named only when it is not the day of the row's heading). The dot is the only colour; no counts,
   no chips. A row the phone has no screen for is not a button. Loading draws
   the rows' shape; empty is one line, "Nothing Since Oct 24"; VoiceOver says a row's job before its title; a host that did not answer is
-  one meta line at the foot with Try Again, which reads that host again (the failed-read row). A cold open with a host away draws the days the phone kept of it (its newest fourteen
+  one meta line at the foot with Try Again, which reads that host again (the failed-read row), each
+  line by the computer's id, so two of one name stay two lines. A cold open with a host away draws the days the phone kept of it (its newest fourteen
   and the rows each drew), as they were: nothing is marked seen from them until the host answers. Settings → Work has its Digest section after the
   group with the Work switch and LifeOS, only while some host has Work on:
   Time, then Held items, Routine results, Messages and mail and Meetings, each

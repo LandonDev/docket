@@ -57,8 +57,8 @@ struct DigestScreen: View {
             if !screen.silent.isEmpty || !refused.isEmpty {
                 Section {
                     // Each host that did not answer, with Try Again, which reads that host again (the failed-read row).
-                    ForEach(screen.silent, id: \.self) { name in
-                        FailedRead(words: DigestModel.silentLine(name), retry: { await load(hosts.filter { $0.environment.name == name }) }, identifier: "digest-host-silent")
+                    ForEach(screen.silent) { host in
+                        FailedRead(words: DigestModel.silentLine(host.name), retry: { await load(hosts.filter { $0.environment.id == host.id }) }, identifier: "digest-host-silent")
                             .listRowSeparator(.hidden)
                     }
                     ForEach(refused, id: \.self) { name in

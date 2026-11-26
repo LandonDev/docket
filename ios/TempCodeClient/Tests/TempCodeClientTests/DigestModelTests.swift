@@ -106,10 +106,19 @@ import TempCodeContract
             DigestModel.HostInput(environmentId: "env_mac", name: "The Mac", ledger: nil, error: "timed out")
         ])
         #expect(screen.entries.count == 1)
-        #expect(screen.silent == ["The Mac"])
+        #expect(screen.silent.map(\.name) == ["The Mac"])
         #expect(!screen.reading)
         #expect(DigestModel.silentLine("The Mac") == "The Mac did not answer")
         #expect(DigestModel.screen([DigestModel.HostInput(environmentId: "env_box", name: "The box", ledger: nil, error: nil)]).reading)
+    }
+
+    @Test func `two computers of one name that did not answer stay two lines, each by its own id`() {
+        let screen = DigestModel.screen([
+            DigestModel.HostInput(environmentId: "env_a", name: "Mac", ledger: nil, error: "timed out"),
+            DigestModel.HostInput(environmentId: "env_b", name: "Mac", ledger: nil, error: "refused")
+        ])
+        #expect(screen.silent.map(\.id) == ["env_a", "env_b"])
+        #expect(Set(screen.silent).count == 2)
     }
 
     // MARK: - the list
@@ -307,7 +316,7 @@ import TempCodeContract
         ])
         #expect(screen.entries.map(\.row.id) == ["r1"])
         #expect(DigestModel.sections(screen.entries, days: screen.days, now: now, calendar: calendar, locale: locale).map(\.id) == ["2026-11-23"])
-        #expect(screen.silent == ["Mac"])
+        #expect(screen.silent.map(\.name) == ["Mac"])
         // Read-only: the kept host's day is not marked seen from the disk; the live one's is.
         #expect(DigestModel.seenCalls(screen.days, live: ["env_box"]).map(\.environmentId) == ["env_box"])
         // Its answer wins over what was kept.

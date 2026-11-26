@@ -148,8 +148,18 @@ public enum DigestModel {
         public var days: [Day]
         /// a host has not answered yet and none failed in its place
         public var reading: Bool
-        /// the names of hosts whose read failed: one muted line each at the foot
-        public var silent: [String]
+        /// the hosts whose read failed: one line each at the foot, with Try Again for that host alone
+        public var silent: [Silent]
+    }
+
+    /// A host whose read failed, by its id: two computers may share a name, and each line asks its own again.
+    public struct Silent: Sendable, Hashable, Identifiable {
+        public var id: String
+        public var name: String
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
     }
 
     public nonisolated static func screen(_ hosts: [HostInput]) -> Screen {
@@ -159,7 +169,7 @@ public enum DigestModel {
             entries: mergeRows(read.map { ($0.environmentId, $0.ledger.rows) }),
             days: mergeDays(read.map { ($0.environmentId, $0.ledger.days) }),
             reading: hosts.contains { $0.ledger == nil && $0.error == nil },
-            silent: hosts.filter { $0.error != nil }.map(\.name)
+            silent: hosts.filter { $0.error != nil }.map { Silent(id: $0.environmentId, name: $0.name) }
         )
     }
 

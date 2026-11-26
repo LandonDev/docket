@@ -84,7 +84,8 @@ struct ComputersScreen: View {
             }
         }
         .navigationTitle("Computers")
-        .navigationBarTitleDisplayMode(.inline)
+        // The pose's title, as the places beside it in the Work list's foot (Review, the Digest, Connections).
+        .shellTitleDisplay()
         .accessibilityIdentifier("computers")
         #if DEBUG
         .onChange(of: tiles.count, initial: true) { _, count in LayoutProbe.note("computerTiles", "\(count)") }
