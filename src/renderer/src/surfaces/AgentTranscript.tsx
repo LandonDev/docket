@@ -26,6 +26,7 @@ import {
 } from "./transcriptOutlineModel";
 import type { JumpHow } from "../chrome/JumpList";
 import {
+  OlderPager,
   RowLayout,
   anchorShift,
   rangeCovers,
@@ -205,6 +206,16 @@ export const AgentTranscript = memo(function AgentTranscript({
   const layoutRef = useRef<RowLayout | null>(null);
   if (!layoutRef.current) layoutRef.current = new RowLayout();
   const rowLayout = layoutRef.current;
+  // Older rows page in as the reader nears the top of what is loaded (remote profile); a data path, nothing drawn.
+  const pagerRef = useRef<OlderPager | null>(null);
+  if (!pagerRef.current) pagerRef.current = new OlderPager(sessionStore);
+  const sessionRef = useRef(sessionId);
+  sessionRef.current = sessionId;
+  /** The reader is up the thread, not following its end: ask for older rows when the top is near. */
+  const askOlder = useCallback((el: HTMLElement) => {
+    const id = sessionRef.current;
+    if (id && mode.current !== "follow") pagerRef.current!.near(id, el.scrollTop, el.clientHeight);
+  }, []);
   const [mounted, setMounted] = useState<RowRange>({ start: 0, end: 0 });
   const mountedRef = useRef(mounted);
   const rowEls = useRef(new Map<string, HTMLElement>());
@@ -592,6 +603,7 @@ export const AgentTranscript = memo(function AgentTranscript({
         setMode("follow");
       }
       syncPill(el);
+      askOlder(el);
     };
     const onWheel = (e: WheelEvent) => {
       if (e.deltaY === 0) return;
@@ -636,7 +648,7 @@ export const AgentTranscript = memo(function AgentTranscript({
       window.removeEventListener("pointerup", onPointerUp);
       el.removeEventListener("keydown", onKey);
     };
-  }, [scrollerEl, rowLayout, reconcileWindow, release, schedule, syncPill]);
+  }, [scrollerEl, rowLayout, reconcileWindow, release, schedule, syncPill, askOlder]);
 
   // ── rows and their layout ─────────────────────────────────────────────
   const previousTurns = useRef<{ blocks: Block[]; turns: Block[][] }>({ blocks: [], turns: [] });
@@ -799,11 +811,12 @@ export const AgentTranscript = memo(function AgentTranscript({
       }
       reconcileWindow(el);
       syncReader(el);
+      askOlder(el);
     };
     placeRows.current = place;
     if (visibleRef.current) place();
     else rowsMissed.current = true;
-  }, [rows, rowLayout, reconcileWindow, syncReader]);
+  }, [rows, rowLayout, reconcileWindow, syncReader, askOlder]);
 
   // The list's place follows the pane's width and the message count; set
   // only when it changes (React keeps an equal state).

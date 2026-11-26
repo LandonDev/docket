@@ -39,7 +39,7 @@
   rows give one by one (fold.page.test.ts holds that over random page cuts,
   and that 40,000 agent rows visit about 8 blocks a row, `foldProbe`).
   `foldAll` is `foldPage`. "Load earlier" refolds the kept rows behind the
-  older page through one builder (`foldOlder`): exact, since the board's
+  older pages through one builder (`foldOlder`): exact, since the board's
   rounds and todos (`Block.round`, `Block.todo`) count from the first row,
   and each page costs its rows once. The store (lib/tcserver/store.ts) folds
   through the builder everywhere a page lands: a resume page (`foldSliced`,
@@ -56,6 +56,24 @@
   20,000-block live turn reads at most twice its own blocks;
   transcriptRows.tail.test.ts keeps the old path as its oracle and checks
   the seeded 30,000-row thread's rows against it delta by delta.
+- Older rows of a remote thread page in on their own: once the reader is
+  up the thread (not following its end) and the viewport's top comes within
+  two screens of the first loaded row (`OLDER_WITHIN_SCREENS`), the
+  transcript asks `sessionStore.loadOlder` through `OlderPager`
+  (lib/transcriptWindow.ts), from its scroll handler and after rows land.
+  One ask at a time; a run that moved nothing (a failed ask) asks no more
+  from that place until a press moves it. "Load earlier messages" stays the
+  press and the keyboard's way, through the same call. `loadOlder` is a run
+  of host pages, one in flight, each cut by the host at HISTORY_PAGE_ROWS
+  and HISTORY_PAGE_BYTES (no client limit above them), folded once at the
+  run's end: a run gathers at least the rows already loaded, and goes on to
+  the first row when the run after it would reach it anyway
+  (`olderRunDone`). So the climb folds at most twice the log's rows: the
+  top of 30,000 agent rows from a 300-row tail is six refolds, 48,600 rows,
+  not one refold a page (store.remote.test.ts "climbing to the top", also
+  never two older asks in flight and no task folding more than a slice).
+  The reader's anchor row keeps its place on screen as rows land above it
+  (transcriptWindow.test.ts).
 - The streaming reveal (surfaces/smoothText.ts) holds a lead behind the live
   end (seeded 100 ms, 250 ms for another host's thread, grown by an
   underrun, decaying back), never runs slower than the stream, shows every

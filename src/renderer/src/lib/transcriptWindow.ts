@@ -170,3 +170,42 @@ export function anchorShift(
   for (const change of changes) if (change.index < anchorIndex) shift += change.delta;
   return shift;
 }
+
+/** Older history is asked for once the viewport's top is within this many
+ *  screens of the first loaded row. */
+export const OLDER_WITHIN_SCREENS = 2;
+
+/** What the pager reads and asks of the store (lib/tcserver/store.ts). */
+export type OlderSource = {
+  hasOlderHistory(id: string): boolean;
+  olderBefore(id: string): number | null;
+  loadOlder(id: string): Promise<boolean>;
+};
+
+/**
+ * Older rows page in on their own as the reader nears the top of what is
+ * loaded. One ask at a time (the store runs one run of pages at a time, and
+ * this asks no second while one is out); a run that moved nothing (a failed
+ * ask) asks no more from the same place until a press of Load earlier
+ * moves it, so a dead link is not asked at every scroll event.
+ */
+export class OlderPager {
+  private out = false;
+  private stuck: string | null = null;
+
+  constructor(private readonly source: OlderSource) {}
+
+  /** The reader's viewport moved, or the rows changed under it. */
+  near(id: string, scrollTop: number, clientHeight: number): void {
+    if (this.out || clientHeight === 0 || scrollTop > clientHeight * OLDER_WITHIN_SCREENS) return;
+    if (!this.source.hasOlderHistory(id)) return;
+    const from = `${id}:${this.source.olderBefore(id)}`;
+    if (from === this.stuck) return;
+    this.out = true;
+    const done = (): void => {
+      this.out = false;
+      this.stuck = `${id}:${this.source.olderBefore(id)}` === from ? from : null;
+    };
+    void this.source.loadOlder(id).then(done, done);
+  }
+}

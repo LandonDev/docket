@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { sessionStore, type Link } from "./store";
-import { foldProbe } from "./fold";
+import { FOLD_SLICE_MS, JUMP_PAGES, olderRunDone, sessionStore, type Link } from "./store";
+import { emptyFold, FoldBuilder, foldPage, foldProbe } from "./fold";
+import { perfThread } from "../../../../../scripts/lib/ios-perf-seeds";
 import { openStamps } from "../openStamps";
 import { ConnectionLostError } from "../connection";
 import { newSession } from "../session";
@@ -258,11 +259,11 @@ describe("remote profile: pushes", () => {
 describe("remote profile: history", () => {
   it("paints the tail, pages older rows in on demand, and keeps the tail's block ids", async () => {
     link.pages = [[wireMeta({ id: "s1" })]];
-    link.events.set("s1", turns("s1"));
+    link.events.set("s1", turns("s1", 12));
     await boot(link);
     await sessionStore.ensureLoaded("s1");
     const tail = sessionStore.get("s1")!;
-    expect(tail.blocks.map((b) => b.text)).toEqual(["prompt 5", "answer 5", "prompt 6", "answer 6"]);
+    expect(tail.blocks.map((b) => b.text)).toEqual(["prompt 11", "answer 11", "prompt 12", "answer 12"]);
     expect(sessionStore.hasOlderHistory("s1")).toBe(true);
     // No eager head fetch: one session.events so far.
     expect(link.count("session.events")).toBe(1);
@@ -271,22 +272,23 @@ describe("remote profile: history", () => {
     expect(await sessionStore.loadOlder("s1")).toBe(true);
     const after = sessionStore.get("s1")!;
     expect(after.blocks.map((b) => b.text)).toEqual([
-      "prompt 3",
-      "answer 3",
-      "prompt 4",
-      "answer 4",
-      "prompt 5",
-      "answer 5",
-      "prompt 6",
-      "answer 6",
+      "prompt 9",
+      "answer 9",
+      "prompt 10",
+      "answer 10",
+      "prompt 11",
+      "answer 11",
+      "prompt 12",
+      "answer 12",
     ]);
     expect(after.blocks.slice(4).map((b) => b.id)).toEqual(tailIds);
     const older = link.calls.filter((c) => c.method === "session.events").at(-1)!.params as { beforeSeq?: number; tail?: number };
-    expect(older.beforeSeq).toBe(9);
+    expect(older.beforeSeq).toBe(21);
     expect(older.tail).toBeGreaterThan(0);
 
+    // Eight loaded, eight more would leave eight on the host: the run goes on to the first row.
     expect(await sessionStore.loadOlder("s1")).toBe(false);
-    expect(sessionStore.get("s1")?.blocks).toHaveLength(12);
+    expect(sessionStore.get("s1")?.blocks).toHaveLength(24);
     expect(sessionStore.hasOlderHistory("s1")).toBe(false);
     expect(sessionStore.isComplete("s1")).toBe(true);
   });
@@ -325,7 +327,7 @@ describe("remote profile: history", () => {
     link.push({ push: "event", row: row("s1", 13, { type: "user-text", text: "prompt 7" }) });
     await loading;
     const texts = sessionStore.get("s1")!.blocks.map((b) => b.text);
-    expect(texts[0]).toBe("prompt 3");
+    expect(texts[0]).toBe("prompt 1");
     expect(texts.at(-1)).toBe("prompt 7");
   });
 
@@ -374,8 +376,8 @@ describe("remote profile: history", () => {
     expect(blocks[0]).toMatchObject({ pending: true, text: "prompt 7" });
     expect(blocks.at(-1)).toMatchObject({ role: "assistant", text: "step 24" });
     expect(blocks.filter((b) => b.pending)).toHaveLength(1);
-    // The page that holds the echo: the echo takes the row's key, the pending row is gone.
-    expect(await sessionStore.loadOlder("s1")).toBe(true);
+    // The run that holds the echo (on to the first row): the echo takes the row's key, the pending row is gone.
+    expect(await sessionStore.loadOlder("s1")).toBe(false);
     blocks = sessionStore.get("s1")!.blocks;
     expect(blocks.some((b) => b.pending)).toBe(false);
     const echo = blocks.find((b) => b.role === "user" && b.text === "prompt 7")!;
@@ -383,8 +385,7 @@ describe("remote profile: history", () => {
     expect(blocks.map((b) => b.text).slice(-2)).toEqual(["step 23", "step 24"]);
     // The working line over the live turn no longer reads Sending.
     expect(workingPhase(blocks.slice(blocks.indexOf(echo)), null).key).not.toBe("sending");
-    // The claim tells the view nothing new is pending: the history continues to the first row.
-    expect(await sessionStore.loadOlder("s1")).toBe(true);
+    // The claim tells the view nothing new is pending, and the echo is folded once.
     expect(sessionStore.get("s1")!.blocks.filter((b) => b.role === "user" && b.text === "prompt 7")).toHaveLength(1);
   });
 
@@ -404,8 +405,8 @@ describe("remote profile: history", () => {
     expect(session.environmentId).toBe("box");
     expect(session.blocks.map((b) => b.text)).toEqual(["prompt 5", "answer 5", "prompt 6", "answer 6"]);
     expect(sessionStore.hasOlderHistory("s1")).toBe(true);
-    expect(await sessionStore.loadOlder("s1")).toBe(true);
-    expect(sessionStore.get("s1")!.blocks[0].text).toBe("prompt 3");
+    expect(await sessionStore.loadOlder("s1")).toBe(false);
+    expect(sessionStore.get("s1")!.blocks[0].text).toBe("prompt 1");
   });
 
   it("a resume page that says more rows follow is followed to the end, not left as the whole fold", async () => {
@@ -661,7 +662,7 @@ describe("remote profile: what a page costs to fold", () => {
   it("an older page refolds the kept rows once, through one builder", async () => {
     link.pages = [[wireMeta({ id: "s1" })]];
     link.pageRows = 2_000;
-    link.events.set("s1", turns("s1", 3_000));
+    link.events.set("s1", turns("s1", 5_000));
     await boot(link);
     const restore = oneSlice();
     try {
@@ -674,8 +675,134 @@ describe("remote profile: what a page costs to fold", () => {
       restore();
     }
     const blocks = sessionStore.get("s1")!.blocks;
-    expect(blocks[0].text).toBe("prompt 1001");
-    expect(blocks.at(-1)!.text).toBe("answer 3000");
+    expect(blocks[0].text).toBe("prompt 3001");
+    expect(blocks.at(-1)!.text).toBe("answer 5000");
+  });
+});
+
+describe("remote profile: climbing to the top", () => {
+  /** A 30,000-row agent thread in two turns, the soak's long scene (perfThread). */
+  const agentLog = (id: string, rows = 30_000): EventRow[] =>
+    perfThread(id, { rows, turns: 2, seed: 7 }).map((event, i) => ({ sessionId: id, seq: i + 1, ts: 1_000 + i, event }));
+  /** Every row handed to a fold builder: what the climb costs, by rows. */
+  const countAdds = () => {
+    const real = FoldBuilder.prototype.add;
+    const counter = { rows: 0, restore: () => void (FoldBuilder.prototype.add = real) };
+    FoldBuilder.prototype.add = function (this: FoldBuilder, r: EventRow) {
+      counter.rows++;
+      return real.call(this, r);
+    };
+    return counter;
+  };
+  const olderAsks = () =>
+    link.calls.filter((c) => c.method === "session.events" && (c.params as { beforeSeq?: number }).beforeSeq !== undefined);
+
+  it("a run gathers at least the rows loaded, and goes on to the top when the next run would reach it", () => {
+    expect(olderRunDone(300, 299, 10_000)).toBe(false);
+    expect(olderRunDone(300, 300, 10_000)).toBe(true);
+    // 600 loaded after this run, 500 left: the next run would end at the first row, so this one does.
+    expect(olderRunDone(300, 300, 500)).toBe(false);
+    expect(olderRunDone(300, 300, 600)).toBe(true);
+  });
+
+  it("paging to the top of 30,000 rows folds them about once and a half, each once and in order", async () => {
+    // The host's own cap: 300 rows a page (HISTORY_PAGE_ROWS), the tail too.
+    link.pageRows = 300;
+    const log = agentLog("s1");
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.events.set("s1", log);
+    await boot(link);
+    await sessionStore.ensureLoaded("s1");
+    const whole = (() => {
+      foldProbe.visits = 0;
+      foldPage(emptyFold(), log, "/repo");
+      return foldProbe.visits;
+    })();
+    const adds = countAdds();
+    foldProbe.visits = 0;
+    let runs = 0;
+    try {
+      while (await sessionStore.loadOlder("s1")) runs++;
+      runs++;
+    } finally {
+      adds.restore();
+    }
+    // Every page asked once: 29,700 rows below the tail at 300 a page.
+    expect(olderAsks()).toHaveLength(99);
+    // Runs fold at 600, 1,200, 2,400, 4,800, 9,600 rows, then all 30,000: 48,600 rows in six refolds.
+    expect(runs).toBe(6);
+    expect(adds.rows).toBe(48_600);
+    // The bound the store holds: at most twice the rows (a refold a page was 50 times them).
+    expect(adds.rows).toBeLessThanOrEqual(2 * log.length);
+    expect(foldProbe.visits).toBeLessThanOrEqual(2 * whole);
+    // Once and in order: the same blocks as one fold of the whole log.
+    const blocks = sessionStore.get("s1")!.blocks;
+    const expected = foldPage(emptyFold(), log, "/repo").blocks;
+    expect(blocks.map((b) => b.id)).toEqual(expected.map((b) => b.id));
+    expect(sessionStore.hasOlderHistory("s1")).toBe(false);
+  });
+
+  it("never two older asks in flight, however many presses, scrolls and jumps ask", async () => {
+    link.pageRows = 4;
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.events.set("s1", turns("s1", 40));
+    await boot(link);
+    await sessionStore.ensureLoaded("s1");
+    let out = 0;
+    let most = 0;
+    const real = link.request.bind(link);
+    link.request = <T,>(method: string, params?: unknown): Promise<T> => {
+      if (method !== "session.events" || (params as { beforeSeq?: number }).beforeSeq === undefined) return real<T>(method, params);
+      out++;
+      most = Math.max(most, out);
+      return new Promise<T>((resolve) => setTimeout(() => resolve(real<T>(method, params)), 1)).finally(() => out--);
+    };
+    await Promise.all([
+      sessionStore.loadOlder("s1"),
+      sessionStore.loadOlder("s1"),
+      sessionStore.loadOlder("s1", 3),
+      sessionStore.loadOlder("s1"),
+      sessionStore.loadOlder("s1", 1),
+    ]);
+    expect(most).toBe(1);
+    expect(sessionStore.get("s1")!.blocks).toHaveLength(80);
+    expect(new Set(olderAsks().map((c) => (c.params as { beforeSeq: number }).beforeSeq)).size).toBe(olderAsks().length);
+  });
+
+  it("no task of the climb folds more than a slice", async () => {
+    link.pageRows = 300;
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.events.set("s1", agentLog("s1", 6_000));
+    await boot(link);
+    await sessionStore.ensureLoaded("s1");
+    // A page comes off the socket in a task of its own, as it does over a link.
+    const answer = link.request.bind(link);
+    link.request = <T,>(method: string, params?: unknown): Promise<T> =>
+      new Promise<T>((resolve) => setTimeout(() => resolve(answer<T>(method, params)), 0));
+    // Every read of the clock "takes" 1 ms: a slice is FOLD_SLICE_MS rows, give or take one.
+    let tick = 0;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => (tick += 1));
+    // A task ends at the next macrotask: each task's rows are counted apart.
+    const tasks: number[] = [];
+    let current: number | null = null;
+    const real = FoldBuilder.prototype.add;
+    FoldBuilder.prototype.add = function (this: FoldBuilder, r: EventRow) {
+      if (current === null) {
+        current = tasks.push(0) - 1;
+        setTimeout(() => (current = null), 0);
+      }
+      tasks[current]++;
+      return real.call(this, r);
+    };
+    try {
+      while (await sessionStore.loadOlder("s1"));
+    } finally {
+      FoldBuilder.prototype.add = real;
+      clock.mockRestore();
+    }
+    expect(sessionStore.get("s1")!.blocks.length).toBeGreaterThan(0);
+    expect(tasks.length).toBeGreaterThan(100);
+    expect(Math.max(...tasks)).toBeLessThanOrEqual(FOLD_SLICE_MS + 1);
   });
 });
 
@@ -931,7 +1058,7 @@ describe("remote profile: a master woken only by reports", () => {
     expect(s.blocks.some((b) => b.text === "landed 3")).toBe(true);
     expect(s.load).toMatchObject({ phase: "loaded", empty: false });
     expect(sessionStore.hasOlderHistory("m")).toBe(true);
-    expect(await sessionStore.loadOlder("m")).toBe(true);
+    await sessionStore.loadOlder("m");
     expect(sessionStore.get("m")!.blocks.some((b) => b.text === "landed 2")).toBe(true);
   });
 

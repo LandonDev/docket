@@ -228,6 +228,21 @@ export const FOLD_SLICE_MS = 8;
 const yieldToWindow = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 /** A hidden page (a minimized window, a background tab) runs no animation frames. */
 const pageHidden = (): boolean => typeof document !== "undefined" && document.visibilityState === "hidden";
+/** Host pages a jump to a search hit asks at most before it gives up: each
+ *  is cut at HISTORY_PAGE_BYTES (512 KiB), so at most 64 MiB, and 38,400
+ *  rows at full pages, the longest thread he keeps (38,000 rows). */
+export const JUMP_PAGES = 128;
+/**
+ * Whether a run of older pages has gathered enough to fold: at least the
+ * rows already loaded, as each run refolds them all; and when the run after
+ * this one would reach the first row anyway (fewer remain on the host than
+ * the log will hold), it goes on to the top now. So every run before the
+ * last folds no more than half the log at the top, and the climb folds at
+ * most twice its rows.
+ */
+export function olderRunDone(loaded: number, gathered: number, remaining: number): boolean {
+  return gathered >= loaded && remaining >= loaded + gathered;
+}
 /** Rows folded per slice while the head of a long log folds in the background. */
 const HEAD_CHUNK = 2000;
 /** Rows per `session.events` call while a long head loads: the server reads
@@ -1947,70 +1962,109 @@ class SessionStore {
     return !!this.entries.get(id)?.head;
   }
 
-  /** Remote profile: fetch one older page below what is loaded and refold
-   *  the log with it in front. Resolves to whether more remain; a page
-   *  already on its way is awaited, not doubled. */
-  loadOlder(id: string): Promise<boolean> {
+  /** Remote profile: the oldest seq loaded while older rows remain on the server (a row before it is not in yet). */
+  olderBefore(id: string): number | null {
+    return this.entries.get(id)?.head?.beforeSeq ?? null;
+  }
+
+  /**
+   * Remote profile: fetch older rows below what is loaded and refold the log
+   * with them in front. Resolves to whether more remain. One run at a time:
+   * an ask while one is out waits for it, never doubles it.
+   *
+   * A run is host pages asked one after another (each cut by the host at
+   * HISTORY_PAGE_ROWS and HISTORY_PAGE_BYTES), folded once at its end. The
+   * refold is exact and costs every loaded row (foldOlder), so a run gathers
+   * at least as many rows as are loaded (`olderRunDone`): the climb to the
+   * top folds about twice the rows of the log, not a refold per 300 rows.
+   * `through` (a search hit's seq) runs until that row is in instead, at
+   * most JUMP_PAGES pages; what came before a failed ask still folds.
+   */
+  loadOlder(id: string, through?: number): Promise<boolean> {
     const entry = this.entries.get(id);
     const head = entry?.head;
     if (!entry || !head) return Promise.resolve(false);
     const link = this.linkOf(entry);
     if (!entry.rows || !link) return Promise.resolve(true);
-    if (head.page) return head.page;
+    if (head.page) return through === undefined ? head.page : head.page.then(() => this.loadOlder(id, through));
+    if (through !== undefined && head.beforeSeq <= through) return Promise.resolve(true);
     const live = (): boolean => this.entries.get(id) === entry && entry.head === head;
     head.fetching = true;
     head.page = (async (): Promise<boolean> => {
+      // Newest page first, each oldest row first.
+      const pages: EventRow[][] = [];
+      let gathered = 0;
+      let before = head.beforeSeq;
+      let top = false;
       try {
-        const result = await link.request<EventsResult>("session.events", {
-          sessionId: id,
-          afterSeq: 0,
-          beforeSeq: head.beforeSeq,
-          tail: HISTORY_PAGE_ROWS,
-        });
-        if (!live() || !entry.rows) return false;
-        const page = asPage(result, true);
-        // The rows array stays the one pushes append to while this folds,
-        // so a row that lands mid-way is folded by the index loop below.
-        const rows = [...page.rows, ...entry.rows];
-        entry.rows = rows;
-        // One builder for the whole refold: each row is folded once and the blocks never copied a row.
-        // The window gets the thread back every FOLD_SLICE_MS; `rows.length` is read each step, so a
-        // push that lands mid-way folds too.
-        const builder = new FoldBuilder(emptyFold(), entry.session.cwd);
-        let sliceAt = performance.now();
-        for (let i = 0; i < rows.length; i++) {
-          builder.add(rows[i]);
-          if (i + 1 < rows.length && performance.now() - sliceAt > FOLD_SLICE_MS) {
-            await yieldToWindow();
-            if (!live()) return false;
-            sliceAt = performance.now();
+        for (let asks = 1; ; asks++) {
+          const result = await link.request<EventsResult>("session.events", {
+            sessionId: id,
+            afterSeq: 0,
+            beforeSeq: before,
+            tail: HISTORY_PAGE_ROWS,
+          });
+          if (!live() || !entry.rows) return false;
+          const page = asPage(result, true);
+          if (page.rows.length > 0) {
+            pages.push(page.rows);
+            gathered += page.rows.length;
+            before = page.rows[0].seq;
           }
+          if (!page.moreBefore || page.rows.length === 0) {
+            top = true;
+            break;
+          }
+          // Seqs are contiguous from 1: `before - 1` rows remain on the host.
+          if (through === undefined ? olderRunDone(entry.rows.length, gathered, before - 1) : before <= through || asks >= JUMP_PAGES) break;
         }
-        // The person's unechoed rows meet the refolded log: an echo among
-        // the rows stands for its row, the rest stay pending in their place.
-        const state = reconcilePending(builder.state(), entry.session.blocks.filter((b) => b.pending));
-        this.refoldCursor(entry, state.lastSeq);
-        entry.nextId = Math.max(state.nextId, entry.nextId);
-        entry.session = {
-          ...entry.session,
-          blocks: state.blocks,
-          thread: state.thread,
-          ...contextAfterFold(entry.session.context, state.context),
-        };
-        if (page.moreBefore && page.rows.length > 0) {
-          head.beforeSeq = page.rows[0].seq;
-          head.fetching = false;
-          head.page = null;
-        } else this.settleHead(entry);
-        this.bump();
-        return !!entry.head;
       } catch {
-        if (live()) {
+        if (!live()) return false;
+        if (gathered === 0) {
           head.fetching = false;
           head.page = null;
+          return true;
         }
-        return true;
       }
+      if (!entry.rows) return false;
+      const older: EventRow[] = [];
+      for (let p = pages.length - 1; p >= 0; p--) for (const row of pages[p]) older.push(row);
+      // The rows array stays the one pushes append to while this folds,
+      // so a row that lands mid-way is folded by the index loop below.
+      const rows = older.concat(entry.rows);
+      entry.rows = rows;
+      // One builder for the whole refold: each row is folded once and the blocks never copied a row.
+      // The window gets the thread back every FOLD_SLICE_MS; `rows.length` is read each step, so a
+      // push that lands mid-way folds too.
+      const builder = new FoldBuilder(emptyFold(), entry.session.cwd);
+      let sliceAt = performance.now();
+      for (let i = 0; i < rows.length; i++) {
+        builder.add(rows[i]);
+        if (i + 1 < rows.length && performance.now() - sliceAt > FOLD_SLICE_MS) {
+          await yieldToWindow();
+          if (!live()) return false;
+          sliceAt = performance.now();
+        }
+      }
+      // The person's unechoed rows meet the refolded log: an echo among
+      // the rows stands for its row, the rest stay pending in their place.
+      const state = reconcilePending(builder.state(), entry.session.blocks.filter((b) => b.pending));
+      this.refoldCursor(entry, state.lastSeq);
+      entry.nextId = Math.max(state.nextId, entry.nextId);
+      entry.session = {
+        ...entry.session,
+        blocks: state.blocks,
+        thread: state.thread,
+        ...contextAfterFold(entry.session.context, state.context),
+      };
+      if (top) this.settleHead(entry);
+      else {
+        head.beforeSeq = before;
+        head.fetching = false;
+        head.page = null;
+      }
+      this.bump();
+      return !!entry.head;
     })();
     return head.page;
   }

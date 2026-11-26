@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { RowLayout, anchorShift, rangeCovers } from "./transcriptWindow";
+import { OLDER_WITHIN_SCREENS, OlderPager, RowLayout, anchorShift, rangeCovers, type OlderSource } from "./transcriptWindow";
 
 const rows = (n: number, estimate = 40, prefix = "r") =>
   Array.from({ length: n }, (_, i) => ({ key: `${prefix}${i}`, estimate }));
@@ -72,5 +72,88 @@ describe("RowLayout", () => {
     expect(rangeCovers({ start: 10, end: 40 }, { start: 12, end: 38 })).toBe(true);
     expect(rangeCovers({ start: 10, end: 40 }, { start: 9, end: 38 })).toBe(false);
     expect(rangeCovers({ start: 10, end: 40 }, { start: 12, end: 41 })).toBe(false);
+  });
+});
+
+describe("a page of older rows landing above the reader", () => {
+  it("keeps the reader's row at the same place on screen: the offset moves by the rows added", () => {
+    const layout = new RowLayout();
+    // The Load earlier row, then the loaded rows.
+    layout.setRows([{ key: "more", estimate: 40 }, ...rows(100, 50, "new")]);
+    const anchor = layout.anchorAt(1_200)!;
+    expect(anchor.key).toBe("new23");
+    // Thirty older rows land between the Load earlier row and the reader's.
+    layout.setRows([{ key: "more", estimate: 40 }, ...rows(30, 60, "old"), ...rows(100, 50, "new")]);
+    expect(layout.scrollTopFor(anchor)).toBe(1_200 + 30 * 60);
+    // Measured heights of the old rows move it by what they measured.
+    layout.measure("old0", 100);
+    expect(layout.scrollTopFor(anchor)).toBe(1_200 + 30 * 60 + 40);
+  });
+});
+
+describe("OlderPager", () => {
+  const VIEW = 600;
+  /** A store with older rows from seq `before`; `loadOlder` waits until released. */
+  const source = (before: number | null = 500) => {
+    const asks: ((moved: boolean) => void)[] = [];
+    const s: OlderSource & { before: number | null; asks: typeof asks } = {
+      before,
+      asks,
+      hasOlderHistory: () => s.before !== null,
+      olderBefore: () => s.before,
+      loadOlder: () =>
+        new Promise<boolean>((resolve) =>
+          asks.push((moved) => {
+            if (moved && s.before !== null) s.before -= 100;
+            resolve(s.before !== null);
+          }),
+        ),
+    };
+    return s;
+  };
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it("asks within two screens of the first loaded row, and not further down", () => {
+    const s = source();
+    const pager = new OlderPager(s);
+    pager.near("t", VIEW * OLDER_WITHIN_SCREENS + 1, VIEW);
+    expect(s.asks).toHaveLength(0);
+    pager.near("t", VIEW * OLDER_WITHIN_SCREENS, VIEW);
+    expect(s.asks).toHaveLength(1);
+  });
+
+  it("asks once while a run is out, then again when the reader is still near the top", async () => {
+    const s = source();
+    const pager = new OlderPager(s);
+    for (let top = 1_000; top >= 0; top -= 50) pager.near("t", top, VIEW);
+    expect(s.asks).toHaveLength(1);
+    s.asks[0](true);
+    await settle();
+    pager.near("t", 100, VIEW);
+    expect(s.asks).toHaveLength(2);
+  });
+
+  it("a run that moved nothing asks no more from that place until it moves", async () => {
+    const s = source();
+    const pager = new OlderPager(s);
+    pager.near("t", 0, VIEW);
+    s.asks[0](false);
+    await settle();
+    for (let i = 0; i < 20; i++) pager.near("t", 0, VIEW);
+    expect(s.asks).toHaveLength(1);
+    // A press of Load earlier brought a page: the place moved, the pager asks again.
+    s.before = 400;
+    pager.near("t", 0, VIEW);
+    expect(s.asks).toHaveLength(2);
+  });
+
+  it("asks nothing with no older rows, or with no viewport", () => {
+    const s = source(null);
+    const pager = new OlderPager(s);
+    pager.near("t", 0, VIEW);
+    const hidden = source();
+    new OlderPager(hidden).near("t", 0, 0);
+    expect(s.asks).toHaveLength(0);
+    expect(hidden.asks).toHaveLength(0);
   });
 });

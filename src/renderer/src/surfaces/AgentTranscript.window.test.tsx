@@ -91,6 +91,7 @@ import { AgentTranscript, shouldRestoreScroll } from "./AgentTranscript";
 import { messageListChunk } from "./chunks";
 import type { Block } from "../lib/session";
 import { requestTranscriptJump } from "../lib/transcriptJump";
+import { sessionStore } from "../lib/tcserver/store";
 import { messageListFold } from "../lib/messageListFold";
 import { EASE_OUT_CSS } from "../lib/ease";
 import type { TranscriptScrollMemory } from "../lib/transcriptScrollMemory";
@@ -305,6 +306,49 @@ describe("AgentTranscript viewport window", () => {
     for (const key of ["u0", "t0", "a0", "u1:end"]) expect(row(key).childElementCount).toBeGreaterThan(0);
     // No row carries a margin or padding of its own outside the gap.
     for (const el of container.querySelectorAll<HTMLElement>("[data-row]")) expect(el.className).not.toMatch(/(?:^|\s)p[bt]-\d/);
+  });
+});
+
+describe("AgentTranscript older rows", () => {
+  /** A remote thread with older rows on its host: the store's answers, and its asks counted. */
+  const withOlder = () => {
+    const spies = [
+      vi.spyOn(sessionStore, "hasOlderHistory").mockReturnValue(true),
+      vi.spyOn(sessionStore, "olderBefore").mockReturnValue(401),
+    ];
+    const load = vi.spyOn(sessionStore, "loadOlder").mockImplementation(() => new Promise<boolean>(() => {}));
+    return { load, restore: () => [...spies, load].forEach((s) => s.mockRestore()) };
+  };
+
+  it("page in as the reader nears the top, one ask at a time, and never while it follows the end", () => {
+    const older = withOlder();
+    try {
+      const { container } = render(<AgentTranscript sessionId="o1" blocks={chat(100, 100)} busy={false} visible />);
+      const el = scrollerOf(container);
+      // Opened at the end, following: nothing asked.
+      expect(older.load).not.toHaveBeenCalled();
+      const total = parseFloat(boxOf(container).style.height);
+      scrollTo(el, total / 2);
+      expect(older.load).not.toHaveBeenCalled();
+      // Within two screens of the first row: one ask, and no second while it is out.
+      scrollTo(el, 2 * VIEWPORT);
+      scrollTo(el, VIEWPORT);
+      scrollTo(el, 0);
+      expect(older.load).toHaveBeenCalledTimes(1);
+      expect(older.load).toHaveBeenCalledWith("o1");
+    } finally {
+      older.restore();
+    }
+  });
+
+  it("a short tail that fits the screen asks nothing while it follows the end", () => {
+    const older = withOlder();
+    try {
+      render(<AgentTranscript sessionId="o2" blocks={chat(2, 100)} busy={false} visible />);
+      expect(older.load).not.toHaveBeenCalled();
+    } finally {
+      older.restore();
+    }
   });
 });
 
