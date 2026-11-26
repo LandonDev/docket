@@ -133,13 +133,17 @@ describe("a project's link on the guest's page", () => {
 });
 
 describe("a face in the project's screens", () => {
-  it("wears the image outline, as the guest's own face and the desktop's do", async () => {
+  it("is the desktop's face on the shared Avatar: one letter at 11px medium under 24px, on the image outline", async () => {
     const { Face } = await import("./ProjectPage");
     const { container } = render(<Face name="Dana Lee" size={20} />);
     const face = container.firstElementChild as HTMLElement;
-    expect(face.textContent).toBe("DL");
-    expect(face.className).toContain("outline-(--image-outline)");
-    expect(face.className).toContain("-outline-offset-1");
+    expect(face.dataset.slot).toBe("avatar");
+    expect(face.dataset.size).toBe("20");
+    expect(face.textContent).toBe("D");
+    for (const part of ["text-[11px]", "font-medium", "outline-image-outline", "-outline-offset-1"]) expect(face.classList).toContain(part);
+    expect(face.className).not.toMatch(/text-\[(7|8)px\]/);
+    cleanup();
+    expect((render(<Face name="Dana Lee" size={16} />).container.firstElementChild as HTMLElement).dataset.size).toBe("16");
   });
 });
 
@@ -162,8 +166,8 @@ describe("who else is in the file, in the page's line", () => {
     expect(first!.className).not.toContain("-ms-1.5");
     expect(second!.className.split(" ")).toEqual(expect.arrayContaining(["-ms-1.5", "shadow-[0_0_0_2px_var(--background)]"]));
     expect(first!.style.getPropertyValue("--face-ring")).toBe("#3b82f6");
-    const face = first!.querySelector("[data-face]") as HTMLElement;
-    expect(face.dataset.face).toBe("bar");
+    const face = first!.querySelector("[data-slot=avatar]") as HTMLElement;
+    expect(face.dataset.size).toBe("20");
     expect(face.textContent).toBe("L");
     expect(face.className).toContain("outline-(--face-ring)");
   });

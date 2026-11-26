@@ -273,13 +273,4 @@ export function textOf(body: string): string {
   return out.join("\n").trim();
 }
 
-/** Initials for an avatar: two letters at most. */
-export const initials = (name: string): string =>
-  name
-    .trim()
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((w) => w[0]?.toUpperCase() ?? "")
-    .join("") || "?";
-
 export const untilDay = (at: number): string => new Date(at).toLocaleDateString(undefined, { month: "short", day: "numeric" });

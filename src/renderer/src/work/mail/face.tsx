@@ -1,7 +1,8 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import type { MailFaceProps } from "work-kit/mail";
 import { loadBytes } from "work-kit/mail/lib/bytes";
 import { Users } from "../../chrome/icons";
+import { Avatar, type AvatarSize } from "../../components/ui/avatar";
 import { cn } from "../../lib/cn";
 import { News } from "../icons";
 
@@ -25,15 +26,8 @@ const initials = (name: string | undefined): string =>
 /** Mail's four sizes; `bar`, the 20px face in a canvas bar and a note; `page`, the 40px face that heads a person's page. */
 export type FaceSize = NonNullable<MailFaceProps["size"]> | "bar" | "page";
 
-// Initials are the 11px label step (docs/DESIGN.md "Type scale"), medium, at every size that holds two letters or one; the page's are 13px.
-const FACE: Record<FaceSize, string> = {
-  line: "size-4 text-[11px] font-medium",
-  chip: "size-[18px] text-[11px] font-medium",
-  bar: "size-5 text-[11px] font-medium",
-  row: "size-6 text-[11px] font-medium",
-  head: "size-7 text-[11px] font-medium",
-  page: "size-10 text-[13px] font-medium",
-};
+/** Each size's pixels on the shared Avatar. */
+const PX: Record<FaceSize, AvatarSize> = { line: 16, chip: 18, bar: 20, row: 24, head: 28, page: 40 };
 
 /**
  * Pictures of faces this window has read, by their address in LifeOS's store: a blob the page may
@@ -101,39 +95,22 @@ export function useFacePicture(url: string | undefined): string | undefined {
 }
 
 /**
- * A face in a circle on `muted` (docs/DESIGN.md, avatars): 40px heading a person's page, 28px beside
- * an open message's sender, 24px in a list row, 20px in a bar, 18px in a recipient chip and a fold
- * row, 16px on a line. It is the person's picture where LifeOS holds one (`picture`, read as bytes) or
- * one the page may draw as it is (`src`: a collaborator's avatar); else a glyph for a mailing list or a
- * shared mailbox; else initials (the three sizes under 24px hold one letter, which reads at 11px; two
- * would not). A picture that fails to load gives way to what would have stood there, quietly.
+ * A face in a circle on `muted` (docs/DESIGN.md, avatars), on the shared Avatar: 40px heading a person's page, 28px
+ * beside an open message's sender, 24px in a list row, 20px in a bar, 18px in a recipient chip and a fold row, 16px on
+ * a line. It is the person's picture where LifeOS holds one (`picture`, read as bytes) or one the page may draw as it
+ * is (`src`: a collaborator's avatar); else a glyph for a mailing list or a shared mailbox; else initials, 11px medium
+ * (the label step, docs/DESIGN.md "Type scale"; the page's 13px), one letter in the three sizes under 24px, which reads
+ * at 11px where two would not. A picture shows once it has loaded, so one that fails never flashes: what would have
+ * stood there stays, quietly.
  */
 export function Face({ name, picture, src: given, mark, size = "row", className }: Omit<MailFaceProps, "size"> & { size?: FaceSize; src?: string | undefined }) {
   const letters = initials(name);
   const read = useFacePicture(given ? undefined : picture);
-  const src = given ?? read;
-  const [broken, setBroken] = useState<string | null>(null);
   const small = size === "chip" || size === "line" || size === "bar";
   const Mark = mark === "list" ? News : mark === "group" ? Users : null;
   return (
-    <span
-      aria-hidden
-      data-face={size}
-      className={cn(
-        "inline-grid shrink-0 place-items-center overflow-hidden rounded-full bg-muted text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline)",
-        FACE[size],
-        className,
-      )}
-    >
-      {src && broken !== src ? (
-        <img src={src} alt="" draggable={false} className="size-full object-cover" onError={() => setBroken(src)} />
-      ) : Mark ? (
-        <Mark className={small ? "size-2.5" : size === "page" ? "size-4" : "size-3.5"} />
-      ) : small ? (
-        letters.slice(0, 1)
-      ) : (
-        letters
-      )}
-    </span>
+    <Avatar name={name ?? ""} src={given ?? read} size={PX[size]} className={cn(size === "page" && "text-[13px]", className)}>
+      {Mark ? <Mark className={small ? "size-2.5" : size === "page" ? "size-4" : "size-3.5"} /> : small ? letters.slice(0, 1) : letters}
+    </Avatar>
   );
 }

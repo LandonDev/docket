@@ -239,7 +239,8 @@ A draft asked for one job's workspace (`writeMail(draft, workspaceId)`, the
 Clash dialog's Running late) goes only to that workspace's Mail: the view
 binds its mailbox to the workspace, and another job's mailbox that mounts
 first drops the draft rather than take it.
-The face Mail draws is `work/mail/face.tsx`, which People draws too.
+The face Mail draws is `work/mail/face.tsx`, which People draws too, built on the shared
+`Avatar` (components/ui/avatar.tsx): a picture shows once it has loaded, its initials until then.
 
 The list is 296px beside the reader and its edge takes a drag from 260 to
 480px, kept for the app (`tc.mail.listWidth`). A view too narrow for the

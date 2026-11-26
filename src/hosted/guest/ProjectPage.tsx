@@ -6,7 +6,8 @@ import "work-kit/projects/styles.css";
 import "@renderer/work/projects/projects.css";
 import { Button } from "@renderer/components/ui/button";
 import { ArrowLeft } from "@renderer/chrome/icons";
-import { initials, OpenFailed, type ChildItem, type Opened, type Session } from "./session";
+import { Face as PersonFace } from "@renderer/work/mail/face";
+import { OpenFailed, type ChildItem, type Opened, type Session } from "./session";
 
 /**
  * A project on the hosted page (docs/agents/work-guests.md "A project's
@@ -92,12 +93,8 @@ export function DocText({ id, title, markdown }: { id: string; title: string; ma
   );
 }
 
-/** A person's initials in the screens, with the image outline every face on the page wears (the guest's own, the desktop's `Face`). */
-export const Face: ProjectsKit["Face"] = ({ name, size, className }) => (
-  <span aria-hidden className={`inline-grid shrink-0 place-items-center rounded-full bg-muted font-semibold text-muted-foreground outline-1 -outline-offset-1 outline-(--image-outline) ${size === 16 ? "size-4 text-[7px]" : "size-5 text-[8px]"} ${className ?? ""}`}>
-    {initials(name)}
-  </span>
-);
+/** A person in the screens as Work's one face (the desktop's `Face`, on the shared Avatar): 16px on a line, 20px in a row's bar. */
+export const Face: ProjectsKit["Face"] = ({ name, size, className }) => <PersonFace name={name} size={size === 16 ? "line" : "bar"} className={className} />;
 
 const kit: ProjectsKit = {
   SectorMark: () => null,
