@@ -209,8 +209,9 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/tasks/NewTaskDialog.tsx`]: [
     ["`Added to ${jobNameNow(sector)}`", "answer"],
   ],
+  // A closed task's foot: the done time LifeOS's read of the task kept (`tasks:get`), then the sheet's own Done press.
   [`${R}/tasks/TaskSheet.tsx`]: [
-    ["Done", "read"],
+    ["`Done ${when}`", "read"],
     ["Done", "local"],
   ],
   [`${R}/tasks/TasksView.tsx`]: [

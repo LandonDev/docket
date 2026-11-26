@@ -18,12 +18,23 @@ import { openTaskThread, useLiveLink } from "./links";
  * alone; done or dropped, its sheet only reads, its state at the foot.
  */
 
-type Detail = { task: Task & { description?: string; source?: Task["source"] & { quote?: string; permalink?: string } } } | null;
+type Detail = { task: Task & { description?: string; completedAt?: number; source?: Task["source"] & { quote?: string; permalink?: string } } } | null;
 
 const get = makeFunctionReference<"query">("tasks:get");
 
-/** A task no longer open, by its LifeOS status: its sheet offers nothing to do, and says this at its foot. */
-const CLOSED: Record<string, string> = { done: "Done", dropped: "Dropped" };
+/**
+ * A task no longer open, by its LifeOS status: its sheet offers nothing to do, and says so at its foot as a fact, never
+ * a lone "Done" that reads as a press turned off: when it was done where LifeOS kept the time ("Done yesterday", "Done
+ * Nov 24"), else "Marked done"; "Dropped" for a dropped one.
+ */
+export function closedWords(status: string, completedAt: number | undefined, now = Date.now()): string | undefined {
+  if (status === "dropped") return "Dropped";
+  if (status !== "done") return undefined;
+  if (completedAt === undefined) return "Marked done";
+  const day = formatDue(completedAt, now);
+  const when = day === "Yesterday" || day === "Tomorrow" ? day.toLowerCase() : day;
+  return `Done ${when}`;
+}
 
 type Props = {
   /** A task's project name, by its `projectId`. */
@@ -61,7 +72,7 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, doneHeld, onCode, 
     if (gone) onClose();
   }, [gone, onClose]);
   if (!full) return <SheetBones />;
-  const closed = CLOSED[full.status];
+  const closed = closedWords(full.status, detail?.task.completedAt);
   const project = projectOf(full);
   const source = detail?.task.source;
   const rows: { label: string; value: string }[] = [];
@@ -90,7 +101,8 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, doneHeld, onCode, 
             ))}
           </dl>
         ) : null}
-        {source?.quote ? <p className="border-l border-border pl-3 text-sm leading-[22px] whitespace-pre-wrap text-muted-foreground">{source.quote}</p> : null}
+        {/* The words it was filed from, muted: their tone sets them apart, with no rule down their side. */}
+        {source?.quote ? <p className="text-sm leading-[22px] whitespace-pre-wrap text-muted-foreground">{source.quote}</p> : null}
         {detail?.task.description ? <p className="text-sm leading-[22px] whitespace-pre-wrap text-foreground">{detail.task.description}</p> : null}
         {source?.permalink ? (
           <div>
@@ -106,12 +118,11 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, doneHeld, onCode, 
           {closed}
         </p>
       ) : (
-      <div className="flex shrink-0 items-center gap-2 border-t border-border px-5 py-3">
+      // A narrow sheet wraps its presses to a second row rather than run one off its edge.
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-5 py-3">
         {threadId === undefined ? (
-          // The link read is out: its place is kept, so Done does not move when the press comes.
-          <Button size="sm" aria-hidden tabIndex={-1} disabled className="invisible">
-            Start thread
-          </Button>
+          // The link read is out: a bone in the press's own shape holds its place, so Done does not move when it comes.
+          <Skeleton aria-hidden data-press-bone className="h-7 w-[92px] rounded-md" />
         ) : threadId ? (
           <Button size="sm" onClick={() => (onClose(), void openTaskThread(threadId, () => onStart(full)))}>
             Open thread

@@ -73,7 +73,7 @@ describe("a task chosen in Work Search", () => {
     expect(within(again).getByRole("button", { name: "Done" })).toBeTruthy();
   });
 
-  it("reads a done task by its id and opens its sheet with nothing to do, Done at its foot", async () => {
+  it("reads a done task by its id and opens its sheet with nothing to do, its state a fact at its foot", async () => {
     openWorkView({ workspaceId: "ws", view: "tasks" });
     render(<View {...props} />);
     await screen.findByText("Book the ballroom");
@@ -81,7 +81,8 @@ describe("a task chosen in Work Search", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Print the brackets")).toBeTruthy();
     expect(within(dialog).getByText("Forty copies")).toBeTruthy();
-    expect(dialog.querySelector("[data-task-closed]")?.textContent).toBe("Done");
+    // LifeOS kept no done time for it: the fact without a day, never a lone "Done" that reads as a press turned off.
+    expect(dialog.querySelector("[data-task-closed]")?.textContent).toBe("Marked done");
     expect(within(dialog).queryByRole("button", { name: "Start thread" })).toBeNull();
     expect(within(dialog).queryByRole("button", { name: "Done" })).toBeNull();
     expect(within(dialog).queryByRole("button", { name: "Open a code thread…" })).toBeNull();

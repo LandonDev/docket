@@ -89,7 +89,42 @@ describe("the Tasks view", () => {
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Book the ballroom");
     expect(screen.getByText("Spring LAN")).toBeTruthy();
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["This week", "Waiting"]);
-    expect(screen.getByText("Waiting on Sam Ortiz")).toBeTruthy();
+    // Under the Waiting heading the line is who alone: the heading says the rest.
+    const waiting = screen.getByRole("region", { name: "Waiting" });
+    expect(within(waiting).getByText("Sam Ortiz")).toBeTruthy();
+    expect(within(waiting).queryByText("Waiting on Sam Ortiz")).toBeNull();
+  });
+
+  it("moves between the rows with ↑ and ↓ from anywhere in a row, across the groups, and leaves the keys alone elsewhere", () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} />);
+    const open = (title: string) => screen.getByRole("button", { name: `Open ${title}` });
+    open("Send Dana the budget").focus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    // This week's row to Waiting's: one list under the lead.
+    expect(document.activeElement).toBe(open("Approve the scrim schedule"));
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(open("Approve the scrim schedule"));
+    // From the row's tick, too: the keys land on the open control of the row before.
+    screen.getByRole("checkbox", { name: "Mark Approve the scrim schedule done" }).focus();
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(open("Send Dana the budget"));
+    // The lead is no row: its presses keep the arrows to themselves.
+    const start = within(document.querySelector<HTMLElement>("[data-lead-presses]")!).getByRole("button", { name: "Start thread" });
+    start.focus();
+    expect(fireEvent.keyDown(start, { key: "ArrowDown" })).toBe(true);
+    expect(document.activeElement).toBe(start);
+  });
+
+  it("holds the primary press's place with a bone of its shape while the link read is out, on the lead and in the sheet", async () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} useThread={() => undefined} />);
+    const presses = document.querySelector<HTMLElement>("[data-lead-presses]")!;
+    const bone = presses.querySelector<HTMLElement>("[data-press-bone]")!;
+    expect(bone.className).toContain("h-7 w-[92px] rounded-md");
+    expect(within(presses).queryByRole("button", { name: "Start thread" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open Send Dana the budget" }));
+    const sheet = await screen.findByRole("dialog");
+    expect(sheet.querySelector("[data-press-bone]")).toBeTruthy();
+    expect(within(sheet).queryByRole("button", { name: "Start thread" })).toBeNull();
   });
 
   it("says a late lead's due day in lower case after Due, as the rows' own label says it alone", () => {
@@ -127,7 +162,7 @@ describe("the Tasks view", () => {
   it("starts a thread with the task as its chip, and nothing else", () => {
     const startThread = vi.fn();
     render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} />);
-    fireEvent.click(screen.getByRole("button", { name: "Start thread" }));
+    fireEvent.click(within(document.querySelector<HTMLElement>("[data-lead-presses]")!).getByRole("button", { name: "Start thread" }));
     expect(startThread).toHaveBeenCalledWith({ kind: "task", label: "Book the ballroom", ref: { at: "lifeos", table: "tasks", id: "t1" } });
   });
 
@@ -135,7 +170,7 @@ describe("the Tasks view", () => {
     const startThread = vi.fn();
     const place = { id: "ws-purdue", environmentId: "box", path: "/w/Purdue" };
     render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} place={place} />);
-    fireEvent.click(screen.getByRole("button", { name: "Start thread" }));
+    fireEvent.click(within(document.querySelector<HTMLElement>("[data-lead-presses]")!).getByRole("button", { name: "Start thread" }));
     await act(async () => {});
     const chip = { kind: "task", label: "Book the ballroom", ref: { at: "lifeos", table: "tasks", id: "t1" } };
     expect(mirrors.open).toHaveBeenCalledWith(place, "p1", "Spring LAN");
@@ -218,7 +253,7 @@ describe("the Tasks view", () => {
     const startThread = vi.fn();
     render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} useThread={(id) => (id === "t3" ? "gone" : null)} />);
     const waiting = screen.getByRole("button", { name: "Open Approve the scrim schedule" }).closest("[role=listitem]") as HTMLElement;
-    expect(within(waiting).queryByRole("button", { name: "Start" })).toBeNull();
+    expect(within(waiting).queryByRole("button", { name: "Start thread" })).toBeNull();
     // No mark while its state is unknown.
     expect(waiting.querySelector("[data-task-thread]")).toBeNull();
     fireEvent.click(within(waiting).getByRole("button", { name: "Open thread" }));
@@ -244,7 +279,7 @@ describe("the Tasks view", () => {
     const row = screen.getByRole("button", { name: "Open Approve the scrim schedule" }).closest("[role=listitem]") as HTMLElement;
     await act(async () => {});
     expect(within(row).queryByRole("button", { name: "Open thread" })).toBeNull();
-    fireEvent.click(within(row).getByRole("button", { name: "Start" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Start thread" }));
     expect(startThread).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "Open Approve the scrim schedule" }));
     const sheet = await screen.findByRole("dialog");
@@ -265,7 +300,7 @@ describe("the Tasks view", () => {
     const startThread = vi.fn();
     render(<Tasks client={fakeTasksClient(rows)} startThread={startThread} useThread={() => undefined} />);
     const row = screen.getByRole("button", { name: "Open Send Dana the budget" }).closest("[role=listitem]") as HTMLElement;
-    expect(within(row).queryByRole("button", { name: "Start" })).toBeNull();
+    expect(within(row).queryByRole("button", { name: "Start thread" })).toBeNull();
     expect(within(row).queryByRole("button", { name: "Open thread" })).toBeNull();
     // The lead keeps the press's place, out of reach, so Done does not move when the answer comes.
     expect(screen.queryByRole("button", { name: "Start thread" })).toBeNull();

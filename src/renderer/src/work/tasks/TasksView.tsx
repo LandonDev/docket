@@ -1,5 +1,5 @@
 import { ConvexProvider } from "convex/react";
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import type { ContextChip } from "@shared/work";
 import { useHostLinkDown } from "../shell/hostLinkDown";
 import { playRunner } from "../routines/plays/runOn";
@@ -15,6 +15,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { reveal, yields } from "../../components/ui/reveal";
 import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
+import { moveBetweenRows } from "../rowKeys";
 import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { type Task, type TaskActions, type TasksClient, viewsClients } from "./client";
@@ -239,9 +240,10 @@ export function Tasks({
         {sheet}
       </>
     );
-  const meta = (task: Task) => metaOf(task, projectOf(task));
+  const meta = (task: Task, inWaiting = false) => metaOf(task, projectOf(task), inWaiting);
   return (
-    <div className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
+    // ↑ and ↓ move between the rows, as in People and on a meeting's page; Tab still walks each row's tick and Start.
+    <div onKeyDown={rowKeys} className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
       {lead ? <Lead doneHeld={doneHeld} task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} onCode={code} useThread={useThread} /> : null}
       {rest.map(({ g, rows }, i) => (
         <section key={g} aria-label={TASK_GROUP_LABELS[g]} className={cn("flex flex-col", lead || i ? "mt-6" : "")}>
@@ -260,7 +262,7 @@ export function Tasks({
                 doneHeld={doneHeld}
                   key={task._id}
                   task={task}
-                  meta={meta(task)}
+                  meta={meta(task, g === "waiting")}
                   due={task.dueAt === undefined ? undefined : formatDue(task.dueAt, now)}
                   overdue={task.dueAt !== undefined && task.dueAt < now}
                   actions={actions}
@@ -288,11 +290,14 @@ export function dueMidLine(ms: number, now: number): string {
   return due === "Yesterday" || due === "Tomorrow" ? due.toLowerCase() : due;
 }
 
-/** A row's second line: who it waits on, else its project, else who asked. */
-function metaOf(task: Task, project: string | undefined): string | undefined {
-  if (task.waitingOn) return `Waiting on ${task.waitingOn}`;
+/** A row's second line: who it waits on, else its project, else who asked. Under the Waiting heading the name alone: the heading says the rest. */
+export function metaOf(task: Pick<Task, "waitingOn" | "source">, project: string | undefined, inWaiting = false): string | undefined {
+  if (task.waitingOn) return inWaiting ? task.waitingOn : `Waiting on ${task.waitingOn}`;
   return project ?? task.source?.sender;
 }
+
+/** The list's arrow keys: from anywhere in a row (its tick, its Start) to the open control of the row before or after. */
+const rowKeys = (e: KeyboardEvent<HTMLElement>): void => void moveBetweenRows(e, '[role="listitem"]', "[data-row-open]");
 
 function Lead({
   task,
@@ -338,10 +343,8 @@ function Lead({
             </span>
           ) : null}
           {thread === undefined ? (
-            // The link read is out: its place is kept, so Done and Snooze do not move when the press comes.
-            <Button size="sm" aria-hidden tabIndex={-1} disabled className="invisible">
-              Start thread
-            </Button>
+            // The link read is out: a bone in the press's own shape holds its place, so Done and Snooze do not move when it comes.
+            <Skeleton aria-hidden data-press-bone className="h-7 w-[92px] rounded-md" />
           ) : thread ? (
             <Button size="sm" onClick={() => openThread(thread, () => onStart(task))}>
               Open thread
@@ -482,7 +485,7 @@ const TaskRow = memo(function TaskRow({
             </Button>
           ) : (
             <Button size="xs" variant="ghost" onClick={() => onStart(task)}>
-              Start
+              Start thread
             </Button>
           )}
         </span>
@@ -503,9 +506,10 @@ function TasksSkeleton() {
         <div className="flex h-4 items-center">
           <Skeleton className="h-3 w-1/4" />
         </div>
-        <div data-bones-presses className="mt-3 flex h-8 items-center gap-2">
-          <Skeleton className="h-8 w-24 rounded-lg" />
-          <Skeleton className="h-8 w-14 rounded-lg" />
+        {/* The presses' own height and shape (`sm`: 28px, 6px corners), so the lead does not move when they land. */}
+        <div data-bones-presses className="mt-3 flex h-7 items-center gap-2">
+          <Skeleton className="h-7 w-[92px] rounded-md" />
+          <Skeleton className="h-7 w-14 rounded-md" />
         </div>
       </div>
       <div className="mt-6 flex flex-col">
