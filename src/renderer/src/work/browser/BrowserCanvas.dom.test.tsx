@@ -278,6 +278,49 @@ describe("the browser's bar", () => {
     vi.unstubAllGlobals();
   });
 
+  it("a held submit in a narrow bar lets the host go whole, then the site from the press, which reads its verb alone", async () => {
+    host.state = { ...host.state, site: { url: "https://us2.concursolutions.com/report", name: "Concur" } };
+    host.items = [HELD];
+    const watched = new Map<Element, () => void>();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private fire: () => void) {}
+        observe(el: Element) {
+          watched.set(el, this.fire);
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    render(<Bar {...props()} picture={<div />} />);
+    await screen.findByRole("button", { name: "Submit Report in Concur" });
+    const bar = document.querySelector<HTMLElement>('[data-slot="browser-bar"]')!;
+    // jsdom lays nothing out: the widths the measure reads are set by hand (the host 150, the words 140 and 80, Discard 60).
+    const width = (el: Element | null, w: number) => el && Object.defineProperty(el, "offsetWidth", { configurable: true, value: w });
+    width(bar.querySelector("[data-measure=host]"), 150);
+    width(bar.querySelector("[data-measure=act]"), 140);
+    width(bar.querySelector("[data-measure=verb]"), 80);
+    width(screen.getByRole("button", { name: "Discard" }), 60);
+    const room = (w: number) => {
+      Object.defineProperty(bar, "clientWidth", { configurable: true, value: w });
+      act(() => watched.get(bar)?.());
+    };
+    const words = () => document.querySelector("[data-browser-submit] [data-slot=busy-label]")!.getAttribute("data-idle");
+    room(500);
+    expect(bar.querySelector('[data-slot="browser-host"]')).not.toBeNull();
+    expect(words()).toBe("Submit Report in Concur");
+    // 150 + 8 + 64 + 156 = 378 do not fit 300: the host goes whole, the press keeps its words
+    room(300);
+    expect(bar.querySelector('[data-slot="browser-host"]')).toBeNull();
+    expect(words()).toBe("Submit Report in Concur");
+    // 64 + 156 do not fit 200: the press reads its verb alone, its name still whole
+    room(200);
+    expect(words()).toBe("Submit Report");
+    expect(screen.getByRole("button", { name: "Submit Report in Concur" })).not.toBeNull();
+    vi.unstubAllGlobals();
+  });
+
   it("a host cut to its room takes the focus and shows whole in the shared tip; one that fits takes neither", async () => {
     host.state = { ...host.state, site: { url: "https://us2.concursolutions.com/report", name: "Concur" } };
     await act(async () => {
