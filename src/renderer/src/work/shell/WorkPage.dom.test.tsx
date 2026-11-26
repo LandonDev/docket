@@ -47,7 +47,27 @@ describe("Access for each job's new threads", () => {
     expect([...document.querySelectorAll("[data-job]")].map((row) => row.getAttribute("data-job"))).toEqual(["j1", "j2"]);
     expect(screen.getByRole("alert").textContent).toBe("PURDUE-LT did not answer.");
     // The jobs that answered share a level: it is said once, under the heading.
-    expect(screen.getByText("Auto-accept edits asks before anything but edits.")).toBeTruthy();
+    expect(screen.getAllByText("Auto-accept edits asks before anything but edits.")).toHaveLength(1);
+  });
+
+  it("says the level most jobs share once, and only a job on another level says its own", () => {
+    store.defaults.set("env_box:j1", { defaults: { permission: "edits" } });
+    store.defaults.set("env_box:j2", { defaults: { permission: "edits" } });
+    store.defaults.set("env_pc:j3", { defaults: { permission: "auto" } });
+    render(<JobsAccess />);
+    expect(screen.getAllByText(/^Auto-accept edits/)).toHaveLength(1);
+    expect(document.querySelector('[data-job="j1"]')!.textContent).toBe("Cosmic");
+    expect(document.querySelector('[data-job="j3"]')!.textContent).toContain("Full access");
+  });
+
+  it("says a failed re-read even while the job's earlier level is held, and keeps its row", () => {
+    store.defaults.set("env_box:j1", { defaults: { permission: "edits" } });
+    store.defaults.set("env_box:j2", { defaults: { permission: "edits" } });
+    store.defaults.set("env_pc:j3", { defaults: { permission: "edits" } });
+    store.errors.set("env_pc:j3", NO_ANSWER);
+    render(<JobsAccess />);
+    expect(screen.getByRole("alert").textContent).toBe("PURDUE-LT did not answer.");
+    expect(document.querySelector('[data-job="j3"]')).toBeTruthy();
   });
 
   it("holds a job still out as its name and a bone, with no way in yet", () => {

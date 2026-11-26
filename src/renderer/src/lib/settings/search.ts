@@ -159,7 +159,8 @@ export function searchSettings(query: string, groups: readonly ListGroup[], vars
       scored.push({ result, score: rank * 2 + (names.toLowerCase().startsWith(typed) ? 0 : 1), at });
       return;
     }
-    const was = old.find((name) => hadName(name, needles, rank > 0));
+    // A press (Add a computer…) stands for a whole old page part, as a page does: "hosts" finds it.
+    const was = old.find((name) => hadName(name, needles, rank > 0 && !result.act));
     // One mark for a place, as the line above it has: commas.
     if (was) scored.push({ result: { ...result, was: `Was “${was.replaceAll(" › ", ", ")}”` }, score: 4 + rank, at });
   });

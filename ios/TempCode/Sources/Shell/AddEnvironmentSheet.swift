@@ -175,10 +175,10 @@ struct AddEnvironmentSheet: View {
                 return "Signs in to \(parsed.origin.host ?? parsed.origin.absoluteString)."
             }
             return link.isEmpty
-                ? "Make a link on the computer in Settings → Sharing → Add…, then paste it here."
+                ? SignInWords.linkHint
                 : "That is not a sign-in link. Copy the whole link from the computer."
         case .key:
-            return "A key made on the computer in Settings → Sharing, and the computer's address."
+            return SignInWords.keyHint
         }
     }
 

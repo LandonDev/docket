@@ -186,7 +186,7 @@ public enum HostFix: Sendable, Hashable {
             case .contractMismatch(let app, let host)?: host > app ? "Update this app to talk to it." : "Update it to talk to this app."
             case nil: "The phone tries again when the network returns."
             }
-        case .unauthorized: "Make a sign-in link on it in Settings → Sharing, then sign in again."
+        case .unauthorized: SignInWords.refusedKeyHint
         }
     }
 

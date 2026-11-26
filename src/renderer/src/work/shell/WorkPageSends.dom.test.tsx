@@ -11,6 +11,9 @@ const box = vi.hoisted(() => ({
   refuse: false,
   cannot: new Set<string>(),
   on: new Set<string>(["env_box", "local"]),
+  /** computers whose tool rules read fails, or never answers */
+  rulesFail: new Set<string>(),
+  rulesOut: new Set<string>(),
 }));
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
@@ -54,6 +57,8 @@ const card = (addonId: string, name: string, tools: { tool: string; words: strin
 vi.mock("../../surfaces/settings/parts/hostRpc", () => ({
   hostRequest: async (env: string, method: string, params: { addonId: string; rules: Record<string, string> }) => {
     box.calls.push({ env, method, params });
+    if (method === "work.outbox.rules" && box.rulesOut.has(env)) return new Promise(() => {});
+    if (method === "work.outbox.rules" && box.rulesFail.has(env)) throw new Error(NO_ANSWER);
     if (method === "work.outbox.rules")
       return { addons: env === "env_box" ? [card("a1", "linear", [{ tool: "create_issue", words: "Create issue", rule: "held" }]), card("lo", "LifeOS", [{ tool: "x", words: "X", rule: null }], true)] : [] };
     if (box.refuse) throw new Error("forbidden: work.outbox.setRules needs admin");
@@ -62,6 +67,7 @@ vi.mock("../../surfaces/settings/parts/hostRpc", () => ({
   },
 }));
 
+const { NO_ANSWER } = await import("../../lib/connection/openRead");
 const { GrantsRow, GRANTS_MADE, ToolsRow, grantsWords } = await import("./WorkPageSends");
 
 const grant = (id: string, environmentId: string, workspaceId: string, label: string) => ({ id, environmentId, workspaceId, label, kind: "mail.send", createdAt: Date.now(), matcher: null, madeFrom: { at: "x", id: "y" }, routineId: null, removedAt: null });
@@ -76,6 +82,8 @@ afterEach(() => {
   box.calls = [];
   box.refuse = false;
   box.cannot = new Set();
+  box.rulesFail = new Set();
+  box.rulesOut = new Set();
 });
 
 describe("Things threads may send on their own", () => {
@@ -199,5 +207,36 @@ describe("What each add-on's tools may do", () => {
     expect(within(sheet).queryByRole("combobox")).toBeNull();
     expect(sheet.textContent).toContain("Changed from a computer that manages the box");
     expect(sheet.querySelector('[data-tool="create_issue"]')!.textContent).toContain("Waits for you");
+  });
+
+  it("names the computer over each add-on whenever more than one has Work on, though only one has answered", async () => {
+    box.rulesOut = new Set(["local"]);
+    render(<ToolsRow />);
+    fireEvent.click(screen.getByRole("button", { name: "What each add-on's tools may do" }));
+    const sheet = await screen.findByRole("dialog");
+    await settle();
+    expect(sheet.querySelector('[data-addon="a1"]')!.textContent).toContain("linear on the box");
+  });
+
+  it("says a failed re-read under the sheet's title with Retry, over the rules held from before", async () => {
+    render(<ToolsRow />);
+    const opener = screen.getByRole("button", { name: "What each add-on's tools may do" });
+    fireEvent.click(opener);
+    await screen.findByRole("dialog");
+    await settle();
+    await act(async () => fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" }));
+    await settle();
+    box.rulesFail = new Set(["env_box"]);
+    fireEvent.click(opener);
+    const sheet = await screen.findByRole("dialog");
+    await settle();
+    expect(within(sheet).getByRole("alert").textContent).toBe("The box did not answer.");
+    expect(sheet.querySelector('[data-tool="create_issue"]')).toBeTruthy();
+    box.rulesFail = new Set();
+    const before = box.calls.length;
+    await act(async () => fireEvent.click(within(sheet).getByRole("button", { name: "Retry" })));
+    await settle();
+    expect(box.calls.slice(before).map((c) => `${c.env} ${c.method}`)).toEqual(["env_box work.outbox.rules"]);
+    expect(within(sheet).queryByRole("alert")).toBeNull();
   });
 });

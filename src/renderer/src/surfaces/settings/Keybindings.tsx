@@ -63,10 +63,14 @@ export function KeybindingsPage() {
       {empty ? (
         <PageEmpty>No shortcut matches</PageEmpty>
       ) : (
-        groups.map((group) => (
-          <PageSection key={group.title} title={group.title} data-setting="keys.groups">
+        groups.map((group) => {
+          // Where every shortcut of a group works in one place, the group's line says so once.
+          const scopes = new Set(group.bindings.map((binding) => binding.scope));
+          const shared = scopes.size === 1 ? group.bindings[0]?.scope : undefined;
+          return (
+          <PageSection key={group.title} title={group.title} description={shared ? KEYBINDING_SCOPE_LABEL[shared] : undefined} data-setting="keys.groups">
             {group.bindings.map((binding) => (
-              <PageRow key={binding.name} title={binding.name} description={binding.scope ? KEYBINDING_SCOPE_LABEL[binding.scope] : undefined}>
+              <PageRow key={binding.name} title={binding.name} description={binding.scope && !shared ? KEYBINDING_SCOPE_LABEL[binding.scope] : undefined}>
                 {binding.keys.map((chord, index) => (
                   <Fragment key={chord.join("")}>
                     {index > 0 ? <span className="text-xs text-muted-foreground">or</span> : null}
@@ -76,7 +80,8 @@ export function KeybindingsPage() {
               </PageRow>
             ))}
           </PageSection>
-        ))
+          );
+        })
       )}
     </>
   );

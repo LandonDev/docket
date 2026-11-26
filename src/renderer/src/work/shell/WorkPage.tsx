@@ -10,7 +10,7 @@ import { registry, useEnvironments } from "../../lib/connection";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { isWebMode } from "../../lib/nativeWeb";
 import { thisDesktopInLine } from "../../lib/native";
-import { ACCESS_NAMES, accessWords } from "../../lib/settings/access";
+import { accessWords } from "../../lib/settings/access";
 import { useComputerNames } from "../../lib/settings/computerName";
 import type { PermissionPolicy, WorkspaceMeta } from "../../lib/tcserver/types";
 import { scopeKey, useWorkspaceCatalog, useWorkspaces, workspaceStore } from "../../lib/tcserver/workspaces";
@@ -90,13 +90,15 @@ export function JobsAccess() {
   }, [key]);
   if (jobs.length === 0) return null;
   const levelOf = (job: WorkspaceMeta) => defaults.get(scopeKey(job.environmentId, job.id))?.defaults.permission;
-  const failed = jobs.filter((job) => !levelOf(job) && defaultsErrors.has(scopeKey(job.environmentId, job.id)));
+  // A read that failed is said even while an earlier answer is held; a job with nothing held draws no row.
+  const erred = jobs.filter((job) => defaultsErrors.has(scopeKey(job.environmentId, job.id)));
+  const failed = erred.filter((job) => !levelOf(job));
   const levels = jobs.map(levelOf).filter((level): level is PermissionPolicy => !!level);
   const common = mostOf(levels);
   // One line a computer whose jobs did not answer (the page says a silence once: `ReadFailure`), its Retry asking them again.
-  const failedOn = [...new Set(failed.map((job) => job.environmentId))];
+  const failedOn = [...new Set(erred.map((job) => job.environmentId))];
   const failures = failedOn.map((environmentId) => {
-    const ones = failed.filter((job) => job.environmentId === environmentId);
+    const ones = erred.filter((job) => job.environmentId === environmentId);
     return (
       <ReadFailure
         key={environmentId}
@@ -125,8 +127,8 @@ export function JobsAccess() {
               data-job={job.id}
               media={<SectorDot sector={job.sector ?? null} />}
               title={job.name}
-              // The shared level's line is the heading's; a job on another level says its own.
-              description={level ? (level === common && settled ? ACCESS_NAMES[level] : accessWords(level)) : <Skeleton className="mt-0.5 h-3 w-40" />}
+              // The shared level is said once, in the heading's line; only a job on another level says its own.
+              description={level ? (level === common && settled ? undefined : accessWords(level)) : <Skeleton className="mt-0.5 h-3 w-40" />}
               onOpen={opens ? () => setOpen(job) : undefined}
               openLabel={`New threads in ${job.name}`}
             >

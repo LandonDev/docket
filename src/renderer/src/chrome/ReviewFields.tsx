@@ -21,6 +21,7 @@ type FieldControl = Parameters<typeof FieldRow>[0]["children"];
 import { SettingSwitch } from "../components/setting-switch";
 import { CommitField } from "../surfaces/settings/hosts/CommitField";
 import { SettingRow } from "../surfaces/settings/parts/SettingRow";
+import { ValueWords } from "../surfaces/settings/parts/ValueWords";
 import type { Saved } from "../surfaces/settings/parts/useSaved";
 
 /**
@@ -117,6 +118,7 @@ export function ReviewFields({
   compact = false,
   saved,
   disabled,
+  readOnly = false,
 }: {
   value: ReviewSettings;
   /** May return the save, so a control goes back when it is refused. */
@@ -127,6 +129,8 @@ export function ReviewFields({
   /** Each row's save on Settings → Reviews. */
   saved?: Record<ReviewRow, Saved>;
   disabled?: boolean;
+  /** A key that may read the set but not change it: each value as words. */
+  readOnly?: boolean;
 }) {
   const { scope } = useRulesScope(environmentId, null);
   const rules = scope?.rules;
@@ -150,8 +154,16 @@ export function ReviewFields({
     return onChange(next, row);
   };
   // A page's row with its save mark; in the project sheet (`compact`) a sheet's row, as its neighbours are.
-  const row = (id: ReviewRow, control: FieldControl, description?: string) =>
-    saved ? (
+  const words: Record<ReviewRow, string> = {
+    on: value.beforeMerge ? "On" : "Off",
+    model: modelOptions.find((o) => o.value === chosen)?.label ?? current,
+    effort: EFFORT_LABELS[value.reasoning as Reasoning] ?? value.reasoning,
+    stop: BLOCK_OPTIONS.find((o) => o.value === value.blockOn)?.label ?? value.blockOn,
+    wait: `${value.maxMinutes} min`,
+  };
+  const row = (id: ReviewRow, input: FieldControl, description?: string) => {
+    const control = readOnly ? <ValueWords>{words[id]}</ValueWords> : input;
+    return saved ? (
       <SettingRow key={id} id={ROW_ID[id]} saved={saved[id]} description={description}>
         {control}
       </SettingRow>
@@ -164,6 +176,7 @@ export function ReviewFields({
         {control}
       </PageRow>
     );
+  };
 
   return (
     <div data-slot="review-fields" className="flex flex-col">

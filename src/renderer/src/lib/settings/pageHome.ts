@@ -52,3 +52,11 @@ export function resetPageHomesForTests(): void {
   homes.clear();
   for (const listener of listeners) listener();
 }
+
+/** The linked computer that keeps a set, by the name its store gave for it (a home carries no id); null when this
+ *  window has no link of that name. */
+export function homeEnvironmentId(home: { name: string } | null | undefined, environments: readonly { id: string; name: string }[]): string | null {
+  if (!home) return null;
+  const said = home.name.trim().toLowerCase();
+  return environments.find((environment) => environment.name.trim().toLowerCase() === said)?.id ?? null;
+}

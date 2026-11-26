@@ -44,6 +44,10 @@ import { homeNote } from "../lib/settingsHome";
 import { HARNESS_TITLE, type HarnessId } from "../lib/session";
 import type { ModelInfo, ProviderId, Reasoning as Effort } from "../lib/tcserver/types";
 import { OpenCue, SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
+import { ValueWords } from "../surfaces/settings/parts/ValueWords";
+import { ManagedLine } from "../surfaces/settings/parts/ManagedLine";
+import { useLinkMay } from "../lib/linkMay";
+import { useComputerName } from "../lib/settings/computerName";
 import { ListFilter, useListFilter } from "../surfaces/settings/parts/ListFilter";
 import { SaveMark } from "../surfaces/settings/parts/SaveMark";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
@@ -163,6 +167,8 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
   };
   const cleared = useSaved();
   const moved = useSaved();
+  const mayWrite = useLinkMay(environmentId, "rules.set", { workspaceId, rules: null });
+  const computer = useComputerName(environmentId);
   usePublishHome("orchestration", workspaceId === null ? (scope ? (scope.home ?? null) : undefined) : undefined);
   // A computer's link coming or going may move where the copy can be written: the answer says so again.
   const statuses = useEnvironmentStatuses();
@@ -171,9 +177,12 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
     void rulesStore.load(environmentId, workspaceId, true).catch(() => undefined);
   }, [environmentId, workspaceId, linkStates]);
 
+  // A key that may read the rules but not change them sees every value as words, and one line saying who can.
+  const readOnly = !mayWrite;
   if (!scope) return <RulesSkeleton environmentId={environmentId} error={error} onRetry={retry} />;
   const { rules, overridden } = scope;
   const { blocked } = homeNote(scope.home);
+  const capWords = (n: number) => (n === 0 ? "No limit" : String(n));
 
   // The store shows the change at once and puts the last set back on a refusal; the row's save says which.
   const write = (next: OrchestrationRules) => rulesStore.save(environmentId, workspaceId, next);
@@ -196,6 +205,9 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
     <>
       <SettingSection of="sub.gives">
         <SettingRow id="sub.gives" saved={saved.gives}>
+          {readOnly ? (
+            <ValueWords>{DELEGATION_LABELS[rules.conduct.delegation]}</ValueWords>
+          ) : (
           <ChoiceSelect
             label="Gives its agents"
             value={rules.conduct.delegation}
@@ -203,20 +215,25 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
             disabled={blocked}
             onChange={(delegation) => void patchConduct("gives", { delegation })}
           />
+          )}
         </SettingRow>
         {SWITCHES.map(({ row, id, key }) => (
           <SettingRow key={id} id={id} saved={saved[row]}>
-            <SettingSwitch label={TITLES[row]} on={rules.conduct[key]} disabled={blocked} onChange={(on) => patchConduct(row, { [key]: on } as Partial<OrchestrationRules["conduct"]>)} />
+            {readOnly ? (
+              <ValueWords>{rules.conduct[key] ? "On" : "Off"}</ValueWords>
+            ) : (
+              <SettingSwitch label={TITLES[row]} on={rules.conduct[key]} disabled={blocked} onChange={(on) => patchConduct(row, { [key]: on } as Partial<OrchestrationRules["conduct"]>)} />
+            )}
           </SettingRow>
         ))}
       </SettingSection>
 
       <SettingSection of="sub.atOnce" description={LIMITS_LINE}>
         <SettingRow id="sub.atOnce" saved={saved.atOnce}>
-          <CapSelect label="Agents at once" value={rules.conduct.maxParallel} options={[0, 2, 4, 8, 16, 32, 64, 128]} disabled={blocked} onChange={(maxParallel) => void patchConduct("atOnce", { maxParallel })} />
+          {readOnly ? <ValueWords>{capWords(rules.conduct.maxParallel)}</ValueWords> : <CapSelect label="Agents at once" value={rules.conduct.maxParallel} options={[0, 2, 4, 8, 16, 32, 64, 128]} disabled={blocked} onChange={(maxParallel) => void patchConduct("atOnce", { maxParallel })} />}
         </SettingRow>
         <SettingRow id="sub.perThread" saved={saved.perThread}>
-          <CapSelect label="Agents in all" value={rules.conduct.maxAgents} options={[0, 10, 20, 50]} disabled={blocked} onChange={(maxAgents) => void patchConduct("perThread", { maxAgents })} />
+          {readOnly ? <ValueWords>{capWords(rules.conduct.maxAgents)}</ValueWords> : <CapSelect label="Agents in all" value={rules.conduct.maxAgents} options={[0, 10, 20, 50]} disabled={blocked} onChange={(maxAgents) => void patchConduct("perThread", { maxAgents })} />}
         </SettingRow>
       </SettingSection>
 
@@ -227,8 +244,8 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
       <SettingSection
         of="sub.routing"
         action={
-          // Nothing is offered that cannot work: while the box is out of reach there is no Add rule….
-          blocked ? null : (
+          // Nothing is offered that cannot work: no Add rule… while the box is out of reach or for a key that may not write.
+          blocked || readOnly ? null : (
             <Button variant="ghost" size="sm" data-setting="sub.addRule" onClick={() => setEditing("new")}>
               Add rule…
             </Button>
@@ -236,14 +253,14 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         }
       >
         {rules.routing.map((r, i) => (
-          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={blocked} first={i === 0} last={i === rules.routing.length - 1} onEdit={() => setEditing(r)} onMove={(by) => move(i, i + by)} />
+          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={blocked} readOnly={readOnly} first={i === 0} last={i === rules.routing.length - 1} onEdit={() => setEditing(r)} onMove={(by) => move(i, i + by)} />
         ))}
         {rules.routing.length === 0 ? <PageEmpty>No rules</PageEmpty> : null}
         {moved.error ? <PageError>{moved.error}</PageError> : null}
       </SettingSection>
 
       {/* Asks first, so last on the page; offered only while there is a set to clear and the box can take it. */}
-      {overridden && !blocked ? (
+      {overridden && !blocked && !readOnly ? (
         <SettingSection of="sub.reset">
           {workspaceId === null ? (
             <SettingRow id="sub.reset" description="Every row here goes back, and every rule is deleted" saved={cleared}>
@@ -261,7 +278,9 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         </SettingSection>
       ) : null}
 
-      {modelsOpen ? <ModelsSheet rules={rules} catalog={catalog} disabled={blocked} write={write} onClose={() => setModelsOpen(false)} /> : null}
+      {readOnly ? <ManagedLine computer={scope.home?.name ?? computer.name} /> : null}
+
+      {modelsOpen ? <ModelsSheet rules={rules} catalog={catalog} disabled={blocked} readOnly={readOnly} write={write} onClose={() => setModelsOpen(false)} /> : null}
       {editing ? (
         <RuleDialog
           rule={editing === "new" ? null : editing}
@@ -306,12 +325,15 @@ function ModelsSheet({
   rules,
   catalog,
   disabled,
+  readOnly = false,
   write,
   onClose,
 }: {
   rules: OrchestrationRules;
   catalog: RulesCatalog | null;
   disabled: boolean;
+  /** A key that may read the rules but not change them: each model's allowance as words. */
+  readOnly?: boolean;
   write: (next: OrchestrationRules) => Promise<void>;
   onClose: () => void;
 }) {
@@ -364,7 +386,7 @@ function ModelsSheet({
                       </TableRow>
                     ) : null}
                     {mine.map((row) => (
-                      <ModelRow key={`${row.model ? "" : "stale:"}${row.id}`} provider={p} id={row.id} model={row.model} rules={rules} disabled={disabled} write={write} />
+                      <ModelRow key={`${row.model ? "" : "stale:"}${row.id}`} provider={p} id={row.id} model={row.model} rules={rules} disabled={disabled} readOnly={readOnly} write={write} />
                     ))}
                   </Fragment>
                 );
@@ -394,6 +416,7 @@ function ModelRow({
   model,
   rules,
   disabled,
+  readOnly = false,
   write,
 }: {
   provider: ProviderId;
@@ -401,6 +424,7 @@ function ModelRow({
   model?: ModelInfo;
   rules: OrchestrationRules;
   disabled?: boolean;
+  readOnly?: boolean;
   write: (next: OrchestrationRules) => Promise<void>;
 }) {
   const saved = useSaved();
@@ -430,6 +454,9 @@ function ModelRow({
       <TableCell className={MODEL_CONTROL}>
         <span className="flex items-center justify-end gap-2">
           <SaveMark state={saved.state} />
+          {readOnly ? (
+            <ValueWords>{APPROVAL_OPTIONS.find((o) => o.value === (policy === true ? "everyone" : policy === false ? "off" : "orchestrators"))?.label}</ValueWords>
+          ) : (
           <ChoiceSelect
             size="sm"
             label={`Who may start ${name}`}
@@ -439,10 +466,13 @@ function ModelRow({
             disabled={disabled}
             className="w-44"
           />
+          )}
         </span>
       </TableCell>
       <TableCell className={cn("text-end", MODEL_CONTROL)}>
-        {approved && ladder.length > 1 ? (
+        {approved && ladder.length > 1 && readOnly ? (
+          <ValueWords>{`${EFFORT_LABELS[min]} to ${EFFORT_LABELS[max]}`}</ValueWords>
+        ) : approved && ladder.length > 1 ? (
           <span className="inline-flex items-center gap-2">
             <ChoiceSelect
               size="sm"
@@ -476,6 +506,7 @@ function RuleRow({
   rules,
   catalog,
   disabled,
+  readOnly = false,
   first,
   last,
   onEdit,
@@ -485,6 +516,8 @@ function RuleRow({
   rules: OrchestrationRules;
   catalog: RulesCatalog | null;
   disabled?: boolean;
+  /** A key that may read the rules but not change them: the row says the rule and opens nothing. */
+  readOnly?: boolean;
   first: boolean;
   last: boolean;
   onEdit: () => void;
@@ -514,12 +547,10 @@ function RuleRow({
           ]}
         />
       }
-      onOpen={onEdit}
-      openLabel={`Edit rule: ${rule.task}`}
-      openDisabled={disabled}
+      {...(readOnly ? {} : { onOpen: onEdit, openLabel: `Edit rule: ${rule.task}`, openDisabled: disabled })}
     >
       {/* The ⋯ only moves a rule, so a lone rule, or a set the box cannot take now, has none: the row ends in its cue. */}
-      {(first && last) || disabled ? (
+      {readOnly ? null : (first && last) || disabled ? (
         <OpenCue />
       ) : (
         <RowsMenu

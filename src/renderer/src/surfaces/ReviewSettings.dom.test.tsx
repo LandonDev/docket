@@ -11,6 +11,8 @@ const state = vi.hoisted(() => ({
   opens: new Set<() => void>(),
 }));
 
+const keyRights = vi.hoisted(() => ({ write: true }));
+vi.mock("../lib/linkMay", async (original) => ({ ...(await original<typeof import("../lib/linkMay")>()), useLinkMay: () => keyRights.write }));
 vi.mock("../lib/settings/computerName", async (original) => {
   const real = await original<typeof import("../lib/settings/computerName")>();
   const own = { name: "MacBook Pro", own: true };
@@ -395,5 +397,23 @@ describe("Different in N projects, beside Reviews off", () => {
     });
     await act(async () => {});
     expect((document.querySelector("[data-setting='reviews.different']") as HTMLElement).textContent).toContain("settings-2 has its own review model");
+  });
+});
+
+describe("Reviews for a key that may read but not change them", () => {
+  it("says each value as words and who can change them, and keeps the projects that differ", async () => {
+    keyRights.write = false;
+    catalog.projects = [{ id: "p1", name: "settings-2", environmentId: "local", workspaceId: "w1" }];
+    catalog.own = new Set(["p1"]);
+    answer({ ...SETTINGS, beforeMerge: true });
+    await renderPage();
+    await act(async () => {});
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(document.querySelector("[data-setting='reviews.on'] [data-value-words]")!.textContent).toBe("On");
+    expect(document.querySelector("[data-setting='reviews.wait'] [data-value-words]")!.textContent).toBe("15 min");
+    expect(document.querySelectorAll("[data-managed]")).toHaveLength(1);
+    expect(document.querySelector("[data-setting='reviews.different']")).toBeTruthy();
   });
 });

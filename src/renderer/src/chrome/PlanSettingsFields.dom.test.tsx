@@ -8,6 +8,8 @@ const plans = vi.hoisted(() => ({
   failure: null as null | { error: string; retry: () => void },
   save: vi.fn(async (..._args: unknown[]) => {}),
 }));
+const keyRights = vi.hoisted(() => ({ write: true }));
+vi.mock("../lib/linkMay", async (original) => ({ ...(await original<typeof import("../lib/linkMay")>()), useLinkMay: () => keyRights.write }));
 vi.mock("../lib/settings/computerName", async (original) => {
   const real = await original<typeof import("../lib/settings/computerName")>();
   const own = { name: "MacBook Pro", own: true };
@@ -31,7 +33,10 @@ vi.mock("../components/choice-combobox", async () => await import("../components
 
 const { PlanSettingsEditor } = await import("./PlanSettingsFields");
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  keyRights.write = true;
+});
 
 describe("Builds from plans", () => {
   it("holds its rows in their shape until the set loads", () => {
@@ -80,5 +85,13 @@ describe("Builds from plans", () => {
     const row = document.querySelector("[data-setting='plans.archive']") as HTMLElement;
     expect(row.textContent).toContain("Plan settings live on box; it is offline");
     expect(screen.getByRole("switch", { name: "Archive the plan's thread once the build starts" }).getAttribute("aria-checked")).toBe(String(DEFAULT_PLAN_SETTINGS.archiveAfterStart));
+  });
+
+  it("says each value as words for a key that may read but not change them", () => {
+    keyRights.write = false;
+    plans.scope = { settings: DEFAULT_PLAN_SETTINGS, overridden: false };
+    render(<PlanSettingsEditor />);
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(document.querySelector("[data-setting='plans.model'] [data-value-words]")!.textContent).toBe("Same as the plan");
   });
 });

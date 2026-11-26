@@ -105,6 +105,13 @@ public enum WorkRowState: Sendable, Hashable {
 /// host says "invalid or expired pairing code", the phone says what it was
 /// and the way forward (the council's round 1).
 public enum SignInWords {
+    /// Where a sign-in link or a key is made, said as the press, not a page: the box's is on the box's own page and a
+    /// Mac's on its Sharing, but both sit under "Who can sign in" behind Add… (the council's round 5).
+    public static let linkHint = "In Docket's Settings, press Add… under Who can sign in on the computer's page, then paste the link here."
+    public static let keyHint = "A key from Add… under Who can sign in on the computer's page in Docket's Settings, with the computer's address."
+    /// The footer under a computer whose key was refused: the same press, then this sheet again.
+    public static let refusedKeyHint = "In Docket's Settings, press Add… under Who can sign in on its page, then sign in again."
+
     /// - Parameter link: the sheet was redeeming a sign-in link (else a key with an address).
     public static func refusal(_ error: EnvironmentStoreError, link: Bool) -> String {
         switch error {

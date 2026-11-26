@@ -8,6 +8,9 @@ import { PageRow, PageRowsSkeleton, PageSection } from "../components/page";
 import { withDeadline } from "../lib/connection/openRead";
 import { registry } from "../lib/connection";
 import { settingTitle } from "../lib/settings/map";
+import { useLinkMay } from "../lib/linkMay";
+import { useComputerName } from "../lib/settings/computerName";
+import { ManagedLine } from "./settings/parts/ManagedLine";
 import { ReadFailure } from "./settings/parts/ReadFailure";
 import { usePublishHome } from "../lib/settings/pageHome";
 import { homeNote } from "../lib/settingsHome";
@@ -32,6 +35,9 @@ export function ReviewsPage() {
   const draft = useDraft(scope?.settings);
   const saved: Record<ReviewRow, Saved> = { on: useSaved(), model: useSaved(), effort: useSaved(), stop: useSaved(), wait: useSaved() };
   const { blocked } = homeNote(scope?.home);
+  // A key that may read the set but not change it sees each value as words, and one line saying who can.
+  const may = useLinkMay(environmentId, "review.set", { projectId: null, settings: null });
+  const computer = useComputerName(environmentId);
   const change = (next: ReviewSettings, row: ReviewRow) => draft.change(saved[row], next, (set) => saveReviewSettings(environmentId, null, set));
 
   // A failed read is said at the page's head; no empty section stands under it.
@@ -40,9 +46,10 @@ export function ReviewsPage() {
     <PageSection>
       {draft.value ? (
         <>
-          <ReviewFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked} />
+          <ReviewFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked} readOnly={!may} />
           {/* Shown with Reviews off too: a project may keep reviews on of its own. */}
           <DifferentProjects />
+          {may ? null : <ManagedLine computer={scope?.home?.name ?? computer.name} />}
         </>
       ) : (
         <ReviewSkeleton />

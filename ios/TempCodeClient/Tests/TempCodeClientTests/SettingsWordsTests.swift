@@ -80,6 +80,18 @@ struct SignInWordsTests {
     }
 }
 
+@Suite("SignInWords hints")
+struct SignInHintTests {
+    @Test func `the hints name the press under Who can sign in, never a page only a Mac has`() {
+        #expect(SignInWords.linkHint == "In Docket's Settings, press Add… under Who can sign in on the computer's page, then paste the link here.")
+        #expect(SignInWords.keyHint == "A key from Add… under Who can sign in on the computer's page in Docket's Settings, with the computer's address.")
+        #expect(SignInWords.refusedKeyHint == "In Docket's Settings, press Add… under Who can sign in on its page, then sign in again.")
+        for hint in [SignInWords.linkHint, SignInWords.keyHint, SignInWords.refusedKeyHint] {
+            #expect(!hint.contains("Sharing"))
+        }
+    }
+}
+
 @Suite("NotificationWords")
 struct NotificationWordsTests {
     @Test func `the switch's own On and Off are not said again beside it`() {

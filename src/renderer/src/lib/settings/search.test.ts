@@ -193,5 +193,6 @@ describe("a press found by its old name", () => {
   it("finds Add a computer… by Hosts' Add host", () => {
     const results = searchSettings("add host", settingsList(MAC), { mac: "this Mac" }, [ADD_COMPUTER_RESULT]);
     expect(results[0]).toMatchObject({ title: "Add a computer…", act: "add-computer", was: "Was “Hosts, Add host”" });
+    expect(searchSettings("hosts", settingsList(MAC), { mac: "this Mac" }, [ADD_COMPUTER_RESULT]).map((result) => result.title)).toContain("Add a computer…");
   });
 });

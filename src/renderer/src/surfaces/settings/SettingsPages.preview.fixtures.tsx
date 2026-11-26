@@ -5,6 +5,7 @@ const PAGES = [
   "winvm",
   "winvm-display",
   "winvm-change",
+  "winvm-reread",
   // The box's page as /ui draws it: a browser, so before the Mac windows.
   "computer-box-web",
   "away",
@@ -27,6 +28,9 @@ const PAGES = [
   "accounts",
   "reviews",
   "reviews-off",
+  "reviews-readonly",
+  "defaults-readonly",
+  "orchestration-readonly",
   // One dialog or sheet open over its page: shoot each alone.
   "defaults-places",
   "orchestration-models",

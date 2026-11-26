@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ToolRuleRow, ToolRulesCard } from "@shared/contract-work-outbox";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ChoiceSelect } from "../../components/choice-select";
@@ -12,7 +12,7 @@ import { withDeadline } from "../../lib/connection/openRead";
 import { useLinksMay } from "../../lib/linkMay";
 import { hostFailure } from "../../lib/hostFailure";
 import { computerInLine, readFailWords, useComputerNames } from "../../lib/settings/computerName";
-import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
+import { FailureLinesHere, FailuresSaidOnce, ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
 import { useWorkHosts } from "../../lib/workSwitch";
 import { ListFilter, useListFilter, filterList, LIST_FILTER_PAST } from "../../surfaces/settings/parts/ListFilter";
@@ -247,26 +247,33 @@ export function ToolsRow() {
 
 type HostCards = { cards?: ToolRulesCard[]; error?: string };
 
-/** Each computer with Work on, asked for its add-ons' tools while the sheet is open. */
+/** Each computer with Work on, asked for its add-ons' tools while the sheet is open. A failed read keeps what an
+ *  earlier one brought, beside its failure. */
 function useToolCards(open: boolean, hosts: readonly string[]) {
   const [byHost, setByHost] = useState<Record<string, HostCards>>({});
-  const [attempt, setAttempt] = useState(0);
+  // The sheet's open spell: an answer from one it closed on is dropped.
+  const spell = useRef(0);
+  const load = useCallback(
+    (id: string, asked?: number) => {
+      const at = asked ?? spell.current;
+      return withDeadline(hostRequest<{ addons: ToolRulesCard[] }>(id, "work.outbox.rules", {})).then(
+        (answer) => void (at === spell.current && setByHost((was) => ({ ...was, [id]: { cards: answer.addons } }))),
+        (err: unknown) => void (at === spell.current && setByHost((was) => ({ ...was, [id]: { ...was[id], error: err instanceof Error ? err.message : String(err) } }))),
+      );
+    },
+    [],
+  );
   const key = hosts.join(",");
   useEffect(() => {
     if (!open) return;
-    let live = true;
-    for (const id of hosts)
-      withDeadline(hostRequest<{ addons: ToolRulesCard[] }>(id, "work.outbox.rules", {})).then(
-        (answer) => live && setByHost((was) => ({ ...was, [id]: { cards: answer.addons } })),
-        (err: unknown) => live && setByHost((was) => ({ ...was, [id]: { ...was[id], error: err instanceof Error ? err.message : String(err) } })),
-      );
-    return () => {
-      live = false;
-    };
-  }, [open, key, attempt]);
+    spell.current += 1;
+    const at = spell.current;
+    for (const id of hosts) void load(id, at);
+    return () => void (spell.current += 1);
+  }, [open, key]);
   const put = (id: string, card: ToolRulesCard): void =>
     setByHost((was) => ({ ...was, [id]: { cards: (was[id]?.cards ?? []).map((c) => (c.addonId === card.addonId ? card : c)) } }));
-  return { byHost, put, retry: () => setAttempt((n) => n + 1) };
+  return { byHost, put, retry: (id: string) => load(id) };
 }
 
 export function ToolsSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -284,57 +291,50 @@ export function ToolsSheet({ open, onOpenChange }: { open: boolean; onOpenChange
   const findable = total > LIST_FILTER_PAST;
   const matching = (card: ToolRulesCard): ToolRuleRow[] => [...filterList(card.tools, (t) => `${t.words} ${card.name}`, findable ? query : "")];
   const matched = hosts.reduce((n, id) => n + cardsOf(id).reduce((m, card) => m + matching(card).length, 0), 0);
-  const several = hosts.filter((id) => cardsOf(id).length > 0).length > 1;
+  // More than one computer has Work on: every rule names the computer it changes, whatever has answered yet.
+  const several = hosts.length > 1;
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" data-tools-sheet="">
         <SheetHeader>
           <SheetTitle>What each add-on's tools may do</SheetTitle>
         </SheetHeader>
-        <div className="@container/page flex min-h-0 flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto px-5 pb-5">
-          {findable ? (
-            <ListFilter filter={{ shown: Array.from({ length: matched }), query, setQuery, offered: true }} label="Find a tool" />
-          ) : null}
-          {hosts.map((id) => {
-            const read = byHost[id];
-            const where = several ? ` on ${computerInLine(names(id))}` : "";
-            if (!read?.cards) {
-              return read?.error ? (
-                <PageError
-                  key={id}
-                  action={
-                    <Button variant="ghost" size="sm" onClick={retry}>
-                      Retry
-                    </Button>
-                  }
-                >
-                  {readFailWords(read.error, names(id))}
-                </PageError>
-              ) : (
-                <PageRowsSkeleton key={id} rows={3} control="select" />
+        {/* The sheet says its own failures under its title, not on the page behind it. */}
+        <FailuresSaidOnce head={false}>
+          <div className="@container/page flex min-h-0 flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto px-5 pb-5">
+            <FailureLinesHere />
+            {findable ? (
+              <ListFilter filter={{ shown: Array.from({ length: matched }), query, setQuery, offered: true }} label="Find a tool" />
+            ) : null}
+            {hosts.map((id) => {
+              const read = byHost[id];
+              const where = several ? ` on ${computerInLine(names(id))}` : "";
+              // A failed read is said under the sheet's title, held rules or none; Retry asks that computer again.
+              const failure = read?.error ? <ReadFailure key={`failed:${id}`} computer={id} error={read.error} retry={() => retry(id)} /> : null;
+              if (!read?.cards) return failure ?? <PageRowsSkeleton key={id} rows={3} control="select" />;
+              const cards = cardsOf(id);
+              if (cards.length === 0) return failure ?? (hosts.length > 1 ? null : <PageEmpty key={id}>No add-on reaches Work threads</PageEmpty>);
+              const mayWrite = may(id, "work.outbox.setRules");
+              return (
+                <div key={id} className="flex flex-col gap-6">
+                  {failure}
+                  {mayWrite ? null : <ManagedLine computer={names(id).name} />}
+                  {cards.map((card) => {
+                    const tools = matching(card);
+                    if (tools.length === 0) return null;
+                    return (
+                      <PageSection key={card.addonId} title={`${card.name}${where}`} data-addon={card.addonId}>
+                        {tools.map((tool) => (
+                          <ToolRow key={tool.tool} environmentId={id} card={card} tool={tool} mayWrite={mayWrite} onCard={(next) => put(id, next)} />
+                        ))}
+                      </PageSection>
+                    );
+                  })}
+                </div>
               );
-            }
-            const cards = cardsOf(id);
-            if (cards.length === 0) return hosts.length > 1 ? null : <PageEmpty key={id}>No add-on reaches Work threads</PageEmpty>;
-            const mayWrite = may(id, "work.outbox.setRules");
-            return (
-              <div key={id} className="flex flex-col gap-6">
-                {mayWrite ? null : <ManagedLine computer={names(id).name} />}
-                {cards.map((card) => {
-                  const tools = matching(card);
-                  if (tools.length === 0) return null;
-                  return (
-                    <PageSection key={card.addonId} title={`${card.name}${where}`} data-addon={card.addonId}>
-                      {tools.map((tool) => (
-                        <ToolRow key={tool.tool} environmentId={id} card={card} tool={tool} mayWrite={mayWrite} onCard={(next) => put(id, next)} />
-                      ))}
-                    </PageSection>
-                  );
-                })}
-              </div>
-            );
-          })}
-        </div>
+            })}
+          </div>
+        </FailuresSaidOnce>
       </SheetContent>
     </Sheet>
   );

@@ -5,7 +5,7 @@ import { useEnvironments } from "../lib/connection/status";
 import { ACCESS_LABEL, ACCESS_LINE, ACCESS_ORDER, FULL_ACCESS_CONFIRM } from "../lib/settings/access";
 import { settingTitle } from "../lib/settings/map";
 import { useLinkMay } from "../lib/linkMay";
-import { usePublishHome } from "../lib/settings/pageHome";
+import { homeEnvironmentId, usePublishHome } from "../lib/settings/pageHome";
 import { homeNote } from "../lib/settingsHome";
 import { EFFORT_LABELS, effortLadder, modelForDefaults, modelOptions, normalizeDefaults, parseDefaultsScope, providerOptions, storedModelId, type DefaultsScope } from "../lib/tcserver/defaults";
 import { scopeKey, useThreadDefaults, useThreadDefaultsError, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
@@ -15,6 +15,9 @@ import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components
 import { Button } from "../components/ui/button";
 import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
 import { SaveMark } from "../surfaces/settings/parts/SaveMark";
+import { ValueWords } from "../surfaces/settings/parts/ValueWords";
+import { ManagedLine } from "../surfaces/settings/parts/ManagedLine";
+import { useComputerName } from "../lib/settings/computerName";
 import { FailureLinesHere, FailuresSaidOnce, ReadFailure } from "../surfaces/settings/parts/ReadFailure";
 import { readWhenOpen, withDeadline } from "../lib/connection/openRead";
 import { Skeleton } from "../components/ui/skeleton";
@@ -48,11 +51,13 @@ function useDefaultsSet(environmentId: string, workspaceId: string | null) {
   const saved: Record<Row, Saved> = { app: useSaved(), model: useSaved(), effort: useSaved(), access: useSaved(), startOn: useSaved() };
   const cleared = useSaved();
   const { blocked } = homeNote(scope?.home);
+  // A key that may read the set but not change it sees each value as words (`DefaultsRows`), and no Use….
+  const may = useLinkMay(environmentId, "defaults.set", { workspaceId, defaults: null });
   const write = (row: Row, next: ThreadDefaults) =>
     draft.change(saved[row], normalizeDefaults(next, environmentId), (set) => workspaceStore.saveDefaults(environmentId, workspaceId, set));
   /** Drops the scope's own set: a workspace follows New threads again, New threads takes Docket's. */
   const clear = () => cleared.run(() => workspaceStore.saveDefaults(environmentId, workspaceId, null));
-  return { scope, failure, value: draft.value, saved, write, blocked, clear, cleared };
+  return { scope, failure, value: draft.value, saved, write, blocked, clear, cleared, may };
 }
 type DefaultsSet = ReturnType<typeof useDefaultsSet>;
 
@@ -68,8 +73,19 @@ function DefaultsRows({ set, environmentId, startOn, layout }: { set: DefaultsSe
     if (permission === "auto" && value.permission !== "auto" && !(await confirmAction(FULL_ACCESS_CONFIRM))) return;
     void set.write("access", { ...value, permission });
   };
-  const row = (id: Row, mapId: string, title: string, control: ReactNode, description?: string) =>
-    layout === "setting" ? (
+  const model = storedModelId(value);
+  const modelChoices = [{ value: "", label: "Default" }, ...modelOptions(value.provider, environmentId)];
+  // What each row says for a key that may not change it: the value's own label, as the select would show it.
+  const words: Record<Row, string> = {
+    app: providerOptions().find((p) => p.value === value.provider)?.label ?? value.provider,
+    model: modelChoices.find((m) => m.value === model)?.label ?? model,
+    effort: EFFORT_LABELS[value.reasoning],
+    access: ACCESS_LABEL[value.permission],
+    startOn: START_ON_CHOICES.find((c) => c.value === (value.startOn ?? DEFAULT_START_ON))?.label ?? "",
+  };
+  const row = (id: Row, mapId: string, title: string, select: ReactNode, description?: string) => {
+    const control = set.may ? select : <ValueWords>{words[id]}</ValueWords>;
+    return layout === "setting" ? (
       <SettingRow key={id} id={mapId} saved={set.saved[id]} description={description}>
         {control}
       </SettingRow>
@@ -86,6 +102,7 @@ function DefaultsRows({ set, environmentId, startOn, layout }: { set: DefaultsSe
         </span>
       </FieldRow>
     );
+  };
   return (
     <>
       {row(
@@ -104,8 +121,8 @@ function DefaultsRows({ set, environmentId, startOn, layout }: { set: DefaultsSe
           className="data-placeholder:text-foreground"
           size={size}
           disabled={disabled}
-          value={storedModelId(value)}
-          options={[{ value: "", label: "Default" }, ...modelOptions(value.provider, environmentId)]}
+          value={model}
+          options={modelChoices}
           onChange={(model) => void set.write("model", { ...value, model })}
         />,
       )}
@@ -201,7 +218,7 @@ function StartWith({ environmentId }: { environmentId: string }) {
           <DefaultsRows set={set} environmentId={environmentId} startOn={startOn} layout="setting" />
           <DifferentPlaces />
           {/* Asks first, so last in its section; offered only while there is a set to clear and the box can take it. */}
-          {set.scope?.overridden && !set.blocked ? (
+          {set.scope?.overridden && !set.blocked && set.may ? (
             <SettingRow id="defaults.reset" description={DOCKETS} saved={set.cleared}>
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
                 Use…
@@ -361,10 +378,15 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
   const [fresh, setFresh] = useState<{ scope: DefaultsScope | null; error: string | null }>({ scope: null, error: null });
   const [attempt, setAttempt] = useState(0);
   const environmentId = place.environmentId;
-  const read = useCallback(
-    () => withDeadline(readWhenOpen<unknown>(registry.linkOf(environmentId), "defaults.get", { workspaceId: null })).then(parseDefaultsScope),
-    [environmentId],
-  );
+  const read = useCallback(async (): Promise<DefaultsScope> => {
+    const ask = (id: string) => withDeadline(readWhenOpen<unknown>(registry.linkOf(id), "defaults.get", { workspaceId: null })).then(parseDefaultsScope);
+    const here = await ask(environmentId);
+    // A follower answers with its copy; the computer that keeps the set (the box, its `home`) is asked for its own.
+    const keeper = homeEnvironmentId(here.home, registry.environments());
+    if (!keeper || keeper === environmentId) return here;
+    const kept = await ask(keeper);
+    return here.home ? { ...kept, home: here.home } : kept;
+  }, [environmentId]);
   useEffect(() => {
     let live = true;
     setFresh({ scope: null, error: null });
@@ -396,7 +418,11 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
       });
       if (!ok) return false;
     }
-    return saved.run(() => workspaceStore.saveDefaults(place.environmentId, place.id, null));
+    return saved.run(async () => {
+      await workspaceStore.saveDefaults(place.environmentId, place.id, null);
+      // The place's summary is the set that came back, not this window's guess at what it inherits.
+      await workspaceStore.loadDefaults(place.environmentId, place.id);
+    });
   };
   return {
     may,
@@ -415,6 +441,7 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
 export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: WorkspaceMeta; onClose: () => void }) {
   const set = useDefaultsSet(workspace.environmentId, workspace.id);
   const reset = useUseNewThreads(workspace);
+  const computer = useComputerName(workspace.environmentId);
   return (
     <Modal title="New threads" description={workspace.name} size="sm" onClose={onClose}>
       {/* The dialog's own failures, said in it under its title, so a Retry is never behind it. */}
@@ -429,6 +456,7 @@ export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: Worksp
           <PageRowsSkeleton rows={DEFAULTS_SKELETON} />
         )}
         {set.cleared.error ? <PageError>{set.cleared.error}</PageError> : null}
+        {set.value && !set.may ? <ManagedLine computer={set.scope?.home?.name ?? computer.name} /> : null}
       </ModalBody>
       <DialogFooter
         start={

@@ -61,7 +61,7 @@ import { resetPageHomesForTests } from "../../lib/settings/pageHome";
 import { CodeWorkspaceSector, JobPage } from "../../work/shell/JobSettings";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { WorkPage, workOffAsk, workPageChunk } from "./Work";
-import { resetOwnComputerForTests } from "../../lib/settings/computerName";
+import { computerInLine, resetOwnComputerForTests, useComputerName } from "../../lib/settings/computerName";
 import { resetOutboxStore } from "../../work/outbox/store";
 import { StoreGrantsSheet, ToolsSheet } from "../../work/shell/WorkPageSends";
 import { FilesPage } from "../../work/shell/WorkPageFiles";
@@ -933,6 +933,28 @@ const PAGES: Record<
     answers: { "env_box:work.winvm.settings": () => Promise.reject(new Error(NO_ANSWER)) },
     body: () => <WithVmOn environmentId="env_box"><WinvmPage /></WithVmOn>,
   },
+  // The display was read once; its read again failed: the values shown stand, with the line and Retry under them.
+  "winvm-reread": {
+    title: "Windows VM",
+    description: settingsSectionDescription("winvm"),
+    environments: THREE_COMPUTERS,
+    body: () => (
+      <WinvmView
+        state={ANSWERS["env_box:work.winvm.state"] as WinvmState}
+        points={(ANSWERS["env_box:work.winvm.points"] as { points: WinvmPoint[] }).points}
+        settings={{ screen: "fit", detail: "sharp" }}
+        settingsError="The box did not answer."
+        onRetrySettings={() => {}}
+        error={null}
+        pressing={false}
+        onPress={() => {}}
+        onSleepAfter={() => {}}
+        onScreen={() => {}}
+        onQuality={() => {}}
+        onPoints={() => {}}
+      />
+    ),
+  },
   // A change the box refused: Picture quality is back on Sharp, its reason on its own row.
   "winvm-change": {
     title: "Windows VM",
@@ -943,7 +965,7 @@ const PAGES: Record<
         state={ANSWERS["env_box:work.winvm.state"] as WinvmState}
         points={(ANSWERS["env_box:work.winvm.points"] as { points: WinvmPoint[] }).points}
         settings={{ screen: "fit", detail: "sharp" }}
-        refused={{ detail: "A thread is using the Windows VM. Stop it or take over first." }}
+        saved={{ detail: { state: "idle", error: "A thread is using the Windows VM. Stop it or take over first.", run: async () => false } }}
         error={null}
         pressing={false}
         onPress={() => {}}
@@ -1052,6 +1074,28 @@ const PAGES: Record<
     answers: { "rules.get": { rules: { ...withProbedDefaults(DEFAULT_RULES), routing: ROUTING }, overridden: true, home: BOX_OFFLINE } },
   },
   reviews: { title: "Reviews", description: <HomeLine page="reviews" />, body: () => <ReviewsPage />, answers: { ...EVERYWHERE_LISTS, "review.get": reviewAnswer(true, ON_THE_BOX) } },
+  // A key that may read the sets but not change them (no admin on this window's computer): values as words.
+  "reviews-readonly": {
+    title: "Reviews",
+    description: <HomeLine page="reviews" />,
+    body: () => <ReviewsPage />,
+    answers: { ...EVERYWHERE_LISTS, "review.get": reviewAnswer(true, ON_THE_BOX) },
+    statuses: { local: { lastHello: helloOf(["read", "operate", "approve"], 397) } },
+  },
+  "defaults-readonly": {
+    title: "New threads",
+    description: <HomeLine page="defaults" />,
+    body: () => <ThreadDefaultsPage />,
+    answers: { ...EVERYWHERE_LISTS, "defaults.get": defaultsAnswer(ON_THE_BOX), "plans.get": { settings: DEFAULT_PLAN_SETTINGS, overridden: false, home: ON_THE_BOX } },
+    statuses: { local: { lastHello: helloOf(["read", "operate", "approve"], 397) } },
+  },
+  "orchestration-readonly": {
+    title: "Subagents",
+    description: <HomeLine page="orchestration" />,
+    body: () => <OrchestrationPage />,
+    answers: { "rules.get": { rules: { ...withProbedDefaults(DEFAULT_RULES), routing: ROUTING }, overridden: true, home: ON_THE_BOX } },
+    statuses: { local: { lastHello: helloOf(["read", "operate", "approve"], 397) } },
+  },
   "reviews-off": { title: "Reviews", description: <HomeLine page="reviews" />, body: () => <ReviewsPage />, answers: { "review.get": reviewAnswer(false, ON_THE_BOX) } },
   workspace: {
     title: "temp-code",
@@ -1135,7 +1179,7 @@ const PAGES: Record<
     body: () => (
       <AsWorkComputers on={["env_box", "local"]}>
         <WorkPage />
-        <ConfirmDialog {...workOffAsk("the box", 5)} confirmLabel="Turn off" onCancel={() => {}} onConfirm={() => {}} onDone={() => {}} />
+        <WorkOffAsked environmentId={registry.primaryEnvironmentId} />
       </AsWorkComputers>
     ),
   }),
@@ -1232,6 +1276,13 @@ export const GUARDED_PAGES: Partial<Record<SettingPage, { previews: (keyof typeo
   mail: { previews: ["mail", "mail-loading", "mail-down"] },
   connections: { previews: ["connections", "connections-loading", "connections-refused"] },
 };
+
+/** The ask for turning Work off on one computer, its name and job count read as its row reads them (Work.tsx `WorkOnRow`). */
+function WorkOffAsked({ environmentId }: { environmentId: string }) {
+  const name = useComputerName(environmentId);
+  const jobs = useWorkspaces().filter((w) => w.kind === "work" && w.environmentId === environmentId).length;
+  return <ConfirmDialog {...workOffAsk(computerInLine(name), jobs)} confirmLabel="Turn off" onCancel={() => {}} onConfirm={() => {}} onDone={() => {}} />;
+}
 
 /** The sheet once the catalog knows its workspace, as it always does in the app before a project's row can open it. */
 function ProjectSheet() {

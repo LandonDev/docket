@@ -4,6 +4,8 @@ import { HARNESS_LABEL } from "../lib/session";
 import { allModels, findModel, nativeModelId } from "../lib/models";
 import { settingEntry } from "../lib/settings/map";
 import { ReadFailure } from "../surfaces/settings/parts/ReadFailure";
+import { ValueWords } from "../surfaces/settings/parts/ValueWords";
+import { useLinkMay } from "../lib/linkMay";
 import { homeNote } from "../lib/settingsHome";
 import { EFFORT_LABELS, REASONING_LEVELS, effortLadder } from "../lib/tcserver/defaults";
 import { savePlanSettings, usePlanSettings, usePlanSettingsError } from "../lib/tcserver/plans";
@@ -40,6 +42,7 @@ export function PlanSettingsFields({
   compact = false,
   saved,
   disabled,
+  readOnly = false,
 }: {
   value: PlanSettings;
   /** May return the save, so a switch goes back when it is refused. */
@@ -50,6 +53,8 @@ export function PlanSettingsFields({
   /** Each row's save on the New threads page. */
   saved?: Record<Row, Saved>;
   disabled?: boolean;
+  /** A key that may read the set but not change it: each value as words. */
+  readOnly?: boolean;
 }) {
   const set = (row: Row, patch: Partial<PlanSettings>) => onChange({ ...value, ...patch }, row);
   const fixed = value.implementModel ? findModel(value.implementModel) : undefined;
@@ -69,8 +74,18 @@ export function PlanSettingsFields({
   const size = compact ? "sm" : "default";
   const title = (row: Row) => settingEntry(ROW_ID[row]).title;
   // A page's row with its save mark; in the project sheet (`compact`) a sheet's row, as its neighbours are.
-  const row = (id: Row, control: FieldControl, description?: string) =>
-    saved ? (
+  const contextChoices = [SAME, { value: "1m", label: "1M" }, { value: "200k", label: "200k" }];
+  const onOff = (on: boolean) => (on ? "On" : "Off");
+  const words: Record<Row, string> = {
+    start: onOff(value.autoImplement),
+    archive: onOff(value.archiveAfterStart),
+    model: modelOptions.find((o) => o.value === value.implementModel)?.label ?? value.implementModel,
+    effort: reasoningOptions.find((o) => o.value === value.implementReasoning)?.label ?? SAME.label,
+    context: contextChoices.find((o) => o.value === value.implementContext)?.label ?? SAME.label,
+  };
+  const row = (id: Row, input: FieldControl, description?: string) => {
+    const control = readOnly ? <ValueWords>{words[id]}</ValueWords> : input;
+    return saved ? (
       <SettingRow key={id} id={ROW_ID[id]} saved={saved[id]} description={description}>
         {control}
       </SettingRow>
@@ -83,6 +98,7 @@ export function PlanSettingsFields({
         {control}
       </PageRow>
     );
+  };
   return (
     <>
       {row("start", <SettingSwitch label={title("start")} disabled={disabled} on={value.autoImplement} onChange={(on) => set("start", { autoImplement: on })} />)}
@@ -111,7 +127,7 @@ export function PlanSettingsFields({
           size={size}
           disabled={disabled}
           value={value.implementContext}
-          options={[SAME, { value: "1m", label: "1M" }, { value: "200k", label: "200k" }]}
+          options={contextChoices}
           onChange={(implementContext) => set("context", { implementContext: implementContext as PlanSettings["implementContext"] })}
         />,
       )}
@@ -132,13 +148,14 @@ export function PlanSettingsEditor({ quiet = false }: { quiet?: boolean }) {
   const draft = useDraft(scope?.settings);
   const saved: Record<Row, Saved> = { start: useSaved(), archive: useSaved(), model: useSaved(), effort: useSaved(), context: useSaved() };
   const { blocked } = homeNote(scope?.home);
+  const may = useLinkMay(environmentId, "plans.set", { projectId: null, settings: null });
   const change = (next: PlanSettings, row: Row) => draft.change(saved[row], next, (set) => savePlanSettings(environmentId, null, set));
   // Quiet: only the failure, which draws nothing beside the page's same line but lends that line's Retry this read.
   if (quiet && !draft.value && failure) return <ReadFailure computer={environmentId} error={failure.error} retry={failure.retry} />;
   return (
     <SettingSection of="plans.start">
       {draft.value ? (
-        <PlanSettingsFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked} />
+        <PlanSettingsFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked} readOnly={!may} />
       ) : failure ? (
         <ReadFailure computer={environmentId} error={failure.error} retry={failure.retry} />
       ) : (

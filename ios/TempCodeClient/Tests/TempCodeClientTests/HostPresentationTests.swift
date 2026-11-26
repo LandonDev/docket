@@ -153,7 +153,7 @@ struct HostFixTests {
         #expect(HostFix.explanation(for: status(.connecting, attempts: 2)) == "The phone keeps trying on its own.")
         #expect(HostFix.explanation(for: status(.offline)) == "The phone tries again when the network returns.")
         #expect(HostFix.explanation(for: status(.offline, halt: identityChanged)) == "Sign in again to trust it.")
-        #expect(HostFix.explanation(for: status(.unauthorized)) == "Make a sign-in link on it in Settings → Sharing, then sign in again.")
+        #expect(HostFix.explanation(for: status(.unauthorized)) == "In Docket's Settings, press Add… under Who can sign in on its page, then sign in again.")
         #expect(HostFix.explanation(for: status(.suspended)) == nil)
     }
 

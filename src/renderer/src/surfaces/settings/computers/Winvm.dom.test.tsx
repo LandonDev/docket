@@ -12,7 +12,7 @@ import { confirmAction } from "../../../chrome/ConfirmDialog";
 vi.mock("../../../lib/linkMay", async (original) => (await import("../../../lib/linkMay.testkit")).linkMayMock(await original()));
 
 
-const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, pointsHold: null as Promise<unknown> | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true, settingsRead: "answers" as "answers" | "pending" | "refused", settingsWriteFail: null as string | null }));
+const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, pointsHold: null as Promise<unknown> | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true, settingsRead: "answers" as "answers" | "pending" | "refused", settingsWriteFail: null as string | null, opens: [] as (() => void)[] }));
 vi.mock("../../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../../chrome/ConfirmDialog")>()), confirmAction: vi.fn(async () => h.confirm) }));
 
 const at = (s: Partial<WinvmState>): WinvmState => ({ state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1, ...s });
@@ -31,6 +31,7 @@ beforeEach(() => {
   h.office = null;
   h.settingsRead = "answers";
   h.settingsWriteFail = null;
+  h.opens = [];
   vi.spyOn(registry, "linkOf").mockImplementation(
     () =>
       ({
@@ -53,7 +54,7 @@ beforeEach(() => {
           return null;
         },
         onPush: (fn: (p: unknown) => void) => (h.pushes.push(fn), () => undefined),
-        onOpen: () => () => undefined,
+        onOpen: (fn: () => void) => (h.opens.push(fn), () => undefined),
       }) as never,
   );
 });
@@ -388,7 +389,7 @@ describe("Screen size and picture quality", () => {
     expect(pressed()).toEqual([]);
   });
 
-  it("holds the display's rows as bones while they are read, and says a failed read on its own row with Retry", async () => {
+  it("holds the display's rows as bones while they are read, and says a failed read in the wait's shape with one Retry", async () => {
     vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
     h.state = at({ state: "awake", display: virtio });
     h.settingsRead = "pending";
@@ -400,15 +401,61 @@ describe("Screen size and picture quality", () => {
     h.settingsRead = "refused";
     const w = render(<WinvmHost env="box" />);
     await flush();
-    const row = w.container.querySelector("[data-setting='winvm.screen']")!;
-    expect(row.textContent).toContain("did not answer.");
+    // Both labels stand, nothing claimed at their ends, and one red line with its Retry under them.
+    expect(w.container.querySelector("[data-setting='winvm.screen']")?.textContent).toBe("Screen size");
+    expect(w.container.querySelector("[data-setting='winvm.quality']")?.textContent).toBe("Picture quality");
+    const line = w.container.querySelector("[data-display-failure]")!.closest("[data-slot=page-error-line]") as HTMLElement;
+    expect(line.textContent).toContain("did not answer.");
+    expect(w.container.querySelectorAll("[data-display-failure]")).toHaveLength(1);
     // The Windows row is not where it is said.
     expect(w.container.querySelector("[data-setting='winvm.windows']")?.textContent).not.toContain("did not answer");
     h.settingsRead = "answers";
-    await act(async () => fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Retry" })));
+    await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
     await flush();
     expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1280 × 800");
-    expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).not.toContain("did not answer");
+    expect(document.querySelector("[data-display-failure]")).toBeNull();
+  });
+
+  it("says a failed read again even while the values it read before stand", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: virtio });
+    h.screen = "fit";
+    render(<WinvmHost env="box" />);
+    await flush();
+    expect(document.querySelector("[data-display-failure]")).toBeNull();
+    // The socket opens again and the read fails: the held values stay, and the failure is said with Retry.
+    h.settingsRead = "refused";
+    await act(async () => h.opens.forEach((fn) => fn()));
+    await flush();
+    expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("Fits my window");
+    expect(screen.getByRole("combobox", { name: "Picture quality" }).textContent).toContain("Sharp");
+    const line = document.querySelector("[data-display-failure]")!.closest("[data-slot=page-error-line]") as HTMLElement;
+    expect(line.textContent).toContain("did not answer.");
+    h.settingsRead = "answers";
+    await act(async () => fireEvent.click(within(line).getByRole("button", { name: "Retry" })));
+    await flush();
+    expect(document.querySelector("[data-display-failure]")).toBeNull();
+  });
+
+  it("marks each select's save, and a refused fit puts the size that stands back with the reason on its row", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: vga });
+    h.fail["work.winvm.display.upgrade"] = "A thread is using the Windows VM. Stop it or take over first.";
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Sleeps after", "2 hours");
+    await flush();
+    expect(document.querySelector("[data-setting='winvm.sleeps'] [data-slot=save-mark]")?.getAttribute("data-state")).toBe("saved");
+    await pick("Screen size", "Fits my window");
+    await flush();
+    // The fit was saved, the restart refused: the size that stood is written back and shown, the reason on its row.
+    expect(h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { screen?: string }).screen)).toEqual([
+      { method: "work.winvm.settings", params: { screen: "fit" } },
+      { method: "work.winvm.settings", params: { screen: "1280x800" } },
+    ]);
+    expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1280 × 800");
+    expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).toContain("A thread is using the Windows VM");
+    expect(document.querySelector("[data-setting='winvm.windows']")?.textContent).not.toContain("A thread is using");
   });
 
   it("puts a refused change back to the value last confirmed, says why on its own row, and keeps it through a read again", async () => {

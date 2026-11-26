@@ -23,6 +23,7 @@ const state = vi.hoisted(() => ({
   waiting: [] as string[],
   inheritedOut: false,
   inheritedFails: false,
+  keeper: false,
   inheritedReads: 0,
   plansFailed: false,
   plansRetry: vi.fn(),
@@ -37,7 +38,7 @@ vi.mock("../../lib/settings/computerName", async (original) => {
     useReadFailWords: () => (error: string) => real.readFailWords(error, own),
   };
 });
-vi.mock("../../lib/linkMay", () => ({ useLinkMay: () => state.may }));
+vi.mock("../../lib/linkMay", async (original) => ({ ...(await original<typeof import("../../lib/linkMay")>()), useLinkMay: () => state.may }));
 vi.mock("../../lib/tcserver/plans", () => ({
   usePlanSettingsError: () => (state.plansFailed ? { error: "The computer did not answer", retry: state.plansRetry } : null),
 }));
@@ -49,16 +50,25 @@ vi.mock("../../chrome/ConfirmDialog", async (original) => ({
   confirmAction: (request: unknown) => state.confirm(request),
 }));
 const link = vi.hoisted(() => ({ environmentId: "local", connected: true, onOpen: () => () => {} }));
-vi.mock("../../lib/connection", () => ({ registry: { primary: () => link, primaryEnvironmentId: "local", linkOf: () => link } }));
+vi.mock("../../lib/connection", () => ({ registry: {
+    primary: () => link,
+    primaryEnvironmentId: "local",
+    linkOf: (id: string) => ({ ...link, environmentId: id }),
+    environments: () => (state.keeper ? [{ id: "env_box", name: "The box" }] : []),
+  },
+}));
 // Use New threads' own fresh read of the set a place would follow.
 vi.mock("../../lib/connection/openRead", async (original) => ({
   ...(await original<typeof import("../../lib/connection/openRead")>()),
   withDeadline: <T,>(p: Promise<T>) => p,
-  readWhenOpen: () => {
+  readWhenOpen: (asked: { environmentId: string }) => {
     state.inheritedReads += 1;
     if (state.inheritedOut) return new Promise(() => {});
     if (state.inheritedFails) return Promise.reject(new Error("The computer did not answer"));
-    return Promise.resolve({ defaults: { provider: "claude", model: "", reasoning: "medium", permission: state.globalPermission }, overridden: true });
+    // With a keeper, this Mac answers its own copy and names the box; the box answers the set it keeps.
+    if (state.keeper && asked.environmentId === "env_box") return Promise.resolve({ defaults: { provider: "claude", model: "", reasoning: "medium", permission: "auto" }, overridden: true });
+    const home = state.keeper ? { home: { name: "The box", online: true } } : {};
+    return Promise.resolve({ defaults: { provider: "claude", model: "", reasoning: "medium", permission: state.globalPermission }, overridden: true, ...home });
   },
 }));
 vi.mock("../../lib/connection/status", () => ({
@@ -138,6 +148,7 @@ beforeEach(() => {
   state.waiting = [];
   state.inheritedOut = false;
   state.inheritedFails = false;
+  state.keeper = false;
   state.inheritedReads = 0;
   state.load.mockClear();
   state.plansRetry.mockClear();
@@ -332,7 +343,47 @@ describe("Different in N places", () => {
   });
 });
 
+describe("A key that may read the set but not change it", () => {
+  it("sees each value as words, no reset, and one line saying who can change them", () => {
+    state.may = false;
+    state.overridden = true;
+    render(<ThreadDefaultsPage />);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    const section = screen.getByRole("region", { name: "Start with" });
+    expect(section.querySelector("[data-setting='defaults.app'] [data-value-words]")!.textContent).toBe("Claude Code");
+    expect(section.querySelector("[data-setting='defaults.access'] [data-value-words]")!.textContent).toBe("Auto-accept edits");
+    expect(document.querySelector("[data-setting='defaults.reset']")).toBeNull();
+    expect(document.querySelectorAll("[data-managed]")).toHaveLength(1);
+  });
+});
+
 describe("Use New threads", () => {
+  it("checks Access with the computer that keeps the set, not this computer's copy", async () => {
+    state.overriding = new Set(["w1"]);
+    state.keeper = true;
+    state.confirm.mockImplementation(async () => false);
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    // This Mac's copy says Auto-accept edits; the box keeps Full access, so it asks.
+    expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Give Alpha Full access" }));
+  });
+
+  it("reads the place again once its set is cleared, so its summary is the set that came back", async () => {
+    state.overriding = new Set(["w1"]);
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    expect(state.save).toHaveBeenCalledWith("local", "w1", null);
+    expect(state.load).toHaveBeenCalledWith("local", "w1");
+  });
+
   it("is offered only to a key that may write the place's set", async () => {
     state.overriding = new Set(["w1"]);
     state.may = false;

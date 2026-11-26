@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
   retry: vi.fn(),
 }));
 
+const keyRights = vi.hoisted(() => ({ write: true }));
+vi.mock("../../lib/linkMay", async (original) => ({ ...(await original<typeof import("../../lib/linkMay")>()), useLinkMay: () => keyRights.write }));
 vi.mock("../../lib/settings/computerName", async (original) => {
   const real = await original<typeof import("../../lib/settings/computerName")>();
   const own = { name: "MacBook Pro", own: true };
@@ -138,7 +140,10 @@ beforeEach(() => {
   state.error = null;
   state.retry.mockClear();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  keyRights.write = true;
+});
 
 describe("Subagents", () => {
   it("shows the lead thread's rows in their shape under the real heading before the set loads", () => {
@@ -555,5 +560,25 @@ describe("every provider of the host's catalog", () => {
       fireEvent.click(within(dialog).getByRole("combobox", { name: "Agent app" }));
     });
     expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Claude Code", "Codex", "Cursor", "Muse Code"]);
+  });
+});
+
+describe("Subagents for a key that may read but not change them", () => {
+  it("says every value as words, offers no Add rule…, reset or rule dialog, and says who can change them", async () => {
+    keyRights.write = false;
+    state.scope = { rules: rules(), overridden: true };
+    render(<OrchestrationPage />);
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(document.querySelector("[data-setting='sub.gives'] [data-value-words]")!.textContent).toBe("Everything");
+    expect(document.querySelector("[data-setting='sub.perThread'] [data-value-words]")!.textContent).toBe("No limit");
+    expect(screen.queryByRole("button", { name: "Add rule…" })).toBeNull();
+    expect(document.querySelector("[data-setting='sub.reset']")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit rule: Bulk work" })).toBeNull();
+    expect(document.querySelectorAll("[data-managed]")).toHaveLength(1);
+    // The model allowances stay readable, as words, in the sheet.
+    const sheet = await openModels();
+    expect(within(sheet).queryByRole("combobox")).toBeNull();
+    expect(within(sheet).getAllByText("Everyone").length).toBeGreaterThan(0);
   });
 });

@@ -119,8 +119,10 @@ function SettingsRows({ link, value, onSaved }: { link: Link; value: ComputerSet
         />
         <span className="text-xs text-muted-foreground">min</span>
       </SettingRow>
-      <SettingRow id="computer.front" saved={front}>
+      {/* A long title beside a long choice: at a narrow width the choice takes its own full line. */}
+      <SettingRow id="computer.front" saved={front} wide>
         <ChoiceSelect
+          className="@max-[30rem]/page:w-full"
           label="When a step needs an app in front"
           value={activeApp ?? value.activeApp}
           options={ACTIVE_APP_CHOICES}

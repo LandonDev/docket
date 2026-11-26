@@ -223,9 +223,11 @@ through `useSaved`.
   press; Sleeps after; Screen size (Fits my window, or a size; Fits my window where live resize is off asks first and
   turns it on, saving first and asking for the restart only once the save landed); Picture quality; Restore points, a
   dialog where Go back… and Delete… ask first. While its state is read it stands in as many rows as will land. The
-  display settings are their own read: their rows hold a select's bone while it is out, and a failure is one Screen
-  size row in his words with its own Retry. A refused change goes back to the value last confirmed, its reason on its
-  own row (a refused press's on the Windows row), and a read again does not clear it. Its sign-ins and its
+  display settings are their own read: their rows hold a select's bone while it is out; a failure keeps the wait's
+  shape (Screen size, and Picture quality on live resize, with nothing at their ends) and says one red line with its own
+  Retry under them, also when a read again fails over values already shown. Each select has its save mark (`useSaved`);
+  a refused change goes back to the value last confirmed, its reason on its own row (a refused press's on the Windows
+  row), and a read again does not clear it. A refused restart for Fits my window writes back the size that stood. Its sign-ins and its
   edition's end are Connections' rows alone. The Work page no longer has it.
 
 The preview (`SettingsPages.preview.tsx`) answers per computer: `<environment id>:<method>` answers first, a fixture
