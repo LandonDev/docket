@@ -18,6 +18,7 @@ function host() {
   const send = (frame: { id?: string } & Record<string, unknown>): void => {
     const text = JSON.stringify(frame)
     if (frame.id && parts.take(frame.id, text, true)) return
+    if ('push' in frame && parts.holdPush(frame as never, text, true)) return
     wire.push({ text, part: null })
   }
   return { wire, parts, send }
@@ -264,6 +265,66 @@ describe('AnswerParts bounds (M6 review, finding 1)', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('AnswerParts keep each thread in order (M6 review, findings 4 and 8)', () => {
+  const ev = (sessionId: string, seq: number) => ({ push: 'event', row: { sessionId, seq, ts: 1000 + seq, event: { type: 'assistant-text', text: `${sessionId} ${seq}`, delta: false } } })
+
+  it("a resync and later rows for X wait behind X's page in parts; Y's rows pass between parts; X folds every row once, in order, no gap", () => {
+    const h = host()
+    const rows = [5, 6, 7, 8].map((seq) => ({ ...ev('x', seq).row, event: { type: 'assistant-text', text: seq === 5 ? 'x'.repeat(5 * PART_CHARS) : `x ${seq}`, delta: false } }))
+    h.parts.mark('8', 'session.events', 'x')
+    h.send({ id: '8', ok: true, result: { rows, moreBefore: false, moreAfter: false, reset: false } })
+    expect(h.parts.waiting).toBe(1)
+    // While the page is out: the host sheds and asks for a resync, X gets rows 9 and 10, Y gets its row 1, and a meta for X.
+    h.send({ push: 'resync' })
+    h.send(ev('x', 9))
+    h.send(ev('y', 1))
+    h.send({ push: 'session', session: { id: 'x', status: 'idle' } })
+    h.send(ev('x', 10))
+    for (let acked = 0; h.parts.waiting > 0; ) h.parts.ack((acked += PART_CHARS))
+    const kind = (w: Wrote): string => {
+      if (w.part) return w.part.last ? 'page-end' : 'part'
+      const f = JSON.parse(w.text) as { push: string; row?: { sessionId: string; seq: number }; session?: { id: string } }
+      return f.push === 'event' ? `${f.row!.sessionId}${f.row!.seq}` : f.push === 'session' ? `meta-${f.session!.id}` : f.push
+    }
+    const order = h.wire.map(kind)
+    const end = order.indexOf('page-end')
+    // Y passed between parts; X's frames and the resync came after the page, in the order the host made them.
+    expect(order.indexOf('y1')).toBeLessThan(end)
+    expect(order.slice(end + 1)).toEqual(['resync', 'x9', 'meta-x', 'x10'])
+    // The window's fold of X in arrival order: the page, then the pushes by seq, each once, no gap.
+    let cursor = 4
+    const folded: number[] = []
+    const bodies: string[] = []
+    for (const w of h.wire) {
+      if (w.part) {
+        bodies.push(w.part.body)
+        if (!w.part.last) continue
+        for (const r of (JSON.parse(bodies.join('')) as { result: { rows: { seq: number }[] } }).result.rows) if (r.seq === cursor + 1) folded.push((cursor = r.seq))
+        continue
+      }
+      const f = JSON.parse(w.text) as { push: string; row?: { sessionId: string; seq: number } }
+      if (f.push === 'event' && f.row!.sessionId === 'x') {
+        expect(f.row!.seq).toBe(cursor + 1)
+        folded.push((cursor = f.row!.seq))
+      }
+    }
+    expect(folded).toEqual([5, 6, 7, 8, 9, 10])
+    expect(h.parts.heldChars).toBe(0)
+  })
+
+  it("a row body for X in parts holds X's later events push behind it (a late body never lands after the newer result)", () => {
+    const h = host()
+    h.parts.mark('3', 'session.rowBody', 'x')
+    h.send({ id: '3', ok: true, result: { row: { ...ev('x', 4).row, event: { type: 'tool-call', input: 'i'.repeat(6 * PART_CHARS) } } } })
+    h.send({ push: 'events', sessionId: 'x', rows: [ev('x', 5).row] })
+    h.send({ push: 'events', sessionId: 'y', rows: [ev('y', 2).row] })
+    for (let acked = 0; h.parts.waiting > 0; ) h.parts.ack((acked += PART_CHARS))
+    const order = h.wire.map((w) => (w.part ? (w.part.last ? 'body-end' : 'part') : (JSON.parse(w.text) as { sessionId: string }).sessionId))
+    expect(order.indexOf('x')).toBe(order.indexOf('body-end') + 1)
+    expect(order.indexOf('y')).toBeLessThan(order.indexOf('body-end'))
   })
 })
 

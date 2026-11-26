@@ -784,6 +784,9 @@ export const PART_METHODS: ReadonlySet<string> = new Set([
   'work.slides.previewRead'
 ])
 
+/** Of PART_METHODS, those whose answer is one thread's (`params.sessionId`): pushes for it wait behind it. */
+export const THREAD_METHODS: ReadonlySet<string> = new Set(['session.events', 'session.rowBody'])
+
 /**
  * One window socket's big content answers, in parts behind every other frame (src/shared/answerParts.ts): a part goes
  * while the window holds all but UNACKED_CHARS of what was sent, so the shown thread's rows never sit behind more.
@@ -803,13 +806,21 @@ export interface AnswerPartsOptions {
   clearTimer?: (handle: unknown) => void
 }
 
+type HeldPush = { text: string; compress: boolean; threads: string[] }
+
 export class AnswerParts {
   private on = false
   /** Chars of answers waiting here, whole or in part, against PARTS_HELD_MAX_CHARS. */
   private held = 0
   private stall: unknown = null
-  private readonly marked = new Set<string>()
-  private queue: { id: string; text: string; at: number; compress: boolean }[] = []
+  /** Marked requests, with the thread their answer is of (`session.events`, `session.rowBody`), if any. */
+  private readonly marked = new Map<string, string | null>()
+  private queue: { id: string; text: string; at: number; compress: boolean; thread: string | null }[] = []
+  /** Answers of a thread waiting here or going out in parts. */
+  private readonly outstanding = new Map<string, number>()
+  /** Pushes that name a thread with an answer in parts (or one already waiting here), in the order they came:
+   *  each goes once every thread it names is clear, and never ahead of an earlier one for the same thread. */
+  private behind: HeldPush[] = []
   private sent = 0
   private acked = 0
   private closed = false
@@ -825,11 +836,36 @@ export class AnswerParts {
 
   /** A request whose answer may go in parts. A second request under an id still outstanding here is a client's
    *  slip: neither is marked again, so its answer goes whole. */
-  mark(id: string, method: string): void {
+  mark(id: string, method: string, thread?: string): void {
     if (!this.on || !PART_METHODS.has(method)) return
     if (this.marked.has(id)) return void this.marked.delete(id)
     if (this.queue.some((q) => q.id === id)) return
-    this.marked.add(id)
+    this.marked.set(id, THREAD_METHODS.has(method) && thread ? thread : null)
+  }
+
+  /**
+   * A push, held when it names a thread whose answer is in parts here: the thread's order is the socket's, so a
+   * later row, a meta or a `resync` never reaches the window ahead of that page or row body. It goes right after
+   * the answer's last part. False: send it now (pushes for other threads pass between parts).
+   */
+  holdPush(frame: ServerFrame, text: string, compress: boolean): boolean {
+    if (this.closed || !('push' in frame)) return false
+    let named: string[]
+    switch (frame.push) {
+      case 'event': named = [frame.row.sessionId]; break
+      case 'events': named = [frame.sessionId]; break
+      case 'session': named = [frame.session.id]; break
+      case 'sessions': named = frame.sessions.map((s) => s.id); break
+      // The host shed pushes: the window replays from its cursors, so it must see every page out before it.
+      case 'resync': named = [...this.outstanding.keys(), ...this.behind.flatMap((b) => b.threads)]; break
+      default: return false
+    }
+    const waiting = new Set(this.behind.flatMap((b) => b.threads))
+    const threads = [...new Set(named)]
+    if (!threads.some((t) => (this.outstanding.get(t) ?? 0) > 0 || waiting.has(t))) return false
+    this.behind.push({ text, compress, threads })
+    this.held += text.length
+    return true
   }
 
   /** The window holds `chars` of the parts sent: a whole count within what was acked and what was sent, else ignored. */
@@ -842,14 +878,18 @@ export class AnswerParts {
 
   /** Takes a marked answer longer than a part and sends it in parts; false: send it as it is. */
   take(id: string, text: string, compress: boolean): boolean {
-    if (!this.marked.delete(id) || this.closed || text.length <= PART_CHARS) return false
+    if (!this.marked.has(id)) return false
+    const thread = this.marked.get(id) ?? null
+    this.marked.delete(id)
+    if (this.closed || text.length <= PART_CHARS) return false
     if (this.queue.some((q) => q.id === id)) return false
     if (this.held + text.length > (this.options.maxHeldChars ?? PARTS_HELD_MAX_CHARS)) {
       this.shut('answers waiting in parts passed 64 MiB')
       return true
     }
     this.held += text.length
-    this.queue.push({ id, text, at: 0, compress })
+    this.queue.push({ id, text, at: 0, compress, thread })
+    if (thread) this.outstanding.set(thread, (this.outstanding.get(thread) ?? 0) + 1)
     this.pump()
     return true
   }
@@ -877,9 +917,31 @@ export class AnswerParts {
       this.sent += body.length
       this.held -= body.length
       answer.at = end
-      if (last) this.queue.shift()
+      if (last) {
+        this.queue.shift()
+        if (answer.thread) this.finished(answer.thread)
+      }
     }
     this.armStall()
+  }
+
+  /** A thread's answer went out whole: the pushes held for it go now, in order, up to one still blocked. */
+  private finished(thread: string): void {
+    const left = (this.outstanding.get(thread) ?? 1) - 1
+    if (left > 0) this.outstanding.set(thread, left)
+    else this.outstanding.delete(thread)
+    const blocked = new Set<string>()
+    const keep: HeldPush[] = []
+    for (const push of this.behind) {
+      if (push.threads.some((t) => (this.outstanding.get(t) ?? 0) > 0 || blocked.has(t))) {
+        keep.push(push)
+        for (const t of push.threads) blocked.add(t)
+        continue
+      }
+      this.held -= push.text.length
+      this.send(push.text, push.compress)
+    }
+    this.behind = keep
   }
 
   /** Parts out: the window has PARTS_ACK_STALL_MS to move its ack, or the socket goes. */
@@ -912,6 +974,8 @@ export class AnswerParts {
     this.closed = true
     this.clearStall()
     this.queue = []
+    this.behind = []
+    this.outstanding.clear()
     this.held = 0
     this.marked.clear()
   }

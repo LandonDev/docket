@@ -56,17 +56,26 @@
   `SocketBudget` in wire.ts). A remote window's big content answers
   (`PART_METHODS`: `fs.read`, `session.events`, `session.rowBody`, the
   Work file and preview reads) go in 128 KiB parts behind every other
-  frame, with at most 512 KiB of parts out that the window has not acked
-  (wire.ts `AnswerParts`, src/shared/answerParts.ts): a push or a small
-  answer goes between parts, so the shown thread's rows never sit behind
-  more than that, however much the tunnel buffers (cloudflared takes what
-  the host writes and holds it, so the host's own unsent bytes undercount
-  what is ahead of a frame). A list never goes in parts: the store keeps the newest
-  meta it heard, so a push may not overtake one. The window asks with
-  `#parts` when its host's hello names `answer.parts` and acks each part
-  (`#ack <chars>`, transport.ts); a phone or a peer link never sees one.
-  Pushes that pass a resume page fold once and in order by seq
-  (answerParts.test.ts, store.remote.test.ts). Stall lines end
+  frame, with at most 512 KiB of parts out that the window has not acked,
+  each part checked against the credit by its own length (wire.ts
+  `AnswerParts`, src/shared/answerParts.ts): a push or a small answer goes
+  between parts, so the shown thread's rows never sit behind more than
+  that, however much the tunnel buffers (cloudflared takes what the host
+  writes and holds it, so the host's own unsent bytes undercount what is
+  ahead of a frame). A thread's own order holds: while its page or row
+  body (`THREAD_METHODS`) is in parts, every push naming it (`event`,
+  `events`, `session`, `sessions`) and any `resync` waits behind it and
+  goes right after its last part, in the order made; other threads pass.
+  A list never goes in parts: the store keeps the newest meta it heard.
+  A part's header is `#part <encoded id> <offset> <last>`; a part never
+  ends inside a surrogate pair. A socket's parts hold at most 64 MiB of
+  answers and waiting pushes, and parts out with no ack that moves for
+  60 s close it (1013, as the budget does). The window asks with `#parts`
+  when its host's hello names `answer.parts`, acks every part (`#ack
+  <chars>`, a whole count the host takes only within what it sent),
+  assembles only answers it waits for, in order from offset 0, and drops
+  a partial one whose request timed out (transport.ts); a phone or a peer
+  link never sees one (answerParts.test.ts, store.remote.test.ts). Stall lines end
   `lane=bulk:<running>/<held> pool=<ms>` (the last thread-pool probe, a
   `stat` a second; `<age>ms+` while it is still out), and a slow-request
   line names its lane and, in bulk, `gate=<ms>` waited or `gate=joined`; the renderer reports `first-paint

@@ -2724,6 +2724,8 @@ export async function startServer(
       const text = frameJson(allowed)
       const bytes = carriesBytes(allowed, text)
       if ('id' in allowed && parts.take(allowed.id, text, !bytes)) return
+      // A push for a thread whose page or row body is going out in parts waits behind it (wire.ts AnswerParts).
+      if ('push' in allowed && parts.holdPush(allowed, text, !bytes)) return
       if (bytes) ws.send(text, { compress: false })
       else ws.send(text)
       if ('push' in allowed) {
@@ -2873,7 +2875,7 @@ export async function startServer(
       // Set in place: an intersection of the lane with every request's shape is more than the compiler will spell out.
       const req: ClientRequest = parsed.data
       if ((raw as { lane?: unknown }).lane === 'ui') (req as { lane?: 'ui' }).lane = 'ui'
-      parts.mark(req.id, req.method)
+      parts.mark(req.id, req.method, (req.params as { sessionId?: unknown } | undefined)?.sessionId as string | undefined)
       if (dropAnswers.take(req.method)) dropped.add(req.id)
       if (failAnswers.take(req.method)) return sendFrame({ id: req.id, ok: false, error: FAILED_ANSWER })
       // TEMP_CODE_PEER_DELAY_MS (peerDelay.ts): a proof's slow box.
