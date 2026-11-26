@@ -341,18 +341,20 @@ private struct ReviewHoursRow: View {
     let money: MoneyFigure?
 
     var body: some View {
+        let large = typeSize.isAccessibilitySize
         HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
             SectorDot(sector: job.sector)
                 .frame(width: Layout.glyphWidth + Layout.markWidth)
             VStack(alignment: .leading, spacing: 2) {
-                Text(job.name).textStep(.title, weight: .medium).lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
+                Text(job.name).textStep(.title, weight: .medium).lineLimit(large ? 2 : 1)
+                // At accessibility sizes the total goes under the name, whole, never cut beside it.
+                if large, showsFigure { figure }
                 ForEach(lines, id: \.self) { Text($0).textStep(.meta) }
             }
-            Spacer(minLength: Layout.rowGap)
-            Text(total ?? nothing)
-                .textStep(total == nil ? .meta : .title, weight: total == nil ? .regular : .semibold, tint: total == nil ? Color(.secondaryLabel) : nil)
-                .monospacedDigit()
-                .lineLimit(1)
+            if !large, showsFigure {
+                Spacer(minLength: Layout.rowGap)
+                figure.lineLimit(1)
+            }
         }
         .padding(.vertical, Layout.rowVertical)
         .frame(minHeight: Layout.rowHeight + 8)
@@ -361,12 +363,21 @@ private struct ReviewHoursRow: View {
         .accessibilityIdentifier("review-hours")
     }
 
+    /// No total beside a one-source line: that line is the row's figure.
+    private var showsFigure: Bool { !(total != nil && hours?.oneFigure == true) }
+
+    /// The total, or the muted word for none.
+    private var figure: some View {
+        Text(total ?? nothing)
+            .textStep(total == nil ? .meta : .title, weight: total == nil ? .regular : .semibold, tint: total == nil ? Color(.secondaryLabel) : nil)
+            .monospacedDigit()
+    }
+
+    private var hours: (line: String?, oneFigure: Bool)? { facts.map { WeekReview.hoursLine($0, calendar: calendar) } }
+
     private var lines: [String] {
         var out: [String] = []
-        if let facts, total != nil {
-            let said = [calendar ? "\(facts.calendar) on the calendar" : nil, facts.desk.map { "\($0) at the desk" }].compactMap { $0 }
-            if !said.isEmpty { out.append(said.joined(separator: ", ")) }
-        }
+        if total != nil, let line = hours?.line { out.append(line) }
         if let ran = facts?.ran { out.append("Threads ran \(ran)") }
         if let compare { out.append(compare) }
         if let money, money.in != 0 || money.out != 0 {

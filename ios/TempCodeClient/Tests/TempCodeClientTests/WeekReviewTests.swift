@@ -64,4 +64,16 @@ struct WeekReviewTests {
         #expect(rows[1].calendarMs == Self.hour)
         #expect(rows[0].stands.said == 5)
     }
+
+    /// One figure in a one-source row: "about 15 min at the desk" once, with no total beside it to say it again; the
+    /// split stays where both sources count (S10a m5-02).
+    @Test func aOneSourceRowSaysItsFigureOnce() {
+        let desk = WeekReview.Facts(calendar: "Nothing", calendarDetail: nil, desk: "about 15 min", deskDetail: nil, ran: nil)
+        #expect(WeekReview.hoursLine(desk, calendar: false) == ("about 15 min at the desk", true))
+        let both = WeekReview.Facts(calendar: "6 hr 30 min", calendarDetail: nil, desk: "about 4 hr 30 min", deskDetail: nil, ran: nil)
+        #expect(WeekReview.hoursLine(both, calendar: true) == ("6 hr 30 min on the calendar, about 4 hr 30 min at the desk", false))
+        let calendarOnly = WeekReview.Facts(calendar: "2 hr", calendarDetail: nil, desk: nil, deskDetail: nil, ran: nil)
+        #expect(WeekReview.hoursLine(calendarOnly, calendar: true) == ("2 hr on the calendar", true))
+        #expect(WeekReview.hoursLine(calendarOnly, calendar: false) == (nil, false))
+    }
 }

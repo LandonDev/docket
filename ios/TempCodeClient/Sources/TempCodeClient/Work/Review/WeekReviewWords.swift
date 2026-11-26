@@ -85,6 +85,14 @@ extension WeekReview {
         public var ran: String?
     }
 
+    /// The hours line under a job, and whether it is the row's one figure: both sources counted keep the split ("6 hr
+    /// 30 min on the calendar, about 4 hr 30 min at the desk") under the total; one source is said once, as the figure
+    /// ("about 15 min at the desk"), with no total beside it to say it again.
+    public static func hoursLine(_ facts: Facts, calendar: Bool) -> (line: String?, oneFigure: Bool) {
+        let said = [calendar ? "\(facts.calendar) on the calendar" : nil, facts.desk.map { "\($0) at the desk" }].compactMap { $0 }
+        return (said.isEmpty ? nil : said.joined(separator: ", "), said.count == 1)
+    }
+
     /// A job's three facts, each said as what it is.
     public static func factsOf(_ h: JobHours) -> Facts {
         Facts(
