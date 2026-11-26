@@ -51,7 +51,7 @@ vi.mock("../../lib/connection", async (original) => {
     onOpen: (listener: () => void) => (host.opens.add(listener), () => host.opens.delete(listener)),
     onClose: () => () => undefined,
   };
-  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, onLink: (listener: (l: typeof link, event: string) => void) => (listener(link, "added"), () => undefined) } };
+  return { ...(await original<typeof import("../../lib/connection")>()), registry: { linkOf: () => link, environment: () => undefined, onLink: (listener: (l: typeof link, event: string) => void) => (listener(link, "added"), () => undefined) } };
 });
 
 import { CanvasSeat } from "../canvas/CanvasSeat";
@@ -230,7 +230,7 @@ describe("the meeting canvas", () => {
       expect(within(bar).getByRole("button", { name: "Accept" })).toBeTruthy();
     } finally {
       resetLifeos();
-      delete (registry as { environment?: unknown }).environment;
+      Object.assign(registry, { environment: () => undefined });
     }
   });
 
@@ -266,7 +266,7 @@ describe("the meeting canvas", () => {
       expect(within(bar).getByRole("button", { name: "Accept" })).toBeTruthy();
     } finally {
       resetLifeos();
-      delete (registry as { environment?: unknown }).environment;
+      Object.assign(registry, { environment: () => undefined });
     }
   });
 
