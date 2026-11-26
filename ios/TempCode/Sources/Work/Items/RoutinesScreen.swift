@@ -117,7 +117,8 @@ struct RoutinesScreen: View {
     /// a run; a run that started a thread opens it.
     @ViewBuilder private func runList(_ row: RoutinePhoneRow) -> some View {
         if let failed = runFailed[row.id] {
-            Text(failed).textStep(.meta, tint: Tint.destructiveText)
+            // The failed-read row of every Work place: the words, and Try Again, which reads this routine's runs again.
+            FailedRead(words: failed, retry: { await readRuns(row.id) }, identifier: "routine-runs-failed", insets: nil)
         } else if let list = runs[row.id] {
             if list.isEmpty {
                 Text("None yet").textStep(.meta).foregroundStyle(.secondary)

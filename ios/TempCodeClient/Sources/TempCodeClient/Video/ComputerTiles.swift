@@ -124,6 +124,12 @@ public enum ComputersState: Equatable, Sendable {
         return .idle(away: away)
     }
 
+    /// The Work hosts away, named under live tiles in one quiet line, so a list that shows one computer's tiles
+    /// never reads as every computer's ("Not connected to Mac.").
+    public static func away(_ hosts: [Host]) -> [String] {
+        hosts.filter { !$0.linked }.map(\.name)
+    }
+
     /// "The box", "The box and Mac": the hosts named in one line.
     public static func names(_ hosts: [String]) -> String {
         guard let last = hosts.last else { return "" }

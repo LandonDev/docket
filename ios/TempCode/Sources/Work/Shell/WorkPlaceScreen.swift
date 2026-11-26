@@ -233,18 +233,27 @@ private struct PlaceSelected: ViewModifier {
     }
 }
 
-/// The host's words for a read that failed, and Try Again, which reads again; what showed stays below.
-private struct FailedRead: View {
+/// The host's words for a read that failed, and Try Again, which reads again; what showed stays below. The words
+/// wrap whole: a missed host's name and when its kept rows were read are often the line's last words. At
+/// accessibility sizes Try Again goes under them rather than squeezing them.
+struct FailedRead: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let words: String
     let retry: (() async -> Void)?
+    var identifier = "place-failed"
+    /// The house row's insets; nil keeps the list's own, as under a routine's disclosure, where its runs sit.
+    var insets: EdgeInsets? = Layout.rowInsets
     @State private var reading = false
 
     var body: some View {
-        HStack(spacing: Layout.rowGap) {
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: Layout.rowGap))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: Layout.rowGap))
+        layout {
             Text(words)
                 .textStep(.meta)
-                .lineLimit(2)
-            Spacer(minLength: Layout.rowGap)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
             if let retry {
                 if reading {
                     ProgressView()
@@ -261,9 +270,9 @@ private struct FailedRead: View {
         }
         .padding(.vertical, Layout.rowVertical)
         .frame(minHeight: Layout.rowHeight)
-        .listRowInsets(Layout.rowInsets)
+        .listRowInsets(insets)
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("place-failed")
+        .accessibilityIdentifier(identifier)
     }
 }
 

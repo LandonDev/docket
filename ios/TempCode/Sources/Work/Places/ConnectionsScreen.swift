@@ -117,8 +117,12 @@ struct ConnectionsScreen: View {
                             .accessibilityActions { revealButton(row, clients) }
                     }
                 } header: {
-                    SectionHeader(section.group)
-                        .listRowInsets(EdgeInsets())
+                    // A band over a row that says its name is dropped only at the top, under the title: further down
+                    // the row would read as the band above's.
+                    if section.headed || !ending.isEmpty || section.group != sections.first?.group {
+                        SectionHeader(section.group)
+                            .listRowInsets(EdgeInsets())
+                    }
                 }
             }
         }

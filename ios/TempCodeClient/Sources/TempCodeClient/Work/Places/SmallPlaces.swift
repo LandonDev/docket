@@ -263,6 +263,12 @@ public enum Connections {
     public struct Section: Hashable, Sendable {
         public var group: String
         public var rows: [Row]
+
+        /// Whether the group's band is drawn: not over one row that already says the group's name ("LifeOS" over
+        /// "LifeOS"), which would say one word twice; the row stands alone, set off as a band's rows are.
+        public var headed: Bool {
+            !(rows.count == 1 && rows[0].title.caseInsensitiveCompare(group) == .orderedSame)
+        }
     }
 
     /// The desktop's order: what everything else leans on first; a group not named here follows in the order it came.

@@ -143,11 +143,11 @@ private struct PersonRow: View {
 
     var body: some View {
         Button(action: open) {
-            HStack(alignment: .center, spacing: Layout.rowGap) {
-                Circle()
-                    .fill(job.map { Tint.sector($0) } ?? .clear)
-                    .frame(width: Layout.dotSize, height: Layout.dotSize)
-                    .frame(width: Layout.markWidth)
+            // The job's dot in the mark column, on the name's line, where Today, the Outbox and the Digest draw it.
+            HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
+                FirstLineMark {
+                    if let job { SectorDot(sector: job) }
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     // At accessibility sizes the name wraps, so two people stay told apart. The address keeps one line,
                     // never hyphenated inside it ("dana@cos-micgames"): it shrinks to fit whole, to half its size, and
@@ -171,6 +171,8 @@ private struct PersonRow: View {
         }
         .buttonStyle(.pressable)
         .listRowInsets(Layout.rowInsets)
+        // At the name: the dot's hidden line is the row's first text, which the list would start it at.
+        .separatorAtTextEdge(Layout.glyphWidth + Layout.markWidth + Layout.rowGap)
         .placeSelected(selected)
         // Dragged onto a Work thread's box on the open Duo, the person is its chip there.
         .modifier(ChipDragSource(chip: RowChips.person(id: person.id, name: person.name)))

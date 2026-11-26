@@ -94,4 +94,10 @@ import TempCodeContract
         #expect(ComputersState.of([.init(name: "The box", linked: true, read: false), .init(name: "Mac", linked: false, read: false)]) == .reading)
         #expect(ComputersState.names(["The box", "Mac", "PC"]) == "The box, Mac and PC")
     }
+
+    /// Under live tiles the hosts away are still named: the list never reads as every computer's.
+    @Test func theHostsAwayAreNamedUnderLiveTiles() {
+        #expect(ComputersState.away([.init(name: "The box", linked: true, read: true), .init(name: "Mac", linked: false, read: true)]) == ["Mac"])
+        #expect(ComputersState.away([.init(name: "The box", linked: true, read: true)]).isEmpty)
+    }
 }

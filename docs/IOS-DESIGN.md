@@ -2515,8 +2515,10 @@ milestone 46 built, where it lives now:
   glyph in the 28 pt mark slot, "Outbox", and the waiting count as a plain
   stamp (`WorkPlaceRow`). Held is not Needs you: the count is never amber
   and no Outbox surface takes the warning wash or an orange dot. The Work
-  workspaces sit under a "Jobs" section header, each led by its **sector's
-  dot** (8 pt) in the mark slot, never a tile; **Work Chats** and the Digest
+  workspaces sit under a "Jobs" section header (its New Work Workspace + in
+  the secondary label's own ink, never the hierarchical one a header dims),
+  each led by its **sector's dot** (8 pt, growing with the text to 14 pt at
+  accessibility sizes) in the mark slot, never a tile; **Work Chats** and the Digest
   follow. Home has no row of Work's, and with Work off on every host there is
   no Work tab.
 - **Sector hues** (`Tint.sector`, Work/WorkStyles.swift): cosmic, hypixel,
@@ -2741,7 +2743,7 @@ milestone 46 built, where it lives now:
   day named only when it is not the day of the row's heading). The dot is the only colour; no counts,
   no chips. A row the phone has no screen for is not a button. Loading draws
   the rows' shape; empty is one line, "Nothing Since Oct 24"; VoiceOver says a row's job before its title; a host that did not answer is
-  one meta line at the foot. A cold open with a host away draws the days the phone kept of it (its newest fourteen
+  one meta line at the foot with Try Again, which reads that host again (the failed-read row). A cold open with a host away draws the days the phone kept of it (its newest fourteen
   and the rows each drew), as they were: nothing is marked seen from them until the host answers. Settings → Work has its Digest section after the
   group with the Work switch and LifeOS, only while some host has Work on:
   Time, then Held items, Routine results, Messages and mail and Meetings, each
@@ -3204,7 +3206,8 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
   beside a heading: the rows and the Work list's line say it.
 - **The row** is the house row: the lead in the mark slot (a task's tick, else the job's sector dot), the title
   and one line under it, the trailing fact with its live line under it ("2:00 PM" over "in 25 min", "Leave 5:10
-  PM", "Now"). Late is said in the warning ink, a failed or clashing line in the destructive ink. VoiceOver reads
+  PM", "Now"). The lead and the time sit on the title's first line in every shape, as the Digest's rows
+  (`FirstLineMark`), so a wrapped row and its neighbour put the dot at one height. Late is said in the warning ink, a failed or clashing line in the destructive ink. VoiceOver reads
   the job first.
 - **A press** opens the row's thing (`row.route`); a row whose place the phone has not built is not a button.
   On the open Duo the list picks its first held row for the empty detail.
@@ -3225,7 +3228,8 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
 - **States.** A host whose whole LifeOS session is down gives way to the next host that can read the day, as the
   desktop passes a down reader over (`LifeReach.reach`'s `down`), and keeps that host while it can read: the one
   passed over takes the day back only once the host read in its place is down (`LifeReach.PassedOver`, the desktop's
-  `tried`). The LifeOS sections give way to one line, set off from the rows above by a section's gap, when no
+  `tried`). The LifeOS sections give way to one line, set off from the rows above by a gap near the desktop's 24 pt (the list's
+  header floor at zero, an 8 pt gap), when no
   host can read LifeOS ("Not signed in to LifeOS on Box"; Retry only where LifeOS was silent), or
   when the host it reads through says LifeOS is connecting ("LifeOS is still connecting on Box", a spinner, no
   press); a host that did not answer is a line with Retry (`PillButton`, 44 pt) in the section it feeds; the hosts
@@ -3286,8 +3290,8 @@ Teams) as LifeOS holds it, the desktop's Messages view on the phone (docs/agents
 People is a place of the Work tab, after Agenda in the Work list (docs/agents/work-people.md "The phone").
 
 - **The list** (Work/People/PeopleScreen.swift) sits in the sidebar on `WorkPlaceScreen` with the job filter and
-  search. One row a person, each once across jobs, newest contact first, then by name: the job's dot (All Jobs),
-  the name, their first address under it. LifeOS's directory has no role, so the row says none. Search keeps the
+  search. One row a person, each once across jobs, newest contact first, then by name: the job's dot (All Jobs)
+  in the mark column on the name's line, where Today and the Outbox draw it, the name, their first address under it. LifeOS's directory has no role, so the row says none. Search keeps the
   people every typed word is in, by name or address. Empty: "No People".
 - **A person's page** (`Route.person`, PersonScreen.swift) in the detail: the name as the title, their addresses
   and numbers as one line, their notes, then a section only for what has something: Mail, Coming Up, Asked for by
@@ -3437,7 +3441,8 @@ card. Connections and Computers sit in the Work list's foot.
   a mail, a task, an event or a file opens nothing here.
 - **Routines**: a tap unfolds the last five runs under the routine (the system's disclosure): a check, a spinner
   while it works, the destructive dot and the cause in its ink when it failed; the outcome and when it fired. A run
-  that started a thread opens it. Run Now is the leading swipe and the context menu; Pause and Resume stay trailing.
+  that started a thread opens it; runs that did not load are the failed-read row with Try Again, which reads that
+  routine's runs again. Run Now is the leading swipe and the context menu; Pause and Resume stay trailing.
 - **Forms**: TempCode's forms, then Microsoft's, each section headed only when both are there ("TempCode",
   "Microsoft"). The stamp is how it stands ("Open", "Closed, 3 responses", "3 responses, 2 new"). Close is the
   trailing swipe on a form that takes answers; Reopen on a closed one, only for a key that may, after the owner's
@@ -3449,15 +3454,18 @@ card. Connections and Computers sit in the Work list's foot.
   fill.
 - **A dashboard** reads every figure again on a pull; a block whose sheet the phone has opens it on a tap (a LifeOS
   sheet in the hosted editor, a form's answers), with the press's scale and no other mark.
-- **Connections**: a section a group, in the desktop's order, "Ending Soon" first when an end is within two weeks; a
+- **Connections**: a section a group, in the desktop's order, "Ending Soon" first when an end is within two weeks;
+  the first group draws no band when its one row says the group's name ("LifeOS" over "LifeOS", `Section.headed`); a
   row's title, the host's line under it whole (its last words are often the fix), its word trailing ("Ready" muted, "Needs you" in the warning ink,
   "Broken" in the destructive ink, both semibold). A row that does not work offers "Open on <computer>" in its swipe
   and context menu. A Work host whose checks did not come back is named in the one line over the rows, never "Nothing
   to Check" (`Connections.missedLine`): not connected, did not answer (its kept rows "Showing what it said at 2:10
-  PM."), or did not say what ends soon; the list reads again when a host's link opens.
+  PM."), or did not say what ends soon; the list reads again when a host's link opens. That line wraps whole, with
+  Try Again under it at accessibility sizes, as every Work place's failed read (`FailedRead`).
 - **Computers** leads with the Windows VM where a host keeps it: "Windows VM", how it stands ("Asleep", the step while
   it wakes), its last fault in the destructive ink, and one bordered capsule, Wake or Sleep, a spinner while it moves.
-  The live picture's foot has Copy beside Paste while he drives.
+  The live picture's foot has Copy beside Paste while he drives. Under live tiles, a Work computer away is named in one
+  quiet footer ("Not connected to Mac.", `ComputersState.away`), so the list never reads as every computer's.
 - **Settings → Work** lists each computer's jobs (sector dot, name); one pushes its settings as plain values (Model,
   Effort, Learn how I write from my sent mail, Windows VM, Computers its threads may use) and "Open on <computer>".
 

@@ -36,7 +36,9 @@ struct WorkListView: View {
                         Button("New Work Workspace", systemImage: "plus") { addingWork = true }
                             .labelStyle(.iconOnly)
                             .font(TextStep.meta.font.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            // An explicit ink, as the band's title: the hierarchical secondary nests a step dimmer
+                            // inside a section header and drew this, the phone's one way to make a job, near 1.9:1.
+                            .foregroundStyle(Color(.secondaryLabel))
                             .frame(minWidth: Layout.rowHeight, minHeight: Layout.rowHeight)
                             .contentShape(Rectangle())
                             .buttonStyle(.pressable)

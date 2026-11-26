@@ -56,12 +56,10 @@ struct DigestScreen: View {
             }
             if !screen.silent.isEmpty || !refused.isEmpty {
                 Section {
+                    // Each host that did not answer, with Try Again, which reads that host again (the failed-read row).
                     ForEach(screen.silent, id: \.self) { name in
-                        Text(DigestModel.silentLine(name))
-                            .textStep(.meta)
-                            .listRowInsets(Layout.rowInsets)
+                        FailedRead(words: DigestModel.silentLine(name), retry: { await load(hosts.filter { $0.environment.name == name }) }, identifier: "digest-host-silent")
                             .listRowSeparator(.hidden)
-                            .accessibilityIdentifier("digest-host-silent")
                     }
                     ForEach(refused, id: \.self) { name in
                         Text(WorkHost.refusedLine(name))
@@ -187,20 +185,6 @@ private struct DigestRow: View {
         .contentShape(Rectangle())
         // At the title: the mark column's hidden line is the row's first text, which the list would start it at.
         .separatorAtTextEdge(Layout.glyphWidth + Layout.markWidth + Layout.rowGap)
-    }
-}
-
-/// The mark column, its mark centred on the first line of a title-step text: a hidden line of that step
-/// gives the column the title's first baseline and its line's height.
-private struct FirstLineMark<Mark: View>: View {
-    @ViewBuilder let mark: Mark
-
-    var body: some View {
-        ZStack {
-            Text(verbatim: "A").textStep(.title).hidden()
-            mark
-        }
-        .frame(width: Layout.glyphWidth + Layout.markWidth)
     }
 }
 

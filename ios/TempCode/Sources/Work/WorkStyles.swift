@@ -25,15 +25,35 @@ extension Tint {
 
 /// A Work workspace's sector, as one 8 pt dot. It leads a Work workspace's
 /// row in the 28 pt mark slot and an Outbox band's title; it is never a tile.
+/// It grows with the text, up to 14 pt, so at accessibility sizes it is not a
+/// speck beside a three-line title (IOS-DESIGN "Large text").
 struct SectorDot: View {
     let sector: String?
     var size: CGFloat = 8
+    @ScaledMetric(relativeTo: .footnote) private var scale: CGFloat = 1
 
     var body: some View {
+        let side = max(size, min(size * scale, 14))
         Circle()
             .fill(Tint.sector(sector))
-            .frame(width: size, height: size)
+            .frame(width: side, height: side)
             .accessibilityHidden(true)
+    }
+}
+
+/// The mark column, its mark centred on the first line of a title-step text: a hidden line of that step
+/// gives the column the title's first baseline and its line's height. A row that uses it aligns on
+/// `.firstTextBaseline` and puts its separator back at the title (`separatorAtTextEdge`), since the hidden
+/// line is the row's first text.
+struct FirstLineMark<Mark: View>: View {
+    @ViewBuilder let mark: Mark
+
+    var body: some View {
+        ZStack {
+            Text(verbatim: "A").textStep(.title).hidden()
+            mark
+        }
+        .frame(width: Layout.glyphWidth + Layout.markWidth)
     }
 }
 

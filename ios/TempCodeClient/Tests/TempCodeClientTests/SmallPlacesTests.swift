@@ -134,6 +134,14 @@ import TempCodeContract
         #expect(sections[1].rows.map(\.title) == ["Excel on Mac", "Excel on the box"])
         #expect(sections[2].rows.map(\.title) == ["Windows"])
         #expect(Connections.reveals(sections[1].rows[0]) && !Connections.reveals(sections[1].rows[1]))
+        #expect(sections.map(\.headed) == [true, true, true])
+    }
+
+    @Test func `a group whose one row bears its name draws no band`() throws {
+        let mac = try report("mac", [#"{"id":"lifeos","group":"LifeOS","title":"LifeOS","state":"needs-you","line":"Not signed in to LifeOS"}"#, #"{"id":"tools.ffmpeg","group":"Tools","title":"ffmpeg","state":"working"}"#].joined(separator: ","))
+        let sections = Connections.sections([.init(id: "mac", name: "Mac", report: mac)])
+        #expect(sections.map(\.group) == ["LifeOS", "Tools"])
+        #expect(sections.map(\.headed) == [false, true])
     }
 
     @Test func `the foot shows Connections while a row does not work or an end is near`() throws {

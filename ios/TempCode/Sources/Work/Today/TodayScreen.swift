@@ -44,6 +44,8 @@ struct TodayScreen: View {
                 }
             }
         }
+        // No floor under a header: the bands draw their own 30 pt, and the LifeOS line's gap stays its own (PageLineGap).
+        .environment(\.defaultMinListHeaderHeight, 0)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Group {
                 if let shown = undos.shown {
@@ -555,6 +557,8 @@ struct TodayRowView: View {
             }
         }
         .listRowInsets(Layout.rowInsets)
+        // At the title: the dot's hidden line is the row's first text, which the list would start it at.
+        .separatorAtTextEdge(Layout.glyphWidth + Layout.markWidth + Layout.rowGap)
         .placeSelected(selected)
         .rowInitProbe(work: row.key)
         .launchTodayRow(row)
@@ -587,9 +591,10 @@ struct TodayRowView: View {
 
     private func shape(stacked: Bool) -> some View {
         let large = typeSize.isAccessibilitySize
-        return HStack(alignment: stacked ? .firstTextBaseline : .center, spacing: Layout.rowGap) {
+        // The lead and the time on the title's first line in both shapes, as the Digest's rows: two neighbours, one
+        // wrapped and one not, never put the same dot at two heights.
+        return HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
             lead
-                .frame(width: Layout.glyphWidth + Layout.markWidth)
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.title)
                     .textStep(.title, tint: row.past ? Color(.secondaryLabel) : nil)
@@ -644,15 +649,19 @@ struct TodayRowView: View {
                 }
                 .buttonStyle(.pressable)
                 .accessibilityHidden(true)
+                .frame(width: Layout.glyphWidth + Layout.markWidth)
             } else {
                 Image(systemName: "circle")
                     .font(TextStep.title.font.weight(.light))
                     .imageScale(.large)
                     .foregroundStyle(.quaternary)
+                    .frame(width: Layout.glyphWidth + Layout.markWidth)
             }
         } else {
-            SectorDot(sector: row.sector)
-                .opacity(row.past ? 0.5 : 1)
+            FirstLineMark {
+                SectorDot(sector: row.sector)
+                    .opacity(row.past ? 0.5 : 1)
+            }
         }
     }
 
@@ -758,11 +767,12 @@ struct TodayBones: View {
 }
 
 /// A gap over a line that stands for whole sections (LifeOS down or connecting; the desktop's `mt-6`): set off from
-/// the rows above it, never read as one more of them.
+/// the rows above it, never read as one more of them. With the list's header floor at zero (TodayScreen) the gap
+/// and the row's own padding land near the desktop's 24 pt, not 56.
 private struct PageLineGap: View {
     var body: some View {
         Color.clear
-            .frame(height: Layout.textEdge)
+            .frame(height: 8)
             .listRowInsets(EdgeInsets())
             .accessibilityHidden(true)
     }
