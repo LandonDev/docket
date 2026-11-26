@@ -137,7 +137,7 @@ const thread = (args: Args) => ({ sessionId: arg<string>(args, "sessionId") });
  *  so this module stays free of the runtime's imports. */
 export type ServerLink = {
   readonly connected: boolean;
-  request<T>(method: string, params?: unknown): Promise<T>;
+  request<T>(method: string, params?: unknown, options?: CallOptions): Promise<T>;
   onOpen(listener: () => void): UnlistenFn;
 };
 export type ServerRouter = { linkOf(environmentId: string): ServerLink };
