@@ -45,6 +45,14 @@ describe('host scene flags', () => {
     expect(hostFlags(['--boot', '--max-load', '38']).maxLoad).toBe(38)
   })
 
+  it('allows a ten-second profile inside the loop window or at the start of settle', () => {
+    expect(hostFlags(['--scene', 'loop', '--browser', '--profile-after', '49']).profileAfter).toBe(49)
+    expect(hostFlags(['--scene', 'settle', '--profile-after', '0']).profileAfter).toBe(0)
+    expect(() => hostFlags(['--scene', 'settle', '--profile-after', '1'])).toThrow()
+    expect(() => hostFlags(['--scene', 'watch', '--profile-after', '0'])).toThrow()
+    expect(() => hostFlags(['--scene', 'loop', '--profile-after', '51'])).toThrow()
+  })
+
   it.each(['0', '-1', 'Infinity', 'NaN', '--browser', ''])('refuses an invalid load limit %j', (limit) => {
     expect(() => hostFlags(['--scene', 'loop', '--max-load', limit])).toThrow('--max-load takes a positive number')
   })

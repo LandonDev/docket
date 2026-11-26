@@ -2,11 +2,12 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { writeFile } from 'node:fs/promises'
+import { copyFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { DatabaseSync } from 'node:sqlite'
 import { fileURLToPath } from 'node:url'
+import type { DoctorProfileResult } from '../../src/shared/contract'
 import type { AgentEvent, SessionMeta } from '../../src/shared/events'
 import type { EventsPage } from '../../src/shared/wire'
 import { openDb, Store, tailStart } from '../../src/main/server/db'
@@ -33,7 +34,7 @@ const DEFAULT_MAX_LOAD = 40
 const MAX_ANON_GIB = 68
 const OFFLINE = 'http://127.0.0.1:9'
 const REPO = fileURLToPath(new URL('../..', import.meta.url))
-const USAGE = 'perf:host --scene connect|loop|read|flush|settle|watch [--browser] | --boot [--seed-size small|real | --copy <userData>] [--max-load <n>]'
+const USAGE = 'perf:host --scene connect|loop|read|flush|settle|watch [--browser] [--profile-after <seconds>] | --boot [--seed-size small|real | --copy <userData>] [--max-load <n>]'
 
 export function hostFlags(args: string[]) {
   let scene: Scene | undefined
@@ -41,6 +42,7 @@ export function hostFlags(args: string[]) {
   let seedSize: 'small' | 'real' | undefined
   let copy: string | undefined
   let maxLoad = DEFAULT_MAX_LOAD
+  let profileAfter: number | undefined
   const seen = new Set<string>()
   for (let i = 0; i < args.length; i++) {
     const flag = args[i]!
@@ -67,6 +69,13 @@ export function hostFlags(args: string[]) {
         seedSize = value
         break
       }
+      case '--profile-after': {
+        const value = args[++i]
+        profileAfter = value?.trim() ? Number(value) : NaN
+        if (!Number.isFinite(profileAfter) || profileAfter < 0 || profileAfter > 50)
+          throw new Error('--profile-after takes seconds between 0 and 50')
+        break
+      }
       case '--max-load': {
         const value = Number(args[++i])
         if (!Number.isFinite(value) || value <= 0) throw new Error('--max-load takes a positive number')
@@ -83,7 +92,9 @@ export function hostFlags(args: string[]) {
   }
   if (!scene || (browser && scene !== 'loop') || ((copy || seedSize) && scene !== 'boot') || (copy && seedSize))
     throw new Error(USAGE)
-  return { scene, browser, copy, seedSize: seedSize ?? 'small', maxLoad }
+  if (profileAfter !== undefined && !(scene === 'loop' || (scene === 'settle' && profileAfter === 0)))
+    throw new Error('--profile-after applies to loop, or to settle at zero')
+  return { scene, browser, copy, seedSize: seedSize ?? 'small', maxLoad, profileAfter }
 }
 
 /** Nearest rank, so even a single sample has a percentile. */
@@ -817,6 +828,31 @@ async function measureLoop(rig: Rig, result: Result, ms: number, action?: () => 
   Object.assign(result.details, { from, to, windows, blocks: sliceCauses(blocks, stalls), stalls })
 }
 
+async function measureProfiledLoop(rig: Rig, result: Result, profilePath: string, ms: number, action?: () => void) {
+  const after = rig.options.profileAfter
+  if (after === undefined) return measureLoop(rig, result, ms, action)
+  const client = await openClient(`ws://127.0.0.1:${rig.box.port}/`, 1500, { signal: rig.signal, hello: true })
+  let capture: Promise<void> | undefined
+  try {
+    await measureLoop(rig, result, ms, () => {
+      capture = (async () => {
+        if (after) await sleep(after * 1000, undefined, { signal: rig.signal })
+        const { frame } = await client.request('doctor.profile', { seconds: 10 }, 15_000)
+        if (!frame?.ok) throw new Error(frame?.error ?? 'doctor.profile did not answer')
+        const profile = frame.result as DoctorProfileResult
+        if (dirname(profile.path) !== join(rig.data, 'logs', 'profiles')) throw new Error('Profile is outside this run')
+        await copyFile(profile.path, profilePath)
+        result.details.profile = { ...profile, path: profilePath, afterSeconds: after }
+      })()
+      void capture.catch(() => {}) // Pick up any capture error after the loop sample.
+      action?.()
+    })
+    await capture
+  } finally {
+    client.close()
+  }
+}
+
 async function measureFlush(rig: Rig, result: Result): Promise<void> {
   result.details.slowDisk = 'slow disk: not run, needs root'
   const from = Date.now()
@@ -944,7 +980,7 @@ async function measureBoot(rig: Rig, result: Result): Promise<void> {
   }
 }
 
-async function runScene(rig: Rig, result: Result): Promise<void> {
+async function runScene(rig: Rig, result: Result, profilePath: string): Promise<void> {
   if (rig.options.scene === 'boot') return measureBoot(rig, result)
   scratchRepo(rig)
   const seed = await seedScene(rig)
@@ -975,11 +1011,12 @@ async function runScene(rig: Rig, result: Result): Promise<void> {
   console.log(`Measuring ${rig.options.scene} with 40 running threads`)
   switch (rig.options.scene) {
     case 'connect': return measureConnect(rig, seed, result)
-    case 'loop': return measureLoop(rig, result, MAX_MS)
+    case 'loop':
+      return measureProfiledLoop(rig, result, profilePath, MAX_MS)
     case 'read': return measureRead(rig, result)
     case 'flush': return measureFlush(rig, result)
     case 'settle': {
-      await measureLoop(rig, result, 10_000, () => rig.finishStreams.abort())
+      await measureProfiledLoop(rig, result, profilePath, 10_000, () => rig.finishStreams.abort())
       const { Database } = await import('bun:sqlite')
       const db = new Database(rig.dbPath, { readonly: true })
       try {
@@ -1077,7 +1114,7 @@ async function main(args: string[]): Promise<void> {
       const pressure = Number(/^some avg10=([\d.]+)/m.exec(read('/proc/pressure/io'))?.[1] ?? 0)
       if (pressure > 30) checked.abort.abort(new Error(`Live I/O pressure crossed 30 (${pressure})`))
     }, 1000)
-    await runScene(rig, result)
+    await runScene(rig, result, path.replace(/\.json$/, '.cpuprofile'))
     rig.signal.throwIfAborted()
   } catch (error) {
     result.error = words(abort.signal.aborted ? abort.signal.reason : error)

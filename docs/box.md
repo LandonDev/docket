@@ -3125,7 +3125,10 @@ scratch Docket instance and a loopback provider, with 40 stand-in threads
 for the load scenes. Run one scene through the box queue while load is
 below the configured limit (40 by default). The run's only ask to the live service is the watchdog's hello.
 See [the host bench](agents/work-perf.md#the-headless-host-bench) for the
-scenes, output files, and boot fixtures.
+scenes, output files, and boot fixtures. Use `--profile-after 0` on
+`--scene settle` to capture the ten seconds when the streams finish. The
+loop scene lets you choose when those ten seconds start. The bench
+keeps the profile next to the run's JSON.
 
 On 2026-11-23 at about 7:45 p.m. Central, load 27 to 35 on 32 cores, the
 Mac timed out on six connects (its hello waits 4 s) and the box answered
