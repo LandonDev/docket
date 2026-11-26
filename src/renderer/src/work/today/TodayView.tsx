@@ -6,7 +6,7 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
 import { useRovingList } from "../../hooks/useRovingList";
 import type { SectorKey } from "@shared/work";
-import { useEnvironments } from "../../lib/connection";
+import { useEnvironmentStatus, useEnvironments } from "../../lib/connection";
 import { cn } from "../../lib/cn";
 import { nameInLine } from "../../lib/hostWords";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -44,6 +44,12 @@ const dateLine = new Intl.DateTimeFormat(undefined, { weekday: "short", month: "
 export function Head(_props: WorkPlaceProps) {
   const now = useMinute();
   return <time className="text-xs tabular-nums text-muted-foreground">{dateLine.format(now)}</time>;
+}
+
+/** A host the foot names, in its link's own words as they change ("Reconnecting to the box…", then "The box is offline"). */
+function OfflineLine({ id, name }: { id: string; name: string }) {
+  const status = useEnvironmentStatus(id);
+  return <p data-today-offline={id}>{linkDownWords(name, status)}</p>;
 }
 
 export function View(_props: WorkPlaceProps) {
@@ -248,9 +254,7 @@ export function TodayPageView({
       {model.offline.length > 0 ? (
         <div className={cn("mt-6 flex flex-col gap-1 pe-3 text-xs leading-4 text-muted-foreground", TITLE_EDGE)}>
           {model.offline.map((id) => (
-            <p key={id} data-today-offline={id}>
-              {linkDownWords(hostName(id))}
-            </p>
+            <OfflineLine key={id} id={id} name={hostName(id)} />
           ))}
         </div>
       ) : null}

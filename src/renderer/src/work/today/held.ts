@@ -119,9 +119,12 @@ function useHeld(env: TodayEnv): TodayAnswer {
       rows: heldRows(outbox.waiting, Date.now(), (item) => placeOf(item, (environmentId, workspaceId) => catalog.find((w) => w.environmentId === environmentId && w.id === workspaceId)?.name), requests),
       loading: !outbox.loaded,
       failed: outbox.errors.map((e) => ({ ...e, retry: () => loadHost(e.environmentId) })),
+      // A job's host whose link dropped may hold items the last read never saw: the section does not say nothing waits
+      // (the page names the host at its foot), and the rows it knows stay.
+      ...(env.workspaces.some((w) => !w.open) ? { away: true } : {}),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `day`: the rows' times are read again when the day turns
-    [outbox, catalog, day, requests],
+    [outbox, catalog, day, requests, env.workspaces],
   );
 }
 

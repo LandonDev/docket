@@ -630,8 +630,9 @@ are `MoneyPage` in the client package.
   one line in `TODAY_SOURCES`) lists each open row of every job under
   "Owed", order 60, drawn only while something is owed (a job whose
   ledger cannot be read is a row "What is owed is not known", "The ledger
-  could not be read"); a row opens its
-  job's Money view. It shows rows, never the count that waits. A row owed
+  could not be read"); a row's second line leads with its sum, which a
+  narrow row must not cut ("$420.00 owed to you", "$38.12 to be paid back",
+  "$20.00 you owe"); a row opens its job's Money view. It shows rows, never the count that waits. A row owed
   both ways is two rows, keyed by the row and its way.
 - **Work search**: a `SearchSource` on the module (`borders.ts`, kind
   `money`), over `searchMoney`; `work.money.search` is the same on the wire.

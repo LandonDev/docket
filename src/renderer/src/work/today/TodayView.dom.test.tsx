@@ -597,6 +597,24 @@ describe("Today", () => {
     }
   });
 
+  it("gives a row with no job and no time their tracks, so its title is never cut beside blank room (council R1-A7)", () => {
+    const rows = {
+      rows: [
+        { key: "also:1", section: "money", sector: null, title: "Last week's review is ready", open: () => {} },
+        { key: "also:2", section: "money", sector: null, title: "Spring LAN at noon", when: "12:00 PM", open: () => {} },
+        { key: "also:3", section: "money", sector: "unify" as const, job: "UnifyPlatforms", title: "Northfield Parks", open: () => {} },
+      ],
+    };
+    resetToday([{ id: "money", section: { id: "money", title: "Money", order: 60, empty: "Nothing owed" }, use: () => rows }]);
+    render(<View onClose={() => {}} />);
+    const words = (key: string) => document.querySelector(`[data-today-row="${key}"] [data-row-title]`)!.parentElement!;
+    expect(words("also:1").className).toContain("col-span-3");
+    expect(words("also:2").className).toContain("col-span-2");
+    expect(words("also:3").className).not.toContain("col-span");
+    // No empty column is drawn for the facts it does not have.
+    expect(document.querySelector('[data-today-row="also:1"]')!.children.length).toBeLessThan(document.querySelector('[data-today-row="also:3"]')!.children.length);
+  });
+
   it("names a held row by the workspace the item is in, as its sheet does, where two hosts hold one for the sector", async () => {
     world.workspaces = [...JOBS, { id: "ws9", environmentId: "mac", name: "Purdue", path: "/m/purdue", kind: "work", sector: "purdue" }];
     world.items.set("mac", [mail("o3", "Northfield Parks", "Invoice 1042", { workspaceId: "ws9" })]);
@@ -629,6 +647,28 @@ describe("Today", () => {
     expect(screen.queryByText("All clear")).toBeNull();
   });
 
+  it("never says nothing waits once a job's host drops after a whole read: that host may hold items the read never saw", async () => {
+    world.items.set("mac", [mail("o3", "Northfield Parks", "Invoice 1042", { sector: "ref", workspaceId: "ws2" })]);
+    // Both reads were whole, the box's empty; then the box's link drops.
+    await loadOutbox();
+    world.open = new Set(["mac"]);
+    moved();
+    render(<View onClose={() => {}} />);
+    // The row the window knows stays, the foot names the box, and the page is never clear.
+    expect(rowTitles()).toEqual(["Send to Northfield Parks"]);
+    expect(document.querySelectorAll("[data-today-offline]")).toHaveLength(1);
+    expect(screen.queryByText("All clear")).toBeNull();
+  });
+
+  it("with every read whole and empty, then a host's link down, Waiting on you does not say nothing waits", async () => {
+    await loadOutbox();
+    world.open = new Set(["mac"]);
+    moved();
+    render(<View onClose={() => {}} />);
+    expect(document.body.textContent).not.toContain("Nothing waits on your press");
+    expect(document.querySelectorAll("[data-today-offline]")).toHaveLength(1);
+  });
+
   it("names an offline host once, at the page's foot, and no section blames it for a read its link refused", async () => {
     world.open = new Set(["box"]);
     moved();
@@ -639,11 +679,11 @@ describe("Today", () => {
     render(<View onClose={() => {}} />);
     const lines = document.querySelectorAll("[data-today-offline]");
     expect(lines).toHaveLength(1);
-    expect(lines[0]!.textContent).toBe("Mac is not connected");
+    expect(lines[0]!.textContent).toBe("Mac is offline");
     // It starts on the titles' edge, as the empty and failed lines do.
     for (const cls of TITLE_EDGE.split(" ")) expect(lines[0]!.parentElement!.className).toContain(cls);
     expect(document.querySelectorAll('[data-view-state="failed"]')).toHaveLength(0);
-    expect(screen.getAllByText("Mac is not connected")).toHaveLength(1);
+    expect(screen.getAllByText("Mac is offline")).toHaveLength(1);
   });
 
   it("folds Waiting on you at five rows; its line unfolds the rest in place and stays unfolded", async () => {

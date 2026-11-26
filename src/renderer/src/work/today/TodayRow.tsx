@@ -125,7 +125,8 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
   const wideJob = useTruncated(job ?? "");
   // The row's name is its title and second line; its job and its time are read after it, as he sees them.
   const id = useId();
-  const told = [job ? `${id}-job` : "", row.when || row.whenLine ? `${id}-when` : ""].filter(Boolean).join(" ");
+  const timed = !!(row.when || row.whenLine);
+  const told = [job ? `${id}-job` : "", timed ? `${id}-when` : ""].filter(Boolean).join(" ");
   return (
     <div
       role="listitem"
@@ -180,7 +181,8 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
       <span className={cn("flex h-5 items-center justify-center", tick ? ROW_CONTROLS : ROW_SHOWS)}>
         {tick ? <Checkbox shape="round" tabIndex={stop} checked={ticked} disabled={tickHeld} onCheckedChange={setTicked} aria-label={tick.label} className={TICK_REST} /> : Glyph ? <Glyph className="size-3.5 text-muted-foreground" /> : null}
       </span>
-      <span ref={words.ref} className={cn("flex min-w-0 flex-col", ROW_SHOWS)}>
+      {/* A row with no job and no time (Also's) gives the title their tracks, so it is never cut beside blank room. */}
+      <span ref={words.ref} className={cn("flex min-w-0 flex-col", ROW_SHOWS, !job && (timed ? "col-span-2" : "col-span-3"))}>
         <span data-row-title className={cn("truncate text-[13px] leading-5 transition-colors duration-(--dur-fast) motion-reduce:transition-none", ticked ? "text-muted-foreground line-through" : row.past ? "text-muted-foreground" : "text-foreground")}>
           {row.title}
         </span>
@@ -198,18 +200,18 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
           </span>
         ) : null}
       </span>
-      <span className={cn("flex h-5 min-w-0 items-center gap-1 text-xs text-muted-foreground", ROW_SHOWS, gives)}>
-        {job ? (
-          <>
-            <SectorDot sector={row.sector} className="-ms-1 @max-[30rem]/today:ms-0" />
-            <span ref={wideJob.ref} id={`${id}-job`} className={cn("min-w-0 truncate", WIDE_JOB)}>{job}</span>
-          </>
-        ) : null}
-      </span>
-      <span id={`${id}-when`} className={cn("flex min-w-0 flex-col items-end text-xs tabular-nums", ROW_SHOWS, gives)}>
-        {row.when ? <span className={cn("leading-5 whitespace-nowrap", row.late ? "text-destructive" : "text-muted-foreground")}>{row.when}</span> : null}
-        {row.whenLine ? <span className="leading-4 font-medium whitespace-nowrap text-foreground">{row.whenLine}</span> : null}
-      </span>
+      {job ? (
+        <span className={cn("flex h-5 min-w-0 items-center gap-1 text-xs text-muted-foreground", ROW_SHOWS, gives)}>
+          <SectorDot sector={row.sector} className="-ms-1 @max-[30rem]/today:ms-0" />
+          <span ref={wideJob.ref} id={`${id}-job`} className={cn("min-w-0 truncate", WIDE_JOB)}>{job}</span>
+        </span>
+      ) : null}
+      {timed || job ? (
+        <span id={`${id}-when`} className={cn("flex min-w-0 flex-col items-end text-xs tabular-nums", ROW_SHOWS, gives)}>
+          {row.when ? <span className={cn("leading-5 whitespace-nowrap", row.late ? "text-destructive" : "text-muted-foreground")}>{row.when}</span> : null}
+          {row.whenLine ? <span className="leading-4 font-medium whitespace-nowrap text-foreground">{row.whenLine}</span> : null}
+        </span>
+      ) : null}
       {acts.length > 0 ? (
         // The last verb's label ends on the facts' edge: the verb lands where the fact stood.
         <span className={cn("absolute top-1 right-1 flex items-center gap-1", reveal("row", { row: true, overlay: true }))}>

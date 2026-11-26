@@ -45,7 +45,8 @@ export function owedRows(answers: ReturnType<typeof useEachWorkspace<MoneyOwed>>
         job: workspace.name,
         // A cost to be paid back: the shop he paid does not owe him, so the row leads with what it was for.
         title: row.reimburse ? row.what || row.who || "Entry" : row.who || "Entry",
-        detail: `${row.reimburse ? "To be paid back" : row.way === "toHim" ? "Owes you" : "You owe"} ${formatMoney(row.amount)}`,
+        // The sum leads: a narrow row cuts its end, and the sum is what the row is for.
+        detail: `${formatMoney(row.amount)} ${row.reimburse ? "to be paid back" : row.way === "toHim" ? "owed to you" : "you owe"}`,
         ...(since !== undefined ? { at: since } : {}),
         ...(waited ? { when: waited } : {}),
         open: () => goTo(workspace, { view: "money" }),

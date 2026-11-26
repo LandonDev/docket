@@ -684,7 +684,7 @@ public enum TodaySources {
                 let title = r.reimburse ? [r.what, r.who].first { !$0.isEmpty } ?? "Entry" : (r.who.isEmpty ? "Entry" : r.who)
                 var row = TodayRow(key: "money:\(w.environmentId):\(w.workspaceId):\(r.row):\(r.way)", section: money.id, sector: w.sector, title: title)
                 row.job = w.name
-                row.detail = "\(r.reimburse ? "To be paid back" : r.way == "toHim" ? "Owes you" : "You owe") \(TodayWords.money(r.amount))"
+                row.detail = "\(TodayWords.money(r.amount)) \(r.reimburse ? "to be paid back" : r.way == "toHim" ? "owed to you" : "you owe")"
                 row.at = r.since.flatMap { TodayWords.localNoon($0, calendar) }
                 row.when = TodayWords.since(r.since, today: today)
                 row.open = .money(w.place)

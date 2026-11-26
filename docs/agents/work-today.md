@@ -79,7 +79,10 @@ Files view (`openFile`).
 
 What a row does:
 
-- **Waiting on you.** The Outbox's waiting items, oldest first, words from
+- **Waiting on you.** While a job's host has a link that is down the
+  section is `away`: it keeps the rows it knows and never says "Nothing
+  waits on your press", since that host may hold more (the foot names it).
+  The Outbox's waiting items, oldest first, words from
   `rowWords`, time from `heldWhen` (a time that names its day). A press opens `HeldSheet`: a sheet from
   the right, 520px, whose body is the Outbox's own `HeldDetail` (exported
   from work/outbox for this), with its Send, Edit, Discard and grant menu
@@ -346,7 +349,7 @@ one day). `TodayView.tsx` draws it; `TodayRow.tsx` is the one row grid.
 | A section has never answered, or a read some job needs is still out | its heading and three bones in its rows' shape |
 | A section is empty | its heading and one muted line |
 | Every source answered, nothing left (ended meetings are not left, folded or open) | "All clear", over "Nothing needs you today." or what tomorrow starts with |
-| A host with jobs is offline, or a read failed because a host's link is not open | one muted line at the foot for each ("Mac is offline."), on the titles' edge, and no failed line for it in any section |
+| A host with jobs is offline, or a read failed because a host's link is not open | one muted line at the foot for each, in the link's one wording (`linkDownWords`: "Mac is offline", "Reconnecting to the box…"), on the titles' edge, and no failed line for it in any section |
 | No host that holds a job is linked | the foot's lines; the LifeOS sections draw nothing (`offline` reach) |
 | A host did not answer in time | a line in the section it feeds, on the rows' grid, with Retry |
 | LifeOS refused one read | "LifeOS could not read tasks" in that section, with Retry |
