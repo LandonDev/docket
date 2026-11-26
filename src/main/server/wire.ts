@@ -803,21 +803,26 @@ export class AnswerParts {
     this.on = true
   }
 
-  /** A request whose answer may go in parts. */
+  /** A request whose answer may go in parts. A second request under an id still outstanding here is a client's
+   *  slip: neither is marked again, so its answer goes whole. */
   mark(id: string, method: string): void {
-    if (this.on && PART_METHODS.has(method)) this.marked.add(id)
+    if (!this.on || !PART_METHODS.has(method)) return
+    if (this.marked.has(id)) return void this.marked.delete(id)
+    if (this.queue.some((q) => q.id === id)) return
+    this.marked.add(id)
   }
 
-  /** The window holds `chars` of the parts sent. */
+  /** The window holds `chars` of the parts sent: a whole count within what was acked and what was sent, else ignored. */
   ack(chars: number): void {
-    if (chars <= this.acked) return
-    this.acked = Math.min(chars, this.sent)
+    if (!Number.isSafeInteger(chars) || chars <= this.acked || chars > this.sent) return
+    this.acked = chars
     this.pump()
   }
 
   /** Takes a marked answer longer than a part and sends it in parts; false: send it as it is. */
   take(id: string, text: string, compress: boolean): boolean {
     if (!this.marked.delete(id) || this.closed || text.length <= PART_CHARS) return false
+    if (this.queue.some((q) => q.id === id)) return false
     this.queue.push({ id, text, at: 0, compress })
     this.pump()
     return true
@@ -834,10 +839,12 @@ export class AnswerParts {
   }
 
   private pump(): void {
-    while (!this.closed && this.queue.length > 0 && this.sent - this.acked < UNACKED_CHARS) {
+    while (!this.closed && this.queue.length > 0) {
       const answer = this.queue[0]!
       // A running offset: a part that stops short of a surrogate pair's split leaves the pair to the next.
       const end = partEnd(answer.text, answer.at)
+      // The credit is checked against this part's own length: never more than UNACKED_CHARS out.
+      if (this.sent - this.acked + (end - answer.at) > UNACKED_CHARS) break
       const body = answer.text.slice(answer.at, end)
       const last = end >= answer.text.length
       this.send(partText(answer.id, answer.at, last, body), answer.compress)

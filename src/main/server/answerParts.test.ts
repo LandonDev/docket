@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { PART_CHARS, UNACKED_CHARS, readAck, readPart } from '@shared/answerParts'
+import { describe, expect, it, vi } from 'vitest'
+import { PART_CHARS, UNACKED_CHARS, partText, readAck, readPart } from '@shared/answerParts'
 import { AnswerParts } from './wire'
 import { Transport, type SocketLike } from '../../renderer/src/lib/connection/transport'
 
@@ -124,3 +124,99 @@ describe('AnswerParts', () => {
     t.close()
   })
 })
+
+/** A Transport on a socket the test hands frames to, after a hello that names parts. */
+async function windowSide() {
+  let socket!: SocketLike & { sent: string[] }
+  const t = new Transport('wss://box/ws', 'remote', {
+    socket: () => (socket = { readyState: 1, onopen: null, onclose: null, onerror: null, onmessage: null, sent: [], send(d: string) { this.sent.push(d) }, close() {} })
+  })
+  const opened = t.open()
+  socket.onmessage!({ data: JSON.stringify({ push: 'hello', environmentId: 'env_box', contract: 3, caps: ['read'], features: ['answer.parts'] }) })
+  await opened
+  const deliver = (text: string): void => socket.onmessage!({ data: text })
+  const acks = (): number[] => socket.sent.map(readAck).filter((n): n is number => n !== null)
+  return { t, socket: () => socket, deliver, acks }
+}
+
+describe('AnswerParts framing and credit (M6 review, finding 10)', () => {
+  it('takes only a whole ack within what was acked and sent; anything else moves nothing', () => {
+    const h = host()
+    h.parts.mark('7', 'fs.read')
+    h.send({ id: '7', ok: true, result: { content: piece(2 * 1024 * 1024) } })
+    const out = h.wire.length
+    for (const bad of [PART_CHARS + 0.5, Number.NaN, -1, h.parts.unacked + 1, 1e30]) h.parts.ack(bad)
+    expect(h.wire.length).toBe(out)
+    expect(readAck('#ack 12.5')).toBeNull()
+    h.parts.ack(PART_CHARS)
+    expect(h.wire.length).toBe(out + 1)
+    h.parts.ack(PART_CHARS - 1)
+    expect(h.wire.length).toBe(out + 1)
+  })
+
+  it('checks the credit against the next part\'s own length: a short tail out never lets a full part pass the cap', () => {
+    const h = host()
+    // The first answer's JSON is 4 parts less 10 chars: all of it goes, UNACKED_CHARS - 10 out.
+    const prefix = JSON.stringify({ id: '1', ok: true, result: { content: '' } }).length
+    h.parts.mark('1', 'fs.read')
+    h.send({ id: '1', ok: true, result: { content: piece(4 * PART_CHARS - 10 - prefix) } })
+    expect(h.parts.unacked).toBe(UNACKED_CHARS - 10)
+    h.parts.mark('2', 'fs.read')
+    h.send({ id: '2', ok: true, result: { content: piece(3 * PART_CHARS) } })
+    expect(h.wire.filter((w) => w.part?.id === '2')).toHaveLength(0)
+    expect(h.parts.unacked).toBeLessThanOrEqual(UNACKED_CHARS)
+    h.parts.ack(PART_CHARS)
+    expect(h.wire.filter((w) => w.part?.id === '2')).toHaveLength(1)
+    expect(h.parts.unacked).toBeLessThanOrEqual(UNACKED_CHARS)
+  })
+
+  it('an id with a space crosses the header whole; a duplicate outstanding id goes whole', () => {
+    expect(readPart(partText('a b/ç', 0, true, 'x'))).toEqual({ id: 'a b/ç', offset: 0, last: true, body: 'x' })
+    expect(readPart('#part a b 0 1\nx')).toBeNull()
+    const h = host()
+    h.parts.mark('5', 'fs.read')
+    h.parts.mark('5', 'fs.read')
+    expect(h.parts.take('5', piece(3 * PART_CHARS), true)).toBe(false)
+    h.parts.mark('6', 'fs.read')
+    expect(h.parts.take('6', piece(8 * PART_CHARS), true)).toBe(true)
+    expect(h.parts.waiting).toBe(1)
+    h.parts.mark('6', 'session.events')
+    expect(h.parts.take('6', piece(3 * PART_CHARS), true)).toBe(false)
+  })
+
+  it('the window puts together only an answer it waits for, in order from 0, and drops one whose request timed out; every part is acked', async () => {
+    vi.useFakeTimers()
+    try {
+      const w = await windowSide()
+      const answer = (id: string): string => JSON.stringify({ id, ok: true, result: { content: piece(PART_CHARS) } })
+      // An id it never asked for: acked, never answered.
+      const stray = answer('99')
+      w.deliver(partText('99', 0, false, stray.slice(0, PART_CHARS)))
+      w.deliver(partText('99', PART_CHARS, true, stray.slice(PART_CHARS)))
+      expect(w.acks()).toEqual([PART_CHARS, stray.length])
+      // Out of order: what was held of it is dropped, and the rest does not answer.
+      const first = w.t.request<{ content: string }>('fs.read', {}, { timeoutMs: 10_000 })
+      const firstId = (JSON.parse(w.socket().sent.at(-1)!) as { id: string }).id
+      const text = answer(firstId)
+      w.deliver(partText(firstId, 0, false, text.slice(0, 1000)))
+      w.deliver(partText(firstId, 2000, true, text.slice(2000)))
+      let settled = false
+      void first.then(() => (settled = true), () => (settled = true))
+      await Promise.resolve()
+      expect(settled).toBe(false)
+      // A request that times out takes its partial answer with it: a late last part answers nothing.
+      vi.advanceTimersByTime(10_000)
+      await expect(first).rejects.toThrow(/timed out/)
+      const second = w.t.request<{ content: string }>('fs.read', {}, { timeoutMs: 10_000 })
+      const secondId = (JSON.parse(w.socket().sent.at(-1)!) as { id: string }).id
+      const whole = answer(secondId)
+      w.deliver(partText(secondId, 0, false, whole.slice(0, PART_CHARS)))
+      w.deliver(partText(secondId, PART_CHARS, true, whole.slice(PART_CHARS)))
+      expect((await second).content.length).toBe(PART_CHARS)
+      w.t.close()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+

@@ -24,8 +24,9 @@ export const PARTS_HELLO = '#parts'
 const PART = '#part '
 const ACK = '#ack '
 
+/** The id rides encoded: a request id may hold a space, which the header splits on. */
 export function partText(id: string, offset: number, last: boolean, body: string): string {
-  return `${PART}${id} ${offset} ${last ? 1 : 0}\n${body}`
+  return `${PART}${encodeURIComponent(id)} ${offset} ${last ? 1 : 0}\n${body}`
 }
 
 /** Where the part of `text` that starts at `at` ends: PART_CHARS on, one less when that would split a surrogate pair. */
@@ -41,17 +42,23 @@ export function readPart(text: string): { id: string; offset: number; last: bool
   if (!text.startsWith(PART)) return null
   const nl = text.indexOf('\n')
   if (nl < 0) return null
-  const [id, offset, last] = text.slice(PART.length, nl).split(' ')
+  const [encoded, offset, last, extra] = text.slice(PART.length, nl).split(' ')
   const at = Number(offset)
-  if (!id || !Number.isSafeInteger(at) || at < 0 || (last !== '0' && last !== '1')) return null
+  if (!encoded || extra !== undefined || !Number.isSafeInteger(at) || at < 0 || (last !== '0' && last !== '1')) return null
+  let id: string
+  try {
+    id = decodeURIComponent(encoded)
+  } catch {
+    return null
+  }
   return { id, offset: at, last: last === '1', body: text.slice(nl + 1) }
 }
 
 export const ackText = (chars: number): string => `${ACK}${chars}`
 
-/** The chars an ack says the window holds, or null for any other message. */
+/** The chars an ack says the window holds (a whole count), or null for any other message. */
 export function readAck(text: string): number | null {
   if (!text.startsWith(ACK)) return null
   const n = Number(text.slice(ACK.length))
-  return Number.isFinite(n) && n >= 0 ? n : null
+  return Number.isSafeInteger(n) && n >= 0 ? n : null
 }

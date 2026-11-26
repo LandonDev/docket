@@ -138,7 +138,7 @@ export class Transport {
   private helloWaiters: { resolve: (h: Hello) => void; reject: (e: Error) => void }[] = [];
   private helloTimer: ReturnType<typeof setTimeout> | null = null;
   /** Answers arriving in parts (src/shared/answerParts.ts), by id, and the part chars this socket holds. */
-  private parts = new Map<string, string[]>();
+  private parts = new Map<string, { chars: number; bodies: string[] }>();
   private partChars = 0;
 
   constructor(
@@ -175,6 +175,7 @@ export class Transport {
     const timeoutMs = options.timeoutMs ?? requestTimeoutMs(method, params);
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
+        this.parts.delete(id);
         if (!this.pending.delete(id)) return;
         this.noteAnswer(timeoutMs, true, timeoutMs);
         reject(new TimeoutError(method, timeoutMs));
@@ -240,17 +241,22 @@ export class Transport {
     this.onFrame(data, start);
   }
 
-  /** One part of a big answer: held until its last, which is handled as the whole; each is acked. */
+  /** One part of a big answer: held until its last, which is handled as the whole; each is acked, kept or not.
+   *  Only an answer this socket waits for is put together, its parts in order from offset 0; one out of order,
+   *  or for a request that timed out, drops what was held of it. */
   private onPart(data: string): void {
     const part = readPart(data);
     if (!part) return;
-    const held = this.parts.get(part.id) ?? [];
-    held.push(part.body);
     this.partChars += part.body.length;
     this.ws?.send(ackText(this.partChars));
+    if (!this.pending.has(part.id)) return void this.parts.delete(part.id);
+    const held = this.parts.get(part.id) ?? { chars: 0, bodies: [] as string[] };
+    if (part.offset !== held.chars) return void this.parts.delete(part.id);
+    held.bodies.push(part.body);
+    held.chars += part.body.length;
     if (!part.last) return void this.parts.set(part.id, held);
     this.parts.delete(part.id);
-    this.onFrame(held.join(""), performance.now());
+    this.onFrame(held.bodies.join(""), performance.now());
   }
 
   private onFrame(data: string, start: number): void {
