@@ -174,7 +174,15 @@ const linkOpen = (ctx: PerfCtx): string =>
 /** A thread shown with its rows drawn: pressed in the rail unless it is already on screen. */
 async function showThread(ctx: PerfCtx, thread: { id: string; title: string }): Promise<void> {
   await shownCode(ctx, thread)
-  if (!await ctx.page.eval(paneReady(thread.id))) await pressThread(ctx, thread)()
+  if (!await ctx.page.eval(paneReady(thread.id))) {
+    // Set-up, not a timed press: the first press after the pair boots has been seen to leave the tab unselected, so a
+    // miss is pressed once more with the pointer moved off the strip first.
+    await pressThread(ctx, thread)().catch(async () => {
+      await ctx.page.hover({ x: 100, y: 780 })
+      await sleep(300)
+      await pressThread(ctx, thread)()
+    })
+  }
   await ctx.page.until(thread.title + ' drawn', 30_000, () => ctx.page.eval(paneReady(thread.id)))
     .catch(async (error) => { throw new Error(`${String(error?.message ?? error)}; the window held ${await diagnose(ctx, thread.id)}`) })
 }
@@ -293,10 +301,12 @@ async function coldLong(ctx: PerfCtx): Promise<void> {
  * that is the 30 s deadline, then a retry a second later. A cut or a blackhole would model a dead link instead, which
  * the link's own reconnect answers (L02, L04). Recorded, never asserted.
  */
+/** thread-open-lost presses again only while its presses so far took less than this, ms. */
+export const LOST_MEASURED_MS = 30_000
 const threadOpenLost: Row = {
   id: 'thread-open-lost',
   family: 'code',
-  title: 'Open the 30,000-row box thread never seen, its first transcript answer lost on a live socket (dropped in the page), to rows drawn',
+  title: 'Open the 30,000-row box thread never seen, its first transcript answer lost on a live socket (dropped in the page), to rows drawn; pressed again only while the presses so far took under 30 s',
   run: async (ctx) => {
     const long = SEED_THREADS.long
     await ctx.page.send('Page.enable')
@@ -309,7 +319,8 @@ const threadOpenLost: Row = {
         const sample = await ctx.time({ region: 'main', usable: paneReady(long.id), press: pressThread(ctx, long), wait: 45_000 })
         const dropped = await ctx.page.eval<boolean>('window.__perfWire.dropped > 0')
         samples.push(dropped ? sample : { ...sample, error: [sample.error, 'no answer was dropped: the open asked no session.events for the thread'].filter(Boolean).join('; ') })
-        if (sample.usable === null) break
+        // A run measures 60 s at most: today one press takes about 31 s, so a second waits for the fix (D06's 10 s).
+        if (sample.usable === null || samples.reduce((ms, s) => ms + (s.usable ?? 0), 0) >= LOST_MEASURED_MS) break
       }
       return withDiagnosis(ctx, long.id, samples)
     } finally {
@@ -519,42 +530,33 @@ const pickerModel = picker({
 
 /**
  * D19: the window brought forward with a thread of the 20,000-file project shown: its asks to the host by method in
- * the 2 s after (git.diffIndex among them) and the longest task. Under xvfb no window manager moves the OS focus and
- * `Page.bringToFront` fires a focus but leaves the page hidden, so the row uses CDP's focus emulation: turned off the
- * page is blurred and hidden (he went to another app), turned on it gets the window's `focus` and a
- * `visibilitychange` to visible, the two events the window's refreshes listen for (lib/gitIndexStore.ts,
- * hooks/useProjectBranches.ts). Away 6 s each time: past the 5 s the budget gives between two git.diffIndex asks.
- * The row ends with the emulation on (focused and visible).
+ * the 2 s after (git.diffIndex among them) and the longest task. Under xvfb the OS gives the window its focus and
+ * nothing takes it away: CDP's focus emulation and `Page.bringToFront` fire no event on a window that has it (tried
+ * on the pair, Nov 26). So the row dispatches the window's own events, which is what each of the window's focus
+ * refreshes listens for (lib/gitIndexStore.ts, hooks/useProjectBranches.ts): `blur`, 6 s away (past the 5 s the
+ * budget gives between two git.diffIndex asks), then `focus`. The page stays visible, as a window behind another app
+ * does; coming back from hidden would add a `visibilitychange`, which those refreshes also hear.
  */
 const windowForward: Row = {
   id: 'window-forward',
   family: 'code',
-  title: 'Bring the window forward from 6 s behind another app with a thread of the 20,000-file project shown: asks in the 2 s after, git.diffIndex counted, and the longest task',
+  title: "Bring the window forward from 6 s behind another app (its focus event) with a thread of the 20,000-file project shown: asks in the 2 s after, git.diffIndex counted, and the longest task",
   run: async (ctx) => {
     await showThread(ctx, SEED_SHORT[0]!)
-    await ctx.page.eval(`(() => { window.__perfFocus = 0; addEventListener('focus', (e) => { if (e.target === window) window.__perfFocus++; }, true); })()`)
     const samples: Sample[] = []
-    try {
-      for (let i = 0; i < 3; i++) {
-        await ctx.page.send('Emulation.setFocusEmulationEnabled', { enabled: false })
-        await sleep(6000)
-        const sample = await ctx.time({
-          region: 'main',
-          // Usable is the 2 s watch's end: the counts are the asks inside it, the longest task the one inside it.
-          usable: 'performance.now() - window.__perf.pressed >= 2000',
-          press: async () => {
-            await ctx.page.eval('window.__perfFocus = 0; window.__perf.pressed = performance.now()')
-            await ctx.page.send('Emulation.setFocusEmulationEnabled', { enabled: true })
-          },
-          wait: 5000,
-          settle: 0
-        })
-        const focused = await ctx.page.eval<number>('window.__perfFocus')
-        samples.push(focused ? sample : { ...sample, error: [sample.error, 'no focus event reached the window'].filter(Boolean).join('; ') })
-        if (sample.usable === null) break
-      }
-    } finally {
-      await ctx.page.send('Emulation.setFocusEmulationEnabled', { enabled: true })
+    for (let i = 0; i < 3; i++) {
+      await ctx.page.eval(`window.dispatchEvent(new FocusEvent('blur'))`)
+      await sleep(6000)
+      const sample = await ctx.time({
+        region: 'main',
+        // Usable is the 2 s watch's end: the counts are the asks inside it, the longest task the one inside it.
+        usable: 'performance.now() - window.__perf.pressed >= 2000',
+        press: () => ctx.page.eval(`(() => { window.__perf.pressed = performance.now(); window.dispatchEvent(new FocusEvent('focus')); })()`),
+        wait: 5000,
+        settle: 0
+      })
+      samples.push(sample)
+      if (sample.usable === null) break
     }
     return samples
   }

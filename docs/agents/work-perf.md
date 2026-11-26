@@ -135,8 +135,11 @@ The rows (scripts/perf/rows/code.ts) press what he presses:
 - `picker-search`, `picker-file`, `picker-at`, `picker-model`: opened three times inside 30 s, then five keys
   typed, `keyMs` and `asksPerKey` on the last press. Go to File draws no rows before a key, and a fresh profile's model
   picker opens on an empty Favorites list: those opens are timed to the list in hand.
-- `window-forward`: under xvfb no window manager moves the focus, so CDP's focus emulation stands in: off is the page
-  blurred and hidden, on fires the window's `focus` and a `visibilitychange` to visible. The asks of the 2 s after.
+- `window-forward`: under xvfb the OS gives the window its focus and nothing takes it away (CDP's focus emulation
+  and `Page.bringToFront` fire no event), so the row dispatches the window's own `blur`, waits 6 s, then `focus`,
+  the event its refreshes listen for, and counts the asks of the 2 s after.
+- `thread-open-lost` presses again only while its presses so far took under 30 s: today one press takes about 31 s,
+  and a run measures 60 s at most.
 
 ## The pass's numbers
 
