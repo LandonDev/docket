@@ -1438,7 +1438,7 @@ class SessionStore {
       // on it must never release past the rows the host shed. A busy one goes
       // too: its rows are stale after the cut whatever it streams, and the
       // threads only in the rail's Working list were each fetched again here.
-      else if (!this.unload(entry, true)) replay.push(entry);
+      else if (!this.unload(entry)) replay.push(entry);
     }
     // On a remote host they take turns (catchUp.ts): the shown one, then the
     // panes on the page, then the transcripts only kept.
@@ -1569,11 +1569,13 @@ class SessionStore {
   }
 
   /** Forget a transcript: blocks and seq reset, subscription released, so
-   *  the next ensureLoaded fetches it afresh. A busy session or one with a
-   *  send still pending keeps its rows. Returns whether it dropped. */
-  private unload(entry: Entry, busyToo = false): boolean {
+   *  the next ensureLoaded fetches it afresh. One with a send still pending
+   *  keeps its rows. A running one goes too (perf2 M8): outside the kept set
+   *  it would fold every delta of a turn no one reads; its meta tells the
+   *  rail how it runs, and a show fetches it whole. Returns whether it dropped. */
+  private unload(entry: Entry): boolean {
     if (!entry.meta || entry.loading) return false;
-    if ((entry.session.busy && !busyToo) || entry.session.blocks.some((b) => b.pending)) return false;
+    if (entry.session.blocks.some((b) => b.pending)) return false;
     this.settleHead(entry);
     this.subsOf(entry)?.remove(entry.meta.id);
     entry.loaded = false;

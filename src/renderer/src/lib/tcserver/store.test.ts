@@ -1418,7 +1418,7 @@ describe("the mounted set", () => {
     expect(link.method("session.unsubscribe")).toBe(0);
   });
 
-  it("a transcript whose tab left the warm set unloads after the grace period, unless busy", async () => {
+  it("a transcript whose tab left the warm set unloads after the grace period, a busy one too", async () => {
     link.metas = [wireMeta({ id: "a" }), wireMeta({ id: "b" }), wireMeta({ id: "busy", status: "running" })];
     for (const id of ["a", "b"]) link.events.set(id, rowsFor(id, 2));
     // a prompt with no completion yet: the fold keeps it busy
@@ -1436,8 +1436,40 @@ describe("the mounted set", () => {
     }
     expect(sessionStore.get("a")?.loaded).toBe(true);
     expect(sessionStore.get("b")?.loaded).toBe(false);
-    expect(sessionStore.get("busy")?.loaded).toBe(true);
-    expect(link.calls.filter((c) => c.method === "session.unsubscribe").map((c) => (c.params as { sessionId: string }).sessionId)).toEqual(["b"]);
+    // Never shown and running: its meta still says it runs, its rows are gone until it is shown.
+    expect(sessionStore.get("busy")?.loaded).toBe(false);
+    expect(sessionStore.metaOf("busy")?.status).toBe("running");
+    expect(link.calls.filter((c) => c.method === "session.unsubscribe").map((c) => (c.params as { sessionId: string }).sessionId).sort()).toEqual(["b", "busy"]);
+  });
+
+  it("a busy kept transcript past the budget unloads, and comes back whole when shown", async () => {
+    const ids = Array.from({ length: KEEP_RECENT + 2 }, (_, i) => `run${i}`);
+    link.metas = ids.map((id) => wireMeta({ id, status: "running" }));
+    for (const id of ids) link.events.set(id, [row(id, 1, { type: "user-text", text: `go ${id}` }), row(id, 2, { type: "assistant-text", text: `working on ${id}`, msgId: `${id}-m`, blockIndex: 0, delta: false } as never)]);
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    vi.useFakeTimers();
+    try {
+      for (const id of ids) {
+        sessionStore.setMounted([id]);
+        await sessionStore.ensureLoaded(id, "test");
+      }
+      sessionStore.setMounted([]);
+      await vi.advanceTimersByTimeAsync(3100);
+    } finally {
+      vi.useRealTimers();
+    }
+    for (const id of ids) expect(sessionStore.get(id)?.busy, id).toBe(true);
+    // The latest KEEP_RECENT stay; the rest unload, busy as they are.
+    expect(sessionStore.loadedCount()).toBe(KEEP_RECENT);
+    const first = ids[0]!;
+    expect(sessionStore.get(first)?.loaded).toBe(false);
+    // The turn moved on while it was unloaded; shown again, it reads every row once.
+    link.events.set(first, [...link.events.get(first)!, row(first, 3, { type: "user-text", text: "and then" })]);
+    sessionStore.setMounted([first]);
+    await sessionStore.ensureLoaded(first, "test");
+    expect(sessionStore.get(first)?.loaded).toBe(true);
+    expect(sessionStore.get(first)?.blocks.filter((b) => b.role === "user").map((b) => b.text)).toEqual([`go ${first}`, "and then"]);
   });
 
   it("the recently shown stay loaded and subscribed after their pane leaves, the latest KEEP_RECENT; a switch back fetches nothing", async () => {
@@ -1600,6 +1632,29 @@ describe("the mounted set", () => {
     expect(sessionStore.get("s1")?.blocks.map((b) => b.text) ?? []).toEqual([]);
     await sessionStore.ensureLoaded("s1", "test");
     expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["q1", "q2", "q3", "q4", "q5", "q6", "q7"]);
+  });
+
+  it("a transcript outside the kept set with a send pending replays its gap on a resync: the unload that keeps its rows never releases past the shed ones", async () => {
+    link.metas = [wireMeta({ id: "s1" }), wireMeta({ id: "s2" })];
+    const rows: EventRow[] = [];
+    for (let i = 1; i <= 5; i++) rows.push(row("s1", i, { type: "user-text", text: `q${i}` }));
+    link.events.set("s1", rows);
+    link.events.set("s2", rowsFor("s2", 2));
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    sessionStore.setMounted(["s2"]);
+    await sessionStore.ensureLoaded("s2", "test");
+    await sessionStore.ensureLoaded("s1", "test");
+    // s1 is open (its last row a prompt): busy, loaded, and not on screen; a send of his is still on its way.
+    expect(sessionStore.get("s1")?.busy).toBe(true);
+    sessionStore.appendOptimisticUser("s1", "q6");
+    link.events.set("s1", [...rows, row("s1", 6, { type: "user-text", text: "q6" }), row("s1", 7, { type: "user-text", text: "q7" })]);
+    link.push({ push: "resync" });
+    link.push({ push: "event", row: row("s1", 7, { type: "user-text", text: "q7" }) });
+    for (let i = 0; i < 6; i++) await tick();
+    // Every row once and in order: the pending send meets its echo, q6.
+    expect(sessionStore.get("s1")?.blocks.map((b) => b.text)).toEqual(["q1", "q2", "q3", "q4", "q5", "q6", "q7"]);
+    expect(sessionStore.get("s1")?.loaded).toBe(true);
   });
 
   it("a batch of 1,000 metas builds one snapshot and notifies once per frame", async () => {
