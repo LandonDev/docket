@@ -69,7 +69,7 @@ import { looksLikeProject, type RecentProject } from "../lib/recents";
 import { searchProject, type OpenFileFn } from "../lib/search";
 import { sessionDisplayTitle, type HarnessId } from "../lib/session";
 import { environmentOfCwd, hostOfCwd } from "../lib/tcserver/projects";
-import { sessionStore, useServerSessions, useSessionMetas } from "../lib/tcserver/store";
+import { sessionStore } from "../lib/tcserver/store";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { EmptyState } from "./SurfaceSkeleton";
 import { Skeleton } from "../components/ui/skeleton";
@@ -124,6 +124,11 @@ function partnerFileList(host: string, cwd: string): Promise<ProjectFile[]> {
   const files = listProjectFiles(host, cwd).catch(() => [] as ProjectFile[]);
   partnerFiles.set(key, { at: Date.now(), files });
   return files;
+}
+
+/** What Search ranks in memory, as the store holds it at this query. */
+function readThreads(open: boolean, query: string) {
+  return { open, query, sessions: sessionStore.getSnapshot(), metas: sessionStore.metas() };
 }
 
 export function SearchView({
@@ -205,8 +210,12 @@ export function SearchView({
     };
   }, [cwd, open]);
 
-  const sessions = useServerSessions();
-  const metas = useSessionMetas();
+  // The threads and their loaded transcripts, read when the query changes, not on
+  // every push: a streamed frame or a busy master's meta neither rescans memory
+  // nor restarts the hosts' search.
+  const [held, setHeld] = useState(() => readThreads(open, query));
+  if (held.open !== open || held.query !== query) setHeld(readThreads(open, query));
+  const { sessions, metas } = held;
 
   /** The folder to search for files on each asked host: this project here,
    *  its paired copy there. */
@@ -285,7 +294,8 @@ export function SearchView({
         sources: (host) => {
           const id = host.environmentId;
           const metasById = new Map<string, ThreadMeta>(
-            metas
+            sessionStore
+              .metas()
               .filter((meta) => meta.environmentId === id && !meta.parentId)
               .map((meta) => [meta.id, { id: meta.id, cwd: meta.cwd, harness: meta.provider as HarnessId, title: meta.title, updatedAt: meta.updatedAt }]),
           );
@@ -332,7 +342,7 @@ export function SearchView({
     // `statuses` changes on every heartbeat; a host's online state is read
     // when the search starts, which the query's debounce already delays.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [askedHosts, currentHost, fileCwdOf, metas, open, text]);
+  }, [askedHosts, currentHost, fileCwdOf, open, text]);
 
   // A browse that may show notes reads each asked, online host's notes: the
   // cache paints at once, the host's answer replaces it. An offline host is

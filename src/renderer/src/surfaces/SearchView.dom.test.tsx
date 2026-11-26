@@ -26,6 +26,7 @@ const h = vi.hoisted(() => {
     searchProject: vi.fn(),
     listProjectFiles: vi.fn(),
     recentFiles: [] as string[],
+    metaListeners: new Set<() => void>(),
     metas: [
       { id: "s-local", environmentId: "local", parentId: null, archived: false, cwd: "/Users/me/app", provider: "claude", title: "Gateway trace", updatedAt: 5 },
       { id: "s-box", environmentId: "env_box", parentId: null, archived: false, cwd: "/work/app", provider: "codex", title: "Box thread", updatedAt: 6 },
@@ -43,11 +44,19 @@ vi.mock("../lib/connection", () => ({
   useEnvironments: () => h.environments,
   useEnvironmentStatuses: () => h.statuses,
 }));
-vi.mock("../lib/tcserver/store", () => ({
-  sessionStore: { get: () => undefined },
-  useServerSessions: () => [],
-  useSessionMetas: () => h.metas,
-}));
+// The store's metas as a live source: a push swaps the list and tells each listener, as the real store does.
+vi.mock("../lib/tcserver/store", async () => {
+  const { useSyncExternalStore } = await import("react");
+  const subscribe = (l: () => void) => {
+    h.metaListeners.add(l);
+    return () => h.metaListeners.delete(l);
+  };
+  return {
+    sessionStore: { get: () => undefined, metas: () => h.metas, getSnapshot: () => [], onMetaChange: subscribe },
+    useServerSessions: () => [],
+    useSessionMetas: () => useSyncExternalStore(subscribe, () => h.metas),
+  };
+});
 vi.mock("../lib/tcserver/workspaces", () => ({ useWorkspaces: () => h.workspaces, useWorkspaceIcon: () => undefined }));
 vi.mock("../lib/tcserver/projects", () => ({
   hostOfCwd: (cwd: string) => (cwd.startsWith("/work") ? "env_box" : "local"),
@@ -621,5 +630,53 @@ describe("SearchView across hosts", () => {
     fireEvent.keyDown(view.container.querySelector("input") as HTMLInputElement, { key: "Escape" });
     expect(p.onClose).toHaveBeenCalledTimes(1);
     view.unmount();
+  });
+});
+
+describe("SearchView under a busy host", () => {
+  beforeAll(async () => {
+    await menuChunk.load();
+    warmMenus();
+  });
+  beforeEach(() => {
+    vi.useFakeTimers();
+    Element.prototype.scrollIntoView = () => {};
+    h.environments = h.envs.two;
+    answers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    h.invokeOn.mockReset();
+    h.searchProject.mockReset();
+    h.listProjectFiles.mockReset();
+  });
+
+  it("starts no host search for a meta push during a typed query", async () => {
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "gateway");
+    const asked = () => h.invokeOn.mock.calls.filter(([, method]) => method === "search_sessions").length;
+    expect(asked()).toBe(2);
+    const before = h.metas;
+    const contents = h.searchProject.mock.calls.length;
+    try {
+      // A busy master's meta moves, twice: nothing new is asked of any host.
+      for (const title of ["Gateway trace, running", "Gateway trace, still running"]) {
+        await act(async () => {
+          h.metas = h.metas.map((m) => (m.id === "s-local" ? { ...m, title, updatedAt: m.updatedAt + 1 } : m));
+          for (const l of h.metaListeners) l();
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(400);
+        });
+      }
+      expect(asked()).toBe(2);
+      expect(h.searchProject).toHaveBeenCalledTimes(contents);
+      // The next key reads the threads as they are now.
+      await search(view, "gateway t");
+      expect(asked()).toBe(4);
+      expect(rows(view)[0].textContent).toContain("Gateway trace, still running");
+    } finally {
+      h.metas = before;
+    }
   });
 });
