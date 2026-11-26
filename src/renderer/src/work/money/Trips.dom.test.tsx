@@ -69,7 +69,10 @@ describe("trips and pay from the calendar", () => {
     await settle();
     const row = document.querySelector("[data-calendar-offer=e1]") as HTMLElement;
     expect(row.textContent).toContain("Sat Nov 21");
-    expect([...row.querySelectorAll("[data-slot=facts] > span")].map((f) => f.textContent)).toEqual(["Sat Nov 21", "24 mi"]);
+    expect([...row.querySelectorAll("[data-offer-fact]")].map((f) => f.textContent)).toEqual(["Sat Nov 21", "24 mi"]);
+    // The miles carry their comma, so a day never ends in one when they give way; both drop whole, after the event.
+    expect(row.querySelectorAll("[data-offer-fact]")[1]!.className).toContain("before:content-[',']");
+    expect(row.querySelector("[data-offer-fact]")!.parentElement!.className).toContain("flex-wrap");
     // The fee stands in the amount's cell, on the edge a receipt's amount ends on.
     expect(row.querySelector(".text-end")?.textContent).toBe("$75.00");
     expect(row.textContent).not.toContain("·");

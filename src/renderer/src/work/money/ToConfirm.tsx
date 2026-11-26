@@ -9,7 +9,6 @@ import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
 import { cn } from "../../lib/cn";
 import { heardTrip, heardTrips, request, withToast } from "./api";
-import { Facts } from "../../surfaces/settings/hosts/Facts";
 import { TO_CONFIRM_GRID } from "./layout";
 import { offerDay } from "./model";
 import { usePicture } from "./receive";
@@ -25,6 +24,11 @@ import { addOffer, offerWhole } from "./TripDialog";
  */
 
 /** A To confirm row: the picture, the words, the amount, then the verb and the menu, each on its own column (layout.ts). */
+/**
+ * A row's words on one line: the name cuts only when it stands alone; the facts after it (a day, miles) drop whole to a
+ * second line the box hides, the least first, never a name cut to nothing beside a whole date.
+ */
+const WORDS = "flex h-5 min-w-0 flex-wrap items-baseline gap-x-1 overflow-hidden";
 const ROW = cn("grid min-h-12 items-center gap-3 border-b border-border text-[13px] last:border-0", TO_CONFIRM_GRID);
 
 /** "Nov 20", or "Nov 20, 2025" when it is not this year's. */
@@ -153,7 +157,7 @@ function ReceiptRow({ env, item, onReview, onDiscard }: { env: string; item: Wai
           Reading…
         </span>
       ) : (
-        <span className="flex min-w-0 items-baseline gap-1">
+        <span className={WORDS}>
           <span className="min-w-0 truncate text-foreground">{name}</span>
           {item.fields.date ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{shortDay(item.fields.date)}</span> : null}
         </span>
@@ -246,10 +250,18 @@ function CalendarRows({ env, workspaceId, read, adding, onReview, reload }: { en
             <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
               <Calendar className="size-3.5" />
             </span>
-            {/* As a receipt's: the name, then its day; the fee on money's one edge, the miles left in the words. */}
-            <span className="flex min-w-0 items-baseline gap-1">
+            {/* As a receipt's: the event, then its day and miles as a comma run; the fee on money's one edge. */}
+            <span className={WORDS}>
               <span className="min-w-0 truncate">{offer.title}</span>
-              <Facts className="shrink-0 text-xs text-muted-foreground tabular-nums" parts={[offerDay(offer.date), offer.miles !== null ? `${offer.miles.toLocaleString("en-US")} mi` : null]} />
+              <span data-offer-fact className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                {offerDay(offer.date)}
+              </span>
+              {offer.miles !== null ? (
+                // Its comma leads it, so the day never ends in one when the miles give way.
+                <span data-offer-fact className="-ms-1 shrink-0 text-xs text-muted-foreground tabular-nums before:me-1 before:content-[',']">
+                  {`${offer.miles.toLocaleString("en-US")} mi`}
+                </span>
+              ) : null}
             </span>
             <span className="text-end tabular-nums">{offer.fee !== null ? formatMoney(offer.fee) : null}</span>
             <Actions>
