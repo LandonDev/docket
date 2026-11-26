@@ -340,6 +340,10 @@ What a kind should know:
   with none (`index` -1), never "0/6". Next then takes the first change,
   unless the adapter says `enter: false` (stepping from there shows nothing,
   as on a form's Responses), when it is not lit.
+- While the item's host link is down, every kind's Reject and Accept rest,
+  with More's Accept all and Reject all, and the steps stay live: one hold in
+  the bar (`useLinkHeld`, KindBar.tsx, on `useHostLinkDown`), the same as a
+  kind's own `verdictsHeld`. No kind holds it on its own.
 - While a kind's code loads, the bar holds a 12px bone in its tools slot
   (`data-bar-bone`), the document's own, so the body does not drop 32px
   when the code lands. A kind whose code has no `Bar` and no History says

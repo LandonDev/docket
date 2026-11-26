@@ -7,6 +7,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../
 import { loadToast } from "../../components/ui/toaster";
 import { Download, History } from "../icons";
 import { Face } from "../mail/face";
+import { useHostLinkDown } from "../shell/hostLinkDown";
 import { sayError, type Feeds } from "./frame";
 import type { CanvasMode, Presence, ReviewAdapter, WrittenLine } from "./kind";
 
@@ -120,6 +121,16 @@ function useTight(ref: React.RefObject<HTMLElement | null>, drawn: boolean): boo
 }
 
 /**
+ * The one hold every kind's review takes from its item's host: while the link is down a verdict would only be refused,
+ * so Reject and Accept rest (with More's Accept all and Reject all) as a kind's own `verdictsHeld` rests them, and the
+ * steps stay live. The pane's line or the seat's says the link.
+ */
+export function useLinkHeld(review: ReviewAdapter | null, environmentId?: string | null): ReviewAdapter | null {
+  const down = !!useHostLinkDown(environmentId);
+  return review && down && !review.verdictsHeld ? { ...review, verdictsHeld: true } : review;
+}
+
+/**
  * The kind's own bar, in the one order every kind keeps (docs/DESIGN.md
  * "The canvas pane"): the other people in the item, what the agent does to
  * it, the kind's own tools, History, then the changes to review at the end,
@@ -137,8 +148,11 @@ export function KindBar({
   end,
   savedAt = null,
   shut = false,
+  environmentId,
 }: {
   feeds: Feeds;
+  /** the item's host: while its link is down the review's verdicts rest (`useLinkHeld`) */
+  environmentId?: string;
   /**
    * The item will not fill the bar as it stands: a centred failure or a password ask in the body's place (`useShutsBar`),
    * or a quiet line that ends with History (an item he can only read). The hold lets go.
@@ -161,8 +175,8 @@ export function KindBar({
   const others = !!lead || !!end || barShown(feeds, false, !!onHistory || !!onDownload || !!onKeep);
   const held = useHeld(slot, others, shut);
   const narrowOnly = useNarrowOnly(slot);
+  const review = useLinkHeld(feeds.review && feeds.review.count > 0 ? feeds.review : null, environmentId);
   if (!others && !tools) return null;
-  const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
   return (
     <TooltipProvider>
       <div data-canvas-bar-box className={BAR_BOX}>

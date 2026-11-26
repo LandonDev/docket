@@ -13,6 +13,7 @@ import { SplitShell, useSplit, type ChatToggleWords } from "../../surfaces/threa
 import { CanvasPane, useKindModule } from "./CanvasPane";
 import { CanvasMore, CanvasTabs } from "./CanvasTabs";
 import { sayError, useFrame } from "./frame";
+import { useLinkHeld } from "./KindBar";
 import type { CanvasKindDef, CanvasSelection } from "./kind";
 import { useOpening, type Opening } from "./fileDrop";
 import { itemVerbsFor } from "./itemVerbs";
@@ -98,7 +99,7 @@ export function CanvasSeat({
     putChip(selection.chip);
   };
 
-  const review = feeds.review && feeds.review.count > 0 ? feeds.review : null;
+  const review = useLinkHeld(feeds.review && feeds.review.count > 0 ? feeds.review : null, environmentId);
   const own = feeds.more ?? [];
   // A pillar's verbs for this item (canvas/itemVerbs.ts), after the pane's own rows and before Close.
   const verbs = shown ? itemVerbsFor(shown, shown.kind) : [];

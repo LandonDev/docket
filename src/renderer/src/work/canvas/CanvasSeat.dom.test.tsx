@@ -813,6 +813,31 @@ describe("the frame a kind drives through its shell", () => {
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
   });
 
+  /** Round 1's carry: only a kind that held its own verdicts rested them; every kind's now rest while its host's link is down. */
+  it("rests every kind's Reject, Accept, Accept all and Reject all while the item's host link is down, and leaves the steps live", async () => {
+    const { registry: links } = await import("../../lib/connection/registry");
+    const { IDLE_STATUS } = await import("../../lib/connection/types");
+    const status = vi.spyOn(links, "statusOf").mockImplementation(() => ({ ...IDLE_STATUS, transport: "offline" as const }));
+    try {
+      const { shell } = await driven();
+      const adapter = review({ index: 1, count: 3 });
+      act(() => shell.review(adapter));
+      const stepper = screen.getByRole("toolbar", { name: "Review changes" });
+      expect(within(stepper).getByRole("button", { name: "Accept" }).hasAttribute("disabled")).toBe(true);
+      expect(within(stepper).getByRole("button", { name: "Reject" }).hasAttribute("disabled")).toBe(true);
+      fireEvent.click(within(stepper).getByRole("button", { name: "Next change" }));
+      expect(adapter.step).toHaveBeenCalledWith(2);
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Accept all" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Reject all" }));
+      expect(adapter.accept).not.toHaveBeenCalled();
+      expect(adapter.reject).not.toHaveBeenCalled();
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+    } finally {
+      status.mockRestore();
+    }
+  });
+
   it("holds the bar's place with a bone while a kind's code loads, so the body does not drop when it lands", async () => {
     const { defineChunk } = await import("../../lib/lazyChunk");
     let land: (module: unknown) => void = () => {};

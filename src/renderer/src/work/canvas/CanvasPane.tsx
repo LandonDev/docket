@@ -260,6 +260,7 @@ export function CanvasPane({
       {/* While the kind's code loads, the bar holds a bone where its tools will be, so the body does not drop 32px when the code lands; a load that failed holds none. */}
       <KindBar
         feeds={feeds}
+        environmentId={environmentId}
         tools={tools}
         onDownload={fetched && !waiting ? () => downloadItem(environmentId, item) : undefined}
         onKeep={fetched && !waiting && item.workspaceId ? () => keepItem(environmentId, item.id) : undefined}

@@ -161,7 +161,7 @@ export function Body(props: Props) {
   // A lost link is the one cause while it lasts: said in the line with Retry, and a block's Reject and Accept held in place.
   const linkDown = useHostLinkDown(props.env);
   const line = linkDown ? { tone: "quiet" as const, word: linkDown, wrap: true, action: { label: "Retry", run: () => retryLink(props.env) } } : lifeosLineOf(lifeos, props.env, action, elsewhere);
-  useFeeds(shell, host, store, view, current, setCurrent, line, !!lifeos.again, !!linkDown);
+  useFeeds(shell, host, store, view, current, setCurrent, line, !!lifeos.again);
 
   if (error) return <OpenFailed kind="dashboard" why={error} onRetry={retryOpen} />;
   if (!view) return <DashSkeleton />;
@@ -232,8 +232,6 @@ function useFeeds(
   lifeos: StatusLine | null,
   /** LifeOS back and the figures read again (`useLiveDown`'s again): the Bar's spinner says it, never the old failure */
   again: boolean,
-  /** the host's link is down: Reject and Accept would only be refused */
-  verdictsHeld = false,
 ): void {
   const has = !!view;
   useEffect(() => {
@@ -262,11 +260,10 @@ function useFeeds(
       },
       accept: (w) => run(w, "accept"),
       reject: (w) => run(w, "reject"),
-      verdictsHeld,
     };
     shell.review(review);
     return () => shell.review(null);
-  }, [shell, host, store, proposedIds, by, current, setCurrent, verdictsHeld]);
+  }, [shell, host, store, proposedIds, by, current, setCurrent]);
 
   // A failed read over figures still shown; with none, the body says it (`OpenFailed`). While the figures read again
   // once LifeOS is back, the failure saved before is old: the line says nothing until the read answers.
