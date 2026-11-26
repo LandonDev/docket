@@ -62,6 +62,8 @@ public struct ThreadState: Sendable, Hashable {
 
     /// The last persisted seq held; a streaming preview at the tail never moves it.
     public var cursor: Int { rows.last(where: { $0.ephemeral != true })?.seq ?? 0 }
+    /// The time of the row at the cursor: a resume names it (`afterTs`).
+    public var cursorTs: Int? { rows.last(where: { $0.ephemeral != true })?.ts }
 
     /// Whole refolds run so far (`ThreadFold.fold` over every row held); a test seam.
     internal var refolds = 0
@@ -509,7 +511,7 @@ public final class EnvironmentClient {
         self.presence = presence
         self.clock = clock
         self.socket = TempCodeSocket(environment: environment, keys: keys, api: api, connect: connect, clock: clock, configuration: configuration)
-        self.subscriptions = Subscriptions(socket: socket)
+        self.subscriptions = Subscriptions(wire: SocketSubscriptionWire(socket: socket))
         self.extras = HostExtras(socket: socket, environment: environment, clock: clock)
         self.work = WorkHost(socket: socket, environment: environment)
         ingress.land = { [weak self] items in self?.land(items) }
@@ -848,8 +850,8 @@ public final class EnvironmentClient {
     /// The meta's `updatedAt` each peeked tail was fetched for.
     private var peeked: [String: Int] = [:]
 
-    /// Shows the thread: its cached tail at once, then a subscribe and a
-    /// resume from the cache's cursor when the socket is up.
+    /// Shows the thread: its cached tail at once, then one ask when the socket
+    /// is up, `session.events {subscribe: true}` from the cache's cursor.
     public func openThread(_ id: String) async {
         opens[id, default: 0] += 1
         if models[id] == nil {
@@ -871,6 +873,8 @@ public final class EnvironmentClient {
         guard !subscriptions.has(id) else { return }
         subscriptions.add(id, SubscriptionHandlers(
             cursor: { [weak self] in self?.peek(id)?.cursor ?? 0 },
+            cursorTs: { [weak self] in self?.peek(id)?.cursorTs },
+            shown: { [weak self] in self?.visibleThread == id },
             page: { [weak self] page, tailFirst in self?.fold(id, page: page, tailFirst: tailFirst) },
             gone: { [weak self] reason in
                 self?.write(id) {
@@ -1101,14 +1105,17 @@ public final class EnvironmentClient {
             subscriptions.sessionChanged()
             // Nothing of an earlier socket waits behind the new one's pages.
             ingress.flush()
+            // The thread on screen asks first, ahead of the focus, the read
+            // marks, the shell and the other kept threads: the person came back
+            // to the thread they left. `resumeAll` below joins this ask.
+            if let visible = visibleThread, subscriptions.has(visible) { subscriptions.resume(visible, tail: coldOpenTail) }
             // A new socket has told the host nothing: name the thread on screen again.
             focusSignal.reconnected()
             syncFocus()
             // Marks made while the host was away go now.
             await flushReads()
-            // The thread on screen catches up first, the rest of the open set
-            // after it, while the shell lists alongside: the person came back
-            // to the thread they left, not to the list.
+            // The rest of the open set catches up after the thread on screen,
+            // while the shell lists alongside.
             async let shell: Void = refreshShell()
             await subscriptions.resumeAll(tail: coldOpenTail, first: visibleThread)
             await shell

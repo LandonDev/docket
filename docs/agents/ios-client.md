@@ -26,8 +26,9 @@
   phone's connection runtime: `TempCodeSocket` mirrors the desktop supervisor
   (ticket, hello checked against the paired id and contract, jittered backoff
   to 5 min reset after 30 s up, probes on foreground/online/retry, a 10 s
-  background grace), `Subscriptions` resumes with `afterSeq` and honours
-  `reset`, `SessionCache` is the sqlite3 mirror a cold launch paints from,
+  background grace), `Subscriptions` opens and resumes a thread with one
+  `session.events {subscribe: true}` from `afterSeq` (with `afterTs`) and
+  honours `reset` ("A thread's open is one ask" below), `SessionCache` is the sqlite3 mirror a cold launch paints from,
   `EnvironmentClient` is what SwiftUI observes; it reconciles its session
   list with `session.changes` from the cursor the cache kept and lists
   whole on `reset`, with no cursor or on an older host (the return flow:
@@ -1694,6 +1695,47 @@ most easily breaks:
 - **A view's body counts itself** where the perf set gates it
   (`let _ = PerfCounters.bump(...)`); a new view on the push or key path
   that should stay still gets a counter and a gate.
+
+## A thread's open is one ask (the perf sweep's M13, 2026-11-26)
+
+- **One ask.** A thread not yet subscribed on the current socket opens and
+  resumes with `session.events {subscribe: true}`: the host subscribes the
+  socket, then reads, so a row appended after the subscription is pushed and
+  one before it is in the page, and it answers `subscribed: true`
+  (`Subscriptions.resume`, Client/Subscriptions.swift, the desktop's
+  lib/connection/subscriptions.ts). There is no hello flag for it, as on the
+  desktop: the answer is the test. A host that predates the flag answers
+  without it, and the phone then asks `session.subscribe` and folds the gap
+  after its cursor (three asks, as before this pass). A thread already live
+  on the socket (a `resync`, a retry) reads with no `subscribe`.
+- **What the ask names.** `afterSeq` and `afterTs`, the time of the last
+  persisted row folded (`ThreadState.cursorTs`): a host that gave that seq to
+  another row in a crash answers `reset`, and the fold starts over. `tail`
+  for a thread with nothing held. `shown: true` for the thread on screen
+  (`visibleThread`), which a host that has the field serves on its
+  interactive lane; it changes a lane, never a right.
+- **The link-up.** On a new socket the thread on screen asks first, before
+  the focus, the read marks, the shell's lists and the other kept threads
+  (EnvironmentClient `handle(.opened)`); `resumeAll` joins that ask and
+  resumes the rest four at a time.
+- **Holds.** Pushes that land while the ask is out are held and folded after
+  the page, each seq once and in order, a row the page already holds
+  dropped; a `reset` throws the fold away first. An answer from a socket
+  that has since dropped folds nothing. A failed ask that subscribes (its
+  answer lost, or its owner gone while it was out) is followed by
+  `session.unsubscribe` when the socket is up, unless a newer resume owns
+  the thread; nothing asks again on its own (the owner or the next session
+  does). The host's refusal of an id it does not show (`unknown session`,
+  wire.ts) marks the thread gone; any other refusal of the read leaves it
+  loading for the next page. The key's capability is the host's to check
+  on every ask, as before.
+- **Tests.** `SubscriptionsTests` (a stand-in wire that counts asks: the one
+  ask, `afterTs` and `shown`, the older host's three, a reset with a
+  duplicate push, a lane drop mid-ask, a lost answer and a refusal, an owner
+  that leaves, the thread on screen first) runs on the box in a scratch
+  package as well as on the Mac; `EnvironmentClientTests` "the open of a kept
+  thread is one transcript ask" and "the thread on screen resumes ahead of
+  the other open ones" hold the client over a fake socket (Mac only).
 
 ## Outward presses on the phone
 
