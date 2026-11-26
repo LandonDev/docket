@@ -21,17 +21,20 @@ export const BONES = [
 
 export const PROBE = `(() => {
   if (window.__perf) return;
-  const p = window.__perf = { armed: false, region: 'body', usableIf: null, pressed: 0, first: 0, usable: 0, longest: 0, stop: null };
+  const p = window.__perf = { armed: false, region: 'body', usableIf: null, pressed: 0, first: 0, usable: 0, longest: 0, longestAfter: 0, tasksAfter: 0, stop: null };
   const stamp = () => { if (p.armed && !p.pressed) p.pressed = performance.now(); };
   for (const type of ['pointerdown', 'keydown']) addEventListener(type, stamp, true);
   try {
     new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) if (p.pressed && !p.usable && entry.startTime + entry.duration >= p.pressed) p.longest = Math.max(p.longest, entry.duration);
+      for (const entry of list.getEntries()) {
+        if (p.pressed && !p.usable && entry.startTime + entry.duration >= p.pressed) p.longest = Math.max(p.longest, entry.duration);
+        else if (p.usable && entry.startTime >= p.usable) { p.longestAfter = Math.max(p.longestAfter, entry.duration); if (entry.duration > 100) p.tasksAfter++; }
+      }
     }).observe({ entryTypes: ['longtask'] });
   } catch {}
   p.arm = (region, usableIf) => {
     p.stop?.();
-    Object.assign(p, { armed: true, region, usableIf, pressed: 0, first: 0, usable: 0, longest: 0 });
+    Object.assign(p, { armed: true, region, usableIf, pressed: 0, first: 0, usable: 0, longest: 0, longestAfter: 0, tasksAfter: 0 });
     const inside = (node) => (node.nodeType === 1 ? node : node.parentElement)?.closest(region);
     const seen = new MutationObserver((changes) => {
       if (p.pressed && !p.first && changes.some((change) => inside(change.target))) p.first = performance.now();
@@ -50,7 +53,7 @@ export const PROBE = `(() => {
     };
     requestAnimationFrame(tick);
   };
-  p.read = () => ({ pressed: p.pressed, first: p.first ? p.first - p.pressed : null, usable: p.usable ? p.usable - p.pressed : null, longest: p.longest });
+  p.read = () => ({ pressed: p.pressed, first: p.first ? p.first - p.pressed : null, usable: p.usable ? p.usable - p.pressed : null, longest: p.longest, longestAfter: p.longestAfter, tasksAfter: p.tasksAfter });
   // A region is usable once it is drawn, holds words, and draws no bones.
   p.settled = (selector) => {
     const el = [...document.querySelectorAll(selector)].find((e) => e.getClientRects().length && !e.closest('[inert], [aria-hidden="true"]'));
@@ -137,6 +140,9 @@ export interface Sample {
   usable: number | null
   /** the longest task between the two, ms */
   longest: number
+  /** the longest task in the watch after usable (a row's `settle`), ms, and how many passed 100 ms: a freeze that follows an open */
+  longestAfter?: number
+  tasksAfter?: number
   /** asks up to usable */
   counts: Counts
   /** asks in the second after usable: what goes on behind the paint */
@@ -157,6 +163,8 @@ export interface MeasureOptions {
   press: () => Promise<void>
   /** how long to wait for usable */
   wait?: number
+  /** how long to keep watching after usable, ms (1000): the asks and the long tasks behind the paint */
+  settle?: number
 }
 
 export const settled = (selector: string): string => `window.__perf.settled(${JSON.stringify(selector)})`
@@ -181,11 +189,11 @@ export async function measure(
   const counts = counter.take()
   const wire = link?.reset()
   const asked = lifeosLink?.resetClasses()
-  const read = await page.eval<{ first: number | null; usable: number | null; longest: number }>('window.__perf.read()')
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+  await new Promise((resolve) => setTimeout(resolve, options.settle ?? 1000))
   const after = counter.take()
+  const read = await page.eval<{ first: number | null; usable: number | null; longest: number; longestAfter: number; tasksAfter: number }>('window.__perf.read()')
   await page.eval('window.__perf.stop?.()')
-  return { first: read.first, usable: read.usable, longest: Math.round(read.longest), counts, after, ...(wire ? { wire: { up: wire.up, down: wire.down, turns: wire.turns } } : {}), ...(asked ? { lifeos: { window: asked.window?.turns ?? 0, host: asked.host?.turns ?? 0 } } : {}), ...(error ? { error } : {}) }
+  return { first: read.first, usable: read.usable, longest: Math.round(read.longest), ...(options.settle ? { longestAfter: Math.round(read.longestAfter), tasksAfter: read.tasksAfter } : {}), counts, after, ...(wire ? { wire: { up: wire.up, down: wire.down, turns: wire.turns } } : {}), ...(asked ? { lifeos: { window: asked.window?.turns ?? 0, host: asked.host?.turns ?? 0 } } : {}), ...(error ? { error } : {}) }
 }
 
 /** The middle of three (or of however many ran): by usable time, an unfinished press last. */

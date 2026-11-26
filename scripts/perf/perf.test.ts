@@ -24,7 +24,12 @@ describe('the budgets and the rows', () => {
     }
     expect(BUDGETS.map((b) => b.id)).toEqual([
       'B01', 'B02', 'B03', 'B04', 'B05a', 'B05b', 'B05c', 'B05d', 'B06', 'B07', 'B08', 'B09', 'B10', 'B11', 'B12', 'B13', 'B14', 'B15', 'B16',
-      'B17', 'B18', 'B19', 'B20', 'B21', 'B22', 'B23', 'B24', 'B25', 'B26', 'B27', 'B28', 'B29', 'B30', 'B31', 'B32', 'B33'
+      'B17', 'B18', 'B19', 'B20', 'B21', 'B22', 'B23', 'B24', 'B25', 'B26', 'B27', 'B28', 'B29', 'B30', 'B31', 'B32', 'B33',
+      ...Array.from({ length: 20 }, (_, i) => 'D' + String(i + 1).padStart(2, '0')),
+      ...Array.from({ length: 9 }, (_, i) => 'H0' + (i + 1)),
+      ...Array.from({ length: 6 }, (_, i) => 'G0' + (i + 1)),
+      ...Array.from({ length: 12 }, (_, i) => 'L' + String(i + 1).padStart(2, '0')),
+      ...Array.from({ length: 5 }, (_, i) => 'P0' + (i + 1))
     ])
   })
 
