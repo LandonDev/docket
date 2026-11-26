@@ -127,7 +127,7 @@ public final class Subscriptions {
         resumeTokens[sessionId] = token
         held[sessionId] = []
         let task = Task<EventsPage, any Error> { [weak self] in
-            guard let self, let handlers = self.handlers[sessionId] else { throw TransportError.notConnected }
+            guard let self else { throw TransportError.notConnected }
             var completed = false
             defer {
                 if self.resumeTokens[sessionId] == token {
@@ -135,8 +135,11 @@ public final class Subscriptions {
                     // pushes must not move the cursor before the next replay.
                     self.held[sessionId] = completed ? nil : []
                     self.resumeTokens[sessionId] = nil
+                    // Done before its value is heard: an owner's retry at once starts a new ask, never joins this one.
+                    self.inFlight[sessionId] = nil
                 }
             }
+            guard let handlers = self.handlers[sessionId] else { throw TransportError.notConnected }
             let current = { self.generation == generation && self.resumeTokens[sessionId] == token && self.handlers[sessionId] != nil }
             // The host subscribes before it reads: a row appended after the
             // subscription is pushed, one before it is in the page.
@@ -214,10 +217,6 @@ public final class Subscriptions {
             return page
         }
         inFlight[sessionId] = task
-        Task { [weak self] in
-            _ = try? await task.value
-            if self?.inFlight[sessionId] == task { self?.inFlight[sessionId] = nil }
-        }
         return task
     }
 

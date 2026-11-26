@@ -1731,7 +1731,8 @@ most easily breaks:
   answer lost, or its owner gone while it was out) is followed by
   `session.unsubscribe` when the socket is up, unless a newer resume owns
   the thread; nothing asks again on its own (the owner or the next session
-  does). The host's refusal of an id it does not show (`unknown session`,
+  does), and a retry the owner makes the moment an ask fails is an ask of
+  its own, never the failed one joined (the ask leaves `inFlight` as it ends). The host's refusal of an id it does not show (`unknown session`,
   wire.ts) marks the thread gone; any other refusal of the read leaves it
   loading for the next page. The key's capability is the host's to check
   on every ask, as before.

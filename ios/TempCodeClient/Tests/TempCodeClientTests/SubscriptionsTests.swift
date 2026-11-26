@@ -190,17 +190,20 @@ private func page(_ seqs: some Sequence<Int>, reset: Bool = false, subscribed: B
         #expect(await eventually { await wire.count("session.events") == 1 })
         await wire.fail(0, TransportError.notConnected)
         await #expect(throws: (any Error).self) { try await lost.value }
-        #expect(await eventually { await wire.count("session.unsubscribe") == 1 })
-        // A read the host could not make is not a thread gone.
+        // The owner's retry at once is an ask of its own, never the one that failed.
         let failed = subs.resume("s1")
         #expect(await eventually { await wire.count("session.events") == 2 })
-        await wire.fail(2, TransportError.server(method: "session.events", message: "replay failed"))
+        #expect(await eventually { await wire.count("session.unsubscribe") == 1 })
+        // A read the host could not make is not a thread gone.
+        let second = try #require(await wire.methods.lastIndex(of: "session.events"))
+        await wire.fail(second, TransportError.server(method: "session.events", message: "replay failed"))
         await #expect(throws: (any Error).self) { try await failed.value }
         #expect(await eventually { await wire.count("session.unsubscribe") == 2 })
         #expect(owner.gone == nil)
         let refused = subs.resume("s1")
         #expect(await eventually { await wire.count("session.events") == 3 })
-        await wire.fail(4, TransportError.server(method: "session.events", message: "unknown session: s1"))
+        let third = try #require(await wire.methods.lastIndex(of: "session.events"))
+        await wire.fail(third, TransportError.server(method: "session.events", message: "unknown session: s1"))
         await #expect(throws: (any Error).self) { try await refused.value }
         #expect(owner.gone == "unknown session: s1")
         #expect(await eventually { await wire.count("session.unsubscribe") == 3 })
