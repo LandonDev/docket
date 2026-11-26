@@ -40,25 +40,21 @@ struct HeldInline: View {
         VStack(alignment: .leading, spacing: 6) {
             // Undo sits beside the line's own button, never inside it, so VoiceOver reaches both.
             HStack(spacing: Layout.rowGap) {
-                Button {
-                    guard item != nil, !pending else { return }
-                    withAnimation(reduceMotion ? nil : Motion.expand) { open.toggle() }
-                } label: {
-                    HStack(spacing: Layout.rowGap) {
-                        Image(systemName: WorkGlyph.outbox)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(width: Layout.markWidth)
-                        (Text(pending ? "Sending " : checking ? "Checking " : item == nil ? "Was held " : "Held ").foregroundStyle(.secondary) + Text(act).foregroundStyle(.primary))
-                            .font(.footnote)
-                            .lineLimit(open ? nil : 1)
-                        Spacer(minLength: 0)
+                // Sending, Checking and Was held open nothing: plain text, no button. Held opens the act in place.
+                if item == nil || pending || checking {
+                    lineLabel(pending: pending, checking: checking)
+                        .accessibilityElement(children: .combine)
+                } else {
+                    Button {
+                        withAnimation(reduceMotion ? nil : Motion.expand) { open.toggle() }
+                    } label: {
+                        lineLabel(pending: pending, checking: checking)
                     }
-                    .frame(minHeight: 28)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.pressable)
+                    // The line stays 28 pt; the hit area reaches 44 above and below it.
+                    .contentShape(Rectangle().inset(by: -8))
+                    .accessibilityHint(open ? "Closes the held act" : "Shows the held act")
                 }
-                .buttonStyle(.pressable)
-                .accessibilityHint(item == nil || pending ? "" : open ? "Closes the held act" : "Shows the held act")
                 if counting {
                     Button("Undo") { presses.undo() }
                         .font(.footnote.weight(.semibold))
@@ -90,6 +86,22 @@ struct HeldInline: View {
             }
         }
         .accessibilityIdentifier("held-inline")
+    }
+
+    /// The line itself: the Outbox glyph, where the act stands, and the act in his words.
+    private func lineLabel(pending: Bool, checking: Bool) -> some View {
+        HStack(spacing: Layout.rowGap) {
+            Image(systemName: WorkGlyph.outbox)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: Layout.markWidth)
+            (Text(pending ? "Sending " : checking ? "Checking " : item == nil ? "Was held " : "Held ").foregroundStyle(.secondary) + Text(act).foregroundStyle(.primary))
+                .font(.footnote)
+                .lineLimit(open ? nil : 1)
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: 28)
+        .contentShape(Rectangle())
     }
 
     /// The act as it will go, in a hairline frame (radius 12, no fill), and its three buttons.

@@ -37,6 +37,9 @@ public final class WorkHost: CaptureHost {
     public private(set) var unreviewed = 0
     /// What Waiting lists (`OutboxModel.listed`: what waits on him, one on its way, the sends he timed), newest first.
     public private(set) var items: [OutboxItem] = []
+    /// Items the host pushed that Waiting does not list (a decided one's later words: what LifeOS says of a sent
+    /// mail), by key, so a detail open on one hears them.
+    public private(set) var heard: [String: OutboxItem] = [:]
     /// A thread's requests for his press that are still open, oldest first (`work.outbox.requests`, the
     /// `work.outbox.request` push). Empty for a key without approve: the host shows them to approve alone.
     public private(set) var requests: [OutboxRequest] = []
@@ -444,6 +447,7 @@ public final class WorkHost: CaptureHost {
         cleared &+= 1
         shows = [:]
         items = []
+        heard = [:]
         requests = []
         waiting = 0
         unreviewed = 0
@@ -461,8 +465,12 @@ public final class WorkHost: CaptureHost {
         let index = items.firstIndex { OutboxModel.key($0.ref) == key }
         if OutboxModel.listed(item) {
             if let index { items[index] = item } else { items.insert(item, at: 0) }
-        } else if let index {
-            items.remove(at: index)
+            heard[key] = nil
+        } else {
+            if let index { items.remove(at: index) }
+            // Kept for an open detail; a few dozen at most, the oldest let go.
+            if heard.count >= 64 { heard.removeAll(keepingCapacity: true) }
+            heard[key] = item
         }
         if listed { Self.itemsChanged?(self) }
     }

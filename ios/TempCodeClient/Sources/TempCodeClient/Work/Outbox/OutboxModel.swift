@@ -107,6 +107,35 @@ public enum OutboxModel {
         return (reason.hasSuffix(".") ? reason : reason + ".") + " \(check)."
     }
 
+    /// What LifeOS says of a mail or calendar act the host stored as sent, while LifeOS has not said it went: "Queued
+    /// in LifeOS" in its undo time, "Back in drafts in LifeOS", "No longer in LifeOS". Nil once LifeOS says it went,
+    /// and for every other item: those read as their past. The desktop's `lifeosWords` (outbox/model.ts).
+    public nonisolated static func lifeosWords(_ item: OutboxItem) -> String? {
+        guard item.state == .sent else { return nil }
+        switch item.lifeos {
+        case .queued?: return "Queued in LifeOS"
+        case .drafts?: return "Back in drafts in LifeOS"
+        case .gone?: return "No longer in LifeOS"
+        default: return nil
+        }
+    }
+
+    /// The same as one line, a queued one with its age since the press: "Queued in LifeOS for 12m" (`lifeosLine`).
+    public nonisolated static func lifeosLine(_ item: OutboxItem, now: Date) -> String? {
+        guard let words = lifeosWords(item) else { return nil }
+        guard item.lifeos == .queued else { return words }
+        let since = item.decidedAt.map { Int(now.timeIntervalSince1970 * 1000) - $0 } ?? 0
+        return "\(words) for \(minuteAge(since))"
+    }
+
+    /// An age in whole minutes: "<1m", "12m", "2h 14m" (the desktop's `minuteAge`).
+    public nonisolated static func minuteAge(_ ms: Int) -> String {
+        let m = max(0, ms) / 60_000
+        if m < 1 { return "<1m" }
+        if m < 60 { return "\(m)m" }
+        return m % 60 == 0 ? "\(m / 60)h" : "\(m / 60)h \(m % 60)m"
+    }
+
     /// "Send" → "Sent", "Reply" → "Replied", "Move or rename files" → "Moved or renamed files": the
     /// desktop's `pastOf`. A verb is the first word, or one that follows "or"/"and" right after another
     /// verb; the words after them stay. An older Outlook tentative answer's verb, "Maybe", is said whole.

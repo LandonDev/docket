@@ -98,9 +98,12 @@ private func away(_ enabled: Bool, at: Int, since: Int, decided: Int = 0) -> Str
         fake.deliver(#"{"push":"work.outbox","waiting":1,"unreviewed":0,"item":\#(item("b", state: "sent", at: 20))}"#)
         #expect(await rig.until { rig.work.items.count == 1 })
         #expect(rig.work.waiting == 1)
+        // The decided item leaves Waiting but stays heard, for a detail open on it (what LifeOS says of a sent mail).
+        #expect(rig.work.heard["host:b"]?.state == .sent)
         fake.deliver(#"{"push":"work","settings":{"enabled":false}}"#)
         #expect(await rig.until { !rig.work.isOn })
         #expect(rig.work.items.isEmpty)
+        #expect(rig.work.heard.isEmpty)
         #expect(rig.work.waiting == 0)
     }
 

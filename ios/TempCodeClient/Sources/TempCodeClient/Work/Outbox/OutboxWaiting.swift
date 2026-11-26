@@ -474,7 +474,8 @@ public enum RequestSheetModel {
         case .discard: return (true, "Discarded")
         case .later: return (true, "Scheduled")
         default:
-            if row.item?.lifeos == .queued || result.state == "sent" && (row.item?.kind == .mailSend || row.item?.kind == .calendarOp) { return (true, "Queued in LifeOS") }
+            // What LifeOS says of it, only from the host's own verdict on the item (`lifeos`): a stored "sent" is not "queued".
+            if let item = row.item, let held = OutboxModel.lifeosWords(item) { return (true, held) }
             return (true, row.item.map { OutboxModel.pastOf($0.verb.split(separator: " ").first.map(String.init) ?? $0.verb, kind: $0.kind) } ?? "Done")
         }
     }

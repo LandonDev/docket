@@ -298,7 +298,7 @@ public struct GroupOutcome: Sendable, Hashable {
     /// The desktop's `doneWords`: what an item that went now is, where that adds to "Sent".
     static func doneWord(_ after: OutboxItem, did: GroupPress.Act) -> String {
         if case .discard = did { return "Discarded" }
-        if after.lifeos == .queued { return "Queued in LifeOS" }
+        if let held = OutboxModel.lifeosWords(after) { return held }
         if after.state == .sending { return "Sending" }
         let past = OutboxModel.pastOf(after.verb.split(separator: " ").first.map(String.init) ?? after.verb, kind: after.kind)
         return past == "Sent" ? "" : past

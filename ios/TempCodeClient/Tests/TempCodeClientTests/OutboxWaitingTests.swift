@@ -187,12 +187,15 @@ import TempCodeContract
         #expect(RequestSheetModel.pressWord(req, ticked: ["host:Dana"]) == "Approve 0")
         #expect(RequestSheetModel.rowWords(req.rows[1], now: now, calendar: calendar).line == "Goes Wed 8:00 AM")
         #expect(RequestSheetModel.pendingLines(req, ticked: ["r-Dana", "r-Sam"], now: now, calendar: calendar) == ["Sending to Dana now", "Sending to Sam Wed 8:00 AM"])
-        let done = request("q", rows: [row(a, result: .init(ok: true, state: "sent")), row(b, do: .later, at: laterAt, result: .init(ok: false, error: "Teams did not answer"))], state: .answered, answeredAt: 1)
-        // A LifeOS mail his press sent is queued in LifeOS (its undo time), never "sent".
+        // Once answered, the host's row holds the item as it is now: a LifeOS mail his press sent, in LifeOS's undo time.
+        let aQueued = OutboxItem(ref: a.ref, kind: a.kind, workspaceId: a.workspaceId, sessionId: a.sessionId, sector: a.sector, summary: a.summary, verb: a.verb, account: nil, state: .sent, payload: a.payload,
+                                 createdAt: a.createdAt, decidedBy: "owner:remote", decidedAt: 2, n: 1, why: .rule, grantId: nil, error: nil, result: nil, routineRunId: nil, lifeos: .queued, updatedAt: 2)
+        let done = request("q", rows: [row(aQueued, result: .init(ok: true, state: "sent")), row(b, do: .later, at: laterAt, result: .init(ok: false, error: "Teams did not answer"))], state: .answered, answeredAt: 1)
+        // A LifeOS mail his press sent is queued in LifeOS (its undo time) on the host's word, never "sent".
         #expect(RequestSheetModel.resultsHead(done) == "Queued 1 in LifeOS, 1 not sent")
         #expect(RequestSheetModel.resultWords(done.rows[1])?.text == "Teams did not answer")
         // A row the host could not confirm: May have gone in its line and in the head, never "not sent".
-        let unsure = request("q", rows: [row(a, result: .init(ok: true, state: "sent")), row(b, result: .init(ok: false, error: "timed out", unknown: true))], state: .answered, answeredAt: 1)
+        let unsure = request("q", rows: [row(aQueued, result: .init(ok: true, state: "sent")), row(b, result: .init(ok: false, error: "timed out", unknown: true))], state: .answered, answeredAt: 1)
         #expect(RequestSheetModel.resultWords(unsure.rows[1])?.text == "May have gone")
         #expect(RequestSheetModel.resultsHead(unsure) == "Queued 1 in LifeOS, 1 may have gone")
         // Off a closed sheet, a row that did not go or may have gone makes the answer a failure to read (sticky).
@@ -352,6 +355,23 @@ import TempCodeContract
         #expect(RequestSheetModel.settledLine(done.rows[0]) == "Queued in LifeOS")
         #expect(RequestSheetModel.settledLine(done.rows[1]) == "Posted")
         #expect(RequestSheetModel.settledLine(done.rows[2]) == RequestSheetModel.rowWords(done.rows[2]).line)
+    }
+
+    /// A request's row is queued only on the host's own word for the item (`lifeos`), never because a mail's stored
+    /// result reads "sent": a saved receipt is not a live state (the desktop's `doneWords`).
+    @Test func aRequestRowIsQueuedOnlyOnTheHostsVerdict() {
+        func sent(_ id: String, lifeos: OutboxItem.Lifeos?) -> OutboxItem {
+            let mail = lifeosMail(id, to: "\(id)@x.edu")
+            return OutboxItem(ref: mail.ref, kind: mail.kind, workspaceId: mail.workspaceId, sessionId: mail.sessionId, sector: mail.sector, summary: mail.summary, verb: mail.verb, account: nil, state: .sent, payload: mail.payload,
+                              createdAt: 1, decidedBy: "owner:remote", decidedAt: 2, n: 1, why: .rule, grantId: nil, error: nil, result: nil, routineRunId: nil, lifeos: lifeos, updatedAt: 2)
+        }
+        let went = row(sent("a", lifeos: .confirmed), result: .init(ok: true, state: "sent"))
+        let unsaid = row(sent("b", lifeos: nil), result: .init(ok: true, state: "sent"))
+        let drafts = row(sent("c", lifeos: .drafts), result: .init(ok: true, state: "sent"))
+        #expect(RequestSheetModel.resultWords(went)?.text == "Sent")
+        #expect(RequestSheetModel.resultWords(unsaid)?.text == "Sent")
+        #expect(RequestSheetModel.resultWords(drafts)?.text == "Back in drafts in LifeOS")
+        #expect(RequestSheetModel.resultsHead(request("q", rows: [went, unsaid, drafts], state: .answered, answeredAt: 3)) == "Sent 3")
     }
 
     @Test func anAddonCallOrAPostSaysWhatTellsItApart() {

@@ -42,9 +42,10 @@ struct OutboxItemScreen: View {
 
     private var client: EnvironmentClient? { model.registry.client(environmentId) }
 
-    /// The list's copy while it waits (the pushes keep it current), else the one fetched.
+    /// The list's copy while it waits (the pushes keep it current), else the last one the host pushed of it once
+    /// decided (what LifeOS says of a sent mail), else the one fetched.
     private var listed: OutboxItem? {
-        client?.work.items.first { OutboxModel.key($0.ref) == refKey }
+        client?.work.items.first { OutboxModel.key($0.ref) == refKey } ?? client?.work.heard[refKey]
     }
 
     /// The whole read while it is as new as the list's copy: it carries what the list leaves out
@@ -104,7 +105,8 @@ struct OutboxItemScreen: View {
         // His Send's countdown and Undo on this page when no list beside it can be seen (the Duo's sidebar hidden).
         .outboxUndoInset(undoPlace == .item && undoHere)
         // Read whole again when the list's copy moves on, so the quote and the picture match what goes.
-        .task(id: "\(refKey)-\(listed?.updatedAt ?? 0)") { await load() }
+        // Read whole again when the host pushes a newer copy, or a new word from LifeOS on a sent one.
+        .task(id: "\(refKey)-\(listed?.updatedAt ?? 0)-\(listed?.lifeos?.rawValue ?? "")") { await load() }
         #if DEBUG
         .task { await proofHooks() }
         #endif
@@ -179,7 +181,10 @@ struct OutboxItemScreen: View {
                     Text(OutboxModel.title(item))
                         .font(.title3.weight(.semibold))
                         .fixedSize(horizontal: false, vertical: true)
-                    if let state = stateLine(item, client: client) {
+                    // A mail LifeOS still queues says its age as of this draw ("Queued in LifeOS for 3m"), with no clock
+                    // of its own (docs/IOS-DESIGN.md "Clocks"): the host pushes its next word (sent, back in drafts,
+                    // gone), which draws the line again.
+                    if let state = stateLine(item, client: client, now: .now) {
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             if let glyph = state.glyph {
                                 Image(systemName: glyph).font(.caption).foregroundStyle(.secondary).frame(width: noteMark).accessibilityHidden(true)
@@ -334,9 +339,9 @@ struct OutboxItemScreen: View {
     }
 
     /// Where it stands when no note says it. His own press's refusal comes first, then what a press came to
-    /// ("Checking…", "Changed"; "May have gone" is the failure note's own words), then on its way, timed, sent,
-    /// discarded, or an agent's rewrite waiting.
-    private func stateLine(_ item: OutboxItem, client: EnvironmentClient) -> (glyph: String?, text: String, failed: Bool)? {
+    /// ("Checking…", "Changed"; "May have gone" is the failure note's own words), then on its way, timed, what LifeOS
+    /// says of a send it holds ("Queued in LifeOS for 3m"), sent, discarded, or an agent's rewrite waiting.
+    private func stateLine(_ item: OutboxItem, client: EnvironmentClient, now: Date) -> (glyph: String?, text: String, failed: Bool)? {
         if let barLine { return (nil, barLine, true) }
         if let press = client.work.presses.state(host: environmentId, ref: refKey), press != .mayHaveGone, let line = press.line {
             return (nil, line, false)
@@ -345,7 +350,10 @@ struct OutboxItemScreen: View {
         if let scheduled = OutboxModel.scheduledLine(item) { return ("clock", scheduled, false) }
         switch item.state {
         case .sending: return (nil, "Sending…", false)
-        case .sent: return (nil, "\(OutboxModel.pastOf(item.verb, kind: item.kind)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")", false)
+        case .sent:
+            // The host's word on what LifeOS did with it leads; "Sent" only once LifeOS says it went, or for an act LifeOS never held.
+            if let held = OutboxModel.lifeosLine(item, now: now) { return (nil, held, false) }
+            return (nil, "\(OutboxModel.pastOf(item.verb, kind: item.kind)) \(item.decidedAt.map { HeldTime.of($0) } ?? "")", false)
         case .discarded: return (nil, "Discarded", false)
         default: return item.proposed == true ? (nil, "An agent’s rewrite waits in LifeOS.", false) : nil
         }

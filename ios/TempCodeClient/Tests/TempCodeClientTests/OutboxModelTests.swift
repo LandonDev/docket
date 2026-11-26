@@ -706,4 +706,26 @@ import TempCodeContract
         #expect(OutboxModel.checkFirst(failed) == nil)
         #expect(OutboxModel.failureLine(failed) == "Didn’t send.")
     }
+
+    /// A mail or calendar act the host stored as sent says what LifeOS says of it, as the desktop's `lifeosWords`
+    /// and `lifeosLine` do (outbox/model.ts): queued with its age, back in drafts, gone; "Sent" only once LifeOS
+    /// says it went, or for an act LifeOS never held.
+    @Test func aSentMailSaysWhatLifeosSaysOfIt() {
+        func sent(_ lifeos: OutboxItem.Lifeos?, decidedAt: Int = 1_000_000) -> OutboxItem {
+            OutboxItem(ref: .lifeos(.init(table: .outbox, id: "d1")), kind: .mailSend, workspaceId: "w1", sessionId: "s1", sector: "purdue", summary: "Send to Dana Lee", verb: "Send", account: nil, state: .sent,
+                       createdAt: 1, decidedBy: "owner", decidedAt: decidedAt, n: 1, why: .rule, grantId: nil, error: nil, result: nil, routineRunId: nil, lifeos: lifeos, updatedAt: decidedAt)
+        }
+        let now = Date(timeIntervalSince1970: Double(1_000_000 + 12 * 60_000 + 30_000) / 1000)
+        #expect(OutboxModel.lifeosLine(sent(.queued), now: now) == "Queued in LifeOS for 12m")
+        #expect(OutboxModel.lifeosLine(sent(.drafts), now: now) == "Back in drafts in LifeOS")
+        #expect(OutboxModel.lifeosLine(sent(.gone), now: now) == "No longer in LifeOS")
+        #expect(OutboxModel.lifeosLine(sent(.confirmed), now: now) == nil)
+        #expect(OutboxModel.lifeosLine(sent(nil), now: now) == nil)
+        // A held mail is not sent, whatever its row says of LifeOS.
+        #expect(OutboxModel.lifeosWords(item("h1", state: .held)) == nil)
+        #expect(OutboxModel.minuteAge(20_000) == "<1m")
+        #expect(OutboxModel.minuteAge(59 * 60_000) == "59m")
+        #expect(OutboxModel.minuteAge(120 * 60_000) == "2h")
+        #expect(OutboxModel.minuteAge(134 * 60_000) == "2h 14m")
+    }
 }
