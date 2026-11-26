@@ -544,6 +544,13 @@ first wanted; nothing of it is in the first paint.
   again is. On the Computers page a picture whose host's link is not open asks
   for no stream at all and shows the waiting box, "Reconnecting to …", at the
   picture's own size (`pictureFrame`), never "The preview stopped" with Retry.
+- **Nothing driven, said only when known** (`computersState` in
+  ComputersView.tsx, the phone's `ComputersState`): while a connected computer
+  has not answered its first `computer.sessions` read the page draws one bone
+  in the stage's shape; with every computer away it says "Not connected to
+  the box"; idle, "Nothing is being driven", its line naming any computer away
+  ("Not connected to Studio.") in place of the usual one. A failed read counts
+  as an answer with none in use (lib/computerSessions.ts), so the wait ends.
 - **A closed stream** (`afterClose`, messages.ts). When drive frames arrive
   at least 250 ms behind the recent low offset between the capture and
   viewer clocks for 500 ms, the viewer drops the queue and reopens at once

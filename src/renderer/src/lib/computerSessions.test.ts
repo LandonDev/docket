@@ -62,7 +62,9 @@ describe('the computer sessions store', () => {
     }
     await settle()
     expect(computerSessionsStore.getState().byHost.env_box?.map((r) => r.threadId)).toEqual(['b1'])
-    expect(computerSessionsStore.getState().byHost.env_old).toBeUndefined()
+    // An older host without computer use answers with none in use, so the Computers page never waits on it for good.
+    expect(computerSessionsStore.getState().byHost.env_old).toEqual([])
+    expect(computerSessionsStore.getState().serviceByHost.env_old).toBeUndefined()
     expect(computerSessionsStore.getState().serviceByHost.env_box).toMatchObject({ state: 'unavailable' })
     box.push!({ push: 'computer', sessions: [row('b2')], service: { state: 'up', restarts: 0, permissions: null } })
     expect(computerSessionsStore.getState().byHost.env_box?.map((r) => r.threadId)).toEqual(['b2'])

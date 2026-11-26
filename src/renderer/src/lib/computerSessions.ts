@@ -49,7 +49,9 @@ async function load(link: EnvLink): Promise<void> {
     const answer = await link.request<ComputerSessionsAnswer>('computer.sessions', {})
     setRows(link.environmentId, answer.sessions, answer.service)
   } catch {
-    /* an older host without computer use */
+    // An older host without computer use, or a read that failed: it has answered, with none in use, so the Computers
+    // page never waits on it for good (`computersState`). Rows it pushed before stay.
+    store.setState((s) => (link.environmentId in s.byHost ? s : { byHost: { ...s.byHost, [link.environmentId]: EMPTY } }))
   }
 }
 

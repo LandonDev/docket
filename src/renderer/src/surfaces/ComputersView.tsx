@@ -10,7 +10,11 @@ import { cn } from "../lib/cn";
 import { driveName, handBack, tileKey, useComputers, viewKey, type ComputerTile } from "../lib/computers";
 import { registry } from "../lib/connection/registry";
 import { useDriveHold } from "../lib/driveHold";
-import { previewContext } from "../lib/computerSessions";
+import { computerSessionsStore, previewContext, startComputerSessions } from "../lib/computerSessions";
+import { useEnvironments } from "../lib/connection/status";
+import { nameInLine } from "../lib/hostWords";
+import { Skeleton } from "@renderer/components/ui/skeleton";
+import { useStore } from "zustand";
 import { offerFullScreen, openFullWindow, screenRectOf, useFullWindow, type ScreenRect } from "../lib/fullWindow";
 import { openPopOut, takeStageRequest, useStageRequest } from "../lib/popOut";
 import { drawnPixelated, fitStage, pictureKind, roomKnown, stageLayout, stageOf, type PictureKind, type Size } from "../lib/stageLayout";
@@ -305,7 +309,11 @@ export interface ComputersPageProps {
   vms?: Readonly<Record<string, VmState>>;
   /** the delay's numbers of the stage's stream, as far as they are known (lib/video: the ping, the worker's draw) */
   reading?: BarReading | null;
+  /** what to say with nothing driven (`computersState`); a fixture's page is idle */
+  state?: ComputersState;
 }
+
+const IDLE: ComputersState = { kind: "idle", away: [] };
 
 /** The bar of the computer on the stage, as the page's header has it. */
 function StageBar({ tile, vm, picture, onOpenSession, onTookOver, pictureRect, reading }: { tile: ComputerTile; vm: VmState | null; picture: boolean; onOpenSession: (threadId: string, host: string) => void; onTookOver: () => void; pictureRect: () => ScreenRect | undefined; reading?: BarReading | null }) {
@@ -344,8 +352,53 @@ function StageBar({ tile, vm, picture, onOpenSession, onTookOver, pictureRect, r
   );
 }
 
+/**
+ * What the page says with nothing driven, by its computers (the phone's `ComputersState`, ba66ae48b): a connected
+ * computer that has not answered yet is a wait, computers all away are named, and the rest is idle, naming the ones
+ * away. A computer's failed read counts as an answer (lib/computerSessions.ts), so no wait is endless.
+ */
+export type ComputersState = { kind: "reading" } | { kind: "away"; names: string[] } | { kind: "idle"; away: string[] };
+
+export function computersState(hosts: readonly { name: string; linked: boolean; read: boolean }[]): ComputersState {
+  const away = hosts.filter((h) => !h.linked).map((h) => h.name);
+  const linked = hosts.filter((h) => h.linked);
+  if (!linked.length && away.length) return { kind: "away", names: away };
+  if (linked.some((h) => !h.read)) return { kind: "reading" };
+  return { kind: "idle", away };
+}
+
+/** "the box", "the box and Studio": computers named mid-line. */
+export const computerNames = (names: readonly string[]): string => {
+  const said = names.map(nameInLine);
+  return said.length < 2 ? (said[0] ?? "") : `${said.slice(0, -1).join(", ")} and ${said.at(-1)}`;
+};
+
+function useComputersState(): ComputersState {
+  useEffect(startComputerSessions, []);
+  const environments = useEnvironments();
+  const byHost = useStore(computerSessionsStore, (s) => s.byHost);
+  // a computer the registry lists no status for is up, as the bar's own link reads it (`useHostLink`)
+  const linked = useSyncExternalStore(
+    (fn) => registry.subscribe(fn),
+    () => environments.map((e) => (!registry.statuses().has(e.id) || registry.statusOf(e.id).transport === "open" ? "1" : "0")).join(""),
+  );
+  return useMemo(() => computersState(environments.map((e, i) => ({ name: e.name, linked: linked[i] === "1", read: e.id in byHost }))), [environments, linked, byHost]);
+}
+
+/** With nothing driven: bones in the stage's shape while a computer has not answered, else the one empty state. */
+function NothingDriven({ state }: { state: ComputersState }) {
+  if (state.kind === "reading")
+    return (
+      <div aria-busy="true" aria-label="Loading computers" data-computers-bones className="flex min-h-0 flex-1 items-start justify-center p-4">
+        <Skeleton className="aspect-[16/10] w-full max-w-[960px] rounded-lg" />
+      </div>
+    );
+  if (state.kind === "away") return <EmptyState title={`Not connected to ${computerNames(state.names)}`} />;
+  return <EmptyState title="Nothing is being driven" line={state.away.length ? `Not connected to ${computerNames(state.away)}.` : "A browser or an app an agent is using shows here, live."} />;
+}
+
 /** The page: its header (the stage's bar, or its name when nothing is driven), the stage and the strip, or the one empty state. */
-export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, frame, vms, reading }: ComputersPageProps) {
+export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, frame, vms, reading, state = IDLE }: ComputersPageProps) {
   const [measured, pageRef, page] = useSize();
   const size = measured.width > 0 || !given ? measured : given;
   const [pick, setPick] = useState<string | null>(null);
@@ -403,7 +456,7 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, fr
     return (
       <>
         {header}
-        <EmptyState title="Nothing is being driven" line="A browser or an app an agent is using shows here, live." />
+        <NothingDriven state={state} />
       </>
     );
   // the strip in the order they acted, the latest first; the elements stay in one order, so none is ever remade
@@ -474,6 +527,7 @@ export function ComputersView({ besideRail = false, onClose, onToggleSidebar, on
   const vms = useVmStates();
   // the Windows VM is a tile in every state: drawn from its state while it has no row of its own
   const tiles = useMemo(() => [...live, ...restingVmTiles(vms, live, hostName)], [live, vms]);
+  const state = useComputersState();
   const close = useRef(onClose);
   close.current = onClose;
   // while he drives a computer here Escape is that computer's key: a stray one never closes the page and its drive
@@ -483,6 +537,7 @@ export function ComputersView({ besideRail = false, onClose, onToggleSidebar, on
       <ComputersPage
         tiles={tiles}
         vms={vms}
+        state={state}
         frame={{ besideRail, onClose, onToggleSidebar }}
         // the browser /ui draws no picture of any machine: the same tiles, their captions alone
         {...(previewContext().desktop ? {} : { pictureOf: () => null })}

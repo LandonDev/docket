@@ -5,7 +5,7 @@ import type { ComputerTile } from "../lib/computers";
 import { closeFullWindow, fullWindowTarget, toggleFullScreen } from "../lib/fullWindow";
 import { closePopOut, popOutTarget, requestStage } from "../lib/popOut";
 import { registry } from "../lib/connection/registry";
-import { ComputersPage, ComputersView, LOST_TRIES, lostPlate, pictureFrame, RestingVmPicture, Tile, tileLine } from "./ComputersView";
+import { computerNames, ComputersPage, computersState, ComputersView, LOST_TRIES, lostPlate, pictureFrame, RestingVmPicture, Tile, tileLine } from "./ComputersView";
 import fixtures from "./ComputersView.fixtures";
 import type { BarReading } from "./threads/computer/ComputerBar";
 import { tile } from "./threads/computer/FullWindow.fixtures";
@@ -101,6 +101,24 @@ describe("the Computers page", () => {
       if (!fixture.props.tiles.length) expect(view.container.textContent, fixture.name).toContain("Nothing is being driven");
       view.unmount();
     }
+  });
+
+  /** Council round 1, sitting E (R1-E20): "Nothing is being driven" before any computer answered and while one was away. */
+  it("waits in the stage's shape until a connected computer answers, names computers away, and is idle only once all have", () => {
+    expect(computersState([{ name: "The box", linked: true, read: false }, { name: "This Mac", linked: true, read: true }])).toEqual({ kind: "reading" });
+    expect(computersState([{ name: "The box", linked: false, read: false }])).toEqual({ kind: "away", names: ["The box"] });
+    expect(computersState([{ name: "The box", linked: true, read: true }, { name: "Studio", linked: false, read: false }])).toEqual({ kind: "idle", away: ["Studio"] });
+    expect(computersState([])).toEqual({ kind: "idle", away: [] });
+    expect(computerNames(["The box", "This Mac", "Studio"])).toBe("the box, this Mac and Studio");
+    const shown = render(<ComputersPage tiles={[]} onOpenSession={() => undefined} state={{ kind: "reading" }} />);
+    expect(screen.getByLabelText("Loading computers")).not.toBeNull();
+    expect(screen.queryByText("Nothing is being driven")).toBeNull();
+    shown.rerender(<ComputersPage tiles={[]} onOpenSession={() => undefined} state={{ kind: "away", names: ["The box"] }} />);
+    expect(screen.getByText("Not connected to the box")).not.toBeNull();
+    expect(screen.queryByText("Nothing is being driven")).toBeNull();
+    shown.rerender(<ComputersPage tiles={[]} onOpenSession={() => undefined} state={{ kind: "idle", away: ["The box"] }} />);
+    expect(screen.getByText("Nothing is being driven")).not.toBeNull();
+    expect(screen.getByText("Not connected to the box.")).not.toBeNull();
   });
 
   it("says nothing is being driven, with one line and no action", () => {
