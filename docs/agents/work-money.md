@@ -550,7 +550,15 @@ its place, with no fade. Nothing is written from a kept read.
   sight. Both sides measure the header's content box against one 520px
   (`WIDE_HEAD`, `headIsNarrow` in layout.ts), More by ResizeObserver's
   fractional width, never a rounded `clientWidth`; layout.test walks the
-  widths around it in quarter pixels.
+  widths around it in quarter pixels. A category cut in By category shows
+  whole in a tip. An entry's press is the whole row (the date's link,
+  stretched): its focus ring is the row's, never the date's alone. While the
+  host's link is down, Owed's Paid and Open ledger are held in place under
+  the view's link line.
+- `InvoiceDialog.tsx` (Invoice… and Purchase request…): under 30rem of
+  dialog (its `invoice` container: the browser /ui on a phone) Number takes
+  a row over Date and Due, and each line's What a row over Quantity, Rate,
+  Amount and its remove.
 - Open ledger and a row's paperclip open the file in a Files tab
   (`work.money.open` or `receiptSource`, then `work.files.open` and the
   Files view): no thread is made for a file.

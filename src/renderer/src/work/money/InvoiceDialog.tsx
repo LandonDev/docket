@@ -10,9 +10,17 @@ import { DateField } from "../../components/ui/date-field";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
+import { cn } from "../../lib/cn";
 import { request } from "./api";
 import { AmountInput, noHeldReturn } from "./fields";
 import { parseAmount } from "./model";
+
+/**
+ * A line's columns: What, Quantity, Rate, Amount and the remove. Under 30rem of dialog What takes a row of its own over
+ * the other four, so its field never shrinks to nothing; Amount stays above the total either way.
+ */
+const LINE_GRID = "grid grid-cols-[minmax(0,1fr)_72px_112px_96px_28px] gap-2 @max-[30rem]/invoice:grid-cols-[64px_minmax(0,1fr)_88px_28px]";
+const WHAT_CELL = "@max-[30rem]/invoice:col-span-full";
 import { keepPrinted, newKey, printPage } from "./print";
 
 /**
@@ -185,12 +193,13 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
           )}
         </ModalBody>
       ) : (
-        <ModalBody>
+        // Its own container: under 30rem (the browser /ui on a phone) Number and What each take a row of their own.
+        <ModalBody className="@container/invoice">
           <Field label={kind === "invoice" ? "To" : "Vendor"}>
             <Input autoFocus value={form.to} autoComplete="off" onChange={(e) => patch({ to: e.target.value })} />
           </Field>
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Number">
+          <div className="grid grid-cols-3 gap-3 @max-[30rem]/invoice:grid-cols-2">
+            <Field label="Number" className="@max-[30rem]/invoice:col-span-full">
               <Input value={form.number} autoComplete="off" className="tabular-nums" onChange={(e) => patch({ number: e.target.value })} />
             </Field>
             <Field label="Date">
@@ -219,8 +228,8 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
             </Field>
           ) : null}
           <div ref={linesRef} role="group" aria-label="Lines" className="flex flex-col gap-1">
-            <div className="grid grid-cols-[minmax(0,1fr)_72px_112px_96px_28px] gap-2 text-xs font-medium text-muted-foreground">
-              <span>What</span>
+            <div className={cn(LINE_GRID, "text-xs font-medium text-muted-foreground")}>
+              <span className={WHAT_CELL}>What</span>
               <span>Quantity</span>
               <span>Rate</span>
               <span className="text-end">Amount</span>
@@ -229,8 +238,8 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
             {form.lines.map((l, i) => {
               const counted = lineOf(l);
               return (
-                <div key={i} data-invoice-line={i} className="grid grid-cols-[minmax(0,1fr)_72px_112px_96px_28px] items-center gap-2">
-                  <Input aria-label={`What, line ${i + 1}`} value={l.what} autoComplete="off" onKeyDown={onLineKey(i)} onChange={(e) => setLine(i, { what: e.target.value })} />
+                <div key={i} data-invoice-line={i} className={cn(LINE_GRID, "items-center")}>
+                  <Input aria-label={`What, line ${i + 1}`} className={WHAT_CELL} value={l.what} autoComplete="off" onKeyDown={onLineKey(i)} onChange={(e) => setLine(i, { what: e.target.value })} />
                   <Input aria-label={`Quantity, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.quantity} inputMode="decimal" autoComplete="off" className="tabular-nums" onChange={(e) => setLine(i, { quantity: e.target.value })} />
                   <AmountInput aria-label={`Rate, line ${i + 1}`} onKeyDown={onLineKey(i)} value={l.rate} placeholder="0.00" onChange={(e) => setLine(i, { rate: e.target.value })} />
                   <span className="text-end text-[13px] tabular-nums">{counted ? formatMoney(lineTotal(counted)) : ""}</span>

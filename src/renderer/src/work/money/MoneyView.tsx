@@ -11,6 +11,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
 import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark } from "../../components/ui/status";
+import { TruncateTip } from "../../components/tip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
 import { tableRowCount, useKeptRows, WindowedTableRows, type TableRowPlace } from "../windowed";
 import { cn } from "../../lib/cn";
@@ -583,7 +584,9 @@ function ByCategory({ read, selected, onPick }: { read: MoneyRead; selected: str
         return (
           <li key={c.category}>
             <ItemButton aria-pressed={on} onClick={() => onPick(c.category)} className={cn("grid h-8 items-center gap-4 px-2 py-0 text-[13px] hover:bg-muted", CATEGORY_GRID, on && "bg-muted")}>
-              <span className="truncate">{c.category}</span>
+              <TruncateTip text={c.category}>
+                <span className="truncate">{c.category}</span>
+              </TruncateTip>
               <span className="flex h-2 items-center">
                 <span className="h-2 rounded-e bg-(--chart-neutral)" style={{ width: `${Math.max(1, Math.round(c.share * 100))}%` }} />
               </span>
@@ -610,6 +613,8 @@ export function owedWords(r: Pick<OwedRow, "who" | "what" | "reimburse">): { lea
 
 function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: string; owed: OwedRow[]; reload: () => Promise<void> }) {
   const [paying, setPaying] = useState<string | null>(null);
+  // A lost link holds both presses in place: the host can only refuse them, and the view's link line says why.
+  const linkDown = !!useHostLinkDown(env);
   const pay = (row: OwedRow) => {
     const key = `${row.row}:${row.way}`;
     setPaying(key);
@@ -648,11 +653,11 @@ function Owed({ env, workspaceId, owed, reload }: { env: string; workspaceId: st
                   <span className="text-end tabular-nums">{formatMoney(r.amount)}</span>
                   {r.both ? (
                     // One status covers both sides of this row: Paid here would settle the other too, so it is settled in the sheet.
-                    <Button variant="ghost" size="sm" className="justify-self-end" onClick={() => withToast(() => openBook(env, workspaceId, "ledger"))} aria-label={`Open ledger: ${named}`}>
+                    <Button variant="ghost" size="sm" className="justify-self-end" disabled={linkDown} onClick={() => withToast(() => openBook(env, workspaceId, "ledger"))} aria-label={`Open ledger: ${named}`}>
                       Open ledger
                     </Button>
                   ) : (
-                    <Button variant="ghost" size="sm" className="justify-self-end" disabled={paying !== null} onClick={() => pay(r)} aria-label={`Paid: ${named}`}>
+                    <Button variant="ghost" size="sm" className="justify-self-end" disabled={paying !== null || linkDown} onClick={() => pay(r)} aria-label={`Paid: ${named}`}>
                       <BusyLabel align="end" busy={paying === key} label="Paid" />
                     </Button>
                   )}
@@ -727,7 +732,8 @@ const EntryRow = memo(function EntryRow({ row, place, onReceipt }: { row: Ledger
           variant="link"
           aria-label={`${row.who || "Entry"}, ${rowMoney(row)}${row.date ? `, ${formatDay(row.date)}` : ""}`}
           onClick={() => openRow(row)}
-          className="static h-auto p-0 font-normal text-muted-foreground tabular-nums hover:no-underline after:absolute after:inset-0 after:content-['']"
+          // The row is the press: its stretched box takes the house ring (index.css's inset outline), never the date's own.
+          className="static h-auto p-0 font-normal text-muted-foreground tabular-nums outline-none! hover:no-underline after:absolute after:inset-0 after:content-[''] focus-visible:after:outline-2 focus-visible:after:outline-solid focus-visible:after:-outline-offset-2 focus-visible:after:outline-accent"
         >
           {row.date ? formatDay(row.date, false) : ""}
         </Button>

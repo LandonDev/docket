@@ -92,6 +92,18 @@ describe("an invoice", () => {
     expect(dialog.querySelector("[data-invoice-total]")!.textContent).toBe("$225.00");
   });
 
+  /** Council round 1, sitting E (R1-E6): under 30rem What printed over Quantity and its field shrank to nothing. */
+  it("gives What and Number a row of their own in a narrow dialog (its own container rule)", async () => {
+    const { dialog } = await open();
+    const body = dialog.querySelector(".\\@container\\/invoice")!;
+    expect(body).toBeTruthy();
+    const line = dialog.querySelector('[data-invoice-line="0"]')!;
+    expect(line.className).toContain("@max-[30rem]/invoice:grid-cols-[64px_minmax(0,1fr)_88px_28px]");
+    expect(within(dialog).getByLabelText("What, line 1").className).toContain("@max-[30rem]/invoice:col-span-full");
+    expect(within(body as HTMLElement).getByText("What").className).toContain("@max-[30rem]/invoice:col-span-full");
+    expect(within(dialog).getByLabelText("Number").closest(".\\@max-\\[30rem\\]\\/invoice\\:col-span-full")).toBeTruthy();
+  });
+
   it("asks his details whole the first time, and after that shows one line with Edit", async () => {
     from = null;
     const first = await open();

@@ -235,6 +235,40 @@ describe("the Money view", () => {
     expect(asked("work.money.paid")).toEqual([{ workspaceId: "ws", at: { ref: dues.ref, row: dues.row, sig: sigOf(dues) } }]);
   });
 
+  /** Council round 1, sitting E (R1-E8): with the link cut, Paid on a kept row still sent a request the host could only refuse. */
+  it("holds Paid and Open ledger in place while the link is down", async () => {
+    const { registry: links } = await import("../../lib/connection/registry");
+    const { IDLE_STATUS } = await import("../../lib/connection/types");
+    let transport: "open" | "offline" = "open";
+    vi.spyOn(links, "statusOf").mockImplementation((id) => (id === "box" ? { ...IDLE_STATUS, transport } : IDLE_STATUS));
+    vi.spyOn(links, "environment").mockReturnValue({ name: "The box" } as never);
+    const shown = mount();
+    await settle();
+    const paid = () => within(screen.getByRole("region", { name: "You owe" })).getByRole<HTMLButtonElement>("button", { name: "Paid: State Officials Assn, Second-half dues" });
+    expect(paid().disabled).toBe(false);
+    transport = "offline";
+    shown.rerender(
+      <>
+        <div role="toolbar" aria-label="Money header">
+          <Head {...props} />
+        </div>
+        <View {...props} />
+      </>,
+    );
+    expect(paid().disabled).toBe(true);
+    vi.restoreAllMocks();
+  });
+
+  /** Council round 1, sitting E (R1-E7): the ring hugged the date's link; the row is the press, so the ring is the row's. */
+  it("rings the whole row on focus, never the date alone", async () => {
+    mount();
+    await settle();
+    const press = document.querySelector("[data-money-row] button")!;
+    expect(press.className).toContain("outline-none!");
+    expect(press.className).toContain("focus-visible:after:outline-accent");
+    expect(press.className).toContain("after:inset-0");
+  });
+
   it("offers Add entry on an empty ledger, which opens the dialog", async () => {
     host.read = (p) => EMPTY_READ(p);
     mount();
