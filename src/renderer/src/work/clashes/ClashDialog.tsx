@@ -554,7 +554,7 @@ export function StepForm({
         {timed ? (
           /* As New event's: one row where Day keeps room for its date, else Day over the two times. */
           <div data-step-when className="@container/when">
-            <div className="grid grid-cols-2 gap-2 @[400px]/when:grid-cols-[minmax(0,1fr)_112px_112px]">
+            <div className="grid grid-cols-2 gap-2 @[400px]/when:grid-cols-[minmax(0,1fr)_116px_116px]">
               <Field label="Day" className="col-span-2 @[400px]/when:col-span-1">
                 <DateField required autoFocus disabled={locked} value={form.day} onChange={(day) => patch({ day })} />
               </Field>
