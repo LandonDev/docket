@@ -18,7 +18,7 @@ final class ConnectionsFeed {
     /// A read has ended once: before it the place draws its rows' shape, never "Nothing to Check".
     private(set) var hasRead = false
     @ObservationIgnored private var readAt: Date?
-    /// The hosts the last read could ask: one whose link opens after it is read then, whatever the time.
+    /// The hosts the last read could ask: a link that opens or drops after it reads again, whatever the time.
     @ObservationIgnored private var askedLast: Set<String> = []
     /// How long a read stands before the Work list asks again: each check runs every pillar's own.
     @ObservationIgnored private let stands: TimeInterval = 5 * 60
@@ -30,7 +30,7 @@ final class ConnectionsFeed {
     func read(_ clients: [EnvironmentClient], fresh: Bool = false) async {
         let work = clients.filter { $0.work.isOn && $0.work.may(.health) }
         let linked = Set(work.filter(\.work.linked).map(\.environment.id))
-        if !fresh, let readAt, Date().timeIntervalSince(readAt) < stands, linked.isSubset(of: askedLast) { return }
+        if !fresh, Connections.reuses(readAt: readAt, stands: stands, linked: linked, asked: askedLast) { return }
         guard !reading else { return }
         reading = true
         defer { reading = false }
@@ -126,7 +126,7 @@ struct ConnectionsScreen: View {
                 }
             }
         }
-        // Read again when a host's link opens: a read made before it said nothing of that host.
+        // Read again when a host's link opens or drops: a read made before it said nothing of that host, or still had it linked.
         .task(id: clients.filter(\.work.linked).map(\.environment.id)) { await feed.read(clients) }
     }
 

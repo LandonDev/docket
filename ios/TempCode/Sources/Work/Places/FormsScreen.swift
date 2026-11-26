@@ -260,10 +260,12 @@ struct MsFormAnswersScreen: View {
 
     @ViewBuilder private func content(_ client: EnvironmentClient) -> some View {
         if let answers, let form {
-            if answers.rows.isEmpty {
-                ContentUnavailableView("No Answers Yet", systemImage: "checklist", description: answers.none ? nil : FormsList.readLine(answers).map { Text($0) })
-            } else {
-                List {
+            // A refresh that failed keeps the last read, its time in the footer, with the failed-read row above it.
+            List {
+                if let error {
+                    Section { FailedRead(words: error, retry: { await load(client) }, identifier: "msform-reread-failed") }
+                }
+                if !answers.rows.isEmpty {
                     Section {
                         ForEach(Array(answers.rows.enumerated()), id: \.offset) { index, row in
                             VStack(alignment: .leading, spacing: 6) {
@@ -288,7 +290,12 @@ struct MsFormAnswersScreen: View {
                         }
                     }
                 }
-                .listStyle(.plain)
+            }
+            .listStyle(.plain)
+            .overlay {
+                if answers.rows.isEmpty {
+                    ContentUnavailableView("No Answers Yet", systemImage: "checklist", description: answers.none ? nil : FormsList.readLine(answers).map { Text($0) })
+                }
             }
         } else if let error {
             ContentUnavailableView {
@@ -334,7 +341,7 @@ struct MsFormAnswersScreen: View {
                 form = seen
             }
         } catch {
-            if answers == nil { self.error = ActionError.wrap(error).message }
+            self.error = ActionError.wrap(error).message
         }
     }
 

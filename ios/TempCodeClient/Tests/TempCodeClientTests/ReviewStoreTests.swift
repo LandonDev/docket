@@ -119,6 +119,24 @@ private struct Down: Error {}
         #expect(view.merged != nil)
     }
 
+    @Test func aFirstReadThatFailedWithNoWeekIsTheFramesFailureNotNoWeekYet() async {
+        let box = StandInWeek("box")
+        box.fails = Down()
+        let s = store([box])
+        s.update(hosts: [Self.input("box", platform: "linux", jobs: [("b1", "purdue")])])
+        await s.load()
+        #expect(s.view.merged == nil)
+        #expect(ReviewDesk.firstFailure(s.view) == "Work is off on the host.")
+        // Once a week merged, its head carries the line instead.
+        box.fails = nil
+        box.body = Self.body(host: "box", jobs: [("b1", "purdue")])
+        await s.load()
+        box.fails = Down()
+        await s.load()
+        #expect(ReviewDesk.firstFailure(s.view) == nil)
+        #expect(ReviewDesk.lines(s.view).over == ["Work is off on the host. Its last answer is shown."])
+    }
+
     @Test func aPressGoesToItsHostTheRowLeavesAndUndoBringsItBack() async throws {
         let box = StandInWeek("box")
         box.body = Self.body(host: "box", jobs: [("b1", "purdue")], slipped: [Self.task("t1")])

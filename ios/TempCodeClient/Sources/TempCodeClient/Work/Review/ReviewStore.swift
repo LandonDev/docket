@@ -169,6 +169,13 @@ public enum ReviewDesk {
         return Lines(over: over, part: of(L.mailPart, L.heldPart, L.filesPart), hours: of(L.threads, L.files), lastKnown: lastKnown)
     }
 
+    /// A first read that failed with no week to draw: the hosts' lines, for the place frame's failed-read row with Try
+    /// Again in "No Week Yet"'s place. Nil once a week merged: its head carries the lines (`lines`).
+    public static func firstFailure(_ view: ReviewView) -> String? {
+        guard view.merged == nil, !view.errors.isEmpty else { return nil }
+        return view.errors.map(\.error).joined(separator: " ")
+    }
+
     /// "This week", "Last week", else "Week of Nov 10": the picker's words for a week.
     public static func weekName(_ week: WeekReview.Week, now: Double, tz: String) -> String {
         let this = WeekReview.weekOf(now, tz: tz)

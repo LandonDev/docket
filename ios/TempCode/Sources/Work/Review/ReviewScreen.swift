@@ -60,6 +60,8 @@ struct ReviewScreen: View {
             ids: hourIds + rows.map(\.key),
             loading: merged == nil && !view.settled,
             empty: PlaceEmpty(title: "No Week Yet", line: view.off.first ?? "No computer with Work on has answered."),
+            failure: ReviewDesk.firstFailure(view),
+            retry: { await store.load() },
             refresh: { await store.load() },
             pick: merged.map { m in
                 PlacePick(first: rows.map(\.key), rowOf: { route in rows.first { target(m, $0) == route }?.key }) { key in
@@ -116,8 +118,13 @@ struct ReviewScreen: View {
         Section {
             ReviewLine(words: WeekReview.madeWords(merged, now: store.now()))
             ForEach(view.off + lines.part, id: \.self) { ReviewLine(words: $0) }
+            // The first red line is the house failed-read row: Try Again goes under it at accessibility sizes.
             ForEach(Array(lines.over.enumerated()), id: \.element) { index, line in
-                ReviewLine(words: line, tint: Tint.destructiveText, retry: index == 0 ? { await store.load() } : nil)
+                if index == 0 {
+                    FailedRead(words: line, retry: { await store.load() }, identifier: "review-failed", tint: Tint.destructiveText).listRowSeparator(.hidden)
+                } else {
+                    ReviewLine(words: line, tint: Tint.destructiveText)
+                }
             }
             if lines.lastKnown { ReviewLine(words: "Slipped shows what was last known.") }
         }
@@ -437,22 +444,16 @@ private struct ReviewRowView: View {
     }
 }
 
-/// One quiet line of the page; red with Retry for the first line that failed.
+/// One quiet line of the page; red for a line that failed after the first (that one is `FailedRead`).
 private struct ReviewLine: View {
     let words: String
     var tint: Color?
-    var retry: (() async -> Void)?
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
-            Text(words).textStep(.meta, tint: tint)
-            Spacer(minLength: 0)
-            if let retry {
-                PillButton("Try Again") { Task { await retry() } }
-            }
-        }
-        .listRowInsets(Layout.rowInsets)
-        .listRowSeparator(.hidden)
+        Text(words).textStep(.meta, tint: tint)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowInsets(Layout.rowInsets)
+            .listRowSeparator(.hidden)
     }
 }
 

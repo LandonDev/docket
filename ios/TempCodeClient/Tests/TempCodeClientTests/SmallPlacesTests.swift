@@ -233,4 +233,15 @@ import TempCodeContract
         #expect(Connections.missedLine([(name: "Mac", why: .failed(""), keptAt: nil)]) == "Mac did not answer.")
         #expect(Connections.missedLine([(name: "Mac", why: .away, keptAt: nil), (name: "The box", why: .lapses, keptAt: nil)]) == "Mac and The box were not checked.")
     }
+
+    @Test func `a recent check stands only while the linked computers are the ones it asked`() {
+        let at = Date(timeIntervalSince1970: 1_000_000)
+        let soon = at.addingTimeInterval(60)
+        #expect(Connections.reuses(readAt: at, now: soon, stands: 300, linked: ["box", "mac"], asked: ["box", "mac"]))
+        #expect(!Connections.reuses(readAt: nil, now: soon, stands: 300, linked: ["box"], asked: ["box"]))
+        #expect(!Connections.reuses(readAt: at, now: at.addingTimeInterval(301), stands: 300, linked: ["box"], asked: ["box"]))
+        // One linked since said nothing in it; one gone since must be named away.
+        #expect(!Connections.reuses(readAt: at, now: soon, stands: 300, linked: ["box", "mac"], asked: ["box"]))
+        #expect(!Connections.reuses(readAt: at, now: soon, stands: 300, linked: ["box"], asked: ["box", "mac"]))
+    }
 }

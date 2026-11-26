@@ -236,6 +236,13 @@ public enum Connections {
         return one.keptAt.map { "\(line) Showing what it said at \($0)." } ?? line
     }
 
+    /// Whether a read under `stands` old answers again: only while the linked hosts are the ones it asked. A host
+    /// linked since said nothing in it; one gone since must be named away, its kept rows dated.
+    public static func reuses(readAt: Date?, now: Date = Date(), stands: TimeInterval, linked: Set<String>, asked: Set<String>) -> Bool {
+        guard let readAt else { return false }
+        return now.timeIntervalSince(readAt) < stands && linked == asked
+    }
+
     public struct Host: Sendable {
         public var id: String
         public var name: String

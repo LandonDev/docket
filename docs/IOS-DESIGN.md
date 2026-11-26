@@ -3395,7 +3395,7 @@ desktop's weekly review on the phone (docs/agents/work-review.md "The phone"). O
   newest, then the weeks the hosts kept, then Previous Week and Next Week. The title stays Review.
 - **The head** is one muted line of when it was made ("Made Friday at 4:00 PM"), a host that is off ("The Mac is
   off. …"), a list read in part, then the red lines (a host that did not answer, a source that feeds more than one
-  section), the first with Try Again, as the desktop's head.
+  section), the first with Try Again as the failed-read row in its red (`FailedRead`), as the desktop's head.
 - **Hours**: one row a job, every job listed (the empty one is the news), its sector dot in the mark slot, the
   name, the total trailing ("about 11 h", "6 hr 30 min"; else "Nothing seen" muted; under the name at accessibility
   sizes), then under it the facts ("6 hr 30 min on the calendar, about 4 hr 30 min at the desk"; a row with one
@@ -3412,8 +3412,9 @@ desktop's weekly review on the phone (docs/agents/work-review.md "The phone"). O
   last known with no presses. A press makes the row leave on `Motion.rowLeave` with a light impact and the
   shared undo capsule; a nudge opens the thread that drafts it. None sends to anyone, so none asks the owner's
   check.
-- **States**: the first read draws the rows' shape redacted; "Nothing slipped" only where every source answered,
-  else "Not counted". Opening a week tells its hosts he has seen it, so Today's row and the digest's line go.
+- **States**: the first read draws the rows' shape redacted; a first read that failed with no week to draw is the
+  frame's failed-read row with Try Again, never "No Week Yet" (`ReviewDesk.firstFailure`); "Nothing slipped" only
+  where every source answered, else "Not counted". Opening a week tells its hosts he has seen it, so Today's row and the digest's line go.
 
 ### Money
 
@@ -3460,7 +3461,7 @@ card. Connections and Computers sit in the Work list's foot.
   trailing swipe on a form that takes answers; Reopen on a closed one, only for a key that may, after the owner's
   check. A Microsoft form that collected opens its **answers** in the detail: each answer under its question (meta
   over body), the stamp as the header, "Read at 2:10 PM" in the footer, Open in Forms and Close or Reopen in the
-  bar's menu.
+  bar's menu. A refresh that fails keeps the last read, none answered too, with the failed-read row above it.
 - **Files' New** adds "From a Template" under the kinds where the place makes files: a row a template with its kind's
   glyph; it pushes its fields, one field a row, and Make writes it into the folder; the toast says what is left to
   fill.
@@ -3472,7 +3473,8 @@ card. Connections and Computers sit in the Work list's foot.
   "Broken" in the destructive ink, both semibold). A row that does not work offers "Open on <computer>" in its swipe
   and context menu. A Work host whose checks did not come back is named in the one line over the rows, never "Nothing
   to Check" (`Connections.missedLine`): not connected, did not answer (its kept rows "Showing what it said at 2:10
-  PM."), or did not say what ends soon; the list reads again when a host's link opens. That line wraps whole, with
+  PM."), or did not say what ends soon; the list reads again when a host's link opens or drops, a recent check
+  standing only while the linked hosts are the ones it asked (`Connections.reuses`). That line wraps whole, with
   Try Again under it at accessibility sizes, as every Work place's failed read (`FailedRead`).
 - **Computers** leads with the Windows VM where a host keeps it: "Windows VM", how it stands ("Asleep", the step while
   it wakes), its last fault in the destructive ink, and one bordered capsule, Wake or Sleep, a spinner while it moves.
