@@ -549,6 +549,42 @@ describe("remote profile: the catch-up after a reconnect", () => {
     link.holdEvents = null;
   });
 
+  it("a better route that takes over before the old socket closes leaves the shown thread subscribed on the new one, its rows folded once", async () => {
+    link.pages = [[wireMeta({ id: "s" })]];
+    link.events.set("s", turns("s", 2));
+    await boot(link);
+    sessionStore.followShown({ shown: () => "s", onChange: () => () => {} });
+    sessionStore.setMounted(["s"]);
+    await sessionStore.ensureLoaded("s");
+    link.events.set("s", [...turns("s", 2), ...turns("s", 1, 5).map((r, i) => ({ ...r, event: { ...r.event, text: `late ${i}` } as EventRow["event"] }))]);
+    // Socket A (the fallback route): its replay of the shown thread goes out and hangs.
+    const real = link.request.bind(link);
+    let dropA: ((e: Error) => void) | null = null;
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> => {
+      if (method === "session.events" && !dropA) {
+        link.calls.push({ method, params });
+        return new Promise<T>((_, reject) => (dropA = reject));
+      }
+      return real<T>(method, params);
+    }) as typeof link.request;
+    link.subscribed.clear();
+    link.open();
+    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(dropA).not.toBeNull();
+    // Socket B (the better route) is announced before A closes: it holds no subscriptions yet.
+    link.subscribed.clear();
+    const atB = link.calls.length;
+    link.open();
+    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+    // A closes: its replay fails.
+    dropA!(new ConnectionLostError("connection closed"));
+    for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+    const onB = link.calls.slice(atB).filter((c) => c.method === "session.events" && (c.params as { sessionId: string }).sessionId === "s");
+    expect(onB).toHaveLength(1);
+    expect(link.subscribed.has("s")).toBe(true);
+    expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1"]);
+  });
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];

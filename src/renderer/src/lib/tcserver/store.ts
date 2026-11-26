@@ -145,7 +145,12 @@ type Attached = {
   catchUp: CatchUpLane;
   detach: (() => void)[];
   listed: Promise<void> | null;
+  /** Sockets this link has opened: a replay names the one it ran on (`Entry.replaying`). */
+  opens: number;
 };
+
+/** What `replayShown` started on a socket: whether it replayed there, and which socket that was. */
+type EarlyReplay = Promise<{ ran: boolean; socket: number }>;
 
 type Entry = {
   session: Session;
@@ -183,6 +188,8 @@ type Entry = {
   held: EventRow[] | null;
   /** Held since the host's `resync` push, before the replay's own hold: the replay runs through it. */
   resyncHold?: boolean;
+  /** The replay of its gap on its way, and the socket it runs on: one on a newer socket waits it out. */
+  replaying?: { socket: number; run: Promise<unknown> } | null;
   /** The part of the log before the tail that painted first: the rows
    *  before `beforeSeq` are still to come, and every row folded since the
    *  tail landed waits in `since` so the refold includes it. */
@@ -612,8 +619,9 @@ class SessionStore {
     }
     const subs = new Subscriptions(link);
     const catchUp = new CatchUpLane({ shown: (id) => this.onScreen(id), bytesIn: () => link.bytesIn ?? 0 });
-    const entry: Attached = { link, subs, catchUp, detach: [], listed: null };
+    const entry: Attached = { link, subs, catchUp, detach: [], listed: null, opens: 0 };
     const list = (): void => {
+      entry.opens += 1;
       // Transcripts asked for while the host was away load now, beside the list.
       this.kickWanted(link.environmentId);
       // The hello named the host: the thread on screen replays its gap now, beside the list, not after it.
@@ -1329,7 +1337,7 @@ class SessionStore {
    *  loaded there), then replay any gap for the sessions whose panes are
    *  mounted. Runs once per replacement session of that environment. A
    *  host with a cursor here resumes from it instead (`resumeList`). */
-  async resync(link: Link, early?: ReadonlySet<string>): Promise<void> {
+  async resync(link: Link, early?: ReadonlyMap<string, EarlyReplay>): Promise<void> {
     const environmentId = link.environmentId;
     if (!this.attached.has(environmentId)) return;
     if (await this.resumeList(link)) {
@@ -1362,22 +1370,28 @@ class SessionStore {
 
   /** On a new socket, before the list: each loaded thread on screen replays its gap at once. Their ids, which
    *  the list's own replay (`replayMounted`) then leaves alone, so each asks once. */
-  private replayShown(environmentId: string): Set<string> {
-    const early = new Set<string>();
+  private replayShown(environmentId: string): Map<string, EarlyReplay> {
+    const early = new Map<string, EarlyReplay>();
     for (const entry of this.entries.values()) {
       if (!entry.loaded || entry.load.phase !== "loaded" || entry.meta?.environmentId !== environmentId) continue;
       if (!this.onScreen(entry.session.id)) continue;
-      early.add(entry.session.id);
-      void this.replayGap(entry, "resync").then(
-        () => this.bump(),
-        () => undefined,
+      const socket = this.socketOf(entry);
+      early.set(
+        entry.session.id,
+        this.replayGap(entry, "resync").then(
+          (ran) => {
+            this.bump();
+            return { ran, socket };
+          },
+          () => ({ ran: false, socket }),
+        ),
       );
     }
     return early;
   }
 
   /** After a list or a resume: the transcripts on screen replay their gap (those in `early` already are). */
-  private async replayMounted(environmentId: string, early?: ReadonlySet<string>): Promise<void> {
+  private async replayMounted(environmentId: string, early?: ReadonlyMap<string, EarlyReplay>): Promise<void> {
     // Only the transcripts on screen replay their gap; a loaded one whose
     // tab is no longer mounted is dropped and fetched again if it comes
     // back. A reconnect once replayed every transcript ever opened — 2,560
@@ -1385,9 +1399,20 @@ class SessionStore {
     // recently shown are KEEP_RECENT at most.
     const keep = this.keptLoaded();
     const replay: Entry[] = [];
+    const shared: Promise<void>[] = [];
     for (const entry of this.entries.values()) {
       if (!entry.loaded || !entry.meta || entry.meta.environmentId !== environmentId) continue;
-      if (early?.has(entry.meta.id)) continue;
+      if (early?.has(entry.meta.id)) {
+        // Shared when it replayed on this same socket; run again when it did not (a failure, or held by an
+        // older socket's replay that has since ended). The list's freshness waits for it either way.
+        const socket = this.socketOf(entry);
+        shared.push(
+          early.get(entry.meta.id)!.then(({ ran, socket: on }) =>
+            ran && on === socket && this.socketOf(entry) === socket ? undefined : this.replayGap(entry, "resync").then(() => undefined, () => undefined),
+          ),
+        );
+        continue;
+      }
       if (!keep || keep.has(entry.meta.id)) replay.push(entry);
       // A transcript the unload refuses (a send of his pending, a load out)
       // keeps its rows, so it replays its gap like a kept one: a resync's hold
@@ -1403,11 +1428,12 @@ class SessionStore {
     replay.sort((a, b) => onPage(a) - onPage(b));
     // A pane restored from a saved layout is a loaded draft until its host
     // claims it; its first fetch is a load with a phase like any other.
-    await Promise.all(
-      replay.map((entry) =>
+    await Promise.all([
+      ...shared,
+      ...replay.map((entry) =>
         entry.load.phase === "loaded" ? this.replayGap(entry, "resync") : this.startLoad(entry, "resync").catch(() => undefined),
       ),
-    );
+    ]);
     this.bump();
   }
 
@@ -1915,15 +1941,30 @@ class SessionStore {
     }
   }
 
-  private async replayGap(entry: Entry, why: string): Promise<void> {
+  /** Which socket of its link a transcript's replay would run on now. */
+  private socketOf(entry: Entry): number {
+    return this.attached.get(entry.meta?.environmentId ?? entry.session.environmentId)?.opens ?? 0;
+  }
+
+  /** Replays a transcript's gap on the live socket. True when it ran there; false when another replay already
+   *  holds it on this socket, or nothing could run. A replay still out on an older socket (a better route took
+   *  over with no close between) is waited out, then this one runs: the new socket must carry the thread. */
+  private async replayGap(entry: Entry, why: string): Promise<boolean> {
     const link = this.linkOf(entry);
     const subs = this.subsOf(entry);
     if (!link || !subs) {
       if (entry.resyncHold) this.releaseResyncHolds(entry.meta?.environmentId ?? "");
-      return;
+      return false;
     }
     const id = entry.session.id;
-    if (entry.held && !entry.resyncHold) return;
+    const socket = this.socketOf(entry);
+    if (entry.held && !entry.resyncHold) {
+      const prior = entry.replaying;
+      if (!prior || prior.socket === socket) return false;
+      await prior.run.catch(() => undefined);
+      if (this.entries.get(id) !== entry || this.socketOf(entry) !== socket || !entry.loaded) return false;
+      if (entry.held && !entry.resyncHold) return false;
+    }
     this.noteLoad(why);
     // A first load paints the last turns first; the rest folds behind them.
     // The cursor decides, never the loaded flag: a pane restored from a
@@ -1946,10 +1987,18 @@ class SessionStore {
     // once asked for six at once, 8 MiB deep on the socket (catchUp.ts).
     const lane = link.profile === "remote" ? this.attached.get(entry.meta?.environmentId ?? entry.session.environmentId)?.catchUp : undefined;
     // A transcript unloaded while it waited its turn has nobody to fold for.
-    await (lane ? lane.run(id, () => (subs.has(id) ? fetch() : Promise.resolve())) : fetch());
+    const run = lane ? lane.run(id, () => (subs.has(id) ? fetch() : Promise.resolve())) : fetch();
+    const mine = { socket, run };
+    entry.replaying = mine;
+    try {
+      await run;
+    } finally {
+      if (entry.replaying === mine) entry.replaying = null;
+    }
     // A local socket folds the whole head behind the tail; a remote one
     // pages it in on demand (loadOlder), oldest page last.
     if (entry.head && !entry.head.fetching && !entry.rows) void this.fetchHead(entry);
+    return true;
   }
 
   /** Resume, then follow a page that says rows come after it (the remote

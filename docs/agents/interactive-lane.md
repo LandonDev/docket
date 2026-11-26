@@ -62,7 +62,11 @@
 - After a new socket (its hello has named the host), each loaded thread on
   screen replays its gap at once, beside `session.changes` and
   `session.list`, not after them (store.ts `replayShown`); the list's own
-  replay (`replayMounted`) leaves those alone, so each asks once, and the
+  replay (`replayMounted`) shares one that replayed on that same socket,
+  runs again one that failed or never ran, and the link is fresh only
+  after both; a replay still out on an older socket (a better route took
+  over with no close between) is waited out and the thread replays on the
+  new one (`Entry.replaying`), so each asks once per socket, and the
   rest take turns in the catch-up lane as before (catchUp.ts). Its rows fold
   once and in order by seq whatever the list answers after
   (store.remote.test.ts).
