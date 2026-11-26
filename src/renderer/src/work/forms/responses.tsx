@@ -4,9 +4,18 @@ import type { CanvasSource } from "@shared/work";
 import { Checkbox } from "../../components/ui/checkbox";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Table as DataTable, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { useOverflowEdges } from "../../hooks/useOverflowEdges";
 import { dayTime } from "../../lib/duration";
 import type { CanvasShell } from "../canvas/kind";
 import { plural, submittedTime } from "./model";
+
+/**
+ * The answers' table scrolls sideways inside its own box (the table's container): while more of it lies past an edge,
+ * that edge fades over 24px, so a pane narrower than the table says it goes on. The flags sit on the container
+ * (`useOverflowEdges`); the mask is the wrapper's, the same ramp as `OVERFLOW_FADE`.
+ */
+const TABLE_FADE =
+  "[&:has(>[data-overflow-start])]:[--fade-start:24px] [&:has(>[data-overflow-end])]:[--fade-end:24px] [mask-image:linear-gradient(90deg,transparent_var(--fade-clear-start,0px),var(--foreground)_calc(var(--fade-clear-start,0px)_+_var(--fade-start,0px)),var(--foreground)_calc(100%_-_var(--fade-clear-end,0px)_-_var(--fade-end,0px)),transparent_calc(100%_-_var(--fade-clear-end,0px)))]";
 
 /**
  * A form's Responses, as both form kinds draw them (docs/agents/work-forms.md
@@ -60,6 +69,11 @@ export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, w
     return new Set([...ticked].filter((k) => here.has(k)));
   }, [ticked, keys]);
   const table = useRef<HTMLTableElement>(null);
+  const edges = useOverflowEdges<HTMLElement>();
+  useEffect(() => {
+    edges(table.current?.parentElement ?? null);
+    return () => edges(null);
+  }, [edges]);
   useEffect(() => {
     const el = table.current;
     if (!picked.size || !el) return shell.selection(null);
@@ -97,7 +111,7 @@ export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, w
           ))}
         </div>
       ) : null}
-      <div className="border-t border-border">
+      <div data-responses-table className={`border-t border-border ${TABLE_FADE}`}>
         <DataTable ref={table} className="min-w-max leading-5">
           <TableHeader>
             <TableRow>

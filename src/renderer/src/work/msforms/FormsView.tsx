@@ -91,7 +91,7 @@ function useForms(env: string, workspaceId: string): [Load, () => void, () => Pr
 
 export function Head({ env, workspace }: WorkViewProps) {
   const linkDown = useHostLinkDown(env);
-  const { offered, making, make } = useFormMaking(workspace);
+  const { offered, making, stage, make } = useFormMaking(workspace);
   const places = useLibraryPlaces(env, workspace.id, offered) ?? [];
   const ms: MenuRow[] = offered && places.length ? [{ kind: "sub", id: "ms", label: FORM_KIND_WORDS.microsoft.label, items: places.map((p): MenuRow => ({ kind: "item", id: `in:${p.id}`, label: p.group && p.group !== p.name ? `${p.group}, ${p.name}` : p.name })) }] : [];
   const rows: MenuRow[] = [...ms, { kind: "item", id: "ours", label: FORM_KIND_WORDS.tempcode.label, description: ms.length ? FORM_KIND_WORDS.tempcode.line : undefined }];
@@ -110,7 +110,8 @@ export function Head({ env, workspace }: WorkViewProps) {
       trigger={
         <Button variant="ghost" size="sm" disabled={making || !!linkDown}>
           {making ? null : <Plus />}
-          <BusyLabel busy={making} label="New form" />
+          {/* A Microsoft form takes 20 to 45 s: the press says each stage as the host starts it, as Files' state line does. */}
+          <BusyLabel busy={making} label="New form" busyLabel={stage ?? undefined} />
         </Button>
       }
     />

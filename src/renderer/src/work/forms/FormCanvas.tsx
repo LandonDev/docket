@@ -157,7 +157,6 @@ export function Body(props: Props) {
   return (
     <div data-form className="flex min-h-0 min-w-0 flex-1 flex-col">
       {msform.dialog}
-      {view.state === "closed" && view.closedAt ? <ClosedLine at={view.closedAt} reopen={() => run(host.close(true), store, "Couldn't reopen the form")} /> : null}
       {half === "questions" ? (
         <Questions key={view.itemId} view={view} host={host} store={store} current={current} onStep={step} />
       ) : (
@@ -303,6 +302,8 @@ export function Bar(props: Props) {
         </Button>
       ) : view.state === "open" && view.link ? (
         <LiveLink link={view.link} close={() => run(host.close(false), store, "Couldn't close the form")} />
+      ) : view.state === "closed" ? (
+        <Closed at={view.closedAt} reopen={() => run(host.close(true), store, "Couldn't reopen the form")} />
       ) : null}
     </>
   );
@@ -359,11 +360,12 @@ function LiveLink({ link, close }: { link: string; close(): Promise<void> }) {
   );
 }
 
-function ClosedLine({ at, reopen }: { at: number; reopen(): Promise<void> }) {
+/** A closed form says so at the bar's end with Reopen, as a closed Microsoft form does (MsFormCanvas `Bar`). */
+function Closed({ at, reopen }: { at: number | null; reopen(): Promise<void> }) {
   const [busy, setBusy] = useState(false);
   return (
-    <div data-form-closed className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-3 text-xs text-muted-foreground">
-      <span className="min-w-0 flex-1 truncate">Closed {dayTime(at)}</span>
+    <span data-form-closed className="ms-auto flex min-w-0 items-center gap-1">
+      <span className="min-w-0 truncate text-xs text-muted-foreground">{at ? `Closed ${dayTime(at)}` : "Closed"}</span>
       <Button
         variant="ghost"
         size="xs"
@@ -375,7 +377,7 @@ function ClosedLine({ at, reopen }: { at: number; reopen(): Promise<void> }) {
       >
         <BusyLabel busy={busy} label="Reopen" />
       </Button>
-    </div>
+    </span>
   );
 }
 

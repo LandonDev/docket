@@ -143,7 +143,8 @@ group forms that no row knew. Forms makes no workbook at create, in the folder o
 first pull makes it. A make with no questions (New → Form) reads its result once the page has saved, with the
 settings the panel read back, and does not open Settings a second time. The new form opens in its Files tab (`registerRefSeat('msform')`, files/hooks.ts).
 While it runs, the page's state line says the stage the host pushes (`work.msforms.making`: opening, making,
-setting, naming, asking; `MAKE_STAGE_WORDS` in useFormMaking.ts). Each press carries a key (`op`): the same key asked
+setting, naming, asking; `MAKE_STAGE_WORDS` in useFormMaking.ts); a make from the Forms view says it on New form's own
+spinning press. Each press carries a key (`op`): the same key asked
 again, by a window whose wait ran out, answers the make already under way or just done (kept 10 minutes), never a
 second form.
 
@@ -180,7 +181,8 @@ Work; the form stays in Forms as it is.
   says why on the stepper and to the thread (`WRITES_HELD`, msforms/tools.ts), where the `office.edit` rule for a file
   others can open applies: a form that takes answers, or is collecting; and a Purdue form for a thread a routine
   started (`answersWithheld`'s line). A form his Team can see but that takes no answers is his own draft here.
-- **The link goes out only on his press**: his Copy, the QR he shows, Mail the link (Mail's composer, his Send).
+- **The link goes out only on his press**: his Copy, the QR he shows, Mail the link (Mail's composer, his Send). The QR dialog's
+  Copy picture turns to Copied for 1.5 s once the picture is on the clipboard, as the bar's Copy link does.
   `notGrantable` refuses a grant on any act whose words hold a form's link (`hasFormLink`, work-outbox.md).
 - SharePoint's Forms survey and Create new form, Excel's New Form and Send Form, and Forms' Open results in Excel are
   outward on their pages (`PAGE_OUTWARD`, work-outbox.md), so a generic agent step there is held.

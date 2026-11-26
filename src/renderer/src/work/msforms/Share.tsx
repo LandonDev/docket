@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { DialogFooter } from "../../chrome/ConfirmDialog";
+import { Check, Copy } from "../../chrome/icons";
 import { Modal } from "../../chrome/Modal";
 import { Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -24,11 +25,19 @@ export function QrDialog({ link, title, onClose }: { link: string; title: string
       on = false;
     };
   }, [link]);
+  // Copied answers the press for 1.5 s, as the bar's Copy link does.
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(t);
+  }, [copied]);
   const copy = async (): Promise<void> => {
     if (!src) return;
     try {
       const blob = await (await fetch(src)).blob();
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      setCopied(true);
     } catch (err) {
       sayError(err, "Couldn't copy the picture");
     }
@@ -38,7 +47,8 @@ export function QrDialog({ link, title, onClose }: { link: string; title: string
       <div className="flex justify-center py-2">{src ? <img data-msform-qr src={src} alt={`QR code for ${link}`} width={240} height={240} className="rounded-md" /> : <Skeleton className="size-60" />}</div>
       <DialogFooter>
         <Button variant="secondary" size="sm" disabled={!src} onClick={() => void copy()}>
-          Copy Picture
+          {copied ? <Check /> : <Copy />}
+          {copied ? "Copied" : "Copy picture"}
         </Button>
       </DialogFooter>
     </Modal>

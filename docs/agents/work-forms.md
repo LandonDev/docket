@@ -118,8 +118,8 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
 
 - **The bar**: the mode, then Questions and Responses as a 24px segmented
   switch, then at the end the stepper while changes wait, Publish while it is
-  a draft, else the live link in accent with Copy and Close form. A closed
-  form draws one line under the bar ("Closed 12:00 PM") with Reopen.
+  a draft, else the live link in accent with Copy and Close form; a closed
+  form says "Closed 12:00 PM" there with Reopen, as a Microsoft form does.
 - **Questions** is the form as a filler sees it. The title, the line under
   it and every question are edited where they stand (a click shows the
   label as a field, the options as fields, and a row with the type, Required
@@ -129,7 +129,9 @@ The Work service serves it (`service/routes/form.ts`; the route list is in
   label struck and rewritten, a choice's dropped and added options. A form
   with three or more sections gets a jump list from 640px of canvas.
 - **Responses** is one summary line, the bars of the form's first choice or
-  dropdown (`chart-neutral`), and a flat table, newest first, the time last.
+  dropdown (`chart-neutral`), and a flat table, newest first, the time last;
+  in a pane narrower than the table it scrolls sideways and the edge with
+  more past it fades over 24px.
   Picked rows feed Ask, which takes them to the thread as text. A tick
   follows its response, not its row (`responseKeys`: the sheet sends no id,
   so a response is known by its answers and the moment it was submitted): a

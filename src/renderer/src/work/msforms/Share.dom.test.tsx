@@ -3,7 +3,7 @@
  * Sharing a Microsoft form's link: the QR code is drawn from the link alone, and a sent `msform` chip opens the form in
  * a Files tab of the thread's workspace, by its own source.
  */
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { chipRefWords } from "@shared/work/canvas";
 
@@ -23,6 +23,19 @@ describe("sharing a Microsoft form", () => {
     render(<QrDialog link={LINK} title="Spring sign-up" onClose={() => undefined} />);
     await waitFor(() => expect(screen.getByRole("img").getAttribute("alt")).toBe(`QR code for ${LINK}`));
     expect(drawn.texts).toEqual([LINK]);
+  });
+
+  it("answers Copy picture with Copied once the picture is on the clipboard", async () => {
+    const wrote: unknown[] = [];
+    vi.stubGlobal("fetch", async () => ({ blob: async () => new Blob(["png"], { type: "image/png" }) }));
+    vi.stubGlobal("ClipboardItem", class { constructor(readonly items: unknown) {} });
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { write: async (items: unknown[]) => void wrote.push(...items) } });
+    render(<QrDialog link={LINK} title="Spring sign-up" onClose={() => undefined} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Copy picture" }).hasAttribute("disabled")).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "Copy picture" }));
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeTruthy();
+    expect(wrote).toHaveLength(1);
+    vi.unstubAllGlobals();
   });
 
   it("opens a sent msform chip in Files by its source", async () => {

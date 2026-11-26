@@ -145,7 +145,10 @@ describe("the form kind", () => {
     expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Close form" }));
     await waitFor(() => expect(formHost.close).toHaveBeenCalledWith(false));
-    await found("[data-form-closed]");
+    // Closed, and Reopen, stand at the bar's end, as a closed Microsoft form's do: no line of their own over the body.
+    const closed = await found("[data-form-closed]");
+    expect(closed.closest("[data-form]")).toBeNull();
+    expect(closed.textContent).toContain("Closed");
     fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
     await waitFor(() => expect(formHost.close).toHaveBeenCalledWith(true));
   });

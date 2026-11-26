@@ -39,7 +39,12 @@ vi.mock("../files/openFrom", () => ({
     if (host.fail) throw new Error("That Microsoft form is not in this job.");
   },
 }));
-const { View } = await import("./FormsView");
+const making = vi.hoisted(() => ({ stage: null as string | null }));
+vi.mock("./useFormMaking", () => ({
+  useFormMaking: () => ({ offered: true, making: making.stage !== null, stage: making.stage, make: async () => undefined }),
+  useLibraryPlaces: () => [],
+}));
+const { Head, View } = await import("./FormsView");
 
 const FORM = "Ob0wQVN8nEGx5YdY1tY_IQaWFXVrVqJAiq2zrvrFVrNURDVET1gyWlpLNkJXOUsyWEJXNFlKMzMxVC4u";
 const props = { env: "local", workspace: { id: "w1", environmentId: "local", name: "Esports" }, sector: "purdue", lifeos: {}, startThread: () => undefined } as never;
@@ -59,7 +64,7 @@ describe("the Forms view", () => {
     host.ms = [{ formId: FORM, tenant: "purdue0", title: "Spring intramurals", state: "collecting", count: 4, lastAnswerAt: null, updatedAt: 20 }];
     render(<View {...props} />);
     await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(2));
-    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Spring intramuralsMicrosoft · Collecting · 4", "Volunteer sign-upDocket · Draft"]);
+    expect(screen.getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Spring intramuralsMicrosoft, collecting, 4 responses", "Volunteer sign-upDocket, draft"]);
     fireEvent.click(screen.getByRole("button", { name: /Spring intramurals/ }));
     await waitFor(() => expect(host.opened).toHaveLength(1));
     expect(host.opened[0]).toMatchObject({ ref: { at: "msform", formId: FORM, workspaceId: "w1", tenant: "purdue0" }, name: "Spring intramurals" });
@@ -112,6 +117,18 @@ describe("the Forms view", () => {
     render(<View {...props} />);
     expect(await screen.findByText("Forms did not load")).toBeTruthy();
     expect(screen.queryByText("Microsoft forms did not load")).toBeNull();
+  });
+
+  it("says each stage of a make on New's own press while it runs", () => {
+    making.stage = "Adding the questions…";
+    render(<Head {...props} />);
+    const press = screen.getByRole("button", { name: /Adding the questions…/ });
+    expect(press.hasAttribute("disabled")).toBe(true);
+    expect(press.querySelector("[data-slot=busy-label]")?.getAttribute("data-busy-text")).toBe("Adding the questions…");
+    cleanup();
+    making.stage = null;
+    render(<Head {...props} />);
+    expect(screen.getByRole("button", { name: "New form" }).hasAttribute("disabled")).toBe(false);
   });
 
   it("says when there are none", async () => {
