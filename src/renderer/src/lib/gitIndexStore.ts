@@ -21,7 +21,11 @@ import { onFileEvent, watchCwd } from "./projectWatch";
  * server's tree watcher (a file event under the checkout, debounced), by
  * local git mutations (`notifyGitChanged`, debounced), and on window focus
  * for commits made elsewhere. No polling timer. A hidden window defers the
- * refresh to the next focus.
+ * refresh to the next focus. While agents write, the loads pace themselves:
+ * the next waits at least as long after the last one ended as that one took
+ * (`nextDelay`), a file event under `.git/` or `.claude/worktrees/` is git's
+ * own churn and never a reason (git's changes arrive as `git-changed`), and a
+ * focus within FOCUS_QUIET_MS of the last load asks nothing.
  */
 
 export interface GitSnapshot {
@@ -33,6 +37,8 @@ export interface GitSnapshot {
 
 const LOG_LIMIT = 8;
 const DEBOUNCE_MS = 250;
+/** A focus this soon after a load ends reads that load's answer. */
+export const FOCUS_QUIET_MS = 5_000;
 const EMPTY: GitSnapshot = { index: null, log: null };
 
 interface Entry {
@@ -46,6 +52,13 @@ interface Entry {
   stale: boolean;
   timer: ReturnType<typeof setTimeout> | null;
   stop: (() => void) | null;
+  /** a refresh asked by a local mutation waits on the load in flight */
+  asked?: boolean;
+  /** schedules a paced refresh while the checkout is watched (start) */
+  again?: () => void;
+  /** how long the last load took, and when it ended (0: none yet) */
+  lastMs: number;
+  lastEnd: number;
 }
 
 const entries = new Map<string, Entry>();
@@ -62,6 +75,8 @@ function entryFor(cwd: string): Entry {
       stale: false,
       timer: null,
       stop: null,
+      lastMs: 0,
+      lastEnd: 0,
     };
     entries.set(cwd, entry);
   }
@@ -73,13 +88,16 @@ function publish(entry: Entry, snapshot: GitSnapshot): void {
   for (const l of entry.listeners) l();
 }
 
-async function load(cwd: string, entry: Entry): Promise<void> {
+async function load(cwd: string, entry: Entry, asked = false): Promise<void> {
   if (entry.inFlight) {
     entry.pending = true;
+    // A local mutation's refresh goes the moment the load in flight ends.
+    if (asked) entry.asked = true;
     return;
   }
   entry.inFlight = true;
   entry.stale = false;
+  const began = Date.now();
   try {
     const host = hostOfCwd(cwd);
     const index = await gitDiffIndex(host, cwd);
@@ -103,16 +121,31 @@ async function load(cwd: string, entry: Entry): Promise<void> {
     if (!entry.snapshot.failed) publish(entry, { index: entry.snapshot.index, log: entry.snapshot.log, failed: true });
   } finally {
     entry.inFlight = false;
+    entry.lastEnd = Date.now();
+    entry.lastMs = entry.lastEnd - began;
     if (entry.pending) {
       entry.pending = false;
-      void load(cwd, entry);
+      const asked = entry.asked;
+      entry.asked = false;
+      if (asked || !entry.again) void load(cwd, entry);
+      else entry.again();
     }
   }
 }
 
+/** How long a refresh asked now waits: the debounce, and at least the last load's own time after it ended. */
+export function nextDelay(lastMs: number, lastEnd: number, now: number): number {
+  return Math.max(DEBOUNCE_MS, lastEnd + lastMs - now);
+}
+
+/** A file event git itself makes, or a worktree's (its own checkout, its own watch): no reason to read the index. */
+export function ignoredPath(cwd: string, path: string): boolean {
+  return path.startsWith(`${cwd}/.git/`) || path === `${cwd}/.git` || path.startsWith(`${cwd}/.claude/worktrees/`);
+}
+
 /** Reload now (after a local mutation). Resolves once the snapshot is in. */
 export function refreshGitSnapshot(cwd: string): Promise<void> {
-  return load(cwd, entryFor(cwd));
+  return load(cwd, entryFor(cwd), true);
 }
 
 function start(cwd: string, entry: Entry): void {
@@ -125,19 +158,27 @@ function start(cwd: string, entry: Entry): void {
       return;
     }
     if (entry.timer !== null) return;
+    if (entry.inFlight) {
+      entry.pending = true;
+      return;
+    }
     entry.timer = setTimeout(() => {
       entry.timer = null;
       void load(cwd, entry);
-    }, DEBOUNCE_MS);
+    }, nextDelay(entry.lastMs, entry.lastEnd, Date.now()));
   };
+  entry.again = schedule;
   const prefix = `${cwd}/`;
   const release = watchCwd(cwd);
   const unsubFiles = onFileEvent((e) => {
-    if (e.path === cwd || e.path.startsWith(prefix)) schedule();
+    if ((e.path === cwd || e.path.startsWith(prefix)) && !ignoredPath(cwd, e.path)) schedule();
   });
   const unsubGit = subscribeGitChanged(schedule, cwd);
   const onFocus = () => {
-    if (!hidden()) schedule();
+    if (hidden()) return;
+    // A refresh owed while hidden is asked; else a load this recent stands.
+    if (!entry.stale && entry.lastEnd > 0 && Date.now() - entry.lastEnd < FOCUS_QUIET_MS) return;
+    schedule();
   };
   if (dom) {
     window.addEventListener("focus", onFocus);
@@ -154,6 +195,7 @@ function start(cwd: string, entry: Entry): void {
     if (entry.timer !== null) clearTimeout(entry.timer);
     entry.timer = null;
     entry.stop = null;
+    entry.again = undefined;
   };
   void load(cwd, entry);
 }

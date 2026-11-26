@@ -262,3 +262,41 @@ vi.mock("./tcserver/projects", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./tcserver/projects")>()),
   hostOfCwd: () => "local",
 }));
+
+describe("gitIndexStore while agents write", () => {
+  it("200 file events over 10 s with a 1 s index make at most 6 index asks; .git/ and worktrees ask none", async () => {
+    gitDiffIndex.mockImplementation(() => new Promise((done) => setTimeout(() => done(index(1)), 1_000)));
+    const stop = holdGitSnapshot("/w/busy");
+    await vi.advanceTimersByTimeAsync(1_000);
+    gitDiffIndex.mockClear();
+    for (let i = 0; i < 200; i++) {
+      for (const l of fileListeners) l({ path: `/w/busy/src/f${i % 7}.ts` });
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(gitDiffIndex.mock.calls.length).toBeLessThanOrEqual(6);
+    expect(gitDiffIndex.mock.calls.length).toBeGreaterThan(0);
+    gitDiffIndex.mockClear();
+    for (let i = 0; i < 100; i++) {
+      for (const l of fileListeners) l({ path: i % 2 ? "/w/busy/.git/index.lock" : "/w/busy/.claude/worktrees/x/src/a.ts" });
+      await vi.advanceTimersByTimeAsync(50);
+    }
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(gitDiffIndex).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it("a focus within 5 s of the last load asks nothing; one later asks once", async () => {
+    const stop = holdGitSnapshot("/w/focus");
+    await vi.advanceTimersByTimeAsync(0);
+    gitDiffIndex.mockClear();
+    window.dispatchEvent(new Event("focus"));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(gitDiffIndex).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5_000);
+    window.dispatchEvent(new Event("focus"));
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(gitDiffIndex).toHaveBeenCalledTimes(1);
+    stop();
+  });
+});
