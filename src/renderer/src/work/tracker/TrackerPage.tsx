@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ComponentType } from "react";
+import { memo, useCallback, useMemo, useState, useSyncExternalStore, type ComponentType } from "react";
 import type { SectorKey } from "@shared/work";
 import { unsaidWait, waitsOnHim, type TrackerThread } from "@shared/work/tracker";
 import { dueTone, ProjectFactsBones, ProjectFactsFold, ProjectFactsHeader, ProjectFactsRow, ProjectFactsTable } from "work-kit/projects";
@@ -11,6 +11,7 @@ import { Button } from "../../components/ui/button";
 import { reveal } from "../../components/ui/reveal";
 import { Toggle } from "../../components/ui/toggle";
 import { cn } from "../../lib/cn";
+import { useMinuteClock } from "../../lib/turnClock";
 import { DownLine } from "../shell/DownLine";
 import { useLifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
@@ -54,16 +55,6 @@ export function View(_props: WorkPlaceProps) {
   return <TrackerBody jobs={jobs} loading={loading} errors={errors} pending={pending} waitingOnly={useWaitingOnly()} onRetry={reload} />;
 }
 
-/** The minute, so a due date turns late and an age grows while the page stands. */
-function useMinute(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000);
-    return () => clearInterval(timer);
-  }, []);
-  return now;
-}
-
 /** The paused-and-backlog fold a job, kept for the window's life. */
 const RESTING = new Map<string, boolean>();
 /** Every fold closed again (tests). */
@@ -93,7 +84,8 @@ export type TrackerBodyProps = {
 
 /** The page from what the hosts answered: a preview and a test hand it jobs. */
 export function TrackerBody({ jobs, loading, errors, pending = false, waitingOnly, onRetry, now: fixed, Down = DownJob }: TrackerBodyProps) {
-  const minute = useMinute();
+  // The minute, so a due date turns late and an age grows while the page stands: the window's one minute clock.
+  const minute = useMinuteClock(fixed === undefined);
   const now = fixed ?? minute;
   // Under the filter a job shows only what waits on him; one with none goes, a job LifeOS could not read stays (it may).
   const shown = waitingOnly ? jobs.filter((job) => job.down || job.projects.some(waitsOnHim)) : jobs;

@@ -109,6 +109,28 @@ describe("half-minute clock", () => {
   });
 });
 
+describe("minute clock", () => {
+  it("one timer for every page that reckons in minutes, on the wall-clock minute, gone with the last reader", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-26T12:00:30.000Z"));
+    try {
+      let ticks = 0;
+      const a = clockForTest.minuteSubscribe(() => ticks++);
+      const b = clockForTest.minuteSubscribe(() => ticks++);
+      expect(clockForTest.minuteListeners()).toBe(2);
+      expect(vi.getTimerCount()).toBe(1);
+      vi.advanceTimersByTime(30_000);
+      expect(ticks).toBe(2);
+      a();
+      b();
+      expect(clockForTest.minuteListeners()).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("aligned second hand", () => {
   it("first ticks on the next wall-clock second, then once a second, and leaves no timer behind", () => {
     vi.useFakeTimers();

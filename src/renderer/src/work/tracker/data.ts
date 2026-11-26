@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { byPressing, byTarget, type TrackerOverview, type TrackerProject, type TrackerThread } from "@shared/work/tracker";
 import { registry } from "../../lib/connection";
 import { nameInLine } from "../../lib/hostWords";
+import { quietPoll } from "../../lib/quietPoll";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { workSwitch } from "../../lib/workSwitch";
 
@@ -90,7 +91,10 @@ const plain = (overview: TrackerOverview, environmentId: string): TrackerOvervie
   jobs: overview.jobs.map((job) => (job.down ? { ...job, down: downWords(job.down, hostIn(environmentId), job.name) } : job)),
 });
 
-/** How often the page reads again while it is on screen: a thread's state moves, and a target he set elsewhere. */
+/**
+ * How often the page reads again while it is on screen: a thread's state moves, and a target he set elsewhere. It is
+ * also the quiet spell a focus waits out: a focus reads only when no read began this long ago (perf M11).
+ */
 export const TRACKER_AGAIN_MS = 60_000;
 
 export type TrackerView = {
@@ -145,7 +149,11 @@ export function reconcileKept(kept: readonly HostAnswer[] | null, hosts: Iterabl
   });
 }
 
-/** Every host with Work on, asked once on show, again on focus, each minute while shown, and when a host's link opens or drops. */
+/**
+ * Every host with Work on, asked once on show, then through `quietPoll`: a minute after the last read, never while the
+ * window is hidden (once as it shows again, when one came due), on a focus at most once a minute, and at once when a
+ * host's link opens or drops.
+ */
 export function useTracker(): TrackerView {
   const [answers, setAnswers] = useState<HostAnswer[] | null>(() => reconcileKept(kept, workSwitch.hosts(), (id) => registry.statusOf(id).transport));
   const [asked, setAsked] = useState(0);
@@ -161,14 +169,22 @@ export function useTracker(): TrackerView {
       kept = got;
       setAnswers(got);
     };
+    // When the last read began: a focus inside a minute of it asks nothing.
+    const last = { at: 0 };
     const read = (): void => {
       reads.latest += 1;
       const n = reads.latest;
+      last.at = Date.now();
+      poll.heard();
       void askHosts(askOverview).then((got) => {
         if (n === reads.latest) show(got);
       });
     };
+    const poll = quietPoll(read, TRACKER_AGAIN_MS);
     read();
+    const focused = (): void => {
+      if (!document.hidden && Date.now() - last.at >= TRACKER_AGAIN_MS) read();
+    };
     // The roster follows the hosts as they move while the page is open, by the rule a visit opens on
     // (`reconcileKept`): a host whose link drops says so at once, a host that joins Work or whose link opens is
     // pending (so no all-clear stands without it), a host that leaves Work goes; then every host is asked again.
@@ -186,13 +202,12 @@ export function useTracker(): TrackerView {
       read();
     };
     const offs = [registry.subscribe(moved), workSwitch.subscribe(moved)];
-    const timer = setInterval(read, TRACKER_AGAIN_MS);
-    window.addEventListener("focus", read);
+    window.addEventListener("focus", focused);
     return () => {
       alive = false;
       for (const off of offs) off();
-      clearInterval(timer);
-      window.removeEventListener("focus", read);
+      poll.stop();
+      window.removeEventListener("focus", focused);
     };
   }, [asked]);
   const jobs = useMemo(() => (answers ? mergeOverviews(answers) : []), [answers]);

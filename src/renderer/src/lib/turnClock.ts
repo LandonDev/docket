@@ -73,6 +73,7 @@ function makeClock(periodMs: number): Clock {
 
 const seconds = makeClock(1000);
 const halfMinutes = makeClock(30_000);
+const minutes = makeClock(60_000);
 
 const idle = (): (() => void) => () => {};
 const zero = (): number => 0;
@@ -95,6 +96,15 @@ export function useSlowClock(active: boolean): number {
   );
 }
 
+/** Epoch ms, refreshed on each wall-clock minute while `active`: one shared timer for every page that reckons in minutes. */
+export function useMinuteClock(active: boolean): number {
+  return useSyncExternalStore<number>(
+    active ? minutes.subscribe : idle,
+    active ? minutes.current : zero,
+    zero,
+  );
+}
+
 export const clockForTest = {
   listeners: (): number => seconds.listeners.size,
   subscribe: seconds.subscribe,
@@ -103,6 +113,8 @@ export const clockForTest = {
   slowListeners: (): number => halfMinutes.listeners.size,
   slowSubscribe: halfMinutes.subscribe,
   slowTick: halfMinutes.tick,
+  minuteListeners: (): number => minutes.listeners.size,
+  minuteSubscribe: minutes.subscribe,
 };
 
 /** The slice of a Session the clock reads; `treeFrozenActiveElapsed` is the server's tree-wide fold (M4). */

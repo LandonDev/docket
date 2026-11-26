@@ -186,7 +186,7 @@ describe("asking the hosts", () => {
     const pending: ((v: unknown) => void)[] = [];
     vi.spyOn(registry, "linkOf").mockReturnValue({ request: () => new Promise((resolve) => void pending.push(resolve)) } as never);
     const view = renderHook(() => useTracker());
-    act(() => void window.dispatchEvent(new Event("focus")));
+    act(() => view.result.current.reload());
     expect(pending).toHaveLength(2);
     pending[1]!({ jobs: [job("b-purdue", "purdue", [project("new")])] });
     await waitFor(() => expect(view.result.current.jobs[0]?.projects.map((p) => p.id)).toEqual(["new"]));
@@ -194,6 +194,44 @@ describe("asking the hosts", () => {
     expect(view.result.current.jobs[0]!.projects.map((p) => p.id)).toEqual(["new"]);
     view.unmount();
     resetTracker();
+  });
+
+  it("asks after a quiet spell: a burst of five focuses is one ask, a hidden spell none (perf M11)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
+    try {
+      rigged();
+      resetTracker();
+      vi.spyOn(workSwitch, "hosts").mockReturnValue(new Set(["box"]));
+      const request = vi.fn(async () => ({ jobs: [] }));
+      vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
+      let hidden = false;
+      vi.spyOn(document, "hidden", "get").mockImplementation(() => hidden);
+      const view = renderHook(() => useTracker());
+      expect(request).toHaveBeenCalledTimes(1);
+      const focus = (): void => act(() => void window.dispatchEvent(new Event("focus")));
+      // Five focuses inside the minute after a read: none asks.
+      for (let i = 0; i < 5; i++) focus();
+      expect(request).toHaveBeenCalledTimes(1);
+      // A hidden spell of five minutes asks nothing.
+      hidden = true;
+      act(() => void document.dispatchEvent(new Event("visibilitychange")));
+      act(() => void vi.advanceTimersByTime(5 * 60_000));
+      expect(request).toHaveBeenCalledTimes(1);
+      // Back: the window shows and five focuses land in a burst; one ask in all.
+      hidden = false;
+      act(() => void document.dispatchEvent(new Event("visibilitychange")));
+      for (let i = 0; i < 5; i++) focus();
+      expect(request).toHaveBeenCalledTimes(2);
+      // A minute shown with no word asks once more.
+      act(() => void vi.advanceTimersByTime(60_000));
+      expect(request).toHaveBeenCalledTimes(3);
+      view.unmount();
+      act(() => void vi.advanceTimersByTime(5 * 60_000));
+      expect(request).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+      resetTracker();
+    }
   });
 
   it("a job's down words reach the page as a person's, never a store's raw text", async () => {
