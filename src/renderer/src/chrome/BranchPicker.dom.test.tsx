@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetMenus } from "./menuRows";
 
@@ -44,6 +44,21 @@ beforeEach(() => {
   h.create.mockReset().mockResolvedValue(undefined);
 });
 
+/** A key as the field hears it. */
+async function key(field: HTMLElement, name: string) {
+  await act(async () => {
+    fireEvent.keyDown(field, { key: name });
+  });
+}
+
+/** Typed text, as a keyboard sends it: the combobox takes its first match only for typed input. */
+async function type(field: HTMLElement, value: string) {
+  await act(async () => {
+    field.focus();
+    fireEvent.input(field, { target: { value }, inputType: "insertText" });
+  });
+}
+
 async function open() {
   fireEvent.click(screen.getByRole("button", { name: "Branch main" }));
   return screen.findByRole("dialog", { name: "Branch picker" });
@@ -86,14 +101,20 @@ describe("BranchPicker", () => {
     expect(within(picker).getAllByRole("option").map((o) => o.textContent)).toEqual(["main", "feature", "fixorigin"]);
   });
 
-  it("opens with the search field focused and the branches as rows, the current one selected", async () => {
+  it("opens with the search field focused and the branches as rows, the current one selected and named to a reader", async () => {
     render(<BranchPicker cwd="/u/me/app" />);
     const picker = await open();
-    const search = within(picker).getByRole("textbox", { name: "Search or create a branch" });
+    const search = within(picker).getByRole("combobox", { name: "Search or create a branch" });
     await waitFor(() => expect(document.activeElement).toBe(search));
     const options = within(picker).getAllByRole("option");
     expect(options.map((o) => o.textContent)).toEqual(["main", "feature", "fixorigin"]);
     expect(options[0]!.getAttribute("aria-selected")).toBe("true");
+    // The field is the list's combobox: the row the arrows are on is the one a reader hears.
+    expect(search.getAttribute("aria-controls")).toBe(within(picker).getByRole("listbox", { name: "Branches" }).id);
+    expect(search.getAttribute("aria-activedescendant")).toBe(options[0]!.id);
+    await key(search, "ArrowDown");
+    expect(search.getAttribute("aria-activedescendant")).toBe(options[1]!.id);
+    expect(options[1]!.hasAttribute("data-highlighted")).toBe(true);
   });
 
   it("arrow keys move the highlight and Enter checks the branch out", async () => {
@@ -101,29 +122,66 @@ describe("BranchPicker", () => {
     const onClose = vi.fn();
     render(<BranchPicker cwd="/u/me/app" onChange={onChange} onClose={onClose} />);
     const picker = await open();
-    const search = within(picker).getByRole("textbox");
-    fireEvent.keyDown(search, { key: "ArrowDown" });
-    fireEvent.keyDown(search, { key: "ArrowDown" });
-    fireEvent.keyDown(search, { key: "ArrowUp" });
-    fireEvent.keyDown(search, { key: "Enter" });
+    const search = within(picker).getByRole("combobox");
+    await key(search, "ArrowDown");
+    await key(search, "ArrowDown");
+    await key(search, "ArrowUp");
+    await key(search, "Enter");
     await waitFor(() => expect(h.checkout).toHaveBeenCalledWith("local", "/u/me/app", "feature", null));
     await waitFor(() => expect(onChange).toHaveBeenCalled());
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("a name no branch has offers to create it; a click on it creates", async () => {
+  it("a row sliding under a still pointer never takes the highlight from the keyboard", async () => {
     render(<BranchPicker cwd="/u/me/app" />);
     const picker = await open();
-    fireEvent.change(within(picker).getByRole("textbox"), { target: { value: "new-thing" } });
+    const search = within(picker).getByRole("combobox");
+    await key(search, "ArrowDown");
+    const kept = search.getAttribute("aria-activedescendant");
+    const slid = within(picker).getByRole("option", { name: /fix/ });
+    await act(async () => {
+      // What the browser sends when the list scrolls under a pointer that does not move: no move.
+      fireEvent.pointerEnter(slid);
+      fireEvent.mouseEnter(slid);
+      fireEvent.mouseOver(slid);
+    });
+    expect(search.getAttribute("aria-activedescendant")).toBe(kept);
+    expect(slid.hasAttribute("data-highlighted")).toBe(false);
+  });
+
+  it("a name no branch has offers to create it; a click on it creates, and so does Enter", async () => {
+    render(<BranchPicker cwd="/u/me/app" />);
+    const picker = await open();
+    const search = within(picker).getByRole("combobox");
+    await type(search, "new-thing");
+    expect(within(picker).getAllByRole("option").map((o) => o.textContent)).toEqual(["Create and checkout new-thing"]);
     fireEvent.click(within(picker).getByRole("option", { name: "Create and checkout new-thing" }));
     await waitFor(() => expect(h.create).toHaveBeenCalledWith("local", "/u/me/app", "new-thing"));
+    cleanup();
+    h.create.mockClear();
+    render(<BranchPicker cwd="/u/me/app" />);
+    const again = await open();
+    const field = within(again).getByRole("combobox");
+    await type(field, "other");
+    await key(field, "Enter");
+    await waitFor(() => expect(h.create).toHaveBeenCalledWith("local", "/u/me/app", "other"));
+  });
+
+  it("typing narrows the rows and says so when none match a taken name", async () => {
+    render(<BranchPicker cwd="/u/me/app" />);
+    const picker = await open();
+    const search = within(picker).getByRole("combobox");
+    await type(search, "fea");
+    expect(within(picker).getAllByRole("option").map((o) => o.textContent)).toEqual(["Create and checkout fea", "feature"]);
+    // A pick never writes the row's name into the field.
+    expect((search as HTMLInputElement).value).toBe("fea");
   });
 
   it("Escape closes and hands the focus back", async () => {
     const onClose = vi.fn();
     render(<BranchPicker cwd="/u/me/app" onClose={onClose} />);
     const picker = await open();
-    fireEvent.keyDown(within(picker).getByRole("textbox"), { key: "Escape" });
+    await key(within(picker).getByRole("combobox"), "Escape");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Branch picker" })).toBeNull());
     expect(onClose).toHaveBeenCalled();
   });

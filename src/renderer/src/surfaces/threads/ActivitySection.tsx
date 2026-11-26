@@ -69,12 +69,14 @@ export const ActivityRows = memo(function ActivityRows({
   rows,
   meta,
   initialOpen = null,
+  readLog = taskLog,
 }: {
   threadId: string;
   rows: ActivityRow[];
   meta: Pick<SessionMeta, "status" | "background">;
   /** The row shown open at mount (a fixture's open fold). */
   initialOpen?: string | null;
+  readLog?: typeof taskLog;
 }) {
   const shown = usePaneVisible();
   const now = useSlowClock(shown && rows.length > 0);
@@ -101,6 +103,7 @@ export const ActivityRows = memo(function ActivityRows({
             expanded={open === row.key}
             onActivate={row.open ? () => activate(row) : undefined}
             live={shown}
+            readLog={readLog}
           />
         ))}
       </div>
@@ -116,6 +119,7 @@ function Row({
   expanded,
   onActivate,
   live,
+  readLog,
 }: {
   threadId: string;
   row: ActivityRow;
@@ -124,6 +128,7 @@ function Row({
   expanded: boolean;
   onActivate?: () => void;
   live: boolean;
+  readLog: typeof taskLog;
 }) {
   const Glyph = GLYPH[row.kind];
   const [stopping, setStopping] = useState(false);
@@ -220,14 +225,14 @@ function Row({
       {/* The panel drops the log once its close has run, so the fold never
           closes an emptied box; the polling stops as the close starts. */}
       <CollapsibleContent>
-        <TaskLogFold threadId={threadId} taskId={row.taskId} command={row.detail} live={live && expanded} />
+        <TaskLogFold threadId={threadId} taskId={row.taskId} command={row.detail} live={live && expanded} readLog={readLog} />
       </CollapsibleContent>
     </Collapsible>
   );
 }
 
 /** A task's command (when it says more than the label) and its live output, pinned to its end while the reader has not scrolled up. */
-function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; taskId: string; command?: string; live: boolean }) {
+function TaskLogFold({ threadId, taskId, command, live, readLog }: { threadId: string; taskId: string; command?: string; live: boolean; readLog: typeof taskLog }) {
   const [text, setText] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const next = useRef<number | undefined>(undefined);
@@ -241,7 +246,7 @@ function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; ta
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async (): Promise<void> => {
       try {
-        const log = await taskLog(threadId, taskId, next.current);
+        const log = await readLog(threadId, taskId, next.current);
         if (!alive) return;
         // Either source answers only what is new since `from`.
         next.current = log.next;
@@ -260,7 +265,7 @@ function TaskLogFold({ threadId, taskId, command, live }: { threadId: string; ta
       alive = false;
       if (timer) clearTimeout(timer);
     };
-  }, [live, taskId, threadId]);
+  }, [live, readLog, taskId, threadId]);
 
   useEffect(() => {
     const viewport = scroller.current;

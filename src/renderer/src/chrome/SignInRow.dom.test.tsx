@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyAccounts, type AccountsSnapshot } from "@server/shared/accounts";
 import type { ProfileView } from "aliax-core/shared/types";
 import { accountsStore } from "../stores/accounts";
-import { SignInRow, signInTarget } from "./SignInRow";
+import { SignInRow, readableLine, signInTarget } from "./SignInRow";
 
 vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { error: vi.fn() }) }));
 const { toast } = await import("sonner");
@@ -68,12 +68,31 @@ describe("SignInRow", () => {
     expect(row().textContent).toBe("Sign in to Claude");
   });
 
-  it("toasts a failure with its line", async () => {
+  it("toasts a failure in plain words, never the raw text", async () => {
     render(<SignInRow provider="claude" />);
     fireEvent.click(row());
     await act(async () => finish({ ok: false, error: "claude.ai did not answer" }));
-    expect(toast.error).toHaveBeenCalledWith("claude.ai did not answer");
+    expect(toast.error).toHaveBeenCalledWith("Couldn't sign in to Claude", undefined);
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("carries the host's line under it only when it reads as a sentence", async () => {
+    render(<SignInRow provider="codex" />);
+    fireEvent.click(row());
+    await act(async () => finish({ ok: false, error: "Your plan does not include Codex." }));
+    expect(toast.error).toHaveBeenCalledWith("Couldn't sign in to ChatGPT", { description: "Your plan does not include Codex." });
+  });
+
+  it("a rejected start toasts the same plain words", async () => {
+    loginStart.mockRejectedValueOnce(new Error("ECONNREFUSED 127.0.0.1:8787"));
+    render(<SignInRow provider="claude" />);
+    await act(async () => fireEvent.click(row()));
+    expect(toast.error).toHaveBeenCalledWith("Couldn't sign in to Claude", undefined);
+  });
+
+  it("reads a line as a sentence only when it is plain words", () => {
+    expect(readableLine("Your plan does not include Codex.")).toBe(true);
+    for (const raw of ["claude.ai did not answer", "Error: fetch failed at https://x.y/z.", "ENOENT /Users/me/x.", "Bad::thing."]) expect(readableLine(raw)).toBe(false);
   });
 
   it("says nothing when the window was closed", async () => {

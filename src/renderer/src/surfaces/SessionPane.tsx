@@ -300,6 +300,10 @@ export function LoadLine({ name, load, onRetry }: { name: string; load: LoadStat
     const t = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(t);
   }, [ticking, load]);
+  return <LoadLineView name={name} load={load} now={now} onRetry={onRetry} />;
+}
+
+export function LoadLineView({ name, load, now, onRetry }: { name: string; load: LoadState; now: number; onRetry: () => void }) {
   const parts = loadLineText(name, load, now);
   if (!parts) return null;
   return (

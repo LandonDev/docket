@@ -3607,6 +3607,8 @@ export default function App() {
         <ShellTitleBar
           headerEvents={headerEvents}
           onToggleSidebar={onToggleSidebar}
+          onGoBack={onRailBack}
+          onGoForward={onRailForward}
           onNew={onNew}
           onNewTerminal={desktopOnly(onNewTerminal)}
           onShowTerminal={desktopOnly(onShowProjectTerminal)}

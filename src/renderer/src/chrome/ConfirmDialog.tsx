@@ -108,6 +108,7 @@ export function ConfirmDialog({
   otherLabel,
   onOther,
   focusOther,
+  holding = false,
   onCancel,
   onConfirm,
   onDone,
@@ -118,6 +119,8 @@ export function ConfirmDialog({
   note?: ReactNode;
   confirmLabel: string;
   danger?: boolean;
+  /** The cost is still being counted (the note's skeleton stands in): the verb spins and waits until it is said. */
+  holding?: boolean;
   /** A second answer beside the verb (Discard beside Keep trying): secondary, between Cancel and the verb. */
   otherLabel?: string;
   onOther?: () => void;
@@ -150,17 +153,22 @@ export function ConfirmDialog({
   return (
     <AlertDialog {...root}>
       <AlertDialogContent aria-busy={pending || undefined} {...(focusOther ? { initialFocus: otherRef } : {})}>
-        <AlertDialogHeader>
+        {/* The form dialog's shape: 20px in, the words 16px off the footer's hairline; no close, so the title has the whole line. */}
+        <AlertDialogHeader className="px-5 pt-5 pb-4 pe-5">
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {body ? <AlertDialogDescription>{body}</AlertDialogDescription> : null}
           {note ? (
-            <p data-confirm-note className="text-sm text-foreground">
+            <div data-confirm-note className="text-sm text-foreground">
               {note}
-            </p>
+            </div>
           ) : null}
         </AlertDialogHeader>
-        <ErrorLine error={error} />
-        <AlertDialogFooter>
+        {error ? (
+          <div className="px-5 pb-4">
+            <ErrorLine error={error} />
+          </div>
+        ) : null}
+        <AlertDialogFooter className="mt-0 flex-wrap items-center border-t border-border px-5 pt-4 pb-5">
           <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
           {otherLabel ? (
             <Button
@@ -176,8 +184,8 @@ export function ConfirmDialog({
               {otherLabel}
             </Button>
           ) : null}
-          <AlertDialogAction variant={danger ? "destructive" : "default"} disabled={pending} onClick={() => void confirm()}>
-            <BusyLabel busy={pending} label={confirmLabel} />
+          <AlertDialogAction variant={danger ? "destructive" : "default"} disabled={pending || holding} onClick={() => void confirm()}>
+            <BusyLabel busy={pending || holding} label={confirmLabel} />
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

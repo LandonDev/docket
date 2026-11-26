@@ -73,6 +73,17 @@ describe("SymbolPicker", () => {
     expect(selected()).toBe(3);
   });
 
+  it("names the highlighted row to a reader: the field is the list's combobox", async () => {
+    const field = await mount();
+    const list = screen.getByRole("listbox", { name: "Symbols" });
+    expect(field.getAttribute("role")).toBe("combobox");
+    expect(field.getAttribute("aria-controls")).toBe(list.id);
+    const rows = screen.getAllByRole("option");
+    expect(field.getAttribute("aria-activedescendant")).toBe(rows[0].id);
+    fireEvent.keyDown(field, { key: "ArrowDown" });
+    expect(field.getAttribute("aria-activedescendant")).toBe(rows[1].id);
+  });
+
   it("draws its rows in a menu row's box and its empty line as one muted row", async () => {
     await mount();
     const row = screen.getAllByRole("option")[0];

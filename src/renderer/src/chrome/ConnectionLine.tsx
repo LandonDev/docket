@@ -34,25 +34,29 @@ const ACTION = "h-5 px-1.5 text-xs font-normal text-muted-foreground after:absol
 export function ConnectionLine({ environmentId }: { environmentId: string }) {
   const { degraded, text } = useEnvironmentBlock(environmentId);
   if (!degraded || !text) return null;
-  const unauthorized = degraded.kind === "unauthorized";
+  return <ConnectionLineView kind={degraded.kind} text={text} onRetry={() => registry.retry(environmentId)} onPair={() => shell.openSettings("remote")} />;
+}
+
+export function ConnectionLineView({ kind, text, onRetry, onPair }: { kind: Degraded["kind"]; text: string; onRetry: () => void; onPair: () => void }) {
+  const unauthorized = kind === "unauthorized";
   return (
     <div
       role="status"
-      data-connection-line={degraded.kind}
+      data-connection-line={kind}
       className="mb-2 flex h-6 items-center gap-2 px-3 text-xs text-muted-foreground"
     >
-      {unauthorized || degraded.kind === "offline" ? (
+      {unauthorized || kind === "offline" ? (
         <span aria-hidden className={`size-1.5 shrink-0 rounded-full ${unauthorized ? "bg-danger" : "bg-foreground/25"}`} />
       ) : (
         <Spinner aria-hidden className="size-3 text-muted-foreground" />
       )}
       <span className="min-w-0 flex-1 truncate">{text}</span>
       {unauthorized ? (
-        <Button variant="ghost" size="xs" {...settingsChunk.intent} onClick={() => shell.openSettings("remote")} className={ACTION}>
+        <Button variant="ghost" size="xs" {...settingsChunk.intent} onClick={onPair} className={ACTION}>
           Pair again
         </Button>
-      ) : degraded.kind !== "connecting" ? (
-        <Button variant="ghost" size="xs" onClick={() => registry.retry(environmentId)} className={ACTION}>
+      ) : kind !== "connecting" ? (
+        <Button variant="ghost" size="xs" onClick={onRetry} className={ACTION}>
           Retry now
         </Button>
       ) : null}

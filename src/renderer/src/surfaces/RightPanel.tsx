@@ -1,4 +1,4 @@
-import { lazy, Suspense, useContext, useEffect, useMemo } from "react";
+import { lazy, Suspense, useContext, useEffect, useMemo, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { cn } from "@renderer/lib/cn";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "@renderer/components/ui/tabs";
@@ -243,29 +243,66 @@ export function RightPanel(props: RightPanelProps) {
   if ((!state.open && !leaving) || !section) return null;
 
   return (
+    <RightPanelFrame
+      attachPane={attachPane}
+      width={props.width ?? state.width}
+      sections={available.sections}
+      section={section}
+      motion={props.motion}
+      onLeft={props.onLeft}
+      onChange={(next) => rightPanel.set(pane, { section: next })}
+      onClose={() => rightPanel.close(pane)}
+      sashKeys={sashKeys}
+      dragging={dragging}
+      onPointerDown={onPointerDown}
+    >
+      <SectionBody section={section} project={facts.project} workspace={facts.workspace} {...props} />
+    </RightPanelFrame>
+  );
+}
+
+/** The panel's header, body slot and sash after the thread's section is known. */
+export function RightPanelFrame({
+  attachPane, width, sections, section, motion, onLeft, onChange, onClose, sashKeys, dragging, onPointerDown, children,
+}: {
+  attachPane?: ReturnType<typeof useDragResize>["attachPane"];
+  width: number;
+  sections: readonly Section[];
+  section: Section;
+  motion?: PanelMotion;
+  onLeft?: () => void;
+  onChange: (section: Section) => void;
+  onClose: () => void;
+  sashKeys: ReturnType<typeof useSashKeys>;
+  dragging?: boolean;
+  onPointerDown?: ReturnType<typeof useDragResize>["onPointerDown"];
+  children: ReactNode;
+}) {
+  const leaving = motion === "leave";
+  return (
     <aside
       ref={attachPane}
       aria-label="Thread panel"
       data-ending-style={leaving ? "" : undefined}
       inert={leaving}
       onTransitionEnd={(e) => {
-        if (leaving && e.target === e.currentTarget && e.propertyName === "opacity") props.onLeft?.();
+        if (leaving && e.target === e.currentTarget && e.propertyName === "opacity") onLeft?.();
       }}
-      className={cn("relative flex shrink-0 flex-col border-l border-border bg-sidebar", PANE_MOTION, props.motion === "arrive" && PANE_ARRIVE, leaving && PANE_LEAVE)}
-      style={{ width: props.width ?? state.width, contain: "strict" }}
+      className={cn("relative flex shrink-0 flex-col border-l border-border bg-sidebar", PANE_MOTION, motion === "arrive" && PANE_ARRIVE, leaving && PANE_LEAVE)}
+      style={{ width: width, contain: "strict" }}
     >
       <PanelHeader
-        sections={available.sections}
+        sections={sections}
         value={section}
-        onChange={(next) => rightPanel.set(pane, { section: next })}
-        onClose={() => rightPanel.close(pane)}
-        width={props.width ?? state.width}
+        onChange={onChange}
+        onClose={onClose}
+        width={width}
       />
       <div
         key={section}
         className="motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-(--dur-fast) flex min-h-0 flex-1 flex-col overflow-hidden"
       >
-        <SectionBody section={section} project={facts.project} workspace={facts.workspace} {...props} />
+        {children}
       </div>
       <div
         {...sashKeys}

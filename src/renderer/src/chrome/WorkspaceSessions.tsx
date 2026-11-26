@@ -15,6 +15,7 @@ import {
 import { RowsContextMenu, RowsMenu, tidy, type MenuRow } from "./menuRows";
 import { useThreadMenu } from "./useThreadMenu";
 import { HostGlyph } from "./HostGlyph";
+import { ONE_HOST, rowHosts, spansHosts } from "../lib/hostSpan";
 import {
   Archive,
   Briefcase,
@@ -171,7 +172,7 @@ export function MoreRow({ hidden, onMore, place }: { hidden: number; onMore: () 
       onClick={onMore}
       data-more-row={place}
       className={cn(
-        "w-full justify-start gap-2 text-[13px] font-normal text-muted-foreground tabular-nums transition-none hover:bg-foreground/5 hover:text-foreground",
+        "w-full justify-start gap-2 text-[13px] font-normal text-muted-foreground tabular-nums transition-none hover:bg-chrome-hover hover:text-foreground",
         MORE_PLACE[place],
       )}
     >
@@ -463,7 +464,7 @@ export function ThreadRowView({
       className={cn(
         ROW,
         verdict ? "min-h-8 py-1.5" : child ? "h-7" : "h-8",
-        selected ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+        selected ? "bg-sidebar-group-selected text-foreground" : "text-muted-foreground hover:bg-chrome-hover hover:text-foreground",
         offline && "opacity-50",
         className,
       )}
@@ -752,7 +753,7 @@ export function ProjectRowView({
     <div
       data-project-row
       onDoubleClick={onRename}
-      className={cn(ROW, "h-8 hover:bg-foreground/5", selected || unread ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
+      className={cn(ROW, "h-8 hover:bg-chrome-hover", selected || unread ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
     >
       {editing ? null : (
         <ItemButton
@@ -982,7 +983,7 @@ export type ProjectCardViewProps = {
   /** Lines behind "N more". */
   hidden: number;
   counts: readonly CardCount[];
-  /** A thread in it reads unread (`ProjectCardStatus.unread`): the dot before the time. */
+  /** A thread in it reads unread (`ProjectCardStatus.unread`): the dot before the time, drawn only when no shown line already says so. */
   unread?: boolean;
   ariaLabel: string;
   selected?: boolean;
@@ -997,7 +998,7 @@ export type ProjectCardViewProps = {
 };
 
 /**
- * A project card, presentational: the name, the unread dot and its last-active time, the
+ * A project card, presentational: the name, the unread dot (only while no unread line shows) and its last-active time, the
  * branch line, one read-only line per working, paused or unread thread (a
  * master's batch as a block), then the counts. The card is one button: a
  * click anywhere selects the project, and its lines never open a thread
@@ -1025,6 +1026,8 @@ export function ProjectCardView({
 }: ProjectCardViewProps) {
   tallyRender("projectCard");
   const editing = title != null;
+  // Unread is said once: by a shown line's weight, else (its line is past the page) by the dot.
+  const dot = unread && !lines.some((line) => (line.kind === "master" ? line.block.unread : line.kind === "unread"));
   const body = (
     <>
       {/* The 13px name and the 12px time share a baseline. */}
@@ -1034,7 +1037,7 @@ export function ProjectCardView({
         ) : (
           <>
             <span className="min-w-0 flex-1 truncate text-[13px] leading-5 font-medium text-foreground">{name}</span>
-            {unread ? <UnreadMark className={cn("self-center", menu && YIELDS)} /> : null}
+            {dot ? <UnreadMark className={cn("self-center", menu && YIELDS)} /> : null}
             <CardAgo latest={latest} yields={!!menu} />
           </>
         )}
@@ -1522,6 +1525,11 @@ export default function WorkspaceSessions({
       ),
     [cache, lastSeen, metas, projects, seenFloor, workspaceId, workspaceIds, workspaces],
   );
+  // Every thread in the column on one host: its rows draw no host glyph (lib/hostSpan.ts).
+  const manyHosts = useMemo(
+    () => spansHosts(rowHosts([...groups.chats, ...[...groups.projects, ...groups.archived].flatMap((g) => g.threads)])),
+    [groups],
+  );
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [chatsOpen, setChatsOpen] = useState(memory.chatsOpen);
   const [archived, setArchived] = useState<ArchivedState>({ open: false, shown: null });
@@ -1828,7 +1836,7 @@ export default function WorkspaceSessions({
     <PlanReadyContext.Provider value={planReady}>
     {/* The sidebar's element scrolls; this one only pads (pt-2 is the list's
     scroll margin). */}
-    <div ref={listRef} className="px-2 pt-2 pb-2">
+    <div ref={listRef} className={cn("px-2 pt-2 pb-2", !manyHosts && ONE_HOST)}>
       {/* The menu's trigger is a DOM node: a component would drop its handler. */}
       <RowsContextMenu
         label="Thread actions"

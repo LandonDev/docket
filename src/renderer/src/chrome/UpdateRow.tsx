@@ -42,6 +42,9 @@ export function useUpdateRowState(): UpdateRowState | null {
   return updateRowState(snapshot, notice, updateStore.manualCheck);
 }
 
+/** Why the row says Retry update. */
+export const RETRY_TIP = "The last download failed";
+
 const versioned = (label: string, version?: string) => (version ? `${label}, ${version}` : label);
 
 /** The running version at the row's end; in a rail under 15rem (18rem with
@@ -115,7 +118,8 @@ export function UpdateRow({
           icon={ArrowDownCircle}
           glyphClassName="text-accent"
           label={label(state.retry ? "Retry update" : `Update to ${state.version}`)}
-          tooltip={state.error}
+          // Plain words on hover; the updater's own text stays in its snapshot, never on screen.
+          tooltip={state.retry ? RETRY_TIP : undefined}
           onClick={onInstall}
           hoverActions={
             state.notes && onOpenWhatsNew

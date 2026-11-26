@@ -15,6 +15,7 @@ import { threadStatus } from "../lib/threadStripModel";
 import { useClock } from "../lib/turnClock";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
 import { HostGlyph } from "./HostGlyph";
+import { ONE_HOST, spansHosts } from "../lib/hostSpan";
 import { RailHeading, RailRow } from "./RailRow";
 
 /** A row's hover line: the state, what it is about and the elapsed time
@@ -80,7 +81,7 @@ function tipOf(row: WorkingRow, project: string | null, at?: number): ReactNode 
  * per thread that needs the person, works, or finished unseen, four at most
  * and "N more" for the rest (a scroller while open, "Show less" to close).
  * Each row is an item: the thread's type glyph, the title, the host glyph
- * with two or more hosts and the state's glyph at its end; the elapsed time
+ * when its rows span two or more hosts and the state's glyph at its end; the elapsed time
  * is in its tooltip, and a click opens the thread. It shows from one row:
  * nothing else in the rail names a thread. It sits in the rail's foot,
  * which draws the hairline above it.
@@ -108,7 +109,7 @@ export function RailWorkingView({
   return (
     <section aria-label="Working" className="flex shrink-0 flex-col px-2 pt-2 pb-2" data-rail-working>
       <RailHeading>Working</RailHeading>
-      <div ref={open ? lockList : undefined} className={cn("flex flex-col", open && "max-h-[45vh] overflow-x-hidden overflow-y-auto overscroll-none")}>
+      <div ref={open ? lockList : undefined} className={cn("flex flex-col", open && "max-h-[45vh] overflow-x-hidden overflow-y-auto overscroll-none", !spansHosts(rows.map((row) => row.meta.environmentId)) && ONE_HOST)}>
         {shown.map((row) => (
           <RailRow
             key={row.id}
@@ -136,7 +137,7 @@ export function RailWorkingView({
           onClick={() => setOpen((o) => !o)}
           data-working-more
           // A rail row's box: the label at the rows' 36px, the /5 hover fill at once.
-          className="h-7 w-full justify-start gap-2 px-3 text-[13px] font-normal text-muted-foreground tabular-nums transition-none hover:bg-foreground/5 hover:text-foreground"
+          className="h-7 w-full justify-start gap-2 px-3 text-[13px] font-normal text-muted-foreground tabular-nums transition-none hover:bg-chrome-hover hover:text-foreground"
         >
           <span aria-hidden className="size-4 shrink-0" />
           {open ? "Show less" : `${extra} more`}

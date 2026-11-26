@@ -29,9 +29,9 @@ export function seedFakeAccount(dir: string, twoAccounts = false): void {
 export const BROWSER_PROMPT = 'Keep this practice chat open while I count cones.'
 const REPLY = 'I have the practice list.'
 
-type FakeTool = { id: string; name: string; input: object }
+export type FakeTool = { id: string; name: string; input: object }
 type Block = { type: string; text?: string; tool_use_id?: string; content?: string | { text?: string }[] }
-type FakeRequest = { model?: string; messages?: { role: string; content: string | Block[] }[]; tools?: { name: string }[] }
+export type FakeRequest = { model?: string; messages?: { role: string; content: string | Block[] }[]; tools?: { name: string }[] }
 export type MailReplyFixture = { prompt: string; threadId: string; body: string }
 const SEARCH_CALL = 'toolu_journey_search'
 const DRAFT_TOOL = 'mcp__app__lifeos__draft_mail'
@@ -77,7 +77,7 @@ export function fakeMessage(model: string, tool?: FakeTool, id = 'msg_journey') 
   ].map((event) => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('')
 }
 
-export function startFakeProvider(onMessage: () => void, browserTurn?: Promise<void>, mailReply?: () => MailReplyFixture | undefined) {
+export function startFakeProvider(onMessage: () => void, browserTurn?: Promise<void>, mailReply?: () => MailReplyFixture | undefined, reply?: (body: FakeRequest, id: string) => Response | undefined) {
   let messages = 0
   return Bun.serve({
     hostname: '127.0.0.1',
@@ -93,7 +93,8 @@ export function startFakeProvider(onMessage: () => void, browserTurn?: Promise<v
       const body = await request.json() as FakeRequest
       onMessage()
       if (browserTurn && JSON.stringify(body.messages ?? []).includes(BROWSER_PROMPT)) await browserTurn
-      return new Response(fakeMessage(body.model ?? 'claude-haiku-5-5', mailReplyTool(body, mailReply?.()), 'msg_journey_' + ++messages), { headers: { 'content-type': 'text/event-stream' } })
+      const id = 'msg_journey_' + ++messages
+      return reply?.(body, id) ?? new Response(fakeMessage(body.model ?? 'claude-haiku-5-5', mailReplyTool(body, mailReply?.()), id), { headers: { 'content-type': 'text/event-stream' } })
     }
   })
 }

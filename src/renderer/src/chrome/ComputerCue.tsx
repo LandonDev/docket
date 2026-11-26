@@ -70,7 +70,7 @@ export function ComputerCueView({
 /** The quiet row control (`ROW_CONTROL`: 12px muted, the /5 hover fill) at
  *  24px, its glyph 8px from its words, pressed like the panel toggle and the
  *  agents cue beside it. */
-const CUE = `${ROW_CONTROL} gap-2 aria-pressed:bg-muted aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground`;
+const CUE = `${ROW_CONTROL} gap-2 hover:bg-chrome-hover aria-pressed:bg-sidebar-group-selected aria-pressed:text-foreground aria-disabled:opacity-50 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground`;
 
 /** The cue for one tab: the computer sessions of the thread its pane shows
  *  (a master's open child, else the tab's own); nothing while none is live. */

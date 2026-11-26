@@ -3,9 +3,12 @@ import { Input as InputPrimitive } from "@base-ui/react/input";
 import { cn } from "@renderer/lib/cn";
 
 /** The field's look without its size: a textarea or a code block that reads
- *  as a field takes this. */
+ *  as a field takes this. A read-only field (held while its dialog works, or
+ *  a value to copy) steps its words back to muted in light (`field-readonly`;
+ *  dark keeps its ink, held) and keeps its ring, since it can still be focused
+ *  to copy from. */
 const INPUT_FIELD_CLASS =
-  "focus-field min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-[13px] placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive";
+  "focus-field min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-[13px] placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 read-only:text-field-readonly aria-invalid:border-destructive";
 
 /** The one text field: 32px, hairline border, the focus ring drawn inside
  *  (`.focus-field` in components.css). `size` is the HTML attribute. */

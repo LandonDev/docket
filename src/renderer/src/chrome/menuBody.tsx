@@ -334,3 +334,5 @@ export function PopoverBody({
 
 // BranchPicker's list, shown only in its open popover (chrome/BranchRows.tsx).
 export { BranchRows } from "./BranchRows";
+// ModelPicker's field and list, shown only in its open popover (chrome/ModelRows.tsx).
+export { ModelRows } from "./ModelRows";

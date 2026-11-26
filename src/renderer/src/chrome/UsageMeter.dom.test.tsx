@@ -183,6 +183,16 @@ describe('UsageMeter', () => {
     expect((claude.querySelector('[data-slot="progress"] ~ span') as HTMLElement).className).toContain('whitespace-nowrap')
   })
 
+  it("hovers and stays lit while open on the meter's own step, never the ghost button's", async () => {
+    const { root } = await mount()
+    const classes = row(root, 'claude').className.split(/\s+/)
+    // `chrome-hover-ghost`: the rail rows' hover step in light, dark's held at 7% (index.css "Held in dark").
+    expect(classes).toContain('hover:bg-chrome-hover-ghost')
+    expect(classes).toContain('aria-expanded:bg-chrome-hover-ghost')
+    expect(classes).not.toContain('hover:bg-foreground/7')
+    expect(classes).not.toContain('aria-expanded:bg-foreground/7')
+  })
+
   it('renders nothing before any provider has accounts', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(now)
     probe = mountProbe(<UsageMeter />)

@@ -29,3 +29,8 @@ export default [
   { name: "two threads' servers, the newest picked", props: { starter, servers, shownKey: "env_box/run1", onPick: "fn" } },
   { name: "nothing running", props: { starter, servers: [], shownKey: null, onPick: "fn" } },
 ];
+
+// bun run ui:preview src/renderer/src/surfaces/DevServersPane.tsx#DevServersPane
+// The pane mounts the actual console. It cannot replay native terminal interactions here.
+const pane = { onSizePaint: "fn", onSizeCommit: "fn", onShowTerminal: "fn" };
+export const DevServersPaneFixtures = [{ name: "No dev servers running", props: pane }];

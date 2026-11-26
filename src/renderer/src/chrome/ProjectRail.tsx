@@ -7,6 +7,8 @@ import { AwayRow } from "./AwayRow";
 import { useHostsOffline } from "./hostOffline";
 import {
   Archive,
+  ArrowDownLong,
+  ArrowUpLong,
   FolderOpen,
   FolderPlus,
   ChartBar,
@@ -152,11 +154,13 @@ export function projectMenuExtraItems(
   canRemove: boolean,
   counts: BatchCounts | null,
   desktop = !isWebMode(),
+  move: MenuRow[] = [],
 ): MenuRow[] {
   const items: MenuRow[] = [
     pinned
       ? { kind: "item", id: "unpin", label: "Unpin workspace", icon: PinOff }
       : { kind: "item", id: "pin", label: "Pin workspace", icon: Pin },
+    ...move,
     ...(desktop ? [{ kind: "item", id: "reveal", label: REVEAL_LABEL, icon: FolderOpen } as const] : []),
     { kind: "sep" },
     { kind: "item", id: "read", label: "Mark all read", icon: ListChecks },
@@ -170,6 +174,25 @@ export function projectMenuExtraItems(
     );
   }
   return items;
+}
+
+/** The order with `id` moved one place up (-1) or down (1) in it; null at its end or when it is not there. */
+export function moveInOrder(ids: readonly string[], id: string, step: -1 | 1): string[] | null {
+  const at = ids.indexOf(id);
+  const to = at + step;
+  if (at < 0 || to < 0 || to >= ids.length) return null;
+  const next = [...ids];
+  [next[at], next[to]] = [next[to], next[at]];
+  return next;
+}
+
+/** Move up and Move down, the keyboard's way to reorder a workspace a drag moves: each disabled at its list's end. */
+export function moveMenuRows(ids: readonly string[], id: string): MenuRow[] {
+  if (!ids.includes(id) || ids.length < 2) return [];
+  return [
+    { kind: "item", id: "move-up", label: "Move up", icon: ArrowUpLong, disabled: moveInOrder(ids, id, -1) === null },
+    { kind: "item", id: "move-down", label: "Move down", icon: ArrowDownLong, disabled: moveInOrder(ids, id, 1) === null },
+  ];
 }
 
 type Props = {
@@ -388,6 +411,8 @@ export function ProjectRail({
         pinnedPaths.some((pinned) => (rowOf(path)?.paths ?? [path]).some((p) => sameProjectPath(pinned, p))),
         Boolean(onRemoveProject),
         batchCounts(sessionStore.metas(), { catalog: workspaceStore.getSnapshot(), lastSeen: loadLastSeen(), floor: seenFloor(), scope: projectScope(path, projectKey) }),
+        undefined,
+        moveMenuRows(pinnedIds.includes(path) ? pinnedIds : projectIds, path),
       )),
     });
     // A folder the catalog has not listed yet has no workspace to rename.
@@ -474,6 +499,11 @@ export function ProjectRail({
     if (action === RENAME && workspace) setRenaming({ workspaceId: workspace.id, name: nameOf(path, projectKey), projectKey });
     else if (action === CUSTOMIZE) setCustomizing({ path, projectKey });
     else if (action === "pin" || action === "unpin") onTogglePin(path);
+    else if (action === "move-up" || action === "move-down") {
+      const pinnedRow = pinnedIds.includes(path);
+      const next = moveInOrder(pinnedRow ? pinnedIds : projectIds, path, action === "move-up" ? -1 : 1);
+      if (next) (pinnedRow ? onReorderPinned : onReorderProjects)(next);
+    }
     else if (action === "reveal") void revealPath(path);
     else if (action === "read") markRead(path);
     else if (batchActionOfMenuId(action)) {
@@ -765,8 +795,6 @@ export function ProjectRail({
                       icon={place.icon}
                       label={place.label}
                       selected={selected}
-                      // The cards' selected fill, not an item's: in light an item's is a card's fill at rest, and the open page would read as one more job.
-                      className={selected ? "bg-sidebar-group-selected hover:bg-sidebar-group-selected" : undefined}
                       onClick={() => shell.openWorkPlace(place.id)}
                       intent={{ onPointerEnter: warm, onFocus: warm }}
                       tooltip={shortcut ? <Kbd>{shortcut}</Kbd> : undefined}
@@ -872,6 +900,11 @@ type GroupLooks = Parameters<typeof workspaceLook>[1];
 /** The Work heading's search mark: Work search (lib/workSearchPort.ts), its key in the tip, its chunk warmed by a hover or focus. */
 const workSearchMark = () => ({ label: "Search Work", icon: Search, onClick: () => openWorkSearch(), shortcut: shortcutFor("Work", "Search Work"), intent: workSearchChunk.intent });
 
+/** Whether a slot holds anything to draw: an empty list of rows draws no wrapper. */
+function hasRows(node: ReactNode): boolean {
+  return Array.isArray(node) ? node.some(hasRows) : node !== null && node !== undefined && node !== false;
+}
+
 function ProjectSection({
   label,
   addLabel = "Add workspace",
@@ -943,7 +976,12 @@ function ProjectSection({
         {label}
       </RailHeading>
       <div className="flex flex-col gap-1">
-        {lead}
+        {/* The rows before the cards (Work's pages) are plain rail rows: 28px apart in a column of their own, 4px over the cards, so pages and jobs read as two lists. */}
+        {hasRows(lead) ? (
+          <div data-rail-lead className="flex flex-col">
+            {lead}
+          </div>
+        ) : null}
         {emptyRow}
         {items.map((item, index) => (
           <WorkspaceRow

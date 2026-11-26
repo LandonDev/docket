@@ -88,22 +88,26 @@ function ComboboxList({ className, ...props }: ComboboxPrimitive.List.Props) {
   );
 }
 
-/** A row in a menu row's box; the highlighted row is the `muted` fill, the chosen one a still check at its end. */
-function ComboboxItem({ className, children, ...props }: ComboboxPrimitive.Item.Props) {
+/** A row in a menu row's box; the highlighted row is the `muted` fill, the chosen one a still check at its end.
+ *  `indicator={false}` for a row that ends in controls of its own and draws its check among them. */
+function ComboboxItem({ className, children, indicator = true, ...props }: ComboboxPrimitive.Item.Props & { indicator?: boolean }) {
   return (
     <ComboboxPrimitive.Item
       data-slot="combobox-item"
       className={cn(
         MENU_ROW,
-        "relative flex w-full cursor-default select-none items-center rounded-lg pe-8 leading-5 outline-hidden data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+        "relative flex w-full cursor-default select-none items-center rounded-lg leading-5 outline-hidden data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+        indicator && "pe-8",
         className,
       )}
       {...props}
     >
       {children}
-      <ComboboxPrimitive.ItemIndicator render={<span className="pointer-events-none absolute end-2 flex size-4 items-center justify-center" />}>
-        <Check className="pointer-events-none" />
-      </ComboboxPrimitive.ItemIndicator>
+      {indicator ? (
+        <ComboboxPrimitive.ItemIndicator render={<span className="pointer-events-none absolute end-2 flex size-4 items-center justify-center" />}>
+          <Check className="pointer-events-none" />
+        </ComboboxPrimitive.ItemIndicator>
+      ) : null}
     </ComboboxPrimitive.Item>
   );
 }

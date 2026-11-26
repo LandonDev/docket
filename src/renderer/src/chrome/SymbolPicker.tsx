@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -78,6 +79,7 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
     };
   }, [projectId, query]);
 
+  const listId = useId();
   const pick = (row: WorkspaceSymbolRow) => {
     onOpen(pathOf(row.uri), {
       line: row.range.startLineNumber,
@@ -125,18 +127,23 @@ export function SymbolPicker({ projectId, onOpen, onClose }: Props) {
       }}
       onSearchKey={onSearchKey}
       onClose={onClose}
+      // The field is the list's combobox, so a reader hears the row the arrows are on.
+      listId={empty ? undefined : listId}
+      activeId={rows[active] ? `${listId}-${active}` : null}
     >
-      {empty ? <PickerNote>{empty}</PickerNote> : <SymbolList rows={rows} active={active} onActive={setActive} onPick={pick} />}
+      {empty ? <PickerNote>{empty}</PickerNote> : <SymbolList id={listId} rows={rows} active={active} onActive={setActive} onPick={pick} />}
     </PickerDialog>
   );
 }
 
-function SymbolList({
+export function SymbolList({
+  id,
   rows,
   active,
   onActive,
   onPick,
 }: {
+  id: string;
   rows: WorkspaceSymbolRow[];
   active: number;
   onActive: (index: number) => void;
@@ -148,6 +155,7 @@ function SymbolList({
   return (
     <div
       ref={lockOverscroll}
+      id={id}
       role="listbox"
       aria-label="Symbols"
       onMouseMove={onMouseMove}
@@ -160,6 +168,7 @@ function SymbolList({
         return (
           <div
             key={`${row.uri}:${row.range.startLineNumber}:${row.name}:${index}`}
+            id={`${id}-${index}`}
             ref={highlighted ? activeRef : undefined}
             role="option"
             aria-selected={highlighted}

@@ -148,7 +148,7 @@ export function QuestionCard({
     // Back leaves with the first question: focus the pick it holds, not the body.
     window.setTimeout(() => {
       const list = lists.current[0];
-      (list?.querySelector<HTMLElement>('[aria-pressed="true"]') ?? list?.querySelector<HTMLElement>("button"))?.focus();
+      (list?.querySelector<HTMLElement>('[aria-checked="true"]') ?? list?.querySelector<HTMLElement>("button"))?.focus();
     }, 0);
   };
 
@@ -230,11 +230,15 @@ export function QuestionCard({
                   ref={(node) => {
                     lists.current[qIndex] = node;
                   }}
-                  aria-multiselectable={entry.multiSelect || undefined}
+                  // One of several is a radio group, several of several a group of checkboxes: a reader hears
+                  // "radio, 2 of 4", never four unrelated toggle buttons. The rows keep their look and their keys.
+                  role={entry.multiSelect ? "group" : "radiogroup"}
+                  aria-label={entry.prompt}
                   className="-mx-2 mt-2 flex flex-col gap-1"
                 >
                   {entry.options.map((option, index) => {
                     const active = choices.includes(index);
+                    const role = entry.multiSelect ? "checkbox" : "radio";
                     const key = KEYS[index];
                     const optionId = `${id}-${qIndex}-${index}`;
                     const fill = active ? "bg-foreground/10" : "hover:bg-foreground/5";
@@ -256,9 +260,9 @@ export function QuestionCard({
                       // field's Space and Enter into clicks that unpick the row. The toggle covers
                       // the row; the field rises above it once the row is picked.
                       return (
-                        <li key={option.label}>
+                        <li key={option.label} role="presentation">
                           <div data-slot="question-option" className={cn("relative", OPTION, fill)}>
-                            <button type="button" aria-pressed={active} aria-label={option.label} onClick={() => pick(index)} className="absolute inset-0 rounded-lg" />
+                            <button type="button" role={role} aria-checked={active} aria-label={option.label} onClick={() => pick(index)} className="absolute inset-0 rounded-lg" />
                             {cap}
                             <input
                               ref={(node) => {
@@ -280,11 +284,12 @@ export function QuestionCard({
                       );
                     }
                     return (
-                      <li key={option.label}>
+                      <li key={option.label} role="presentation">
                         <button
                           type="button"
+                          role={role}
                           data-slot="question-option"
-                          aria-pressed={active}
+                          aria-checked={active}
                           aria-labelledby={`${optionId}-label`}
                           aria-describedby={option.description ? `${optionId}-description` : undefined}
                           onClick={() => pick(index)}

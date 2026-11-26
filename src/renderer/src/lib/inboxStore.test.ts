@@ -294,7 +294,8 @@ describe("inbox network paths", () => {
     const offenders = sources(root)
       .filter((file) => readFileSync(file, "utf8").includes("inboxRefresh"))
       .map((file) => file.slice(root.length))
-      .filter((file) => file !== "lib/inboxStore.ts");
+      // A preview answers the request with its fixture; it does not send one.
+      .filter((file) => file !== "lib/inboxStore.ts" && !/\.(preview|fixtures)\.tsx?$/.test(file));
     expect(offenders).toEqual([]);
   });
 });

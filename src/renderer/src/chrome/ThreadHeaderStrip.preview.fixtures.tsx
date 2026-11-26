@@ -1,4 +1,4 @@
-// Fixtures for `bun run ui:preview src/renderer/src/chrome/ThreadHeaderStrip.preview.tsx#ThreadHeaderStripOnBar`.
+// Fixtures for `bun run ui:preview src/renderer/src/chrome/ThreadHeaderStrip.preview.tsx#ThreadHeaderStripOnBar`. Arrow scrolling and keyboard focus need interaction.
 import { registry } from "../lib/connection/registry";
 import type { EnvironmentStatus } from "../lib/connection/types";
 import { NewThreadChooser } from "./NewThreadChooser";
@@ -73,6 +73,32 @@ const common = {
 
 export default [
   {
+    name: "Live row cut with both arrows",
+    props: {
+      ...common,
+      onScrollBy: "fn",
+      overflow: { left: true, right: true },
+      model: { activeId: "cut1", live: [
+        chip("cut1", "Keep the notes cache warm"),
+        chip("cut2", "Check the inbox in both themes"),
+        chip("cut3", "Prepare the next release"),
+        chip("cut4", "Archive the old imports"),
+      ], dormant: [] },
+    },
+  },
+  {
+    name: "Live row cut without arrows",
+    props: {
+      ...common,
+      model: { activeId: "cut1", live: [
+        chip("cut1", "Keep the notes cache warm"),
+        chip("cut2", "Check the inbox in both themes"),
+        chip("cut3", "Prepare the next release"),
+        chip("cut4", "Archive the old imports"),
+      ], dormant: [] },
+    },
+  },
+  {
     name: "A project: active, working, needs you, unread, master",
     props: {
       ...common,
@@ -129,6 +155,22 @@ export default [
           chip("s3", "Box deploy notes", { live: false }, { environmentId: "env_box" }),
           chip("s4", "Plan the iPhone Duo shell", { live: false, status: "done" }, { threadType: "planning", environmentId: "local" }),
           chip("s5", "Why is the build slow on the box this week", { live: false }, { threadType: "research", environmentId: "env_box" }),
+        ],
+      },
+      trailing: <NewThreadChooser workspaceId={null} empty={false} onStart={() => {}} />,
+    },
+  },
+  {
+    name: "Nothing live: + centred on the shelf's glyph column",
+    props: {
+      ...common,
+      model: {
+        activeId: "q1",
+        live: [],
+        dormant: [
+          chip("q1", "Fix the context meter", { live: false }, { threadType: "implementation" }),
+          chip("q2", "Header chips tell the truth", { live: false }),
+          chip("q3", "Plan the iPhone Duo shell", { live: false, status: "done" }, { threadType: "planning" }),
         ],
       },
       trailing: <NewThreadChooser workspaceId={null} empty={false} onStart={() => {}} />,

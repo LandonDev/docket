@@ -97,7 +97,7 @@ describe("AgentsCueView", () => {
     expect(el.querySelector('[data-mark="codex"]')).not.toBeNull();
   });
 
-  it("is a quiet 24px row control: 12px muted words and the /5 hover fill", () => {
+  it("is a quiet 24px row control: 12px muted words and the chrome's hover fill", () => {
     render(<AgentsCueView cue={cue(1)} pressed={false} onClick={() => {}} />);
     const cls = button()!.className;
     expect(cls).toContain("h-6");
@@ -107,7 +107,8 @@ describe("AgentsCueView", () => {
     expect(cls.split(/\s+/)).not.toContain("gap-1.5");
     expect(cls).toContain("text-xs");
     expect(cls).toContain("text-muted-foreground");
-    expect(cls).toContain("hover:bg-foreground/5");
+    expect(cls).toContain("hover:bg-chrome-hover");
+    expect(cls).not.toContain("hover:bg-foreground/5");
     expect(cls).not.toContain("hover:bg-foreground/7");
   });
 
@@ -132,7 +133,7 @@ describe("AgentsCueView", () => {
     expect(cls).not.toContain("transition-opacity");
     expect(cls).not.toContain("starting:opacity-0");
     // Pressed as Toggle is (muted, foreground text), and pressed down to /12 as every row is.
-    expect(cls).toContain("aria-pressed:bg-muted");
+    expect(cls).toContain("aria-pressed:bg-sidebar-group-selected");
     expect(cls).not.toContain("aria-pressed:bg-foreground/7");
     expect(cls).toContain("active:bg-foreground/12");
     expect(button()!.getAttribute("aria-pressed")).toBe("true");

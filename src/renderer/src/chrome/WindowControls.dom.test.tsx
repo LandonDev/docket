@@ -27,6 +27,7 @@ afterEach(() => {
 
 describe("WindowControls", () => {
   it("Close fills solid red on hover, DESIGN's one exception to status fills above /10; the others stay ghost", () => {
+    host.web = true;
     render(<WindowControls />);
     const close = screen.getByRole("button", { name: "Close window" });
     expect(close.className.split(/\s+/)).toEqual(expect.arrayContaining(["hover:bg-destructive", "hover:text-destructive-foreground"]));
@@ -47,6 +48,20 @@ describe("WindowControls", () => {
     window.dispatchEvent(new CustomEvent("docket:schemechange"));
     expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content).toBe("#111111");
     document.documentElement.style.removeProperty("--sidebar");
+  });
+
+  it("a Linux desktop draws none: its window keeps the system's frame and buttons", () => {
+    const { container } = render(<WindowControls />);
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(container.firstChild).toBeNull();
+  });
+
+  it("drawn, they keep the live row's 40px at the bar's top, never stretched across the shelf", () => {
+    host.web = true;
+    render(<WindowControls />);
+    const group = screen.getByRole("button", { name: "Close window" }).closest<HTMLElement>("div.border-l")!;
+    expect(group.className.split(/\s+/)).toEqual(expect.arrayContaining(["h-10", "self-start"]));
+    expect(group.className.split(/\s+/)).not.toContain("h-full");
   });
 
   it("the /ui page in a Windows browser keeps the drawn controls: there is no window frame of ours there", () => {

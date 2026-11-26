@@ -104,7 +104,7 @@ describe("ComputerCueView", () => {
     const el = screen.getByRole("button", { name: "Computer use: Clicking Save in TextEdit" });
     expect(el.textContent).toBe("Using TextEdit");
     const cls = el.className.split(/\s+/);
-    expect(cls).toEqual(expect.arrayContaining(["h-6", "px-2", "gap-2", "text-xs", "text-muted-foreground", "hover:bg-foreground/5", "active:bg-foreground/12"]));
+    expect(cls).toEqual(expect.arrayContaining(["h-6", "px-2", "gap-2", "text-xs", "text-muted-foreground", "hover:bg-chrome-hover", "active:bg-foreground/12"]));
     expect(cls).not.toContain("hover:bg-foreground/7");
     // working is the still dot: the thread's own turn already spins
     expect(el.querySelector('[data-slot="working-dot"]')).not.toBeNull();
@@ -144,7 +144,7 @@ describe("ComputerCueView", () => {
     expect(fade).toContain("motion-reduce:transition-opacity");
     const cls = button()!.className;
     expect(cls).not.toContain("transition-opacity");
-    expect(cls).toContain("aria-pressed:bg-muted");
+    expect(cls).toContain("aria-pressed:bg-sidebar-group-selected");
     expect(button()!.getAttribute("aria-pressed")).toBe("true");
   });
 

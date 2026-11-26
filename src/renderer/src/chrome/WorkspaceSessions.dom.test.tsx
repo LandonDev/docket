@@ -274,18 +274,27 @@ describe('a project card', () => {
     probe.unmount()
   })
 
-  it('an unread thread weights its own line, the name line carries one dot before the time, and the accessible name says so', () => {
+  it('an unread thread weights its own line, the name line draws no dot beside it, and the accessible name says so', () => {
     const probe = mountProbe(projectCard([threadRow(meta('d', { title: 'Fix login', status: 'done', updatedAt: 200 }), { d: 100 })]))
     const name = Array.from(cardOf(probe.container).querySelectorAll('span')).find((s) => s.textContent === 'Project p1')!
     expect(name.className).toBe('min-w-0 flex-1 truncate text-[13px] leading-5 font-medium text-foreground')
-    const dots = cardOf(probe.container).querySelectorAll('[data-slot="unread-mark"]')
-    expect(dots).toHaveLength(1)
-    expect(dots[0].previousElementSibling).toBe(name)
+    // Unread is said once: the line's weight, never a dot as well.
+    expect(cardOf(probe.container).querySelector('[data-slot="unread-mark"]')).toBeNull()
     const line = lineOf(probe.container, 'Fix login')
     expect(line.getAttribute('data-card-line')).toBe('unread')
     expect(line.querySelector('.font-medium')?.textContent).toBe('Fix login')
-    expect(line.querySelector('[data-slot="unread-mark"]')).toBeNull()
     expect(cardOf(probe.container).getAttribute('aria-label')).toMatch(/unread/)
+    probe.unmount()
+  })
+
+  it('an unread line past the page leaves one dot before the time', () => {
+    const working = Array.from({ length: SESSION_LIST_PAGE }, (_, i) => threadRow(meta(`r${i}`, { status: 'running', busySince: 5, updatedAt: 300 + i }), {}))
+    const probe = mountProbe(projectCard([...working, threadRow(meta('d', { title: 'Fix login', status: 'done', updatedAt: 200 }), { d: 100 })]))
+    expect(lineOf(probe.container, 'Fix login')).toBeUndefined()
+    const name = Array.from(cardOf(probe.container).querySelectorAll('span')).find((s) => s.textContent === 'Project p1')!
+    const dots = cardOf(probe.container).querySelectorAll('[data-slot="unread-mark"]')
+    expect(dots).toHaveLength(1)
+    expect(dots[0].previousElementSibling).toBe(name)
     probe.unmount()
   })
 
@@ -409,7 +418,7 @@ describe('a project card', () => {
     expect(cardOf(probe.container).contains(more)).toBe(false)
     // A 28px row of 13px words, its label on the card's titles (52px: the
     // 12px inset, the mark and the type glyph), the /5 fill at once.
-    for (const c of ['h-7', 'pl-13', 'text-[13px]', 'transition-none', 'hover:bg-foreground/5']) expect(more.className.split(/\s+/)).toContain(c)
+    for (const c of ['h-7', 'pl-13', 'text-[13px]', 'transition-none', 'hover:bg-chrome-hover']) expect(more.className.split(/\s+/)).toContain(c)
     for (const c of ['h-6', 'pl-9']) expect(more.className.split(/\s+/)).not.toContain(c)
     probe.unmount()
   })
@@ -521,7 +530,14 @@ describe('ThreadList window', () => {
       />
     )
     expect(rowCount(probe.container)).toBe(61)
-    expect(probe.container.querySelector('[aria-current="true"]')?.closest('[data-thread-row]')?.textContent).toContain('t60')
+    const chosen = probe.container.querySelector('[aria-current="true"]')?.closest('[data-thread-row]')
+    expect(chosen?.textContent).toContain('t60')
+    // The selected thread row takes the groups' selected step, never `muted` (a resting card's fill in light); the others hover on the chrome's hover step, lighter than it.
+    expect(chosen?.className).toMatch(/(^| )bg-sidebar-group-selected( |$)/)
+    expect(chosen?.className).not.toMatch(/bg-muted|hover:bg-/)
+    const other = probe.container.querySelector<HTMLElement>('[data-thread-row]')!
+    expect(other.className).toContain('hover:bg-chrome-hover')
+    expect(other.className).not.toMatch(/bg-foreground\/5|bg-sidebar-group-selected/)
     probe.unmount()
   })
 })

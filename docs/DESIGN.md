@@ -77,7 +77,12 @@ light one is built is "The light theme".
 | `muted` | a hovered or highlighted row, a track, a key cap | oklch 0.275 | oklch(0.948 0.004 264) |
 | `sidebar-group` | a group's resting fill in the chrome (a project card in the workspace column) | oklch 0.213 | oklch(0.948 0.004 264) |
 | `sidebar-group-hover` | that group hovered | oklch 0.244 | oklch(0.936 0.005 264) |
-| `sidebar-group-selected` | that group selected | `muted` | oklch(0.922 0.006 264) |
+| `sidebar-group-selected` | that group selected; and the selected fill of an item on the chrome (a rail row, a thread row, the strip's active tab, a pressed control in the title bar) | `muted` | oklch(0.922 0.006 264) |
+| `chrome-hover`, `chrome-hover-ghost` | the hover fill of a row, a tab or a quiet control on the chrome, and of a ghost button there | `foreground` 5%, 7% | `sidebar-group-hover` |
+| `skeleton` | a loading bone | `muted` | `foreground` 8% over what it lies on |
+| `check-edge` | an unchecked checkbox's or radio's edge | `input` | `foreground` 50% (3:1) |
+| `field-readonly` | a read-only field's words | `foreground` | `muted-foreground` |
+| `hover-fill`, `hover-fill-field`, `hover-fill-file` | what an outline button and a linked row, a select's trigger, and an attachment that opens hover to | `muted`, `muted` 60%, `muted` 50% | `foreground` 5%, a row's hover wash |
 | `secondary` | the secondary button | oklch 0.29 | oklch(0.935 0.005 264) |
 | `border` | every hairline | white 9% | rgb(15 23 42) 10% |
 | `input` | a field's border, a switch's off track | white 12% | rgb(15 23 42) 18% |
@@ -121,8 +126,12 @@ Every chart and the heatmap read a hover out the same way
 (`ChartTooltipContent`: the popover's fill, `rounded-xl`, 12px inset), and
 their ticks are 12px.
 
-The `sidebar-group` steps are a container's surface, never an item's: a
-thread row stays bare in every list. They are opaque steps away from
+The `sidebar-group` steps are a container's resting surface, never an
+item's: a thread row stays bare at rest in every list. An item on the
+chrome shares only the far steps: it hovers on `chrome-hover` and is
+selected on `sidebar-group-selected`, and the hover always lies between the
+sidebar and the selected step (`lib/sidebarGroup.test.ts`), so hovering a
+neighbour never looks more chosen than the chosen one. They are opaque steps away from
 `sidebar`, each at least 0.01 of OKLab L past the one before and the
 selected step the farthest (`lib/sidebarGroup.test.ts`), with both inks at
 4.5:1 on each (`lib/tokenContrast.test.ts`). Light's ladder runs 0.948, 0.936, 0.922: the
@@ -147,6 +156,16 @@ Light is a theme of its own, not dark turned over. Its rules:
   token blocks, no `useColorScheme` to pick a colour
   (`lib/colourGuard.test.ts`). The hook is for a thing that must be told in
   JS: an editor's theme, a frame's document.
+- **Selected is darker than hovered, and neither is a card at rest.** In
+  light `muted` (0.948) is a resting card's fill, so on the chrome a selected
+  row, tab or pressed control takes the groups' selected step (0.922) and a
+  hover the hovered step (0.936): rest, hover, selected, in that order. Off
+  the chrome a part with an edge of its own (an outline button, a select, an
+  attachment) hovers on a row's wash (`hover-fill`, `foreground` 5%), never
+  on `muted`, which there would read as chosen.
+- **What only has an edge keeps it.** A bone is a wash of `foreground`
+  (`skeleton`), so it shows on the rail and on a card as on the page
+  (1.15:1 at least); an unchecked box or radio has a 3:1 edge (`check-edge`).
 - **Three inks.** `foreground`, `muted-foreground` and `faint-foreground`.
   Text is never an opacity of `foreground`: a mix that reads on dark falls
   under 3:1 on white. Opacities of `foreground` are for fills and edges.
@@ -167,7 +186,8 @@ distances):
 | text | `foreground`, `muted-foreground`, `link`, the four status colours, the composer's skill and mention ink, each `-foreground` on its fill, the tooltip's pair | 4.5:1 | `background`, `sidebar`, `card`, `popover`, `muted`, `secondary` and the three `sidebar-group` steps (a `-foreground` on its own fill only; skill and mention ink on `background`, `card` and `popover`, where they are typed) |
 | quiet text | `faint-foreground` | 3:1 | the same surfaces |
 | mark | `accent` as a ring, the type tints, `chart-1..4`, the three `chart-neutral` steps, a glyph in a status colour | 3:1 | the surfaces it is drawn on |
-| edge | `border`; `input` | 1.15:1; 1.4:1 | `background`, `sidebar`, `card`; `background`, `card` |
+| edge | `border`, `skeleton`; `input` | 1.15:1; 1.4:1 | `background`, `sidebar`, `card`; `background`, `card` |
+| control edge | `check-edge` | 3:1 | `background`, `popover`, `card`, `sidebar` |
 | wash | `foreground` over each canvas tint laid on `background` and `card` | 4.5:1 | the mixed colour |
 | code | every ink of the editor's two syntax themes, CodeMirror's two tables and the terminal's sixteen colours per theme; a completion kind's name; the letter on a kind's badge | 4.5:1 (a comment and a line number 3:1) | the editor's and the terminal's ground; the popover and the highlighted row; the badge's fill |
 
@@ -205,6 +225,11 @@ theme, grouped in index.css under "Held in dark":
 - The names work-kit reads and TempCode never defined (the date picker's
   colours, its one radius, its ring duration, its floating sheet's shadow)
   have a value in light and none in dark.
+- A hover on the chrome is a wash of `foreground` in dark (5%, a ghost
+  button 7%) and the hovered group's step in light; a bone is `muted` in
+  dark; an unchecked box's edge is the field's hairline in dark (1.37:1 to
+  1.45:1, recorded); an outline button, a select's trigger and an attachment
+  hover on `muted` (whole, 60% and 50%) in dark.
 - Monaco's completion list keeps IDEA's row and badge fills in dark and
   takes the muted row and darker fills in light; the terminal keeps its
   dark theme's four values and holds a program's colours to 4.5:1 only on
@@ -708,7 +733,9 @@ request settles, the row leaves its slot or `STOP_DEADLINE_MS` (10s) passes,
 so a Stop the host never acts on never spins for good; the timer's
 set at its width's end (`align="end"`) so the word stands over Send; a held
 row's glyph sits in the `+` button's 28px box, on `+`'s axis (the row
-carries the box's 1px sides, unseen), its word 8px after that box, and its
+carries the box's 1px sides, unseen), its word 8px after that box (the
+open turn's time starts on that same column, 36px in, so a pause or a
+continue never moves it), and its
 detail, the tally and the frozen time one comma run ("Stopped The harness
 is gone, 1m 35s"). The queue's grip sits in the same box, centred on its
 text's first line, and the text starts 8px after it, on the field's column. What the thread does is the transcript's
@@ -1009,7 +1036,7 @@ Every form or decision dialog has one shape: `Modal` (or `ModalPanel` when a par
 `Dialog` and `AlertDialog`, and every form dialog has their one shape:
 `Modal`, `ModalBody` and `DialogFooter`, 448px or wider, a hairline over
 the footer, Cancel then the verb, an action of the dialog's own at the
-footer's start; a field's label is `Field` over it, a choice a `FieldRow`. A sheet is for a long form or picker
+footer's start; a field's label is `Field` over it, a choice a `FieldRow`. A confirm has the same shape (448px, the 20px inset, the hairline over Cancel and the verb, its red line in the body) with no close and no room kept for one. A single choice of a few is `ChoiceToggle`, a 32px track like the select beside it; where each choice needs a line of words it is a `RadioGroup` of `RadioChoice` rows, and a list too long to scan is a `ChoiceCombobox`, a select with a field that filters. A dialog's subtitle is one line and says the whole of itself on hover while it is cut. A sheet is for a long form or picker
 that would not fit a dialog. A menu (`DropdownMenu`, `ContextMenu`) is
 verbs; a popover is content (a picker, a preview, a list of accounts). A
 menu's rows are `MenuRow` data rendered by `RowsMenu` (from a trigger) or

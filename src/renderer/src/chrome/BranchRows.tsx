@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
-import { cn } from "../lib/cn";
+import { useRef, type RefObject } from "react";
+import { Combobox, ComboboxEmpty, ComboboxItem, ComboboxList, ComboboxSearch } from "../components/ui/combobox";
 import type { GitBranchInfo } from "../lib/fs";
-import { Check, GitBranch, Plus } from "./icons";
+import { GitBranch, Plus } from "./icons";
 
 export type BranchRow =
   | { kind: "create"; name: string }
@@ -9,82 +9,88 @@ export type BranchRow =
 
 type Row = BranchRow;
 
+const keyOf = (row: Row): string => (row.kind === "create" ? `create:${row.name}` : `${row.branch.remote ?? "local"}:${row.branch.name}`);
+
 /**
- * BranchPicker's list: the create row and the branches, the highlighted one
- * kept in view. It shows only inside the open popover, so it rides the menu
- * chunk (chrome/menuBody.tsx) instead of the first paint.
+ * BranchPicker's open body: the field that searches or names a new branch,
+ * and under it the create row and the branches. The field is the list's
+ * combobox (components/ui/combobox.tsx), so the arrows move the row a reader
+ * hears and a row sliding under a still pointer never takes the highlight;
+ * the list opens on the current branch. The picker filters the rows itself.
+ * It shows only inside the open popover, so it rides the menu chunk
+ * (chrome/menuBody.tsx) instead of the first paint.
  */
 export function BranchRows({
+  search,
+  query,
   rows,
-  active,
   busy,
   emptyLabel,
-  onActive,
+  onQuery,
   onPick,
 }: {
+  search: RefObject<HTMLInputElement | null>;
+  query: string;
   rows: Row[];
-  active: number;
   busy: boolean;
   emptyLabel: string;
-  onActive: (index: number) => void;
+  onQuery: (query: string) => void;
   onPick: (row: Row) => void;
 }) {
-  const activeRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "nearest" });
-  }, [active]);
-
-  if (rows.length === 0) {
-    return <div className="px-2 py-1.5 text-xs text-muted-foreground">{emptyLabel}</div>;
-  }
-
+  const current = rows.find((row) => row.kind === "branch" && row.branch.current) ?? null;
+  // The row the arrows or a typed query stand on, for an Enter with none: the first row then.
+  const highlighted = useRef<Row | undefined>(undefined);
   return (
-    <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
-      <div role="listbox" aria-label="Branches">
-        {rows.map((row, index) => {
-          const highlighted = index === active;
-          const selected = row.kind === "branch" && row.branch.current;
-          return (
-            <div
-              key={
-                row.kind === "create"
-                  ? `create:${row.name}`
-                  : `${row.branch.remote ?? "local"}:${row.branch.name}`
-              }
-              ref={highlighted ? activeRef : undefined}
-              role="option"
-              aria-selected={selected}
-              aria-disabled={busy}
-              onMouseDown={(e) => e.preventDefault()}
-              onMouseEnter={() => onActive(index)}
-              onClick={() => {
-                if (!busy) onPick(row);
-              }}
-              className={cn(
-                "flex h-7 cursor-default items-center gap-2 rounded-md px-2 text-[13px]",
-                busy ? "opacity-50" : highlighted && "bg-muted",
-              )}
-            >
-              {row.kind === "create" ? (
-                <>
-                  <Plus className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 truncate">Create and checkout {row.name}</span>
-                </>
-              ) : (
-                <>
-                  <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">{row.branch.name}</span>
-                  {row.branch.remote ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">{row.branch.remote}</span>
-                  ) : null}
-                  {selected ? <Check className="size-3.5 shrink-0" /> : null}
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
+    <Combobox<Row>
+      inline
+      open
+      items={rows}
+      filter={null}
+      value={current}
+      inputValue={query}
+      autoHighlight
+      itemToStringLabel={(row) => (row.kind === "create" ? row.name : row.branch.name)}
+      isItemEqualToValue={(a, b) => keyOf(a) === keyOf(b)}
+      onInputValueChange={(next, details) => {
+        // A pick never writes its row's name into the field: only typing changes the query.
+        if (details.reason === "input-change" || details.reason === "input-clear") onQuery(next);
+      }}
+      onItemHighlighted={(row) => {
+        highlighted.current = row;
+      }}
+    >
+      <ComboboxSearch
+        ref={search}
+        placeholder="Search or create a branch"
+        aria-label="Search or create a branch"
+        disabled={busy}
+        // A bordered field over its list, as before; its glyph stands over the rows' glyphs, 12px in.
+        className="mb-1 border-input"
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || highlighted.current || !rows[0]) return;
+          event.preventDefault();
+          onPick(rows[0]);
+        }}
+      />
+      <ComboboxEmpty>{emptyLabel}</ComboboxEmpty>
+      <ComboboxList aria-label="Branches">
+        {(row: Row) => (
+          <ComboboxItem key={keyOf(row)} value={row} disabled={busy} onClick={() => onPick(row)}>
+            {row.kind === "create" ? (
+              <>
+                <Plus className="text-muted-foreground" />
+                <span className="min-w-0 truncate">Create and checkout {row.name}</span>
+              </>
+            ) : (
+              <>
+                <GitBranch className="text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate font-mono text-xs">{row.branch.name}</span>
+                {row.branch.remote ? <span className="shrink-0 text-xs text-muted-foreground">{row.branch.remote}</span> : null}
+              </>
+            )}
+          </ComboboxItem>
+        )}
+      </ComboboxList>
+    </Combobox>
   );
 }

@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { updateStore } from "../lib/updateStore";
 import type { UpdaterSnapshot } from "../lib/updater";
-import { UpdateRow, updateRowState, useUpdateRowState, type UpdateRowState } from "./UpdateRow";
+import { RETRY_TIP, UpdateRow, updateRowState, useUpdateRowState, type UpdateRowState } from "./UpdateRow";
+import { tooltipChunk, warmTooltips } from "../components/ui/tooltip";
 
 const web = vi.hoisted(() => ({ on: false }));
 vi.mock("../lib/nativeWeb", async (importOriginal) => ({
@@ -115,8 +116,23 @@ describe("UpdateRow", () => {
   });
 
   it("available without notes has no hover action; a retry says so", () => {
-    mount({ kind: "available", version: "1.0.11", retry: true });
+    mount({ kind: "available", version: "1.0.11", retry: true, error: "net::ERR_CONNECTION_RESET at https://github.com/x" });
     expect(screen.getByRole("button", { name: "Retry update" })).toBeTruthy();
+    // The tooltip says it plainly; the updater's raw text is never on screen.
+    expect(RETRY_TIP).toBe("The last download failed");
+    expect(document.body.textContent).not.toContain("ERR_CONNECTION_RESET");
+  });
+
+  it("a retry's tooltip is the plain line, never the updater's raw text", async () => {
+    await tooltipChunk.load();
+    warmTooltips();
+    mount({ kind: "available", version: "1.0.11", retry: true, error: "net::ERR_CONNECTION_RESET" });
+    const row = screen.getByRole("button", { name: "Retry update" });
+    fireEvent.pointerEnter(row, { pointerType: "mouse" });
+    fireEvent.mouseEnter(row);
+    fireEvent.mouseMove(row);
+    await waitFor(() => expect(screen.getByText(RETRY_TIP)).toBeTruthy(), { timeout: 1500 });
+    expect(document.body.textContent).not.toContain("ERR_CONNECTION_RESET");
     expect(screen.queryByRole("button", { name: "What's new" })).toBeNull();
   });
 

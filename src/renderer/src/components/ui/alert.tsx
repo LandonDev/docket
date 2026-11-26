@@ -27,7 +27,7 @@ const alertVariants = cva("group/alert relative grid w-full grid-cols-[auto_1fr]
 function Alert({ className, variant = "info", children, ...props }: ComponentProps<"div"> & VariantProps<typeof alertVariants>) {
   const Mark = ALERT_MARKS[variant ?? "info"];
   return (
-    <div data-slot="alert" role="alert" className={cn(alertVariants({ variant }), className)} {...props}>
+    <div data-slot="alert" role={variant === "error" || variant === "warning" ? "alert" : "status"} className={cn(alertVariants({ variant }), className)} {...props}>
       <Mark data-slot="alert-mark" aria-hidden="true" className="row-span-2 mt-0.5 size-4 self-start" />
       {children}
     </div>

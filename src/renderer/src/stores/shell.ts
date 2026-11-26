@@ -26,7 +26,11 @@ export type WhatsNew = { version: string; markdown?: string };
 export type AliaxPageId = "accounts" | "stats";
 
 export type ShellState = {
+  /** The rail is shown. His choice, saved, except while `railFolded`. */
   projectRailOpen: boolean;
+  /** The window grew too narrow for the thread beside an open rail, so the rail folded
+   *  (lib/railFold.ts): shown closed, his saved choice still open, back with the room. */
+  railFolded: boolean;
   searchViewOpen: boolean;
   /** Bumped to move focus into the search view. */
   searchViewFocusToken: number;
@@ -59,6 +63,7 @@ export function initialShellState(
 ): ShellState {
   return {
     projectRailOpen: loadProjectRailOpen(),
+    railFolded: false,
     searchViewOpen: false,
     searchViewFocusToken: 0,
     searchSeed: null,
@@ -108,8 +113,19 @@ export function closeOverlays(state: ShellState): ShellState {
   return patch(state, { ...VIEWS_CLOSED, settingsOpen: false });
 }
 
+/** His press: the rail flips, and a fold is over (pressed open while folded, it stays open). */
 export function toggleProjectRail(state: ShellState): ShellState {
-  return patch(state, { projectRailOpen: !state.projectRailOpen });
+  return patch(state, { projectRailOpen: !state.projectRailOpen, railFolded: false });
+}
+
+/** The thread fell under its floor beside an open rail: the rail folds, his choice unsaved. */
+export function foldRail(state: ShellState): ShellState {
+  return state.projectRailOpen ? patch(state, { projectRailOpen: false, railFolded: true }) : state;
+}
+
+/** The room came back: a folded rail opens again. One he closed himself stays closed. */
+export function unfoldRail(state: ShellState): ShellState {
+  return state.railFolded ? patch(state, { projectRailOpen: true, railFolded: false }) : state;
 }
 
 export function openFilePicker(state: ShellState): ShellState {
@@ -240,7 +256,8 @@ export function anyViewOpen(state: ShellState): boolean {
 }
 
 // The panel choices survive a relaunch; the rest is per window.
-shellStore.subscribe((state) => state.projectRailOpen, (open) => saveProjectRailOpen(open));
+// A fold is not his choice: the saved value is open while folded.
+shellStore.subscribe((state) => state.projectRailOpen || state.railFolded, (open) => saveProjectRailOpen(open));
 shellStore.subscribe((state) => state.settingsSection, (section) => saveSettingsSection(section));
 
 const update = (reducer: (state: ShellState) => ShellState) =>
@@ -251,6 +268,8 @@ export const shell = {
   closeViews: () => update(closeViews),
   closeOverlays: () => update(closeOverlays),
   toggleProjectRail: () => update(toggleProjectRail),
+  foldRail: () => update(foldRail),
+  unfoldRail: () => update(unfoldRail),
   openFilePicker: () => update(openFilePicker),
   closeFilePicker: () => update((s) => patch(s, { filePickerOpen: false })),
   openSymbolPicker: () => update(openSymbolPicker),

@@ -18,11 +18,15 @@ const VERB: Record<BatchNotice["action"], string> = { pause: "Paused", resume: "
  *  every change, and a dismissed one must not come back. */
 const dismissedRest = new Set<string>();
 
-export function ThreadBatchToasts({ onOpen }: Props): null {
+export function ThreadBatchToasts(props: Props) {
+  return <BatchNoticesToasts {...props} notices={useBatchNotices()} />;
+}
+
+export function BatchNoticesToasts({ onOpen, notices }: Props & { notices: readonly BatchNotice[] }): null {
   const open = useRef(onOpen);
   open.current = onOpen;
   useToastSync(
-    useBatchNotices(),
+    notices,
     (notice) => `batch:${notice.key}`,
     (toast, notice, id) => {
       const [first, ...rest] = notice.failed;

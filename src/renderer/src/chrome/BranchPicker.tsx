@@ -1,14 +1,8 @@
 import { registry } from "../lib/connection";
 import { environmentOfCwd } from "../lib/tcserver/projects";
-import { ChevronDown, GitBranch, Search } from "./icons";
+import { ChevronDown, GitBranch } from "./icons";
 import { ROW_CONTROL } from "./composerRow";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent as ReactKeyboardEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   gitCheckout,
   gitCommit,
@@ -22,7 +16,6 @@ import { useProjectBranchesState } from "../hooks/useProjectBranches";
 import { TruncateTip } from "../components/tip";
 import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
-import { GroupInput, InputGroup } from "../components/ui/input";
 import { cn } from "../lib/cn";
 import { LazyPopover } from "./menuRows";
 import type { BranchRow as Row, BranchRows } from "./BranchRows";
@@ -61,7 +54,6 @@ export function BranchPicker({
   const head = variant === "head";
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [blocked, setBlocked] = useState<PendingSwitch | null>(null);
@@ -100,7 +92,6 @@ export function BranchPicker({
     if (!open) return;
     setQuery("");
     setError(null);
-    setActive(0);
   }, [open]);
 
   useEffect(() => {
@@ -143,10 +134,6 @@ export function BranchPicker({
       })),
     ];
   }, [branch, projectBranches, query]);
-
-  useEffect(() => {
-    setActive((i) => (rows.length === 0 ? 0 : Math.min(i, rows.length - 1)));
-  }, [rows.length]);
 
   const applySwitch = (pending: PendingSwitch) =>
     pending.kind === "create"
@@ -220,26 +207,6 @@ export function BranchPicker({
     });
   };
 
-  const onSearchKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      if (rows.length === 0) return;
-      setActive((i) => Math.min(rows.length - 1, i + 1));
-      return;
-    }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      if (rows.length === 0) return;
-      setActive((i) => Math.max(0, i - 1));
-      return;
-    }
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const row = rows[active];
-      if (row) pick(row);
-    }
-  };
-
   // Always keep the control mounted so the composer's toolbar does not resize
   // when a folder isn't a git repo: the loading skeleton, "No repo" and the
   // branch all sit in the same 24px button beside the same icon.
@@ -307,32 +274,17 @@ export function BranchPicker({
           finalFocus={onClose ? false : undefined}
           className="max-h-70 min-h-45 w-70 gap-0 p-1"
         >
-          <InputGroup leading={<Search className="size-3.5" />} className="mb-1 shrink-0">
-            <GroupInput
-              ref={search}
-              value={query}
-              placeholder="Search or create a branch"
-              aria-label="Search or create a branch"
-              spellCheck={false}
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              disabled={busy}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setActive(0);
-                setError(null);
-              }}
-              onKeyDown={onSearchKey}
-            />
-          </InputGroup>
-          {/* The popover's children mount only once the menu chunk has landed, and the list rides it. */}
+          {/* The popover's children mount only once the menu chunk has landed; the field and the list ride it. */}
           <ListOf
+            search={search}
+            query={query}
             rows={rows}
-            active={active}
             busy={busy}
             emptyLabel={query.trim() ? "No matching branches" : "No branches"}
-            onActive={setActive}
+            onQuery={(next) => {
+              setQuery(next);
+              setError(null);
+            }}
             onPick={pick}
           />
           {error ? (

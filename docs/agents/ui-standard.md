@@ -141,3 +141,29 @@
   electron-vite build per branch for `bun run check:bundle`, never the
   full suite or a dev instance. The renderer's prettier style differs from
   the root config: never run prettier or `--fix` on src/renderer.
+
+### Preview sweep
+
+Run `bun run script:preview-smoke` to render the renderer's fixture and
+preview pages and check for empty fixtures or React error cards. Use
+`--only surfaces/threads` to check one path prefix, or
+`--shot --out /tmp/docket-previews` to keep both themes and the PNGs. This
+command runs by hand. A fixture may name its component in its first comment.
+A preview whose exports need different data can supply `fixturesByExport`
+in its adjacent fixture file. Use `--shot-widths 864,400,1200` on a single
+`ui:preview` to include a wider capture. An open portal sits below its
+fixture, or inside a window marked `data-preview-stage`.
+A preview can export a numeric `previewClock` to hold elapsed time during
+the render.
+Run `bun scripts/ui-preview-pair.ts --shot --out /tmp/docket-pair` to
+capture the browser pairing page with its fixture replies.
+
+## The Docket walk
+
+Photograph the built Linux desktop in dark and light at 1440×900, 1000×700 and 800×520.
+Run `/srv/agents/work/temp-code/.temp-code/bin/heavy bun run script:docket-walk --out <dir>`
+from a checkout with `out/` and dependencies. The default is a fresh folder under `/tmp/docket-walk/`.
+Use `--only <scene,scene>`, `--pass owner|device|read|all` and `--theme dark|light|both`
+to narrow a run. The device and read passes cover scenes where the key matters.
+The walk uses isolated hosts and a loopback provider. It asserts nothing.
+Look for failed poses in `walk.log` and in the pictures marked `-FAILED`.

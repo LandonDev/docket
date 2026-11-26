@@ -270,7 +270,7 @@ async function main(): Promise<void> {
     writeFileSync(join(shots, name), Buffer.from(png, 'base64'))
   }
   const STATES = [
-    { name: 'off', set: { code: false, work: false }, text: 'Away from computer' },
+    { name: 'off', set: { code: false, work: false }, text: 'Away' },
     { name: 'code-only', set: { code: true, work: false }, text: 'Away for Code' },
     { name: 'work-only', set: { code: false, work: true }, text: 'Away for Work' },
     { name: 'both', set: { code: true, work: true }, text: 'Away for both' }

@@ -3,8 +3,7 @@ import type { DevTarget } from "@server/shared/contract-devservers";
 import { ChoiceSelect } from "../components/choice-select";
 import { BusyLabel, Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
-import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
+import { ChoiceToggle } from "../components/choice-toggle";
 import { devPane } from "../lib/devPane";
 import {
   runChoice,
@@ -175,33 +174,12 @@ const noop = () => {};
 function HostChoice({ hosts, value, onChange }: { hosts: DevHost[]; value: string | null; onChange: (id: string) => void }) {
   return (
     <div className="px-3 pb-2">
-      <ToggleGroup
-        aria-label="Run on"
-        size="sm"
-        spacing={0}
-        value={value ? [value] : []}
-        onValueChange={(next: unknown[]) => {
-          const id = next[0];
-          if (typeof id === "string") onChange(id);
-        }}
-      >
-        {hosts.map((h) =>
-          h.projectId ? (
-            <ToggleGroupItem key={h.environmentId} value={h.environmentId}>
-              {h.name}
-            </ToggleGroupItem>
-          ) : (
-            <Tooltip key={h.environmentId}>
-              <TooltipTrigger render={<span className="inline-flex" />}>
-                <ToggleGroupItem value={h.environmentId} disabled>
-                  {h.name}
-                </ToggleGroupItem>
-              </TooltipTrigger>
-              <TooltipContent>{h.name} has the folder but no project for it</TooltipContent>
-            </Tooltip>
-          ),
-        )}
-      </ToggleGroup>
+      <ChoiceToggle
+        label="Run on"
+        value={value ?? ""}
+        onChange={onChange}
+        options={hosts.map((h) => (h.projectId ? { value: h.environmentId, label: h.name } : { value: h.environmentId, label: h.name, disabled: true, note: `${h.name} has the folder but no project for it` }))}
+      />
     </div>
   );
 }

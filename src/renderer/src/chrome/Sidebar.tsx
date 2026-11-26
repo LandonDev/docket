@@ -9,7 +9,6 @@ import {
 import { warmProjectForCwd } from "../lib/monaco/focusBoot";
 import { AnimatePresence, motion } from "motion/react";
 import { DUR, EASE_OUT } from "../lib/ease";
-import { IS_MAC } from "../lib/platform";
 import { basename } from "../lib/fs";
 import { projectName } from "../lib/paths";
 import { resolveTabGroupLabel } from "../lib/tabGroups";
@@ -28,8 +27,7 @@ import { archiveDormantThreads } from "../lib/archiveDormantThreads";
 import { batchHome, dormantByType, dormantThreads, focusedTree, railMasters } from "../lib/threadStripModel";
 import { scopeTest } from "../lib/workspaceSessions";
 import { openWorkspaceSettings } from "../lib/settings";
-import { canTabVisitBack, canTabVisitForward } from "../lib/tabVisitHistory";
-import { useWorkspaceTabs } from "../stores/workspace";
+import { useVisitNav } from "../hooks/useVisitNav";
 import { requestProjectRailAction } from "../lib/projectRailActions";
 import WorkspaceSessions from "./WorkspaceSessions";
 import { sidebarVisible as asideVisible } from "./sidebarVisibility";
@@ -49,8 +47,8 @@ import {
   useSelectedWorkspaceId,
   useSelectedWorkspaceIds,
 } from "../stores/project";
-import { shell, useShell, type AliaxPageId } from "../stores/shell";
-import { DevModeSlot, TabVisitNav } from "./TitleBar";
+import { useShell, type AliaxPageId } from "../stores/shell";
+import { TrafficLightSpacer } from "./TitleBar";
 import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -58,6 +56,7 @@ import type { OpenFileFn } from "../lib/search";
 import { dialogsChunk, workShellChunk } from "../surfaces/chunks";
 import { WORK_CHATS } from "../lib/tcserver/workspaces";
 import { useWorkOn } from "../lib/workSwitch";
+import { useRailFold } from "../lib/railFold";
 import { Skeleton } from "../components/ui/skeleton";
 import { LoadingLine } from "../surfaces/SurfaceSkeleton";
 
@@ -141,8 +140,7 @@ function SidebarComponent({
   // App passes handlers only, so a tab switch re-renders this, not App's tree.
   const { active, sidebarCwd: cwd, gitCwd } = useProjectCwds();
   const activeSessionId = active?.id;
-  const canVisitBack = useWorkspaceTabs((s) => canTabVisitBack(s.visits));
-  const canGoForward = useWorkspaceTabs((s) => canTabVisitForward(s.visits));
+  const { canGoBack, canGoForward } = useVisitNav();
   const recents = useRailRecents();
   const selectedProjectId = useProject((s) => s.selectedProjectId);
   /** The workspace folder the app is in: the rail highlights this row, not
@@ -203,16 +201,10 @@ function SidebarComponent({
   const workOn = useWorkOn();
   const searchActive = useShell((s) => s.searchViewOpen);
   const inboxActive = useShell((s) => s.inboxViewOpen);
-  const outboxActive = useShell((s) => s.outboxViewOpen);
-  const computersActive = useShell((s) => s.computersViewOpen);
-  const workPlaceActive = useShell((s) => s.workPlace !== null);
   const notesActive = useShell((s) => s.notesViewOpen);
   const accountsPage = useShell((s) => s.accountsPage);
   const projectRailOpen = useShell((s) => s.projectRailOpen);
   const settingsOpen = useShell((s) => s.settingsOpen);
-  // Back leaves an overlay before it walks tab history.
-  const canGoBack =
-    canVisitBack || searchActive || settingsOpen || inboxActive || outboxActive || computersActive || workPlaceActive || notesActive || !!accountsPage;
   const showProjectRail = Boolean(onSelectProject && onOpenProject);
   // Settings live in the rail slot, so they keep it visible even when the
   // project rail itself is collapsed.
@@ -284,34 +276,23 @@ function SidebarComponent({
     accountsPage: accountsPage !== null,
     settingsOpen,
   });
+  // At the least width the rail folds, unsaved, so the thread keeps its floor (lib/railFold.ts).
+  useRailFold(width, sidebarVisible);
   const sidebarContent = (
     <aside
       ref={attachPane}
       className="sidebar-glass relative flex h-full min-h-0 shrink-0 flex-col border-r border-border"
     >
-      {railVisible ? null : (
-        <div
-          className="flex h-10 shrink-0 select-none items-center pr-1.5"
-          data-tauri-drag-region="deep"
-        >
-          {IS_MAC ? <div className="w-[78px] shrink-0" /> : null}
-          <DevModeSlot />
-          <TabVisitNav
-            canGoBack={canGoBack}
-            canGoForward={canGoForward}
-            onGoBack={onGoBack}
-            onGoForward={onGoForward}
-            onTogglePanel={shell.toggleProjectRail}
-            panelActive={false}
-          />
-        </div>
-      )}
       {/* A 40px content box with the hairline under it, as the title bar's rows:
-          its controls share the strip's y 6 line, its hairline the title bar's. */}
+          its controls share the strip's y 6 line, its hairline the title bar's.
+          With the rail collapsed it is the window's top row, so it leaves the
+          traffic lights their room; Back, Forward and the rail toggle move to
+          the title bar's live row (TitleBar's `railNav`). */}
       <div
         className="box-content flex h-10 shrink-0 select-none items-center gap-0.5 border-b border-border pr-1.5 pl-3"
         data-tauri-drag-region="deep"
       >
+        {railVisible ? null : <TrafficLightSpacer />}
         <h2 className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">{title}</h2>
         <div className="flex shrink-0 items-center gap-0.5" data-tauri-drag-region="false">
           {onNew ? (

@@ -259,6 +259,29 @@
   --link-color: #7dd3fc;
   --near-foreground: color-mix(in srgb, var(--foreground) 80%, transparent);
   --soft-foreground: color-mix(in srgb, var(--foreground) 70%, transparent);
+  /* Hover on chrome (the rail, the column, the title bar): a row, a tab and
+     a quiet control wash to foreground at 5% here and a ghost button to 7%,
+     as they did. In light both take the hovered group's step, so a hover is
+     always lighter than the selected step beside it
+     (`sidebar-group-selected`; lib/sidebarGroup.test.ts). */
+  --chrome-hover: color-mix(in srgb, var(--foreground) 5%, transparent);
+  --chrome-hover-ghost: color-mix(in srgb, var(--foreground) 7%, transparent);
+  /* A loading bone is the muted fill here, as it was; in light, where muted
+     all but vanishes on the rail and on a card, it is a wash of foreground
+     that darkens whatever it lies on. */
+  --skeleton: var(--muted);
+  /* An unchecked checkbox's or radio's edge is the field's hairline here, as
+     it was; in light it is a control's outline at 3:1, so the box is found. */
+  --check-edge: var(--input);
+  /* What a pressable part with an edge of its own hovers to: an outline
+     button and a linked row (the muted fill here), a select's trigger (60%
+     of it) and an attachment that opens (50%), as each did. In light all
+     three take a row's hover wash, since muted there means selected. */
+  /* A read-only field's words are foreground here, as they were; muted in light, so a held field reads as held. */
+  --field-readonly: var(--foreground);
+  --hover-fill: var(--muted);
+  --hover-fill-field: color-mix(in srgb, var(--muted) 60%, transparent);
+  --hover-fill-file: color-mix(in srgb, var(--muted) 50%, transparent);
   /* Quieter text stood on a ladder of mixes here, and still does: a number
      is the share of foreground (`ink-muted-60` of muted-foreground). In
      light each is one of the three inks, which is the rule (docs/DESIGN.md
@@ -418,6 +441,14 @@ html.theme-light {
   --slide-stage: var(--stage);
   --slide-stage-inset: 16px;
   --control-off: 0.3;
+  --chrome-hover: var(--sidebar-group-hover);
+  --chrome-hover-ghost: var(--sidebar-group-hover);
+  --skeleton: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --check-edge: color-mix(in srgb, var(--foreground) 50%, transparent);
+  --field-readonly: var(--muted-foreground);
+  --hover-fill: color-mix(in srgb, var(--foreground) 5%, transparent);
+  --hover-fill-field: color-mix(in srgb, var(--foreground) 5%, transparent);
+  --hover-fill-file: color-mix(in srgb, var(--foreground) 5%, transparent);
   --slide-edge: var(--image-outline);
   /* A document's sheet in light: the page itself, with a firmer rule. */
   --page: var(--background);
@@ -508,6 +539,14 @@ html.theme-light {
   --color-sidebar-group: var(--sidebar-group);
   --color-sidebar-group-hover: var(--sidebar-group-hover);
   --color-sidebar-group-selected: var(--sidebar-group-selected);
+  --color-chrome-hover: var(--chrome-hover);
+  --color-chrome-hover-ghost: var(--chrome-hover-ghost);
+  --color-skeleton: var(--skeleton);
+  --color-check-edge: var(--check-edge);
+  --color-field-readonly: var(--field-readonly);
+  --color-hover-fill: var(--hover-fill);
+  --color-hover-fill-field: var(--hover-fill-field);
+  --color-hover-fill-file: var(--hover-fill-file);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -764,9 +803,11 @@ html.theme-light {
    with tabIndex, a checkbox root) takes `focus-ring`; nothing draws a second
    ring (lib/focusGuard.test.ts). The picture he drives takes
    `focus-ring-held`: the same ring for as long as it holds the keyboard,
-   however it took it, since his keys go where it says. */
+   however it took it, since his keys go where it says. A slider's thumb
+   takes it while the range input inside it has the keyboard. */
 .focus-ring:focus-visible,
 .focus-ring-held:focus,
+[data-slot="slider-thumb"]:has(:focus-visible),
 button:focus-visible,
 a:focus-visible,
 [role="link"]:focus-visible,

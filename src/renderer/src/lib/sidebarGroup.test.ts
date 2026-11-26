@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { oklab, resolve, themes } from "./colourMath";
+import { oklab, over, resolve, themes } from "./colourMath";
 
 /**
  * A group in the chrome (a project card in the workspace column) sits on its
@@ -26,6 +26,19 @@ describe("sidebar group steps", () => {
         expect({ step: STEPS[i], ok: gap >= 0.01 - 1e-9 }, `${STEPS[i]} is ${gap.toFixed(4)} past ${STEPS[i - 1]}`).toEqual({ step: STEPS[i], ok: true });
       }
       expect(Math.max(...away)).toBe(away[STEPS.length - 1]);
+    });
+
+    // An item on the chrome (a rail row, a thread row, a tab, a pressed control in the title bar) is bare at rest,
+    // hovers on `chrome-hover` and is selected on the groups' selected step: the hover must stay between the two,
+    // or hovering a neighbour looks more chosen than the chosen one.
+    it(`keeps a hovered item between the sidebar and the selected step in the ${name} theme`, () => {
+      const sidebar = resolve(theme, "var(--sidebar)");
+      const l = (colour: string): number => oklab(colour)[0];
+      const selected = Math.abs(lightness(theme, "--sidebar-group-selected") - l(sidebar));
+      for (const token of ["--chrome-hover", "--chrome-hover-ghost"]) {
+        const hover = Math.abs(l(over(resolve(theme, `var(${token})`), sidebar)) - l(sidebar));
+        expect({ token, seen: hover >= 0.01, underSelected: selected - hover >= 0.01 }, `${token}: ${hover.toFixed(4)} from the sidebar, selected ${selected.toFixed(4)}`).toEqual({ token, seen: true, underSelected: true });
+      }
     });
 
   }

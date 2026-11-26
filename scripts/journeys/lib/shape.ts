@@ -270,7 +270,7 @@ export class Pair {
    * a plain one on a scratch git repo (`codeProject`). `beforeStart` runs for each instance once its folders exist
    * and before its process starts (a seeded database for box).
    */
-  async open(withDesk: boolean, name: string, options: { fake?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; chromium?: string; zone?: string; browser?: boolean; link?: LinkShape; provider?: typeof startFakeProvider; work?: boolean; beforeStart?: (inst: Instance) => void | Promise<void> } = {}): Promise<Workspace> {
+  async open(withDesk: boolean, name: string, options: { fake?: boolean; fakeDesk?: boolean; hosted?: boolean; guests?: boolean; guestTheme?: boolean; cut?: boolean; sector?: string; capture?: boolean; localTools?: boolean; withoutTools?: boolean; chromium?: string; zone?: string; browser?: boolean; link?: LinkShape; provider?: typeof startFakeProvider; work?: boolean; beforeStart?: (inst: Instance) => void | Promise<void> } = {}): Promise<Workspace> {
     // Electron's singleton uses a Unix socket under TMPDIR. Keep its path short even when evidence is nested.
     const tmpRoot = this.tmpRoot = mkdtempSync('/tmp/tcj-')
     this.win = await instance(this.root, tmpRoot, 'win')
@@ -279,7 +279,7 @@ export class Pair {
     this.instances.push(this.win, this.box, ...(this.desk ? [this.desk] : []))
     this.l1 = dummyLibrary(this.win.home, 'Journey Teams L1')
     if (this.desk) this.l2 = dummyLibrary(this.desk.home, 'Journey Teams L2')
-    const tools = (!this.sandbox || options.localTools) && existsSync(join(TOOLS, 'state.json')) ? realpathSync(TOOLS) : undefined
+    const tools = !options.withoutTools && (!this.sandbox || options.localTools) && existsSync(join(TOOLS, 'state.json')) ? realpathSync(TOOLS) : undefined
     if (tools) linkTools(this.box.data)
     this.bin = gioStub(this.root)
     if (options.link) {
@@ -313,6 +313,7 @@ export class Pair {
     if (options.fake) {
       seedFakeAccount(join(this.box.data, 'aliax'))
       if (options.capture) seedFakeAccount(join(this.win.data, 'aliax'))
+      if (options.fakeDesk && this.desk) seedFakeAccount(join(this.desk.data, 'aliax'))
       const browserTurn = options.browser ? new Promise<void>(resolve => { this.finishFakeBrowserTurn = resolve }) : undefined
       this.fakeProvider = (options.provider ?? startFakeProvider)(() => { this.fakeMessages++ }, browserTurn, () => this.fakeMailReply)
     }

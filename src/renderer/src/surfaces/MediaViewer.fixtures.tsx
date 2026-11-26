@@ -1,3 +1,20 @@
+// bun run ui:preview src/renderer/src/surfaces/MediaViewer.fixtures.tsx#MediaViewerPreview --shot --fresh
+// Export MediaViewerPreview. The DOM receives an image load event with its fixture dimensions;
+// playback, panning and zoom gestures need a live page.
+import { useEffect, useRef, type ComponentProps } from "react";
+import { MediaViewer } from "./MediaViewer";
+
+export function MediaViewerPreview(props: ComponentProps<typeof MediaViewer>) {
+  const frame = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    for (const image of frame.current?.querySelectorAll("img") ?? []) {
+      Object.defineProperties(image, { naturalWidth: { value: 320 }, naturalHeight: { value: 200 } });
+      image.dispatchEvent(new window.Event("load"));
+    }
+  }, []);
+  return <div ref={frame} className="h-64"><MediaViewer {...props} /></div>;
+}
+
 const svg = (w: number, h: number, fill: string) =>
   `data:image/svg+xml,${encodeURIComponent(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${fill}"/><circle cx="${w / 2}" cy="${h / 2}" r="${h / 4}" fill="white" fill-opacity="0.6"/></svg>`,
@@ -9,7 +26,7 @@ const audio = { kind: "audio", mime: "audio/mpeg", url: "data:audio/mpeg,", size
 const base = { path: "/repo/docs/img/shot.png", cwd: "/repo", active: false };
 
 export default [
-  { name: "image, fit (the loading line until it decodes)", props: { ...base, media: image } },
+  { name: "Decoded image, fit", props: { ...base, media: image } },
   { name: "image at 100%", props: { ...base, media: image, initial: { fit: false } } },
   { name: "review, Before and After", props: { ...base, media: image, original: before } },
   { name: "video", props: { ...base, path: "/repo/clip.mp4", media: video } },

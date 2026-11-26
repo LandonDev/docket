@@ -10,9 +10,11 @@
  * iframes or CSS rewriting. Both embed out/renderer/assets/*.css when present;
  * --fresh compiles the app's own stylesheet from source in the built one's
  * place (about a second), so a class or a token newer than the build draws.
- * Adjacent component.fixtures.tsx carries [{ name, props }] (its default export,
- * else `fixtures`, else its first such array); all fixtures appear in each theme. --props supplies shared defaults, fixtures override them.
+ * Adjacent component.fixtures.tsx carries [{ name, props, prepare?, now? }] (the
+ * export-specific array, then the default, `fixtures`, or the first array).
+ * A fixture can open a state through a real control before capture. --props supplies shared defaults, fixtures override them.
  * Use "fn" for required callbacks (also within nested props); it becomes a noop.
+ * A preview may export previewClock to hold Date.now during the capture.
  * The component renders with the client renderer into a jsdom document (the
  * stores' useSyncExternalStore reads need no server snapshot that way), then
  * its markup is written into a static page. A popup the render left open (a
@@ -30,6 +32,7 @@ import { parseArgs } from 'node:util'
 import { createElement, type ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { JSDOM } from 'jsdom'
+import { expandGlobs, GLOB_MODULES } from './lib/previewGlobs'
 
 const root = resolve(import.meta.dirname, '..')
 
@@ -54,6 +57,11 @@ plugin({
     // A Vite worker import (`monaco…/editor.worker?worker`) is a constructor in
     // the app; a static render never starts one.
     build.onLoad({ filter: /\?worker$/ }, () => ({ contents: 'export default class Worker {}', loader: 'js' }))
+    // Vite's import.meta.glob is the build's: Bun has none, and a page that reaches one died as it loaded.
+    build.onLoad({ filter: new RegExp(`(${GLOB_MODULES.map((file) => file.replace(/[.\/]/g, '\\$&')).join('|')})$`) }, async ({ path }) => ({
+      contents: expandGlobs(await readFile(path, 'utf8'), path),
+      loader: path.endsWith('x') ? 'tsx' : 'ts'
+    }))
   }
 })
 
@@ -70,7 +78,12 @@ export async function freshStylesheet(): Promise<string> {
 }
 
 type Props = Record<string, unknown>
-type Fixture = { name: string; props: Props }
+type Fixture = {
+  name: string
+  props: Props
+  prepare?: (container: HTMLElement) => void | Promise<void>
+  now?: number
+}
 const noop = (): void => {}
 
 // Only plain objects and arrays are walked: a fixture's Set, Map or element passes as it is.
@@ -83,9 +96,14 @@ function stubCallbacks(value: unknown): unknown {
   return value
 }
 
-/** The fixtures a module beside a component carries: its default export, else
+/** The fixtures a module beside a component carries: those named for the
+ *  selected export (`fixturesByExport[name]`, or an exported `<name>Fixtures`)
+ *  when several components share a module, else its default export, else
  *  `fixtures`, else the first exported array of `{ name, props }`. */
-function fixturesOf(module: Record<string, unknown>): unknown {
+function fixturesOf(module: Record<string, unknown>, name: string): unknown {
+  if (isProps(module.fixturesByExport)) return module.fixturesByExport[name] ?? [{ name, props: {} }]
+  const named = module[`${name}Fixtures`]
+  if (Array.isArray(named)) return named
   if (Array.isArray(module.default)) return module.default
   if (Array.isArray(module.fixtures)) return module.fixtures
   return Object.values(module).find((value) => Array.isArray(value) && value.every((item) => isProps(item) && 'name' in item && 'props' in item))
@@ -100,9 +118,11 @@ function documentWindow(): JSDOM['window'] {
   page = new JSDOM('<!doctype html><html><body></body></html>', { pretendToBeVisual: true, url: 'http://localhost/' })
   const { window } = page
   const target = globalThis as Record<string, unknown>
-  for (const key of ['window', 'document', 'navigator', 'HTMLElement', 'Element', 'Node', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'MutationObserver', 'localStorage', 'CustomEvent', 'Event', 'KeyboardEvent', 'MouseEvent', 'PointerEvent', 'DOMRect', 'SVGElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLBRElement', 'customElements', 'HTMLDivElement', 'HTMLSpanElement', 'HTMLCanvasElement', 'DocumentFragment', 'Range', 'Selection', 'getSelection', 'self', 'location', 'FocusEvent', 'UIEvent', 'WheelEvent', 'Text', 'NodeFilter', 'ShadowRoot', 'HTMLButtonElement']) {
+  for (const key of ['window', 'document', 'navigator', 'HTMLElement', 'Element', 'Node', 'getComputedStyle', 'requestAnimationFrame', 'cancelAnimationFrame', 'MutationObserver', 'localStorage', 'AbortController', 'AbortSignal', 'CustomEvent', 'Event', 'KeyboardEvent', 'MouseEvent', 'PointerEvent', 'DOMRect', 'SVGElement', 'HTMLInputElement', 'HTMLTextAreaElement', 'HTMLBRElement', 'customElements', 'HTMLDivElement', 'HTMLSpanElement', 'HTMLCanvasElement', 'DocumentFragment', 'Range', 'Selection', 'getSelection', 'self', 'location', 'FocusEvent', 'UIEvent', 'WheelEvent', 'Text', 'NodeFilter', 'ShadowRoot', 'HTMLButtonElement']) {
     const value = (window as unknown as Record<string, unknown>)[key]
-    if (value !== undefined && target[key] === undefined) target[key] = value
+    // Bun's own event constructors produce a different realm's events.
+    // A renderer control may dispatch to jsdom from its own event handler.
+    if (value !== undefined && (target[key] === undefined || key.endsWith('Event') || key.startsWith('Abort'))) target[key] = value
   }
   // Bun has a Worker, but the markdown worker never answers under it, and the
   // row waited 8 s on it (lib/markdownParse.ts), so every markdown page drew
@@ -129,14 +149,22 @@ function documentWindow(): JSDOM['window'] {
   // jsdom has neither: a tab strip escapes its ids and scrolls its active tab into view.
   if (target.CSS === undefined) target.CSS = { escape: (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`), supports: () => false }
   window.Element.prototype.scrollIntoView ??= function scrollIntoView() {}
+  window.Element.prototype.getAnimations ??= () => []
   // Monaco probes the clipboard commands as it loads.
   window.document.queryCommandSupported ??= () => false
+  // The transcript's virtual list parks when its viewport has no height.
+  // Give it a viewport while jsdom mounts the rows. Chrome lays them out.
+  const clientHeight = Object.getOwnPropertyDescriptor(window.Element.prototype, 'clientHeight')
+  if (clientHeight?.get) Object.defineProperty(window.Element.prototype, 'clientHeight', {
+    ...clientHeight,
+    get(this: Element) { return this.classList.contains('agent-transcript') ? 560 : clientHeight.get!.call(this) },
+  })
   return window
 }
 
 /** The component's markup after a client render: one mount into a fresh
  *  container, one flush, the container's innerHTML. */
-async function clientMarkup(component: ComponentType<Props>, props: Props): Promise<string> {
+async function clientMarkup(component: ComponentType<Props>, props: Props, fixture: Fixture): Promise<string> {
   const window = documentWindow()
   const { createRoot } = await import('react-dom/client')
   const { flushSync } = await import('react-dom')
@@ -144,22 +172,39 @@ async function clientMarkup(component: ComponentType<Props>, props: Props): Prom
   const before = new Set(window.document.body.children)
   window.document.body.appendChild(container)
   const root = createRoot(container)
-  flushSync(() => root.render(createElement(component, props)))
-  // Effects and short animations (a count ticking up, a morph) land after the
-  // first render: read the markup until two reads 50ms apart agree, at most
-  // 400ms, so a fixture shows what the component settles on.
-  await new Promise((done) => setTimeout(done, 0))
-  let html = container.innerHTML
-  for (let waited = 0; waited < 400; waited += 50) {
-    await new Promise((done) => setTimeout(done, 50))
-    const next = container.innerHTML
-    if (next === html) break
-    html = next
+  const readNow = Date.now
+  if (fixture.now !== undefined) Date.now = () => fixture.now!
+  try {
+    flushSync(() => root.render(createElement(component, props)))
+    // Effects and short animations (a count ticking up, a morph) land after the
+    // first render: read the markup until two reads 50ms apart agree, at most
+    // 400ms, so a fixture shows what the component settles on.
+    await new Promise((done) => setTimeout(done, 0))
+    await fixture.prepare?.(container)
+    const currentPortals = () => [...window.document.body.children].filter((element) => element !== container && !before.has(element))
+    const snapshot = () => container.innerHTML + currentPortals().map((element) => element.outerHTML).join('')
+    let last = snapshot()
+    for (let waited = 0; waited < 400; waited += 50) {
+      await new Promise((done) => setTimeout(done, 50))
+      const next = snapshot()
+      if (waited >= 50 && next === last) break
+      last = next
+    }
+    let html = container.innerHTML
+    const portals = portalMarkup(currentPortals())
+    const stage = container.querySelector('[data-preview-stage]')
+    if (stage && portals) {
+      stage.insertAdjacentHTML('beforeend', portals)
+      html = container.innerHTML
+    } else {
+      html += portals
+    }
+    return html
+  } finally {
+    root.unmount()
+    container.remove()
+    Date.now = readNow
   }
-  html += portalMarkup([...window.document.body.children].filter((element) => element !== container && !before.has(element)))
-  root.unmount()
-  container.remove()
-  return html
 }
 
 /** What the render put outside its container: an open menu, select,
@@ -172,11 +217,12 @@ export function portalMarkup(portals: Element[]): string {
   let html = ''
   for (const portal of portals) {
     if (!portal.innerHTML.trim()) continue
-    for (const element of [portal, ...portal.querySelectorAll('[data-side]')]) {
-      if (element.matches('[data-side]')) element.removeAttribute('style')
-    }
-    // A panel with no positioner is fixed to the window: a dialog, a sheet.
-    const modal = portal.querySelector('[data-side]') === null
+    const sheet = portal.querySelector('[data-slot="sheet-content"]')
+    const positioners = [portal, ...portal.querySelectorAll('[data-side]')].filter((element) =>
+      element !== sheet && element.matches('[data-side]'))
+    for (const element of positioners) element.removeAttribute('style')
+    // Sheets use data-side to choose an edge, but are fixed like dialogs.
+    const modal = sheet !== null || positioners.length === 0
     html += `<div class="preview-portal"${modal ? ' data-preview-window=""' : ''}>${portal.outerHTML}</div>`
   }
   return html
@@ -193,6 +239,7 @@ async function main(): Promise<void> {
     options: {
       props: { type: 'string' },
       width: { type: 'string', default: '480' },
+      'shot-widths': { type: 'string' },
       out: { type: 'string', default: '/tmp/ui-preview' },
       shot: { type: 'boolean', default: false },
       fresh: { type: 'boolean', default: false }
@@ -201,10 +248,14 @@ async function main(): Promise<void> {
   const [target] = positionals
   const match = target?.match(/^(.+)#([^#]+)$/)
   if (positionals.length !== 1 || !match) {
-    throw new Error('Usage: bun scripts/ui-preview.ts <module>#<export> [--props \'<json>\'] [--width 480] [--out <dir>] [--shot] [--fresh]')
+    throw new Error('Usage: bun scripts/ui-preview.ts <module>#<export> [--props \'<json>\'] [--width 480] [--out <dir>] [--shot] [--shot-widths 864,400] [--fresh]')
   }
   const width = Number(values.width)
   if (!Number.isSafeInteger(width) || width <= 0) throw new Error('--width must be a positive integer')
+  const shotWidths = values['shot-widths']?.split(',').map(Number) ?? SHOT_WIDTHS
+  if (shotWidths.some((value) => !Number.isSafeInteger(value) || value <= 0)) {
+    throw new Error('--shot-widths must be comma-separated positive integers')
+  }
   const props: unknown = JSON.parse(values.props ?? '{}')
   if (!isProps(props)) throw new Error('--props must be a JSON object')
 
@@ -212,14 +263,19 @@ async function main(): Promise<void> {
   const exportName = match[2]
   // Some modules read window or document as they load (Monaco's setup among them).
   documentWindow()
-  const component = (await import(pathToFileURL(modulePath).href))[exportName] as ComponentType<Props>
+  const module = await import(pathToFileURL(modulePath).href)
+  if (typeof module.previewClock === 'number') {
+    const clock = module.previewClock
+    Date.now = () => clock
+  }
+  const component = module[exportName] as ComponentType<Props>
   if (!component) throw new Error(`No export "${exportName}" in ${match[1]}`)
   const fixturesPath = join(dirname(modulePath), `${basename(modulePath, extname(modulePath))}.fixtures.tsx`)
   const fixtures: unknown = existsSync(fixturesPath)
-    ? fixturesOf(await import(pathToFileURL(fixturesPath).href))
-    : [{ name: exportName, props: {} }]
+    ? fixturesOf(await import(pathToFileURL(fixturesPath).href), exportName)
+    : (modulePath.endsWith('.fixtures.tsx') ? fixturesOf(module, exportName) : undefined) ?? [{ name: exportName, props: {} }]
   if (!Array.isArray(fixtures) || !fixtures.every((item): item is Fixture =>
-    isProps(item) && typeof item.name === 'string' && isProps(item.props))) {
+    isProps(item) && typeof item.name === 'string' && isProps(item.props) && (item.prepare === undefined || typeof item.prepare === 'function') && (item.now === undefined || typeof item.now === 'number'))) {
     throw new Error(`${fixturesPath} must default-export [{ name, props }]`)
   }
 
@@ -234,7 +290,7 @@ async function main(): Promise<void> {
   if (!cssFiles.length && !fresh) console.log('No built stylesheet at out/renderer/assets/*.css; writing previews without it.')
 
   const markup = new Map<string, string>()
-  for (const fixture of fixtures) markup.set(fixture.name, await clientMarkup(component, stubCallbacks({ ...props, ...fixture.props }) as Props))
+  for (const fixture of fixtures) markup.set(fixture.name, await clientMarkup(component, stubCallbacks({ ...props, ...fixture.props }) as Props, fixture))
 
   const name = (exportName === 'default' ? basename(modulePath, extname(modulePath)) : exportName)
     .replace(/[^a-zA-Z0-9_-]/g, '_')
@@ -266,7 +322,13 @@ async function main(): Promise<void> {
           .preview-label { margin-bottom: 8px; color: var(--muted-foreground, GrayText); font-size: 11px; }
           /* A portal drawn in place (portalMarkup): the transform makes the box what a fixed panel is fixed to. */
           .preview-portal { position: relative; transform: translate(0, 0); margin-top: 8px; }
+          .preview-portal:not([data-preview-window]) { width: fit-content; max-width: 100%; }
           .preview-portal[data-preview-window] { min-height: 640px; overflow: hidden; }
+          [data-preview-stage] { position: relative; transform: translate(0, 0); }
+          [data-preview-stage] > .preview-portal[data-preview-window] { position: absolute; inset: 0; z-index: var(--layer-dialog); min-height: 0; margin: 0; }
+          [data-preview-dialog-grid] { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 12px; }
+          [data-preview-dialog-grid] > :not(.preview-portal) { display: none; }
+          [data-preview-dialog-grid] > .preview-portal[data-preview-window] { position: relative; min-height: 460px; }
         `)),
       createElement('body', null,
         createElement('main', null,
@@ -277,11 +339,74 @@ async function main(): Promise<void> {
             createElement('div', { className: 'preview-label' }, fixture.name),
             createElement('div', { dangerouslySetInnerHTML: { __html: markup.get(fixture.name) ?? '' } }))))))
     const path = join(output, filename)
-    const html = `<!doctype html>${renderToStaticMarkup(page)}\n`
+    const document = renderToStaticMarkup(page)
+    const measure = [...markup.values()].some((html) => html.includes('agent-transcript') || html.includes('task-cursor') || html.includes('data-slot="panel-sections"') || html.includes('data-sonner-toaster'))
+    const html = `<!doctype html>${measure ? document.replace('</body>', '<script>(' + positionPreviewDetails.toString() + ')()</script></body>') : document}\n`
     await writeFile(path, html)
     console.log(path)
-    if (chrome) for (const shot of await screenshots(chrome, html, join(output, `${name}${light ? '.light' : ''}`))) console.log(shot)
+    if (chrome) for (const shot of await screenshots(chrome, html, join(output, `${name}${light ? '.light' : ''}`), shotWidths)) console.log(shot)
   }
+}
+
+/** Restore positions that the static DOM could only measure as zero. */
+export function positionPreviewDetails(): void {
+  const position = () => {
+    // The client render only had row height estimates. Reflow each mounted
+    // row at the browser's width, where its text and code can wrap.
+    const transcriptRows = new Map<HTMLElement, HTMLElement[]>()
+    for (const row of document.querySelectorAll<HTMLElement>('.agent-transcript [data-row][style]')) {
+      const column = row.parentElement
+      if (!column || !row.style.top) continue
+      const rows = transcriptRows.get(column) ?? []
+      rows.push(row)
+      transcriptRows.set(column, rows)
+    }
+    for (const [column, rows] of transcriptRows) {
+      let top = Number.parseFloat(rows[0].style.top)
+      for (const row of rows) {
+        row.style.top = top + 'px'
+        top += row.getBoundingClientRect().height
+      }
+      column.style.height = top + 'px'
+    }
+    for (const cursor of document.querySelectorAll<HTMLElement>('.task-cursor')) {
+      const list = cursor.parentElement
+      const mark = list?.querySelector('.task-mark[data-state="active"]')
+      if (!list || !mark) continue
+      const box = list.getBoundingClientRect()
+      const active = mark.getBoundingClientRect()
+      const y = active.top - box.top - list.clientTop
+      cursor.style.translate = `${active.left - box.left - list.clientLeft}px ${y}px`
+      const share = list.querySelector<HTMLElement>('.task-share')
+      if (share) share.style.translate = `0 ${y - 3}px`
+    }
+    for (const frame of document.querySelectorAll('[data-preview-toast-frame]')) {
+      const stack = frame.querySelector<HTMLElement>('[data-sonner-toaster]')
+      if (!stack) continue
+      const box = frame.getBoundingClientRect()
+      const anchor = frame.querySelector('[data-toast-anchor]')?.getBoundingClientRect()
+      const bottom = Math.max(16, anchor ? box.bottom - anchor.top + 8 : 16)
+      const right = Math.max(16, anchor ? box.right - anchor.right + 16 : 16)
+      const width = Math.max(0, Math.min(340, (anchor?.width ?? box.width) - 32))
+      for (const viewport of ['', 'mobile-']) {
+        stack.style.setProperty('--' + viewport + 'offset-bottom', bottom + 'px')
+        stack.style.setProperty('--' + viewport + 'offset-right', right + 'px')
+      }
+      stack.style.setProperty('--width', width + 'px')
+    }
+    for (const indicator of document.querySelectorAll<HTMLElement>('[data-slot="panel-sections"] [data-slot="tabs-indicator"]')) {
+      const tab = indicator.parentElement?.querySelector<HTMLElement>('[aria-selected="true"]')
+      if (!tab) continue
+      indicator.hidden = false
+      indicator.style.setProperty('--active-tab-top', tab.offsetTop + 'px')
+      indicator.style.setProperty('--active-tab-left', tab.offsetLeft + 'px')
+      indicator.style.setProperty('--active-tab-width', tab.offsetWidth + 'px')
+      indicator.style.setProperty('--active-tab-height', tab.offsetHeight + 'px')
+    }
+  }
+  position()
+  void document.fonts?.ready.then(position)
+  window.addEventListener('resize', position)
 }
 
 const SHOT_WIDTHS = [864, 400]
@@ -301,7 +426,7 @@ export function chromePath(env: NodeJS.ProcessEnv = process.env, cache = join(ho
 
 /** One PNG per width, each as tall as the page's content: a first load with a
  *  script that writes the content height into the DOM it dumps, then the shot. */
-async function screenshots(chrome: string, html: string, stem: string): Promise<string[]> {
+export async function screenshots(chrome: string, html: string, stem: string, widths: number[]): Promise<string[]> {
   const shotPage = html.replace('<body>', '<body class="preview-shot">')
   const pagePath = `${stem}.shot.html`
   const measurePath = `${stem}.measure.html`
@@ -309,7 +434,7 @@ async function screenshots(chrome: string, html: string, stem: string): Promise<
   await writeFile(measurePath, shotPage.replace('</body>', '<script>document.body.dataset.height = String(Math.ceil(document.documentElement.scrollHeight))</script></body>'))
   const flags = ['--no-sandbox', '--disable-gpu', '--hide-scrollbars']
   const shots: string[] = []
-  for (const width of SHOT_WIDTHS) {
+  for (const width of widths) {
     const dump = spawnSync(chrome, [...flags, '--dump-dom', '--virtual-time-budget=2000', `--window-size=${width},800`, pathToFileURL(measurePath).href], { encoding: 'utf8', timeout: 60_000, maxBuffer: 64 * 1024 * 1024 })
     // A page's markup can pass spawnSync's 1 MiB default: the height was then never read and every tall page was cut at 800.
     const height = Math.min(MAX_SHOT_HEIGHT, Number(dump.stdout.match(/data-height="(\d+)"/)?.[1] ?? 800))

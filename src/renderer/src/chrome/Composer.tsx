@@ -141,6 +141,10 @@ type Props = {
   context?: ContextUsage
   quoteRequest?: QuoteRequest
   initialDraft?: string
+  initialAttachmentStatus?: {
+    uploads?: Record<string, UploadProgress & { failed?: boolean }>
+    note?: string
+  }
   inboxCard?: InboxComposerCard
   noteCard?: NoteComposerCard
   handoffCard?: HandoffComposerCard
@@ -214,6 +218,7 @@ export function Composer({
   context,
   quoteRequest,
   initialDraft,
+  initialAttachmentStatus,
   inboxCard,
   noteCard,
   handoffCard,
@@ -261,9 +266,9 @@ export function Composer({
   )
   const [attachments, setAttachments] = useState<Attachment[]>([])
   /** Files on their way to the thread's host (lib/attachmentUpload.ts), by attachment id. */
-  const [uploads, setUploads] = useState<Record<string, UploadProgress & { failed?: boolean }>>({})
+  const [uploads, setUploads] = useState<Record<string, UploadProgress & { failed?: boolean }>>(() => initialAttachmentStatus?.uploads ?? {})
   /** Why an attachment could not go (too big, an upload failed): shown here, never as a failed turn. */
-  const [attachNote, setAttachNote] = useState<string | null>(null)
+  const [attachNote, setAttachNote] = useState<string | null>(() => initialAttachmentStatus?.note ?? null)
   const [uploading, setUploading] = useState(false)
   const uploadingRef = useRef(false)
   // A Work draft whose filing pick waits on its project's mirror: typing goes on, Send waits until the move lands or

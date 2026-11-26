@@ -15,6 +15,9 @@ import { TOOLTIP } from "@renderer/lib/ease";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table";
 import { Item, ItemButton } from "./item";
 import { RadioChoice, RadioGroup } from "./radio-group";
+import { Slider } from "./slider";
+import { Avatar, initialsOf } from "./avatar";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "./breadcrumb";
 import { Combobox, ComboboxContent, ComboboxEmpty, ComboboxItem, ComboboxList, ComboboxSearch, ComboboxTrigger } from "./combobox";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -354,7 +357,7 @@ describe("Skeleton", () => {
   it("is a still block: no sweep class, no animation", () => {
     render(<Skeleton className="h-4 w-24" />);
     const block = document.querySelector("[data-slot=skeleton]") as HTMLElement;
-    expect(block.className).toContain("bg-muted");
+    expect(block.className).toContain("bg-skeleton");
     expect(block.className).not.toMatch(/pulse|animate/);
   });
 });
@@ -761,5 +764,97 @@ describe("Combobox", () => {
     expect(list.className).toContain("overflow-y-auto");
     expect(list.className).toContain("overflow-x-hidden");
     expect(screen.getByRole("option", { name: "feature-1" }).className).toContain("data-highlighted:bg-muted");
+  });
+});
+
+describe("Slider", () => {
+  it("is a range the keyboard moves: arrows by the step, Home and End to the ends, in a 24px control", async () => {
+    const onValueChange = vi.fn();
+    render(<Slider aria-label="Volume" defaultValue={40} min={0} max={100} step={5} onValueChange={onValueChange} />);
+    const range = screen.getByRole("slider") as HTMLInputElement;
+    expect(range.tabIndex).toBe(0);
+    await act(async () => {
+      range.focus();
+      fireEvent.keyDown(range, { key: "ArrowRight" });
+    });
+    expect(onValueChange.mock.calls.at(-1)![0]).toBe(45);
+    await act(async () => {
+      fireEvent.keyDown(range, { key: "End" });
+    });
+    expect(onValueChange.mock.calls.at(-1)![0]).toBe(100);
+    expect(document.querySelector("[data-slot=slider-control]")!.className).toContain("h-6");
+    const thumb = document.querySelector("[data-slot=slider-thumb]")!;
+    expect(thumb.className).toContain("size-3.5");
+    // Nothing eases behind the pointer: no transition, no animation on the thumb.
+    expect(thumb.className).not.toMatch(/transition|animate|duration/);
+    const css = readFileSync(resolve(__dirname, "../../index.css"), "utf8");
+    expect(css).toContain('[data-slot="slider-thumb"]:has(:focus-visible),');
+  });
+});
+
+describe("Avatar", () => {
+  it("stands on the person's initials until the picture has loaded: a broken src leaves no img", () => {
+    render(<Avatar name="Ada Lovelace" src="https://example.invalid/ada.png" size={24} />);
+    const face = document.querySelector<HTMLElement>("[data-slot=avatar]")!;
+    // jsdom loads no image, as a broken address loads none in the app.
+    expect(face.querySelector("img")).toBeNull();
+    expect(face.textContent).toBe("AL");
+    expect(face.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("draws one letter under 24px, two from there, a question mark for no name, on the type scale's 11px", () => {
+    render(<Avatar name="Ada Lovelace" size={20} />);
+    const small = document.querySelector<HTMLElement>("[data-slot=avatar]")!;
+    expect(small.textContent).toBe("A");
+    for (const part of ["size-5", "rounded-full", "bg-muted", "text-[11px]", "font-medium", "text-muted-foreground", "outline-image-outline"]) expect(small.classList).toContain(part);
+    expect(small.getAttribute("style")).toBeNull();
+    expect(initialsOf("  ")).toBe("?");
+    expect(initialsOf("landon")).toBe("L");
+    expect(initialsOf("grace brewster hopper")).toBe("GH");
+  });
+
+  it("takes a glyph in place of the initials", () => {
+    render(
+      <Avatar name="Release notes" size={24}>
+        <svg data-testid="glyph" />
+      </Avatar>,
+    );
+    expect(screen.getByTestId("glyph")).toBeTruthy();
+    expect(document.querySelector("[data-slot=avatar]")!.textContent).toBe("");
+  });
+});
+
+describe("Breadcrumb", () => {
+  it("is a named nav holding an ordered list: links are ghost xs buttons, the place he is in is aria-current", () => {
+    const onHome = vi.fn();
+    render(
+      <Breadcrumb aria-label="Folder">
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink onClick={onHome}>work</BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbPage>temp-code</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>,
+    );
+    const nav = screen.getByRole("navigation", { name: "Folder" });
+    const list = nav.querySelector("ol")!;
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(list.className).toContain("text-[13px]");
+    const link = screen.getByRole("button", { name: "work" });
+    expect(link.dataset.variant).toBe("ghost");
+    expect(link.className).toContain("h-6");
+    fireEvent.click(link);
+    expect(onHome).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("temp-code").getAttribute("aria-current")).toBe("location");
+    const separator = document.querySelector("[data-slot=breadcrumb-separator]")!;
+    expect(separator.getAttribute("aria-hidden")).toBe("true");
+    expect(separator.querySelector("svg")!.getAttribute("class")).toContain("size-3");
+    // Nothing in the trail moves: the list and its chevrons carry no motion (a link keeps its button's hover fill).
+    expect(list.className).not.toMatch(/transition|animate/);
+    expect(separator.className).not.toMatch(/transition|animate/);
   });
 });

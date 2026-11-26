@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -97,6 +98,7 @@ export function FilePicker({
     );
   }, [results.length]);
 
+  const listId = useId();
   const pick = (file: RankedFile) => {
     onOpenFile(file.path);
     onClose();
@@ -146,11 +148,14 @@ export function FilePicker({
       }}
       onSearchKey={onSearchKey}
       onClose={onClose}
+      // The field is the list's combobox, so a reader hears the row the arrows are on.
+      listId={empty ? undefined : listId}
+      activeId={results[active] ? `${listId}-${active}` : null}
     >
       {empty ? (
         <PickerNote>{empty}</PickerNote>
       ) : (
-        <FileList files={results} active={active} query={query} onActive={setActive} onPick={pick} />
+        <FileList id={listId} files={results} active={active} query={query} onActive={setActive} onPick={pick} />
       )}
     </PickerDialog>
   );
@@ -181,13 +186,15 @@ function emptyLabel({
   return null;
 }
 
-function FileList({
+export function FileList({
+  id,
   files,
   active,
   query,
   onActive,
   onPick,
 }: {
+  id: string;
   files: RankedFile[];
   active: number;
   query: string;
@@ -200,6 +207,7 @@ function FileList({
   return (
     <div
       ref={lockOverscroll}
+      id={id}
       role="listbox"
       aria-label="Files"
       onMouseMove={onMouseMove}
@@ -213,6 +221,7 @@ function FileList({
         return (
           <div
             key={file.path}
+            id={`${id}-${index}`}
             ref={highlighted ? activeRef : undefined}
             role="option"
             aria-selected={highlighted}

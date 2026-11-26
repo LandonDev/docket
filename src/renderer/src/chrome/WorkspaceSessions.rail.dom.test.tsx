@@ -387,3 +387,16 @@ describe("a project card's menu", () => {
     expect(within(menu).getByRole("menuitem", { name: /Resume all/ }).getAttribute("aria-disabled")).toBe("true");
   });
 });
+
+describe("the column's host glyphs", () => {
+  const list = () => screen.getByTestId("scroller").firstElementChild!.className.split(/\s+/);
+  it("hide by a class while every thread in the column is on one host, and show once a second host holds one", () => {
+    h.metas = [chat(0), chat(1)].map((m) => ({ ...m, environmentId: "env_box" }));
+    const view = render(<Column shown />);
+    expect(list()).toContain("[&_[data-host-glyph]]:hidden");
+    view.unmount();
+    h.metas = [{ ...chat(0), environmentId: "env_box" }, chat(1)];
+    render(<Column shown />);
+    expect(list()).not.toContain("[&_[data-host-glyph]]:hidden");
+  });
+});

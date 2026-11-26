@@ -1,4 +1,4 @@
-// Fixtures for `bun run ui:preview src/renderer/src/surfaces/threads/NotesPanel.tsx#NotesView`.
+// Fixtures for `bun run ui:preview src/renderer/src/surfaces/threads/NotesPanel.tsx#NotesView`. The harness parses markdown on the main thread. Editing needs a live page.
 const now = Date.now();
 const notes = `## Goal
 

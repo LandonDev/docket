@@ -9,12 +9,16 @@ import { Field, FieldRow } from "../../chrome/DialogField";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
-import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
+import { ChoiceToggle, type ToggleChoice } from "../../components/choice-toggle";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../../lib/models";
 import { accessParams, newThreadAccess, type HarnessId, type RuntimeMode, type Session } from "../../lib/session";
 import { implementPlan } from "../../lib/tcserver/plans";
 
 type BuildType = "implementation" | "orchestration";
+const BUILD_TYPES: ToggleChoice<BuildType>[] = [
+  { value: "implementation", label: "Implement" },
+  { value: "orchestration", label: "Orchestrate" },
+];
 
 /** The pickers float in their own portals outside the dialog: a press
  *  inside one is not a press outside the dialog. */
@@ -128,18 +132,7 @@ export function StartBuildDialog({
           </Field>
           <div className="flex flex-col">
             <FieldRow label="Build">
-              <ToggleGroup
-                spacing={0}
-                size="sm"
-                value={[type]}
-                onValueChange={(v) => {
-                  const next = v[0] as BuildType | undefined;
-                  if (next) setType(next);
-                }}
-              >
-                <ToggleGroupItem value="implementation">Implement</ToggleGroupItem>
-                <ToggleGroupItem value="orchestration">Orchestrate</ToggleGroupItem>
-              </ToggleGroup>
+              <ChoiceToggle label="Build" value={type} options={BUILD_TYPES} onChange={setType} />
             </FieldRow>
             <FieldRow label="Model">
               <span className="flex items-center" data-model-picker>

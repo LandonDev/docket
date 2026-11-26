@@ -124,7 +124,8 @@ export function WorkspaceThreadsList({
     .map((section) => ({ ...section, entries: sectionEntries(section.roots) }))
     .filter((section) => section.entries.length > 0);
   return (
-    <div className="flex flex-col gap-2">
+    // Sections are groups: 16px apart (DESIGN.md "Spacing").
+    <div className="flex flex-col gap-4">
       {sections.map((section) => (
         <div key={section.key} className="flex flex-col">
           <span className="flex h-7 items-center px-3 text-xs font-medium text-muted-foreground">{section.label}</span>

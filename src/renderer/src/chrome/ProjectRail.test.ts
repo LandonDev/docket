@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatsAriaLabel, projectMenuExtraItems, railFootRows, railRowAsksGit, railTopRows, workspaceRowAriaLabel } from "./ProjectRail";
+import { chatsAriaLabel, moveInOrder, moveMenuRows, projectMenuExtraItems, railFootRows, railRowAsksGit, railTopRows, workspaceRowAriaLabel } from "./ProjectRail";
 
 describe("workspaceRowAriaLabel", () => {
   it("reads the name alone when the workspace is quiet", () => {
@@ -55,6 +55,24 @@ describe("projectMenuExtraItems", () => {
     const items = projectMenuExtraItems(true, false, null).flatMap((r) => (r.kind === "item" ? [r] : []));
     expect(items.filter((i) => i.id.startsWith("batch-")).every((i) => i.disabled)).toBe(true);
     expect(items.map((i) => i.id)).not.toContain("archive");
+  });
+});
+
+describe("moving a workspace by its menu", () => {
+  it("swaps it with its neighbour, and refuses past either end or for a row not in the list", () => {
+    expect(moveInOrder(["a", "b", "c"], "b", -1)).toEqual(["b", "a", "c"]);
+    expect(moveInOrder(["a", "b", "c"], "b", 1)).toEqual(["a", "c", "b"]);
+    expect(moveInOrder(["a", "b", "c"], "a", -1)).toBeNull();
+    expect(moveInOrder(["a", "b", "c"], "c", 1)).toBeNull();
+    expect(moveInOrder(["a", "b"], "z", 1)).toBeNull();
+  });
+
+  it("offers Move up and Move down after Pin, the end's way disabled, and nothing for a list of one", () => {
+    const rows = moveMenuRows(["a", "b"], "a").flatMap((r) => (r.kind === "item" ? [r] : []));
+    expect(rows.map((r) => [r.label, !!r.disabled])).toEqual([["Move up", true], ["Move down", false]]);
+    expect(moveMenuRows(["a"], "a")).toEqual([]);
+    const all = projectMenuExtraItems(false, true, null, true, moveMenuRows(["a", "b"], "b"));
+    expect(all.map((r) => (r.kind === "item" ? r.id : "-")).slice(0, 4)).toEqual(["pin", "move-up", "move-down", "reveal"]);
   });
 });
 

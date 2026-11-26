@@ -55,6 +55,10 @@ describe("RemoteFolderDialog", () => {
     await flush();
     expect(within(frame as HTMLElement).getAllByRole("button").map((r) => r.textContent)).toEqual(["temp-code", "cosmic"]);
     expect(within(dialog).getByRole("button", { name: "work" }).getAttribute("aria-current")).toBe("location");
+    // The trail is a list a reader can count, not loose buttons.
+    const trail = within(dialog).getByRole("navigation", { name: "Folder" });
+    expect(trail.querySelector("ol")).not.toBeNull();
+    expect(within(trail).getAllByRole("listitem")).toHaveLength(1);
 
     fireEvent.click(within(frame as HTMLElement).getByRole("button", { name: "temp-code" }));
     await flush();

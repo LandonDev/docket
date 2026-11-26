@@ -70,12 +70,13 @@ describe("type on one grid", () => {
     expect(source).toContain('icon: "!h-5 !w-auto !m-0"');
   });
 
-  it("an attachment has the trigger's one ring, a 12px frame and, inside a card, a muted fill with no hairline", () => {
+  it("an attachment has the trigger's one ring, a 12px frame round a concentric tile and, inside a card, a muted fill with no hairline", () => {
     const source = readFileSync(resolve(__dirname, "attachment.tsx"), "utf8");
     expect(source).not.toMatch(/focus-within:ring/);
     expect(source).toContain("in-[.bg-card]:border-transparent in-[.bg-card]:bg-muted");
     expect(source).toContain('"absolute inset-0 z-10 rounded-[inherit]"');
     expect(source).toMatch(/flex-wrap rounded-xl border/);
-    expect(source).toContain("group-data-[size=xs]/attachment:rounded-sm");
+    // The tile's radius is the frame's less its padding: 12 less 8 is 4 (sm: 12 less 6 is 6).
+    expect(source).toContain("overflow-hidden rounded-sm group-data-[size=sm]/attachment:rounded-md");
   });
 });

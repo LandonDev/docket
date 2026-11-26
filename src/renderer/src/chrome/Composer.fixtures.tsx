@@ -3,7 +3,7 @@
 // field, the meter amber, a draft with its row under the box, and chat
 // drafts with Master thread and the name field. The docked footer of a
 // thread with messages (the slot, the queue, attachments) is
-// Composer.preview.tsx#DockedComposerPreview.
+// Composer.preview.tsx#DockedComposerPreview. Sending and dismissal need interaction.
 import type { ComponentProps } from "react";
 import type { Composer } from "./Composer";
 
@@ -49,5 +49,17 @@ export default [
   {
     name: "Chat draft, named",
     props: { ...base, sessionId: undefined, shell: true, hideProjectPicker: true, threadType: "chat", onThreadTypeChange: noop, master: false, onMasterChange: noop, draftTitle: "Gateway deadline audit", onDraftTitleChange: noop },
+  },
+  {
+    name: "Inbox card",
+    props: { ...base, inboxCard: { provider: "linear", kind: "linear", identifier: "NOTES-24", title: "Keep the table visible on refresh", url: "https://tracker.example/notes-24", source: "Field Notes", labels: [], prompt: "Keep the last page visible." } },
+  },
+  {
+    name: "Note card",
+    props: { ...base, noteCard: { id: "preview-note", slug: "cache-notes", title: "Cache notes", body: "Keep the last page visible while the next one loads." } },
+  },
+  {
+    name: "Handoff card",
+    props: { ...base, handoffCard: { from: "claude", to: "codex", brief: "Read the cache and test the refresh state.", request: "Check the notes list", files: 2 } },
   },
 ];

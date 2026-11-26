@@ -9,22 +9,24 @@ import { Moon } from "./icons";
 import { RowsContextMenu, type MenuRow } from "./menuRows";
 import { RailRow } from "./RailRow";
 
+/** The switch's name and its tooltip's word; the row draws the short word while no kind is away, since the long one is cut at the rail's default width. */
 export const AWAY_LABEL = "Away from computer";
+const AWAY_SHORT = "Away";
 
 const KIND_WORD: Record<AwayKind, string> = { code: "Code", work: "Work" };
 
-/** The row's label: which kinds are away, in words, or the plain name while none is. */
+/** The row's label: which kinds are away, in words, or the short name while none is. */
 export function awayLabel(kinds: AwayKinds): string {
   if (kinds.code && kinds.work) return "Away for both";
   if (kinds.code) return "Away for Code";
   if (kinds.work) return "Away for Work";
-  return AWAY_LABEL;
+  return AWAY_SHORT;
 }
 
-/** The row's hover line: what the press does to this place's kind while off, since when while on. */
+/** The row's hover line: the switch's whole name and what it does to this place's kind while off, since when while on. */
 export function awayTooltip(enabled: boolean, at: number, kind?: AwayKind): string {
-  const who = kind ? `${KIND_WORD[kind]} threads` : "Threads";
-  return enabled && at > 0 ? `${kind ? `${who} away` : "Away"} since ${clockTime(at)}` : `${who} decide without asking you`;
+  const who = kind ? `${KIND_WORD[kind]} threads` : "threads";
+  return enabled && at > 0 ? `${kind ? `${who} away` : "Away"} since ${clockTime(at)}` : `${AWAY_LABEL}: when on, ${who} decide without asking you`;
 }
 
 /** The kind menu: each kind with its tick, then Both and Off. */
@@ -75,10 +77,12 @@ export function AwayRow() {
 export function AwayRowView({ kinds, checked, place, at, onToggle }: { kinds: AwayKinds; checked: boolean; place?: AwayKind; at: number; onToggle: () => void }) {
   const any = kinds.code || kinds.work;
   const on = checked ? "true" : "false";
+  const label = place ? awayLabel(kinds) : AWAY_SHORT;
   return (
     <RailRow
       icon={Moon}
-      label={place ? awayLabel(kinds) : AWAY_LABEL}
+      label={label}
+      ariaLabel={label === AWAY_SHORT ? AWAY_LABEL : undefined}
       checked={checked}
       glyphClassName={any ? "text-warning" : undefined}
       className={any ? "text-foreground" : undefined}

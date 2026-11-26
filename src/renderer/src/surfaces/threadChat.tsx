@@ -476,21 +476,7 @@ export function useThreadChat({
               animate={JUMP_AT}
               exit={FADE_OUT}
             >
-              {/* It floats over the transcript, so its fills stay opaque: muted
-                  on hover, and a press lays foreground/12 over that fill. */}
-              <Tip label="Jump to latest">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  rounded
-                  aria-label="Jump to latest"
-                  data-jump-to-bottom
-                  onClick={() => jumpToBottomRef.current?.()}
-                  className="pointer-events-auto border border-border bg-popover text-muted-foreground shadow-overlay hover:bg-muted hover:text-foreground active:bg-muted active:bg-linear-to-b active:from-foreground/12 active:to-foreground/12 data-pressed:bg-muted"
-                >
-                  <ChevronDown className="size-4" />
-                </Button>
-              </Tip>
+              <JumpToLatest onClick={() => jumpToBottomRef.current?.()} />
             </motion.div>
           ) : null}
         </AnimatePresence>
@@ -508,4 +494,23 @@ export function useThreadChat({
   });
   const renderChat = (opts?: ChatOpts) => <ChatColumn slots={renderSlots(opts)} />;
   return { composerOf, renderSlots, renderChat, newPassArmed, armNewPass, addSelectionToChat };
+}
+
+/** Floats above the transcript on an opaque fill. */
+export function JumpToLatest({ onClick }: { onClick: () => void }) {
+  return (
+    <Tip label="Jump to latest">
+      <Button
+        variant="ghost"
+        size="icon"
+        rounded
+        aria-label="Jump to latest"
+        data-jump-to-bottom
+        onClick={onClick}
+        className="pointer-events-auto border border-border bg-popover text-muted-foreground shadow-overlay hover:bg-muted hover:text-foreground active:bg-muted active:bg-linear-to-b active:from-foreground/12 active:to-foreground/12 data-pressed:bg-muted"
+      >
+        <ChevronDown className="size-4" />
+      </Button>
+    </Tip>
+  );
 }

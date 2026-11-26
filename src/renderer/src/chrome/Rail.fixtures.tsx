@@ -342,3 +342,8 @@ export function FirstRunRail({ pending = false, width = 260 }: { pending?: boole
 export function SignedInRail({ width = 260 }: { width?: number }) {
   return <FirstRun signedIn width={width} />;
 }
+
+// bun run ui:preview src/renderer/src/chrome/Rail.fixtures.tsx#RailShipped
+// bun run ui:preview src/renderer/src/chrome/Rail.fixtures.tsx#RailHostAway
+// The shipped rail uses ProjectRail's own row lists. Menus need interaction.
+export { RailShipped, RailHostAway } from "./Rail.preview";

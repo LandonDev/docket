@@ -38,6 +38,7 @@ import {
 } from "../lib/threadStripModel";
 import type { ActivityKind } from "../lib/session";
 import { HostGlyph } from "./HostGlyph";
+import { spansHosts } from "../lib/hostSpan";
 import { useHostsOffline } from "./hostOffline";
 import { ChevronLeft, ChevronRight } from "./icons";
 import { RowsContextMenu, type MenuRow } from "./menuRows";
@@ -52,8 +53,8 @@ import { ThreadStatusMark } from "./TabIndicator";
  * only while it has a chip; the thread on screen always has its chip and is
  * the active one, whichever row it sits on. A live chip is the type glyph
  * (the status mark in its 14px place while the thread works, waits or
- * fails), the title, "Master" when pinned and the host glyph (two or more
- * hosts); a shelf chip is smaller and quieter, with no status mark. The
+ * fails), the title, "Master" when pinned and the host glyph (while the
+ * strip's threads span two or more hosts); a shelf chip is smaller and quieter, with no status mark. The
  * hover label says the state in words.
  * A primary click selects (on release), a right-click opens the thread's
  * menu at the pointer, a double-click renames. Dragging a chip onto a pane's
@@ -152,6 +153,8 @@ export function ThreadHeaderStrip({
   const [keptShelf, setKeptShelf] = useState(shelf);
   if (shelf.length > 0 && keptShelf !== shelf) setKeptShelf(shelf);
   const shownShelf = shelf.length > 0 ? shelf : keptShelf;
+  // A chip names its host only while the strip's threads span two or more.
+  const hosts = spansHosts([...live, ...shelf].map((chip) => chip.thread.environmentId));
   useStripHoldRelease();
   // The shelf has no arrows: its cut edges fade over 24px instead (DESIGN "Shadow").
   const shelfEdges = useOverflowEdges<HTMLDivElement>();
@@ -202,10 +205,11 @@ export function ThreadHeaderStrip({
               data-strip="live"
               data-tauri-drag-region="false"
               {...liveEdges}
-              className={`scrollbar-none flex min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,6px)] pr-[var(--strip-pad-r,6px)] ${OVERFLOW_FADE}`}
+              // Empty, the row keeps its left 6px alone, so `+` centres on the shelf's glyph column (20px in).
+              className={`scrollbar-none flex min-w-0 items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none pl-[var(--strip-pad-l,6px)] ${live.length > 0 ? "pr-[var(--strip-pad-r,6px)]" : "pr-0"} ${OVERFLOW_FADE}`}
             >
               <TooltipProvider>
-                <ChipRow chips={live} activeId={activeId} onSelect={onSelect} {...events} />
+                <ChipRow chips={live} activeId={activeId} onSelect={onSelect} hosts={hosts} {...events} />
               </TooltipProvider>
             </div>
             {overflow?.right && onScrollBy ? <ScrollArrow side="right" onClick={() => onScrollBy(1)} /> : null}
@@ -228,7 +232,7 @@ export function ThreadHeaderStrip({
               className={`scrollbar-none flex h-8 min-w-0 items-start gap-0.5 overflow-x-auto overflow-y-hidden overscroll-none px-1.5 pt-0.5 ${OVERFLOW_FADE}`}
             >
               <TooltipProvider>
-                <ChipRow chips={shownShelf} activeId={activeId} onSelect={onSelect} shelf {...events} />
+                <ChipRow chips={shownShelf} activeId={activeId} onSelect={onSelect} shelf hosts={hosts} {...events} />
               </TooltipProvider>
             </div>
           </CollapsibleContent>
@@ -263,12 +267,15 @@ function ChipRow({
   activeId,
   onSelect,
   shelf = false,
+  hosts,
   ...events
 }: ChipEvents & {
   chips: readonly StripChip[];
   activeId: string | null;
   onSelect: (id: string) => void;
   shelf?: boolean;
+  /** The strip's threads span two or more hosts: each chip draws its host's glyph. */
+  hosts: boolean;
 }) {
   const focusable = chips.some((c) => c.id === activeId) ? activeId : chips[0]?.id;
   return chips.map((chip) => (
@@ -276,6 +283,7 @@ function ChipRow({
       key={chip.id}
       chip={chip}
       shelf={shelf}
+      hosts={hosts}
       active={chip.id === activeId}
       focusable={chip.id === focusable}
       onSelect={onSelect}
@@ -373,7 +381,7 @@ export function ChipHoverLabel({ title, status, host, type }: { title: string; s
   );
 }
 
-/** The host's name for a chip's hover line, when the window knows two or more hosts. */
+/** The host's name for a chip's hover line, when the strip's threads span two or more hosts (`undefined` otherwise). */
 function useChipHost(environmentId: string | undefined): string | null {
   const environments = useEnvironments();
   if (!environmentId || environments.length < 2) return null;
@@ -555,6 +563,7 @@ const SHELF_CHIP = "h-6 gap-1.5 px-2 text-xs";
 function Chip({
   chip,
   shelf,
+  hosts,
   active,
   focusable,
   onSelect,
@@ -562,6 +571,7 @@ function Chip({
 }: {
   chip: StripChip;
   shelf: boolean;
+  hosts: boolean;
   active: boolean;
   focusable: boolean;
   onSelect: (id: string) => void;
@@ -571,7 +581,7 @@ function Chip({
   const drag = useChipDrag(chip.id, () => onSelect(chip.id));
   const environmentId = chip.thread.environmentId;
   const offline = useHostsOffline([environmentId]);
-  const host = useChipHost(environmentId);
+  const host = useChipHost(hosts ? environmentId : undefined);
   if (events.renamingId === chip.id) return <RenameInput chip={chip} shelf={shelf} onRename={events.onRename} />;
   const status = chipStatus(chip, events.planReady);
   const title = chipTitle(chip);
@@ -605,7 +615,7 @@ function Chip({
                 if (event.detail === 0) onSelect(chip.id);
               }}
               onKeyDown={moveFocus}
-              className={`${shelf ? SHELF_CHIP : LIVE_CHIP} min-w-0 justify-start rounded-md font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-muted aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50`}
+              className={`${shelf ? SHELF_CHIP : LIVE_CHIP} min-w-0 justify-start rounded-md font-normal text-muted-foreground hover:bg-chrome-hover hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50`}
             />
           }
         >

@@ -69,7 +69,7 @@ describe("CustomizeGroupDialog", () => {
     cleanup();
     const second = open();
     fireEvent.click(screen.getByRole("button", { name: "Custom colour" }));
-    fireEvent.change(screen.getByLabelText("Hex color"), { target: { value: "#123456" } });
+    fireEvent.change(screen.getByLabelText("Hex colour"), { target: { value: "#123456" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(second.onSave.mock.calls[0]?.[0]).toMatchObject({ colorIndex: null, customColor: "#123456" }));
   });

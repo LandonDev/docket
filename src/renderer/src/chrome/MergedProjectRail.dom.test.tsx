@@ -469,6 +469,19 @@ describe("the rail", () => {
     expect(loadTabGroupLabels()["w-mac"]).toBeUndefined();
   });
 
+  it("Move up and Move down reorder a workspace from its menu, each disabled at its list's end", async () => {
+    const { within } = await import("@testing-library/react");
+    // One host's two workspaces (a linked row moves by its lead folder; see the drag's own tests).
+    const root = await mountRail([BOX], {}, undefined, { recents: [RECENTS[0], RECENTS[2]] });
+    expect(rowNames(root)).toEqual(["temp-code", "only-box"]);
+    fireEvent.click(workspaceRows(root)[0].querySelector<HTMLButtonElement>('[aria-label="Workspace options"]')!);
+    const menu = await screen.findByRole("menu");
+    const up = within(menu).getByRole("menuitem", { name: "Move up" });
+    expect(up.getAttribute("aria-disabled") ?? up.getAttribute("data-disabled")).toBeTruthy();
+    await act(async () => fireEvent.click(within(menu).getByRole("menuitem", { name: "Move down" })));
+    expect(rowNames(root)).toEqual(["only-box", "temp-code"]);
+  });
+
   it("Customize…'s name is the workspace's too: one rename on its host, and no label of this window's own", async () => {
     const { within } = await import("@testing-library/react");
     const { loadTabGroupLabels } = await import("../lib/tabGroups");

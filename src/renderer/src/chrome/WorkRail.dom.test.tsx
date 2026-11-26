@@ -173,11 +173,18 @@ describe("Review in the rail", () => {
     const work = root.querySelector(`[data-rail-path="${WORK.path}"]`)!;
     expect(heading.compareDocumentPosition(review) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(review.compareDocumentPosition(work) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(review.closest("[data-rail-row]")!.className).not.toContain("bg-sidebar-group-selected");
+    expect(review.closest("[data-rail-row]")!.className).not.toMatch(/(^| )bg-sidebar-group-selected( |$)/);
+    // The pages stand 28px apart as every plain rail row does: one gap-less column of their own, a sibling of the job cards (4px over them).
+    const pages = review.closest("[data-rail-lead]")!;
+    expect(pages.className).toContain("flex-col");
+    expect(pages.className).not.toMatch(/gap-/);
+    expect(pages.querySelectorAll("[data-rail-row]").length).toBeGreaterThanOrEqual(2);
+    expect(pages.contains(work)).toBe(false);
+    expect(pages.parentElement).toBe(work.closest("[data-rail-row]")!.parentElement?.closest(".gap-1") ?? pages.parentElement);
     await probe!.act(async () => review.click());
     expect(shellStore.getState().workPlace).toBe("review");
     // Among the workspaces' groups a selected page's row takes their selected step: `muted` is their resting fill in light.
-    expect(review.closest("[data-rail-row]")!.className).toContain("bg-sidebar-group-selected");
+    expect(review.closest("[data-rail-row]")!.className).toMatch(/(^| )bg-sidebar-group-selected( |$)/);
     shellStore.setState({ workPlace: null });
   });
 });

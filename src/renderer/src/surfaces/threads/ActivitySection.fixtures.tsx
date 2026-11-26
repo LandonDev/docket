@@ -1,4 +1,4 @@
-// Fixtures for `bun run ui:preview src/renderer/src/surfaces/threads/ActivitySection.tsx#ActivityRows`.
+// Fixtures for `bun run ui:preview src/renderer/src/surfaces/threads/ActivitySection.tsx#ActivityRows`. Static logs use fixed host replies and show no polling or motion.
 import type { ComputerSessionRow } from "@server/shared/contract-computer";
 import { activityRows } from "../../lib/activity";
 import type { ComputerEntry } from "../../lib/computerSessions";
@@ -56,7 +56,13 @@ const asking = session("s1", { asking: { line: "Click Save in TextEdit?" }, tier
 const heldRows = activityRows({ meta: working, devServers: [], macCalls: [], computer: [held] });
 const askingRows = activityRows({ meta: working, devServers: [], macCalls: [], computer: [asking] });
 
+const shell = rows.find((row) => row.kind === "shell")!;
+const logProps = { threadId: "s1", rows, meta, initialOpen: shell.key };
+
 export default [
+  { name: "Shell output", props: { ...logProps, readLog: async () => ({ source: "file", data: "Checking the route index\nAll routes passed\n", next: 44 }) } },
+  { name: "Waiting for the shell log", props: { ...logProps, readLog: () => new Promise(() => {}) } },
+  { name: "Shell log read failed", props: { ...logProps, readLog: async () => { throw new Error("The box did not answer."); } } },
   { name: "a watching thread's activity", props: { threadId: "s1", rows, meta } },
   { name: "computer rows, one per tier word, beside a shell row", props: { threadId: "s1", rows: [...rows.filter((r) => r.kind === "shell"), ...tiers], meta: working } },
   { name: "a computer row open on a card waiting on the Mac", props: { threadId: "s1", rows: askingRows, meta: working, initialOpen: askingRows[0].key } },

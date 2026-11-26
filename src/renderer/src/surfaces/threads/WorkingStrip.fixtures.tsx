@@ -1,8 +1,9 @@
-// Fixtures for `bun run ui:preview src/renderer/src/surfaces/threads/WorkingStrip.tsx#WorkingStrip`.
+// Fixtures for `bun run ui:preview src/renderer/src/surfaces/threads/WorkingStrip.tsx#WorkingStrip`. Stop settlement and the timer are covered by DOM tests.
+import { previewNow } from "../../lib/previewHost.preview";
 import type { Block } from "../../lib/session";
 import { newSession, type Session } from "../../lib/session";
 
-const now = Date.now();
+const now = previewNow;
 const session = (over: Partial<Session>): Session => ({ ...newSession("env-local"), ...over });
 const noop = () => {};
 const approval = {
@@ -16,6 +17,15 @@ const approval = {
 } as unknown as Block;
 
 export default [
+  {
+    name: "Stop in progress",
+    props: { session: session({ status: "running", busySince: now - 92_000 }), onStop: () => new Promise<void>(() => {}), onResume: noop },
+    prepare: (root: HTMLElement) => {
+      const stop = [...root.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Stop");
+      if (!stop) throw new Error("Missing Stop control");
+      stop.click();
+    },
+  },
   {
     name: "working",
     props: { session: session({ status: "running", activity: "Running bun test", busySince: now - 92_000 }), onStop: noop, onResume: noop },
@@ -36,4 +46,4 @@ export default [
     name: "queued",
     props: { session: session({ status: "queued", activity: "Queued  3rd in line" }), onStop: noop, onResume: noop, onStart: noop },
   },
-];
+].map((fixture) => ({ ...fixture, now }));

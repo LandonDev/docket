@@ -195,6 +195,12 @@ describe("ThreadHeaderStrip rows", () => {
     expect([...liveRow().querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(["Alpha", "Beta"]);
     expect(tab("Settled two").getAttribute("aria-selected")).toBe("true");
     expect(tab("Alpha").getAttribute("aria-selected")).toBe("false");
+    // The active chip takes the groups' selected step and a chip hovers on the chrome's hover step, lighter than it: never `muted` under a `/5` hover.
+    for (const chip of screen.getAllByRole("tab")) {
+      expect(chip.className).toContain("aria-selected:bg-sidebar-group-selected");
+      expect(chip.className).toContain("hover:bg-chrome-hover");
+      expect(chip.className).not.toMatch(/aria-selected:bg-muted|hover:bg-foreground\/5/);
+    }
     // Each row has its own Tab stop: the active chip on the shelf, the first on the live row.
     expect(tab("Settled two").tabIndex).toBe(0);
     expect(tab("Alpha").tabIndex).toBe(0);
@@ -320,6 +326,32 @@ describe("ThreadHeaderStrip rows", () => {
     expect(offline("Beta")).toBe(true);
     expect(offline("Settled one")).toBe(true);
     expect(offline("Alpha")).toBe(false);
+  });
+
+  it("with no live chip, the live row keeps its left 6px alone, so + centres on the shelf's glyph column", () => {
+    mount({ model: { ...twoRows, live: [] } });
+    const row = document.querySelector<HTMLElement>('[data-strip="live"]')!.className.split(/\s+/);
+    expect(row).toContain("pr-0");
+    expect(row).not.toContain("pr-[var(--strip-pad-r,6px)]");
+    cleanup();
+    mount({ model: twoRows });
+    expect(document.querySelector<HTMLElement>('[data-strip="live"]')!.className.split(/\s+/)).toContain("pr-[var(--strip-pad-r,6px)]");
+  });
+
+  it("draws no host glyph while every chip's thread is on one host, though the window knows two", () => {
+    const onHost = (c: StripChip, environmentId: string): StripChip => ({ ...c, thread: { ...c.thread, environmentId } });
+    hosts.environments = [
+      { id: "local", name: "This Mac" },
+      { id: "env_box", name: "The box" },
+    ];
+    mount({
+      model: {
+        ...twoRows,
+        live: [onHost(chip("a", "Alpha"), "env_box"), onHost(chip("b", "Beta"), "env_box")],
+        dormant: [onHost(settled("s", "Settled one"), "env_box")],
+      },
+    });
+    expect(document.querySelector("[data-host-glyph]")).toBeNull();
   });
 });
 

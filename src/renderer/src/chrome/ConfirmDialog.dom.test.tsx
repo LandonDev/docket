@@ -128,6 +128,30 @@ describe("a dialog's exit", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
+  it("is the one decision shape: 448px, no room kept for a close it never draws, a hairline over its footer, the error in the body", async () => {
+    const onConfirm = vi.fn(() => Promise.reject(new Error("The box did not answer")));
+    render(<ConfirmDialog title="Remove the workspace?" body="Its threads stay on the box." confirmLabel="Remove" danger onCancel={() => {}} onConfirm={onConfirm} onDone={() => {}} />);
+    const panel = screen.getByRole("alertdialog");
+    expect(panel.dataset.size).toBe("default");
+    expect(panel.className).toContain("sm:max-w-md");
+    expect(panel.className).toMatch(/(^| )p-0( |$)/);
+    expect(panel.querySelector('[aria-label="Close"]')).toBeNull();
+    const header = panel.querySelector('[data-slot="dialog-header"]')!;
+    expect(header.className).toContain("pe-5");
+    expect(header.className).not.toMatch(/(^| )pe-8( |$)/);
+    const footer = panel.querySelector('[data-slot="dialog-footer"]')!;
+    for (const part of ["border-t", "border-border", "px-5", "pt-4", "pb-5"]) expect(footer.classList).toContain(part);
+    const buttons = [...footer.querySelectorAll(":scope > button")];
+    expect(buttons.map((button) => button.textContent)).toEqual(["Cancel", "Remove"]);
+    expect(buttons[0].getAttribute("data-variant")).toBe("secondary");
+    await act(async () => {
+      fireEvent.click(buttons[1]);
+    });
+    const line = screen.getByText("The box did not answer");
+    expect(footer.contains(line)).toBe(false);
+    expect(line.parentElement!.className).toContain("px-5");
+  });
+
   it("opens with Cancel focused, so Return on a red verb never deletes by itself", async () => {
     render(<ConfirmHost />);
     await act(async () => {

@@ -33,12 +33,21 @@ describe("RailRow", () => {
     );
   });
 
-  it("marks selection with aria-current and a muted fill, never a bar", () => {
+  it("marks selection with aria-current and the selected step, never a bar", () => {
     render(<RailRow icon={Inbox} label="Inbox" selected />);
     const row = screen.getByRole("button", { name: "Inbox" });
     expect(row.getAttribute("aria-current")).toBe("true");
     const wrapper = row.closest("[data-rail-row]")!;
-    expect(wrapper.className).toContain("bg-muted");
+    // The groups' selected step, which is `muted` in dark and a step darker than a resting card in light.
+    expect(wrapper.className).toMatch(/(^| )bg-sidebar-group-selected( |$)/);
+    expect(wrapper.className).toContain("hover:bg-sidebar-group-selected");
+    expect(wrapper.className).not.toMatch(/(^| )bg-muted( |$)/);
+    // At rest an item is bare and hovers on the chrome's hover step, which stays lighter than the selected one.
+    render(<RailRow icon={Inbox} label="Notes" />);
+    const rest = screen.getByRole("button", { name: "Notes" }).closest("[data-rail-row]")!;
+    expect(rest.className).toContain("hover:bg-chrome-hover");
+    expect(rest.className).toContain("has-[[aria-expanded=true]]:bg-sidebar-group-selected");
+    expect(rest.className).not.toMatch(/bg-foreground\/5|bg-muted/);
     expect(wrapper.className).not.toMatch(/border-l|before:/);
   });
 

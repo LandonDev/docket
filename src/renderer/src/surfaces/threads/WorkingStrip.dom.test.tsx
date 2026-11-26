@@ -261,6 +261,21 @@ describe('WorkingStrip: the row shares the box and the line rule', () => {
   })
 })
 
+describe('WorkingStrip: the time keeps one column', () => {
+  it("starts a running turn's time where a held row's word starts: past the 28px glyph box and 8px", () => {
+    const probe = mount(session({ status: 'running', busySince: Date.now() - 92_000 }))
+    const timer = probe.container.querySelector<HTMLElement>('[role="timer"]')!
+    expect(timer.className.split(' ')).toContain('pl-9')
+    probe.unmount()
+    const held = mount(session({ status: 'paused', busySince: Date.now() - 60_000, pausedAt: Date.now(), frozenActiveElapsed: 60_000 }))
+    const mark = row(held).querySelector<HTMLElement>('[data-slot="status-glyph"]')!.parentElement!
+    // 28px (w-7) plus the mark's gap-2: 36px, pl-9.
+    expect(mark.className).toContain('*:data-[slot=status-glyph]:w-7')
+    expect(mark.className.split(' ')).toContain('gap-2')
+    held.unmount()
+  })
+})
+
 describe("WorkingStrip: Stop's busy state ends when its work does", () => {
   const working = session({ status: 'running', busySince: Date.now() - 5_000 })
 

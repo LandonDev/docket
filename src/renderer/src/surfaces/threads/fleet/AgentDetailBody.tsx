@@ -35,6 +35,7 @@ export function AgentDetailBody({
   onOpenSession,
   onOpenFile,
   onOpenDiff,
+  initialSteer,
 }: {
   agentId: string;
   parentCwd: string;
@@ -42,16 +43,17 @@ export function AgentDetailBody({
   onOpenSession?: (sessionId: string) => void;
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path?: string) => void;
+  initialSteer?: { text: string; failure?: string };
 }) {
   const meta = useMetaById(agentId);
   const session = useSessionById(agentId);
   const live = isLiveStatus(meta?.status);
   const reading = useContextReading(agentId, live);
   const stats = useMemo(() => fleetStats(session, reading), [session, reading]);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(initialSteer?.text ?? "");
   const [sending, setSending] = useState(false);
   // A send that failed keeps the person's words in the field and says why under it.
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(initialSteer?.failure ?? null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   if (!meta) return null;

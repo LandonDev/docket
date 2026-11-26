@@ -1,3 +1,5 @@
+// bun run ui:preview src/renderer/src/surfaces/transcript/ApprovalCard.tsx#ApprovalCard
+// Static capture shows approval and held states. Actions are covered by DOM tests.
 // The approval's states for `bun run ui:preview src/renderer/src/surfaces/transcript/ApprovalCard.tsx#ApprovalCard`.
 // Inside an open group's table: ActionGroup.fixtures.tsx "Opened, a call waiting on approval".
 import type { Block } from "../../lib/session";
@@ -20,6 +22,23 @@ const runSkip = (decided?: "allow" | "deny", auto?: boolean): Block => ({
 });
 
 export const fixtures: { name: string; props: { block: Block } }[] = [
+  {
+    name: "Held in the Outbox",
+    props: {
+      block: {
+        id: "preview-held",
+        role: "tool",
+        text: "Send a draft",
+        tool: {
+          callId: "preview-held",
+          name: "mcp__app__mail_send",
+          title: "Send a draft",
+          status: "completed",
+          detail: "Held as item 12: Send to the events team. It waits for the owner's press.",
+        },
+      },
+    },
+  },
   { name: "Waiting: the amber mark, Allow and Deny", props: { block: approval() } },
   { name: "Allowed", props: { block: approval("allow") } },
   { name: "Denied", props: { block: approval("deny") } },

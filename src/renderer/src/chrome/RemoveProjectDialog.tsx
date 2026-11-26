@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { projectSessionCount } from "../lib/projectData";
+import { Skeleton } from "../components/ui/skeleton";
 
 type Props = {
   name: string;
@@ -11,10 +12,10 @@ type Props = {
   onDone: () => void;
 };
 
-/** The one line under the title: what stays, and how many threads go once counted. */
-export function removeProjectLine(sessions: number | null): string {
-  if (!sessions) return "Files on disk stay.";
-  return sessions === 1 ? "Files on disk stay. Its thread is deleted." : `Files on disk stay. Its ${sessions} threads are deleted.`;
+/** The cost, said once counted: how many threads go with it. */
+export function removeProjectNote(sessions: number): string {
+  if (sessions === 0) return "It has no threads.";
+  return sessions === 1 ? "Its thread is deleted." : `Its ${sessions} threads are deleted.`;
 }
 
 /**
@@ -38,7 +39,10 @@ export function RemoveProjectDialog({ name, path, onCancel, onConfirm, onDone }:
   return (
     <ConfirmDialog
       title={`Remove “${name}”?`}
-      body={removeProjectLine(sessions)}
+      body="Files on disk stay."
+      // The count's line is held by a bone of its size until it lands, and Remove waits for it: the dialog never reflows, and never removes before it says what goes.
+      note={sessions === null ? <Skeleton data-remove-count className="h-5 w-44" /> : removeProjectNote(sessions)}
+      holding={sessions === null}
       confirmLabel="Remove"
       danger
       onCancel={onCancel}

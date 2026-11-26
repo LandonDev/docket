@@ -69,6 +69,17 @@ export function SignInRowView({
   );
 }
 
+/** Plain words a person can read: one line, starting with a capital, ending a sentence, no address or path. */
+export function readableLine(text: string): boolean {
+  return /^[A-Z][^\n]{0,160}[.!?]$/.test(text) && !/[/\\]|https?:|::/.test(text);
+}
+
+/** A failed sign-in: one toast in plain words; the host's own text under it only when it reads as a sentence. */
+function failed(provider: PickedProvider, raw: string): void {
+  const description = readableLine(raw) ? raw : undefined;
+  void loadToast().then((toast) => toast.error(`Couldn't sign in to ${SIGN_IN_NAME[provider]}`, description ? { description } : undefined));
+}
+
 /**
  * The foot's first row while this machine is signed in nowhere. A click
  * opens the sign-in window; success says nothing more (the row leaves and
@@ -83,9 +94,9 @@ export function SignInRow({ provider }: { provider: PickedProvider }) {
     try {
       const result = await window.aliax.loginStart(SERVICE_OF[provider]);
       if (result.ok) void accountsStore.refresh(registry.primary().environmentId, provider);
-      else if (result.error !== CANCELLED) void loadToast().then((toast) => toast.error(result.error));
+      else if (result.error !== CANCELLED) failed(provider, result.error);
     } catch (err) {
-      void loadToast().then((toast) => toast.error(err instanceof Error ? err.message : String(err)));
+      failed(provider, err instanceof Error ? err.message : String(err));
     } finally {
       setPending(false);
     }

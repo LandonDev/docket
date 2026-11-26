@@ -47,6 +47,7 @@ vi.mock("../lib/sessionSeen", async (importOriginal) => ({
 }));
 
 import { sessionStore } from "../lib/tcserver/store";
+import { shellStore } from "../stores/shell";
 import { Sidebar } from "./Sidebar";
 
 afterEach(() => {
@@ -95,6 +96,20 @@ describe("the workspace column", () => {
     expect(header.className).toMatch(/\bbox-content\b/);
     expect(header.className).toMatch(/\bh-10\b/);
     expect(header.className).toMatch(/\bborder-b\b/);
+  });
+
+  it("with the rail collapsed its header is the column's top row: no Back, Forward or toggle row above it (they sit in the title bar)", () => {
+    shellStore.setState({ projectRailOpen: false });
+    try {
+      mount();
+      const header = screen.getByRole("heading", { name: "alpha" }).parentElement!;
+      expect(header.parentElement!.firstElementChild).toBe(header);
+      expect(screen.queryByRole("button", { name: /Back/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Workspaces" })).toBeNull();
+      expect(screen.getByTestId("foot")).toBeTruthy();
+    } finally {
+      shellStore.setState({ projectRailOpen: true });
+    }
   });
 
   it("resizes from a focusable sash by 2% or Shift 10% and resets on double-click", () => {

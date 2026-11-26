@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { ItemButton, ItemContent, ItemMedia, ItemTitle } from "@renderer/components/ui/item";
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator } from "@renderer/components/ui/breadcrumb";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { DialogFooter, ErrorLine, errorText } from "./ConfirmDialog";
-import { ChevronRight, Folder, FolderPlus } from "./icons";
+import { Folder, FolderPlus } from "./icons";
 import { Modal, useModalClose } from "./Modal";
 import { cn } from "../lib/cn";
 import { registry, useEnvironments } from "../lib/connection";
@@ -157,28 +158,34 @@ function FolderPicker({ environmentId, onClose, onPick, pending, setPending }: P
       <div className="flex min-h-0 flex-col gap-3 px-5 py-4">
         {workRoot || loading ? (
           <>
-            <nav aria-label="Folder" className="-mx-2 flex min-h-6 min-w-0 flex-wrap items-center gap-0.5">
-              {loading ? <Skeleton className="mx-2 h-3 w-28" /> : null}
-              {workRoot && up && crumbs.length === 1 && crumbs[0].path !== workRoot.root ? (
-                <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => void load(up)}>
-                  ..
-                </Button>
-              ) : null}
-              {crumbs.map((crumb, i) => (
-                <span key={crumb.path} className="flex min-w-0 items-center gap-0.5">
-                  {i > 0 ? <ChevronRight className="size-3 shrink-0 text-muted-foreground" /> : null}
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => void load(crumb.path)}
-                    aria-current={i === crumbs.length - 1 ? "location" : undefined}
-                    className={cn("max-w-48 justify-start", i === crumbs.length - 1 ? "text-foreground" : "text-muted-foreground")}
-                  >
-                    <span className="truncate">{crumb.label}</span>
-                  </Button>
-                </span>
-              ))}
-            </nav>
+            <Breadcrumb aria-label="Folder" className="-mx-2">
+              <BreadcrumbList>
+                {loading ? (
+                  <li>
+                    <Skeleton className="mx-2 h-3 w-28" />
+                  </li>
+                ) : null}
+                {workRoot && up && crumbs.length === 1 && crumbs[0].path !== workRoot.root ? (
+                  <BreadcrumbItem>
+                    <BreadcrumbLink aria-label="Parent folder" onClick={() => void load(up)}>
+                      ..
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                ) : null}
+                {crumbs.map((crumb, i) => {
+                  const here = i === crumbs.length - 1;
+                  return (
+                    <BreadcrumbItem key={crumb.path}>
+                      {i > 0 ? <BreadcrumbSeparator /> : null}
+                      {/* The folder he is in stays a press: it reads the list again. */}
+                      <BreadcrumbLink onClick={() => void load(crumb.path)} aria-current={here ? "location" : undefined} className={here ? "text-foreground" : undefined}>
+                        {crumb.label}
+                      </BreadcrumbLink>
+                    </BreadcrumbItem>
+                  );
+                })}
+              </BreadcrumbList>
+            </Breadcrumb>
             <div className="flex min-h-0 flex-col rounded-lg border border-border" data-remote-folders>
               {loading || entries === null ? (
                 <div className="p-1">

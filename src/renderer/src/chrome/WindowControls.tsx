@@ -33,10 +33,13 @@ function followTheme() {
   return () => (window.removeEventListener(SCHEME_CHANGE_EVENT, tell), meta.remove());
 }
 
-/** The window's controls at a title bar's end off macOS: Windows' own on a Windows desktop, ours on Linux and at /ui. */
+/** The window's controls at a title bar's end off macOS: ours at /ui; on a Windows desktop the room
+ *  Windows' own take; on a Linux desktop none, since its window keeps the system's frame and buttons
+ *  (src/main/windowFrame.ts `frameOptions`), and a second set would stand under them. */
 export function WindowControls() {
   "use no memo";
-  return !isWebMode() && nativePlatform() === "win32" ? <CaptionSpace /> : <DrawnControls />;
+  if (isWebMode()) return <DrawnControls />;
+  return nativePlatform() === "win32" ? <CaptionSpace /> : null;
 }
 
 function DrawnControls() {
@@ -90,7 +93,8 @@ function DrawnControls() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-full shrink-0 items-stretch border-l border-border" data-tauri-drag-region="false">
+      {/* The live row's 40px at the bar's top, as Windows' own sit: never stretched down the shelf. */}
+      <div className="flex h-10 shrink-0 self-start items-stretch border-l border-border" data-tauri-drag-region="false">
         <Tip label="Minimize" side="bottom">
           <Button
             variant="ghost"

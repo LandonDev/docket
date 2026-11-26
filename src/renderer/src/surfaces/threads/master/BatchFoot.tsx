@@ -41,6 +41,7 @@ export function BatchFoot({
   onSave,
   onStop,
   toastAnchor = false,
+  clock,
 }: {
   batch: BatchState;
   /** False until the board's first answer: the foot is its skeleton. */
@@ -53,6 +54,8 @@ export function BatchFoot({
   onStop: (stepId: string) => Promise<void>;
   /** The master's chat is folded: the toast stack sits above this foot, not over it. */
   toastAnchor?: boolean;
+  /** A fixed instant for a preview of an in-flight step. */
+  clock?: number;
 }) {
   tallyRender("batchFoot");
   const rules = batch.rules;
@@ -63,7 +66,8 @@ export function BatchFoot({
   const running = steps.some((s) => s.status === "running");
   // A step that runs again after a fold unfolds it.
   if (running && folded.size > 0) setFolded(new Set());
-  const now = useNow(running);
+  const liveNow = useNow(running && clock === undefined);
+  const now = clock ?? liveNow;
   const blocked = blockedLine(batch, titleOf, hostName);
   // One Stop and one fold for every row, so a row renders again only for
   // what it shows (a log line on the running step re-renders that row alone).

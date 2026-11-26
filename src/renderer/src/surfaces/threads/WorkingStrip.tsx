@@ -149,8 +149,9 @@ export const WorkingStrip = memo(function WorkingStrip({
   }, [leaving]);
   const view = live ?? leaving;
 
+  // The running time starts on a held row's word column (`HELD_WORD`), so a pause or a continue never moves it.
   const time = (ms: number) => (
-    <span role="timer" className="shrink-0 tabular-nums text-muted-foreground">
+    <span role="timer" className={cn("shrink-0 tabular-nums text-muted-foreground", HELD_WORD)}>
       {duration(ms)}
     </span>
   );
@@ -259,6 +260,8 @@ function withTime(status: RowView["status"], elapsed: number): RowView["status"]
 /** A held row's glyph sits in the `+` button's 28px box, so it centres on
  *  `+`'s axis under the box; the word follows it 8px after that box. */
 const ON_PLUS_AXIS = "*:data-[slot=status-glyph]:w-7";
+/** Where a held row's word starts: past the 28px glyph box and the mark's 8px. */
+const HELD_WORD = "pl-9";
 
 /** The row's actions, at its end. */
 function Actions({ children }: { children: ReactNode }) {

@@ -1,7 +1,8 @@
-// Fixtures for `bun run ui:preview src/renderer/src/surfaces/threads/master/BatchFoot.tsx#BatchFoot`.
+// Fixtures for `bun run ui:preview src/renderer/src/surfaces/threads/master/BatchFoot.tsx#BatchFoot`. The console stays open and its elapsed time is fixed.
 import { emptyBatch, type BatchState, type BatchStep } from "@server/shared/contract-batch";
 
-const t = Date.now() - 5 * 60_000;
+const clock = Date.UTC(2026, 9, 21, 15, 20);
+const t = clock - 5 * 60_000;
 const noop = async () => {};
 const missing = 'error: Module not found "scripts/gate.ts"';
 
@@ -19,7 +20,7 @@ function batch(gate: Partial<BatchStep>, release: Partial<BatchStep> = {}): Batc
   };
 }
 
-const props = (state: BatchState) => ({ batch: state, titleOf: () => undefined, onSave: noop, onStop: noop });
+const props = (state: BatchState) => ({ batch: state, clock, titleOf: () => undefined, onSave: noop, onStop: noop });
 
 export default [
   {

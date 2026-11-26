@@ -29,6 +29,9 @@ import { WindowControls } from "./WindowControls";
 import { IS_MAC } from "../lib/platform";
 import type { RecentProject } from "../lib/recents";
 import { useShell } from "../stores/shell";
+import { useProject } from "../stores/project";
+import { useVisitNav } from "../hooks/useVisitNav";
+import { WORK_CHATS } from "../lib/tcserver/workspaces";
 import type { IntentProps } from "../lib/lazyChunk";
 import { settingsChunk } from "../surfaces/chunks";
 import { reducedMotion } from "../lib/motion";
@@ -51,6 +54,9 @@ type Props = {
   onSelectProject?: (path: string) => void;
   /** "Choose folder…" in the no-project picker. */
   onChooseFolder?: () => void;
+  /** Back and Forward, drawn here while the rail is collapsed beside the workspace column. */
+  onGoBack?: () => void;
+  onGoForward?: () => void;
 };
 
 /** How the tab strip's arrows scroll it: a glide, or a jump under reduced motion. */
@@ -245,8 +251,12 @@ function TitleBarComponent({
   recents = [],
   onSelectProject,
   onChooseFolder,
+  onGoBack,
+  onGoForward,
 }: Props) {
   const projectRailOpen = useShell((s) => s.projectRailOpen);
+  const projectCwd = useProject((s) => s.projectCwd);
+  const { canGoBack, canGoForward } = useVisitNav();
   const lockOverscroll = useLockOverscroll<HTMLDivElement>();
   const tabStripRef = useRef<HTMLDivElement | null>(null);
   // The home draws no strip, so the live row comes and goes with the scope:
@@ -314,6 +324,12 @@ function TitleBarComponent({
   // Until a project is picked the rail steps aside, so nothing
   // project-scoped is actionable and the window controls need room.
   const projectless = !showCurrentProject;
+  // The workspace column stands beside the bar (a project, the home's Chats,
+  // Work Chats): with the rail collapsed the bar's live row holds Back,
+  // Forward and the rail toggle, so the column's header can be the window's
+  // top row and meet the live row's line and hairline.
+  const columnBeside = !projectless || projectCwd === "~" || projectCwd === WORK_CHATS;
+  const railNav = railClosed && columnBeside;
   // An open project is labeled in the rail. Without a project the rail is
   // gone, so the picker stays here.
   const showProjectButton =
@@ -368,7 +384,18 @@ function TitleBarComponent({
     >
       {/* The rail steps aside without a project, so the title bar takes over
           the traffic lights and the rail toggle. */}
-      {projectless && railClosed ? (
+      {railNav ? (
+        <div className="flex h-10 shrink-0 items-center gap-1 px-2" data-rail-nav>
+          <DevModeLabel />
+          <TabVisitNav
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            onGoBack={onGoBack}
+            onGoForward={onGoForward}
+            onTogglePanel={onToggleSidebar}
+          />
+        </div>
+      ) : projectless && railClosed ? (
         <>
           <TrafficLightSpacer />
           <div className="flex h-10 shrink-0 items-center px-2">

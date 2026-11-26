@@ -1,7 +1,7 @@
-// Fixtures for `bun run ui:preview src/renderer/src/chrome/rail/ChangesPanel.tsx#ChangesView`.
+// Fixtures for `bun run ui:preview src/renderer/src/chrome/rail/ChangesPanel.tsx#ChangesView`. Static folds hold their open state.
 import type { GitDiffIndex } from "../../lib/fs";
 import type { AgainstModel } from "./ChangesAgainst";
-import { changesRules, type ChangesActions } from "./ChangesPanel";
+import { changesRules, type ChangesView, type ChangesActions } from "./ChangesPanel";
 
 const noop = () => {};
 const actions: ChangesActions = {
@@ -50,7 +50,7 @@ const index = (over: Partial<GitDiffIndex> = {}): GitDiffIndex => ({
   ...over,
 });
 
-const base = (ix: GitDiffIndex | null, message = "", over: Record<string, unknown> = {}) => ({
+const base = (ix: GitDiffIndex | null, message = "", over: Partial<Parameters<typeof ChangesView>[0]> = {}) => ({
   index: ix,
   pr: null,
   rules: changesRules(ix, null, message, false),
@@ -115,7 +115,18 @@ const against = (over: Partial<AgainstModel> = {}): AgainstModel => ({
   ...over,
 });
 
+export const changesPreviewCases = [
+  { name: "Host away, cached index", props: base(mixed) },
+  { name: "Read-only key, cached index", props: base(mixed, "Update panel") },
+  { name: "Failed index read, same skeleton as loading", props: base(null) },
+];
+
 export default [
+  ...changesPreviewCases,
+  { name: "Committing", props: base(mixed, "Update panel", { busy: "commit", rules: changesRules(mixed, null, "Update panel", true) }) },
+  { name: "Generating", props: base(mixed, "", { busy: "generate", rules: changesRules(mixed, null, "", true) }) },
+  { name: "Hunk fold loading", props: base(mixed, "", { folds: { "u:src/renderer/src/surfaces/RightPanel.tsx": "loading" } }) },
+  { name: "No hunks to stage", props: base(mixed, "", { folds: { "u:src/renderer/src/surfaces/RightPanel.tsx": { hunks: [] } } }) },
   { name: "loading", props: base(null) },
   { name: "empty", props: base(index()) },
   { name: "unstaged only", props: base(unstaged) },

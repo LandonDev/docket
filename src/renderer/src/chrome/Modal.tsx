@@ -2,6 +2,7 @@ import { X } from "./icons";
 import { createContext, useContext, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@renderer/components/ui/dialog";
+import { TruncateTip } from "../components/tip";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { cn } from "../lib/cn";
 
@@ -122,7 +123,14 @@ export function ModalPanel({
       <header className="flex shrink-0 items-start gap-2 px-5 pt-5">
         <div className="min-w-0 flex-1">
           <DialogTitle>{title}</DialogTitle>
-          {description ? <DialogDescription className="mt-1 truncate text-xs">{description}</DialogDescription> : null}
+          {/* One line; a subtitle that is cut says the whole of itself on hover. */}
+          {typeof description === "string" ? (
+            <TruncateTip text={description}>
+              <DialogDescription className="mt-1 truncate text-xs">{description}</DialogDescription>
+            </TruncateTip>
+          ) : description ? (
+            <DialogDescription className="mt-1 truncate text-xs">{description}</DialogDescription>
+          ) : null}
         </div>
         <DialogClose
           aria-label="Close"

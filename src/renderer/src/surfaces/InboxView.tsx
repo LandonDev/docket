@@ -13,6 +13,7 @@ import {
   Search,
 } from "../chrome/icons";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Avatar, type AvatarSize } from "../components/ui/avatar";
 import { InboxFiltersMenu } from "../chrome/InboxFiltersMenu";
 import { HostGlyph } from "../chrome/HostGlyph";
 import { InboxProviderMark } from "../chrome/InboxProviderMark";
@@ -1238,43 +1239,12 @@ function InboxPerson({
 }: {
   name: string;
   avatarUrl?: string;
-  size?: number;
+  size?: AvatarSize;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(!avatarUrl);
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
-
-  useEffect(() => {
-    setFailed(!avatarUrl);
-  }, [avatarUrl]);
-
   return (
     <span className={`inline-flex min-w-0 items-center gap-2 ${className}`}>
-      {avatarUrl && !failed ? (
-        <img
-          src={avatarUrl}
-          alt=""
-          width={size}
-          height={size}
-          referrerPolicy="no-referrer"
-          draggable={false}
-          onError={() => setFailed(true)}
-          className="shrink-0 rounded-full bg-muted object-cover outline outline-1 -outline-offset-1 outline-image-outline"
-          style={{ width: size, height: size }}
-        />
-      ) : (
-        <span
-          aria-hidden
-          className="grid shrink-0 place-items-center rounded-full bg-muted font-medium text-muted-foreground"
-          style={{
-            width: size,
-            height: size,
-            fontSize: Math.max(9, Math.round(size * 0.45)),
-          }}
-        >
-          {initial}
-        </span>
-      )}
+      <Avatar name={name} src={avatarUrl} size={size} />
       <span className="min-w-0 truncate">{name}</span>
     </span>
   );

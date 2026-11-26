@@ -13,6 +13,7 @@ import { TabVisitNav, TitleBar, TrafficLightSpacer, tabScrollBehavior } from "./
 import { chipThreadsOf } from "./ShellTitleBar";
 import { newSession } from "../lib/session";
 import { shellStore } from "../stores/shell";
+import { projectStore } from "../stores/project";
 
 vi.mock("./WindowControls", () => ({ WindowControls: () => null }));
 vi.mock("./ProjectPlanChip", () => ({ ProjectPlanChip: () => <button type="button">Plan</button> }));
@@ -296,9 +297,34 @@ describe("TitleBar's controls", () => {
     });
   });
 
+  it("with the rail collapsed beside the column, the live row leads with Back, Forward and the rail toggle", () => {
+    withRail(false, () => {
+      const onGoBack = vi.fn();
+      const onToggleSidebar = vi.fn();
+      bar({ onGoBack, onToggleSidebar });
+      const nav = document.querySelector<HTMLElement>("[data-rail-nav]")!;
+      // One 40px row at the bar's start, the live row's height, its buttons on the strip's line.
+      expect(nav.className.split(/\s+/)).toEqual(expect.arrayContaining(["h-10", "items-center", "px-2"]));
+      expect(nav.parentElement!.tagName).toBe("HEADER");
+      expect(nav.parentElement!.firstElementChild).toBe(nav);
+      const names = [...nav.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"));
+      expect(names).toEqual(["Back", "Forward", "Workspaces"]);
+      fireEvent.click(screen.getByRole("button", { name: "Workspaces" }));
+      expect(onToggleSidebar).toHaveBeenCalledTimes(1);
+    });
+    cleanup();
+    withRail(true, () => {
+      bar();
+      expect(document.querySelector("[data-rail-nav]")).toBeNull();
+    });
+  });
+
   it("keeps the traffic lights' 78px only on macOS", () => {
     const rail = shellStore.getState().projectRailOpen;
+    const at = projectStore.getState().projectCwd;
     shellStore.setState({ projectRailOpen: false });
+    // No workspace and not the home: no column beside the bar, so the bar leads at the window's edge.
+    projectStore.setState({ projectCwd: "" });
     try {
       bar({ cwd: "" });
       // jsdom is no Mac: the rail toggle leads with no room kept for traffic lights.
@@ -306,6 +332,7 @@ describe("TitleBar's controls", () => {
       expect(document.querySelector("[data-traffic-lights]")).toBeNull();
     } finally {
       shellStore.setState({ projectRailOpen: rail });
+      projectStore.setState({ projectCwd: at });
     }
     cleanup();
     const { container } = render(<TrafficLightSpacer mac />);

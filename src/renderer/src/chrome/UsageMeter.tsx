@@ -83,7 +83,8 @@ export function MeterRowView({ provider, meter, now, ...trigger }: MeterProps & 
   return (
     <Button
       variant="ghost"
-      className="@container/railrow h-7 w-full justify-start gap-2 rounded-md px-3 font-normal"
+      // A ghost button on the chrome: the hovered group's step in light, as the rail rows above it; dark's 7% is held (`chrome-hover-ghost`).
+      className="@container/railrow h-7 w-full justify-start gap-2 rounded-md px-3 font-normal hover:bg-chrome-hover-ghost aria-expanded:bg-chrome-hover-ghost"
       aria-label={rowLabel({ provider, meter, now })}
       data-provider={provider}
       {...trigger}

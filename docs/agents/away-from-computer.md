@@ -87,8 +87,8 @@
   press flips the kind of the place the window is on (Code in a code place,
   Work in a Work place, lib/placeScheme.ts `onPlaceKind`), its track shows
   that kind, and its label names the kinds away in words ("Away for Code",
-  "Away for Work", "Away for both", or "Away from computer" while
-  none is). Its context menu (right-click, the menu key) holds "Code
+  "Away for Work", "Away for both", or "Away" while none is: the switch
+  keeps the name "Away from computer", cut at the rail's default width). Its context menu (right-click, the menu key) holds "Code
   threads" and "Work threads" with their ticks, then Both and Off. While no
   host has Work on, the row is Code's alone and has no menu: nothing sets
   Work by implication, since a Work thread keeps its scope when Work goes

@@ -72,6 +72,11 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
       // The ladder's two upper steps (a completion's detail, a signature, a quote): muted-foreground in light.
       ...pairs(["--ink-50", "--ink-55"], [...PAGE, "--popover", "--muted"]),
       { ink: "--background", on: "--foreground" },
+      // A read-only field's words, on a dialog, the page and a card.
+      ...pairs(["--field-readonly"], [...PAGE, "--popover"]),
+      // Text on a hovered row, tab or control on the chrome (`chrome-hover`), and on a hovered outline button, select or attachment (`hover-fill`).
+      ...pairs(["--foreground", "--muted-foreground"], ["--chrome-hover", "--chrome-hover-ghost"]).map((p) => ({ ...p, base: "--sidebar" })),
+      ...["--hover-fill", "--hover-fill-field", "--hover-fill-file"].flatMap((on) => [...PAGE, "--popover"].map((base) => ({ ink: "--foreground", on, base }))),
       // A slideshow's bar, on the matte and on a white slide: its window wears the dark theme whatever the app wears
       // (docs/DESIGN.md "The show"), so these inks are dark's alone.
       ...["--foreground", "--muted-foreground"].flatMap((ink) => ["--matte", "#ffffff"].map((base) => ({ ink, on: "--present-bar", base, only: "dark" as const }))),
@@ -110,12 +115,16 @@ const TIERS: { name: string; floor: number; pairs: Pair[] }[] = [
     floor: 1.15,
     pairs: [
       ...pairs(["--border"], EDGE_GROUNDS),
+      // A loading bone is found against what it lies on: the page, the rail, a card.
+      ...EDGE_GROUNDS.map((base) => ({ ink: "--skeleton", on: base, base })),
       { ink: "--paper-rule", on: "--paper", base: "--paper" },
       { ink: "--page-rule", on: "--page", base: "--page" },
       { ink: "--page-edge", on: "--stage", base: "--stage" },
     ],
   },
   { name: "field edge", floor: 1.4, pairs: pairs(["--input"], PAGE) },
+  // An unchecked checkbox or radio has only its edge to be found by (WCAG 1.4.11): 3:1 on a dialog, the page, a card and the rail.
+  { name: "control edge", floor: 3, pairs: ["--background", "--popover", "--card", "--sidebar"].map((base) => ({ ink: "--check-edge", on: base, base })) },
   {
     // Words on a canvas tint, the tint laid on the page or a card.
     name: "wash",
@@ -182,6 +191,8 @@ const HELD_IN_DARK: (Pair & { ratio: number; floor?: number })[] = [
   { ink: "--muted-foreground", on: HOVER_WASHES[2], base: "--card", ratio: 4.31 },
   { ink: "--faint-foreground", on: HOVER_WASHES[2], base: "--background", ratio: 2.91, floor: 3 },
   { ink: "--faint-foreground", on: HOVER_WASHES[2], base: "--card", ratio: 2.67, floor: 3 },
+  // An unchecked checkbox's and radio's edge: the field's hairline, as it was.
+  ...Object.entries({ "--background": 1.4, "--popover": 1.45, "--card": 1.44, "--sidebar": 1.37 }).map(([on, ratio]) => ({ ink: "--check-edge", on, base: on, ratio, floor: 3 })),
   // The white letter on IDEA's completion badges.
   ...Object.entries({ class: 3.87, interface: 3.32, enum: 4, method: 4.36, field: 2.97, variable: 3.25, keyword: 4.42 }).map(([kind, ratio]) => ({ ink: "--editor-symbol-foreground", on: `--editor-symbol-${kind}`, ratio })),
 ];

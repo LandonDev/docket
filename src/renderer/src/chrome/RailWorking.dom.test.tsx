@@ -74,7 +74,7 @@ describe("the rail's Working section", () => {
     expect(more.getAttribute("aria-expanded")).toBe("false");
     // A rail row's box: its label 8px past the 16px lead column, the rows' /5 hover at once.
     expect(more.className).toContain("gap-2");
-    expect(more.className).toContain("hover:bg-foreground/5");
+    expect(more.className).toContain("hover:bg-chrome-hover");
     expect(more.className).toContain("transition-none");
   });
 
@@ -131,5 +131,18 @@ describe("the rail's Working section", () => {
     ];
     const two = mount([row("a", "working"), row("b", "working", { environmentId: "env_box" })]);
     expect(two.container.querySelector('[data-working-row="b"] [data-host-glyph]')?.getAttribute("aria-label")).toBe("box");
+  });
+
+  it("hides the host glyphs by a class while every row is on one host", () => {
+    hosts.environments = [
+      { id: "local", name: "This Mac" },
+      { id: "env_box", name: "box", platform: "linux" },
+    ];
+    const list = (root: HTMLElement) => root.querySelector("[data-working-row]")!.parentElement!.className.split(/\s+/);
+    const same = mount([row("a", "working", { environmentId: "env_box" }), row("b", "working", { environmentId: "env_box" })]);
+    expect(list(same.container)).toContain("[&_[data-host-glyph]]:hidden");
+    cleanup();
+    const mixed = mount([row("a", "working"), row("b", "working", { environmentId: "env_box" })]);
+    expect(list(mixed.container)).not.toContain("[&_[data-host-glyph]]:hidden");
   });
 });

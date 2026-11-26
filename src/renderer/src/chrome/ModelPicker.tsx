@@ -1,21 +1,16 @@
 import { keyHint, modOrCtrl } from "../lib/keys";
-import { Check, ChevronDown, Search, Star } from "./icons";
+import { ChevronDown, Star } from "./icons";
 import {
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
-  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
 import { Button } from "../components/ui/button";
-import { GroupInput, InputGroup } from "../components/ui/input";
 import { Kbd } from "../components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/lazy-menus";
-import { MENU_ROW } from "../components/ui/menu-row";
-import { reveal } from "../components/ui/reveal";
 import { Separator } from "../components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../components/ui/tooltip";
@@ -63,6 +58,8 @@ import {
 import { HarnessIcon } from "./HarnessIcon";
 import { OPEN_MODEL_PICKER, type ModelPick, type ModelPickerRequest } from "../lib/modelPickerSignal";
 import { effortLabel, ModelSettingsRows, useModelSettings } from "./ModelSettings";
+import type { ModelRows } from "./ModelRows";
+import { menuChunk } from "../surfaces/chunks";
 
 type Props = {
   harness: HarnessId;
@@ -123,7 +120,6 @@ export function ModelPicker({
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<ModelPickerTab>(() => loadModelPickerTab());
   const [query, setQuery] = useState("");
-  const [active, setActive] = useState(0);
   const [favorites, setFavorites] = useState(loadFavoriteModels);
   const search = useRef<HTMLInputElement>(null);
   const onCloseRef = useRef(onClose);
@@ -327,18 +323,6 @@ export function ModelPicker({
     visibilityVersion,
   ]);
 
-  useEffect(() => {
-    if (!open) return;
-    const index = visible.findIndex((item) => item.id === current.id);
-    setActive(index >= 0 ? index : 0);
-  }, [open, visibleTab, query, current.id]);
-
-  useEffect(() => {
-    setActive((i) =>
-      visible.length === 0 ? 0 : Math.min(i, visible.length - 1),
-    );
-  }, [visible.length]);
-
   const pick = (item: AgentModel) => {
     if (!available(item.harness)) return;
     onChange(item.harness, item.id);
@@ -356,31 +340,6 @@ export function ModelPicker({
       saveFavoriteModels(next);
       return next;
     });
-  };
-
-  const onSearchKey = (e: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActive((i) => Math.min(visible.length - 1, i + 1));
-      return;
-    }
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActive((i) => Math.max(0, i - 1));
-      return;
-    }
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const item = visible[active];
-      if (item && available(item.harness)) pick(item);
-      return;
-    }
-    const mod = modOrCtrl(e);
-    if (mod && !e.altKey && !e.shiftKey && e.key >= "1" && e.key <= "9") {
-      e.preventDefault();
-      const item = visible[Number(e.key) - 1];
-      if (item && available(item.harness)) pick(item);
-    }
   };
 
   return (
@@ -451,20 +410,15 @@ export function ModelPicker({
             ))}
           </ToggleGroup>
         )}
-        <InputGroup leading={<Search className="size-3.5" />} className="mb-1">
-          <GroupInput
-            ref={search}
-            value={query}
-            placeholder="Search models"
-            aria-label="Search models"
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={onSearchKey}
-          />
-        </InputGroup>
-        <ModelList
+        {/* The popover's content mounts only once the menu chunk has landed; the field and the list ride it. */}
+        <RowsOf
+          search={search}
+          query={query}
+          onQuery={setQuery}
           available={available}
+          harnessTitle={harnessTitleOf}
+          unavailableHint={harnessUnavailableHint}
           models={visible}
-          active={active}
           currentId={current.id}
           favorites={favorites}
           grouped={!searching && visibleTab !== "favorites"}
@@ -479,7 +433,6 @@ export function ModelPicker({
                     ? "Loading Codex models…"
                     : "No matching models"
           }
-          onActive={setActive}
           onPick={pick}
           onToggleFavorite={toggleFavorite}
         />
@@ -521,137 +474,10 @@ function ownThenVendor(models: AgentModel[]): AgentModel[] {
   return models.some((m) => m.vendor) ? [...models.filter((m) => !m.vendor), ...models.filter((m) => m.vendor)] : models;
 }
 
-/** The heading over a maker's rows in a harness tab. */
-const VENDOR_TITLE: Record<NonNullable<AgentModel["vendor"]>, string> = { meta: "Meta" };
+const harnessTitleOf = (id: HarnessId): string => HARNESS_TITLE[id];
 
-/** The menu's list; exported for its static preview (ModelPicker.fixtures.tsx). */
-export function ModelList({
-  available,
-  models,
-  active,
-  currentId,
-  favorites,
-  grouped,
-  emptyLabel,
-  onActive,
-  onPick,
-  onToggleFavorite,
-}: {
-  available: (id: HarnessId) => boolean;
-  models: AgentModel[];
-  active: number;
-  currentId: string;
-  favorites: string[];
-  /** A harness tab: a maker's rows sit under its heading. */
-  grouped: boolean;
-  emptyLabel: string;
-  onActive: (index: number) => void;
-  onPick: (model: AgentModel) => void;
-  onToggleFavorite: (id: string) => void;
-}) {
-  const activeRef = useRef<HTMLDivElement>(null);
-  const headingId = useId();
-
-  useEffect(() => {
-    activeRef.current?.scrollIntoView?.({ block: "nearest" });
-  }, [active]);
-
-  if (models.length === 0) {
-    return <div className={cn("flex items-center text-muted-foreground", MENU_ROW)}>{emptyLabel}</div>;
-  }
-
-  return (
-    <div className="max-h-[340px] min-h-0 overflow-x-hidden overflow-y-auto">
-      <div role="listbox" aria-label="Models">
-        {renderGroups(grouped, models, headingId, (item, index) => {
-          const selected = item.id === currentId;
-          const highlighted = index === active;
-          const favorited = favorites.includes(item.id);
-          const disabled = !available(item.harness);
-          const shortcut = index < 9 && !disabled ? keyHint(`mod+${index + 1}`) : null;
-          const row = (
-            <div
-              key={item.id}
-              ref={highlighted ? activeRef : undefined}
-              role="option"
-              aria-selected={selected}
-              aria-disabled={disabled}
-              onMouseEnter={() => onActive(index)}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                if (!disabled) onPick(item);
-              }}
-              className={cn(
-                // MENU_ROW's box, its 4px of padding dropped so the 24px star keeps the row at 28px.
-                "group/model flex cursor-default items-center rounded-lg", MENU_ROW, "py-0",
-                disabled ? "text-muted-foreground opacity-60" : highlighted && "bg-muted",
-              )}
-            >
-              {/* No row draws a glyph, so every label starts on one edge; a maker's mark is its group heading's. */}
-              <span className="flex min-w-0 flex-1 items-baseline gap-1">
-                <span className="min-w-0 truncate">{item.name}</span>
-                {/* Out of its tab (search, favorites) a row names its harness: one model is offered under several. */}
-                {grouped ? null : <span data-model-harness className="shrink-0 text-xs text-muted-foreground">{HARNESS_TITLE[item.harness]}</span>}
-              </span>
-              {selected ? <Check className="size-3.5 shrink-0" /> : null}
-              {/* A favourite's star stays; any other row's waits on the shared hover reveal. */}
-              <span className={cn("flex", !favorited && reveal("model"))}>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={favorited ? "Remove from favorites" : "Add to favorites"}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleFavorite(item.id);
-                  }}
-                  className={favorited ? "text-foreground" : "text-muted-foreground hover:text-foreground"}
-                >
-                  <Star fill={favorited ? "currentColor" : "none"} />
-                </Button>
-              </span>
-              {shortcut ? (
-                <Kbd size="sm" className="border-transparent bg-transparent text-muted-foreground">
-                  {shortcut}
-                </Kbd>
-              ) : null}
-            </div>
-          );
-          if (!disabled) return row;
-          return (
-            <Tooltip key={item.id}>
-              <TooltipTrigger render={row} />
-              <TooltipContent side="right">{harnessUnavailableHint(item.harness)}</TooltipContent>
-            </Tooltip>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/** The rows in order; in a harness tab a maker's rows (they come last,
- *  `ownThenVendor`) sit in a group under its name. Indexes stay the flat
- *  list's, so the keys and the active row read one sequence. */
-function renderGroups(
-  grouped: boolean,
-  models: AgentModel[],
-  headingId: string,
-  row: (item: AgentModel, index: number) => ReactNode,
-): ReactNode {
-  const split = grouped ? models.findIndex((m) => m.vendor) : -1;
-  if (split < 0) return models.map(row);
-  const vendor = models[split].vendor!;
-  return (
-    <>
-      {models.slice(0, split).map(row)}
-      <div role="group" aria-labelledby={headingId} data-vendor-group={vendor}>
-        <div id={headingId} role="presentation" className="flex items-center gap-2 px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground">
-          <HarnessIcon harness={vendor} className="size-3 shrink-0" />
-          {VENDOR_TITLE[vendor]}
-        </div>
-        {models.slice(split).map((item, i) => row(item, split + i))}
-      </div>
-    </>
-  );
+/** The open body, from the menu chunk the open popover already loaded (chrome/ModelRows.tsx). */
+function RowsOf(props: Parameters<typeof ModelRows>[0]) {
+  const Body = menuChunk.loaded();
+  return Body ? <Body.ModelRows {...props} /> : null;
 }

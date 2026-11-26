@@ -40,7 +40,7 @@ describe("QuestionCard's motion", () => {
     const card = container.querySelector('[data-slot="question-card"]')!;
     const pages = [...container.querySelectorAll<HTMLElement>("[data-page]")];
     expect(pages.map((page) => page.dataset.page)).toEqual(["current", "away"]);
-    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Alpha" }));
     fireEvent.click(screen.getByRole("button", { name: /Next/ }));
     expect(container.querySelector('[data-slot="question-card"]')).toBe(card);
     const after = [...container.querySelectorAll<HTMLElement>("[data-page]")];
@@ -91,13 +91,13 @@ describe("QuestionCard", () => {
     composer.focus();
     fireEvent.keyDown(composer, { key: "a" });
     fireEvent.keyDown(composer, { key: "Enter", metaKey: true });
-    expect(screen.getByRole("button", { name: "Alpha" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("radio", { name: "Alpha" }).getAttribute("aria-checked")).toBe("false");
     expect(onSubmitAnswers).not.toHaveBeenCalled();
 
-    const alpha = screen.getByRole("button", { name: "Alpha" });
+    const alpha = screen.getByRole("radio", { name: "Alpha" });
     alpha.focus();
     fireEvent.keyDown(alpha, { key: "b" });
-    expect(screen.getByRole("button", { name: "Beta" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("radio", { name: "Beta" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.keyDown(alpha, { key: "Enter", metaKey: true });
     expect(onSubmitAnswers).toHaveBeenCalledWith([["Beta"]]);
   });
@@ -109,15 +109,15 @@ describe("QuestionCard", () => {
     // The field is no child of a button: that is what turned its Space into a click.
     expect(field.closest("button")).toBeNull();
     expect(container.querySelector("button input")).toBeNull();
-    const other = screen.getByRole("button", { name: "Other" });
+    const other = screen.getByRole("radio", { name: "Other" });
     fireEvent.click(other);
-    expect(other.getAttribute("aria-pressed")).toBe("true");
+    expect(other.getAttribute("aria-checked")).toBe("true");
     field.focus();
     for (const key of ["a", " ", "b", "Enter"]) typeKey(field as HTMLInputElement, key);
-    expect(other.getAttribute("aria-pressed")).toBe("true");
+    expect(other.getAttribute("aria-checked")).toBe("true");
     expect((field as HTMLInputElement).value).toBe("a b");
     // A letter typed in the field picks nothing; ⌘⏎ still submits the typed text.
-    expect(screen.getByRole("button", { name: "Alpha" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("radio", { name: "Alpha" }).getAttribute("aria-checked")).toBe("false");
     fireEvent.keyDown(field, { key: "Enter", metaKey: true });
     expect(onSubmitAnswers).toHaveBeenCalledWith([["a b"]]);
   });
@@ -127,7 +127,7 @@ describe("QuestionCard", () => {
     try {
       const { container } = render(<QuestionCard questions={one} />);
       const field = screen.getByRole("textbox", { name: "Other" }) as HTMLInputElement;
-      const other = screen.getByRole("button", { name: "Other" });
+      const other = screen.getByRole("radio", { name: "Other" });
       expect(field.readOnly).toBe(true);
       expect(field.tabIndex).toBe(-1);
       // The toggle covers the row; the field sits under it until the row is picked.
@@ -142,11 +142,11 @@ describe("QuestionCard", () => {
       const row = container.querySelector<HTMLElement>('[data-slot="question-option"]:has(input)')!;
       expect(row.className.split(" ")).toContain("bg-foreground/10");
       fireEvent.click(other);
-      expect(other.getAttribute("aria-pressed")).toBe("false");
-      const alpha = screen.getByRole("button", { name: "Alpha" });
+      expect(other.getAttribute("aria-checked")).toBe("false");
+      const alpha = screen.getByRole("radio", { name: "Alpha" });
       alpha.focus();
       fireEvent.keyDown(alpha, { key: "c" });
-      expect(other.getAttribute("aria-pressed")).toBe("true");
+      expect(other.getAttribute("aria-checked")).toBe("true");
     } finally {
       vi.useRealTimers();
     }
@@ -159,21 +159,24 @@ describe("QuestionCard", () => {
       { prompt: "Any of these?", multiSelect: true, options: [{ label: "One" }, { label: "Two" }, { label: "Three" }] },
     ];
     render(<QuestionCard questions={questions} onSubmitAnswers={onSubmitAnswers} />);
-    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
-    fireEvent.click(screen.getByRole("button", { name: "Beta" }));
-    expect(screen.getByRole("button", { name: "Alpha" }).getAttribute("aria-pressed")).toBe("false");
-    expect(screen.getByRole("button", { name: "Beta" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("radio", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Beta" }));
+    expect(screen.getByRole("radio", { name: "Alpha" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("radio", { name: "Beta" }).getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: /Next/ }));
 
-    const lists = screen.getAllByRole("list", { hidden: true });
-    expect(lists[0].getAttribute("aria-multiselectable")).toBe(null);
-    expect(lists[1].getAttribute("aria-multiselectable")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "One" }));
-    fireEvent.click(screen.getByRole("button", { name: "Three" }));
-    expect(screen.getByRole("button", { name: "One" }).getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("button", { name: "Three" }).getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(screen.getByRole("button", { name: "Three" }));
-    fireEvent.click(screen.getByRole("button", { name: "Two" }));
+    // One of several is a radio group named by its question; several of several a group of checkboxes.
+    expect(screen.getByRole("radiogroup", { name: "Which?", hidden: true }).querySelectorAll('[role="radio"]')).toHaveLength(2);
+    const several = screen.getByRole("group", { name: "Any of these?" });
+    expect(several.querySelectorAll('[role="checkbox"]')).toHaveLength(3);
+    expect(several.querySelector('[role="radio"]')).toBeNull();
+    expect(document.querySelector("[aria-pressed]")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "One" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Three" }));
+    expect(screen.getByRole("checkbox", { name: "One" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("checkbox", { name: "Three" }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("checkbox", { name: "Three" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Two" }));
     fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
     expect(onSubmitAnswers).toHaveBeenCalledWith([["Beta"], ["One", "Two"]]);
   });
@@ -182,10 +185,10 @@ describe("QuestionCard", () => {
     const onSubmitAnswers = vi.fn();
     const questions: Question[] = [{ prompt: "Which?", options: [{ label: "Tabs", description: "Hard tabs, width 2" }, { label: "Spaces" }] }];
     render(<QuestionCard questions={questions} onSubmitAnswers={onSubmitAnswers} />);
-    const tabs = screen.getByRole("button", { name: "Tabs" });
+    const tabs = screen.getByRole("radio", { name: "Tabs" });
     expect(screen.getByText("Hard tabs, width 2").className).toContain("text-muted-foreground");
     expect(tabs.getAttribute("aria-describedby")).toBe(screen.getByText("Hard tabs, width 2").id);
-    expect(screen.getByRole("button", { name: "Spaces" }).hasAttribute("aria-describedby")).toBe(false);
+    expect(screen.getByRole("radio", { name: "Spaces" }).hasAttribute("aria-describedby")).toBe(false);
     fireEvent.click(tabs);
     fireEvent.click(screen.getByRole("button", { name: /Continue/ }));
     expect(onSubmitAnswers).toHaveBeenCalledWith([["Tabs"]]);
@@ -215,8 +218,8 @@ describe("QuestionCard", () => {
 
   it("says a selected option with a fill and the cap, never an outline", () => {
     render(<QuestionCard questions={one} />);
-    const alpha = screen.getByRole("button", { name: "Alpha" });
-    const beta = screen.getByRole("button", { name: "Beta" });
+    const alpha = screen.getByRole("radio", { name: "Alpha" });
+    const beta = screen.getByRole("radio", { name: "Beta" });
     fireEvent.click(alpha);
     expect(alpha.className.split(" ")).toContain("bg-foreground/10");
     expect(alpha.className).not.toMatch(/border|ring|outline/);
@@ -237,7 +240,7 @@ describe("QuestionCard", () => {
     expect(skip.dataset.variant).toBe("secondary");
     expect(next.dataset.variant).toBe("default");
     for (const button of [skip, next]) expect(button.className).toContain("t-raise");
-    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Alpha" }));
     fireEvent.click(next);
     const back = screen.getByRole("button", { name: "Back" });
     expect(back.dataset.variant).toBe("secondary");
@@ -271,7 +274,7 @@ describe("QuestionCard", () => {
     const progress = container.querySelector<HTMLElement>('[data-slot="question-progress"]')!;
     expect(progress.textContent).toBe("1 of 2");
     expect(progress.className.split(" ")).toEqual(expect.arrayContaining(["text-xs", "text-muted-foreground", "tabular-nums", "ms-auto"]));
-    fireEvent.click(screen.getByRole("button", { name: "Alpha" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Alpha" }));
     fireEvent.click(screen.getByRole("button", { name: /Next/ }));
     expect(progress.textContent).toBe("2 of 2");
     expect(screen.queryByRole("button", { name: "Reset the answers" })).toBeNull();

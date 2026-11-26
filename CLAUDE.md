@@ -124,10 +124,9 @@ Read the file a task touches before changing that subject.
 - **Docket's data names** — folders and databases renamed at boot, a link at each
   old name (src/main/dataMove.ts). [docs/agents/docket-data-move.md](docs/agents/docket-data-move.md)
 - **UI standard** — docs/DESIGN.md wins every conflict; Kobra on Base UI under
-  src/renderer/src/components/ui, mapped in components/README.md; the guard
-  tests under src/renderer/src/lib/*Guard.test.ts; verify with typecheck, the
-  tests you touched and `bun run ui:preview`; never run prettier on
-  src/renderer. [docs/agents/ui-standard.md](docs/agents/ui-standard.md)
+  src/renderer/src/components/ui, mapped in components/README.md; guards in
+  src/renderer/src/lib. Typecheck, run touched tests; `ui:preview` for parts (sweep:
+  `script:preview-smoke`), `script:docket-walk` for windows. No prettier on the renderer. [docs/agents/ui-standard.md](docs/agents/ui-standard.md)
 - **Appearance** — two themes, one per kind of place: Settings holds a theme
   for Code and one for Work (lib/appearance.ts), a window wears its place's
   (`placeKind`, `changeScheme` in lib/placeScheme.ts, the dissolve), and the

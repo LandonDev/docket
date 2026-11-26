@@ -38,7 +38,8 @@
   weight. A row that gathers threads says it with one 6px dot
   (`UnreadMark`, components/ui/status.tsx): a workspace row, after its
   diff in the slot the hover actions take; the Chats and Work Chats rows,
-  before their state; a project card's name line, before its time. A
+  before their state; a project card's name line, before its time, only while none of its
+  shown lines is unread (one fact, said once: a shown line says it by weight). A
   row's rule is `rowUnread` (lib/sidebarRows.ts): a root past its read
   mark, settled (idle or done) or a master watching its batch
   (`unreadCanShow`, lib/threadStripModel.ts), never a housed one. A

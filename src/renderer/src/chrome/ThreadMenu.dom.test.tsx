@@ -79,7 +79,8 @@ describe("ThreadMenu", () => {
     expect(buttons.map((b) => b.getAttribute("aria-label"))).toEqual(["Thread menu", "Panel"]);
     expect(buttons[1]!.getAttribute("aria-pressed")).toBe("true");
     // Pressed as Toggle is, never with a ghost button's hover fill.
-    expect(buttons[1]!.className).toContain("aria-pressed:bg-muted");
+    expect(buttons[1]!.className).toContain("aria-pressed:bg-sidebar-group-selected");
+    expect(buttons[1]!.className).toContain("hover:bg-chrome-hover-ghost");
     expect(buttons[1]!.className).not.toContain("aria-pressed:bg-foreground/7");
     fireEvent.click(buttons[1]!);
     expect(props.panel.onToggle).toHaveBeenCalled();

@@ -1,4 +1,4 @@
-// A menu's look, for `bun run ui:preview src/renderer/src/chrome/menuRows.fixtures.tsx#MenuSketch`.
+// A menu's look, for `bun run ui:preview src/renderer/src/chrome/menuRows.fixtures.tsx#MenuSketch`. Static menus render open without keyboard or pointer input.
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 import { threadMenuRows } from "../lib/threadMenu";
 import { Laptop, Server } from "./icons";
@@ -25,7 +25,7 @@ const WORKING: MenuRow[] = [
 
 export function MenuSketch({ rows = WORKING }: { rows?: MenuRow[] }) {
   return (
-    <div style={{ height: 420 }}>
+    <div>
       <DropdownMenu defaultOpen modal={false}>
         <DropdownMenuTrigger>⋯</DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-60" aria-label="Thread menu">

@@ -25,6 +25,8 @@ export function AgentDetail({
   onOpenSession,
   onOpenFile,
   onOpenDiff,
+  initialSettled = false,
+  initialSteer,
 }: {
   agentId: string;
   parentCwd: string;
@@ -32,9 +34,11 @@ export function AgentDetail({
   onOpenSession?: (sessionId: string) => void;
   onOpenFile?: OpenFileFn;
   onOpenDiff?: (path?: string) => void;
+  initialSettled?: boolean;
+  initialSteer?: { text: string; failure?: string };
 }) {
   const meta = useMetaById(agentId);
-  const [settled, setSettled] = useState(false);
+  const [settled, setSettled] = useState(initialSettled);
   const { root, closeThen } = useClosingDialog(onClose, false);
 
   if (!meta) return null;
@@ -52,6 +56,7 @@ export function AgentDetail({
           agentId={agentId}
           parentCwd={parentCwd}
           ready={settled && root.open}
+          initialSteer={initialSteer}
           // Open closes first: the parent hears onClose, then onOpenSession,
           // once the slide out has played.
           onOpenSession={

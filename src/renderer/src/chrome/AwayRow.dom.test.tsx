@@ -57,14 +57,16 @@ afterEach(() => {
 });
 
 describe("AwayRow", () => {
-  it("is one native switch named Away from computer, off until the host says on", () => {
+  it("is one native switch named Away from computer, drawn as Away, off until the host says on", () => {
     render(<AwayRow />);
     const row = switchRow();
     // A native button: Space and Enter press it as a click does.
     expect(row.tagName).toBe("BUTTON");
     expect(row.getAttribute("type")).toBe("button");
     expect(row.getAttribute("aria-checked")).toBe("false");
-    expect(row.textContent).toBe("Away from computer");
+    // The whole name is cut at the rail's default 200px, so the row draws the short word.
+    expect(row.textContent).toBe("Away");
+    expect(row.getAttribute("aria-label")).toBe("Away from computer");
     act(() => awayStore.setState({ hosts: host(true) }));
     expect(switchRow().getAttribute("aria-checked")).toBe("true");
   });
@@ -109,7 +111,7 @@ describe("AwayRow", () => {
   });
 
   it("says what it does while off and since when while on, in a tooltip, never a title", () => {
-    expect(awayTooltip(false, 0)).toBe("Threads decide without asking you");
+    expect(awayTooltip(false, 0)).toBe("Away from computer: when on, threads decide without asking you");
     const at = new Date(2026, 10, 5, 14, 14).getTime();
     expect(awayTooltip(true, at)).toBe(`Away since ${clockTime(at)}`);
     render(
@@ -123,7 +125,7 @@ describe("AwayRow", () => {
   it("sits right above Settings in the foot, the collapsed column's foot included", () => {
     render(<RailFoot onAddWorkspace={() => {}} />);
     const rows = [...document.querySelectorAll("[data-rail-row] button")].map((b) => b.textContent);
-    expect(rows.slice(-2)).toEqual(["Away from computer", "Settings"]);
+    expect(rows.slice(-2)).toEqual(["Away", "Settings"]);
   });
 
   it("draws its track from switch-track.ts, with no Base UI switch", () => {
@@ -148,7 +150,7 @@ describe("AwayRow by kind, with Work on", () => {
   });
 
   it("names the kinds away in words in each of the four states", () => {
-    expect(awayLabel({ code: false, work: false })).toBe("Away from computer");
+    expect(awayLabel({ code: false, work: false })).toBe("Away");
     expect(awayLabel({ code: true, work: false })).toBe("Away for Code");
     expect(awayLabel({ code: false, work: true })).toBe("Away for Work");
     expect(awayLabel({ code: true, work: true })).toBe("Away for both");
@@ -199,7 +201,7 @@ describe("AwayRow by kind, with Work on", () => {
   });
 
   it("says in its tip which kind the press flips", () => {
-    expect(awayTooltip(false, 0, "code")).toBe("Code threads decide without asking you");
+    expect(awayTooltip(false, 0, "code")).toBe("Away from computer: when on, Code threads decide without asking you");
     const at = new Date(2026, 10, 5, 14, 14).getTime();
     expect(awayTooltip(true, at, "work")).toBe(`Work threads away since ${clockTime(at)}`);
   });

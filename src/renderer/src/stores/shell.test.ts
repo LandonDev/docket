@@ -4,6 +4,7 @@ import { saveSettingsSection } from "../lib/settings";
 import {
   closeOverlays,
   closeViews,
+  foldRail,
   initialShellState,
   leaveTopOverlay,
   anyViewOpen,
@@ -19,6 +20,7 @@ import {
   shell,
   shellStore,
   toggleProjectRail,
+  unfoldRail,
 } from "./shell";
 
 vi.mock("../lib/appearance", async (importOriginal) => ({
@@ -108,6 +110,18 @@ describe("shell reducers", () => {
     expect(toggleProjectRail(base())).toMatchObject({ projectRailOpen: false });
   });
 
+  it("a fold closes an open rail as a fold, the room brings it back, and his press ends a fold", () => {
+    const folded = foldRail(base());
+    expect(folded).toMatchObject({ projectRailOpen: false, railFolded: true });
+    expect(unfoldRail(folded)).toMatchObject({ projectRailOpen: true, railFolded: false });
+    // A rail he closed is no fold: nothing to fold, nothing to bring back.
+    const closed = { ...base(), projectRailOpen: false };
+    expect(foldRail(closed)).toBe(closed);
+    expect(unfoldRail(closed)).toBe(closed);
+    // Pressed open while folded, it stays open and the fold is over.
+    expect(toggleProjectRail(folded)).toMatchObject({ projectRailOpen: true, railFolded: false });
+  });
+
   it("back closes the topmost overlay, settings before the views", () => {
     const all = {
       ...base(),
@@ -170,6 +184,14 @@ describe("shell store", () => {
     shell.toggleProjectRail();
     expect(saveProjectRailOpen).toHaveBeenCalledTimes(1);
     expect(saveProjectRailOpen).toHaveBeenCalledWith(false);
+    // A fold and its return write nothing: the saved choice is still his.
+    shell.toggleProjectRail();
+    vi.mocked(saveProjectRailOpen).mockClear();
+    shell.foldRail();
+    expect(shellStore.getState().projectRailOpen).toBe(false);
+    shell.unfoldRail();
+    expect(shellStore.getState().projectRailOpen).toBe(true);
+    expect(saveProjectRailOpen).not.toHaveBeenCalled();
     shell.openSettings("editor");
     shell.selectSettingsSection("editor");
     expect(saveSettingsSection).toHaveBeenCalledTimes(1);

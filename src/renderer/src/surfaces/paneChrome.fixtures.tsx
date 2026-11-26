@@ -1,5 +1,5 @@
 // Fixtures for `bun run ui:preview src/renderer/src/surfaces/paneChrome.tsx#PaneHeader`,
-// and the split itself: `bun run ui:preview src/renderer/src/surfaces/paneChrome.fixtures.tsx#PaneSplitDemo --width 720`.
+// and the split itself: `bun run ui:preview src/renderer/src/surfaces/paneChrome.fixtures.tsx#PaneSplitDemo --width 720`. Dragging and the sash keys need interaction.
 import type { LayoutSash } from "../lib/layout";
 import { PaneDropHint, PaneHeader, Sash } from "./paneChrome";
 
@@ -24,7 +24,7 @@ function Body({ lines }: { lines: string[] }) {
 /** Two panes at 50/50: the left focused, a pane being dropped on the right one's right half. */
 export function PaneSplitDemo() {
   return (
-    <div className="relative h-60 w-[720px] overflow-hidden border border-border">
+    <div className="relative h-60 w-full max-w-[720px] overflow-hidden border border-border">
       <div className="absolute inset-y-0 left-0 flex w-1/2 flex-col">
         <PaneHeader title="Fix the sash's keyboard" focused onClose={noop} onDragStart={noop} />
         <Body lines={["Read PaneTree.tsx and the layout helpers.", "Moved the sash into paneChrome.tsx.", "Typecheck passes."]} />

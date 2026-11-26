@@ -197,13 +197,13 @@ describe("ModelPicker", () => {
     const trigger = screen.getByRole("button", { name: /Opus 5\.5/ });
     let menu = await open(/Opus 5\.5/);
     await act(async () => {
-      fireEvent.keyDown(within(menu).getByRole("textbox"), { key: "Escape" });
+      fireEvent.keyDown(within(menu).getByRole("combobox", { name: "Search models" }), { key: "Escape" });
     });
     expect(onClose).not.toHaveBeenCalled();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     menu = await open(/Opus 5\.5/);
     await act(async () => {
-      fireEvent.change(within(menu).getByRole("textbox"), { target: { value: "Fable" } });
+      fireEvent.input(within(menu).getByRole("combobox", { name: "Search models" }), { target: { value: "Fable" }, inputType: "insertText" });
     });
     await act(async () => {
       fireEvent.click(within(menu).getByRole("option", { name: /Fable 5\.1/ }));
@@ -225,7 +225,7 @@ describe("ModelPicker", () => {
     const choose = async (name: RegExp) => {
       const menu = screen.getByRole("dialog", { name: "Model picker" });
       await act(async () => {
-        fireEvent.change(within(menu).getByRole("textbox"), { target: { value: "Opus" } });
+        fireEvent.input(within(menu).getByRole("combobox", { name: "Search models" }), { target: { value: "Opus" }, inputType: "insertText" });
       });
       await act(async () => {
         fireEvent.click(within(menu).getByRole("option", { name }));
@@ -234,7 +234,7 @@ describe("ModelPicker", () => {
     // Closed without a pick: nothing.
     await act(async () => requestModelPicker("s1", { onPick }));
     await act(async () => {
-      fireEvent.keyDown(within(screen.getByRole("dialog", { name: "Model picker" })).getByRole("textbox"), { key: "Escape" });
+      fireEvent.keyDown(within(screen.getByRole("dialog", { name: "Model picker" })).getByRole("combobox", { name: "Search models" }), { key: "Escape" });
     });
     expect(onPick).not.toHaveBeenCalled();
     // Opened by the request and picked: the change, then the pick with the settings merged for it.
@@ -307,7 +307,7 @@ describe("ModelPicker: Meta's models", () => {
     expect(groupIn(menu)).toBeNull();
     expect(within(menu).getAllByRole("option").map((o) => o.querySelector("span")?.textContent)).toEqual(["Opus 5.5"]);
     await act(async () => {
-      fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "muse" } });
+      fireEvent.input(within(menu).getByRole("combobox", { name: "Search models" }), { target: { value: "muse" }, inputType: "insertText" });
     });
     // Only the Muse harness's own rows answer a search: nothing under Claude or Codex.
     expect(within(menu).queryAllByRole("option").every((o) => !o.querySelector("svg path")?.getAttribute("d")?.startsWith("M6.915"))).toBe(true);
@@ -392,7 +392,7 @@ describe("ModelPicker: Meta's models", () => {
     picker("claude", "claude:claude-opus-5-5");
     const menu = await open(/Opus 5\.5/);
     await act(async () => {
-      fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "muse" } });
+      fireEvent.input(within(menu).getByRole("combobox", { name: "Search models" }), { target: { value: "muse" }, inputType: "insertText" });
     });
     expect(groupIn(menu)).toBeNull();
     // Meta's four rows under claude and codex, plus Muse Code's own three static rows.
@@ -429,7 +429,7 @@ describe("ModelPicker: Meta's models", () => {
     picker("claude", "claude:claude-opus-5-5");
     const menu = await open(/Opus 5\.5/);
     await act(async () => {
-      fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "muse" } });
+      fireEvent.input(within(menu).getByRole("combobox", { name: "Search models" }), { target: { value: "muse" }, inputType: "insertText" });
     });
     const add = within(menu).getAllByRole("button", { name: "Add to favorites" })[0];
     const wrapper = add.parentElement!.className;
@@ -454,10 +454,83 @@ describe("ModelPicker: Meta's models", () => {
       expect(classes).not.toContain("rounded-md");
       expect(classes).not.toContain("px-2");
     }
-    expect(menu.querySelector("[data-vendor-group] [role=presentation]")!.className.split(" ")).toContain("px-3");
+    expect(menu.querySelector("[data-vendor-group] [data-slot=combobox-label]")!.className.split(" ")).toContain("px-3");
     const settings = [...menu.querySelectorAll("[data-model-settings-rows] > div")];
     expect(settings.length).toBeGreaterThan(0);
     for (const row of settings) expect(row.className.split(" ")).toContain("px-3");
+  });
+});
+
+describe("ModelPicker: the list is the field's", () => {
+  it("opens on the model in use, named to a reader; the arrows move it and Enter picks", async () => {
+    setHarnessModels("claude", agentModelsFor(CATALOG.claude), CATALOG.claude.defaultModel);
+    saveModelPickerTab("claude");
+    const onChange = vi.fn();
+    render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" onChange={onChange} />);
+    const menu = await open(/Opus 5\.5/);
+    const field = within(menu).getByRole("combobox", { name: "Search models" });
+    const rows = within(menu).getAllByRole("option");
+    const inUse = rows.find((row) => row.getAttribute("aria-selected") === "true")!;
+    expect(inUse.textContent).toContain("Opus 5.5");
+    expect(field.getAttribute("aria-controls")).toBe(within(menu).getByRole("listbox", { name: "Models" }).id);
+    expect(field.getAttribute("aria-activedescendant")).toBe(inUse.id);
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "ArrowDown" });
+    });
+    const next = rows[rows.indexOf(inUse) + 1];
+    expect(field.getAttribute("aria-activedescendant")).toBe(next.id);
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "Enter" });
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(next.textContent).toContain(findModel(onChange.mock.calls[0][1] as string)!.name);
+  });
+
+  it("a row sliding under a still pointer never takes the highlight from the keyboard", async () => {
+    setHarnessModels("claude", agentModelsFor(CATALOG.claude), CATALOG.claude.defaultModel);
+    saveModelPickerTab("claude");
+    render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" onChange={() => {}} />);
+    const menu = await open(/Opus 5\.5/);
+    const field = within(menu).getByRole("combobox", { name: "Search models" });
+    const kept = field.getAttribute("aria-activedescendant");
+    const slid = within(menu).getAllByRole("option").find((row) => row.id !== kept)!;
+    await act(async () => {
+      // What the browser sends when the list scrolls under a pointer that does not move: no move.
+      fireEvent.pointerEnter(slid);
+      fireEvent.mouseEnter(slid);
+      fireEvent.mouseOver(slid);
+    });
+    expect(field.getAttribute("aria-activedescendant")).toBe(kept);
+    expect(slid.hasAttribute("data-highlighted")).toBe(false);
+  });
+
+  it("the mod and a digit pick by place, and a typed query takes its first match on Enter", async () => {
+    setHarnessModels("claude", agentModelsFor(CATALOG.claude), CATALOG.claude.defaultModel);
+    saveModelPickerTab("claude");
+    const onChange = vi.fn();
+    const view = render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" onChange={onChange} />);
+    let menu = await open(/Opus 5\.5/);
+    const second = within(menu).getAllByRole("option")[1].textContent!;
+    await act(async () => {
+      fireEvent.keyDown(within(menu).getByRole("combobox", { name: "Search models" }), { key: "2", ctrlKey: true, metaKey: true });
+    });
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(second).toContain(findModel(onChange.mock.calls[0][1] as string)!.name);
+    view.unmount();
+    onChange.mockClear();
+    render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" onChange={onChange} />);
+    menu = await open(/Opus 5\.5/);
+    const field = within(menu).getByRole("combobox", { name: "Search models" });
+    await act(async () => {
+      field.focus();
+      fireEvent.input(field, { target: { value: "sonnet" }, inputType: "insertText" });
+    });
+    const first = within(menu).getAllByRole("option")[0];
+    expect(field.getAttribute("aria-activedescendant")).toBe(first.id);
+    await act(async () => {
+      fireEvent.keyDown(field, { key: "Enter" });
+    });
+    expect(first.textContent).toContain(findModel(onChange.mock.calls[0][1] as string)!.name);
   });
 });
 
@@ -475,14 +548,14 @@ describe("ModelPicker in a Work thread", () => {
     render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" providers={["claude", "codex", "muse"]} onChange={() => {}} />);
     let menu = await open(/Opus 5\.5/);
     expect(tabs(menu)).toEqual(["Favorites", "Claude Code", "Codex", "Muse Code"]);
-    await act(async () => fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "Composer" } }));
+    await act(async () => fireEvent.input(within(menu).getByRole("combobox", { name: "Search models" }), { target: { value: "Composer" }, inputType: "insertText" }));
     expect(within(menu).queryByRole("option", { name: /Composer 2/ })).toBeNull();
     cleanup();
 
     render(<ModelPicker harness="claude" model="claude:claude-opus-5-5" onChange={() => {}} />);
     menu = await open(/Opus 5\.5/);
     expect(tabs(menu)).toContain("Cursor");
-    await act(async () => fireEvent.change(within(menu).getByRole("textbox", { name: "Search models" }), { target: { value: "Composer" } }));
+    await act(async () => fireEvent.input(within(menu).getByRole("combobox", { name: "Search models" }), { target: { value: "Composer" }, inputType: "insertText" }));
     expect(within(menu).getByRole("option", { name: /Composer 2/ })).toBeTruthy();
   });
 });

@@ -117,6 +117,18 @@ describe("WorkspaceThreadsList", () => {
     expect(probe.container.textContent).toContain("Fix the bug");
   });
 
+  it("sets its sections 16px apart, as groups are", () => {
+    const groups: WorkspaceSessionGroups = {
+      projects: [{ project: project("p1", { name: "Alpha" }), threads: [threadRow(meta("t1", { status: "running" }), {})], latest: 100, archivedCount: 0 }],
+      archived: [],
+      chats: [threadRow(meta("c1", { status: "running", projectId: null }), {})],
+    };
+    const probe = mountProbe(<WorkspaceThreadsList groups={groups} activeSessionId={null} onSelectThread={() => {}} />);
+    const list = probe.container.firstElementChild as HTMLElement;
+    expect(list.className.split(" ")).toContain("gap-4");
+    expect(list.className.split(" ")).not.toContain("gap-2");
+  });
+
   it("a failed thread's row prints the host's verdict under its title", () => {
     const failure = {
       kind: "account_unknown" as const,

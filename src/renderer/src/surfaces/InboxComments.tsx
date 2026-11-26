@@ -1,5 +1,6 @@
 import { keyHint, modOrCtrl } from "../lib/keys";
 import { openUrl } from "../lib/native";
+import { Avatar } from "../components/ui/avatar";
 import { BusyLabel, Button } from "../components/ui/button";
 import { Tip } from "../components/tip";
 import {
@@ -354,34 +355,9 @@ function InboxCommentPerson({
   name: string;
   avatarUrl: string;
 }) {
-  const [failed, setFailed] = useState(!avatarUrl);
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
-
-  useEffect(() => {
-    setFailed(!avatarUrl);
-  }, [avatarUrl]);
-
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
-      {avatarUrl && !failed ? (
-        <img
-          src={avatarUrl}
-          alt=""
-          width={20}
-          height={20}
-          referrerPolicy="no-referrer"
-          draggable={false}
-          onError={() => setFailed(true)}
-          className="size-5 shrink-0 rounded-full bg-muted object-cover outline outline-1 -outline-offset-1 outline-image-outline"
-        />
-      ) : (
-        <span
-          aria-hidden
-          className="grid size-5 shrink-0 place-items-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
-        >
-          {initial}
-        </span>
-      )}
+      <Avatar name={name} src={avatarUrl} size={20} />
       <span className="min-w-0 truncate font-medium text-foreground">{name}</span>
     </span>
   );

@@ -244,8 +244,9 @@ src/main/windowFrame.ts (`frameOptions`), used by windows.ts:
   The overlay is clear and 40px tall, the bar's height; `window:set-zoom` rescales it with the page,
   and a theme change sets only its colours (`captionInk`), so a zoomed bar keeps its height.
 - The renderer leaves that corner empty: `chrome/WindowControls.tsx` draws a spacer as wide as
-  the system says the buttons are (`env(titlebar-area-width)`), and no controls of ours. Linux
-  and the /ui page keep the drawn ones. The bar is the drag region, as on the Mac.
+  the system says the buttons are (`env(titlebar-area-width)`), and no controls of ours. A Linux
+  window keeps the system's frame and its buttons, so it draws none of ours either; the /ui page
+  keeps the drawn ones, 40px tall at the bar's top, the live row's line. The bar is the drag region, as on the Mac.
 - The glyphs take the ink of the app's theme. Only the page knows its theme, so it writes the
   shell colour to its `theme-color` and main reads `did-change-theme-color` (`isDarkColor`).
 - No menu bar (`setMenuBarVisibility(false)`), so Alt reveals nothing; the menu still exists and

@@ -126,7 +126,8 @@ describe("the Electron seam", () => {
           if (name !== "test" && name !== "node_modules") walk(path);
           continue;
         }
-        if (!/\.(ts|tsx)$/.test(name) || /\.test\.tsx?$/.test(name) || /\.d\.ts$/.test(name)) continue;
+        // A preview or fixture stands in for the host (it may give the page a platform); it never ships a path to it.
+        if (!/\.(ts|tsx)$/.test(name) || /\.(test|preview|fixtures)\.tsx?$/.test(name) || /\.d\.ts$/.test(name)) continue;
         if (path.endsWith("/lib/native.ts") || path.endsWith("/lib/nativeWeb.ts")) continue;
         if (/\bwindow\.api\b/.test(readFileSync(path, "utf8"))) offenders.push(path.slice(root.length + 1));
       }

@@ -1,7 +1,7 @@
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
 
-export type ToggleChoice<T extends string> = {
+type ToggleChoice<T extends string> = {
   value: T;
   label: string;
   disabled?: boolean;
@@ -42,18 +42,19 @@ function ChoiceToggle<T extends string>({
       disabled={disabled}
       size="xs"
       spacing={0.5}
-      className="rounded-lg border border-input p-0.5"
+      // 32px, a select's height, the choices filling it inside the 2px inset (26px, as a segmented tab fills its list).
+      className="h-8 rounded-lg border border-input p-0.5"
     >
       {options.map((option) => {
         const item = (
-          <ToggleGroupItem key={option.value} value={option.value} disabled={option.disabled} className="px-2">
+          <ToggleGroupItem key={option.value} value={option.value} disabled={option.disabled} className="h-full px-2">
             {option.label}
           </ToggleGroupItem>
         );
         // A disabled button takes no pointer, so its note hangs on a wrapper.
         return option.note ? (
           <Tooltip key={option.value}>
-            <TooltipTrigger render={<span data-choice-note className="inline-flex" />}>{item}</TooltipTrigger>
+            <TooltipTrigger render={<span data-choice-note className="inline-flex h-full" />}>{item}</TooltipTrigger>
             <TooltipContent>{option.note}</TooltipContent>
           </Tooltip>
         ) : (
@@ -64,4 +65,4 @@ function ChoiceToggle<T extends string>({
   );
 }
 
-export { ChoiceToggle };
+export { ChoiceToggle, type ToggleChoice };

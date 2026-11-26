@@ -126,6 +126,10 @@ describe('DevStarter', () => {
     const items = [...group.querySelectorAll('button')]
     expect(items.map((b) => b.textContent)).toEqual(['This Mac', 'box'])
     expect(items[0].getAttribute('aria-pressed')).toBe('true')
+    // One choice of a few is ChoiceToggle's track, 32px like the select under it, never loose toggles.
+    expect(group.className).toContain('h-8')
+    expect(group.className).toContain('border-input')
+    expect(group.getAttribute('data-spacing')).toBe('0.5')
   })
 
   it('starts the target and shows the run in the Dev servers pane, listing nothing itself', async () => {

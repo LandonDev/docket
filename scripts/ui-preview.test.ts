@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { JSDOM } from 'jsdom'
 
 const root = resolve(import.meta.dirname, '..')
 const script = join(root, 'scripts/ui-preview.ts')
@@ -37,6 +38,35 @@ function temporaryComponent(source: (name: string) => string) {
   writeFileSync(join(dir, 'sample.tsx'), source(name))
   return { dir, name, target: `sample.tsx#${name}` }
 }
+
+describe('ui-preview and import.meta.glob', () => {
+  it('expands an eager glob into the files it names, keyed as written', async () => {
+    const { expandGlobs } = await import('./lib/previewGlobs')
+    const dir = mkdtempSync(join(root, 'scripts/.ui-preview-test-'))
+    dirs.push(dir)
+    mkdirSync(join(dir, 'fonts'))
+    for (const name of ['a.woff2', 'b.woff2', 'c.txt']) writeFileSync(join(dir, 'fonts', name), '')
+    const source = [
+      'const found = import.meta.glob("./fonts/*.woff2", { query: "?url", import: "default", eager: true }) as Record<string, string>;',
+      'const two = import.meta.glob<string>(',
+      '  ["./fonts/c.txt", "./fonts/a.woff2"],',
+      '  { eager: true },',
+      ');',
+    ].join('\n')
+    const out = expandGlobs(source, join(dir, 'module.ts'))
+    expect(out).not.toContain('import.meta.glob')
+    const maps = [...out.matchAll(/\((\{.*?\}) as Record<string, string>\)/g)].map((match) => JSON.parse(match[1]) as Record<string, string>)
+    expect(Object.keys(maps[0])).toEqual(['./fonts/a.woff2', './fonts/b.woff2'])
+    expect(maps[0]['./fonts/a.woff2']).toBe(`file://${join(dir, 'fonts/a.woff2')}`)
+    expect(Object.keys(maps[1])).toEqual(['./fonts/c.txt', './fonts/a.woff2'])
+  })
+
+  it('lists every renderer module that calls it, so a page that reaches one draws', async () => {
+    const { GLOB_MODULES } = await import('./lib/previewGlobs')
+    const found = spawnSync('grep', ['-rl', '--include=*.ts', '--include=*.tsx', '--exclude=*.test.ts', '--exclude=*.test.tsx', 'import\\.meta\\.glob', 'src/renderer/src'], { cwd: root, encoding: 'utf8' })
+    expect(found.stdout.trim().split('\n').filter(Boolean).sort()).toEqual([...GLOB_MODULES].sort())
+  })
+})
 
 describe('ui-preview', () => {
   it("leaves nothing a publish would call a dirty tree: git ignores the sample folders, even one a killed run left", () => {
@@ -179,6 +209,38 @@ describe('ui-preview', () => {
     }
   })
 
+  it('prefers fixtures for the selected export when components share a module', () => {
+    const { dir, name, target } = temporaryComponent((name) => `
+      export function ${name}({ children }) { return <span>{children}</span> }
+    `)
+    writeFileSync(join(dir, 'sample.fixtures.tsx'), `
+      export const ${name}Fixtures = [{ name: 'Named case', props: { children: 'Named fixture' } }]
+      export default [{ name: 'Default case', props: { children: 'Default fixture' } }]
+    `)
+    const result = run([target], dir)
+    expect(result.status, result.stderr).toBe(0)
+    expect(output(name).dark).toContain('<span>Named fixture</span>')
+  })
+
+  it('captures a fixture after it opens state through a real control', () => {
+    const { dir, name, target } = temporaryComponent((name) => `
+      import { useState } from 'react'
+      export function ${name}() {
+        const [open, setOpen] = useState(false)
+        return <button onClick={() => {
+          window.dispatchEvent(new Event('fixture-open'))
+          setOpen(true)
+        }}>{open ? 'Opened' : 'Closed'} {Date.now()}</button>
+      }
+    `)
+    writeFileSync(join(dir, 'sample.fixtures.tsx'), `export default [{
+      name: 'Open', props: {}, now: 123, prepare: (container) => container.querySelector('button').click()
+    }]`)
+    const result = run([target], dir)
+    expect(result.status, result.stderr).toBe(0)
+    expect(output(name).dark).toContain('<button>Opened 123</button>')
+  })
+
   it('passes a fixture Set and element through untouched', () => {
     const { dir, name, target } = temporaryComponent((name) => `
       export function ${name}({ ids, icon }) {
@@ -294,6 +356,18 @@ describe('ui-preview', () => {
     expect(existsSync(`/tmp/ui-preview/${name}.html`)).toBe(false)
   })
 
+  it('keeps the virtual workspace rows visible in both shell fixtures', () => {
+    const out = mkdtempSync('/tmp/ui-preview-shell-')
+    dirs.push(out)
+    const result = run(['src/renderer/src/chrome/ShellFrame.preview.tsx#ShellFrame', '--out', out])
+    expect(result.status, result.stderr).toBe(0)
+    for (const name of ['ShellFrame.html', 'ShellFrame.light.html']) {
+      const html = readFileSync(join(out, name), 'utf8')
+      expect(html.match(/>Notes cache</g)).toHaveLength(2)
+      expect(html.match(/<div data-index="0" class="absolute /g)).toHaveLength(2)
+    }
+  })
+
   it('refuses --shot without a Chrome to shoot with', () => {
     const { dir, target } = temporaryComponent((name) => `export function ${name}() { return <span>Shot</span> }`)
     const result = spawnSync('bun', [script, target, '--shot', '--out', join(dir, 'pages')], {
@@ -319,6 +393,7 @@ describe('ui-preview', () => {
     [[], 'Usage:'],
     [['sample.tsx'], 'Usage:'],
     [['sample.tsx#Example', '--width', '0'], '--width must be a positive integer'],
+    [['sample.tsx#Example', '--shot-widths', '864,'], '--shot-widths must be comma-separated positive integers'],
     [['sample.tsx#Example', '--width', 'NaN'], '--width must be a positive integer'],
     [['sample.tsx#Example', '--props', '[]'], '--props must be a JSON object']
   ])('rejects invalid arguments %j', (args, message) => {
@@ -326,4 +401,119 @@ describe('ui-preview', () => {
     expect(result.status).toBe(1)
     expect(result.stderr).toContain(message)
   })
+})
+
+describe('preview layouts', () => {
+  it('selects fixtures per export and captures a dialog in the same window as its backdrop content', () => {
+    const { dir, target, name } = temporaryComponent((name) => `
+      import { Dialog, DialogContent, DialogTitle } from '@renderer/components/ui/dialog'
+      export function ${name}({ title }: { title: string }) {
+        return <div data-preview-stage style={{ height: 480 }}>
+          <p>Home draft</p>
+          <Dialog defaultOpen><DialogContent><DialogTitle>{title}</DialogTitle></DialogContent></Dialog>
+        </div>
+      }
+    `)
+    writeFileSync(join(dir, 'sample.fixtures.tsx'), `export const fixturesByExport = {
+      ${name}: [{ name: 'First run', props: { title: 'Set up a computer' } }],
+      Other: [{ name: 'Other', props: {} }]
+    }`)
+    const result = run([target], dir)
+    expect(result.status, result.stderr).toBe(0)
+    for (const page of Object.values(output(name))) {
+      expect(page).toContain('First run</div>')
+      expect(page).not.toContain('Other</div>')
+      const html = new JSDOM(page.slice(page.indexOf('<body>')))
+      try {
+        const stage = html.window.document.querySelector('[data-preview-stage]')
+        expect(stage?.querySelector('p')?.textContent).toBe('Home draft')
+        expect(stage?.querySelector('[data-preview-window] [role="dialog"]')?.textContent).toContain('Set up a computer')
+      } finally {
+        html.window.close()
+      }
+    }
+  })
+
+  it('keeps a sheet’s edge and width in a preview window', () => {
+    const { dir, target, name } = temporaryComponent((name) => `
+      import { Sheet, SheetContent, SheetTitle } from '@renderer/components/ui/sheet'
+      export function ${name}() {
+        return <Sheet open><SheetContent width={672} side="right"><SheetTitle>Agent detail</SheetTitle></SheetContent></Sheet>
+      }
+    `)
+    const result = run([target], dir)
+    expect(result.status, result.stderr).toBe(0)
+    const html = output(name).dark
+    expect(html).toMatch(/<div class="preview-portal" data-preview-window="">.*data-slot="sheet-content".*data-side="right".*Agent detail/s)
+    expect(html).toContain('width: 672px')
+  })
+
+  it('writes browser positioning only for a preview with measured details', () => {
+    const { dir, target, name } = temporaryComponent((name) => `
+      export function ${name}() {
+        return <ul><li><svg className="task-mark" data-state="active" /></li><svg className="task-cursor" /></ul>
+      }
+    `)
+    const result = run([target], dir)
+    expect(result.status, result.stderr).toBe(0)
+    const html = output(name).dark
+    expect(html).toContain('<script>(function positionPreviewDetails')
+    expect(html).toContain('.task-mark[data-state="active"]')
+  })
+
+  it('requires a positive integer for each requested screenshot width', () => {
+    const result = run(['sample.tsx#Example', '--shot-widths', '864,0'])
+    expect(result.status).toBe(1)
+    expect(result.stderr).toContain('--shot-widths must be comma-separated positive integers')
+  })
+})
+
+it('can hold the clock for a preview', () => {
+  const { dir, target, name } = temporaryComponent((name) => `
+    export const previewClock = 1700000000000
+    export function ${name}() { return <span>{Date.now()}</span> }
+  `)
+  const result = run([target], dir)
+  expect(result.status, result.stderr).toBe(0)
+  expect(output(name).dark).toContain('<span>1700000000000</span>')
+})
+
+it('draws the real decoded-image and agent-detail bodies in static previews', () => {
+  for (const [target, name, words] of [
+    ['surfaces/MediaViewer.fixtures.tsx#MediaViewerPreview', 'MediaViewerPreview', ['320 × 200', 'Before', 'After']],
+    ['surfaces/threads/fleet/AgentDetail.fixtures.tsx#AgentDetailPreview', 'AgentDetailPreview', ['The west trail needs a note', 'The box did not answer.', 'data-preview-window']],
+    ['surfaces/threads/ActivitySection.tsx#ActivityRows', 'ActivityRows', ['All routes passed', 'Loading the output', "Couldn't read the output"]],
+  ] as const) {
+    const result = run(['src/renderer/src/' + target])
+    expect(result.status, result.stderr).toBe(0)
+    for (const word of words) expect(output(name).dark).toContain(word)
+  }
+}, 90_000)
+
+it('uses browser row heights for the static transcript offsets', () => {
+  const { dir, target, name } = temporaryComponent((name) => `
+    export function ${name}() {
+      return <div className="agent-transcript"><div data-column>
+        <div data-row="first" style={{top: 16}}>The first row</div>
+        <div data-row="second" style={{top: 40}}>The second row</div>
+      </div></div>
+    }
+  `)
+  const result = run([target], dir)
+  expect(result.status, result.stderr).toBe(0)
+  const page = output(name).dark
+  const html = new JSDOM(page.slice(page.indexOf('<body>')), {
+    runScripts: 'dangerously',
+    beforeParse(window) {
+      window.HTMLElement.prototype.getBoundingClientRect = function () {
+        return new window.DOMRect(0, 0, 100, this.dataset.row === 'first' ? 60 : 20)
+      }
+    }
+  })
+  try {
+    expect(html.window.document.querySelector<HTMLElement>('[data-row="second"]')?.style.top).toBe('76px')
+    expect(html.window.document.querySelector<HTMLElement>('[data-column]')?.style.height).toBe('96px')
+  } finally {
+    html.window.close()
+  }
 })

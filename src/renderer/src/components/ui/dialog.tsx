@@ -113,7 +113,8 @@ function DialogDescription({ className, ...props }: DialogPrimitive.Description.
 }
 
 function AlertDialogContent({ className, ...props }: ComponentProps<typeof DialogContent>) {
-  return <DialogContent role="alertdialog" data-slot="alert-dialog-content" showCloseButton={false} size="sm" className={cn(className)} {...props} />;
+  // The one decision shape (docs/DESIGN.md "Panels"): the form dialog's 448px, its body and footer set by ConfirmDialog.
+  return <DialogContent role="alertdialog" data-slot="alert-dialog-content" showCloseButton={false} size="default" className={cn("gap-0 p-0", className)} {...props} />;
 }
 
 function AlertDialogCancel({

@@ -7,7 +7,8 @@ import { Toggle } from "./toggle";
 import { Tabs, TabsList, TabsTrigger } from "./tabs";
 import { Item, ItemButton } from "./item";
 
-vi.mock("../../lib/native", () => ({ isWebMode: () => false, nativePlatform: () => "linux", getCurrentWindow: () => ({ isMaximized: async () => false, onResized: async () => () => {} }) }));
+// The drawn window buttons are /ui's alone: a desktop window has the system's (chrome/WindowControls.tsx).
+vi.mock("../../lib/native", () => ({ isWebMode: () => true, nativePlatform: () => "linux", getCurrentWindow: () => ({ isMaximized: async () => false, onResized: async () => () => {} }) }));
 import { WindowControls } from "../../chrome/WindowControls";
 
 afterEach(cleanup);

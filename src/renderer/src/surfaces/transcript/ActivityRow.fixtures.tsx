@@ -1,8 +1,10 @@
 // A8 (action rows): one of each row, for a static look at the standard:
 // `bun run ui:preview src/renderer/src/surfaces/transcript/ActivityRow.tsx#ActivityRow`.
+// Static capture shows open bodies. Clicking and focus are covered by DOM tests.
 import type { ComponentProps } from "react";
 import type { Block } from "../../lib/session";
 import type { ActivityRow } from "./ActivityRow";
+import { setOpenedLive } from "./workingOpen";
 
 const CWD = "/repo";
 
@@ -110,3 +112,10 @@ export const ACTION_FIXTURES: { name: string; open?: boolean; props: ComponentPr
     },
   },
 ];
+
+// A call opened on the live line keeps its body open when it lands here.
+for (const fixture of ACTION_FIXTURES) {
+  if (fixture.open) setOpenedLive(fixture.props.block.id, true);
+}
+
+export default ACTION_FIXTURES;

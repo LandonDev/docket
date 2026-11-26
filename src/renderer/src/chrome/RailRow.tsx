@@ -201,9 +201,9 @@ export function RailRow({
               selected && "bg-sidebar-group-selected hover:bg-sidebar-group-selected",
             ]
           : [
-              "text-muted-foreground hover:bg-foreground/5 hover:text-foreground focus-within:text-foreground has-[>[data-slot=button]:active]:bg-foreground/12",
-              "has-[[aria-expanded=true]]:bg-muted has-[[aria-expanded=true]]:text-foreground",
-              selected && "bg-muted text-foreground hover:bg-muted",
+              "text-muted-foreground hover:bg-chrome-hover hover:text-foreground focus-within:text-foreground has-[>[data-slot=button]:active]:bg-foreground/12",
+              "has-[[aria-expanded=true]]:bg-sidebar-group-selected has-[[aria-expanded=true]]:text-foreground",
+              selected && "bg-sidebar-group-selected text-foreground hover:bg-sidebar-group-selected",
               emphasis && "text-foreground",
             ],
         className,

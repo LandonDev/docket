@@ -12,7 +12,8 @@ import { groupOf, GROUP_LABEL, GROUP_ORDER, type MasterGroupId } from "./useMast
  * first, and a foot whose shell step is running. No store, no link.
  */
 
-const at = new Date(2026, 9, 27, 12, 8).getTime();
+export const BOARD_FIXTURE_CLOCK = new Date(2026, 9, 27, 12, 8).getTime();
+const at = BOARD_FIXTURE_CLOCK;
 
 const base = (over: Partial<SessionMeta>): SessionMeta =>
   ({

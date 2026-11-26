@@ -124,6 +124,11 @@ names the far child).
   by `rememberPlatform`, preload for this machine; `lib/hostPlatform.ts`)
   marks every thread and agent row with two or more hosts: the rail, ChildRow,
   the right panel's Agents rows, the spawn row, the Inbox, search, the master board.
+  The title bar's strip, the workspace column and the rail's Working list draw it
+  only while their own threads span two or more hosts (`spansHosts`,
+  lib/hostSpan.ts): with every thread on one host each line would say the same
+  host. The column and Working hide it by a class on the list (`ONE_HOST`), so
+  no row takes a prop; the strip passes the answer to its chips.
   `lib/projectHostChoice.ts` picks a new thread's host (`chooseCopy`: the
   thread on screen's when it is in the project, else the host "New threads
   start on" names when it has a copy and its link is open, else another

@@ -21,7 +21,7 @@ const spec = (question: string, labels: string[], over: Partial<QuestionSpec> = 
   ...over,
 });
 const option = (root: HTMLElement, label: string) =>
-  [...root.querySelectorAll<HTMLButtonElement>("button[aria-pressed]")].find((b) => b.textContent?.includes(label))!;
+  [...root.querySelectorAll<HTMLButtonElement>("button[aria-checked]")].find((b) => b.textContent?.includes(label))!;
 const advance = () => screen.getByRole("button", { name: /^(Next|Continue)/ });
 
 afterEach(cleanup);
@@ -49,8 +49,8 @@ describe("QuestionCard", () => {
     const view = render(<QuestionCard question={meta([spec("Which?", ["A", "B", "C"], { multiSelect: true })])} onAnswer={onAnswer} />);
     fireEvent.click(option(view.container, "A"));
     fireEvent.click(option(view.container, "C"));
-    expect(option(view.container, "A").getAttribute("aria-pressed")).toBe("true");
-    expect(option(view.container, "C").getAttribute("aria-pressed")).toBe("true");
+    expect(option(view.container, "A").getAttribute("aria-checked")).toBe("true");
+    expect(option(view.container, "C").getAttribute("aria-checked")).toBe("true");
     fireEvent.click(advance());
     expect(onAnswer).toHaveBeenCalledWith("q1", [["A", "C"]]);
   });
@@ -59,7 +59,7 @@ describe("QuestionCard", () => {
     const onAnswer = vi.fn();
     const view = render(<QuestionCard question={meta([spec("Which?", ["A"])])} onAnswer={onAnswer} />);
     const field = view.container.querySelector<HTMLInputElement>('input[placeholder="Other"]')!;
-    fireEvent.click(screen.getByRole("button", { name: "Other" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Other" }));
     fireEvent.change(field, { target: { value: "Neither" } });
     fireEvent.click(advance());
     expect(onAnswer).toHaveBeenCalledWith("q1", [["Neither"]]);
@@ -102,11 +102,11 @@ describe("QuestionCard", () => {
       </div>,
     );
     fireEvent.keyDown(screen.getByLabelText("composer"), { key: "a" });
-    expect(view.container.querySelector('[aria-pressed="true"]')).toBeNull();
+    expect(view.container.querySelector('[aria-checked="true"]')).toBeNull();
     const one = screen.getByTestId("one");
-    fireEvent.keyDown(within(one).getAllByRole("button", { pressed: false })[0], { key: "b" });
-    expect(option(one, "B").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByTestId("two").querySelector('[aria-pressed="true"]')).toBeNull();
+    fireEvent.keyDown(within(one).getAllByRole("radio", { checked: false })[0], { key: "b" });
+    expect(option(one, "B").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("two").querySelector('[aria-checked="true"]')).toBeNull();
   });
 
   it("is a card that stands alone (full width, rounded-xl, p-4) from the exported QUESTION_SHAPE, and leaves the type to the card", () => {
@@ -173,7 +173,7 @@ describe("QuestionCard", () => {
     await act(async () => {});
     expect(toastError).toHaveBeenCalledWith("Couldn't send the answer");
     expect(view.container.querySelector('[data-slot="collapsible"]')!.hasAttribute("data-open")).toBe(true);
-    expect(option(view.container, "B").getAttribute("aria-pressed")).toBe("true");
+    expect(option(view.container, "B").getAttribute("aria-checked")).toBe("true");
   });
 
   it("carries the amber Needs you glyph by its title, without the word", () => {
@@ -217,7 +217,7 @@ describe("QuestionCard", () => {
         onAnswer={onAnswer}
       />,
     );
-    const picked = screen.getByRole("button", { name: "Count them", description: "Free items add to the total" });
+    const picked = screen.getByRole("radio", { name: "Count them", description: "Free items add to the total" });
     fireEvent.click(picked);
     fireEvent.click(advance());
     expect(onAnswer).toHaveBeenCalledWith("q1", [["Count them"]]);
