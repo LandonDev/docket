@@ -587,16 +587,19 @@ export type Board = {
 };
 
 /**
- * The board from the master's host: `batch.board` on mount, on every new
- * socket and every BOARD_RENEW_MS while the pane shows; then the `board`
- * push (one child's digest) and the `batch` push (the state, logs as
- * deltas), into the holder. A host without `batch.board` answers `batch.get` alone.
+ * The board from the master's host: `batch.board` when the pane shows (on
+ * mount, on a new socket, every BOARD_RENEW_MS while it shows); then the
+ * `board` push (one child's digest) and the `batch` push (the state, logs as
+ * deltas), into the holder. Parking asks nothing, and a show asks again only
+ * once the last answer is BOARD_RENEW_MS old (the host's watch, and so its
+ * pushes, outlive it). A host without `batch.board` answers `batch.get` alone.
  */
 export function useBoard(masterId: string, environmentId: string): Board {
   const digests = useMemo(() => new BoardDigests(), [masterId, environmentId]);
   const holder = useMemo(() => new BatchHolder(masterId), [masterId, environmentId]);
   const answer = useSyncExternalStore(holder.subscribe, holder.answered);
   const visible = usePaneVisible();
+  const reads = useShownReads(visible);
   useEffect(() => {
     let alive = true;
     const link = registry.link(environmentId);
@@ -613,6 +616,7 @@ export function useBoard(masterId: string, environmentId: string): Board {
           if (alive) holder.set(holder.get(), { loaded: true });
         });
     const read = () => {
+      reads.asked();
       link.request<BatchBoard>("batch.board", { masterId }).then(
         (answer) => {
           if (!alive || !answer?.state || !Array.isArray(answer.state.steps)) return;
@@ -623,9 +627,8 @@ export function useBoard(masterId: string, environmentId: string): Board {
         () => void readState(),
       );
     };
-    read();
-    const timer = visible ? window.setInterval(read, BOARD_RENEW_MS) : null;
-    const offOpen = link.onOpen(read);
+    const offRead = reads.start(read);
+    const offOpen = link.onOpen(() => reads.reopened());
     const offPush = link.onPush((push) => {
       if (!alive) return;
       if (push.push === "board") {
@@ -649,11 +652,11 @@ export function useBoard(masterId: string, environmentId: string): Board {
     });
     return () => {
       alive = false;
-      if (timer !== null) window.clearInterval(timer);
+      offRead();
       offOpen();
       offPush();
     };
-  }, [masterId, environmentId, visible, digests, holder]);
+  }, [masterId, environmentId, digests, holder, reads]);
   return { ...answer, batch: holder, digests };
 }
 
@@ -666,36 +669,84 @@ export function useBoard(masterId: string, environmentId: string): Board {
  */
 export function useFarDigests(masterId: string, hostsKey: string, digests: BoardDigests): void {
   const visible = usePaneVisible();
+  const reads = useShownReads(visible);
   useEffect(() => {
     if (!hostsKey) return;
     let alive = true;
     const offs: (() => void)[] = [];
-    const timers: number[] = [];
+    const asks: (() => void)[] = [];
     for (const environmentId of hostsKey.split("\n")) {
       const link = registry.link(environmentId);
       if (!link) continue;
       const read = () =>
-        link.request<BatchBoard>("batch.board", { masterId }).then(
+        void link.request<BatchBoard>("batch.board", { masterId }).then(
           (answer) => {
             if (alive && answer?.digests) digests.replace(answer.digests);
           },
           () => undefined,
         );
-      void read();
-      if (visible) timers.push(window.setInterval(read, BOARD_RENEW_MS));
-      offs.push(link.onOpen(read));
+      asks.push(read);
+      offs.push(link.onOpen(() => reads.reopened(read)));
       offs.push(
         link.onPush((push) => {
           if (alive && push.push === "board" && push.masterId === masterId) digests.set(push.sessionId, push.digest);
         }),
       );
     }
+    offs.push(
+      reads.start(() => {
+        reads.asked();
+        for (const read of asks) read();
+      }),
+    );
     return () => {
       alive = false;
-      for (const t of timers) window.clearInterval(t);
       for (const off of offs) off();
     };
-  }, [masterId, hostsKey, digests, visible]);
+  }, [masterId, hostsKey, digests, reads]);
+}
+
+/**
+ * When a board asks: on show, and every BOARD_RENEW_MS while it shows. A
+ * park asks nothing; a show asks only once the last ask is BOARD_RENEW_MS
+ * old, since the host keeps a socket watching for a minute after it and
+ * pushes what moves meanwhile. A new socket asks at once while shown, and
+ * on the next show while parked. `start` arms the ask (asking at once when
+ * shown) and returns its stop.
+ */
+function useShownReads(visible: boolean) {
+  const shown = useRef(visible);
+  shown.current = visible;
+  const reads = useMemo(() => {
+    let ask: (() => void) | null = null;
+    let askedAt = -Infinity;
+    const due = () => {
+      if (Date.now() - askedAt >= BOARD_RENEW_MS) ask?.();
+    };
+    return {
+      asked: () => void (askedAt = Date.now()),
+      start(read: () => void) {
+        ask = read;
+        askedAt = -Infinity;
+        if (shown.current) read();
+        return () => {
+          if (ask === read) ask = null;
+        };
+      },
+      reopened(read?: () => void) {
+        if (!shown.current) askedAt = -Infinity;
+        else (read ?? ask)?.();
+      },
+      /** While shown: what is due now, then every BOARD_RENEW_MS. */
+      showing() {
+        due();
+        const timer = window.setInterval(due, BOARD_RENEW_MS);
+        return () => window.clearInterval(timer);
+      },
+    };
+  }, []);
+  useEffect(() => (visible ? reads.showing() : undefined), [visible, reads]);
+  return reads;
 }
 
 // ── the layout ──────────────────────────────────────────────────────────

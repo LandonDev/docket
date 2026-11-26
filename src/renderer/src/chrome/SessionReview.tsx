@@ -53,28 +53,39 @@ export function SessionReview({
       .catch(() => setFiles([]));
   }, [environmentId, sessionId, cwd]);
 
+  // What changed while the strip was parked or a turn ran is asked on the
+  // next show; a show with nothing changed asks nothing.
+  const staleRef = useRef(true);
+  const askedRef = useRef<typeof load | null>(null);
+  const live = enabled && !busy;
   useEffect(() => {
-    if (!enabled || busy) return;
+    if (busy) staleRef.current = true; // a turn's changes are asked when it ends
     // One trailing status per burst: a settle, the host's checkpoint-changed
     // and the git-changed signals it sets off all land within the window,
     // and each status is a git child on the host's review lane.
     let timer: number | null = null;
-    const schedule = () => {
+    const changed = () => {
+      if (!live) {
+        staleRef.current = true;
+        return;
+      }
       if (timer != null) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         timer = null;
+        staleRef.current = false;
+        askedRef.current = load;
         load();
       }, STATUS_DEBOUNCE_MS);
     };
-    schedule();
+    if (live && (staleRef.current || askedRef.current !== load)) changed();
     const unsubReview = subscribeCheckpointChanged((id) => {
-      if (id === sessionId) schedule();
+      if (id === sessionId) changed();
     });
     const unsubGit = subscribeGitChanged(() => {
-      if (filesRef.current.length > 0) schedule();
+      if (filesRef.current.length > 0) changed();
     }, cwd);
     const onResume = () => {
-      if (filesRef.current.length > 0) schedule();
+      if (filesRef.current.length > 0) changed();
     };
     window.addEventListener("focus", onResume);
     document.addEventListener("visibilitychange", onResume);
@@ -85,7 +96,7 @@ export function SessionReview({
       unsubReview();
       unsubGit();
     };
-  }, [enabled, load, sessionId, busy]);
+  }, [live, busy, load, sessionId, cwd]);
 
   if (files.length === 0) return null;
 

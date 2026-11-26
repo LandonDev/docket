@@ -322,6 +322,13 @@ this is the short one.
   opens with `$ <run>` and ends with its outcome), plus `landed`,
   `pending`, `held` (all-at-once), `blocked` and `finishedAt`. The board's
   foot draws a live console per running step from exactly these.
+- **When the board asks.** `batch.board` goes when the board shows (on
+  mount, on a new socket, every `BOARD_RENEW_MS` 45 s while it shows), and
+  the far hosts' digests the same (`useShownReads` in
+  master/useMasterModel.ts). Parking asks nothing, and a show asks again
+  only once the last ask is 45 s old: the host's watch outlives it by a
+  minute and pushes what moved meanwhile. A new socket while parked asks
+  on the next show (master/useBoard.dom.test.tsx).
 - **The master stays live until the batch is done.** A master whose batch
   is open (`Batches.open`: children exist and not all are done, or the
   engine is at work) takes `watching` in place of `idle` when its turn

@@ -259,4 +259,9 @@
   a mark that flips a thread's unread state (read-and-unread.md). A
   project's `fs.watch` lingers 30 s after its last holder lets go
   (lib/projectWatch.ts `LINGER_MS`), so the rail's git hold moving A, B, A
-  subscribes A once.
+  subscribes A once. The review strip (chrome/SessionReview.tsx) asks
+  `checkpoint.status` on show only when something changed since its last
+  answer: the host's `checkpoint-changed`, a turn's end, or a git change
+  or focus while it holds files, each noted while parked; an unpark with
+  nothing changed asks nothing, and the board reads on show alone
+  (master-threads.md "When the board asks").

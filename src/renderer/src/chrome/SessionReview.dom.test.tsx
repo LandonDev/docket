@@ -102,7 +102,34 @@ describe('SessionReview status fetches', () => {
     probe.act(() => pushed('s1'))
     await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
     expect(status).not.toHaveBeenCalled()
-    expect(pushListeners).toHaveLength(0)
+    // The turn ends: what it changed is asked once.
+    probe.act(() => probe.rerender(strip(false)))
+    await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+    expect(status).toHaveBeenCalledTimes(1)
+    probe.unmount()
+  })
+
+  it('park and unpark with nothing changed asks no status; a push while parked asks once on show', async () => {
+    const shown = (enabled: boolean) => (
+      <SessionReview sessionId="s1" cwd="/w/one" enabled={enabled} onOpenDiff={() => undefined} />
+    )
+    const probe = mountProbe(shown(true))
+    await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+    expect(status).toHaveBeenCalledTimes(1)
+    for (let i = 0; i < 3; i++) {
+      probe.act(() => probe.rerender(shown(false)))
+      await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+      probe.act(() => probe.rerender(shown(true)))
+      await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+    }
+    expect(status).toHaveBeenCalledTimes(1)
+    probe.act(() => probe.rerender(shown(false)))
+    probe.act(() => pushed('s1'))
+    await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+    expect(status).toHaveBeenCalledTimes(1)
+    probe.act(() => probe.rerender(shown(true)))
+    await probe.act(() => vi.advanceTimersByTimeAsync(STATUS_DEBOUNCE_MS))
+    expect(status).toHaveBeenCalledTimes(2)
     probe.unmount()
   })
 
