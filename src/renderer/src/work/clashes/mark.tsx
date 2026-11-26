@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { clashLines, listFrom, type Clash, type LifeosRange } from "@shared/work/clashes";
 import type { SectorKey } from "@shared/work";
-import { TruncateTip } from "../../components/tip";
 import { Button } from "../../components/ui/button";
 import { registry } from "../../lib/connection";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
@@ -34,7 +33,9 @@ export function useClashes(environmentId: string, from: number, to: number): Cla
 /**
  * The clashes on an event's row: one line each in the colour that says he is
  * needed, in the words of that event's side. A line is a button; it opens that
- * clash's dialog, so each one named can be reached from the row.
+ * clash's dialog, so each one named can be reached from the row. A long line
+ * wraps, whole: its end names the other job and time, which tell one clash from
+ * another. Its press reaches 4px past the 16px line each way, 24px to hit.
  */
 export function ClashLines({ clashes, eventId, environmentId, day }: { clashes: readonly Clash[]; eventId: string; environmentId: string; /** the day the row sits under in its list */ day?: number }) {
   // A job is named by its workspace, never the sector's word.
@@ -45,17 +46,16 @@ export function ClashLines({ clashes, eventId, environmentId, day }: { clashes: 
       {clashes.map((clash, i) => {
         const words = lines[i]!;
         return (
-          <TruncateTip key={clash.id} text={words}>
-            <Button
-              variant="link"
-              size="xs"
-              data-clash={clash.id}
-              className="h-4 max-w-full justify-start self-start rounded-sm px-0 font-normal text-warning underline-offset-2"
-              onClick={() => openClash({ id: clash.id, environmentId, clash })}
-            >
-              <span className="truncate">{words}</span>
-            </Button>
-          </TruncateTip>
+          <Button
+            key={clash.id}
+            variant="link"
+            size="xs"
+            data-clash={clash.id}
+            className="h-auto min-h-4 max-w-full justify-start self-start rounded-sm px-0 text-left leading-4 font-normal whitespace-normal text-warning underline-offset-2 before:absolute before:inset-x-0 before:-inset-y-1 before:content-['']"
+            onClick={() => openClash({ id: clash.id, environmentId, clash })}
+          >
+            {words}
+          </Button>
         );
       })}
     </>

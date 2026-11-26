@@ -69,7 +69,7 @@ const CLASHES: Record<string, Clash> = {
 };
 
 /** The dialog's box, as `chrome/Modal` draws it at `sm`: title, the day under it, the close, then the body. */
-function Box({ title, day, narrow, children }: { title: string; day?: string | undefined; narrow?: boolean; children: ReactNode }) {
+function Box({ title, day, narrow, children }: { title: string; day?: ReactNode; narrow?: boolean; children: ReactNode }) {
   return (
     <div className="flex w-[448px] data-[narrow]:w-[368px] flex-col overflow-hidden rounded-2xl bg-popover text-sm leading-[22px] text-popover-foreground shadow-overlay ring-1 ring-border" data-narrow={narrow || undefined}>
       <header className="flex shrink-0 items-start gap-2 px-5 pt-5">
@@ -91,7 +91,7 @@ export function ClashDialogPreview({ state = "overlap" }: { state?: string }) {
   const day = "Thursday, November 26";
   if (state === "loading" || state === "gone") {
     return (
-      <Box title={state === "gone" ? "No longer a clash" : "Clash"}>
+      <Box title={state === "gone" ? "No longer a clash" : "Clash"} day={state === "gone" ? undefined : <span aria-hidden data-day-bone className="inline-block h-3 w-28 rounded-md bg-skeleton align-middle" />}>
         <Empty state={state === "gone" ? "gone" : "loading"} onClose={noop} />
       </Box>
     );

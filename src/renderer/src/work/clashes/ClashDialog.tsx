@@ -94,8 +94,9 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   // Gone by something other than his press here: the title says so, and an open step sends nothing.
   const cleared = gone && !pending && !settled;
   // The day stays while a clash is on screen, so nothing under the title moves when the read lands.
-  const day = clash ? formatDayHeading(startOfDay(clash.b.startsAt)) : undefined;
   const state = gone ? "gone" : marks.failed !== undefined ? "failed" : "loading";
+  // While it is read, a bone holds the day line's place, so the head does not grow when the clash lands.
+  const day = clash ? formatDayHeading(startOfDay(clash.b.startsAt)) : state === "loading" ? DAY_BONE : undefined;
   // A read that failed because the session is down says the session's line, with the rule's press, not its words in red.
   const session = useLifeosSession(ask.environmentId, null);
   const down = state === "failed" && downOf(session) ? session : null;
@@ -106,13 +107,22 @@ export function ClashDialog({ ask, onClose }: { ask: ClashAsk; onClose: () => vo
   );
 }
 
-/** One event's bones: its title, then its two lines. */
+/** The day line's place under the title while the clash is read. */
+const DAY_BONE = <span aria-hidden data-day-bone className="inline-block h-3 w-28 rounded-md bg-skeleton align-middle" />;
+
+/** One event's bones: its title, its two lines, then the row its ways out stand in, 8px under. */
 function EventBones() {
   return (
-    <div className="flex flex-col gap-2 py-1">
-      <Skeleton className="h-3.5 w-2/5" />
-      <Skeleton className="h-3 w-3/5" />
-      <Skeleton className="h-3 w-1/2" />
+    <div className="flex flex-col">
+      <div className="flex flex-col gap-2 py-1">
+        <Skeleton className="h-3.5 w-2/5" />
+        <Skeleton className="h-3 w-3/5" />
+        <Skeleton className="h-3 w-1/2" />
+      </div>
+      <div data-ways-bone className="mt-2 flex gap-2">
+        <Skeleton className="h-7 w-20 rounded-md" />
+        <Skeleton className="h-7 w-24 rounded-md" />
+      </div>
     </div>
   );
 }

@@ -1045,7 +1045,11 @@ describe("the Clash dialog", () => {
   it("reads the clash by its id when the opener did not hand it over: bones, then the clash", async () => {
     show(null);
     await settle();
-    expect(screen.getByRole("dialog", { name: "Clash" }).querySelector("[data-slot=skeleton]")).not.toBeNull();
+    const reading = screen.getByRole("dialog", { name: "Clash" });
+    expect(reading.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    // The day line and each event's ways out hold their places, so the dialog does not grow when the clash lands.
+    expect(reading.querySelector("[data-day-bone]")).not.toBeNull();
+    expect(reading.querySelectorAll("[data-ways-bone]")).toHaveLength(2);
     // The bones are for the eye; a screen reader hears the wait in words.
     expect(screen.getByRole("status").textContent).toBe("Reading the clash…");
     cleanup();

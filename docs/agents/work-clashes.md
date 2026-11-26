@@ -197,13 +197,17 @@ The pillar has no view of its own and no row in the column.
   leave-by and the set of events that clash, each side with this host's Work
   workspace for its job, and why the read failed when it did. `ClashLines`
   draws an Agenda row's lines, one a clash, each opening its own dialog; the
-  row's menu names each by the other event.
+  row's menu names each by the other event. A long line wraps, whole, since
+  its end names the other job and time that tell one clash from another; its
+  press reaches 4px past the 16px line each way, 24px to hit.
 - `open.ts`: `openClash({id, environmentId?, clash?})`, a small file any
   screen may import. `ClashHost.tsx`, mounted by the Work shell beside
   `PlaysHost` (`work/shell/WorkRailHost.tsx`), loads the dialog's chunk
   `work-clash` on the first ask.
 - `ClashDialog.tsx`: the two events and the drive, the ways out each allows,
-  each way's one step. Decline, a proposed time and a move go through
+  each way's one step. While it reads a clash it was not handed, a 12px bone
+  holds the day line under the title and each event's bones end in a row of
+  two 28px button bones, so the dialog does not grow when the clash lands. Decline, a proposed time and a move go through
   `work.clashes.answer`; "This is fine" through `work.clashes.waive`, with
   Undo on its toast. While the LifeOS session is down Running late is not
   offered: its place holds the session's line (`DownLine`, its press by the
