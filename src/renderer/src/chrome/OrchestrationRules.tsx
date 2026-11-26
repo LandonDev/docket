@@ -203,6 +203,8 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
 
   return (
     <>
+      {/* Who can change the rules is said first, above the first section. */}
+      {readOnly ? <ManagedLine computer={scope.home?.name ?? computer.name} /> : null}
       <SettingSection of="sub.gives">
         <SettingRow id="sub.gives" saved={saved.gives}>
           {readOnly ? (
@@ -277,8 +279,6 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
           )}
         </SettingSection>
       ) : null}
-
-      {readOnly ? <ManagedLine computer={scope.home?.name ?? computer.name} /> : null}
 
       {modelsOpen ? <ModelsSheet rules={rules} catalog={catalog} disabled={blocked} readOnly={readOnly} write={write} onClose={() => setModelsOpen(false)} /> : null}
       {editing ? (

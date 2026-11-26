@@ -71,7 +71,7 @@ export function ComputerPage() {
         ) : settings.error ? (
           <ReadFailure computer={link.environmentId} error={settings.error} retry={settings.retry} />
         ) : (
-          <PageRowsSkeleton rows={[{ control: "number" }, { control: "select" }, { control: "switch" }, { control: "switch" }]} />
+          <PageRowsSkeleton rows={[{ control: "number" }, { control: "select", wide: true }, { control: "switch" }, { control: "switch" }]} />
         )}
       </PageSection>
 

@@ -20,7 +20,8 @@ export const jobsWords = (n: number): string => (n === 0 ? "No jobs" : n === 1 ?
 const withStop = (line: string): string => (/[.!?]$/.test(line) ? line : `${line}.`);
 
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { setWorkOn, useWorkHosts } from "../../lib/workSwitch";
+import { setWorkOn, useWorkHosts, workOnRow } from "../../lib/workSwitch";
+import { FOUND_ROW } from "../../lib/settings/reveal";
 import { ComputerName } from "./parts/ComputerName";
 import { useHost } from "./parts/hostRpc";
 import { SaveMark } from "./parts/SaveMark";
@@ -135,6 +136,9 @@ export function WorkOnRow({ environmentId, report }: { environmentId: string; re
   return (
     <PageRow
       data-work-on={environmentId}
+      // The row a computer's own page reveals (`workOnRow`): the list is the map's, this row its computer's.
+      data-setting-row={workOnRow(environmentId)}
+      className={FOUND_ROW}
       title={<ComputerName computer={computer.name} />}
       description={description}
       error={saved.error ?? (failed && !report ? hostFailure(environmentId, read.error, "did not say whether Work is on") : undefined)}

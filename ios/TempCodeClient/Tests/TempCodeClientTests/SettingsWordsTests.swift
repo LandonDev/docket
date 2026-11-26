@@ -67,8 +67,8 @@ struct WorkRowStateTests {
 struct SignInWordsTests {
     @Test func `an expired link says so and the way forward, never the host's pairing code`() {
         let refused = EnvironmentStoreError.api(.unauthorized("invalid or expired pairing code"))
-        #expect(SignInWords.refusal(refused, link: true) == "That sign-in link is invalid or expired. Make a new link on the computer.")
-        #expect(SignInWords.refusal(refused, link: false) == "The computer refused that key. Make a new one on the computer.")
+        #expect(SignInWords.refusal(refused, link: true) == "That sign-in link is invalid or expired. Make a new one with Add… under Who can sign in (on a Mac, in Sharing).")
+        #expect(SignInWords.refusal(refused, link: false) == "The computer refused that key. Make a new one with Add… under Who can sign in (on a Mac, in Sharing).")
     }
 
     @Test func `each other refusal in plain words`() {
@@ -82,12 +82,18 @@ struct SignInWordsTests {
 
 @Suite("SignInWords hints")
 struct SignInHintTests {
-    @Test func `the hints name the press under Who can sign in, never a page only a Mac has`() {
-        #expect(SignInWords.linkHint == "In Docket's Settings, press Add… under Who can sign in on the computer's page, then paste the link here.")
-        #expect(SignInWords.keyHint == "A key from Add… under Who can sign in on the computer's page in Docket's Settings, with the computer's address.")
-        #expect(SignInWords.refusedKeyHint == "In Docket's Settings, press Add… under Who can sign in on its page, then sign in again.")
-        for hint in [SignInWords.linkHint, SignInWords.keyHint, SignInWords.refusedKeyHint] {
-            #expect(!hint.contains("Sharing"))
+    @Test func `the hints name the press, and where it is on a Mac`() {
+        #expect(SignInWords.linkHint == "In Docket's Settings, press Add… under Who can sign in (on a Mac, in Sharing), then paste the link here.")
+        #expect(SignInWords.keyHint == "In Docket's Settings, make a key with Add… under Who can sign in (on a Mac, in Sharing), then enter it here with the computer's address.")
+        #expect(SignInWords.refusedKeyHint == "In Docket's Settings, press Add… under Who can sign in (on a Mac, in Sharing), then sign in again.")
+    }
+
+    @Test func `every way back to a sign-in names the same press, never a page only one kind of computer has`() {
+        let expired = SignInWords.refusal(.api(.unauthorized("invalid or expired pairing code")), link: true)
+        for line in [SignInWords.linkHint, SignInWords.keyHint, SignInWords.refusedKeyHint, expired] {
+            #expect(line.contains(SignInWords.route))
+            #expect(!line.contains("computer's page"))
+            #expect(!line.contains("Settings → Sharing"))
         }
     }
 }

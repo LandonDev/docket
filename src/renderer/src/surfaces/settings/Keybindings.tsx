@@ -67,8 +67,10 @@ export function KeybindingsPage() {
           // Where every shortcut of a group works in one place, the group's line says so once.
           const scopes = new Set(group.bindings.map((binding) => binding.scope));
           const shared = scopes.size === 1 ? group.bindings[0]?.scope : undefined;
+          // "Editor" over "In the editor" says one thing twice: a line that only repeats the group's name is left out.
+          const sharedLine = shared && !KEYBINDING_SCOPE_LABEL[shared].toLowerCase().includes(group.title.toLowerCase()) ? KEYBINDING_SCOPE_LABEL[shared] : undefined;
           return (
-          <PageSection key={group.title} title={group.title} description={shared ? KEYBINDING_SCOPE_LABEL[shared] : undefined} data-setting="keys.groups">
+          <PageSection key={group.title} title={group.title} description={sharedLine} data-setting="keys.groups">
             {group.bindings.map((binding) => (
               <PageRow key={binding.name} title={binding.name} description={binding.scope && !shared ? KEYBINDING_SCOPE_LABEL[binding.scope] : undefined}>
                 {binding.keys.map((chord, index) => (

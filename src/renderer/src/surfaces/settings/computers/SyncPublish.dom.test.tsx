@@ -98,6 +98,35 @@ describe("Sync", () => {
     expect(requests.filter((r) => r.method === "harness.settings.set")).toEqual([{ method: "harness.settings.set", params: { enabled: true } }]);
   });
 
+  it("keeps Agents' memory in view: bones while its own read is out, its failure with Retry, absent only without memory sync", async () => {
+    answers["memory.status"] = () => new Promise(() => {});
+    render(<SyncPage />);
+    await act(async () => {});
+    const waiting = document.querySelector("[data-setting='sync.memory']")!;
+    expect(waiting.textContent).toContain("Agents' memory");
+    expect(waiting.querySelector("[data-skeleton-control]")).not.toBeNull();
+    expect(screen.getByLabelText("Agent settings")).toBeTruthy();
+    cleanup();
+    // Refused: the row stays, says so, and its Retry reads again.
+    answers["memory.status"] = () => Promise.reject(new Error("The computer did not answer"));
+    render(<SyncPage />);
+    await act(async () => {});
+    await act(async () => {});
+    const failed = document.querySelector("[data-setting='sync.memory']")!;
+    expect(failed.textContent).toContain("did not answer.");
+    answers["memory.status"] = { enabled: true, skipped: 0, environments: [], conflicts: [] };
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    await act(async () => {});
+    expect(screen.getByLabelText("Agents' memory")).toBeTruthy();
+    cleanup();
+    // A server from before memory sync: no row at all.
+    answers["memory.status"] = () => Promise.reject(new Error("unknown method memory.status"));
+    render(<SyncPage />);
+    await act(async () => {});
+    await act(async () => {});
+    expect(document.querySelector("[data-setting='sync.memory']")).toBeNull();
+  });
+
   it("counts the computers the memory is kept the same on", () => {
     expect(memoryWords(2)).toBe("Kept the same both ways.");
     expect(memoryWords(3)).toBe("Kept the same on all three, both ways.");

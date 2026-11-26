@@ -576,6 +576,10 @@ describe("Subagents for a key that may read but not change them", () => {
     expect(document.querySelector("[data-setting='sub.reset']")).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit rule: Bulk work" })).toBeNull();
     expect(document.querySelectorAll("[data-managed]")).toHaveLength(1);
+    // Who can change it is said first, above the first section, and a value in words is no larger than its title.
+    const managed = document.querySelector("[data-managed]")!;
+    expect(managed.compareDocumentPosition(document.querySelector("[data-setting]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector("[data-value-words]")!.className).toContain("text-xs");
     // The model allowances stay readable, as words, in the sheet.
     const sheet = await openModels();
     expect(within(sheet).queryByRole("combobox")).toBeNull();

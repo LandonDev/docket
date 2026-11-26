@@ -404,3 +404,6 @@ export const workPlayPort = {
     playPort = next;
   },
 };
+
+/** The reveal's id for one computer's row of Settings → Work's "Work is on for" (`requestSettings("work", workOnRow(id))`). */
+export const workOnRow = (environmentId: string): string => `work.on:${environmentId}`;

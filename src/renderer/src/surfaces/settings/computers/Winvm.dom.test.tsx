@@ -489,6 +489,43 @@ describe("Screen size and picture quality", () => {
     expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).toContain("refused");
   });
 
+  it("keeps Fits my window saving until the upgrade ends: saved once live resize is on, the old size back if it failed", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Screen size", "Fits my window");
+    await flush();
+    const mark = () => document.querySelector("[data-setting='winvm.screen'] [data-slot=save-mark]")?.getAttribute("data-state");
+    expect(pressed()).toEqual(["work.winvm.display.upgrade"]);
+    // The steps run: still saving, never Saved.
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "setting-up", step: "Restarting Windows", display: vga }) })));
+    expect(mark()).not.toBe("saved");
+    // It ends on live resize: Saved.
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", display: virtio }) })));
+    await flush();
+    expect(mark()).toBe("saved");
+    expect(h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { screen?: string }).screen)).toEqual([{ method: "work.winvm.settings", params: { screen: "fit" } }]);
+  });
+
+  it("puts the size that stood back when the upgrade ends without live resize, saying so on Screen size", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Screen size", "Fits my window");
+    await flush();
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "setting-up", step: "Starting Windows with live resize", display: vga }) })));
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", error: "Windows did not start with the new display.", display: vga }) })));
+    await flush();
+    expect(h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { screen?: string }).screen)).toEqual([
+      { method: "work.winvm.settings", params: { screen: "fit" } },
+      { method: "work.winvm.settings", params: { screen: "1280x800" } },
+    ]);
+    expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1280 × 800");
+    expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).toContain("The box did not fit the Windows VM to your window.");
+  });
+
   it("a key that is not an admin's reads when it sleeps as words and is offered no screen size", async () => {
     testKey.current = GIVEN_KEY;
     h.state = at({ state: "awake", display: virtio });

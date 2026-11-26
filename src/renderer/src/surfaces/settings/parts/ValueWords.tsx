@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
  */
 export function ValueWords({ children }: { children: ReactNode }) {
   return (
-    <span data-value-words="" className="text-sm text-muted-foreground">
+    <span data-value-words="" className="text-xs text-muted-foreground">
       {children}
     </span>
   );

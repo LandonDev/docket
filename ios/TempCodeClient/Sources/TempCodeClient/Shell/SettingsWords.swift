@@ -105,12 +105,14 @@ public enum WorkRowState: Sendable, Hashable {
 /// host says "invalid or expired pairing code", the phone says what it was
 /// and the way forward (the council's round 1).
 public enum SignInWords {
-    /// Where a sign-in link or a key is made, said as the press, not a page: the box's is on the box's own page and a
-    /// Mac's on its Sharing, but both sit under "Who can sign in" behind Add… (the council's round 5).
-    public static let linkHint = "In Docket's Settings, press Add… under Who can sign in on the computer's page, then paste the link here."
-    public static let keyHint = "A key from Add… under Who can sign in on the computer's page in Docket's Settings, with the computer's address."
+    /// Where a sign-in link or a key is made, said as the press, not a page: Add… under "Who can sign in", which is
+    /// on the box's own page and, on a Mac, in Sharing (the council's rounds 5 and 6). Every hint and refusal that
+    /// sends him there says it in these words.
+    public static let route = "Add… under Who can sign in (on a Mac, in Sharing)"
+    public static let linkHint = "In Docket's Settings, press \(route), then paste the link here."
+    public static let keyHint = "In Docket's Settings, make a key with \(route), then enter it here with the computer's address."
     /// The footer under a computer whose key was refused: the same press, then this sheet again.
-    public static let refusedKeyHint = "In Docket's Settings, press Add… under Who can sign in on its page, then sign in again."
+    public static let refusedKeyHint = "In Docket's Settings, press \(route), then sign in again."
 
     /// - Parameter link: the sheet was redeeming a sign-in link (else a key with an address).
     public static func refusal(_ error: EnvironmentStoreError, link: Bool) -> String {
@@ -120,8 +122,8 @@ public enum SignInWords {
         case .notAClientKey: return "That key is for a bot. Make a key for this phone on the computer."
         case .api(.unauthorized):
             return link
-                ? "That sign-in link is invalid or expired. Make a new link on the computer."
-                : "The computer refused that key. Make a new one on the computer."
+                ? "That sign-in link is invalid or expired. Make a new one with \(route)."
+                : "The computer refused that key. Make a new one with \(route)."
         case .api(let api): return sentence(api.message)
         case .keyStore: return "This phone could not keep the key. Try again."
         }

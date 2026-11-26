@@ -26,6 +26,9 @@ export type WorkspaceCatalog = {
   /** Why a scope's defaults have not loaded (NO_ANSWER past the deadline, a
    *  refusal), until it is asked again or a late answer lands. */
   defaultsErrors: ReadonlyMap<string, string>;
+  /** Why a scope's last read failed while an earlier answer is still held in
+   *  `defaults`, until a read answers: the value stands, and the failure is said. */
+  defaultsStale: ReadonlyMap<string, string>;
   loaded: boolean;
 };
 
@@ -35,6 +38,7 @@ const EMPTY: WorkspaceCatalog = {
   icons: new Map(),
   defaults: new Map(),
   defaultsErrors: new Map(),
+  defaultsStale: new Map(),
   loaded: false,
 };
 
@@ -328,8 +332,9 @@ class WorkspaceStore {
    *  or no answer past LOAD_DEADLINE_MS) never stores a made-up set: the
    *  scope stays absent with its error for the page to show with Retry, the
    *  caller gets what was there before (else the built-in set), and a late
-   *  answer still lands. */
-  async loadDefaults(environmentId: string, workspaceId: string | null): Promise<DefaultsScope> {
+   *  answer still lands. With `strict` a failure rejects instead, for a caller
+   *  that must not draw the copy it holds (a place just cleared). */
+  async loadDefaults(environmentId: string, workspaceId: string | null, { strict = false }: { strict?: boolean } = {}): Promise<DefaultsScope> {
     const link = this.linkOf(environmentId);
     if (!link) return BUILT_IN_SCOPE;
     const key = scopeKey(environmentId, workspaceId);
@@ -340,21 +345,25 @@ class WorkspaceStore {
       .then((scope) => {
         this.setDefaults(new Map([[key, scope]]));
         this.setDefaultsError(key, null);
+        this.setDefaultsError(key, null, "defaultsStale");
         return scope;
       });
     return withDeadline(read).catch((err: unknown) => {
+      if (strict) throw err;
       const had = this.state.defaults.get(key);
-      if (!had) this.setDefaultsError(key, err instanceof Error ? err.message : String(err));
+      const why = err instanceof Error ? err.message : String(err);
+      // A failed refresh over a held answer keeps the answer and is kept apart, for a page that says both.
+      this.setDefaultsError(key, why, had ? "defaultsStale" : "defaultsErrors");
       return had ?? BUILT_IN_SCOPE;
     });
   }
 
-  private setDefaultsError(key: string, error: string | null): void {
-    if ((this.state.defaultsErrors.get(key) ?? null) === error) return;
-    const defaultsErrors = new Map(this.state.defaultsErrors);
-    if (error === null) defaultsErrors.delete(key);
-    else defaultsErrors.set(key, error);
-    this.set({ ...this.state, defaultsErrors });
+  private setDefaultsError(key: string, error: string | null, which: "defaultsErrors" | "defaultsStale" = "defaultsErrors"): void {
+    if ((this.state[which].get(key) ?? null) === error) return;
+    const errors = new Map(this.state[which]);
+    if (error === null) errors.delete(key);
+    else errors.set(key, error);
+    this.set({ ...this.state, [which]: errors });
   }
 
   /** Store a set at the scope, or null to clear it: a workspace falls back

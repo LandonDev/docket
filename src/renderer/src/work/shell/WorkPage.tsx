@@ -11,7 +11,7 @@ import { requestSettings } from "../../lib/monaco/debugTab";
 import { isWebMode } from "../../lib/nativeWeb";
 import { thisDesktopInLine } from "../../lib/native";
 import { accessWords } from "../../lib/settings/access";
-import { useComputerNames } from "../../lib/settings/computerName";
+import { computerInLine, useComputerNames } from "../../lib/settings/computerName";
 import type { PermissionPolicy, WorkspaceMeta } from "../../lib/tcserver/types";
 import { scopeKey, useWorkspaceCatalog, useWorkspaces, workspaceStore } from "../../lib/tcserver/workspaces";
 import { useLinksMay } from "../../lib/linkMay";
@@ -81,17 +81,19 @@ export function JobsAccess() {
   const jobs = useWorkspaces()
     .filter((w) => w.kind === "work")
     .sort((a, b) => a.name.localeCompare(b.name));
-  const { defaults, defaultsErrors } = useWorkspaceCatalog();
+  const { defaults, defaultsErrors, defaultsStale } = useWorkspaceCatalog();
   const [open, setOpen] = useState<WorkspaceMeta | null>(null);
   const may = useLinksMay();
+  const names = useComputerNames();
   const key = jobs.map((j) => `${j.environmentId}:${j.id}`).join(",");
   useEffect(() => {
     for (const job of jobs) void workspaceStore.loadDefaults(job.environmentId, job.id);
   }, [key]);
   if (jobs.length === 0) return null;
   const levelOf = (job: WorkspaceMeta) => defaults.get(scopeKey(job.environmentId, job.id))?.defaults.permission;
-  // A read that failed is said even while an earlier answer is held; a job with nothing held draws no row.
-  const erred = jobs.filter((job) => defaultsErrors.has(scopeKey(job.environmentId, job.id)));
+  // A read that failed is said even while an earlier answer is held (`defaultsStale`); a job with nothing held draws no row.
+  const errorOf = (job: WorkspaceMeta) => defaultsErrors.get(scopeKey(job.environmentId, job.id)) ?? defaultsStale.get(scopeKey(job.environmentId, job.id));
+  const erred = jobs.filter((job) => errorOf(job) !== undefined);
   const failed = erred.filter((job) => !levelOf(job));
   const levels = jobs.map(levelOf).filter((level): level is PermissionPolicy => !!level);
   const common = mostOf(levels);
@@ -103,7 +105,7 @@ export function JobsAccess() {
       <ReadFailure
         key={environmentId}
         computer={environmentId}
-        error={defaultsErrors.get(scopeKey(environmentId, ones[0]!.id)) ?? ""}
+        error={errorOf(ones[0]!) ?? ""}
         retry={() => Promise.all(ones.map((job) => workspaceStore.loadDefaults(job.environmentId, job.id)))}
       />
     );
@@ -113,22 +115,33 @@ export function JobsAccess() {
   // The jobs that answered, or are still out: a job whose read failed draws no row, the page's line stands for it.
   const shown = jobs.filter((job) => !failed.includes(job));
   const settled = levels.length === shown.length;
+  // Jobs on more than one computer: each row says its own.
+  const several = new Set(jobs.map((job) => job.environmentId)).size > 1;
   return (
     <>
-      <SettingSection of="work.access" description={common && settled ? accessWords(common) : undefined}>
+      {/* While any set is out the line under the heading waits as one bone and no row says a line, as most will not. */}
+      <SettingSection of="work.access" description={!settled ? <Skeleton className="inline-block h-3 w-64 align-middle" /> : common ? accessWords(common) : undefined}>
         {failures}
         {shown.map((job) => {
           const level = levelOf(job);
-          // A job whose set is still out holds its name and a bone: no value, and no way in yet.
+          // A job whose set is still out holds its name alone, and no way in yet.
           const opens = may(job.environmentId, "defaults.set") && !!level;
           return (
             <PageRow
               key={job.id}
               data-job={job.id}
               media={<SectorDot sector={job.sector ?? null} />}
-              title={job.name}
+              title={
+                several ? (
+                  <>
+                    {job.name} <span className="text-muted-foreground">on {computerInLine(names(job.environmentId))}</span>
+                  </>
+                ) : (
+                  job.name
+                )
+              }
               // The shared level is said once, in the heading's line; only a job on another level says its own.
-              description={level ? (level === common && settled ? undefined : accessWords(level)) : <Skeleton className="mt-0.5 h-3 w-40" />}
+              description={settled && level && level !== common ? accessWords(level) : undefined}
               onOpen={opens ? () => setOpen(job) : undefined}
               openLabel={`New threads in ${job.name}`}
             >

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LIVE_RESIZE_WORDS, type WinvmDetail, type WinvmPoint, type WinvmScreen, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from "@shared/contract-work-winvm";
 import { ModalBody, ModalPanel } from "../../../chrome/Modal";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
@@ -157,6 +157,23 @@ export function WinvmPage() {
   return <WinvmHost key={vmOn} env={vmOn} />;
 }
 
+/** Fits my window's upgrade, waiting for its end: `seen` once a state said its display is changing. */
+type UpgradeWait = { seen: boolean; resolve: (end: WinvmState) => void };
+
+/** A state from the computer, against a waiting upgrade: it ends once the machine leaves its display steps (live resize
+ *  on or not), or says a failure before any step; a state from before the first step is not its end. */
+function settleUpgrade(wait: { current: UpgradeWait | null }, state: WinvmState): void {
+  const waiting = wait.current;
+  if (!waiting) return;
+  if (state.state === "setting-up") {
+    waiting.seen = true;
+    return;
+  }
+  if (!waiting.seen && !state.error && state.display?.device !== "virtio") return;
+  wait.current = null;
+  waiting.resolve(state);
+}
+
 export function WinvmHost({ env }: { env: string }) {
   const [state, setState] = useState<WinvmState | null>(null);
   const [points, setPoints] = useState<WinvmPoint[] | null>(null);
@@ -207,9 +224,13 @@ export function WinvmHost({ env }: { env: string }) {
       (err: unknown) => setSettingsError({ words: err instanceof Error && err.message === NO_ANSWER ? null : hostFailure(env, err, "could not read the display settings") }),
     );
   }, [link, env, admin]);
+  // Fits my window's upgrade, once the computer took it: waits for the state that ends it (a push, or a read after a
+  // socket that dropped meanwhile).
+  const upgradeEnd = useRef<UpgradeWait | null>(null);
   const load = useCallback((): Promise<void> => {
     const read = link.request<WinvmState>("work.winvm.state", {}).then(stateOf).then(
       (s) => {
+        settleUpgrade(upgradeEnd, s);
         setState(s);
         setError(null);
       },
@@ -225,7 +246,10 @@ export function WinvmHost({ env }: { env: string }) {
   useEffect(() => {
     void load();
     const offPush = link.onPush((push) => {
-      if (push.push === "work.winvm") setState(push.state as WinvmState);
+      if (push.push === "work.winvm") {
+        settleUpgrade(upgradeEnd, push.state as WinvmState);
+        setState(push.state as WinvmState);
+      }
       if (push.push === "work.winvm.points") {
         setPoints(push.points as WinvmPoint[]);
         setPointsError(null);
@@ -301,13 +325,28 @@ export function WinvmHost({ env }: { env: string }) {
     if (screen === "fit" && state.display && !live) {
       if (!(await confirmAction(TURN_ON))) return;
       const before = settings?.screen;
+      // A refused or failed upgrade puts the size that stood back: without live resize Fits my window would not hold.
+      const putBack = async (): Promise<void> => {
+        if (before && before !== "fit") await link.request("work.winvm.settings", { screen: before }).catch(() => void loadSettings());
+      };
       await save("screen", screen, async () => {
+        // The upgrade's end comes as the state's pushes, minutes later: the size stays saving until then.
+        const ended = new Promise<WinvmState>((resolve) => {
+          upgradeEnd.current = { seen: false, resolve };
+        });
         try {
           // answered at once: the steps come as the state's pushes
           await link.request("work.winvm.display.upgrade", {});
         } catch (err) {
-          if (before && before !== "fit") await link.request("work.winvm.settings", { screen: before }).catch(() => void loadSettings());
+          upgradeEnd.current = null;
+          await putBack();
           throw new Error(hostFailure(env, err, "did not fit the Windows VM to your window", true));
+        }
+        const end = await ended;
+        if (end.display?.device !== "virtio") {
+          await putBack();
+          // The machine's own reason stands on the Windows row (its state's error); this row says what did not happen.
+          throw new Error(hostFailure(env, null, "did not fit the Windows VM to your window", true));
         }
       });
       return;

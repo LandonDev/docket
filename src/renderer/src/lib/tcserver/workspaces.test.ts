@@ -335,6 +335,14 @@ describe("thread defaults", () => {
     expect(await workspaceStore.loadDefaults("local", "w1")).toEqual({ defaults: set(), overridden: false });
   });
 
+  it("a strict load rejects instead, for a caller that must not draw the copy it holds", async () => {
+    workspaceStore.attach(link);
+    await tick();
+    await tick();
+    link.request = () => Promise.reject(new Error("down"));
+    await expect(workspaceStore.loadDefaults("local", "w1", { strict: true })).rejects.toThrow("down");
+  });
+
   it("a failed first load stores no made-up set: the scope stays absent with its error until a retry answers", async () => {
     workspaceStore.attach(link);
     await tick();
@@ -348,5 +356,22 @@ describe("thread defaults", () => {
     await workspaceStore.loadDefaults("local", "w9");
     expect(workspaceStore.defaultsAt("local", "w9")).toBeDefined();
     expect(workspaceStore.getSnapshot().defaultsErrors.size).toBe(0);
+  });
+
+  it("a failed refresh keeps the held set and records why apart from a first failure, until a read answers", async () => {
+    workspaceStore.attach(link);
+    await tick();
+    await tick();
+    await workspaceStore.loadDefaults("local", "w1");
+    const held = workspaceStore.defaultsAt("local", "w1");
+    const answer = link.request.bind(link);
+    link.request = () => Promise.reject(new Error("down"));
+    await workspaceStore.loadDefaults("local", "w1");
+    expect(workspaceStore.defaultsAt("local", "w1")).toBe(held);
+    expect(workspaceStore.getSnapshot().defaultsStale.get(scopeKey("local", "w1"))).toBe("down");
+    expect(workspaceStore.getSnapshot().defaultsErrors.has(scopeKey("local", "w1"))).toBe(false);
+    link.request = answer;
+    await workspaceStore.loadDefaults("local", "w1");
+    expect(workspaceStore.getSnapshot().defaultsStale.size).toBe(0);
   });
 });

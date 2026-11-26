@@ -23,6 +23,8 @@ vi.mock("../../../lib/monaco/debugTab", async (original) => ({
   ...(await original<typeof import("../../../lib/monaco/debugTab")>()),
   requestSettings: (...args: unknown[]) => asked.push(args),
 }));
+const jobs = vi.hoisted(() => ({ list: [] as { id: string; name: string; kind: string; environmentId: string }[] }));
+vi.mock("../../../lib/tcserver/workspaces", async (original) => ({ ...(await original<object>()), useWorkspaces: () => jobs.list }));
 vi.mock("../../../lib/devicesClient", () => ({ readComputers: async () => ({ giver: null, box: null, computers: [] }), onDevicesPush: () => () => {}, actOnComputer: async () => ({ ok: true }) }));
 vi.mock("../../../lib/tcserver/link", async (original) => ({ ...(await original<typeof import("../../../lib/tcserver/link")>()), loadSavedEnvironments: async () => {} }));
 
@@ -140,11 +142,41 @@ describe("another computer's page", () => {
     await flush();
     expect(document.querySelector("[data-setting='pc.work']")?.textContent).toContain("Off");
     fireEvent.click(screen.getByRole("button", { name: "Work on the box" }));
-    expect(asked).toEqual([["work", "work.on"]]);
+    // Setup, at the box's own row of Work is on for.
+    expect(asked).toEqual([["work", "work.on:env_box"]]);
     fireEvent.click(screen.getByText("Forget…"));
     await flush();
     expect(confirms[0]).toEqual(expect.objectContaining({ title: "Forget the box?", body: "This Mac drops its link. The box still lets this Mac in until you remove it there." }));
     expect(requests.filter((r) => r.method === "remote.environments.remove")).toEqual([{ env: "local", method: "remote.environments.remove", params: { id: "env_box" } }]);
+  });
+});
+
+describe("its jobs", () => {
+  it("leads from a computer with Work on and jobs to their Access, and draws no such row without jobs", async () => {
+    ANSWERS.env_box!["work.get"] = { enabled: true };
+    jobs.list = [
+      { id: "j1", name: "Cosmic", kind: "work", environmentId: "env_box" },
+      { id: "j2", name: "Purdue Esports", kind: "work", environmentId: "env_box" },
+      { id: "j3", name: "Unify", kind: "work", environmentId: "local" },
+    ];
+    try {
+      render(<OtherComputerPage environmentId="env_box" />);
+      await flush();
+      const row = document.querySelector<HTMLElement>("[data-setting='work.access']")!;
+      expect(row.textContent).toContain("2 jobs");
+      asked.length = 0;
+      fireEvent.click(screen.getByRole("button", { name: "Access for each job's new threads" }));
+      expect(asked).toEqual([["work", "work.access"]]);
+      cleanup();
+      jobs.list = [];
+      render(<OtherComputerPage environmentId="env_box" />);
+      await flush();
+      expect(document.querySelector("[data-setting='work.access']")).toBeNull();
+    } finally {
+      ANSWERS.env_box!["work.get"] = { enabled: false };
+      jobs.list = [];
+      workSwitch.reset();
+    }
   });
 });
 

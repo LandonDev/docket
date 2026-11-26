@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   inheritedOut: false,
   inheritedFails: false,
   keeper: false,
+  links: null as { id: string; name: string }[] | null,
   inheritedReads: 0,
   plansFailed: false,
   plansRetry: vi.fn(),
@@ -54,7 +55,7 @@ vi.mock("../../lib/connection", () => ({ registry: {
     primary: () => link,
     primaryEnvironmentId: "local",
     linkOf: (id: string) => ({ ...link, environmentId: id }),
-    environments: () => (state.keeper ? [{ id: "env_box", name: "The box" }] : []),
+    environments: () => state.links ?? (state.keeper ? [{ id: "env_box", name: "The box" }] : []),
   },
 }));
 // Use New threads' own fresh read of the set a place would follow.
@@ -149,6 +150,9 @@ beforeEach(() => {
   state.inheritedOut = false;
   state.inheritedFails = false;
   state.keeper = false;
+  state.links = null;
+  state.load.mockReset();
+  state.load.mockImplementation(async () => {});
   state.inheritedReads = 0;
   state.load.mockClear();
   state.plansRetry.mockClear();
@@ -354,6 +358,18 @@ describe("A key that may read the set but not change it", () => {
     expect(section.querySelector("[data-setting='defaults.access'] [data-value-words]")!.textContent).toBe("Auto-accept edits");
     expect(document.querySelector("[data-setting='defaults.reset']")).toBeNull();
     expect(document.querySelectorAll("[data-managed]")).toHaveLength(1);
+    // Who can change it is said first, above the first section, and a value in words is no larger than its title.
+    const managed = document.querySelector("[data-managed]")!;
+    expect(managed.compareDocumentPosition(document.querySelector("[data-setting]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(document.querySelector("[data-value-words]")!.className).toContain("text-xs");
+  });
+
+  it("is told who can change a place's set above its rows", async () => {
+    state.may = false;
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    const managed = dialog.querySelector("[data-managed]")!;
+    expect(managed.compareDocumentPosition(dialog.querySelector("[data-value-words]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
@@ -381,7 +397,50 @@ describe("Use New threads", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
     });
     expect(state.save).toHaveBeenCalledWith("local", "w1", null);
-    expect(state.load).toHaveBeenCalledWith("local", "w1");
+    expect(state.load).toHaveBeenCalledWith("local", "w1", { strict: true });
+  });
+
+  it("says a failed read after the clear, with Retry, in place of a set guessed from the old copy", async () => {
+    state.overriding = new Set(["w1"]);
+    state.load.mockImplementation(async () => {
+      throw new Error("The computer did not answer");
+    });
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    expect(state.save).toHaveBeenCalledWith("local", "w1", null);
+    expect(within(dialog).getByRole("alert").textContent).toBe("This Mac did not answer.");
+    expect(within(dialog).queryByRole("combobox")).toBeNull();
+    state.load.mockImplementation(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    });
+    expect(state.load).toHaveBeenCalledTimes(2);
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect(within(dialog).getByRole("combobox", { name: "Model" })).toBeTruthy();
+  });
+
+  it.each([
+    ["never linked", []],
+    ["renamed here", [{ id: "env_box", name: "Linux box" }]],
+    ["two of one name", [{ id: "env_box", name: "The box" }, { id: "env_box2", name: "The box" }]],
+  ])("asks first, as if for Full access, when the keeper the store names is %s", async (_case, links) => {
+    state.overriding = new Set(["w1"]);
+    state.keeper = true;
+    state.links = links;
+    state.confirm.mockImplementation(async () => false);
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    // This Mac's copy says Auto-accept edits, but the box keeps the set and could not be asked.
+    expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Use New threads for Alpha", body: expect.stringContaining("may start with Full access") }));
+    expect(state.save).not.toHaveBeenCalled();
   });
 
   it("is offered only to a key that may write the place's set", async () => {
@@ -400,6 +459,7 @@ describe("Use New threads", () => {
     state.confirm.mockImplementation(async () => false);
     render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
     const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
     });
@@ -411,6 +471,7 @@ describe("Use New threads", () => {
     state.overriding = new Set(["w1"]);
     render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
     const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
     });

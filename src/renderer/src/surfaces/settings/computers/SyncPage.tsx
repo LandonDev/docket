@@ -4,6 +4,7 @@ import type { MemoryEnvironmentStatus, MemorySyncStatus } from "@server/shared/c
 import { PageEmpty, PageRow, PageRowsSkeleton, PageSection } from "../../../components/page";
 import { SettingSwitch } from "../../../components/setting-switch";
 import { BusyLabel, Button } from "../../../components/ui/button";
+import { Skeleton } from "../../../components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { Modal, ModalBody } from "../../../chrome/Modal";
@@ -11,7 +12,7 @@ import { LOCAL_ENVIRONMENT_ID, registry } from "../../../lib/connection";
 import { useHostRead, type HostRead } from "../../../lib/connection/hostRead";
 import { revealPath } from "../../../lib/fs";
 import { thisDesktopInLine } from "../../../lib/native";
-import { useComputerNames, computerInLine } from "../../../lib/settings/computerName";
+import { useComputerNames, computerInLine, useReadFailWords } from "../../../lib/settings/computerName";
 import { refusalWords } from "../../../lib/settingsHome";
 import { ago } from "../../harnessLine";
 import { ComputerName } from "../parts/ComputerName";
@@ -25,11 +26,23 @@ export function namesWords(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
-/** What this Mac syncs, read from this window's own server; the agents' memory may be missing on an older one. */
+/** A server from before memory sync does not know the method: that alone means it has none. Any other refusal is a
+ *  failed read, said with Retry. */
+export const noMemorySync = (err: unknown): boolean => /unknown method|bad request|invalid request/i.test(err instanceof Error ? err.message : String(err));
+
+/** What this Mac syncs, read from this window's own server; the agents' memory is `null` only on one without it. */
 function useSync(): { harness: HostRead<HarnessSyncStatus>; memory: HostRead<MemorySyncStatus | null> } {
   const link = registry.primary();
   const harness = useHostRead<HarnessSyncStatus>(link, () => link.request<HarnessSyncStatus>("harness.status", {}), "harness");
-  const memory = useHostRead<MemorySyncStatus | null>(link, () => link.request<MemorySyncStatus>("memory.status", {}).catch(() => null), "memory");
+  const memory = useHostRead<MemorySyncStatus | null>(
+    link,
+    () =>
+      link.request<MemorySyncStatus>("memory.status", {}).catch((err: unknown) => {
+        if (noMemorySync(err)) return null;
+        throw err;
+      }),
+    "memory",
+  );
   return { harness, memory };
 }
 
@@ -49,6 +62,24 @@ export function SyncLine() {
   if (harness.value === undefined && !harness.error) return <span data-slot="skeleton" aria-label="Loading" className="inline-block h-3 w-64 rounded-md bg-skeleton align-middle" />;
   if (!harness.value || names.length === 0) return null;
   return <>{`${capital(thisDesktopInLine())} keeps ${namesWords(names.map((n) => n.said))} the same as itself.`}</>;
+}
+
+/** A failed read's Retry on its own row: it spins until the read it asked settles. */
+function RetryButton({ retry }: { retry: () => Promise<void> }) {
+  const [retrying, setRetrying] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={retrying}
+      onClick={() => {
+        setRetrying(true);
+        void retry().finally(() => setRetrying(false));
+      }}
+    >
+      <BusyLabel busy={retrying} label="Retry" />
+    </Button>
+  );
 }
 
 /** "1 note differs. Both copies are kept.": the conflict copies in his words. */
@@ -107,24 +138,27 @@ export function SyncPage() {
     );
   return (
     <SectionRead read={harness} computer={LOCAL_ENVIRONMENT_ID} rows={1}>
-      {(value) => <SyncBody harness={value} memory={memory.value ?? null} names={names.map((n) => n.said)} onHarness={harness.set} onMemory={memory.set} />}
+      {(value) => <SyncBody harness={value} memoryRead={memory} names={names.map((n) => n.said)} onHarness={harness.set} onMemory={memory.set} />}
     </SectionRead>
   );
 }
 
 function SyncBody({
   harness,
-  memory,
+  memoryRead,
   names,
   onHarness,
   onMemory,
 }: {
   harness: HarnessSyncStatus;
-  memory: MemorySyncStatus | null;
+  /** Agents' memory, its own read: out, failed, `null` on a server without it, or its status. */
+  memoryRead: HostRead<MemorySyncStatus | null>;
   names: string[];
   onHarness: (s: HarnessSyncStatus) => void;
   onMemory: (s: MemorySyncStatus | null) => void;
 }) {
+  const memory = memoryRead.value ?? null;
+  const readWords = useReadFailWords(LOCAL_ENVIRONMENT_ID);
   const settings = useSaved();
   const memorySaved = useSaved();
   const [conflicts, setConflicts] = useState(false);
@@ -165,7 +199,17 @@ function SyncBody({
               onChange={(enabled) => memorySaved.run(async () => onMemory(await link.request<MemorySyncStatus>("memory.settings.set", { enabled })))}
             />
           </SettingRow>
-        ) : null}
+        ) : memoryRead.value === null ? null : memoryRead.error ? (
+          // Its own read failed: the row stays, saying so with its own Retry, so the way back to the switch is here.
+          <SettingRow id="sync.memory" error={readWords(memoryRead.error)}>
+            <RetryButton retry={memoryRead.retry} />
+          </SettingRow>
+        ) : (
+          // Its own read is out: the row holds its place, its line and switch as bones.
+          <SettingRow id="sync.memory" description={<span data-slot="skeleton" aria-label="Loading" className="inline-block h-3 w-48 rounded-md bg-skeleton align-middle" />}>
+            <Skeleton data-skeleton-control className="h-[18px] w-8 shrink-0 rounded-full" />
+          </SettingRow>
+        )}
         {count > 0 ? (
           <SettingRow id="sync.conflicts" description={conflictWords(count)} onOpen={() => setConflicts(true)} openLabel="Conflict copies" />
         ) : null}

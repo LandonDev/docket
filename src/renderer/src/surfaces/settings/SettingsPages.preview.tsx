@@ -661,6 +661,8 @@ const WORK_ANSWERS: Record<string, unknown> = {
   // The grants are the box's: this Mac answers with none of its own.
   "local:work.outbox.grants": { grants: [] },
   "work.outbox.rules": { addons: TOOL_CARDS },
+  // This Mac reaches one add-on of its own.
+  "local:work.outbox.rules": { addons: TOOL_CARDS.filter((card) => card.addonId === "ad_figma") },
   "work.digest.list": { days: [], rows: [] },
   "work.digest.get": { at: "07:30", zone: "America/Chicago", levels: { results: "digest", meetings: "now" }, nextAt: Date.now() + 20 * 3_600_000 },
 };
@@ -854,6 +856,15 @@ const PAGES: Record<
     statuses: { env_box: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
     body: () => <AsMac><OtherComputerPage environmentId="env_box" /></AsMac>,
   },
+  // The box with Work on and two jobs of its own: its Work section leads to their Access too.
+  "computer-box-jobs": {
+    title: "The box",
+    description: <ComputerLine environmentId="env_box" />,
+    environments: THREE_COMPUTERS,
+    statuses: { env_box: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
+    answers: { "env_box:work.get": { enabled: true } },
+    body: () => <AsMac><BoxJobs><OtherComputerPage environmentId="env_box" /></BoxJobs></AsMac>,
+  },
   "computer-box-offline": {
     title: "The box",
     environments: THREE_COMPUTERS,
@@ -910,6 +921,14 @@ const PAGES: Record<
   general: { title: "General", body: () => <AsMac><GeneralPage /></AsMac> },
   here: { title: "Threads on this Mac", body: () => <AsMac><ThreadsPage /></AsMac> },
   sync: { title: "Sync", description: <SyncLine />, environments: THREE_COMPUTERS, body: () => <AsMac><SyncPage /></AsMac> },
+  // The agent settings answered, the agents' memory's own read did not: its row stays, saying so with Retry.
+  "sync-memory": {
+    title: "Sync",
+    description: <SyncLine />,
+    environments: THREE_COMPUTERS,
+    answers: { "memory.status": () => Promise.reject(new Error(NO_ANSWER)) },
+    body: () => <AsMac><SyncPage /></AsMac>,
+  },
   publish: { title: "Publish", description: settingsSectionDescription("publish"), body: () => <AsMac><PublishPage /></AsMac> },
   "publish-running": {
     title: "Publish",
@@ -1174,7 +1193,8 @@ const PAGES: Record<
   work: workPage({ body: () => <AsWorkComputers on={["env_box", "local"]} given={["env_pc"]}><WorkPage /></AsWorkComputers> }),
   "work-given": workPage({ body: () => <AsWorkComputers on={["env_box", "env_pc"]} given={["env_box", "env_pc"]}><WorkPage /></AsWorkComputers> }),
   "work-grants": workPage({ body: () => <AsWorkComputers on={["env_box"]}><WorkPage /><StoreGrantsSheet open onOpenChange={() => {}} /></AsWorkComputers> }),
-  "work-tools": workPage({ body: () => <AsWorkComputers on={["env_box"]}><WorkPage /><ToolsSheet open onOpenChange={() => {}} /></AsWorkComputers> }),
+  // Two computers with Work on: each add-on's rules name the computer they change.
+  "work-tools": workPage({ body: () => <AsWorkComputers on={["env_box", "local"]}><WorkPage /><ToolsSheet open onOpenChange={() => {}} /></AsWorkComputers> }),
   "work-confirm": workPage({
     body: () => (
       <AsWorkComputers on={["env_box", "local"]}>
@@ -1276,6 +1296,12 @@ export const GUARDED_PAGES: Partial<Record<SettingPage, { previews: (keyof typeo
   mail: { previews: ["mail", "mail-loading", "mail-down"] },
   connections: { previews: ["connections", "connections-loading", "connections-refused"] },
 };
+
+/** Two of the jobs listed as the box's own, as its link would list them. */
+function BoxJobs({ children }: { children: ReactNode }) {
+  useState(() => workspaceStore.hydrate([{ environmentId: "env_box", workspaces: JOBS.slice(0, 2), projects: [] }]));
+  return <>{children}</>;
+}
 
 /** The ask for turning Work off on one computer, its name and job count read as its row reads them (Work.tsx `WorkOnRow`). */
 function WorkOffAsked({ environmentId }: { environmentId: string }) {

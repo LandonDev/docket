@@ -17,7 +17,10 @@ export const FOLD_OPEN_EVENT = "docket:settings-fold-open";
 export const FOUND_ROW =
   "relative isolate before:pointer-events-none before:absolute before:-inset-x-2 before:inset-y-0 before:-z-10 before:rounded-md before:bg-muted before:opacity-0 before:transition-opacity before:duration-(--dur-base) before:ease-(--ease-out) data-[found]:before:opacity-100 data-[opens]:before:inset-y-1";
 
-const rowOf = (root: ParentNode, id: string): HTMLElement | null => root.querySelector<HTMLElement>(`[data-setting="${CSS.escape(id)}"]`);
+/** A map row by its id, or one row of a list by its own (`data-setting-row`, e.g. `work.on:<computer>`): the map names
+ *  the list, the reveal can still land on one of its rows. */
+const rowOf = (root: ParentNode, id: string): HTMLElement | null =>
+  root.querySelector<HTMLElement>(`[data-setting="${CSS.escape(id)}"], [data-setting-row="${CSS.escape(id)}"]`);
 
 /** Scrolls a drawn row into the middle of its page and marks it found for `FOUND_HOLD_MS`; opens the fold it sits in. */
 export function showFound(row: HTMLElement): () => void {

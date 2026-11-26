@@ -116,7 +116,12 @@ function rowResult(entry: SettingEntry, row: ListRow, place: string | undefined,
     title,
     // The group's own page (Work's Setup, titled Work) is said by the group alone.
     // A computer's section that names it ("Threads on the box") says the name once.
-    path: named(section, vars.computer) ? section! : pathOf(place, place && row.title === place ? undefined : row.label, section === title ? undefined : section),
+    // A page with a title of its own ("Threads on this Mac") is said by it, as a computer's section is ("Threads on the box").
+    path: named(section, vars.computer)
+      ? section!
+      : row.title && row.title !== place
+        ? pathOf(row.title, section === title ? undefined : section)
+        : pathOf(place, place && row.title === place ? undefined : row.label, section === title ? undefined : section),
     page: row.id,
     row: entry.id,
     names: title,

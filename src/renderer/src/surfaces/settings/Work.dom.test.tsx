@@ -56,6 +56,7 @@ vi.mock("./parts/hostRpc", () => ({
   }),
 }));
 vi.mock("../../lib/workSwitch", () => ({
+  workOnRow: (env: string) => `work.on:${env}`,
   useWorkHosts: () => state.on,
   setWorkOn: (env: string, on: boolean) => void (on ? state.on.add(env) : state.on.delete(env)),
 }));
@@ -75,6 +76,10 @@ vi.mock("../../chrome/ConfirmDialog", () => ({
 vi.mock("../../lib/lazyChunk", () => ({ defineChunk: () => ({ surface: () => () => null }) }));
 
 const { WorkPage, workOffAsk } = await import("./Work");
+const { useFoundRow } = await import("../../lib/settings/reveal");
+const { requestSettings } = await import("../../lib/monaco/debugTab");
+const { workOnRow } = await import("../../lib/workSwitch");
+const { useState } = await import("react");
 
 afterEach(() => {
   cleanup();
@@ -189,5 +194,25 @@ describe("Settings → Work: Work is on for", () => {
     expect(rowOf("local").textContent).toContain("This computer's key may not do that on MacBook Pro. Do it from a computer that manages MacBook Pro.");
     expect(rowOf("local").textContent?.toLowerCase()).not.toContain("forbidden");
     expect(state.calls).toEqual([{ env: "local", method: "work.set", params: { enabled: true } }]);
+  });
+});
+
+describe("the way in from a computer's page", () => {
+  it("lands on that computer's own row of Work is on for", async () => {
+    Element.prototype.scrollIntoView ??= () => {};
+    function Revealed() {
+      const [root, setRoot] = useState<HTMLElement | null>(null);
+      useFoundRow(root, "work");
+      return (
+        <div ref={setRoot}>
+          <WorkPage />
+        </div>
+      );
+    }
+    requestSettings("work", workOnRow("env_pc"));
+    render(<Revealed />);
+    await settle();
+    expect(rowOf("env_pc").hasAttribute("data-found")).toBe(true);
+    expect(rowOf("env_box").hasAttribute("data-found")).toBe(false);
   });
 });

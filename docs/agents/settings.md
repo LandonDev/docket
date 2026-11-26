@@ -227,7 +227,9 @@ through `useSaved`.
   shape (Screen size, and Picture quality on live resize, with nothing at their ends) and says one red line with its own
   Retry under them, also when a read again fails over values already shown. Each select has its save mark (`useSaved`);
   a refused change goes back to the value last confirmed, its reason on its own row (a refused press's on the Windows
-  row), and a read again does not clear it. A refused restart for Fits my window writes back the size that stood. Its sign-ins and its
+  row), and a read again does not clear it. Fits my window on a machine without live resize stays saving until the
+  machine's state says how the upgrade ended: Saved once live resize is on; refused, or ended on the old display, the
+  size that stood is written back with the reason on Screen size's row. Its sign-ins and its
   edition's end are Connections' rows alone. The Work page no longer has it.
 
 The preview (`SettingsPages.preview.tsx`) answers per computer: `<environment id>:<method>` answers first, a fixture
@@ -259,7 +261,12 @@ the set the computer last confirmed on a refusal.
   computer, with no heading over it and nothing under it, and its Retry asks both. Use New threads (the dialog's footer
   and each row of "Different in N places") is offered only to a key that may write that place's set, waits for the set
   it would bring (a button-shaped bone, else that computer's failure with Retry), and asks first whenever that set is
-  Full access. "Different in N places" holds its shape while places are read and, when a computer did not answer, says
+  Full access. It asks the computer that keeps the set (the `home` a follower names), matched by name to exactly one
+  linked computer (`homeEnvironmentId`); a keeper it cannot match (renamed, never linked, two of one name) leaves the
+  set unknown, so it asks first then too. After the clear it reads the place again (`loadDefaults` with `strict`); if
+  that read fails, the place shows its computer's failure with Retry, never a set guessed from the old copy. A key that
+  may only read sees each value in words (`ValueWords`, the size and tone Away and Digest use) and one `ManagedLine`
+  first, above the first section, as on Reviews and Subagents. "Different in N places" holds its shape while places are read and, when a computer did not answer, says
   "at least N" and names the places not heard from. Builds from plans: Start the build when a plan is done, Archive
   the plan's thread once the build starts, Build model (a searchable list, `ChoiceCombobox`), Build effort, Build
   context. A job's or a workspace's own set has one editor, `ThreadDefaultsDialog` (`workspace`, `onClose`): its rows
@@ -308,7 +315,8 @@ the set the computer last confirmed on a refusal.
   `parts/searchNames.ts`): the page sets them as it reads, and search asks once, inside Settings.
 - **Sync** (`sync`, `computers/SyncPage.tsx`, desktop only, shown with two or more computers): the line under the
   title names the computers this Mac keeps the same (`SyncLine`, drawn by SettingsView, a bone in its place while it
-  reads); Agent settings (turning it on asks first, naming each computer that receives them) and Agents' memory; Last
+  reads); Agent settings (turning it on asks first, naming each computer that receives them) and Agents' memory (its
+  own read: bones while out, its failure on its row with Retry; absent only on a server without memory sync); Last
   synced, a row per computer, one sentence ("212 agent settings files and 48 memory files, synced 2m ago",
   `syncedWords`) with Sync now; Conflict copies, "1 note differs. Both copies are kept.", an open row to a dialog only
   while there are any. While the read is out the switches and Last synced stand in their shape.

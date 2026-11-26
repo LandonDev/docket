@@ -84,7 +84,7 @@ describe("the Settings list", () => {
 describe("search", () => {
   it("finds a setting by its new name, with where it is under it", () => {
     const [first] = find("largest attach");
-    expect(first).toMatchObject({ title: "Largest attachment", path: "This Mac, Threads", page: "here", row: "here.attachment" });
+    expect(first).toMatchObject({ title: "Largest attachment", path: "Threads on this Mac", page: "here", row: "here.attachment" });
   });
 
   it("puts a page's own name first", () => {
@@ -122,7 +122,7 @@ describe("search", () => {
   it("lists a per-computer setting once for each computer, which shows its scope", () => {
     const hits = find("threads at once").filter((result) => result.title === "Threads at once");
     // A computer is its own place: its rows say its name, not the heading it stands under.
-    expect(hits.map((result) => result.path)).toEqual(["This Mac, Threads", "Threads on the box", "Threads on PURDUE-LT"]);
+    expect(hits.map((result) => result.path)).toEqual(["Threads on this Mac", "Threads on the box", "Threads on PURDUE-LT"]);
     expect(hits.map((result) => result.page)).toEqual(["here", "computer:env_box", "computer:env_pc"]);
     // What another computer may do on this Mac is this Mac's rule: once per computer, on Sharing.
     expect(find("files and commands").map((result) => result.computer)).toEqual(["env_box", "env_pc"]);

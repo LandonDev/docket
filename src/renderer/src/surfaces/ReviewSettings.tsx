@@ -43,18 +43,21 @@ export function ReviewsPage() {
   // A failed read is said at the page's head; no empty section stands under it.
   if (!draft.value && error) return <ReadFailure computer={environmentId} error={error} retry={retry} />;
   return (
-    <PageSection>
-      {draft.value ? (
-        <>
-          <ReviewFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked} readOnly={!may} />
-          {/* Shown with Reviews off too: a project may keep reviews on of its own. */}
-          <DifferentProjects />
-          {may ? null : <ManagedLine computer={scope?.home?.name ?? computer.name} />}
-        </>
-      ) : (
-        <ReviewSkeleton />
-      )}
-    </PageSection>
+    <>
+      {/* Who can change the set is said first, above the section. */}
+      {may ? null : <ManagedLine computer={scope?.home?.name ?? computer.name} />}
+      <PageSection>
+        {draft.value ? (
+          <>
+            <ReviewFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked} readOnly={!may} />
+            {/* Shown with Reviews off too: a project may keep reviews on of its own. */}
+            <DifferentProjects />
+          </>
+        ) : (
+          <ReviewSkeleton />
+        )}
+      </PageSection>
+    </>
   );
 }
 

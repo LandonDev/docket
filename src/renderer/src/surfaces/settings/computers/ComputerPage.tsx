@@ -12,6 +12,7 @@ import { originText } from "../../../lib/hostConnection";
 import { refreshMacBridgeHosts } from "../../../lib/macBridge";
 import type { MacBridgeHostPolicy } from "@server/shared/contract-macbridge";
 import { requestSettings } from "../../../lib/monaco/debugTab";
+import { useWorkspaces } from "../../../lib/tcserver/workspaces";
 import { thisDesktopInLine } from "../../../lib/native";
 import { isWebMode } from "../../../lib/nativeWeb";
 import { openAddComputer } from "../../../lib/settings/addComputer";
@@ -19,7 +20,7 @@ import { computerInLine } from "../../../lib/settings/computerName";
 import { openMaySheet } from "../../../lib/settings/maySheet";
 import { refusalWords } from "../../../lib/settingsHome";
 import { loadSavedEnvironments } from "../../../lib/tcserver/link";
-import { setWorkOn, useWorkHosts } from "../../../lib/workSwitch";
+import { setWorkOn, useWorkHosts, workOnRow } from "../../../lib/workSwitch";
 import { environment as environmentSelection } from "../../../stores/environment";
 import { ago } from "../../harnessLine";
 import { CommitField } from "../hosts/CommitField";
@@ -266,6 +267,7 @@ function WorkRow({ environmentId }: { environmentId: string }) {
   const computer = computerInLine(host.name);
   const last = open ? null : (workSeen()[environmentId] ?? (on ? true : null));
   const description = known ? (on ? "On" : "Off") : open ? null : last === null ? undefined : `${last ? "On" : "Off"} when last seen`;
+  const jobs = useWorkspaces().filter((w) => w.kind === "work" && w.environmentId === environmentId).length;
   return (
     <SettingSection of="pc.work">
       {open && !known && read.error ? (
@@ -275,10 +277,15 @@ function WorkRow({ environmentId }: { environmentId: string }) {
           id="pc.work"
           vars={{ computer }}
           description={description === null ? <LineBone width="w-8" /> : description}
-          onOpen={() => requestSettings("work", "work.on")}
+          // Setup, at this computer's own switch row (and why this key cannot press it, where it cannot).
+          onOpen={() => requestSettings("work", workOnRow(environmentId))}
           openLabel={`Work on ${computer}`}
         />
       )}
+      {/* Its jobs' Access, where each job's new threads are told how much to ask: a way there from the computer. */}
+      {on && jobs > 0 ? (
+        <SettingRow id="work.access" shown description={jobs === 1 ? "1 job" : `${jobs} jobs`} onOpen={() => requestSettings("work", "work.access")} openLabel="Access for each job's new threads" />
+      ) : null}
     </SettingSection>
   );
 }

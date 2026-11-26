@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const store = vi.hoisted(() => ({
   defaults: new Map<string, { defaults: { permission: string } }>(),
   errors: new Map<string, string>(),
+  stale: new Map<string, string>(),
   loads: [] as string[],
 }));
 const JOBS = [
@@ -18,7 +19,7 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => {
     ...real,
     scopeKey: (env: string, id: string) => `${env}:${id}`,
     useWorkspaces: () => JOBS,
-    useWorkspaceCatalog: () => ({ defaults: store.defaults, defaultsErrors: store.errors }),
+    useWorkspaceCatalog: () => ({ defaults: store.defaults, defaultsErrors: store.errors, defaultsStale: store.stale }),
     workspaceStore: Object.assign(Object.create(real.workspaceStore), { loadDefaults: async (env: string, id: string) => void store.loads.push(`${env}:${id}`) }),
   };
 });
@@ -36,6 +37,7 @@ afterEach(() => {
   cleanup();
   store.defaults.clear();
   store.errors.clear();
+  store.stale.clear();
 });
 
 describe("Access for each job's new threads", () => {
@@ -56,25 +58,37 @@ describe("Access for each job's new threads", () => {
     store.defaults.set("env_pc:j3", { defaults: { permission: "auto" } });
     render(<JobsAccess />);
     expect(screen.getAllByText(/^Auto-accept edits/)).toHaveLength(1);
-    expect(document.querySelector('[data-job="j1"]')!.textContent).toBe("Cosmic");
+    expect(document.querySelector('[data-job="j1"]')!.textContent).toBe("Cosmic on the box");
     expect(document.querySelector('[data-job="j3"]')!.textContent).toContain("Full access");
   });
 
-  it("says a failed re-read even while the job's earlier level is held, and keeps its row", () => {
+  it("says a failed refresh even while the job's earlier level is held, and keeps its row", () => {
     store.defaults.set("env_box:j1", { defaults: { permission: "edits" } });
     store.defaults.set("env_box:j2", { defaults: { permission: "edits" } });
     store.defaults.set("env_pc:j3", { defaults: { permission: "edits" } });
-    store.errors.set("env_pc:j3", NO_ANSWER);
+    store.stale.set("env_pc:j3", NO_ANSWER);
     render(<JobsAccess />);
     expect(screen.getByRole("alert").textContent).toBe("PURDUE-LT did not answer.");
     expect(document.querySelector('[data-job="j3"]')).toBeTruthy();
   });
 
-  it("holds a job still out as its name and a bone, with no way in yet", () => {
+  it("waits as one bone under the heading, each row its name alone as when loaded, and a job still out has no way in", () => {
     store.defaults.set("env_box:j1", { defaults: { permission: "edits" } });
+    store.defaults.set("env_box:j2", { defaults: { permission: "auto" } });
     render(<JobsAccess />);
-    const out = document.querySelector<HTMLElement>('[data-job="j3"]')!;
-    expect(out.querySelector("[data-slot=skeleton]")).toBeTruthy();
-    expect(out.querySelector("[data-slot=open-cue]")).toBeNull();
+    expect(document.querySelectorAll("[data-slot=skeleton]")).toHaveLength(1);
+    expect(document.querySelector("[data-job] [data-slot=skeleton]")).toBeNull();
+    // No row says a line until all have answered: none jumps when the shared level lands.
+    expect(document.querySelector('[data-job="j2"]')!.textContent).not.toContain("Full access");
+    expect(document.querySelector('[data-job="j3"] [data-slot=open-cue]')).toBeNull();
+  });
+
+  it("names each job's computer when the jobs sit on more than one", () => {
+    store.defaults.set("env_box:j1", { defaults: { permission: "edits" } });
+    store.defaults.set("env_box:j2", { defaults: { permission: "edits" } });
+    store.defaults.set("env_pc:j3", { defaults: { permission: "edits" } });
+    render(<JobsAccess />);
+    expect(document.querySelector('[data-job="j1"]')!.textContent).toBe("Cosmic on the box");
+    expect(document.querySelector('[data-job="j3"]')!.textContent).toBe("Purdue Esports on PURDUE-LT");
   });
 });

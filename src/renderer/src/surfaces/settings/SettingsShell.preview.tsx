@@ -3,7 +3,7 @@ import { SettingsListView } from "../../chrome/SettingsRail";
 import { cn } from "../../lib/cn";
 import { Page } from "../../components/page";
 import { settingsList, type ListWindow } from "../../lib/settings/list";
-import { searchSettings } from "../../lib/settings/search";
+import { ADD_COMPUTER_RESULT, searchSettings } from "../../lib/settings/search";
 import { settingsSearch } from "../../lib/settings/searchStore";
 import type { SettingsPageId } from "../../lib/settings";
 import { SearchResultsView, RESULTS_TITLE } from "./SearchResults";
@@ -71,7 +71,8 @@ export function SettingsShellPreview({
 }) {
   useState(() => settingsSearch.setQuery(query));
   const groups = settingsList(SHELL_WINDOWS[kind]);
-  const results = searchSettings(query, groups);
+  // Add a computer… is found where the list offers it, as in the window.
+  const results = searchSettings(query, groups, {}, kind === "web" ? [] : [ADD_COMPUTER_RESULT]);
   const searching = query.trim() !== "";
   const list = (
     // A narrow window shows the list or the page, never both: with something typed, the results.

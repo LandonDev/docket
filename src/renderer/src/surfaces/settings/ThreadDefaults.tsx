@@ -26,9 +26,10 @@ export function ThreadDefaultsPage() {
   const home = usePageHome("defaults");
   return (
     <>
+      {/* Said first, above the first section, so the values below read as kept elsewhere. */}
+      {mayDefaults && mayPlans ? null : <ManagedLine computer={home?.name ?? computer.name} />}
       <ThreadDefaultsEditor workspaceId={null} />
       <PlanSettingsEditor quiet={both} />
-      {mayDefaults && mayPlans ? null : <ManagedLine computer={home?.name ?? computer.name} />}
     </>
   );
 }
