@@ -61,6 +61,22 @@ describe("the pop-out's body", () => {
     expect([back.mock.calls.length, close.mock.calls.length]).toEqual([1, 1]);
   });
 
+  it("offers Retry on a picture that stopped, as the page and full screen do, and none where retrying cannot help", () => {
+    const retry = vi.fn();
+    const v = render(view({ stream: { ...streamOf({ status: "ended", reason: "error" }), retry } }));
+    expect(screen.getByText("The preview stopped")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    v.rerender(view({ stream: { ...streamOf({ status: "failed", message: "gone" }), retry } }));
+    expect(screen.getByRole("button", { name: "Retry" })).not.toBeNull();
+    v.rerender(view({ stream: { ...streamOf({ status: "ended", reason: "window-closed" }), retry } }));
+    expect(screen.getByText("The window closed")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    v.rerender(view({ tile: null, stream: { ...streamOf({ status: "ended", reason: "error" }), retry } }));
+    expect(screen.getByText("Nothing is driving this now")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   it("opens the live delay details in the pop-out’s document", async () => {
     const { doc } = childWindow();
     const stream = streamOf({ status: "live", app: "Chromium", window: "Concur", width: 1280, height: 800, drawn: true });

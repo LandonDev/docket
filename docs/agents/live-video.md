@@ -556,8 +556,11 @@ first wanted; nothing of it is in the first paint.
   count again. `moved`, `busy` and `held` give way to the picture at once
   and are never opened again by themselves; `ended`, `revoked`, `error` and
   `permission` read as the preview's own ends ("The preview stopped", with
-  Retry for `error`; the Screen Recording line). A machine that cannot
-  decode the stream asks for no video again in that window.
+  Retry for `error`; the Screen Recording line): on the Computers stage a
+  plate over the last picture with Retry as its press (`stoppedPlate`,
+  ComputersView.tsx), in full screen and the pop-out a line with Retry. A
+  machine that cannot decode the stream asks for no video again in that
+  window.
 - **`useLiveStream`** (surfaces/threads/computer/Viewport.tsx) is video
   first (`useComputerVideo`, lib/computerVideo.ts) and the preview when
   video gives way: `video.open` refused or unknown to the host, no

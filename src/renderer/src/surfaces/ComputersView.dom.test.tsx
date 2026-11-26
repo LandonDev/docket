@@ -169,7 +169,7 @@ describe("the Computers page", () => {
     // the picture has the stage alone: no caption under it
     expect(screen.getByRole("article").querySelector('[data-slot="computer-bar"]')).toBeNull();
     const facts = bar().querySelector('[data-slot="facts"]')!;
-    expect([...facts.children].map((c) => c.textContent)).toEqual(["Clicking Submit in Chromium", "The box"]);
+    expect([...facts.children].map((c) => c.textContent)).toEqual(["Clicking Submit in Chromium", "the box"]);
     fireEvent.click(screen.getByRole("button", { name: "File the March expense report" }));
     expect(opened).toEqual([["t1", "box"]]);
     // a page he drives reads so, in the foreground
@@ -251,12 +251,14 @@ describe("the Computers page", () => {
     closeFullWindow();
   });
 
-  it("says a picture stopped in one line with Retry, and keeps the tile's caption and controls", () => {
+  it("says a picture stopped on a plate with Retry as its press, as every face of the stage, and keeps the bar's controls", () => {
     h.tiles = [tile()];
     h.ended = "error";
     render(<ComputersView onClose={() => undefined} onToggleSidebar={() => undefined} onOpenSession={() => undefined} />);
-    expect(screen.getByText("The preview stopped")).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    const plate = document.querySelector<HTMLElement>('[data-slot="computer-plate"]')!;
+    expect(within(plate).getByText("The preview stopped")).not.toBeNull();
+    expect(document.querySelector('[data-slot="computer-line"]')).toBeNull();
+    fireEvent.click(within(plate).getByRole("button", { name: "Retry" }));
     expect(h.retried).toBe(1);
     expect(screen.getByRole("button", { name: "Take over" })).not.toBeNull();
     // a stream that ended because the window closed has nothing to try again

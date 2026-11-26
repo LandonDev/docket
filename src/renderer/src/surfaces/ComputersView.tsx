@@ -24,6 +24,7 @@ import { EmptyState } from "./SurfaceSkeleton";
 import { ComputerBar, OpenSettingsButton, ViewButton, WakeButton, tileLine, vmScreenSeam, type BarReading } from "./threads/computer/ComputerBar";
 import { ENDED_WORDS, PIXELATED, Plate, RETRY_ENDS, Viewport, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type PlateProps } from "./threads/computer/Viewport";
 import { drivenScreen } from "../lib/video/videoInput";
+import type { PreviewState } from "../lib/computerPreview";
 
 /**
  * Computers (docs/DESIGN.md "Computers"): every computer being driven now,
@@ -137,10 +138,9 @@ function LivePicture({ tile, place, focusOnDrive, readStage, onReading }: { tile
       <Viewport
         ref={box}
         fill
-        face={face ? { ...face, ...(cover ? { cover } : {}) } : { kind: "none" }}
+        face={face ? { ...face, ...(cover ? { cover } : {}) } : over ? { kind: "plate", plate: stoppedPlate(state, still?.src, place.stage ? stream.retry : undefined) } : { kind: "none" }}
         label={label}
         size={frame}
-        line={over ? <ViewportLine words={state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error} onRetry={state.status === "failed" || RETRY_ENDS.has(state.reason) ? stream.retry : undefined} /> : null}
       />
     </div>
   );
@@ -182,6 +182,16 @@ function RetryButton({ onRetry }: { onRetry: () => void }) {
       Retry
     </Button>
   );
+}
+
+/**
+ * A stream that ended with the host linked, as every face of the stage is (docs/DESIGN.md "Computers", "The faces"): one
+ * plate of words over the last picture washed back, Retry its press where retrying can help. A strip tile is one press
+ * that puts it on the stage, so its plate has none.
+ */
+export function stoppedPlate(state: Extract<PreviewState, { status: "ended" | "failed" }>, still: string | null | undefined, retry: (() => void) | undefined): PlateProps {
+  const again = state.status === "failed" || RETRY_ENDS.has(state.reason);
+  return { title: state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error, still, action: again && retry ? <RetryButton onRetry={retry} /> : undefined };
 }
 
 /** A picture's box with nothing live in it: its plate, at the picture's size, so nothing moves when the picture comes. */
@@ -307,7 +317,7 @@ function StageBar({ tile, vm, picture, onOpenSession, onTookOver, pictureRect, r
         <ViewButton label="Pop out" fold onClick={() => openPopOut({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile) })}>
           <PictureInPicture className="size-4" />
         </ViewButton>
-        <ViewButton label="Full screen" onClick={() => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile), from: pictureRect() })}>
+        <ViewButton label="Full screen" fold="last" onClick={() => openFullWindow({ host: tile.entry.host, threadId: viewKey(tile), name: tileLabel(tile), from: pictureRect() })}>
           <Maximize2 className="size-4" />
         </ViewButton>
       </>

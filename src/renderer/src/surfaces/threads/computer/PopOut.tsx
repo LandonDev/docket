@@ -11,7 +11,7 @@ import { POP_OUT_FRAME, closePopOut, usePopOut } from "../../../lib/popOut";
 import { drawnPixelated, fitStage, pictureKind, type Size } from "../../../lib/stageLayout";
 import { pixelRatioOf } from "../../../lib/video/support";
 import { ComputerBar, ViewButton } from "./ComputerBar";
-import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, PIXELATED, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
+import { DRIVEN, DRIVEN_CLASS, ENDED_WORDS, PIXELATED, RETRY_ENDS, ViewportLine, liveFace, streamSize, useDrivingInput, useLiveStream, type LiveStream } from "./Viewport";
 import { drivenScreen } from "../../../lib/video/videoInput";
 
 /**
@@ -111,7 +111,11 @@ export function PopOutView({ tile, stream, name, boxRef, measureRef, room, dpr =
             </div>
           ) : (
             <div data-face="none" className="absolute inset-0 flex items-center justify-center bg-card px-3 text-center">
-              <ViewportLine words={!tile ? "Nothing is driving this now" : state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error} />
+              {/* Retry where retrying can help, as on the page and in full screen: he need not go Back to the page for it. */}
+              <ViewportLine
+                words={!tile ? "Nothing is driving this now" : state.status === "ended" ? ENDED_WORDS[state.reason] : ENDED_WORDS.error}
+                onRetry={tile && (state.status === "failed" || (state.status === "ended" && RETRY_ENDS.has(state.reason))) ? stream.retry : undefined}
+              />
             </div>
           )}
         </div>

@@ -1,11 +1,10 @@
-import { failureReason } from "@renderer/lib/threadActionFailure";
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import type { WinvmPoint, WinvmState } from "@server/shared/contract-work-winvm";
 import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Kbd } from "@renderer/components/ui/kbd";
 import { loadToast } from "@renderer/components/ui/toaster";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui/tooltip";
-import { TruncateTip } from "@renderer/components/tip";
+import { Tip, TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { Desktop, Globe, Keyboard, Laptop, LogIn, Moon, MoreHorizontal, RefreshCw, RotateCcw, Square } from "../../../chrome/icons";
@@ -15,12 +14,13 @@ import { canTakeOver, handBack, takeOver, type ComputerTile } from "../../../lib
 import { stopComputer } from "../../../lib/computerSessions";
 import { registry } from "../../../lib/connection/registry";
 import { hostFailure } from "../../../lib/hostFailure";
+import { nameInLine } from "../../../lib/hostWords";
 import { keyHint } from "../../../lib/keys";
 import { useLinkMay } from "../../../lib/linkMay";
+import { workErrorWords } from "../../../lib/workErrorWords";
 import { LEAVE_CHORD } from "../../../lib/video/videoInput";
 import { VM_SCREEN_PICKS, wakeVm, type VmDetail, type VmScreenPick, type VmState } from "../../../lib/winvmWake";
 import { shell } from "../../../stores/shell";
-import { Facts } from "../../settings/hosts/Facts";
 import { PointsDialog } from "../../../work/winvm/WinvmSection";
 import { signInOnVm } from "../../../work/winvm/signIn";
 import { restartVm, setVmScreen, sleepVm } from "../../../work/winvm/vmPresses";
@@ -34,7 +34,8 @@ import { restartVm, setVmScreen, sleepVm } from "../../../work/winvm/vmPresses";
  * sentence, then the delay (a quiet number that opens), Keys while he drives
  * the Windows VM, the VM's menu, Take over or Hand back, Stop, and the views
  * (Pop out, Full screen). Under 640px the delay and Pop out give way, whole;
- * under 480px the status sentence too, so the title reads whole.
+ * under 480px the status sentence too, and under 400px Full screen (a click on
+ * the picture opens it), so the title reads whole.
  */
 
 /** What a computer says first: that he drives, a card's question, else the step's words. */
@@ -82,11 +83,14 @@ function Glyph({ tile }: { tile: ComputerTile | null }) {
   );
 }
 
-/** A quiet icon button with a tip, for the bar's views (Pop out, Full screen, back, close). `fold`: it gives way under 640px. */
-export function ViewButton({ label, onClick, children, fold = false }: { label: string; onClick: (event: MouseEvent<HTMLButtonElement>) => void; children: ReactNode; fold?: boolean }) {
+/**
+ * A quiet icon button with a tip, for the bar's views (Pop out, Full screen, back, close). `fold`: it gives way under
+ * 640px; `"last"`: under 400px, the press that goes last (Full screen, which a click on the picture also opens).
+ */
+export function ViewButton({ label, onClick, children, fold = false }: { label: string; onClick: (event: MouseEvent<HTMLButtonElement>) => void; children: ReactNode; fold?: boolean | "last" }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" className={cn("text-muted-foreground hover:text-foreground", fold && FOLD)} aria-label={label} onClick={onClick} />}>{children}</TooltipTrigger>
+      <TooltipTrigger render={<Button variant="ghost" size="icon-sm" className={cn("text-muted-foreground hover:text-foreground", fold === "last" ? FOLD_LAST : fold && FOLD)} aria-label={label} onClick={onClick} />}>{children}</TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
   );
@@ -94,6 +98,8 @@ export function ViewButton({ label, onClick, children, fold = false }: { label: 
 
 /** What gives way first on a narrow bar: the delay and Pop out, whole. */
 export const FOLD = "@max-[640px]/bar:hidden";
+/** What gives way last, under 400px of bar: Full screen, so the title reads whole beside Take over and Stop. */
+export const FOLD_LAST = "@max-[400px]/bar:hidden";
 
 /** The press runner every control of the bar shares: one at a time, a failure as a toast naming the computer. */
 function usePress(title: string) {
@@ -104,7 +110,12 @@ function usePress(title: string) {
     pressing.current = true;
     setBusy(which);
     void run()
-      .catch((err: unknown) => loadToast().then((toast) => toast.error(failed, { description: failureReason(err) ? `${title}: ${failureReason(err)}` : title })))
+      // The toast's two lines, as every failed act's: what failed, then the computer and why in Work's words, never the
+      // host's raw text (a path, a method, a stack), which leaves the computer's name alone.
+      .catch((err: unknown) => {
+        const why = workErrorWords(err);
+        return loadToast().then((toast) => toast.error(failed, { description: why ? `${title}: ${why}` : title }));
+      })
       .finally(() => {
         pressing.current = false;
         setBusy(null);
@@ -373,6 +384,53 @@ function VmPoints({ host, onClose }: { host: string; onClose: () => void }) {
   return state ? <PointsDialog env={host} state={state} points={points} admin={admin} onClose={onClose} /> : null;
 }
 
+/**
+ * The status sentence's facts, in order: the step's own words (or "You are driving", or a card's question), "No live
+ * picture to drive" on a VM with only its 4 fps picture, then where it runs, lower case in the middle of the line
+ * (`nameInLine`). A card's question goes without the place: a question mark and a comma do not meet, and the strip and
+ * the thread say where.
+ */
+export function barSentence(tile: ComputerTile | null, where?: string | null): string[] {
+  if (!tile) return [];
+  const line = tileLine(tile);
+  const asking = !!tile.entry.row.asking && !tile.driving;
+  const place = asking ? null : where === undefined ? tile.where : where;
+  const lead = [line, tile.pictureOnly && !tile.driving ? NO_LIVE_PICTURE : null].filter((w): w is string => !!w);
+  return place ? [...lead, lead.length ? nameInLine(place) : place] : lead;
+}
+
+/**
+ * The sentence on one 16px line: only the first fact cuts, at its end; a fact that does not fit after it drops whole to
+ * a second line the box hides, its comma with it (the comma leads each later fact, so none is left hanging). Whatever
+ * gave way reads in the line's tip. It gives way whole under 480px of bar, so the title reads whole.
+ */
+function BarSentence({ parts, words }: { parts: ReactNode[]; words: string[] }) {
+  const [el, ref] = useState<HTMLElement | null>(null);
+  const [cut, setCut] = useState(false);
+  const whole = words.join(", ");
+  useLayoutEffect(() => {
+    if (!el) return;
+    const first = el.firstElementChild as HTMLElement | null;
+    const measure = () => setCut(el.scrollHeight > el.clientHeight + 1 || (!!first && first.scrollWidth > first.clientWidth));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el, whole]);
+  if (!parts.length) return null;
+  const line = (
+    <span ref={ref} data-slot="facts" data-bar-sentence className="flex h-4 min-w-0 flex-1 flex-wrap overflow-hidden text-xs leading-4 whitespace-nowrap text-muted-foreground tabular-nums @max-[480px]/bar:hidden">
+      {parts.map((part, i) => (
+        <span key={`${i}:${words[i]}`} className={i === 0 ? "min-w-0 truncate" : "shrink-0 before:me-1 before:content-[',']"}>
+          {part}
+        </span>
+      ))}
+    </span>
+  );
+  return cut ? <Tip label={whole}>{line}</Tip> : line;
+}
+
 export interface ComputerBarProps {
   /** null: the computer left (full screen and the pop-out keep their bar for the way out) */
   tile: ComputerTile | null;
@@ -416,7 +474,8 @@ export function ComputerBar({ tile, linkLost = false, name, onOpenSession, onToo
   const title = tile?.title ?? name ?? "";
   const vmHere = !!tile?.computer.startsWith("vm:");
   const state = vm?.state ?? (vmHere ? "awake" : null);
-  const parts: ReactNode[] = tile ? [line && (tile.driving || asking) ? <span className="text-foreground">{line}</span> : line, tile.pictureOnly && !tile.driving ? NO_LIVE_PICTURE : null, where === undefined ? tile.where : where] : [];
+  const words = barSentence(tile, where);
+  const parts: ReactNode[] = words.map((w, i) => (i === 0 && line && w === line && (tile?.driving || asking) ? <span className="text-foreground">{w}</span> : w));
   return (
     <div data-slot="computer-bar" className={cn(fold && "@container/bar", "flex h-10 min-w-0 flex-1 items-center gap-1 ps-3 pe-2", className)}>
       <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -430,7 +489,7 @@ export function ComputerBar({ tile, linkLost = false, name, onOpenSession, onToo
             <span className={cn("max-w-[50%] shrink-0 truncate leading-5 font-medium", small ? "text-xs" : "text-[13px]")}>{title}</span>
           )}
         </TruncateTip>
-        {small ? null : <Facts parts={parts} className="flex-nowrap overflow-hidden text-xs @max-[480px]/bar:hidden leading-4 whitespace-nowrap text-muted-foreground [&>span]:min-w-0 [&>span]:truncate" />}
+        {small ? null : <BarSentence parts={parts} words={words} />}
       </div>
       <span data-slot="computer-reads" className="flex shrink-0 items-center gap-0.5">
         {reading ? <DelayButton reading={reading} onFaster={linkLost ? undefined : onFaster} onOpenChange={onMenuOpen} /> : null}

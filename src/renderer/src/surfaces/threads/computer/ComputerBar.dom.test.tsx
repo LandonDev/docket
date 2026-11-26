@@ -3,9 +3,18 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry } from "../../../lib/connection/registry";
 import type { VmState } from "../../../lib/winvmWake";
-import { ComputerBar, DelayButton, FOLD, NO_LIVE_PICTURE, NO_RESIZE, THREAD_HOLDS, ViewButton, delayWords, vmMenuRows, type VmScreenSeam } from "./ComputerBar";
+import { ComputerBar, DelayButton, FOLD, FOLD_LAST, NO_LIVE_PICTURE, barSentence, NO_RESIZE, THREAD_HOLDS, ViewButton, delayWords, vmMenuRows, type VmScreenSeam } from "./ComputerBar";
 import { tile } from "./FullWindow.fixtures";
 
+const press = vi.hoisted(() => ({ take: null as null | (() => Promise<void>), toasts: [] as { title: string; description?: string }[] }));
+vi.mock("../../../lib/computers", async (original) => {
+  const actual = await original<typeof import("../../../lib/computers")>();
+  return { ...actual, takeOver: (...a: Parameters<typeof actual.takeOver>) => (press.take ? press.take() : actual.takeOver(...a)) };
+});
+vi.mock("@renderer/components/ui/toaster", async (original) => ({
+  ...(await original<typeof import("@renderer/components/ui/toaster")>()),
+  loadToast: async () => Object.assign(() => undefined, { error: (title: string, o?: { description?: string }) => void press.toasts.push({ title, description: o?.description }) }),
+}));
 const confirm = vi.hoisted(() => ({ asked: [] as { title: string; body?: string; action: string }[], yes: true }));
 vi.mock("../../../chrome/ConfirmDialog", () => ({ confirmAction: async (r: { title: string; body?: string; action: string }) => (confirm.asked.push(r), confirm.yes) }));
 
@@ -32,7 +41,7 @@ describe("the computer's bar", () => {
             <ViewButton label="Pop out" fold onClick={() => undefined}>
               <span />
             </ViewButton>
-            <ViewButton label="Full screen" onClick={() => undefined}>
+            <ViewButton label="Full screen" fold="last" onClick={() => undefined}>
               <span />
             </ViewButton>
           </>
@@ -40,7 +49,14 @@ describe("the computer's bar", () => {
       />,
     );
     const facts = document.querySelector('[data-slot="facts"]')!;
-    expect([...facts.children].map((c) => c.textContent)).toEqual(["Clicking Submit in Chromium", "The box"]);
+    // the host after another fact is lower case, as every host mid-line is
+    expect([...facts.children].map((c) => c.textContent)).toEqual(["Clicking Submit in Chromium", "the box"]);
+    // only the step's words cut; a later fact drops whole, its comma with it
+    expect(facts.className).toContain("flex-wrap");
+    expect(facts.className).toContain("overflow-hidden");
+    expect(facts.children[0]!.className).toContain("truncate");
+    expect(facts.children[1]!.className).toContain("shrink-0");
+    expect(facts.children[1]!.className).toContain("before:content-[',']");
     // the order the eye and Tab take: title, controls, views
     expect(names()).toEqual(["File the March expense report", "Take over", "Stop File the March expense report", "Pop out", "Full screen"]);
     fireEvent.click(screen.getByRole("button", { name: "File the March expense report" }));
@@ -48,6 +64,8 @@ describe("the computer's bar", () => {
     // under 640px Pop out gives way, whole; Full screen stays
     expect(screen.getByRole("button", { name: "Pop out" }).className).toContain(FOLD);
     expect(screen.getByRole("button", { name: "Full screen" }).className).not.toContain(FOLD);
+    // under 400px Full screen too: a click on the picture still opens it
+    expect(screen.getByRole("button", { name: "Full screen" }).className).toContain(FOLD_LAST);
   });
 
   it("while he drives: the words in foreground, Hand back alone as the one primary with its key cap, and Keys on the Windows VM", () => {
@@ -68,10 +86,30 @@ describe("the computer's bar", () => {
   it("a card's question leads in foreground; a VM with no live picture says why it has no Take over", () => {
     render(<ComputerBar tile={tile({ entry: { ...tile().entry, row: { ...tile().entry.row, asking: { line: "Allow Frame.io to be used?" } } } })} />);
     expect(screen.getByText("Allow Frame.io to be used?").className).toContain("text-foreground");
+    // a question then a place would read "…be used?, Landon's MacBook": the strip and the thread say where
+    expect([...document.querySelector('[data-slot="facts"]')!.children].map((c) => c.textContent)).toEqual(["Allow Frame.io to be used?"]);
     cleanup();
     render(<ComputerBar tile={vmTile({ pictureOnly: true })} vm={awake} />);
     expect(screen.getByText(NO_LIVE_PICTURE)).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+  });
+
+  it("says where it runs alone with its capital, and after another fact in lower case", () => {
+    expect(barSentence(tile({ doing: null }))).toEqual(["The box"]);
+    expect(barSentence(tile(), "This Mac")).toEqual(["Clicking Submit in Chromium", "this Mac"]);
+    expect(barSentence(tile(), "Landon's MacBook")).toEqual(["Clicking Submit in Chromium", "Landon's MacBook"]);
+    expect(barSentence(tile(), null)).toEqual(["Clicking Submit in Chromium"]);
+    expect(barSentence(null)).toEqual([]);
+  });
+
+  it("words a failed press in Work's words, never the host's raw text", async () => {
+    press.toasts.length = 0;
+    press.take = () => Promise.reject(new Error("Cannot read properties of undefined (reading 'drive') at /srv/agents/app/out/main/index.js:12"));
+    render(<ComputerBar tile={tile()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Take over" }));
+    await vi.waitFor(() => expect(press.toasts).toHaveLength(1));
+    expect(press.toasts[0]).toEqual({ title: "Couldn't take over", description: "File the March expense report" });
+    press.take = null;
   });
 
   it("draws no delay until the stream has a number; then a quiet number that opens to what it is made of", async () => {
