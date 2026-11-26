@@ -157,6 +157,27 @@ describe("the dashboard kind", () => {
     await found("[data-dash-asof]");
   });
 
+  /** Council round 1, sitting E (R1-E10): with the link cut, Reject and Accept stayed live and nothing said why. */
+  it("holds a proposed block's Reject and Accept while the link is down, and says the link in the line", async () => {
+    const { registry: links } = await import("../../lib/connection/registry");
+    const { IDLE_STATUS } = await import("../../lib/connection/types");
+    const offline = { ...IDLE_STATUS, transport: "offline" as const };
+    vi.spyOn(links, "statusOf").mockImplementation(() => offline);
+    vi.spyOn(links, "environment").mockReturnValue({ id: "local", name: "The box" } as never);
+    try {
+      const base = page();
+      open({ ...base, blocks: [...base.blocks, { id: "b4", kind: "text", text: "Rivera Dental pays slowest.", proposed: { by: "agent:env:t1", at: 1 } }] });
+      await found('[data-block="b4"]');
+      const accept = await waitFor(() => screen.getByRole<HTMLButtonElement>("button", { name: "Accept" }));
+      expect(accept.disabled).toBe(true);
+      expect(screen.getByRole<HTMLButtonElement>("button", { name: "Reject" }).disabled).toBe(true);
+      await waitFor(() => expect(document.body.textContent).toContain("The box is not connected"));
+      expect(screen.getAllByRole("button", { name: "Retry" }).length).toBeGreaterThan(0);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
   it("dims the page when a sheet moved, says a failed read once, and says an empty page with where to ask", async () => {
     open(page({ stale: true }));
     const body = await found("[data-dashboard]");

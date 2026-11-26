@@ -74,7 +74,9 @@ real caller (the thread, his window, a key) and the withhold; a push about such 
 Every block an agent adds (`dashboard_add`) is a proposal (`proposed: {by,
 reason, at}`) even on his own dashboard: tinted `add-bg`, stepped from the
 bar, kept by Accept and dropped by Reject (`work.dashboards.review`). The
-mode shows "Agent suggests" and cannot be switched.
+mode shows "Agent suggests" and cannot be switched. While the host's link is
+down, Reject and Accept are held in place (`verdictsHeld`) and the canvas's
+line says the link (`useHostLinkDown`) with Retry; the blocks stay in view.
 
 ## The canvas
 
