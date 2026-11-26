@@ -41,8 +41,9 @@ const MAIL = group(
   true,
 );
 const TASKS = group("task", "Tasks", [hit("t1", "task", "Send the budget to Dana", { detail: "PUR-41", at: NOW + 4 * DAY })]);
-// An event today says its time, any other its day, and never a year: the third is in the next one.
+// An event today says its time ("All day" with none), any other its day, and never a year: the last is in the next one.
 const EVENTS = group("event", "Agenda", [
+  hit("e0", "event", "Budget freeze", { at: new Date(NOW).setHours(0, 0, 0, 0), allDay: true }),
   hit("e1", "event", "Budget review", { detail: "Room 204", at: NOW + 2 * 3_600_000 }),
   hit("e2", "event", "Budget planning with Finance", { detail: "Teams", at: NOW + 7 * DAY }),
   hit("e3", "event", "Budget kickoff for FY27", { detail: "Córdova Center", workspaceId: "w-unify", at: NOW + 50 * DAY }),

@@ -26,7 +26,7 @@ import { resetOutboxStore, wantOutboxItem } from "./store";
  * `ticked` (the roster's Select 6: the summary list), `results` (its Send 6, one row refused), `changed` (Show
  * changes open), `editing` (Edit in place), `stale` (an out-of-date change: Discard and Ask the thread again),
  * `scheduled` (a mail he timed: Cancel send and Send now), `done` (Done by day, with a discard's words, a put-away
- * out-of-date change and a phone's press), `loading` (the list's and the detail's bones), `grants` (the grants sheet over Sent), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
+ * out-of-date change and a phone's press), `loading` (the list's and the detail's bones), `grants` (the grants sheet over Sent), `grantsReading` (the sheet opened before the page's first read answered: its bones), `kinds` (Waiting with a held item of six kinds; `pick` 0 is the
  * mail, 1 an invite, 5 a payload that could not be read, 6 a reply whose event LifeOS did not read; the calendar acts' LifeOS session did not answer), `kindsSilent` (the same, the host silent on its LifeOS status: the acts name it, with Retry), `unread` (`kinds` with the box signed out of LifeOS: the held mail could not be read whole, and its note says why with the computer named and Sign in), `longGuest` (`kinds` with `pick` 1: the invite, opened, with a guest whose long name and long address wrap in the column), `given` (Sent from a computer whose key may not grant) and `loadingAct` (Sent while the mail's own view loads).
  * Rendered by nothing in the app.
  */
@@ -265,6 +265,7 @@ type State =
   | "empty"
   | "failed"
   | "grants"
+  | "grantsReading"
   | "kinds"
   | "kindsSilent"
   | "unread"
@@ -310,6 +311,7 @@ const answers = (method: string, params: { show?: string; ref?: { id: string }; 
       if (kinds()) return { items: pickedKinds(), waiting: KINDS.length };
       return state === "edits" ? { items: waitingEdits(), waiting: EDITS.length } : { items: [], waiting: 0 };
     case "work.outbox.grants":
+      if (state === "grantsReading") return new Promise(() => {});
       return { grants: state === "grants" ? GRANTS : [] };
     case "work.outbox.offers":
       return { offers: state === "offer" || state === "given" ? [OFFER] : [] };
@@ -402,7 +404,7 @@ export function OutboxPreview({ state: s = "offer", pick: p = 0 }: { state?: Sta
   usePressNamed(s === "ticked" || s === "results" ? "Select 6" : s === "changed" ? "Show changes" : s === "editing" ? "Edit" : null, 240);
   usePressNamed(s === "results" ? "Send 6" : null, 480);
   // Grants is the header's own press.
-  usePressNamed(s === "grants" ? "Grants" : null, 80);
+  usePressNamed(s === "grants" || s === "grantsReading" ? "Grants" : null, 80);
   // `longGuest` opens the picked row, so a narrow window shows its detail in the list's place.
   useEffect(() => {
     if (s !== "longGuest") return;
