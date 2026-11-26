@@ -152,6 +152,14 @@ describe("the Tasks view", () => {
     expect(row.className).not.toContain("min-h-11");
   });
 
+  // Council round 1 (R1-B13): the tick's press ends where the title starts, so a press on the title opens the row.
+  it("reaches the tick's press 8px a side, never into the title 8px on", () => {
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} />);
+    const tick = screen.getByRole("checkbox", { name: "Mark Send Dana the budget done" });
+    expect(tick.className).toContain("after:-inset-x-2");
+    expect(tick.className).not.toContain("after:-inset-x-3");
+  });
+
   it("opens the sheet of a task a person's page asks for", async () => {
     render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} openTask={{ id: "t3" }} />);
     const dialog = await screen.findByRole("dialog");
@@ -455,7 +463,17 @@ describe("Tasks coming back", () => {
     localStorage.clear();
     render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} openTask={{ id: "t1" }} workspaceId="ws2" />);
     await screen.findByRole("dialog");
-    expect(returnOf("ws2").places?.tasks).toEqual({ task: "t1" });
+    // Asked for by id (Work search, a person's page), so it comes back read by id: never closed for leaving the list.
+    expect(returnOf("ws2").places?.tasks).toEqual({ task: "t1", byId: true });
+  });
+
+  // Council round 1 (R1-B12): a done task's sheet he opened from Work search is open again after a relaunch.
+  it("opens again a sheet asked for by id, though the open list does not hold its task", async () => {
+    keepPlace("ws", "tasks", { task: "done-1", byId: true });
+    render(<Tasks client={fakeTasksClient(rows)} startThread={() => {}} workspaceId="ws" />);
+    await act(async () => {});
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(returnOf("ws").places?.tasks).toEqual({ task: "done-1", byId: true });
   });
 
   it("a task done since opens nothing, quietly", async () => {

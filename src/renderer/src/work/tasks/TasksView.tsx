@@ -196,10 +196,11 @@ export function Tasks({
   filing.current = { place, projects };
   const start = useMemo(() => (task: Task) => void startFiled(latest.current, filing.current.place, chipOf(task), projectOfTask(task, filing.current.projects)), []);
   const startCode = useMemo((): CodeThreadStart => (about, at) => latest.current(about, at), []);
-  // The task whose sheet is open, kept in the workspace's record (lib/workReturn.ts) so coming back opens it again.
+  // The task whose sheet is open, kept in the workspace's record (lib/workReturn.ts) so coming back opens it again; one
+  // asked for by id (a done task from Work search) comes back read by id, never closed for not being on the list.
   const [opened, setOpened] = useState<Opened>(() => {
-    const kept = workspaceId ? keptPlace<{ task: string }>(workspaceId, "tasks", { task: "string" }).task : undefined;
-    return kept ? { id: kept, listed: true } : null;
+    const kept = workspaceId ? keptPlace<{ task: string; byId: boolean }>(workspaceId, "tasks", { task: "string", byId: "boolean" }) : {};
+    return kept.task ? { id: kept.task, listed: !kept.byId } : null;
   });
   const open = useMemo(() => (task: Task) => setOpened({ id: task._id, listed: true }), []);
   const takenRef = useRef(onOpenTaken);
@@ -210,7 +211,7 @@ export function Tasks({
     takenRef.current?.();
   }, [openTask]);
   useEffect(() => {
-    if (workspaceId) keepPlace(workspaceId, "tasks", { task: opened?.id });
+    if (workspaceId) keepPlace(workspaceId, "tasks", opened ? { task: opened.id, ...(opened.listed ? {} : { byId: true }) } : { task: undefined });
   }, [workspaceId, opened]);
   // A task opened from the list and done or dropped since (here or on another computer) is no longer open: its sheet closes, quietly.
   const missing = !!opened?.listed && !!tasks && !tasks.some((t) => t._id === opened.id);
@@ -467,7 +468,8 @@ const TaskRow = memo(function TaskRow({
       <ContextMenuTrigger render={<div role="listitem" {...place} className={cn("group/row flex min-h-8 items-start gap-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
         {/* The open control lies over the whole row, so keyboard focus rings the row; the tick and Start sit above it. */}
         <ItemButton data-row-open aria-label={`Open ${task.title}`} onClick={() => onOpen(task)} className={ROW_OPEN} />
-        <Checkbox shape="round" className={cn("mt-0.5", ROW_CONTROLS)} checked={ticked} disabled={doneHeld} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
+        {/* Its press reaches 8px a side, a 32px target that ends where the title starts, so the title opens the row. */}
+        <Checkbox shape="round" className={cn("mt-0.5 after:-inset-x-2", ROW_CONTROLS)} checked={ticked} disabled={doneHeld} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
         <span className={cn("flex min-w-0 flex-1 flex-col", ROW_SHOWS)}>
           <span className={cn("max-w-full truncate text-[13px] leading-5 text-foreground transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
           {meta ? <span className="max-w-full truncate text-xs text-muted-foreground">{meta}</span> : null}
@@ -478,7 +480,8 @@ const TaskRow = memo(function TaskRow({
           </span>
         ) : null}
         {due ? <span className={cn("shrink-0 text-xs leading-5 tabular-nums", ROW_SHOWS, overdue ? "text-destructive" : "text-muted-foreground", yields("row"))}>{due}</span> : null}
-        <span className={cn("absolute top-1.5 right-2", reveal("row", { row: true, overlay: true }))}>
+        {/* The 24px press centred on the title's 20px line. */}
+        <span className={cn("absolute top-1 right-2", reveal("row", { row: true, overlay: true }))}>
           {thread === undefined ? null : thread ? (
             <Button size="xs" variant="ghost" onClick={() => openThread(thread, () => onStart(task))}>
               Open thread
