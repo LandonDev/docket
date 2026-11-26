@@ -203,6 +203,11 @@ export interface StatusLine {
   wrap?: boolean;
   /** It is about a save the kind also tells through `saved`: where the save line is drawn (Files), it is said there alone. */
   saving?: boolean;
+  /**
+   * A quiet line over an item he can only read: History stands at the line's end, not in the kind's bar, so the item
+   * has one row above it, not a bar holding History alone over the line (as a read-only deck's Present).
+   */
+  history?: boolean;
 }
 
 export interface WrittenLine {

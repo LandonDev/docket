@@ -15,6 +15,7 @@ import { FailedHost, FetchState, OpenFailed, useFailedWords } from "./FetchState
 import { CutDetail, QuietLine } from "./QuietLine";
 import { downloadItem, keepItem, useItemFetch } from "./fetched";
 import { useKeptState } from "./store";
+import { History } from "../icons";
 
 /**
  * The bars and bodies whose kind's code did not load, by chunk. A body's Retry loads the code again (`loadAgain`), and
@@ -81,8 +82,24 @@ export function useKindModule(chunk: Chunk<CanvasKindModule>): CanvasKindModule 
 }
 
 /** One line of state across the item: a source that did not answer, or one that needs the person. Never a second banner. A cut detail shows whole on hover and on focus. */
-export function StateLine({ line }: { line: StatusLine }) {
-  if (line.tone === "quiet") return <QuietLine data-canvas-state="quiet" word={line.word} detail={line.detail} press={line.action} />;
+export function StateLine({ line, onHistory }: { line: StatusLine; onHistory?: (() => void) | undefined }) {
+  if (line.tone === "quiet")
+    return (
+      <QuietLine
+        data-canvas-state="quiet"
+        word={line.word}
+        detail={line.detail}
+        press={line.action}
+        end={
+          line.history && onHistory ? (
+            <Button variant="ghost" size="xs" className="shrink-0" onClick={onHistory}>
+              <History />
+              History
+            </Button>
+          ) : null
+        }
+      />
+    );
   return <LoudLine line={line} />;
 }
 
@@ -206,6 +223,10 @@ export function CanvasPane({
   // A mail's attachment comes to the host first: the kind mounts once its bytes are there (fetched.ts).
   const fetched = useItemFetch(environmentId, item);
   const waiting = fetched && fetched.fetch.phase !== "ready" ? fetched.fetch : null;
+  // History where he can open it: in the bar, or at the end of a read-only item's quiet line (`StatusLine.history`).
+  const history = def.history && !historyOpen && module && !fetched && feeds.ready !== false ? shell.openHistory : undefined;
+  const line = feeds.status && !(saveLine && feeds.status.saving) ? feeds.status : null;
+  const historyOnLine = !!history && line?.tone === "quiet" && !!line.history;
   const tools = waiting ? (waiting.phase === "fetching" ? <Skeleton aria-hidden data-bar-bone className="h-3 w-30" /> : undefined) : Bar ? <Bar {...props} /> : module || failed || def.bar === false ? undefined : <Skeleton aria-hidden data-bar-bone className="h-3 w-30" />;
   return (
     <div
@@ -224,13 +245,13 @@ export function CanvasPane({
         tools={tools}
         onDownload={fetched && !waiting ? () => downloadItem(environmentId, item) : undefined}
         onKeep={fetched && !waiting && item.workspaceId ? () => keepItem(environmentId, item.id) : undefined}
-        onHistory={def.history && !historyOpen && module && !fetched && feeds.ready !== false ? shell.openHistory : undefined}
+        onHistory={historyOnLine ? undefined : history}
         lead={barLead}
         end={barEnd}
         savedAt={saveLine && feeds.saved?.state === "saved" ? (feeds.saved.at ?? null) : null}
       />
       <FailedHost.Provider value={environmentId}>
-        {feeds.status && !(saveLine && feeds.status.saving) ? <StateLine line={feeds.status} /> : null}
+        {line ? <StateLine line={line} onHistory={history} /> : null}
         <div data-canvas-body className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-auto">
           {waiting ? <FetchState fetch={waiting} kind={item.kind} name={item.title} onRetry={fetched!.retry} /> : (
             <PaneShell.Provider value={shell}>
