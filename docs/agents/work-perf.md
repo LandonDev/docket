@@ -110,6 +110,7 @@ The bench pins itself, the headless Electron host, and its children to the last 
 | `--boot` (H06) | Time to the first hello, the first and focused resumed threads, and all 40 resumed threads. The default seed is 48 threads and 6,000 rows. `--seed-size real` uses 2,000 threads and 1,000,000 rows, with 30,000 in the longest thread. |
 
 `--boot --copy <userData>` measures only hello on a scrubbed copy. It needs the scrub tool's marker check and an empty resume ledger. Boot writes to the supplied scratch copy and uses its own HOME, disables the remote listener, and routes model calls to loopback. Before startup it points the copy’s workspace, project and thread paths at missing scratch paths. It restores those paths after Electron stops. It lets the background index finish within the boot window so a second run can time a steady boot. Each result and table includes the one-minute load and agents slice anonymous memory at the start and end. The bench writes results, including failures, under the main checkout's `.temp-code/plans/perf2/runs/host-<scene>-<stamp>.json`.
+
 ### The code family (`--family code`)
 
 `bun run perf --family code` stands the pair up for the rest of Docket: Work off, and `box` seeded before it starts by
