@@ -39,8 +39,9 @@ describe("when the save line says Saving…", () => {
 
 describe("a Word file's line", () => {
   const at = new Date(2026, 10, 25, 21, 12).getTime();
-  it("states its file on first open, never Saving with nothing typed", () => {
-    expect(wordLine({ since: true, auto: true }, "Teams", "the Windows VM", at, false)).toEqual({ state: "copy", words: "The Word file in Teams has not changed" });
+  it("states its file on first open, and before the first save says his edits wait, never Saving inside the pause", () => {
+    expect(wordLine({ since: false, auto: true }, "Teams", "the Windows VM", at, false)).toEqual({ state: "copy", words: "The Word file in Teams has not changed" });
+    expect(wordLine({ since: true, auto: true }, "Teams", "the Windows VM", at, false)).toEqual({ state: "copy", words: "Changes wait here" });
   });
   it("keeps its last save inside Word's pause, says Saving… past it, and keeps the computer's name", () => {
     expect(wordLine({ since: true, auto: true, at }, "Teams", "the Windows VM", at, false)).toEqual({ state: "saved", words: "Saved to the Windows VM 9:12 PM" });
