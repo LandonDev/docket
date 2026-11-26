@@ -6,14 +6,14 @@
  * under it, out of reach, with its place kept; Edit puts him back in the
  * words. The editor and the frame are stand-ins here: each has its own test.
  */
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasItem } from "@shared/work";
 import type { CanvasShell, MoreEntry } from "../canvas/kind";
 import type { PreviewSource } from "../formats/preview";
 
 const FILE = { at: "file", host: "box", path: "/w/Run of show.tcdoc" } as const;
-const opened = vi.hoisted(() => ({ role: "edit" as "edit" | "view", focused: 0, editors: 0, schema: 1 as number | undefined, props: [] as Record<string, unknown>[], lead: "", rows: [] as unknown[] }));
+const opened = vi.hoisted(() => ({ role: "edit" as "edit" | "view", focused: 0, editors: 0, schema: 1 as number | undefined, props: [] as Record<string, unknown>[], lead: "", rows: [] as unknown[], unreadable: 0 }));
 
 vi.mock("./host", () => ({
   // No save facts: the save line's own test is docs.test.ts.
@@ -48,9 +48,17 @@ vi.mock("work-kit/editor", async (original) => {
   return {
     ...(await original<typeof import("work-kit/editor")>()),
     // The shared editor, standing in: it hands the body an editor as the real one does.
-    DocumentEditor: (props: { onEditor?(editor: unknown): void; editable?: boolean } & Record<string, unknown>) => {
-      const { onEditor, editable } = props;
+    DocumentEditor: (props: { onEditor?(editor: unknown): void; onStatus?(status: unknown): void; editable?: boolean } & Record<string, unknown>) => {
+      const { onEditor, onStatus, editable } = props;
       opened.props.push(props);
+      useEffect(() => {
+        // An editor that cannot open its text says so, as the real one's status line does, and clears it as it leaves.
+        if (opened.unreadable > 0) {
+          opened.unreadable--;
+          onStatus?.({ kind: "unreadable", message: "This document could not be opened.", retry: null });
+          return () => onStatus?.(null);
+        }
+      }, [onStatus]);
       useEffect(() => {
         opened.editors++;
         // The first block's words, as the real editor's state holds them (doc > group > block > content).
@@ -89,6 +97,7 @@ afterEach(() => {
   opened.editors = 0;
   opened.lead = "";
   opened.rows = [];
+  opened.unreadable = 0;
 });
 
 const ITEM = { id: "d1", sessionId: "t1", kind: "document", title: "Run of show", source: FILE } as CanvasItem;
@@ -266,5 +275,34 @@ describe("Preview, a state of the document", () => {
     view.unmount();
     expect(workCommands.has("export")).toBe(false);
     expect(document.querySelector("[data-fake-preview]")).toBeNull();
+  });
+});
+
+describe("a document the editor could not open", () => {
+  it("is the centred failure with Retry in the body's place, never a red line over a blank pane; Retry starts the editor afresh", async () => {
+    opened.role = "view";
+    opened.unreadable = 1;
+    const lines: unknown[] = [];
+    const ready: boolean[] = [];
+    const shell = { statusLine: (line: unknown) => void lines.push(line), ready: (r: boolean) => void ready.push(r), more: () => {}, mode: () => {}, written: () => {}, review: () => {}, presence: () => {}, ask: () => {} } as unknown as CanvasShell;
+    const view = render(<Body item={ITEM} source={FILE} env="box" state={undefined} setState={() => {}} shell={shell} />);
+    const failed = await waitFor(() => {
+      const found = view.container.querySelector<HTMLElement>("[data-canvas-failed]");
+      expect(found).not.toBeNull();
+      return found!;
+    });
+    expect(failed.textContent).toContain("Couldn't open this document");
+    expect(lines.filter(Boolean)).toEqual([]);
+    expect(view.container.querySelector("[data-fake-editor]")).toBeNull();
+    expect(ready.at(-1)).toBe(false);
+    // The editor leaving clears its status: the failure stays until he presses Retry.
+    await act(async () => {});
+    expect(view.container.querySelector("[data-canvas-failed]")).not.toBeNull();
+    const editors = opened.editors;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(view.container.querySelector("[data-fake-editor]")).not.toBeNull());
+    expect(opened.editors).toBe(editors + 1);
+    expect(view.container.querySelector("[data-canvas-failed]")).toBeNull();
+    expect(ready.at(-1)).toBe(true);
   });
 });

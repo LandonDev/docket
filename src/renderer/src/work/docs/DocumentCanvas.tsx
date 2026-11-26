@@ -128,11 +128,12 @@ export function presenceOf(people: readonly DocumentPresence[], palette: readonl
 /**
  * The editor's sentence for what is wrong, as the pane's one state line. Offline (and waiting to open, which is offline
  * too) asks nothing of him: it is not the pane's line but one quiet sentence laid over the text's top padding
- * (`offlineWords`, `OfflineLine`), so the text never moves when the link blinks.
+ * (`offlineWords`, `OfflineLine`), so the text never moves when the link blinks. A document that could not be opened
+ * has no text to put a line over: the body says it (`OpenFailed`), never the line.
  */
 export function statusLineOf(status: DocumentStatus | null): Parameters<CanvasShell["statusLine"]>[0] {
-  if (!status || status.kind === "offline" || status.kind === "waiting") return null;
-  const word = { refused: "Read only", unreadable: "Did not open", seed: "Not set up" }[status.kind];
+  if (!status || status.kind === "offline" || status.kind === "waiting" || status.kind === "unreadable") return null;
+  const word = { refused: "Read only", seed: "Not set up" }[status.kind];
   return {
     tone: status.kind === "refused" ? "quiet" : "failed",
     word,
@@ -413,6 +414,10 @@ function AttachmentBody(props: CanvasBodyProps<DocState>) {
 function DocBody({ item, source, env, state, setState, shell, more: own = NO_MORE }: CanvasBodyProps<DocState> & { more?: MoreEntry[] }) {
   const [attempt, setAttempt] = useState(0);
   const opened = useOpened(env, source, attempt, item.id);
+  // The editor could not open its text (a name the host refused, or a link to a document he may only read that dropped
+  // before the text came): Retry starts the editor afresh, a new session to the host.
+  const [unreadable, setUnreadable] = useState(false);
+  const [session, setSession] = useState(0);
   // A Google Doc's own verbs (work/google): Write to Google, Read again, Open in Google. Its promise settles once the
   // open it asked answers, so a Retry spins until then.
   const waiting = useRef<(() => void)[]>([]);
@@ -438,10 +443,10 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
   const saveAs = useCallback(() => openSaveAs(item.id), [item.id]);
   // Before paint, so History and the bone never show for a frame they should not.
   useLayoutEffect(() => {
-    const now: OpenState = opened === null ? "opening" : "open" in opened ? "open" : "failed";
+    const now: OpenState = opened === null ? "opening" : "open" in opened && !unreadable ? "open" : "failed";
     markOpen(item.id, now);
     shell.ready?.(now === "open");
-  }, [item.id, opened, shell]);
+  }, [item.id, opened, unreadable, shell]);
   useEffect(() => () => markOpen(item.id, null), [item.id]);
   const [root, canvasWidth] = useWidth();
   // Flow or Pages, and Pages' zoom: his own pick for this item, else what the canvas's width says as it opens (a later resize changes nothing).
@@ -479,6 +484,16 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
   }, []);
   // A failed open is said once, centred with Retry, in the body's place (`OpenFailed`).
   if (opened && "error" in opened) return <OpenFailed kind="document" why={opened.error} onRetry={reopen} />;
+  if (unreadable)
+    return (
+      <OpenFailed
+        kind="document"
+        onRetry={() => {
+          setUnreadable(false);
+          setSession((n) => n + 1);
+        }}
+      />
+    );
   return (
     <DropImport env={env} sessionId={item.sessionId} editor={null}>
       <div ref={root} className="relative flex h-full flex-col">
@@ -495,7 +510,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
                 <ItemBones title={<Title text={item.title} />} />
               ) : "open" in opened ? (
                 <Opened
-                  key={`${opened.host.env}|${opened.open.doc}`}
+                  key={`${opened.host.env}|${opened.open.doc}|${session}`}
                   host={opened.host}
                   open={opened.open}
                   shell={shell}
@@ -508,6 +523,7 @@ function DocBody({ item, source, env, state, setState, shell, more: own = NO_MOR
                   rowSlot={rowSlot}
                   lineSlot={lineSlot}
                   pages={pages}
+                  onUnreadable={() => setUnreadable(true)}
                   {...(workspace ? { onSaveAs: saveAs } : {})}
                   shareable={!!shareTargetOf(source, "document")}
                 />
@@ -639,6 +655,7 @@ function Opened({
   lineSlot = null,
   pages,
   onSaveAs,
+  onUnreadable,
   shareable = false,
 }: {
   host: DocHost;
@@ -659,6 +676,8 @@ function Opened({
   onSaveAs?(): void;
   /** Share answers this document (its header's Share, More's Share… and File → Share… open one sheet) */
   shareable?: boolean;
+  /** the editor could not open the text: the body says so in its place (told once; the editor leaving says nothing) */
+  onUnreadable?(): void;
 }) {
   const doc = useDocument(host, open);
   const [offline, setOffline] = useState<{ word: string; detail: string } | null>(null);
@@ -745,12 +764,23 @@ function Opened({
     toldOpened.current = true;
     onOpened?.(page !== null);
   }, [editor, page, onOpened]);
-  // Drawn as sheets: the bar's fact follows the editor, and goes with the sheets.
+  // Drawn as sheets: the bar's fact follows the editor, and goes with the sheets. Under Preview it goes too: Preview
+  // says the page of what it drew, and one count is all he reads. It comes back on Edit where the editor left it.
   const sheets = pages?.view === "pages" && page !== null;
-  const onPages = useCallback((at: PageAt) => tellPage(itemId, at), [itemId]);
+  const lastAt = useRef<PageAt | null>(null);
+  const hidden = useRef(previewing);
+  const onPages = useCallback(
+    (at: PageAt) => {
+      lastAt.current = at;
+      if (!hidden.current) tellPage(itemId, at);
+    },
+    [itemId],
+  );
   useEffect(() => {
-    if (!sheets) tellPage(itemId, null);
-  }, [sheets, itemId]);
+    hidden.current = previewing;
+    if (!sheets) lastAt.current = null;
+    tellPage(itemId, sheets && !previewing ? lastAt.current : null);
+  }, [sheets, previewing, itemId]);
   useEffect(() => () => tellPage(itemId, null), [itemId]);
   const canSet = open.role === "edit";
   const live = useRef({ editor, suggestions: review.hooks?.count ?? 0, threads: doc.threads, page });
@@ -816,6 +846,7 @@ function Opened({
         onStatus={(status) => {
           shell.statusLine(statusLineOf(status));
           setOffline(offlineWords(status, hostName(host.env)));
+          if (status?.kind === "unreadable") onUnreadable?.();
         }}
         onPresence={(people) => shell.presence(presenceOf(people))}
         onAsk={onAsk}

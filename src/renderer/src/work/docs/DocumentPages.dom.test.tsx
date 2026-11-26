@@ -73,10 +73,10 @@ vi.mock("work-kit/editor", async (original) => {
     },
   };
 });
-const previews = vi.hoisted(() => [] as { source: unknown }[]);
+const previews = vi.hoisted(() => [] as { source: unknown; onClose?(): void }[]);
 vi.mock("../formats/PreviewFrame", () => ({
-  Preview: (props: { source: unknown }) => {
-    previews.push({ source: props.source });
+  Preview: (props: { source: unknown; onClose?(): void }) => {
+    previews.push({ source: props.source, ...(props.onClose ? { onClose: props.onClose } : {}) });
     return <div data-fake-preview />;
   },
 }));
@@ -250,6 +250,21 @@ describe("Page 2 of 5 in the kind's bar", () => {
     expect(el.className).toContain("tabular-nums");
     expect(el.className).toContain("text-muted-foreground");
     expect(el.hasAttribute("data-narrow-hide")).toBe(true);
+  });
+
+  it("goes while Preview is open, which says the page of what it drew, and is back on Edit where the editor is", async () => {
+    const view = await mount();
+    await act(async () => (given().onPages as (at: unknown) => void)({ page: 2, count: 5 }));
+    expect(fact()).toBe("Page 2 of 5");
+    await act(async () => view.more().find((row) => row.id === "export")!.run());
+    expect(document.querySelector("[data-fake-preview]")).not.toBeNull();
+    expect(fact()).toBeNull();
+    // The editor under Preview still tells where it is: the bar keeps it for Edit.
+    await act(async () => (given().onPages as (at: unknown) => void)({ page: 3, count: 5 }));
+    expect(fact()).toBeNull();
+    await act(async () => previews.at(-1)!.onClose!());
+    expect(document.querySelector("[data-fake-preview]")).toBeNull();
+    expect(fact()).toBe("Page 3 of 5");
   });
 
   it("is gone in Flow, and when the document goes", async () => {

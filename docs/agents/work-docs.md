@@ -147,13 +147,17 @@ offline line says why).
 
 Offline (and waiting to open, which is offline too) is not the pane's state
 line: `statusLineOf` gives the pane only what needs him or says how the
-document is (Read only, Did not open), and `offlineWords` makes one quiet
+document is (Read only, Not set up), and `offlineWords` makes one quiet
 sentence naming the computer ("Offline." "Edits stay here until the box is
 back."; "It opens for editing once the box is back."), drawn by `OfflineLine`
 in a slot laid over the scroller's 32px top padding, out of the text's flow. In Pages, where the scroller has no
 padding and the stage's own is 16px, the line wears the stage's ground (`group-has-[.te-pages-stage]/doc-body`) and the
 scroller always keeps 16px more over it (`OFFLINE_ROOM`), so the first sheet's top is never under the line and never
-moves when it comes or goes.
+moves when it comes or goes. A document the editor could not open (a name the
+host refused, or a read-only document whose link dropped before its text came:
+work-kit's `unreadable`) has no text to put a line over: the body is the
+centred `OpenFailed`, "Couldn't open this document" with Retry, which starts
+the editor afresh (a new session to the host), and the bar draws nothing.
 work-kit's 1.5 s grace still holds it back for a blink. The preview page
 `DocumentCanvas.preview.tsx` draws the editor as a Files tab has it: the
 header's save line, the format row, find with Replace and this line; not Pages,
@@ -351,7 +355,9 @@ the pane holds the view, the zoom, the bar's fact and the print.
 - **"Page 2 of 5"** comes from the editor's `onPages` as he scrolls and is
   kept by item id in a small store (`tellPage`), which the kind's `Bar`
   reads; it is cleared when the view is Flow, when the document is not
-  styled, and when the document goes.
+  styled, and when the document goes. While Preview is open it goes too
+  (Preview says the page of what it drew, and one count is all he reads),
+  and comes back on Edit where the editor last told it.
 - **The tokens** are six in `index.css`, a value per theme: `--page`,
   `--page-edge`, `--page-ink`, `--page-ink-2`, `--page-rule`, `--page-dim`.
   work-kit's `pages.css` reads them by those names, with fallbacks that only

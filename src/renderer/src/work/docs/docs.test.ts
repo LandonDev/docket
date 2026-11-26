@@ -564,9 +564,9 @@ describe("the document's offline line", () => {
     expect(offlineWords(status("waiting"), "this Mac")).toEqual({ word: "Offline.", detail: "It opens for editing once this Mac is back." });
     expect(offlineWords(status("refused"), "the box")).toBeNull();
     expect(offlineWords(null, "the box")).toBeNull();
-    // Never amber: read only is quiet, a document that did not open is a failure.
+    // Never amber: read only is quiet. A document that did not open has no text to put a line over: the body says it.
     expect(statusLineOf(status("refused"))).toMatchObject({ tone: "quiet", word: "Read only" });
-    expect(statusLineOf(status("unreadable"))).toMatchObject({ tone: "failed", word: "Did not open" });
+    expect(statusLineOf(status("unreadable"))).toBeNull();
     expect(statusLineOf(null)).toBeNull();
   });
 });
