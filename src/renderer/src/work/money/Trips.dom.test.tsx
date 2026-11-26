@@ -69,7 +69,9 @@ describe("trips and pay from the calendar", () => {
     await settle();
     const row = document.querySelector("[data-calendar-offer=e1]") as HTMLElement;
     expect(row.textContent).toContain("Sat Nov 21");
-    expect([...row.querySelectorAll("[data-slot=facts] > span")].map((f) => f.textContent)).toEqual(["$75.00", "24 mi"]);
+    expect([...row.querySelectorAll("[data-slot=facts] > span")].map((f) => f.textContent)).toEqual(["Sat Nov 21", "24 mi"]);
+    // The fee stands in the amount's cell, on the edge a receipt's amount ends on.
+    expect(row.querySelector(".text-end")?.textContent).toBe("$75.00");
     expect(row.textContent).not.toContain("·");
     expect(within(document.querySelector("[data-calendar-offer=e2]") as HTMLElement).getByRole("button", { name: "Review Freshman at Oak Ridge" })).toBeTruthy();
     // One whole offer: no Add all.

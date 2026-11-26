@@ -150,7 +150,7 @@ function ReceiptRow({ env, item, onReview, onDiscard }: { env: string; item: Wai
       {reading ? (
         <span className="flex min-w-0 items-center gap-2 text-muted-foreground">
           <Spinner aria-hidden className="size-3.5" />
-          Reading
+          Reading…
         </span>
       ) : (
         <span className="flex min-w-0 items-baseline gap-1">
@@ -226,7 +226,7 @@ export function ReceiptPicture({ env, of, name }: { env: string; of: { id: strin
   );
 }
 
-/** The calendar's offers: the day, the event, its fee and miles; Add when whole, else Review. */
+/** The calendar's offers: the event, its day and miles, its fee; Add when whole, else Review. */
 function CalendarRows({ env, workspaceId, read, adding, onReview, reload }: { env: string; workspaceId: string; read: MoneyRead; adding: boolean; onReview: (offer: CalendarOffer) => void; reload: () => Promise<void> }) {
   const [busy, setBusy] = useState<string | null>(null);
   return (
@@ -246,12 +246,12 @@ function CalendarRows({ env, workspaceId, read, adding, onReview, reload }: { en
             <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground">
               <Calendar className="size-3.5" />
             </span>
+            {/* As a receipt's: the name, then its day; the fee on money's one edge, the miles left in the words. */}
             <span className="flex min-w-0 items-baseline gap-1">
-              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{offerDay(offer.date)}</span>
               <span className="min-w-0 truncate">{offer.title}</span>
-              <Facts className="shrink-0 text-xs text-muted-foreground" parts={[offer.fee !== null ? formatMoney(offer.fee) : null, offer.miles !== null ? `${offer.miles.toLocaleString("en-US")} mi` : null]} />
+              <Facts className="shrink-0 text-xs text-muted-foreground tabular-nums" parts={[offerDay(offer.date), offer.miles !== null ? `${offer.miles.toLocaleString("en-US")} mi` : null]} />
             </span>
-            <span />
+            <span className="text-end tabular-nums">{offer.fee !== null ? formatMoney(offer.fee) : null}</span>
             <Actions>
               {whole ? (
                 <Button variant="ghost" size="sm" disabled={busy !== null || adding} onClick={add} aria-label={`Add ${offer.title}`}>

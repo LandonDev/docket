@@ -539,12 +539,13 @@ its place, with no fade. Nothing is written from a kept read.
   Entry…, Trip…, Invoice…, and Purchase request… in a Purdue job) and More
   (Open ledger, Open mileage log, Export…, Mileage rate…); then To confirm,
   the figures, the year's chart, By category, Owed, Entries and the mileage
-  line. `model.ts` is its pure half. Under 520px (the view's `money`
-  container, `layout.ts`) Entries' Category gives way to a 12px muted second
+  line. `model.ts` is its pure half. Under 640px (the view's `money`
+  container, `layout.ts`; the smallest window beside the rail leaves the view
+  about 600) Entries' Category gives way to a 12px muted second
   line under Who and its Date column narrows to 64px, By category and Entries end their amounts 48px in (the
   paperclip's room) so the names keep theirs, Owed's who and what wrap as
   one run of words (`OWED_LINE`), never cut beside a live Paid, whose name
-  carries both, and Month or Year leaves the
+  carries both. Under 520px of the header Month or Year leaves the
   header for two ticked rows at the head of More, so Add and More stay in
   sight. Both sides measure the header's content box against one 520px
   (`WIDE_HEAD`, `headIsNarrow` in layout.ts), More by ResizeObserver's

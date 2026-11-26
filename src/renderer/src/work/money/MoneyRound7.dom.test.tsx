@@ -160,24 +160,24 @@ describe("Owed's verbs", () => {
     const paid = screen.getAllByRole("button", { name: /^Paid: / })[0];
     expect((paid.querySelector("[data-slot=busy-label] > span") as HTMLElement).className).toContain("justify-end");
   });
-  it("under 520px keep who owes beside Paid, the days under the name", async () => {
+  it("under 640px keep who owes beside Paid, the days under the name", async () => {
     mount();
     await settle();
     const row = screen.getAllByRole("button", { name: /^Paid: / })[0].closest("li")!;
-    expect(row.className).toContain("@max-[520px]/money:grid-cols-[minmax(0,1fr)_5rem_104px]");
+    expect(row.className).toContain("@max-[640px]/money:grid-cols-[minmax(0,1fr)_5rem_104px]");
     const [name, days] = Array.from(row.children) as HTMLElement[];
-    expect(days.className).toContain("@max-[520px]/money:hidden");
+    expect(days.className).toContain("@max-[640px]/money:hidden");
     const second = name.lastElementChild as HTMLElement;
-    expect(second.className).toContain("@max-[520px]/money:block");
+    expect(second.className).toContain("@max-[640px]/money:block");
     expect(second.textContent).toBe(days.textContent);
   });
-  it("under 520px let who and what wrap as one run of words, never cut beside Paid, and Paid name both", async () => {
+  it("under 640px let who and what wrap as one run of words, never cut beside Paid, and Paid name both", async () => {
     mount();
     await settle();
     const paid = screen.getByRole("button", { name: "Paid: State Officials Assn, Second-half dues" });
     const line = paid.closest("li")!.firstElementChild!.firstElementChild as HTMLElement;
-    expect(line.className).toContain("@max-[520px]/money:block");
-    for (const fact of Array.from(line.children)) expect(fact.className).toContain("@max-[520px]/money:whitespace-normal");
+    expect(line.className).toContain("@max-[640px]/money:block");
+    for (const fact of Array.from(line.children)) expect(fact.className).toContain("@max-[640px]/money:whitespace-normal");
   });
 });
 

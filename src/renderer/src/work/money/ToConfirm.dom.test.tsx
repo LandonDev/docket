@@ -125,7 +125,7 @@ describe("receipts in", () => {
     await settle();
     const list = within(screen.getByRole("region", { name: "To confirm" }));
     expect(list.getAllByRole("button", { name: /^Review/ })).toHaveLength(2);
-    expect(list.getByText("Reading")).toBeTruthy();
+    expect(list.getByText("Reading…")).toBeTruthy();
     fireEvent.click(list.getByRole("button", { name: "Review Corner Fuel" }));
     const dialog = await screen.findByRole("dialog", { name: "Confirm receipt 1 of 2" });
     const amount = within(dialog).getByLabelText("Amount") as HTMLInputElement;
@@ -188,7 +188,7 @@ describe("receipts in", () => {
     render(<View {...props} />);
     await settle();
     const list = within(screen.getByRole("region", { name: "To confirm" }));
-    expect(list.getByText("Reading")).toBeTruthy();
+    expect(list.getByText("Reading…")).toBeTruthy();
     expect(list.queryByRole("button", { name: /^Review/ })).toBeNull();
   });
 });

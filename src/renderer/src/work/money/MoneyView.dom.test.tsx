@@ -322,13 +322,13 @@ describe("the Money view", () => {
     }
   });
 
-  it("under 520px folds Category into Who's second line (the view's container query)", async () => {
+  it("under 640px folds Category into Who's second line (the view's container query)", async () => {
     mount();
     await settle();
-    expect(screen.getByRole("columnheader", { name: "Category" }).className).toContain("@max-[520px]/money:hidden");
+    expect(screen.getByRole("columnheader", { name: "Category" }).className).toContain("@max-[640px]/money:hidden");
     const row = document.querySelector("[data-money-row]")!;
     const second = row.querySelector("td:nth-child(2) span:nth-child(2)");
-    expect(second?.className).toContain("@max-[520px]/money:block");
+    expect(second?.className).toContain("@max-[640px]/money:block");
     expect(second?.textContent).toBe(row.querySelector("td:nth-child(3)")?.textContent);
   });
 
