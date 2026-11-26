@@ -99,7 +99,9 @@ as your mail after your undo time.", "Posts as you; everyone in the chat
 sees it.", "Anyone with the link opens it without signing in."), never the
 people, place, title, time or role the fields already name; a scheduled
 item's says "Sends as you.", its time leading the item: a kind's own `ActKindDef.effect`, else
-work/outbox/effects.ts, else "Carries this out as you." A change to a
+work/outbox/effects.ts, else "Carries this out as you." A computer step
+says the step by its control's word ("Presses Submit on the screen as
+you."), else what it lands on, and never the app its App row names. A change to a
 file others can open says only "Changes a file others can open." to a
 caller that cannot press, with no first words and no reason (`seenBy`).
 A held LifeOS mail read by `get` also carries `replied` when its

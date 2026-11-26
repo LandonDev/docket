@@ -39,6 +39,14 @@ describe('what a press does, in one sentence', () => {
     expect(effectOf('share.guestLink', link, 'America/Chicago')).toBe('Anyone with the link opens it without signing in.')
   })
 
+  /** Round 1's carry (R1-F10): "Does this on the screen in Chromium: the step shown." named the app twice and no step. */
+  it('says a computer step by its own word, else what it lands on, and never the app its row names', () => {
+    const app = { name: 'Chromium', bundleId: 'org.chromium.Chromium' }
+    expect(effectOf('computer.act', { app, label: 'Submit', read: { on: 'button "Submit expense"' } }, 'UTC')).toBe('Presses Submit on the screen as you.')
+    expect(effectOf('computer.act', { app, label: ' ', read: { on: 'button "Submit expense"' } }, 'UTC')).toBe('Acts on button "Submit expense" as you.')
+    expect(effectOf('computer.act', { app, label: '', read: null }, 'UTC')).toBe('Acts on the screen as you.')
+    expect(effectOf('computer.act', { app, label: 'Submit' }, 'UTC')).not.toMatch(/Chromium|step shown/)
+  })
   it('names three people, then how many more', () => {
     expect(people([{ name: 'A', address: 'a' }, 'b', { address: 'c' }])).toBe('A, b and c')
     expect(people(['a', 'b', 'c', 'd', 'e'])).toBe('a, b and 3 others')

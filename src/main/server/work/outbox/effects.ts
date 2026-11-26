@@ -60,7 +60,13 @@ const EFFECTS: Partial<Record<ActKind, (p: P, zone: string) => string | undefine
   'msform.make': (p) => `Makes ${str(p?.title) ?? 'the form'} in Microsoft Forms, where its Team sees it at once${p?.collect ? ', and starts taking answers' : ''}.`,
   'msform.publish': (p) =>
     p?.act === 'audience' ? `Changes who can answer ${str(p.title) ?? 'the form'}.` : `${p?.act === 'reopen' ? 'Reopens' : 'Opens'} ${str(p?.title) ?? 'the form'} for answers.`,
-  'computer.act': (p) => `Does this on the screen${str((p?.app as P)?.name) ? ` in ${str((p!.app as P)!.name)}` : ''}: ${str(p?.label) ?? 'the step shown'}.`,
+  // The step itself: its control's word, else what it lands on. The app has its own row under the sentence.
+  'computer.act': (p) => {
+    const label = str(p?.label)
+    if (label) return `Presses ${label} on the screen as you.`
+    const on = str((p?.read as P)?.on)
+    return on ? `Acts on ${on} as you.` : 'Acts on the screen as you.'
+  },
   // The act in his words ("Uses Purdue mail to send mail as you."), never the tool's description of itself.
   'addon.call': (p) => {
     const act = str(p?.words) ?? str(p?.tool)
