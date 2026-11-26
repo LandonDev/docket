@@ -53,8 +53,9 @@ export function TabName({ name, keep = null, titleRef }: { name: string; keep?: 
     >
       <span className="@container/tab-name col-start-1 row-start-1 min-w-0">
         {cutsMiddle(name, keep) ? (
-          // Under 4rem a start's ellipsis would leave the end a sliver: the end alone is drawn, cut at its own end.
-          <MiddleCut ref={titleRef} text={name} keep={keep} className="@max-[1.25rem]/tab-name:sr-only" startClass="@max-[4rem]/tab-name:hidden" endClass="@max-[4rem]/tab-name:max-w-full" />
+          // Under 5.5rem a start's ellipsis would leave the end a sliver: the end alone is drawn, cut at its own end, so
+          // a 128px tab (70px of name) reads "Pages.pdf" whole, never "T…Page…".
+          <MiddleCut ref={titleRef} text={name} keep={keep} className="@max-[1.25rem]/tab-name:sr-only" startClass="@max-[5.5rem]/tab-name:hidden" endClass="@max-[5.5rem]/tab-name:max-w-full" />
         ) : (
           <span ref={titleRef} className="block min-w-0 truncate @max-[1.25rem]/tab-name:sr-only">
             {name}

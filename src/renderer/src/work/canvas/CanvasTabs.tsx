@@ -12,6 +12,7 @@ import { glyphOf, type CanvasKindDef } from "./kind";
 import { CANVAS, kindDefOf } from "./registry";
 import { tabEnds, tabMin, tabShrink } from "./tabShrink";
 import { TabName } from "./TabName";
+import { shownName } from "../files/model";
 
 /**
  * The canvas pane's tab row (docs/DESIGN.md "The canvas pane"): the open
@@ -53,8 +54,10 @@ export function CanvasTabs({
   kinds?: Record<CanvasKind, CanvasKindDef>;
 }) {
   const ids = items.map((item) => item.id);
+  // A name as he reads it: Docket's own ".tcdoc" and ".tcsheet" are never shown (files/model.ts `shownName`).
+  const names = items.map((item) => shownName(item.title));
   // Tabs that share a start keep the ends that differ.
-  const ends = tabEnds(items.map((item) => item.title));
+  const ends = tabEnds(names);
   const sortable = useSortable(ids, onReorder);
   const edges = useOverflowEdges<HTMLDivElement>();
   const list = useRef<HTMLDivElement | null>(null);
@@ -77,9 +80,9 @@ export function CanvasTabs({
       <div data-canvas-title className="flex min-w-0 flex-1 items-center gap-2 px-1.5">
         <Glyph className="size-3.5 shrink-0 text-muted-foreground" />
         <div className="flex min-w-0 items-baseline gap-2">
-          <TruncateTip text={item.title}>
+          <TruncateTip text={names[0]!}>
             <span data-view-title className="min-w-0 truncate text-sm font-semibold text-foreground">
-              {item.title}
+              {names[0]!}
             </span>
           </TruncateTip>
           {detail ? (
@@ -88,7 +91,7 @@ export function CanvasTabs({
             </span>
           ) : null}
         </div>
-        <CloseButton title={item.title} tabbable onClose={() => onClose(item.id)} />
+        <CloseButton title={names[0]!} tabbable onClose={() => onClose(item.id)} />
       </div>
     );
   }
@@ -122,10 +125,10 @@ export function CanvasTabs({
         const lineStart = moving && sortable.toIndex! < sortable.fromIndex!;
         const lineEnd = moving && sortable.toIndex! > sortable.fromIndex!;
         return (
-          <div key={item.id} ref={(el) => sortable.setItemRef(item.id, el)} className={`group/dock-tab relative flex max-w-60 ${dragging ? "z-10" : ""}`} style={{ flexShrink: tabShrink(item.title, active), minWidth: tabMin(item.title) }}>
+          <div key={item.id} ref={(el) => sortable.setItemRef(item.id, el)} className={`group/dock-tab relative flex max-w-60 ${dragging ? "z-10" : ""}`} style={{ flexShrink: tabShrink(names[index]!, active), minWidth: tabMin(names[index]!) }}>
             {lineStart ? <div className="pointer-events-none absolute inset-y-1 -left-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
             {lineEnd ? <div className="pointer-events-none absolute inset-y-1 -right-0.5 z-20 w-0.5 rounded-full bg-accent" /> : null}
-            <TitleTip title={item.title}>
+            <TitleTip title={names[index]!}>
               {(titleRef) => (
                 <Button
                   variant="ghost"
@@ -154,12 +157,12 @@ export function CanvasTabs({
                   className={`h-7 w-full min-w-0 shrink touch-none justify-start gap-2 rounded-md ps-2 text-[13px] font-normal text-muted-foreground hover:bg-foreground/5 hover:text-foreground aria-selected:bg-sidebar-group-selected aria-selected:text-foreground aria-selected:transition-none data-dragging:opacity-50 pe-7`}
                 >
                   <Glyph className="size-3.5" />
-                  <TabName name={item.title} keep={ends[index]} titleRef={titleRef} />
+                  <TabName name={names[index]!} keep={ends[index]} titleRef={titleRef} />
                 </Button>
               )}
             </TitleTip>
             <div className={`absolute end-0.5 top-0.5 ${active ? "" : reveal("dock-tab", { row: true })}`}>
-              <CloseButton title={item.title} tabbable={active} onClose={() => onClose(item.id)} />
+              <CloseButton title={names[index]!} tabbable={active} onClose={() => onClose(item.id)} />
             </div>
           </div>
         );

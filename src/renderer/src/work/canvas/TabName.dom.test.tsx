@@ -45,9 +45,10 @@ describe("a tab's name among tabs that share a start", () => {
     // The end never shrinks: it is cut only where it alone is wider than the room less the start's ellipsis.
     expect(end.className.split(" ")).toEqual(expect.arrayContaining(["truncate", "shrink-0", "max-w-[calc(100%-1.5em)]"]));
     expect(end.parentElement!.className.split(" ")).toContain("@max-[1.25rem]/tab-name:sr-only");
-    // In a tab too narrow for both, the end alone is drawn, never a sliver after the start's ellipsis.
-    expect(start.className.split(" ")).toContain("@max-[4rem]/tab-name:hidden");
-    expect(end.className.split(" ")).toContain("@max-[4rem]/tab-name:max-w-full");
+    // In a tab too narrow for both, the end alone is drawn, never a sliver after the start's ellipsis: at the 128px
+    // a tab gives way to (70px of name) the end is whole, never "T…Page…" (council R1-A5).
+    expect(start.className.split(" ")).toContain("@max-[5.5rem]/tab-name:hidden");
+    expect(end.className.split(" ")).toContain("@max-[5.5rem]/tab-name:max-w-full");
     expect(start.getAttribute("aria-hidden")).toBe("true");
     expect(end.getAttribute("aria-hidden")).toBe("true");
   });

@@ -37,7 +37,8 @@ export function DownEmpty({ live, environmentId, onRetry, busy = false }: { live
           <Spinner className="size-4" />
         </EmptyMedia>
         <EmptyHeader>
-          <EmptyTitle>{connectingWords(host)}</EmptyTitle>
+          {/* A wait, not a state to act on: muted, as every reader's wait line is (DESIGN "Loading and empty states"). */}
+          <EmptyDescription>{connectingWords(host)}</EmptyDescription>
         </EmptyHeader>
       </Empty>
     );

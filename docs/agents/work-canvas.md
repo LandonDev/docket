@@ -331,7 +331,11 @@ What a kind should know:
   moves when the chunk lands; a failed load shows its failure, never bones.
 - The tab row scrolls when its tabs pass what fits, past their 36px floor
   (CanvasTabs: `OVERFLOW_FADE` and `useOverflowEdges`, the title strip's
-  settled row), and brings the selected tab into view.
+  settled row), and brings the selected tab into view. A tab names its item
+  as he reads it, through Files' `shownName` (no ".tcdoc" or ".tcsheet": the
+  glyph says the kind), and tabs that share a start keep the word that tells
+  them apart (`tabEnds`); under 5.5rem of name the start goes whole and the
+  end is drawn alone (`TabName`, shared with Files' row).
 - The stepper prints "2/6" with a change in hand, and the count alone ("6")
   with none (`index` -1), never "0/6". Next then takes the first change,
   unless the adapter says `enter: false` (stepping from there shows nothing,

@@ -101,3 +101,23 @@ describe("a canvas tab's title", () => {
     }
   });
 });
+
+/** Council round 1 (R1-A4, R1-A6): a tab read "TempCode p…Canvas.tcdoc", Docket's own ending kept and the name cut to keep it. */
+describe("a canvas tab's name", () => {
+  it("never shows Docket's own ending: the tab, its cut, its tip and its close all name the file as he reads it", () => {
+    const own = [canvasItem("doc", { title: "TempCode proof Canvas.tcdoc" }), canvasItem("pdf", { kind: "pdf", title: "TempCode proof Pages.pdf" })];
+    render(<CanvasTabs items={own} selected="doc" onSelect={() => {}} onClose={() => {}} onReorder={() => {}} kinds={drivenKinds(() => {}) as never} />);
+    expect(screen.getByRole("tab", { name: "TempCode proof Canvas" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close TempCode proof Canvas" })).toBeTruthy();
+    expect(document.body.textContent).not.toContain(".tcdoc");
+    // The two share a start: each keeps the word that tells it apart, "Canvas" and "Pages.pdf".
+    expect(screen.getByText("Canvas")).toBeTruthy();
+    expect(screen.getByText("Pages.pdf")).toBeTruthy();
+  });
+
+  it("names a lone item without its ending too", () => {
+    render(<CanvasTabs items={[canvasItem("sheet", { kind: "sheet", title: "Budget.tcsheet" })]} selected="sheet" onSelect={() => {}} onClose={() => {}} onReorder={() => {}} kinds={drivenKinds(() => {}) as never} />);
+    expect(document.querySelector("[data-view-title]")!.textContent).toBe("Budget");
+    expect(screen.getByRole("button", { name: "Close Budget" })).toBeTruthy();
+  });
+});
