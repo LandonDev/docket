@@ -5,7 +5,7 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { CanvasShell } from "../canvas/kind";
-import { ResponseTable } from "./responses";
+import { ResponseTable, responseName } from "./responses";
 
 afterEach(cleanup);
 
@@ -34,5 +34,15 @@ describe("the answers' table", () => {
     fireEvent.scroll(box);
     expect(box.hasAttribute("data-overflow-end")).toBe(false);
     expect(box.hasAttribute("data-overflow-start")).toBe(true);
+  });
+
+  /** Council round 2, sitting E: every tick said "Select", so Tab could not tell the responses apart. */
+  it("names each tick by its response's first answer, else its place", () => {
+    const two = { ...got, rows: [["Dana Lee", "2026-11-19T14:02:00.000Z"], ["", "2026-11-19T15:02:00.000Z"]], count: 2 };
+    render(<ResponseTable title="TempCode proof form" got={two} chart={null} chipRef={{ kind: "item", itemId: "i1" } as never} shell={shell} timeColumn={1} whole="the sheet has them all" />);
+    const names = [...document.querySelectorAll("tbody [aria-label]")].map((el) => el.getAttribute("aria-label"));
+    expect(names).toEqual(["Select Dana Lee", "Select response 2"]);
+    // the time is never the name, even where it comes first
+    expect(responseName(["2026-11-19T14:02:00.000Z", "Ava Thompson"], 0, 0)).toBe("Ava Thompson");
   });
 });

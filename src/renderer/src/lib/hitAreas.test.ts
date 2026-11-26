@@ -21,6 +21,11 @@ describe("hit areas and insets", () => {
     expect(read("surfaces/settings/computers/Devices.tsx")).toContain(`hover:text-foreground ${STRETCH}`);
     // An account row's action ("Make a new one"): the same 16px link.
     expect(read("aliax/views/accounts/usage.tsx")).toContain(`h-auto px-0 text-xs ${STRETCH}`);
+    // The stopped picture's Retry under the box (the Computers page, the browser canvas): the same 16px link.
+    expect(read("surfaces/threads/computer/Viewport.tsx")).toContain(`h-auto p-0 text-xs ${STRETCH}`);
+    // The tracker's lead-thread press and the computer bar's thread title: 24px tall on their 20px line.
+    expect(read("work/tracker/TrackerPage.tsx")).toContain("block min-h-6 min-w-0 truncate rounded-sm py-0.5 text-start leading-5");
+    expect(read("surfaces/threads/computer/ComputerBar.tsx")).toContain('className={cn("h-6 max-w-[50%] shrink-0 justify-start p-0 leading-5');
   });
 
   it("end the right panel's header on its rows' 12px Stop column, and start a dock tab's label on the terminal's 12px", () => {

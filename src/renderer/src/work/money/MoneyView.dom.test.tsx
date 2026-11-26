@@ -294,6 +294,9 @@ describe("the Money view", () => {
     await settle();
     expect(screen.getByText("The ledger's columns changed")).toBeTruthy();
     expect(screen.getByText("No In or Out column")).toBeTruthy();
+    // What to rename is never cut: the detail wraps under the word in a narrow pane (council round 2, sitting E).
+    expect(screen.getByText("No In or Out column").className).not.toContain("truncate");
+    expect(screen.getByText("No In or Out column").closest("p")!.className).toContain("text-pretty");
     // A broken header is not an empty job, and its zeros are not the job's figures.
     expect(screen.queryByText("No money yet")).toBeNull();
     expect(document.querySelector("[data-money-figures]")).toBeNull();

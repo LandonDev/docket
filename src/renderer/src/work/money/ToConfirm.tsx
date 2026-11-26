@@ -4,6 +4,7 @@ import { formatDay, formatMoney, today } from "@shared/work/money";
 import { MoreHorizontal } from "../../chrome/icons";
 import { Calendar, Receipt } from "../icons";
 import { RowsMenu } from "../../chrome/menuRows";
+import { TruncateTip } from "../../components/tip";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Spinner } from "../../components/ui/spinner";
 import { loadToast } from "../../components/ui/toaster";
@@ -26,9 +27,12 @@ import { addOffer, offerWhole } from "./TripDialog";
 /** A To confirm row: the picture, the words, the amount, then the verb and the menu, each on its own column (layout.ts). */
 /**
  * A row's words on one line: the name cuts only when it stands alone; the facts after it (a day, miles) drop whole to a
- * second line the box hides, the least first, never a name cut to nothing beside a whole date.
+ * second line the box hides, the least first, never a name cut to nothing beside a whole date. A name cut short reads
+ * whole in its tip (`NAME`; `FACT` on each fact).
  */
 const WORDS = "flex h-5 min-w-0 flex-wrap items-baseline gap-x-1 overflow-hidden leading-5";
+const NAME = "min-w-0 truncate";
+const FACT = "shrink-0 text-xs text-muted-foreground tabular-nums";
 const ROW = cn("grid min-h-12 items-center gap-3 border-b border-border text-[13px] last:border-0", TO_CONFIRM_GRID);
 
 /** "Nov 20", or "Nov 20, 2025" when it is not this year's. */
@@ -158,8 +162,10 @@ function ReceiptRow({ env, item, onReview, onDiscard }: { env: string; item: Wai
         </span>
       ) : (
         <span className={WORDS}>
-          <span className="min-w-0 truncate text-foreground">{name}</span>
-          {item.fields.date ? <span className="shrink-0 text-xs text-muted-foreground tabular-nums">{shortDay(item.fields.date)}</span> : null}
+          <TruncateTip text={name}>
+            <span className={cn(NAME, "text-foreground")}>{name}</span>
+          </TruncateTip>
+          {item.fields.date ? <span className={FACT}>{shortDay(item.fields.date)}</span> : null}
         </span>
       )}
       <span className="text-end tabular-nums">{!reading && item.fields.amount ? formatMoney(item.fields.amount) : null}</span>
@@ -200,7 +206,7 @@ function Thumb({ env, item }: { env: string; item: Waiting }) {
 }
 
 /**
- * A receipt's picture beside the dialog's fields, in one 420px slot of the 320px column whatever its state, so Save never moves as
+ * A receipt's picture beside the dialog's fields, in one 420px slot of the 320px column whatever its state (a narrow dialog sets it over them, shorter: EntryDialog), so Save never moves as
  * it lands: a short scan sits at the slot's top, a taller one scrolls inside it; one quiet line with Retry when it did not load.
  */
 export function ReceiptPicture({ env, of, name }: { env: string; of: { id: string } | { workspaceId: string; receipt: string }; name: string }) {
@@ -252,13 +258,15 @@ function CalendarRows({ env, workspaceId, read, adding, onReview, reload }: { en
             </span>
             {/* As a receipt's: the event, then its day and miles as a comma run; the fee on money's one edge. */}
             <span className={WORDS}>
-              <span className="min-w-0 truncate">{offer.title}</span>
-              <span data-offer-fact className="shrink-0 text-xs text-muted-foreground tabular-nums">
+              <TruncateTip text={offer.title}>
+                <span className={NAME}>{offer.title}</span>
+              </TruncateTip>
+              <span data-offer-fact className={FACT}>
                 {offerDay(offer.date)}
               </span>
               {offer.miles !== null ? (
                 // Its comma leads it, so the day never ends in one when the miles give way.
-                <span data-offer-fact className="-ms-1 shrink-0 text-xs text-muted-foreground tabular-nums before:me-1 before:content-[',']">
+                <span data-offer-fact className={cn(FACT, "-ms-1 before:me-1 before:content-[',']")}>
                   {`${offer.miles.toLocaleString("en-US")} mi`}
                 </span>
               ) : null}

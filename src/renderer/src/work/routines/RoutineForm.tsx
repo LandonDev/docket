@@ -194,6 +194,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
           <Field label="Runs">
             <ChoiceSelect
               label="Runs"
+              className="w-full"
               value={runsJob ? `${JOB_VALUE}${form.job}` : form.play}
               options={runs}
               onChange={(v) => (v.startsWith(JOB_VALUE) ? patch({ job: v.slice(JOB_VALUE.length), play: "" }) : patch({ play: v, job: "" }))}
@@ -212,7 +213,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
           {form.starts === "sched" ? (
             <div className="grid grid-cols-2 gap-3">
               <Field label="Days">
-                <ChoiceSelect label="Days" value={form.days} options={DAY_CHOICES} onChange={(days) => patchTrigger({ days })} />
+                <ChoiceSelect label="Days" className="w-full" value={form.days} options={DAY_CHOICES} onChange={(days) => patchTrigger({ days })} />
               </Field>
               {repeat ? null : (
                 <Field label="At">
@@ -222,7 +223,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
             </div>
           ) : form.starts === "event" ? (
             <Field label="When">
-              <ChoiceSelect label="When" value={form.event} options={EVENT_CHOICES} onChange={(event) => patchTrigger({ event })} />
+              <ChoiceSelect label="When" className="w-full" value={form.event} options={EVENT_CHOICES} onChange={(event) => patchTrigger({ event })} />
             </Field>
           ) : form.starts === "read" ? (
             tools !== null && tools.length === 0 ? (
@@ -234,11 +235,11 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
                     {tools === null ? (
                       <Skeleton aria-label="Loading the tools" className="h-8 w-full rounded-lg" />
                     ) : (
-                      <ChoiceSelect label="Read" value={form.tool} options={[{ value: "", label: "Pick a tool" }, ...tools]} onChange={(tool) => patchTrigger({ tool })} />
+                      <ChoiceSelect label="Read" className="w-full" value={form.tool} options={[{ value: "", label: "Pick a tool" }, ...tools]} onChange={(tool) => patchTrigger({ tool })} />
                     )}
                   </Field>
                   <Field label="Every">
-                    <ChoiceSelect label="Every" value={form.every} options={EVERY_CHOICES} onChange={(every) => patchTrigger({ every })} />
+                    <ChoiceSelect label="Every" className="w-full" value={form.every} options={EVERY_CHOICES} onChange={(every) => patchTrigger({ every })} />
                   </Field>
                 </div>
                 <Field label="With" hint="The tool's arguments, fixed now">
@@ -255,6 +256,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
                   ) : (
                     <ChoiceSelect
                       label="File"
+                      className="w-full"
                       value={form.form}
                       options={[{ value: "", label: "A file by its path" }, ...forms, ...(form.form && !forms.some((f) => f.value === form.form) ? [{ value: form.form, label: "The form it watched" }] : [])]}
                       onChange={(id) => patchTrigger({ form: id, ...(id ? {} : { job: "" }) })}

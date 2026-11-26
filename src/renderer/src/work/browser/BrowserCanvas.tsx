@@ -224,7 +224,8 @@ function FaceEnd({
     case "agent":
       return (
         <span className="ms-auto flex shrink-0 items-center gap-2">
-          <span data-narrow-hide className="whitespace-nowrap @max-[320px]/browser:hidden">The agent is driving</span>
+          {/* Its own rule alone decides (320px of the browser bar), never the canvas bar's `data-narrow-hide` at 560px, which hid it at a pane's usual width. */}
+          <span data-who-drives className="whitespace-nowrap @max-[320px]/browser:hidden">The agent is driving</span>
           <Button variant="secondary" size="xs" disabled={!!busy} onClick={takeOver}>
             <BusyLabel busy={busy === "take"} label="Take over" />
           </Button>
@@ -242,7 +243,7 @@ function FaceEnd({
     case "owner":
       return (
         <span className="ms-auto flex shrink-0 items-center gap-2">
-          <span data-narrow-hide className="whitespace-nowrap text-foreground @max-[320px]/browser:hidden">You are driving</span>
+          <span data-who-drives className="whitespace-nowrap text-foreground @max-[320px]/browser:hidden">You are driving</span>
           <Button variant="secondary" size="xs" data-hand-back disabled={!!busy} onClick={handBack}>
             <BusyLabel busy={busy === "back"} label="Hand back" />
           </Button>

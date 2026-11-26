@@ -11,8 +11,11 @@
  * (`NARROW_HEAD`) is its 520px.
  */
 
-/** By category: name, the bar, the amount, then 104px empty (+16px gap = 120); under 640px 32px (+16 = 48). */
-export const CATEGORY_GRID = "grid-cols-[minmax(0,12rem)_minmax(0,1fr)_7rem_104px] @max-[640px]/money:grid-cols-[minmax(0,1fr)_3rem_7rem_32px]";
+/**
+ * By category: name, the bar, the amount, then 104px empty (+16px gap = 120); under 640px 32px (+16 = 48), the name
+ * and the bar sharing the rest, so a bar stands beside its name on a scale that reads (never a 3rem stub far from it).
+ */
+export const CATEGORY_GRID = "grid-cols-[minmax(0,12rem)_minmax(0,1fr)_7rem_104px] @max-[640px]/money:grid-cols-[minmax(0,1fr)_minmax(3rem,1fr)_7rem_32px]";
 
 /** Entries: the paperclip's column, 116px (the table hangs 8px past the column; the amount cell's 12px padding: 8 + 120 = 116 + 12); under 640px 44px (8 + 48 = 44 + 12). */
 export const ENTRIES_TAIL = "w-[116px] @max-[640px]/money:w-[44px]";

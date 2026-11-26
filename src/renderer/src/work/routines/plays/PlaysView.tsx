@@ -21,7 +21,7 @@ import { RunDialog } from "./RunDialog";
 import { startersLeft, takesLine } from "./model";
 
 /** Who can, over an empty list this window's key may not add to: said by the act, since nothing was changed. */
-const addedElsewhere = (host: string): string => `Added from a computer that manages ${nameInLine(host)}`;
+const addedElsewhere = (host: string): string => `Add plays from a computer that manages ${nameInLine(host)}`;
 
 /**
  * A Work workspace's Plays (docs/agents/work-plays.md): the work he repeats

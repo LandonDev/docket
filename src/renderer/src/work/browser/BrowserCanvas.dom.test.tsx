@@ -360,7 +360,9 @@ describe("the browser's bar", () => {
   it("who drives goes whole under a narrow bar, before its verb is cut; the verb stays", async () => {
     const { container } = render(<Bar {...props()} />);
     const who = await screen.findByText("The agent is driving");
-    expect(who.hasAttribute("data-narrow-hide")).toBe(true);
+    // the canvas bar's own narrow rule (560px) never takes it: at a pane's usual width it reads (council round 2, sitting E)
+    expect(who.hasAttribute("data-narrow-hide")).toBe(false);
+    expect(who.hasAttribute("data-who-drives")).toBe(true);
     expect(who.className).toContain("@max-[320px]/browser:hidden");
     expect(container.querySelector("[data-slot=browser-bar]")!.contains(screen.getByRole("button", { name: "Take over" }))).toBe(true);
   });

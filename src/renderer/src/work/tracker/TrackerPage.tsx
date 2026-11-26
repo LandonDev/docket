@@ -212,7 +212,7 @@ function ThreadCell({ lead }: { lead: TrackerThread }) {
             event.stopPropagation();
             openTrackerThread(lead.sessionId);
           }}
-          className="truncate rounded-sm text-start hover:underline"
+          className="block min-h-6 min-w-0 truncate rounded-sm py-0.5 text-start leading-5 hover:underline"
         >
           {lead.outcome?.words}
         </button>

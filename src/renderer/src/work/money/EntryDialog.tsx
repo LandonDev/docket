@@ -266,9 +266,15 @@ function EntryBody({
       }}
     >
       {picture ? (
-        <ModalBody className="grid grid-cols-[320px_minmax(0,1fr)] items-start gap-5">
-          <div className="w-[320px]">{picture}</div>
-          <div className="flex min-w-0 flex-col gap-4">{fields}</div>
+        // Its own container: under 40rem (the browser /ui on a phone) the picture takes the dialog's width, shorter, and the
+        // fields stand under it, so no field is pushed past the edge with Save live under it.
+        <ModalBody className="@container/entry">
+          <div className="grid grid-cols-[320px_minmax(0,1fr)] items-start gap-5 @max-[40rem]/entry:grid-cols-1">
+            <div data-entry-picture className="w-[320px] @max-[40rem]/entry:w-full @max-[40rem]/entry:*:h-60">
+              {picture}
+            </div>
+            <div className="flex min-w-0 flex-col gap-4">{fields}</div>
+          </div>
         </ModalBody>
       ) : (
         <ModalBody>{fields}</ModalBody>

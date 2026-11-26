@@ -760,12 +760,19 @@ const EntryRow = memo(function EntryRow({ row, place, onReceipt }: { row: Ledger
 
 // ── states ───────────────────────────────────────────────────────────
 
-/** A fault the ledger has, in the view's state line's shape, with the one press that mends it. */
+/**
+ * A fault the ledger has, in the view's state line's shape, with the one press that mends it. The detail is what to
+ * rename, so it is never cut: in a narrow pane it wraps under the word as a sentence would, the press kept on the first line.
+ */
 function ProblemLine({ word, detail, action, onPress }: { word: string; detail: string; action: string; onPress: () => Promise<unknown> }) {
   const [running, setRunning] = useState(false);
   return (
-    <div data-view-state="problem" role="status" className="sticky top-0 z-10 flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
-      <StatusMark state="failed" word={word} detail={detail} className="min-w-0 flex-1" />
+    <div data-view-state="problem" role="status" className="sticky top-0 z-10 flex min-h-8 min-w-0 shrink-0 items-start gap-2 border-b border-border bg-background px-3 py-1 text-[13px] leading-5">
+      <p className="min-w-0 flex-1 py-0.5 ps-[22px] -indent-[22px] text-xs text-pretty">
+        {/* A hanging indent: a wrapped line starts under the word, past the glyph's 14px and its 8px. */}
+        <StatusMark state="failed" word={word} className="me-1 indent-0" />
+        <span className="text-muted-foreground">{detail}</span>
+      </p>
       <Button
         variant="ghost"
         size="xs"

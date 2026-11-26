@@ -77,6 +77,8 @@ describe("the computer's bar", () => {
     const back = screen.getByRole("button", { name: /^Hand back/ });
     expect(back.getAttribute("data-variant")).toBe("default");
     expect(back.querySelector("kbd")).not.toBeNull();
+    // the key cap gives way under 400px of bar, before the computer's name
+    expect(back.querySelector("kbd")!.className).toContain(FOLD_LAST);
     expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
     expect(screen.getByRole("button", { name: "Keys" }).getAttribute("data-variant")).toBe("ghost");
     // the VM's own name is no link: no thread to go to

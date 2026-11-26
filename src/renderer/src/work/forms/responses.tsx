@@ -57,6 +57,10 @@ export interface ResponseTableProps {
   aside?: ReactNode;
 }
 
+/** What a response's tick names it by: its first answer that is not the time ("Marcus Lee"), else its place ("response 3"). */
+export const responseName = (row: readonly string[], timeColumn: number | null, index: number): string =>
+  row.find((v, j) => j !== timeColumn && v.trim() !== "")?.trim() ?? `response ${index + 1}`;
+
 export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, whole, asOf, aside }: ResponseTableProps) {
   const lastAt = timeColumn === null ? null : submittedTime(got.rows[0]?.[timeColumn] ?? "");
   const bars = chart?.bars ?? [];
@@ -129,7 +133,7 @@ export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, w
             {got.rows.map((r, i) => (
               <TableRow key={keys[i]} data-picked={picked.has(keys[i]!) || undefined} className={picked.has(keys[i]!) ? "bg-(--sel-bg)" : ""}>
                 <TableCell className="w-4 pe-0 first:pl-4">
-                  <Checkbox aria-label="Select" checked={picked.has(keys[i]!)} onCheckedChange={() => toggle(keys[i]!)} />
+                  <Checkbox aria-label={`Select ${responseName(r, timeColumn, i)}`} checked={picked.has(keys[i]!)} onCheckedChange={() => toggle(keys[i]!)} />
                 </TableCell>
                 {r.map((v, j) => (
                   <Cell key={j} time={j === timeColumn}>

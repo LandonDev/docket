@@ -100,7 +100,7 @@ export function ViewportLine({ words, onRetry }: { words: string; onRetry?: () =
     <span data-slot="computer-line" className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-xs leading-4 text-muted-foreground">
       <span className="min-w-0">{words}</span>
       {onRetry ? (
-        <Button variant="link" size="xs" className="h-auto p-0 text-xs" onClick={onRetry}>
+        <Button variant="link" size="xs" className="h-auto p-0 text-xs after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']" onClick={onRetry}>
           Retry
         </Button>
       ) : null}

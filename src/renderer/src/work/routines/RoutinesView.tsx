@@ -199,7 +199,9 @@ function RoutineItem({ row, current, picked, onPick, lifeosWait }: { row: Routin
       className={cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5", current && !picked && "@max-[40rem]/routines:bg-transparent @max-[40rem]/routines:hover:bg-foreground/5")}
     >
       <span className="flex min-w-0 items-baseline gap-2 text-[13px]">
-        <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.name}</span>
+        <TruncateTip text={row.name}>
+          <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.name}</span>
+        </TruncateTip>
         {mark ? <StatusMark state={mark} word={false} className="shrink-0" /> : null}
       </span>
       <TruncateTip text={shown}>

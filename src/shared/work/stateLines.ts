@@ -191,8 +191,6 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Copied", "local"],
     ["Copied", "local"],
   ],
-  // Who can add plays, from this window's key alone: no claim about the host.
-  [`${R}/routines/plays/PlaysView.tsx`]: [["`Added from a computer that manages ${nameInLine(host)}`", "local"]],
   [`${R}/routines/model.ts`]: [
     ["Done", "read"],
   ],

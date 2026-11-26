@@ -152,7 +152,7 @@ describe("the Plays view for a key that may not save plays", () => {
     testKey.current = GIVEN_KEY;
     render(<View {...props} />);
     await settle();
-    expect(screen.getByText("Added from a computer that manages this host")).toBeTruthy();
+    expect(screen.getByText("Add plays from a computer that manages this host")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "New play" })).toBeNull();
     cleanup();
     testKey.current = READ_KEY;

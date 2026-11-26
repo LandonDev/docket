@@ -128,7 +128,7 @@ function usePress(title: string) {
 
 /**
  * Take over (where the computer takes input from its picture) and Stop; while he drives, Hand back alone, the one
- * primary, with the chord that leaves the picture as a key cap. `onTookOver` runs as the press begins, so the picture
+ * primary, with the chord that leaves the picture as a key cap (gone under 400px of bar). `onTookOver` runs as the press begins, so the picture
  * can take the keyboard as soon as it is his.
  */
 export function StageControls({ tile, onTookOver, small = false }: { tile: ComputerTile; onTookOver?: () => void; small?: boolean }) {
@@ -138,7 +138,8 @@ export function StageControls({ tile, onTookOver, small = false }: { tile: Compu
       <Button size={small ? "xs" : "sm"} data-hand-back disabled={!!busy} onClick={() => press("back", () => handBack(tile), "Couldn't hand it back")}>
         <BusyLabel busy={busy === "back"} label="Hand back" />
         {small ? null : (
-          <Kbd size="sm" aria-hidden="true" className="border-transparent bg-transparent text-primary-foreground">
+          // Under 400px of bar the key cap goes first, so the computer's name reads beside Hand back.
+          <Kbd size="sm" aria-hidden="true" className={cn("border-transparent bg-transparent text-primary-foreground", FOLD_LAST)}>
             {keyHint(LEAVE_CHORD)}
           </Kbd>
         )}
@@ -487,7 +488,7 @@ export function ComputerBar({ tile, linkLost = false, name, onOpenSession, onToo
         <Glyph tile={tile} />
         <TruncateTip text={title}>
           {thread && onOpenSession ? (
-            <Button variant="link" size="xs" className={cn("h-5 max-w-[50%] shrink-0 justify-start p-0 leading-5 font-medium text-foreground", TITLE_ROOM, small ? "text-xs" : "text-[13px]")} onClick={() => onOpenSession(thread, tile!.entry.host)}>
+            <Button variant="link" size="xs" className={cn("h-6 max-w-[50%] shrink-0 justify-start p-0 leading-5 font-medium text-foreground", TITLE_ROOM, small ? "text-xs" : "text-[13px]")} onClick={() => onOpenSession(thread, tile!.entry.host)}>
               <span className="truncate">{title}</span>
             </Button>
           ) : (

@@ -514,7 +514,7 @@ describe("the responses' ticks", () => {
       const table = await found("[data-form-responses]");
       const rowOf = (name: string) => [...table.querySelectorAll("tbody tr")].find((r) => r.textContent?.includes(name))!;
       const ticked = () => [...table.querySelectorAll("tbody tr[data-picked]")].map((r) => r.querySelectorAll("td")[1].textContent);
-      fireEvent.click(rowOf("Ava Thompson").querySelector('[aria-label="Select"]')!);
+      fireEvent.click(rowOf("Ava Thompson").querySelector('[aria-label="Select Ava Thompson"]')!);
       expect(ticked()).toEqual(["Ava Thompson"]);
       // A newer answer arrives at the top on the next poll: Ava's row moves down, his tick goes with her.
       const newer = ["Riley Chen", "Valorant", "", "2026-11-19 14:05"];

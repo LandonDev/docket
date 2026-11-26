@@ -92,16 +92,26 @@ describe("an invoice", () => {
     expect(dialog.querySelector("[data-invoice-total]")!.textContent).toBe("$225.00");
   });
 
-  /** Council round 1, sitting E (R1-E6): under 30rem What printed over Quantity and its field shrank to nothing. */
-  it("gives What and Number a row of their own in a narrow dialog (its own container rule)", async () => {
+  /**
+   * Council round 1, sitting E (R1-E6): under 30rem What printed over Quantity and its field shrank to nothing. Round 2:
+   * the numbers' labels stood a row away from their fields and the dates cut, so What goes under its numbers, named by
+   * its placeholder there, and Number, Date and Due take a row each.
+   */
+  it("in a narrow dialog puts What under its numbers and stacks Number, Date and Due (its own container rule)", async () => {
     const { dialog } = await open();
     const body = dialog.querySelector(".\\@container\\/invoice")!;
     expect(body).toBeTruthy();
     const line = dialog.querySelector('[data-invoice-line="0"]')!;
     expect(line.className).toContain("@max-[30rem]/invoice:grid-cols-[64px_minmax(0,1fr)_88px_28px]");
-    expect(within(dialog).getByLabelText("What, line 1").className).toContain("@max-[30rem]/invoice:col-span-full");
-    expect(within(body as HTMLElement).getByText("What").className).toContain("@max-[30rem]/invoice:col-span-full");
-    expect(within(dialog).getByLabelText("Number").closest(".\\@max-\\[30rem\\]\\/invoice\\:col-span-full")).toBeTruthy();
+    const what = within(dialog).getByLabelText("What, line 1");
+    expect(what.className).toContain("@max-[30rem]/invoice:order-last");
+    expect(what.className).toContain("@max-[30rem]/invoice:col-span-full");
+    // its name shows as the placeholder only where the head's What has gone
+    expect(what.getAttribute("placeholder")).toBe("What");
+    expect(what.className).toContain("placeholder:text-transparent");
+    expect(what.className).toContain("@max-[30rem]/invoice:placeholder:text-muted-foreground");
+    expect(within(body as HTMLElement).getByText("What").className).toContain("@max-[30rem]/invoice:hidden");
+    expect(within(dialog).getByLabelText("Number").closest(".\\@max-\\[30rem\\]\\/invoice\\:grid-cols-1")).toBeTruthy();
   });
 
   it("asks his details whole the first time, and after that shows one line with Edit", async () => {

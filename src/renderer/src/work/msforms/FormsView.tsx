@@ -21,6 +21,7 @@ import { openWorkView, workOpenPort } from "../../lib/workSwitch";
 import type { WorkViewProps } from "../views/registry";
 import { loadFailure } from "../routines/plays/data";
 import { ViewStateLine } from "../views/ViewStateLine";
+import { TruncateTip } from "../../components/tip";
 import { mergeForms, rowLine } from "./model";
 import { FORM_KIND_WORDS } from "./newForm";
 import { useFormMaking, useLibraryPlaces } from "./useFormMaking";
@@ -74,7 +75,7 @@ function useForms(env: string, workspaceId: string): [Load, () => void, () => Pr
       const failed = o.status === "rejected" ? o.reason : m.status === "rejected" ? m.reason : null;
       if (!haveAnswer && failed !== null) return setLoad({ status: "error", error: loadFailure(env, failed, "forms") });
       const ms = (m.status === "fulfilled" ? m.value : null) ?? [];
-      const missed = failed === null ? null : { word: o.status === "rejected" ? "Docket forms did not load" : "Microsoft forms did not load", detail: loadFailure(env, failed, "forms") };
+      const missed = failed === null ? null : { word: o.status === "rejected" ? "Docket forms did not load" : "Microsoft Forms did not load", detail: loadFailure(env, failed, "forms") };
       setLoad({ status: "ready", rows: mergeForms((o.status === "fulfilled" ? o.value : null) ?? [], ms), ms, missed });
     };
     read.current = fetch;
@@ -195,7 +196,14 @@ export function View({ env, workspace }: WorkViewProps) {
   return (
     <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
       {/* One source failed: the view's state line with its cause and Retry, over the other's rows. */}
-      {load.missed ? <ViewStateLine word={load.missed.word} detail={load.missed.detail} onRetry={readAgain} /> : null}
+      {load.missed ? (
+        // The shared line cuts its cause to one line; while it is cut, the whole of it is the line's tip (as Templates').
+        <TruncateTip text={load.missed.detail}>
+          <div data-state-tip="">
+            <ViewStateLine word={load.missed.word} detail={load.missed.detail} onRetry={readAgain} />
+          </div>
+        </TruncateTip>
+      ) : null}
       <RowsContextMenu label="Form actions" lazyMount rowsFor={(id) => (id && load.ms.some((f) => f.formId === id) ? [{ kind: "item", id: "forget", label: "Remove from List" }] : null)} onPick={(pick, id) => void (pick === "forget" && id && forget(id))}>
         <ul aria-label="Forms" className="mx-auto flex max-w-[672px] flex-col gap-px px-4 py-4">
           {load.rows.map((row) => (

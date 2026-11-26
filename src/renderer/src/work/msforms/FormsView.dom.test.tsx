@@ -99,8 +99,10 @@ describe("the Forms view", () => {
     expect(await screen.findByText("Volunteer sign-up")).toBeTruthy();
     // Council round 1, sitting E (R1-E11): the view's state line, with its cause and a Retry that asks again.
     const line = document.querySelector('[data-view-state="failed"]') as HTMLElement;
-    expect(line.textContent).toContain("Microsoft forms did not load");
+    expect(line.textContent).toContain("Microsoft Forms did not load");
     expect(line.textContent).toContain(CAUSE);
+    // Round 2: a cause the narrow line cuts reads whole in the line's tip, as Templates' does.
+    expect(line.closest("[data-state-tip]")).not.toBeNull();
     expect(screen.queryByText("No forms yet")).toBeNull();
     host.bad = [];
     host.ms = [{ formId: FORM, tenant: "purdue0", title: "TempCode proof back", state: "draft", count: 0, lastAnswerAt: null, updatedAt: 20 }];
@@ -129,7 +131,7 @@ describe("the Forms view", () => {
     host.bad = ["work.forms.list"];
     render(<View {...props} />);
     expect(await screen.findByText("Forms did not load")).toBeTruthy();
-    expect(screen.queryByText("Microsoft forms did not load")).toBeNull();
+    expect(screen.queryByText("Microsoft Forms did not load")).toBeNull();
   });
 
   /** Council round 1, sitting E (R1-E13): at rest no spinner's room sits between the glyph and the words. */
