@@ -180,12 +180,16 @@ final class ActingRig {
                 case "session.changes": fake.answer(id: sent.id, result: json(SessionChanges(reset: true, seq: 1, generation: "g")))
                 case "session.list": fake.answer(id: sent.id, result: json(SessionPage(sessions: [sampleSession("s1")], cursor: nil)))
                 case "session.subscribe": fake.answer(id: sent.id, result: "null")
-                case "session.events": fake.answer(id: sent.id, result: json(EventsPage(rows: [textRow("s1", seq: 1)], moreBefore: false, moreAfter: false, reset: false)))
+                case "session.events":
+                    let subscribed: Bool? = sent.params["subscribe"] == .bool(true) ? true : nil
+                    let page = EventsPage(rows: [textRow("s1", seq: 1)], moreBefore: false, moreAfter: false, reset: false, subscribed: subscribed)
+                    fake.answer(id: sent.id, result: json(page))
                 default: continue
                 }
                 answered.insert(sent.id)
             }
-            if client.threads["s1"]?.isLive == true, client.status.transport == .open { return fake }
+            // Keep answering startup reads until the shell and transcript have caught up.
+            if client.threads["s1"]?.isLive == true, client.status.fresh { return fake }
             try? await Task.sleep(for: .milliseconds(1))
         }
         throw TransportError.notConnected
