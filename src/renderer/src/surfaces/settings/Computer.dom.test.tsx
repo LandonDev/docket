@@ -35,6 +35,7 @@ vi.mock("../../lib/macBridge", () => ({ useMacBridgeHosts: () => bridge.hosts, r
 vi.mock("../../lib/settings/computerName", async (original) => ({
   ...(await original<typeof import("../../lib/settings/computerName")>()),
   useComputerNames: () => (id: string, said?: string) => ({ name: said ?? id, own: false }),
+  useComputerName: (id: string) => ({ name: id, own: false }),
   useReadFailWords: () => (error: string) => (/[.!?]$/.test(error) ? error : `${error}.`),
 }));
 vi.mock("../../lib/settings/maySheet", () => ({ openMaySheet: (...args: unknown[]) => bridge.asked.push(args) }));

@@ -162,7 +162,8 @@ function RuleRow({ env, rule, find, onOpen }: { env: string; rule: HouseRule; fi
   return (
     <PageRow
       title={
-        <span className={cn("block min-w-0 truncate font-normal @max-[30rem]/page:line-clamp-2 @max-[30rem]/page:whitespace-normal", !rule.on && "text-muted-foreground")}>
+        // An off rule keeps full ink: the switch says it is off, and the row can still be used.
+        <span className="block min-w-0 truncate font-normal @max-[30rem]/page:line-clamp-2 @max-[30rem]/page:whitespace-normal">
           <Marked text={rule.text} find={find} />
         </span>
       }

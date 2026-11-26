@@ -117,14 +117,13 @@ function AddonForm({ link, row, workspaces, home, onClose, onSaved, pending, set
         <Field label="Description">
           <Input value={form.description} onChange={(e) => patch({ description: e.target.value })} placeholder="Issues and pull requests" />
         </Field>
-        <div className="flex flex-col">
-          <FieldRow label="Where">
-            <ChoiceSelect label="Where" size="sm" value={form.workspaceId ?? ""} onChange={(v) => patch({ workspaceId: v || null })} options={where} />
-          </FieldRow>
-          <FieldRow label="Connects by">
-            <ChoiceToggle label="Connects by" value={form.transport} options={RUNS} onChange={(transport) => patch({ transport, ...(transport === "stdio" && form.auth === "oauth" && !form.tokenEnv ? { auth: "none" } : {}) })} />
-          </FieldRow>
-        </div>
+        <FieldRow label="Where">
+          <ChoiceSelect label="Where" size="sm" value={form.workspaceId ?? ""} onChange={(v) => patch({ workspaceId: v || null })} options={where} />
+        </FieldRow>
+        {/* Every segmented choice stands under its label, one layout for the three, at any width. */}
+        <Field label="Connects by">
+          <ChoiceToggle label="Connects by" value={form.transport} options={RUNS} onChange={(transport) => patch({ transport, ...(transport === "stdio" && form.auth === "oauth" && !form.tokenEnv ? { auth: "none" } : {}) })} />
+        </Field>
         {command ? (
           <>
             <Field label="Command">
@@ -154,13 +153,10 @@ function AddonForm({ link, row, workspaces, home, onClose, onSaved, pending, set
             </Field>
           </>
         )}
-        <div className="flex flex-col">
-          <FieldRow label="Sign-in">
-            <ChoiceToggle label="Sign-in" value={form.auth} options={auths} onChange={(auth) => patch({ auth })} />
-          </FieldRow>
-        </div>
-        {/* Above its choices, so three choices never draw over the label in a narrow window; the approval card's words
-            for the transport under it, where they wrap whole. */}
+        <Field label="Sign-in">
+          <ChoiceToggle label="Sign-in" value={form.auth} options={auths} onChange={(auth) => patch({ auth })} />
+        </Field>
+        {/* The approval card's words for the transport under Computers, where they wrap whole. */}
         <Field label="Computers" hint={runsWhere}>
           <ChoiceToggle label="Computers" value={form.hosts} options={HOSTS} onChange={(hosts) => patch({ hosts })} />
         </Field>

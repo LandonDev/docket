@@ -93,7 +93,7 @@ function WorkspaceShapes({ workspace, error, retry }: { workspace: WorkspaceMeta
         <PageRowsSkeleton rows={[{ control: control("switch") }, { control: control("switch") }, { control: control("select") }]} />
       </SettingSection>
       <SettingSection of="ws.accounts">
-        <PageRowsSkeleton rows={2} media control={control("select")} />
+        <PageRowsSkeleton rows={2} media description control="none" />
       </SettingSection>
       <SettingSection of="ws.command">
         <PageRowsSkeleton rows={2} description control={control("field")} />
@@ -159,7 +159,8 @@ function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
         {accounts.error ? (
           <ReadFailure computer={workspace.environmentId} error={accounts.error} retry={accounts.retry} />
         ) : (
-          <PageRowsSkeleton rows={2} media control={may ? "select" : "none"} />
+          // In the shape of the rows that land most often: an agent app, its value as words, an open row.
+          <PageRowsSkeleton rows={2} media description control="none" />
         )}
       </SettingSection>
     );

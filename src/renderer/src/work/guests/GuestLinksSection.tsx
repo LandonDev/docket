@@ -8,6 +8,7 @@ import { confirmReplace, confirmRevoke, MadeLinkDialog } from "./Share";
 import { guestsCall, isLive, linkFacts, shortDay, type GuestLinkRow } from "./api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { NO_ANSWER } from "../../lib/connection/openRead";
+import { Skeleton } from "../../components/ui/skeleton";
 import { ReadFailure } from "../../surfaces/settings/parts/ReadFailure";
 import { MoreHorizontal } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
@@ -29,14 +30,16 @@ export function GuestLinksRow({ hosts, open: startOpen = false }: { hosts: reado
   const [open, setOpen] = useState(startOpen);
   return (
     <>
-      {/* A computer that did not answer leaves the count unsaid: its line stands under the row, never "None". */}
-      <SettingRow
-        id="files.guests"
-        description={guests.rows && guests.failed.length === 0 ? guestsWords(guests.rows.map((r) => r.link)) : undefined}
-        // Nothing read: the row holds its name, with no way into a sheet that could show nothing.
-        onOpen={guests.rows?.length || !guests.failedOn.length ? () => setOpen(true) : undefined}
-        openLabel="Shared with guests"
-      />
+      {/* Nothing read: the failure at the page's head says why, and no bare row stands here. A computer that did not
+          answer leaves the count unsaid, never "None". */}
+      {guests.failedOn.length && !guests.rows?.length ? null : (
+        <SettingRow
+          id="files.guests"
+          description={guests.rows === null ? <Skeleton className="mt-0.5 h-3 w-40" /> : guests.failed.length === 0 ? guestsWords(guests.rows.map((r) => r.link)) : undefined}
+          onOpen={() => setOpen(true)}
+          openLabel="Shared with guests"
+        />
+      )}
       {/* Each computer that did not give its links, named once on the page, its Retry asking again. */}
       {guests.failedOn.map((f) => (
         <ReadFailure key={f.env} computer={f.env} error={f.error} retry={guests.load} />

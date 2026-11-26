@@ -45,8 +45,8 @@ export function keyKind(key: RemoteKey & { client?: string | null }): DeviceKind
 
 /** One row of "Who can sign in to <computer>": a key, a browser signed in, or a sign-in link not yet used. */
 export type SignIn =
-  | { kind: "key"; id: string; name: string; device: DeviceKind; caps: readonly Capability[]; line: string }
-  | { kind: "session"; id: string; name: string; device: "browser"; caps: readonly Capability[]; line: string }
+  | { kind: "key"; id: string; name: string; device: DeviceKind; caps: readonly Capability[]; line: string; own?: boolean }
+  | { kind: "session"; id: string; name: string; device: "browser"; caps: readonly Capability[]; line: string; own?: boolean }
   | { kind: "link"; id: string; name: string; caps: readonly Capability[]; expiresAt: number };
 
 /** "Chrome", "Safari", "Edge"…: the browser a session signed in from; "" when the agent names none. */
@@ -55,12 +55,15 @@ export function shortAgent(ua: string): string {
   return m ? m[0].split("/")[0].replace("CriOS", "Chrome").replace("OPR", "Opera").replace("Edg", "Edge") : "";
 }
 
-/** Every way in, in one list: the links still waiting first, then by kind and by name. */
+/** Every way in, in one list: the links still waiting first, then by kind and by name. `ownKey` is the key this window
+ *  signed in with (its socket's hello): that key's row, or for a browser the newest session on it, is marked `own`. */
 export function signInsOf(
   lists: { keys: readonly RemoteKey[]; sessions: readonly RemoteSession[]; pairings: readonly RemotePairing[] },
   computer: string,
   now = Date.now(),
+  ownKey: string | null = null,
 ): SignIn[] {
+  const ownSession = lists.sessions.filter((s) => s.keyId === ownKey).sort((a, b) => b.lastSeenAt - a.lastSeenAt)[0]?.id;
   const links: SignIn[] = lists.pairings
     .filter((p) => p.consumedAt === null && p.expiresAt > now)
     .map((p) => ({ kind: "link", id: p.id, name: p.name, caps: p.caps, expiresAt: p.expiresAt }));
@@ -70,7 +73,7 @@ export function signInsOf(
     .map((k) => {
       const device = keyKind(k);
       const used = k.lastUsedAt ? `used ${ago(k.lastUsedAt, now)}` : "never used";
-      return { kind: "key", id: k.id, name: k.name, device, caps: k.caps, line: [KIND_WORD[device], mayInLine(k.caps, computer), used].join(", ") };
+      return { kind: "key", id: k.id, name: k.name, device, caps: k.caps, line: [KIND_WORD[device], mayInLine(k.caps, computer), used].join(", "), own: k.id === ownKey };
     });
   const sessions: SignIn[] = lists.sessions.map((s) => {
     const browser = shortAgent(s.userAgent ?? "");
@@ -81,6 +84,7 @@ export function signInsOf(
       device: "browser",
       caps: s.caps,
       line: ["Browser", mayInLine(s.caps, computer), `used ${ago(s.lastSeenAt, now)}`].join(", "),
+      own: s.id === ownSession,
     };
   });
   const rank = (row: SignIn): number => (row.kind === "link" ? -1 : DEVICE_KINDS.indexOf(row.device));

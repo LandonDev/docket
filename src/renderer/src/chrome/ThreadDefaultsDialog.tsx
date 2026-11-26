@@ -7,7 +7,7 @@ import { settingTitle } from "../lib/settings/map";
 import { useLinkMay } from "../lib/linkMay";
 import { usePublishHome } from "../lib/settings/pageHome";
 import { homeNote } from "../lib/settingsHome";
-import { BUILT_IN_SCOPE, EFFORT_LABELS, effortLadder, modelForDefaults, modelOptions, normalizeDefaults, providerOptions, storedModelId } from "../lib/tcserver/defaults";
+import { EFFORT_LABELS, effortLadder, modelForDefaults, modelOptions, normalizeDefaults, providerOptions, storedModelId } from "../lib/tcserver/defaults";
 import { scopeKey, useThreadDefaults, useThreadDefaultsError, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
 import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
 import { ChoiceSelect } from "../components/choice-select";
@@ -15,7 +15,8 @@ import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components
 import { Button } from "../components/ui/button";
 import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
 import { SaveMark } from "../surfaces/settings/parts/SaveMark";
-import { ReadFailure } from "../surfaces/settings/parts/ReadFailure";
+import { FailuresSaidOnce, ReadFailure } from "../surfaces/settings/parts/ReadFailure";
+import { Skeleton } from "../components/ui/skeleton";
 import { useDraft } from "../surfaces/settings/parts/useDraft";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
 import { confirmAction, DialogFooter } from "./ConfirmDialog";
@@ -228,9 +229,7 @@ function WorkspaceSet({ environmentId, workspaceId }: { environmentId: string; w
       title="New threads"
       action={
         set.scope?.overridden && reset.may ? (
-          <Button variant="ghost" size="sm" disabled={set.blocked} onClick={() => void reset.run(set.cleared)}>
-            Use New threads
-          </Button>
+          <UseNewThreadsPress reset={reset} saved={set.cleared} disabled={set.blocked} variant="ghost" />
         ) : null
       }
     >
@@ -254,15 +253,36 @@ export function summary(value: ThreadDefaults, environmentId?: string): string {
   return [model.name, effort, ACCESS_LABEL[value.permission]].filter(Boolean).join(", ");
 }
 
-/** "Different in N places": the jobs and workspaces that keep a set of their own, opening a dialog of them. */
+/**
+ * "Different in N places": the jobs and workspaces that keep a set of their own, opening a dialog of them. A place
+ * whose set has not been read yet holds the row in its shape; one whose computer did not answer leaves the count a
+ * floor ("at least"), the places named, and its computer's failure at the page's head with Retry.
+ */
 function DifferentPlaces() {
-  const { workspaces, defaults } = useWorkspaceCatalog();
+  const { workspaces, defaults, defaultsErrors } = useWorkspaceCatalog();
   const [open, setOpen] = useState(false);
-  const own = workspaces.filter((w) => defaults.get(scopeKey(w.environmentId, w.id))?.overridden).sort((a, b) => a.name.localeCompare(b.name));
+  const keyOf = (w: WorkspaceMeta) => scopeKey(w.environmentId, w.id);
+  const own = workspaces.filter((w) => defaults.get(keyOf(w))?.overridden).sort((a, b) => a.name.localeCompare(b.name));
+  const unheard = workspaces.filter((w) => !defaults.has(keyOf(w)));
+  const failed = unheard.filter((w) => defaultsErrors.has(keyOf(w)));
+  const waiting = unheard.length > failed.length;
+  // Still reading: the row's shape, never a count it does not have.
+  if (waiting) return <PageRowsSkeleton rows={[{ description: true, control: "none" }]} />;
+  const n = failed.length ? `at least ${own.length}` : own.length;
+  const line = [own.length ? own.map((w) => w.name).join(", ") : null, failed.length ? `Not heard from ${failed.map((w) => w.name).join(", ")}` : null].filter(Boolean).join(". ");
   return (
     <>
-      {own.length ? (
-        <SettingRow id="defaults.different" vars={{ n: own.length }} description={own.map((w) => w.name).join(", ")} onOpen={() => setOpen(true)} openLabel={settingTitle("defaults.different", { n: own.length })} />
+      {failed.map((w) => (
+        <ReadFailure key={keyOf(w)} computer={w.environmentId} error={defaultsErrors.get(keyOf(w)) ?? ""} retry={() => workspaceStore.loadDefaults(w.environmentId, w.id)} />
+      ))}
+      {own.length || failed.length ? (
+        <SettingRow
+          id="defaults.different"
+          vars={{ n }}
+          description={line}
+          onOpen={own.length ? () => setOpen(true) : undefined}
+          openLabel={own.length ? settingTitle("defaults.different", { n }) : undefined}
+        />
       ) : null}
       {/* The dialog keeps the places it opened with, so one he sets back stays in the list, saying so. */}
       {open ? <DifferentPlacesDialog places={own} onClose={() => setOpen(false)} /> : null}
@@ -275,11 +295,14 @@ function DifferentPlacesDialog({ places, onClose }: { places: readonly Workspace
   const [shown] = useState(places);
   return (
     <Modal title="Different from New threads" size="sm" onClose={onClose}>
-      <ModalBody className="gap-0">
-        {shown.map((place) => (
-          <OwnSetRow key={`${place.environmentId}|${place.id}`} place={place} />
-        ))}
-      </ModalBody>
+      {/* The dialog's own failures, said at its head, above the page's. */}
+      <FailuresSaidOnce>
+        <ModalBody className="gap-0">
+          {shown.map((place) => (
+            <OwnSetRow key={`${place.environmentId}|${place.id}`} place={place} />
+          ))}
+        </ModalBody>
+      </FailuresSaidOnce>
       <DialogFooter confirmLabel="Done" closeOnConfirm onConfirm={onClose} />
     </Modal>
   );
@@ -295,35 +318,49 @@ function OwnSetRow({ place }: { place: WorkspaceMeta }) {
     // A page row, so the set's words wrap whole at any width ("Full access" is never cut), and the press sits beside.
     <PageRow title={place.name} description={scope ? (own ? summary(scope.defaults, place.environmentId) : "Same as New threads") : undefined} error={saved.error ?? undefined}>
       <SaveMark state={saved.state} />
-      {own && reset.may ? (
-        <Button variant="outline" size="sm" disabled={blocked || saved.state === "saving" || saved.state === "slow"} onClick={() => void reset.run(saved)}>
-          Use New threads
-        </Button>
-      ) : null}
+      {own && reset.may ? <UseNewThreadsPress reset={reset} saved={saved} disabled={blocked} variant="outline" /> : null}
     </PageRow>
   );
 }
 
 /**
- * Use New threads for one place: offered only to a key that may write that place's set (`defaults.set`), and asking
- * first when the place would start its threads with Full access it does not have now, naming the Access it inherits.
+ * Use New threads, once the set it would bring is read: a button-shaped bone while the inherited set is out, its
+ * computer's failure (with Retry) when it could not be read, the press once it is known.
+ */
+function UseNewThreadsPress({ reset, saved, disabled, variant }: { reset: ReturnType<typeof useUseNewThreads>; saved: Saved; disabled?: boolean; variant: "outline" | "ghost" }) {
+  if (reset.failure) return <ReadFailure computer={reset.environmentId} error={reset.failure.error} retry={reset.failure.retry} />;
+  if (!reset.inherited) return <Skeleton data-skeleton-control className="h-7 w-32 shrink-0 rounded-md" />;
+  return (
+    <Button variant={variant} size="sm" disabled={disabled || saved.state === "saving" || saved.state === "slow"} onClick={() => void reset.run(saved)}>
+      Use New threads
+    </Button>
+  );
+}
+
+/**
+ * Use New threads for one place: offered only to a key that may write that place's set (`defaults.set`), pressable
+ * only once the set the place would follow is read (`inherited`; `failure` when its computer did not answer), and
+ * asking first whenever that set starts threads with Full access, naming the Access the place has today.
  */
 export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentId" | "name">) {
   const may = useLinkMay(place.environmentId, "defaults.set", { workspaceId: place.id, defaults: null });
+  const inherited = useThreadDefaults(place.environmentId, null, true);
+  const failure = useThreadDefaultsError(place.environmentId, null);
   const run = async (saved: Saved): Promise<boolean> => {
+    if (!inherited) return false;
     const own = workspaceStore.defaultsAt(place.environmentId, place.id);
-    const inherited = workspaceStore.defaultsAt(place.environmentId, null)?.defaults ?? BUILT_IN_SCOPE.defaults;
-    if (own?.overridden && own.defaults.permission !== "auto" && inherited.permission === "auto") {
+    if (inherited.defaults.permission === "auto") {
+      const today = own?.overridden ? ACCESS_LABEL[own.defaults.permission] : null;
       const ok = await confirmAction({
         title: `Give ${place.name} Full access`,
-        body: `Its new threads then start with Full access, as New threads do, and ask before nothing. Sends, posts and payments still wait. Today they start with ${ACCESS_LABEL[own.defaults.permission]}.`,
+        body: `Its new threads then start with Full access, as New threads do, and ask before nothing. Sends, posts and payments still wait.${today ? ` Today they start with ${today}.` : ""}`,
         action: "Use New threads",
       });
       if (!ok) return false;
     }
     return saved.run(() => workspaceStore.saveDefaults(place.environmentId, place.id, null));
   };
-  return { may, run };
+  return { may, inherited, failure: inherited ? null : failure, environmentId: place.environmentId, run };
 }
 
 /**
@@ -336,6 +373,8 @@ export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: Worksp
   const reset = useUseNewThreads(workspace);
   return (
     <Modal title="New threads" description={workspace.name} size="sm" onClose={onClose}>
+      {/* The dialog's own failures, said at its head. */}
+      <FailuresSaidOnce>
       <ModalBody className="gap-0">
         {set.value ? (
           <DefaultsRows set={set} environmentId={workspace.environmentId} startOn={false} layout="dialog" />
@@ -348,17 +387,14 @@ export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: Worksp
       </ModalBody>
       <DialogFooter
         start={
-          set.scope?.overridden && reset.may ? (
-            <Button variant="ghost" disabled={set.blocked} onClick={() => void reset.run(set.cleared)}>
-              Use New threads
-            </Button>
-          ) : null
+          set.scope?.overridden && reset.may ? <UseNewThreadsPress reset={reset} saved={set.cleared} disabled={set.blocked} variant="ghost" /> : null
         }
         note={set.scope && !set.scope.overridden ? "Same as New threads" : undefined}
         confirmLabel="Done"
         closeOnConfirm
         onConfirm={onClose}
       />
+      </FailuresSaidOnce>
     </Modal>
   );
 }

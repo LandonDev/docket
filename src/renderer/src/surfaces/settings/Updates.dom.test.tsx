@@ -18,6 +18,10 @@ const host = vi.hoisted(() => ({
   read: "answers" as "answers" | "pending" | "refused",
   calls: [] as { method: string; params: unknown }[],
   deploy: null as Record<string, unknown> | null,
+  /** The deploy status read never answers. */
+  deployPending: false,
+  /** What admission.get answers; null refuses it. */
+  admission: null as { running: number } | null,
 }));
 vi.mock("../../lib/hostJobs", async (original) => {
   const real = await original<typeof import("../../lib/hostJobs")>();
@@ -25,7 +29,9 @@ vi.mock("../../lib/hostJobs", async (original) => {
     ...real,
     // The deploy store's own registry is not this test's: its read and its start answer from `host`.
     refreshDeployStatus: async (id: string) => {
-      if (host.deploy) real.hostJobsStore.setState((s) => ({ deploy: { ...s.deploy, [id]: host.deploy as never } }));
+      if (host.deployPending) return new Promise(() => {});
+      // As the real store does: a failed read is null.
+      real.hostJobsStore.setState((s) => ({ deploy: { ...s.deploy, [id]: (host.deploy ?? null) as never } }));
       return host.deploy;
     },
     startDeploy: async (id: string) => void host.calls.push({ method: "host.deploy", params: { id } }),
@@ -50,6 +56,7 @@ const link = vi.hoisted(() => ({
     if (method === "code.settings.get") return host.code;
     if (method === "host.deployStatus" && host.deploy) return host.deploy;
     if (method === "host.deploy") return { ...host.deploy, phase: "running" };
+    if (method === "admission.get" && host.admission) return { running: host.admission.running, cap: 8, queued: 0 };
     if (method === "code.settings.set") {
       if (host.refuse) throw new Error(host.refuse);
       host.code = { ...host.code, host: (params as { host: string | null }).host };
@@ -80,6 +87,7 @@ const asked = vi.hoisted(() => ({ settings: [] as unknown[][] }));
 vi.mock("../../lib/monaco/debugTab", () => ({ requestSettings: (...args: unknown[]) => asked.settings.push(args) }));
 
 const { UpdatesPage, updateActionLabel, versionWords } = await import("./Updates");
+const real = await import("../../lib/hostJobs");
 const { resetDeployDriftForTest } = await import("../../lib/deployDrift");
 
 const flush = async (): Promise<void> => {
@@ -292,6 +300,48 @@ describe("Updates", () => {
         expect(host.calls.some((c) => c.method === "host.deploy")).toBe(true);
       } finally {
         host.deploy = null;
+      }
+    });
+
+    it("asks only once it has read how many threads run there, and says they may pause when it could not", async () => {
+      resetDeployDriftForTest({ release: 399, version: "1.0.399" } as never);
+      computers.list = [{ id: "env_box", name: "The box" }];
+      computers.hello = { env_box: { build: { release: 397, version: "1.0.397" } } };
+      host.deploy = { job: "deploy", phase: "idle", installed: true, installHint: "", version: "1.0.397", target: null, startedAt: null, finishedAt: null, exit: null, stoppable: false };
+      confirms.answer = false;
+      try {
+        page();
+        for (let i = 0; i < 6; i++) await flush();
+        host.admission = { running: 3 };
+        fireEvent.click(screen.getByRole("button", { name: "Update…" }));
+        for (let i = 0; i < 3; i++) await flush();
+        expect(host.calls.filter((c) => c.method === "admission.get")).toHaveLength(1);
+        expect((confirms.asked.at(-1) as unknown as { body: string }).body).toContain("3 running threads pause about a minute.");
+        host.admission = null;
+        fireEvent.click(screen.getByRole("button", { name: "Update…" }));
+        for (let i = 0; i < 3; i++) await flush();
+        expect((confirms.asked.at(-1) as unknown as { body: string }).body).toContain("Running threads may pause about a minute.");
+      } finally {
+        host.deploy = null;
+        host.admission = null;
+        confirms.answer = true;
+      }
+    });
+
+    it("ends the row in a button's bone while its update status is read, never a chevron", async () => {
+      real.hostJobsStore.setState({ deploy: {} });
+      resetDeployDriftForTest({ release: 399, version: "1.0.399" } as never);
+      computers.list = [{ id: "env_box", name: "The box" }];
+      computers.hello = { env_box: { build: { release: 397, version: "1.0.397" } } };
+      host.deployPending = true;
+      try {
+        page();
+        for (let i = 0; i < 4; i++) await flush();
+        const row = screen.getByRole("region", { name: "Other computers" }).querySelector("[data-computer=env_box]")!;
+        expect(row.querySelector("[data-skeleton-control]")).not.toBeNull();
+        expect(row.querySelector("[data-slot=open-cue]")).toBeNull();
+      } finally {
+        host.deployPending = false;
       }
     });
 

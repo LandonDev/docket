@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from "react";
-import { PageRowsSkeleton, PageSection, type SkeletonRow } from "../../../components/page";
+import { PageRowsSkeleton, type SkeletonRow } from "../../../components/page";
+import { Skeleton } from "../../../components/ui/skeleton";
 import { ReadFailure } from "../parts/ReadFailure";
 import { useHostRead, type HostRead } from "../../../lib/connection/hostRead";
 import type { Host } from "../parts/hostRpc";
@@ -23,6 +24,13 @@ export function useComputerRead<T>(host: Host, method: string, { params, poll = 
   return read;
 }
 
+/** A small button's bone at a row's end, while whether the row offers its button is not known yet. */
+export const ButtonBone = () => <Skeleton data-skeleton-control aria-label="Loading" className="h-7 w-20 shrink-0 rounded-md" />;
+
+/** A `PageSection` of mine whose only body is a read: a failed read is said at the page's head (ReadFailure) and leaves
+ *  the section with nothing, so the section draws nothing (SettingSection does the same). */
+export const HIDES_EMPTY = "has-[>div:last-child:empty]:hidden";
+
 /** A section's body while its read is out (the rows' shape) or once it failed with nothing to show (the red line,
  *  naming the computer, and Retry); its rows once the computer answered. */
 export function SectionRead<T>({
@@ -44,16 +52,11 @@ export function SectionRead<T>({
 
 /**
  * A page about one computer, held by one read of it (round 2, rule 2): while the read is out the sections stand in
- * their own shapes; when it fails the page says once that the computer did not answer, with one Retry, and draws no
- * section under it (no heading, no bones); once it answers the sections read for themselves.
+ * their own shapes; when it fails the page's head says once that the computer did not answer, with one Retry, and the
+ * page draws nothing under it (no heading, no bones); once it answers the sections read for themselves.
  */
 export function ComputerGate({ host, probe = "admission.get", children }: { host: Host; probe?: string; children: ReactNode }) {
   const read = useComputerRead<unknown>(host, probe);
-  if (read.value === undefined && read.error)
-    return (
-      <PageSection data-computer-silent="">
-        <ReadFailure computer={host.environmentId} error={read.error} retry={read.retry} />
-      </PageSection>
-    );
+  if (read.value === undefined && read.error) return <ReadFailure computer={host.environmentId} error={read.error} retry={read.retry} />;
   return <>{children}</>;
 }

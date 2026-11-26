@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { TeamsLibrary, TeamsPlace, TeamsRoot } from "@shared/contract-work-office";
 import { Field } from "../../chrome/DialogField";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -105,12 +105,22 @@ export function mostOpens(modes: readonly OpensIn[]): OpensIn | undefined {
 }
 
 /** The section's line: what a switch means (once a page) and how its Office files open, or none. */
-function sectionLine(any: boolean, explain: boolean, common: OpensIn | undefined): string | undefined {
+function sectionLine(any: boolean, explain: boolean, common: OpensIn | undefined, pageSays?: OpensIn | null): string | undefined {
   if (!any) return undefined;
   const parts: string[] = [];
   if (explain) parts.push(LISTED_LINE);
-  if (common) parts.push(`${OPENS_LINE[common]}.`);
+  // The page says it once under its title where every section agrees.
+  if (common && common !== pageSays) parts.push(`${OPENS_LINE[common]}.`);
   return parts.length ? parts.join(" ") : undefined;
+}
+
+/** The page's one line under its title: what a switch means, and where Office files open where every list agrees. */
+export function filesPageLine(sections: readonly { any: boolean; common: OpensIn | null }[]): { line: string; opens: OpensIn | null } | null {
+  const listing = sections.filter((s) => s.any);
+  if (!listing.length) return null;
+  const ways = new Set(listing.map((s) => s.common));
+  const opens = ways.size === 1 ? [...ways][0]! : null;
+  return { line: opens ? `${LISTED_LINE} ${OPENS_LINE[opens]}.` : LISTED_LINE, opens };
 }
 
 type FolderRowValue = { folder: string; title: string; library: TeamsLibrary | null; on: boolean };
@@ -125,6 +135,8 @@ export function TeamsFilesRow({
   setting,
   elsewhere,
   explain = false,
+  pageSays,
+  onSays,
 }: {
   link: Link | null | undefined;
   title: string;
@@ -138,6 +150,10 @@ export function TeamsFilesRow({
   elsewhere?: string;
   /** Say what a row's switch means: once a page, on its first folders section. */
   explain?: boolean;
+  /** Where Office files open, as the page says it once under its title; the section then leaves it out. */
+  pageSays?: OpensIn | null;
+  /** Tells the page whether this list shows rows, and where most of them open. */
+  onSays?: (says: { any: boolean; common: OpensIn | null } | null) => void;
 }) {
   const read = useHostRead(link, () => link!.request<Libraries>("work.office.filesLibraries", {}));
   // A dialog's failed save says so in the dialog alone; a row's, under the row.
@@ -160,6 +176,11 @@ export function TeamsFilesRow({
     libraryIds.join(","),
   );
   const common = modes.value ? mostOpens([...modes.value.values()]) : undefined;
+  const any = shown.length > 0 && (!vm || !value || keepsVm(value));
+  useEffect(() => {
+    onSays?.(value ? { any, common: common ?? null } : null);
+  }, [onSays, any, common, value]);
+  useEffect(() => () => onSays?.(null), [onSays]);
   if (!value)
     // A read that failed is its computer's one line, with no heading and no bones; bones only while it is out.
     return kept.error ? (
@@ -203,7 +224,7 @@ export function TeamsFilesRow({
     void modes.retry();
   };
   return (
-    <PageSection title={title} action={add} data-setting={setting} description={sectionLine(shown.length > 0, explain, common)}>
+    <PageSection title={title} action={add} data-setting={setting} description={sectionLine(shown.length > 0, explain, common, pageSays)}>
       <ListFilter filter={filter} label="Find a folder" />
       {shown.length ? null : <PageEmpty>{noneLine(value.places, vm)}</PageEmpty>}
       {filter.shown.map((row) => (
@@ -319,7 +340,7 @@ const OPENS_IN = [
   { value: "here", label: "Edit here" },
   { value: "live", label: "Office for the web" },
 ] as const;
-type OpensIn = (typeof OPENS_IN)[number]["value"];
+export type OpensIn = (typeof OPENS_IN)[number]["value"];
 export const OPENS_LINE: Record<OpensIn, string> = { here: "Office files open here", live: "Office files open in Office for the web" };
 
 /**

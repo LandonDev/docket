@@ -9,10 +9,33 @@ struct AwayWordsTests {
         #expect(AwayWords.title(nil) == "Code and Work threads")
     }
 
-    @Test func `the root row says On while any computer has any kind away`() {
-        #expect(AwayWords.summary([]) == "Off")
-        #expect(AwayWords.summary([false, false]) == "Off")
-        #expect(AwayWords.summary([false, true]) == "On")
+    @Test func `the root row says On while any computer is away, Off only once every one answered Off`() {
+        #expect(AwayWords.summary([.off, .on]) == "On")
+        #expect(AwayWords.summary([.on, .waiting]) == "On")
+        #expect(AwayWords.summary([.off, .off]) == "Off")
+    }
+
+    @Test func `a read still out is bones, never Off`() {
+        #expect(AwayWords.summary([.waiting]) == nil)
+        #expect(AwayWords.summary([.off, .waiting]) == nil)
+    }
+
+    @Test func `a computer that could not be read makes Off partial, and none read says nothing`() {
+        #expect(AwayWords.summary([.off, .unread, .off]) == "Off on 2 of 3")
+        #expect(AwayWords.summary([.unread]) == nil)
+        #expect(AwayWords.summary([]) == nil)
+    }
+
+    @Test func `each computer by its answer, its read and its link`() {
+        #expect(AwayWords.computer(away: true, read: .answered, transport: .open) == .on)
+        #expect(AwayWords.computer(away: false, read: .answered, transport: .reconnecting) == .off)
+        #expect(AwayWords.computer(away: nil, read: .waiting, transport: .open) == .waiting)
+        #expect(AwayWords.computer(away: nil, read: .waiting, transport: .connecting) == .waiting)
+        #expect(AwayWords.computer(away: nil, read: .unsupported, transport: .open) == .unread)
+        #expect(AwayWords.computer(away: nil, read: .failed("x"), transport: .open) == .unread)
+        // Out of reach: an answer held from before is not taken as his setting now.
+        #expect(AwayWords.computer(away: false, read: .answered, transport: .offline) == .unread)
+        #expect(AwayWords.computer(away: true, read: .answered, transport: .unauthorized) == .unread)
     }
 }
 

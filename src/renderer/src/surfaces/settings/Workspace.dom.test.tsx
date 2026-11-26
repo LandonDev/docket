@@ -24,6 +24,7 @@ vi.mock("./parts/StartSetRow", () => ({ StartSetRow: () => <div data-start-set /
 vi.mock("../../chrome/PreambleDialog", () => ({ PreambleDialog: () => <div role="dialog">Rules read before the first message</div> }));
 vi.mock("../../lib/settings/computerName", () => ({
   useComputerName: () => ({ name: "The box", own: false }),
+  computerInLine: () => "the box",
   useReadFailWords: () => (error: string) => (error === "The computer did not answer" ? "The box did not answer." : error),
 }));
 // The page's accounts read: answered with the store's snapshot below.

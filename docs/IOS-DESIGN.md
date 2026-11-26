@@ -2096,7 +2096,7 @@ of footer, never a paragraph; the app's version is the Diagnostics row's
 value, the last row and clear of the tab bar, so a screenshot answers
 "which build" (the contract it speaks is on Diagnostics). The words are the Settings 2 glossary's, the desktop's
 (src/renderer/src/lib/settings/map.ts): a computer, never a host; Sign In
-Again, Forget, It may, Effort. Section
+Again, Forget, This phone may, Effort. Section
 headers are the system inset grouped headers, not `GroupHeader`: that one
 is for a hand-built card on a plain background, and the brief here is
 "indistinguishable from Apple's Settings". Rows keep the system highlight;
@@ -2120,8 +2120,15 @@ Appearance, then Diagnostics with the version as its value.
   (`WorkRowState`).
 - **Away** pushes a section per computer (named when there are several):
   Code threads, and Work threads while Work is on there, the host menu's own
-  switches over `away.get` and `away.set`, one computer per flip. The row's
-  trailing word is On while any is away; the last footer says what Away does.
+  switches over `away.get` and `away.set`, one computer per flip. While a
+  computer's read is out its section is the switches' bones; "Away needs a
+  newer Docket on <computer>." only when it answered that it does not know
+  Away (`WorkHost.awayRead`), "<Computer> did not answer." with Retry on
+  another failure, the connection's sentence when it is out of reach. The
+  row's value is On while any is away, bones while a read is out, Off only
+  once every computer answered Off, "Off on 2 of 3" when some could not be
+  read, and nothing when none could (`AwayWords.summary`); the last footer
+  says what Away does.
 - **Notifications** is one row: the switch, with the registrar's word beside
   it only when the switch's position cannot say it ("Registering…", "No
   relay", "Failed", "Not allowed"; never "On" or "Off",
@@ -2167,7 +2174,7 @@ so the bar's title is the host's name on either path with no principal item.
 2. **Activity**: `HostActivitySections(client:)` (`Shell/Hosts/`): Build,
    Mac bridge, Devices, Sync, in that order; "Host activity" below has
    their rules.
-3. **It may**: the desktop's four levels, Look only, Run threads, Run
+3. **This phone may** (the desktop's "It may", said of whom): its four levels, Look only, Run threads, Run
    threads and approve, Manage <computer>, each with one line of what it
    allows and a checkmark in the tint on the one the key holds
    (`KeyRights`), then Set up other computers and Set up from another
@@ -2246,13 +2253,13 @@ spinner, a check or a cross), footers of at most two lines.
   stays there.
 - **Devices** (one section per Mac this host can show: "Devices" on the Mac
   itself, "Devices on <Mac>" on a box): simulators then iPhones, a dot in
-  success, warning or tertiary that cross-fades in place, the state line
-  with a booted simulator's CPU rolling (`.numeric`), the platform and the
-  holder in `secondary`, pushing its thread when that host is paired here.
-  The holder trails on the row's line while the row fits whole; when it
-  would be cut (a long thread title, large text) it goes under the state and
-  wraps (`ViewThatFits`), never cut mid-word. At accessibility sizes the state
-  and the platform take a line each.
+  success, warning or tertiary that cross-fades in place, the state line one
+  phrase with commas ("Booted, 13% CPU, iOS 26.0", `DeviceState.spoken`) and
+  a booted simulator's CPU rolling (`.numeric`), the holder in `secondary`,
+  pushing its thread when that host is paired here. The holder trails on the
+  row's line while the row fits whole; when it would be cut (a long thread
+  title, large text) it goes under the state and wraps (`ViewThatFits`),
+  never cut mid-word. A device nothing holds ends with nothing, no dash.
   Shut Down and Delete on a swipe and in the context menu (Delete confirmed
   by an alert naming the holder), Open in Xcode on a phone's; a spinner
   replaces the dot while one is out. The footer says only what the rows do
@@ -2297,7 +2304,7 @@ The first field takes the keyboard once the sheet has settled (350 ms), with
 no animation.
 
 Nothing here needs more than a `read` key: `remote.push.*` are `read`,
-pairing is `POST /api/pair`, forgetting is local. The It may section is where
+pairing is `POST /api/pair`, forgetting is local. The This phone may section is where
 a person learns why a control elsewhere is disabled.
 
 ### The diff screen

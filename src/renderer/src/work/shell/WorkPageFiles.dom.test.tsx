@@ -18,7 +18,8 @@ vi.mock("../../lib/settings/computerName", () => ({
   useComputerNames: () => (id: string) => ({ name: id === "local" ? "MacBook Pro" : id === "env_box" ? "The box" : "PURDUE-LT", own: id === "local" }),
   computerInLine: (c: { name: string; own: boolean }) => (c.own ? "this Mac" : c.name === "The box" ? "the box" : c.name),
 }));
-vi.mock("../office/TeamsFilesRow", () => ({
+vi.mock("../office/TeamsFilesRow", async (original) => ({
+  filesPageLine: (await original<typeof import("../office/TeamsFilesRow")>()).filesPageLine,
   TeamsFilesRow: (props: { title: string; editable: boolean; vm?: boolean; elsewhere?: string; setting?: string }) => {
     drawn.sections.push({ title: props.title, editable: props.editable, vm: !!props.vm, elsewhere: props.elsewhere, setting: props.setting });
     return null;

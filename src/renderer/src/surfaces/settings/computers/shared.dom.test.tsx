@@ -247,6 +247,32 @@ describe("Who can sign in", () => {
     expect(opened).toEqual([{ way: "device", computer: "env_box" }]);
   });
 
+  it("marks this window's own key, and says this window loses the computer when it is removed", async () => {
+    const { registry } = await import("../../../lib/connection");
+    const { IDLE_STATUS } = await import("../../../lib/connection/types");
+    const was = registry.statusOf;
+    const mine = { ...IDLE_STATUS, transport: "open" as const, lastHello: { environmentId: "env_box", contract: 1, caps: ["admin" as const], key: { id: "k1", name: "MacBook Pro" } } };
+    Object.assign(registry, { statusOf: (id: string) => (id === "env_box" ? mine : was.call(registry, id)) });
+    answers = {
+      "remote.keys.list": [key({ id: "k1", name: "MacBook Pro", caps: ["read", "operate", "approve", "admin"] }), key({ id: "k2", name: "iPhone", caps: ["read", "operate", "approve", "admin"] })],
+      "remote.sessions.list": [],
+      "remote.pairings.list": [],
+      "remote.keys.revoke": { ok: true },
+    };
+    try {
+      render(<SignIns host={hostOf("env_box", "The box")} rows="pc" />);
+      await flush();
+      expect(document.querySelector("[data-sign-in=k1]")?.hasAttribute("data-own")).toBe(true);
+      expect(document.querySelector("[data-sign-in=k1]")?.textContent).toContain("MacBook Pro this Mac");
+      expect(document.querySelector("[data-sign-in=k2]")?.hasAttribute("data-own")).toBe(false);
+      fireEvent.click(document.querySelector("[data-sign-in=k1] button")!);
+      await flush();
+      expect(confirms.at(-1)).toEqual(expect.objectContaining({ title: "Remove MacBook Pro?", body: "This Mac loses the box until it signs in again." }));
+    } finally {
+      Object.assign(registry, { statusOf: was });
+    }
+  });
+
   it("keeps a device he chose to keep", async () => {
     confirmAnswer = false;
     answers = { "remote.keys.list": [key({ id: "k1", name: "iPhone" })], "remote.sessions.list": [], "remote.pairings.list": [] };
@@ -299,5 +325,15 @@ describe("Advanced", () => {
     await flush();
     expect(confirms).toEqual([]);
     expect(requests.filter((r) => r.method === "remote.settings.set")).toHaveLength(1);
+  });
+});
+
+describe("this window's own sign-in", () => {
+  it("is the key it signed in with, or for a browser the newest session on that key", async () => {
+    const { signInsOf } = await import("./words");
+    const session = (id: string, lastSeenAt: number) => ({ id, keyId: "kb", keyName: "PURDUE-LT", caps: ["read" as const], userAgent: "Chrome/131.0", createdAt: 1, lastSeenAt, expiresAt: 9e12 });
+    const rows = signInsOf({ keys: [key({ id: "k1", name: "MacBook Pro" })], sessions: [session("s1", 10), session("s2", 20)], pairings: [] }, "the box", 100, "kb");
+    expect(rows.filter((r) => r.kind !== "link" && r.own).map((r) => r.id)).toEqual(["s2"]);
+    expect(signInsOf({ keys: [key({ id: "k1", name: "MacBook Pro" })], sessions: [], pairings: [] }, "the box", 100, "k1")[0]).toEqual(expect.objectContaining({ own: true }));
   });
 });

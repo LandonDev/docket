@@ -38,6 +38,10 @@ export function WorkPageBody() {
   const mac = thisDesktopInLine();
   return (
     <>
+      {/* The sign-ins Work leans on are Connections' page: one way there, as AI accounts has. */}
+      <SettingSection of="work.connections">
+        <SettingRow id="work.connections" onOpen={() => requestSettings("connections")} openLabel="LifeOS, Office and Google sign-ins" />
+      </SettingSection>
       <JobsAccess />
       <SettingSection of="work.grants">
         <GrantsRow id="work.grants" />

@@ -255,8 +255,9 @@ public struct DeviceState: Sendable, Hashable {
         self.platform = platform
     }
 
-    /// Both parts as one phrase, for VoiceOver: "Booted, 34% CPU, iOS 26.0".
-    public var spoken: String { "\(status), \(platform)" }
+    /// Both parts as one phrase, the row's line and VoiceOver's: "Booted, 34% CPU, iOS 26.0"; the state alone when
+    /// the platform is not known.
+    public var spoken: String { platform.isEmpty ? status : "\(status), \(platform)" }
 }
 
 public enum DeviceWords {

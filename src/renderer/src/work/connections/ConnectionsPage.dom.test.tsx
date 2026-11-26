@@ -466,7 +466,9 @@ describe("a computer Work is off on", () => {
   it("is words and a way to Setup, never a failure with Retry; this Mac's own row carries its mark", async () => {
     render(<ConnectionsView hosts={[{ id: "local", name: "MacBook Pro", own: true, status: "failed", error: "Work is off on this Mac" }, { id: "box", name: "The box", status: "failed", silent: true }]} onRecheck={() => {}} />);
     const row = document.querySelector<HTMLElement>('[data-work-off="local"]')!;
-    expect(row.textContent).toContain("Work is off on this Mac");
+    expect(row.textContent).toContain("Work is off");
+    // The title says this Mac; the line does not say it again.
+    expect(row.textContent!.match(/this Mac/g)).toHaveLength(1);
     expect(row.textContent).toContain("this Mac");
     expect(row.querySelector(".text-destructive")).toBeNull();
     expect(row.querySelector("[data-host-retry]")).toBeNull();

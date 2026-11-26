@@ -14,7 +14,11 @@ const state: { rules: HouseRule[]; proposals: RuleProposal[]; line: RuleProposal
 
 vi.mock("../../lib/settings/computerName", async (original) => {
   const real = await original<typeof import("../../lib/settings/computerName")>();
-  return { ...real, useReadFailWords: () => (error: string) => real.readFailWords(error, { name: "The box", own: false }) };
+  return {
+    ...real,
+    useReadFailWords: () => (error: string) => real.readFailWords(error, { name: "The box", own: false }),
+    useComputerName: () => ({ name: "The box", own: false }),
+  };
 });
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
@@ -376,5 +380,13 @@ describe("the line under a sent mail", () => {
     const { container } = render(<RuleLine env="box" draftId="d3" />);
     await settle();
     expect(container.textContent).toBe("");
+  });
+});
+
+describe("an off rule", () => {
+  it("keeps its title in full ink: the switch says it is off", async () => {
+    render(<RulesPage workspace={WORKSPACE} />);
+    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+    for (const title of document.querySelectorAll("[data-rule] [data-slot=item-title] span")) expect(title.className).not.toContain("text-muted-foreground");
   });
 });

@@ -102,7 +102,10 @@ describe("Things threads may send on their own", () => {
   it("says how a grant is made in the empty state, and offers no Remove to a key that may not", async () => {
     render(<GrantsRow id="work.grants" />);
     fireEvent.click(screen.getByRole("button", { name: "Things threads may send on their own" }));
-    expect((await screen.findByRole("dialog")).textContent).toContain(`None yet. ${GRANTS_MADE}`);
+    const sheet = await screen.findByRole("dialog");
+    expect(sheet.textContent).toContain("None yet");
+    // Where a grant is made is said once, beside Open the Outbox.
+    expect(sheet.textContent!.split(GRANTS_MADE)).toHaveLength(2);
     cleanup();
     box.grants = [grant("g1", "env_box", "w1", "Mail to Sam Ortiz")];
     box.cannot = new Set(["env_box"]);
@@ -126,8 +129,9 @@ describe("the grants' read", () => {
     box.loaded = true;
     box.errors = [{ environmentId: "env_box", error: "The computer did not answer" }, { environmentId: "local", error: "The computer did not answer" }];
     render(<GrantsRow id="work.grants" />);
-    const row = document.querySelector<HTMLElement>('[data-setting="work.grants"]')!;
-    expect(row.textContent).not.toContain("None");
+    // Nothing read: no bare title stands; the failures say why.
+    expect(document.querySelector('[data-setting="work.grants"]')).toBeNull();
+    expect(document.body.textContent).not.toContain("None");
     expect(screen.getAllByRole("alert").map((a) => a.textContent)).toEqual(["The box did not answer.", "this Mac did not answer.".replace(/^t/, "T")]);
     expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2);
     // Nothing read: no way into a sheet that could show nothing.

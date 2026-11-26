@@ -43,6 +43,7 @@ describe("the settings map", () => {
     expect(settingWords("{computer} on {mac}", { computer: "the box" })).toBe("The box on this Mac");
     expect(settingTitle("defaults.different", { n: 2 })).toBe("Different in 2 places");
     expect(settingTitle("reviews.different", { n: 1 })).toBe("Different in 1 project");
+    expect(settingTitle("defaults.different", { n: "at least 1" })).toBe("Different in at least 1 place");
     expect(settingTitle("updates.version", { version: "1.0.400" })).toBe("Docket 1.0.400");
     expect(settingTitle("updates.version")).toBe("Docket");
   });

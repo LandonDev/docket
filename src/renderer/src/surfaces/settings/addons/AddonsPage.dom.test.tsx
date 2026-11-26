@@ -159,8 +159,9 @@ describe("Settings → Add-ons", () => {
       expect(within(row).queryByRole("switch")).toBeNull();
       expect(within(row).queryByRole("button")).toBeNull();
     }
-    // An off row says so in words when there is no switch to read.
+    // An off row says so in words when there is no switch to read, first on its line, as an off skill does.
     expect(rowOf("local").textContent).toContain("Off");
+    expect(rowOf("local").querySelector("[data-slot=status-mark]")).toBeNull();
     expect(screen.queryByRole("button", { name: "Add…" })).toBeNull();
   });
 

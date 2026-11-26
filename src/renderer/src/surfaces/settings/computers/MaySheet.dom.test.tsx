@@ -9,7 +9,7 @@ import type { MacBridgeHostPolicy } from "@server/shared/contract-macbridge";
  */
 
 const calls: unknown[][] = [];
-/** What runs here now, as the list "Running now" draws it. */
+/** What runs here now, as the list "Commands and apps running now" draws it. */
 let running: { kind: string; status: string }[] = [];
 let fail: string | null = null;
 let hosts: MacBridgeHostPolicy[] = [];

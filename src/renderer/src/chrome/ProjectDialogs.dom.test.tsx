@@ -338,12 +338,13 @@ describe('ProjectSettingsDialog: each field waits for its value', () => {
   it('says a failed read with Retry, which asks again', async () => {
     readFailOn = new Set(['turnpass.get', 'build.get'])
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
-    // Two groups one computer did not answer: one line, naming it, under the first; the second says nothing more.
-    await waitFor(() => expect(section('After each turn').textContent).toContain('This Mac did not answer.'))
+    // Two groups one computer did not answer: one line at the sheet's head, naming it; the groups say nothing more.
+    await waitFor(() => expect(screen.getAllByRole('alert')).toHaveLength(1))
+    expect(screen.getByRole('alert').textContent).toBe('This Mac did not answer.')
+    expect(section('After each turn').textContent).not.toContain('did not answer')
     expect(section('Build').textContent).not.toContain('did not answer')
-    expect(screen.getAllByRole('alert')).toHaveLength(1)
     readFailOn = new Set()
-    await act(async () => fireEvent.click(section('After each turn').querySelector('button')!))
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Retry' })))
     await waitFor(() => expect(screen.getByRole('switch', { name: 'Run the checks' })).toBeTruthy())
   })
 })
@@ -621,13 +622,16 @@ describe('ProjectSettingsDialog: Save and the groups that did not load', () => {
     expect(saveButton().disabled).toBe(true)
   })
 
-  it('says a group that did not load is not saved, says its failure once with Retry on the same line, and still saves the rest', async () => {
+  it('says a group that did not load is not saved, says its failure once at the head with Retry on the same line, and still saves the rest', async () => {
     readFailOn = new Set(['build.get'])
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
-    await waitFor(() => expect(footerNote()).toBe('Only what loaded is saved'))
-    const build = section('Build')
-    expect(build.querySelectorAll('[role=alert]')).toHaveLength(1)
-    expect(build.querySelector('[data-slot=page-error-line] button')?.textContent).toBe('Retry')
+    // Over the footer, never in it: Save stays beside Cancel at any width.
+    await waitFor(() => expect(document.querySelector('[data-sheet-note]')?.textContent).toBe('Only what loaded is saved'))
+    expect(footerNote()).toBeNull()
+    // Said at the sheet's head, with its Retry on the same line; the Build group draws nothing under its heading.
+    expect(section('Build').querySelectorAll('[role=alert]')).toHaveLength(0)
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(document.querySelector('[data-read-failures] [data-slot=page-error-line] button')?.textContent).toBe('Retry')
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Solo two' } })
     await waitFor(() => expect(saveButton().disabled).toBe(false))
   })
@@ -661,5 +665,17 @@ describe('ProjectSettingsDialog: Accounts read their own state', () => {
     await act(async () => {})
     expect(section('Accounts').querySelectorAll('[data-slot=field-bone]')).toHaveLength(2)
     expect(section('Accounts').textContent).not.toContain('Same as the workspace')
+  })
+})
+
+describe('ProjectSettingsDialog: its subtitle', () => {
+  it('wraps the path rather than cut its end, which names the project', () => {
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    const path = screen.getByRole('dialog').querySelector('[data-project-path]')!
+    expect(path.className).not.toContain('truncate')
+    expect(path.className).toContain('[overflow-wrap:anywhere]')
+    // It breaks after a slash, a folder's name kept whole.
+    expect(path.querySelectorAll('wbr').length).toBeGreaterThan(0)
+    expect(path.textContent).toBe('~/IdeaProjects/temp-code')
   })
 })

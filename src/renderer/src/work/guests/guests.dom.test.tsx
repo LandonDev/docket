@@ -695,6 +695,14 @@ describe("the held request and the audit list", () => {
     expect(await screen.findByText("No guest links")).toBeTruthy();
   });
 
+  it("draws no row when no computer gave its links: the failure says why", async () => {
+    const { GuestLinksRow } = await import("./GuestLinksSection");
+    calls.down.add("box");
+    render(<GuestLinksRow hosts={["box"]} />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(document.querySelector('[data-setting="files.guests"]')).toBeNull();
+  });
+
   it("is one open row on Files saying how many links are live and when the next ends, opening the list in a sheet with a find field past eight", async () => {
     const { GuestLinksRow, guestsWords } = await import("./GuestLinksSection");
     expect(guestsWords([], NOW)).toBe("None");

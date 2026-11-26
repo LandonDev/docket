@@ -217,7 +217,7 @@ struct HostDetailView: View {
             // 2. Activity: what the computer is doing (Shell/Hosts/, thread 21).
             HostActivitySections(client: client)
 
-            // 3. It may: the four levels of the desktop's "It may", the key's own checked, then the setup rights a key
+            // 3. This phone may: the four levels of the desktop's "It may", said of whom (the council's round 3), the key's own checked, then the setup rights a key
             // holds beside its level.
             Section {
                 let level = KeyRights.of(environment.caps)
@@ -228,7 +228,7 @@ struct HostDetailView: View {
                     rightsRow(title: capability.title, detail: capability.detail, held: true)
                 }
             } header: {
-                Text("It may")
+                Text("This phone may")
             } footer: {
                 Text("What \u{201C}\(environment.keyName)\u{201D} may do on \(environment.name). To change it, sign in again with a new link.")
             }
@@ -286,7 +286,7 @@ struct HostDetailView: View {
         .onDisappear { rename(environment) }
     }
 
-    /// One level of "It may", or a setup right: its words, dim when the key does not hold it, and a check when it does.
+    /// One level of "This phone may", or a setup right: its words, dim when the key does not hold it, and a check when it does.
     private func rightsRow(title: String, detail: String, held: Bool) -> some View {
         HStack(spacing: Layout.rowGap) {
             VStack(alignment: .leading, spacing: 2) {

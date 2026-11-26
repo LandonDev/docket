@@ -11,7 +11,11 @@ import { resetLifeos, setLifeosSession, setLifeosStatus } from "./lifeos";
 const transport = vi.hoisted(() => ({ now: null as string | null }));
 vi.mock("../../lib/settings/computerName", async (original) => {
   const real = await original<typeof import("../../lib/settings/computerName")>();
-  return { ...real, useReadFailWords: () => (error: string) => real.readFailWords(error, { name: "The box", own: false }) };
+  return {
+    ...real,
+    useReadFailWords: () => (error: string) => real.readFailWords(error, { name: "The box", own: false }),
+    useComputerName: () => ({ name: "The box", own: false }),
+  };
 });
 vi.mock("../../lib/connection", async (original) => {
   const real = await original<typeof import("../../lib/connection")>();

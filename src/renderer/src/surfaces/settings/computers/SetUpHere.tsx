@@ -77,7 +77,7 @@ export function SetUpView({ row, onAct, now = Date.now() }: { row: ComputerRow; 
   };
   const stopped = row.state === "stopped";
   return (
-    <SettingSection of="pc.setup" vars={{ mac: thisDesktopInLine() }} description={`Stop and Remove are done from ${thisDesktopInLine()}.`}>
+    <SettingSection of="pc.setup" vars={{ mac: thisDesktopInLine() }}>
       {/* One act a row; Remove…, which takes everything back, sits last. */}
       <SettingRow id="pc.setup" description={computerParts(row, now).join(", ")} error={error ?? row.lastError ?? undefined}>
         {row.waitingForContact ? null : (

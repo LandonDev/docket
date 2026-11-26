@@ -18,6 +18,9 @@ const state = vi.hoisted(() => ({
   confirm: vi.fn(async (_request: unknown) => true),
   may: true,
   globalPermission: "edits" as "safe" | "edits" | "auto",
+  unheard: [] as string[],
+  waiting: [] as string[],
+  inheritedOut: false,
   plansFailed: false,
   plansRetry: vi.fn(),
 }));
@@ -64,16 +67,17 @@ const defaultsOf = () => ({ provider: "claude", model: "", reasoning: "medium", 
 vi.mock("../../lib/tcserver/workspaces", () => ({
   scopeKey: (env: string, id: string) => `${env}:${id}`,
   useThreadDefaults: (_env: string, id: string | null) =>
-    state.failed ? undefined : { defaults: defaultsOf(), overridden: id === null ? state.overridden : state.overriding.has(id), home: state.home },
+    state.failed || (id === null && state.inheritedOut) ? undefined : { defaults: defaultsOf(), overridden: id === null ? state.overridden : state.overriding.has(id), home: state.home },
   useThreadDefaultsError: () => (state.failed ? { error: "The computer did not answer", retry: state.retry } : null),
   useWorkspaceCatalog: () => ({
     workspaces: state.workspaces,
-    defaults: new Map([...state.overriding].map((id) => [`local:${id}`, { overridden: true }])),
+    defaults: new Map(state.workspaces.filter((w) => !state.unheard.includes(w.id) && !state.waiting.includes(w.id)).map((w) => [`local:${w.id}`, { overridden: state.overriding.has(w.id) }] as const)),
+    defaultsErrors: new Map(state.unheard.map((id) => [`local:${id}`, "The computer did not answer"] as const)),
   }),
   workspaceStore: {
     saveDefaults: (...args: unknown[]) => state.save(...args),
     defaultsAt: (_env: string, id: string | null) => ({
-      defaults: id === null ? { ...defaultsOf(), permission: state.globalPermission } : defaultsOf(),
+      defaults: id === null ? { ...defaultsOf(), permission: state.globalPermission } : { ...defaultsOf(), permission: "edits" },
       overridden: id === null ? state.overridden : state.overriding.has(id),
     }),
   },
@@ -115,6 +119,9 @@ beforeEach(() => {
   state.plansFailed = false;
   state.may = true;
   state.globalPermission = "edits";
+  state.unheard = [];
+  state.waiting = [];
+  state.inheritedOut = false;
   state.plansRetry.mockClear();
 });
 afterEach(cleanup);
@@ -272,6 +279,32 @@ describe("Different in N places", () => {
     expect(state.save).toHaveBeenCalledWith("local", "w2", null);
   });
 
+  it("holds its shape while a place's set is still out, and gives no count", () => {
+    state.workspaces = [
+      { id: "w1", name: "Purdue Esports", environmentId: "local" },
+      { id: "w2", name: "temp-code", environmentId: "local" },
+    ];
+    state.overriding = new Set(["w1"]);
+    state.waiting = ["w2"];
+    render(<ThreadDefaultsPage />);
+    expect(document.querySelector("[data-setting='defaults.different']")).toBeNull();
+    expect(screen.getByRole("region", { name: "Start with" }).querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(1);
+  });
+
+  it("says a floor and the places it has not heard from when a computer did not answer", () => {
+    state.workspaces = [
+      { id: "w1", name: "Purdue Esports", environmentId: "local" },
+      { id: "w2", name: "temp-code", environmentId: "local" },
+    ];
+    state.overriding = new Set(["w1"]);
+    state.unheard = ["w2"];
+    render(<ThreadDefaultsPage />);
+    const row = document.querySelector("[data-setting='defaults.different']") as HTMLElement;
+    expect(row.textContent).toContain("Different in at least 1 place");
+    expect(row.textContent).toContain("Not heard from temp-code");
+    expect(screen.getByRole("alert").textContent).toBe("This Mac did not answer.");
+  });
+
   it("is absent while every place follows New threads", () => {
     state.workspaces = [{ id: "w1", name: "Alpha", environmentId: "local" }];
     render(<ThreadDefaultsPage />);
@@ -291,6 +324,8 @@ describe("Use New threads", () => {
   it("asks first when it would give the place Full access, naming what it has today", async () => {
     state.overriding = new Set(["w1"]);
     state.globalPermission = "auto";
+    // The set the place would follow, as its computer answered it.
+    state.permission = "auto";
     state.confirm.mockImplementation(async () => false);
     render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
     const dialog = await screen.findByRole("dialog");
@@ -310,6 +345,17 @@ describe("Use New threads", () => {
     });
     expect(state.confirm).not.toHaveBeenCalled();
     expect(state.save).toHaveBeenCalledWith("local", "w1", null);
+  });
+});
+
+describe("Use New threads, before it knows what it would bring", () => {
+  it("is a bone while the set the place would follow is out", async () => {
+    state.overriding = new Set(["w1"]);
+    state.inheritedOut = true;
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("button", { name: "Use New threads" })).toBeNull();
+    expect(dialog.querySelector("[data-skeleton-control]")).toBeTruthy();
   });
 });
 

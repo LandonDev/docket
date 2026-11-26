@@ -37,6 +37,9 @@ vi.mock("../../lib/connection", () => ({
   useEnvironments: () => host.environments,
 }));
 vi.mock("../../lib/connection/hostRead", () => ({ useHostRead: () => host.read }));
+vi.mock("./parts/hostRpc", () => ({
+  hostRequest: (_env: string, method: string, params: unknown) => (method === "away.set" ? host.set(params) : Promise.resolve({})),
+}));
 vi.mock("../../lib/linkMay", async (original) => ({ ...(await original<typeof import("../../lib/linkMay")>()), useLinkMay: () => host.may }));
 vi.mock("../../lib/settings/computerName", async (original) => {
   const real = await original<typeof import("../../lib/settings/computerName")>();
@@ -85,7 +88,7 @@ describe("Away", () => {
     expect(screen.getByRole("switch", { name: "Code threads" })).toBeTruthy();
   });
 
-  it("puts a refused flip back, leaving the reason to the store's toast", async () => {
+  it("puts a refused flip back and says the reason under its row", async () => {
     host.set.mockImplementation(async () => {
       throw new Error("forbidden: away.set needs approve");
     });
@@ -94,7 +97,7 @@ describe("Away", () => {
       fireEvent.click(screen.getByRole("switch", { name: "Code threads" }));
     });
     expect(screen.getByRole("switch", { name: "Code threads" }).getAttribute("aria-checked")).toBe("false");
-    expect(screen.queryByText("This did not save.")).toBeNull();
+    expect((document.querySelector("[data-setting='away.code']") as HTMLElement).textContent).toContain("This computer's key may not do that on this Mac.");
   });
 });
 

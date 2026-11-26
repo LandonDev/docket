@@ -11,7 +11,7 @@ import { ManagedLine } from "../parts/ManagedLine";
 import { SettingRow, SettingSection } from "../parts/SettingRow";
 import { useSaved } from "../parts/useSaved";
 import type { Host } from "../parts/hostRpc";
-import { SectionRead, useComputerRead } from "./read";
+import { HIDES_EMPTY, SectionRead, useComputerRead } from "./read";
 import { budgetWords, runningWords } from "./words";
 
 const MB = 1024 * 1024;
@@ -52,7 +52,7 @@ export function ThreadsRows({ host, rows, saysWhoCan = true }: { host: Host; row
     </SectionRead>
   );
   // This Mac's Threads page is these rows under its own title; another computer's page names them.
-  return rows === "here" ? <PageSection>{body}</PageSection> : <SettingSection of="pc.atOnce" vars={vars}>{body}</SettingSection>;
+  return rows === "here" ? <PageSection className={HIDES_EMPTY}>{body}</PageSection> : <SettingSection of="pc.atOnce" vars={vars}>{body}</SettingSection>;
 }
 
 function AtOnceRow({ host, id, state, onState, manage }: { host: Host; id: string; state: AdmissionState; onState: (s: AdmissionState) => void; manage: boolean }) {

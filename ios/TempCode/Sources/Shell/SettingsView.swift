@@ -81,10 +81,18 @@ struct SettingsView: View {
                         EmptyView()
                     }
                     // Away (the host menu's switches, `away.get` and `away.set`): Code and Work threads per computer.
+                    // Its value is the computers' answers: bones while one is still out, never Off before it is known.
                     NavigationLink {
                         AwaySettingsScreen().sidebarButtonPage()
                     } label: {
-                        LabeledContent("Away", value: AwayWords.summary(clients.map(\.work.awayOn)))
+                        let word = AwayWords.summary(clients.map { client in
+                            AwayWords.computer(away: client.work.away.map { AwayKinds.any($0.state) }, read: client.work.awayRead, transport: client.status.transport)
+                        })
+                        LabeledContent("Away") {
+                            Text(word ?? "Off")
+                                .redacted(reason: word == nil ? .placeholder : [])
+                                .accessibilityHidden(word == nil)
+                        }
                     }
                     .accessibilityIdentifier("away-settings-row")
                 }
@@ -236,10 +244,24 @@ private struct AwayComputerSection: View {
             .filter { $0.kind != .work || work.isOn }
         Section {
             if work.away == nil {
-                if SettingsView.settled(client.status) {
-                    Text(client.status.transport == .open ? "Away needs a newer Docket on \(client.environment.name)." : ConnectionSentence.text(name: client.environment.name, status: client.status, now: .now))
+                // Old-release words only for a reply that says so; a read still out is bones (the council's round 3).
+                switch (client.status.transport, work.awayRead) {
+                case (.offline, _), (.unauthorized, _):
+                    Text(ConnectionSentence.text(name: client.environment.name, status: client.status, now: .now))
                         .textStep(.meta)
-                } else {
+                case (_, .unsupported):
+                    Text("Away needs a newer Docket on \(nameInLine(client.environment.name)).")
+                        .textStep(.meta)
+                case (.open, .failed):
+                    HStack(spacing: Layout.rowGap) {
+                        Text("\(nameAtStart(client.environment.name)) did not answer.")
+                            .textStep(.meta, tint: Tint.destructiveText)
+                        Spacer(minLength: Layout.rowGap)
+                        // A grouped list keeps the system highlight: a plain button, no press scale.
+                        Button("Retry") { Task { await work.readAway() } }
+                            .buttonStyle(.borderless)
+                    }
+                default:
                     SettingsPlaceholderRows(labels: [AwayWords.title(.code)], toggles: true)
                 }
             }

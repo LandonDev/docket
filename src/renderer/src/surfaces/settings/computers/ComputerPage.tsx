@@ -19,7 +19,7 @@ import { computerInLine } from "../../../lib/settings/computerName";
 import { openMaySheet } from "../../../lib/settings/maySheet";
 import { refusalWords } from "../../../lib/settingsHome";
 import { loadSavedEnvironments } from "../../../lib/tcserver/link";
-import { useWorkHosts } from "../../../lib/workSwitch";
+import { setWorkOn, useWorkHosts } from "../../../lib/workSwitch";
 import { environment as environmentSelection } from "../../../stores/environment";
 import { ago } from "../../harnessLine";
 import { CommitField } from "../hosts/CommitField";
@@ -37,7 +37,7 @@ import { ThreadsRows } from "./ThreadsRows";
 import { behindWords, useComputerUpdate } from "./update";
 
 export { behindWords };
-import { SectionRead, useComputerRead } from "./read";
+import { ButtonBone, SectionRead, useComputerRead } from "./read";
 
 /** How each computer's page's first read stands: out, failed, or answered. While it is out the title line and the
  *  version are bones; failed, they claim nothing (round 2, rules 1 and 4). A computer with no page open is absent. */
@@ -90,12 +90,12 @@ export function computerLineWords({
   if (transport === "open") return where ? `Connected at ${where}.` : "Connected.";
   if (transport === "connecting") return "Connecting…";
   if (transport === "unauthorized") return `${name} no longer lets ${thisDesktopInLine()} in.`;
-  return lastSeen ? `Offline, last seen ${ago(lastSeen, now)}` : "Offline";
+  return lastSeen ? `Offline, last seen ${ago(lastSeen, now)}.` : "Offline.";
 }
 
 /**
  * The line under a computer's page title and its one press (SettingsView draws the title): connected, where; offline,
- * when it was last seen, with Try again; a key it no longer takes, Sign in again….
+ * when it was last seen, with Retry; a key it no longer takes, Sign in again….
  */
 export function ComputerLine({ environmentId }: { environmentId: string }) {
   const status = useEnvironmentStatus(environmentId);
@@ -119,7 +119,7 @@ export function ComputerLine({ environmentId }: { environmentId: string }) {
       {web ? null : status.transport === "offline" || status.transport === "reconnecting" ? (
         <PageActions>
           <Button variant="ghost" size="sm" onClick={() => registry.retry(environmentId)}>
-            Try again
+            Retry
           </Button>
         </PageActions>
       ) : status.transport === "unauthorized" ? (
@@ -174,9 +174,7 @@ function InReach({ host, web, advancedOpen }: { host: Host; web: boolean; advanc
   if (failed)
     return (
       <>
-        <PageSection>
-          <ReadFailure computer={environmentId} error={reach.error ?? ""} retry={reach.retry} />
-        </PageSection>
+        <ReadFailure computer={environmentId} error={reach.error ?? ""} retry={reach.retry} />
         {web ? null : <OnThisMac host={host} />}
       </>
     );
@@ -200,7 +198,7 @@ function VersionSection({ host }: { host: Host }) {
   const id = host.environmentId;
   const up = useComputerUpdate(id);
   const waiting = useReach(id) === "waiting";
-  if (!up.version && !up.notInstalled && !up.offered) return null;
+  if (!up.version && !up.notInstalled && !up.offered && !up.waiting) return null;
   return (
     <PageSection>
       <SettingRow
@@ -209,7 +207,9 @@ function VersionSection({ host }: { host: Host }) {
         description={waiting ? <LineBone width="w-32" /> : (up.notInstalled ?? behindWords(up.behind))}
         error={up.error ?? undefined}
       >
-        {up.offered && !waiting ? (
+        {waiting || up.waiting ? (
+          <ButtonBone />
+        ) : up.offered ? (
           <Button variant="secondary" size="sm" disabled={up.busy} onClick={() => void up.update()}>
             <BusyLabel busy={up.busy} label="Update…" />
           </Button>
@@ -220,15 +220,65 @@ function VersionSection({ host }: { host: Host }) {
   );
 }
 
-/** Whether Work is on there, opening the Work page at its switch: the switch's one home. */
+/** Work's last answer from each computer, kept across launches, so an offline computer's row says what it last said
+ *  and an empty cache never says Off. */
+const WORK_SEEN_KEY = "docket.settings.workSeen";
+function workSeen(): Record<string, boolean> {
+  try {
+    const parsed = JSON.parse(globalThis.localStorage?.getItem(WORK_SEEN_KEY) ?? "{}") as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+function rememberWork(environmentId: string, enabled: boolean): void {
+  const seen = workSeen();
+  if (seen[environmentId] === enabled) return;
+  try {
+    globalThis.localStorage?.setItem(WORK_SEEN_KEY, JSON.stringify({ ...seen, [environmentId]: enabled }));
+  } catch {
+    // private mode / quota
+  }
+}
+
+/** A host from before Work cannot answer `work.get`: it has no Work. */
+const noWork = (error: string | null): boolean => !!error && /unknown method|bad request|invalid request/i.test(error);
+
+/**
+ * Whether Work is on there, opening the Work page at its switch: the switch's one home. Its own read of the computer
+ * (`work.get`), so the row claims nothing before that answer: bones while it is out, the page's one line if it fails;
+ * then the switch as the `work` push keeps it. Out of reach, the last answer it gave, said as such, or no state at all.
+ */
 function WorkRow({ environmentId }: { environmentId: string }) {
+  const host = useHost(environmentId);
+  const status = useEnvironmentStatus(environmentId);
+  const open = status.transport === "open";
+  const read = useComputerRead<{ enabled: boolean }>(host, "work.get", { skip: !open });
+  const answered = read.value !== undefined ? !!read.value.enabled : noWork(read.error) ? false : null;
   const on = useWorkHosts().has(environmentId);
-  // Said only once the computer has answered: while it is out, its state waits as a bone.
-  const waiting = useReach(environmentId) === "waiting";
-  const computer = computerInLine(useHost(environmentId).name);
+  useEffect(() => {
+    if (answered !== null) setWorkOn(environmentId, answered);
+  }, [environmentId, answered]);
+  const known = open && answered !== null;
+  useEffect(() => {
+    if (known) rememberWork(environmentId, on);
+  }, [environmentId, known, on]);
+  const computer = computerInLine(host.name);
+  const last = open ? null : (workSeen()[environmentId] ?? (on ? true : null));
+  const description = known ? (on ? "On" : "Off") : open ? null : last === null ? undefined : `${last ? "On" : "Off"} when last seen`;
   return (
     <SettingSection of="pc.work">
-      <SettingRow id="pc.work" vars={{ computer }} description={waiting ? <LineBone width="w-8" /> : on ? "On" : "Off"} onOpen={() => requestSettings("work", "work.on")} openLabel={`Work on ${computer}`} />
+      {open && !known && read.error ? (
+        <ReadFailure computer={environmentId} error={read.error} retry={read.retry} />
+      ) : (
+        <SettingRow
+          id="pc.work"
+          vars={{ computer }}
+          description={description === null ? <LineBone width="w-8" /> : description}
+          onOpen={() => requestSettings("work", "work.on")}
+          openLabel={`Work on ${computer}`}
+        />
+      )}
     </SettingSection>
   );
 }

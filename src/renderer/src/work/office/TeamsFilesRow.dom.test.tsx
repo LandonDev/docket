@@ -235,3 +235,21 @@ describe("Add a folder", () => {
     expect(calls.some((c) => c.method === "work.office.filesSetRoots" && JSON.stringify(c.params).includes("Esports"))).toBe(true);
   });
 });
+
+describe("the Files page's one line", () => {
+  it("says what a switch means, and where Office files open only where every list agrees", async () => {
+    const { filesPageLine } = await import("./TeamsFilesRow");
+    expect(filesPageLine([])).toBeNull();
+    expect(filesPageLine([{ any: false, common: null }])).toBeNull();
+    expect(filesPageLine([{ any: true, common: "live" }, { any: true, common: "live" }])).toEqual({ line: "On means listed in Files. Office files open in Office for the web.", opens: "live" });
+    expect(filesPageLine([{ any: true, common: "live" }, { any: true, common: "here" }])).toEqual({ line: "On means listed in Files.", opens: null });
+  });
+
+  it("leaves the line out of a section where the page says it", async () => {
+    const { link, host } = fakeHost();
+    host.opensIn = "live";
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable pageSays="live" />));
+    await waitFor(() => expect(screen.getByText("Purdue Esports")).toBeTruthy());
+    expect(screen.queryByText(/Office files open in Office for the web/)).toBeNull();
+  });
+});

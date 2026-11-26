@@ -15,7 +15,11 @@ const state: { waiting: MailWaiting; fail: Set<string>; timeout: Set<string>; ho
 const { TimeoutError } = await vi.importActual<typeof import("../../lib/connection")>("../../lib/connection");
 vi.mock("../../lib/settings/computerName", async (original) => {
   const real = await original<typeof import("../../lib/settings/computerName")>();
-  return { ...real, useReadFailWords: () => (error: string) => real.readFailWords(error, { name: "The box", own: false }) };
+  return {
+    ...real,
+    useReadFailWords: () => (error: string) => real.readFailWords(error, { name: "The box", own: false }),
+    useComputerName: () => ({ name: "The box", own: false }),
+  };
 });
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),

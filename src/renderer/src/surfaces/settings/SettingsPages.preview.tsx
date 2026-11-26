@@ -1,3 +1,4 @@
+import "./previewMac";
 import { useEffect, useState, type ReactNode } from "react";
 import { setWorkOn } from "../../lib/workSwitch";
 import { CATALOG } from "@server/shared/catalog";
@@ -311,9 +312,10 @@ const PUBLISH = {
   notes: "Settings has a page for each computer.",
   refusal: null,
 };
-/** A computer's hello through a key: what it may do there and the release it runs. */
-const helloOf = (caps: string[], release: number) =>
-  ({ environmentId: "env", caps, key: { id: "k", name: "MacBook Pro" }, build: { version: `1.0.${release}`, release, platform: "linux" } }) as unknown as EnvironmentStatus["lastHello"];
+/** A computer's hello through a key: what it may do there and the release it runs. The key is this Mac's own, "b2" in
+ *  the box's list of who can sign in. */
+const helloOf = (caps: string[], release: number, key = "b2") =>
+  ({ environmentId: "env", caps, key: { id: key, name: "MacBook Pro" }, build: { version: `1.0.${release}`, release, platform: "linux" } }) as unknown as EnvironmentStatus["lastHello"];
 /** This Mac, the box and a PC set up from it. */
 const THREE_COMPUTERS = [
   { id: "local", name: "MacBook Pro", routes: [], credentialRef: "local" },
@@ -360,6 +362,7 @@ Object.assign(ANSWERS, {
   ],
   "env_box:remote.pairings.list": [],
   "env_box:host.deployStatus": { phase: "idle", installed: true, installHint: "", version: "1.0.397" },
+  "env_box:work.get": { enabled: true },
   "remote.environments.list": [
     { id: "env_box", name: "The box", routes: [{ url: "wss://docket.landonhale.com/ws", kind: "tunnel" }, { url: "ws://10.0.0.5:7677/ws", kind: "lan" }], addedAt: 1, caps: ["admin"], keyName: "MacBook Pro" },
     { id: "env_pc", name: "PURDUE-LT", routes: [{ url: "wss://docket.landonhale.com/relay/env_pc/ws", kind: "tunnel" }], addedAt: 1, caps: ["read", "operate"], keyName: "MacBook Pro" },
@@ -372,6 +375,7 @@ Object.assign(ANSWERS, {
     ],
   },
   "env_pc:admission.get": admission(2, 6, 0),
+  "env_pc:work.get": { enabled: false },
   "harness.status": {
     enabled: true,
     skipped: 2,
@@ -550,6 +554,12 @@ function AsMac({ children }: { children: ReactNode }) {
 }
 
 /** A computer last seen some minutes ago, as the link notes it on every open. */
+/** Work's last answer from a computer, as its page kept it when it was last in reach. */
+function WorkSeen({ environmentId, on, children }: { environmentId: string; on: boolean; children: ReactNode }) {
+  useState(() => localStorage.setItem("docket.settings.workSeen", JSON.stringify({ [environmentId]: on })));
+  return children;
+}
+
 function SeenAgo({ environmentId, minutes, children }: { environmentId: string; minutes: number; children: ReactNode }) {
   useState(() => noteSeen(environmentId, Date.now() - minutes * MINUTE));
   return children;
@@ -827,6 +837,8 @@ const PAGES: Record<
     body: () => ReactNode;
     answers?: Record<string, unknown>;
     service?: ComputerServiceState;
+    /** The box's web page: drawn as a browser, with no desktop bridge. */
+    web?: boolean;
     /** The computers this window is linked to, and each one's link as the fixture has it. */
     environments?: typeof THREE_COMPUTERS;
     statuses?: Record<string, Partial<EnvironmentStatus>>;
@@ -847,16 +859,30 @@ const PAGES: Record<
     // Seen two minutes ago, as the link notes on every open: the line says when. The line draws first, so it notes it.
     description: <SeenAgo environmentId="env_box" minutes={2}><ComputerLine environmentId="env_box" /></SeenAgo>,
     statuses: { env_box: { transport: "offline", lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
-    body: () => <AsMac><OtherComputerPage environmentId="env_box" /></AsMac>,
+    body: () => (
+      <AsMac>
+        <WorkSeen environmentId="env_box" on>
+          <OtherComputerPage environmentId="env_box" />
+        </WorkSeen>
+      </AsMac>
+    ),
   },
   // The box's own page as /ui draws it: the one computer that serves the page, with its sign-ins and Advanced, no
   // version and no On this Mac (a browser has no "this Mac").
   "computer-box-web": {
+    web: true,
     title: "The box",
     description: <ComputerLine environmentId={WEB_ENVIRONMENT_ID} />,
     environments: [{ id: WEB_ENVIRONMENT_ID, name: "The box", routes: [], credentialRef: WEB_ENVIRONMENT_ID }] as unknown as typeof THREE_COMPUTERS,
-    statuses: { [WEB_ENVIRONMENT_ID]: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
-    answers: Object.fromEntries(Object.entries(ANSWERS).filter(([key]) => key.startsWith("env_box:")).map(([key, value]) => [`${WEB_ENVIRONMENT_ID}:${key.slice("env_box:".length)}`, value])),
+    // The browser signed in with its own key, "kw": its session is "this browser" in the list.
+    statuses: { [WEB_ENVIRONMENT_ID]: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397, "kw") } },
+    answers: {
+      ...Object.fromEntries(Object.entries(ANSWERS).filter(([key]) => key.startsWith("env_box:")).map(([key, value]) => [`${WEB_ENVIRONMENT_ID}:${key.slice("env_box:".length)}`, value])),
+      [`${WEB_ENVIRONMENT_ID}:remote.sessions.list`]: [
+        ...(ANSWERS["env_box:remote.sessions.list"] as unknown[]),
+        { id: "s2", keyId: "kw", keyName: "Landon", caps: ["read", "operate", "approve", "admin"], userAgent: "Mozilla/5.0 Version/18.0 Safari/605.1.15", createdAt: 1, lastSeenAt: Date.now() - 1000, expiresAt: Date.now() + 1e9 },
+      ],
+    },
     body: () => <OtherComputerPage environmentId={WEB_ENVIRONMENT_ID} advancedOpen />,
   },
   "computer-box-advanced": {
@@ -1202,7 +1228,7 @@ export function SettingsPagePreview({ page, host }: { page: keyof typeof PAGES; 
     // A Mac's desktop window unless the fixture says otherwise: the shot page has no bridge of its own, which every
     // page would read as the box's web page (isWebMode), naming no computer as this Mac.
     const api = (window as unknown as { api?: Record<string, unknown> }).api;
-    if (!api) (window as unknown as { api: unknown }).api = { platform: "darwin" };
+    if (!api && !PAGES[page].web) (window as unknown as { api: unknown }).api = { platform: "darwin" };
     const linked = PAGES[page].environments;
     Object.assign(registry, { environmentsSnapshot: linked ? () => linked : page === "defaults" || page === "defaults-places" || page === "updates" ? () => TWO_HOSTS : page === "job" ? () => JOB_HOSTS : page === "archive" ? () => ONE_HOST : ownEnvironments });
     statuses = PAGES[page].statuses ?? {};

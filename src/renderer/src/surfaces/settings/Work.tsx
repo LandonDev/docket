@@ -104,8 +104,9 @@ export function WorkOnRow({ environmentId, report }: { environmentId: string; re
       setWorkOn(environmentId, !!answer?.enabled);
     });
   };
-  // A read that failed is said once over the rows (the page's own line, with Retry): the row holds no fact meanwhile.
+  // A read that failed is said once at the page's head (ReadFailure, with Retry): its row is not drawn meanwhile.
   const failed = failedRead;
+  if (failed && report) return null;
   const description = !computer.connected
     ? "Offline"
     : failed

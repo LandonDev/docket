@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AdmissionState } from "@server/shared/contract-admission";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
-import { useHostRead } from "../../../lib/connection/hostRead";
+import { withDeadline } from "../../../lib/connection/openRead";
 import { useDeployDrift } from "../../../lib/deployDrift";
 import { deployConfirmText } from "../../../lib/hostJobCard";
 import { refreshDeployStatus, startDeploy, useDeployStatuses, usePublishStatus, watchJob } from "../../../lib/hostJobs";
@@ -15,18 +15,29 @@ export function behindWords(behind: number | null): string | undefined {
   return `${behind} ${behind === 1 ? "release" : "releases"} behind`;
 }
 
+/** What an update pauses, for its confirm: "2 running threads pause about a minute.", nothing when none run, and
+ *  "Running threads may pause about a minute." when the count could not be read. */
+export function pauseWords(threads: number | null): string {
+  if (threads === null) return "Running threads may pause about a minute.";
+  if (threads <= 0) return "";
+  return `${threads} running ${threads === 1 ? "thread pauses" : "threads pause"} about a minute.`;
+}
+
 export type ComputerUpdate = {
   /** The version it runs, as its hello said; null until known. */
   version: string | null;
   behind: number | null;
   /** This window may update it and the computer can be updated from here: Update… is offered. */
   offered: boolean;
-  /** An update runs (or this press is starting one). */
+  /** Its deploy status is still being read: whether Update… is offered is not known yet (the row holds a button's
+   *  bone, never a chevron that turns into Update…). */
+  waiting: boolean;
+  /** An update runs (or this press is asking or starting one). */
   busy: boolean;
   /** Why the computer cannot be updated from here, when its deploy tool is missing. */
   notInstalled: string | null;
   error: string | null;
-  /** Update…: asks first (it restarts, its running threads pause about a minute), then starts the update. */
+  /** Update…: reads how many threads run there, asks first (it restarts, they pause about a minute), then starts it. */
   update: () => Promise<void>;
 };
 
@@ -38,11 +49,12 @@ export type ComputerUpdate = {
 export function useComputerUpdate(environmentId: string): ComputerUpdate {
   const host = useHost(environmentId);
   const drift = useDeployDrift(environmentId);
-  const deploy = useDeployStatuses()[environmentId] ?? null;
+  // Absent until its first read settles; null once a read of it failed.
+  const read = useDeployStatuses()[environmentId];
+  const deploy = read ?? null;
   const publish = usePublishStatus();
   const manage = host.may("host.deploy");
-  // The confirm names how many threads pause: asked only while the computer is in reach.
-  const admission = useHostRead<AdmissionState>(host.connected ? host.link : undefined, () => host.request<AdmissionState>("admission.get"), `${environmentId}:admission`);
+  const [asking, setAsking] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -58,11 +70,16 @@ export function useComputerUpdate(environmentId: string): ComputerUpdate {
   const version = drift.deployedVersion ?? deploy?.version ?? null;
   const running = deploy?.phase === "pending" || deploy?.phase === "running";
   const update = async (): Promise<void> => {
-    const threads = admission.value?.running ?? 0;
-    const pause = threads > 0 ? ` ${threads} running ${threads === 1 ? "thread pauses" : "threads pause"} about a minute.` : "";
+    // The confirm says what pauses, read at the press: a count it cannot get says threads may pause.
+    setAsking(true);
+    const threads = await withDeadline(host.request<AdmissionState>("admission.get")).then(
+      (state) => state.running,
+      () => null,
+    );
+    setAsking(false);
     const ok = await confirmAction({
       title: `Update ${host.name.name}?`,
-      body: `${deployConfirmText(host.name.name, version, drift.masterVersion ?? publish?.masterVersion ?? null)}${pause}`,
+      body: `${deployConfirmText(host.name.name, version, drift.masterVersion ?? publish?.masterVersion ?? null)} ${pauseWords(threads)}`.trimEnd(),
       action: "Update",
       danger: true,
     });
@@ -81,7 +98,8 @@ export function useComputerUpdate(environmentId: string): ComputerUpdate {
     version,
     behind: drift.behind,
     offered: manage && deploy?.installed === true && host.connected,
-    busy: starting || running,
+    waiting: manage && host.connected && read === undefined,
+    busy: asking || starting || running,
     notInstalled: deploy && !deploy.installed ? `Run ${deploy.installHint} once from this Mac's checkout to update it from here` : null,
     error,
     update,

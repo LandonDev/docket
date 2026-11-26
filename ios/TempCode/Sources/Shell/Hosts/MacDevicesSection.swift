@@ -140,7 +140,6 @@ struct DeviceRow: View {
     let busy: Bool
     let holder: DeviceHolder?
     let route: Route?
-    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         if let route {
@@ -166,53 +165,36 @@ struct DeviceRow: View {
                 HStack(spacing: Layout.rowGap) {
                     facts(stacked: false)
                     Spacer(minLength: Layout.rowGap)
-                    holderText
+                    if holder != nil { holderText }
                 }
                 facts(stacked: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.vertical, 2)
+        // The line already is the spoken phrase; the combined element reads it once.
         .accessibilityElement(children: .combine)
-        .accessibilityValue(state.spoken)
     }
 
-    /// The name and the state with its platform; stacked, the holder under them, every line free to wrap. At
-    /// accessibility sizes the state and the platform take a line each.
+    /// The name and the state with its platform as one phrase, "Booted, 13% CPU, iOS 26.0" (`DeviceState.spoken`);
+    /// stacked, the holder under them, every line free to wrap. A device nothing holds ends with nothing: no dash
+    /// that reads as a minus (the council's round 3).
     private func facts(stacked: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(name)
                 .lineLimit(stacked ? nil : 1)
-            if typeSize.isAccessibilitySize {
-                statusText
-                platformText
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    statusText
-                    platformText
-                }
+            Text(state.spoken)
+                .textStep(.meta)
+                .numeric(state.spoken)
                 .lineLimit(stacked ? nil : 1)
-            }
             if stacked, holder != nil { holderText }
         }
         .fixedSize(horizontal: !stacked, vertical: stacked)
     }
 
-    private var statusText: some View {
-        Text(state.status)
-            .textStep(.meta)
-            .numeric(state.status)
-    }
-
-    /// Secondary, not tertiary: the platform and the holder are facts he reads, in both themes.
-    private var platformText: some View {
-        Text(state.platform)
-            .font(TextStep.meta.font)
-            .foregroundStyle(.secondary)
-    }
-
+    /// Secondary, not tertiary: the holder is a fact he reads, in both themes.
     private var holderText: some View {
-        Text(holder.map(DeviceWords.holder) ?? "—")
+        Text(holder.map(DeviceWords.holder) ?? "")
             .font(.footnote)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

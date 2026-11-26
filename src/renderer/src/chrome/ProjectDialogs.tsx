@@ -1,6 +1,7 @@
 import { dialogErrorWords } from "../lib/dialogErrorWords";
 import { actionFailed } from "../lib/threadActionToast";
 import {
+  Fragment,
   useEffect,
   useState,
   type FormEvent,
@@ -12,7 +13,7 @@ import { Dialog } from "@renderer/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
 import { Skeleton } from "@renderer/components/ui/skeleton";
 import { useAccountsRead } from "../surfaces/settings/parts/useAccountsRead";
-import { FailuresSaidOnce, ReadFailure } from "../surfaces/settings/parts/ReadFailure";
+import { FailureLinesHere, FailuresSaidOnce, ReadFailure } from "../surfaces/settings/parts/ReadFailure";
 import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
 import { START_ON_OPTIONS } from "../lib/tcserver/defaults";
 import { useThreadDefaults } from "../lib/tcserver/workspaces";
@@ -216,7 +217,9 @@ function BaseRefField({
 /** A section of a form without a fold: the 12px muted heading over its fields. */
 function Section({ label, action, children }: { label: string; action?: ReactNode; children: ReactNode }) {
   return (
-    <section className="flex flex-col gap-2">
+    // A group whose read failed is said at the sheet's head (FailureLinesHere): its own heading does not stand over
+    // nothing.
+    <section className="flex flex-col gap-2 [&:not(:has(>:nth-child(2)))]:hidden">
       <div className="flex min-h-6 items-center justify-between gap-3">
         <h3 className="text-xs font-medium text-muted-foreground">{label}</h3>
         {action}
@@ -675,17 +678,21 @@ function ProjectSettingsBody({
     <Sheet {...root} onOpenChange={(open) => (open ? root.onOpenChange(open) : void cancel())}>
       <SheetContent side="right" showCloseButton={!pending} aria-busy={pending || undefined}>
         {/* The sheet's own failures, said once among themselves: four groups one computer did not answer are one line. */}
-        <FailuresSaidOnce>
+        <FailuresSaidOnce head={false}>
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
           <SheetHeader>
             <SheetTitle>Project settings</SheetTitle>
-            <SheetDescription className="flex min-w-0 gap-1 text-xs">
+            <SheetDescription className="flex min-w-0 items-baseline gap-1 text-xs">
               <span data-project-mode className="shrink-0 font-medium">{worktree ? "Worktree" : "Local"}</span>
-              <span className="min-w-0 truncate">{prettyCwd(project.cwd)}</span>
+              {/* The path wraps after a slash, never inside a folder's name: its end names the project, so it is never cut. */}
+              <span data-project-path className="min-w-0 [overflow-wrap:anywhere]">
+                <PathWords path={prettyCwd(project.cwd)} />
+              </span>
             </SheetDescription>
           </SheetHeader>
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
             <div className="flex flex-col gap-6 px-5 pb-6">
+              <FailureLinesHere />
               <div className="flex flex-col gap-4">
                 <Field label="Name">
                   <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} />
@@ -814,11 +821,33 @@ function ProjectSettingsBody({
               <ErrorLine error={error} />
             </div>
           ) : null}
-          <Footer onCancel={() => void cancel()} confirmLabel="Save" pending={pending} disabled={!dirty || !!blocked || loading} note={blocked ?? (unloaded ? "Only what loaded is saved" : note)} />
+          {/* Over the footer, not in it: at any width Save stays beside Cancel. */}
+          {unloaded && !blocked ? (
+            <p data-sheet-note className="px-5 pb-3 text-xs text-muted-foreground">
+              Only what loaded is saved
+            </p>
+          ) : null}
+          <Footer onCancel={() => void cancel()} confirmLabel="Save" pending={pending} disabled={!dirty || !!blocked || loading} note={blocked ?? note} />
         </form>
         </FailuresSaidOnce>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** A path that may break after any slash and nowhere else, a folder's name kept whole (unless it alone is wider than
+ *  its line, which `overflow-wrap: anywhere` on the parent then breaks). */
+function PathWords({ path }: { path: string }) {
+  return (
+    <>
+      {path.split("/").map((part, i) => (
+        <Fragment key={i}>
+          {i ? "/" : null}
+          {i ? <wbr /> : null}
+          <span className="whitespace-nowrap">{part}</span>
+        </Fragment>
+      ))}
+    </>
   );
 }
 

@@ -186,8 +186,9 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
             const why = one.status === "failed" ? one.error : one.status === "checking" ? one.failed?.error : undefined;
             // Work off there is no failure and no Retry can mend it: the words, and the way to the switch.
             if (why && workOff(why))
+              // The title names the computer: the line says the state alone.
               return (
-                <PageRow key={one.id} data-work-off={one.id} title={title} description={why} onOpen={() => requestSettings("work", "work.on")} openLabel="Work is on for">
+                <PageRow key={one.id} data-work-off={one.id} title={title} description="Work is off" onOpen={() => requestSettings("work", "work.on")} openLabel="Work is on for">
                   <OpenCue />
                 </PageRow>
               );

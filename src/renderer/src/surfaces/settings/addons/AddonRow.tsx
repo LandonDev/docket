@@ -45,7 +45,9 @@ export function AddonRowView({
   const mark = addonMark(row, status, grant);
   const facts = addonFacts(row, mark, grant, workspaceName);
   // A row turned off says so with its switch; the words say it only where there is no switch to read.
-  const saysOff = !readOnly && !row.enabled && mark.word === "Off";
+  // Off, as a skill says it: by the switch where there is one, else first on the facts line ("Off, Codex").
+  const saysOff = !row.enabled && mark.word === "Off";
+  const line = saysOff && readOnly ? ["Off", ...facts] : facts;
   return (
     <PageRow
       data-addon={row.name}
@@ -62,9 +64,9 @@ export function AddonRowView({
               />
             </span>
           )}
-          {facts.length ? (
+          {line.length ? (
             <span className={saysOff ? "block" : "mt-1 block"}>
-              <Facts parts={facts} />
+              <Facts parts={line} />
             </span>
           ) : null}
         </>

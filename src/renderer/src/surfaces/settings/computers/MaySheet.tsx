@@ -161,7 +161,7 @@ export function MayBody({ host, name, mac }: { host: MacBridgeHostPolicy; name: 
   );
 }
 
-/** What runs here for one computer now, read from the one list "Running now" draws, so the counts and the list agree. */
+/** What runs here for one computer now, read from the one list "Commands and apps running now" draws, so the counts and the list agree. */
 function useRunningNow(environmentId: string): { commands: number; waiting: number; apps: number } {
   const list = useMacBridgeRunning({ environmentId });
   const commands = list.filter((r) => r.kind !== "computer");

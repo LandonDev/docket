@@ -8,8 +8,12 @@ vi.mock("../../../lib/native", async (original) => ({
 }));
 vi.mock("../../../lib/settings/computerName", async (original) => {
   const real = await original<typeof import("../../../lib/settings/computerName")>();
-  const names: Record<string, { name: string; own: boolean }> = { local: { name: "MacBook Pro", own: true }, env_box: { name: "The box", own: false } };
-  return { ...real, useReadFailWords: (id: string) => (error: string) => real.readFailWords(error, names[id]) };
+  const names: Record<string, { name: string; own: boolean }> = {
+    local: { name: "MacBook Pro", own: true },
+    env_box: { name: "The box", own: false },
+    env_pc: { name: "PURDUE-LT", own: false },
+  };
+  return { ...real, useComputerName: (id: string) => names[id], useReadFailWords: (id: string) => (error: string) => real.readFailWords(error, names[id]) };
 });
 
 import { NO_ANSWER } from "../../../lib/connection/openRead";
@@ -17,48 +21,53 @@ import { FailuresSaidOnce, ReadFailure } from "./ReadFailure";
 
 afterEach(cleanup);
 
+const lines = () => [...document.querySelectorAll("[data-read-failure]")].map((line) => line.textContent?.replace(/Retry$/, ""));
+
 describe("ReadFailure", () => {
-  it("names the computer, says one silence once a page, and its Retry asks every read that failed with it", async () => {
+  it("says at the page's head, once, every computer that did not answer, and its Retry asks every read it stands for", async () => {
     const first = vi.fn(() => Promise.resolve());
     const second = vi.fn(() => Promise.resolve());
     const box = vi.fn();
+    const refused = vi.fn();
     render(
       <FailuresSaidOnce>
-        <ReadFailure computer="local" error={NO_ANSWER} retry={first} />
+        <section data-testid="general">
+          <ReadFailure computer="local" error={NO_ANSWER} retry={first} />
+        </section>
         <ReadFailure computer="local" error={NO_ANSWER} retry={second} />
         <ReadFailure computer="env_box" error={NO_ANSWER} retry={box} />
+        <ReadFailure computer="env_pc" error="not allowed" retry={refused} />
       </FailuresSaidOnce>,
     );
-    expect(screen.getAllByText("This Mac did not answer.")).toHaveLength(1);
-    expect(screen.getAllByText("The box did not answer.")).toHaveLength(1);
+    expect(lines()).toEqual(["This Mac and the box did not answer.", "Not allowed."]);
+    // Nothing is drawn in the section's place: its heading can hide.
+    expect(screen.getByTestId("general").childElementCount).toBe(0);
     await act(async () => {
       fireEvent.click(screen.getAllByRole("button", { name: "Retry" })[0]);
     });
     expect(first).toHaveBeenCalledTimes(1);
     expect(second).toHaveBeenCalledTimes(1);
-    expect(box).not.toHaveBeenCalled();
+    expect(box).toHaveBeenCalledTimes(1);
+    expect(refused).not.toHaveBeenCalled();
   });
 
-  it("hands the line to the next failure when the first one answers", () => {
-    const { rerender } = render(
+  it("names three computers in one sentence, and drops one once it answers", () => {
+    const page = (ids: string[]) => (
       <FailuresSaidOnce>
-        <ReadFailure key="a" computer="local" error={NO_ANSWER} retry={vi.fn()} />
-        <ReadFailure key="b" computer="local" error="Not allowed" retry={vi.fn()} />
-        <ReadFailure key="c" computer="local" error={NO_ANSWER} retry={vi.fn()} />
-      </FailuresSaidOnce>,
+        {ids.map((id) => (
+          <ReadFailure key={id} computer={id} error={NO_ANSWER} retry={vi.fn()} />
+        ))}
+      </FailuresSaidOnce>
     );
-    expect(screen.getAllByText("This Mac did not answer.")).toHaveLength(1);
-    expect(screen.getByText("Not allowed.")).toBeTruthy();
-    rerender(
-      <FailuresSaidOnce>
-        <ReadFailure key="b" computer="local" error="Not allowed" retry={vi.fn()} />
-        <ReadFailure key="c" computer="local" error={NO_ANSWER} retry={vi.fn()} />
-      </FailuresSaidOnce>,
-    );
-    expect(screen.getAllByText("This Mac did not answer.")).toHaveLength(1);
+    const { rerender } = render(page(["env_box", "local", "env_pc"]));
+    expect(lines()).toEqual(["The box, this Mac and PURDUE-LT did not answer."]);
+    rerender(page(["env_box", "env_pc"]));
+    expect(lines()).toEqual(["The box and PURDUE-LT did not answer."]);
+    rerender(page([]));
+    expect(lines()).toEqual([]);
   });
 
-  it("says its own line outside a page", () => {
+  it("says its own line where it stands outside a page", () => {
     render(<ReadFailure computer="env_box" error="The box is busy" retry={vi.fn()} />);
     expect(screen.getByText("The box is busy.")).toBeTruthy();
   });

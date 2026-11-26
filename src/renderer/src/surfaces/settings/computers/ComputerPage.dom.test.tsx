@@ -27,6 +27,8 @@ vi.mock("../../../lib/devicesClient", () => ({ readComputers: async () => ({ giv
 vi.mock("../../../lib/tcserver/link", async (original) => ({ ...(await original<typeof import("../../../lib/tcserver/link")>()), loadSavedEnvironments: async () => {} }));
 
 const { ComputerLine, OtherComputerPage, behindWords, computerLineWords } = await import("./ComputerPage");
+const { workSwitch } = await import("../../../lib/workSwitch");
+const { Page } = await import("../../../components/page");
 
 const admission = { cap: 120, pinned: null, default: 120, running: 118, queued: 7, memory: { budgetMB: 1, reserveMB: 1, perProcessMB: 1, freeMB: 1, floorMB: 1 } };
 const status = { environmentId: "env_box", name: "box", enabled: true, port: 7677, configuredPort: 7677, running: true, error: null, origin: "https://d.example", publicOrigin: "", learnedOrigin: null, contract: 1, stuckMinutes: 10 };
@@ -41,6 +43,7 @@ const ANSWERS: Record<string, Record<string, unknown>> = {
     "remote.sessions.list": [],
     "remote.pairings.list": [],
     "host.deployStatus": { phase: "idle", installed: true, installHint: "", version: "1.0.397" },
+    "work.get": { enabled: false },
   },
   local: {
     "remote.environments.list": [{ id: "env_box", name: "The box", routes: [{ url: "wss://d.example/ws", kind: "tunnel" }], addedAt: 1, caps: ["admin"], keyName: "Mac" }],
@@ -129,7 +132,7 @@ describe("another computer's page", () => {
     // The list it may not read stands as its heading and one line, never as nothing.
     expect(container.querySelector("[data-setting='pc.signIns']")?.textContent).toContain("Listed on a computer that manages the box");
     expect(screen.queryByText("Add…")).toBeNull();
-    expect(requests.filter((r) => r.env === "env_box").map((r) => r.method).sort()).toEqual(["admission.get", "admission.get", "admission.get", "attachment.settings", "doctor.get"].sort());
+    expect(requests.filter((r) => r.env === "env_box").map((r) => r.method).sort()).toEqual(["admission.get", "admission.get", "attachment.settings", "doctor.get", "work.get"].sort());
   });
 
   it("leads to the Work page's switch, and forgets the box after asking, on this Mac alone", async () => {
@@ -173,6 +176,7 @@ describe("while the box has not answered", () => {
   it("holds its version and its title line as bones, claiming nothing", async () => {
     const was = ANSWERS.env_box["admission.get"];
     ANSWERS.env_box["admission.get"] = new Promise(() => {}) as never;
+    ANSWERS.env_box["work.get"] = new Promise(() => {}) as never;
     hello = { caps: ["read", "operate", "approve", "admin"], build: { version: "1.0.397", release: 397 } } as never;
     try {
       const { container } = render(
@@ -188,6 +192,7 @@ describe("while the box has not answered", () => {
       expect(container.querySelector("[data-setting='pc.work'] [data-slot=skeleton]")).not.toBeNull();
     } finally {
       ANSWERS.env_box["admission.get"] = was;
+      ANSWERS.env_box["work.get"] = { enabled: false };
     }
   });
 });
@@ -221,6 +226,49 @@ describe("out of reach", () => {
     expect(container.querySelector("[data-setting='pc.work']")).not.toBeNull();
     expect(container.querySelector("[data-setting='pc.forget']")).not.toBeNull();
   });
+
+  it("says Work's last answer as such, and claims no state it never heard", async () => {
+    localStorage.removeItem("docket.settings.workSeen");
+    // In reach, Work's own read: On, kept as its last answer.
+    ANSWERS.env_box["work.get"] = { enabled: true };
+    try {
+      render(<OtherComputerPage environmentId="env_box" />);
+      await flush();
+      expect(document.querySelector("[data-setting='pc.work']")?.textContent).toContain("On");
+      cleanup();
+      transport = "offline";
+      cached = null;
+      render(<OtherComputerPage environmentId="env_box" />);
+      await flush();
+      expect(document.querySelector("[data-setting='pc.work']")?.textContent).toContain("On when last seen");
+      // Never heard, nothing remembered: no state at all, never Off.
+      cleanup();
+      localStorage.removeItem("docket.settings.workSeen");
+      workSwitch.reset();
+      render(<OtherComputerPage environmentId="env_box" />);
+      await flush();
+      const row = document.querySelector("[data-setting='pc.work']")!;
+      expect(row.textContent).not.toContain("Off");
+      expect(row.textContent).not.toContain("On");
+    } finally {
+      ANSWERS.env_box["work.get"] = { enabled: false };
+      workSwitch.reset();
+    }
+  });
+});
+
+describe("the title line", () => {
+  it("offers Retry to an offline computer", async () => {
+    transport = "offline";
+    render(
+      <Page title="The box" description={<ComputerLine environmentId="env_box" />}>
+        {null}
+      </Page>,
+    );
+    await flush();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(screen.queryByText("Try again")).toBeNull();
+  });
 });
 
 describe("On this Mac", () => {
@@ -240,7 +288,7 @@ describe("On this Mac", () => {
 describe("its words", () => {
   it("says how this window reaches it", () => {
     expect(computerLineWords({ transport: "open", url: "wss://docket.landonhale.com/ws", lastSeen: null, name: "The box", web: false })).toBe("Connected at docket.landonhale.com.");
-    expect(computerLineWords({ transport: "offline", url: undefined, lastSeen: 1_000, name: "The box", web: false, now: 121_000 })).toBe("Offline, last seen 2m ago");
+    expect(computerLineWords({ transport: "offline", url: undefined, lastSeen: 1_000, name: "The box", web: false, now: 121_000 })).toBe("Offline, last seen 2m ago.");
     expect(computerLineWords({ transport: "unauthorized", url: undefined, lastSeen: null, name: "The box", web: false })).toBe("The box no longer lets this Mac in.");
   });
 

@@ -77,9 +77,10 @@ export function syncedWords(settings: HarnessEnvironmentStatus | null, memory: M
 }
 
 const COUNTS = ["", "", "", "three", "four", "five", "six", "seven", "eight", "nine"];
-/** "Kept the same on all three, both ways": the computers counted with this one; two need no count. */
+/** "Kept the same on all three, both ways.": the computers counted with this one; two need no count. A sentence with
+ *  its stop, as the agent settings line beside it and the conflict line under it are. */
 export const memoryWords = (computers: number): string =>
-  computers <= 2 ? "Kept the same both ways" : `Kept the same on all ${COUNTS[computers] ?? computers}, both ways`;
+  computers <= 2 ? "Kept the same both ways." : `Kept the same on all ${COUNTS[computers] ?? computers}, both ways.`;
 
 const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 

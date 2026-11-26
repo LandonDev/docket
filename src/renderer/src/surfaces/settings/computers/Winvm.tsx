@@ -211,23 +211,20 @@ export function WinvmHost({ env }: { env: string }) {
         <PageEmpty>{state.cannot}</PageEmpty>
       </PageSection>
     );
+  // The machine's own read failed: said at the page's head, naming the computer; nothing stands under it.
+  if (!state && error) return <ReadFailure computer={env} error={readError ?? ""} retry={load} />;
   if (!state)
     return (
       <PageSection>
-        {error ? (
-          // The machine's own read failed: one line naming the computer, as every page says it.
-          <ReadFailure computer={env} error={readError ?? ""} retry={load} />
-        ) : (
-          // As many rows as will land: a key that may change it gets its screen size and picture quality too.
-          <PageRowsSkeleton
-            rows={[
-              { description: true, control: "button" },
-              { control: admin ? "select" : "none", description: !admin },
-              ...(admin ? ([{ control: "select" }, { control: "select" }] as const) : []),
-              { description: true, control: "none" },
-            ]}
-          />
-        )}
+        {/* As many rows as will land: a key that may change it gets its screen size and picture quality too. */}
+        <PageRowsSkeleton
+          rows={[
+            { description: true, control: "button" },
+            { control: admin ? "select" : "none", description: !admin },
+            ...(admin ? ([{ control: "select" }, { control: "select" }] as const) : []),
+            { description: true, control: "none" },
+          ]}
+        />
       </PageSection>
     );
   const press = async (): Promise<void> => {

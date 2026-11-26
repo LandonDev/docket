@@ -4,7 +4,7 @@ import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "../../components/ui/sheet";
+import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { Skeleton } from "../../components/ui/skeleton";
 import { shell } from "../../stores/shell";
 import { useEnvironments } from "../../lib/connection";
@@ -32,7 +32,7 @@ import { loadHost, removeGrant, useOutbox, useOutboxPage, type HostGrant } from 
  */
 
 /** How a grant is made, said in the sheet and in its empty state alike. */
-export const GRANTS_MADE = "Made from a held item in the Outbox, under More ways to send.";
+export const GRANTS_MADE = "A grant is made from a held mail's More ways to send.";
 
 /** "6 across 3 jobs", "2 for Purdue Esports", "None". */
 export function grantsWords(grants: readonly Pick<HostGrant, "environmentId" | "workspaceId">[], jobName: (workspaceId: string) => string): string {
@@ -80,7 +80,8 @@ export function GrantsRow({ id }: { id: "work.grants" | "mail.grants" }) {
   const nothing = failed.length > 0 && failed.length >= workOn.size;
   return (
     <>
-      <SettingRow id={id} description={description} onOpen={nothing ? undefined : () => setOpen(true)} openLabel="Things threads may send on their own" />
+      {/* Nothing read at all: the failure at the page's head says why, and no bare title stands here. */}
+      {nothing ? null : <SettingRow id={id} description={description} onOpen={() => setOpen(true)} openLabel="Things threads may send on their own" />}
       {failed.map((e) => (
         <ReadFailure key={e.environmentId} computer={e.environmentId} error={e.error} retry={read.retry} />
       ))}
@@ -88,6 +89,9 @@ export function GrantsRow({ id }: { id: "work.grants" | "mail.grants" }) {
     </>
   );
 }
+
+/** "Made Nov 25 from a held mail" inside a sentence. */
+const lowerFirst = (words: string): string => words.charAt(0).toLowerCase() + words.slice(1);
 
 /** A grant's job by its workspace's name; Work Chats' own grants by that name. */
 function useGrantJobName(): (workspaceId: string) => string {
@@ -156,7 +160,6 @@ export function GrantsSheet({
       <SheetContent side="right" data-grants-sheet="">
         <SheetHeader>
           <SheetTitle>Things threads may send on their own</SheetTitle>
-          {grants.length ? <SheetDescription className="text-xs">{GRANTS_MADE}</SheetDescription> : null}
         </SheetHeader>
         <div className="@container/page flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-5 pb-5">
           <ListFilter filter={filter} label="Find a grant" />
@@ -176,7 +179,7 @@ export function GrantsSheet({
           {!loaded && grants.length === 0 && !failWords ? (
             <PageRowsSkeleton rows={3} description control="button" />
           ) : grants.length === 0 && !failWords ? (
-            <PageEmpty>{`None yet. ${GRANTS_MADE}`}</PageEmpty>
+            <PageEmpty>None yet</PageEmpty>
           ) : (
             filter.shown.map((grant) => {
               const job = workspaces.find((w) => w.id === grant.workspaceId);
@@ -186,7 +189,7 @@ export function GrantsSheet({
                   data-grant={grant.id}
                   media={<SectorDot sector={job?.sector ?? null} />}
                   title={<span className="break-words">{grant.label}</span>}
-                  description={`${jobName(grant.workspaceId)}. ${grantLine(grant.kind, grant.createdAt)}`}
+                  description={`${jobName(grant.workspaceId)}, ${lowerFirst(grantLine(grant.kind, grant.createdAt))}`}
                 >
                   {may(grant.environmentId, "work.outbox.ungrant") ? (
                     <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void remove(grant)}>
@@ -199,9 +202,12 @@ export function GrantsSheet({
           )}
           {error ? <PageError>{error}</PageError> : null}
         </div>
-        {/* A grant is made from a held item: the way there, from the sheet that lists them. */}
-        <SheetFooter className="border-t border-border">
-          <Button variant="secondary" onClick={() => (onOpenChange(false), shell.openOutbox())}>
+        {/* Where a grant is made, said once, beside the way there. The hold's rules stay: no grant is made here. */}
+        <SheetFooter className="items-center justify-between gap-3 border-t border-border">
+          <p data-grants-made="" className="min-w-0 text-xs text-pretty text-muted-foreground">
+            {GRANTS_MADE}
+          </p>
+          <Button variant="secondary" className="shrink-0" onClick={() => (onOpenChange(false), shell.openOutbox())}>
             Open the Outbox
           </Button>
         </SheetFooter>

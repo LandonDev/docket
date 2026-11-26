@@ -3,6 +3,9 @@ import type { RemoteKey, RemotePairing, RemoteSession } from "@server/shared/con
 import { PageEmpty, PageRow } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
+import { useEnvironmentStatus } from "../../../lib/connection";
+import { thisDesktopInLine } from "../../../lib/native";
+import { isWebMode } from "../../../lib/nativeWeb";
 import { openAddComputer } from "../../../lib/settings/addComputer";
 import { computerInLine } from "../../../lib/settings/computerName";
 import { refusalWords } from "../../../lib/settingsHome";
@@ -29,6 +32,8 @@ export function SignIns({ host, rows, saysWhoCan = true }: { host: Host; rows: "
   const sessions = useComputerRead<RemoteSession[]>(host, "remote.sessions.list", { poll: true, skip: !manage });
   const pairings = useComputerRead<RemotePairing[]>(host, "remote.pairings.list", { poll: true, skip: !manage });
   const computer = computerInLine(host.name);
+  // This window's own way in: the key its socket signed in with.
+  const ownKey = useEnvironmentStatus(host.environmentId).lastHello?.key?.id ?? null;
   // Add… only once the list it adds to was read: a computer that did not answer is offered nothing that cannot work.
   const listed = keys.value !== undefined && sessions.value !== undefined && pairings.value !== undefined;
   const add = host.may("remote.pairings.create") && listed ? (
@@ -50,7 +55,7 @@ export function SignIns({ host, rows, saysWhoCan = true }: { host: Host; rows: "
     <SettingSection of={`${rows}.signIns`} vars={{ computer }} action={add}>
       {manage ? (
         <SectionRead read={all} computer={host.environmentId} rows={2}>
-          {(lists) => <SignInRows host={host} rows={signInsOf(lists, computer)} computer={computer} onChanged={all.retry} />}
+          {(lists) => <SignInRows host={host} rows={signInsOf(lists, computer, Date.now(), ownKey)} computer={computer} onChanged={all.retry} />}
         </SectionRead>
       ) : saysWhoCan ? (
         <ManagedLine computer={host.name.name} />
@@ -61,6 +66,11 @@ export function SignIns({ host, rows, saysWhoCan = true }: { host: Host; rows: "
     </SettingSection>
   );
 }
+
+/** This window, as its own sign-in row names it: "this Mac" (or "this PC") in a desktop window, "this browser" at /ui. */
+const ownWords = (): string => (isWebMode() ? "this browser" : thisDesktopInLine());
+const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
+const own = (row: SignIn): boolean => row.kind !== "link" && row.own === true;
 
 function SignInRows({ host, rows, computer, onChanged }: { host: Host; rows: SignIn[]; computer: string; onChanged: () => Promise<void> }) {
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -77,7 +87,9 @@ function SignInRows({ host, rows, computer, onChanged }: { host: Host; rows: Sig
   };
   const remove = async (row: SignIn): Promise<void> => {
     const last = lastManager(rows, row) ? ` It is the last device that can manage ${computer}.` : "";
-    if (await confirmAction({ title: `Remove ${row.name}?`, body: `It must sign in again to come back.${last}`, action: "Remove", danger: true })) await revoke(row);
+    // This window's own: it says what this window loses, not what some device must do.
+    const loses = own(row) ? `${capital(ownWords())} loses ${computer} until it signs in again.` : "It must sign in again to come back.";
+    if (await confirmAction({ title: `Remove ${row.name}?`, body: `${loses}${last}`, action: "Remove", danger: true })) await revoke(row);
   };
   if (rows.length === 0) return <PageEmpty>No devices</PageEmpty>;
   return (
@@ -101,7 +113,23 @@ function SignInRows({ host, rows, computer, onChanged }: { host: Host; rows: Sig
             </Button>
           </PageRow>
         ) : (
-          <PageRow key={row.id} data-sign-in={row.id} data-device={row.device} title={row.name} description={row.line} error={errors[row.id]}>
+          <PageRow
+            key={row.id}
+            data-sign-in={row.id}
+            data-device={row.device}
+            data-own={own(row) ? "" : undefined}
+            title={
+              own(row) ? (
+                <>
+                  {row.name} <span className="font-normal text-muted-foreground">{ownWords()}</span>
+                </>
+              ) : (
+                row.name
+              )
+            }
+            description={row.line}
+            error={errors[row.id]}
+          >
             <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void remove(row)}>
               Remove…
             </Button>

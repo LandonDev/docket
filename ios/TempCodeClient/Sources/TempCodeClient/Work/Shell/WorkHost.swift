@@ -160,6 +160,10 @@ public final class WorkHost: CaptureHost {
     public var isOn: Bool { settings?.enabled == true }
     /// Some kind of thread is away on this host (`AwayKinds`).
     public var awayOn: Bool { away.map { AwayKinds.any($0.state) } == true }
+    /// How this host's `away.get` stands, for Settings' Away rows: waiting from the connect until it answers;
+    /// `unsupported` only when the host said it does not know the method (a release from before Away); `failed` with
+    /// the words of any other failure. A read still out is never taken for an old release.
+    public private(set) var awayRead: AwayRead = .waiting
     /// The host refused this key (revoked or deleted): its client's socket said so, and it holds until a link to the
     /// host truly opens (`refused`, `opened`). A Retry that only starts a new connect does not lift it.
     public internal(set) var keyRevoked = false
@@ -181,7 +185,7 @@ public final class WorkHost: CaptureHost {
         opened()
         can.connected()
         async let work = try? socket.request(Methods.WorkGet.self, .init())
-        async let awayAnswer = try? socket.request(Methods.AwayGet.self, .init())
+        async let awayAnswer = askAway()
         // A host that does not answer (asleep, a timeout) keeps the switch it had: its Work rows stay on Home.
         if let answer = await work { settings = answer }
         if let answer = await awayAnswer { take(answer, live: false) }
@@ -536,6 +540,24 @@ public final class WorkHost: CaptureHost {
     /// Both kinds at once (`enabled`), as every host takes it.
     public func setAway(_ enabled: Bool) async throws {
         try await setAway(nil, enabled)
+    }
+
+    /// Settings' Retry on a failed Away read: asks once more and takes the answer.
+    public func readAway() async {
+        if let answer = await askAway() { take(answer, live: false) }
+    }
+
+    /// `away.get`, its outcome kept in `awayRead`.
+    private func askAway() async -> AwaySnapshot? {
+        awayRead = .waiting
+        do {
+            let answer = try await socket.request(Methods.AwayGet.self, .init())
+            awayRead = .answered
+            return answer
+        } catch {
+            awayRead = HostCan.saysUnknown(error) ? .unsupported : .failed(ActionError.wrap(error).message)
+            return nil
+        }
     }
 
     /// One kind's switch; nil, or a host one release behind that names no kind, sets both (`AwayKinds.params`).

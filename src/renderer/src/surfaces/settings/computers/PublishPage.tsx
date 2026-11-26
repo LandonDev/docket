@@ -7,7 +7,7 @@ import { useHostRead } from "../../../lib/connection/hostRead";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { Spinner } from "../../../components/ui/spinner";
 import { refusalWords } from "../../../lib/settingsHome";
-import { SectionRead } from "./read";
+import { HIDES_EMPTY, SectionRead } from "./read";
 import { refreshPublishStatus, startPublish, stopPublish, useHostJob, usePublishStatus, watchJob } from "../../../lib/hostJobs";
 import { IS_MAC } from "../../../lib/platform";
 import { isWebMode } from "../../../lib/nativeWeb";
@@ -106,7 +106,7 @@ export function PublishPage() {
     }
   };
   return (
-    <PageSection>
+    <PageSection className={HIDES_EMPTY}>
       <SectionRead read={read} computer={LOCAL_ENVIRONMENT_ID} rows={[{ description: true, control: "button" }, { control: "field", wide: true }]}>
         {(value) => (
           <>

@@ -99,8 +99,8 @@ describe("Sync", () => {
   });
 
   it("counts the computers the memory is kept the same on", () => {
-    expect(memoryWords(2)).toBe("Kept the same both ways");
-    expect(memoryWords(3)).toBe("Kept the same on all three, both ways");
+    expect(memoryWords(2)).toBe("Kept the same both ways.");
+    expect(memoryWords(3)).toBe("Kept the same on all three, both ways.");
   });
 
   it("says a computer's last sync as one sentence, the conflict copies in plain words", () => {

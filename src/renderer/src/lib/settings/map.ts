@@ -140,7 +140,7 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
   e("sharing.commands", "sharing", "What {computer} may do on {mac}", "Its commands here at once", "here", "host", ["Hosts › Mac bridge › Settings… › Commands at once"]),
   e("sharing.threads", "sharing", "What {computer} may do on {mac}", "Its threads here at once", "here", "host", ["Hosts › Mac bridge › Settings… › Threads at once"]),
   e("sharing.driven", "sharing", "What {computer} may do on {mac}", "Apps it drives at once", "here", "host", ["Hosts › Mac bridge › Settings… › Computer sessions at once"]),
-  e("sharing.running", "sharing", "What {computer} may do on {mac}", "Running now", "here", "none", ["Hosts › Mac bridge › Running"], "list"),
+  e("sharing.running", "sharing", "What {computer} may do on {mac}", "Commands and apps running now", "here", "none", ["Hosts › Mac bridge › Running"], "list"),
   e("sharing.allowed", "sharing", "What {computer} may do on {mac}", "Allowed until Docket quits", "here", "none", ["Hosts › Remembered approvals"], "list"),
   e("sharing.reach", "sharing", "Advanced", "Let other devices reach {mac}", "here", "host", ["Hosts › This Mac › Remote access"]),
   e("sharing.port", "sharing", "Advanced", "Port", "here", "host", ["Hosts › This Mac › Port"]),
@@ -229,6 +229,7 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
 
   // ── Work ─────────────────────────────────────────────────────────────
   e("work.on", "work", "Work is on for", "Work is on for", "computer", "host", ["Work › Work"], "list"),
+  e("work.connections", "work", "Sign-ins", "LifeOS, Office and Google sign-ins", "work", "none", [], "open"),
   e("work.access", "work", "Access for each job's new threads", "Access for each job's new threads", "workspace", "box", ["Work › Models"], "list"),
   e("work.grants", "work", "Without asking you", "Things threads may send on their own", "work", "host", ["Outbox › Grants"], "open"),
   e("work.tools", "work", "Without asking you", "What each add-on's tools may do", "work", "host", ["The phone › Work › Add-on tools"], "open"),
@@ -329,7 +330,7 @@ export type SettingVars = { mac?: string; computer?: string; n?: number | string
  *  A placeholder with no value stays out. */
 export function settingWords(text: string, vars: SettingVars = {}): string {
   // One of a thing is said in the singular: "Different in 1 project".
-  const counted = String(vars.n) === "1" ? text.replace(/\{n\} (\w+?)s\b/g, "{n} $1") : text;
+  const counted = /(^|\s)1$/.test(String(vars.n)) ? text.replace(/\{n\} (\w+?)s\b/g, "{n} $1") : text;
   const filled = counted
     .replaceAll("{mac}", vars.mac ?? "this Mac")
     .replaceAll("{computer}", vars.computer ?? "a computer")

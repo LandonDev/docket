@@ -58,7 +58,8 @@ const listeners = new Set<() => void>();
 
 /** What this computer calls itself, asked of it once (`remote.status` is the window's own to ask). */
 function askOwnName(): void {
-  if (asked || isWebMode()) return;
+  // A window with no link of its own yet (a test's stand-in registry) has no one to ask.
+  if (asked || isWebMode() || typeof registry.primary !== "function") return;
   asked = true;
   registry
     .primary()

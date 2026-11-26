@@ -218,6 +218,8 @@ struct DeviceWordsTests {
         #expect(DeviceWords.phoneState(phone("iPhone 16 Pro", .paired)) == DeviceState(tone: .between, status: "Paired", platform: "iPhone 16 Pro, iOS 26.0"))
         #expect(DeviceWords.phoneState(phone("iPad", .unavailable)) == DeviceState(tone: .off, status: "Unavailable", platform: "iPad, iOS 26.0"))
         #expect(DeviceWords.simulatorState(simulator("A", state: .booted, cpu: 33.9)).spoken == "Booted, 34% CPU, iOS 26.0")
+        // The row's line is the same phrase, commas between its parts; no platform, no trailing comma.
+        #expect(DeviceState(tone: .off, status: "Shut down", platform: "").spoken == "Shut down")
     }
 
     @Test func `the Xcode line names the Xcode alone`() {

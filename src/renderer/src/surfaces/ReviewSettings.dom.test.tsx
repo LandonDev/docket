@@ -16,15 +16,19 @@ vi.mock("../lib/settings/computerName", async (original) => {
   const own = { name: "MacBook Pro", own: true };
   return {
     ...real,
-    useComputerName: () => own,
+    useComputerName: (id: string) => (id === "local" ? own : { name: "The box", own: false }),
     useComputerNames: () => (id: string) => (id === "local" ? own : { name: "The box", own: false }),
-    useReadFailWords: () => (error: string) => real.readFailWords(error, own),
+    useReadFailWords: (id: string) => (error: string) => real.readFailWords(error, id === "local" ? own : { name: "The box", own: false }),
   };
 });
 vi.mock("../components/choice-select", async () => await import("../components/choice-select-body"));
 vi.mock("../components/choice-combobox", async () => await import("../components/choice-combobox-body"));
 vi.mock("../chrome/ProjectDialogs", () => ({
-  ProjectSettingsDialog: ({ project }: { project: { name: string } }) => <div role="dialog" aria-label={`Sheet ${project.name}`} />,
+  ProjectSettingsDialog: ({ project, onClose }: { project: { name: string }; onClose: () => void }) => (
+    <div role="dialog" aria-label={`Sheet ${project.name}`}>
+      <button onClick={onClose}>Close the sheet</button>
+    </div>
+  ),
 }));
 const catalog = vi.hoisted(() => ({
   projects: [] as { id: string; name: string; environmentId: string; workspaceId: string }[],
@@ -356,13 +360,40 @@ describe("Different in N projects, beside Reviews off", () => {
     answer({ ...SETTINGS, beforeMerge: true });
     await renderPage();
     await act(async () => {});
-    const line = document.querySelector("[data-unread]")!.closest("[data-slot=page-error-line]") as HTMLElement;
-    expect(line.textContent).toContain("The box did not answer, so 1 of its projects is not counted.");
+    const row = document.querySelector("[data-setting='reviews.different']") as HTMLElement;
+    expect(row.textContent).toContain("Different in at least 1 project");
+    expect(row.textContent).toContain("Not heard from docket");
+    expect(screen.getByRole("alert").textContent).toBe("The box did not answer.");
     catalog.silent = new Set();
     await act(async () => {
-      fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     });
     await act(async () => {});
-    expect(document.querySelector("[data-unread]")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect((document.querySelector("[data-setting='reviews.different']") as HTMLElement).textContent).toContain("Different in 1 project");
+  });
+
+  it("holds the row in its shape while the projects are read, and reads a project again once its sheet closes", async () => {
+    catalog.projects = [{ id: "p1", name: "settings-2", environmentId: "local", workspaceId: "w1" }];
+    catalog.own = new Set(["p1"]);
+    answer({ ...SETTINGS, beforeMerge: true });
+    render(<ReviewsPage />);
+    await act(async () => {});
+    // Its own reads answer at once here; the row is drawn from them.
+    const row = document.querySelector("[data-setting='reviews.different']") as HTMLElement;
+    expect(row.textContent).toContain("settings-2 has reviews off");
+    await act(async () => {
+      fireEvent.click(row.querySelector("[data-row-open]")!);
+    });
+    await act(async () => {
+      fireEvent.click((await screen.findByRole("dialog")).querySelector("[data-row-open]")!);
+    });
+    // He turns reviews on in the sheet; closing it reads the project again.
+    catalog.on = new Set(["p1"]);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Close the sheet" }));
+    });
+    await act(async () => {});
+    expect((document.querySelector("[data-setting='reviews.different']") as HTMLElement).textContent).toContain("settings-2 has its own review model");
   });
 });

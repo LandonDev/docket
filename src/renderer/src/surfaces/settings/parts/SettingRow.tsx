@@ -69,7 +69,14 @@ export function SettingSection({
 }: Omit<ComponentProps<typeof PageSection>, "title"> & { of: string; vars?: SettingVars; children: ReactNode }) {
   const entry = settingEntry(of);
   return (
-    <PageSection {...section} data-setting={entry.kind === "list" ? of : undefined} title={entry.section ? settingWords(entry.section, vars) : undefined}>
+    // A section whose only row was a failure said earlier on the page (ReadFailure) is left with nothing: no heading
+    // stands over nothing.
+    <PageSection
+      {...section}
+      className={cn("has-[>div:last-child:empty]:hidden", section.className)}
+      data-setting={entry.kind === "list" ? of : undefined}
+      title={entry.section ? settingWords(entry.section, vars) : undefined}
+    >
       {children}
     </PageSection>
   );

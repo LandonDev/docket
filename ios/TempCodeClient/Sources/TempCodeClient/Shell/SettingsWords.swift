@@ -17,13 +17,52 @@ public enum AwayWords {
         }
     }
 
-    /// The root row's trailing word: On while any computer has any kind away.
-    public static func summary(_ on: [Bool]) -> String {
-        on.contains(true) ? "On" : "Off"
+    /// One computer as the root's Away row counts it: its answer, a read still out, or nothing to go on (out of
+    /// reach, refused, a release from before Away).
+    public enum Computer: Sendable, Hashable {
+        case on
+        case off
+        case waiting
+        case unread
+    }
+
+    /// - Parameters:
+    ///   - away: whether any kind is away, once the computer has answered; nil before.
+    ///   - read: how its `away.get` stands (`WorkHost.awayRead`).
+    ///   - transport: its link. A computer out of reach counts as unread even with an answer held: Off is a
+    ///     setting the phone must have from it (the council's round 3).
+    public static func computer(away: Bool?, read: AwayRead, transport: TransportState) -> Computer {
+        switch transport {
+        case .offline, .unauthorized: return .unread
+        case .open, .connecting, .reconnecting, .suspended: break
+        }
+        if let away { return away ? .on : .off }
+        return read == .waiting ? .waiting : .unread
+    }
+
+    /// The root row's trailing word. On while any computer is away; nil (the row's bones) while a read is out and
+    /// none is away; Off only when every computer answered Off; "Off on 2 of 3" when some could not be read; nil
+    /// again when none could, so nothing stands in for an answer that did not come.
+    public static func summary(_ computers: [Computer]) -> String? {
+        if computers.contains(.on) { return "On" }
+        if computers.contains(.waiting) { return nil }
+        let off = computers.count { $0 == .off }
+        if off == 0 { return nil }
+        return off == computers.count ? "Off" : "Off on \(off) of \(computers.count)"
     }
 
     /// The screen's one footer: what Away does (the plan's section 3).
     public static let footer = "While on, a thread that would wait for you decides for itself."
+}
+
+/// How a computer's `away.get` stands, for Settings' Away rows (`WorkHost.awayRead`): waiting from the connect
+/// until it answers; `unsupported` only when the computer said it does not know the method (a release from before
+/// Away); `failed` with the words of any other failure. A read still out is never taken for an old release.
+public enum AwayRead: Sendable, Hashable {
+    case waiting
+    case answered
+    case unsupported
+    case failed(String)
 }
 
 /// How the root's Work row stands: shown once a computer has answered

@@ -3,6 +3,7 @@ import type { CodeSettings } from "@server/shared/contract-code";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageRow, PageRowsSkeleton } from "../../components/page";
 import { ReadFailure } from "./parts/ReadFailure";
+import { ButtonBone } from "./computers/read";
 import { useComputerUpdate } from "./computers/update";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
@@ -210,7 +211,8 @@ function OtherComputerRow({ id, name }: { id: string; name: string }) {
   const online = useEnvironmentStatus(id).transport === "open";
   const up = useComputerUpdate(id);
   // A computer that is behind is updated from its row, with the same confirm as its page's Update…; any other row
-  // opens its page.
+  // opens its page. While its deploy status is read, the row's end is a button's bone: never a chevron that turns
+  // into Update….
   const behind = online && up.offered && (up.behind ?? 0) > 0;
   return (
     <PageRow
@@ -221,7 +223,9 @@ function OtherComputerRow({ id, name }: { id: string; name: string }) {
       onOpen={() => requestSettings(computerSettingsSection(id), "pc.version")}
       openLabel={name}
     >
-      {behind ? (
+      {online && up.waiting ? (
+        <ButtonBone />
+      ) : behind ? (
         <Button variant="secondary" size="sm" disabled={up.busy} onClick={() => void up.update()}>
           <BusyLabel busy={up.busy} label="Update…" />
         </Button>

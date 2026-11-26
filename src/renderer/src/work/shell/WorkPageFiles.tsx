@@ -9,7 +9,8 @@ import { useWorkHosts } from "../../lib/workSwitch";
 import { SettingRow, SettingSection } from "../../surfaces/settings/parts/SettingRow";
 import { setWordDefault, WORD_DEFAULTS, wordDefault, type WordDefault } from "../files/wordDefault";
 import { GuestLinksRow } from "../guests/GuestLinksSection";
-import { TeamsFilesRow } from "../office/TeamsFilesRow";
+import { filesPageLine, TeamsFilesRow, type OpensIn } from "../office/TeamsFilesRow";
+import { PageSection } from "../../components/page";
 import { isDesktop } from "./actions";
 
 /**
@@ -25,15 +26,43 @@ export function FilesPage({ guestsOpen = false }: { /** The guest links' sheet o
   const hosts = linked.filter((e) => on.has(e.id));
   const mac = thisDesktopInLine();
   const own = (id: string): boolean => id === LOCAL_ENVIRONMENT_ID || names(id).own;
+  // What each list says of itself, so the page says what they share once, under its title.
+  const [says, setSays] = useState<Record<string, { any: boolean; common: OpensIn | null }>>({});
+  // One stable report a list, kept for the page's life (state, not a ref: it is read while drawing).
+  const [reporters] = useState(() => new Map<string, (said: { any: boolean; common: OpensIn | null } | null) => void>());
+  const saysFor = (key: string) => {
+    let report = reporters.get(key);
+    if (!report) {
+      report = (said) =>
+        setSays((was) => {
+          if (said === null) {
+            if (!(key in was)) return was;
+            const rest = { ...was };
+            delete rest[key];
+            return rest;
+          }
+          return was[key]?.any === said.any && was[key]?.common === said.common ? was : { ...was, [key]: said };
+        });
+      reporters.set(key, report);
+    }
+    return report;
+  };
+  const head = filesPageLine(Object.values(says));
   return (
     <>
+      {/* Under the title, as a page's line sits: a section's 24px drawn back to the title line's 4px. */}
+      {head ? (
+        <PageSection data-files-line="" className="-mt-5" description={head.line}>
+          {null}
+        </PageSection>
+      ) : null}
       {hosts
         .filter((h) => isDesktop(h.platform) || own(h.id))
-        .map((h, i) => (
+        .map((h) => (
           <TeamsFilesRow
             key={h.id}
-            // What a row's switch means is said once a page, over its first list.
-            explain={i === 0}
+            pageSays={head?.opens}
+            onSays={saysFor(h.id)}
             link={registry.linkOf(h.id)}
             host={h.name}
             title={settingTitle("files.folders", { computer: computerInLine(names(h.id)) })}
@@ -45,10 +74,11 @@ export function FilesPage({ guestsOpen = false }: { /** The guest links' sheet o
       {/* A computer that keeps no Windows VM draws no section for it. */}
       {hosts
         .filter((h) => !isDesktop(h.platform))
-        .map((h, i) => (
+        .map((h) => (
           <TeamsFilesRow
             key={`vm:${h.id}`}
-            explain={!hosts.some((d) => isDesktop(d.platform) || own(d.id)) && i === 0}
+            pageSays={head?.opens}
+            onSays={saysFor(`vm:${h.id}`)}
             link={registry.linkOf(h.id)}
             host={h.name}
             title={settingTitle("files.vm")}
