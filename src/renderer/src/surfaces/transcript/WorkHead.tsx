@@ -82,10 +82,14 @@ export function useThreadRecord(env: string | null | undefined, sessionId: strin
   const root = record?.sessionId ?? sessionId;
   const stamp = useSyncExternalStore(subscribeResults, () => (env ? resultsStamp(env, root) : ""), () => "");
   const tasks = useTaskPulse(env, record);
+  // The pulse the last ask of this thread was made at: an ask the pulse itself moved tells the host LifeOS changed.
+  const asked = useRef({ key: "", tasks: 0 });
   useEffect(() => {
     if (!env) return;
     let live = true;
-    readThreadRecord(env, sessionId).then(
+    const fresh = asked.current.key === key && asked.current.tasks !== tasks;
+    asked.current = { key, tasks };
+    readThreadRecord(env, sessionId, fresh).then(
       (next) =>
         live &&
         setKept((was) =>

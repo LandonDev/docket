@@ -28,8 +28,29 @@ import { resultsOf } from '../outbox/results'
  * and the host's keeper of it. The keeper folds the outcome line into the session summary the rail reads
  * (`SessionMeta.workOutcome`, sessions.ts `workOutcomeOf`) from what it holds in memory, so a list costs no read a row;
  * it reads again only when an Outbox item or a Result changes, and says the thread's meta again then.
- * `work.threads.record` answers the whole record, with the LifeOS links read at that ask.
+ * `work.threads.record` answers the whole record from the same kept facts, with the thread's LifeOS links and tasks
+ * as last read: a head asks again at every change of its thread's state, and each ask was two LifeOS round trips
+ * from the host (863 ms in the middle on the live box). The LifeOS half is kept a minute a root (`WORKS_KEEP_MS`,
+ * the newest `WORKS_KEPT` roots), dropped when this host links or completes for the thread, read again when the
+ * asker says LifeOS moved (`fresh`), and never waited on past `WORKS_WAIT_MS`: the answer then says `worksDown`,
+ * the read goes on, and the head's own retry finds it kept.
  */
+
+/** How long a root's LifeOS half answers asks before it is read again. */
+export const WORKS_KEEP_MS = 60_000
+/** A `fresh` ask takes a half read this recently: the asker's own retry right behind a late read. */
+export const WORKS_FRESH_MS = 2_000
+/** How long an ask waits on LifeOS before it answers without it. */
+export const WORKS_WAIT_MS = 2_500
+/** How many roots' halves are kept. */
+export const WORKS_KEPT = 100
+export const WORKS_LATE = 'LifeOS did not answer in time'
+
+interface Works {
+  at: number
+  links: LinkFacts[]
+  tasks: Map<string, TaskFacts | null>
+}
 
 /** What the outcome reads of a root's decorated meta. */
 export type OutcomeMeta = Pick<SessionMeta, 'status' | 'failure' | 'statusDetail' | 'treeHasLiveWork' | 'treeCanContinue'>
@@ -237,6 +258,7 @@ export interface RecordSources {
   /** the thread's job; null for a Work Chat */
   workspaceOf(rootId: string): string | null
   log(line: string): void
+  now?(): number
 }
 
 export function sourcesOf(ctx: WorkCtx): RecordSources {
@@ -271,6 +293,10 @@ export class ThreadRecords {
   private results = new Map<string, WorkResult[]>()
   /** How many open requests each root holds: built from one read at the first ask after a request moved. */
   private asking: Map<string, number> | null = null
+  /** Each root's LifeOS half as last read, newest last. */
+  private readonly works = new Map<string, Works>()
+  /** The LifeOS read under way for a root: asks that come together share it. */
+  private readonly reading = new Map<string, Promise<Works>>()
 
   constructor(
     private readonly sources: RecordSources,
@@ -349,11 +375,45 @@ export class ThreadRecords {
     this.registry.refreshMeta?.([result.rootId])
   }
 
+  /** This host linked the thread to a LifeOS record, or completed one for it: its LifeOS half is read again. */
+  worksChanged(sessionId: string): void {
+    this.works.delete(this.sources.rootOf(sessionId))
+  }
+
   /** Everything read again at the next ask: Work came on or went off. */
   reset(): void {
     this.held = null
     this.asking = null
     this.results.clear()
+    this.works.clear()
+  }
+
+  private now(): number {
+    return this.sources.now?.() ?? Date.now()
+  }
+
+  /** The root's links and its first tasks from LifeOS, one read at a time a root; kept when it lands. */
+  private readWorks(rootId: string): Promise<Works> {
+    const under = this.reading.get(rootId)
+    if (under) return under
+    const read = (async (): Promise<Works> => {
+      const links = await this.sources.links(rootId)
+      const tasks = new Map<string, TaskFacts | null>()
+      const first = links.filter((l) => l.entity.table === 'tasks').slice(0, TASKS_READ)
+      await Promise.all(first.map(async (l) => void tasks.set(l.entity.id, await this.sources.task(l.entity.id))))
+      const works = { at: this.now(), links, tasks }
+      this.works.delete(rootId)
+      this.works.set(rootId, works)
+      for (const oldest of this.works.keys()) {
+        if (this.works.size <= WORKS_KEPT) break
+        this.works.delete(oldest)
+      }
+      return works
+    })().finally(() => {
+      if (this.reading.get(rootId) === read) this.reading.delete(rootId)
+    })
+    this.reading.set(rootId, read)
+    return read
   }
 
   /**
@@ -380,34 +440,47 @@ export class ThreadRecords {
     return files
   }
 
-  /** The whole record of a Work thread (a subagent's id answers its root's), with its LifeOS links read now. */
-  async record(sessionId: string): Promise<ThreadRecord> {
+  /**
+   * The whole record of a Work thread (a subagent's id answers its root's). The waits, the requests and the made
+   * things are the keeper's own, dropped by the Outbox's and the Results' changes; the LifeOS half is the kept one
+   * while it is young, else read now, for `WORKS_WAIT_MS` at most. `fresh`: the asker saw LifeOS move.
+   */
+  async record(sessionId: string, opts: { fresh?: boolean } = {}): Promise<ThreadRecord> {
     const rootId = this.sources.rootOf(sessionId)
-    const root = this.registry.get(rootId)
-    if (!root) throw new Error(`unknown thread: ${sessionId}`)
-    if (root.scope !== 'work') throw new Error(`thread ${sessionId} is not a Work thread`)
-    // Read fresh: a record is asked once a screen, and a change since the last fold must not be missed.
-    this.held = null
-    this.asking = null
-    this.results.delete(rootId)
-    const requests = this.sources.requests().filter((r) => this.sources.rootOf(r.sessionId) === rootId)
-    let links: LinkFacts[] = []
-    let worksDown: string | undefined
-    const tasks = new Map<string, TaskFacts | null>()
-    try {
-      links = await this.sources.links(rootId)
-      const read = links.filter((l) => l.entity.table === 'tasks').slice(0, TASKS_READ)
-      await Promise.all(read.map(async (l) => void tasks.set(l.entity.id, await this.sources.task(l.entity.id))))
-    } catch (err) {
-      worksDown = errorText(err)
+    const check = (): SessionMeta => {
+      const root = this.registry.get(rootId)
+      if (!root) throw new Error(`unknown thread: ${sessionId}`)
+      if (root.scope !== 'work') throw new Error(`thread ${sessionId} is not a Work thread`)
+      return root
     }
+    check()
+    const kept = this.works.get(rootId)
+    const age = kept ? this.now() - kept.at : Infinity
+    let works: Works | null = kept && age < (opts.fresh ? WORKS_FRESH_MS : WORKS_KEEP_MS) ? kept : null
+    let worksDown: string | undefined
+    if (!works) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const read = this.readWorks(rootId)
+      // A read that lands late is still kept for the next ask.
+      read.catch(() => undefined)
+      try {
+        works = await Promise.race([read, new Promise<never>((_, reject) => (timer = setTimeout(() => reject(new Error(WORKS_LATE)), WORKS_WAIT_MS)))])
+      } catch (err) {
+        worksDown = errorText(err)
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+    // The thread as it is now, after the wait.
+    const root = check()
+    const requests = this.sources.requests().filter((r) => this.sources.rootOf(r.sessionId) === rootId)
     return threadRecord({
       root,
       held: this.heldOf(rootId),
       requests,
       results: this.resultsOf(rootId),
-      links,
-      tasks,
+      links: works?.links ?? [],
+      tasks: works?.tasks ?? new Map(),
       workspaceId: this.sources.workspaceOf(rootId),
       ...(worksDown ? { worksDown } : {})
     })
@@ -427,7 +500,12 @@ export function threadRecordsPart(ctx: WorkCtx, deps: Pick<WorkPartDeps, 'regist
   deps.whileOn(() => {
     records.reset()
     const host = outboxHostOf(ctx)
-    const offs = [host?.outbox.onChange((item) => records.heldChanged(item)), host?.requests.onChange((r) => records.requestChanged(r)), resultsOf(ctx)?.onChange((r) => records.resultChanged(r))]
+    const offs = [
+      host?.outbox.onChange((item) => records.heldChanged(item)),
+      host?.requests.onChange((r) => records.requestChanged(r)),
+      resultsOf(ctx)?.onChange((r) => records.resultChanged(r)),
+      ctx.links.onChange((sessionId) => records.worksChanged(sessionId))
+    ]
     return () => {
       for (const off of offs) off?.()
       records.reset()

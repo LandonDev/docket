@@ -47,7 +47,7 @@ vi.mock('../lifeos/ctx', () => ({
       jwt: async () => 'jwt',
       subscribe: () => () => {}
     },
-    links: { link: async () => {}, forThread: async () => [], completeFor: async () => {} }
+    links: { link: async () => {}, forThread: async () => [], completeFor: async () => {}, onChange: () => () => {} }
   })
 }))
 

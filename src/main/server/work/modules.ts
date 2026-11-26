@@ -266,6 +266,8 @@ export interface WorkCtx {
     forThread(sessionId: string): Promise<WorkLink[]>
     /** completes the linked task with the thread link */
     completeFor(sessionId: string, reason: string): Promise<void>
+    /** hears each thread this host linked or completed a task for */
+    onChange(fn: (sessionId: string) => void): () => void
   }
   /** milestone 9 */
   canvas: {

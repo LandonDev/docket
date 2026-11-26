@@ -565,7 +565,7 @@ export function startWork(deps: WorkDeps, modules: WorkModule[] = WORK_MODULES):
           if (!settings.enabled()) throw new Error('Work is off on this host')
           const records = threadRecordsOf(ctx)
           if (!records) throw new Error("work: this host keeps no thread records")
-          return handled(await records.record(req.params.sessionId))
+          return handled(await records.record(req.params.sessionId, { fresh: req.params.fresh === true }))
         }
         case 'app.workTools':
           return handled({ tools: tools.listing(bridgeSession(req.params)) })

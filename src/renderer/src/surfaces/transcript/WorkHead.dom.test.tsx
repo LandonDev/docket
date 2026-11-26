@@ -382,6 +382,10 @@ describe("the record read", () => {
     const before = reads();
     act(() => live.setTask("task1", { task: { status: "done" } }));
     await waitFor(() => expect(reads()).toBe(before + 1));
+    // LifeOS moved: this ask tells the host to read its half again, where the first ask and a held item's did not.
+    const asks = world.calls.filter((c) => c.method === "work.threads.record").map((c) => c.params);
+    expect(asks.at(-1)).toEqual({ sessionId: "t1", fresh: true });
+    expect(asks.slice(0, -1).every((params) => !("fresh" in (params as object)))).toBe(true);
   });
 
   it("a record whose LifeOS read failed keeps the last task facts, marked behind", async () => {

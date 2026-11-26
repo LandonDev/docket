@@ -665,8 +665,15 @@ One record answers it for every screen (the thread's head, the column's outcome 
   and `Results.onChange` (outbox/results.ts), drops what moved and says the touched roots'
   metas again (`registry.refreshMeta`). No LifeOS call is in this path. The Swift contract carries it
   (`SessionMeta.WorkOutcome`).
-- **`work.threads.record {sessionId}`** (core, `approve`, read only; a subagent's id answers its root's; a code thread
-  is refused): the whole record, reading the Outbox and Results fresh and the links from LifeOS at the ask.
+- **`work.threads.record {sessionId, fresh?}`** (core, `approve`, read only; a subagent's id answers its root's; a code
+  thread is refused): the whole record. Its waits, requests and made things are the keeper's own, dropped by the
+  Outbox's and the Results' changes, not by each ask. Its LifeOS half (the links, the first five tasks) is the one
+  the host last read for that root while it is under a minute old (`WORKS_KEEP_MS`, the newest hundred roots,
+  dropped with Work off and when this host links or completes for the thread, `Links.onChange`); the head says
+  `fresh` when the ask was moved by LifeOS itself (its task pulse), and the host reads again. No ask waits on LifeOS
+  past 2.5 s (`WORKS_WAIT_MS`): it answers `worksDown`, the read goes on and is kept for the head's own retry. A head
+  asks again at every change of its thread's state, and each ask used to be two LifeOS round trips from the host
+  (863 ms in the middle on the live box, Nov 26).
 - **The thread's head** (surfaces/transcript/WorkHead.tsx, its own chunk `work-head`; docs/DESIGN.md "A thread's
   head") reads it (`readThreadRecord`, work/threads/record.ts) over the thread's first message (`ThreadHeadSlot` in surfaces/transcriptSession.ts,
   inside that message's row so the transcript's row

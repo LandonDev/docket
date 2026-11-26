@@ -2,7 +2,20 @@ import { describe, expect, it, vi } from 'vitest'
 import type { OutboxItem, WorkResult } from '@shared/contract-work-outbox'
 import type { SessionMeta } from '@shared/events'
 import { heldWords, requestWords } from '@shared/work/threadRecord'
-import { outcomeOf, sourceKeyOf, threadRecord, ThreadRecords, type OutcomeMeta, type RecordFacts, type RecordSources } from './record'
+import {
+  outcomeOf,
+  sourceKeyOf,
+  threadRecord,
+  ThreadRecords,
+  WORKS_FRESH_MS,
+  WORKS_KEEP_MS,
+  WORKS_KEPT,
+  WORKS_LATE,
+  WORKS_WAIT_MS,
+  type OutcomeMeta,
+  type RecordFacts,
+  type RecordSources
+} from './record'
 
 /** What a Work thread left him (work/threads/record.ts): the record, its outcome line, and the keeper that folds it. */
 
@@ -302,5 +315,98 @@ describe('the keeper', () => {
     expect(r.worksDown).toBe('This host is not signed in to LifeOS')
     expect(r.works).toEqual([])
     expect(r.waits).toHaveLength(2)
+  })
+
+  const link = { entity: { table: 'tasks', id: 't1' }, title: 'Thread', state: 'open' as const, at: T0 }
+
+  it('answers a head that asks again from what it keeps: one LifeOS read, no Outbox read, until something changed', async () => {
+    let now = T0
+    const links = vi.fn(async () => [link])
+    const task = vi.fn(async () => ({ title: 'Borrow two switches', status: 'todo' }))
+    const { records, waiting, results } = keeper({ links, task, now: () => now })
+    const first = await records.record('root')
+    const again = await records.record('root')
+    expect(again).toEqual(first)
+    expect(first.works[0]).toMatchObject({ id: 't1', title: 'Borrow two switches' })
+    expect([links.mock.calls.length, task.mock.calls.length]).toEqual([1, 1])
+    expect([waiting.mock.calls.length, results.mock.calls.length]).toEqual([1, 1])
+    // A held item moved: the held facts are read again, the LifeOS half is not.
+    records.heldChanged({ sessionId: 'child' })
+    await records.record('root')
+    expect([waiting.mock.calls.length, links.mock.calls.length]).toEqual([2, 1])
+    // After a minute the LifeOS half is read again.
+    now += WORKS_KEEP_MS
+    await records.record('root')
+    expect(links.mock.calls.length).toBe(2)
+  })
+
+  it('reads LifeOS again when the asker saw it move, and when this host linked or completed for the thread', async () => {
+    let now = T0
+    let title = 'Borrow two switches'
+    const links = vi.fn(async () => [link])
+    const { records } = keeper({ links, task: async () => ({ title, status: 'todo' }), now: () => now })
+    await records.record('root')
+    title = 'Borrow three switches'
+    // A plain ask a moment later still says what is kept: nothing told the host it moved.
+    now += 5_000
+    expect((await records.record('root')).works[0]!.title).toBe('Borrow two switches')
+    expect((await records.record('root', { fresh: true })).works[0]!.title).toBe('Borrow three switches')
+    expect(links.mock.calls.length).toBe(2)
+    // The asker's retry right behind a read takes that read.
+    now += WORKS_FRESH_MS - 1
+    await records.record('root', { fresh: true })
+    expect(links.mock.calls.length).toBe(2)
+    // A subagent's link is its root's.
+    records.worksChanged('child')
+    await records.record('root')
+    expect(links.mock.calls.length).toBe(3)
+    records.reset()
+    await records.record('root')
+    expect(links.mock.calls.length).toBe(4)
+  })
+
+  it('never waits on LifeOS past its bound: the answer says so with the local facts, and the late read is kept for the retry', async () => {
+    vi.useFakeTimers()
+    try {
+      let land!: (rows: (typeof link)[]) => void
+      const links = vi.fn(() => new Promise<(typeof link)[]>((resolve) => (land = resolve)))
+      const { records } = keeper({ links })
+      const asked = records.record('root')
+      const second = records.record('root')
+      await vi.advanceTimersByTimeAsync(WORKS_WAIT_MS)
+      const late = await asked
+      expect(late.worksDown).toBe(WORKS_LATE)
+      expect(late.waits).toHaveLength(2)
+      expect((await second).worksDown).toBe(WORKS_LATE)
+      // Two asks, one read under way.
+      expect(links.mock.calls.length).toBe(1)
+      land([link])
+      await vi.advanceTimersByTimeAsync(0)
+      const retry = await records.record('root')
+      expect(retry.worksDown).toBeUndefined()
+      expect(retry.works).toHaveLength(1)
+      expect(links.mock.calls.length).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps the halves of the newest hundred roots, and a thread that is no longer a Work thread is refused whatever is kept', async () => {
+    const metas = new Map<string, SessionMeta>()
+    const links = vi.fn(async () => [])
+    const records = new ThreadRecords(
+      { waiting: () => [], results: () => [], requests: () => [], links, task: async () => null, rootOf: (id) => id, workspaceOf: () => null, log: () => {} },
+      { get: (id) => metas.get(id) ?? null }
+    )
+    for (let i = 0; i <= WORKS_KEPT; i++) metas.set(`r${i}`, { id: `r${i}`, scope: 'work', ...idle } as unknown as SessionMeta)
+    for (let i = 0; i <= WORKS_KEPT; i++) await records.record(`r${i}`)
+    expect(links.mock.calls.length).toBe(WORKS_KEPT + 1)
+    // The newest is kept, the oldest was let go.
+    await records.record(`r${WORKS_KEPT}`)
+    expect(links.mock.calls.length).toBe(WORKS_KEPT + 1)
+    await records.record('r0')
+    expect(links.mock.calls.length).toBe(WORKS_KEPT + 2)
+    metas.delete('r5')
+    await expect(records.record('r5')).rejects.toThrow(/unknown thread/)
   })
 })

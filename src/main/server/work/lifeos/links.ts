@@ -51,7 +51,18 @@ const TITLE_MAX = 200
 const refused = (err: unknown): boolean => faultOf(err) !== 'unreachable' && (err as { data?: unknown } | null)?.data !== undefined
 
 export class Links {
+  private readonly heard = new Set<(sessionId: string) => void>()
   constructor(private readonly deps: LinksDeps) {}
+
+  /** Hears each thread this host linked or completed a task for: what is kept of its links is old then. */
+  onChange(fn: (sessionId: string) => void): () => void {
+    this.heard.add(fn)
+    return () => void this.heard.delete(fn)
+  }
+
+  private changed(sessionId: string): void {
+    for (const fn of [...this.heard]) fn(sessionId)
+  }
 
   private log(line: string): void {
     this.deps.log(redact(`lifeos links: ${line}`))
@@ -66,6 +77,7 @@ export class Links {
     if (owner) {
       try {
         await owner.mutation(LINK_FNS.link, { entity, host: this.deps.host, threadId: sessionId, title: label })
+        this.changed(sessionId)
         return
       } catch (err) {
         // Only LifeOS's own refusal is final; anything else (a dropped socket, a lapsed sign-in, a server error) waits and is tried again.
@@ -92,6 +104,7 @@ export class Links {
     for (const row of rows) {
       try {
         await owner.mutation(LINK_FNS.link, { entity: { table: row.entity_table, id: row.entity_id }, host: this.deps.host, threadId: row.session_id, title: row.title })
+        this.changed(row.session_id)
         made++
       } catch (err) {
         if (!refused(err)) return made
@@ -121,6 +134,7 @@ export class Links {
         continue
       }
       await owner.mutation(LINK_FNS.complete, { id: link.entity.id, reason: reason.slice(0, 500), threadLink: { host: link.host, threadId: sessionId, title: link.title } })
+      this.changed(sessionId)
     }
   }
 

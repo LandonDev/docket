@@ -79,7 +79,7 @@ export const WorkCoreRequestSchemas = [
   /** → Lapse[]: what ends on this host and when, read from what it holds, soonest first */
   request('work.lapses', z.object({}).optional()),
   /** → ThreadRecord: what a Work thread left him, its waits, the LifeOS records it works on and what it made (work/threads/record.ts); a subagent's id answers its root's */
-  request('work.threads.record', z.object({ sessionId: z.string().min(1).max(200) })),
+  request('work.threads.record', z.object({ sessionId: z.string().min(1).max(200), /** the asker saw LifeOS move (a linked task changed): the host reads the thread's LifeOS half again instead of answering the one it keeps */ fresh: z.boolean().optional() })),
   /** → TrackerOverview: this host's jobs for the tracker, each open project with its facts and its most pressing thread (work/projects/overview.ts); `workspaceIds` asks for those jobs alone */
   request('work.projects.overview', z.object({ workspaceIds: z.array(z.string().min(1).max(200)).max(50).optional() }).optional()),
   /** → { files: ProjectMadeFile[] }: what a project mirror's root threads on this host made or changed, one row a thing at its newest write (work/threads/record.ts `projectFiles`); a project page's Files asks once a host */

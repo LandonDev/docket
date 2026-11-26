@@ -392,6 +392,7 @@ export async function makeRig(opts: { modules?: WorkModule[]; reuse?: { dir: str
   }
   work.ctx.links = {
     link: async () => {},
+    onChange: () => () => {},
     forThread: async () => [],
     completeFor: async (sessionId, reason) => {
       if (!lifeos.connected) throw new Error('LifeOS is unreachable')

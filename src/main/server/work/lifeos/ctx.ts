@@ -240,7 +240,8 @@ export const lifeosPart: CtxPart<'lifeos' | 'links'> = (ctx, deps) => {
     links: {
       link: (about, sessionId, title) => links.link(about, sessionId, title),
       forThread: async (sessionId) => links.forThread(sessionId, liveOwner(session)),
-      completeFor: async (sessionId, reason) => links.completeFor(sessionId, reason, liveOwner(session))
+      completeFor: async (sessionId, reason) => links.completeFor(sessionId, reason, liveOwner(session)),
+      onChange: (fn) => links.onChange(fn)
     }
   }
 }
