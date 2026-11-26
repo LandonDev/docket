@@ -100,6 +100,22 @@ A new thread's provider, model and effort follow the same shape as its access. H
   build's dialog sends the model it shows (the plan thread's, by the product's rule) to
   `plan.implement`. A new tab opened by moving a thread to another project takes his defaults.
 
+## One request for a new thread's first send
+
+On a host whose hello lists `create.draft` (HOST_FEATURES, src/shared/capabilities.ts), a draft's first send is one
+`session.create` (`foldOf`, lib/tcserver/commands.ts): the create's own fields as above (his picks or none, the
+context window, `about`), then the steps the window used to send after it, in their old order: the Mac bridge
+(`bridge`), a dock's items or mail chat, the draft's Fast or Ultrafast (`tune`, as `session.tune`) and the message
+(`send`, as `session.send`, last). The host runs each step as the request the window would have sent, through the
+caller's capability check, the path fence and the one dispatcher (src/main/server/createSteps.ts), so a refusal is
+the separate call's own error, and the new-thread defaults and the key's ceiling are the create's
+(`newThreadPermission`, `withNewThreadModel` unchanged). A send that fails leaves what create-then-send left: the
+thread, his message on screen, the send's error (the reply's `sendError`; the window adopts the thread as made and
+throws it). A failed mail chat step still sends nothing. A host with `create.steps` alone folds a dock's draft
+(`firstMessage`) and nothing else; an older host gets create, bridge, tune, send. No thread exists before he sends.
+Tests: commands.test.ts "a new thread's first send on a host that folds a draft whole", createSteps.test.ts,
+createSteps.server.test.ts (operate and approve keys, the fence's error, the defaults).
+
 ## The guard
 
 `src/renderer/src/lib/accessGuard.test.ts` fails on a create that sends a model other than his

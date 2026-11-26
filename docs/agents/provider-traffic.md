@@ -73,7 +73,16 @@ routed to (aliax-core's `forward`). Two listeners:
   thread's first request was 309k tokens that way and compacted after every
   request. The driver's first send waits for `model/list` to name the
   thread's model beside the MCP gate (`MODEL_LIST_WAIT`: every 250 ms, 10 s
-  at most; an answer with no list says nothing and waits no more), writes
+  at most; an answer with no list says nothing and waits no more). Both gates
+  start when `thread/start` or resume answers, not at the first send: the
+  list's wait is the connection's, reused by every later send, and each ask
+  carries the time left, so a list that never answers releases the turn at
+  10 s. The MCP gate (20 s at most) ends when `mcpServerStatus/list` on the
+  thread answers with every server settled (Codex 0.170 holds that answer
+  until each first server has started or failed; `mcpSettledOf`); an older
+  app-server keeps the startup statuses and their 500 ms grace. A Work
+  thread whose list names a server but the app's is stopped as the status
+  check stops it. The driver writes
   `[codex] <id>: <model> not in model/list after 10s: first turn may run on
   fallback metadata` to stalls.log at the cap, and `first turn on fallback
   model metadata (window 258400)` once per handle when a listed model still
@@ -213,8 +222,13 @@ routed to (aliax-core's `forward`). Two listeners:
   `accountSync.ts`; RPCs `accounts.push` (the giver's key alone, `give`) and
   `accounts.pull` (admin, or a given computer's device key; with `takeOver`,
   `give`), every receive path through devices/admission.ts).
-  When `accounts.push` adds a profile, the host rebuilds the routing snapshot
-  and sends the pending profile update to the gateway child before it answers.
+  When `accounts.push` adds a profile, the host routes it at once
+  (`AccountsService.routeNow`: the profiles from the vault, each kept profile
+  with the usage it had, no usage ask) and sends the profile update to the
+  gateway child before it answers, so no poll or forced refresh in flight
+  holds the answer; an ordinary rebuild follows and reads the usage. A build
+  that started before a newer picture landed is dropped (accountSync.test.ts
+  "a sync that adds an account answers once the child has it").
   The vault's save hook drops cached credentials before the profile row is
   written, so the rebuild runs after the transfer lands.
   The wire's `ServiceIdSchema` (src/shared/contract-m3a.ts) names every

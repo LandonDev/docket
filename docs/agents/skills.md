@@ -20,7 +20,11 @@ and .temp-code/plan-JBpcLz-eGMhp.md (the drivers).
   `<userData>/harness/<provider>/<view>@<12 hex>/skills/<name>/`, built
   beside its place and renamed in, files 0444, an unchanged skill
   hard-linked from the last generation; `gc()` at boot and hourly removes
-  a generation no view or scope pointer names. pointers.ts keeps one
+  a generation no view or scope pointer names. A store change (or the
+  text map's) builds every view's changed generation in the background, a
+  skill a slice, so a spawn's `dirFor` finds it ready and builds nothing;
+  it builds at once only for a change the background run has not reached,
+  and its freshness check stays synchronous (materialize.test.ts). pointers.ts keeps one
   stable path per (provider, scope),
   `<userData>/harness/<provider>/scope/<global|ws-<id>>`, re-pointed by
   rename. skillText.ts localizes the other host's paths in text files
