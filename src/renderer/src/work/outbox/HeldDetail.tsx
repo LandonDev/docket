@@ -568,7 +568,7 @@ export function DiscardButton({ busy, disabled, open, instant = false, onOpenCha
     <Popover open={open} onOpenChange={onOpenChange}>
       <Tip label={label} shortcut={shortcutFor("Work", "Discard Held Item")}>
         <PopoverTrigger render={<Button variant="ghost" size="sm" disabled={disabled} />}>
-          <BusyLabel busy={busy} label={label} />
+          <BusyLabel busy={busy} label={label} align="start" />
         </PopoverTrigger>
       </Tip>
       <PopoverContent side="top" align="start" className={cn("w-80", instant && "transition-none")}>

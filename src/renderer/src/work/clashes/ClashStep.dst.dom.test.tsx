@@ -35,8 +35,8 @@ describe("a step on the night the clocks go back", () => {
     render(<StepForm clash={{ id: "ev_b-ev_a", kind: "overlap", a: call, b: game }} step={{ side: "b", way: "propose" }} pending={false} onBack={() => {}} onSend={() => {}} />);
     expect(screen.getByRole("group", { name: "Late game" }).textContent).toContain("1:30 AM to second 1:30 AM");
     // Offered the quarter hour after the call ends: the first 1:45 AM to the second 1:45.
-    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("01:45");
-    expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("01:45");
+    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("1:45 AM");
+    expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("1:45 AM");
     expect(document.querySelector("[data-clash-step]")?.textContent).toContain("Second 1:45 AM");
   });
 });
@@ -49,7 +49,9 @@ describe("a step's times on the day the clocks go forward", () => {
     const field = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
     fireEvent.change(field("Day"), { target: { value: "2027-03-14" } });
     fireEvent.change(field("From"), { target: { value: "02:30" } });
+    fireEvent.blur(field("From"));
     fireEvent.change(field("To"), { target: { value: "04:00" } });
+    fireEvent.blur(field("To"));
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     expect(screen.getByRole("alert").textContent).toBe("From is in the hour the clocks skip that day. Pick another time.");
     expect(field("From").getAttribute("aria-invalid")).toBe("true");
@@ -57,6 +59,7 @@ describe("a step's times on the day the clocks go forward", () => {
     expect(onSend).not.toHaveBeenCalled();
 
     fireEvent.change(field("From"), { target: { value: "03:00" } });
+    fireEvent.blur(field("From"));
     expect(screen.getByRole("alert").textContent).toBe("");
     expect(field("From").getAttribute("aria-invalid")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Send" }));

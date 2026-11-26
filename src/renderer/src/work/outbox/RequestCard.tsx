@@ -448,7 +448,7 @@ function RequestBody({ request, frame, host, onOpenSession, commands }: { reques
   );
   const decline = (
     <Button variant="ghost" size="sm" disabled={p.busy !== null} onClick={() => void p.decline()}>
-      <BusyLabel busy={p.busy === "decline"} label="Not now" />
+      <BusyLabel busy={p.busy === "decline"} label="Not now" align="start" />
     </Button>
   );
   const primary = (

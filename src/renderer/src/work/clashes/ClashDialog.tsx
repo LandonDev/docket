@@ -9,7 +9,7 @@ import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { DateField } from "../../components/ui/date-field";
-import { Input } from "../../components/ui/input";
+import { TimeField } from "../../components/ui/time-field";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
 import { loadToast } from "../../components/ui/toaster";
@@ -470,7 +470,7 @@ export function Events({
         start={
           hostDown ? undefined : (
             <Button data-clash-fine variant="ghost" disabled={pending} onClick={onFine}>
-              <BusyLabel busy={busy === "fine"} label="This is fine" />
+              <BusyLabel busy={busy === "fine"} label="This is fine" align="start" />
             </Button>
           )
         }
@@ -559,10 +559,10 @@ export function StepForm({
                 <DateField required autoFocus disabled={locked} value={form.day} onChange={(day) => patch({ day })} />
               </Field>
               <Field label="From" hint={hints.from}>
-                <Input type="time" disabled={locked} aria-invalid={bad === "from" || undefined} value={form.from} onChange={(e) => patch({ from: e.target.value })} />
+                <TimeField required disabled={locked} aria-invalid={bad === "from" || undefined} value={form.from} onChange={(from) => patch({ from })} />
               </Field>
               <Field label="To" hint={hints.to}>
-                <Input type="time" disabled={locked} aria-invalid={bad === "to" || undefined} value={form.to} onChange={(e) => patch({ to: e.target.value })} />
+                <TimeField required disabled={locked} aria-invalid={bad === "to" || undefined} value={form.to} onChange={(to) => patch({ to })} />
               </Field>
             </div>
           </div>

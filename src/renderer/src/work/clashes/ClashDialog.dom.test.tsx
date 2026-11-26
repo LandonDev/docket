@@ -107,6 +107,13 @@ afterEach(() => {
   openWorkView(null);
 });
 
+/** A time field takes what he typed when he leaves it (TimeField). */
+const setTime = (label: string, value: string): void => {
+  const field = screen.getByLabelText(label);
+  fireEvent.change(field, { target: { value } });
+  fireEvent.blur(field);
+};
+
 describe("the Clash dialog", () => {
   it("names the fact, then the two events in time order with the drive between them", async () => {
     show(overlap());
@@ -360,8 +367,8 @@ describe("the Clash dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Propose new time…" }));
     // The game starts at 2:00 and the drive is 38 minutes: the two-hour meeting is offered 11:15 to 1:15.
     expect((screen.getByLabelText("Day") as HTMLInputElement).value).toBe("2031-11-26");
-    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("11:15");
-    expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("13:15");
+    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("11:15 AM");
+    expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("1:15 PM");
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await settle();
     expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_a", way: "propose", start: T0 - 105 * 60_000, end: T0 + 15 * 60_000, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, location: "", guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, location: "", guests: false }] } });
@@ -373,11 +380,11 @@ describe("the Clash dialog", () => {
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Move…" }));
     // The meeting ends at 3:00 and the drive is 38 minutes: 3:45 for the game's two hours.
-    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("15:45");
-    expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("17:45");
+    expect((screen.getByLabelText("From") as HTMLInputElement).value).toBe("3:45 PM");
+    expect((screen.getByLabelText("To") as HTMLInputElement).value).toBe("5:45 PM");
     expect(screen.queryByText("Next day")).toBeNull();
-    fireEvent.change(screen.getByLabelText("From"), { target: { value: "23:30" } });
-    fireEvent.change(screen.getByLabelText("To"), { target: { value: "01:00" } });
+    setTime("From", "23:30");
+    setTime("To", "01:00");
     expect(screen.getByText("Next day")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     await settle();
@@ -389,8 +396,8 @@ describe("the Clash dialog", () => {
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Move…" }));
     expect(screen.queryByLabelText("Note")).toBeNull();
-    fireEvent.change(screen.getByLabelText("From"), { target: { value: "18:00" } });
-    fireEvent.change(screen.getByLabelText("To"), { target: { value: "19:30" } });
+    setTime("From", "18:00");
+    setTime("To", "19:30");
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     await settle();
     expect(wire.calls[0]).toEqual({ method: "work.clashes.answer", params: { eventId: "ev_b", way: "move", start: T0 + 5 * HOUR, end: T0 + 6.5 * HOUR, seen: [{ eventId: "ev_a", startsAt: T0, endsAt: T0 + 2 * HOUR, location: "", guests: false }, { eventId: "ev_b", startsAt: T0 + HOUR, endsAt: T0 + 3 * HOUR, location: "", guests: false }] } });
@@ -419,16 +426,16 @@ describe("the Clash dialog", () => {
     show(overlap());
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Move…" }));
-    fireEvent.change(screen.getByLabelText("To"), { target: { value: (screen.getByLabelText("From") as HTMLInputElement).value } });
+    setTime("To", (screen.getByLabelText("From") as HTMLInputElement).value);
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     await settle();
     expect(screen.getByRole("alert").textContent).toBe("It must end after it starts");
     expect(wire.calls).toEqual([]);
     // An edit takes the words away; a day already gone is refused the same way.
-    fireEvent.change(screen.getByLabelText("To"), { target: { value: "23:00" } });
+    setTime("To", "23:00");
     expect(screen.getByRole("alert").textContent).toBe("");
     fireEvent.change(screen.getByLabelText("Day"), { target: { value: "2020-01-01" } });
-    fireEvent.change(screen.getByLabelText("From"), { target: { value: "09:00" } });
+    setTime("From", "09:00");
     fireEvent.click(screen.getByRole("button", { name: "Move" }));
     await settle();
     expect(screen.getByRole("alert").textContent).toBe("That time has passed");
