@@ -1,5 +1,5 @@
 import type { FormListRow, MsFormView } from "@shared/contract-work-msforms";
-import { JOB, standUpView, ViewAt } from "../kit.preview";
+import { JOB, standUpView } from "../kit.preview";
 import { ListChecks } from "../../chrome/icons";
 import { NewFormPress, View } from "./FormsView";
 
@@ -49,22 +49,21 @@ export function FormsPreview({ state = "list" }: { state?: State }) {
     stand(state);
     stood = state;
   }
-  if (state === "making") return <Making />;
-  return <ViewAt view="forms" height={420} />;
+  return <Page making={state === "making"} />;
 }
 
 /**
- * A make in flight: the list under a header whose New form spins with the make's stage. The press is the view's own
- * (`NewFormPress`); the header around it is drawn here, since the frame's Head keeps its make to itself and a static
- * page cannot open the menu's submenu to start one.
+ * The view's own body and New form press under a 40px header drawn as the column's frame draws it. The frame itself is
+ * left out: its lazy chunk can land after the preview's 400ms of settling, and its Head keeps a make to itself, which a
+ * static page cannot start (the menu's submenu does not open there). `making`: the press spins with the make's stage.
  */
-function Making() {
+function Page({ making }: { making: boolean }) {
   return (
     <div className="relative flex w-full flex-col overflow-hidden rounded-lg border border-border bg-background" style={{ maxWidth: 864, height: 420 }}>
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border ps-4 pe-2 text-[13px] font-medium">
         <ListChecks className="size-3.5 text-muted-foreground" />
         <span className="min-w-0 flex-1">Forms</span>
-        <NewFormPress making stage="Adding the questions…" />
+        <NewFormPress making={making} stage={making ? "Adding the questions…" : null} />
       </div>
       <div className="min-h-0 flex-1">
         <View env="local" workspace={JOB as never} sector={JOB.sector} lifeos={{} as never} startThread={() => undefined} />
