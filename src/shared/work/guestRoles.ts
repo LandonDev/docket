@@ -27,11 +27,12 @@ export function guestRolesOf(source: Parameters<typeof guestTableOf>[0]): readon
 
 /**
  * Why a document or sheet is not shared by link, in the one line its Share sheet shows in place of the form: the
- * host's refusals of a file, and the window's own for what is not ours. Each says what to do instead.
+ * host's refusals of a file, and the window's own for what is not ours. Each says what to do instead, and names only a
+ * press he has: Save As… makes no Docket document of a Word file (src/shared/work/saveAs.ts), so no line sends him there.
  */
 export const SHARE_REFUSALS = {
-  word: 'Guest links open Docket documents. Save As a Docket document to share this one.',
-  excel: 'Guest links open Docket sheets. Save As a Docket sheet to share this one.',
+  word: 'Guest links open Docket documents. Share this file from where it lives.',
+  excel: 'Guest links open Docket sheets. Share this file from where it lives.',
   teams: 'This file lives in Teams. Share it from Teams.',
   teamsCopy: 'This document is a Teams file opened here. Share it from Teams.',
   google: 'This file lives in Google Drive. Share it from Google.',

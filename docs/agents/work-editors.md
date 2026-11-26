@@ -162,7 +162,11 @@ interface PreviewSource {
   the host that holds the file and reads them from that host.
 - A failed draw shows "Word preview failed." (the selected format's name)
   and under it the reason in Work's words (`useFailedWords`, naming the
-  computer). Retry draws again.
+  computer). Retry draws again. When the draw failed because the Windows VM
+  is asleep and the format's app can be asked (`office` answers `asleep`),
+  Check in Word stands in Retry's place: his press wakes the machine and
+  draws, where Retry would ask the sleeping machine again. Where no app can
+  be asked the line names no press ("The Windows VM is asleep.").
 - **`drops`** are what the format cannot hold, one plain line each, counted
   from the item ("3 comments stay behind"), never a fixed list and never "not
   supported". Empty when nothing is lost.

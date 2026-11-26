@@ -719,7 +719,9 @@ main frame alone (ios HostedItemView.swift).
   `work.guests.forItem` answers the sheet is the form's bones
   (`data-share-bones`), so a form is never shown and then refused. A
   document or sheet no link can take opens on one line saying what to do
-  instead (`shareTargetOf`, guests/api.ts, and the host's `SHARE_REFUSALS`);
+  instead (`shareTargetOf`, guests/api.ts, and the host's `SHARE_REFUSALS`):
+  a Word file or a workbook says "Share this file from where it lives", never
+  a Save As that offers no Docket kind;
   a mail's attachment draws no Share. A Purdue workspace's sheet says beside
   Create link that the link shares university data (`PURDUE_LINE`); it does
   not stop him. A project has the same sheet from its page's bar

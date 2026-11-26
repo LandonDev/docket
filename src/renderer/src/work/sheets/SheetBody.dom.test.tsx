@@ -1339,7 +1339,7 @@ describe("the sheet kind", () => {
     await gridUp();
     await screen.findByRole("button", { name: /Agent suggests/ });
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
-    expect(await screen.findByText(/Save As a Docket sheet to share this one|Share it from Teams/)).toBeTruthy();
+    expect(await screen.findByText(/Share this file from where it lives|Share it from Teams/)).toBeTruthy();
     cleanup();
     resetSheetSyncs();
     resetCanvasStore();

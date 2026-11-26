@@ -97,6 +97,9 @@ export function countLine(page: number, pages: number, picture: PreviewPicture, 
   return `${format?.unit === "slide" ? "Slide" : "Page"} ${at.toLocaleString("en-US")} of ${of}`;
 }
 
+/** The end of the asleep refusal as Work words it (lib/workErrorWords.ts): the press it names, by its app. */
+const WAKES = / Check in (\w+) wakes it\.$/;
+
 type Draw = { status: "drawing" } | { status: "drawn"; drawn: Drawn } | { status: "failed"; message: string };
 
 const messageOf = (error: unknown, fallback: string): string => (error instanceof Error && error.message ? error.message : fallback);
@@ -358,6 +361,12 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
     );
   };
 
+  // A sleeping machine's refusal ends in "Check in Word wakes it" (workErrorWords). The failed screen has no who-drew
+  // line to hold that press, so the press stands in Retry's place, where the app can be asked; else the sentence goes.
+  const wakes = WAKES.exec(reason);
+  const wake = wakes && office?.state === "asleep" && office.app === wakes[1] ? office : null;
+  const why = wakes && !wake ? reason.slice(0, wakes.index) : reason;
+
   let body: ReactNode;
   if (draw.status === "failed") {
     body = (
@@ -366,20 +375,27 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
           <Empty>
             <EmptyHeader>
               <EmptyTitle>{`${current?.label ?? "File"} preview failed.`}</EmptyTitle>
-              {reason ? <EmptyDescription>{reason}</EmptyDescription> : null}
+              {why ? <EmptyDescription>{why}</EmptyDescription> : null}
             </EmptyHeader>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={retrying}
-              onClick={() => {
-                retried.current = true;
-                setRetrying(true);
-                setRun((n) => n + 1);
-              }}
-            >
-              <BusyLabel busy={retrying} label="Retry" />
-            </Button>
+            {wake ? (
+              // Retry would ask the same sleeping machine without his press; this press is the one that wakes it.
+              <Button size="sm" variant="secondary" disabled={!!checking} onClick={checkInOffice}>
+                <BusyLabel busy={!!checking} label={`Check in ${wake.app}`} />
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="secondary"
+                disabled={retrying}
+                onClick={() => {
+                  retried.current = true;
+                  setRetrying(true);
+                  setRun((n) => n + 1);
+                }}
+              >
+                <BusyLabel busy={retrying} label="Retry" />
+              </Button>
+            )}
           </Empty>
         </div>
         {/* The page set-up is still his to change; what the format drops is not known without a picture. */}

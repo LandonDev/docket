@@ -263,6 +263,32 @@ describe("the chat beside the mail", () => {
     expect(document.querySelector("[data-mail-room]")!.hasAttribute("inert")).toBe(true);
   });
 
+  it("Escape in the composer of a chat that lies over Mail closes it and puts focus on the press that opens it", async () => {
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 800 });
+    mount();
+    act(() => patch(ID(), { chat: true, threadId: threads[0].id }));
+    await waitFor(() => expect(dock()).not.toBeNull());
+    expect(document.querySelector("[data-mail-room]")!.hasAttribute("inert")).toBe(true);
+    const input = document.querySelector<HTMLElement>("[data-composer-input]")!;
+    input.focus();
+    act(() => void fireEvent.keyDown(input, { key: "Escape" }));
+    // The chat is gone, Mail takes keys again, and focus is on Ask, never on the page.
+    expect(dock()).toBeNull();
+    expect(document.querySelector("[data-mail-room]")!.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Ask" }));
+  });
+
+  it("Escape in the composer of a chat beside Mail keeps the chat and gives the keys to the list", async () => {
+    mount();
+    act(() => patch(ID(), { chat: true }));
+    await waitFor(() => expect(dock()).not.toBeNull());
+    const input = document.querySelector<HTMLElement>("[data-composer-input]")!;
+    input.focus();
+    act(() => void fireEvent.keyDown(input, { key: "Escape" }));
+    expect(dock()).not.toBeNull();
+    expect(document.activeElement?.closest("[data-mail-list]")).not.toBeNull();
+  });
+
   it("sits beside the mail at 360px in a wide view", async () => {
     mount();
     act(() => patch(ID(), { chat: true }));

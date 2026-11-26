@@ -232,7 +232,8 @@ describe("the frame", () => {
     // The converter's own line (main work/formats/jobs.ts) never reaches him: no pair's id, no "his own press".
     await f.fail("the machine that converts docx to pdf+word is asleep, and only his own press wakes it");
     const failed = document.querySelector("[data-preview-failed]")!;
-    expect(failed.textContent).toBe("Word preview failed.The Windows VM is asleep. Check in Word wakes it.Retry");
+    // No app to ask here, so the line names no press: "Check in Word wakes it" is said only beside that press.
+    expect(failed.textContent).toBe("Word preview failed.The Windows VM is asleep.Retry");
     expect(count()).toBeNull();
     expect(column()).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export" })));
@@ -535,6 +536,25 @@ describe("the real app's own picture", () => {
     await f.answer({ picture: paged("r1"), drops: [] });
     await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Check in Word" })));
     expect(head()).toBe("Waking Windows");
+  });
+
+  it("a preview that failed on a sleeping machine offers Check in Word in Retry's place, and his press wakes it and draws", async () => {
+    const f = fake({ office: office("asleep") });
+    await show(f);
+    await f.fail("the machine that converts docx to pdf+word is asleep, and only his own press wakes it");
+    const failed = (): Element => document.querySelector("[data-preview-failed]")!;
+    // The press the line names is on the screen; Retry, which would ask the sleeping machine again, is not.
+    await waitFor(() => expect(failed().textContent).toBe("Word preview failed.The Windows VM is asleep. Check in Word wakes it.Check in Word"));
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Check in Word" })));
+    expect(f.asked.at(-1)?.opts).toEqual({ by: "office" });
+    // The failure stays, its press spinning, until Word's picture lands.
+    const check = screen.getByRole("button", { name: "Check in Word" }) as HTMLButtonElement;
+    expect(check.disabled).toBe(true);
+    expect(check.querySelector("[data-busy]")).not.toBeNull();
+    await f.answer({ picture: paged("w1", { drawnBy: "word" }), drops: [] });
+    expect(document.querySelector("[data-preview-failed]")).toBeNull();
+    await waitFor(() => expect(count()).toBe("Page 1 of 3"));
   });
 
   it("when Word could not draw it after all, LibreOffice's picture stays, it is said once, and the press is offered again", async () => {

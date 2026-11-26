@@ -634,7 +634,10 @@ docs/DESIGN.md "The Mail view"):
   it was about (`MailPage.chatAt`) until his next move in the list.
 - **Keys**: ⌘L toggles it anywhere in Mail unless a canvas selection's
   bar took the key first; Mail's letter keys are silent only while its
-  composer has focus; Esc there gives the keys back to the list. While it
+  composer has focus; Esc there gives the keys back to the list, and where
+  the chat lies over Mail (a narrow view: Mail is inert under it) Esc closes
+  the chat and puts focus on Ask, the press that opens it, else on the list;
+  an Esc the composer took to close its own menu does neither. While it
   is open, "Mention in a thread" puts a mail in its composer
   (`mailDockPort`, chat/port.ts), and a selection's Ask in an attachment
   beside the mail opens it with that selection.

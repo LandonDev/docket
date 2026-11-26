@@ -84,8 +84,8 @@ public enum ShareRules {
     /// Why a file is not shared by link (`SHARE_REFUSALS`), each saying what to do instead; held to the host's by
     /// scripts/ios-share-fixture.test.ts.
     public static let refusals = [
-        "Guest links open Docket documents. Save As a Docket document to share this one.",
-        "Guest links open Docket sheets. Save As a Docket sheet to share this one.",
+        "Guest links open Docket documents. Share this file from where it lives.",
+        "Guest links open Docket sheets. Share this file from where it lives.",
         "This file lives in Teams. Share it from Teams.",
         "This document is a Teams file opened here. Share it from Teams.",
         "This file lives in Google Drive. Share it from Google.",

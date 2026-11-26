@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { ConvexProvider } from "convex/react";
 import { MailClientProvider, MailKitProvider, useMailClient, useMailKit, type ComposeState, type MailNav, type MailTaskRequest, type MailtoDraft } from "work-kit/mail";
 import "work-kit/mail/styles.css";
@@ -256,12 +256,26 @@ export function MailScreen({
     mailDockPort.set((chip) => askChat(id, chip));
     return () => mailDockPort.set(null);
   }, [open, id]);
-  // Esc in the chat's composer gives the keys back to the list.
+  // Esc in the chat's composer gives the keys back to Mail: to the list beside it, and, where the chat lies over Mail
+  // (which is inert under it, so nothing there can take focus), by closing the chat first. An Esc the composer took for
+  // its own menu is not ours.
+  const giveBack = useRef(false);
+  const toMail = (): void => root.current?.querySelector<HTMLElement>("[data-mail-list] [tabindex='0'], [data-mail-list] button")?.focus();
   const onDockKey = (event: ReactKeyboardEvent): void => {
-    if (event.key !== "Escape" || !(event.target as HTMLElement).closest("[data-composer-input]")) return;
+    if (event.key !== "Escape" || event.defaultPrevented || !(event.target as HTMLElement).closest("[data-composer-input]")) return;
     (event.target as HTMLElement).blur();
-    root.current?.querySelector<HTMLElement>("[data-mail-list] [tabindex='0'], [data-mail-list] button")?.focus();
+    if (!room.over) return toMail();
+    giveBack.current = true;
+    patch(id, { chat: false, chatAt: null });
   };
+  // The chat that lay over Mail has closed on Esc: focus goes to the press that opens it, else to the list.
+  useLayoutEffect(() => {
+    if (open || !giveBack.current) return;
+    giveBack.current = false;
+    const opener = root.current?.querySelector<HTMLElement>("[data-mail-ask]");
+    if (opener) opener.focus();
+    else toMail();
+  }, [open]);
   const onAsk = files?.onAsk;
   const frame = useCallback(
     ({ list, pane: reader }: { list: ReactNode; pane: ReactNode }) => (
@@ -378,6 +392,7 @@ function AskButton({ pressed, onPress, glyph = false }: { pressed: boolean; onPr
       size={glyph ? "icon-sm" : "sm"}
       aria-label={glyph ? "Ask about these" : undefined}
       aria-pressed={pressed}
+      data-mail-ask=""
       className={glyph ? "shrink-0 text-muted-foreground aria-pressed:bg-muted" : "ms-1 shrink-0 aria-pressed:bg-muted"}
       onClick={onPress}
     >
