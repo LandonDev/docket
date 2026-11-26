@@ -8,7 +8,8 @@ import { formatDayHeading, formatTime } from "work-kit/views/lib/format";
 import { ChevronLeft, ChevronRight, Plus } from "../../chrome/icons";
 import { ChoiceSelect } from "../../components/choice-select";
 import { ChoiceToggle } from "../../components/choice-toggle";
-import { Tip } from "../../components/tip";
+import { Tip, useTruncated } from "../../components/tip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { Calendar } from "../icons";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "../../components/ui/context-menu";
 import { Button } from "../../components/ui/button";
@@ -123,12 +124,16 @@ export function Head({ workspace, lifeos }: WorkViewProps) {
               </Tip>
             </>
           )}
-          <Button variant="ghost" size="icon-sm" aria-label={`Previous ${view}`} onClick={() => go({ day: shiftPeriod(view, day, -1) })}>
-            <ChevronLeft />
-          </Button>
-          <Button variant="ghost" size="icon-sm" aria-label={`Next ${view}`} onClick={() => go({ day: shiftPeriod(view, day, 1) })}>
-            <ChevronRight />
-          </Button>
+          <Tip label={`Previous ${view}`}>
+            <Button variant="ghost" size="icon-sm" aria-label={`Previous ${view}`} onClick={() => go({ day: shiftPeriod(view, day, -1) })}>
+              <ChevronLeft />
+            </Button>
+          </Tip>
+          <Tip label={`Next ${view}`}>
+            <Button variant="ghost" size="icon-sm" aria-label={`Next ${view}`} onClick={() => go({ day: shiftPeriod(view, day, 1) })}>
+              <ChevronRight />
+            </Button>
+          </Tip>
         </>
       ) : null}
       {/* The three views side by side where they fit; under 40rem, the same choice as one select. */}
@@ -138,12 +143,20 @@ export function Head({ workspace, lifeos }: WorkViewProps) {
       <span data-agenda-views="select" className="flex @min-[40rem]/viewhead:hidden">
         <ChoiceSelect label="Show as" size="sm" value={view} options={VIEWS} onChange={(next) => go({ view: next })} />
       </span>
-      {/* The dialog is the body's, which reads LifeOS: while the session is down there is none to open. */}
+      {/* The dialog is the body's, which reads LifeOS: while the session is down there is none to open. Under 40rem of
+          header the words give way to an icon press with its tip, as Today's do. */}
       {downOf(lifeos) ? null : (
-        <Button variant="ghost" size="sm" aria-label="New event" className="@max-[40rem]/viewhead:px-1.5" onClick={() => go({ adding: "now" })}>
-          <Plus />
-          <span className="@max-[40rem]/viewhead:hidden">New event</span>
-        </Button>
+        <>
+          <Button variant="ghost" size="sm" data-agenda-new="word" className="@max-[40rem]/viewhead:hidden" onClick={() => go({ adding: "now" })}>
+            <Plus />
+            New event
+          </Button>
+          <Tip label="New event">
+            <Button variant="ghost" size="icon-sm" aria-label="New event" data-agenda-new="icon" className="@min-[40rem]/viewhead:hidden" onClick={() => go({ adding: "now" })}>
+              <Plus />
+            </Button>
+          </Tip>
+        </>
       )}
     </>
   );
@@ -350,18 +363,26 @@ export const EventRow = memo(function EventRow({
   // LifeOS's event carries its attendees; the shared type does not name them.
   const met = knownAttendees((event as AgendaEvent & { attendees?: { address: string }[] }).attendees, people);
   const verb = done ? "Follow up" : "Prepare";
+  // A title or place the column cuts is said whole on the row's hover and focus, only while one is cut (Today's rule).
+  const words = useTruncated(`${event.title}\n${event.location ?? ""}`);
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<div role="listitem" {...place} className={cn("group/row grid min-h-9 grid-cols-[88px_minmax(0,1fr)] items-baseline gap-x-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
         {/* The row's one press, under what it shows: keyboard focus rings the whole row, and ↑ ↓ move between these. */}
-        <ItemButton data-row-open aria-label={`${verb} ${event.title}`} onClick={() => onPrepare(event)} className={ROW_OPEN} />
+        <Tooltip disabled={!words.cut}>
+          <TooltipTrigger render={<ItemButton data-row-open aria-label={`${verb} ${event.title}`} onClick={() => onPrepare(event)} className={ROW_OPEN} />} />
+          <TooltipContent side="top" align="start">
+            {event.title}
+            {event.location ? <span className="block">{event.location}</span> : null}
+          </TooltipContent>
+        </Tooltip>
         <span className={cn("flex flex-col text-xs leading-5 text-muted-foreground tabular-nums", ROW_SHOWS)}>
           <span>{event.allDay ? "All day" : formatTime(event.startsAt)}</span>
           {/* A time keeps its AM or PM on its own line: the column is as wide as "Leave 12:45 PM". */}
           {leave !== undefined && !past ? <span className="font-medium whitespace-nowrap text-foreground">Leave {clockTime(leave)}</span> : null}
         </span>
         {/* What the row shows takes no pointer, so a press on it is the row's; its buttons (a clash line, a name) take their own. */}
-        <span className={cn("flex min-w-0 flex-col [&_button]:pointer-events-auto", ROW_SHOWS)}>
+        <span ref={words.ref} className={cn("flex min-w-0 flex-col [&_button]:pointer-events-auto", ROW_SHOWS)}>
           {/* The title runs the row's width at rest: no room is kept for a verb that shows only on hover. */}
           <span data-event-title className={cn("truncate text-[13px] leading-5", past ? "text-muted-foreground" : "text-foreground")}>{event.title}</span>
           {event.location ? <span className="truncate text-xs text-muted-foreground">{event.location}</span> : null}
@@ -369,15 +390,17 @@ export const EventRow = memo(function EventRow({
           {met.length && workspaceId ? <With people={met} workspaceId={workspaceId} /> : null}
         </span>
         {/* Over the title's end on the row's own fill (the page under the row's hover tint), its first 12px fading the title out,
-            as a rail row's actions do. Out of the Tab order: the row's own press, which holds focus, is the same act. */}
+            as a rail row's actions do; its 24px press centred on the title's 20px line. Out of the Tab order: the row's own
+            press, which holds focus, is the same act. */}
         <span
           data-event-verb
           className={cn(
-            "absolute top-1.5 right-2 rounded-e-md bg-background ps-3 [mask-image:linear-gradient(to_right,transparent,var(--foreground)_12px)]",
+            "absolute top-1 right-2 rounded-e-md bg-background [mask-image:linear-gradient(to_right,transparent,var(--foreground)_12px)]",
             reveal("row", { row: true, overlay: true }),
           )}
         >
-          <span className="flex rounded-e-md group-hover/row:bg-foreground/5">
+          {/* The fade's 12px are the tinted span's own, so the title fades into the row's hover fill, never page white. */}
+          <span className="flex rounded-e-md ps-3 group-hover/row:bg-foreground/5">
             <Button size="xs" variant="ghost" tabIndex={-1} aria-hidden onClick={() => onPrepare(event)}>
               {verb}
             </Button>

@@ -59,6 +59,17 @@ describe("the Agenda's header", () => {
     expect(container.querySelector('[data-agenda-today="word"]')).toBeNull();
   });
 
+  // Council round 1 (R1-B16): narrow, New event is an icon press with its tip, and Previous and Next have theirs.
+  it("gives New event's words way to an icon press under 40rem of header", () => {
+    const { container } = render(<Head {...({ workspace: { id: "ws" }, lifeos: READS } as never)} />);
+    const word = container.querySelector<HTMLElement>('[data-agenda-new="word"]')!;
+    expect(word.textContent).toBe("New event");
+    expect(word.className).toContain("@max-[40rem]/viewhead:hidden");
+    const icon = container.querySelector<HTMLElement>('[data-agenda-new="icon"]')!;
+    expect(icon.getAttribute("aria-label")).toBe("New event");
+    expect(icon.className).toContain("@min-[40rem]/viewhead:hidden");
+  });
+
   it("offers the way back within the minute its period ends, though nothing else draws the header again", () => {
     // Half a minute before this week's end: the header shows this week, with no Today icon.
     const end = viewRange("week", NOW.getTime(), localeWeekStart()).to;

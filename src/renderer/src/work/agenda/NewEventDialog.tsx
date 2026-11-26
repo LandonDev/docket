@@ -179,43 +179,48 @@ function Body({
       <ModalBody>
         {/* The session dropped while the form was open: its line, with the rule's press; what he typed stays. */}
         {down ? <DownLine session={down} /> : waits ? <HostLine live={host} /> : null}
-        {/* What keeps Add off is said first, where the session's line stands, before he types into the fields. */}
+        {/* No calendar of the job takes events: the line alone, and Cancel. Fields he could fill and an Add that cannot work
+            are not offered; what he typed stays in the form's state and comes back if a calendar does. */}
         {none ? (
           <p data-no-calendar className="text-[13px] leading-5 text-muted-foreground">
             {jobNameNow(sector)} has no calendar that takes new events.
           </p>
-        ) : null}
-        <Field label="Event">
-          <Input value={form.title} onChange={(e) => patch({ title: e.target.value })} autoComplete="off" />
-        </Field>
-        {/* Day, From and To on one row where Day keeps room for its date in words (420px); narrower, Day takes a row and the times share one. */}
-        <div data-event-when className="@container/when">
-          <div className="grid grid-cols-2 gap-2 @[420px]/when:grid-cols-[minmax(0,1fr)_120px_120px]">
-            <Field label="Day" className="col-span-2 @[420px]/when:col-span-1">
-              <DateField required value={form.day} onChange={(day) => patch({ day })} />
+        ) : (
+          <>
+            <Field label="Event">
+              <Input value={form.title} onChange={(e) => patch({ title: e.target.value })} autoComplete="off" />
             </Field>
-            <Field label="From">
-              <Input type="time" value={form.from} onChange={(e) => patch({ from: e.target.value })} />
+            {/* Day, From and To on one row where Day keeps room for its date in words (420px); narrower, Day takes a row and the
+                times share one, 16px under it as every field is under the one before. */}
+            <div data-event-when className="@container/when">
+              <div className="grid grid-cols-2 gap-x-2 gap-y-4 @[420px]/when:grid-cols-[minmax(0,1fr)_120px_120px]">
+                <Field label="Day" className="col-span-2 @[420px]/when:col-span-1">
+                  <DateField required value={form.day} onChange={(day) => patch({ day })} />
+                </Field>
+                <Field label="From">
+                  <Input type="time" value={form.from} onChange={(e) => patch({ from: e.target.value })} />
+                </Field>
+                <Field label="To">
+                  <Input type="time" value={form.to} onChange={(e) => patch({ to: e.target.value })} />
+                </Field>
+              </div>
+            </div>
+            <Field label="Where">
+              <Input value={form.where} onChange={(e) => patch({ where: e.target.value })} autoComplete="off" />
             </Field>
-            <Field label="To">
-              <Input type="time" value={form.to} onChange={(e) => patch({ to: e.target.value })} />
+            <Field label="Invite" hint="Addresses, comma between">
+              <Input value={form.invite} onChange={(e) => patch({ invite: e.target.value })} autoComplete="off" spellCheck={false} />
             </Field>
-          </div>
-        </div>
-        <Field label="Where">
-          <Input value={form.where} onChange={(e) => patch({ where: e.target.value })} autoComplete="off" />
-        </Field>
-        <Field label="Invite" hint="Addresses, comma between">
-          <Input value={form.invite} onChange={(e) => patch({ invite: e.target.value })} autoComplete="off" spellCheck={false} />
-        </Field>
-        {calendars.length > 1 ? (
-          <Field label="Calendar">
-            <ChoiceSelect label="Calendar" value={sourceId ?? ""} options={calendars.map((c) => ({ value: c._id, label: c.label ?? c.channel ?? c.account }))} onChange={setCalendar} />
-          </Field>
-        ) : null}
+            {calendars.length > 1 ? (
+              <Field label="Calendar">
+                <ChoiceSelect label="Calendar" value={sourceId ?? ""} options={calendars.map((c) => ({ value: c._id, label: c.label ?? c.channel ?? c.account }))} onChange={setCalendar} />
+              </Field>
+            ) : null}
+          </>
+        )}
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} confirmLabel={asks ? "Send invites" : "Add"} pending={pending} disabled={sources === undefined || none || !writes} />
+      <DialogFooter onCancel={onClose} {...(none ? {} : { confirmLabel: asks ? "Send invites" : "Add" })} pending={pending} disabled={sources === undefined || none || !writes} />
     </form>
   );
 }

@@ -28,15 +28,14 @@ afterEach(() => {
 const add = () => screen.getByRole("button", { name: "Add" });
 
 describe("New event", () => {
-  it("with no calendar of the job that takes events, says so first, above the fields, and keeps Add off", () => {
+  // Council round 1 (R1-B18): no fields to fill and no Add that cannot work, only the line and Cancel.
+  it("with no calendar of the job that takes events, says so with Cancel alone", () => {
     lifeos.sources = [{ _id: "s2", kind: "gcal", account: "a@b.c", sector: "ref", enabled: true }];
     render(<NewEventDialog sector="purdue" startsAt={null} onClose={() => {}} />);
     expect(document.querySelector("[data-no-calendar]")?.textContent).toBe("Purdue Esports has no calendar that takes new events.");
-    expect(add().hasAttribute("disabled")).toBe(true);
-    // Said first, before the fields he would type into, not under them.
-    const line = document.querySelector("[data-no-calendar]")!;
-    const event = screen.getByRole("textbox", { name: "Event" });
-    expect(line.compareDocumentPosition(event) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Event" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
   });
 
   it("gives Day a row of its own where the three fields do not fit, From and To together under it (council round 9)", () => {
@@ -46,6 +45,8 @@ describe("New event", () => {
     expect(when.className).toContain("@container/when");
     const grid = when.firstElementChild!;
     expect(grid.className.split(" ")).toEqual(expect.arrayContaining(["grid-cols-2", "@[420px]/when:grid-cols-[minmax(0,1fr)_120px_120px]"]));
+    // Council round 1 (R1-B17): From and To sit 16px under Day, as every field under the one before.
+    expect(grid.className.split(" ")).toEqual(expect.arrayContaining(["gap-x-2", "gap-y-4"]));
     const [day, from, to] = [...grid.children];
     expect(day.textContent).toContain("Day");
     expect(day.className.split(" ")).toEqual(expect.arrayContaining(["col-span-2", "@[420px]/when:col-span-1"]));

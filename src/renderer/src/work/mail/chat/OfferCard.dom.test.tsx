@@ -402,6 +402,8 @@ describe("a task or an event", () => {
   });
 
   it("opens New event filled in with its title, day, times and place", async () => {
+    // A calendar that takes events: with none, New event offers no fields to fill (R1-B18).
+    convex.sources = [{ _id: "cal1", kind: "gcal", account: "me@example.com", sector: "life", enabled: true }];
     draw({ event: { title: "Lunch with Dana", start: "2026-12-04T12:30:00", end: "2026-12-04T13:30:00", where: "Harry's" } });
     fireEvent.click(screen.getByRole("button", { name: "Add…" }));
     expect(await screen.findByDisplayValue("Lunch with Dana")).toBeTruthy();
