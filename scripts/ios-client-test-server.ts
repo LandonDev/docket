@@ -2412,6 +2412,8 @@ const control = createServer((req, res) => {
           const rows = Array.isArray(body.tells) ? (body.tells as Record<string, unknown>[]) : []
           const now = Date.now()
           for (const t of rows) {
+            // A key the host already told stands: the work seeds' own rows tell themselves (a held mail, a failed send).
+            if (t.key && db.prepare('SELECT 1 FROM work_digest_tells WHERE key = ?').get(String(t.key))) continue
             store.put({
               id: randomUUID(),
               host: server.environmentId,

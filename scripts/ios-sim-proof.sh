@@ -215,6 +215,7 @@
 # PressGate.settingKey; absent means on) after every install: off lets a set press Send with no
 # Face ID or passcode sheet (the simulator has no Face ID enrolled, so on, a press waits at the
 # passcode). Unset writes nothing and the app's default (on) stands.
+# TC_DUO_POSE=none: no pose, on the ordinary iPhone (the Work parts m1 to m5 and fold start folded otherwise).
 # TC_DUO_POSE=<pose> is the iPhone Duo axis for ANY set: the device defaults to
 # "TempCode Duo" (bun run ios:duo:check -- --create makes it; the proof never
 # does), the check runs first, the simulator is put in that pose before the
@@ -258,6 +259,8 @@ if [ "${TC_PROOF_SET:-all}" = work ]; then
     fold|m1|m2|m3|m4|m5) TC_DUO_POSE=${TC_DUO_POSE:-folded} ;;
   esac
 fi
+# TC_DUO_POSE=none runs any of them on the ordinary iPhone (TC_SIM or TC_SIM_UDID) with no pose.
+[ "${TC_DUO_POSE:-}" = none ] && TC_DUO_POSE=""
 if [ -n "${TC_DUO_POSE:-}" ]; then
   POSE=$(duo_canonical "$TC_DUO_POSE") || { echo "ios-sim-proof: unknown TC_DUO_POSE $TC_DUO_POSE (folded|fp, folded-landscape|fl, unfolded|ul, unfolded-portrait|up, half-open|ho, tabletop|tt)" >&2; exit 2; }
   "$here/ios-duo-check.sh" || { echo "ios-sim-proof: the Duo check failed; fix the MISSING lines above" >&2; exit 2; }

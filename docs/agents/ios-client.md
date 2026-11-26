@@ -327,7 +327,8 @@
   axis on every proof set (the Duo by default, the lit panel captured, shots
   in `shots/<pose>/`, each shot's layout report in `layout/<pose>/` checked
   against the pose's row by `pose_check`; `fold <pose>` with the app running;
-  `duo_shot` is `shot` under the axis); `TC_PROOF_SET=duo` (paired with the
+  `duo_shot` is `shot` under the axis; `TC_DUO_POSE=none` runs the Work parts m1 to m5, which start folded, on
+  the ordinary iPhone); `TC_PROOF_SET=duo` (paired with the
   acting key) is every pose's seed shots, the thread matrix of
   docs/IOS-DESIGN.md "The thread screen on the iPhone Duo" in
   `duo_shots_shell|thread|sheets` (one seeded thread per type in unfolded,
