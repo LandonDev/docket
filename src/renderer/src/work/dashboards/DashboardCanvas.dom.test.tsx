@@ -171,8 +171,10 @@ describe("the dashboard kind", () => {
       const accept = await waitFor(() => screen.getByRole<HTMLButtonElement>("button", { name: "Accept" }));
       expect(accept.disabled).toBe(true);
       expect(screen.getByRole<HTMLButtonElement>("button", { name: "Reject" }).disabled).toBe(true);
-      await waitFor(() => expect(document.body.textContent).toContain("The box is not connected"));
-      expect(screen.getAllByRole("button", { name: "Retry" }).length).toBeGreaterThan(0);
+      // The link's own words (`useHostLinkDown`), the computer named, with Retry beside them.
+      const line = await found("[data-quiet-line]");
+      expect(line.textContent).toMatch(/^The box /);
+      expect(within(line).getByRole("button", { name: "Retry" })).toBeTruthy();
     } finally {
       vi.restoreAllMocks();
     }
