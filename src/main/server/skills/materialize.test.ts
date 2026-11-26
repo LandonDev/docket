@@ -279,6 +279,29 @@ describe('two builds of one view', () => {
     expect(logs.some((l) => l === 'claude/ws-w1 removed')).toBe(false)
   })
 
+  it('a store change builds every view\'s generation before any send asks: dirFor then finds each ready and builds nothing', async () => {
+    workspaces = [{ id: 'w1', path: join(tmp, 'w1') }]
+    put('alpha')
+    put('own', { workspaceId: 'w1' })
+    const m = await started()
+    let published = 0
+    m.onPublished(() => void published++)
+    put('alpha', { body: 'changed' })
+    // No send yet: the change alone builds the generations, in the background.
+    expect(await m.whenSettled()).toBe(true)
+    const runs = published
+    expect(runs).toBe(1)
+    expect(readFileSync(join(view(), 'skills/alpha/SKILL.md'), 'utf8')).toContain('changed')
+    expect(readFileSync(join(view('claude', 'ws-w1'), 'skills/alpha/SKILL.md'), 'utf8')).toContain('changed')
+    const before = gens()
+    // Every spawn's ask now: the current folder each time, nothing built, nothing published.
+    expect(m.dirFor('claude', null)).toBe(join(root, 'claude', current()))
+    expect(m.dirFor('claude', 'w1')).toBe(join(root, 'claude', current('claude', 'ws-w1')))
+    expect(m.dirFor('codex', null)).toBe(join(root, 'codex', current('codex')))
+    expect(published).toBe(runs)
+    expect(gens()).toEqual(before)
+  })
+
   it('dirFor answers the new generation for a write the run has not reached', async () => {
     put('alpha')
     const m = await started()
