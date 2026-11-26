@@ -186,9 +186,9 @@ export function GoToField({
                 >
                   {glyph}
                   {/* The name is what he picks: it keeps its room, and where the file lives gives way first, down to
-                      8em (the place's 4em and a short folder), the folder it lies in kept and the place cut (`WhereWords`), as search's Where does. */}
+                      10em (the place's 4em and 6em of folder), the folder it lies in kept and the place cut (`WhereWords`), as search's Where does. */}
                   <span className="min-w-0 flex-auto truncate text-foreground">{name}</span>
-                  {fact ? <span data-files-goto-fact className="flex max-w-[45%] min-w-[8em] shrink-[8] justify-end text-xs text-muted-foreground">{typeof fact === "string" ? <span className="truncate">{fact}</span> : fact}</span> : null}
+                  {fact ? <span data-files-goto-fact className="flex max-w-[45%] min-w-[10em] shrink-[8] justify-end text-xs text-muted-foreground">{typeof fact === "string" ? <span className="truncate">{fact}</span> : fact}</span> : null}
                 </div>
               );
             })}

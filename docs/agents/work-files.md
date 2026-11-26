@@ -1932,7 +1932,7 @@ Return in the window takes a row of the names for the words in the field:
 while an older answer is still drawn, it waits for the newer one. A row draws
 where the file lives as a search's Where does (`WhereWords`): the folder it
 lies in is kept and the place gives way first, and the whole of it gives way,
-down to 8em, before the name does.
+down to 10em, before the name does.
 
 **The list in a narrow window** (Page.tsx). A busy row's words take By's
 room too from 480px of list, so "Opening… 8.0 of 20 MB" reads whole. The
