@@ -360,7 +360,13 @@ struct OutboxRequestSheet: View {
         Button(action: action) {
             ZStack {
                 Text(title).opacity(busy ? 0 : 1)
-                if busy { ProgressView() }
+                // What it is doing in words beside the spinner: "Sending…", or "Checking…" for an answer that was lost.
+                if busy {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text(checkingPress ? "Checking…" : "Sending…")
+                    }
+                }
             }
             .font(.body.weight(prominent ? .semibold : .medium))
             .frame(maxWidth: .infinity, minHeight: Layout.rowHeight)

@@ -2639,7 +2639,7 @@ milestone 46 built, where it lives now:
   date picker and Send Later) for a kind the host marks `later`, above the
   grant. A timed send's bar is Cancel Send and "<Verb> Now"; an out-of-date
   item's is Discard and Ask the Thread Again. **Discard** asks once in an
-  alert, "Discard this?", with one optional field, "Why, for the thread":
+  alert, "Discard this?" over what will not happen ("It will not be sent."), with one optional field, "Why, for the thread":
   the thread hears it was discarded, with his line when he wrote one. Edit
   is a form sheet: each field a person reads and the message.
 - **After Send** the detail returns to the list (on the open Duo it stays
@@ -2687,7 +2687,7 @@ milestone 46 built, where it lives now:
   is the toast, sticky when a row did not go or may have gone. Leaving
   the app or losing the link cancels it, as every phone Send, and the line under the head says so ("Not sent:
   TempCode left the screen"). A press whose answer was lost keeps Send busy and the line says "Checking…" until
-  the request is read back; Send keeps its name for VoiceOver, its value "Sending" while the spinner shows. Then each row's result lands in its line (a muted
+  the request is read back; Send keeps its name for VoiceOver, its value "Sending" while the spinner shows, and draws "Sending…" (or "Checking…") beside it. Then each row's result lands in its line (a muted
   check, with "Queued in LifeOS", "Back in drafts in LifeOS", "No longer in LifeOS", "Posted", "Discarded" or
   "Scheduled" only where the word adds to the check (LifeOS's words only on the host's own verdict on the item,
   never because a mail's stored result reads sent), or the destructive dot and the reason),

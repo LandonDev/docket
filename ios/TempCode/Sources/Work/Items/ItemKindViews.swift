@@ -300,7 +300,8 @@ struct BrowserItemView: View {
         .safeAreaInset(edge: .bottom) {
             if let act = held.first {
                 Button {
-                    navigator.open(.outboxItem(environmentId: client.environment.id, ref: OutboxModel.key(act.ref)))
+                    // A held item opens over the Outbox in its own tab, as the thread's held line opens it (`openHeld`).
+                    Task { await navigator.openHeld(.outboxItem(environmentId: client.environment.id, ref: OutboxModel.key(act.ref))) }
                 } label: {
                     Text(act.summary).lineLimit(1).frame(maxWidth: .infinity)
                 }
@@ -319,7 +320,7 @@ struct BrowserItemView: View {
             for _ in 0..<100 {
                 if let act = held.first, TestHooks.once("browser-held") {
                     try? await Task.sleep(for: .seconds(2))
-                    navigator.open(.outboxItem(environmentId: client.environment.id, ref: OutboxModel.key(act.ref)))
+                    await navigator.openHeld(.outboxItem(environmentId: client.environment.id, ref: OutboxModel.key(act.ref)))
                     return
                 }
                 try? await Task.sleep(for: .milliseconds(100))
@@ -449,7 +450,8 @@ private struct DashBlockView: View {
         case .text(let words):
             Text(words.text).font(.body)
         case .figures(let figures):
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .leading)], alignment: .leading, spacing: 12) {
+            // Each figure from its top, so a figure with a line under it and one without share their tops.
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), alignment: .topLeading)], alignment: .leading, spacing: 12) {
                 ForEach(figures.figures, id: \.id) { figure in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(figure.value ?? "–").font(.title2.weight(.semibold)).monospacedDigit()

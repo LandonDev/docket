@@ -107,6 +107,13 @@ public enum OutboxModel {
         return (reason.hasSuffix(".") ? reason : reason + ".") + " \(check)."
     }
 
+    /// Discard's line under "Discard this?": what will not happen, in the act's own past ("It will not be sent.", "It
+    /// will not be posted."), never its title again; a press that takes more than one word says only that it will not go.
+    public nonisolated static func discardLine(_ item: OutboxItem) -> String {
+        let past = pastOf(item.verb.split(separator: " ").first.map(String.init) ?? item.verb, kind: item.kind)
+        return past.contains(" ") ? "It will not go." : "It will not be \(past.lowercased())."
+    }
+
     /// What LifeOS says of a mail or calendar act the host stored as sent, while LifeOS has not said it went: "Queued
     /// in LifeOS" in its undo time, "Back in drafts in LifeOS", "No longer in LifeOS". Nil once LifeOS says it went,
     /// and for every other item: those read as their past. The desktop's `lifeosWords` (outbox/model.ts).

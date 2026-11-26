@@ -728,4 +728,16 @@ import TempCodeContract
         #expect(OutboxModel.minuteAge(120 * 60_000) == "2h")
         #expect(OutboxModel.minuteAge(134 * 60_000) == "2h 14m")
     }
+
+    /// Discard's line says what will not happen in the act's own past, never the act's title again (round 1, R1-F8).
+    @Test func discardSaysWhatWillNotHappenOnce() {
+        func held(_ kind: OutboxItem.Kind, verb: String) -> OutboxItem {
+            OutboxItem(ref: .host(.init(id: "d")), kind: kind, workspaceId: "w1", sessionId: "s1", sector: "purdue", summary: "Send to Alex Kim", verb: verb, account: nil, state: .held,
+                       createdAt: 1, decidedBy: nil, decidedAt: nil, n: 1, why: .rule, grantId: nil, error: nil, result: nil, routineRunId: nil, updatedAt: 1)
+        }
+        #expect(OutboxModel.discardLine(held(.mailSend, verb: "Send")) == "It will not be sent.")
+        #expect(OutboxModel.discardLine(held(.teamsPost, verb: "Post")) == "It will not be posted.")
+        #expect(!OutboxModel.discardLine(held(.mailSend, verb: "Send")).contains("Alex Kim"))
+        #expect(OutboxModel.discardLine(held(.computerAct, verb: "Reset")) == "It will not go.")
+    }
 }
