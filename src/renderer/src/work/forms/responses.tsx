@@ -75,8 +75,26 @@ export function ResponseTable({ title, got, chart, chipRef, shell, timeColumn, w
   const table = useRef<HTMLTableElement>(null);
   const edges = useOverflowEdges<HTMLElement>();
   useEffect(() => {
-    edges(table.current?.parentElement ?? null);
-    return () => edges(null);
+    const box = table.current?.parentElement ?? null;
+    edges(box);
+    if (!box) return () => edges(null);
+    // While the answers run past the pane, their box is a stop of its own (the ticks are the table's only other
+    // stops), so the keyboard can scroll it sideways; it says so with the house ring.
+    box.classList.add("focus-ring");
+    box.setAttribute("role", "region");
+    box.setAttribute("aria-label", "Responses");
+    const stop = () => {
+      if (box.scrollWidth > box.clientWidth) box.tabIndex = 0;
+      else box.removeAttribute("tabindex");
+    };
+    stop();
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(stop);
+    ro?.observe(box);
+    if (table.current) ro?.observe(table.current);
+    return () => {
+      ro?.disconnect();
+      edges(null);
+    };
   }, [edges]);
   useEffect(() => {
     const el = table.current;

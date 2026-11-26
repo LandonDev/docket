@@ -138,12 +138,14 @@ describe("the Computers page", () => {
     expect(layout(1, 1200)).toEqual({ strip: "none", stage: 1 });
     expect(layout(3, 1200)).toEqual({ strip: "side", stage: 1 });
     expect(layout(3, 520)).toEqual({ strip: "below", stage: 1 });
-    // two across under the stage, a row's captions share a line: the cells stretch and each caption sits at its tile's foot
+    // two across under the stage, a row's captions share a line: the cells stretch and each picture sits on its caption
+    // (council round 4, sitting E: pushing the caption down left it 50px under a shorter picture)
     const view = render(<ComputersPage tiles={Array.from({ length: 3 }, (_, i) => tile({ id: `box\nt${i}`, computer: `browser:t${i}` }))} onOpenSession={() => undefined} pictureOf={() => null} size={{ width: 520, height: 860 }} />);
     const grid = view.container.querySelector<HTMLElement>('[data-slot="computer-tiles"]')!;
     expect(grid.className).toContain("items-stretch");
     const cell = [...grid.children].find((c) => !c.querySelector("[data-stage]"))!;
-    expect(cell.className).toContain("[&>article>div:last-child]:mt-auto");
+    expect(cell.className).toContain("[&>article>*:first-child]:mt-auto");
+    expect(cell.className).not.toContain("last-child]:mt-auto");
     view.unmount();
   });
 

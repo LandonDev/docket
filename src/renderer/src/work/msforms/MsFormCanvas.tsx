@@ -393,7 +393,7 @@ function Link({ link, title, closing, close }: { link: string; title: string; cl
         {copied ? "Copied" : "Copy link"}
       </Button>
       <Tip label="QR code">
-        <Button variant="ghost" size="icon-xs" aria-label="QR code" onClick={() => setQr(true)} className="text-muted-foreground">
+        <Button variant="ghost" size="icon-xs" aria-label="QR code" onClick={() => setQr(true)} className="text-muted-foreground @max-[600px]/bar:text-foreground">
           <QrCode />
         </Button>
       </Tip>

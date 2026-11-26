@@ -22,9 +22,10 @@ import { EmptyState } from "../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../views/registry";
 import { routineJobOpenPort } from "./jobOpen";
 import { RoutineDialog } from "./RoutineForm";
-import { loadFailure, usePlays } from "./plays/data";
+import { failedOver, loadFailure, usePlays, type Load } from "./plays/data";
+import { ViewStateLine } from "../views/ViewStateLine";
 import { noRunsLine, rowLine, rowMark, runMark, runWords } from "./model";
-import { Tip, TruncateTip } from "../../components/tip";
+import { Tip, useTruncated } from "../../components/tip";
 import { HostLine } from "../shell/DownLine";
 import { useHostLive } from "../shell/lifeosLive";
 
@@ -58,7 +59,6 @@ export function Head({ env }: WorkViewProps) {
   );
 }
 
-type Load<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "error"; error: string };
 
 function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, number, () => Promise<void>] {
   const [state, setState] = useState<Load<RoutineRow[]>>({ status: "loading" });
@@ -74,7 +74,7 @@ function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, num
       const mine = ++asked;
       return link.request<{ routines: RoutineRow[] }>("work.routines.list", { workspaceId }).then(
         (r) => void (live && mine === asked && setState({ status: "ready", value: r.routines })),
-        (err: unknown) => void (live && mine === asked && setState({ status: "error", error: loadFailure(env, err, "routines") })),
+        (err: unknown) => void (live && mine === asked && setState((prev) => failedOver(prev, loadFailure(env, err, "routines")))),
       );
     };
     read.current = fetch;
@@ -177,29 +177,32 @@ export function View({ env, workspace }: WorkViewProps) {
       {rows.length === 0 ? (
         <EmptyState title="No routines yet" />
       ) : (
-        <div className="@container/routines flex h-full min-h-0">
-          {/* A list of buttons, the picked one marked current: Tab moves through them, as a listbox's arrows would not. */}
-          <ul
-            ref={list}
-            aria-label="Routines"
-            data-routine-list=""
-            className={cn(
-              "flex w-70 shrink-0 flex-col gap-px overflow-x-hidden overflow-y-auto border-r border-border p-2 @max-[40rem]/routines:w-full @max-[40rem]/routines:border-r-0",
-              narrowDetail && "@max-[40rem]/routines:hidden",
-            )}
-          >
-            {rows.map((r) => (
-              <li key={r.id} className="flex flex-col">
-                <RoutineItem lifeosWait={lifeosWait} row={r} current={r.id === current?.id} picked={r.id === picked} onPick={() => setPicked(r.id)} />
-              </li>
-            ))}
-          </ul>
-          {current ? (
-            <Detail key={current.id} env={env} row={current} play={playName(current.playId)} tick={tick} narrowShown={narrowDetail} onBack={() => {
-                backFrom.current = picked;
-                setPicked(null);
-              }} onEdit={() => setForm({ row: current })} />
-          ) : null}
+        <div className="flex h-full min-h-0 flex-col">
+          {load.failed ? <ViewStateLine word="Routines did not load" detail={load.failed} onRetry={retry} /> : null}
+          <div className="@container/routines flex min-h-0 flex-1">
+            {/* A list of buttons, the picked one marked current: Tab moves through them, as a listbox's arrows would not. */}
+            <ul
+              ref={list}
+              aria-label="Routines"
+              data-routine-list=""
+              className={cn(
+                "flex w-70 shrink-0 flex-col gap-px overflow-x-hidden overflow-y-auto border-r border-border p-2 @max-[40rem]/routines:w-full @max-[40rem]/routines:border-r-0",
+                narrowDetail && "@max-[40rem]/routines:hidden",
+              )}
+            >
+              {rows.map((r) => (
+                <li key={r.id} className="flex flex-col">
+                  <RoutineItem lifeosWait={lifeosWait} row={r} current={r.id === current?.id} picked={r.id === picked} onPick={() => setPicked(r.id)} />
+                </li>
+              ))}
+            </ul>
+            {current ? (
+              <Detail key={current.id} env={env} row={current} play={playName(current.playId)} tick={tick} narrowShown={narrowDetail} onBack={() => {
+                  backFrom.current = picked;
+                  setPicked(null);
+                }} onEdit={() => setForm({ row: current })} />
+            ) : null}
+          </div>
         </div>
       )}
       {dialog}
@@ -215,23 +218,24 @@ function RoutineItem({ row, current, picked, onPick, lifeosWait }: { row: Routin
   const mark = rowMark(row);
   const line = rowLine(row);
   const shown = row.waiting === LIFEOS_WAIT && lifeosWait ? line.replace(/waiting on LifeOS$/, midLine(lifeosWait)) : line;
+  // One tip on the row's press while either line cuts, so Tab reads it as hover does.
+  const { ref, cut } = useTruncated(`${row.name}\n${shown}`);
   return (
-    <ItemButton
-      data-routine-row={row.id}
-      aria-current={picked ? "true" : undefined}
-      onClick={onPick}
-      className={cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5", current && !picked && "@max-[40rem]/routines:bg-transparent @max-[40rem]/routines:hover:bg-foreground/5")}
-    >
-      <span className="flex min-w-0 items-baseline gap-2 text-[13px]">
-        <TruncateTip text={row.name}>
+    <Tip label={`${row.name}, ${shown}`} disabled={!cut}>
+      <ItemButton
+        ref={ref}
+        data-routine-row={row.id}
+        aria-current={picked ? "true" : undefined}
+        onClick={onPick}
+        className={cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5", current && !picked && "@max-[40rem]/routines:bg-transparent @max-[40rem]/routines:hover:bg-foreground/5")}
+      >
+        <span className="flex min-w-0 items-baseline gap-2 text-[13px]">
           <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.name}</span>
-        </TruncateTip>
-        {mark ? <StatusMark state={mark} word={false} className="shrink-0" /> : null}
-      </span>
-      <TruncateTip text={shown}>
+          {mark ? <StatusMark state={mark} word={false} className="shrink-0" /> : null}
+        </span>
         <span className="truncate text-xs text-muted-foreground">{shown}</span>
-      </TruncateTip>
-    </ItemButton>
+      </ItemButton>
+    </Tip>
   );
 }
 

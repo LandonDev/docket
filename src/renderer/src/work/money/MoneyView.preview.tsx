@@ -93,13 +93,18 @@ function answer(period: Period): Promise<MoneyRead> {
   }
 }
 
+/** The view's push listeners, so the failed state can ask its second read as the host would. */
+const pushed = new Set<(push: { push: string; workspaceId: string }) => void>();
 const link = {
   environmentId: "box",
   profile: "box",
   connected: true,
   onOpen: () => () => {},
   onClose: () => () => {},
-  onPush: () => () => {},
+  onPush: (fn: (push: { push: string; workspaceId: string }) => void) => {
+    pushed.add(fn);
+    return () => void pushed.delete(fn);
+  },
   request<T>(method: string, params: { from: string; to: string }): Promise<T> {
     if (method === "work.money.read") return answer({ from: params.from, to: params.to }) as Promise<T>;
     if (method === "work.money.picture" && state === "picture-failed") return Promise.reject(new Error("The file moved"));
@@ -193,9 +198,10 @@ function MoneyFrame({ s, height }: { s: State; height?: number }) {
   usePress(s === "menu-add" || s === "menu-add-loading" ? "[data-money-head] [aria-haspopup=menu]:not([aria-label=More])" : s === "menu-more" ? "[data-money-head] [aria-label=More]" : null);
   usePortalCopy(portals, s.startsWith("dialog") || s.startsWith("menu") || s === "picture-failed", s === "menu-add" || s === "menu-add-loading" || s === "menu-more" ? MENU_PLACE[s] : undefined);
   useEffect(() => {
-    // The failed state: a second read, asked as the window comes forward, fails over the first.
+    // The failed state: a second read, asked by the host's push, fails over the first (a window coming forward reads again
+    // at most once a minute, too late for a still).
     if (s !== "failed") return;
-    const t = setTimeout(() => window.dispatchEvent(new window.Event("focus")), 30);
+    const t = setTimeout(() => pushed.forEach((fn) => fn({ push: "work.money", workspaceId: "ws" })), 30);
     return () => clearTimeout(t);
   }, [s]);
   // The drop state: a file held over the view, as a drag from the desktop keeps saying.

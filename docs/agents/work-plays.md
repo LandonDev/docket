@@ -192,4 +192,4 @@ counts of runs are on the owner's list (.temp-code/plans/landed/F-plays.md).
 
 ## When a read or link fails
 
-New play can wait for the list to load. When the link is known to be down, the page names the computer and holds New play until the link opens.
+New play can wait for the list to load. When the link is known to be down, the page names the computer and holds New play until the link opens. A read that fails over plays already shown (this window's kept list or an earlier answer) keeps them under the failed line with Retry.

@@ -253,7 +253,7 @@ function Body({ env, workspaceId, kind, onClose, onCreated, pending, setPending 
                   </span>
                   <span className="flex min-w-0 flex-col gap-1 text-end">
                     {i === 0 ? <span aria-hidden className={NARROW_LABEL}>Amount</span> : null}
-                    <span className="text-[13px] tabular-nums @max-[30rem]/invoice:leading-8">{counted ? formatMoney(lineTotal(counted)) : ""}</span>
+                    <span className="text-[13px] tabular-nums @max-[30rem]/invoice:min-h-8 @max-[30rem]/invoice:leading-8">{counted ? formatMoney(lineTotal(counted)) : ""}</span>
                   </span>
                   {i > 0 ? (
                     <Button variant="ghost" size="icon-sm" aria-label={`Remove line ${i + 1}`} className="text-muted-foreground" onClick={() => patch({ lines: form.lines.filter((_, j) => j !== i) })}>

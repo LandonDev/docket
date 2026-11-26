@@ -125,6 +125,8 @@ describe("the bar", () => {
     expect(await screen.findByRole("link", { name: LINK.replace("https://", "") })).toBeTruthy();
     expect(screen.getAllByRole("button", { name: "Copy link" }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Collect responses" })).toBeNull();
+    // Council round 4, sitting E (Opus): where Copy link is worded, the QR press beside it takes the bar's ink too.
+    expect(screen.getByRole("button", { name: "QR code" }).className).toContain("@max-[600px]/bar:text-foreground");
     await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Close form" })));
     expect(host.close).toHaveBeenCalledWith(false);
   });

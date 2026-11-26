@@ -504,6 +504,31 @@ describe("a held submit's primary waits on the page he approves", () => {
     expect(submit().hasAttribute("disabled")).toBe(true);
   });
 
+  /** Council round 4, sitting E (Sol): Take over left the keyboard on the bar, so his keys did not reach the page. */
+  it("Take over pressed here puts the keyboard on the live picture once it drives; a picture that comes to drive later takes nothing", async () => {
+    host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];
+    host.stream = { status: "live", app: "Google Chrome", window: null, width: 16, height: 10, drawn: true };
+    const { container, rerender } = render(<Pane />);
+    await screen.findByText("The agent is driving");
+    await waitFor(() => expect(container.querySelector("[data-face=live]")).toBeTruthy());
+    const take = screen.getByRole("button", { name: "Take over" });
+    take.focus();
+    fireEvent.click(take);
+    await waitFor(() => expect(host.state.driver).toBe("owner"));
+    act(() => host.pushes.forEach((p) => p({ push: "work.browser", state: host.state })));
+    await screen.findByText("You are driving");
+    host.drive = { send: () => undefined, paste: async () => undefined };
+    rerender(<Pane />);
+    await waitFor(() => expect(document.activeElement).toBe(container.querySelector("[data-face=live]")));
+    // Asked once a press: the picture driving again with no press here leaves the keyboard where he put it.
+    screen.getByRole("button", { name: "Hand back" }).focus();
+    host.drive = null;
+    rerender(<Pane />);
+    host.drive = { send: () => undefined, paste: async () => undefined };
+    rerender(<Pane />);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Hand back" }));
+  });
+
   it("after he takes over, the primary stays off while the live view is a skeleton or its stream ended, and comes on with its first frame", async () => {
     host.state = { ...host.state, driver: "owner" };
     host.drawn = [{ ...LIVE_ENTRIES[0], previewable: true }];

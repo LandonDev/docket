@@ -10,13 +10,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoutineRow } from "@shared/contract-work-routines";
 
 const host: { list: () => Promise<unknown>; runs: () => Promise<unknown>; plays: () => Promise<unknown>; forms: () => Promise<unknown>; asked: string[] } = { list: async () => ({ routines: [] }), runs: async () => ({ runs: [] }), plays: async () => ({ plays: [] }), forms: async () => ({ forms: [], offered: true }), asked: [] };
+const pushes = new Set<(push: unknown) => void>();
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   useEnvironments: () => [{ id: "box", name: "The box", platform: "linux" }],
   registry: {
     environment: (id: string) => (id === "box" ? { id, name: "The box" } : undefined),
     linkOf: () => ({
-      onPush: () => () => {},
+      onPush: (fn: (push: unknown) => void) => {
+        pushes.add(fn);
+        return () => pushes.delete(fn);
+      },
       request: (method: string) => {
         host.asked.push(method);
         if (method === "work.outbox.rules") return Promise.resolve({ addons: [] });
@@ -189,6 +193,57 @@ describe("the Routines view", () => {
       await new Promise((r) => setTimeout(r, 50));
     });
     expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe("Waits for its last run's thread");
+  });
+
+  /** Council round 4, sitting E (Sol): a cut name's tip sat on a span inside the row, so Tab, which lands on the row, never showed it. */
+  it("tips a cut row on its press, the name and its line whole, and draws no tip while nothing cuts", async () => {
+    const { tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    const name = "Friday review of every open project and its waiting threads";
+    host.list = async () => ({ routines: [row({ name })] });
+    let cuts = false;
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return cuts && this.textContent === name ? 300 : 100;
+    });
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    const tipOnFocus = async (): Promise<string | null> => {
+      const press = document.querySelector<HTMLElement>("[data-routine-row]")!;
+      await act(async () => {
+        press.blur();
+        press.focus();
+        await new Promise((r) => setTimeout(r, 50));
+      });
+      return document.querySelector('[data-slot="tooltip-content"]')?.textContent ?? null;
+    };
+    render(<View {...props} />);
+    await settle();
+    expect(await tipOnFocus()).toBeNull();
+    cleanup();
+    cuts = true;
+    render(<View {...props} />);
+    await settle();
+    expect(await tipOnFocus()).toBe(`${name}, Weekdays at 7:00 AM`);
+    vi.restoreAllMocks();
+  });
+
+  /** Council round 4, sitting E (Opus): a read that failed after one landed swapped the routines for the failure. */
+  it("keeps the routines it last read under one failed line with Retry, and drops the line once a read lands", async () => {
+    render(<View {...props} />);
+    await settle();
+    expect(document.querySelector("[data-routine-row]")).toBeTruthy();
+    host.list = () => Promise.reject(new Error("The box did not answer"));
+    act(() => pushes.forEach((fn) => fn({ push: "work.routines", workspaceId: "ws" })));
+    await settle();
+    expect(document.querySelector("[data-routine-row]")).toBeTruthy();
+    expect(document.querySelector('[data-view-state="failed"]')?.textContent).toContain("Routines did not load");
+    host.list = async () => ({ routines: [row()] });
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(document.querySelector('[data-view-state="failed"]')).toBeNull();
+    expect(document.querySelector("[data-routine-row]")).toBeTruthy();
   });
 
   it("says an empty list in one line, leaving New routine to the header", async () => {

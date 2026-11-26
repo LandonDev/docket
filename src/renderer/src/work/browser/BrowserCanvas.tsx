@@ -23,7 +23,7 @@ import { sayError } from "../canvas/frame";
 import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps } from "../canvas/kind";
 import { barFaceOf, heldFit, heldSubmitOf, portalValues, siteHost, type BarFace, type HeldSubmitPayload, type PortalValue } from "./portal";
-import { discardHeld, pictureShown, setDriver, setLiveDrawn, submitHeld, useBrowserState, useHeldActs, useHeldPicture, useLiveDrawn } from "./store";
+import { discardHeld, pictureShown, setDriver, setLiveDrawn, submitHeld, takeDriveFocus, useBrowserState, useHeldActs, useHeldPicture, useLiveDrawn, wantDriveFocus } from "./store";
 
 /**
  * The live browser (docs/agents/work-browser.md "The canvas"; the approved
@@ -109,12 +109,24 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   const takenOver = face.face === "held" && face.owner && !!entry && !props.picture;
   const still = face.face === "held" && !takenOver && !props.picture ? face.item.ref : null;
   const picture = useHeldPicture(env, still);
-  const drawn = useLiveDrawn(`${env}\n${pane}`);
+  const liveKey = `${env}\n${pane}`;
+  const drawn = useLiveDrawn(liveKey);
   const seen = takenOver ? drawn : !still || pictureShown(picture);
   const [busy, press] = usePress();
-  // one call: the host hands him the wheel, then stops every session of the tree for its turn
-  const takeOver = (): void => press("take", () => setDriver(env, pane, "owner"));
-  const handBack = (): void => press("back", () => setDriver(env, pane, "agent"));
+  // one call: the host hands him the wheel, then stops every session of the tree for its turn; pressed here, the live
+  // picture takes the keyboard once it drives (`takeDriveFocus`), so his keys reach the page at once
+  const takeOver = (): void =>
+    press("take", () => {
+      wantDriveFocus(liveKey, true);
+      return setDriver(env, pane, "owner").catch((err: unknown) => {
+        wantDriveFocus(liveKey, false);
+        throw err;
+      });
+    });
+  const handBack = (): void => {
+    wantDriveFocus(liveKey, false);
+    press("back", () => setDriver(env, pane, "agent"));
+  };
   // this canvas is one of his places that show the page he drives: the last of them to go hands it back (driveHold.ts)
   useDriveHold(`${env}\nbrowser:${pane}`, face.face === "owner" || (face.face === "held" && face.owner), () => setDriver(env, pane, "agent"));
   const host = siteHost(state);
@@ -369,7 +381,7 @@ export function Body(props: CanvasBodyProps & BrowserSeam) {
           (still ? (
             <StillView env={env} held={still} />
           ) : entry ? (
-            <LiveView stream={stream} box={box} label={liveLabel(entry)} onOpen={() => openFullWindow({ host: entry.host, threadId: entry.row.threadId, name: liveLabel(entry) })} />
+            <LiveView stream={stream} box={box} label={liveLabel(entry)} focusKey={liveKey} onOpen={() => openFullWindow({ host: entry.host, threadId: entry.row.threadId, name: liveLabel(entry) })} />
           ) : state ? (
             <StillView env={env} held={waiting} shownOn={shownOn} />
           ) : (
@@ -390,8 +402,11 @@ const liveLabel = (entry: ComputerEntry): string => {
  * The window live, in its own shape, a skeleton in that shape until its first frame. It is as wide as the column and no
  * wider than its own pixels, so the picture is never stretched; a click on it opens the full view.
  */
-export function LiveView({ stream, box, label, onOpen }: { stream: ReturnType<typeof useLiveStream>; box: RefObject<HTMLDivElement | null>; label: string; onOpen?: (from: DOMRect) => void }) {
+export function LiveView({ stream, box, label, focusKey, onOpen }: { stream: ReturnType<typeof useLiveStream>; box: RefObject<HTMLDivElement | null>; label: string; focusKey?: string; onOpen?: (from: DOMRect) => void }) {
   const face = liveFace(stream, onOpen);
+  useEffect(() => {
+    if (face.driving && focusKey && takeDriveFocus(focusKey)) box.current?.focus();
+  }, [face.driving, focusKey, box]);
   // while he drives, the picture is his way into the page: his pointer and keys go down the stream
   useDrivingInput(stream, box);
   const size = streamSize(stream.state) ?? { width: 16, height: 10 };

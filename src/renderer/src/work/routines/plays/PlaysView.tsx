@@ -15,6 +15,7 @@ import { nameInLine } from "../../../lib/hostWords";
 import { useLinkMay } from "../../../lib/linkMay";
 import { EmptyState } from "../../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../../views/registry";
+import { ViewStateLine } from "../../views/ViewStateLine";
 import { startPlay, usePlays } from "./data";
 import { PlayDialog, type PlaySource } from "./PlayDialog";
 import { RunDialog } from "./RunDialog";
@@ -102,6 +103,7 @@ export function View({ env, workspace, sector }: WorkViewProps) {
         )
       ) : (
         <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
+          {load.failed ? <ViewStateLine word="Plays did not load" detail={load.failed} onRetry={retry} /> : null}
           <div className="mx-auto flex max-w-[672px] flex-col gap-6 px-4 py-4">
             {plays.length ? (
               <Section>

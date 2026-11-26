@@ -3,11 +3,15 @@
  * The answers' table in a pane narrower than it: the edge with more past it fades, so the cut columns read as going on.
  */
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CanvasShell } from "../canvas/kind";
 import { ResponseTable, responseName } from "./responses";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const got = { rev: 1, columns: [{ id: "q1", label: "Name" }, { id: "submitted", label: "Submitted" }], rows: [["Dana Lee", "2026-11-19T14:02:00.000Z"]], count: 1, cut: false };
 const shell = { selection: () => undefined } as unknown as CanvasShell;
@@ -34,6 +38,33 @@ describe("the answers' table", () => {
     fireEvent.scroll(box);
     expect(box.hasAttribute("data-overflow-end")).toBe(false);
     expect(box.hasAttribute("data-overflow-start")).toBe(true);
+  });
+
+  /** Council round 4, sitting E (Sol): the ticks were the table's only stops, so the keyboard could not scroll it sideways. */
+  it("is a stop of its own, with the house ring, only while the answers run past the pane", () => {
+    const seen: Array<() => void> = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(cb: () => void) {
+          seen.push(cb);
+        }
+        observe(): void {}
+        disconnect(): void {}
+      },
+    );
+    render(<ResponseTable title="TempCode proof form" got={got} chart={null} chipRef={{ kind: "item", itemId: "i1" } as never} shell={shell} timeColumn={1} whole="the sheet has them all" />);
+    const box = document.querySelector("[data-responses-table] [data-slot=table-container]") as HTMLElement;
+    expect(box.hasAttribute("tabindex")).toBe(false);
+    expect(box.classList.contains("focus-ring")).toBe(true);
+    expect(box.getAttribute("role")).toBe("region");
+    expect(box.getAttribute("aria-label")).toBe("Responses");
+    size(box, { width: 400, scrollWidth: 640, scrollLeft: 0 });
+    act(() => seen.forEach((cb) => cb()));
+    expect(box.tabIndex).toBe(0);
+    size(box, { width: 700, scrollWidth: 640, scrollLeft: 0 });
+    act(() => seen.forEach((cb) => cb()));
+    expect(box.hasAttribute("tabindex")).toBe(false);
   });
 
   /** Council round 2, sitting E: every tick said "Select", so Tab could not tell the responses apart. */

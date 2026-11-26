@@ -115,7 +115,8 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   primary, which reads its verb alone; its tip then holds the whole words
   and the host.
   Take over is one call (`computer.drive`): the host sets him as driver,
-  then stops every live computer session of the tree, drawable here or not. While he drives at a
+  then stops every live computer session of the tree, drawable here or not. Pressed in this
+  window, the live picture takes the keyboard once his keys reach the page (`takeDriveFocus`). While he drives at a
   held submit the ghost beside the primary is Hand back, and his driving
   outranks the line after a press, so Hand back is never out of reach.
   While he drives, every computer call from the pane's tree (the thread and

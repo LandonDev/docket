@@ -233,3 +233,12 @@ const subscribeLive = (fn: () => void): (() => void) => {
 export function useLiveDrawn(key: string): boolean {
   return useSyncExternalStore(subscribeLive, () => liveDrawn.get(key) ?? false);
 }
+
+/**
+ * Take over pressed in this window's bar, by host and thread: the body's live picture takes the keyboard once his keys
+ * reach the page, as the Computers stage's does. Dropped when the press fails or he hands back first.
+ */
+const focusOnDrive = new Set<string>();
+export const wantDriveFocus = (key: string, want: boolean): void => void (want ? focusOnDrive.add(key) : focusOnDrive.delete(key));
+/** Whether the picture should take the keyboard now; answered once a press. */
+export const takeDriveFocus = (key: string): boolean => focusOnDrive.delete(key);

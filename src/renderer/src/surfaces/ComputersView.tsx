@@ -495,14 +495,14 @@ export function ComputersPage({ tiles, onOpenSession, pictureOf, size: given, fr
     <>
       {header}
       <div ref={pageRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
-        {/* Under the stage the strip runs two across: its cells stretch to the row and each caption sits at the tile's foot, so the captions of a row share a line. */}
+        {/* Under the stage the strip runs two across: its cells stretch to the row and each picture sits on the tile's caption, so the pictures of a row share a foot, the captions a line, and each caption stays by its picture. */}
         <div ref={barRoot} data-slot="computer-tiles" data-strip={layout.strip} className={cn("grid gap-4 p-4", layout.strip === "below" ? "items-stretch" : "items-start")} style={grid}>
           {[...keyed]
             .sort((a, b) => a.key.localeCompare(b.key))
             .map(({ tile, key }) => {
               const on = key === front;
               return (
-                <div key={key} className={cn("min-w-0", on ? "flex items-center justify-center" : layout.strip === "below" && "[&>article]:h-full [&>article>div:last-child]:mt-auto")} style={on ? stagePlace : { gridColumn: layout.strip === "side" ? 2 : undefined, order: rank.get(key) }}>
+                <div key={key} className={cn("min-w-0", on ? "flex items-center justify-center" : layout.strip === "below" && "[&>article]:h-full [&>article>*:first-child]:mt-auto")} style={on ? stagePlace : { gridColumn: layout.strip === "side" ? 2 : undefined, order: rank.get(key) }}>
                   <Tile
                     tile={tile}
                     stage={on}

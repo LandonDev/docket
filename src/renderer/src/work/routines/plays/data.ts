@@ -23,7 +23,12 @@ export function loadFailure(env: string, err: unknown, what: string): string {
   return workErrorWords(err, { host }) || `${Host} could not list the ${what}.`;
 }
 
-export type Load<T> = { status: "loading" } | { status: "ready"; value: T } | { status: "error"; error: string };
+/** `failed`: a read after one that landed did not answer; its rows are kept under the failure (DESIGN "Loading and empty states"). */
+export type Load<T> = { status: "loading" } | { status: "ready"; value: T; failed?: string } | { status: "error"; error: string };
+
+/** A failed read: the rows last read stay under it, if any; none, and the failure is the view. */
+export const failedOver = <T,>(prev: Load<T[]>, error: string): Load<T[]> =>
+  prev.status === "ready" && prev.value.length ? { status: "ready", value: prev.value, failed: error } : { status: "error", error };
 
 /**
  * Each workspace's plays as last read, in this window's memory: Plays opens on them while the host answers (their
@@ -59,7 +64,7 @@ export function usePlays(env: string, workspaceId: string): [Load<PlayRow[]>, ()
           while (playsKept.size > PLAYS_KEPT_MOST) playsKept.delete(playsKept.keys().next().value!);
           if (live && mine === asked) setState({ status: "ready", value: r.plays });
         },
-        (err: unknown) => void (live && mine === asked && setState({ status: "error", error: loadFailure(env, err, "plays") })),
+        (err: unknown) => void (live && mine === asked && setState((prev) => failedOver(prev, loadFailure(env, err, "plays")))),
       );
     };
     read.current = fetch;

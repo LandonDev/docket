@@ -195,7 +195,8 @@ function EntryBody({
     </>
   ) : (
     <>
-      <div className="grid grid-cols-2 gap-3">
+      {/* Under 30rem of the dialog's body, Date takes its own row, so a weekday's date reads whole (as the invoice's). */}
+      <div data-entry-amount-date className="grid grid-cols-2 gap-3 @max-[30rem]/entry:grid-cols-1">
         <Field label="Amount">
           <AmountInput ref={amount} value={form.amount} placeholder="0.00" onChange={(e) => patch({ amount: e.target.value })} />
         </Field>
@@ -277,7 +278,7 @@ function EntryBody({
           </div>
         </ModalBody>
       ) : (
-        <ModalBody>{fields}</ModalBody>
+        <ModalBody className="@container/entry">{fields}</ModalBody>
       )}
       {locked ? (
         <DialogFooter confirmLabel="Open ledger" pending={pending} onConfirm={openLedger}>

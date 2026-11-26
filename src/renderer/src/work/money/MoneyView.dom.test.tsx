@@ -212,6 +212,19 @@ describe("the Money view", () => {
     expect(asked("work.money.entry")).toEqual([]);
   });
 
+  /** Council round 4, sitting E (Opus): at 400px Amount and Date shared a row and a Thursday's date ran under the chevron. */
+  it("stands Date under Amount in a narrow dialog, beside it in a wide one", async () => {
+    mount();
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Entry…" }));
+    const dialog = await screen.findByRole("dialog", { name: "New entry" });
+    const pair = dialog.querySelector<HTMLElement>("[data-entry-amount-date]")!;
+    expect(pair.className).toContain("grid-cols-2");
+    expect(pair.className).toContain("@max-[30rem]/entry:grid-cols-1");
+    expect(pair.closest(".\\@container\\/entry")).toBeTruthy();
+  });
+
   it("says the ledger changed and reads again when a write names a row that moved", async () => {
     host.answer = (method) => (method === "work.money.entry" ? { changed: true } : null);
     mount();
@@ -256,6 +269,19 @@ describe("the Money view", () => {
       </>,
     );
     expect(paid().disabled).toBe(true);
+    // Council round 4, sitting E (Sol): More's rows that ask the box wait too; none of them sends.
+    fireEvent.click(within(screen.getByRole("toolbar", { name: "Money header" })).getByRole("button", { name: "More" }));
+    const rows = await screen.findAllByRole("menuitem");
+    expect(rows.map((m) => [m.textContent, m.getAttribute("aria-disabled") ?? m.hasAttribute("data-disabled") + ""])).toEqual([
+      ["Open ledger", "true"],
+      ["Open mileage log", "true"],
+      ["Export…", "true"],
+      ["Mileage rate…", "true"],
+    ]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Open ledger" }));
+    await settle();
+    expect(asked("work.money.open")).toEqual([]);
+    expect(screen.queryByRole("dialog")).toBeNull();
     vi.restoreAllMocks();
   });
 

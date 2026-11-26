@@ -121,6 +121,10 @@ describe("an invoice", () => {
       expect(own.className).toContain("hidden");
       expect(own.className).toContain("@max-[30rem]/invoice:block");
     }
+    // Council round 4, sitting E (Sol): an empty Amount had no height, so its label sat lower than Quantity's and Rate's.
+    const amount = [...line.querySelectorAll("span")].filter((el) => el.textContent === "Amount").pop()!.nextElementSibling!;
+    expect(amount.textContent).toBe("");
+    expect(amount.className).toContain("@max-[30rem]/invoice:min-h-8");
     expect(within(dialog).getByLabelText("Number").closest(".\\@max-\\[30rem\\]\\/invoice\\:grid-cols-1")).toBeTruthy();
   });
 

@@ -117,11 +117,12 @@ export function Head({ env, workspace, sector }: WorkViewProps) {
       : [];
   const moreRows: MenuRow[] = [
     ...spanRows,
-    { kind: "item", id: "ledger", label: "Open ledger" },
-    { kind: "item", id: "mileage", label: "Open mileage log" },
+    // Each of these asks the job's computer: with the link to it down they wait, as Add does; Month and Year stay.
+    { kind: "item", id: "ledger", label: "Open ledger", disabled: !!linkDown },
+    { kind: "item", id: "mileage", label: "Open mileage log", disabled: !!linkDown },
     { kind: "sep" },
-    { kind: "item", id: "export", label: "Export…" },
-    { kind: "item", id: "rate", label: "Mileage rate…", disabled: waiting },
+    { kind: "item", id: "export", label: "Export…", disabled: !!linkDown },
+    { kind: "item", id: "rate", label: "Mileage rate…", disabled: waiting || !!linkDown },
   ];
   return (
     <>
@@ -169,6 +170,7 @@ export function Head({ env, workspace, sector }: WorkViewProps) {
         rows={moreRows}
         onPick={(id) => {
           if (id.startsWith("span:")) set({ period: { ...period, span: id.slice(5) as Span } });
+          else if (linkDown) return;
           else if (id === "ledger" || id === "mileage") withToast(() => openBook(env, workspace.id, id));
           else if (id === "rate") set({ dialog: { kind: "rate" } });
           else if (id === "export") set({ dialog: { kind: "export" } });

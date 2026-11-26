@@ -187,6 +187,24 @@ describe("Plays that did not load", () => {
     expect(screen.queryByText("Plays did not load")).toBeNull();
   });
 
+  /** Council round 4, sitting E (Opus): a read that failed after one landed swapped the plays for the failure. */
+  it("keeps the plays it last read under one failed line with Retry, and drops the line once a read lands", async () => {
+    host.plays = [play({ id: "a", name: "Weekly sweep", takes: [] })];
+    const first = render(<View {...props} />);
+    await settle();
+    first.unmount();
+    let n = 0;
+    host.read = () => (++n === 1 ? Promise.reject(new Error("The box did not answer")) : Promise.resolve({ plays: host.plays }));
+    render(<View {...props} />);
+    await settle();
+    expect(screen.getByText("Weekly sweep")).toBeTruthy();
+    expect(document.querySelector('[data-view-state="failed"]')?.textContent).toContain("Plays did not load");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(document.querySelector('[data-view-state="failed"]')).toBeNull();
+    expect(screen.getByText("Weekly sweep")).toBeTruthy();
+  });
+
   /** Council round 3, sitting E: New play stood live over the failure, but its dialog was not drawn there. */
   it("opens New play's dialog over plays that did not load", async () => {
     failThenHold();
