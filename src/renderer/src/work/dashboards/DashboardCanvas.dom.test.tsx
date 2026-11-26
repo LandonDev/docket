@@ -176,6 +176,11 @@ describe("the dashboard kind", () => {
     await waitFor(() => expect(document.querySelector("[data-canvas-failed]")?.textContent).toContain("Invoices!Z9 is not a range"));
     expect(screen.queryByText("No numbers yet")).toBeNull();
     expect(screen.queryByText("Couldn't read the figures")).toBeNull();
+    cleanup();
+    // Read once, then nothing drawn: the bar says no "As of" over an empty body.
+    open(page({ blocks: [], failed: "Invoices!Z9 is not a range" }));
+    await waitFor(() => expect(document.querySelector("[data-canvas-failed]")).toBeTruthy());
+    expect(document.querySelector("[data-dash-asof]")).toBeNull();
   });
 
   it("stresses the current bar only on a run of periods", async () => {
@@ -327,11 +332,11 @@ describe("the dashboard kind, round two", () => {
     expect(all.querySelectorAll("i[data-bar]")[1]!.getAttribute("style")).toContain("height: 80%");
   });
 
-  it("lays figures two up, then one, in a narrow page, and lets a figure's line truncate", async () => {
+  it("lays three figures up to 360px, then two, then one, and lets a figure's line truncate", async () => {
     open(page());
     const body = await found("[data-dashboard]");
     const row = body.querySelector("[data-figure]")!.parentElement!;
-    expect(row.className).toContain("@max-[480px]:grid-cols-2");
+    expect(row.className).toContain("@max-[360px]:grid-cols-2");
     expect(row.className).toContain("@max-[280px]:grid-cols-1");
     const sub = [...body.querySelectorAll('[data-figure="f1"] span')].find((el) => el.textContent === "4 invoices")!;
     expect(sub.className).toContain("truncate");

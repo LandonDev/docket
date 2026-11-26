@@ -90,7 +90,8 @@ mode shows "Agent suggests" and cannot be switched.
   (`work.canvas.open`). Selecting the range inside the sheet canvas is the
   sheet kind's to build.
 - The bar ends in "As of 7:04 AM" and Refresh, or the stepper while blocks
-  wait. More opens each sheet the page reads.
+  wait, and says no time while no block is drawn. Figures stand three
+  across down to 360px of page, then two, then one under 280px. More opens each sheet the page reads.
 - An empty page says "No numbers yet", with "Ask for one in the thread." under it.
 - A first read that fails leaves nothing to show, so the body says it in its middle with the reason and Retry
   (`OpenFailed`, work/canvas/FetchState.tsx); the state line is for a read that fails over figures still shown.

@@ -315,7 +315,7 @@ function sheetsOf(blocks: Block[]): { sheet: DashSheet; sheetTitle: string }[] {
 
 /**
  * "As of", said once, and Refresh; "Out of date" before it once a sheet the
- * page reads has moved. Nothing while blocks wait: the stepper has the end.
+ * page reads has moved. Nothing while blocks wait (the stepper has the end) or while no block is drawn.
  * While the page loads, one bone where the mode will be.
  */
 export function Bar(props: Props) {
@@ -326,7 +326,8 @@ export function Bar(props: Props) {
   // The read again on its return is the Body's (`refreshing`).
   const lifeos = useDashLifeos(view, props.env);
   if (!view) return error ? null : <Skeleton data-dash-bar-bone className="h-3 w-30" />;
-  if (!view.asOf || view.blocks.some((b) => b.proposed)) return null;
+  // No "As of" over nothing: with no block drawn (a first read that failed, a page with none yet) the bar says no time.
+  if (!view.asOf || !view.blocks.length || view.blocks.some((b) => b.proposed)) return null;
   const refresh = (): void => {
     store.set({ refreshing: true });
     void host
@@ -378,7 +379,7 @@ function Figures({ blocks, stale, current, open }: { blocks: Extract<Block, { ki
         <div
           key={row[0].f.id}
           data-block={i === 0 ? blocks[0].id : undefined}
-          className={`grid grid-cols-3 gap-x-6 gap-y-4 border-b border-border pb-4 @max-[480px]:grid-cols-2 @max-[480px]:gap-x-3 @max-[280px]:grid-cols-1 ${i === 0 ? "mt-8 first:mt-0 [h2+&]:mt-4" : "mt-6"} ${proposed ? `${PROPOSED} pt-3` : ""} ${row.some((x) => x.block === current) ? CURRENT : ""}`}
+          className={`grid grid-cols-3 gap-x-6 gap-y-4 border-b border-border pb-4 @max-[360px]:grid-cols-2 @max-[360px]:gap-x-3 @max-[280px]:grid-cols-1 ${i === 0 ? "mt-8 first:mt-0 [h2+&]:mt-4" : "mt-6"} ${proposed ? `${PROPOSED} pt-3` : ""} ${row.some((x) => x.block === current) ? CURRENT : ""}`}
         >
           {row.map(({ f }) => (
             <Figure key={f.id} f={f} stale={stale} open={open} />
