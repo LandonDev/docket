@@ -150,8 +150,11 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   not off ([live-video.md](live-video.md) "The box"); its own profile under
   `<userData>/work-browser/box/profile`, DevTools on 127.0.0.1 only, the
   sandbox on, never root. Started on first use; stopped after ten idle
-  minutes, or when its whole process tree passes 2 GB (`/proc`, every 15 s),
-  or when Work is turned off. It is not stopped for idleness while a held
+  minutes, or when its whole process tree passes 2 GB (every 15 s: the tree is
+  found from its own threads' children lists and each member's
+  `smaps_rollup` is read, two asynchronous reads at a time, `treePids` and
+  `treeRssMb`; never a pass over every process on the box, which held the
+  server's loop 1.2 s each time), or when Work is turned off. It is not stopped for idleness while a held
   step waits on one of its pages (for a day at most), or while a page asks
   for him or he drives (two hours at most). A new start waits for the last
   browser to exit. The binary: `TEMP_CODE_BOX_CHROMIUM`, else `chromium` or

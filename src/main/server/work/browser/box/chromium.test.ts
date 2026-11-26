@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { BoxChromium, HEADED_BLOCKED, chromiumArgs, clearHeadedPrefs, findChromium, headedPrefs, mergePrefs, treeRssMb, withoutPrefs, writeHeadedPrefs } from './chromium'
+import { BoxChromium, HEADED_BLOCKED, chromiumArgs, clearHeadedPrefs, findChromium, headedPrefs, mergePrefs, treePids, treeRssMb, withoutPrefs, writeHeadedPrefs } from './chromium'
 import type { BoxWindowManager } from './xwm'
 
 const dirs: string[] = []
@@ -264,7 +264,7 @@ describe('the box browser', () => {
     }
   })
 
-  it('adds up a process tree from /proc', () => {
+  it('adds up a process tree from /proc', async () => {
     const proc = tmp()
     const add = (pid: number, ppid: number, kb: number) => {
       mkdirSync(join(proc, String(pid)))
@@ -274,10 +274,10 @@ describe('the box browser', () => {
     add(11, 10, 2048)
     add(12, 11, 1024)
     add(13, 1, 99_999)
-    expect(treeRssMb(10, proc)).toBe(4)
+    expect(await treeRssMb(10, proc)).toBe(4)
   })
 
-  it("counts each process's share of the memory they share, not each process's whole resident set", () => {
+  it("counts each process's share of the memory they share, not each process's whole resident set", async () => {
     const proc = tmp()
     // Three renderers mapping the same 600 MB: VmRSS says 600 each, Pss says each holds a third of it.
     const add = (pid: number, ppid: number, rssKb: number, pssKb: number) => {
@@ -287,7 +287,57 @@ describe('the box browser', () => {
     }
     add(10, 1, 200 * 1024, 100 * 1024)
     for (const pid of [11, 12, 13]) add(pid, 10, 600 * 1024, 200 * 1024)
-    expect(treeRssMb(10, proc)).toBe(700)
+    expect(await treeRssMb(10, proc)).toBe(700)
+  })
+
+  it('reads only its own tree, with no synchronous read: 12 of 1,200 processes', async () => {
+    // A box of 1,200 processes; the browser (pid 5000) has 11 under it, three of them started from a launcher thread.
+    const tree = new Map<number, number[]>([[5000, [5001, 5002, 5003]], [5001, [5004, 5005, 5006, 5007]], [5004, [5008, 5009, 5010, 5011]]])
+    const threads = (pid: number): string[] => (pid === 5000 ? ['5000', '5990', '5991'] : [String(pid)])
+    const all = new Set<number>([...Array.from({ length: 1188 }, (_, i) => i + 1), 5000, ...[...tree.values()].flat()])
+    const reads: string[] = []
+    const files = {
+      readdir: async (path: string): Promise<string[]> => {
+        reads.push('dir ' + path)
+        const task = /^\/proc\/(\d+)\/task$/.exec(path)
+        if (task && all.has(Number(task[1]))) return threads(Number(task[1]))
+        if (path === '/proc') return [...all].map(String)
+        throw new Error('ENOENT ' + path)
+      },
+      readFile: async (path: string): Promise<string> => {
+        reads.push('file ' + path)
+        const children = /^\/proc\/(\d+)\/task\/(\d+)\/children$/.exec(path)
+        if (children) {
+          const [pid, tid] = [Number(children[1]), Number(children[2])]
+          const kids = tree.get(pid) ?? []
+          // The browser's own thread started one child, its launcher thread the other two.
+          if (pid === 5000) return (tid === 5000 ? kids.slice(0, 1) : tid === 5990 ? kids.slice(1) : []).join(' ')
+          return kids.join(' ') + (kids.length ? ' ' : '')
+        }
+        if (/^\/proc\/\d+\/smaps_rollup$/.test(path)) return 'Rss:\t9999 kB\nPss:\t1024 kB\n'
+        throw new Error('ENOENT ' + path)
+      }
+    }
+    expect((await treePids(5000, '/proc', files)).sort()).toEqual([5000, 5001, 5002, 5003, 5004, 5005, 5006, 5007, 5008, 5009, 5010, 5011])
+    reads.length = 0
+    expect(await treeRssMb(5000, '/proc', files)).toBe(12)
+    expect(reads.filter((read) => read.endsWith('/smaps_rollup'))).toHaveLength(12)
+    // Nothing outside the tree is opened, and the whole of /proc is never listed.
+    expect(reads.filter((read) => !/\/proc\/50(0\d|1[01])\//.test(read))).toEqual([])
+    expect(reads.length).toBeLessThan(12 * 4)
+    const source = readFileSync(join(__dirname, 'chromium.ts'), 'utf8')
+    const body = source.slice(source.indexOf('export async function treePids'), source.indexOf('export interface BoxChromiumOptions'))
+    expect(body.length).toBeGreaterThan(500)
+    expect(body).not.toMatch(/readdirSync|readFileSync|statSync/)
+  })
+
+  it('falls back to one pass over the parents where the kernel keeps no children lists', async () => {
+    const proc = tmp()
+    for (const [pid, ppid] of [[10, 1], [11, 10], [12, 11], [13, 1]] as const) {
+      mkdirSync(join(proc, String(pid)))
+      writeFileSync(join(proc, String(pid), 'status'), `Name:\tx\nPPid:\t${ppid}\nVmRSS:\t1024 kB\n`)
+    }
+    expect((await treePids(10, proc)).sort()).toEqual([10, 11, 12])
   })
 
   const bin = findChromium()

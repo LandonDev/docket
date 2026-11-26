@@ -1,5 +1,6 @@
 import { execFile, spawn as nodeSpawn, type ChildProcess } from 'node:child_process'
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { spawnLowered } from '../../../childPriority'
@@ -218,39 +219,96 @@ export function isChromeForTesting(bin: string): Promise<boolean> {
   return new Promise((resolve) => execFile(bin, ['--version'], { timeout: 10_000 }, (err, stdout) => resolve(!err && /for testing/i.test(stdout))))
 }
 
+/** The reads the memory watch makes of /proc: a test counts them. */
+export interface ProcFiles {
+  readFile(path: string): Promise<string>
+  readdir(path: string): Promise<string[]>
+}
+const PROC_FILES: ProcFiles = { readFile: (path) => readFile(path, 'utf8'), readdir: (path) => readdir(path) }
+/** Reads of /proc in flight at once, as the guard's scan keeps (procScan.ts): the pool stays free for the rest. */
+const PROC_READS = 2
+
+async function inTurns<T>(items: readonly T[], width: number, each: (item: T) => Promise<void>): Promise<void> {
+  let next = 0
+  const run = async (): Promise<void> => {
+    while (next < items.length) await each(items[next++]!)
+  }
+  await Promise.all(Array.from({ length: Math.min(width, items.length) }, run))
+}
+
 /**
- * Memory of `pid` and every process under it, in MB, read from /proc: each process's proportional share (Pss in
- * smaps_rollup), so a page Chromium's processes share counts once among them, not once a process as VmRSS does
- * (a headed browser with three pages read 2,053 MB of RSS at about half that of Pss, and was stopped mid-make).
- * VmRSS where a kernel has no smaps_rollup.
+ * `pid` and every process under it, found from the tree itself: each process's threads list their own children
+ * (`/proc/<pid>/task/<tid>/children`; Chromium starts its processes from a launcher thread, so every thread is
+ * asked). Only the tree is read, never every process on the machine. Where a kernel keeps no children lists the
+ * parents are read from one pass over `status`.
  */
-export function treeRssMb(pid: number, proc = '/proc'): number {
+export async function treePids(pid: number, proc = '/proc', files: ProcFiles = PROC_FILES): Promise<number[]> {
+  const seen = new Set<number>([pid])
+  let listed = false
+  for (let level = [pid]; level.length;) {
+    const next: number[] = []
+    await inTurns(level, PROC_READS, async (parent) => {
+      const tasks = await files.readdir(join(proc, String(parent), 'task')).catch(() => [] as string[])
+      await inTurns(tasks, PROC_READS, async (tid) => {
+        let text: string
+        try {
+          text = await files.readFile(join(proc, String(parent), 'task', tid, 'children'))
+        } catch {
+          return
+        }
+        listed = true
+        for (const word of text.split(/\s+/)) {
+          const child = Number(word)
+          if (child > 0 && !seen.has(child)) {
+            seen.add(child)
+            next.push(child)
+          }
+        }
+      })
+    })
+    level = next
+  }
+  if (listed) return [...seen]
+  // No children lists here: every process's parent, once.
   const children = new Map<number, number[]>()
-  const rss = new Map<number, number>()
-  for (const name of readdirSync(proc)) {
-    if (!/^\d+$/.test(name)) continue
+  const names = (await files.readdir(proc).catch(() => [] as string[])).filter((name) => /^\d+$/.test(name))
+  await inTurns(names, PROC_READS, async (name) => {
     try {
-      const status = readFileSync(join(proc, name, 'status'), 'utf8')
-      const ppid = Number(/^PPid:\s+(\d+)/m.exec(status)?.[1] ?? 0)
-      let pss: number | null = null
-      try {
-        const m = /^Pss:\s+(\d+)/m.exec(readFileSync(join(proc, name, 'smaps_rollup'), 'utf8'))
-        if (m) pss = Number(m[1])
-      } catch {
-        // no smaps_rollup here, or not ours to read
-      }
-      rss.set(Number(name), pss ?? Number(/^VmRSS:\s+(\d+)/m.exec(status)?.[1] ?? 0))
+      const ppid = Number(/^PPid:\s+(\d+)/m.exec(await files.readFile(join(proc, name, 'status')))?.[1] ?? 0)
       children.set(ppid, [...(children.get(ppid) ?? []), Number(name)])
     } catch {
       // gone between the listing and the read
     }
-  }
+  })
+  const tree = [pid]
+  for (let i = 0; i < tree.length; i++) for (const child of children.get(tree[i]!) ?? []) if (!tree.includes(child)) tree.push(child)
+  return tree
+}
+
+/**
+ * Memory of `pid` and every process under it, in MB, read from /proc: each process's proportional share (Pss in
+ * smaps_rollup), so a page Chromium's processes share counts once among them, not once a process as VmRSS does
+ * (a headed browser with three pages read 2,053 MB of RSS at about half that of Pss, and was stopped mid-make).
+ * VmRSS where a kernel has no smaps_rollup. Every read is asynchronous and of the tree's own processes alone: the
+ * synchronous pass over every process on the box held the server's loop for 1.2 s each 15 s (docs/box.md).
+ */
+export async function treeRssMb(pid: number, proc = '/proc', files: ProcFiles = PROC_FILES): Promise<number> {
   let kb = 0
-  const walk = [pid]
-  for (let p = walk.pop(); p !== undefined; p = walk.pop()) {
-    kb += rss.get(p) ?? 0
-    walk.push(...(children.get(p) ?? []))
-  }
+  await inTurns(await treePids(pid, proc, files), PROC_READS, async (member) => {
+    try {
+      const pss = /^Pss:\s+(\d+)/m.exec(await files.readFile(join(proc, String(member), 'smaps_rollup')))
+      if (pss) return void (kb += Number(pss[1]))
+    } catch {
+      // no smaps_rollup here, or not ours to read
+    }
+    try {
+      // Read first, then add: two readers run at once, and a sum taken before the wait would lose the other's.
+      const status = await files.readFile(join(proc, String(member), 'status'))
+      kb += Number(/^VmRSS:\s+(\d+)/m.exec(status)?.[1] ?? 0)
+    } catch {
+      // gone between the listing and the read
+    }
+  })
   return Math.round(kb / 1024)
 }
 
@@ -262,7 +320,7 @@ export interface BoxChromiumOptions {
   capMb?: number
   idleMs?: number
   spawn?: typeof nodeSpawn
-  rssMb?: (pid: number) => number
+  rssMb?: (pid: number) => number | Promise<number>
   /** how often the cap is checked */
   watchMs?: number
   /** something waits on a page (a held step): the idle stop waits too */
@@ -466,13 +524,24 @@ export class BoxChromium {
     this.opts.log?.(`box browser: started ${pair ? `headed on ${pair.DISPLAY}` : 'headless'} (pid ${child.pid})`)
     this.touch()
     const cap = this.opts.capMb ?? MEMORY_CAP_MB
+    // One read at a time: a tick that finds the last read still out is passed over.
+    let reading = false
     this.watch = setInterval(() => {
-      const mb = this.child?.pid ? (this.opts.rssMb ?? treeRssMb)(this.child.pid) : 0
-      if (mb > cap) {
-        if (mb <= cap * HOLD_CEILING && this.opts.holding?.()) return
-        this.opts.log?.(`box browser: ${mb} MB is over its ${cap} MB cap; stopped`)
-        void this.stop('memory')
-      }
+      const pid = this.child?.pid
+      if (!pid || reading) return
+      reading = true
+      void Promise.resolve((this.opts.rssMb ?? treeRssMb)(pid))
+        .then((mb) => {
+          // The browser that was read is the one that is stopped: never one started since.
+          if (this.child?.pid !== pid || mb <= cap) return
+          if (mb <= cap * HOLD_CEILING && this.opts.holding?.()) return
+          this.opts.log?.(`box browser: ${mb} MB is over its ${cap} MB cap; stopped`)
+          void this.stop('memory')
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          reading = false
+        })
     }, this.opts.watchMs ?? WATCH_MS)
     this.watch.unref?.()
     return this.ws
