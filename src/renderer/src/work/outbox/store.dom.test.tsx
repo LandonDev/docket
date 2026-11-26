@@ -155,6 +155,17 @@ describe("what each reader reads", () => {
     again.unmount();
   });
 
+  /** Round 1's carry: the Grants sheet said "No grants" before the grants were read. A read of what waits says none of them. */
+  it("knows the grants read only once a page's read answered them, though what waits was read at boot", async () => {
+    const reader = waitingReader();
+    expect(reader.hook.result.current.loaded).toBe(true);
+    expect(reader.hook.result.current.grantsRead).toBe(false);
+    const page = renderHook(() => store.useOutboxPage());
+    await settle();
+    expect(reader.hook.result.current.grantsRead).toBe(true);
+    page.unmount();
+  });
+
   /** Sol round 1, S12: a Waiting-only read after a push never stands for Done, the grants and the offers. */
   it("the page opened after a push that only Today read reads Done, the grants and the offers again", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });

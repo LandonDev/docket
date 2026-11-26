@@ -1178,7 +1178,9 @@ What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
     over the list with Retry; "No longer waiting" when another press
     decided the picked item; under 640px of page the list and the detail
     take turns, the detail's top row going back. Grants is a sheet, as
-    before; a grant's name and its "Made …" line wrap whole, never cut. A failure inside an answer is worded by `failWords.ts`.
+    before; a grant's name and its "Made …" line wrap whole, never cut. Until every
+    host's grants have answered (the store's `grantsRead`; a read of what waits says
+    none of them) an empty sheet draws bones, never "No grants". A failure inside an answer is worded by `failWords.ts`.
 - **Results** (`ResultsSection.tsx`) is a right-panel section of a Work
   root thread (`results` in lib/rightPanel.ts, the outbox glyph), listed
   only while it has a row: "Can undo" and "Can't undo", each row with its

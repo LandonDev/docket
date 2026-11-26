@@ -503,7 +503,7 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
           )}
         </div>
       </div>
-      <GrantsSheet open={grantsOpen} onOpenChange={setGrantsOpen} grants={outbox.grants} nameOf={places.jobOf} sectorOf={sectorOf} />
+      <GrantsSheet open={grantsOpen} onOpenChange={setGrantsOpen} grants={outbox.grants} read={outbox.grantsRead} nameOf={places.jobOf} sectorOf={sectorOf} />
     </div>
   );
 }

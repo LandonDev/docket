@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
+import { Skeleton } from "../../components/ui/skeleton";
 import { loadToast } from "../../components/ui/toaster";
 import { useLinksMay } from "../../lib/linkMay";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
@@ -19,12 +20,15 @@ export function GrantsSheet({
   open,
   onOpenChange,
   grants,
+  read,
   nameOf,
   sectorOf,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   grants: HostGrant[];
+  /** every host's grants have answered: until then an empty list is bones, never "No grants" */
+  read: boolean;
   nameOf: (environmentId: string, workspaceId: string | null) => string;
   sectorOf: (environmentId: string, workspaceId: string | null) => string | null;
 }) {
@@ -50,7 +54,9 @@ export function GrantsSheet({
           <SheetTitle>Grants</SheetTitle>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto px-5 pb-5">
-          {groups.length === 0 ? (
+          {groups.length === 0 && !read ? (
+            <GrantBones />
+          ) : groups.length === 0 ? (
             <p className="text-[13px] text-muted-foreground">No grants. Everything waits for your press.</p>
           ) : (
             groups.map((group) => {
@@ -86,5 +92,22 @@ export function GrantsSheet({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/** While the grants are read: a heading's and two rows' bones, each as tall as what takes its place. */
+function GrantBones() {
+  return (
+    <div role="status" aria-label="Loading the grants" aria-busy className="flex select-none flex-col">
+      <span className="flex h-7 items-center">
+        <Skeleton className="h-2.5 w-24" />
+      </span>
+      {[64, 48].map((w, i) => (
+        <span key={w} className={`flex min-h-12 flex-col justify-center gap-1.5 py-2 ${i ? "border-t border-border" : ""}`}>
+          <Skeleton className="h-3" style={{ width: `${w}%` }} />
+          <Skeleton className="h-2.5 w-32" />
+        </span>
+      ))}
+    </div>
   );
 }

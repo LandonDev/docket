@@ -40,6 +40,8 @@ type HostState = {
   /** When its last read answered, and whether that read was the page's whole one (Done, grants and offers too). */
   readAt: number;
   whole: boolean;
+  /** its standing grants have answered once: until then an empty list is not known to be none */
+  grantsRead: boolean;
 };
 
 const hosts = new Map<string, HostState>();
@@ -59,9 +61,11 @@ export type OutboxView = {
   complete: boolean;
   /** hosts whose list did not come back, with why */
   errors: { environmentId: string; error: string }[];
+  /** every host with Work on has answered its grants once, or failed to: the Grants sheet's bones go */
+  grantsRead: boolean;
 };
 
-const emptyHost = (): HostState => ({ waiting: [], done: [], grants: [], offers: [], count: 0, failed: 0, loaded: false, error: null, readAt: 0, whole: false });
+const emptyHost = (): HostState => ({ waiting: [], done: [], grants: [], offers: [], count: 0, failed: 0, loaded: false, error: null, readAt: 0, whole: false, grantsRead: false });
 
 /**
  * The Outbox page mounted: only it reads Done, the grants and the offers. Today, Messages and Away read what waits,
@@ -103,6 +107,7 @@ function view(): OutboxView {
     loaded: workSwitch.hosts().size > 0 && [...workSwitch.hosts()].every((id) => hosts.get(id)?.loaded),
     complete: workSwitch.hosts().size > 0 && [...workSwitch.hosts()].every((id) => hosts.get(id)?.loaded && !hosts.get(id)?.error),
     errors: [...hosts].filter(([id, h]) => workSwitch.hosts().has(id) && h.error).map(([environmentId, h]) => ({ environmentId, error: h.error! })),
+    grantsRead: workSwitch.hosts().size > 0 && [...workSwitch.hosts()].every((id) => hosts.get(id)?.grantsRead || !!hosts.get(id)?.error),
   };
   return snapshot;
 }
@@ -165,6 +170,7 @@ export function loadHost(environmentId: string, opts: { whole?: boolean } = {}):
         readAt: Date.now(),
         // Only a whole read stands for Done, the grants and the offers: a read of what waits after a push says nothing of them.
         whole,
+        grantsRead: !!grants || was.grantsRead,
       });
     })
     .catch((err: unknown) => {
