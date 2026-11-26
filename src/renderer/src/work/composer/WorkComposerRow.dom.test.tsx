@@ -151,6 +151,20 @@ describe("a Work draft's composer", () => {
     expect(within(menu).getByRole("menuitem", { name: "Spring LAN" }).dataset.checked).toBe("true");
   });
 
+  it("gives the filing button its focus back on Escape (council R4-A2)", async () => {
+    seedDraft("d1");
+    mount("d1");
+    const trigger = await filing();
+    await act(async () => {
+      trigger.focus();
+      fireEvent.click(trigger);
+    });
+    await screen.findByRole("menu", { name: "Where it files" });
+    await act(async () => void fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" }));
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Where it files" })).toBeNull());
+    await waitFor(() => expect(document.activeElement?.getAttribute("aria-label")).toMatch(/^Files in/));
+  });
+
   it("lists by target date first, as the column does", async () => {
     setColumnProjects("w-purdue", [
       { id: "lp-lan", name: "Spring LAN", status: "active", targetDate: new Date(2027, 1, 14).getTime() },

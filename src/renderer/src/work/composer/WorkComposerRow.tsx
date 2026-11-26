@@ -127,12 +127,17 @@ function FilingControl({
     return () => onFiling(false);
   }, [opening, onFiling]);
 
+  // A filing picked hands the caret to the field (a Work draft goes on being written); Escape gives the button its focus back.
+  const picked = useRef(false);
+  const trigger = useRef<HTMLButtonElement>(null);
   const file = (to: DraftPlace) => {
+    picked.current = true;
     beforeFile?.();
     onFile(to);
   };
   const pickProject = (p: FilingProject | null) => {
     if (!job) return;
+    picked.current = true;
     if (!p) return file(placeOf(job, null));
     if (!p.card || !p.lifeosProjectId) return file(placeOf(job, p.id));
     setOpening(p.name);
@@ -147,10 +152,11 @@ function FilingControl({
   const label = job ? jobLabel(job, workspaces, hostName) : "Work Chats";
   const shownProject = opening ?? project?.name ?? null;
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => void (open && (picked.current = false))}>
       <DropdownMenuTrigger
         render={
           <Button
+            ref={trigger}
             variant="ghost"
             size="xs"
             data-filing
@@ -171,7 +177,7 @@ function FilingControl({
         <ChevronDown aria-hidden className="ms-2 size-3 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
       {opening ? <Spinner role="status" aria-label={`Opening ${opening}`} className="size-3 text-muted-foreground" /> : null}
-      <DropdownMenuContent side="top" align="start" finalFocus={() => fieldOf()} className="w-60" aria-label="Where it files">
+      <DropdownMenuContent side="top" align="start" finalFocus={() => (picked.current ? fieldOf() : trigger.current)} className="w-60" aria-label="Where it files">
         {job ? (
           <>
             <DropdownMenuGroup>
