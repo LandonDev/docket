@@ -10,6 +10,11 @@ public enum RoutineBands {
         return (kept.filter { $0.kind == .routine }, kept.filter { $0.kind == .watch })
     }
 
+    /// The bands are headed only when both have rows: one band under the screen's title "Routines" would say it twice.
+    public static func headed(_ bands: (routines: [RoutinePhoneRow], watches: [RoutinePhoneRow])) -> Bool {
+        !bands.routines.isEmpty && !bands.watches.isEmpty
+    }
+
     private static func order(_ a: RoutinePhoneRow, _ b: RoutinePhoneRow) -> Bool {
         if a.ended != b.ended { return !a.ended }
         switch (a.nextAt, b.nextAt) {

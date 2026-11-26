@@ -2943,7 +2943,7 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
 - **The guest link sheet**: a form sheet at medium height, For, Can (View,
   Comment, Edit, one segmented control), Ends (a date), Cancel and
   Create; then the address once, with Copy and Share.
-- **Routines**: two bands, Routines and Watches; each row its name, its
+- **Routines**: two bands, Routines and Watches, headed (`SectionHeader`) only when both have rows; each row its name, its
   trigger in plain words under it, and when it next runs as the stamp only
   where that adds a fact: none for a run the words already name ("Fridays
   at 4:00 PM"), a date for one a week or more away ("Dec 4"), a time for a
@@ -3253,7 +3253,7 @@ Teams) as LifeOS holds it, the desktop's Messages view on the phone (docs/agents
   (`LifeReach`), else the picked job's; held only while the list is on screen.
 - **A conversation** (`Route.chat`, Work/Messages/ChatScreen.swift) opens in the detail, over Messages' list (Back
   from a notice's conversation is the list). On the open Duo the list picks its first unread for an empty detail.
-  The title is the conversation's name with its fact under it ("Slack, CosmicGames"); More holds Mark Unread and
+  The title is the conversation's name with its fact under it in the secondary ink ("Slack, CosmicGames"); More holds Mark Unread and
   Open in <app>. The messages run oldest to newest and open at the foot; a run (one writer, under five minutes'
   gap) shows its writer and time once. A Slack reply shows what it answers in one muted line. Opening it marks
   it read when someone wrote since he last saw it.
@@ -3413,7 +3413,8 @@ from that row, Today's Owed rows and a waiting receipt's tell (Work/Money/MoneyS
   row with money both ways has none (it is settled in the sheet on the desktop).
 - **The span**: while a newly picked span is read, its section draws its bones, never the old span's sums under
   the new name. In, Out and Net as three figures in one row (stacked at accessibility sizes), then the eight newest entries (who, the day and
-  category under it, the amount trailing, money in in the success ink), then "4 more in the ledger".
+  category under it, "Unpaid", "Requested" or "To reimburse" after them while it is open, the amount trailing, money in
+  in the success ink only once paid), then "4 more in the ledger".
 - **States**: the span's state comes first (`MoneyPage.pageState`). A fault of the books is one red line at the top
   in the desktop's words; a job that never had money is one empty state, said only of a span that was read ("Can’t
   Read Money" for a first read, or a newly picked span, that failed); a read that failed keeps what showed with

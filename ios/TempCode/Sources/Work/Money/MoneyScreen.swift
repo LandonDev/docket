@@ -184,8 +184,8 @@ struct MoneyScreen: View {
 
     private func entryRow(_ row: MoneyReadPhone.Row) -> some View {
         let title = row.who.isEmpty ? (row.what.isEmpty ? "Entry" : row.what) : row.who
-        let detail = [row.date.map { MoneyPage.shortDay($0, today: today) }, row.category.isEmpty ? nil : row.category].compactMap { $0 }.joined(separator: ", ")
-        return MoneyRow(title: title, detail: detail.isEmpty ? nil : detail, amount: MoneyPage.rowMoney(in: row.in, out: row.out), positive: row.in > 0 && row.out == 0)
+        let detail = [row.date.map { MoneyPage.shortDay($0, today: today) }, row.category.isEmpty ? nil : row.category, MoneyPage.openWord(row.status)].compactMap { $0 }.joined(separator: ", ")
+        return MoneyRow(title: title, detail: detail.isEmpty ? nil : detail, amount: MoneyPage.rowMoney(in: row.in, out: row.out), positive: MoneyPage.moneyIn(row))
             .accessibilityIdentifier("money-entry")
     }
 

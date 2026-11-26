@@ -68,6 +68,22 @@ public enum MoneyPage {
     public static func money(_ cents: Double) -> String { TodayWords.money(cents) }
 
     /// A row's money: "+$75.00" in, "$12.50" out, both joined, "-$5.00 in" for a negative cell (`moneyWords`).
+    /// An entry's money came in: in alone, and paid. An Unpaid sale or a Requested one is owed, not received, so it
+    /// keeps the plain ink (the desktop's sums count it under owed to him, never in).
+    public static func moneyIn(_ row: MoneyReadPhone.Row) -> Bool {
+        row.in > 0 && row.out == 0 && row.status != .unpaid && row.status != .requested
+    }
+
+    /// The word an open entry adds to its detail ("Unpaid", "Requested", "To reimburse"); none once settled.
+    public static func openWord(_ status: MoneyReadPhone.Row.Status) -> String? {
+        switch status {
+        case .unpaid: "Unpaid"
+        case .requested: "Requested"
+        case .toReimburse: "To reimburse"
+        default: nil
+        }
+    }
+
     public static func rowMoney(in cin: Double, out cout: Double) -> String {
         func one(_ cents: Double, _ way: String) -> String {
             cents < 0 ? "\(money(cents)) \(way)" : way == "in" ? "+\(money(cents))" : money(cents)

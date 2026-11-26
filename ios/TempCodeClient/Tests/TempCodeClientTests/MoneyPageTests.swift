@@ -115,4 +115,19 @@ import TempCodeContract
         #expect(MoneyPage.pageState(nil, spanRead: false, failed: true) == .failed)
         #expect(MoneyPage.pageState(nil, spanRead: false, failed: false) == .bones)
     }
+
+    /// Money in takes the success ink only once paid: an Unpaid deposit is owed to him, not received, and says so
+    /// (round 1, R1-F19: the same $24 sat under Owed to You and as a green "+$24.00").
+    @Test func anUnpaidEntryIsNeverMoneyIn() throws {
+        func row(_ status: String, in cin: Int, out cout: Int = 0) throws -> MoneyReadPhone.Row {
+            let json = #"{"row":4,"ref":null,"date":"2026-11-26","who":"Spring LAN banner desk","what":"Banner deposit","category":"","in":\#(cin),"out":\#(cout),"status":"\#(status)","paidOn":null,"receipt":""}"#
+            return try JSONDecoder().decode(MoneyReadPhone.Row.self, from: Data(json.utf8))
+        }
+        #expect(MoneyPage.moneyIn(try row("Paid", in: 2400)))
+        #expect(!MoneyPage.moneyIn(try row("Unpaid", in: 2400)))
+        #expect(!MoneyPage.moneyIn(try row("Requested", in: 2400)))
+        #expect(!MoneyPage.moneyIn(try row("Paid", in: 0, out: 2400)))
+        #expect(MoneyPage.openWord(.unpaid) == "Unpaid")
+        #expect(MoneyPage.openWord(.paid) == nil)
+    }
 }

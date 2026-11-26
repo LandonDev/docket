@@ -54,8 +54,9 @@ struct RoutinesScreen: View {
                                 }
                             }
                         }
-                        band("Routines", bands.routines)
-                        band("Watches", bands.watches)
+                        let both = RoutineBands.headed(bands)
+                        band("Routines", bands.routines, headed: both)
+                        band("Watches", bands.watches, headed: both)
                     }
                     .listStyle(.plain)
                 }
@@ -79,7 +80,7 @@ struct RoutinesScreen: View {
         .accessibilityIdentifier("routines")
     }
 
-    @ViewBuilder private func band(_ title: String, _ rows: [RoutinePhoneRow]) -> some View {
+    @ViewBuilder private func band(_ title: String, _ rows: [RoutinePhoneRow], headed: Bool) -> some View {
         if !rows.isEmpty {
             Section {
                 ForEach(rows, id: \.id) { row in
@@ -107,7 +108,7 @@ struct RoutinesScreen: View {
                     }
                 }
             } header: {
-                Text(title).textStep(.meta, weight: .semibold)
+                if headed { SectionHeader(title).listRowInsets(EdgeInsets()) }
             }
         }
     }

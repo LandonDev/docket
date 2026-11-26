@@ -232,6 +232,9 @@ struct WorkItemsTests {
         #expect(bands.watches.map(\.id) == ["scrims"])
         #expect(RoutineBands.stamp(bands.routines[2]) == "Ended")
         #expect(RoutineBands.stamp(bands.watches[0]).hasPrefix("Until "))
+        // Both bands have rows: each is headed. Routines alone: no band title under the screen's own (R1-F16).
+        #expect(RoutineBands.headed(bands))
+        #expect(!RoutineBands.headed(RoutineBands.bands(Array(rows.prefix(3)))))
     }
 
     /// A routine's cadence is said once: no stamp for a next run the words already name, a date for one a week or more
