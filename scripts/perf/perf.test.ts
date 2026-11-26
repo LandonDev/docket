@@ -1,8 +1,10 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BUDGETS, budgetsOf, covers } from './budgets'
-import { guardLiveBox, GUARD_EVERY_MS, LIVE_SLOWED, slowed } from './lib/guard'
+import { DISK_PRESSED, guardLiveBox, GUARD_EVERY_MS, ioPressure, LIVE_SLOWED, slowed } from './lib/guard'
+import { guardedArgs, wrapped } from './guarded'
 import { LOAD_DELTAS_A_SECOND, loadStream } from './lib/load'
 import { countFrame, middle, type Counts, type Sample } from './lib/probe'
 import { ROWS, rowsMatching } from './rows'
@@ -50,7 +52,8 @@ describe('the kit keeps to itself', () => {
     expect(shape).toContain('const inherited = isolatedEnvironment(process.env)')
     for (const file of sources()) {
       const text = readFileSync(file, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
-      expect(text, file).not.toMatch(/WINVM_DIR\s*[:=]|node_modules\/\.bin\/electron|spawn\(/)
+      // guarded.ts starts the one command it was handed, under the guard: never an instance of its own.
+      expect(text, file).not.toMatch(file.endsWith('/guarded.ts') ? /WINVM_DIR\s*[:=]|node_modules\/\.bin\/electron/ : /WINVM_DIR\s*[:=]|node_modules\/\.bin\/electron|spawn\(/)
     }
   })
 
@@ -83,7 +86,7 @@ describe('the live box guard', () => {
     vi.useFakeTimers()
     const abort = new AbortController()
     const answers = [60, 900, 950]
-    const guard = guardLiveBox(abort, async () => answers.shift() ?? 50)
+    const guard = guardLiveBox(abort, async () => answers.shift() ?? 50, () => null)
     await vi.advanceTimersByTimeAsync(GUARD_EVERY_MS * 2)
     expect(abort.signal.aborted).toBe(false)
     await vi.advanceTimersByTimeAsync(GUARD_EVERY_MS)
@@ -92,10 +95,46 @@ describe('the live box guard', () => {
     expect(guard.stop()).toEqual([60, 900, 950])
 
     const none = new AbortController()
-    const off = guardLiveBox(none, async () => null)
+    const off = guardLiveBox(none, async () => null, () => null)
     await vi.advanceTimersByTimeAsync(GUARD_EVERY_MS * 4)
     expect(none.signal.aborted).toBe(false)
     expect(off.stop()).toEqual([])
+  })
+
+  it("reads the disk's pressure from the kernel's file, and nothing where there is none", () => {
+    const dir = mkdtempSync(join(tmpdir(), 'perf-guard-'))
+    try {
+      const file = join(dir, 'io')
+      writeFileSync(file, 'some avg10=31.25 avg60=4.00 avg300=1.20 total=31849667849\nfull avg10=0.03 avg60=0.72 avg300=1.15 total=13858780707\n')
+      expect(ioPressure(file)).toBe(31.25)
+      writeFileSync(file, 'full avg10=99.00 avg60=0.72 avg300=1.15 total=1\n')
+      expect(ioPressure(file)).toBeNull()
+      expect(ioPressure(join(dir, 'none'))).toBeNull()
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it("aborts with the disk's pressure past 30, with or without a live service", async () => {
+    vi.useFakeTimers()
+    const abort = new AbortController()
+    const reads = [12, 30, 30.5]
+    const guard = guardLiveBox(abort, async () => null, () => reads.shift() ?? 0)
+    await vi.advanceTimersByTimeAsync(GUARD_EVERY_MS * 2)
+    expect(abort.signal.aborted).toBe(false)
+    await vi.advanceTimersByTimeAsync(GUARD_EVERY_MS)
+    expect((abort.signal.reason as Error).message).toBe(DISK_PRESSED)
+    expect(guard.pressure()).toBe(30.5)
+    guard.stop()
+  })
+
+  it('wraps a command niced, at idle disk priority and pinned to the last eight cores', () => {
+    expect(guardedArgs(['bun', 'x.ts'], 32)).toEqual({ cores: '24-31', command: ['bun', 'x.ts'] })
+    expect(guardedArgs(['--cores', 'none', 'dd'], 32)).toEqual({ cores: null, command: ['dd'] })
+    expect(() => guardedArgs(['--cores', '0;rm', 'dd'])).toThrow()
+    expect(() => guardedArgs([])).toThrow()
+    expect(wrapped('24-31', ['bun', 'x.ts'])).toEqual(['ionice', '-c', '3', 'nice', '-n', '19', 'taskset', '-c', '24-31', 'bun', 'x.ts'])
+    expect(wrapped(null, ['dd'])).toEqual(['ionice', '-c', '3', 'nice', '-n', '19', 'dd'])
   })
 })
 
