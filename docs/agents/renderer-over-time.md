@@ -254,3 +254,9 @@
   by transform alone, every 3 s) beside its three-dot mark (`WorkingMark`),
   both Web Animations on the document timeline that the compositor runs,
   unmounted or still in a hidden pane or document. A streaming code block colours on a 150 ms throttle.
+- A switch costs what changed, nothing more (perf2 M3). The seen map is
+  written once after a switch, not on its path, and its readers hear only
+  a mark that flips a thread's unread state (read-and-unread.md). A
+  project's `fs.watch` lingers 30 s after its last holder lets go
+  (lib/projectWatch.ts `LINGER_MS`), so the rail's git hold moving A, B, A
+  subscribes A once.

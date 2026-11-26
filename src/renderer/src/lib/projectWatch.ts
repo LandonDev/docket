@@ -6,7 +6,10 @@ import { workspaceStore } from "./tcserver/workspaces";
  * The renderer end of the server's tree watcher (`fs.watch`): one
  * reference-counted subscription per project, re-sent when the socket
  * reconnects, fanned out to open models and the Files tree as absolute
- * paths. No monaco import, so subscribing never pulls the editor chunk.
+ * paths. The last holder's release lingers `LINGER_MS` before the
+ * unsubscribe, so a switch A, B, A (the rail's git hold moving with the
+ * selected row) keeps A's one subscription. No monaco import, so
+ * subscribing never pulls the editor chunk.
  */
 
 export interface FileEvent {
@@ -18,7 +21,11 @@ export interface FileEvent {
   kind: "changed" | "created" | "deleted";
 }
 
+export const LINGER_MS = 30_000;
+
 const refs = new Map<string, number>();
+/** Projects no one holds, still subscribed until their timer ends. */
+const lingering = new Map<string, ReturnType<typeof setTimeout>>();
 const listeners = new Set<(e: FileEvent) => void>();
 
 function send(projectId: string, subscribe: boolean): void {
@@ -32,7 +39,11 @@ function send(projectId: string, subscribe: boolean): void {
 export function watchProject(projectId: string): () => void {
   const n = refs.get(projectId) ?? 0;
   refs.set(projectId, n + 1);
-  if (n === 0) send(projectId, true);
+  const linger = lingering.get(projectId);
+  if (linger !== undefined) {
+    clearTimeout(linger);
+    lingering.delete(projectId);
+  } else if (n === 0) send(projectId, true);
   let released = false;
   return () => {
     if (released) return;
@@ -40,7 +51,13 @@ export function watchProject(projectId: string): () => void {
     const cur = refs.get(projectId) ?? 0;
     if (cur <= 1) {
       refs.delete(projectId);
-      send(projectId, false);
+      lingering.set(
+        projectId,
+        setTimeout(() => {
+          lingering.delete(projectId);
+          send(projectId, false);
+        }, LINGER_MS),
+      );
     } else {
       refs.set(projectId, cur - 1);
     }
@@ -88,7 +105,7 @@ registry.onLink((link, event) => {
   if (event !== "added") return;
   link.onOpen(() => {
     // Subscriptions live on the connection: a fresh socket knows none.
-    for (const projectId of refs.keys()) {
+    for (const projectId of new Set([...refs.keys(), ...lingering.keys()])) {
       if (workspaceStore.project(projectId)?.environmentId === link.environmentId) send(projectId, true);
     }
   });
