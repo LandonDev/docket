@@ -10,6 +10,13 @@
  *       the engine uses less than 1.2 cores
  *  2. thin link: the same scene through 5 Mbit/s with 30 ms each way holds 100 fps
  *  3. cut: a link cut for 4 s closes the stream, and the next open plays
+ *  0. first frame (P01), recorded, never judged: `video.open` through the
+ *       host's own `VideoRpc` and `BoxVideo` to the first frame at the viewer,
+ *       cold (the browser starts for this open: its start and the page's
+ *       load are in the time), warm (the browser up, an engine left warm by
+ *       the last viewer) and with the engine cold (the browser up, no engine).
+ *       Then how long an engine lives after its viewer goes. The viewer here
+ *       does not decode: decode and draw are e2e-video-viewer's.
  *
  * `--scale 2` (or 1.5) runs the display at that many pixels for each of the
  * page's, the page still 1280×800: the rule to ship such a display is that
@@ -39,6 +46,7 @@ import { FFIType, dlopen, ptr } from 'bun:ffi'
 import { WebSocket } from 'ws'
 import { VIDEO_CLOSE } from '../src/shared/contract-video'
 import { MESSAGE_TYPES, encodeAck, h264Codec, messageType, parseFrame } from '../src/shared/video/nsl1'
+import type { Principal } from '../src/shared/capabilities'
 import type { StreamClaim } from '../src/main/server/remote/auth'
 import { BoxChromium, findChromium } from '../src/main/server/work/browser/box/chromium'
 import { BoxXDisplay } from '../src/main/server/work/browser/box/display'
@@ -47,6 +55,8 @@ import { EngineFeed } from '../src/main/server/work/browser/box/engineFeed'
 import { BoxStage } from '../src/main/server/work/browser/box/stage'
 import { videoToolsAt } from '../src/main/server/work/browser/box/videoSetting'
 import { VideoRelay } from '../src/main/server/video/relay'
+import { VideoRpc } from '../src/main/server/video/rpc'
+import { BoxVideo } from '../src/main/server/work/browser/box/video'
 import { VideoSockets, refuseVideoUpgrade } from '../src/main/server/video/sockets'
 
 const arg = (name: string, fallback: string): string => {
@@ -272,6 +282,93 @@ async function measure(port: number): Promise<Run> {
   }
 }
 
+/** One `video.open` as the host answers it, its ticket joined and the first frame in: the times from the ask, in ms. */
+interface FirstFrame {
+  /** `video.open` answered with a stream and a ticket */
+  answered: number
+  /** the viewer's socket open */
+  joined: number
+  /** the first frame (the keyframe) at the viewer */
+  frame: number
+  /** the first frame's size */
+  size: string
+  load: string
+}
+
+// the box has no desktop: a viewer is his client key over the tunnel, as the host's own `video.open` sees it
+const video = new VideoRpc(relay, { mintStreamTicket: (claim) => (tickets.set(`t-${claim.stream}`, claim), { ticket: `t-${claim.stream}`, expiresIn: 30 }) }, () => false)
+const VIEWER: Principal = { kind: 'remote', keyId: 'proof', name: 'proof', audience: 'client', caps: ['approve'] }
+let page: { target: string; url: string } | null = null
+const boxVideo = new BoxVideo({
+  browser,
+  stage,
+  engines,
+  relay,
+  pageOf: () => page?.target ?? null,
+  paneOf: (thread) => thread,
+  drives: () => false,
+  urlOf: async () => page?.url ?? null,
+  closed: () => false,
+  setting: () => true,
+  installed: () => true
+})
+video.addSource(boxVideo)
+/** the engine the last lease handed out: the one a stream just opened holds */
+let leasedPid = 0
+const leaseOf = engines.lease.bind(engines)
+engines.lease = async () => {
+  const lease = await leaseOf()
+  leasedPid = lease?.pid ?? 0
+  return lease
+}
+
+/** `video.open` from `t0` (performance.now()) to the first frame; the socket stays open until `done` is called. */
+async function firstFrame(port: number, t0: number): Promise<FirstFrame & { done(): Promise<number>; enginePid: () => number }> {
+  const answer = await video.open({ threadId: 'proof', maxEdge: 2560 }, { principal: VIEWER, connection: {}, connectionId: 'proof' })
+  if (!answer.ok) throw new Error(`video.open was refused: ${answer.reason}`)
+  const answered = performance.now() - t0
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/video/${answer.stream}?ticket=${answer.ticket}`, ['nsl1'])
+  ws.binaryType = 'nodebuffer'
+  const closed = new Promise<number>((r) => ws.on('close', (code) => r(code)))
+  let joined = 0
+  const first = await new Promise<{ at: number; size: string }>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('no frame in 20 s')), 20_000)
+    ws.on('open', () => void (joined = performance.now() - t0))
+    ws.on('error', reject)
+    ws.on('message', (data: Buffer) => {
+      if (messageType(data) !== MESSAGE_TYPES.frame) return
+      const frame = parseFrame(data)
+      ws.send(encodeAck(frame.generation, frame.sequence, 0))
+      clearTimeout(timer)
+      resolve({ at: performance.now() - t0, size: `${frame.width}×${frame.height}` })
+    })
+  })
+  const pid = leasedPid
+  return {
+    answered: Math.round(answered),
+    joined: Math.round(joined),
+    frame: Math.round(first.at),
+    size: first.size,
+    load: load(),
+    enginePid: () => pid,
+    done: async () => (ws.close(), closed)
+  }
+}
+
+/** Milliseconds until the process is gone, polled every 250 ms, at most `capMs`; -1 when it outlived the cap. */
+async function lifeAfter(pid: number, capMs: number): Promise<number> {
+  const t0 = performance.now()
+  while (performance.now() - t0 < capMs) {
+    try {
+      process.kill(pid, 0)
+    } catch {
+      return Math.round(performance.now() - t0)
+    }
+    await sleep(250)
+  }
+  return -1
+}
+
 /**
  * `--record <file>`: no scenes. The first `--frames` messages (120) of a calm page's stream are written to the file
  * as they came off the socket, one NSL1 message after another, and the script ends. The file is the box's own
@@ -297,10 +394,23 @@ try {
   const direct = (http.address() as { port: number }).port
 
   console.log(`e2e-box-video: ${RUNS} runs of ${SECS} s a scene at scale ${SCALE}, pinned to cores ${CORES}; load ${load()}`)
+  const siteUrl = `http://127.0.0.1:${(site.address() as { port: number }).port}/`
+  // 0. cold: the browser starts for this open, as it does when a thread's first page is shown
+  const coldAt = performance.now()
   await browser.endpoint()
   if (!browser.display) throw new Error('the browser did not start headed')
-  const target = await stage.open(`http://127.0.0.1:${(site.address() as { port: number }).port}/`)
-  await stage.watch(target)
+  const browserMs = Math.round(performance.now() - coldAt)
+  const target = await stage.open(siteUrl)
+  const pageMs = Math.round(performance.now() - coldAt)
+  page = { target, url: siteUrl }
+  let cold: (FirstFrame & { browser: number; page: number }) | null = null
+  if (RECORD) await stage.watch(target)
+  else {
+    const c = await firstFrame(direct, coldAt)
+    await c.done()
+    cold = { answered: c.answered, joined: c.joined, frame: c.frame, size: c.size, load: c.load, browser: browserMs, page: pageMs }
+    console.log(`  first frame, cold: ${JSON.stringify(cold)}`)
+  }
   // the notice that says how to leave full screen is gone after a few seconds
   await sleep(5_000)
 
@@ -330,6 +440,33 @@ try {
     code = 0
     throw new Error('recorded')
   }
+
+  // 0. warm: the browser up and an engine left warm by the last viewer; then with no engine left
+  const keep = ({ answered, joined, frame, size, load }: FirstFrame): FirstFrame => ({ answered, joined, frame, size, load })
+  const warm: FirstFrame[] = []
+  const engineCold: FirstFrame[] = []
+  for (let i = 0; i < 3; i++) {
+    const w = await firstFrame(direct, performance.now())
+    await w.done()
+    warm.push(keep(w))
+    console.log(`  first frame, warm ${i + 1}/3: ${JSON.stringify(warm.at(-1))}`)
+    await sleep(500)
+  }
+  for (let i = 0; i < 3; i++) {
+    await engines.stopAll()
+    await sleep(500)
+    const e = await firstFrame(direct, performance.now())
+    await e.done()
+    engineCold.push(keep(e))
+    console.log(`  first frame, engine cold ${i + 1}/3: ${JSON.stringify(engineCold.at(-1))}`)
+  }
+  const medianOf = (xs: FirstFrame[], key: 'answered' | 'joined' | 'frame'): number => median(xs.map((x) => x[key]))
+  console.log(`first frame (video.open to the keyframe at the viewer): cold ${cold!.frame} ms (browser up at ${cold!.browser}, page at ${cold!.page}, answered at ${cold!.answered}); warm median ${medianOf(warm, 'frame')} ms (runs ${warm.map((w) => w.frame).join(', ')}); engine cold median ${medianOf(engineCold, 'frame')} ms (runs ${engineCold.map((w) => w.frame).join(', ')}); load ${load()}`)
+
+  // the scenes below show the page with no source of the host's: the last stream's going took it off the display
+  boxVideo.close()
+  await stage.watch(target)
+  await sleep(5_000)
 
   const thin = await link(direct, 5_000, 30)
   const scroll: Run[] = []
@@ -362,8 +499,12 @@ try {
   again.ws.close()
   cutLink.close()
   thin.close()
+  // how long an engine lives once its viewer has gone (ENGINE_IDLE_MS): nothing else opens a stream meanwhile
+  const engineAfterViewerMs = await lifeAfter(again.enginePid, 90_000)
+  console.log(`an engine after its viewer went: ${engineAfterViewerMs === -1 ? 'still up after 90 s' : `gone after ${engineAfterViewerMs} ms`}; load ${load()}`)
 
-  writeFileSync(join(OUT, 'report.json'), `${JSON.stringify({ at: new Date().toISOString(), runs: RUNS, secs: SECS, cores: CORES, scale: SCALE, rules: RULES, scroll, thin: slow, checks }, null, 2)}\n`)
+  const firstFrames = { cold, warm, engineCold }
+  writeFileSync(join(OUT, 'report.json'), `${JSON.stringify({ at: new Date().toISOString(), runs: RUNS, secs: SECS, cores: CORES, scale: SCALE, rules: RULES, firstFrames, engineAfterViewerMs, scroll, thin: slow, checks }, null, 2)}\n`)
   code = checks.every((c) => c.ok) ? 0 : 1
   console.log(`\n${code === 0 ? 'ALL PASS' : 'FAILED'}  (${join(OUT, 'report.json')}; load ${load()})`)
 } catch (err) {
