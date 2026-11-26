@@ -2,7 +2,7 @@ import { readdir, stat } from 'node:fs/promises'
 import { join, posix } from 'node:path'
 import type { HistoryMapping } from '../pathMap'
 import { stripSlash } from '../pathMap'
-import { buildManifest, isSecretPath, validRelPath, type HashCache, type Manifest, type SetRule } from './harnessSet'
+import { buildManifest, isSecretPath, validRelPath, type HashCache, type Manifest, type ManifestHashTimings, type SetRule } from './harnessSet'
 
 /**
  * What the memory sync carries (docs/box.md "Memory: synced both ways"):
@@ -83,8 +83,8 @@ export async function memoryRules(home: string): Promise<SetRule[]> {
 export const stripConflict = (name: string): string => name.replace(/\.conflict-[^./]+-\d{8}T\d{6}(?=(\.[^./]*)?$)/, '')
 
 /** The memory files on this host: harnessSet's walk over memoryRules (symlink policy, secrets and the budget included), off the loop. */
-export async function listMemory(home: string, opts: { cache?: HashCache } = {}): Promise<Manifest> {
-  const m = await buildManifest(home, { rules: await memoryRules(home), cache: opts.cache, maxBytes: MEMORY_MAX_BYTES })
+export async function listMemory(home: string, opts: { cache?: HashCache; timings?: ManifestHashTimings } = {}): Promise<Manifest> {
+  const m = await buildManifest(home, { rules: await memoryRules(home), cache: opts.cache, maxBytes: MEMORY_MAX_BYTES, timings: opts.timings })
   return { entries: m.entries.filter((e) => inMemorySet(e.relPath)), skipped: m.skipped }
 }
 

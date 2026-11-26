@@ -19,6 +19,7 @@ import {
 import type { SessionMeta } from '@shared/events'
 import { LIVE_STATUSES } from '@shared/session-lifecycle'
 import { remapper, stripSlash, type HistoryMapping } from '../pathMap'
+import { noteRequest } from '../stalls'
 import { realSpelling } from './fence'
 import { decodeText, pruneEmptyDirs, sha256, type HashCache } from './harnessSet'
 import { decide, pruneTombstones, unionIndex, type Decision, type LedgerRow } from './memoryMerge'
@@ -112,6 +113,41 @@ interface Generation {
   deleted: number
   conflicts: number
   again: boolean
+}
+
+class MemoryTimings {
+  readonly started = performance.now()
+  statMs = 0
+  hashMs = 0
+  hashed = 0
+  files = 0
+
+  hash(data: Buffer): string {
+    const started = performance.now()
+    const hash = sha256(data)
+    this.hashMs += performance.now() - started
+    this.hashed++
+    return hash
+  }
+
+  note(): void {
+    const elapsed = performance.now() - this.started
+    noteRequest('stat', `${Math.round(this.statMs)}ms`)
+    noteRequest('hash', `${Math.round(this.hashMs)}ms`)
+    // The receiver has no network wait. This is the time to reconcile the peer's rows and save state.
+    noteRequest('peer', `${Math.round(Math.max(0, elapsed - this.statMs - this.hashMs))}ms`)
+    noteRequest('files', this.files)
+    noteRequest('hashed', this.hashed)
+  }
+}
+
+async function measureMemory<T>(run: (timings: MemoryTimings) => Promise<T>): Promise<T> {
+  const timings = new MemoryTimings()
+  try {
+    return await run(timings)
+  } finally {
+    timings.note()
+  }
 }
 
 interface EnvRecord {
@@ -517,9 +553,22 @@ export class MemorySync {
     return text === null ? data : Buffer.from(remapper(mapping).text(text), 'utf8')
   }
 
-  private fileOf(relPath: string, entry: MemoryEntry): MemoryFile {
+  private fileOf(relPath: string, entry: MemoryEntry, timings?: MemoryTimings): MemoryFile {
+    const started = timings ? performance.now() : 0
     const data = readFileSync(join(this.home(), relPath))
-    return { relPath, mtime: entry.mtime, sha256: sha256(data), mode: entry.mode & 0o777, dataBase64: data.toString('base64') }
+    if (timings) timings.hashMs += performance.now() - started
+    return { relPath, mtime: entry.mtime, sha256: timings ? timings.hash(data) : sha256(data), mode: entry.mode & 0o777, dataBase64: data.toString('base64') }
+  }
+
+  private async manifest(home: string, timings?: MemoryTimings) {
+    const started = timings ? performance.now() : 0
+    const hashBefore = timings?.hashMs ?? 0
+    const manifest = await listMemory(home, { cache: this.cache, timings })
+    if (timings) {
+      timings.statMs += performance.now() - started - (timings.hashMs - hashBefore)
+      timings.files += manifest.entries.length
+    }
+    return manifest
   }
 
   // ── the driver ─────────────────────────────────────────────────────────
@@ -642,15 +691,15 @@ export class MemorySync {
   }
 
   handleExchange(params: MemoryExchangeParams): Promise<MemoryExchangeAnswer> {
-    return this.serial(() => this.exchange(params))
+    return this.serial(() => measureMemory((timings) => this.exchange(params, timings)))
   }
 
-  private async exchange(params: MemoryExchangeParams): Promise<MemoryExchangeAnswer> {
+  private async exchange(params: MemoryExchangeParams, timings: MemoryTimings): Promise<MemoryExchangeAnswer> {
     if (/^[A-Za-z]:[\\/]/.test(params.home)) throw new Error(MEMORY_NO_WINDOWS)
     if (!params.home.startsWith('/')) throw new Error('memory.exchange: home must be absolute')
     this.generation = null
     const home = this.home()
-    const mine = new Map((await listMemory(home, { cache: this.cache as HashCache })).entries.map((e) => [e.relPath, e]))
+    const mine = new Map((await this.manifest(home, timings)).entries.map((e) => [e.relPath, e]))
     const state = this.loadState()
     this.notePeerHome(params.from, params.home, params.workRoot)
     const mapping = this.translationFor(params.home, params.workRoot)
@@ -683,7 +732,7 @@ export class MemorySync {
     const remove: string[] = []
     const now = this.now()
     const sendMine = (localRel: string, entry: MemoryEntry): void => {
-      const file = this.fileOf(localRel, entry)
+      const file = this.fileOf(localRel, entry, timings)
       push.push(file)
       g.pushed.set(localRel, file.sha256)
     }
@@ -754,27 +803,27 @@ export class MemorySync {
   }
 
   handleFiles(params: MemoryFilesParams): Promise<MemoryFilesAnswer> {
-    return this.serial(() => this.files(params))
+    return this.serial(() => measureMemory((timings) => this.files(params, timings)))
   }
 
-  private async files(params: MemoryFilesParams): Promise<MemoryFilesAnswer> {
+  private async files(params: MemoryFilesParams, timings: MemoryTimings): Promise<MemoryFilesAnswer> {
     const g = this.generation
     if (!g || g.id !== params.generation) throw new Error('memory.files: not the current generation')
     for (const file of params.files) {
       if (!g.landings.has(file.relPath)) throw new Error(`memory.files: ${file.relPath} is not a file this generation asked for`)
       const data = Buffer.from(file.dataBase64, 'base64')
-      if (sha256(data) !== file.sha256) throw new Error(`memory.files: ${file.relPath} does not match its hash`)
+      if (timings.hash(data) !== file.sha256) throw new Error(`memory.files: ${file.relPath} does not match its hash`)
       g.staged.set(file.relPath, { file, data })
     }
     if (!params.done) return { files: 0, written: 0, deleted: 0, conflicts: 0, merged: 0, again: false }
     try {
-      return await this.commit(g, params)
+      return await this.commit(g, params, timings)
     } finally {
       this.generation = null
     }
   }
 
-  private async commit(g: Generation, params: MemoryFilesParams): Promise<MemoryFilesAnswer> {
+  private async commit(g: Generation, params: MemoryFilesParams, timings: MemoryTimings): Promise<MemoryFilesAnswer> {
     const home = this.home()
     const state = this.loadState()
     const ledger = this.ledgerOf(state, g.from)
@@ -792,7 +841,7 @@ export class MemorySync {
       const dest = this.destination(landing.localRel)
       if ('refused' in dest) continue
       const out = this.translated(landing.localRel, staged.data, g.mapping)
-      const outSha = sha256(out)
+      const outSha = timings.hash(out)
       const mode = staged.file.mode & 0o777
       let current: Buffer | null = null
       try {
@@ -808,7 +857,7 @@ export class MemorySync {
         }
         continue
       }
-      if (current && sha256(current) === outSha) {
+      if (current && timings.hash(current) === outSha) {
         // The same bytes once translated: a no-op, remembered as synced.
         ledger[landing.localRel] = { remote: staged.file.sha256, local: outSha }
         continue
@@ -826,8 +875,8 @@ export class MemorySync {
           const exists = (file: string): boolean => existsSync(join(home, dir, file)) || theirFiles.has(join(dir, file))
           const union = staged.file.mtime >= myMtime ? unionIndex(theirText, myText, exists) : unionIndex(myText, theirText, exists)
           const unionBuf = Buffer.from(union, 'utf8')
-          const unionSha = sha256(unionBuf)
-          if (unionSha !== sha256(current!)) {
+          const unionSha = timings.hash(unionBuf)
+          if (unionSha !== timings.hash(current!)) {
             if (!this.land(dest.path, unionBuf, mode, Math.max(staged.file.mtime, myMtime, now))) continue
             written++
           }
@@ -857,7 +906,7 @@ export class MemorySync {
       if (landed) ledger[localRel] = { remote: landed, local: sha }
     }
     this.saveState(state)
-    const files = (await listMemory(home, { cache: this.cache as HashCache })).entries.length
+    const files = (await this.manifest(home, timings)).entries.length
     if (written || g.deleted || g.conflicts || merged) this.log(`from ${g.fromName}: ${written} written, ${g.deleted} deleted${merged ? `, ${merged} merged` : ''}${g.conflicts ? `, ${g.conflicts} conflict copies` : ''}`)
     return { files, written, deleted: g.deleted, conflicts: g.conflicts, merged, again: g.again }
   }

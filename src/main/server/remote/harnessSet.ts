@@ -155,6 +155,11 @@ export interface HashCache {
   set(key: string, value: HashEntry): void
 }
 
+export interface ManifestHashTimings {
+  hashMs: number
+  hashed: number
+}
+
 export interface Skipped {
   relPath: string
   reason: 'too-large' | 'symlink-out-of-reach' | 'symlink-loop' | 'unreadable' | 'native-binary'
@@ -183,7 +188,7 @@ export function reachableUnderHome(real: string, realHome: string): boolean {
  */
 export async function buildManifest(
   home: string,
-  opts: { rules?: readonly SetRule[]; cache?: HashCache; maxBytes?: number; between?: () => Promise<void> } = {}
+  opts: { rules?: readonly SetRule[]; cache?: HashCache; maxBytes?: number; between?: () => Promise<void>; timings?: ManifestHashTimings } = {}
 ): Promise<Manifest> {
   const rules = opts.rules ?? HARNESS_SET
   const maxBytes = opts.maxBytes ?? MAX_FILE_BYTES
@@ -213,6 +218,7 @@ export async function buildManifest(
     }
     let hit = opts.cache?.get(real)
     if (!(hit && hit.size === st.size && hit.mtimeMs === st.mtimeMs && hit.ino === st.ino)) {
+      const started = opts.timings ? performance.now() : 0
       let data: Buffer
       try {
         data = await readFile(abs)
@@ -221,6 +227,10 @@ export async function buildManifest(
         return
       }
       hit = { size: st.size, mtimeMs: st.mtimeMs, ino: st.ino, sha: sha256(data), ...(isMachO(data) ? { native: true } : {}) }
+      if (opts.timings) {
+        opts.timings.hashMs += performance.now() - started
+        opts.timings.hashed++
+      }
       opts.cache?.set(real, hit)
     }
     if (hit.native) {

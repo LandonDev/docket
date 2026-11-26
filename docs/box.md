@@ -1044,7 +1044,12 @@ lands (the box's own files whose side won, bytes included) and what the Mac
 deletes; the Mac lands and deletes, then streams what was asked for as
 `memory.files` frames, the last one with the hashes of what it landed. Both
 keep `<userData>/memory-sync/state.json`: per peer, the hashes the two
-agreed on last time; and the host's own tombstones. The rules:
+agreed on last time; and the host's own tombstones. Slow requests for
+`memory.exchange` and `memory.files` log the local scan time (`stat`),
+content read and hash time (`hash`), reconciliation and state work
+(`peer`), files found (`files`), and hashes taken (`hashed`).
+
+The rules:
 
 - unchanged on both sides since the last sync: nothing; same bytes once
   translated: nothing, remembered as synced

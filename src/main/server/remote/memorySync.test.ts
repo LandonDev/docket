@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ClientRequestSchema } from '@shared/contract'
 import { requiredCapability } from '@shared/capabilities'
 import { parseMapping } from '../pathMap'
+import { flushStallLog, recordSlowRequest, setStallLog, withRequestNotes } from '../stalls'
 import { MEMORY_NO_WINDOWS, MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory } from './memorySync'
 import { encodeProjectDir } from './memorySet'
 import { TOMBSTONE_MS } from './memoryMerge'
@@ -167,6 +168,30 @@ describe('the first sync', () => {
     expect(files.every((f) => f.params.files.length === 0)).toBe(true)
     expect(walk(box).map((r) => [r, mtimeOf(box, r)])).toEqual(before)
   })
+})
+
+it('writes scan, hash and reconciliation notes on both slow-request lines', async () => {
+  put(box, boxMem('one.md'), 'one', T0)
+  const { link } = pair()
+  const logDir = join(root, 'logs')
+  mkdirSync(logDir)
+  setStallLog(logDir)
+  try {
+    await withRequestNotes(async () => {
+      await link.request('memory.exchange', { from: 'env_mac', home: mac, generation: 'g1', entries: [], tombstones: [] })
+      recordSlowRequest('memory.exchange', 800)
+    })
+    await withRequestNotes(async () => {
+      await link.request('memory.files', { generation: 'g1', files: [], done: true })
+      recordSlowRequest('memory.files', 800)
+    })
+    await flushStallLog()
+    const log = read(logDir, 'stalls.log')
+    expect(log).toMatch(/slow-request memory\.exchange 800ms stat=\d+ms hash=\d+ms peer=\d+ms files=1 hashed=2 /)
+    expect(log).toMatch(/slow-request memory\.files 800ms stat=\d+ms hash=\d+ms peer=\d+ms files=1 hashed=0 /)
+  } finally {
+    setStallLog(null)
+  }
 })
 
 describe('changes after the first sync', () => {
