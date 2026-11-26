@@ -401,9 +401,9 @@ export async function getServerPort(): Promise<number> {
   return port;
 }
 
-/** The launch mirror at boot (src/shared/launchMirror.ts), synchronously;
- *  null at /ui, where there is no main process to paint from. */
-export function readLaunchMirror(): LaunchMirrorSnapshot | null {
+/** The launch mirror at boot (src/shared/launchMirror.ts), one async ask (never a
+ *  synchronous IPC); null at /ui, where there is no main process to paint from. */
+export function readLaunchMirror(): Promise<LaunchMirrorSnapshot | null> {
   return api().launchMirror.read();
 }
 

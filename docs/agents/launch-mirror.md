@@ -9,12 +9,23 @@
   cursor. Summaries only, never transcript rows; capped at
   `MIRROR_MAX_SESSIONS` (2,000) per host, newest kept, and archived threads
   older than 30 days leave the mirror (the host still has them).
-- Boot (src/renderer/src/main.tsx → lib/tcserver/launchMirror.ts): before
-  environment zero and before the first render, `hydrateFromLaunchMirror`
-  reads the mirror synchronously through preload (`launch-mirror:read`,
-  `ipcRenderer.sendSync`; the /ui page has none), registers the saved hosts
-  in the registry so the rail has their sections from the first frame, and
-  seeds the session and workspace stores. A key route whose ticket mint
+- Boot (src/renderer/src/main.tsx → lib/tcserver/launchMirror.ts): the
+  first statement of the index chunk asks for the mirror once
+  (`askLaunchMirror`, preload `launch-mirror:read`, an `ipcRenderer.invoke`;
+  never a synchronous IPC; the /ui page has none). The window exists before
+  the server does (docs/agents/launch-code-caches.md "Boot order"), so while
+  the server boots main answers the ask from its own read
+  (src/main/bootMirror.ts: a read-only connection opened and closed before
+  the server opens the database, which also says whether Work is on here);
+  once the server is up it answers from the server's connection, as before,
+  and the hosts no longer saved are forgotten then. With no mirror to read
+  (a first launch) the ask waits for the server. When the answer lands,
+  `hydrateFromLaunchMirror` registers the saved hosts in the registry so the
+  rail has their sections, and seeds the session and workspace stores; only
+  then is environment zero added (`initServerLink`) and the first render's
+  workspace read started, so the order is the one the synchronous read had.
+  The port ask (`server-port`) is one invoke that main answers once the
+  server is up; the renderer asks once. A key route whose ticket mint
   needs the local link waits for it (`registry.primaryOpen`) instead of
   failing its first attempt into a backoff. Then the sockets open and each
   host reconciles: `session.changes { afterSeq, generation }` (contract.ts;
@@ -29,9 +40,10 @@
   for the lists and then takes the mirror's rows for a host that has not
   answered; its rows show under that host's existing offline tint. A saved
   host with neither a list nor a mirror still holds the prune. The main
-  process logs the one synchronous read as `[boot] launch-mirror read <ms>
-  hosts=<n> bytes=<b>`, and the renderer measures the hydrate as
-  `tc:launch-mirror` (performance marks around it).
+  process logs each read as `[boot] launch-mirror read <ms> hosts=<n>
+  bytes=<b>` (` from=boot` while the server boots; the boot read itself is
+  the `boot-mirror <ms>` mark), and the renderer measures the ask to the
+  hydrate as `tc:launch-mirror` (performance marks around it).
 - The writer (`installLaunchMirrorWriter`) follows `onMetaChange` and the
   workspace catalog, diffs each LISTED host's rows against what it last
   wrote (object identity), and sends the difference over

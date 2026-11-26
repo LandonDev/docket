@@ -58,12 +58,17 @@ const counted = <A extends unknown[], R>(channel: string, fn: (...args: A) => R)
     return fn(...args)
   }
 }
+/** Settles once registerAliaxPages has run: the handlers wait for it (registerAliaxHandlers). */
+let pagesReady: Promise<void> = Promise.resolve()
 const handle = <A extends unknown[], R>(
   channel: string,
   fn: (event: Electron.IpcMainInvokeEvent, ...args: A) => R
 ): void => {
   const f = counted(channel, fn)
-  ipcMain.handle(channel, (event, ...args) => f(event, ...(args as A)))
+  ipcMain.handle(channel, async (event, ...args) => {
+    await pagesReady
+    return f(event, ...(args as A))
+  })
 }
 
 /** Every window redraws its Aliax pages; the shared poll rebuilds once. */
@@ -257,7 +262,14 @@ export function registerAliaxPages(server: { accounts: AliaxPagesHost; accountSy
   for (const id of ['claude-code', 'codex', 'cursor'] as ServiceId[]) {
     accounts.repairProfiles(id).catch(() => {})
   }
+}
 
+/**
+ * The accounts pages' handlers, registered before the first window exists (index.ts boot order): a call made before
+ * `ready` (registerAliaxPages ran, or failed) waits for it, so no page hears "No handler registered" at boot.
+ */
+export function registerAliaxHandlers(ready: Promise<void>): void {
+  pagesReady = ready
   handle('aliax:services:list', async () => withKeyIds(await accounts.listServices()))
   // Start fresh: only for a key-file vault that does not open; the old one is kept aside, never deleted.
   handle('aliax:vault:startFresh', () =>

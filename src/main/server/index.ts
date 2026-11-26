@@ -266,7 +266,7 @@ import {
   setProjectPlans
 } from './apptools'
 import type { RevealWindow } from './work/reveal'
-import { loadWork } from './work/load'
+import { loadWork, type WorkLoader } from './work/load'
 import { isWorkMethod } from '@shared/work/wire'
 import { workspaceKindOf } from '@shared/work/ids'
 import { workProjectRefusal, type WorkProjectFacts } from './workProjectGate'
@@ -553,15 +553,18 @@ export async function startServer(
     personIdle?: PersonIdleSource
     /** The display-sleep assertion and the power source (keepAwake.ts), from main on a Mac with a desktop; absent, this host only tells its peers. */
     keepAwake?: { blocker: AwakeBlocker; power: PowerSourceLike }
+    /** Work's code loads only once this settles (index.ts: the first window up, unless Work is on here); at once when absent. */
+    workAfter?: Promise<void>
   } = {}
 ): Promise<RunningServer> {
   bootMark('server-start')
   // First, before any helper runs: from here on no git, gh or ps forks from this process.
   if (options.spawnExecBroker) execBroker.install(options.spawnExecBroker)
-  // Work's code is loaded here, behind a guard, before anything of the host exists (work/load.ts): a pillar
-  // or a package it needs that throws while it loads is left out and named, and this boot goes on.
-  const workLoader = await loadWork()
-  bootMark('work-loaded')
+  // Work's code is loaded behind a guard (work/load.ts): a pillar or a package it needs that throws while it loads
+  // is left out and named, and this boot goes on. It starts loading at once while Work is on for this host; else
+  // once `workAfter` settles (index.ts: the first window up), so its compile never holds the window's first paint.
+  const workLoading = (options.workAfter ?? Promise.resolve()).then(() => loadWork())
+  let workLoader: WorkLoader | null = null
   const db = openDb(dbPath)
   bootMark('db-open')
   // WAL checkpoints of both files run on a worker's own connection; the
@@ -708,7 +711,7 @@ export async function startServer(
    *  reached in the workspace's folder before the hidden Word store took it (work/files/wordStore.ts). Nothing else
    *  of the store or the app's data; the Mac bridge's roots stay `managedRoots`, without them. Read through Work's
    *  guarded loader (work/load.ts `keptDocs`), so the host imports nothing of Work's files pillar. */
-  const remoteRoots = (): string[] => [...managedRoots(), ...workLoader.keptDocs(db, options.dataDir ?? dirname(dbPath))]
+  const remoteRoots = (): string[] => [...managedRoots(), ...(workLoader?.keptDocs(db, options.dataDir ?? dirname(dbPath)) ?? [])]
   // Each thread's uploaded attachments (attachmentDir.ts): under its project
   // cwd, else its workspace path, else <userData>/attachments.
   setAttachmentDirContext({
@@ -2462,6 +2465,8 @@ export async function startServer(
   let workNotifier: Notifier | null = null
   // Work (docs/agents/work.md): every module's tables, the switch, the context the modules share and the
   // one mount of their methods, pushes and tools. Off by default; while off nothing of it starts or lists.
+  workLoader = await workLoading
+  bootMark('work-loaded')
   const work = workLoader.start({
     db,
     store,

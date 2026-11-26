@@ -4,10 +4,15 @@ const native = vi.hoisted(() => ({
   webMode: false,
   port: 4321,
   bound: [] as unknown[],
+  portAsks: 0,
+  portReady: null as Promise<number> | null,
 }));
 vi.mock("../native", () => ({
   isWebMode: () => native.webMode,
-  getServerPort: () => Promise.resolve(native.port),
+  getServerPort: () => {
+    native.portAsks++;
+    return native.portReady ?? Promise.resolve(native.port);
+  },
   bindServer: (router: unknown) => native.bound.push(router),
   thisDesktopName: () => "This Mac",
 }));
@@ -40,6 +45,8 @@ beforeEach(() => {
   FakeSocket.instances = [];
   native.bound = [];
   native.webMode = false;
+  native.portAsks = 0;
+  native.portReady = null;
   vi.stubGlobal("WebSocket", FakeSocket);
 });
 afterEach(() => {
@@ -67,6 +74,22 @@ describe("initServerLink", () => {
     await flush();
     expect(registry.statusOf("local")).toMatchObject({ transport: "open", lastHello: { environmentId: "env_mac" } });
     expect(registry.primary().connected).toBe(true);
+  });
+
+  it("a window made before the server asks for the port once, and opens its local link when the server is up", async () => {
+    let serverUp!: (port: number) => void;
+    native.portReady = new Promise<number>((resolve) => (serverUp = resolve));
+    initServerLink();
+    await flush();
+    await flush();
+    // the server is still starting: main's handler holds the one answer (src/main/index.ts `server-port`)
+    expect(native.portAsks).toBe(1);
+    expect(registry.environments()).toEqual([]);
+    expect(FakeSocket.instances).toEqual([]);
+    serverUp(5555);
+    await flush();
+    expect(native.portAsks).toBe(1);
+    expect(FakeSocket.instances.map((s) => s.url)).toEqual(["ws://127.0.0.1:5555"]);
   });
 
   it("the page at /ui has exactly one environment: its own origin, the cookie on the upgrade", async () => {

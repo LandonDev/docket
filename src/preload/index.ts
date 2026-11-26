@@ -104,11 +104,12 @@ const api = {
     set: (key: string | null): Promise<CaptureKeyState> => ipcRenderer.invoke('capture:key:set', key)
   },
   /** The launch mirror (src/shared/launchMirror.ts): what every host last
-   *  showed, read synchronously so the rail paints before any socket is up;
-   *  writes are fire-and-forget, coalesced by the renderer. */
+   *  showed, asked once at module top so the rail paints before any socket is
+   *  up (main answers it from its own read while the server boots); never a
+   *  synchronous IPC. Writes are fire-and-forget, coalesced by the renderer. */
   launchMirror: {
-    read: (): LaunchMirrorSnapshot | null =>
-      (ipcRenderer.sendSync('launch-mirror:read') as LaunchMirrorSnapshot | null) ?? null,
+    read: (): Promise<LaunchMirrorSnapshot | null> =>
+      ipcRenderer.invoke('launch-mirror:read').then((snapshot: LaunchMirrorSnapshot | null) => snapshot ?? null),
     write: (write: MirrorWrite): void => ipcRenderer.send('launch-mirror:write', write)
   },
   /** His unacknowledged edits, kept by this computer's main process (src/main/drafts.ts); writes are fire-and-forget. Absent in a browser, which keeps none. */

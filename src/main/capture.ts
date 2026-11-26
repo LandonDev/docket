@@ -227,14 +227,21 @@ function keyState(): CaptureKeyState {
   return { key: readCaptureKey(app.getPath('userData')), defaultKey: captureKeyDefault(), held: held !== null, error: keyError, workOn: deps?.work.enabled() ?? false }
 }
 
-export function registerCapture(d: CaptureDeps): void {
-  deps = d
+/** The handlers exist from the start; one called before the server is up (index.ts boot order) waits for its deps. */
+export function registerCapture(ready: Promise<CaptureDeps>): void {
   rmSync(picturesDir(), { recursive: true, force: true })
-  d.work.onChange(sync)
-  sync()
+  const up = ready.then((d) => {
+    deps = d
+    d.work.onChange(sync)
+    sync()
+  })
 
-  ipcMain.handle('capture:key:get', () => keyState())
-  ipcMain.handle('capture:key:set', (_e, key: unknown) => {
+  ipcMain.handle('capture:key:get', async () => {
+    await up
+    return keyState()
+  })
+  ipcMain.handle('capture:key:set', async (_e, key: unknown) => {
+    await up
     if (key !== null && (typeof key !== 'string' || !isAccelerator(key))) return { ...keyState(), error: 'Not a key this computer can hold' }
     const before = readCaptureKey(app.getPath('userData'))
     writeCaptureKey(app.getPath('userData'), key as string | null)
@@ -244,7 +251,10 @@ export function registerCapture(d: CaptureDeps): void {
     return keyState()
   })
 
-  ipcMain.handle('capture:port', (e) => (fromCapture(e) ? (deps?.port() ?? null) : null))
+  ipcMain.handle('capture:port', async (e) => {
+    await up
+    return fromCapture(e) ? (deps?.port() ?? null) : null
+  })
   ipcMain.on('capture:hide', (e) => fromCapture(e)?.hide())
   // The page wears Work's theme, which only it knows: the backing follows, so a resize never shows the other one.
   ipcMain.on('capture:scheme', (e, scheme: unknown) => fromCapture(e)?.setBackgroundColor(scheme === 'light' ? CAPTURE_BACKING.light : CAPTURE_BACKING.dark))

@@ -15,7 +15,7 @@ import { appRoot } from './server/appRoot'
 import { SOAK_SWITCHES, soakWindow } from './soakWindow'
 import { configureAliax, upstream } from './aliax'
 import { loadEnvironmentId } from './server/remote/environment'
-import { aliaxCallCounts, registerAliaxPages, vaultStartFreshHooks } from './aliaxPages'
+import { aliaxCallCounts, registerAliaxHandlers, registerAliaxPages, vaultStartFreshHooks } from './aliaxPages'
 import { givenComputerHooks } from './server/devices/given'
 import { registerAppshots } from './appshots'
 import { EditorLauncher, defaultEditorLaunchDeps, editorChoice, type EditorTarget } from './editorLaunch'
@@ -24,6 +24,8 @@ import { isProdData } from './server/processGuard'
 import { startServer, type RunningServer } from './server'
 import { listEnvironments } from './server/remote/environments'
 import type { LaunchMirrorSnapshot, MirrorWrite } from '@shared/launchMirror'
+import { readBootMirror, type BootRead } from './bootMirror'
+import { bootDesktop, deferred } from './desktopBoot'
 import { preconnectAccount } from './server/preconnect'
 import { spawnExecBrokerChild } from './execBrokerSpawn'
 import { spawnGatewayChild } from './gatewaySpawn'
@@ -160,23 +162,117 @@ if (headless) {
 // there stalls the running app's event writes mid-turn (threads freeze on
 // "Working…") and its boot-time status reset scribbles over live sessions.
 // So: dev builds REQUIRE the env override, and any userData accepts only
-// one instance, ever (the lock is per userData dir).
-if (!app.isPackaged && !process.env.TEMP_CODE_USER_DATA) {
-  console.error(
-    'refusing to run: dev instances must set TEMP_CODE_USER_DATA ' +
-      "(see CLAUDE.md) — this would open the installed app's database"
-  )
-  app.exit(1)
-}
-if (!app.requestSingleInstanceLock()) {
-  console.error('refusing to run: another instance already owns this userData directory')
-  app.exit(1)
+// one instance, ever (the lock is per userData dir). Both run first, ahead of
+// any window (desktopBoot.ts).
+function guardDatabase(): boolean {
+  if (!app.isPackaged && !process.env.TEMP_CODE_USER_DATA) {
+    console.error(
+      'refusing to run: dev instances must set TEMP_CODE_USER_DATA ' +
+        "(see CLAUDE.md) — this would open the installed app's database"
+    )
+    app.exit(1)
+    return false
+  }
+  if (!app.requestSingleInstanceLock()) {
+    console.error('refusing to run: another instance already owns this userData directory')
+    app.exit(1)
+    return false
+  }
+  return true
 }
 
-// Privileged scheme registration only takes effect before the app is ready.
-registerSchemes()
+/** The running server, for the handlers a window may call before it is up: they wait for it. */
+const serverUp = deferred<RunningServer>()
+// boot.ts moved temp-code.db to docket.db and left a link (dataMove.ts); Windows and a held move keep the old name.
+const dbPath = (): string => join(app.getPath('userData'), dataMoveBoot()?.db ?? 'temp-code.db')
+/** The launch mirror as the boot read it, before the server opened the database (bootMirror.ts). */
+let bootRead: BootRead = { snapshot: null, workOn: false }
+/** What prepare() makes for the server's options. */
+let presence: MacPresenceWatcher
+let personIdle: PersonIdle | null = null
+let revealWindow: ReturnType<typeof registerRevealWindow> | undefined
 
-app.whenReady().then(async () => {
+void bootDesktop<RunningServer>({
+  headless,
+  guard: guardDatabase,
+  // Privileged scheme registration only takes effect before the app is ready.
+  beforeReady: registerSchemes,
+  ready: () => app.whenReady(),
+  prepare,
+  // Before the first window reads localStorage on the app scheme: the
+  // file:// origin's entries move over once (originMigration.ts).
+  migrateLocalStorage: () =>
+    migrateLocalStorage({
+      rendererDir: join(__dirname, '../renderer'),
+      userData: app.getPath('userData')
+    }),
+  // A live Office file's tickets, before any window can ask for one (officeLive.ts).
+  registerOfficeLive,
+  readMirror: () => {
+    const t0 = Date.now()
+    bootRead = readBootMirror(dbPath())
+    bootMark('boot-mirror', `${Date.now() - t0}ms`)
+  },
+  openWindows: () => {
+    const up = openSavedWindows()
+    userWindowsOpened = true
+    return up
+  },
+  startServer: (windowUp) => {
+    // Work's code loads at once only while Work is on for this host; else once the first window is up (load.ts).
+    const workAfter = bootRead.workOn ? undefined : windowUp
+    return startServer(dbPath(), {
+      prodData: isProdData(app.getPath('userData'), defaultUserData),
+      // Counted from the code that runs, never app.getAppPath(): under a code-only update that is the
+      // bundle, and its out/ is the older one (docs/agents/code-only-updates.md).
+      appPath: appRoot(),
+      claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
+      assets: handleAssetRequest,
+      watchMaster: !headless,
+      // The gateway's byte path runs in a utility process of its own, on the Mac and on the headless box alike.
+      spawnGatewayChild,
+      // So do the add-on registry's downstream MCP servers: the add-on host's own process (addonHostSpawn.ts).
+      spawnAddonHost: spawnAddonHostChild,
+      // An add-on's sign-in and its values' probe ride the provider fetch; the sign-in opens the person's browser.
+      addonFetch: (input, init) => upstream().fetch(input, init),
+      openExternal: (url) => shell.openExternal(url),
+      // So do the helper children (git, gh, ps): the exec broker forks them, never this process.
+      // TEMP_CODE_EXEC_BROKER=0 keeps them here (the before side of scripts/e2e-exec-broker.ts).
+      spawnExecBroker: process.env.TEMP_CODE_EXEC_BROKER === '0' ? undefined : spawnExecBrokerChild,
+      // Its pre-connect when it falls back into this process (three exits in a minute).
+      preconnect: (provider, account) => void preconnectAccount(provider, account, { upstream: upstream() }),
+      // A release this app published, or the box's word that one landed, is fetched at once (update.ts).
+      selfUpdate: headless ? undefined : (version) => selfUpdate(version),
+      // A code-only update from a linked host is staged for boot.ts and offered on the update row (codeUpdates.ts).
+      code: headless ? undefined : { boot: codeBoot(), onStatus: setCodeStatus },
+      presence,
+      revealWindow,
+      personIdle: personIdle ?? undefined,
+      // The display stays awake while threads work (server/keepAwake.ts): a Mac or a Windows PC with a desktop.
+      keepAwake:
+        (process.platform === 'darwin' || process.platform === 'win32') && !headless
+          ? {
+              blocker: {
+                start: () => powerSaveBlocker.start('prevent-display-sleep'),
+                stop: (id) => powerSaveBlocker.stop(id)
+              },
+              power: {
+                onBattery: () => powerMonitor.isOnBatteryPower(),
+                onChange: (listener) => {
+                  powerMonitor.on('on-ac', listener)
+                  powerMonitor.on('on-battery', listener)
+                }
+              }
+            }
+          : undefined,
+      workAfter
+    })
+  },
+  serverUp: onServerUp
+}).catch((err: unknown) => console.error('[boot] the boot failed:', err))
+
+/** After ready, before any window: protocols, presence, and every handler a window may call. */
+function prepare(): void {
   // Windows only (a no-op elsewhere): toasts and the taskbar button group under the installer's shortcut.
   electronApp.setAppUserModelId(APP_USER_MODEL_ID)
 
@@ -205,9 +301,9 @@ app.whenReady().then(async () => {
   // takes TEMP_CODE_PRESENCE on an isolated instance.
   // The person's idle time with computer use's own session-tier input taken out (personIdle.ts): the
   // scheduler and attention both read it, so a step the app posts never reads as the person coming back.
-  const personIdle = headless ? null : new PersonIdle(powerMonitor)
+  personIdle = headless ? null : new PersonIdle(powerMonitor)
   const fromEnv = presenceFromEnv(process.env)
-  const presence = new MacPresenceWatcher({ initial: { screen: 'unknown', power: 'awake', ...fromEnv } })
+  presence = new MacPresenceWatcher({ initial: { screen: 'unknown', power: 'awake', ...fromEnv } })
   if (process.platform === 'darwin' && !headless) {
     // A passwordless screen saver is told from a lock by its facts (shared/screenState.ts); dismissing it
     // declares user activity, which is the app's own input, never the person coming back.
@@ -243,7 +339,7 @@ app.whenReady().then(async () => {
     attention.start()
   }
   if (process.platform === 'darwin' && !headless) computerBannerHooks.current = createComputerBanner()
-  const revealWindow = personsDesktop() ? registerRevealWindow(ipcMain, {
+  revealWindow = personsDesktop() ? registerRevealWindow(ipcMain, {
     target: targetWindow,
     presence: () => presence.snapshot(),
     dismissSaver: () => presence.dismissSaver(),
@@ -252,53 +348,11 @@ app.whenReady().then(async () => {
       else handoff.windowReady()
     }
   }) : undefined
-  // boot.ts moved temp-code.db to docket.db and left a link (dataMove.ts); Windows and a held move keep the old name.
-  server = await startServer(join(app.getPath('userData'), dataMoveBoot()?.db ?? 'temp-code.db'), {
-    prodData: isProdData(app.getPath('userData'), defaultUserData),
-    // Counted from the code that runs, never app.getAppPath(): under a code-only update that is the
-    // bundle, and its out/ is the older one (docs/agents/code-only-updates.md).
-    appPath: appRoot(),
-    claimShim: mayClaimShim({ isPackaged: app.isPackaged }),
-    assets: handleAssetRequest,
-    watchMaster: !headless,
-    // The gateway's byte path runs in a utility process of its own, on the Mac and on the headless box alike.
-    spawnGatewayChild,
-    // So do the add-on registry's downstream MCP servers: the add-on host's own process (addonHostSpawn.ts).
-    spawnAddonHost: spawnAddonHostChild,
-    // An add-on's sign-in and its values' probe ride the provider fetch; the sign-in opens the person's browser.
-    addonFetch: (input, init) => upstream().fetch(input, init),
-    openExternal: (url) => shell.openExternal(url),
-    // So do the helper children (git, gh, ps): the exec broker forks them, never this process.
-    // TEMP_CODE_EXEC_BROKER=0 keeps them here (the before side of scripts/e2e-exec-broker.ts).
-    spawnExecBroker: process.env.TEMP_CODE_EXEC_BROKER === '0' ? undefined : spawnExecBrokerChild,
-    // Its pre-connect when it falls back into this process (three exits in a minute).
-    preconnect: (provider, account) => void preconnectAccount(provider, account, { upstream: upstream() }),
-    // A release this app published, or the box's word that one landed, is fetched at once (update.ts).
-    selfUpdate: headless ? undefined : (version) => selfUpdate(version),
-    // A code-only update from a linked host is staged for boot.ts and offered on the update row (codeUpdates.ts).
-    code: headless ? undefined : { boot: codeBoot(), onStatus: setCodeStatus },
-    presence,
-    revealWindow,
-    personIdle: personIdle ?? undefined,
-    // The display stays awake while threads work (server/keepAwake.ts): a Mac or a Windows PC with a desktop.
-    keepAwake:
-      (process.platform === 'darwin' || process.platform === 'win32') && !headless
-        ? {
-            blocker: {
-              start: () => powerSaveBlocker.start('prevent-display-sleep'),
-              stop: (id) => powerSaveBlocker.stop(id)
-            },
-            power: {
-              onBattery: () => powerMonitor.isOnBatteryPower(),
-              onChange: (listener) => {
-                powerMonitor.on('on-ac', listener)
-                powerMonitor.on('on-battery', listener)
-              }
-            }
-          }
-        : undefined
-  })
-  bootMark('server-returned')
+  registerWindowHandlers()
+}
+
+/** Every handler a window may call, registered before the first window exists; one that needs the server waits for it. */
+function registerWindowHandlers(): void {
   if (!headless) {
     // Windows: the installer cannot replace a file a running child holds open, so "Restart to update" shuts
     // the app's work down before it starts the installer (update.ts); before-quit then has nothing left to do.
@@ -311,25 +365,14 @@ app.whenReady().then(async () => {
             }
           : undefined
     })
-    // Master's release.json again when a window comes forward after fifteen idle minutes (deployDrift.ts).
-    const running = server
-    app.on('browser-window-focus', () => running.masterRelease.focus())
   }
-  setRemotePages({ environmentId: server.environmentId, read: server.remotePage })
-  setRemoteMedia({ environmentId: server.environmentId, read: server.remoteMedia })
-  // A throw here once ended the boot before the rest of it ran (2026-11-23, a refused watch);
-  // the accounts pages are not worth the windows, the terminals and the remote port.
-  try {
-    registerAliaxPages(server)
-  } catch (err) {
-    console.error('[boot] the accounts pages did not register; the boot goes on:', err)
-  }
-  // A given computer's pins and identity went with the old vault: it is no longer given (devices/given.ts).
-  vaultStartFreshHooks.push(() => givenComputerHooks.current?.startFresh())
+  // The accounts pages' handlers: a call made before the server is up waits for its hooks (aliaxPages.ts).
+  registerAliaxHandlers(aliaxPagesReady.promise)
   registerPty()
-  const { store } = server
-  const mountedServer = server
-  registerWindows({ dropSnapshot: (slot) => store.dropWorkspaceSnapshot(slot), onMounted: () => mountedServer.codeWindowMounted() })
+  registerWindows({
+    dropSnapshot: (slot) => void serverUp.promise.then((s) => s.store.dropWorkspaceSnapshot(slot)),
+    onMounted: () => void serverUp.promise.then((s) => s.codeWindowMounted())
+  })
   if (!headless) registerPresent()
   registerDialogs()
   registerDownloads()
@@ -338,30 +381,24 @@ app.whenReady().then(async () => {
   if (!headless) {
     registerMenu()
     registerDock()
+    // Capture from anywhere (capture.ts): his key opens the capture window while Work is on here.
+    registerCapture(serverUp.promise.then((running) => ({ work: running.workSwitch, port: () => running.port })))
   }
   if (!app.isPackaged) registerDebug()
-  if (process.platform === 'darwin' && !headless) registerAppshots(server, createWindow)
-  ipcMain.handle('server-port', () => server?.port ?? null)
-  // The launch mirror (src/main/server/launchMirror.ts): the renderer paints
-  // the rail from it before any socket is up, so the read is synchronous.
-  ipcMain.on('launch-mirror:read', (e) => {
+  // The port answers once the server is up: a window made before it waits, and asks once (lib/tcserver/link.ts).
+  ipcMain.handle('server-port', async () => (await serverUp.promise).port)
+  // The launch mirror (src/main/server/launchMirror.ts): the renderer paints the rail from it before any socket
+  // is up. While the server boots, the boot's own read-only read answers (bootMirror.ts); after, the server's.
+  ipcMain.handle('launch-mirror:read', () => {
     const t0 = Date.now()
-    const environments = listEnvironments(store).map((row) => ({
-      id: row.id,
-      name: row.name,
-      routes: row.routes.map((r) => ({ url: r.url, kind: r.kind })),
-      ...(row.keyId !== undefined ? { keyId: row.keyId } : {}),
-      ...(row.platform ? { platform: row.platform } : {})
-    }))
-    const hosts = server!.launchMirror.read(['local', ...environments.map((row) => row.id)])
-    const snapshot = { environments, hosts } satisfies LaunchMirrorSnapshot
-    e.returnValue = snapshot
-    // The one synchronous read the renderer's first frame waits on: its cost, in the boot log.
-    console.log(`[boot] launch-mirror read ${Date.now() - t0}ms hosts=${hosts.length} bytes=${JSON.stringify(snapshot).length}`)
+    const snapshot = server ? serverMirror(server) : bootRead.snapshot
+    if (!snapshot) return serverUp.promise.then(serverMirror)
+    console.log(`[boot] launch-mirror read ${Date.now() - t0}ms hosts=${snapshot.hosts.length} bytes=${JSON.stringify(snapshot).length}${server ? '' : ' from=boot'}`)
+    return snapshot
   })
   ipcMain.on('launch-mirror:write', async (_e, write: MirrorWrite) => {
     try {
-      await server!.launchMirror.write(write)
+      await (await serverUp.promise).launchMirror.write(write)
     } catch (err) {
       console.error('[launch-mirror] write failed', err)
     }
@@ -387,41 +424,73 @@ app.whenReady().then(async () => {
   })
   // The user's editor (editorLaunch.ts): only where a window can be, so a
   // headless box answers null and the renderer hides the item.
-  const editorLauncher = headless ? null : new EditorLauncher(defaultEditorLaunchDeps(server.store))
-  ipcMain.handle('editor-config', () => editorLauncher?.config() ?? null)
-  ipcMain.handle('editor-set', (_e, choice: unknown) => {
-    editorLauncher?.setChoice(editorChoice(typeof choice === 'string' ? choice : null))
-    editorLauncher?.refresh()
+  const editorLauncher = headless ? null : serverUp.promise.then((s) => new EditorLauncher(defaultEditorLaunchDeps(s.store)))
+  ipcMain.handle('editor-config', async () => (await editorLauncher)?.config() ?? null)
+  ipcMain.handle('editor-set', async (_e, choice: unknown) => {
+    const launcher = await editorLauncher
+    launcher?.setChoice(editorChoice(typeof choice === 'string' ? choice : null))
+    launcher?.refresh()
   })
-  ipcMain.handle('editor-open', (_e, target: EditorTarget) => {
-    if (!editorLauncher) throw new Error('No editor on this host')
+  ipcMain.handle('editor-open', async (_e, target: EditorTarget) => {
+    const launcher = await editorLauncher
+    if (!launcher) throw new Error('No editor on this host')
     if (typeof target?.path !== 'string' || !target.path) throw new Error('A path is needed')
-    return editorLauncher.open({
+    return launcher.open({
       path: target.path,
       line: typeof target.line === 'number' ? target.line : undefined,
       column: typeof target.column === 'number' ? target.column : undefined
     })
   })
+}
+
+/** What the launch mirror holds now, from the server's own connection. */
+function serverMirror(running: RunningServer): LaunchMirrorSnapshot {
+  const environments = listEnvironments(running.store).map((row) => ({
+    id: row.id,
+    name: row.name,
+    routes: row.routes.map((r) => ({ url: r.url, kind: r.kind })),
+    ...(row.keyId !== undefined ? { keyId: row.keyId } : {}),
+    ...(row.platform ? { platform: row.platform } : {})
+  }))
+  const hosts = running.launchMirror.read(['local', ...environments.map((row) => row.id)])
+  return { environments, hosts } satisfies LaunchMirrorSnapshot
+}
+
+/** The accounts pages' hooks are in: their handlers' waiting calls run. */
+const aliaxPagesReady = deferred<void>()
+
+/** Everything that needs the running server; the windows are already up. */
+function onServerUp(running: RunningServer): void {
+  bootMark('server-returned')
+  server = running
+  serverUp.resolve(running)
+  // The boot's read answered without forgetting the hosts no longer saved: the server's mirror forgets them now.
+  if (bootRead.snapshot) running.launchMirror.forgetExcept(['local', ...listEnvironments(running.store).map((row) => row.id)])
+  if (!headless) {
+    // Master's release.json again when a window comes forward after fifteen idle minutes (deployDrift.ts).
+    app.on('browser-window-focus', () => running.masterRelease.focus())
+  }
+  setRemotePages({ environmentId: running.environmentId, read: running.remotePage })
+  setRemoteMedia({ environmentId: running.environmentId, read: running.remoteMedia })
+  // A throw here once ended the boot before the rest of it ran (2026-11-23, a refused watch);
+  // the accounts pages are not worth the windows, the terminals and the remote port.
+  try {
+    registerAliaxPages(running)
+  } catch (err) {
+    console.error('[boot] the accounts pages did not register; the boot goes on:', err)
+  } finally {
+    aliaxPagesReady.resolve()
+  }
+  // A given computer's pins and identity went with the old vault: it is no longer given (devices/given.ts).
+  vaultStartFreshHooks.push(() => givenComputerHooks.current?.startFresh())
+  if (process.platform === 'darwin' && !headless) registerAppshots(running, createWindow)
 
   if (headless) {
     // No window: the local socket's port goes to a file for an operator on
     // the host (scripts/box/tc-local.mjs); the renderer would get it over IPC.
-    const file = publishLocalPort(app.getPath('userData'), server.port)
-    console.log(`[headless] serving on 127.0.0.1:${server.port} (${file}); remote port ${server.remote?.port ?? 'off'}`)
+    const file = publishLocalPort(app.getPath('userData'), running.port)
+    console.log(`[headless] serving on 127.0.0.1:${running.port} (${file}); remote port ${running.remote?.port ?? 'off'}`)
   } else {
-    // Before the first window reads localStorage on the app scheme: the
-    // file:// origin's entries move over once (originMigration.ts).
-    await migrateLocalStorage({
-      rendererDir: join(__dirname, '../renderer'),
-      userData: app.getPath('userData')
-    })
-    // A live Office file's tickets, before any window can ask for one (officeLive.ts).
-    registerOfficeLive()
-    openSavedWindows()
-    userWindowsOpened = true
-    // Capture from anywhere (capture.ts): his key opens the capture window while Work is on here.
-    const running = server
-    registerCapture({ work: running.workSwitch, port: () => running.port })
     void import('./printOut').then((m) => m.registerPrintOut()).catch((err: unknown) => console.error('[print] not registered', err))
   }
   setTimeout(() => flushCompileCache(), FLUSH_AFTER_MS).unref()
@@ -429,7 +498,7 @@ app.whenReady().then(async () => {
   app.on('activate', function () {
     if (!headless) activateWindows()
   })
-})
+}
 
 /** Dev-only hooks so the CDP exit test can drive things a page cannot. */
 function registerDebug(): void {

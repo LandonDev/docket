@@ -14,7 +14,7 @@ import { initPlaceScheme } from "./lib/placeScheme";
 import { initSounds } from "./lib/sounds";
 import { focusSignal } from "./lib/tcserver/commands";
 import { initServerLink } from "./lib/tcserver/link";
-import { hydrateFromLaunchMirror, installLaunchMirror } from "./lib/tcserver/launchMirror";
+import { askLaunchMirror, hydrateFromLaunchMirror, installLaunchMirror } from "./lib/tcserver/launchMirror";
 import { registry } from "./lib/connection";
 import { sessionStore } from "./lib/tcserver/store";
 import { workspaceStore } from "./lib/tcserver/workspaces";
@@ -35,6 +35,10 @@ import { reportRendererError } from "./lib/rendererErrors";
 import { RootBoundary } from "./chrome/RootBoundary";
 import "./index.css";
 
+// The launch mirror's one ask goes first, so main answers it (from its own read
+// while the server boots) beside this chunk's evaluation; never a sync IPC.
+performance.mark("tc:launch-mirror:start");
+const mirrorRead = askLaunchMirror();
 // Before every other key listener: a picture that holds the keyboard in full screen hears its keys alone.
 installHeldKeys();
 // Before App mounts its own window listener: the editor claims its chords first.
@@ -58,14 +62,18 @@ workSwitch.connect(registry);
 // Before environment zero and before the first render: every host's rows as
 // the launch mirror last saw them, so the rail is whole on its first frame
 // and a host that answers late (or not at all) still has its section.
-performance.mark("tc:launch-mirror:start");
-hydrateFromLaunchMirror();
-performance.mark("tc:launch-mirror");
-performance.measure("tc:launch-mirror", "tc:launch-mirror:start", "tc:launch-mirror");
-initServerLink();
-installLaunchMirror();
-updateStore.start();
-initAppshots();
+const mirrorHydrated = mirrorRead.then((snapshot) => {
+  try {
+    hydrateFromLaunchMirror(snapshot);
+    performance.mark("tc:launch-mirror");
+    performance.measure("tc:launch-mirror", "tc:launch-mirror:start", "tc:launch-mirror");
+  } finally {
+    initServerLink();
+    installLaunchMirror();
+    updateStore.start();
+    initAppshots();
+  }
+});
 
 function dismissBootSplash() {
   const splash = document.getElementById("boot-splash");
@@ -133,7 +141,7 @@ void listen("persist_requested", () => {
 // a failed install relaunches the old build with the marker still set.
 const runningVersion = getVersion().catch(() => "");
 
-void Promise.all([loadBootWorkspace(), runningVersion]).then(
+void Promise.all([mirrorHydrated.then(() => loadBootWorkspace()), runningVersion]).then(
   ([{ windowTransfer, resumed, history, historyCwd }, version]) => {
     const installedUpdate = windowTransfer ? null : consumeInstalledUpdate(undefined, version);
     bootstrapWorkspace({

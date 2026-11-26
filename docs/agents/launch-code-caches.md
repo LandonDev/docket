@@ -104,6 +104,27 @@
   classes, size and width until it lands, components/lazy-select.tsx; only the dialog is in the first paint). It also fails when anything of Work is in the entry (`WORK_NEVER_IN_ENTRY`: `src/renderer/src/work/`, `src/shared/work/`, `src/shared/contract-work*`, `work-kit`; docs/agents/work.md "The first paint"), and `scripts/entryGraph.test.ts` holds both lists on the source with no build (scripts/entry-graph.ts walks the entry's static imports that survive the build and names the chain to a module that broke the rule). It also fails when a chunk renders a string tag that is no HTML, SVG or custom element: the React Compiler inlines a lowercase component alias into the JSX tag (`jsx("current")`, an empty element), which only the built bundle shows. A chunk that is pdf.js's build alone is passed over (`VENDOR_STRING_TAGS`): its SVG factory calls its own `createElement("svg:rect")`, which is no JSX; a chunk with any of our code in it is still read.
   `/ui` serves the chunks
   as immutable module scripts behind the cookie (remote/ui.ts).
+- Boot order (src/main/desktopBoot.ts `bootDesktop`, run from index.ts): the
+  window first, the server beside it. Ahead of any window, each ended: the
+  dev guard (a dev build without TEMP_CODE_USER_DATA exits) and the
+  single-instance lock, the privileged schemes, ready, every IPC handler a
+  window may call (one that needs the server waits for it: `server-port`,
+  the editor, the capture key, the accounts pages' `aliax:*`, the mirror's
+  writes), `migrateLocalStorage`, `registerOfficeLive`, and the launch
+  mirror's read-only boot read (src/main/bootMirror.ts,
+  [launch-mirror.md](launch-mirror.md)). Then `openSavedWindows` and
+  `startServer` at once. Work's code (work/load.ts `loadWork`) loads at once
+  only while Work is on for this host (the boot read says); else it waits
+  for the first window up (`ready-to-show`, or the window gone), its
+  `workAfter`, so its compile never holds the first paint, and with Work off
+  nothing of Work's mount or pillars is in main's static graph
+  (scripts/mainEntryGraph.test.ts names the few helpers that are). The boot
+  waits for the fixed port's listener, not for its browser endpoints'
+  publish, which waits out older proofs (1.5 s, remote/restarts.ts). The
+  `[boot]` marks between server-start and the window: work-loaded, store,
+  registry, services-a to -c, work-started, listening, remote-ready,
+  server-ready, server-returned, boot-mirror and window-create. The order is
+  held by src/main/desktopBoot.test.ts; boot.ts's module set is untouched.
 - Proof: `bun run script:e2e-launch-timing` (scripts/e2e-launch-timing.ts)
   packs an isolated copy under /private/tmp/tc-launch-timing and launches it
   four times with Chromium's startup trace on; the report shows the `index`

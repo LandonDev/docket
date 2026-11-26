@@ -27,7 +27,7 @@ describe('paths under a code-only update', () => {
     expect(users.sort()).toEqual(['boot.ts', 'index.ts'])
     const index = files.find((f) => f.name === 'index.ts')!.text
     const lines = index.split('\n').filter((line) => /\bgetAppPath\(/.test(line) && !/^\s*(\/\/|\*)/.test(line))
-    expect(lines.map((l) => l.trim())).toEqual(['applyHarness(process.env, bakedHarness(app.getAppPath()))'])
+    expect(lines.map((l) => l.trim())).toEqual(['const baked = bakedHarness(app.getAppPath())'])
   })
 
   it('nothing but boot.ts loads the boot code: the rest of the app imports its types alone', () => {

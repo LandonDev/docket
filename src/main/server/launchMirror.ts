@@ -59,35 +59,14 @@ export class LaunchMirror {
    *  hosts that still exist (local plus the saved environments); a host no
    *  longer among them is forgotten on the way. */
   read(keep?: Iterable<string>): MirrorHost[] {
-    const wanted = keep ? new Set(keep) : null
-    const hosts = this.db.prepare(`SELECT * FROM launch_mirror_hosts`).all() as unknown as HostRow[]
-    const out: MirrorHost[] = []
-    for (const row of hosts) {
-      if (wanted && !wanted.has(row.environment_id)) {
-        this.forget(row.environment_id)
-        continue
-      }
-      const sessions = (
-        this.db
-          .prepare(`SELECT environment_id, summary FROM launch_mirror_sessions WHERE environment_id = ? ORDER BY updated_at DESC`)
-          .all(row.environment_id) as unknown as SessionRow[]
-      ).flatMap((s) => {
-        try {
-          return [JSON.parse(s.summary) as MirrorSummary]
-        } catch {
-          return []
-        }
-      })
-      out.push({
-        environmentId: row.environment_id,
-        cursor: row.cursor_seq !== null && row.cursor_generation ? { seq: row.cursor_seq, generation: row.cursor_generation } : null,
-        workspaces: parseList(row.workspaces),
-        projects: parseList(row.projects),
-        sessions,
-        writtenAt: row.written_at
-      })
-    }
-    return out
+    if (keep) this.forgetExcept(keep)
+    return readMirrorHosts(this.db, keep)
+  }
+
+  /** Forget every mirrored host but these: the boot's read-only answer (src/main/bootMirror.ts) leaves this to the server. */
+  forgetExcept(keep: Iterable<string>): void {
+    const wanted = new Set(keep)
+    for (const id of this.hostIds()) if (!wanted.has(id)) this.forget(id)
   }
 
   /** The hosts mirrored, for the boot answer's keep-set and the tests. */
@@ -192,4 +171,35 @@ function parseList(raw: string): unknown[] {
   } catch {
     return []
   }
+}
+
+/** Every mirrored host with its summaries, newest first, read and never written: the server's `read` and the boot's
+ *  own read-only connection (src/main/bootMirror.ts) share it. A host not in `keep` is left out. */
+export function readMirrorHosts(db: DatabaseSync, keep?: Iterable<string>): MirrorHost[] {
+  const wanted = keep ? new Set(keep) : null
+  const hosts = db.prepare(`SELECT * FROM launch_mirror_hosts`).all() as unknown as HostRow[]
+  const out: MirrorHost[] = []
+  for (const row of hosts) {
+    if (wanted && !wanted.has(row.environment_id)) continue
+    const sessions = (
+      db
+        .prepare(`SELECT environment_id, summary FROM launch_mirror_sessions WHERE environment_id = ? ORDER BY updated_at DESC`)
+        .all(row.environment_id) as unknown as SessionRow[]
+    ).flatMap((s) => {
+      try {
+        return [JSON.parse(s.summary) as MirrorSummary]
+      } catch {
+        return []
+      }
+    })
+    out.push({
+      environmentId: row.environment_id,
+      cursor: row.cursor_seq !== null && row.cursor_generation ? { seq: row.cursor_seq, generation: row.cursor_generation } : null,
+      workspaces: parseList(row.workspaces),
+      projects: parseList(row.projects),
+      sessions,
+      writtenAt: row.written_at
+    })
+  }
+  return out
 }

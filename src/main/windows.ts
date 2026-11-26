@@ -379,13 +379,25 @@ export function createWindow(opts: { slot?: string; from?: number } = {}): Brows
 }
 
 /** Launch: one window per saved slot, the last-focused one in front. */
-export function openSavedWindows(): void {
+/** The saved windows, the focused one last. Resolves once that one is up: painted, or gone without (index.ts loads
+ *  Work's code then, so its compile never holds the first paint). */
+export function openSavedWindows(): Promise<void> {
   const file = loadStateFile()
   const slots = Object.keys(file.windows)
   if (slots.length === 0) slots.push(MAIN_SLOT)
   const focused = file.focused && slots.includes(file.focused) ? file.focused : slots[0]
   for (const slot of slots) if (slot !== focused) createWindow({ slot })
-  createWindow({ slot: focused })
+  return windowUp(createWindow({ slot: focused }))
+}
+
+/** A window's first paint, or its end without one: never a wait with no end. */
+export function windowUp(win: BrowserWindow): Promise<void> {
+  return new Promise<void>((resolve) => {
+    win.once('ready-to-show', () => resolve())
+    win.once('closed', () => resolve())
+    win.webContents.once('render-process-gone', () => resolve())
+    win.webContents.once('did-fail-load', () => resolve())
+  })
 }
 
 function applyBadge(allowBounce: boolean): void {

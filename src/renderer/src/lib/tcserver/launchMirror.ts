@@ -7,8 +7,8 @@ import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./types";
 
 /**
  * The launch mirror on the renderer side (CLAUDE.md "Launch: the rail
- * paints from the launch mirror"). At boot `hydrateFromLaunchMirror` reads
- * what every host last showed through preload, synchronously, registers
+ * paints from the launch mirror"). At boot `askLaunchMirror` asks preload once
+ * for what every host last showed and `hydrateFromLaunchMirror` registers
  * the saved hosts so the rail has their sections, and seeds the session and
  * workspace stores, all before the first render and before any socket.
  * Then `installLaunchMirrorWriter` keeps the mirror current: after every
@@ -28,17 +28,20 @@ export function summarize(meta: SessionMeta): MirrorSummary {
   return out as unknown as MirrorSummary;
 }
 
-/** Paint from the mirror. Returns what was read, or null when there is
- *  nothing to paint from (the /ui page, a first launch, a test). */
-export function hydrateFromLaunchMirror(): LaunchMirrorSnapshot | null {
-  if (isWebMode() || typeof window === "undefined") return null;
-  let snapshot: LaunchMirrorSnapshot | null = null;
-  try {
-    snapshot = readLaunchMirror();
-  } catch (err) {
+/** The mirror's one ask, started at module top (main.tsx) so it rides beside
+ *  the index chunk's evaluation; main answers it from its own read while the
+ *  server boots. Null at /ui, in a test, or when the read fails. */
+export function askLaunchMirror(): Promise<LaunchMirrorSnapshot | null> {
+  if (isWebMode() || typeof window === "undefined") return Promise.resolve(null);
+  return readLaunchMirror().catch((err: unknown) => {
     console.error("[launch-mirror] read failed", err);
     return null;
-  }
+  });
+}
+
+/** Paint from the mirror. Returns what was read, or null when there is
+ *  nothing to paint from (the /ui page, a first launch, a test). */
+export function hydrateFromLaunchMirror(snapshot: LaunchMirrorSnapshot | null): LaunchMirrorSnapshot | null {
   if (!snapshot) return null;
   // The saved hosts first, so the rail groups their rows under their own
   // sections from the first frame; loadSavedEnvironments confirms them later.
