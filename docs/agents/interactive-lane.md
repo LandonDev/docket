@@ -53,7 +53,20 @@
   backpressure mark sheds the unfocused session and event pushes (the
   replayable ones; control and peer frames stay) and tells the client to
   `resync` once it drained to half; one past 64 MiB is closed (1013,
-  `SocketBudget` in wire.ts). Stall lines end
+  `SocketBudget` in wire.ts). A remote window's big content answers
+  (`PART_METHODS`: `fs.read`, `session.events`, `session.rowBody`, the
+  Work file and preview reads) go in 128 KiB parts behind every other
+  frame, with at most 512 KiB of parts out that the window has not acked
+  (wire.ts `AnswerParts`, src/shared/answerParts.ts): a push or a small
+  answer goes between parts, so the shown thread's rows never sit behind
+  more than that, however much the tunnel buffers (the host's own unsent
+  bytes stay near zero behind cloudflared, so a mark on them alone would
+  hold nothing). A list never goes in parts: the store keeps the newest
+  meta it heard, so a push may not overtake one. The window asks with
+  `#parts` when its host's hello names `answer.parts` and acks each part
+  (`#ack <chars>`, transport.ts); a phone or a peer link never sees one.
+  Pushes that pass a resume page fold once and in order by seq
+  (answerParts.test.ts, store.remote.test.ts). Stall lines end
   `lane=bulk:<running>/<held> pool=<ms>` (the last thread-pool probe, a
   `stat` a second; `<age>ms+` while it is still out), and a slow-request
   line names its lane and, in bulk, `gate=<ms>` waited or `gate=joined`; the renderer reports `first-paint

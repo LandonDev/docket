@@ -585,6 +585,31 @@ describe("remote profile: the catch-up after a reconnect", () => {
     expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1"]);
   });
 
+  it("a resume page that comes after pushes of its own thread (a part behind a file piece): every row folds once, in seq order", async () => {
+    link.pages = [[wireMeta({ id: "s" })]];
+    link.events.set("s", turns("s", 2));
+    await boot(link);
+    sessionStore.followShown({ shown: () => "s", onChange: () => () => {} });
+    sessionStore.setMounted(["s"]);
+    await sessionStore.ensureLoaded("s");
+    // Cut: rows 5..8 land on the host; the resume page for them waits on the socket behind a file piece.
+    const late = turns("s", 2, 5).map((r, i) => ({ ...r, event: { ...r.event, text: `late ${i}` } as EventRow["event"] }));
+    link.events.set("s", [...turns("s", 2), ...late]);
+    const gate: (() => void)[] = [];
+    link.holdNext = gate;
+    link.open();
+    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(gate).toHaveLength(1);
+    // Rows 7 and 8 again, and a new 9, are pushed ahead of the page.
+    const nine = row("s", 9, { type: "user-text", text: "after" });
+    link.events.set("s", [...link.events.get("s")!, nine]);
+    for (const r of [late[2]!, late[3]!, nine]) link.push({ push: "event", row: r });
+    for (const release of gate) release();
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(sessionStore.get("s")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "late 0", "late 1", "late 2", "late 3", "after"]);
+  });
+
+
   /** A master shown in the focused pane whose own page stays out, and a child of its batch. */
   async function masterWithChild(): Promise<{ asked: () => string[] }> {
     link.pages = [[wireMeta({ id: "m" }), wireMeta({ id: "c", parentId: "m" })]];

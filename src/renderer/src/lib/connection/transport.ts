@@ -1,5 +1,6 @@
 import type { ServerFrame, ServerPush } from "@server/shared/contract";
 import type { WireProfile } from "@server/shared/wire";
+import { PARTS_HELLO, ackText, readPart } from "@server/shared/answerParts";
 import { frameRing } from "./frameRing";
 import type { CloseReason, Hello } from "./types";
 
@@ -136,6 +137,9 @@ export class Transport {
   private closeListeners = new Set<(reason: CloseReason) => void>();
   private helloWaiters: { resolve: (h: Hello) => void; reject: (e: Error) => void }[] = [];
   private helloTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Answers arriving in parts (src/shared/answerParts.ts), by id, and the part chars this socket holds. */
+  private parts = new Map<string, string[]>();
+  private partChars = 0;
 
   constructor(
     readonly url: string,
@@ -232,6 +236,24 @@ export class Transport {
     const start = performance.now();
     this.bytesIn += data.length;
     this.lastFrameAt = Date.now();
+    if (data.charCodeAt(0) === 35) return this.onPart(data);
+    this.onFrame(data, start);
+  }
+
+  /** One part of a big answer: held until its last, which is handled as the whole; each is acked. */
+  private onPart(data: string): void {
+    const part = readPart(data);
+    if (!part) return;
+    const held = this.parts.get(part.id) ?? [];
+    held.push(part.body);
+    this.partChars += part.body.length;
+    this.ws?.send(ackText(this.partChars));
+    if (part.index < part.count - 1) return void this.parts.set(part.id, held);
+    this.parts.delete(part.id);
+    this.onFrame(held.join(""), performance.now());
+  }
+
+  private onFrame(data: string, start: number): void {
     let frame: ServerFrame;
     try {
       frame = JSON.parse(data) as ServerFrame;
@@ -252,6 +274,8 @@ export class Transport {
         };
         this.state = "open";
         this.clearHelloTimer();
+        // Big content answers in parts, so the shown thread's rows never wait behind a whole one.
+        if (this.profile === "remote" && frame.features?.includes("answer.parts")) this.ws?.send(PARTS_HELLO);
         const waiters = this.helloWaiters;
         this.helloWaiters = [];
         for (const w of waiters) w.resolve(this.hello);
@@ -299,6 +323,7 @@ export class Transport {
       p.reject(new ConnectionLostError("connection closed"));
     }
     this.pending.clear();
+    this.parts.clear();
     this.answerListeners.clear();
     const waiters = this.helloWaiters;
     this.helloWaiters = [];

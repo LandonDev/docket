@@ -247,7 +247,10 @@ describe('bearer keys', () => {
     expect(minted.headers.get('server-timing')).toMatch(/^mint;dur=\d+, loop;dur=\d+$/)
     const sock = await open(`${base.replace('http', 'ws')}/ws?ticket=${minted.body.ticket}`)
     const hello = await firstFrame(sock)
-    expect(hello.features).toContain('remote.ticket')
+    expect(hello.features).toEqual(expect.arrayContaining(['remote.ticket', 'answer.parts']))
+    // A window's word on parts and acks is no request: nothing answers it, and the socket goes on as before.
+    sock.ws.send('#parts')
+    sock.ws.send('#ack 0')
     const next = await sock.request('remote.ticket', {})
     expect(next.ok).toBe(true)
     // The socket's ticket is the key's own: the second socket says the same key and caps, and the ticket opens one socket only.

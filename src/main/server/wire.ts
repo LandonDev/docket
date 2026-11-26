@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { BACKPRESSURE_BYTES, noteRequest } from './stalls'
+import { PART_CHARS, UNACKED_CHARS, partText } from '@shared/answerParts'
 import type { IncomingHttpHeaders } from 'node:http'
 import type { AgentEvent, EventRow, SessionMeta, ToolPreview } from '@shared/events'
 import type { ServerFrame, ServerPush } from '@shared/contract'
@@ -765,6 +766,88 @@ export class PushCoalescer {
     const items = this.builds
     this.builds = []
     this.emit({ push: 'builds', items })
+  }
+}
+
+/** The methods whose answers are content alone (src/shared/answerParts.ts): a file's bytes, a page of a transcript, a
+ *  row's body. Their rows fold by seq and their bytes stand alone, so a push may overtake them; a list may not (a
+ *  meta it carries is the newest the store holds). */
+export const PART_METHODS: ReadonlySet<string> = new Set([
+  'fs.read',
+  'session.events',
+  'session.rowBody',
+  'work.files.read',
+  'work.office.filesRead',
+  'work.canvas.read',
+  'mac.readFile',
+  'work.sheets.previewRead',
+  'work.slides.previewRead'
+])
+
+/**
+ * One window socket's big content answers, in parts behind every other frame (src/shared/answerParts.ts): a part goes
+ * while the window holds all but UNACKED_CHARS of what was sent, so the shown thread's rows never sit behind more.
+ * Off until the window says `#parts`.
+ */
+export class AnswerParts {
+  private on = false
+  private readonly marked = new Set<string>()
+  private queue: { id: string; text: string; next: number; count: number; compress: boolean }[] = []
+  private sent = 0
+  private acked = 0
+  private closed = false
+
+  constructor(private readonly send: (text: string, compress: boolean) => void) {}
+
+  enable(): void {
+    this.on = true
+  }
+
+  /** A request whose answer may go in parts. */
+  mark(id: string, method: string): void {
+    if (this.on && PART_METHODS.has(method)) this.marked.add(id)
+  }
+
+  /** The window holds `chars` of the parts sent. */
+  ack(chars: number): void {
+    if (chars <= this.acked) return
+    this.acked = Math.min(chars, this.sent)
+    this.pump()
+  }
+
+  /** Takes a marked answer longer than a part and sends it in parts; false: send it as it is. */
+  take(id: string, text: string, compress: boolean): boolean {
+    if (!this.marked.delete(id) || this.closed || text.length <= PART_CHARS) return false
+    this.queue.push({ id, text, next: 0, count: Math.ceil(text.length / PART_CHARS), compress })
+    this.pump()
+    return true
+  }
+
+  /** Characters of parts sent that the window has not said it holds. */
+  get unacked(): number {
+    return this.sent - this.acked
+  }
+
+  /** Answers still waiting, whole or in part. */
+  get waiting(): number {
+    return this.queue.length
+  }
+
+  private pump(): void {
+    while (!this.closed && this.queue.length > 0 && this.sent - this.acked < UNACKED_CHARS) {
+      const answer = this.queue[0]!
+      const at = answer.next * PART_CHARS
+      const body = answer.text.slice(at, at + PART_CHARS)
+      this.send(partText(answer.id, answer.next, answer.count, body), answer.compress)
+      this.sent += body.length
+      if (++answer.next === answer.count) this.queue.shift()
+    }
+  }
+
+  dispose(): void {
+    this.closed = true
+    this.queue = []
+    this.marked.clear()
   }
 }
 

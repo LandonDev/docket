@@ -38,7 +38,7 @@ export const CONTRACT_VERSION = 1
  *  (createSteps.ts). `defaults.list`: every
  *  scope's thread defaults in one ask. The `rulesSync.*` features let a follower
  *  move its global Plans or Reviews settings to the box. */
-export const HOST_FEATURES = ['create.steps', 'create.draft', 'defaults.list', 'rulesSync.plans', 'rulesSync.review', 'remote.ticket'] as const
+export const HOST_FEATURES = ['create.steps', 'create.draft', 'defaults.list', 'rulesSync.plans', 'rulesSync.review', 'remote.ticket', 'answer.parts'] as const
 export type HostFeature = (typeof HOST_FEATURES)[number]
 
 /** Every contract method and the capability it needs. A new method without

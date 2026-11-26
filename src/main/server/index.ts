@@ -357,7 +357,8 @@ import {
   resolveBuildDir
 } from './build'
 import { closeAllLiveWatchers, onLiveEdit } from './livediff'
-import { carriesBytes, eventsWindowMs, frameJson, profileFor, PushCoalescer, SocketBudget, remoteDeflateOptions, sessionEvents, sessionPage } from './wire'
+import { AnswerParts, carriesBytes, eventsWindowMs, frameJson, profileFor, PushCoalescer, SocketBudget, remoteDeflateOptions, sessionEvents, sessionPage } from './wire'
+import { PARTS_HELLO, readAck } from '@shared/answerParts'
 import { FocusSet } from './focus'
 import { bulkKey, LaneGate, laneOf, type Lane } from './lane'
 import { ListChangeLog } from './listChanges'
@@ -2690,6 +2691,14 @@ export async function startServer(
     let socketClosed = false
     const dropped = new Set<string>()
     let socketBudget: SocketBudget | null = null
+    // A remote window's big content answers go in parts behind every other frame, once it asks (wire.ts AnswerParts).
+    const parts = new AnswerParts((text, compress) => {
+      if (ws.readyState !== ws.OPEN) return
+      if (compress) ws.send(text)
+      else ws.send(text, { compress: false })
+      socketBudget?.poll()
+    })
+    ws.once('close', () => parts.dispose())
     const sendFrame = (frame: ServerFrame): void => {
       if (ws.readyState !== ws.OPEN) return
       if ('id' in frame && dropped.delete(frame.id)) {
@@ -2709,7 +2718,9 @@ export async function startServer(
       if (!allowed) return
       // A file's bytes go with no deflate (wire.ts carriesBytes); every other frame as the socket was set up.
       const text = frameJson(allowed)
-      if (carriesBytes(allowed, text)) ws.send(text, { compress: false })
+      const bytes = carriesBytes(allowed, text)
+      if ('id' in allowed && parts.take(allowed.id, text, !bytes)) return
+      if (bytes) ws.send(text, { compress: false })
       else ws.send(text)
       if ('push' in allowed) {
         if (allowed.push === 'event') registry.stampSendRow(allowed.row)
@@ -2833,8 +2844,18 @@ export async function startServer(
     // Each request runs with a place for its handler's words on the stall log's lines (stalls.ts noteRequest).
     ws.on('message', (data) => withRequestNotes(async () => {
       let raw: unknown
+      const message = String(data)
+      // A window's word on its parts (src/shared/answerParts.ts): `#parts` turns them on, `#ack <chars>` paces them.
+      if (message.charCodeAt(0) === 35) {
+        if (message === PARTS_HELLO) parts.enable()
+        else {
+          const held = readAck(message)
+          if (held !== null) parts.ack(held)
+        }
+        return
+      }
       try {
-        raw = JSON.parse(String(data))
+        raw = JSON.parse(message)
       } catch {
         return
       }
@@ -2848,6 +2869,7 @@ export async function startServer(
       // Set in place: an intersection of the lane with every request's shape is more than the compiler will spell out.
       const req: ClientRequest = parsed.data
       if ((raw as { lane?: unknown }).lane === 'ui') (req as { lane?: 'ui' }).lane = 'ui'
+      parts.mark(req.id, req.method)
       if (dropAnswers.take(req.method)) dropped.add(req.id)
       if (failAnswers.take(req.method)) return sendFrame({ id: req.id, ok: false, error: FAILED_ANSWER })
       // TEMP_CODE_PEER_DELAY_MS (peerDelay.ts): a proof's slow box.
