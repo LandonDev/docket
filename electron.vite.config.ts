@@ -258,13 +258,11 @@ export default buildHeapHold(() => buildHosted()) ?? defineConfig({
         // `@server/shared/*` (the donor layout); they live in src/shared.
         '@server/shared': resolve('src/shared'),
         '@shared': resolve('src/shared'),
-        // The markdown parse worker (lib/markdown.worker.ts) runs micromark
-        // too; the package's browser build decodes entities through a DOM
-        // element, which a worker has no document for. The plain build
-        // works everywhere and costs its entity table.
-        'decode-named-character-reference': resolve(
-          'node_modules/decode-named-character-reference/index.js'
-        )
+        // micromark decodes `&amp;` through this package. Its browser build asks the document, which a
+        // worker has none of; its plain build carries a 30 kB table of names. Our own file asks the
+        // document in the window and takes the table from the parse worker (lib/markdown.worker.ts),
+        // so the first paint carries no table.
+        'decode-named-character-reference': resolve('src/renderer/src/lib/decodeNamed.ts')
       }
     },
     define: { 'import.meta.env.TEMP_CODE_PROFILE': JSON.stringify(profiling ? '1' : '') },

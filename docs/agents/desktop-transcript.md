@@ -79,8 +79,12 @@
   a request past 1.5 s parses that row alone on the main thread (the
   worker keeps serving the rest), a row that unmounts cancels its request,
   and the ready set is a 4,000-digest LRU tied to the hast cache. The renderer aliases
-  `decode-named-character-reference` to its plain build (the DOM build has
-  no document in a worker); keep that alias when touching the vite config.
+  `decode-named-character-reference` to our own `lib/decodeNamed.ts`: the
+  window decodes `&amp;` through the document, and the parse worker, which
+  has none, hands in the package's table of names (30 kB, in the worker's
+  file alone, no longer in the first paint); keep that alias when touching
+  the vite config, and hand the table in from any new worker that parses
+  markdown (it throws without one).
 - Opening a box thread is round trips (about 200 ms each from the Mac),
   not bytes: over a remote link a cold open is ONE request,
   `session.events { tail, subscribe: true }`, answered `subscribed: true`

@@ -7,9 +7,14 @@
  * after the cache evicted it) is a lookup. One `{ boot: true }` line on load
  * tells the client the worker is up.
  */
+import { characterEntities } from "character-entities";
+import { provideCharacterEntities } from "./decodeNamed";
 import { digestOf, parseMarkdownBlocks, type ParsedBlock } from "./markdownPipeline";
 import { createWorkerQueue, type WorkerMessage } from "./markdownWorkerQueue";
 import { RenderCache } from "./renderCache";
+
+// No document here: micromark's `&amp;` decoder reads this table (decodeNamed.ts).
+provideCharacterEntities(characterEntities);
 
 const done = new RenderCache<ParsedBlock[]>(4000, 6_000_000);
 
