@@ -2875,7 +2875,7 @@ export async function startServer(
       // Set in place: an intersection of the lane with every request's shape is more than the compiler will spell out.
       const req: ClientRequest = parsed.data
       if ((raw as { lane?: unknown }).lane === 'ui') (req as { lane?: 'ui' }).lane = 'ui'
-      parts.mark(req.id, req.method, (req.params as { sessionId?: unknown } | undefined)?.sessionId as string | undefined)
+      parts.mark(req.id, req.method, 'params' in req ? ((req.params as { sessionId?: unknown } | undefined)?.sessionId as string | undefined) : undefined)
       if (dropAnswers.take(req.method)) dropped.add(req.id)
       if (failAnswers.take(req.method)) return sendFrame({ id: req.id, ok: false, error: FAILED_ANSWER })
       // TEMP_CODE_PEER_DELAY_MS (peerDelay.ts): a proof's slow box.

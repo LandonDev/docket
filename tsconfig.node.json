@@ -7,7 +7,8 @@
     "baseUrl": ".",
     "rewriteRelativeImportExtensions": true,
     "paths": {
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": ["src/shared/*"],
+      "@server/shared/*": ["src/shared/*"]
     }
   }
 }
