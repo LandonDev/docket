@@ -313,8 +313,9 @@ Read the file a task touches before changing that subject.
   browser's carrier drives Forms (`CARRIER_ONLY_HOSTS`),
   `msform.make` and `msform.publish` are held, answers live in memory alone, Purdue's withhold.
   [docs/agents/work-msforms.md](docs/agents/work-msforms.md)
-- **Work's speed** — the budgets, `bun run perf` on a slowed, loaded pair (scripts/perf), the stall
-  report, a cache's rules. [docs/agents/work-perf.md](docs/agents/work-perf.md)
+- **Speed** — the budgets (D, H, G, L, P and Work's B), `bun run perf` on a slowed, loaded pair (scripts/perf),
+  the soak's scenes, the stamps, a cache's rules. [docs/agents/docket-perf.md](docs/agents/docket-perf.md),
+  [work-perf.md](docs/agents/work-perf.md)
 - **work-kit** — the private package shared with LifeOS, pinned as a devDependency at
   `git+https://www.github.com/LandonDev/work-kit.git#<sha>` (bun cannot fetch a private
   `github:` spec), kept out of the app by electron-builder; scripts/workKitPin.test.ts.

@@ -1,6 +1,6 @@
 # Work, made fast: the measuring kit, the budgets, the caches
 
-How Work's speed is measured in the owner's shape, what each thing he does may cost, and the rules every kept
+How Work's speed is measured in the owner's shape (the rest of the app: [docket-perf.md](docket-perf.md)), what each thing he does may cost, and the rules every kept
 answer follows. The pass that built this is `.temp-code/plans/landed/PERF-work.md`; its baseline is
 `.temp-code/plans/perf/BASELINE.md`.
 
