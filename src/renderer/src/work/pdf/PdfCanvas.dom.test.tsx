@@ -233,6 +233,19 @@ describe("the PDF kind", () => {
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Find" }));
   });
 
+  /** Polish 2 council round 1 (R1-C16, R1-C17): its presses were 20px, and Escape from one Tab reached left Find open. */
+  it("closes on Escape from a press Tab reached, giving the focus back; its presses are 24px", async () => {
+    await open(pdfView());
+    fireEvent.click(await screen.findByRole("button", { name: "Find" }));
+    const next = screen.getByRole("button", { name: "Next match" });
+    for (const name of ["Previous match", "Next match", "Close find"]) expect(screen.getByRole("button", { name }).className).not.toContain("size-5");
+    expect(next.closest("[data-slot=input-group]")!.className).toContain("h-7");
+    next.focus();
+    fireEvent.keyDown(next, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Find" })).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Find" }));
+  });
+
   it("gives the focus to the page when the narrow bar holds no Find to return to", async () => {
     await open(pdfView());
     fireEvent.click(await screen.findByRole("button", { name: "Find" }));

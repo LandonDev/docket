@@ -382,7 +382,8 @@ How it works:
   white page at a glance.
 - **The bar** is the pager ("6 / 14", following the scroll), the zoom,
   Find (also ⌘F or Ctrl+F while the PDF has the focus or the pointer; Enter
-  and Shift+Enter step, Escape closes) and Save a copy (`work.pdf.export`,
+  and Shift+Enter step, Escape anywhere in it closes, the field or a press Tab
+  reached; a 28px field with 24px presses) and Save a copy (`work.pdf.export`,
   flattened, saved where he chooses). Save a copy, from the bar or More,
   first waits for every field write still out (`fieldsWritten`), so the
   copy holds each tick he sees; a write the host refused makes no copy.

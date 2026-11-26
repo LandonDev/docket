@@ -399,24 +399,30 @@ function FindField({ nav, onClose }: { nav: PdfNav; onClose(): void }) {
   }, [nav, text]);
   const count = find.query.trim() ? (find.hits.length === 0 ? (find.searching ? "" : "None") : `${find.current + 1}/${find.hits.length}`) : "";
   return (
+    // 28px with 24px presses: each is a whole hit area. Escape from anywhere in it (the field or a press Tab reached) closes it.
     <InputGroup
       role="search"
-      className="h-6 w-[236px] shrink gap-0.5 rounded-md ps-2 pe-0.5 [&_svg:not([class*='size-'])]:size-3"
+      className="h-7 w-[236px] shrink gap-0.5 rounded-md ps-2 pe-0.5 [&_svg:not([class*='size-'])]:size-3"
+      onKeyDown={(event) => {
+        if (event.key !== "Escape" || event.defaultPrevented) return;
+        event.preventDefault();
+        onClose();
+      }}
       leading={<Search />}
       trailing={
         <>
           <Tip label="Previous match">
-            <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Previous match" disabled={find.hits.length === 0} onClick={() => nav.step(-1)}>
+            <Button variant="ghost" size="icon-xs" aria-label="Previous match" disabled={find.hits.length === 0} onClick={() => nav.step(-1)}>
               <ChevronUp />
             </Button>
           </Tip>
           <Tip label="Next match">
-            <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Next match" disabled={find.hits.length === 0} onClick={() => nav.step(1)}>
+            <Button variant="ghost" size="icon-xs" aria-label="Next match" disabled={find.hits.length === 0} onClick={() => nav.step(1)}>
               <ChevronDown />
             </Button>
           </Tip>
           <Tip label="Close find">
-            <Button variant="ghost" size="icon-xs" className="size-5" aria-label="Close find" onClick={onClose}>
+            <Button variant="ghost" size="icon-xs" aria-label="Close find" onClick={onClose}>
               <X />
             </Button>
           </Tip>
@@ -435,9 +441,6 @@ function FindField({ nav, onClose }: { nav: PdfNav; onClose(): void }) {
             // A new query searches; the same one steps to the next match.
             if (text.trim() !== find.query.trim()) nav.query(text);
             else nav.step(event.shiftKey ? -1 : 1);
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            onClose();
           }
         }}
         className="px-0.5 text-xs text-foreground"

@@ -42,6 +42,12 @@ const TRANSCRIBER_MISSING = /not installed on this host; run scripts\/work-tools
 /** Whether a host's error is the transcriber not set up there, so the line can offer the way to set it up (`TranscriberSetUp`). */
 export const transcriberMissing = (error: unknown): boolean => TRANSCRIBER_MISSING.test(refusalWords(error));
 
+/** An Office file whose bytes are not the zip it must be (fflate on a damaged .docx, .xlsx or .pptx). */
+const DAMAGED = /^(invalid zip data|invalid zip file|end of central directory record signature not found)\b/i;
+
+/** Whether an open failed on a damaged file, which reading the same bytes again cannot help: no Retry is offered (`OpenFailed`). */
+export const damagedFile = (error: unknown): boolean => DAMAGED.test(refusalWords(error).trim());
+
 const RULES: Rule[] = [
   // The fence and the capability door (remote/fence.ts, shared/capabilities.ts).
   [/^forbidden: \S+ is outside app-managed roots/i, (c) => `${c.Host} does not let this window reach that file where it lies. Open it from Files on the computer that holds it.`],
@@ -85,7 +91,7 @@ const RULES: Rule[] = [
   [/^(.+) is (\d+ MB); a job carried to another host takes at most (\d+ MB)/i, (_c, m) => `${m[1]} is ${m[2]}, more than the ${m[3]} another computer is sent to draw.`],
   [/came back is (\d+ MB); a job carried from another host takes at most (\d+ MB)|^a forwarded job takes at most (\d+ MB)/i, () => "What came back from the computer that drew it was too big to bring here."],
   // An Office file whose bytes are not the zip it must be (fflate on a damaged .docx, .xlsx or .pptx): never the unzipper's words.
-  [/^(invalid zip data|invalid zip file|end of central directory record signature not found)\b/i, () => "This file is damaged, or it is not the kind its name says."],
+  [DAMAGED, () => "This file is damaged, or it is not the kind its name says."],
   // pdf.js on bytes it cannot read (pdf/engine.ts): a file cut short or damaged, never the parser's own words.
   [/^(invalid pdf structure|missing pdf\b|unexpected server response)/i, () => "This PDF is damaged, or only part of it arrived. Open it again from Files."],
   [/not a name a preview is kept under|that item is not open|that preview is gone/i, () => "This preview is gone. Close it and open it again from the file's tab."],

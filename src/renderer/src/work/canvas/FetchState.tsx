@@ -6,7 +6,7 @@ import { Progress } from "../../components/ui/progress";
 import { Spinner } from "../../components/ui/spinner";
 import { registry } from "../../lib/connection/registry";
 import { hostName } from "../../lib/threadResources";
-import { workErrorWords } from "../../lib/workErrorWords";
+import { damagedFile, workErrorWords } from "../../lib/workErrorWords";
 import { DownEmpty, savedOfReason } from "../shell/DownEmpty";
 import { refreshLifeos } from "../shell/lifeos";
 import { useLiveDown } from "../shell/lifeosLive";
@@ -61,6 +61,8 @@ export function OpenFailed({
   instead?: { label: string; run(): void | Promise<unknown> } | undefined;
 }) {
   const said = useFailedWords(why);
+  // A damaged file reads the same bytes again and fails again: Retry is not offered for it, only `instead` where given.
+  const retry = why && damagedFile(why) ? undefined : onRetry;
   // Nothing comes to the kind's bar while this stands in the body's place: its hold lets go.
   useShutsBar();
   // An open the pane's host could not make because its LifeOS session is down (a LifeOS document or sheet, a mail's
@@ -87,14 +89,14 @@ export function OpenFailed({
         <EmptyTitle>{`Couldn't open this ${kindNoun(kind)}`}</EmptyTitle>
         {said ? <EmptyDescription>{said}</EmptyDescription> : null}
       </EmptyHeader>
-      {onRetry ? (
+      {retry ? (
         <Button
           size="sm"
           variant="secondary"
           disabled={retrying}
           onClick={() => {
             setRetrying(true);
-            void Promise.resolve(onRetry()).finally(() => setRetrying(false));
+            void Promise.resolve(retry()).finally(() => setRetrying(false));
           }}
         >
           <BusyLabel busy={retrying} label="Retry" />

@@ -45,6 +45,17 @@ describe("a failed open", () => {
     );
     expect(screen.getByText("Not connected")).toBeTruthy();
   });
+
+  /** Polish 2 council round 1 (R1-C14): a damaged file offered Retry, which read the same bytes and failed again. */
+  it("offers no Retry for a damaged file, only the press that can help where one is given", () => {
+    const { rerender } = render(<OpenFailed kind="document" why="invalid zip data" onRetry={() => undefined} />);
+    expect(screen.getByText("This file is damaged, or it is not the kind its name says.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    rerender(<OpenFailed kind="document" why="invalid zip data" onRetry={() => undefined} instead={{ label: "Show in Files", run: () => undefined }} />);
+    expect(screen.getByRole("button", { name: "Show in Files" })).toBeTruthy();
+    rerender(<OpenFailed kind="document" why="Not connected" onRetry={() => undefined} />);
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
 });
 
 describe("the state line's reason", () => {
