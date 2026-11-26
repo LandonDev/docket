@@ -121,9 +121,11 @@ describe("Settings → Add-ons", () => {
     // No secret's name, no builder's sentence, no thread named beside a key.
     expect(rowOf("github").textContent).not.toContain("GITHUB_TOKEN");
     expect(rowOf("github").textContent).not.toContain("written by");
-    expect(rowOf("mobbin").textContent).toContain("Not connected");
-    expect(rowOf("mobbin").textContent).not.toContain("socket hang up");
-    expect(rowOf("mobbin").textContent).toContain("Signed in");
+    // Not connected with its reason, and the stored sign-in as a fact, never a second live state.
+    expect(rowOf("mobbin").textContent).toContain("Not connectedSocket hang up");
+    expect(rowOf("mobbin").textContent).not.toContain("Disconnected");
+    expect(rowOf("mobbin").textContent).toContain("Sign-in saved");
+    expect(rowOf("mobbin").textContent).not.toContain("Signed in");
     expect(rowOf("mobbin").textContent).not.toContain("refreshed on");
     expect(rowOf("slack").textContent).toContain("Needs a key");
     expect(rowOf("slack").textContent).not.toContain("X-Api-Key");

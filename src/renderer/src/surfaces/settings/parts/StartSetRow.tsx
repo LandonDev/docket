@@ -25,28 +25,31 @@ export function startSetWords(scope: DefaultsScope, whose: "job" | "workspace", 
 /**
  * The page's New threads row (`job.threads`, `ws.threads`): the summary, and Change… opening the start set's dialog
  * (chrome/ThreadDefaultsDialog.tsx). A key that may not set it (`may`) reads the summary alone. While the set is read the
- * row waits in its shape; a failed read is the section's red line with Retry.
+ * row waits in its shape; a failed read is the section's red line with Retry. After Use New threads the store holds no
+ * guess until the place is read again (`saveDefaults`), so the row waits, or says that read's failure, and the dialog
+ * stays open meanwhile.
  */
 export function StartSetRow({ id, workspace, whose, may }: { id: "job.threads" | "ws.threads"; workspace: WorkspaceMeta; whose: "job" | "workspace"; may: boolean }) {
   const scope = useThreadDefaults(workspace.environmentId, workspace.id, true);
   const failure = useThreadDefaultsError(workspace.environmentId, workspace.id);
   const [open, setOpen] = useState(false);
-  if (!scope) {
-    if (failure) {
-      return <ReadFailure computer={workspace.environmentId} error={failure.error} retry={failure.retry} />;
-    }
-    return <PageRowsSkeleton rows={[{ description: true, control: may ? "button" : "none" }]} />;
-  }
+  const dialog = open ? <ThreadDefaultsDialog workspace={workspace} onClose={() => setOpen(false)} /> : null;
   return (
     <>
-      <SettingRow id={id} description={startSetWords(scope, whose, workspace.environmentId)}>
-        {may ? (
-          <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
-            Change…
-          </Button>
-        ) : null}
-      </SettingRow>
-      {open ? <ThreadDefaultsDialog workspace={workspace} onClose={() => setOpen(false)} /> : null}
+      {scope ? (
+        <SettingRow id={id} description={startSetWords(scope, whose, workspace.environmentId)}>
+          {may ? (
+            <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+              Change…
+            </Button>
+          ) : null}
+        </SettingRow>
+      ) : failure ? (
+        <ReadFailure computer={workspace.environmentId} error={failure.error} retry={failure.retry} />
+      ) : (
+        <PageRowsSkeleton rows={[{ description: true, control: may ? "button" : "none" }]} />
+      )}
+      {dialog}
     </>
   );
 }

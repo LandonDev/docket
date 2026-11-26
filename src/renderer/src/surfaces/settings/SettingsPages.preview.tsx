@@ -862,7 +862,7 @@ const PAGES: Record<
     description: <ComputerLine environmentId="env_box" />,
     environments: THREE_COMPUTERS,
     statuses: { env_box: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
-    answers: { "env_box:work.get": { enabled: true } },
+    answers: { "env_box:work.get": { enabled: true }, "env_box:workspace.list": JOBS.slice(0, 2), "env_box:project.list": [], "env_box:defaults.get": { defaults: { provider: "claude", model: "", reasoning: "high", permission: "edits" }, overridden: false } },
     body: () => <AsMac><BoxJobs><OtherComputerPage environmentId="env_box" /></BoxJobs></AsMac>,
   },
   "computer-box-offline": {
@@ -1274,7 +1274,7 @@ export const GUARDED_PAGES: Partial<Record<SettingPage, { previews: (keyof typeo
   publish: { previews: ["publish"] },
   winvm: { previews: ["winvm"] },
   // Set up from this Mac is the PC's; the box's version, the Work row and the rest are the box's.
-  "computer:*": { previews: ["computer-box", "computer-pc"] },
+  "computer:*": { previews: ["computer-box", "computer-box-jobs", "computer-pc"] },
   // What a computer may do on this Mac is its sheet's: drawn open by "sharing-may", held by MaySheet.dom.test.tsx.
   sharing: {
     previews: ["sharing"],
@@ -1297,9 +1297,9 @@ export const GUARDED_PAGES: Partial<Record<SettingPage, { previews: (keyof typeo
   connections: { previews: ["connections", "connections-loading", "connections-refused"] },
 };
 
-/** Two of the jobs listed as the box's own, as its link would list them. */
+/** The box's own link in the catalog, listing two jobs and answering each one's set. */
 function BoxJobs({ children }: { children: ReactNode }) {
-  useState(() => workspaceStore.hydrate([{ environmentId: "env_box", workspaces: JOBS.slice(0, 2), projects: [] }]));
+  useState(() => workspaceStore.attach(linkFor("env_box")));
   return <>{children}</>;
 }
 

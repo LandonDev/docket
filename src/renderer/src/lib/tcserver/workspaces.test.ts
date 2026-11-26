@@ -260,6 +260,25 @@ describe("thread defaults", () => {
     expect(workspaceStore.defaultsFor("local", "w2")?.provider).toBe("codex");
   });
 
+  it("a bulk read that answers a scope clears its failed refresh", async () => {
+    workspaceStore.attach(link);
+    await tick();
+    await tick();
+    await workspaceStore.loadDefaults("local", "w1");
+    const answer = link.request.bind(link);
+    link.request = () => Promise.reject(new Error("down"));
+    await workspaceStore.loadDefaults("local", "w1");
+    expect(workspaceStore.getSnapshot().defaultsStale.has(scopeKey("local", "w1"))).toBe(true);
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> => {
+      if (method !== "defaults.list") return answer(method, params);
+      const { workspaceIds } = params as { workspaceIds: string[] };
+      return Promise.resolve(Object.fromEntries(["", ...workspaceIds].map((id) => [id, { defaults: set(), overridden: false }])) as T);
+    }) as typeof link.request;
+    vi.spyOn(registry, "statusOf").mockReturnValue({ lastHello: { features: ["defaults.list"] } } as never);
+    await workspaceStore.refresh(link);
+    expect(workspaceStore.getSnapshot().defaultsStale.size).toBe(0);
+  });
+
   it("asks one defaults.get a scope of a host that does not name defaults.list, and of one whose list failed", async () => {
     vi.spyOn(registry, "statusOf").mockReturnValue({ lastHello: { features: [] } } as never);
     workspaceStore.attach(link);
@@ -321,6 +340,10 @@ describe("thread defaults", () => {
     await tick();
     await workspaceStore.saveDefaults("local", "w1", null);
     expect(link.of("defaults.set").at(-1)?.params).toEqual({ workspaceId: "w1", defaults: null });
+    // No guess from the cached global set: the place is absent until its computer says what it now follows.
+    expect(workspaceStore.defaultsAt("local", "w1")).toBeUndefined();
+    await tick();
+    await tick();
     expect(workspaceStore.defaultsAt("local", "w1")).toEqual({ defaults: set({ reasoning: "low" }), overridden: false });
     await workspaceStore.saveDefaults("local", null, null);
     expect(workspaceStore.defaultsAt("local", null)).toEqual({ defaults: set(), overridden: false });
@@ -335,12 +358,22 @@ describe("thread defaults", () => {
     expect(await workspaceStore.loadDefaults("local", "w1")).toEqual({ defaults: set(), overridden: false });
   });
 
-  it("a strict load rejects instead, for a caller that must not draw the copy it holds", async () => {
+  it("a cleared workspace whose read fails stays absent with its error, never a guessed set", async () => {
+    link.stored.set("w1", set({ provider: "codex" }));
     workspaceStore.attach(link);
     await tick();
     await tick();
-    link.request = () => Promise.reject(new Error("down"));
-    await expect(workspaceStore.loadDefaults("local", "w1", { strict: true })).rejects.toThrow("down");
+    const ask = link.request.bind(link);
+    link.request = (<T,>(method: string, params?: unknown): Promise<T> =>
+      method === "defaults.get" ? Promise.reject(new Error("down")) : ask<T>(method, params)) as typeof link.request;
+    await workspaceStore.saveDefaults("local", "w1", null);
+    await tick();
+    await tick();
+    expect(workspaceStore.defaultsAt("local", "w1")).toBeUndefined();
+    expect(workspaceStore.getSnapshot().defaultsErrors.get(scopeKey("local", "w1"))).toBe("down");
+    link.request = ask;
+    await workspaceStore.loadDefaults("local", "w1");
+    expect(workspaceStore.defaultsAt("local", "w1")?.overridden).toBe(false);
   });
 
   it("a failed first load stores no made-up set: the scope stays absent with its error until a retry answers", async () => {

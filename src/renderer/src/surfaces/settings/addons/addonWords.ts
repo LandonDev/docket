@@ -53,9 +53,11 @@ export function addonMark(row: AddonRow, status: AddonStatus | undefined, grant:
     case "ready":
       // The host's own words when it cut the list ("12 of 300 tools listed").
       return { state: "done", word: "Connected", detail: status.detail || tools(status.tools) };
-    case "failed":
-      // The server's own reason is a builder's sentence ("Disconnected: …"): the row says the state in the house's words.
-      return { state: "failed", word: "Not connected" };
+    case "failed": {
+      // The state in the house's words, then the server's reason without its builder's lead ("Disconnected: …").
+      const why = failedReason(status.detail);
+      return why ? { state: "failed", word: "Not connected", detail: why } : { state: "failed", word: "Not connected" };
+    }
     case "needs-grant":
       // Which values are missing is the key dialog's to show; the row names no secret.
       return { state: "waiting", word: needsSignIn(row.spec, grant) ? "Sign in needed" : "Needs a key" };
@@ -64,13 +66,25 @@ export function addonMark(row: AddonRow, status: AddonStatus | undefined, grant:
   }
 }
 
-/** The grant's facts: "key saved" once a value is, "signed in". No secret's name: those are the key dialog's. Nothing
- *  for an add-on with no grant, nothing saved, or grants unread. */
+/** A failed add-on's reason, short: the host's first line without the lead it puts before the cause ("Disconnected:",
+ *  "Exited (code 3):"), starting with a capital; null when it gave none. */
+export function failedReason(detail: string | undefined): string | null {
+  const line = detail?.split("\n")[0]?.trim();
+  if (!line) return null;
+  const cause = line.replace(/^(?:[A-Z][a-z]+(?: \(code -?\d+\))?: )+/, "").trim();
+  if (!cause) return null;
+  const cut = cause.length > 80 ? `${cause.slice(0, 79).trimEnd()}…` : cause;
+  return cut.charAt(0).toUpperCase() + cut.slice(1);
+}
+
+/** The grant's facts: "key saved" once a value is, "sign-in saved" for a stored sign-in (what the host keeps, never
+ *  whether it works now: that is the mark's, so "Not connected" never stands beside a live-sounding "Signed in"). No
+ *  secret's name: those are the key dialog's. Nothing for an add-on with no grant, nothing saved, or grants unread. */
 export function grantFact(spec: AddonSpec, grant: GrantKnown): string[] {
   if (spec.auth === "none" || !grant) return [];
   const out: string[] = [];
   if (grant.fields.some((f) => f.set)) out.push("key saved");
-  if (grant.oauth?.signedIn) out.push("signed in");
+  if (grant.oauth?.signedIn) out.push("sign-in saved");
   return out;
 }
 

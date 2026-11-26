@@ -24,6 +24,7 @@ const state = vi.hoisted(() => ({
   inheritedOut: false,
   inheritedFails: false,
   keeper: false,
+  absent: false,
   links: null as { id: string; name: string }[] | null,
   inheritedReads: 0,
   plansFailed: false,
@@ -92,7 +93,7 @@ const defaultsOf = () => ({ provider: "claude", model: "", reasoning: "medium", 
 vi.mock("../../lib/tcserver/workspaces", () => ({
   scopeKey: (env: string, id: string) => `${env}:${id}`,
   useThreadDefaults: (_env: string, id: string | null) =>
-    state.failed ? undefined : { defaults: defaultsOf(), overridden: id === null ? state.overridden : state.overriding.has(id), home: state.home },
+    state.failed || (state.absent && id !== null) ? undefined : { defaults: defaultsOf(), overridden: id === null ? state.overridden : state.overriding.has(id), home: state.home },
   useThreadDefaultsError: () => (state.failed ? { error: "The computer did not answer", retry: state.retry } : null),
   useWorkspaceCatalog: () => ({
     workspaces: state.workspaces,
@@ -112,6 +113,7 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
 const { ThreadDefaultsPage } = await import("./ThreadDefaults");
 const { ThreadDefaultsDialog, ThreadDefaultsEditor } = await import("../../chrome/ThreadDefaultsDialog");
 const { usePageHome, resetPageHomesForTests } = await import("../../lib/settings/pageHome");
+const { StartSetRow } = await import("./parts/StartSetRow");
 
 const flush = () => act(async () => {});
 async function pick(field: string, option: string) {
@@ -150,6 +152,7 @@ beforeEach(() => {
   state.inheritedOut = false;
   state.inheritedFails = false;
   state.keeper = false;
+  state.absent = false;
   state.links = null;
   state.load.mockReset();
   state.load.mockImplementation(async () => {});
@@ -312,6 +315,28 @@ describe("Different in N places", () => {
     expect(state.save).toHaveBeenCalledWith("local", "w2", null);
   });
 
+  it("stays open while a place it cleared is read again, the row holding no summary", async () => {
+    state.workspaces = [{ id: "w1", name: "Purdue Esports", environmentId: "local" }];
+    state.overriding = new Set(["w1"]);
+    state.save.mockImplementation(async () => {
+      state.waiting = ["w1"];
+      state.absent = true;
+    });
+    const view = render(<ThreadDefaultsPage />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Different in 1 place" }));
+    });
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    view.rerender(<ThreadDefaultsPage />);
+    const open = screen.getByRole("dialog");
+    expect(open.textContent).toContain("Purdue Esports");
+    expect(open.textContent).not.toContain("Claude");
+  });
+
   it("holds its shape while a place's set is still out, and gives no count", () => {
     state.workspaces = [
       { id: "w1", name: "Purdue Esports", environmentId: "local" },
@@ -388,39 +413,71 @@ describe("Use New threads", () => {
     expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Give Alpha Full access" }));
   });
 
-  it("reads the place again once its set is cleared, so its summary is the set that came back", async () => {
+  it("holds no guess once a place is cleared: its rows wait while the store reads it again, the dialog open", async () => {
     state.overriding = new Set(["w1"]);
-    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    // The store drops the place's entry at the clear and reads it again (workspaces.ts `saveDefaults`).
+    state.save.mockImplementation(async () => {
+      state.absent = true;
+    });
+    const view = render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
     const dialog = await screen.findByRole("dialog");
     await act(async () => {});
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
     });
     expect(state.save).toHaveBeenCalledWith("local", "w1", null);
-    expect(state.load).toHaveBeenCalledWith("local", "w1", { strict: true });
+    view.rerender(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(within(screen.getByRole("dialog")).queryByRole("combobox")).toBeNull();
+    expect(screen.getByRole("dialog").textContent).not.toContain("Same as New threads");
   });
 
   it("says a failed read after the clear, with Retry, in place of a set guessed from the old copy", async () => {
     state.overriding = new Set(["w1"]);
-    state.load.mockImplementation(async () => {
-      throw new Error("The computer did not answer");
+    state.save.mockImplementation(async () => {
+      state.failed = true;
     });
-    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const view = render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
     const dialog = await screen.findByRole("dialog");
     await act(async () => {});
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
     });
-    expect(state.save).toHaveBeenCalledWith("local", "w1", null);
+    view.rerender(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
     expect(within(dialog).getByRole("alert").textContent).toBe("This Mac did not answer.");
     expect(within(dialog).queryByRole("combobox")).toBeNull();
-    state.load.mockImplementation(async () => {});
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
     });
-    expect(state.load).toHaveBeenCalledTimes(2);
-    expect(within(dialog).queryByRole("alert")).toBeNull();
-    expect(within(dialog).getByRole("combobox", { name: "Model" })).toBeTruthy();
+    expect(state.retry).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a job's page row saying the failed read after the dialog closes, and the dialog open while it reads", async () => {
+    state.overriding = new Set(["w1"]);
+    state.save.mockImplementation(async () => {
+      state.failed = true;
+    });
+    const row = () => <StartSetRow id="job.threads" workspace={ALPHA} whose="job" may />;
+    const view = render(row());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    });
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    view.rerender(row());
+    // The open dialog stays, now saying the failure.
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Done" }));
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // The page's row says the failure with Retry, never "Same as New threads" with a guessed set.
+    expect(document.body.textContent).toContain("This Mac did not answer.");
+    expect(document.body.textContent).not.toContain("Same as New threads");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
   });
 
   it.each([
@@ -541,6 +598,7 @@ describe("A place's own set: the dialog", () => {
     state.overriding = new Set(["w1"]);
     render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
     const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
     const start = dialog.querySelector('[data-slot="dialog-footer"] [data-footer-start]') as HTMLElement;
     await act(async () => {
       fireEvent.click(within(start).getByRole("button", { name: "Use New threads" }));

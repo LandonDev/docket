@@ -41,8 +41,10 @@ describe("addonMark", () => {
     expect(addonMark(row(), status("ready", { tools: 1 }), null)).toEqual({ state: "done", word: "Connected", detail: "1 tool" });
     expect(addonMark(row(), status("ready", { tools: 24 }), null)).toEqual({ state: "done", word: "Connected", detail: "24 tools" });
     expect(addonMark(row(), status("ready", { tools: 12, detail: "12 of 300 tools listed" }), null).detail).toBe("12 of 300 tools listed");
-    // The server's reason is a builder's sentence: the row says the state alone.
-    expect(addonMark(row(), status("failed", { detail: "Exited (code 3): no such file" }), null)).toEqual({ state: "failed", word: "Not connected" });
+    // The server's reason, without its builder's lead.
+    expect(addonMark(row(), status("failed", { detail: "Exited (code 3): no such file" }), null)).toEqual({ state: "failed", word: "Not connected", detail: "No such file" });
+    expect(addonMark(row(), status("failed", { detail: "Disconnected: the server closed the stream" }), null).detail).toBe("The server closed the stream");
+    expect(addonMark(row(), status("failed"), null)).toEqual({ state: "failed", word: "Not connected" });
     expect(addonMark(row({ spec: { ...stdio, platforms: ["darwin"] } }), status("other-platform"), null)).toEqual({ state: "idle", word: "Mac only" });
     expect(addonMark(row({ spec: { ...stdio, platforms: ["linux"] } }), status("other-platform"), null)).toEqual({ state: "idle", word: "Linux only" });
   });
@@ -73,9 +75,9 @@ describe("grantFact", () => {
     expect(grantFact(stdio, grant({ fields: [{ name: "GITHUB_TOKEN", set: false }] }))).toEqual([]);
   });
 
-  it("says signed in, and no more", () => {
-    expect(grantFact(http, grant({ oauth: { signedIn: true, expiresAt: null, refreshedBy: null, refused: false } }))).toEqual(["signed in"]);
-    expect(grantFact(http, grant({ oauth: { signedIn: true, expiresAt: null, refreshedBy: "The box", refused: false } }))).toEqual(["signed in"]);
+  it("says a stored sign-in is saved, never that it is live, and no more", () => {
+    expect(grantFact(http, grant({ oauth: { signedIn: true, expiresAt: null, refreshedBy: null, refused: false } }))).toEqual(["sign-in saved"]);
+    expect(grantFact(http, grant({ oauth: { signedIn: true, expiresAt: null, refreshedBy: "The box", refused: false } }))).toEqual(["sign-in saved"]);
   });
 });
 

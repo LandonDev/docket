@@ -308,7 +308,9 @@ class WorkspaceStore {
       if (raw === undefined) missing.push(id);
       else {
         next.set(scopeKey(environmentId, id), parseDefaultsScope(raw));
+        // An answer clears what an earlier read failed with, a first read's or a refresh's.
         this.setDefaultsError(scopeKey(environmentId, id), null);
+        this.setDefaultsError(scopeKey(environmentId, id), null, "defaultsStale");
       }
     }
     this.setDefaults(next);
@@ -348,9 +350,8 @@ class WorkspaceStore {
    *  or no answer past LOAD_DEADLINE_MS) never stores a made-up set: the
    *  scope stays absent with its error for the page to show with Retry, the
    *  caller gets what was there before (else the built-in set), and a late
-   *  answer still lands. With `strict` a failure rejects instead, for a caller
-   *  that must not draw the copy it holds (a place just cleared). */
-  async loadDefaults(environmentId: string, workspaceId: string | null, { strict = false }: { strict?: boolean } = {}): Promise<DefaultsScope> {
+   *  answer still lands. */
+  async loadDefaults(environmentId: string, workspaceId: string | null): Promise<DefaultsScope> {
     const link = this.linkOf(environmentId);
     if (!link) return BUILT_IN_SCOPE;
     const key = scopeKey(environmentId, workspaceId);
@@ -365,7 +366,6 @@ class WorkspaceStore {
         return scope;
       });
     return withDeadline(read).catch((err: unknown) => {
-      if (strict) throw err;
       const had = this.state.defaults.get(key);
       const why = err instanceof Error ? err.message : String(err);
       // A failed refresh over a held answer keeps the answer and is kept apart, for a page that says both.
@@ -384,7 +384,10 @@ class WorkspaceStore {
 
   /** Store a set at the scope, or null to clear it: a workspace falls back
    *  to the global set, the global set to the built-in one. A global change
-   *  reaches every workspace without an override of its own. */
+   *  reaches every workspace without an override of its own. A cleared
+   *  workspace is not guessed at: its entry goes until the computer says
+   *  what it now follows, read at once, and a failed read leaves it absent
+   *  with its error, so every summary of it says so with Retry. */
   async saveDefaults(
     environmentId: string,
     workspaceId: string | null,
@@ -400,13 +403,18 @@ class WorkspaceStore {
       const home = this.state.defaults.get(key)?.home;
       return home ? { home } : {};
     };
+    if (workspaceId && !defaults) {
+      const key = scopeKey(environmentId, workspaceId);
+      const kept = new Map(this.state.defaults);
+      kept.delete(key);
+      this.set({ ...this.state, defaults: kept });
+      this.setDefaultsError(key, null, "defaultsStale");
+      void this.loadDefaults(environmentId, workspaceId);
+      return;
+    }
     if (workspaceId) {
       const key = scopeKey(environmentId, workspaceId);
-      const inherited = this.state.defaults.get(globalKey)?.defaults ?? BUILT_IN_SCOPE.defaults;
-      next.set(
-        key,
-        defaults ? { defaults, overridden: true, ...homeOf(key) } : { defaults: inherited, overridden: false, ...homeOf(key) },
-      );
+      next.set(key, { defaults: defaults!, overridden: true, ...homeOf(key) });
     } else {
       const global = defaults ? { defaults, overridden: true } : BUILT_IN_SCOPE;
       next.set(globalKey, { ...global, ...homeOf(globalKey) });

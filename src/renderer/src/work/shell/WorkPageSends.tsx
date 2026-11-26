@@ -32,7 +32,7 @@ import { loadHost, removeGrant, useOutbox, useOutboxPage, type HostGrant } from 
  */
 
 /** How a grant is made, said in the sheet and in its empty state alike. */
-export const GRANTS_MADE = "A grant is made from a held mail's More ways to send.";
+export const GRANTS_MADE = "A grant is made from a held item's More ways to send.";
 
 /** "6 across 3 jobs", "2 for Purdue Esports", "None". */
 export function grantsWords(grants: readonly Pick<HostGrant, "environmentId" | "workspaceId">[], jobName: (workspaceId: string) => string): string {

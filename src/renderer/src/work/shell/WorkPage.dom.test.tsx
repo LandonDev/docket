@@ -91,4 +91,16 @@ describe("Access for each job's new threads", () => {
     expect(document.querySelector('[data-job="j1"]')!.textContent).toBe("Cosmic on the box");
     expect(document.querySelector('[data-job="j3"]')!.textContent).toBe("Purdue Esports on PURDUE-LT");
   });
+
+  it("draws one computer's jobs alone on that computer's page, each a way into its New threads", () => {
+    store.defaults.set("env_box:j1", { defaults: { permission: "edits" } });
+    store.defaults.set("env_box:j2", { defaults: { permission: "edits" } });
+    store.defaults.set("env_pc:j3", { defaults: { permission: "auto" } });
+    render(<JobsAccess computer="env_pc" />);
+    expect([...document.querySelectorAll("[data-job]")].map((row) => row.getAttribute("data-job"))).toEqual(["j3"]);
+    expect(document.querySelector('section[data-setting="pc.jobs"]')).toBeTruthy();
+    // One computer's page: its jobs need no computer named, and its one level is said once.
+    expect(document.querySelector('[data-job="j3"]')!.textContent).toBe("Purdue Esports");
+    expect(screen.getByRole("button", { name: "New threads in Purdue Esports" })).toBeTruthy();
+  });
 });

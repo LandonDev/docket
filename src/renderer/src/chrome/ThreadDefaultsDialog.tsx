@@ -252,9 +252,7 @@ function WorkspaceSet({ environmentId, workspaceId }: { environmentId: string; w
         ) : null
       }
     >
-      {reset.after?.failure ? (
-        <ReadFailure computer={environmentId} error={reset.after.failure.error} retry={reset.after.failure.retry} />
-      ) : set.value && !reset.after ? (
+      {set.value ? (
         <DefaultsRows set={set} environmentId={environmentId} startOn={false} layout="page" />
       ) : set.failure ? (
         <ReadFailure computer={environmentId} error={set.failure.error} retry={set.failure.retry} />
@@ -298,25 +296,31 @@ function DifferentPlaces() {
       void workspaceStore.loadDefaults(w.environmentId, w.id);
     }
   });
-  // Still reading: the row's shape, never a count it does not have.
-  if (waiting) return <PageRowsSkeleton rows={[{ description: true, control: "none" }]} />;
   const n = failed.length ? `at least ${own.length}` : own.length;
   const line = [own.length ? own.map((w) => w.name).join(", ") : null, failed.length ? `Not heard from ${failed.map((w) => w.name).join(", ")}` : null].filter(Boolean).join(". ");
   return (
     <>
-      {failed.map((w) => (
-        <ReadFailure key={keyOf(w)} computer={w.environmentId} error={defaultsErrors.get(keyOf(w)) ?? ""} retry={() => workspaceStore.loadDefaults(w.environmentId, w.id)} />
-      ))}
-      {own.length || failed.length ? (
-        <SettingRow
-          id="defaults.different"
-          vars={{ n }}
-          description={line}
-          onOpen={own.length ? () => setOpen(true) : undefined}
-          openLabel={own.length ? settingTitle("defaults.different", { n }) : undefined}
-        />
-      ) : null}
-      {/* The dialog keeps the places it opened with, so one he sets back stays in the list, saying so. */}
+      {waiting ? (
+        // Still reading: the row's shape, never a count it does not have.
+        <PageRowsSkeleton rows={[{ description: true, control: "none" }]} />
+      ) : (
+        <>
+          {failed.map((w) => (
+            <ReadFailure key={keyOf(w)} computer={w.environmentId} error={defaultsErrors.get(keyOf(w)) ?? ""} retry={() => workspaceStore.loadDefaults(w.environmentId, w.id)} />
+          ))}
+          {own.length || failed.length ? (
+            <SettingRow
+              id="defaults.different"
+              vars={{ n }}
+              description={line}
+              onOpen={own.length ? () => setOpen(true) : undefined}
+              openLabel={own.length ? settingTitle("defaults.different", { n }) : undefined}
+            />
+          ) : null}
+        </>
+      )}
+      {/* The dialog keeps the places it opened with, so one he sets back stays in the list, saying so, and it stays
+          open, in one place in the tree, while that place is read again. */}
       {open ? <DifferentPlacesDialog places={own} onClose={() => setOpen(false)} /> : null}
     </>
   );
@@ -329,7 +333,7 @@ function DifferentPlacesDialog({ places, onClose }: { places: readonly Workspace
     <Modal title="Different from New threads" size="sm" onClose={onClose}>
       {/* The dialog's own failures, said in it under its title, so a Retry is never behind it. */}
       <FailuresSaidOnce head={false}>
-        <ModalBody className="gap-0">
+        <ModalBody className="@container/places gap-0">
           <FailureLinesHere />
           {shown.map((place) => (
             <OwnSetRow key={`${place.environmentId}|${place.id}`} place={place} />
@@ -341,18 +345,23 @@ function DifferentPlacesDialog({ places, onClose }: { places: readonly Workspace
   );
 }
 
+/** Under 22rem of dialog the row wraps: the words take the whole line and the press goes under them. */
+const PLACE_ROW = "@max-[22rem]/places:flex-wrap @max-[22rem]/places:[&>[data-slot=item-content]]:basis-full";
+
 function OwnSetRow({ place }: { place: WorkspaceMeta }) {
   const scope = useThreadDefaults(place.environmentId, place.id);
+  const failure = useThreadDefaultsError(place.environmentId, place.id);
   const saved = useSaved();
   const { blocked } = homeNote(scope?.home);
   const own = scope?.overridden === true;
   const reset = useUseNewThreads(place);
   // Once cleared, the place says only what its computer answered: nothing while it reads, its failure with Retry.
-  const words = reset.after || !scope ? undefined : own ? summary(scope.defaults, place.environmentId) : "Same as New threads";
+  const words = !scope ? undefined : own ? summary(scope.defaults, place.environmentId) : "Same as New threads";
   return (
-    // A page row, so the set's words wrap whole at any width ("Full access" is never cut), and the press sits beside.
-    <PageRow title={place.name} description={words} error={saved.error ?? undefined}>
-      {reset.after?.failure ? <ReadFailure computer={place.environmentId} error={reset.after.failure.error} retry={reset.after.failure.retry} /> : null}
+    // A page row, so the set's words wrap whole at any width ("Full access" is never cut). The press sits beside, or
+    // under the words in a narrow dialog, so a place's name and set keep their lines.
+    <PageRow title={place.name} description={words} error={saved.error ?? undefined} className={PLACE_ROW}>
+      {failure ? <ReadFailure computer={place.environmentId} error={failure.error} retry={failure.retry} /> : null}
       <SaveMark state={saved.state} />
       {own && reset.may ? <UseNewThreadsPress reset={reset} saved={saved} disabled={blocked} variant="outline" /> : null}
     </PageRow>
@@ -385,16 +394,15 @@ const failureOf = (err: unknown): string => (err instanceof Error ? err.message 
  * only on a current answer. It reads the set the place would follow afresh as it opens (never a cached one: `inherited`
  * stays null until that read answers, `failure` says it could not, with Retry), reads it again at the press, and asks
  * first whenever that answer starts threads with Full access, naming the Access the place has today. A keeper it
- * cannot match to one linked computer leaves the answer unknown, so it asks first then too. After the clear the place
- * is read again; `after` holds that read while it is out, and its failure (with Retry) in place of any guessed set.
+ * cannot match to one linked computer leaves the answer unknown, so it asks first then too. After the clear the store
+ * reads the place again and holds no guess meanwhile (`saveDefaults`): every summary of it waits, then says the set
+ * that came back, or the read's failure with Retry.
  */
 export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentId" | "name">) {
   const may = useLinkMay(place.environmentId, "defaults.set", { workspaceId: place.id, defaults: null });
   const [fresh, setFresh] = useState<{ read: InheritedRead | null; error: string | null }>({ read: null, error: null });
   const [attempt, setAttempt] = useState(0);
-  const [after, setAfter] = useState<{ error: string | null } | null>(null);
   const environmentId = place.environmentId;
-  const placeId = place.id;
   const read = useCallback(async (): Promise<InheritedRead> => {
     const ask = (id: string) => withDeadline(readWhenOpen<unknown>(registry.linkOf(id), "defaults.get", { workspaceId: null })).then(parseDefaultsScope);
     const here = await ask(environmentId);
@@ -418,16 +426,6 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
       live = false;
     };
   }, [read, attempt]);
-  // The place's own set once cleared, read again; a failure keeps the copy this window holds off the page.
-  const reread = useCallback(async () => {
-    setAfter({ error: null });
-    try {
-      await workspaceStore.loadDefaults(environmentId, placeId, { strict: true });
-      setAfter(null);
-    } catch (err) {
-      setAfter({ error: failureOf(err) });
-    }
-  }, [environmentId, placeId]);
   const run = async (saved: Saved): Promise<boolean> => {
     // The answer in hand at the press: asked again, so a change made meanwhile cannot skip the Full access check.
     let now: InheritedRead;
@@ -457,16 +455,12 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
       });
       if (!ok) return false;
     }
-    const cleared = await saved.run(() => workspaceStore.saveDefaults(place.environmentId, place.id, null));
-    // The place's set is the one that came back, not this window's guess at what it inherits.
-    if (cleared) await reread();
-    return cleared;
+    return saved.run(() => workspaceStore.saveDefaults(place.environmentId, place.id, null));
   };
   return {
     may,
     inherited: fresh.read?.scope ?? null,
     failure: fresh.error === null ? null : { error: fresh.error, retry: () => setAttempt((n) => n + 1) },
-    after: after ? { pending: after.error === null, failure: after.error === null ? null : { error: after.error, retry: () => void reread() } } : null,
     environmentId,
     run,
   };
@@ -489,9 +483,7 @@ export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: Worksp
         <FailureLinesHere />
         {/* Who can change the set is said first, above its rows. */}
         {set.value && !set.may ? <ManagedLine computer={set.scope?.home?.name ?? computer.name} /> : null}
-        {reset.after?.failure ? (
-          <ReadFailure computer={workspace.environmentId} error={reset.after.failure.error} retry={reset.after.failure.retry} />
-        ) : set.value && !reset.after ? (
+        {set.value ? (
           <DefaultsRows set={set} environmentId={workspace.environmentId} startOn={false} layout="dialog" />
         ) : set.failure ? (
           <ReadFailure computer={workspace.environmentId} error={set.failure.error} retry={set.failure.retry} />

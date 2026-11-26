@@ -7,6 +7,7 @@ import { NO_ANSWER } from "../../../lib/connection/openRead";
 import { GIVEN_KEY, READ_KEY, resetTestKey, testKey } from "../../../lib/linkMay.testkit";
 import { TURN_ON, WinvmHost, WinvmPage, WinvmWorkspaceRow, pointsOf, stateOf, winvmRow } from "./Winvm";
 import { tellSettingsList } from "../../../lib/settings/useListWindow";
+import { resetUpgradesForTests, upgradeWorked } from "./winvmUpgrade";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 
 vi.mock("../../../lib/linkMay", async (original) => (await import("../../../lib/linkMay.testkit")).linkMayMock(await original()));
@@ -60,6 +61,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  resetUpgradesForTests();
   vi.restoreAllMocks();
   resetTestKey();
 });
@@ -524,6 +526,48 @@ describe("Screen size and picture quality", () => {
     ]);
     expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1280 × 800");
     expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).toContain("The box did not fit the Windows VM to your window.");
+  });
+
+  it("keeps watching an upgrade after the page closes: a late failure puts the size back, and the page opened again says so", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Screen size", "Fits my window");
+    await flush();
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "setting-up", step: "Restarting Windows", display: vga }) })));
+    // He leaves Settings mid-upgrade.
+    cleanup();
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", error: "Windows did not start with the new display.", display: vga }) })));
+    await flush();
+    expect(h.calls.filter((c) => c.method === "work.winvm.settings" && (c.params as { screen?: string }).screen)).toEqual([
+      { method: "work.winvm.settings", params: { screen: "fit" } },
+      { method: "work.winvm.settings", params: { screen: "1280x800" } },
+    ]);
+    h.screen = "1280x800";
+    render(<WinvmHost env="box" />);
+    await flush();
+    expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1280 × 800");
+    expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).toContain("The box did not fit the Windows VM to your window.");
+  });
+
+  it("a page opened mid-upgrade shows Screen size still saving", async () => {
+    h.state = at({ state: "awake", display: vga });
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Screen size", "Fits my window");
+    await flush();
+    cleanup();
+    render(<WinvmHost env="box" />);
+    await flush();
+    expect(document.querySelector("[data-setting='winvm.screen'] [data-slot=save-mark]")?.getAttribute("data-state")).toBe("slow");
+  });
+
+  it("calls an upgrade done only from an end that says so, never from the display alone", () => {
+    expect(upgradeWorked(at({ state: "awake", display: virtio }))).toBe(true);
+    expect(upgradeWorked(at({ state: "awake", error: "Live resize did not start.", display: virtio }))).toBe(false);
+    expect(upgradeWorked(at({ state: "asleep", display: virtio }))).toBe(false);
+    expect(upgradeWorked(at({ state: "awake", display: vga }))).toBe(false);
   });
 
   it("a key that is not an admin's reads when it sleeps as words and is offered no screen size", async () => {

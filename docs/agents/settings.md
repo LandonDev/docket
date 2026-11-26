@@ -228,8 +228,9 @@ through `useSaved`.
   Retry under them, also when a read again fails over values already shown. Each select has its save mark (`useSaved`);
   a refused change goes back to the value last confirmed, its reason on its own row (a refused press's on the Windows
   row), and a read again does not clear it. Fits my window on a machine without live resize stays saving until the
-  machine's state says how the upgrade ended: Saved once live resize is on; refused, or ended on the old display, the
-  size that stood is written back with the reason on Screen size's row. Its sign-ins and its
+  machine's state says how the upgrade ended, watched by a store that outlives the page (`computers/winvmUpgrade.ts`):
+  Saved only when that end is awake, with no error, on the live-resize display; refused, or any other end, the size
+  that stood is written back, and Screen size's row says so, also on a page opened again later. Its sign-ins and its
   edition's end are Connections' rows alone. The Work page no longer has it.
 
 The preview (`SettingsPages.preview.tsx`) answers per computer: `<environment id>:<method>` answers first, a fixture
@@ -263,8 +264,11 @@ the set the computer last confirmed on a refusal.
   it would bring (a button-shaped bone, else that computer's failure with Retry), and asks first whenever that set is
   Full access. It asks the computer that keeps the set (the `home` a follower names), matched by name to exactly one
   linked computer (`homeEnvironmentId`); a keeper it cannot match (renamed, never linked, two of one name) leaves the
-  set unknown, so it asks first then too. After the clear it reads the place again (`loadDefaults` with `strict`); if
-  that read fails, the place shows its computer's failure with Retry, never a set guessed from the old copy. A key that
+  set unknown, so it asks first then too. After the clear the store drops the place's entry, guessing nothing from a
+  cached global set or Docket's defaults, and reads it again (`saveDefaults`). Every summary of the place (its dialog,
+  the places list, `parts/StartSetRow.tsx` on a job's and a workspace's page) waits, then shows the set that came back
+  or the read's failure with Retry, also after the dialog closes. An open dialog stays open meanwhile. In a dialog
+  narrower than 22rem, a place's row puts Use New threads under its name and set. A key that
   may only read sees each value in words (`ValueWords`, the size and tone Away and Digest use) and one `ManagedLine`
   first, above the first section, as on Reviews and Subagents. "Different in N places" holds its shape while places are read and, when a computer did not answer, says
   "at least N" and names the places not heard from. Builds from plans: Start the build when a plan is done, Archive
@@ -307,8 +311,9 @@ the set the computer last confirmed on a refusal.
   Skills"). One list each, a find field past eight rows (`ListFilter`); the dialogs say the glossary's words (Connects
   by, Secret names, Request header names, Name for the sign-in token, Computers; Agent apps on a skill) and "Where"
   names the store ("Every workspace, on the box"); Sign out… and the key dialog's Clear all… ask first. A row says its
-  state in the house's words ("Connected", "Not connected", "Needs a key", "Sign in needed"), "key saved" or "signed
-  in", never a secret's or a header's name; a row for every workspace says no scope (a workspace's own row names it);
+  state in the house's words ("Connected", "Not connected" with the host's reason minus its lead, `failedReason`,
+  "Needs a key", "Sign in needed"), then "key saved" or "sign-in saved" (what the host holds, never a second live
+  state), never a secret's or a header's name; a row for every workspace says no scope (a workspace's own row names it);
   Off is the switch's to say. A skill's description takes two lines before it is cut. A key that
   may not write (`addons.set`, `skills.set` need admin) sees the list with no switch, ⋯ or verb and one `ManagedLine`.
   Search finds an add-on or a skill by name (`addonNames`, `skillNames` in each page's store hook, `searchNames` in
@@ -316,7 +321,8 @@ the set the computer last confirmed on a refusal.
 - **Sync** (`sync`, `computers/SyncPage.tsx`, desktop only, shown with two or more computers): the line under the
   title names the computers this Mac keeps the same (`SyncLine`, drawn by SettingsView, a bone in its place while it
   reads); Agent settings (turning it on asks first, naming each computer that receives them) and Agents' memory (its
-  own read: bones while out, its failure on its row with Retry; absent only on a server without memory sync); Last
+  own read: bones while out, its failure on its row with Retry, a bad request too; absent only when the server does not
+  know `memory.status`); while that read is out or failed and the agent settings are off, Last synced claims nothing; Last
   synced, a row per computer, one sentence ("212 agent settings files and 48 memory files, synced 2m ago",
   `syncedWords`) with Sync now; Conflict copies, "1 note differs. Both copies are kept.", an open row to a dialog only
   while there are any. While the read is out the switches and Last synced stand in their shape.
@@ -334,19 +340,23 @@ loads from a chunk of Work's (`work-settings`, `work-digest`, `work-mail-setting
 each page in `GUARDED_PAGES` and each file in `WORDED_FILES`.
 
 - **Setup**, titled Work (`surfaces/settings/Work.tsx`; the rest in `work/shell/WorkPage.tsx`). Work is on for
-  (`work.on`, the section another page's "Work" row lands on): one row per computer this window reaches, by its one
-  name, with its own switch, which stands only once that computer has answered `work.get` on this page (a bone
+  (`work.on`): one row per computer this window reaches, by its one name, with its own switch (a computer's own page's
+  "Work on <computer>" row lands on that computer's row, `workOnRow` in lib/workSwitch.ts, found by the reveal through
+  `data-setting-row`), which stands only once that computer has answered `work.get` on this page (a bone
   meanwhile; reads that failed are one line over the rows with one Retry). A press writes `work.set` to that computer and no other (Work.dom.test.tsx presses every
   control on the page and counts the computers each press wrote); off asks first (`workOffAsk`: "The Outbox, Work
   Chats and its jobs leave the list on every device. Nothing is deleted"). A computer the key may not switch shows On
   or Off in words and who can ("Changed from a computer that manages PURDUE-LT"); one not linked now says Offline.
-  Then, while Work is on somewhere: Access for each job's new threads, one open row per job (its dot, its name, the
-  access its new threads start with; the level most jobs share is said once with its line under the heading, a job on
-  another level says its own, `lib/settings/access.ts`; the jobs' sets read together, a failed read one line with one
-  Retry) opening the job's New threads in a dialog (`JobThreadsDialog` around `ThreadDefaultsEditor`). Without asking you: Things threads may send on their
+  Then, while Work is on somewhere: Access for each job's new threads (`JobsAccess`), one open row per job (its dot,
+  its name, its computer when the jobs sit on more than one; the level most jobs share is said once with its line
+  under the heading, only a job on another level says its own, `lib/settings/access.ts`; while the sets are read the
+  heading's line is one bone and no row draws a line; a read that failed, a first one or a refresh over a held answer
+  (the catalog's `defaultsStale`), is one line with one Retry, a job with nothing held draws no row) opening the same
+  New threads dialog a job's page opens (`chrome/ThreadDefaultsDialog.tsx`). A computer's own page draws its jobs the
+  same way (`pc.jobs`, `JobsAccess computer=…` through the Work page's chunk). Without asking you: Things threads may send on their
   own, the standing grants in a sheet (`work/shell/WorkPageSends.tsx` `GrantsRow`: read from and removed through
-  `work/outbox/store.ts`, each from the computer that holds it; a find field past eight; "Made from a held item in the
-  Outbox, under More ways to send"); What each add-on's tools may do, a sheet of each computer's `work.outbox.rules`
+  `work/outbox/store.ts`, each from the computer that holds it; a find field past eight; "A grant is made from a held
+  item's More ways to send." in its footer, beside Open the Outbox); What each add-on's tools may do, a sheet of each computer's `work.outbox.rules`
   with Runs, Waits for you or Off per tool (a tool not chosen for shows Waits for you, which is what the host does
   with it, and says "Not chosen yet"), each written to its own computer by `work.outbox.setRules` (the phone had
   this alone); While you are away, an open row to Away at `away.work`. Travel: Start addresses, a dialog listing Home

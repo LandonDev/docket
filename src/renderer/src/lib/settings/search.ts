@@ -36,7 +36,7 @@ export const PAGE_WAS: Partial<Record<SettingPage, readonly string[]>> = {
   orchestration: ["Orchestration"],
   sync: ["Hosts › Sync"],
   accounts: ["Accounts"],
-  "computer:*": ["Hosts › a host's own section"],
+  // Another computer's page was its own section of Hosts, said by its name ("Hosts › The box") in the index.
   winvm: ["Work › Windows VM"],
   digest: ["Work › Digest"],
   mail: ["Work › Mail"],
@@ -92,7 +92,7 @@ function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly
     const kind = pageKind(row);
     // A page is found by its row's label and by its own title, and a result says the title ("Threads on this Mac").
     const title = row.title ?? row.label;
-    out.push({ key: `page:${row.id}`, title, path: pathOf(group.label), page: row.id, names: `${title} ${row.label}`, old: PAGE_WAS[kind] ?? [], rank: 0 });
+    out.push({ key: `page:${row.id}`, title, path: pathOf(group.label), page: row.id, names: `${title} ${row.label}`, old: kind === "computer:*" ? [`Hosts › ${row.label}`] : (PAGE_WAS[kind] ?? []), rank: 0 });
     // A computer, a job or a workspace is its own place: its rows say its name, not the heading it stands under.
     const place = row.kind === "page" ? group.label : undefined;
     const own: SettingVars = row.kind === "computer" ? { ...vars, computer: nameInLine(row.label) } : vars;

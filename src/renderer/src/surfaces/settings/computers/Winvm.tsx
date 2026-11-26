@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { LIVE_RESIZE_WORDS, type WinvmDetail, type WinvmPoint, type WinvmScreen, type WinvmSettings, type WinvmSleepAfter, type WinvmState } from "@shared/contract-work-winvm";
 import { ModalBody, ModalPanel } from "../../../chrome/Modal";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
@@ -19,6 +19,7 @@ import { useSettingsKnown, tellSettingsList } from "../../../lib/settings/useLis
 import { useWorkHosts } from "../../../lib/workSwitch";
 import { SettingRow } from "../parts/SettingRow";
 import { useSaved, type Saved } from "../parts/useSaved";
+import { forgetUpgrade, runUpgrade, useUpgrade, type Upgrade } from "./winvmUpgrade";
 
 /**
  * Settings › Windows VM, "A Windows computer inside the box, for Office and Teams." (docs/agents/settings.md "The
@@ -157,21 +158,12 @@ export function WinvmPage() {
   return <WinvmHost key={vmOn} env={vmOn} />;
 }
 
-/** Fits my window's upgrade, waiting for its end: `seen` once a state said its display is changing. */
-type UpgradeWait = { seen: boolean; resolve: (end: WinvmState) => void };
-
-/** A state from the computer, against a waiting upgrade: it ends once the machine leaves its display steps (live resize
- *  on or not), or says a failure before any step; a state from before the first step is not its end. */
-function settleUpgrade(wait: { current: UpgradeWait | null }, state: WinvmState): void {
-  const waiting = wait.current;
-  if (!waiting) return;
-  if (state.state === "setting-up") {
-    waiting.seen = true;
-    return;
-  }
-  if (!waiting.seen && !state.error && state.display?.device !== "virtio") return;
-  wait.current = null;
-  waiting.resolve(state);
+/** Screen size's mark with the upgrade's store laid over it: saving while one runs (also on a page opened since), and
+ *  a failure the page did not see itself, until his next change. */
+function screenMark(saved: Saved, upgrade: Upgrade | null): Saved {
+  if (upgrade?.phase === "running" && saved.state !== "slow") return { ...saved, state: "slow" };
+  if (upgrade?.phase === "failed" && !saved.error) return { ...saved, error: upgrade.reason };
+  return saved;
 }
 
 export function WinvmHost({ env }: { env: string }) {
@@ -224,13 +216,13 @@ export function WinvmHost({ env }: { env: string }) {
       (err: unknown) => setSettingsError({ words: err instanceof Error && err.message === NO_ANSWER ? null : hostFailure(env, err, "could not read the display settings") }),
     );
   }, [link, env, admin]);
-  // Fits my window's upgrade, once the computer took it: waits for the state that ends it (a push, or a read after a
-  // socket that dropped meanwhile).
-  const upgradeEnd = useRef<UpgradeWait | null>(null);
+  // Fits my window's upgrade lives in its own store (winvmUpgrade.ts), so a page opened again mid-upgrade or after a
+  // late failure still says so.
+  const upgrade = useUpgrade(env);
+  const upgradeFailed = upgrade?.phase === "failed";
   const load = useCallback((): Promise<void> => {
     const read = link.request<WinvmState>("work.winvm.state", {}).then(stateOf).then(
       (s) => {
-        settleUpgrade(upgradeEnd, s);
         setState(s);
         setError(null);
       },
@@ -246,10 +238,7 @@ export function WinvmHost({ env }: { env: string }) {
   useEffect(() => {
     void load();
     const offPush = link.onPush((push) => {
-      if (push.push === "work.winvm") {
-        settleUpgrade(upgradeEnd, push.state as WinvmState);
-        setState(push.state as WinvmState);
-      }
+      if (push.push === "work.winvm") setState(push.state as WinvmState);
       if (push.push === "work.winvm.points") {
         setPoints(push.points as WinvmPoint[]);
         setPointsError(null);
@@ -261,6 +250,10 @@ export function WinvmHost({ env }: { env: string }) {
       offOpen();
     };
   }, [link, load]);
+  // An upgrade that failed while this page stood (a page opened since it started) put the size back: read it again.
+  useEffect(() => {
+    if (upgradeFailed) void loadSettings();
+  }, [upgradeFailed, loadSettings]);
 
   if (state?.cannot)
     return (
@@ -324,33 +317,13 @@ export function WinvmHost({ env }: { env: string }) {
     const live = state.display?.device === "virtio";
     if (screen === "fit" && state.display && !live) {
       if (!(await confirmAction(TURN_ON))) return;
-      const before = settings?.screen;
-      // A refused or failed upgrade puts the size that stood back: without live resize Fits my window would not hold.
-      const putBack = async (): Promise<void> => {
-        if (before && before !== "fit") await link.request("work.winvm.settings", { screen: before }).catch(() => void loadSettings());
-      };
-      await save("screen", screen, async () => {
-        // The upgrade's end comes as the state's pushes, minutes later: the size stays saving until then.
-        const ended = new Promise<WinvmState>((resolve) => {
-          upgradeEnd.current = { seen: false, resolve };
-        });
-        try {
-          // answered at once: the steps come as the state's pushes
-          await link.request("work.winvm.display.upgrade", {});
-        } catch (err) {
-          upgradeEnd.current = null;
-          await putBack();
-          throw new Error(hostFailure(env, err, "did not fit the Windows VM to your window", true));
-        }
-        const end = await ended;
-        if (end.display?.device !== "virtio") {
-          await putBack();
-          // The machine's own reason stands on the Windows row (its state's error); this row says what did not happen.
-          throw new Error(hostFailure(env, null, "did not fit the Windows VM to your window", true));
-        }
-      });
+      forgetUpgrade(env);
+      // The size stays saving until the upgrade's end says it went through; a refusal or any other end puts the size
+      // that stood back (runUpgrade), and the page reads it again.
+      if (!(await save("screen", screen, () => runUpgrade(env, settings?.screen ?? null)))) void loadSettings();
       return;
     }
+    forgetUpgrade(env);
     await save("screen", screen);
   };
   return (
@@ -363,7 +336,7 @@ export function WinvmHost({ env }: { env: string }) {
         settings={settings && { screen: pending.screen ?? settings.screen, detail: pending.detail ?? settings.detail }}
         settingsError={settingsError && (settingsError.words ?? readWords(NO_ANSWER))}
         onRetrySettings={loadSettings}
-        saved={savers}
+        saved={{ ...savers, screen: screenMark(savers.screen, upgrade) }}
         error={error}
         pressing={pressing}
         onPress={() => void press()}

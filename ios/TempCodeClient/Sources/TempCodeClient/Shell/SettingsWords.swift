@@ -105,13 +105,14 @@ public enum WorkRowState: Sendable, Hashable {
 /// host says "invalid or expired pairing code", the phone says what it was
 /// and the way forward (the council's round 1).
 public enum SignInWords {
-    /// Where a sign-in link or a key is made, said as the press, not a page: Add… under "Who can sign in", which is
-    /// on the box's own page and, on a Mac, in Sharing (the council's rounds 5 and 6). Every hint and refusal that
-    /// sends him there says it in these words.
-    public static let route = "Add… under Who can sign in (on a Mac, in Sharing)"
+    /// Where a sign-in link is made, said as the press: Add… under "Who can sign in", which a Mac keeps in Sharing and
+    /// the box on its own page (the council's rounds 5 to 7). Every line that sends him to make a link says it so.
+    public static let route = "Add… under Who can sign in (a Mac's is in Sharing, the box's on its own page)"
     public static let linkHint = "In Docket's Settings, press \(route), then paste the link here."
-    public static let keyHint = "In Docket's Settings, make a key with \(route), then enter it here with the computer's address."
-    /// The footer under a computer whose key was refused: the same press, then this sheet again.
+    /// Add… makes a link for a device and a key only for a bot, so the Key tab is for a key this phone already
+    /// holds; a new sign-in is the link (the council's round 7).
+    public static let keyHint = "A key this phone already holds, with its computer's address. To sign in anew, use Sign-In Link."
+    /// The footer under a computer whose key was refused: the link's press, then this sheet again.
     public static let refusedKeyHint = "In Docket's Settings, press \(route), then sign in again."
 
     /// - Parameter link: the sheet was redeeming a sign-in link (else a key with an address).
@@ -123,7 +124,7 @@ public enum SignInWords {
         case .api(.unauthorized):
             return link
                 ? "That sign-in link is invalid or expired. Make a new one with \(route)."
-                : "The computer refused that key. Make a new one with \(route)."
+                : "The computer refused that key. To sign in anew, use Sign-In Link."
         case .api(let api): return sentence(api.message)
         case .keyStore: return "This phone could not keep the key. Try again."
         }

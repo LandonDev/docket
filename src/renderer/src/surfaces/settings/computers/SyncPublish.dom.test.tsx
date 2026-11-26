@@ -127,6 +127,36 @@ describe("Sync", () => {
     expect(document.querySelector("[data-setting='sync.memory']")).toBeNull();
   });
 
+  it("hides Agents' memory only for an unknown method: a bad request is said with Retry", async () => {
+    answers["memory.status"] = () => Promise.reject(new Error("bad request"));
+    render(<SyncPage />);
+    await act(async () => {});
+    await act(async () => {});
+    expect(document.querySelector("[data-setting='sync.memory']")?.textContent).toContain("Bad request");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
+  it("claims nothing about memory in Last synced while its read is out or failed and the agent settings are off", async () => {
+    answers["memory.status"] = () => new Promise(() => {});
+    render(<SyncPage />);
+    await act(async () => {});
+    const rows = [...document.querySelectorAll("[data-synced]")];
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.textContent).not.toContain("Nothing syncs");
+      expect(row.querySelector("[data-slot=skeleton]")).not.toBeNull();
+    }
+    cleanup();
+    answers["memory.status"] = () => Promise.reject(new Error("The computer did not answer"));
+    render(<SyncPage />);
+    await act(async () => {});
+    await act(async () => {});
+    for (const row of document.querySelectorAll("[data-synced]")) {
+      expect(row.textContent).not.toContain("Nothing syncs");
+      expect(row.textContent).not.toContain("Never synced");
+    }
+  });
+
   it("counts the computers the memory is kept the same on", () => {
     expect(memoryWords(2)).toBe("Kept the same both ways.");
     expect(memoryWords(3)).toBe("Kept the same on all three, both ways.");

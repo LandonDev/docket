@@ -31,6 +31,8 @@ import { useSaved } from "./parts/useSaved";
 // The rest of the page (each job's access, what goes without asking, travel, where new jobs go) rides Work's own chunk.
 export const workPageChunk = defineChunk("work-settings", () => import("../../work/shell/WorkPage"));
 const WorkPageBody = workPageChunk.surface("WorkPageBody", <PageRowsSkeleton rows={4} description control="none" />);
+/** One computer's jobs, each opening its New threads dialog: that computer's page draws them (`pc.jobs`). */
+export const ComputerJobs = workPageChunk.surface("JobsAccess", <PageRowsSkeleton rows={2} control="none" />);
 
 /** "Turn Work off on the box?": what the off switch asks first (docs/agents/settings.md "Acts that ask first"). */
 export function workOffAsk(computer: string, jobs: number): ConfirmRequest {

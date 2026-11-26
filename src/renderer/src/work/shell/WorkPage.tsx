@@ -77,9 +77,9 @@ export function WorkPageBody() {
  * said once, with its line, under the heading; a job on another level says its own line (rule 6). The jobs' sets are
  * read together: while any is out the rows hold their shape, and reads that failed are one line with one Retry.
  */
-export function JobsAccess() {
+export function JobsAccess({ computer }: { /** One computer's jobs alone, on that computer's page (`pc.jobs`). */ computer?: string } = {}) {
   const jobs = useWorkspaces()
-    .filter((w) => w.kind === "work")
+    .filter((w) => w.kind === "work" && (computer === undefined || w.environmentId === computer))
     .sort((a, b) => a.name.localeCompare(b.name));
   const { defaults, defaultsErrors, defaultsStale } = useWorkspaceCatalog();
   const [open, setOpen] = useState<WorkspaceMeta | null>(null);
@@ -120,7 +120,7 @@ export function JobsAccess() {
   return (
     <>
       {/* While any set is out the line under the heading waits as one bone and no row says a line, as most will not. */}
-      <SettingSection of="work.access" description={!settled ? <Skeleton className="inline-block h-3 w-64 align-middle" /> : common ? accessWords(common) : undefined}>
+      <SettingSection of={computer === undefined ? "work.access" : "pc.jobs"} description={!settled ? <Skeleton className="inline-block h-3 w-64 align-middle" /> : common ? accessWords(common) : undefined}>
         {failures}
         {shown.map((job) => {
           const level = levelOf(job);

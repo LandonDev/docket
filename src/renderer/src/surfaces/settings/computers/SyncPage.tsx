@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { HarnessEnvironmentStatus, HarnessSyncStatus } from "@server/shared/contract-harness";
 import type { MemoryEnvironmentStatus, MemorySyncStatus } from "@server/shared/contract-memory";
 import { PageEmpty, PageRow, PageRowsSkeleton, PageSection } from "../../../components/page";
@@ -28,7 +28,7 @@ export function namesWords(names: readonly string[]): string {
 
 /** A server from before memory sync does not know the method: that alone means it has none. Any other refusal is a
  *  failed read, said with Retry. */
-export const noMemorySync = (err: unknown): boolean => /unknown method|bad request|invalid request/i.test(err instanceof Error ? err.message : String(err));
+export const noMemorySync = (err: unknown): boolean => /\bunknown method\b/i.test(err instanceof Error ? err.message : String(err));
 
 /** What this Mac syncs, read from this window's own server; the agents' memory is `null` only on one without it. */
 function useSync(): { harness: HostRead<HarnessSyncStatus>; memory: HostRead<MemorySyncStatus | null> } {
@@ -221,7 +221,13 @@ function SyncBody({
             key={row.id}
             id={row.id}
             name={row.name}
-            line={syncedWords(harness.enabled ? row.harness : null, memory?.enabled ? row.memory : null)}
+            line={
+              // While the memory's own read is out or failed, the line says only what the agent settings know: with them
+              // off it claims nothing ("Nothing syncs" would read as memory off), a bone while that read is out.
+              memoryRead.value === undefined && !harness.enabled
+                ? { words: memoryRead.error ? undefined : <span data-slot="skeleton" aria-label="Loading" className="inline-block h-3 w-48 rounded-md bg-skeleton align-middle" />, error: null }
+                : syncedWords(harness.enabled ? row.harness : null, memory?.enabled ? row.memory : null)
+            }
             reachable={row.connected}
             running={row.harness?.running === true || row.memory?.running === true}
             harnessOn={harness.enabled}
@@ -250,7 +256,7 @@ function LastSynced({
 }: {
   id: string;
   name: string;
-  line: { words: string; error: string | null };
+  line: { words: ReactNode; error: string | null };
   reachable: boolean;
   running: boolean;
   harnessOn: boolean;

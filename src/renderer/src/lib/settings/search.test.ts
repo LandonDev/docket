@@ -109,6 +109,8 @@ describe("search", () => {
     ]);
     // The pages Hosts became, and no more: not every row that once stood on it.
     expect(hosts.map((result) => result.title)).toEqual(["Updates", "Threads on this Mac", "Sharing", "Publish", "Sync", "The box", "PURDUE-LT"]);
+    // A computer's page names the computer it was, never "a host".
+    expect(hosts.find((result) => result.title === "The box")?.was).toBe("Was “Hosts, The box”");
     expect(find("hosts sync").map((result) => result.title)).toEqual(expect.arrayContaining(["Sync", "Agent settings", "Agents' memory"]));
     expect(find("harness config")[0]).toMatchObject({ title: "Agent settings", page: "sync", row: "sync.settings", was: "Was “Hosts, Sync, Harness config”" });
     expect(find("ghost text")[0]).toMatchObject({ title: "Inline suggestions", was: "Was “Editor, Completions, Ghost text”" });

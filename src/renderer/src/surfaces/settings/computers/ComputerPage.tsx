@@ -13,6 +13,7 @@ import { refreshMacBridgeHosts } from "../../../lib/macBridge";
 import type { MacBridgeHostPolicy } from "@server/shared/contract-macbridge";
 import { requestSettings } from "../../../lib/monaco/debugTab";
 import { useWorkspaces } from "../../../lib/tcserver/workspaces";
+import { ComputerJobs } from "../Work";
 import { thisDesktopInLine } from "../../../lib/native";
 import { isWebMode } from "../../../lib/nativeWeb";
 import { openAddComputer } from "../../../lib/settings/addComputer";
@@ -116,21 +117,21 @@ export function ComputerLine({ environmentId }: { environmentId: string }) {
   if (reach === "waiting" && status.transport === "open") return <LineBone width="w-64" />;
   return (
     <>
-      <span data-computer-line={status.transport}>{words}</span>
-      {managed ? <span data-managed="">{` Its settings are changed from a computer that manages ${computerInLine(host.name)}.`}</span> : null}
-      {web ? null : status.transport === "offline" || status.transport === "reconnecting" ? (
-        <PageActions>
-          <Button variant="ghost" size="sm" onClick={() => registry.retry(environmentId)}>
-            Retry
-          </Button>
-        </PageActions>
-      ) : status.transport === "unauthorized" ? (
-        <PageActions>
-          <Button variant="ghost" size="sm" onClick={() => openAddComputer({ way: "link", computer: environmentId })}>
-            Sign in again…
-          </Button>
-        </PageActions>
-      ) : null}
+        <span data-computer-line={status.transport}>{words}</span>
+        {managed ? <span data-managed="">{` Its settings are changed from a computer that manages ${computerInLine(host.name)}.`}</span> : null}
+        {web ? null : status.transport === "offline" || status.transport === "reconnecting" ? (
+          <PageActions>
+            <Button variant="ghost" size="sm" onClick={() => registry.retry(environmentId)}>
+              Retry
+            </Button>
+          </PageActions>
+        ) : status.transport === "unauthorized" ? (
+          <PageActions>
+            <Button variant="ghost" size="sm" onClick={() => openAddComputer({ way: "link", computer: environmentId })}>
+              Sign in again…
+            </Button>
+          </PageActions>
+        ) : null}
     </>
   );
 }
@@ -270,6 +271,7 @@ function WorkRow({ environmentId }: { environmentId: string }) {
   const description = known ? (on ? "On" : "Off") : open ? null : last === null ? undefined : `${last ? "On" : "Off"} when last seen`;
   const jobs = useWorkspaces().filter((w) => w.kind === "work" && w.environmentId === environmentId).length;
   return (
+    <>
     <SettingSection of="pc.work">
       {open && !known && read.error ? (
         <ReadFailure computer={environmentId} error={read.error} retry={read.retry} />
@@ -283,11 +285,10 @@ function WorkRow({ environmentId }: { environmentId: string }) {
           openLabel={`Work on ${computer}`}
         />
       )}
-      {/* Its jobs' Access, where each job's new threads are told how much to ask: a way there from the computer. */}
-      {on && jobs > 0 ? (
-        <SettingRow id="work.access" shown description={jobs === 1 ? "1 job" : `${jobs} jobs`} onOpen={() => requestSettings("work", "work.access")} openLabel="Access for each job's new threads" />
-      ) : null}
     </SettingSection>
+    {/* Its own jobs, each opening the New threads dialog that holds its Access, as Work's own rows do. */}
+    {on && jobs > 0 ? <ComputerJobs computer={environmentId} /> : null}
+    </>
   );
 }
 

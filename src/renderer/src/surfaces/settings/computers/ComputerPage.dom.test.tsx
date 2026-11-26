@@ -25,6 +25,7 @@ vi.mock("../../../lib/monaco/debugTab", async (original) => ({
 }));
 const jobs = vi.hoisted(() => ({ list: [] as { id: string; name: string; kind: string; environmentId: string }[] }));
 vi.mock("../../../lib/tcserver/workspaces", async (original) => ({ ...(await original<object>()), useWorkspaces: () => jobs.list }));
+vi.mock("../Work", () => ({ ComputerJobs: ({ computer }: { computer: string }) => <div data-computer-jobs={computer} /> }));
 vi.mock("../../../lib/devicesClient", () => ({ readComputers: async () => ({ giver: null, box: null, computers: [] }), onDevicesPush: () => () => {}, actOnComputer: async () => ({ ok: true }) }));
 vi.mock("../../../lib/tcserver/link", async (original) => ({ ...(await original<typeof import("../../../lib/tcserver/link")>()), loadSavedEnvironments: async () => {} }));
 
@@ -152,7 +153,7 @@ describe("another computer's page", () => {
 });
 
 describe("its jobs", () => {
-  it("leads from a computer with Work on and jobs to their Access, and draws no such row without jobs", async () => {
+  it("lists a computer's own jobs on its page, each to its New threads, and none without jobs", async () => {
     ANSWERS.env_box!["work.get"] = { enabled: true };
     jobs.list = [
       { id: "j1", name: "Cosmic", kind: "work", environmentId: "env_box" },
@@ -162,16 +163,14 @@ describe("its jobs", () => {
     try {
       render(<OtherComputerPage environmentId="env_box" />);
       await flush();
-      const row = document.querySelector<HTMLElement>("[data-setting='work.access']")!;
-      expect(row.textContent).toContain("2 jobs");
-      asked.length = 0;
-      fireEvent.click(screen.getByRole("button", { name: "Access for each job's new threads" }));
-      expect(asked).toEqual([["work", "work.access"]]);
+      // The jobs' own rows, the box's alone (work/shell/WorkPage.tsx JobsAccess), in place of a row to Setup.
+      expect(document.querySelector("[data-computer-jobs]")!.getAttribute("data-computer-jobs")).toBe("env_box");
+      expect(document.querySelector("[data-setting='work.access']")).toBeNull();
       cleanup();
       jobs.list = [];
       render(<OtherComputerPage environmentId="env_box" />);
       await flush();
-      expect(document.querySelector("[data-setting='work.access']")).toBeNull();
+      expect(document.querySelector("[data-computer-jobs]")).toBeNull();
     } finally {
       ANSWERS.env_box!["work.get"] = { enabled: false };
       jobs.list = [];

@@ -210,6 +210,7 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
   e("pc.signIns", "computer:*", "Who can sign in to {computer}", "Who can sign in to {computer}", "computer", "host", ["Hosts › Clients (that host's own page only)"], "list"),
   e("pc.add", "computer:*", "Who can sign in to {computer}", "Add…", "computer", "host", ["Hosts › a host › ⋯ › Pair a device…"], "act"),
   e("pc.work", "computer:*", "Work", "Work on {computer}", "computer", "none", ["Settings › Work › Work is on for"], "open"),
+  e("pc.jobs", "computer:*", "Access for each job's new threads", "Access for each job's new threads", "workspace", "box", ["Settings › Work › Access for each job's new threads"], "list"),
   e("pc.setup", "computer:*", "Set up from {mac}", "Accounts it was given", "computer", "box", ["Hosts › Computers"]),
   e("pc.setupRemove", "computer:*", "Set up from {mac}", "{mac}'s setup of it", "computer", "box", ["Hosts › Computers › Remove"], "act"),
   e("pc.reach", "computer:*", "Advanced", "Let other devices reach {computer}", "computer", "host", ["Hosts › Remote access (that host's own page only)"]),
@@ -300,6 +301,8 @@ const NEEDS: Record<string, readonly SettingNeed[]> = {
   "work.home": ["desktop"],
   "files.word": ["desktop"],
   "accounts.connections": ["work"],
+  // A computer's jobs are drawn only where Work is on.
+  "pc.jobs": ["work"],
   // Another computer's page in a browser draws neither its version nor what this Mac keeps of it (ComputerPage.tsx).
   "pc.version": ["desktop"],
   "pc.setup": ["desktop"],
