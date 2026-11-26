@@ -34,7 +34,7 @@ import {
 } from "../lib/transcriptWindow";
 import { useKept } from "../lib/keptValue";
 import { RevealTurnContext } from "./revealDrain";
-import { estimateRowHeight, flattenTurns, rowKeyOf, sameRow, turnUserBlock, type RowGap, type TranscriptRow } from "./transcriptRows";
+import { estimateRowHeight, flattenTurns, rowKeyOf, sameRow, type RowGap, type TranscriptRow } from "./transcriptRows";
 import { useReducedMotion } from "../lib/motion";
 import { cubicBezier, DUR, EASE_DRAWER, EASE_OUT } from "../lib/ease";
 import { type Block, type HarnessId } from "../lib/session";
@@ -51,7 +51,7 @@ import { SelectSessionContext } from "./AgentMarkdown";
 import type { OpenFileFn } from "../lib/search";
 import { RowBornContext, ThreadHeadContext, ThreadHeadSlot, TranscriptSessionContext } from "./transcriptSession";
 import { TranscriptSelectionMenu } from "./TranscriptSelectionMenu";
-import { groupTurns } from "./transcriptActivity";
+import { extendTurns, turnUser } from "./transcriptActivity";
 import { TurnEnd } from "./transcript/TurnEnd";
 import { ActionGroup } from "./transcript/ActionGroup";
 import { TranscriptBlock } from "./transcript/TranscriptBlock";
@@ -235,7 +235,6 @@ export const AgentTranscript = memo(function AgentTranscript({
     onAddToChat !== undefined,
   );
   const promptAnchor = useTranscriptAnchor();
-  const lastUserId = lastUserBlockId(blocks);
   const setShowJump = useCallback(
     (show: boolean) => {
       if (showJumpRef.current === show) return;
@@ -640,17 +639,18 @@ export const AgentTranscript = memo(function AgentTranscript({
   }, [scrollerEl, rowLayout, reconcileWindow, release, schedule, syncPill]);
 
   // ── rows and their layout ─────────────────────────────────────────────
-  const previousTurns = useRef<Block[][]>([]);
+  const previousTurns = useRef<{ blocks: Block[]; turns: Block[][] }>({ blocks: [], turns: [] });
   const turns = useMemo(() => {
-    const next = stableTurns(groupTurns(blocks), previousTurns.current);
-    previousTurns.current = next;
+    const next = extendTurns(previousTurns.current.blocks, previousTurns.current.turns, blocks);
+    previousTurns.current = { blocks, turns: next };
     return next;
   }, [blocks]);
+  const lastUserId = lastUserBlockId(turns);
   // Remote profile: the next page of history comes from the server and
   // lands above; the reader's anchor row keeps them where they were.
   const moreHistory = !!sessionId && sessionStore.hasOlderHistory(sessionId);
   // The thread's first message, while the transcript holds the thread from its start: a Work thread's head sits over it.
-  const headBlock = moreHistory ? null : (turns[0] ? (turnUserBlock(turns[0])?.id ?? null) : null);
+  const headBlock = moreHistory ? null : (turns[0] ? (turnUser(turns[0])?.id ?? null) : null);
   // A turn paused mid-way, or queued before it ran, is not over: no closing line until it settles.
   const paused = !busy && !!turnState && isTurnHeld(turnState);
   const { rows, rowOfBlock } = useMemo(
@@ -1164,22 +1164,6 @@ export const AgentTranscript = memo(function AgentTranscript({
   );
 });
 
-/**
- * Re-uses the previous array for every turn whose blocks are the same
- * objects, so folding a delta into the live turn leaves the rest untouched
- * and their memoised views hold.
- */
-function stableTurns(next: Block[][], previous: Block[][]): Block[][] {
-  let changed = next.length !== previous.length;
-  const out = next.map((turn, i) => {
-    const old = previous[i];
-    if (old && old.length === turn.length && old.every((block, j) => block === turn[j])) return old;
-    changed = true;
-    return turn;
-  });
-  return changed ? out : previous;
-}
-
 /** The session a row is handed: the live turn's closing row alone draws it.
  *  It is a new object on every delta, so an item row given it would re-render
  *  with each one; an item that reads it (a notice) takes it from context. */
@@ -1342,6 +1326,10 @@ function lastItemKey(rows: readonly TranscriptRow[]): string | null {
   return null;
 }
 
-function lastUserBlockId(blocks: Block[]): string | undefined {
-  return turnUserBlock(blocks)?.id;
+function lastUserBlockId(turns: Block[][]): string | undefined {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const user = turnUser(turns[i]);
+    if (user) return user.id;
+  }
+  return undefined;
 }

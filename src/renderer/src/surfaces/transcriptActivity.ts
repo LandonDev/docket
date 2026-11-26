@@ -263,8 +263,14 @@ export function editVerb(label: string): string {
 /** User turns, with handoff dividers sitting on their own row. */
 export function groupTurns(blocks: Block[]): Block[][] {
   const turns: Block[][] = [];
-  let current: Block[] = [];
-  for (const block of blocks) {
+  splitTurns(blocks, 0, [], turns);
+  return turns;
+}
+
+/** groupTurns from `from` on, with `current` the open turn's blocks so far. */
+function splitTurns(blocks: Block[], from: number, current: Block[], turns: Block[][]): void {
+  for (let i = from; i < blocks.length; i++) {
+    const block = blocks[i];
     if (block.role === "handoff") {
       if (current.length > 0) turns.push(current);
       turns.push([block]);
@@ -278,7 +284,205 @@ export function groupTurns(blocks: Block[]): Block[][] {
     current.push(block);
   }
   if (current.length > 0) turns.push(current);
-  return turns;
+}
+
+/**
+ * Re-uses the previous array for every turn whose blocks are the same
+ * objects, so folding a delta into the live turn leaves the rest untouched
+ * and their memoised views hold.
+ */
+export function stableTurns(next: Block[][], previous: Block[][]): Block[][] {
+  let changed = next.length !== previous.length;
+  const out = next.map((turn, i) => {
+    const old = previous[i];
+    if (old && old.length === turn.length && old.every((block, j) => block === turn[j])) return old;
+    changed = true;
+    return turn;
+  });
+  return changed ? out : previous;
+}
+
+/** Where each turn of a turns array starts in the blocks, built on first use. */
+const turnStarts = new WeakMap<Block[][], number[]>();
+
+function startsOf(turns: Block[][]): number[] {
+  let starts = turnStarts.get(turns);
+  if (!starts) {
+    starts = [];
+    let at = 0;
+    for (const turn of turns) {
+      starts.push(at);
+      at += turn.length;
+    }
+    turnStarts.set(turns, starts);
+  }
+  return starts;
+}
+
+/** A turn array that differs from `grouping`'s turn from `from` on (its
+ *  blocks before `from` are the same objects): its items regroup from there. */
+const origins = new WeakMap<Block[], { grouping: Grouping; from: number }>();
+
+/**
+ * `stableTurns(groupTurns(blocks), previous)`, from the tail: `previous` are
+ * the turns of `before`, and only the turns from the first block that
+ * differs on are split again. A delta into a long live turn copies that
+ * turn's array but reads no block before the change, and the turn's items
+ * then regroup from the change (`turnItems`).
+ */
+export function extendTurns(before: Block[], previous: Block[][], blocks: Block[]): Block[][] {
+  const n = Math.min(before.length, blocks.length);
+  let f = 0;
+  while (f < n && before[f] === blocks[f]) f++;
+  if (f === blocks.length && f === before.length) return previous;
+  if (f === 0 || previous.length === 0) return stableTurns(groupTurns(blocks), previous);
+  // The turn that holds the last block both share: the turns before it stand.
+  const starts = startsOf(previous);
+  let t = starts.length - 1;
+  while (t > 0 && starts[t] > f - 1) t--;
+  const turns = previous.slice(0, t);
+  const open = previous[t];
+  const shared = f - starts[t];
+  const handoff = open.length === 1 && open[0].role === "handoff";
+  if (handoff) turns.push(open);
+  splitTurns(blocks, f, handoff ? [] : open.slice(0, shared), turns);
+  let changed = turns.length !== previous.length;
+  for (let i = t; i < turns.length; i++) {
+    const turn = turns[i];
+    const old = previous[i];
+    // The turn that took the change shares its first `shared` blocks with `old`.
+    const from = i === t ? shared : 0;
+    let same = !!old && old.length === turn.length;
+    for (let j = from; same && j < turn.length; j++) same = turn[j] === old[j];
+    if (same) {
+      turns[i] = old;
+      continue;
+    }
+    changed = true;
+    if (i === t && !handoff && from > 0) {
+      const grouping = groupings.get(old);
+      if (grouping) origins.set(turn, { grouping, from });
+    }
+  }
+  return changed ? turns : previous;
+}
+
+/** A turn's items, and the index in the turn of each item's first block. */
+type Grouping = { items: TurnItem[]; starts: number[]; user: number };
+
+const groupings = new WeakMap<Block[], Grouping>();
+
+/**
+ * `groupTurnItems` kept by turn array: a settled turn keeps its array
+ * (`stableTurns`), and a live turn that `extendTurns` made from the last one
+ * regroups from its change, keeping every item before it.
+ */
+export function turnItems(turn: Block[]): TurnItem[] {
+  return groupingOf(turn).items;
+}
+
+/** The turn's last message of the person's (a steered turn has several). */
+export function turnUser(turn: Block[]): Block | undefined {
+  const at = groupingOf(turn).user;
+  return at < 0 ? undefined : turn[at];
+}
+
+function groupingOf(turn: Block[]): Grouping {
+  const hit = groupings.get(turn);
+  if (hit) return hit;
+  const origin = origins.get(turn);
+  origins.delete(turn);
+  const grouping = origin ? regroup(turn, origin.grouping, origin.from) : groupFrom(turn, 0, [], [], -1);
+  groupings.set(turn, grouping);
+  return grouping;
+}
+
+/** The grouping of `turn` from the one of a turn equal to it before `from`. */
+function regroup(turn: Block[], prev: Grouping, from: number): Grouping {
+  // A thought followed only by empty paragraphs up to the change reads the
+  // change to know whether it repeats the next paragraph: start there.
+  let at = from;
+  let j = from - 1;
+  while (j >= 0 && (groupKindOf(turn[j]) & EMPTY_PROSE) !== 0) j--;
+  if (j >= 0 && (groupKindOf(turn[j]) & THOUGHT) !== 0) at = j;
+  // The last item that starts before it: a run may go on past it, so it
+  // regroups whole; a block item is complete.
+  let k = prev.starts.length - 1;
+  while (k >= 0 && prev.starts[k] >= at) k--;
+  let keep = k + 1;
+  if (k >= 0 && prev.items[k].type === "activity") {
+    keep = k;
+    at = prev.starts[k];
+  }
+  // The person's last message: what the shared blocks held is known, unless it was the change.
+  const user = prev.user < from ? prev.user : UNKNOWN;
+  return groupFrom(turn, at, prev.items.slice(0, keep), prev.starts.slice(0, keep), user, from);
+}
+
+function groupFrom(blocks: Block[], from: number, items: TurnItem[], starts: number[], user: number, userFrom = 0): Grouping {
+  let activity: Block[] = [];
+  let activityStart = -1;
+  const flush = () => {
+    if (activity.length > 0) {
+      items.push({ type: "activity", blocks: activity });
+      starts.push(activityStart);
+    }
+    activity = [];
+  };
+  for (let i = from; i < blocks.length; i++) {
+    const block = blocks[i];
+    const kind = groupKindOf(block);
+    if (kind & SKIP) continue;
+    if (kind & THOUGHT && repeatsNextProse(blocks, i)) continue;
+    if (kind & FOLDS) {
+      if (activity.length === 0) activityStart = i;
+      activity.push(block);
+      continue;
+    }
+    flush();
+    items.push({ type: "block", block });
+    starts.push(i);
+  }
+  flush();
+  for (let i = blocks.length - 1; i >= userFrom; i--) {
+    if (blocks[i].role === "user") {
+      user = i;
+      break;
+    }
+  }
+  if (user === UNKNOWN) {
+    user = -1;
+    for (let i = userFrom - 1; i >= 0; i--) {
+      if (blocks[i].role === "user") {
+        user = i;
+        break;
+      }
+    }
+  }
+  return { items, starts, user };
+}
+
+const UNKNOWN = -2;
+
+/** What a block is to its turn's items, by itself alone. */
+const SKIP = 1;
+const FOLDS = 2;
+const THOUGHT = 4;
+const EMPTY_PROSE = 8;
+const kinds = new WeakMap<Block, number>();
+
+function groupKindOf(block: Block): number {
+  let kind = kinds.get(block);
+  if (kind === undefined) {
+    const shown = !isIgnoredTurnBlock(block) && (isTodoBlock(block) || standsAlone(block) || !isHiddenTool(block));
+    kind =
+      (shown ? 0 : SKIP) |
+      (shown && !standsAlone(block) && !endsWork(block) && isActivityBlock(block) ? FOLDS : 0) |
+      (block.role === "reasoning" ? THOUGHT : 0) |
+      (block.role === "assistant" && !block.text.trim() ? EMPTY_PROSE : 0);
+    kinds.set(block, kind);
+  }
+  return kind;
 }
 
 /**
@@ -289,31 +493,7 @@ export function groupTurns(blocks: Block[]): Block[][] {
  * and stands alone.
  */
 export function groupTurnItems(blocks: Block[]): TurnItem[] {
-  const visible = blocks.filter(
-    (block, index) =>
-      !isIgnoredTurnBlock(block) &&
-      (isTodoBlock(block) || standsAlone(block) || !isHiddenTool(block)) &&
-      !repeatsNextProse(blocks, index),
-  );
-  const items: TurnItem[] = [];
-  let activity: Block[] = [];
-  const flush = () => {
-    if (activity.length > 0) {
-      items.push({ type: "activity", blocks: activity });
-    }
-    activity = [];
-  };
-  for (const block of visible) {
-    const folds = !standsAlone(block) && !endsWork(block) && isActivityBlock(block);
-    if (folds) {
-      activity.push(block);
-      continue;
-    }
-    flush();
-    items.push({ type: "block", block });
-  }
-  flush();
-  return items;
+  return groupFrom(blocks, 0, [], [], -1).items;
 }
 
 /** A todo update (TodoWrite, update_plan): a step whose body is the list. */
@@ -356,9 +536,11 @@ function isIgnoredTurnBlock(block: Block): boolean {
 function repeatsNextProse(blocks: Block[], index: number): boolean {
   const block = blocks[index];
   if (block.role !== "reasoning") return false;
-  const next = blocks
-    .slice(index + 1)
-    .find((b) => b.role !== "assistant" || b.text.trim());
+  let next: Block | undefined;
+  for (let i = index + 1; i < blocks.length && !next; i++) {
+    const b = blocks[i];
+    if (b.role !== "assistant" || b.text.trim()) next = b;
+  }
   return (
     next?.role === "assistant" && plainText(next.text) === plainText(block.text)
   );

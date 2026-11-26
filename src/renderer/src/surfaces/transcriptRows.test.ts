@@ -253,8 +253,9 @@ describe("a send rebuilds the last turn's rows alone", () => {
     expect(reads).toBeGreaterThan(0);
     reads = 0;
     const sent = estimate([...history, [user("u50")]], true);
-    // The turn that was last is rebuilt as a settled turn; every other row keeps what it read.
-    expect(reads).toBe(1);
+    // The turn that was last is rebuilt as a settled turn, but its items keep their heights (kept by
+    // item); every other row keeps what it read.
+    expect(reads).toBe(0);
     expect(sent.slice(0, first.length - 2)).toEqual(first.slice(0, first.length - 2));
     expect(sent).toEqual(flattenTurns([...history.map((t) => [...t]), [user("u50")]], true).rows.map(estimateRowHeight));
   });

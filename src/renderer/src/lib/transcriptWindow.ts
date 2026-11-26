@@ -42,11 +42,26 @@ export class RowLayout {
 
   /** The rows, in order, each with the height to assume until measured. */
   setRows(rows: readonly { key: string; estimate: number }[]): void {
-    this.keys = rows.map((row) => row.key);
-    this.index = new Map(this.keys.map((key, i) => [key, i]));
-    this.sizes = rows.map((row) => this.measured.get(row.key) ?? row.estimate);
-    this.offsets.length = this.sizes.length + 1;
-    this.dirtyFrom = 0;
+    // From the first row that moved: a delta into the live turn changes the
+    // tail, and the rows above it keep their index and offsets. Keys are
+    // unique (they are React keys).
+    const { keys, sizes, index } = this;
+    let p = 0;
+    for (const n = Math.min(keys.length, rows.length); p < n; p++) {
+      const row = rows[p];
+      if (row.key !== keys[p] || (this.measured.get(row.key) ?? row.estimate) !== sizes[p]) break;
+    }
+    for (let i = p; i < keys.length; i++) if (index.get(keys[i]) === i) index.delete(keys[i]);
+    keys.length = p;
+    sizes.length = p;
+    for (let i = p; i < rows.length; i++) {
+      const row = rows[i];
+      keys.push(row.key);
+      index.set(row.key, i);
+      sizes.push(this.measured.get(row.key) ?? row.estimate);
+    }
+    this.offsets.length = sizes.length + 1;
+    this.dirtyFrom = Math.min(this.dirtyFrom, p);
   }
 
   /** A measured height for a row. Answers the row's index and how much it

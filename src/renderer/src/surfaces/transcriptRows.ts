@@ -9,11 +9,14 @@
  * for the closing row), so a row keeps its identity as the window moves,
  * as a turn grows into it, and across a rebuild with older turns added
  * above. Items are cached per turn array: `stableTurns` keeps a settled
- * turn's array, so only the live turn regroups on a delta.
+ * turn's array, so only the live turn regroups on a delta, and that from
+ * its change on (`extendTurns`, `turnItems`); an item's key, shape and
+ * height are kept by item, so the live turn's rows rebuild without reading
+ * a block that did not change.
  */
 import type { Block } from "../lib/session";
 import { isErrorBlock } from "../lib/turnOutcome";
-import { awaitsUser, groupTurnItems, isStepBlock, isThinkingBlock, isTodoBlock, standsAlone, stepRows, toldByWorkingLine, type TurnItem } from "./transcriptActivity";
+import { awaitsUser, isStepBlock, isThinkingBlock, isTodoBlock, standsAlone, stepRows, toldByWorkingLine, turnItems, turnUser, type TurnItem } from "./transcriptActivity";
 
 export type TurnInfo = {
   id: string;
@@ -77,16 +80,6 @@ export type TranscriptRows = {
   rowOfBlock: () => Map<string, number>;
 };
 
-const itemCache = new WeakMap<Block[], TurnItem[]>();
-
-function itemsOf(turn: Block[]): TurnItem[] {
-  const hit = itemCache.get(turn);
-  if (hit) return hit;
-  const items = groupTurnItems(turn);
-  itemCache.set(turn, items);
-  return items;
-}
-
 export function turnUserBlock(blocks: Block[]): Block | undefined {
   for (let i = blocks.length - 1; i >= 0; i--) {
     if (blocks[i].role === "user") return blocks[i];
@@ -123,14 +116,28 @@ function shapeOf(item: TurnItem): "line" | "bubble" | "block" {
   }
 }
 
-/** The gap above a turn item, from the item before it in its turn (null for
- *  the turn's first) and the row before it in the list. */
-function gapAbove(item: TurnItem, before: TurnItem | null, previousRow: TranscriptRow | undefined): RowGap {
+type Shape = ReturnType<typeof shapeOf>;
+
+/** The gap above a turn item, from the shape of the item before it in its
+ *  turn (null for the turn's first) and the row before it in the list. */
+function gapAbove(shape: Shape, before: Shape | null, previousRow: TranscriptRow | undefined): RowGap {
   if (!previousRow) return ROW_GAP.first;
   if (!before) return previousRow.kind === "more" ? ROW_GAP.more : ROW_GAP.turn;
-  const above = shapeOf(before);
-  if (above === "bubble") return ROW_GAP.reply;
-  return above === "line" && shapeOf(item) === "line" ? ROW_GAP.line : ROW_GAP.block;
+  if (before === "bubble") return ROW_GAP.reply;
+  return before === "line" && shape === "line" ? ROW_GAP.line : ROW_GAP.block;
+}
+
+/** What a row reads of its item's blocks, kept by item (an item that did not change is the same object). */
+type ItemFacts = { key: string; shape: Shape; height?: { working: boolean; settled: boolean; px: number } };
+const itemFacts = new WeakMap<TurnItem, ItemFacts>();
+
+function factsOf(item: TurnItem): ItemFacts {
+  let facts = itemFacts.get(item);
+  if (!facts) {
+    facts = { key: rowKeyOf(item.type === "activity" ? item.blocks[0] : item.block), shape: shapeOf(item) };
+    itemFacts.set(item, facts);
+  }
+  return facts;
 }
 
 /** The key a block's row is drawn under: its optimistic key once the echo
@@ -166,7 +173,7 @@ export function flattenTurns(
       return;
     }
     const first = rows.length;
-    const userBlock = turnUserBlock(blocks);
+    const userBlock = turnUser(blocks);
     // A steered turn closes its earlier sections by doneTs alone.
     const durationMs =
       userBlock?.durationMs ??
@@ -183,22 +190,27 @@ export function flattenTurns(
       durationMs,
       startedAt: userBlock?.startedAt,
     };
-    const items = itemsOf(blocks);
+    const items = turnItems(blocks);
+    // An item works while only steps waiting on the person follow it: every
+    // item from the last that does not wait on.
+    let workFrom = items.length - 1;
+    if (open && isLast) while (workFrom >= 0 && waitsOnPerson(items[workFrom])) workFrom--;
     items.forEach((item, itemIndex) => {
-      const gap = gapAbove(item, itemIndex === 0 ? null : items[itemIndex - 1], rows[rows.length - 1]);
+      const facts = factsOf(item);
+      const gap = gapAbove(facts.shape, itemIndex === 0 ? null : factsOf(items[itemIndex - 1]).shape, rows[rows.length - 1]);
       if (item.type === "activity") {
         rows.push({
           kind: "item",
-          key: rowKeyOf(item.blocks[0]),
+          key: facts.key,
           turn,
           item,
           live: busy && isLast && itemIndex === items.length - 1,
-          working: open && isLast && items.slice(itemIndex + 1).every(waitsOnPerson),
+          working: open && isLast && itemIndex >= workFrom,
           gap,
         });
         return;
       }
-      rows.push({ kind: "item", key: rowKeyOf(item.block), turn, item, live: false, working: false, gap });
+      rows.push({ kind: "item", key: facts.key, turn, item, live: false, working: false, gap });
     });
     rows.push({ kind: "end", key: `${turn.id}:end`, turn, gap: ROW_GAP.end });
     if (!isLast) settledRows.set(blocks, { index, above, rows: rows.slice(first) });
@@ -295,8 +307,14 @@ const estimates = new WeakMap<TranscriptRow, number>();
 function estimateOf(row: TranscriptRow): number {
   if (row.kind === "more") return row.gap + LINE;
   if (row.kind === "end") return row.turn.durationMs != null || row.turn.isLast ? row.gap + LINE : 0;
-  const height = itemHeight(row.item, row.working, row.turn.settled);
-  return height ? row.gap + height : 0;
+  const facts = factsOf(row.item);
+  const { working } = row;
+  const { settled } = row.turn;
+  let kept = facts.height;
+  if (!kept || kept.working !== working || kept.settled !== settled) {
+    kept = facts.height = { working, settled, px: itemHeight(row.item, working, settled) };
+  }
+  return kept.px ? row.gap + kept.px : 0;
 }
 
 function itemHeight(item: TurnItem, working: boolean, settled: boolean): number {
