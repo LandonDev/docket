@@ -127,7 +127,7 @@ in as him, files on demand. The code is `office/vm/` (`link.ts`, `files.ts`,
   go to no caller (`filesRead {as: 'bytes'}` is refused: a copy is made on
   the box by `filesCopy`).
 - **Who may.** His own windows always. A thread only where its workspace has
-  "Computer use on the Windows VM" on (`vmAllowed`, read at every call); a
+  "Windows VM" on (its page's Computers its threads may use) (`vmAllowed`, read at every call); a
   Work Chat never. The file verbs do not take the VM's lease: a thread reads
   Teams files while another drives the VM.
 - **Waking.** What OneDrive syncs is read while the machine is awake and
@@ -416,7 +416,7 @@ library or `..` is refused. Then by caller:
 - this host's window and a thread here: the libraries alone;
 - another host of his over the host link (`Caller.peer`, set by
   `servePeerWork`): the libraries alone, under this host's bridge policy for
-  that host (Settings → Hosts);
+  that host (Settings → Sharing on it, the "What <computer> may do on this Mac" sheet, Files and commands);
 - a remote key: also the listener's fence (`ctx.reaches`), as for any path, so
   a phone's key reaches a Teams file only under the app-managed roots; its
   search runs over the libraries it could name.
@@ -623,25 +623,27 @@ The Files view of before (`src/renderer/src/work/office/view.ts`,
 
 ## Settings
 
-Settings → Work: a section **Folders** (with two hosts, **Folders on <host>**) for
-each Mac or Windows host with Work on (`TeamsFilesRow`), Add folder… at its heading's
-end, its box on the column's edge as Remove's: each library found or added, by team, with its
-folder; a found one has a switch, an added one Remove. A library's row with its
-controls (Opens in, Web link…, the switch) is a wide `PageRow`: under 480px of page
-content they take a line under its name, which keeps the row's width. Add web link… stores
-the address. Live Office uses a direct web folder address. Add folder… adds any folder, a network drive's too: typed (the hint is `J:\Shared` on
+Settings → Files: a section **Folders on <computer>** for each Mac or Windows
+computer with Work on, and **Folders in the Windows VM** for one that keeps the VM
+(`TeamsFilesRow`, `vm`), Add folder… at its heading's end: each library found or
+added, by team, with its folder; a found one has a switch, an added one Stop listing.
+A library's row says where its Office files open and opens a dialog for that and its
+web link, which stores the address. Live Office uses a direct web folder address. Add folder… adds any folder, a network drive's too: typed (the hint is `J:\Shared` on
 Windows) or picked with Browse…, the system's folder picker. Only this computer's own window edits its list; another host's rows
-are read only. A Work workspace's page has **Copy Teams files to <host>**
-(`TeamsCopyRow`) once it may use a desktop other than its own host. A folder
+are read only. A job's page has **Copy Teams files to <computer>**
+(`TeamsCopyRow`) once it may use a desktop other than its own computer; turning it off asks first, since it deletes
+the copies. A folder
 added there is a shared place, so a thread's change in it is held as `file.act`.
 
 A box workspace lists a folder on a PC in the PC's own window when two things
-hold. The workspace's page has **Computer use on <PC>** on (`mayUseDesktop`).
-The PC's own Work switch is on: with it off, the PC answers every Files call
-"Work is off on this host" and Settings shows no Folders section for it (Settings →
-Work's **Turn on for <host>** turns it on). Opening a file there from a box
-workspace also needs the PC's bridge for the box at **Read** or more (Settings →
-Hosts); while it is Off the open says "This host's bridge is off for that host".
+hold. The job's page has the PC on under **Computers its threads may use**
+(`mayUseDesktop`). The PC's own Work switch is on: with it off, the PC answers every
+Files call "Work is off on this host" and Settings shows no Folders section for it (the
+PC's row under the Work page's **Work is on for** turns it on). Opening a file there
+from a box workspace also needs the PC's bridge for the box at **Read** or more (on
+the PC, Settings → Sharing, What the box may do on this PC, Files and commands; the
+job's page says so in an amber line under the PC's row); while it is Off the open says
+"This host's bridge is off for that host".
 
 ### Folders a computer's setup adds
 

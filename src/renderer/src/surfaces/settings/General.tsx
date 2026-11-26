@@ -1,22 +1,20 @@
-import { keyCaps } from "../../lib/keys";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { KeepAwakeStatusWire } from "@server/shared/contract-power";
 import { InboxProviderMark } from "../../chrome/InboxProviderMark";
-import { ChoiceSelect } from "../../components/choice-select";
-import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
-import { BusyLabel, Button } from "../../components/ui/button";
-import { Dialog } from "../../components/ui/dialog";
-import { DialogFooter } from "../../chrome/ConfirmDialog";
+import { DialogFooter, confirmAction } from "../../chrome/ConfirmDialog";
 import { Field } from "../../chrome/DialogField";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
-import { Input } from "../../components/ui/input";
-import { Progress } from "../../components/ui/progress";
+import { ChoiceSelect } from "../../components/choice-select";
+import { PageError, PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
-import {
-  loadTranscriptAnchor,
-  saveTranscriptAnchor,
-  TRANSCRIPT_ANCHOR_CHANGE_EVENT,
-} from "../../lib/appearance";
+import { Button } from "../../components/ui/button";
+import { Dialog } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { loadTranscriptAnchor, saveTranscriptAnchor, TRANSCRIPT_ANCHOR_CHANGE_EVENT } from "../../lib/appearance";
+import { registry } from "../../lib/connection";
+import { useHostRead } from "../../lib/connection/hostRead";
 import { clearInboxCache } from "../../lib/githubTasks";
+import { keyCaps } from "../../lib/keys";
 import {
   disconnectLinear,
   linearConnected,
@@ -27,22 +25,19 @@ import {
   saveLinearToken,
   type LinearTeam,
 } from "../../lib/linear";
-import { BUNDLED_RELEASE } from "../../lib/bundledRelease";
-import {
-  loadMidTurnDefault,
-  saveMidTurnDefault,
-  type MidTurnDefault,
-} from "../../lib/settings";
+import { isWebMode, thisDesktopInLine } from "../../lib/native";
+import { computerInLine, useComputerName } from "../../lib/settings/computerName";
+import { loadMidTurnDefault, saveMidTurnDefault, type MidTurnDefault } from "../../lib/settings";
 import { loadSoundsEnabled, saveSoundsEnabled } from "../../lib/sounds";
-import { registry } from "../../lib/connection";
-import { useHostRead } from "../../lib/connection/hostRead";
-import { updateStore, useUpdateSnapshot } from "../../lib/updateStore";
-import { MANUAL_DOWNLOAD_URL, canRetry } from "../../lib/updater";
-import { isWebMode, openUrl } from "../../lib/native";
-import { releaseNotesChunk } from "../chunks";
 import { Keys } from "./keys";
+import { SettingRow, SettingSection } from "./parts/SettingRow";
+import { useSaved } from "./parts/useSaved";
+import { SwitchListDialog } from "./parts/SwitchListDialog";
+import { PickerRow } from "./PickerSettings";
 
-/** A stored boolean setting with its own state; every flip saves. */
+const MOD_ENTER = keyCaps("mod+return");
+
+/** A stored flag kept in this window: the control moves at once and nothing is sent. */
 function useStoredFlag(load: () => boolean, save: (on: boolean) => void): [boolean, (on: boolean) => void] {
   const [on, setOn] = useState(load);
   return [
@@ -54,35 +49,15 @@ function useStoredFlag(load: () => boolean, save: (on: boolean) => void): [boole
   ];
 }
 
-/** A row whose control is one switch, named by the row's title. */
-function SwitchRow({
-  title,
-  description,
-  on,
-  onChange,
-}: {
-  title: string;
-  description?: ReactNode;
-  on: boolean;
-  onChange: (on: boolean) => void;
-}) {
-  return (
-    <PageRow title={title} description={description}>
-      <SettingSwitch label={title} on={on} onChange={onChange} />
-    </PageRow>
-  );
-}
-
-const MOD_ENTER = keyCaps("mod+return");
-
-export function GeneralPage({
-  onOpenWhatsNew,
-}: {
-  onOpenWhatsNew: (version: string, markdown?: string) => void;
-}) {
+/**
+ * Settings › General (docs/agents/settings.md "This Mac"): the transcript, the composer, sounds and this Mac's power,
+ * and the inbox's Linear sign-in. The rows kept in this window (the prompt, Enter, the picker, Sounds, Linear's teams)
+ * show a change at once; Keep this Mac awake and Linear ask the computer and say its answer.
+ */
+export function GeneralPage() {
   const [transcriptAnchor, setTranscriptAnchor] = useState(loadTranscriptAnchor);
   const [midTurn, setMidTurn] = useState<MidTurnDefault>(loadMidTurnDefault);
-  const [soundsEnabled, setSoundsEnabled] = useStoredFlag(loadSoundsEnabled, saveSoundsEnabled);
+  const [sounds, setSounds] = useStoredFlag(loadSoundsEnabled, saveSoundsEnabled);
 
   // The menu flips the anchor too; follow it while the page is open.
   useEffect(() => {
@@ -91,85 +66,122 @@ export function GeneralPage({
     return () => window.removeEventListener(TRANSCRIPT_ANCHOR_CHANGE_EVENT, onAnchor);
   }, []);
 
-
   return (
     <>
-      <PageSection title="Transcript">
-        <SwitchRow
-          title="Prompt at the top"
-          description="A sent prompt sits at the top and the reply grows below it."
-          on={transcriptAnchor}
-          onChange={(next) => {
-            saveTranscriptAnchor(next);
-            setTranscriptAnchor(next);
-          }}
-        />
-      </PageSection>
+      <SettingSection of="general.promptTop">
+        <SettingRow id="general.promptTop">
+          <SettingSwitch
+            label="Keep my prompt at the top"
+            on={transcriptAnchor}
+            onChange={(next) => {
+              saveTranscriptAnchor(next);
+              setTranscriptAnchor(next);
+            }}
+          />
+        </SettingRow>
+      </SettingSection>
 
-      <PageSection title="Composer">
-        <PageRow
-          title="Enter during a turn"
+      <SettingSection of="general.enter">
+        <SettingRow
+          id="general.enter"
           description={
             <>
-              Queue waits for the turn, Steer sends into it;
+              Steer sends into the running turn, Queue waits for it.
               <Keys keys={MOD_ENTER} />
               does the other.
             </>
           }
         >
           <ChoiceSelect
-            label="Enter during a turn"
+            label="Enter while a thread is working"
             value={midTurn}
             options={[
-              { value: "queue", label: "Queue" },
               { value: "steer", label: "Steer" },
+              { value: "queue", label: "Queue" },
             ]}
             onChange={(next) => {
               saveMidTurnDefault(next);
               setMidTurn(next);
             }}
           />
-        </PageRow>
-      </PageSection>
+        </SettingRow>
+        <PickerRow />
+      </SettingSection>
 
-      <LinearSettings />
+      <SettingSection of="general.sounds">
+        <SettingRow id="general.sounds">
+          <SettingSwitch label="Sounds" on={sounds} onChange={setSounds} />
+        </SettingRow>
+        {/* The page at /ui is a browser's: it has no computer of its own to keep awake. */}
+        {isWebMode() ? null : <KeepAwakeRow />}
+      </SettingSection>
 
-      <PageSection title="Extras">
-        <SwitchRow
-          title="Sounds"
-          on={soundsEnabled}
-          onChange={setSoundsEnabled}
-        />
-      </PageSection>
-
-      {/* The page at /ui updates with its host; the browser has nothing to install. */}
-      {isWebMode() ? null : (
-        <PageSection title="About">
-          <UpdateRow />
-          <ReleaseNotesRow onOpenWhatsNew={onOpenWhatsNew} />
-        </PageSection>
-      )}
+      <LinearSection />
     </>
   );
 }
 
-function LinearSettings() {
-  const [connecting, setConnecting] = useState(false);
+export const KEEP_AWAKE_OPTIONS: { value: KeepAwakeStatusWire["mode"]; label: string }[] = [
+  { value: "while-working", label: "While threads work" },
+  { value: "never", label: "Never" },
+];
+
+/** This Mac's display held awake while a thread here or on a linked computer works (server/keepAwake.ts), asked of
+ *  this computer; absent where it says it cannot ("this PC" on Windows). */
+function KeepAwakeRow() {
   const link = registry.primary();
-  // Undefined until the host answers, and never made up from a failure:
-  // Connect… would otherwise show for a connected account.
+  const read = useHostRead(link, () => link.request<KeepAwakeStatusWire>("power.status", {}));
+  const saved = useSaved();
+  const [mode, setMode] = useState<KeepAwakeStatusWire["mode"] | null>(null);
+  const status = read.value;
+  if (status && !status.supported) return null;
+  if (!status)
+    return read.error ? (
+      <PageError
+        action={
+          <Button variant="ghost" size="sm" onClick={() => void read.retry()}>
+            Retry
+          </Button>
+        }
+      >
+        {read.error}
+      </PageError>
+    ) : (
+      <PageRowsSkeleton rows={1} control="select" />
+    );
+  const vars = { mac: thisDesktopInLine() };
+  return (
+    <SettingRow id="general.awake" vars={vars} saved={saved} description={status.holding ? "On now" : undefined} data-keep-awake={status.holding ? "holding" : "idle"}>
+      <ChoiceSelect
+        label={`Keep ${vars.mac} awake`}
+        value={mode ?? status.mode}
+        options={KEEP_AWAKE_OPTIONS}
+        onChange={(next) => {
+          setMode(next);
+          void saved.run(async () => read.set(await link.request<KeepAwakeStatusWire>("power.settings.set", { keepAwake: next }))).then(() => setMode(null));
+        }}
+      />
+    </SettingRow>
+  );
+}
+
+/** The inbox's Linear sign-in, kept by this window's computer and named for it, with the teams the inbox shows. */
+function LinearSection() {
+  const link = registry.primary();
+  const computer = computerInLine(useComputerName(link.environmentId));
+  const [connecting, setConnecting] = useState(false);
+  const [teamsOpen, setTeamsOpen] = useState(false);
+  // Undefined until the computer answers, and never made up from a failure: Connect… would otherwise show for a
+  // connected account.
   const status = useHostRead(link, () => linearConnected(link.environmentId));
   const connected = status.value?.connected;
-  const setConnected = (next: boolean) => status.set({ connected: next });
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [teams, setTeams] = useState<LinearTeam[]>([]);
-  const [hiddenTeamIds, setHiddenTeamIds] = useState(loadHiddenLinearTeamIds);
+  const [hidden, setHidden] = useState(loadHiddenLinearTeamIds);
 
   const loadTeams = useCallback(async () => {
     try {
-      const next = await listLinearTeams(registry.primary().environmentId);
-      setTeams(next);
+      setTeams(await listLinearTeams(registry.primary().environmentId));
     } catch {
       setTeams([]);
     }
@@ -181,8 +193,8 @@ function LinearSettings() {
 
   // The dialog awaits this; a refusal stays in the dialog as its red line.
   const onConnect = async (token: string) => {
-    await saveLinearToken(registry.primary().environmentId, token);
-    setConnected(true);
+    await saveLinearToken(link.environmentId, token);
+    status.set({ connected: true });
     setConnecting(false);
     clearInboxCache();
     notifyLinearChange();
@@ -190,94 +202,87 @@ function LinearSettings() {
   };
 
   const onDisconnect = async () => {
-    if (busy) return;
-    setBusy(true);
     setError(null);
+    const yes = await confirmAction({
+      title: `Disconnect Linear on ${computer}`,
+      body: "The inbox stops showing Linear issues until you connect again.",
+      action: "Disconnect",
+      danger: true,
+    });
+    if (!yes) return;
     try {
-      await disconnectLinear(registry.primary().environmentId);
-      setConnected(false);
+      await disconnectLinear(link.environmentId);
+      status.set({ connected: false });
       setTeams([]);
       clearInboxCache();
       notifyLinearChange();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
     }
   };
 
-  const toggleTeam = (id: string) => {
-    const next = new Set(hiddenTeamIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    const ids = [...next];
-    setHiddenTeamIds(ids);
-    saveHiddenLinearTeamIds(ids);
+  const flipTeam = (id: string, on: boolean) => {
+    const next = on ? hidden.filter((team) => team !== id) : [...hidden, id];
+    setHidden(next);
+    saveHiddenLinearTeamIds(next);
     clearInboxCache();
   };
+  const shown = teams.filter((team) => !hidden.includes(team.id)).length;
 
   return (
-    <>
-      <PageSection
-        title="Linear"
-        action={
-          connected === undefined && status.error ? (
-            <Button variant="ghost" size="sm" onClick={status.retry}>
-              Retry
-            </Button>
-          ) : null
-        }
-      >
-        {connected === undefined ? (
-          status.error ? (
-            <PageError>{status.error}</PageError>
-          ) : (
-            <PageRowsSkeleton rows={1} media control="button" />
-          )
+    <SettingSection
+      of="general.linear"
+      action={
+        connected === undefined && status.error ? (
+          <Button variant="ghost" size="sm" onClick={() => void status.retry()}>
+            Retry
+          </Button>
+        ) : null
+      }
+    >
+      {connected === undefined ? (
+        status.error ? (
+          <PageError>{status.error}</PageError>
         ) : (
-          <PageRow
-            media={<InboxProviderMark provider="linear" className="size-4" />}
-            title="API key"
-            // The title and the one control say it all; where to make a key is Connect…'s line.
-            error={error}
-          >
-            {connected ? (
-              <Button variant="secondary" size="sm" onClick={() => void onDisconnect()} disabled={busy}>
-                <BusyLabel busy={busy} label="Disconnect" />
-              </Button>
-            ) : (
-              <Button variant="secondary" size="sm" onClick={() => setConnecting(true)}>
-                Connect…
-              </Button>
-            )}
-          </PageRow>
-        )}
-      </PageSection>
-      <ConnectLinearDialog open={connecting} onClose={() => setConnecting(false)} onConnect={onConnect} />
+          <PageRowsSkeleton rows={1} media control="button" />
+        )
+      ) : (
+        <SettingRow
+          id="general.linear"
+          media={<InboxProviderMark provider="linear" className="size-4" />}
+          description={connected ? `Connected on ${computer}` : undefined}
+          error={error}
+        >
+          {connected ? (
+            <Button variant="ghost" size="sm" onClick={() => void onDisconnect()}>
+              Disconnect…
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => setConnecting(true)}>
+              Connect…
+            </Button>
+          )}
+        </SettingRow>
+      )}
       {connected && teams.length > 0 ? (
-        <PageSection title="Teams in the inbox">
-          {teams.map((team) => (
-            <PageRow key={team.id} title={team.name} description={team.key || undefined}>
-              <SettingSwitch label={team.name} on={!hiddenTeamIds.includes(team.id)} onChange={() => toggleTeam(team.id)} />
-            </PageRow>
-          ))}
-        </PageSection>
+        <SettingRow id="general.linearTeams" description={`${shown} of ${teams.length}`} onOpen={() => setTeamsOpen(true)} openLabel="Linear teams in the inbox" />
       ) : null}
-    </>
+      <ConnectLinearDialog open={connecting} onClose={() => setConnecting(false)} onConnect={onConnect} />
+      {teamsOpen ? (
+        <SwitchListDialog
+          title="Linear teams in the inbox"
+          items={teams.map((team) => ({ id: team.id, label: team.name, description: team.key || undefined, on: !hidden.includes(team.id) }))}
+          onChange={flipTeam}
+          onClose={() => setTeamsOpen(false)}
+        />
+      ) : null}
+    </SettingSection>
   );
 }
 
-/** The key field behind Linear's Connect…: Enter or Connect checks it with
- *  the host; a refusal stays here as the red line, success closes it. */
-function ConnectLinearDialog({
-  open,
-  onClose,
-  onConnect,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onConnect: (token: string) => Promise<void>;
-}) {
+/** The key field behind Linear's Connect…: Enter or Connect checks it with the computer; a refusal stays here as the
+ *  red line, success closes it. */
+function ConnectLinearDialog({ open, onClose, onConnect }: { open: boolean; onClose: () => void; onConnect: (token: string) => Promise<void> }) {
   const [token, setToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -325,119 +330,4 @@ function ConnectLinearDialog({
       </ModalPanel>
     </Dialog>
   );
-}
-
-/** A line ends on its own stop: a subject cut short already ends on "…". */
-const sentence = (line: string) => (/[.!?…]$/.test(line) ? line : `${line}.`);
-
-function UpdateRow() {
-  const snapshot = useUpdateSnapshot();
-  const downloading = snapshot.phase === "downloading";
-  const ready = snapshot.phase === "ready";
-  const busy = snapshot.phase === "checking" || downloading;
-  const hasUpdate = snapshot.phase === "available";
-  const canApply = snapshot.canApply === true;
-
-  const status = downloading
-    ? `Downloading ${snapshot.availableVersion ?? "the update"}…`
-    : ready
-      ? snapshot.codeSubject
-        ? `Code update: ${sentence(snapshot.codeSubject)} Restart to finish.`
-        : `Release ${snapshot.availableVersion} is downloaded. Restart to finish.`
-      : snapshot.phase === "checking"
-        ? "Checking…"
-        : snapshot.phase === "error"
-          ? (snapshot.error ?? "Update failed.")
-          : hasUpdate
-            ? canApply
-              ? (snapshot.notes ??
-                `Release ${snapshot.availableVersion} is ready.`)
-              : `Release ${snapshot.availableVersion} is out. Dev build — updates apply to the installed app.`
-            : snapshot.canApply === false
-              ? "Dev build — updates apply to the installed app."
-              : "Up to date.";
-
-  const retry = canRetry(snapshot);
-  const actionable = (hasUpdate && canApply) || ready || retry;
-
-  const failed = snapshot.phase === "error";
-  return (
-    <PageRow
-      title={
-        <>
-          Release
-          <span className="font-mono text-xs font-normal text-muted-foreground tabular-nums">{snapshot.currentVersion}</span>
-        </>
-      }
-      description={
-        failed ? undefined : (
-          <>
-            {status}
-            {downloading ? (
-              <Progress aria-label="Download" value={Math.round(snapshot.percent ?? 0)} className="mt-2 w-64" />
-            ) : null}
-          </>
-        )
-      }
-      error={
-        failed ? (
-          <>
-            {status}
-            {canApply ? (
-              <>
-                {" "}
-                <Button variant="link" size="xs" className="h-auto px-0 text-xs after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']" onClick={() => void openUrl(MANUAL_DOWNLOAD_URL)}>
-                  Download the installer
-                </Button>
-              </>
-            ) : null}
-          </>
-        ) : undefined
-      }
-    >
-      <Button
-        variant={actionable ? "default" : "secondary"}
-        size="sm"
-        onClick={() => void (actionable ? updateStore.install() : updateStore.check(true))}
-        disabled={busy}
-      >
-        <BusyLabel busy={busy} label={updateActionLabel(snapshot.phase, { canApply, retry })} busyLabel="Check for updates" />
-      </Button>
-    </PageRow>
-  );
-}
-
-/** The release notes: a waiting update's from the feed, else the ones this
- *  build shipped with (its version is already on the Release row). */
-function ReleaseNotesRow({
-  onOpenWhatsNew,
-}: {
-  onOpenWhatsNew: (version: string, markdown?: string) => void;
-}) {
-  const snapshot = useUpdateSnapshot();
-  const waiting = snapshot.phase === "available" && snapshot.availableVersion && snapshot.notes ? snapshot : null;
-  const open = () =>
-    waiting
-      ? onOpenWhatsNew(waiting.availableVersion!, waiting.notes!)
-      : onOpenWhatsNew(BUNDLED_RELEASE.version, BUNDLED_RELEASE.notes);
-  return (
-    <PageRow title="Release notes" description={waiting ? `For ${waiting.availableVersion}` : undefined}>
-      <span className="contents" {...releaseNotesChunk.intent}>
-        <Button variant="secondary" size="sm" onClick={open}>
-          Open
-        </Button>
-      </span>
-    </PageRow>
-  );
-}
-
-/** The update button's word for the updater's phase. */
-export function updateActionLabel(
-  phase: ReturnType<typeof useUpdateSnapshot>["phase"],
-  { canApply, retry }: { canApply: boolean; retry: boolean },
-): string {
-  if (phase === "ready") return "Restart";
-  if (retry) return "Retry";
-  if (phase === "available" && canApply) return "Update";
-  return "Check for updates";
 }

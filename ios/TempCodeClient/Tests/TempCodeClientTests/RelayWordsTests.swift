@@ -194,7 +194,7 @@ struct RelayedEnvironmentTests {
 struct ForgetCopyTests {
     @Test func `names the relayed hosts that go with the carrier`() {
         let base = forgetCopy(carrier: "box", relayed: [])
-        #expect(base.hasPrefix("Its threads stay on the host"))
+        #expect(base == "This phone drops its key and stops getting box’s notifications. Its threads stay there, and box still lets this phone in until the key is removed there.")
         #expect(!base.contains("with it"))
         #expect(forgetCopy(carrier: "box", relayed: ["Studio Mac"]) == "\(base) Studio Mac goes with it.")
         #expect(forgetCopy(carrier: "box", relayed: ["Studio Mac", "Office Mac"]) == "\(base) Studio Mac and Office Mac go with it.")

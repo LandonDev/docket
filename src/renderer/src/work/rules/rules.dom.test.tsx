@@ -47,7 +47,19 @@ vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMa
 const { GIVEN_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
 
 const WORKSPACE = { id: "ws", name: "Purdue Esports", environmentId: "box", sector: "purdue", kind: "work", path: "/w" } as never;
-const { HouseRules } = await import("./HouseRules");
+const { HouseRules, VoiceRow } = await import("./HouseRules");
+const { useLinkMay } = await import("../../lib/linkMay");
+
+/** The rules and the voice row as a job's page draws them: the voice only where the job has a sector and the key may write it. */
+function RulesPage({ workspace }: { workspace: typeof WORKSPACE }) {
+  const may = useLinkMay((workspace as { environmentId: string }).environmentId, "work.workspace.set");
+  return (
+    <>
+      <HouseRules workspace={workspace} />
+      {(workspace as { sector?: string | null }).sector && may ? <VoiceRow workspace={workspace} /> : null}
+    </>
+  );
+}
 const { RuleLine } = await import("./RuleLine");
 
 function rule(id: string, text: string, on = true): HouseRule {
@@ -93,7 +105,7 @@ afterEach(() => {
 
 describe("the rules page", () => {
   it("lists the rules with a switch each, and a proposal that opens to its three edits", async () => {
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     expect(screen.getByRole("button", { name: "Edit rule: Sign Purdue mail as Landon Hale" })).toBeTruthy();
     expect((screen.getByRole("switch", { name: /Copy Sam Ortiz/ }) as HTMLElement).getAttribute("aria-checked")).toBe("false");
@@ -106,7 +118,7 @@ describe("the rules page", () => {
   });
 
   it("Add makes the rule from the proposal, and Undo puts the proposal back", async () => {
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     fireEvent.click(within(document.querySelector("[data-proposal=p1]") as HTMLElement).getByRole("button", { name: "Add" }));
     await settle();
@@ -118,7 +130,7 @@ describe("the rules page", () => {
   });
 
   it("Dismiss asks the host never to offer it again", async () => {
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
     await settle();
@@ -127,7 +139,7 @@ describe("the rules page", () => {
 
   it("past twelve rules, a find field narrows the list, marks the words, and turns reordering off", async () => {
     state.rules = Array.from({ length: 14 }, (_, i) => rule(`r${i}`, i === 9 ? "Say players, not gamers" : `Rule number ${i}`));
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     expect(document.querySelectorAll("[data-rule-grip]")).toHaveLength(14);
     fireEvent.change(screen.getByRole("textbox", { name: "Find a rule" }), { target: { value: "players" } });
@@ -139,7 +151,7 @@ describe("the rules page", () => {
   it("says when there are no rules, and the voice row names its mail", async () => {
     state.rules = [];
     state.proposals = [];
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     expect(screen.getByText("No rules yet")).toBeTruthy();
     expect(screen.queryByText("Proposed")).toBeNull();
@@ -150,7 +162,7 @@ describe("the rules page", () => {
 describe("a read that failed", () => {
   it("offers Retry on the rules' error, busy while it asks again, then lists them", async () => {
     state.fail.add("work.rules.list");
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
     state.fail.delete("work.rules.list");
@@ -170,7 +182,7 @@ describe("a read that failed", () => {
 
   it("offers Retry on the voice row's error, and a retry that fails again keeps it", async () => {
     state.fail.add("work.rules.voice");
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     const retry = () => screen.getByRole("button", { name: "Retry" });
     fireEvent.click(retry());
@@ -196,11 +208,11 @@ describe("the voice row while LifeOS is down", () => {
     const { setLifeosStatus } = await import("../shell/lifeos");
     setLifeosStatus("box", { lifeos: { state: "signed-out" }, keys: [] });
     state.voice = { on: true, count: null, since: null, from: [] };
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
-    const row = screen.getByText("Read my sent mail for how I write").closest("[data-slot]")!.parentElement!;
+    const row = screen.getByText("Learn how I write from my sent mail").closest("[data-slot]")!.parentElement!;
     expect(row.textContent).not.toMatch(/LifeOS|mails/);
-    expect(screen.getByRole("switch", { name: "Read my sent mail for how I write" })).toBeTruthy();
+    expect(screen.getByRole("switch", { name: "Learn how I write from my sent mail" })).toBeTruthy();
     const asks = calls.filter((c) => c.method === "work.rules.voice").length;
     state.voice = null;
     act(() => setLifeosStatus("box", { lifeos: { state: "connected", ownerId: "o", since: 1 }, keys: [] }));
@@ -213,7 +225,7 @@ describe("the voice row while LifeOS is down", () => {
     const { setLifeosStatus } = await import("../shell/lifeos");
     setLifeosStatus("box", { lifeos: { state: "connected", ownerId: "o", since: 1 }, keys: [] });
     state.voice = { on: true, count: null, since: null, from: [], error: "LifeOS did not answer: socket closed" };
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
     expect(screen.queryByText(/socket closed/)).toBeNull();
@@ -224,7 +236,7 @@ describe("the voice row while LifeOS is down", () => {
     const { setLifeosStatus } = await import("../shell/lifeos");
     setLifeosStatus("box", { lifeos: { state: "connected", ownerId: "o", since: 1 }, keys: [] });
     state.voice = { on: true, count: null, since: null, from: [], error: "LifeOS did not answer: socket closed" };
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     const line = document.querySelector<HTMLElement>("[data-voice-failed]")!;
     const asks = calls.filter((c) => c.method === "work.rules.voice").length;
@@ -247,7 +259,7 @@ describe("the voice row while LifeOS is down", () => {
 
 describe("the rule dialog", () => {
   it("Add rule… writes the rule though no callback waits on it", async () => {
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Add rule…" }));
     await settle();
@@ -259,25 +271,25 @@ describe("the rule dialog", () => {
 
   it("a given computer's key, which may not write the workspace's settings, has no voice section and keeps the rules", async () => {
     testKey.current = GIVEN_KEY;
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     expect(screen.getByRole("button", { name: "Edit rule: Sign Purdue mail as Landon Hale" })).toBeTruthy();
-    expect(screen.queryByRole("switch", { name: "Read my sent mail for how I write" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Learn how I write from my sent mail" })).toBeNull();
     expect(calls.some((c) => c.method === "work.rules.voice")).toBe(false);
   });
 
   it("a workspace with no sector has no voice section", async () => {
-    render(<HouseRules workspace={{ ...(WORKSPACE as object), sector: null } as never} />);
+    render(<RulesPage workspace={{ ...(WORKSPACE as object), sector: null } as never} />);
     await settle();
     expect(screen.queryByText("Voice")).toBeNull();
-    expect(screen.queryByRole("switch", { name: "Read my sent mail for how I write" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Learn how I write from my sent mail" })).toBeNull();
   });
 });
 
 describe("the order, without a pointer", () => {
   it("moves a rule in its edit dialog and writes the order with Save, through the same reorder call", async () => {
     state.rules = [rule("r1", "First"), rule("r2", "Second"), rule("r3", "Third")];
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Edit rule: Second" }));
     await settle();
@@ -294,9 +306,32 @@ describe("the order, without a pointer", () => {
     expect(calls.some((c) => c.method === "work.rules.edit")).toBe(false);
   });
 
+  /** WORK's request (RuleDialog.tsx): Delete took a rule for good, while Add and Dismiss each gave Undo. */
+  it("Delete says Deleted with Undo, which writes the words back off as they were, in the place they stood", async () => {
+    state.rules = [rule("r1", "First"), rule("r2", "Second", false), rule("r3", "Third")];
+    toasts.length = 0;
+    render(<HouseRules workspace={WORKSPACE} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Edit rule: Second" }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await settle();
+    expect(calls.find((c) => c.method === "work.rules.remove")?.params).toEqual({ id: "r2" });
+    const deleted = toasts.find((t) => t.text === "Deleted")!;
+    expect(deleted.undo).toBeTruthy();
+    const before = calls.length;
+    await act(async () => deleted.undo!());
+    await settle();
+    expect(calls.slice(before).map((c) => [c.method, c.params])).toEqual([
+      ["work.rules.add", { workspaceId: "ws", text: "Second" }],
+      ["work.rules.edit", { id: "r-new", on: false }],
+      ["work.rules.order", { workspaceId: "ws", ids: ["r1", "r-new", "r3"] }],
+    ]);
+  });
+
   it("Cancel leaves the order as it was", async () => {
     state.rules = [rule("r1", "First"), rule("r2", "Second")];
-    render(<HouseRules workspace={WORKSPACE} />);
+    render(<RulesPage workspace={WORKSPACE} />);
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Edit rule: Second" }));
     await settle();

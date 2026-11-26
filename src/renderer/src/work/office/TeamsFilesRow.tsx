@@ -9,6 +9,8 @@ import { ChoiceSelect } from "../../components/choice-select";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
+import { Skeleton } from "../../components/ui/skeleton";
+import { StatusMark } from "../../components/ui/status";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import type { Link } from "../../lib/connection/link";
 import { useHostRead } from "../../lib/connection/hostRead";
@@ -17,20 +19,32 @@ import { nameInLine } from "../../lib/hostWords";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { nativePlatform } from "../../lib/native";
 import { isWebMode } from "../../lib/nativeWeb";
+import { ListFilter, useListFilter } from "../../surfaces/settings/parts/ListFilter";
+import { SaveMark } from "../../surfaces/settings/parts/SaveMark";
+import { useSaved } from "../../surfaces/settings/parts/useSaved";
 import { useKeptRetry } from "./keptRetry";
 
 /**
- * Settings → Work, a section a host: the folders on it that Files lists as shared places
- * (docs/agents/work-teams-files.md "Settings"), under "Folders" or, with two hosts, "Folders on <host>",
- * Add folder… at the heading's end. Each library OneDrive syncs there is found and on by default; he turns
- * one off, adds any folder (a network drive's too), or gives one its web address (a channel's Files → Copy
- * link) for Open on the web. Only this computer's own window edits its list.
+ * Settings → Files, a section a computer (docs/agents/work-teams-files.md "Settings", docs/agents/settings.md "The
+ * pages: Work"): the folders on it that Files lists as shared places, "Folders on <computer>", or the Windows VM's,
+ * "Folders in the Windows VM" (`vm`: the libraries that lie in the guest). Add folder… stands at the heading's end.
+ * Each library OneDrive syncs there is found and on by default; he turns one off, or adds any folder (a network
+ * drive's too) and stops listing it. Each library row says where its Office files open, and opens a dialog for that
+ * and its web address (a channel's Files → Copy link). Only this computer's own window edits its list: another's
+ * rows are words, and `elsewhere` says where they are changed. A list past eight rows gets a find field.
  */
 
 type Libraries = { libraries: TeamsLibrary[]; roots: TeamsRoot[]; off: string[]; places?: TeamsPlace[] };
 
-/** The row's line when it lists nothing: what OneDrive's folders on this host say, where the host says it. */
-export function noneLine(places: readonly TeamsPlace[] | undefined): string {
+/** The row's line when it lists nothing: what OneDrive's folders on this computer (or in its Windows VM) say, where it says. */
+export function noneLine(places: readonly TeamsPlace[] | undefined, vm = false): string {
+  if (vm) {
+    const place = places?.find((p) => p.kind === "vm");
+    if (place?.state === "signed-out") return "OneDrive in the Windows VM is not signed in";
+    if (place?.state === "reading") return "Reading the Windows VM's folders…";
+    if (place?.state === "error") return place.detail ?? "The Windows VM's folders could not be read";
+    return "None synced";
+  }
   const folders = places?.find((p) => p.kind === "folders");
   if (folders?.state === "no-onedrive") return "OneDrive is not signed in here";
   if (folders?.state === "error") return folders.detail ?? "OneDrive's folders could not be read";
@@ -40,7 +54,7 @@ export function noneLine(places: readonly TeamsPlace[] | undefined): string {
 /** A library's name as the row reads it. */
 export const libraryTitle = (l: Pick<TeamsLibrary, "kind" | "team" | "library">): string => (l.kind === "mine" ? "My files" : l.library ? `${l.team} ${l.library}` : l.team);
 
-/** A folder he added himself: a library the host did not find. Off folders and found libraries are named by their team. */
+/** A folder he added himself: a library the computer did not find. Off folders and found libraries are named by their team. */
 const added = (library: TeamsLibrary | null): boolean => !!library && !library.found;
 
 /** His list with one folder's row changed; a row that says nothing more is dropped. */
@@ -53,31 +67,56 @@ export function withRoot(roots: readonly TeamsRoot[], folder: string, change: Pa
   return [...rest, next];
 }
 
-/** A failure on a host's folders in his words, naming it: `workErrorWords`, else the act's own line. */
+/** A failure on a computer's folders in his words, naming it: `workErrorWords`, else the act's own line. */
 function folderFailure(err: unknown, host: string | undefined, act: string, write = false): string {
   const name = host ? nameInLine(host) : undefined;
   return workErrorWords(err, { host: name, write }) || `${name ? name.charAt(0).toUpperCase() + name.slice(1) : "The computer"} ${act}.`;
 }
 
-export function TeamsFilesRow({ link, title, host, editable }: { link: Link | null | undefined; title: string; host?: string; editable: boolean }) {
+/** A computer that keeps a Windows VM: its libraries in the guest are a section of their own. */
+const keepsVm = (value: Libraries): boolean => value.libraries.some((l) => l.vm) || value.places?.some((p) => p.kind === "vm" && p.state !== "not-set-up") === true;
+/** An off folder's section: on a computer that keeps a VM, a path with a drive letter is the guest's; else every off folder is its own. */
+const offIn = (folder: string, value: Libraries, vm: boolean): boolean => (keepsVm(value) && /^[A-Za-z]:[\\/]/.test(folder)) === vm;
+
+type FolderRowValue = { folder: string; title: string; library: TeamsLibrary | null; on: boolean };
+const rowWords = (row: FolderRowValue): string => `${row.title} ${row.folder}`;
+
+export function TeamsFilesRow({
+  link,
+  title,
+  host,
+  editable,
+  vm = false,
+  setting,
+  elsewhere,
+}: {
+  link: Link | null | undefined;
+  title: string;
+  host?: string;
+  editable: boolean;
+  /** The Windows VM's folders on this computer, not its own. */
+  vm?: boolean;
+  /** The section's place in the map (lib/settings/map.ts). */
+  setting?: string;
+  /** Where the list is changed, for a window that may not: "Changed in Docket on PURDUE-LT". */
+  elsewhere?: string;
+}) {
   const read = useHostRead(link, () => link!.request<Libraries>("work.office.filesLibraries", {}));
-  const [busy, setBusy] = useState<string | null>(null);
-  // A row's own save (a switch, Remove) says its failure on the list's top row; a dialog's, in the dialog alone.
-  const [error, setError] = useState<string | null>(null);
+  // A dialog's failed save says so in the dialog alone; a row's, under the row.
   const [dialogError, setDialogError] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "web"; library: TeamsLibrary } | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "add" } | { kind: "library"; library: TeamsLibrary; title: string } | null>(null);
   const value = read.value;
   const kept = useKeptRetry(read.error, value === undefined && read.error === null);
-  const add = editable && value ? (
-    // A ghost press over a column of ghost presses (Remove) and switches: its box ends on the column's edge as theirs do,
-    // so its words end where Remove's do (plan §3.1). Never pulled past the edge, as a press over a column of selects is.
-    <Button variant="ghost" size="sm" onClick={() => setDialog({ kind: "add" })}>
-      Add folder…
-    </Button>
-  ) : undefined;
+  const shown: FolderRowValue[] = value
+    ? [
+        ...value.libraries.filter((l) => !!l.vm === vm).map((l) => ({ folder: l.path, title: libraryTitle(l), library: l, on: true })),
+        ...value.off.filter((folder) => offIn(folder, value, vm)).map((folder) => ({ folder, title: folder.split(/[\\/]/).pop() ?? folder, library: null, on: false })),
+      ]
+    : [];
+  const filter = useListFilter(shown, rowWords);
   if (!value)
     return (
-      <PageSection title={title}>
+      <PageSection title={title} data-setting={setting}>
         {kept.error ? (
           <PageError
             action={
@@ -89,97 +128,140 @@ export function TeamsFilesRow({ link, title, host, editable }: { link: Link | nu
             {folderFailure(kept.error, host, "could not list its folders")}
           </PageError>
         ) : (
-          <PageRowsSkeleton rows={1} description control="button" />
+          <PageRowsSkeleton rows={1} description control="switch" />
         )}
       </PageSection>
     );
-  const save = async (roots: TeamsRoot[], key: string, from: "row" | "dialog" = "row"): Promise<boolean> => {
-    const say = from === "dialog" ? setDialogError : setError;
-    setBusy(key);
-    say(null);
+  // A computer with no Windows VM set up has no VM section at all.
+  if (vm && !keepsVm(value)) return null;
+  const add = editable ? (
+    // A ghost press over a column of ghost presses (Stop listing) and switches: its box ends on the column's edge as theirs do.
+    <Button variant="ghost" size="sm" data-setting={vm ? undefined : "files.add"} onClick={() => setDialog({ kind: "add" })}>
+      Add folder…
+    </Button>
+  ) : undefined;
+  /** One write of his list; a refusal comes back in his words, naming the computer. */
+  const put = async (roots: TeamsRoot[]): Promise<void> => {
     try {
       read.set(await link!.request<Libraries>("work.office.filesSetRoots", { roots }));
-      return true;
     } catch (err) {
-      say(folderFailure(err, host, "did not save the folders", true));
-      return false;
-    } finally {
-      setBusy(null);
+      throw new Error(folderFailure(err, host, "did not save the folders", true));
     }
   };
-  const shown = [...value.libraries.map((l) => ({ folder: l.path, title: libraryTitle(l), library: l, on: true })), ...value.off.map((folder) => ({ folder, title: folder.split(/[\\/]/).pop() ?? folder, library: null, on: false }))];
+  const saveDialog = async (roots: TeamsRoot[]): Promise<boolean> => {
+    setDialogError(null);
+    try {
+      await put(roots);
+      return true;
+    } catch (err) {
+      setDialogError((err as Error).message);
+      return false;
+    }
+  };
+  const closed = (saved: boolean): void => {
+    setDialog(null);
+    setDialogError(null);
+    // A save already holds the computer's answer; otherwise ask again, keeping what is shown meanwhile.
+    if (!saved) read.retry();
+  };
   return (
-    <PageSection title={title} action={add}>
-      {error ? <PageError>{error}</PageError> : null}
-      {shown.length ? null : <PageEmpty>{noneLine(value.places)}</PageEmpty>}
-      {shown.map((row) => (
-        // A folder he added shows its path; a library found by its team and channel is named well enough, its path in a tip that focus opens as hover does.
-        <PageRow
+    <PageSection title={title} action={add} data-setting={setting}>
+      <ListFilter filter={filter} label="Find a folder" />
+      {shown.length ? null : <PageEmpty>{noneLine(value.places, vm)}</PageEmpty>}
+      {filter.shown.map((row) => (
+        <FolderRow
           key={row.folder}
-          // A library's three controls (where its files open, its web link, the switch) take a line of their own in a
-          // narrow page (under 480px), so its name keeps the row's width and never breaks two letters a line.
-          wide={editable && !!row.library && row.on}
-          title={
-            added(row.library) ? (
-              row.title
-            ) : (
-              <Tooltip>
-                <TooltipTrigger render={<span data-library-path={row.folder} tabIndex={0} className="focus-ring rounded-sm" />}>{row.title}</TooltipTrigger>
-                <TooltipContent side="bottom" align="start" className="max-w-sm break-all">
-                  {row.folder}
-                </TooltipContent>
-              </Tooltip>
-            )
-          }
-          // A slow folder's reason is a fact of its own: a line under the path, never joined to it.
-          description={
-            row.library?.slow && added(row.library) ? (
-              <>
-                <span className="block">{row.folder}</span>
-                <span className="block">{row.library.slow}</span>
-              </>
-            ) : (
-              (row.library?.slow ?? (added(row.library) ? row.folder : undefined))
-            )
-          }
-        >
-          {editable ? (
-            <div className="flex items-center gap-2">
-              {row.library && row.on ? <OpensIn link={link!} libraryId={row.library.id} title={row.title} /> : null}
-              {row.library && row.on ? (
-                <Button variant="ghost" size="sm" onClick={() => setDialog({ kind: "web", library: row.library! })}>
-                  {row.library.web ? "Web link…" : "Add web link…"}
-                </Button>
-              ) : null}
-              {row.library && !row.library.found ? (
-                <Button variant="ghost" size="sm" disabled={busy === row.folder} onClick={() => void save(withRoot(value.roots, row.folder, null), row.folder)}>
-                  {/* Its words end on the box's edge, as Add folder…'s do: the spinner's room is kept at the start. */}
-                  <BusyLabel busy={busy === row.folder} label="Remove" align="end" />
-                </Button>
-              ) : (
-                <SettingSwitch label={row.title} on={row.on} disabled={busy === row.folder} onChange={(on) => save(withRoot(value.roots, row.folder, { off: !on }), row.folder)} />
-              )}
-            </div>
-          ) : null}
-        </PageRow>
+          row={row}
+          link={link!}
+          editable={editable}
+          onSwitch={(on) => put(withRoot(value.roots, row.folder, { off: !on }))}
+          onStop={() => put(withRoot(value.roots, row.folder, null))}
+          onOpen={row.library && row.on && editable ? () => setDialog({ kind: "library", library: row.library!, title: row.title }) : undefined}
+        />
       ))}
-      {dialog ? (
-        <FolderDialog
-          kind={dialog.kind}
-          initial={dialog.kind === "web" ? (dialog.library.web ?? "") : ""}
-          onClose={(saved) => {
-            setDialog(null);
-            setDialogError(null);
-            // A save already holds the host's answer; otherwise ask again, keeping what is shown meanwhile.
-            if (!saved) read.retry();
-          }}
-          onSave={(text) =>
-            dialog.kind === "add" ? save(withRoot(value.roots, text, {}), "add", "dialog") : save(withRoot(value.roots, dialog.library.path, { web: text || undefined }), dialog.library.path, "dialog")
-          }
+      {!editable && elsewhere ? <PageEmpty data-managed="">{elsewhere}</PageEmpty> : null}
+      {dialog?.kind === "add" ? <FolderDialog onClose={closed} onSave={(text) => saveDialog(withRoot(value.roots, text, {}))} error={dialogError} /> : null}
+      {dialog?.kind === "library" ? (
+        <LibraryDialog
+          link={link!}
+          library={dialog.library}
+          title={dialog.title}
+          onClose={closed}
+          onSaveWeb={(web) => saveDialog(withRoot(value.roots, dialog.library.path, { web: web || undefined }))}
           error={dialogError}
+          setError={setDialogError}
         />
       ) : null}
     </PageSection>
+  );
+}
+
+/** One folder: its name (a found library's path in a tip), where its Office files open, and its one control. */
+function FolderRow({
+  row,
+  link,
+  editable,
+  onSwitch,
+  onStop,
+  onOpen,
+}: {
+  row: FolderRowValue;
+  link: Link;
+  editable: boolean;
+  onSwitch: (on: boolean) => Promise<void>;
+  onStop: () => Promise<void>;
+  onOpen?: () => void;
+}) {
+  const saved = useSaved();
+  const opens = useOpensIn(link, row.library && row.on ? row.library.id : null);
+  // Each fact a line of its own, never joined to the next: the path of a folder he added, a slow folder's reason, and
+  // where its Office files open (the dialog changes it).
+  const lines = [added(row.library) ? row.folder : null, row.library?.slow ?? null, opens ? OPENS_LINE[opens] : null].filter((line): line is string => !!line);
+  const busy = saved.state === "saving" || saved.state === "slow";
+  return (
+    <PageRow
+      data-folder={row.folder}
+      title={
+        added(row.library) ? (
+          row.title
+        ) : (
+          <Tooltip>
+            <TooltipTrigger render={<span data-library-path={row.folder} tabIndex={0} className="focus-ring rounded-sm" />}>{row.title}</TooltipTrigger>
+            <TooltipContent side="bottom" align="start" className="max-w-sm break-all">
+              {row.folder}
+            </TooltipContent>
+          </Tooltip>
+        )
+      }
+      description={
+        lines.length
+          ? lines.map((line) => (
+              <span key={line} className="block">
+                {line}
+              </span>
+            ))
+          : undefined
+      }
+      error={saved.error}
+      onOpen={onOpen}
+      openLabel={`${row.title}: where its files open`}
+    >
+      {editable ? (
+        <>
+          <SaveMark state={saved.state} />
+          {row.library && !row.library.found ? (
+            // Un-lists a folder he added: one press, nothing on disk changes, and Add folder… brings it back.
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void saved.run(onStop)}>
+              Stop listing
+            </Button>
+          ) : (
+            <SettingSwitch label={row.title} on={row.on} onChange={(on) => saved.run(() => onSwitch(on))} />
+          )}
+        </>
+      ) : (
+        <StatusMark state="idle" glyph={false} word={row.on ? "On" : "Off"} className="text-xs" />
+      )}
+    </PageRow>
   );
 }
 
@@ -187,42 +269,98 @@ const OPENS_IN = [
   { value: "here", label: "Edit here" },
   { value: "live", label: "Office for the web" },
 ] as const;
+type OpensIn = (typeof OPENS_IN)[number]["value"];
+export const OPENS_LINE: Record<OpensIn, string> = { here: "Office files open here", live: "Office files open in Office for the web" };
 
 /**
  * Where a shared Office file of this library opens until he picks for the file itself (docs/agents/work-office-live.md
  * "The control"): Edit here (TempCode's own editor), or Office for the web (Word, Excel or PowerPoint for the web).
  */
-function OpensIn({ link, libraryId, title }: { link: Link; libraryId: string; title: string }) {
-  const read = useHostRead(link, () => link.request<{ mode: "here" | "live" }>("work.office.live.libraryDefault", { libraryId }), libraryId);
-  const [saving, setSaving] = useState(false);
-  if (!read.value) return null;
+function useOpensIn(link: Link, libraryId: string | null): OpensIn | null {
+  const read = useHostRead(libraryId ? link : null, () => link.request<{ mode: OpensIn }>("work.office.live.libraryDefault", { libraryId }), libraryId ?? "");
+  return read.value?.mode ?? null;
+}
+
+/** A library's own settings: where its Office files open, and its web address. Save writes what changed. */
+function LibraryDialog({
+  link,
+  library,
+  title,
+  onSaveWeb,
+  onClose,
+  error,
+  setError,
+}: {
+  link: Link;
+  library: TeamsLibrary;
+  title: string;
+  onSaveWeb: (web: string) => Promise<boolean>;
+  onClose: (saved: boolean) => void;
+  error: string | null;
+  setError: (error: string | null) => void;
+}) {
+  const opens = useOpensIn(link, library.id);
+  const [mode, setMode] = useState<OpensIn | null>(null);
+  const [web, setWeb] = useState(library.web ?? "");
+  const [pending, setPending] = useState(false);
+  const cancel = (): void => onClose(false);
+  const { root, closeThen } = useClosingDialog(cancel, pending);
+  const chosen = mode ?? opens;
+  const modeChanged = mode !== null && mode !== opens;
+  const webChanged = web.trim() !== (library.web ?? "");
+  const confirm = async (): Promise<void> => {
+    setPending(true);
+    setError(null);
+    let ok = true;
+    if (modeChanged)
+      ok = await link.request("work.office.live.setLibraryDefault", { libraryId: library.id, mode }).then(
+        () => true,
+        (err: unknown) => {
+          setError(workErrorWords(err, { write: true }) || "Where its files open did not save.");
+          return false;
+        },
+      );
+    if (ok && webChanged) ok = await onSaveWeb(web.trim());
+    setPending(false);
+    if (ok) closeThen(() => onClose(true));
+  };
   return (
-    <ChoiceSelect
-      label={`Where ${title}'s Office files open`}
-      size="sm"
-      value={read.value.mode}
-      options={[...OPENS_IN]}
-      disabled={saving}
-      onChange={(mode) => {
-        setSaving(true);
-        void link
-          .request<{ mode: "here" | "live" }>("work.office.live.setLibraryDefault", { libraryId, mode })
-          .then(read.set, () => read.retry())
-          .finally(() => setSaving(false));
-      }}
-    />
+    <Dialog {...root}>
+      <ModalPanel onClose={() => closeThen(cancel)} title={title} size="sm">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (modeChanged || webChanged) void confirm();
+          }}
+        >
+          <ModalBody>
+            <Field label="Office files open in">
+              {chosen ? (
+                <ChoiceSelect label="Office files open in" value={chosen} options={[...OPENS_IN]} disabled={pending} onChange={(next) => setMode(next)} />
+              ) : (
+                <Skeleton className="h-8 w-full" />
+              )}
+            </Field>
+            <Field label="Web link" hint="The library folder's address, from the browser's address bar in SharePoint.">
+              <Input value={web} placeholder="https://…sharepoint.com/…" spellCheck={false} disabled={pending} onChange={(event) => setWeb(event.target.value)} />
+            </Field>
+            <ErrorLine error={error} />
+          </ModalBody>
+          <DialogFooter onCancel={() => closeThen(cancel)} confirmLabel="Save" pending={pending} disabled={!modeChanged && !webChanged} />
+        </form>
+      </ModalPanel>
+    </Dialog>
   );
 }
 
 /** The Add folder field's hint, in this machine's own spelling: a mapped drive on Windows, a home folder elsewhere. */
 export const folderHint = (platform: string = nativePlatform()): string => (platform === "win32" ? "J:\\Shared" : "~/Documents/…");
 
-function FolderDialog({ kind, initial, onSave, onClose, error }: { kind: "add" | "web"; initial: string; onSave: (text: string) => Promise<boolean>; onClose: (saved: boolean) => void; error: string | null }) {
-  const [text, setText] = useState(initial);
+function FolderDialog({ onSave, onClose, error }: { onSave: (text: string) => Promise<boolean>; onClose: (saved: boolean) => void; error: string | null }) {
+  const [text, setText] = useState("");
   const [pending, setPending] = useState(false);
   const cancel = (): void => onClose(false);
   const { root, closeThen } = useClosingDialog(cancel, pending);
-  const add = kind === "add";
   const confirm = async (): Promise<void> => {
     setPending(true);
     const ok = await onSave(text.trim());
@@ -231,20 +369,20 @@ function FolderDialog({ kind, initial, onSave, onClose, error }: { kind: "add" |
   };
   return (
     <Dialog {...root}>
-      <ModalPanel onClose={() => closeThen(cancel)} title={add ? "Add a folder" : "Web link"} description={add ? undefined : "The library folder's address, from the browser's address bar in SharePoint."} size="sm">
+      <ModalPanel onClose={() => closeThen(cancel)} title="Add a folder" size="sm">
         <ModalBody>
           <div className="flex items-end gap-2">
-            <Field label={add ? "Folder" : "Link"} className="flex-1">
+            <Field label="Folder" className="flex-1">
               <Input
                 autoFocus
                 value={text}
-                placeholder={add ? folderHint() : "https://…sharepoint.com/…"}
+                placeholder={folderHint()}
                 spellCheck={false}
                 onChange={(event) => setText(event.target.value)}
-                onKeyDown={(event) => event.key === "Enter" && (add ? text.trim() : true) && void confirm()}
+                onKeyDown={(event) => event.key === "Enter" && text.trim() && void confirm()}
               />
             </Field>
-            {add && !isWebMode() ? (
+            {!isWebMode() ? (
               <Button type="button" variant="secondary" onClick={() => void pickFolder("Add a folder").then((picked) => picked && setText(picked))}>
                 Browse…
               </Button>
@@ -252,7 +390,7 @@ function FolderDialog({ kind, initial, onSave, onClose, error }: { kind: "add" |
           </div>
           <ErrorLine error={error} />
         </ModalBody>
-        <DialogFooter onCancel={() => closeThen(cancel)} confirmLabel={add ? "Add" : "Save"} pending={pending} disabled={add && !text.trim()} onConfirm={() => void confirm()} />
+        <DialogFooter onCancel={() => closeThen(cancel)} confirmLabel="Add" pending={pending} disabled={!text.trim()} onConfirm={() => void confirm()} />
       </ModalPanel>
     </Dialog>
   );

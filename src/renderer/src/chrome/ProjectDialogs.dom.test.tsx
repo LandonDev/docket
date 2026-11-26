@@ -11,6 +11,13 @@ import { emptyAccounts, type AccountPins } from '@server/shared/accounts'
 import { PreambleDialog } from './PreambleDialog'
 import { resetPlanSettingsForTests } from '../lib/tcserver/plans'
 
+// The sheet's Cancel on a changed draft asks through the confirm host, which no test mounts: its answer is set here.
+const confirmed = vi.hoisted(() => ({ answer: false, asked: [] as string[] }))
+vi.mock('./ConfirmDialog', async (original) => ({
+  ...(await original<object>()),
+  confirmAction: async (request: { title: string }) => (confirmed.asked.push(request.title), confirmed.answer)
+}))
+
 const failed = vi.hoisted(() => [] as { verb: string; title: string; err: unknown }[])
 vi.mock('../lib/threadActionToast', () => ({ actionFailed: (verb: string, title: string, err: unknown) => failed.push({ verb, title, err }) }))
 // jsdom has no Web Animations; the settings sheet's scroll area asks for them.
@@ -72,17 +79,24 @@ let projectPlansFail = false
 let projectReviewFail = false
 // Every write refused, for a failed save.
 let writeFail = false
+// These methods alone refused, for a save that lands in part.
+let failOn = new Set<string>()
+// These reads never answer, for the sheet's waiting shape; these fail.
+let pendingOn = new Set<string>()
+let readFailOn = new Set<string>()
+// The window's key: null is its own socket, which may do everything.
+let key: { caps: string[] } | null = null
 // turnpass.set refused alone, after a create that went through.
 let turnPassFail = false
 
 // One object a state, as the registry keeps it: a hook that subscribes (useEnvironmentStatus) reads it on every render.
 const statuses = new Map<string, EnvironmentStatus>()
 const status = (slot: string): EnvironmentStatus => {
-  const key = `${slot}:${boxOpen}`
-  const kept = statuses.get(key)
+  const id = `${slot}:${boxOpen}:${key ? key.caps.join() : 'own'}`
+  const kept = statuses.get(id)
   if (kept) return kept
   const made = statusFor(slot)
-  statuses.set(key, made)
+  statuses.set(id, made)
   return made
 }
 const statusFor = (slot: string): EnvironmentStatus => {
@@ -93,7 +107,8 @@ const statusFor = (slot: string): EnvironmentStatus => {
     lastHello: {
       environmentId: box ? BOX : 'env_mac',
       contract: 1,
-      caps: [],
+      caps: key?.caps ?? [],
+      ...(key ? { key: { id: 'laptop' } } : {}),
       build: { release: 1, version: '1.0.1', sha: null, platform: box ? 'linux' : 'darwin' }
     }
   }
@@ -109,6 +124,9 @@ const linkFor = (slot: string): Link =>
       if (projectPlansFail && method === 'plans.get' && params.projectId) throw new Error('not connected')
       if (projectReviewFail && method === 'review.get' && params.projectId) throw new Error('unknown method')
       if (writeFail && !/\.(get|detect|list)$/.test(method) && method !== 'accounts.list') throw new Error('disk full')
+      if (failOn.has(method)) throw new Error('disk full')
+      if (pendingOn.has(method)) return new Promise(() => {})
+      if (readFailOn.has(method)) throw new Error('The computer did not answer')
       if (turnPassFail && method === 'turnpass.set') throw new Error('forbidden: turnpass.set needs admin')
       if (turnPassFail && method === 'project.create') return project(slot, { id: 'p_new', workspaceId: 'w_mac', name: String(params.name) })
       return null
@@ -123,6 +141,12 @@ beforeEach(() => {
   projectPlansFail = false
   projectReviewFail = false
   writeFail = false
+  failOn = new Set()
+  pendingOn = new Set()
+  readFailOn = new Set()
+  key = null
+  confirmed.answer = false
+  confirmed.asked = []
   turnPassFail = false
   failed.length = 0
   resetPlanSettingsForTests()
@@ -269,8 +293,8 @@ describe('ProjectSettingsDialog as a sheet', () => {
     expect(sheet.getAttribute('data-side')).toBe('right')
     await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText('Name')))
     const headings = [...sheet.querySelectorAll('h3')].map((h) => h.textContent)
-    expect(headings).toEqual(['Completed turn', 'Reviews', 'Accounts', 'Plans', 'Build'])
-    expect(sheet.querySelector('[aria-expanded]:not([data-slot=select-trigger])')).toBeNull()
+    expect(headings).toEqual(['After each turn', 'Reviews', 'Accounts', 'Plans', 'Build'])
+    expect(sheet.querySelector('[aria-expanded]:not([data-slot=select-trigger]):not([data-slot=combobox-trigger])')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Use workspace setting' })).toBeNull()
   })
 
@@ -281,7 +305,7 @@ describe('ProjectSettingsDialog as a sheet', () => {
     await act(async () => {
       fireEvent.click(saveButton())
     })
-    await waitFor(() => expect(screen.getByText('disk full')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('Name did not save: Disk full.')).toBeTruthy())
     const line = screen.getByRole('dialog').querySelector('[data-project-settings-error]')!
     expect(line.className).not.toContain('border-t')
     expect(line.nextElementSibling!.className).toContain('border-t')
@@ -293,6 +317,82 @@ describe('ProjectSettingsDialog as a sheet', () => {
     expect(mode.className).toContain('font-medium')
     expect(mode.parentElement!.className).toContain('gap-1')
     expect(mode.nextElementSibling!.className).not.toContain('font-medium')
+  })
+})
+
+const section = (label: string) => [...screen.getByRole('dialog').querySelectorAll('h3')].find((h) => h.textContent === label)!.parentElement!
+
+describe('ProjectSettingsDialog: each field waits for its value', () => {
+  it('holds After each turn and Build in their shape until the host answers, never a pass of nothing in their place', async () => {
+    pendingOn = new Set(['turnpass.get', 'build.get'])
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await act(async () => {})
+    expect(section('After each turn').querySelectorAll('[data-slot=page-row-skeleton]')).toHaveLength(3)
+    expect(section('After each turn').querySelector('[role=switch]')).toBeNull()
+    expect(section('Build').querySelector('input')).toBeNull()
+  })
+
+  it('says a failed read with Retry, which asks again', async () => {
+    readFailOn = new Set(['turnpass.get', 'build.get'])
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await waitFor(() => expect(section('After each turn').textContent).toContain('The computer did not answer'))
+    expect(section('Build').textContent).toContain('The computer did not answer')
+    readFailOn = new Set()
+    await act(async () => fireEvent.click(section('After each turn').querySelector('button')!))
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Run the checks' })).toBeTruthy())
+  })
+})
+
+describe('ProjectSettingsDialog for a key that may not change it', () => {
+  it('shows the admin groups as words with one line saying who can, and still saves the name', async () => {
+    key = { caps: ['read', 'operate'] }
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await act(async () => {})
+    expect(screen.queryByRole('switch', { name: 'Run the checks' })).toBeNull()
+    expect(section('After each turn').textContent).toContain('Run the checks')
+    expect(screen.getByRole('dialog').querySelectorAll('[data-managed]')).toHaveLength(1)
+    expect(section('Build').querySelector('input')).toBeNull()
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Solo two' } })
+    await act(async () => fireEvent.click(saveButton()))
+    expect(writes().map((w) => w.method)).toEqual(['project.rename'])
+  })
+})
+
+describe('ProjectSettingsDialog: a save that lands in part', () => {
+  it('saves every changed group it can and says which did not and why, and which did', async () => {
+    failOn = new Set(['turnpass.set'])
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Run the checks' })).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Solo two' } })
+    fireEvent.click(screen.getByRole('switch', { name: 'Run the checks' }))
+    await act(async () => fireEvent.click(saveButton()))
+    await waitFor(() => expect(screen.getByText('After each turn did not save: Disk full. Name saved.')).toBeTruthy())
+    expect(writes().map((w) => w.method)).toEqual(['project.rename', 'turnpass.set'])
+    expect(screen.getByRole('dialog')).toBeTruthy()
+  })
+
+  it('words the line for one refused and none saved, and for three saved', async () => {
+    const { partialSaveWords } = await import('./ProjectDialogs')
+    expect(partialSaveWords([], [{ name: 'Build', why: 'Disk full' }])).toBe('Build did not save: Disk full.')
+    expect(partialSaveWords(['Name', 'Reviews', 'Plans'], [{ name: 'Build', why: 'Disk full.' }])).toBe('Build did not save: Disk full. Name, Reviews and Plans saved.')
+  })
+})
+
+describe('ProjectSettingsDialog: Cancel on a changed draft', () => {
+  it('asks first, and keeps the sheet and the draft when he says no', async () => {
+    const onClose = vi.fn()
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={onClose} />)
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Solo two' } })
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' })))
+    expect(confirmed.asked).toEqual(['Discard your changes?'])
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe('Solo two')
+    expect(writes()).toEqual([])
+  })
+
+  it('closes at once with nothing changed', async () => {
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Cancel' })))
+    expect(confirmed.asked).toEqual([])
   })
 })
 
@@ -309,12 +409,12 @@ describe('ProjectSettingsDialog when the project\'s plans fail to load', () => {
     projectPlansFail = true
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
     await waitFor(() => expect(screen.getByText('not connected')).toBeTruthy())
-    expect(screen.queryByRole('switch', { name: 'Auto-start' })).toBeNull()
+    expect(screen.queryByRole('switch', { name: 'Start the build when a plan is done' })).toBeNull()
     projectPlansFail = false
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
     })
-    await waitFor(() => expect(screen.getByRole('switch', { name: 'Auto-start' })).toBeTruthy())
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Start the build when a plan is done' })).toBeTruthy())
   })
 })
 
@@ -435,21 +535,21 @@ describe('NewProjectDialog', () => {
   })
 })
 
-describe('NewProjectDialog when Completed turn does not save', () => {
+describe('NewProjectDialog when After each turn does not save', () => {
   it('closes on the created project, names the setting that did not save, and never offers Create again', async () => {
     turnPassFail = true
     const created = vi.fn()
     render(<NewProjectDialog workspace={MAC_WS} onClose={() => {}} onCreated={created} />)
     fireEvent.click(screen.getByRole('button', { name: 'Local' }))
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Search' } })
-    fireEvent.click(screen.getByRole('switch', { name: 'Checks' }))
+    fireEvent.click(screen.getByRole('switch', { name: 'Run the checks' }))
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: 'Create' }))
     })
     await waitFor(() => expect(created).toHaveBeenCalledTimes(1))
     expect(writes().filter((c) => c.method === 'project.create')).toHaveLength(1)
     expect(failed).toHaveLength(1)
-    expect(failed[0]).toMatchObject({ verb: 'save Completed turn', title: 'Search' })
+    expect(failed[0]).toMatchObject({ verb: 'save After each turn', title: 'Search' })
   })
 })
 

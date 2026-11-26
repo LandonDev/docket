@@ -145,3 +145,33 @@ export function usableFix(fix: HealthFix | undefined, own = true): HealthFix | n
   if (!fix || !fixAllowed(fix)) return null;
   return fix.kind === "run" && HEALTH_OWN_COMPUTER.includes(fix.method) && !own ? null : fix;
 }
+
+/** The install script a host names in a row's line ("Install it again with bun scripts/work-tools/install.ts --only ffmpeg"). */
+const INSTALL_COMMAND = /\s*(?:with|:)?\s*(bun scripts\/work-tools\/install\.ts(?: --only [\w.-]+)?)/;
+
+/**
+ * A row's line with the shell command a host put in it taken out (docs/agents/settings.md "The pages: Work"): the
+ * words read as a sentence, and the command rides "Copy the fix". A line with no command is as it was.
+ */
+export function commandOf(line: string): { words: string; command: string | null } {
+  const found = INSTALL_COMMAND.exec(line);
+  if (!found) return { words: line, command: null };
+  const words = line.replace(INSTALL_COMMAND, "").replace(/\s+\./g, ".").replace(/\s{2,}/g, " ").trim();
+  return { words: /[.!?]$/.test(words) ? words : `${words}.`, command: found[1]! };
+}
+
+/** A fix that signs a computer out of something, which asks first. */
+export const signsOut = (fix: HealthFix | null): boolean => fix?.kind === "run" && /\.signOut$/.test(fix.method);
+
+/** What a sign-out asks: what stops working until the next sign-in, on the computer named. */
+export function signOutAsk(title: string, computer: string): { title: string; body: string; action: string; danger: true } {
+  const what = /^LifeOS/.test(title) ? "LifeOS" : title;
+  return {
+    title: `Sign out of ${what} on ${computer}?`,
+    body: /^LifeOS/.test(title)
+      ? `Work on ${computer} stops reading and writing LifeOS until you sign in again.`
+      : `What Work does with ${what} on ${computer} stops until you sign in again.`,
+    action: "Sign out",
+    danger: true,
+  };
+}

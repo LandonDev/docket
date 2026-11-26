@@ -2,13 +2,15 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// Settings → Work (settings.html, on the phone): per host, the switch,
-/// where LifeOS stands, the standing grants (each removable, no confirm: a
-/// grant comes back from the next held item), and each add-on's tools with
-/// the rule a Work thread runs them under. A host from before Work, or a key
-/// that cannot read it, is left out. Guest links come with milestone 31. The
-/// Digest follows the first Work host's switch, once for every host, and only
-/// while some host has Work on (docs/agents/work-digest.md "The phone").
+/// Settings → Work (settings.html, on the phone): per computer, the switch,
+/// where LifeOS stands, the things threads may send on their own (each
+/// removable, no confirm: a grant comes back from the next held item), and
+/// each add-on's tools with the rule a Work thread runs them under. A
+/// computer from before Work, or a key that cannot read it, is left out. The
+/// Digest follows the first Work computer's switch, once for every computer,
+/// and only while some computer has Work on (docs/agents/work-digest.md "The
+/// phone"). Every section holds its place, in its rows' shape, while its
+/// first read is out.
 struct WorkSettingsScreen: View {
     @Environment(AppModel.self) private var model
 
@@ -16,10 +18,15 @@ struct WorkSettingsScreen: View {
         let hosts = model.registry.ordered.filter { $0.work.settings != nil }
         List {
             if hosts.isEmpty {
-                Text("No paired host has Work yet.")
-                    .textStep(.meta)
+                // Still asking a computer: the switch's shape; else none has Work.
+                if model.registry.ordered.contains(where: { !SettingsView.settled($0.status) }) {
+                    Section { SettingsPlaceholderRows(labels: ["Work"], toggles: true) }
+                } else {
+                    Text("No computer has Work yet.")
+                        .textStep(.meta)
+                }
             }
-            // One digest across hosts, under the first Work host's switch: the section writes every host with Work on.
+            // One digest across computers, under the first Work computer's switch: the section writes every one with Work on.
             let on = hosts.filter(\.work.isOn)
             ForEach(hosts, id: \.environment.id) { client in
                 WorkHostSection(client: client, named: hosts.count > 1, digestHosts: client.environment.id == on.first?.environment.id ? on : [], gateRow: client.environment.id == hosts.first?.environment.id)
@@ -35,14 +42,17 @@ struct WorkSettingsScreen: View {
 private struct WorkHostSection: View {
     let client: EnvironmentClient
     let named: Bool
-    /// Every host with Work on, for the one host that draws the Digest section after its switch; else empty.
+    /// Every computer with Work on, for the one that draws the Digest section after its switch; else empty.
     let digestHosts: [EnvironmentClient]
-    /// The first host's section also holds the phone's own switch, "Require Touch ID to Send" (one per phone).
+    /// The first computer's section also holds the phone's own switch, "Require Touch ID to Send" (one per phone).
     let gateRow: Bool
     @State private var grants: WorkRead<[OutboxGrant]> = .reading
     @State private var rules: WorkRead<[ToolRulesCard]> = .reading
-    /// This host's guest links; nil while reading, or when another host serves them.
+    /// This computer's guest links; nil while reading, or when another computer serves them.
     @State private var guests: WorkRead<[GuestLinkRow]>?
+    /// Whether the first read of the links has answered: until then the section holds its place, unless this
+    /// computer is already known to leave its links to another (`GuestLinksElsewhere`).
+    @State private var guestsAnswered = false
     /// Why his last New Address on a link did not start (the owner's check said no, or he cancelled it), by link: said
     /// on its row, where he pressed, never only in the shared toast an older failure may hold.
     @State private var stopped: [String: String] = [:]
@@ -53,6 +63,8 @@ private struct WorkHostSection: View {
     @State private var showing: ShownAddress?
     /// A link he chose Revoke on, asked once before it goes.
     @State private var revoking: GuestLinkRow?
+    /// A link he chose New Address on, asked once before its address changes (the plan's section 5).
+    @State private var replacing: GuestLinkRow?
     @State private var switching = false
 
     var body: some View {
@@ -61,10 +73,13 @@ private struct WorkHostSection: View {
             Toggle("Work", isOn: Binding(get: { work.isOn }, set: { on in Task { await flip(on) } }))
                 .disabled(!work.may(.workSet) || switching)
             if gateRow {
-                // This phone's, not the host's: turning it off asks the check once, and a failure leaves it on.
+                // This phone's, not the computer's: turning it off asks the check once, and a failure leaves it on.
                 let gates = PressGates.shared
-                Toggle(PressGate.settingTitle(sensor: gates.sensor), isOn: Binding(get: { gates.on }, set: { on in Task { await gates.setOn(on) } }))
-                    .accessibilityIdentifier("work-press-gate")
+                Toggle(isOn: Binding(get: { gates.on }, set: { on in Task { await gates.setOn(on) } })) {
+                    Text(PressGate.settingTitle(sensor: gates.sensor))
+                    Text("This phone")
+                }
+                .accessibilityIdentifier("work-press-gate")
             }
             if work.isOn {
                 LabeledContent("LifeOS", value: lifeosWords(work.lifeos))
@@ -84,6 +99,9 @@ private struct WorkHostSection: View {
             DigestSettingsSection(hosts: digestHosts)
         }
         if work.isOn {
+            if guests == nil, !guestsAnswered, !GuestLinksElsewhere.ids.contains(client.environment.id) {
+                Section("Guest links") { SettingsPlaceholderRows(labels: ["Guest link"]) }
+            }
             if let guests {
                 Section("Guest links") {
                     if let failure = guests.failure {
@@ -105,15 +123,21 @@ private struct WorkHostSection: View {
                 } message: { link in
                     Text("\(link.name)’s address stops opening.")
                 }
+                // The item sheet's Replace Address… asks the same: the old address is what is lost.
+                .confirmationDialog("Make a new address?", isPresented: Binding(get: { replacing != nil }, set: { if !$0 { replacing = nil } }), titleVisibility: .visible, presenting: replacing) { link in
+                    Button("New Address", role: .destructive) { Task { await rekey(link) } }
+                } message: { link in
+                    Text("\(link.name)’s current address stops opening.")
+                }
             }
-            Section("Grants") {
+            Section("Things threads may send on their own") {
                 switch grants {
                 case .reading:
-                    ProgressView().frame(maxWidth: .infinity)
+                    SettingsPlaceholderRows(labels: ["A thing threads may send"])
                 case .failed(let failure):
                     failed(failure)
                 case .loaded(let grants):
-                    if grants.isEmpty { Text("No grants").textStep(.meta) }
+                    if grants.isEmpty { Text("Nothing yet").textStep(.meta) }
                     ForEach(grants, id: \.id) { grant in
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 2) {
@@ -122,11 +146,12 @@ private struct WorkHostSection: View {
                             }
                             Spacer(minLength: 8)
                             if work.may(.outboxUngrant) {
+                                // A grouped list keeps the system highlight: nothing in it scales on press.
                                 Button("Remove") { Task { await remove(grant) } }
                                     .font(.footnote.weight(.medium))
                                     .foregroundStyle(Tint.destructive)
                                     .rowActionHit()
-                                    .buttonStyle(.pressable)
+                                    .buttonStyle(.borderless)
                             }
                         }
                     }
@@ -134,6 +159,8 @@ private struct WorkHostSection: View {
             }
             if let failure = rules.failure {
                 Section("Tools") { failed(failure) }
+            } else if rules.value == nil {
+                Section("Tools") { SettingsPlaceholderRows(labels: ["A tool", "A tool"]) }
             } else if let rules = rules.value {
                 ForEach(rules.filter { !$0.lifeos }, id: \.addonId) { card in
                     Section(card.name) {
@@ -162,7 +189,7 @@ private struct WorkHostSection: View {
     /// Under the switches: a key that can't change Work, and with the check on and no passcode, why nothing goes.
     private func footerLines(_ work: WorkHost) -> [String] {
         var lines: [String] = []
-        if !work.may(.workSet) { lines.append("This iPhone’s key can’t change Work on \(client.environment.name).") }
+        if !work.may(.workSet) { lines.append("This phone may not change Work on \(client.environment.name).") }
         let gates = PressGates.shared
         if gateRow, gates.on, gates.device == .noPasscode { lines.append(PressGate.unavailableLine) }
         return lines
@@ -212,7 +239,7 @@ private struct WorkHostSection: View {
             } else if !ended, work.may(.guestsRekey) || work.may(.guestsRevoke) {
                 Menu {
                     if work.mayReplace(link.id) {
-                        Button("New Address", systemImage: "arrow.triangle.2.circlepath") { Task { await rekey(link) } }
+                        Button("New Address…", systemImage: "arrow.triangle.2.circlepath") { replacing = link }
                     }
                     if work.may(.guestsRevoke) {
                         Button("Revoke…", systemImage: "xmark.circle", role: .destructive) { revoking = link }
@@ -277,10 +304,13 @@ private struct WorkHostSection: View {
         rules = await .of { try await client.work.rules() }
     }
 
-    /// Only the host that serves LifeOS's documents keeps links; the others answer "served elsewhere" and show none.
+    /// Only the computer that serves LifeOS's documents keeps links; the others answer "served elsewhere" and show none.
     private func loadGuests() async {
         let read = await WorkRead.of { try await client.work.guestLinks() }
-        guests = read.failure.map(GuestLinksRead.servedElsewhere) == true ? nil : read
+        let elsewhere = read.failure.map(GuestLinksRead.servedElsewhere) == true
+        if elsewhere { GuestLinksElsewhere.ids.insert(client.environment.id) } else { GuestLinksElsewhere.ids.remove(client.environment.id) }
+        guests = elsewhere ? nil : read
+        guestsAnswered = true
     }
 
     private func flip(_ on: Bool) async {
@@ -329,9 +359,9 @@ private struct WorkHostSection: View {
 }
 
 /// Settings → Work → Digest: the time, then a level for four groups, each
-/// written to every host with Work on. Every group starts at "When it can’t
-/// wait"; only a changed group is sent. A host that refused a change is that
-/// row's red line.
+/// written to every computer with Work on, as the footer says. Every group
+/// starts at "When it can’t wait"; only a changed group is sent. A computer
+/// that refused a change is that row's red line.
 private struct DigestSettingsSection: View {
     /// A row of the section.
     private enum Row: Hashable {
@@ -340,9 +370,9 @@ private struct DigestSettingsSection: View {
     }
 
     let hosts: [EnvironmentClient]
-    /// Each row's refusals, by host name.
+    /// Each row's refusals, by computer name.
     @State private var refused: [Row: [String: String]] = [:]
-    /// A read that failed on every host.
+    /// A read that failed on every computer.
     @State private var readFailure: String?
     /// The picked time until the hosts answer, so the wheel never springs back under his finger.
     @State private var pickedAt: Date?
@@ -351,14 +381,14 @@ private struct DigestSettingsSection: View {
     /// Which pick of the time is the latest: a slow host's answer to an earlier one is not applied over it.
     @State private var timeEdit = EditGate()
 
-    /// The first host that answered: the hosts are written alike.
+    /// The first computer that answered: they are written alike.
     private var settings: DigestSettings? { hosts.lazy.compactMap(\.work.digest.settings).first }
 
     var body: some View {
-        Section("Digest") {
+        Section {
             if let settings {
                 DatePicker(selection: Binding(get: { pickedAt ?? DigestModel.atDate(settings.at) }, set: { pick($0) }), displayedComponents: .hourAndMinute) {
-                    Text("Time").textStep(.title)
+                    Text("Arrives at").textStep(.title)
                 }
                 .disabled(!maySet)
                 refusal(.time)
@@ -368,7 +398,7 @@ private struct DigestSettingsSection: View {
                             Text(DigestModel.levelName(level)).tag(level)
                         }
                     } label: {
-                        Text(DigestModel.groupName(group)).textStep(.title)
+                        Text(Self.groupName(group)).textStep(.title)
                     }
                     .disabled(!maySet)
                     refusal(.group(group))
@@ -380,15 +410,24 @@ private struct DigestSettingsSection: View {
                     PillButton("Try Again") { Task { await read() } }
                 }
             } else {
-                ProgressView().frame(maxWidth: .infinity)
+                SettingsPlaceholderRows(labels: ["Arrives at"] + DigestModel.settingsGroups.map(Self.groupName))
             }
+        } header: {
+            Text("Digest")
+        } footer: {
+            Text("One set for every computer with Work on.")
         }
         .task(id: hosts.map(\.environment.id)) { await read() }
     }
 
     private var maySet: Bool { hosts.contains { $0.work.may(.digestSet) } }
 
-    /// Each host that refused the row's last change, in the screen's destructive meta.
+    /// A group's row in the glossary's words: the desktop's Digest page calls held items "Things waiting for me".
+    static func groupName(_ group: TellGroup) -> String {
+        group == .held ? "Things waiting for me" : DigestModel.groupName(group)
+    }
+
+    /// Each computer that refused the row's last change, in the screen's destructive meta.
     @ViewBuilder
     private func refusal(_ row: Row) -> some View {
         if let lines = refused[row], !lines.isEmpty {
@@ -418,7 +457,7 @@ private struct DigestSettingsSection: View {
             try? await Task.sleep(for: .milliseconds(600))
             guard !Task.isCancelled else { return }
             let lines = await refusals(at: DigestModel.atString(date))
-            // He picked again while the hosts answered: the wheel and the row's line are that pick's now.
+            // He picked again while the computers answered: the wheel and the row's line are that pick's now.
             guard timeEdit.isLatest(edit) else { return }
             refused[.time] = lines
             pickedAt = nil
@@ -429,12 +468,19 @@ private struct DigestSettingsSection: View {
         refused[row] = await refusals(levels: levels)
     }
 
-    /// One change written to every host; each host that refused, by name, with why.
+    /// One change written to every computer; each that refused, by name, with why.
     private func refusals(at: String? = nil, levels: [String: TellLevel]? = nil) async -> [String: String] {
         let refusedById = await WorkDigest.setAll(hosts.map { ($0.environment.id, $0.work.digest) }, at: at, levels: levels)
         let names = Dictionary(hosts.map { ($0.environment.id, $0.environment.name) }, uniquingKeysWith: { first, _ in first })
         return Dictionary(refusedById.map { (names[$0.key] ?? $0.key, $0.value) }, uniquingKeysWith: { first, _ in first })
     }
+}
+
+/// The computers that answered that another serves their guest links, for this launch: their section is not held
+/// open while the next read is out, so it never shows and then goes.
+@MainActor
+private enum GuestLinksElsewhere {
+    static var ids: Set<String> = []
 }
 
 /// One new address on Settings → Work's sheet, as it was when the sheet opened.

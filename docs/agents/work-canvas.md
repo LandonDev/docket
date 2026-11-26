@@ -542,7 +542,7 @@ until the composer sends:
   fence refuses that in a create), which the host answers through
   `work.admitSession` and links in LifeOS (`ctx.links.link`, work-lifeos.md).
 - Ask's key is ⌘L (Ctrl+L off macOS), live while a kind feeds a selection.
-  Settings → Keybindings lists it in the Work group while Work is on.
+  Settings → Shortcuts lists it in the Work group while Work is on.
 
 The sent bubble draws the chips back from their lines (`sentChipsOf`,
 work/canvas/sentChipsOf.ts, which takes a line only when its brackets hold a

@@ -7,6 +7,14 @@ import type { HealthReport } from "@shared/work/health";
 import { registry } from "../../lib/connection";
 
 const links = vi.hoisted(() => ({ box: "open" as string }));
+const confirm = vi.hoisted(() => ({ answer: true, asked: [] as { title: string; body?: string }[] }));
+vi.mock("../../chrome/ConfirmDialog", async (original) => ({
+  ...(await original<object>()),
+  confirmAction: async (request: { title: string; body?: string }) => {
+    confirm.asked.push(request);
+    return confirm.answer;
+  },
+}));
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   useEnvironments: () => [
@@ -101,13 +109,15 @@ describe("Connections", () => {
     expect(screen.getByText("Offline")).toBeTruthy();
     expect(screen.getByText("Broken")).toBeTruthy();
     expect(screen.getByText("LifeOS is still connecting on the box")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign out…" }));
     await settle();
     await settle();
+    // Asked first, naming what stops working until the next sign-in.
+    expect(confirm.asked.at(-1)).toMatchObject({ title: "Sign out of LifeOS on the box?", body: "Work on the box stops reading and writing LifeOS until you sign in again." });
     expect(request.mock.calls.map((c) => c[0])).toEqual(["work.health", "work.lifeos.signOut", "work.health"]);
     expect(screen.getByText("Needs you")).toBeTruthy();
     expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign out…" })).toBeNull();
   });
 
   it("offers a given computer's key no LifeOS sign-in or sign-out, and keeps the fixes it may run", async () => {
@@ -125,7 +135,7 @@ describe("Connections", () => {
     render(<ConnectionsPage />);
     await settle();
     expect(screen.getByText("Signed in")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign out…" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
     expect(screen.getByRole("button", { name: "Sign in to OneDrive" })).toBeTruthy();
   });
@@ -175,7 +185,7 @@ describe("Connections", () => {
     // Two hosts listed: the line that words the state names its computer; the row whose line does not, its title.
     expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
     expect(screen.getByText("LifeOS on the box", { selector: "[data-slot=item-title]" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign out…" })).toBeTruthy();
     // The long sentence keeps its room in a narrow window: its press takes a line of its own there.
     expect(screen.getByText("LifeOS did not answer the box").closest("[data-slot=page-row]")!.hasAttribute("data-wide")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -248,7 +258,7 @@ describe("Connections", () => {
     await settle();
     expect(screen.getByText(/^LifeOS did not answer the box\. Still trying since/)).toBeTruthy();
     const buttons = [...screen.getByText(/^LifeOS did not answer the box/).closest("[data-slot=page-row]")!.querySelectorAll("button")].map((b) => b.textContent);
-    expect(buttons).toEqual(["Retry", "Sign out"]);
+    expect(buttons).toEqual(["Retry", "Sign out…"]);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
     // Retry asks that host's checks again, that host alone; Sign out is not pressed.
@@ -279,7 +289,7 @@ describe("Connections", () => {
     expect(screen.queryByText("LifeOS did not answer the box")).toBeNull();
     expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
     // Its other rows stay as the last check left them, Sign out with them.
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Sign out…" })).toBeTruthy();
     silent = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();

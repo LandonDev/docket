@@ -28,7 +28,7 @@ below is the first thing to run when the owner does.
 | Webhooks: signing, the receiver, the trigger source | `hooks.ts` |
 | The agent's tools | `tools.ts` |
 | The fake Frame.io and Adobe IMS | `fakeFrameio.ts`, used by `frameio.test.ts` |
-| Settings → Work's two rows and their dialogs | `src/renderer/src/work/frameio/FrameioRow.tsx` (`FrameioRows`, for the page to mount) |
+| The sign-in and address rows and their dialogs | `src/renderer/src/work/frameio/FrameioRow.tsx` (`FrameioRows`; no Settings page mounts them now, and the sign-in's state is a Connections row) |
 
 ## Sign-in
 
@@ -154,7 +154,7 @@ A routine whose trigger is `{on: 'file', source: {at: 'frameio', …}, by:
 `triggers` (`frameioTrigger`). Arming:
 
 - needs a sign-in and the host's **public https address**
-  (`work.frameio.setPublicUrl`, Settings → Work), else it says why it waits;
+  (`work.frameio.setPublicUrl`; `FrameioRows` draws it, mounted by no page now), else it says why it waits;
 - makes one webhook per Frame.io workspace (found from the file's project;
   routines arming together wait on one making), retried with a growing wait
   while it fails,
@@ -201,8 +201,8 @@ When the owner signs in, before trusting any frame:
    OAuth Native App. Add `http://127.0.0.1:7697/frameio/callback` as a
    redirect if the console takes it (Adobe's own page says redirects must
    be https even for localhost; if it refuses, use the `adobe+<hash>://`
-   redirect it offers and paste the address back). Sign in from Settings →
-   Work on the Mac first (its browser is local), then on the box (paste).
+   redirect it offers and paste the address back). Sign in (`FrameioRows`, or `work.frameio.*` by hand while no page mounts it)
+   on the Mac first (its browser is local), then on the box (paste).
 2. **Frames from 0 or 1.** In Frame.io's web player, leave a comment on the
    very first frame of a video in the review account and one at a frame you
    can name (step with the arrow keys). `frameio_open` it; `media_info`

@@ -4,7 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const NOW = Date.UTC(2026, 10, 23, 17);
 import type { OfficeAddinKey } from "@shared/contract-work-office";
 import type { Link } from "../../lib/connection/link";
-import { AddinRow, addinLine } from "./AddinRow";
+const confirm = vi.hoisted(() => ({ answer: true, asked: [] as { title: string; body?: string }[] }));
+vi.mock("../../chrome/ConfirmDialog", async (original) => ({
+  ...(await original<object>()),
+  confirmAction: async (request: { title: string; body?: string }) => {
+    confirm.asked.push(request);
+    return confirm.answer;
+  },
+}));
+const { AddinRow, addinLine } = await import("./AddinRow");
 
 beforeEach(() => void vi.setSystemTime(NOW));
 afterEach(() => {
@@ -53,13 +61,20 @@ describe("AddinRow", () => {
     expect(calls.map((c) => c.method)).toEqual(["work.office.addin.list", "work.office.addin.pair"]);
   });
 
-  it("lists each paired add-in with Remove, which forgets it", async () => {
+  it("lists each paired add-in with Remove…, which asks first and forgets it only on Remove", async () => {
     const { link, calls } = fakeLink([KEY]);
+    confirm.answer = false;
+    await act(async () => void render(<AddinRow link={link} title="Office add-in" />));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Remove…" })));
+    expect(confirm.asked.at(-1)).toEqual({ title: "Remove Excel on the web?", body: "This add-in stops reaching Work until you pair it again.", action: "Remove", danger: true });
+    expect(calls.some((c) => c.method === "work.office.addin.remove")).toBe(false);
+    cleanup();
+    confirm.answer = true;
     await act(async () => void render(<AddinRow link={link} title="Office add-in" />));
     expect(screen.queryByText("Not paired")).toBeNull();
     expect(screen.getByText("Excel on the web")).toBeTruthy();
     expect(screen.getByText("Connected")).toBeTruthy();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Remove" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Remove…" })));
     expect(calls.find((c) => c.method === "work.office.addin.remove")?.params).toEqual({ id: "k1" });
     expect(await screen.findByText("Not paired")).toBeTruthy();
   });
@@ -85,7 +100,7 @@ describe("AddinRow", () => {
     (link as { request: unknown }).request = (method: string, params: unknown) =>
       method === "work.office.addin.remove" ? Promise.reject(new Error("work.office.addin.remove: EIO at /Users/landon/.tc")) : base(method, params as never);
     await act(async () => void render(<AddinRow link={link} title="Office add-in" />));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Remove" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Remove…" })));
     expect(screen.getByText("The computer did not remove the add-in.")).toBeTruthy();
     expect(document.body.textContent).not.toContain("addin.remove");
   });

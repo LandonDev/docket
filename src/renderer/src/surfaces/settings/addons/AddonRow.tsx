@@ -23,6 +23,7 @@ export function AddonRowView({
   workspaceName,
   web,
   blocked,
+  readOnly = false,
   error,
   onToggle,
   onPick,
@@ -35,6 +36,8 @@ export function AddonRowView({
   workspaceName: string | null;
   web: boolean;
   blocked: boolean;
+  /** This window's key may not change add-ons there: the row is words alone. */
+  readOnly?: boolean;
   error?: string;
   onToggle: (on: boolean) => Promise<unknown>;
   onPick: (pick: AddonMenuPick) => void;
@@ -62,10 +65,10 @@ export function AddonRowView({
         </>
       }
       error={error}
-      onOpen={() => onPick("edit")}
-      openLabel={`Edit ${row.name}`}
-      openDisabled={blocked}
+      {...(readOnly ? {} : { onOpen: () => onPick("edit"), openLabel: `Edit ${row.name}`, openDisabled: blocked })}
     >
+      {readOnly ? null : (
+        <>
       <SettingSwitch label={row.name} on={row.enabled} disabled={blocked} onChange={onToggle} />
       <RowsMenu
         label={`${row.name} actions`}
@@ -78,6 +81,8 @@ export function AddonRowView({
         onPick={(id) => onPick(id as AddonMenuPick)}
         align="end"
       />
+        </>
+      )}
     </PageRow>
   );
 }

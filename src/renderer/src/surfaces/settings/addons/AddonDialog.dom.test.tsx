@@ -55,7 +55,7 @@ describe("AddonDialog", () => {
     type(dialog, "Name", "linear");
     type(dialog, "Command", "npx");
     type(dialog, "Arguments", "-y\n\nlinear-mcp\n");
-    type(dialog, "Variables", "LINEAR_KEY, LINEAR_ORG");
+    type(dialog, "Secret names", "LINEAR_KEY, LINEAR_ORG");
     press(dialog, "Key");
     await submit(dialog, "Add");
     const [sent] = host.sent("addons.set") as { addon: AddonRow }[];

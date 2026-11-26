@@ -44,20 +44,25 @@ describe("Appshots page", () => {
     expect(screen.queryByRole("switch")).toBeNull();
   });
 
-  it("shows skeletons while the grants are unknown", () => {
+  it("is three rows in their order, with no grant row while the grants are unknown or granted", () => {
     render(<AppshotsPage />);
-    expect(screen.getAllByTestId("permission-skeleton")).toHaveLength(2);
+    expect([...document.querySelectorAll("[data-slot=page-row]")].map((row) => row.getAttribute("data-setting"))).toEqual(["appshots.on", "appshots.into", "appshots.sound"]);
+    cleanup();
+    state.perms = { available: true, screen: true, ax: true };
+    render(<AppshotsPage />);
+    expect(screen.queryByText("Granted")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Grant/ })).toBeNull();
   });
 
-  it("offers one Grant button, only for a missing grant, opening its System Settings pane", async () => {
+  it("shows a grant only while it is missing, with why in amber and Grant… opening its System Settings pane", async () => {
     state.perms = { available: true, screen: true, ax: false };
     render(<AppshotsPage />);
-    expect(screen.getByText("Granted")).toBeTruthy();
-    expect(screen.getByText("Not granted").className).toContain("text-warning");
-    const grants = screen.getAllByRole("button", { name: /^Grant/ });
-    expect(grants.map((b) => b.getAttribute("aria-label"))).toEqual(["Grant Accessibility in System Settings"]);
+    const row = document.querySelector('[data-setting="computer.accessibility"]') as HTMLElement;
+    expect(row.hasAttribute("data-shown")).toBe(true);
+    expect(screen.getByText("Appshots cannot hear the double ⌘ without it").className).toContain("text-warning");
+    expect(document.querySelector('[data-setting="computer.screen"]')).toBeNull();
     const { openUrl } = await import("../lib/native");
-    fireEvent.click(grants[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Grant…" }));
     expect(openUrl).toHaveBeenCalledWith(expect.stringContaining("Privacy_Accessibility"));
   });
 
@@ -66,7 +71,7 @@ describe("Appshots page", () => {
     render(<AppshotsPage />);
     state.refresh.mockClear();
     await act(async () => {
-      fireEvent.click(screen.getByRole("switch", { name: "Double-⌘ capture" }));
+      fireEvent.click(screen.getByRole("switch", { name: "Appshots" }));
     });
     expect(state.set).toHaveBeenCalledWith({ enabled: true });
     expect(state.refresh).toHaveBeenCalledWith(true);
@@ -76,9 +81,9 @@ describe("Appshots page", () => {
     state.perms = { available: true, screen: true, ax: true };
     render(<AppshotsPage />);
     await act(async () => {
-      fireEvent.click(screen.getByRole("combobox", { name: "Destination" }));
+      fireEvent.click(screen.getByRole("combobox", { name: "Add the window to" }));
     });
-    const option = await screen.findByRole("option", { name: "New chat" });
+    const option = await screen.findByRole("option", { name: "A new chat" });
     await act(async () => {
       fireEvent.pointerDown(option, { pointerType: "mouse" });
       fireEvent.click(option);

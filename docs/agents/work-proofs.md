@@ -186,7 +186,7 @@ sessions, pairings and keys before stopping the instances.
 | J43 | A | A dummy recording reaches the transcript and the Notes tab, with a note tied to a turn. Export transcript’s file holds that turn. |
 | J45 | A | A receipt waits for Review. Save puts its figures and receipt ref in one row of `Money/Ledger.tcsheet`. |
 | J46 | A | Create prints an invoice PDF to the job's folder. Export writes the year's CSV, Excel file and PDF. |
-| J47 | A | A weekday morning routine uses America/New_York. Run now creates a Work thread on box with the chosen Thread defaults. Pause turns the routine off. |
+| J47 | A | A weekday morning routine uses America/New_York. Run now creates a Work thread on box with the chosen New threads set. Pause turns the routine off. |
 | J48 | A | Save as a play keeps a Work thread's instructions with a File input. Start uses a dummy LifeOS document. |
 | J49 | A | Capture uses win's global shortcut on its private X display and files through sandbox LifeOS. `landed.json` records which host holds the file and which holds the thread. |
 | J59 | A, U | Appearance sets Work to Light. Pictures and `surfaces.json` show the theme marker and computed background of each surface. The slideshow’s audience window stays dark on purpose; every other surface wears light. In U, Capture and the Full editor are “not walked”, with the reason. |
@@ -557,7 +557,7 @@ marks a step only he can take; the rest a later thread can run.
   the tunnel rule (below) and his Microsoft sign-in. Steps (owner): the
   live test in landed/M29.md — sideload `addins/office/manifest.xml` in
   Excel for the web on a scratch OneDrive workbook, pair with the code from
-  Settings → Work, `office_range_read`/`write` from a box Work thread, time
+  Settings → Connections (the Office add-in's Pair…), `office_range_read`/`write` from a box Work thread, time
   a change by range, then Excel on the Mac through `wef/`.
 - **Outlook on the web from the box** (milestone 38). Why: no agent may
   sign in as him. Steps (owner): landed/M38.md section 7 — export his
@@ -607,7 +607,7 @@ marks a step only he can take; the rest a later thread can run.
   asks a Work thread on the Mac to fill a test form and presses its Send.
 - **LifeOS desktop's approve-a-sign-in sheet** (milestones 2, 7, 8). Why:
   it ships with the next LifeOS desktop release; every proof signed in by a
-  minted session. Steps (owner): after that release, Settings → Work → Sign
+  minted session. Steps (owner): after that release, Settings → Connections → LifeOS's Sign
   in on a dev instance, approve the code in LifeOS desktop.
 - **The hosted editor on the phone** (milestone 47): a LifeOS document
   edited in the web view and a suggestion accepted there. Why: the hosted

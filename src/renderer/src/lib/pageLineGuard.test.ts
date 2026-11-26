@@ -34,9 +34,7 @@ const SCOPE = (file: string): boolean =>
   file === "surfaces/ReviewSettings.tsx";
 
 /** Dialog bodies, which another recipe owns (ConfirmDialog's ErrorLine). */
-const DIALOG_LINES: Record<string, number> = {
-  "surfaces/settings/hosts/MacBridgeHostDialog.tsx": 1,
-};
+const DIALOG_LINES: Record<string, number> = {};
 
 const files = walk(ROOT)
   .map((path) => relative(ROOT, path))

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { grantFieldNames } from "@shared/addons";
 import type { AddonGrantView } from "@shared/contract-addonGrants";
 import type { AddonRow } from "@shared/contract-addons";
-import { DialogFooter, ErrorLine } from "../../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine, confirmAction } from "../../../chrome/ConfirmDialog";
 import { Field } from "../../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../../chrome/Modal";
 import { BusyLabel, Button } from "../../../components/ui/button";
@@ -21,8 +21,8 @@ type Props = {
 /**
  * Add key… / Change key… for an add-on whose spec names values: one password
  * field per name, a saved one showing "Saved" and never its value. Save sends
- * the typed names alone; Clear empties every value and keeps a sign-in
- * (Sign out on the row's menu drops that). The values live in this dialog's
+ * the typed names alone; Clear all… (it asks first) empties every value and keeps a sign-in
+ * (Sign out… on the row's menu drops that). The values live in this dialog's
  * state only: closing it unmounts them, and nothing logs them.
  */
 type Pending = "save" | "clear" | null;
@@ -101,9 +101,18 @@ function KeyForm({ link, row, grant, onClose, anySaved, pending, setPending }: P
               variant="ghost"
               className="text-muted-foreground hover:text-destructive"
               disabled={pending !== null}
-              onClick={() => send(Object.fromEntries(names.map((name) => [name, null])), "clear")}
+              onClick={() =>
+                void confirmAction({
+                  title: `Clear all of ${row.name}'s key`,
+                  body: "Every saved value is deleted. Its tools stop working until you add the key again.",
+                  action: "Clear all",
+                  danger: true,
+                }).then((ok) => {
+                  if (ok) send(Object.fromEntries(names.map((name) => [name, null])), "clear");
+                })
+              }
             >
-              <BusyLabel busy={pending === "clear"} label="Clear" />
+              <BusyLabel busy={pending === "clear"} label="Clear all…" />
             </Button>
           ) : null
         }

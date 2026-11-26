@@ -693,7 +693,7 @@ ahead of it; no screenshot was taken).
 ## From his other devices
 
 A Mac's or a PC's windows are watched from elsewhere only through the host
-that machine dials, and only while "Watch from my other devices"
+that machine dials, and only while "Let my other devices watch"
 (`computer.video.remote`) is on at that machine.
 
 1. The viewer (the phone, another desktop) asks the box `video.open`.

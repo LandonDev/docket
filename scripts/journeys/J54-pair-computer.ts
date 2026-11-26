@@ -26,16 +26,15 @@ export default journey({
       await page.press('menuitem', 'Pair a device…')
       await enterField(page, DIALOG + ' input[placeholder="iPhone"]', CLIENT)
       writeFileSync(join(context.folder, 'dialog-before.txt'), await dialogWords(page))
-      await page.press('button', 'Create code')
+      await page.press('button', 'Make the link')
     }),
     step('Read the link and QR or the reason there is no reachable address', async (context) => {
       const page = await device(context)
       await page.until('the pairing code', 15_000, () => page.centre('[data-pairing-code]'))
       const { link, qr } = await page.eval<{ link?: string; qr?: string }>(`(() => {
         const dialog = document.querySelector('[role="dialog"]');
-        const nodes = [...dialog.querySelectorAll('input, code, a, span')];
-        return { link: nodes.map(e => e.value ?? e.href ?? e.textContent.trim()).find(s => /^https?:\\/\\/\\S+\\/pair#\\S+$/.test(s)),
-          qr: dialog.querySelector('img[alt="Pairing QR code"]')?.getAttribute('src') };
+        return { link: dialog.querySelector('[data-sign-in-link]')?.getAttribute('data-sign-in-link') ?? undefined,
+          qr: dialog.querySelector('img[alt="Sign-in QR code"]')?.getAttribute('src') };
       })()`)
       const words = await dialogWords(page)
       const origin = link && new URL(link).origin
@@ -46,7 +45,7 @@ export default journey({
         if (qr !== expected) reachProblem.set(context, 'The QR does not encode the pairing link')
       } else if (link || qr) {
         reachProblem.set(context, 'The pairing dialog offered a loopback link')
-      } else if (!/cannot reach|no public address|opens only there/i.test(
+      } else if (!/cannot reach|no web address|opens only on it/i.test(
         readFileSync(join(context.folder, 'dialog-before.txt'), 'utf8') + '\n' + words
       )) {
         reachProblem.set(context, 'The dialog offers no reachable link and does not say why')

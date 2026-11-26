@@ -20,12 +20,13 @@ import { lifeosHostName } from "../shell/lifeos";
 import { DownLine } from "../shell/DownLine";
 import { fieldsOf, formChanged, placeWords, rowLabel, sameField, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartTarget } from "./places";
 import { answered } from "./wait";
+import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
 
 /**
- * Settings → Work, "Start places" (docs/agents/work-clashes.md): where each
- * job's drives begin, Home first, read live from LifeOS on the owner session
- * so a new address turns from "Looking up…" to the map's name by itself.
- * Each row opens its dialog; only he flips a job's map lookups, there.
+ * Settings → Work, Travel's "Start addresses" (docs/agents/work-clashes.md): an open row whose dialog lists where each
+ * job's drives begin, Home first, read live from LifeOS on the owner session so a new address turns from "Looking
+ * up…" to the map's name by itself. Each place opens its own dialog over the list; only he flips a job's map lookups,
+ * there.
  */
 
 const update = makeFunctionReference<"mutation">("settings:update");
@@ -89,9 +90,33 @@ export function StartPlacesSection({ environmentId }: { environmentId: string })
   );
   return (
     <>
-      {connected ? <PageSection title="Start places">{body}</PageSection> : null}
+      {connected ? <PageSection>{body}</PageSection> : null}
       {dialog}
     </>
+  );
+}
+
+/** Travel's one row: what the addresses are for, and the dialog that lists them. */
+export function StartAddressesRow({ environmentId }: { environmentId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <SettingRow id="work.start" description="Home and each job. Used to spot meetings too far apart to drive between." onOpen={() => setOpen(true)} openLabel="Start addresses" />
+      {open ? <StartAddressesDialog environmentId={environmentId} onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
+/** The list in a dialog; a session that is down says so in the list's place, with its press. */
+export function StartAddressesDialog({ environmentId, onClose }: { environmentId: string; onClose: () => void }) {
+  const session = useLifeosSession(environmentId, null);
+  return (
+    <Modal onClose={onClose} title="Start addresses" data-start-addresses="">
+      <ModalBody className="@container/page gap-0 pt-2">
+        {session.state === "connected" ? <StartPlacesSection environmentId={environmentId} /> : <DownLine session={session} />}
+        {session.state !== "connected" && !downOf(session) ? <PageRowsSkeleton rows={7} description control="none" /> : null}
+      </ModalBody>
+    </Modal>
   );
 }
 

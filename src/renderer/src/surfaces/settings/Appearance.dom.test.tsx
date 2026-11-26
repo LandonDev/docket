@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 import { initMotion } from "../../lib/motion";
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
-import { AppearancePage } from "./Appearance";
+import { zoomIn, zoomReset } from "../../lib/zoom";
+import { AppearancePage, TEXT_SIZES } from "./Appearance";
 
 beforeEach(() => {
   localStorage.clear();
@@ -25,13 +26,41 @@ async function choose(trigger: string, option: string) {
 }
 
 describe("Appearance", () => {
-  it("is three rows while Work is off everywhere: the theme, motion and the editor's type size", () => {
+  it("is one Theme row while Work is off everywhere, then Size and motion: text size, the editor's and motion", () => {
     render(<AppearancePage />);
-    expect(document.querySelectorAll("[data-slot=page-row]")).toHaveLength(3);
+    expect([...document.querySelectorAll("[data-slot=page-row]")].map((row) => row.getAttribute("data-setting"))).toEqual([
+      "appearance.theme",
+      "appearance.textSize",
+      "appearance.editorSize",
+      "appearance.motion",
+    ]);
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Size and motion"]);
     expect(screen.getByRole("combobox", { name: "Theme" }).textContent).toContain("Dark");
+    expect(screen.getByRole("combobox", { name: "Text size" }).textContent).toContain("100%");
     expect(screen.getByRole("combobox", { name: "Motion" }).textContent).toContain("Follow this computer");
-    expect(screen.getByRole("combobox", { name: "Editor font size" }).textContent).toContain("13px");
+    expect(screen.getByRole("combobox", { name: "Editor text size" }).textContent).toContain("13px");
     expect(screen.queryByRole("combobox", { name: "Work" })).toBeNull();
+  });
+
+  it("writes the app's zoom to the key the View menu writes, 50 to 200% in tens", async () => {
+    render(<AppearancePage />);
+    await choose("Text size", "120%");
+    expect(localStorage.getItem("docket.zoom")).toBe("1.2");
+    expect(TEXT_SIZES.map((size) => size.label)).toEqual(["50%", "60%", "70%", "80%", "90%", "100%", "110%", "120%", "130%", "140%", "150%", "160%", "170%", "180%", "190%", "200%"]);
+  });
+
+  it("follows the View menu's Zoom In and Actual Size while the page is open", async () => {
+    render(<AppearancePage />);
+    await act(async () => {
+      await zoomIn().catch(() => {});
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(screen.getByRole("combobox", { name: "Text size" }).textContent).toContain("110%");
+    await act(async () => {
+      await zoomReset().catch(() => {});
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(screen.getByRole("combobox", { name: "Text size" }).textContent).toContain("100%");
   });
 
   it("applies Light when chosen", async () => {
@@ -71,7 +100,7 @@ describe("Appearance", () => {
 
   it("saves the editor's type size", async () => {
     render(<AppearancePage />);
-    await choose("Editor font size", "14px");
+    await choose("Editor text size", "14px");
     expect(localStorage.getItem("docket.editorFontSize")).toBe("14");
     expect(document.documentElement.style.getPropertyValue("--font-size-code")).toBe("14px");
   });
@@ -80,12 +109,12 @@ describe("Appearance", () => {
     beforeEach(() => act(() => setWorkOn("local", true)));
     afterEach(() => act(() => workSwitch.reset()));
 
-    it("is a Theme section with a row for Code and a row for Work, then the editor's type size", () => {
+    it("is a Theme section with a row for Code and a row for Work, then Size and motion", () => {
       render(<AppearancePage />);
       expect(screen.getByText("Theme")).toBeTruthy();
-      expect([...document.querySelectorAll("[data-slot=page-row]")].map((row) => row.querySelector("[role=combobox]")?.getAttribute("aria-label"))).toEqual(["Code", "Work", "Motion", "Editor font size"]);
+      expect([...document.querySelectorAll("[data-slot=page-row]")].map((row) => row.querySelector("[role=combobox]")?.getAttribute("aria-label"))).toEqual(["Code", "Work", "Text size", "Editor text size", "Motion"]);
       expect(screen.queryByRole("combobox", { name: "Theme" })).toBeNull();
-      // The section's rows are its own; the editor's row sits under it, in a section of its own.
+      // The section's rows are its own; the sizes and motion sit under it, in a section of their own.
       const sections = document.querySelectorAll("section");
       expect(sections).toHaveLength(2);
       expect(sections[0].querySelectorAll("[data-slot=page-row]")).toHaveLength(2);

@@ -59,7 +59,7 @@ struct RelayedHostDetailView: View {
         // A held lane's status text already says "unreachable since …"; the line under it says nothing twice.
         let held = client.relayState == .unreachable
         List {
-            // 1. Status: the lane, and the host's presence under it.
+            // 1. Status: the lane, and the computer's presence under it.
             Section {
                 HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
                     ConnectionDot(status: status, relay: client.relayState)
@@ -67,7 +67,7 @@ struct RelayedHostDetailView: View {
                         .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 2) {
-                        StatusText(status: status)
+                        ConnectionStatusText(name: environment.name, status: status)
                             .lineLimit(2)
                         PresenceLine { now in
                             guard !held, let presence else { return nil }
@@ -84,14 +84,14 @@ struct RelayedHostDetailView: View {
                 .animation(Motion.crossFade, value: status.transport)
                 .accessibilityIdentifier("host-status")
             } footer: {
-                Text("Reached through \(carrier.name). It relays this host's threads while the host is awake and its link is up.")
+                Text("Reached through \(carrier.name) while \(environment.name) is awake and linked to it.")
             }
 
-            // 2. Host: its facts. The name is the host's own hostname, so it is not edited here.
+            // 2. Computer: its facts. The name is the computer's own hostname, so it is not edited here.
             Section {
                 LabeledContent("Name", value: environment.name)
                 LabeledContent("Through", value: carrier.name)
-                LabeledContent("Environment") {
+                LabeledContent("ID") {
                     Text(environment.id)
                         .font(.footnote.monospaced())
                         .textSelection(.enabled)
@@ -108,9 +108,9 @@ struct RelayedHostDetailView: View {
                     LabeledContent("Contract", value: "\(hello.contract)")
                 }
             } header: {
-                Text("Host")
+                Text("Computer")
             } footer: {
-                Text("Uses \(carrier.name)\u{2019}s key, \u{201C}\(carrier.keyName)\u{201D}. Forgetting \(carrier.name) forgets this host with it.")
+                Text("Uses \(carrier.name)\u{2019}s key, \u{201C}\(carrier.keyName)\u{201D}. Forgetting \(carrier.name) forgets this computer with it.")
             }
         }
         .listStyle(.insetGrouped)

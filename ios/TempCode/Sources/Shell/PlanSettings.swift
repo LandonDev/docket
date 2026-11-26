@@ -12,9 +12,9 @@ struct PlanSettingsSection: View {
 
     var body: some View {
         Section {
-            Toggle("Start the build on its own", isOn: field(\.autoImplement))
+            Toggle("Start the build when a plan is done", isOn: field(\.autoImplement))
                 .accessibilityIdentifier("plans-auto-implement")
-            Toggle("Archive the plan after start", isOn: field(\.archiveAfterStart))
+            Toggle("Archive the plan's thread once the build starts", isOn: field(\.archiveAfterStart))
             modelRow
             Picker("Build effort", selection: field(\.implementReasoning)) {
                 Text(SettingsCopy.sameAsPlan).tag(PlanSettings.ImplementReasoning.none)

@@ -86,7 +86,7 @@ Brief and follow-up prompts and `prep_read` use `hisZone(ctx)` for dates
 and name the zone for meeting times. A filed task's "From" line uses the
 meeting day in that zone.
 
-Both are ordinary Work threads made by `ctx.threads.start`: in the rail, on his Thread defaults for the workspace, linked to the event (`about`), titled by the host ("Prepare: Staff sync", "Follow up: Staff sync") so no model names one from what may be Purdue mail. The host makes the row, so the prompt is never read as his words. Prep makes no hidden model call.
+Both are ordinary Work threads made by `ctx.threads.start`: in the rail, on his New threads set for the workspace, linked to the event (`about`), titled by the host ("Prepare: Staff sync", "Follow up: Staff sync") so no model names one from what may be Purdue mail. The host makes the row, so the prompt is never read as his words. Prep makes no hidden model call.
 
 - **Brief** (`prompts.ts` `briefMessage`): the facts as words, then: read the newest mail with each person and the open tasks, look for what changed since last time, call `prep_write`, send nothing, add no task.
 - **Follow up** (`followMessage`): the page as words and his notes, then: call `prep_follow_up`, never `add_task`, call `prep_read` once more just before any mail, and draft a follow-up mail with `draft_mail` only if that read lists none already waiting and could read it (one mail a meeting, however many follow-ups), never send. Two follow-ups close together can still each draft one when both reads come before either draft; both wait for his press.

@@ -1,7 +1,8 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
-import { PageRow } from "../../components/page";
 import { Button } from "../../components/ui/button";
 import { acceleratorHint, acceleratorOf, bareKey } from "../../lib/keys";
+import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
+import { useSaved } from "../../surfaces/settings/parts/useSaved";
 
 /** What main answers about the capture key (src/main/capture.ts `CaptureKeyState`). */
 export interface CaptureKeyState {
@@ -21,10 +22,10 @@ export interface CaptureKeyApi {
 export const captureKeyApi = (): CaptureKeyApi | null => (window as unknown as { api?: { captureKey?: CaptureKeyApi } }).api?.captureKey ?? null;
 
 /**
- * Settings → Work's capture key (docs/agents/work-capture.md): the key that
- * opens the capture window over any app. Pressing the button records the
- * next chord; Escape keeps the key, Delete turns it off. A key another app
- * holds is refused and the one before stays.
+ * Settings → Shortcuts → From any app → Open capture (docs/agents/work-capture.md): the key that opens the capture
+ * window over any app, kept by this computer (`<userData>/capture.json`). Pressing the button records the next chord;
+ * Escape keeps the key, Delete turns it off. A key another app holds is refused: the one before stays and the row's
+ * red line says why.
  */
 export function CaptureKeyRow({ api }: { api: CaptureKeyApi }) {
   const [state, setState] = useState<CaptureKeyState | null>(null);
@@ -38,9 +39,14 @@ export function CaptureKeyRow({ api }: { api: CaptureKeyApi }) {
     };
   }, [api]);
 
+  const saved = useSaved();
   const save = (key: string | null) => {
     setRecording(false);
-    void api.set(key).then(setState);
+    void saved.run(async () => {
+      const next = await api.set(key);
+      setState(next);
+      if (next.error) throw new Error(next.error);
+    });
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
@@ -54,10 +60,11 @@ export function CaptureKeyRow({ api }: { api: CaptureKeyApi }) {
 
   const words = recording ? "Press the keys" : state?.key ? acceleratorHint(state.key) : "Off";
   return (
-    <PageRow
-      title="Capture key"
-      description={recording ? "Escape to keep it, Delete to turn it off" : "Opens capture over any app"}
-      error={!recording && state?.error ? state.error : undefined}
+    <SettingRow
+      id="keys.capture"
+      saved={saved}
+      description={recording ? "Escape to keep it, Delete to turn it off" : undefined}
+      error={saved.error ?? (!recording && state?.error ? state.error : undefined)}
     >
       <Button
         variant="secondary"
@@ -71,6 +78,6 @@ export function CaptureKeyRow({ api }: { api: CaptureKeyApi }) {
       >
         {words}
       </Button>
-    </PageRow>
+    </SettingRow>
   );
 }

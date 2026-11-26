@@ -9,8 +9,9 @@ temp-code threads.
   `https://tempcode.landonhale.com/mcp` answers as well) (MCP streamable HTTP, JSON-RPC
   over POST; the server answers in the response, no server stream).
 - Auth: header `x-api-key: tc_…` (or `Authorization: Bearer tc_…`). The key is a
-  bot key (audience `mcp`) made in temp-code under Settings → Hosts → Clients →
-  New key → Bot (MCP). Keys can be revoked there at any time.
+  bot key (audience `mcp`) made in Docket under Settings, a computer's Add… (or
+  Add a computer… → Sign a device in), For: A bot. Keys can be revoked from the
+  same list at any time.
 - Limits: a bucket of 120 requests per key, refilled at two per second;
   256 KiB per request body. HTTP rejects bad keys with 401, app-audience
   keys with 403, large bodies with 413 and rate limits with 429 plus
@@ -96,12 +97,13 @@ asks the person for every act.
 ## Webhook
 
 These two onboarding keys have no webhook yet. Once a bot gives you its
-HTTPS callback URL, open the **box host’s** Settings → Hosts → Clients → New
-key → Bot (MCP). Existing keys cannot be edited: create a replacement with
-the same bot name, read + operate, its Webhook URL, and Signing secret
+HTTPS callback URL, open the box's page in Settings (Other computers → the
+box), Who can sign in to the box → Add… → A key for a bot. Existing keys cannot
+be edited: create a replacement with the same bot name, It may: Run threads, its
+Webhook URL, and Signing secret
 (blank generates one); the default events are all four below. Give the bot
 both the replacement key and the `webhookSecret` shown once, update its Mac
-Keychain item, test delivery, then revoke the old key in that same pane.
+Keychain item, test delivery, then remove the old key in that same list.
 The bot needs `webhookSecret` to verify signatures; the API key is not the
 signing secret. The box must run v236 or later for webhook fields to appear.
 

@@ -1,18 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { BuildConfig } from "@server/shared/build";
 import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { OPEN_SETTINGS_EVENT } from "../../lib/monaco/debugTab";
 import { workspaceSettingsSection } from "../../lib/settings";
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { PageError, PageRowsSkeleton } from "../../components/page";
+import { useLinkMay } from "../../lib/linkMay";
+import { CommitField } from "../../surfaces/settings/hosts/CommitField";
+import { SettingRow, SettingSection } from "../../surfaces/settings/parts/SettingRow";
+import { useSaved, type Saved } from "../../surfaces/settings/parts/useSaved";
 import { Input } from "../../components/ui/input";
 
 /**
- * The workspace's build command (Build rail tab, and what the completed-turn
- * build step names). Placeholders show what the app detects from the
- * checkout; leaving both fields empty keeps that detection.
+ * A workspace's build command (the Build rail tab, and what After each turn's fresh build runs). Placeholders show
+ * what the app detects from the checkout; an empty command keeps that detection. `BuildFields` is the project sheet's
+ * pair, stacked label over field.
  */
 
 export const BUILD_EMPTY: BuildConfig = { command: "", outputs: "" };
@@ -25,65 +29,40 @@ export function BuildFields({
   value,
   onChange,
   detected,
-  compact,
 }: {
   value: BuildConfig;
   onChange: (next: BuildConfig) => void;
   detected: BuildConfig | null;
-  /** narrow host (the project dialog): no descriptions, stacked label + input */
-  compact?: boolean;
 }) {
   const fields = [
-    {
-      key: "command" as const,
-      label: "Command",
-      description: "Runs in the project checkout through your login shell.",
-      placeholder: detected?.command ?? "e.g. mvn -B package",
-    },
-    {
-      key: "outputs" as const,
-      label: "Outputs",
-      description: "Globs of the files it makes, comma-separated. ! excludes.",
-      placeholder: detected?.outputs || "e.g. target/*.jar",
-    },
+    { key: "command" as const, label: "Command", aria: "Build command", placeholder: detected?.command ?? "mvn -B package" },
+    { key: "outputs" as const, label: "What it makes", aria: "What it makes", placeholder: detected?.outputs || "target/*.jar" },
   ];
   return (
     <>
-      {fields.map((f) => {
-        const input = (
-          <Input
-            value={value[f.key]}
-            onChange={(e) => onChange({ ...value, [f.key]: e.target.value })}
-            placeholder={f.placeholder}
-            spellCheck={false}
-            aria-label={`Build ${f.label.toLowerCase()}`}
-            className={compact ? "font-mono text-xs" : "w-64 font-mono text-xs"}
-          />
-        );
-        return compact ? (
-          <label key={f.key} className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
-            {input}
-          </label>
-        ) : (
-          <PageRow key={f.key} title={f.label} description={f.description}>
-            {input}
-          </PageRow>
-        );
-      })}
+      {fields.map((f) => (
+        <label key={f.key} className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground">{f.label}</span>
+          <Input value={value[f.key]} onChange={(e) => onChange({ ...value, [f.key]: e.target.value })} placeholder={f.placeholder} spellCheck={false} aria-label={f.aria} className="font-mono text-xs" />
+        </label>
+      ))}
     </>
   );
 }
 
-/** The workspace page's Build section, self-loading; saves as you type.
- *  Its fields stay away until `build.get` answers, so nothing typed into an
- *  empty stand-in can save over the real config; no answer is the section's
- *  error and Retry. */
+/**
+ * A code workspace's Build section: Command and What it makes, each a field that commits on Enter or blur and saves
+ * with the mark; a refused value snaps back with the row's red line. The fields stay away until `build.get` answers,
+ * so nothing typed into an empty stand-in can save over the real config; no answer is the section's error and Retry.
+ * Placeholders show what the app detects from the checkout; an empty command keeps that detection. A key that may not
+ * set it reads the values as words.
+ */
 export function BuildEditor({ workspaceId }: { workspaceId: string }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
   const path = workspace?.path;
   const environmentId = workspace?.environmentId;
   const link = environmentId ? registry.linkOf(environmentId) : null;
+  const may = useLinkMay(environmentId ?? "", "build.set");
   const read = useHostRead(
     link,
     async () => (await link!.request<BuildConfig | null>("build.get", { workspaceId })) ?? BUILD_EMPTY,
@@ -91,62 +70,63 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
   );
   const config = read.value;
   const [detected, setDetected] = useState<BuildConfig | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const timer = useRef<number | undefined>(undefined);
+  const command = useSaved();
+  const makes = useSaved();
 
   useEffect(() => {
-    if (!environmentId) return;
+    if (!environmentId || !path) return;
     let live = true;
-    if (path) {
-      void registry.linkOf(environmentId)
-        .request<BuildConfig | null>("build.detect", { path })
-        .then((d) => live && setDetected(d))
-        .catch(() => {});
-    }
+    void registry
+      .linkOf(environmentId)
+      .request<BuildConfig | null>("build.detect", { path })
+      .then((d) => live && setDetected(d))
+      .catch(() => {});
     return () => {
       live = false;
-      window.clearTimeout(timer.current);
     };
   }, [environmentId, workspaceId, path]);
 
-  const push = (next: BuildConfig): void => {
-    if (!environmentId) return;
-    read.set(next);
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => {
-      setError(null);
-      registry
-        .linkOf(environmentId)
-        .request("build.set", { workspaceId, config: buildOrNull(next) })
-        .catch((err) => setError(err instanceof Error ? err.message : String(err)));
-    }, 500);
+  const commit = (saved: Saved, patch: Partial<BuildConfig>): Promise<boolean> => {
+    if (!environmentId || !config) return Promise.resolve(false);
+    const next = { ...config, ...patch };
+    return saved.run(async () => {
+      await registry.linkOf(environmentId).request("build.set", { workspaceId, config: buildOrNull(next) });
+      read.set(next);
+    });
   };
 
   const failed = config === undefined && read.error !== null;
   return (
-    <PageSection
-      title="Build"
-      action={
-        failed ? (
-          <Button variant="ghost" size="sm" onClick={read.retry}>
-            Retry
-          </Button>
-        ) : null
-      }
-    >
+    <SettingSection of="ws.command">
       {config ? (
         <>
-          <BuildFields value={config} onChange={push} detected={detected} />
-          {error ? <PageError>{error}</PageError> : null}
+          <SettingRow id="ws.command" saved={may ? command : undefined} wide={may} description={may ? "Runs in the checkout through your login shell" : config.command || detected?.command || "None"}>
+            {may ? (
+              <CommitField aria-label="Build command" value={config.command} placeholder={detected?.command ?? "mvn -B package"} spellCheck={false} className="w-64 font-mono text-xs" onCommit={(value) => commit(command, { command: value })} />
+            ) : null}
+          </SettingRow>
+          <SettingRow id="ws.makes" saved={may ? makes : undefined} wide={may} description={may ? "Globs, comma-separated; ! leaves one out" : config.outputs || detected?.outputs || "None"}>
+            {may ? (
+              <CommitField aria-label="What it makes" value={config.outputs} placeholder={detected?.outputs || "target/*.jar"} spellCheck={false} className="w-64 font-mono text-xs" onCommit={(value) => commit(makes, { outputs: value })} />
+            ) : null}
+          </SettingRow>
         </>
       ) : failed ? (
-        <PageError>{read.error}</PageError>
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" onClick={read.retry}>
+              <BusyLabel busy={false} label="Retry" />
+            </Button>
+          }
+        >
+          {read.error}
+        </PageError>
       ) : (
         <div data-testid="build-skeleton">
           <PageRowsSkeleton rows={2} description control="field" />
         </div>
       )}
-    </PageSection>
+    </SettingSection>
   );
 }
 

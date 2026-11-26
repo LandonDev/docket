@@ -10,16 +10,21 @@ import { useRulesScope } from "../lib/tcserver/rules";
 import { parseReviewScope, reviewerModel, reviewerModelOptions, type ReviewScope } from "../lib/reviewScope";
 
 export { type ReviewScope } from "../lib/reviewScope";
+import type { ReactNode } from "react";
+import { HARNESS_LABEL } from "../lib/session";
+import { settingEntry } from "../lib/settings/map";
+import { ChoiceCombobox } from "../components/choice-combobox";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageRow, PageRowsSkeleton } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
-import { Input } from "../components/ui/input";
+import { CommitField } from "../surfaces/settings/hosts/CommitField";
+import { SettingRow } from "../surfaces/settings/parts/SettingRow";
+import type { Saved } from "../surfaces/settings/parts/useSaved";
 
 /**
- * Review before merge (shared/review.ts): the fields, shared by the global
- * Settings › Reviews page and the project dialog's override. Stored whole
- * per scope (`review.set`): a project either follows the global set or
- * carries its own.
+ * Review before merge (shared/review.ts): the fields, shared by Settings → Reviews (the one set, kept on the box) and
+ * a project's sheet (its own set). Stored whole per scope (`review.set`): a project follows the one set or carries its
+ * own.
  */
 
 /** The harnesses a reviewer can run in: the ones that reach report_findings. */
@@ -30,12 +35,9 @@ export const BLOCK_OPTIONS: { value: ReviewSettings["blockOn"]; label: string }[
   { value: "any", label: "Any finding" },
 ];
 
-const COPY = {
-  before: { label: "Review before merge" },
-  model: { label: "Reviewer", hint: "Models the orchestration rules approve." },
-  blockOn: { label: "Blocking findings", hint: "Confirmed means the reviewer verified it." },
-  minutes: { label: "Time limit", hint: "Past it the merge goes ahead." },
-};
+export type ReviewRow = "on" | "model" | "effort" | "stop" | "wait";
+const ROW_ID: Record<ReviewRow, string> = { on: "reviews.on", model: "reviews.model", effort: "reviews.effort", stop: "reviews.stop", wait: "reviews.wait" };
+const title = (row: ReviewRow): string => settingEntry(ROW_ID[row]).title;
 
 /** The fields' first row while `review.get` answers: the Before merge
  *  switch, alone until it is on (the built-in set has it off). */
@@ -111,27 +113,31 @@ export function ReviewFields({
   onChange,
   environmentId,
   compact = false,
+  saved,
+  disabled,
 }: {
   value: ReviewSettings;
-  onChange: (next: ReviewSettings) => void;
+  /** May return the save, so a control goes back when it is refused. */
+  onChange: (next: ReviewSettings, row: ReviewRow) => void | Promise<unknown>;
   environmentId: string;
-  /** The project sheet: the same rows without their hints. */
+  /** The project sheet: plain rows, its own Save. */
   compact?: boolean;
+  /** Each row's save on Settings → Reviews. */
+  saved?: Record<ReviewRow, Saved>;
+  disabled?: boolean;
 }) {
   const { scope } = useRulesScope(environmentId, null);
   const rules = scope?.rules;
   const model = reviewerModel(value, environmentId);
   const ladder = model ? effortLadder(model) : [];
   const current = model ? (model.nativeId ?? model.id) : value.model;
-  // One list over every reviewer provider; a value is `provider:model`.
+  // One list over every reviewer app, grouped by app; a value is `provider:model`.
   const options = REVIEWER_PROVIDERS.flatMap((provider) =>
-    reviewerModelOptions(provider, environmentId, rules).map((o) => ({ value: `${provider}:${o.value}`, label: o.label })),
+    reviewerModelOptions(provider, environmentId, rules).map((o) => ({ value: `${provider}:${o.value}`, label: o.label, group: HARNESS_LABEL[provider] })),
   );
   const chosen = `${value.provider}:${current}`;
-  const modelOptions = options.some((o) => o.value === chosen)
-    ? options
-    : [{ value: chosen, label: model ? `${model.name} (not approved)` : current }, ...options];
-  const set = (patch: Partial<ReviewSettings>) => {
+  const modelOptions = options.some((o) => o.value === chosen) ? options : [{ value: chosen, label: model ? `${model.name} (not allowed)` : current }, ...options];
+  const set = (row: ReviewRow, patch: Partial<ReviewSettings>) => {
     const next = { ...value, ...patch };
     const m = resolveModel(next.provider as HarnessId, next.model || undefined, environmentId);
     const steps = effortLadder(m);
@@ -139,64 +145,67 @@ export function ReviewFields({
       const effort = m.settings?.find((s) => s.id === "effort");
       next.reasoning = (steps.includes(effort?.value as Reasoning) ? effort!.value : steps[0]) as ReviewSettings["reasoning"];
     }
-    onChange(next);
+    return onChange(next, row);
   };
-  const [minutes, setMinutes] = useState(String(value.maxMinutes));
-  useEffect(() => setMinutes(String(value.maxMinutes)), [value.maxMinutes]);
-  const commitMinutes = () => {
-    const n = Math.round(Number(minutes));
-    if (Number.isFinite(n) && n >= 1 && n <= 240) set({ maxMinutes: n });
-    else setMinutes(String(value.maxMinutes));
-  };
-  const hint = (text: string) => (compact ? undefined : text);
+  const row = (id: ReviewRow, control: ReactNode, description?: string) =>
+    saved ? (
+      <SettingRow key={id} id={ROW_ID[id]} saved={saved[id]} description={description}>
+        {control}
+      </SettingRow>
+    ) : (
+      <PageRow key={id} title={title(id)} description={compact ? undefined : description}>
+        {control}
+      </PageRow>
+    );
 
   return (
     <div data-slot="review-fields" className="flex flex-col">
-      <PageRow title={COPY.before.label}>
-        <SettingSwitch label={COPY.before.label} on={value.beforeMerge} onChange={(beforeMerge) => set({ beforeMerge })} />
-      </PageRow>
+      {row("on", <SettingSwitch label={title("on")} disabled={disabled} on={value.beforeMerge} onChange={(beforeMerge) => set("on", { beforeMerge })} />)}
       {value.beforeMerge ? (
         <>
-          <PageRow title={COPY.model.label} description={hint(COPY.model.hint)}>
-            <ChoiceSelect
-              label={COPY.model.label}
+          {row(
+            "model",
+            <ChoiceCombobox
+              label={title("model")}
+              disabled={disabled}
               value={chosen}
               options={modelOptions}
               onChange={(next) => {
                 const at = next.indexOf(":");
-                set({ provider: next.slice(0, at) as ReviewSettings["provider"], model: next.slice(at + 1) });
+                void set("model", { provider: next.slice(0, at) as ReviewSettings["provider"], model: next.slice(at + 1) });
               }}
-            />
-          </PageRow>
-          {ladder.length > 1 ? (
-            <PageRow title="Effort">
-              <ChoiceSelect
-                label="Effort"
-                value={value.reasoning}
-                options={ladder.map((level) => ({ value: level, label: EFFORT_LABELS[level] }))}
-                onChange={(reasoning) => set({ reasoning: reasoning as ReviewSettings["reasoning"] })}
-              />
-            </PageRow>
-          ) : null}
-          <PageRow title={COPY.blockOn.label} description={hint(COPY.blockOn.hint)}>
-            <ChoiceSelect label={COPY.blockOn.label} value={value.blockOn} options={BLOCK_OPTIONS} onChange={(blockOn) => set({ blockOn })} />
-          </PageRow>
-          <PageRow title={COPY.minutes.label} description={hint(COPY.minutes.hint)}>
+            />,
+          )}
+          {ladder.length > 1
+            ? row(
+                "effort",
+                <ChoiceSelect
+                  label={title("effort")}
+                  disabled={disabled}
+                  value={value.reasoning}
+                  options={ladder.map((level) => ({ value: level, label: EFFORT_LABELS[level] }))}
+                  onChange={(reasoning) => void set("effort", { reasoning: reasoning as ReviewSettings["reasoning"] })}
+                />,
+              )
+            : null}
+          {row("stop", <ChoiceSelect label={title("stop")} disabled={disabled} value={value.blockOn} options={BLOCK_OPTIONS} onChange={(blockOn) => void set("stop", { blockOn })} />)}
+          {row(
+            "wait",
             <span className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Input
-                aria-label={COPY.minutes.label}
-                inputMode="numeric"
-                value={minutes}
-                onChange={(e) => setMinutes(e.target.value)}
-                onBlur={commitMinutes}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                }}
+              <CommitField
+                kind="int"
+                min={1}
+                max={240}
+                aria-label={title("wait")}
+                disabled={disabled}
+                value={value.maxMinutes}
+                onCommit={(maxMinutes) => Promise.resolve(set("wait", { maxMinutes: maxMinutes ?? value.maxMinutes })).then((landed) => landed !== false)}
                 className="w-16 text-right tabular-nums"
               />
               min
-            </span>
-          </PageRow>
+            </span>,
+            "Past it the merge goes ahead unreviewed",
+          )}
         </>
       ) : null}
     </div>

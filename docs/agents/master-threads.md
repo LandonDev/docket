@@ -126,8 +126,8 @@ this is the short one.
   across hosts".
 - **A thread is the person's choice; the model policy is for subagents.**
   The orchestration rules (src/shared/rules.ts `modelApproved`,
-  `approvedDefault`, `fitReasoning`; Settings → Orchestration's Everyone /
-  Orchestrators only / Off, Fable orchestrators-only by default, and a
+  `approvedDefault`, `fitReasoning`; Settings → Subagents' Who may start it, Everyone /
+  Lead threads only / Off, Fable orchestrators-only by default, and a
   model the saved rules do not list is Off: a copy saved before that rule
   is written out once with every catalog model it lacked as Everyone,
   `explicitModels`) govern `spawn_agent` alone. The page lists every
@@ -147,9 +147,9 @@ this is the short one.
   it), and sends `rules.set`/`defaults.set` there (refused while it is
   offline; the box stores a rule for a model it cannot run). `rules.get` and
   `defaults.get` answer `home { name, online }` when the copy is another
-  host's: the Orchestration and Thread defaults pages print "Saved on box",
-  or "box is offline" with every control off, and a refused write rolls
-  back with a toast. Each host also knows what the others run
+  host's: Settings → Subagents and New threads say "Saved on the box, for
+  every computer." under the title, or that the box is offline with every
+  control held, and a refused write rolls back with the row's red line. Each host also knows what the others run
   (`peerCatalogs.ts`: `catalog.exchange`, admin, on every rules sync; kept
   under `catalog:peer:<envId>`), since one copy of the rules cannot make the
   box run Muse Code: the spawnable table lists another reachable host's
@@ -217,9 +217,9 @@ this is the short one.
   "Queued  waiting for memory" for old readers, pushed only when it
   changes; `list_agents` says "queued: 120 of 120 running". RPCs
   `admission.get` (read: cap, pinned, default, running, queued, memory) and
-  `admission.set { cap | null }` (admin); a Running threads row in each
-  connected host's section of Settings → Hosts shows it
-  (surfaces/settings/hosts/Admission.tsx). The
+  `admission.set { cap | null }` (admin); Threads at once on Settings →
+  Threads and on each other computer's page shows it
+  (surfaces/settings/computers/ThreadsRows.tsx). The
   fleet's Stop and Archive done take a queued root as "remove from the
   queue" and archive it.
 - **The batch's rules are a steps list the master writes, and the engine

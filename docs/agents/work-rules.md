@@ -135,9 +135,9 @@ Approved page: `.temp-code/prototypes/work-workspaces-2/rules.html`, the
 pick "Where he made the edit", with the list of the second variation as the
 place a passed-over proposal waits.
 
-- **On a Work workspace's settings page** (after Where it runs, before the
-  thread defaults; `HouseRules` from work/shell/settings.tsx): **House
-  rules**, with Add rule… as the section's verb; each rule a `PageRow` that
+- **On a job's page in Settings** (after Computers its threads may use and
+  New threads, before Writing and mail; `HouseRules`, work/rules/HouseRules.tsx):
+  **Rules**, with Add rule… as the section's verb; each rule a `PageRow` that
   opens its edit dialog (cut at its column, the whole rule in the tooltip
   past 72 characters), muted while off, its switch at the end; a grip in the
   24px gutter on hover drags it (`useSortable`, the insertion line, the
@@ -148,8 +148,11 @@ place a passed-over proposal waits.
   paragraph: taken out struck on the delete wash, put in on the add wash)
   and Edit before adding…. Add's toast says "Added to <workspace>'s rules"
   with Undo (the rule goes, the proposal opens again); Dismiss's has Undo
-  too. **Voice**: "Read my sent mail for how I write", its line "48 mails
-  from landon@purdue.edu since Oct 19".
+  too. **Voice**: "Learn how I write from my sent mail" (`VoiceRow`), a row of
+  the job page's Writing and mail, its line "48 mails from landon@purdue.edu
+  since Oct 19". The rules' section is headed Rules, the proposals' Proposed;
+  a rule's switch saves with the mark and a refusal puts it back with the
+  row's red line.
 - **The dialog** (`Modal`): one Rule field (Enter saves; one line, 300
   characters); from a proposal its edits under it at 14px; editing a rule,
   a quiet Delete at the footer's start.

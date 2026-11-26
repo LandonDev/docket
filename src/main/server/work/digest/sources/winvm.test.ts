@@ -27,7 +27,7 @@ describe('the winvm source', () => {
   it('tells a setup that failed before it made the disk, with the reason as its detail', async () => {
     const env = envOf(state({ state: 'none', error: 'The base image is not there.' }))
     expect(await winvm.read(env, 0)).toEqual([
-      { kind: 'winvm.failed', workspaceId: null, title: "The Windows VM's setup failed", detail: 'The base image is not there.', key: 'winvm:setup', open: { settings: 'work' } }
+      { kind: 'winvm.failed', workspaceId: null, title: "The Windows VM's setup failed", detail: 'The base image is not there.', key: 'winvm:setup', open: { settings: 'winvm' } }
     ])
     expect(env.calls).toEqual(['work.winvm.state'])
   })

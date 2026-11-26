@@ -69,8 +69,8 @@ struct DriftLineTests {
     }
 
     @Test(arguments: [
-        (build(release: 270), master(273), false, true, true, "3 releases behind master: v1.0.270 → v1.0.273. Deploy from here."),
-        (build(release: 272), master(273), false, true, false, "1 release behind master: v1.0.272 → v1.0.273. Deploying needs an admin key."),
+        (build(release: 270), master(273), false, true, true, "3 releases behind master: v1.0.270 → v1.0.273. Update from here."),
+        (build(release: 272), master(273), false, true, false, "1 release behind master: v1.0.272 → v1.0.273. Updating needs a key that may manage it."),
         (build(release: 270), master(273), false, false, true, "3 releases behind master: v1.0.270 → v1.0.273."),
         (build(release: 270, platform: "darwin"), master(273), false, false, false, "3 releases behind master: v1.0.270 → v1.0.273. Publish from the Mac."),
         (build(release: 273), master(273), false, true, true, "Up to date with master (v1.0.273)."),
@@ -285,21 +285,21 @@ struct MacBridgeWordsTests {
 @Suite("SyncWords")
 struct SyncWordsTests {
     @Test func `harnessLine: running, error, never, synced with sets, not connected`() {
-        #expect(SyncWords.harnessLine(harness(running: true), now: now) == "Harness config: syncing…")
-        #expect(SyncWords.harnessLine(harness(error: "link down"), now: now) == "Harness config: link down")
-        #expect(SyncWords.harnessLine(harness(error: "link down", syncedAt: Int(now) - 120_000), now: now) == "Harness config: link down (last synced 2m ago)")
-        #expect(SyncWords.harnessLine(harness(), now: now) == "Harness config: never synced")
-        #expect(SyncWords.harnessLine(harness(connected: false), now: now) == "Harness config: never synced")
-        #expect(SyncWords.harnessLine(harness(syncedAt: Int(now) - 120_000, files: 143, sets: ["Claude skills": 80, "Codex hooks": 1, "Agents": 0]), now: now) == "Harness config: 143 files (Claude skills 80, Codex hooks 1), synced 2m ago")
-        #expect(SyncWords.harnessLine(harness(syncedAt: Int(now) - 10_000, files: 1, connected: false), now: now) == "Harness config: 1 file, synced just now")
+        #expect(SyncWords.harnessLine(harness(running: true), now: now) == "Agent settings: syncing…")
+        #expect(SyncWords.harnessLine(harness(error: "link down"), now: now) == "Agent settings: link down")
+        #expect(SyncWords.harnessLine(harness(error: "link down", syncedAt: Int(now) - 120_000), now: now) == "Agent settings: link down (last synced 2m ago)")
+        #expect(SyncWords.harnessLine(harness(), now: now) == "Agent settings: never synced")
+        #expect(SyncWords.harnessLine(harness(connected: false), now: now) == "Agent settings: never synced")
+        #expect(SyncWords.harnessLine(harness(syncedAt: Int(now) - 120_000, files: 143, sets: ["Claude skills": 80, "Codex hooks": 1, "Agents": 0]), now: now) == "Agent settings: 143 files (Claude skills 80, Codex hooks 1), synced 2m ago")
+        #expect(SyncWords.harnessLine(harness(syncedAt: Int(now) - 10_000, files: 1, connected: false), now: now) == "Agent settings: 1 file, synced just now")
     }
 
     @Test func `memoryLine: running, error, never, synced with conflicts`() {
-        #expect(SyncWords.memoryLine(memory(running: true), now: now) == "Memory: syncing…")
-        #expect(SyncWords.memoryLine(memory(error: "refused"), now: now) == "Memory: refused")
-        #expect(SyncWords.memoryLine(memory(connected: false), now: now) == "Memory: never synced")
-        #expect(SyncWords.memoryLine(memory(syncedAt: Int(now) - 120_000, files: 61, conflicts: 1), now: now) == "Memory: 61 files, synced 2m ago, 1 conflict")
-        #expect(SyncWords.memoryLine(memory(syncedAt: Int(now) - 7_200_000, files: 61, conflicts: 3), now: now) == "Memory: 61 files, synced 2h ago, 3 conflicts")
+        #expect(SyncWords.memoryLine(memory(running: true), now: now) == "Agents’ memory: syncing…")
+        #expect(SyncWords.memoryLine(memory(error: "refused"), now: now) == "Agents’ memory: refused")
+        #expect(SyncWords.memoryLine(memory(connected: false), now: now) == "Agents’ memory: never synced")
+        #expect(SyncWords.memoryLine(memory(syncedAt: Int(now) - 120_000, files: 61, conflicts: 1), now: now) == "Agents’ memory: 61 files, synced 2m ago, 1 conflict")
+        #expect(SyncWords.memoryLine(memory(syncedAt: Int(now) - 7_200_000, files: 61, conflicts: 3), now: now) == "Agents’ memory: 61 files, synced 2h ago, 3 conflicts")
     }
 
     @Test func `conflictLine, ago, the conflicts title and the footer`() {
@@ -308,8 +308,8 @@ struct SyncWordsTests {
         #expect(SyncWords.ago(now - 180_000, now: now) == "3m ago")
         #expect(SyncWords.conflictsTitle(1) == "1 conflict copy")
         #expect(SyncWords.conflictsTitle(3) == "3 conflict copies")
-        #expect(SyncWords.footer(enabled: false, skipped: 0) == "Sync is off on this host.")
-        #expect(SyncWords.footer(enabled: true, skipped: 2) == "Skills, commands, hooks and settings go from the Mac to its hosts; memory crosses both ways, the newer copy wins. 2 files stay on this host (over 16 MB, a symlink out of reach, or a macOS binary).")
+        #expect(SyncWords.footer(enabled: false, skipped: 0) == "Sync is off on this computer.")
+        #expect(SyncWords.footer(enabled: true, skipped: 2) == "Skills, commands, hooks and settings go from the Mac to the other computers; memory crosses both ways, the newer copy wins. 2 files stay on this computer (over 16 MB, a symlink out of reach, or a macOS binary).")
     }
 }
 
@@ -320,7 +320,7 @@ struct HostExtrasAccessTests {
         #expect(HostExtrasAccess.sync.needs == .admin)
         #expect(HostExtrasAccess.deviceActions.needs == .operate)
         #expect(HostExtrasAccess.macStop.needs == .operate)
-        #expect(HostExtrasAccess.deploy.reason == "Deploying needs an admin key.")
+        #expect(HostExtrasAccess.deploy.reason == "Updating needs a key that may manage it.")
         #expect(HostExtrasAccess.sync.reason == "Reading the sync state needs an admin key.")
         #expect(HostExtrasAccess.deviceActions.reason == "Shutting down or deleting a simulator needs an operate key.")
         #expect(HostExtrasAccess.macStop.reason == "Stopping a command needs an operate key on the Mac.")

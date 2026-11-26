@@ -1,15 +1,12 @@
 import { PlanSettingsEditor } from "../../chrome/PlanSettingsFields";
 import { ThreadDefaultsEditor } from "../../chrome/ThreadDefaultsDialog";
-import { ClaudeHooksSection, PickerSection } from "./PickerSettings";
 
-/** What a new thread starts with, what a finished plan's build does, and what the model picker lists. */
+/** New threads: what every new thread starts with, and what a finished plan's build does. One set on the box. */
 export function ThreadDefaultsPage() {
   return (
     <>
       <ThreadDefaultsEditor workspaceId={null} />
       <PlanSettingsEditor />
-      <PickerSection />
-      <ClaudeHooksSection />
     </>
   );
 }

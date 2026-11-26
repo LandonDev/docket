@@ -244,11 +244,14 @@ The service uses physical pixels for window geometry and input at every Windows 
   the web stay open; their Forms controls are held (`PAGE_OUTWARD`,
   [work-outbox.md](work-outbox.md) "Computer use").
 - **The page.** Settings → Computer use (surfaces/settings/Computer.tsx;
-  Mac desktop only, `macOnly` in lib/settings.ts): the service with Try
-  again while down, Take the screen after (`computer.sessionIdleMs`, in
-  minutes), When a step needs the app in front (`computer.activeApp`: Bring
-  it forward for a moment, or Wait until I'm away; §26.6), the two grants with Grant…, the learned apps (`verdictWords`)
-  with Forget; `computer.settings.get/set`, `computer.verdicts.forget`,
+  Mac desktop only, `macOnly` in lib/settings.ts): the helper's row with Try
+  again only while it is down, Wait after my last input
+  (`computer.sessionIdleMs`, in minutes), When a step needs an app in front
+  (`computer.activeApp`: Bring it forward briefly, or Wait until I'm away;
+  §26.6), Keep pictures of each step (off asks first), Let my other devices
+  watch, who may use this Mac's apps (each linked computer opening Sharing),
+  the two grants with Grant…, the apps it has learned (`verdictWords`) with
+  Forget and Forget all…; `computer.settings.get/set`, `computer.verdicts.forget`,
   `computer.permissions`, `computer.service.retry`, all `local`
   (computer/settingsRpc.ts); the `computer-settings` push.
 - **The session tier** (§20, computer/schedule.ts,

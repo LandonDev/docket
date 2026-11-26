@@ -23,8 +23,9 @@ struct DriftMark: View {
     }
 }
 
-/// Build: master's version, and for a box the deploy that brings it up.
-/// The host's own version stays in the Host section; the footer names the
+/// Build: master's version, and for a box the update that brings it up
+/// (the glossary's Update… for Deploy master). The computer's own version
+/// stays in the Computer section; the footer names the
 /// gap and the fix (or why it is out of reach) in at most two lines.
 struct HostBuildSection: View {
     let client: EnvironmentClient
@@ -44,13 +45,13 @@ struct HostBuildSection: View {
         let installed = extras.deploy?.installed == true
         let canDeploy = !isMac && open && admin && installed && (phase == .idle || phase == .done)
         Section {
-            LabeledContent("Master") {
+            LabeledContent("Newest") {
                 Text(watcher.release.map { "v\($0.version)" } ?? "—")
                     .monospacedDigit()
             }
-            .alert("Deploy master to \(client.environment.name)?", isPresented: $confirming) {
+            .alert("Update \(client.environment.name)?", isPresented: $confirming) {
                 Button("Cancel", role: .cancel) {}
-                Button("Deploy") { deploy() }
+                Button("Update", role: .destructive) { deploy() }
             } message: {
                 Text(DeployWords.confirm(hostName: client.environment.name, deployed: build?.version, master: watcher.release?.version))
             }
@@ -61,7 +62,7 @@ struct HostBuildSection: View {
                 #endif
             }
             if !isMac {
-                Button("Deploy Master") { confirming = true }
+                Button("Update…") { confirming = true }
                     .disabled(!canDeploy)
                     .accessibilityIdentifier("deploy-master")
                 if let job {
@@ -104,7 +105,7 @@ struct HostBuildSection: View {
                 try await extras.startDeploy()
             } catch {
                 showLog = false
-                withAnimation(Motion.rowAppear) { actionError = (error as? ActionError)?.message ?? error.localizedDescription }
+                withAnimation(Motion.rowAppear) { actionError = ActionError.wrap(error).message }
             }
         }
     }

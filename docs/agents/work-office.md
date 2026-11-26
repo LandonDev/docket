@@ -308,7 +308,7 @@ Office in the VM, a POSIX path to the workspace's desktop host, a URL or a
 bare name to the VM first and then the desktop (a file not open in the one
 is asked of the other). `office_files` asks every place and answers
 `computers: [{on, …}]` when more than one has something. The VM is a place
-only for a thread whose workspace has "Computer use on the Windows VM" on,
+only for a thread whose workspace has "Windows VM" on (its page's Computers its threads may use),
 and only once Office is installed there (`vmAllowed`, `vmHasOffice`).
 Before 2026-11-22 the box answered every file tool "Excel is not on the
 box" and never asked the Mac: its own carrier took the call.
@@ -544,8 +544,8 @@ The add-in's files are served without `X-Frame-Options` and with a
 `frame-ancestors` list of Office on the web's hosts, so Office can frame the
 pane.
 
-**Pairing** (`addin/keys.ts`). Settings → Work, Where it runs, has an Office
-add-in row per host. Pair… shows an 8-letter code (no 0, O, 1, I or L) for
+**Pairing** (`addin/keys.ts`). Settings → Connections has an Office
+add-in row per computer (`AddinRow`). Pair… shows an 8-letter code (no 0, O, 1, I or L) for
 five minutes; one code at a time and one pairing per code. A caller (by its
 address, the tunnel's `CF-Connecting-IP`) gets five wrong tries a code, so a
 stranger cannot spend his; after a thousand wrong tries in all the code

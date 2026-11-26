@@ -84,7 +84,7 @@ a pillar knows (a guest link, a shared LifeOS document) is not guessed yet.
 | a batch | one scope: a Work master takes only Work threads of its workspace; a Work thread joins no other batch, and none on another host | `assertBatchScope`, sessions.ts; `thread.adopt`, crossHostThreads.ts |
 | `merge_branch`, `report_findings`, `batch_gate`, `batch_rules`, the plan tools | not listed, by Claude's server or by the stdio bridge (told `TEMP_CODE_SCOPE=work`, `WORK_HIDDEN`), and the app refuses their `app.*` methods for a Work row whichever harness asks | `appToolsMcp`, `workBridgeRefusal`, apptools.ts; scripts/app-mcp-bridge.mjs |
 | the Mac bridge's tools, computer use carried to a Mac | only when the workspace's Work settings name that Mac (`mayUseDesktop`); a Work Chat never. Checked when the tools are mounted and again at every call, so taking a Mac off the list stops a running thread | `mayUseFarDesktop`, work/scope.ts; the hook in drivers/claude.ts; every `mac.*` call at dispatch in macTools.ts (`MAC_NOT_FOR_WORKSPACE`), whichever harness makes it |
-| `windows_apps`, `windows_observe`, `windows_act`, `windows_batch`, `windows_result` (the Windows VM) | only a thread of a workspace whose Work settings turn on "Computer use on the Windows VM" (`windowsVm`, on for a new Work workspace), on the host that keeps the VM, once it is set up; a Work Chat never. Checked when the tools are listed and again at every call, so turning the setting off stops a running thread. One thread uses the VM at a time | `vmOffered`, work/winvm/tools.ts; the lease, work/winvm/lease.ts; [work-winvm.md](work-winvm.md) "The service on the box" |
+| `windows_apps`, `windows_observe`, `windows_act`, `windows_batch`, `windows_result` (the Windows VM) | only a thread of a workspace whose Work settings turn on "Windows VM" (a job's Computers its threads may use) (`windowsVm`, on for a new Work workspace), on the host that keeps the VM, once it is set up; a Work Chat never. Checked when the tools are listed and again at every call, so turning the setting off stops a running thread. One thread uses the VM at a time | `vmOffered`, work/winvm/tools.ts; the lease, work/winvm/lease.ts; [work-winvm.md](work-winvm.md) "The service on the box" |
 | add-ons | its own Work workspace's rows, and the global rows marked for Work (`addons.for_work`); a child never sees more than its parent. On a host where Work's rule did not come up, a Work row reads none (`WORK_UNSCOPED`) | `workspaceIdOf`, `visibleAddons`, addons/scope.ts |
 | `addon_add`, `addon_remove` | its own workspace's scope only: `scope: 'global'` is refused, and a call with no scope is held to the workspace | `appToolsMcp`, apptools.ts |
 | `doc_find`, `doc_read`, `doc_write`, `doc_suggest`, `doc_comment` | a workspace's thread reaches its own sector's LifeOS documents and its own folder; a Work Chat every Work workspace on the host; a thread with no Work home, or of a workspace with no sector, no LifeOS document (and `doc_find` refuses an orphan) | `sectorsOf`, `orphaned`, work/docs/tools.ts; [work-docs.md](work-docs.md) "The tools" |
@@ -159,7 +159,8 @@ module's `handle` for `work.office.rangeWrite` (work/peer.ts). Two gates:
   `mayUseDesktop`. The workspace is the calling thread's, so `peer` is
   called on a tool's own `ctx`, which carries its scope; called on the bare
   context, or detached, it is refused. A Work Chat may use no other host.
-- **There**, that host's bridge policy for this one (Settings → Hosts):
+- **There**, that host's bridge policy for this one (its Settings → Sharing,
+  the "What <computer> may do on this Mac" sheet, Files and commands):
   `off` refuses every call, `read` allows a method a read key may call,
   `read+run` and `full` allow one an operate key may. No call from another
   host carries the owner's press: a method that needs `approve`, `admin` or
@@ -174,7 +175,7 @@ the loaded list, as work/threads.ts does for the preamble parts.
 - `start({workspaceId, projectId?, text, model?, reasoning?, routineRunId?, about?})`
   starts a Work chat at his default access for the workspace (no access of
   its own: new-thread-access.md; a lower default means a card can wait) on
-  his Thread defaults' provider, model and effort for the workspace unless a
+  his New threads set's provider, model and effort for the workspace unless a
   model is named (a routine's own; `reasoning?` with it, fitted to the model
   by the host's `clampReasoning`). `workspaceId:
   WORK_HOME` starts a Work Chat. `routineRunId` is stamped on the row; it is

@@ -24,7 +24,8 @@
 - `TEMP_CODE_REMOTE_PORT=<n>` overrides the port for a dev instance (so it
   never fights the installed app for 7677); `0` turns the listener off. The
   settings `remote.enabled`, `remote.port`, `remote.publicOrigin` live in the
-  settings table and this machine's section of Settings → Hosts edits them. A port in
+  settings table. Settings edits them under Advanced: this Mac's on Sharing (Let other
+  devices reach this Mac, Port, Web address), another computer's on its own page. A port in
   use logs one `[remote]` line and leaves remote off; `remote.status` carries
   the error. `TEMP_CODE_REMOTE_TRACE=1` logs one line per request.
 - Identity: `<userData>/environment.json` holds `env_<22 chars>`, created
@@ -102,19 +103,25 @@
 - Pairing: an admin makes a code (`XXXXX-XXXXX`, 10 minutes, single use) in
   the pane or over `POST /api/pairings`; the link is `<origin>/pair#<code>`.
   `<origin>` is the host's public origin, else the one it learned, else
-  `http://127.0.0.1:<port>`. `PairDialog` asks the host's `remote.status`
-  first and builds the link and its QR on the outside origin alone (Public
-  origin, else the one learned from the tunnel: `outsideOrigin`, `pairLink`).
-  With neither it says so before the code is made, in one muted line ("Other
-  devices cannot reach this computer yet. Set its Public origin on this
-  page."), and offers the code with no link and no QR. The host does not tell
+  `http://127.0.0.1:<port>`. Add a computer…'s device way
+  (`surfaces/settings/computers/device.tsx`) asks the computer's `remote.status`
+  first and builds the link and its QR on the outside origin alone (Web
+  address, else the one learned from the tunnel: `outsideOrigin`, `pairLink`).
+  With neither it says so before the link is made, in one muted line ("Other
+  devices cannot reach this Mac yet. Set its Web address in Sharing, under
+  Advanced."), and offers the code with Copy code, no link and no QR. The host does not tell
   an address on the local network alone from one on the internet, so the
   dialog says nothing of an address's reach. Only where the host did not
   answer its status does the dialog show the host's own link, and say in one
-  line when it is a loopback address that opens only there. Settings → Hosts makes
-  a pairing for this machine under Clients, and for a paired host whose key
-  here holds `admin` (the box) from that host's ⋯ menu, **Pair a device…**,
-  asked over its own link (`PairDialog`'s `host`).
+  line when it is a loopback address that opens only there. The dialog is
+  "Sign a device in to <computer>": Name; For (a device, or a bot, whose key it
+  makes instead); It may (Look only `[]`, Run threads `[operate]`, Run threads
+  and approve `[operate, approve]`, Manage <computer> `[operate, approve,
+  admin]`, which asks first); then the code, its QR, Copy link, "One use. Ends
+  in 9:42." and Cancel the link (`remote.pairings.revoke`). It is made on the
+  computer the title names, over that computer's own link (`hostRequest`), so a
+  key here that holds `admin` on the box makes the box's sign-ins
+  (`openAddComputer({ way: "device", computer })`).
   Redemption claims the row in one conditional UPDATE before minting, so
   concurrent redeems answer one key (R2 M1). The link's origin is learned
   only from an admin's own authenticated request, never from the Host of an

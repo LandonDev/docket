@@ -8,6 +8,7 @@ import { BusyLabel, Button } from "../../components/ui/button";
 import { StatusMark } from "../../components/ui/status";
 import { registry, useEnvironments, useEnvironmentStatuses } from "../../lib/connection";
 import { hostFailure } from "../../lib/hostFailure";
+import { NO_ANSWER } from "../../lib/connection/openRead";
 import { nameInLine } from "../../lib/hostWords";
 import { managedElsewhere, signInElsewhere, useLinkMay } from "../../lib/linkMay";
 import { requestSettings } from "../../lib/monaco/debugTab";
@@ -19,7 +20,9 @@ import { SignInFor } from "../shell/DownSignIn";
 import { useLifeosStatusHeard } from "../shell/lifeos";
 import { signInOnVm } from "../winvm/signIn";
 import { FirstCheckBones } from "./FirstCheckBones";
-import { checkFailure, fixVariant, markOf, sectionsOf, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
+import { checkFailure, commandOf, fixVariant, markOf, sectionsOf, signOutAsk, signsOut, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
+import { confirmAction } from "../../chrome/ConfirmDialog";
+import { COPIED_MS, copyText } from "../../lib/clipboard";
 
 /**
  * Settings → Connections (docs/agents/work-connections.md): every sign-in
@@ -112,7 +115,7 @@ export function ConnectionsPage() {
         </Button>
       </PageActions>
       <ConnectionsView hosts={shown} onRecheck={(id, by) => void checkHost(id, hosts.find((h) => h.id === id)?.name ?? id, true, by)} />
-      {hosts.map((host) => (linked(host.id) ? <LifeosWatch key={host.id} environmentId={host.id} onChange={() => void checkHost(host.id, host.name, true)} /> : null))}
+      {hosts.map((one) => (linked(one.id) ? <LifeosWatch key={one.id} environmentId={one.id} onChange={() => void checkHost(one.id, one.name, true)} /> : null))}
     </>
   );
 }
@@ -144,7 +147,7 @@ const wasSilent = (view: HostView | undefined): boolean => (view?.status === "fa
 
 function withDeadline<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error("The host did not answer")), ms);
+    const timer = window.setTimeout(() => reject(new Error(NO_ANSWER)), ms);
     promise.then(
       (value) => (window.clearTimeout(timer), resolve(value)),
       (err: unknown) => (window.clearTimeout(timer), reject(err)),
@@ -168,15 +171,15 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
   return (
     <>
       {away.length ? (
-        <PageSection title="Hosts">
-          {away.map((host) =>
-            host.status === "offline" ? (
-              <PageRow key={host.id} title={host.name} description={<StatusMark state="stopped" word="Offline" detail="Checked when it is back" />} />
+        <PageSection title="Computers" data-setting="connections.list">
+          {away.map((one) =>
+            one.status === "offline" ? (
+              <PageRow key={one.id} title={one.name} description={<StatusMark state="stopped" word="Offline" detail="Checked when it is back" />} />
             ) : (
-              <PageRow key={host.id} title={host.name} description={<StatusMark className={STATE_LINE} state="failed" word={"silent" in host && host.silent ? "Did not answer" : "Not checked"} detail={host.status === "failed" ? host.error : host.status === "checking" ? host.failed?.error : undefined} />}>
+              <PageRow key={one.id} title={one.name} description={<StatusMark className={STATE_LINE} state="failed" word={"silent" in one && one.silent ? "Did not answer" : "Not checked"} detail={one.status === "failed" ? one.error : one.status === "checking" ? one.failed?.error : undefined} />}>
                 {/* The row's own press, at the LifeOS rows' weight; it spins while the check it began runs, and a new cause replaces the reason. */}
-                <Button data-host-retry variant={fixVariant("broken")} size="sm" disabled={host.status === "checking"} onClick={() => onRecheck(host.id, "hosts")}>
-                  <BusyLabel busy={host.status === "checking" && host.by === "hosts"} label="Retry" />
+                <Button data-host-retry variant={fixVariant("broken")} size="sm" disabled={one.status === "checking"} onClick={() => onRecheck(one.id, "hosts")}>
+                  <BusyLabel busy={one.status === "checking" && one.by === "hosts"} label="Retry" />
                 </Button>
               </PageRow>
             ),
@@ -184,7 +187,7 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
         </PageSection>
       ) : null}
       {sections.map((section) => (
-        <PageSection key={section.group} title={section.titled ? section.group : undefined} aria-label={section.titled ? undefined : section.group}>
+        <PageSection key={section.group} data-setting="connections.list" title={section.titled ? section.group : undefined} aria-label={section.titled ? undefined : section.group}>
           {section.rows.map((placed) => (
             <ConnectionRow key={placed.key} placed={placed} now={now} checking={checking.has(placed.hostId)} spinning={checking.get(placed.hostId) === placed.key} onRetry={() => onRecheck(placed.hostId, placed.key)} onDone={() => onRecheck(placed.hostId)} />
           ))}
@@ -223,7 +226,9 @@ function FixRow({ placed, now, checking, spinning, onRetry, onDone }: { placed: 
   // A fix this window's key may not run on that host (LifeOS's sign-in and sign-out on a given computer) is not drawn;
   // on a row that needs him, a line says who can, by the act (`signInElsewhere` for LifeOS's sign-in), as every reader does.
   const fix = useLinkMay(hostId, fixMethod(usable) ?? "work.health") ? usable : null;
-  const hostName = registry.environment(hostId)?.name ?? "this host";
+  const hostName = registry.environment(hostId)?.name ?? "this computer";
+  // The computer by the name this window lists it under, for the words a press asks with.
+  const listed = useEnvironments().find((e) => e.id === hostId)?.name ?? hostName;
   const whoCan = usable && !fix && row.state === "needs-you" ? (usable.kind === "page" && usable.page === "lifeos-sign-in" ? signInElsewhere(hostName) : managedElsewhere(hostName)) : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,9 +236,12 @@ function FixRow({ placed, now, checking, spinning, onRetry, onDone }: { placed: 
   // LifeOS's silence: Retry asks the row's host again, that host alone, as Check again would, beside the row's account
   // control (the sign-in row's Sign out), which stays as it is. A row its silent host left (`hushed`) has none.
   const retry = !placed.hushed && row.lifeos === "unreachable";
-  const line = placed.line ?? row.line;
+  // A shell command in the host's line rides "Copy the fix": the line reads as words.
+  const { words: line, command } = commandOf(placed.line ?? row.line ?? "");
   const press = async (fix: HealthFix): Promise<void> => {
     setError(null);
+    // A sign-out asks first, naming what stops working until the next sign-in.
+    if (signsOut(fix) && !(await confirmAction(signOutAsk(placed.row.title, nameInLine(listed))))) return;
     if (fix.kind === "open") return void openUrl(fix.url).catch((err: unknown) => setError(workErrorWords(err) || "The page did not open."));
     if (fix.kind === "page") {
       if (fix.page === "lifeos-sign-in") return setSigningIn(true);
@@ -271,14 +279,30 @@ function FixRow({ placed, now, checking, spinning, onRetry, onDone }: { placed: 
             <BusyLabel busy={spinning} label="Retry" />
           </Button>
         ) : null}
+        {command ? <CopyFix command={command} /> : null}
         {fix ? (
           <Button variant={fixVariant(row.state)} size="sm" disabled={busy} onClick={() => void press(fix)}>
-            <BusyLabel busy={busy} label={fix.label} />
+            <BusyLabel busy={busy} label={signsOut(fix) ? `${fix.label}…` : fix.label} />
           </Button>
         ) : null}
       </PageRow>
       {signingIn ? <LifeosSignIn environmentId={hostId} onClose={() => (setSigningIn(false), onDone())} /> : null}
     </>
+  );
+}
+
+/** The command a host put in a row's line, copied at a press: the word says Copied for a moment after. */
+function CopyFix({ command }: { command: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), COPIED_MS);
+    return () => window.clearTimeout(t);
+  }, [copied]);
+  return (
+    <Button data-copy-fix={command} variant="ghost" size="sm" onClick={() => void copyText(command).then(() => setCopied(true), () => setCopied(false))}>
+      {copied ? "Copied" : "Copy the fix"}
+    </Button>
   );
 }
 

@@ -7,28 +7,75 @@ import { registry } from "../../lib/connection";
 import { hostFailure } from "../../lib/hostFailure";
 import { Face } from "../mail/face";
 import { confirmReplace, confirmRevoke, MadeLinkDialog } from "./Share";
-import { guestsCall, isLive, linkFacts, type GuestLinkRow } from "./api";
+import { guestsCall, isLive, linkFacts, shortDay, type GuestLinkRow } from "./api";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
+import { ListFilter, useListFilter } from "../../surfaces/settings/parts/ListFilter";
+import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
 
 /**
- * Settings → Work, Guest links (prototype guest.html, "One list"; the audit
- * list): every link on every Work host, live ones first, who, to what, what
- * they can do, when it ends, when they last opened it, and Revoke. A link
- * that ended or was revoked stays a week, muted. The rows live on the host
- * that serves LifeOS's documents, so in practice one host answers; a host
- * that says another serves them is asked there, once. A host that does not
- * answer is its own red line with Retry, and the others' links stay. A
- * live row's Replace address… (asked first: the old address stops opening;
- * the new one shows once, to copy) and Revoke… (asked first, never undone)
- * show on hover. Each row's facts are `linkFacts`, as the Share sheet's.
+ * Settings → Files, Shared with guests (prototype guest.html, "One list"; the audit list): one open row that says
+ * how many links are live and when the next ends, opening a sheet of every link on every Work computer, live ones
+ * first: who, to what, what they can do, when it ends, when they last opened it. A link that ended or was revoked
+ * stays a week, muted. The rows live on the computer that serves LifeOS's documents, so in practice one answers; one
+ * that says another serves them is asked there, once. One that does not answer is its own red line with Retry, and
+ * the others' links stay. A live row's Replace address… (asked first: the old address stops opening; the new one
+ * shows once, to copy) and Revoke… (asked first, never undone) show on hover. Each row's facts are `linkFacts`, as
+ * the Share sheet's. Past eight links a find field narrows them.
  */
+export function GuestLinksRow({ hosts, open: startOpen = false }: { hosts: readonly string[]; /** The sheet open from the first paint: the preview's seam. */ open?: boolean }) {
+  const guests = useGuestLinks(hosts);
+  const [open, setOpen] = useState(startOpen);
+  return (
+    <>
+      {/* A computer that did not answer leaves the count unsaid: its line stands under the row, never "None". */}
+      <SettingRow
+        id="files.guests"
+        description={guests.rows && guests.failed.length === 0 ? guestsWords(guests.rows.map((r) => r.link)) : undefined}
+        error={guests.failed[0]}
+        onOpen={() => setOpen(true)}
+        openLabel="Shared with guests"
+      />
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="right" data-guests-sheet="">
+          <SheetHeader>
+            <SheetTitle>Shared with guests</SheetTitle>
+          </SheetHeader>
+          <div className="@container/page flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-5 pb-5">
+            <GuestLinksList guests={guests} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
+
+/** "3 links. The next ends Dec 2", or "None": the live links, by what the row needs. */
+export function guestsWords(links: readonly GuestLinkRow[], now = Date.now()): string {
+  const live = links.filter((l) => isLive(l, now));
+  if (live.length === 0) return "None";
+  const next = Math.min(...live.map((l) => l.expiresAt));
+  return `${live.length === 1 ? "1 link" : `${live.length} links`}. The next ends ${shortDay(next)}`;
+}
+
+/** The list alone, as the sheet holds it; the old section's name, for its tests and previews. */
 export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
+  return (
+    <PageSection>
+      <GuestLinksList guests={useGuestLinks(hosts)} />
+    </PageSection>
+  );
+}
+
+type GuestLinks = ReturnType<typeof useGuestLinks>;
+
+function useGuestLinks(computers: readonly string[]) {
   const [rows, setRows] = useState<{ env: string; link: GuestLinkRow }[] | null>(null);
   // A host's read that failed, and a press that failed: each said once, apart from the rows that did come.
   const [failed, setFailed] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<{ url: string; link: GuestLinkRow } | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
-  const key = hosts.join(",");
+  const key = computers.join(",");
 
   const load = useCallback((): Promise<void> => {
     const envs = key.split(",").filter(Boolean);
@@ -60,6 +107,15 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
     return () => offs.forEach((off) => off());
   }, [key, load]);
 
+  return { rows, failed, error, setError, retrying, retry, load, made, setMade, revoking, setRevoking };
+}
+
+const linkWords = (row: { link: GuestLinkRow }): string => `${row.link.name} ${row.link.title}`;
+const NO_ROWS: { env: string; link: GuestLinkRow }[] = [];
+
+function GuestLinksList({ guests }: { guests: GuestLinks }) {
+  const { rows, failed, error, setError, retrying, retry, load, made, setMade, revoking, setRevoking } = guests;
+  const filter = useListFilter(rows ?? NO_ROWS, linkWords);
   // The address is never kept: a new one is made and shown once to copy, and the one before stops opening, so he is asked first.
   const replace = async (env: string, link: GuestLinkRow): Promise<void> => {
     if (!(await confirmReplace(link.name))) return;
@@ -89,7 +145,8 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
   };
 
   return (
-    <PageSection title="Guest links">
+    <>
+      <ListFilter filter={filter} label="Find a link" />
       {/* One line per host that did not answer, and one Retry for them all: each would run the same read of every host. */}
       {failed.map((why, i) => (
         <PageError
@@ -108,7 +165,7 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
       {error ? <PageError>{error}</PageError> : null}
       {rows === null ? <PageRowsSkeleton rows={2} description control="button" media /> : null}
       {rows?.length === 0 && failed.length === 0 ? <PageEmpty>No guest links</PageEmpty> : null}
-      {rows?.map(({ env, link }) => {
+      {filter.shown.map(({ env, link }) => {
         const live = isLive(link);
         return (
           <PageRow key={link.id} media={<Face name={link.name} size="row" />} title={link.name} description={linkFacts(link, { item: true })} className={cn("relative", live ? undefined : "opacity-60")}>
@@ -130,6 +187,6 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
         );
       })}
       {made ? <MadeLinkDialog url={made.url} link={made.link} title={made.link.title} onClose={() => setMade(null)} /> : null}
-    </PageSection>
+    </>
   );
 }

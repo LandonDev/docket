@@ -377,7 +377,7 @@
   the phone's `HostNames` in the client package) in both hellos (the socket's
   carries `name` now), peer.register, notices and the hub; the phone labels
   each client by it (short unless two would read the same; a Settings →
-  Hosts rename is `customName` and wins), its pairing sheet asks no name and
+  Computers rename is `customName` and wins), its pairing sheet asks no name and
   names the key for the phone; the box drops a relay row superseded by the
   same machine under a new id or down 14 days (`HostRelay.prune`), the phone
   a past identity on arrival (`HostNames.pastIdentities`). docs/box.md "The
@@ -399,7 +399,7 @@
   `operateBlock`/`approveBlock` (asleep and unreachable block, locked keeps
   Send). Views: `Shell/Hosts/PresenceLine.swift` (`PresenceLine`,
   `HostSubline`, `RelayStripLine`) and `RelayedHostRow.swift` (the row under
-  its carrier in Settings → Hosts, the detail with no key, Pair Again or
+  its carrier in Settings → Computers, the detail with no key, Pair Again or
   Forget); hooks: HostsView (the relayed rows, the relayed detail, the
   Forget copy), `HomeSlots.hostSubline` + HomeView's host header + RootView,
   WorkingStrip's idle arm, StatusLine's words and Retry rule,

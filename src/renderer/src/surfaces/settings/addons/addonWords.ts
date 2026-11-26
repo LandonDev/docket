@@ -3,6 +3,7 @@ import { SIGNIN_STEP_WORDS } from "@shared/addonGrantWords";
 import type { AddonGrantView } from "@shared/contract-addonGrants";
 import type { AddonAuth, AddonInput, AddonPlatform, AddonRow, AddonSpec, AddonStatus } from "@shared/contract-addons";
 import type { MenuRow } from "../../../chrome/menuRows";
+import { nameInLine } from "../../../lib/hostWords";
 import type { ThreadState } from "../../../components/ui/status";
 
 /**
@@ -63,7 +64,7 @@ export function addonMark(row: AddonRow, status: AddonStatus | undefined, grant:
       return detail ? { state: "waiting", word, detail } : { state: "waiting", word };
     }
     case "other-platform":
-      return { state: "idle", word: onlyOn(row.spec.platforms, { darwin: "Mac only", linux: "Linux only" }) ?? "Not on this host" };
+      return { state: "idle", word: onlyOn(row.spec.platforms, { darwin: "Mac only", linux: "Linux only" }) ?? "Not on this computer" };
   }
 }
 
@@ -80,7 +81,12 @@ export function grantFact(spec: AddonSpec, grant: GrantKnown): string[] {
   return out;
 }
 
-/** A scope's name: the workspace's, null for every workspace, or "A removed workspace" for an id this host no longer lists. */
+/** "Where" in an add-on's or a skill's dialog: every workspace names the computer that keeps the one copy. */
+export function everyWorkspace(home: { name: string } | null | undefined): string {
+  return home ? `Every workspace, on ${nameInLine(home.name)}` : "Every workspace";
+}
+
+/** A scope's name: the workspace's, null for every workspace, or "A removed workspace" for an id this computer no longer lists. */
 export function scopeName(workspaceId: string | null, names: ReadonlyMap<string, string>): string | null {
   if (workspaceId === null) return null;
   return names.get(workspaceId) ?? "A removed workspace";
@@ -88,7 +94,7 @@ export function scopeName(workspaceId: string | null, names: ReadonlyMap<string,
 
 /** The row's third line: where it applies, the hosts it runs on (unless line two says so), its grant, the thread that wrote it. */
 export function addonFacts(row: AddonRow, mark: AddonMark, grant: GrantKnown, workspaceName: string | null): string[] {
-  const platform = onlyOn(row.spec.platforms, { darwin: "Macs only", linux: "Linux hosts only" });
+  const platform = onlyOn(row.spec.platforms, { darwin: "Macs only", linux: "Linux computers only" });
   const saysPlatform = mark.word === "Mac only" || mark.word === "Linux only";
   return [
     scopeWords(workspaceName),
@@ -104,7 +110,7 @@ export type AddonMenuPick = "edit" | "key" | "signin" | "cancel-signin" | "signo
  * The row's ⋯: Edit…, Add key… (Change key… once a value is saved) when the
  * spec names values, Sign in… for an http OAuth add-on in the desktop app
  * (Sign in again… once signed in or refused, Cancel sign-in while one runs),
- * Sign out while an OAuth grant holds a client or a sign-in, then Remove….
+ * Sign out… (it asks first) while an OAuth grant holds a client or a sign-in, then Remove….
  * `unread` is why the grants are not known yet ("Loading"): the grant rows
  * stay, disabled with it as their reason.
  */
@@ -122,7 +128,7 @@ export function addonMenuRows(row: AddonRow, grant: GrantKnown, opts: { web: boo
     if (running) rows.push({ kind: "item", id: "cancel-signin", label: "Cancel sign-in", ...off });
     else rows.push({ kind: "item", id: "signin", label: grant?.oauth?.signedIn || grant?.oauth?.refused ? "Sign in again…" : "Sign in…", ...off });
   }
-  if (spec.auth === "oauth" && (unread || grant?.oauth)) rows.push({ kind: "item", id: "signout", label: "Sign out", ...off });
+  if (spec.auth === "oauth" && (unread || grant?.oauth)) rows.push({ kind: "item", id: "signout", label: "Sign out…", ...off });
   rows.push({ kind: "sep" }, { kind: "item", id: "remove", label: "Remove…", danger: true });
   return rows;
 }

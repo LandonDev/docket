@@ -74,9 +74,9 @@ public enum DriftLine {
         let fix: String = if build.platform == "darwin" {
             " Publish from the Mac."
         } else if !isAdmin {
-            " Deploying needs an admin key."
+            " Updating needs a key that may manage it."
         } else if canDeploy {
-            " Deploy from here."
+            " Update from here."
         } else {
             ""
         }
@@ -429,16 +429,16 @@ public enum SyncWords {
     /// The harness line (harnessLine.ts): syncing, the error, never, or files
     /// and when. Whether the peer is connected is the row's to say, once.
     public static func harnessLine(_ env: HarnessEnvironmentStatus, now: Double) -> String {
-        if env.running { return "Harness config: syncing…" }
+        if env.running { return "Agent settings: syncing…" }
         if let error = env.error, !error.isEmpty {
             let last = env.syncedAt.map { " (last synced \(ago(Double($0), now: now)))" } ?? ""
-            return "Harness config: \(error)\(last)"
+            return "Agent settings: \(error)\(last)"
         }
         guard let syncedAt = env.syncedAt else {
-            return "Harness config: never synced"
+            return "Agent settings: never synced"
         }
         let files = env.files ?? 0
-        return "Harness config: \(files) \(files == 1 ? "file" : "files")\(setsLine(env.sets)), synced \(ago(Double(syncedAt), now: now))"
+        return "Agent settings: \(files) \(files == 1 ? "file" : "files")\(setsLine(env.sets)), synced \(ago(Double(syncedAt), now: now))"
     }
 
     /// " (Claude skills 80, Codex hooks 1)": the sets with files, in the sender's order; nothing for an older sender.
@@ -450,17 +450,17 @@ public enum SyncWords {
 
     /// The memory line (memoryLine.ts); like the harness line, it leaves the connection to the row.
     public static func memoryLine(_ env: MemoryEnvironmentStatus, now: Double) -> String {
-        if env.running { return "Memory: syncing…" }
+        if env.running { return "Agents’ memory: syncing…" }
         if let error = env.error, !error.isEmpty {
             let last = env.syncedAt.map { " (last synced \(ago(Double($0), now: now)))" } ?? ""
-            return "Memory: \(error)\(last)"
+            return "Agents’ memory: \(error)\(last)"
         }
         guard let syncedAt = env.syncedAt else {
-            return "Memory: never synced"
+            return "Agents’ memory: never synced"
         }
         let files = env.files ?? 0
         let conflicts = env.conflicts > 0 ? ", \(env.conflicts) \(env.conflicts == 1 ? "conflict" : "conflicts")" : ""
-        return "Memory: \(files) \(files == 1 ? "file" : "files"), synced \(ago(Double(syncedAt), now: now))\(conflicts)"
+        return "Agents’ memory: \(files) \(files == 1 ? "file" : "files"), synced \(ago(Double(syncedAt), now: now))\(conflicts)"
     }
 
     /// "box's copy, 2h ago".
@@ -483,10 +483,10 @@ public enum SyncWords {
     /// The section's footer: the one-sentence rule when sync is on, else that it is off, and what stayed behind.
     public static func footer(enabled: Bool, skipped: Int) -> String {
         let base = enabled
-            ? "Skills, commands, hooks and settings go from the Mac to its hosts; memory crosses both ways, the newer copy wins."
-            : "Sync is off on this host."
+            ? "Skills, commands, hooks and settings go from the Mac to the other computers; memory crosses both ways, the newer copy wins."
+            : "Sync is off on this computer."
         guard skipped > 0 else { return base }
-        return "\(base) \(skipped) \(skipped == 1 ? "file stays" : "files stay") on this host (over 16 MB, a symlink out of reach, or a macOS binary)."
+        return "\(base) \(skipped) \(skipped == 1 ? "file stays" : "files stay") on this computer (over 16 MB, a symlink out of reach, or a macOS binary)."
     }
 }
 
@@ -508,7 +508,7 @@ public enum HostExtrasAccess: Sendable, Hashable, CaseIterable {
 
     public var reason: String {
         switch self {
-        case .deploy: "Deploying needs an admin key."
+        case .deploy: "Updating needs a key that may manage it."
         case .sync: "Reading the sync state needs an admin key."
         case .deviceActions: "Shutting down or deleting a simulator needs an operate key."
         case .macStop: "Stopping a command needs an operate key on the Mac."

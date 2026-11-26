@@ -62,7 +62,7 @@ takes its plays; a thread a play started stays when the play goes.
 `mail`, a task's for `task`, an event's for `event`, a `doc` or `item` chip
 for `file`), its date, its line of text, and nothing it does not take. Then
 it calls `ctx.threads.start({workspaceId, text, title, about})`, the host's own
-start that a routine uses: the thread runs on his Thread defaults for the workspace, the
+start that a routine uses: the thread runs on his New threads set for the workspace, the
 first LifeOS chip links it to that row, its name is the play's and the
 thing's (`playTitle`), so no model is asked to title it from what may be a
 Purdue mail, and the message is the chips'

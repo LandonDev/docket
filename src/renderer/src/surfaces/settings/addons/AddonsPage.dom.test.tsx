@@ -7,6 +7,8 @@ import { fakeStoreHost, type FakeStoreHost } from "../storeHost.testkit";
 
 vi.mock("../../../components/choice-select", async () => await import("../../../components/choice-select-body"));
 vi.mock("../../../lib/sounds", () => ({ playCue: () => {} }));
+const keyMay = vi.hoisted(() => ({ write: true }));
+vi.mock("../parts/hostRpc", () => ({ useHost: () => ({ may: () => keyMay.write, name: { name: "The box", own: false } }) }));
 vi.mock("../../../lib/connection/status", () => ({ useEnvironmentStatuses: () => new Map() }));
 vi.mock("../../../lib/connection", () => ({ registry: { primary: () => null } }));
 vi.mock("../../../lib/tcserver/workspaces", () => ({ useWorkspaces: () => [{ id: "ws_1", name: "temp-code", environmentId: "local" }] }));
@@ -117,11 +119,18 @@ describe("Settings → Add-ons", () => {
     expect(rowOf("local").textContent).toContain("Every workspace");
   });
 
-  it("says where the copy lives", async () => {
+  it("tells the page's line where the one copy is kept", async () => {
+    const { usePageHome } = await import("../../../lib/settings/pageHome");
+    let seen: unknown;
+    function Probe() {
+      seen = usePageHome("addons");
+      return null;
+    }
     const host = seeded();
     host.state.home = { name: "box", online: true };
+    render(<Probe />);
     await show(host);
-    expect(screen.getByText("Saved on box")).toBeTruthy();
+    expect(seen).toEqual({ name: "box", online: true });
     expect((screen.getByRole("switch", { name: "github" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -129,7 +138,6 @@ describe("Settings → Add-ons", () => {
     const host = seeded();
     host.state.home = { name: "box", online: false };
     await show(host);
-    expect(screen.getByText("box is offline")).toBeTruthy();
     for (const name of ["github", "local", "mobbin", "slack"]) {
       const row = rowOf(name);
       for (const control of [
@@ -193,10 +201,14 @@ describe("Settings → Add-ons", () => {
     expect(rowOf("github").textContent).toContain("GITHUB_TOKEN saved");
   });
 
-  it("signs an OAuth add-on out with addons.grant.clear", async () => {
+  it("signs an OAuth add-on out with addons.grant.clear, once the confirm says so", async () => {
     const host = seeded();
     await show(host);
-    await act(async () => fireEvent.click(item(await menu("mobbin"), "Sign out")));
+    await act(async () => fireEvent.click(item(await menu("mobbin"), "Sign out…")));
+    const confirm = await screen.findByRole("alertdialog");
+    expect(confirm.textContent).toContain("Its tools stop working until you sign in again.");
+    expect(host.sent("addons.grant.clear")).toEqual([]);
+    await act(async () => fireEvent.click(within(confirm).getByRole("button", { name: "Sign out" })));
     expect(host.sent("addons.grant.clear")).toEqual([{ id: mobbin.id }]);
   });
 
@@ -236,7 +248,7 @@ describe("Settings → Add-ons", () => {
       await show(seeded());
       const m = await menu("mobbin");
       expect(within(m).queryByRole("menuitem", { name: /Sign in/ })).toBeNull();
-      expect(item(m, "Sign out")).toBeTruthy();
+      expect(item(m, "Sign out…")).toBeTruthy();
     } finally {
       restore();
     }
@@ -259,7 +271,7 @@ describe("Settings → Add-ons", () => {
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "notion" } });
     fireEvent.change(within(dialog).getByLabelText("Command"), { target: { value: "npx" } });
-    fireEvent.change(within(dialog).getByLabelText("Variables"), { target: { value: "NOTION_KEY" } });
+    fireEvent.change(within(dialog).getByLabelText("Secret names"), { target: { value: "NOTION_KEY" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Key" }));
     await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Add" })));
     await flush();
@@ -267,5 +279,33 @@ describe("Settings → Add-ons", () => {
     expect(within(key).getByRole("heading").textContent).toBe("Add key");
     expect(within(key).getByLabelText("NOTION_KEY")).toBeTruthy();
     expect(rowOf("notion")).toBeTruthy();
+  });
+
+  it("gives a list past eight a find field that narrows it", async () => {
+    const many = Array.from({ length: 9 }, (_, i) => base({ name: `tool-${i}` }));
+    await show(fakeStoreHost({ addons: [...many, github], status: {}, grants: [] }));
+    const field = screen.getByRole("searchbox", { name: "Find an add-on" });
+    fireEvent.change(field, { target: { value: "github" } });
+    expect([...document.querySelectorAll("[data-addon]")].map((r) => r.getAttribute("data-addon"))).toEqual(["github"]);
+  });
+
+  it("shows a key that may not change add-ons the list alone, no switch, menu or Add…, and who can", async () => {
+    keyMay.write = false;
+    await show(seeded());
+    expect(rowOf("github")).toBeTruthy();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("button", { name: "github actions" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add…" })).toBeNull();
+    expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
+    keyMay.write = true;
+  });
+
+  it("tells search every add-on's name once read", async () => {
+    const { addonNames } = await import("./useAddons");
+    const { renderHook } = await import("@testing-library/react");
+    await show(seeded());
+    const { result } = renderHook(() => addonNames.useExtras());
+    expect(result.current.map((extra) => extra.title).sort()).toEqual(["github", "local", "mobbin", "slack"]);
+    expect(result.current[0]).toMatchObject({ page: "addons", path: "Everywhere, Add-ons" });
   });
 });

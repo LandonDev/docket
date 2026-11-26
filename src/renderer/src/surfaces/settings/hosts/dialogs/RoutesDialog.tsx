@@ -8,6 +8,7 @@ import { Tip } from "../../../../components/tip";
 import { ArrowDownLong, ArrowUpLong, X } from "../../../../chrome/icons";
 import { Modal, useModalClose } from "../../../../chrome/Modal";
 import { hostErrorText, kindOf, originText } from "../../../../lib/hostConnection";
+import { thisDesktopInLine } from "../../../../lib/native";
 import { rpc } from "../rpc";
 
 type Props = { env: SavedEnvironment; onClose: () => void; onChanged: () => Promise<void> };
@@ -15,7 +16,7 @@ type Props = { env: SavedEnvironment; onClose: () => void; onChanged: () => Prom
 export function RoutesDialog(props: Props) {
   const [pending, setPending] = useState(false);
   return (
-    <Modal onClose={props.onClose} busy={pending} title={`Routes to ${props.env.name}`} description="Best first." size="sm">
+    <Modal onClose={props.onClose} busy={pending} title={`Addresses ${thisDesktopInLine()} tries`} description={`For ${props.env.name}, best first.`} size="sm">
       <Body {...props} pending={pending} setPending={setPending} />
     </Modal>
   );
@@ -56,7 +57,7 @@ function Body({ env, onClose, onChanged, pending, setPending }: Props & { pendin
   return (
     <>
       <div className="flex flex-col gap-4 px-5 py-4">
-        <ItemGroup aria-label="Routes">
+        <ItemGroup aria-label="Addresses">
           {routes.map((route, i) => (
             <Item key={route.url} role="listitem" size="xs" className="px-0">
               <ItemContent className="min-w-0">
@@ -70,7 +71,7 @@ function Body({ env, onClose, onChanged, pending, setPending }: Props & { pendin
                 <RouteAction label="Move down" disabled={i === routes.length - 1} onClick={() => move(i, i + 1)}>
                   <ArrowDownLong />
                 </RouteAction>
-                <RouteAction label="Remove route" disabled={routes.length === 1} onClick={() => setRoutes(routes.filter((_, j) => j !== i))}>
+                <RouteAction label="Remove the address" disabled={routes.length === 1} onClick={() => setRoutes(routes.filter((_, j) => j !== i))}>
                   <X />
                 </RouteAction>
               </ItemActions>
@@ -87,14 +88,14 @@ function Body({ env, onClose, onChanged, pending, setPending }: Props & { pendin
                 add();
               }
             }}
-            placeholder="https://host or ws://10.0.0.5:7677"
+            placeholder="https://docket.example.com or ws://10.0.0.5:7677"
             spellCheck={false}
             autoComplete="off"
             className="flex-1"
-            aria-label="New route"
+            aria-label="New address"
           />
           <Button variant="secondary" onClick={add} disabled={!added.trim()}>
-            Add route
+            Add address
           </Button>
         </div>
         <ErrorLine error={error} />

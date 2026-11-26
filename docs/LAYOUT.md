@@ -269,96 +269,75 @@ is no project page in the pane.
 ### Settings, looked at
 
 `bun run ui:preview src/renderer/src/surfaces/settings/SettingsPages.preview.tsx#SettingsPagePreview --shot`
-draws every Settings page over one fake host in three states: answered,
+draws every Settings page over fake computers in three states: answered,
 not yet answered (each section's rows in their shape) and refused (each
-section's red line with Retry at its heading); `SETTINGS_PREVIEW=editor,hosts`
-keeps those pages alone. `addons` and `skills` are drawn the same three ways,
+section's red line with Retry at its heading); `SETTINGS_PREVIEW=editor,here`
+keeps those pages alone, and a fixture that opens a dialog or sheet
+(`orchestration-models`, `sharing-may`, `addons-add`) is shot alone that way. `addons` and `skills` are drawn the same three ways,
 and `addons-empty`, `skills-empty`, `addons-offline` and `skills-offline` show
 the empty list and the home out of reach; `computer` is drawn the three
 ways, and `computer-empty` and `computer-down` show no learned apps and the
 service down with Try again. The dialogs are portals the static render leaves
 out; their DOM tests hold them.
 
-### Settings → Hosts
+### Settings → this Mac's machine pages and the other computers
 
-One page for this machine and every host it is paired with (settings section
-id `remote`, opened with `shell.openSettings("remote")`; a saved
-`environments` section reads as it). surfaces/settings/hosts/HostsPage.tsx
-draws the page as frame sections (`PageSection`, `PageRow`) from
-`hostSections`: each host is one section headed by its name, its link state
-as a `StatusMark` from `linkMarkOf`, the `+N` drift mark, Retry or Pair
-again when the link needs one and a `⋯` menu (this machine: Copy
-environment id; a paired host: Rename…, Routes…, Remove…), how a paired host
-is reached under the heading. This machine's section holds Remote access,
-Port, Public origin, Stuck after, Attachment limit, Running threads and Load
-limit; Clients (one ghost Add… menu: Pair a device…, New key…; Revoke and
-Sign out confirm), Release (Publish, Release checkout), Sync (switches, the
-conflict copies under Memory), Remembered approvals and Devices follow as
-their own sections. A paired host's section holds Deploy with its log,
-Running threads and Sync with Sync now; "Mac bridge for <host>" follows
-(Access, the running and held calls, the forwarded ports, Settings… for the
-caps, forwarding and shared folders). Facts on one line are `Facts` spans (one comma
-sentence, each 4px from the next; `lib/factsGuard.test.ts`), never dots; numbers are `CommitField`s; switches `SettingSwitch`; options
-`ChoiceSelect`. A refused change is said under its own row (a client's
-Revoke under that client, a port under Port, Sync now under Sync); only the
-listener's own failure sits under Remote access. A refused field puts the
-value the host still holds back, as a refused switch slides back. Add host
-sits at the page's foot (desktop only).
+The Hosts page is gone. Its rows live on Threads (`here`), Sharing (`sharing`), Sync, Publish and one page per other computer
+(`computer:<environmentId>`), with the Windows VM a page of its own (`winvm`); what another computer may do on this Mac is
+one sheet. docs/agents/settings.md "The pages: computers" is the account (surfaces/settings/computers/).
 
 ### Settings → Computer use
 
-This Mac's computer use (section id `computer`, in the Threads group after
-Appshots; surfaces/settings/Computer.tsx, read from this machine's host
-alone). Three sections. The first, untitled: Service, the `computer` push's
-state as a `StatusMark` from `computerServiceMarkOf` (Running with a muted
-check; Idle with no glyph; Starting; Down with "Crashed 5 times" and Try
-again; Unavailable with the host's reason; a mark with a detail takes a line
-of its own on a narrow page), then Take the screen after, a `CommitField` in
-whole minutes, 1 to 60, committed as `computer.sessionIdleMs`, then When a
-step needs the app in front, a `ChoiceSelect` of Bring it forward for a moment
-(`brief`) and Wait until I'm away (`away`), saved as `computer.activeApp`
-(docs/computer-protocol.md §26.6), then Keep pictures of the window, a
-`SettingSwitch` with "On this Mac: a thread's newest 400, for 30 days after it last used the computer. Off deletes them; the steps and what was read stay." (`keepPictures`, the setting
-`computer.history.pictures`; docs/computer-protocol.md §17.9). Permissions:
-Accessibility and Screen Recording on the `PermissionRow` Appshots shares,
-muted Granted or amber Not granted with Grant… to the System Settings pane;
-the service's own while it is up, else `computer.permissions`, asked on
-mount, every 5 s while one is off and when the window comes back; a host that
-could not read them is one red line with Retry. Apps: one row per app the
-verdicts learned, those that may take the screen first, then by name, its
-name (the bundle id for a verdict saved before names were kept) and only
-"May take the screen to click and type" when a class is at the session
-tier, never a tier's name; a ghost Forget per row and Forget all on the
-heading with two or more, neither confirmed (the next call learns again);
-"No apps used yet" when there are none. Absent at /ui (a stored route there
-shows the desktop-only line) and in a window off macOS (`macOnly`). The box
-threads' switch stays in the host's Mac bridge settings; live sessions stay in
-each thread's Activity section.
+This Mac's computer use (section id `computer`, in the This Mac group after
+Appshots; surfaces/settings/Computer.tsx, read from this machine's own server
+alone; every row named by lib/settings/map.ts). The first section, untitled:
+the helper's row only while it cannot run (the `computer` push's state as a
+`StatusMark`, Down with "Crashed 5 times" and Try again, Unavailable with the
+host's reason), then Wait after my last input, a `CommitField` in whole
+minutes, 1 to 60, committed as `computer.sessionIdleMs`; When a step needs an
+app in front, Bring it forward briefly (`brief`) or Wait until I'm away
+(`away`), `computer.activeApp` (docs/computer-protocol.md §26.6); Keep
+pictures of each step (`computer.history.pictures`; off asks first, since it
+deletes the kept pictures; §17.9); Let my other devices watch
+(`computer.video.remote`). Each saves with the row's mark and goes back on a
+refusal. Who may use this Mac's apps: Threads on this Mac, Always, then one
+open row per linked computer saying what Sharing allows it (`appsWords`, from
+the bridge's hosts), opening Sharing at its switch. macOS permissions: both
+grants (`Permissions`, the one page that lists both), muted Granted or an
+amber line with Grant… to the System Settings pane; the service's own while
+it is up, else `computer.permissions`, asked on mount, every 5 s while one is
+off and when the window comes back; a host that could not read them is one
+red line with Retry. Apps it has learned: one row per app, those that may
+take the screen first, then by name, with "May take the screen to click and
+type" only where a class is at the session tier; a find field past eight; a
+ghost Forget per row (one press: the next call learns again) and Forget all…
+on the heading with two or more, which asks first. Absent at /ui and in a
+window off macOS ("Available on a Mac").
 
 ### Settings → a workspace
 
-Each workspace has its own page (section id `ws:<workspace id>`,
-surfaces/settings/Workspace.tsx), its sections in this order: New threads,
-Completed turn, Accounts (a `ChoiceSelect` per routed provider), Build (the
-command and outputs; the Build rail tab's settings link opens this page,
-scrolls here and focuses the section, `openBuildSettings` →
-`takeRequestedBuildFocus`), the workspace's orchestration override
-(Orchestration, Subagent models, Subagent routing; the workspace menu's
-rules item lands here the same way, `openOrchestrationSettings` →
-`takeRequestedRulesFocus`) and Projects (one row per live project, the
-accounts its threads spend from, its pins over the workspace's, as the muted
-line, and Settings… opening the project's settings sheet). There is no
-separate Build page, and the Orchestration page holds the global rules only.
-Orchestration, Reviews, Appshots and Archive are pages on the same frame
-(`Page`, `PageSection`, `PageRow`); Orchestration's models are one flat
-`Table` with a group row per provider: every provider of the host's live
-`catalog.get` in its order, under its label and mark, and every model it
-knows, the probed ones (Muse Code's `model/list`) and the Meta rows under
-Claude and Codex included, each with its Spawned by select and, while
-approved, its effort range: two selects of one width (`w-28`, the widest
-rung), so the pairs line up down the table. Under 36rem of page the column
-heads go and each model takes two lines, its name, then the select and the
-pair. The editor asks the catalog again at each mount. A provider with no
+Each code workspace has its own page (section id `ws:<workspace id>`,
+surfaces/settings/Workspace.tsx; docs/agents/settings.md "The pages: jobs, workspaces, Archive"), its sections in
+this order: New threads (Model and access, Change… opening the start set's dialog; Rules read before the first
+message, Edit… opening `PreambleDialog`), After each turn (Run the checks, Make a fresh build, Commit), Accounts (a
+`ChoiceSelect` per routed agent app), Build (Command and What it makes, each committing on Enter or blur; the Build
+rail tab's settings link opens this page, scrolls here and focuses the section, `openBuildSettings` →
+`takeRequestedBuildFocus`), Subagents (Rules for its agents, Change… opening the Subagents editor for this workspace
+in a sheet, Use Subagents… there asking first; the workspace menu's rules item opens the page with the sheet open,
+`openOrchestrationSettings` → `takeRequestedRulesFocus`), Its job while Work is on for its computer, and Projects
+(one open row per live project, a find field past eight, the accounts its threads spend from, its pins over the
+workspace's, as the muted line, opening the project's settings sheet). There is no
+separate Build page, and the Subagents page holds the global rules only.
+Subagents, Reviews, Appshots and Archive are pages on the same frame
+(`Page`, `PageSection`, `PageRow`). Subagents' Models agents may run on opens
+a `Sheet` holding one flat `Table` with a group row per agent app: every
+provider of the host's live `catalog.get` in its order, under its label and
+mark, and every model it knows, the probed ones (Muse Code's `model/list`)
+and the Meta rows under Claude and Codex included, each with its Who may
+start it select and, while allowed, its effort range: two selects of one
+width (`w-28`, the widest rung), so the pairs line up down the table. Under
+36rem of the sheet the column heads go and each model takes two lines, its
+name, then the select and the pair. The editor asks the catalog again at each mount. A provider with no
 models says so in one 12px muted row that wraps ("No models until Muse Code
 is installed and signed in"); a model the rules name that the
 catalog lacks keeps its row, its name muted with "not on this host" 4px
@@ -367,25 +346,27 @@ controls leave and no more, so a long name is cut there with its tooltip
 (`TruncateTip`), never pushing the effort pair past the table's edge. An empty list is one 12px muted
 line in its section. When the rules live on another host (`rules.get`'s
 `home`, docs/box.md "Orchestration rules and thread defaults: one copy, on
-the box") the first section's description says "Saved on box", 4px under a
-workspace's "Follows the global rules."; while that host is offline it says
-"box is offline" and every control is disabled. Thread defaults says the
-same under its section. The host's answer is its link to the box at that
-instant, so both editors ask again when they open, and every page that shows
-"box is offline" (these two, Add-ons, Skills) asks again every 5 s while it
+the box") the line under the page's title says "Saved on the box, for every
+computer."; while that host is offline it says so and every control is held.
+New threads, Reviews, Add-ons and Skills say the same under theirs
+(docs/agents/settings.md "The pages: Everywhere"). The host's answer is its link to the box at that
+instant, so Subagents and New threads ask again when they open, and every page that shows
+"box is offline" (those two, Add-ons, Skills) asks again every 5 s while it
 does (lib/settingsHome.ts `useRecheckWhileOffline`): a read taken at launch,
 before the host dialed the box, never holds the controls off.
 
 ### Settings → Add-ons and Skills
 
-Two pages in the Threads group after Providers (section ids `addons` and
-`skills`, surfaces/settings/addons/ and surfaces/settings/skills/), each one
-list of every row this host knows, sorted by name, the scope said on each row
-rather than a section per scope. The one section has no title; its
-description is the home note ("Saved on box", or "box is offline" with every
-switch, ⋯, row and the title line's verb off), read from the every-workspace
-scope's home as the Orchestration page does. Add… and New skill… sit on the
-page's title line (`PageActions`). A row is a `PageRow` that opens (`onOpen`):
+Two pages under Everywhere (section ids `addons` and `skills`,
+surfaces/settings/addons/ and surfaces/settings/skills/), each one list of
+every row this computer knows, sorted by name, the scope said on each row
+rather than a section per scope, with a find field past eight rows. The line
+under the page's title says where the one copy is kept ("Saved on the box, for
+every computer.", or that the box is offline with every switch, ⋯, row and the
+title line's verb held; docs/agents/settings.md "The pages: Everywhere"). Add…
+and New skill… sit on the page's title line (`PageActions`). A key that may
+not change them sees the rows as words, no switch, ⋯ or verb, and one line
+saying who can (`ManagedLine`). A row is a `PageRow` that opens (`onOpen`):
 a click on it opens Edit…, and the switch and ⋯ at its end never do.
 
 An add-on's row: its name; its state on this host as a `StatusMark`
@@ -393,27 +374,30 @@ An add-on's row: its name; its state on this host as a `StatusMark`
 switched off, Starting, Connected with "24 tools", Failed with the host's
 reason, which wraps rather than being cut, amber Needs a key or Sign in
 needed with what is missing, muted Mac only or Linux only); then one comma
-run 4px under it: the scope, "Macs only" or "Linux hosts only" when line two
+run 4px under it: the scope, "Macs only" or "Linux computers only" when line two
 does not say so, what the grant holds ("GITHUB_TOKEN saved", "signed in",
 "refreshed on box") and "written by <thread>" when a thread wrote it last; a
 red line for a sign-in that failed or a change the host refused. The ⋯ holds
 Edit…, Add key… (Change key… once a value is saved), Sign in… (desktop only;
-Sign in again…, Cancel sign-in), Sign out for an OAuth grant, then Remove…,
-which confirms. Until `addons.grant.list` answers the grant facts are left
+Sign in again…, Cancel sign-in), Sign out… for an OAuth grant, which asks
+first, then Remove…, which confirms. Until `addons.grant.list` answers the grant facts are left
 out and the grant rows are off with the reason "Loading"; if it fails, one
 red line under the rows says so with its own Retry.
 
 Add… and Edit… are one form dialog of the spec's fields (Name, Description,
-Where, Runs: Command or Address, the command's arguments a line each and its
-variables, or the address and its headers, Sign-in: None, Key or Sign in,
-which a command cannot take, Hosts), its footer note the approval card's
-words for the transport. Add key… is a password field per value, a saved one
-marked "Saved" and never shown, with a quiet Clear at the footer's start.
+Where, "Every workspace, on the box" naming where the one copy is kept,
+Connects by: Command or Address, the command's arguments a line each and its
+Secret names, or the address and its Request header names, Sign-in: None, Key
+or Sign in, which a command cannot take, Name for the sign-in token on a
+command that signs in, Computers), its footer note the approval card's words
+for the transport. Add key… is a password field per value, a saved one marked
+"Saved" and never shown, with a quiet Clear all… at the footer's start that
+asks first.
 
 A skill's row: its name, its description on one line (cut, and whole on the
-row's tooltip only while cut), then its CLIs, scope, version and the thread
-that wrote it. New skill… and Edit… are one large dialog of fixed height:
-the name (a new skill's only), Where and the CLIs (three checkboxes, the last
+row's tooltip only while cut), then its agent apps, scope, version and the
+thread that wrote it. New skill… and Edit… are one large dialog of fixed height:
+the name (a new skill's only), Where and Agent apps (three checkboxes, the last
 one ticked staying ticked) over the skill's files beside a CodeMirror editor
 that loads with the editor chunk; from 40rem of the dialog the list is a
 12rem column, under it the list sits over the editor. SKILL.md comes first; a
@@ -813,7 +797,7 @@ its host's link, so a Mac whose own copy has not pulled the box's last edit
 never shows the old values:
 
 - **Project settings** (`chrome/ProjectDialogs.tsx`, a `Sheet` from the
-  right: name and branch, then Completed turn, Reviews, Accounts, Plans and
+  right: name and branch, then After each turn, Reviews, Accounts, Plans and
   Build open under 12px headings, each with its "Use workspace setting" or
   "Use global setting" link, nothing folded) and **Preamble**
   (`chrome/PreambleDialog.tsx`) read every field from the home copy and
@@ -1143,8 +1127,8 @@ project across hosts: a new project gets its copies"); one whose copy could
 not be made shows the picker too, its other hosts disabled under the reason
 (`linkNote`). The default host is the one of the
 thread on screen when it is in the project, else the one "New threads start
-on" names (the project sheet's New threads section, else Settings → Thread
-defaults, else the box) when it has a copy and is connected, else the other
+on" names (the project sheet's New threads section, else Settings → New
+threads' Linked projects start on, else the box) when it has a copy and is connected, else the other
 host with a copy (lib/projectHostChoice.ts). A pick moves that one draft
 and is not remembered.
 
@@ -1478,15 +1462,15 @@ sidebar's fold and open folders, each folder's shape and order and the
 dock's width are this window's (`work.files.view.v1`, by a window id kept
 in `sessionStorage`).
 
-Settings → Work has, in order: the switch (alone while Work is off),
-LifeOS (each host's sign-in, its error on the heading line, then the
-sectors), Models (one row that opens Thread defaults), Where it runs (the
-host new Work workspaces are made on, each host's conversion tools and
-Office add-in) and Guest links. Off, the Work workspaces leave the
-settings list and the Work page stays. Settings → a Work workspace has
-LifeOS (its sector, shown and never edited), Where it runs (Threads run
-on, and one Computer use switch per desktop host) and House rules. Grants
-are a sheet of the Outbox page.
+Settings' Work group is Setup (the Work page), Digest, Mail, Files and
+Connections, and each job is a page under Jobs (docs/agents/settings.md
+"The pages: Work" and "The pages: jobs, workspaces, Archive"). The Work page
+has Work is on for, a switch per computer (alone while Work is off
+everywhere); Access for each job's new threads; Without asking you; Travel;
+On this Mac. Off everywhere, the jobs and the other Work pages leave the
+list and the Work page stays. A job's page has Computers its threads may
+use, New threads, Rules and Proposed, and Writing and mail. The Outbox's
+grants are a sheet the Work page and Mail open.
 
 ### Planning — a document, not a conversation
 

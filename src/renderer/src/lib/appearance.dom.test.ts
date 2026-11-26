@@ -64,6 +64,7 @@ describe("initAppearance", () => {
       "sidebarTabOrder",
       "transcriptLayout",
       "transcriptZen",
+      "claudeHooks",
     ]) {
       localStorage.setItem(`docket.${key}`, "1");
     }

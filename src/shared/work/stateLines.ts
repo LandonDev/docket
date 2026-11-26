@@ -24,6 +24,7 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/composer/access.ts`]: [
     ["Sending, posting and sharing always wait for your press.", "held === writes"],
   ],
+  [`${R}/connections/ConnectionsPage.tsx`]: [["Copied", "local"]],
   [`${R}/connections/model.ts`]: [
     ["Ready", "answer"],
   ],
@@ -194,6 +195,9 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   [`${R}/rules/HouseRules.tsx`]: [
     ["`Added to ${workspace.name}'s rules`", "answer"],
   ],
+  [`${R}/rules/RuleDialog.tsx`]: [
+    ["Deleted", "answer"],
+  ],
   [`${R}/rules/RuleLine.tsx`]: [
     ["Added to", "read"],
   ],
@@ -226,9 +230,6 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
   ],
   [`${R}/today/TodayView.tsx`]: [
     ["All clear", "read"],
-  ],
-  [`${R}/winvm/WinvmSection.tsx`]: [
-    ["`Signed in as ${place.account ?? \"you\"}${place.state === \"no-libraries\" ? \", no Teams library synced yet\" : count}`", "read"],
   ],
   [`${H}/agenda/index.ts`]: [
     ["Added ", "answer"],

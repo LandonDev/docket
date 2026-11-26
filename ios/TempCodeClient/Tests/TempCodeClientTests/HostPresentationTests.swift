@@ -3,8 +3,10 @@ import Testing
 import TempCodeContract
 @testable import TempCodeClient
 
-private func status(_ transport: TransportState, attempts: Int = 0, halt: HaltReason? = nil) -> EnvironmentStatus {
-    EnvironmentStatus(transport: transport, attempts: attempts, halt: halt)
+private func status(_ transport: TransportState, attempts: Int = 0, halt: HaltReason? = nil, retryAt: Double? = nil) -> EnvironmentStatus {
+    var status = EnvironmentStatus(transport: transport, attempts: attempts, halt: halt)
+    status.nextRetryAt = retryAt
+    return status
 }
 
 private let identityChanged = HaltReason.identityChanged(expected: "env_a", got: "env_b")
@@ -16,16 +18,53 @@ struct ConnectionWordTests {
     @Test(arguments: [
         (status(.open), "Connected"),
         (status(.connecting), "Connecting…"),
-        (status(.connecting, attempts: 1), "Unreachable"),
+        (status(.connecting, attempts: 1), "Not answering"),
         (status(.reconnecting), "Reconnecting…"),
         (status(.offline), "Offline"),
-        (status(.offline, halt: identityChanged), "Different host"),
+        (status(.offline, halt: identityChanged), "Another computer"),
         (status(.offline, halt: hostNewer), "Needs an update"),
-        (status(.unauthorized), "Key refused"),
-        (status(.suspended), "Paused"),
+        (status(.unauthorized), "Refuses this key"),
+        (status(.suspended), "Reconnecting…"),
     ])
     func `one word per transport state`(status: EnvironmentStatus, word: String) {
         #expect(ConnectionWord.text(for: status) == word)
+    }
+}
+
+@Suite("ConnectionSentence")
+struct ConnectionSentenceTests {
+    /// 1,000 s after the epoch, in the status's milliseconds.
+    private let now = Date(timeIntervalSince1970: 1000)
+
+    @Test(arguments: [
+        (status(.open), "Connected"),
+        (status(.connecting), "Connecting to the box…"),
+        (status(.connecting, attempts: 2, retryAt: 1_005_000), "the box did not answer; retrying in 5 s"),
+        (status(.reconnecting, retryAt: 1_005_000), "the box dropped; retrying in 5 s"),
+        (status(.reconnecting, retryAt: 999_000), "Reconnecting to the box…"),
+        (status(.reconnecting), "Reconnecting to the box…"),
+        (status(.suspended), "Reconnecting to the box…"),
+        (status(.offline), "the box is offline"),
+        (status(.offline, halt: identityChanged), "the box’s address answers as another computer"),
+        (status(.offline, halt: hostNewer), "the box is newer than this app"),
+        (status(.offline, halt: hostOlder), "the box is older than this app"),
+        (status(.unauthorized), "the box no longer accepts this key"),
+    ])
+    func `the desktop's sentence per state`(status: EnvironmentStatus, text: String) {
+        #expect(ConnectionSentence.text(name: "the box", status: status, now: now) == text)
+    }
+
+    @Test func `the host's own error never shows`() {
+        var offline = status(.offline)
+        offline.lastError = "ECONNREFUSED 10.0.0.2:8787"
+        #expect(ConnectionSentence.text(name: "Studio Mac", status: offline, now: now) == "Studio Mac is offline")
+    }
+
+    @Test func `only a countdown ticks`() {
+        #expect(ConnectionSentence.ticks(status(.reconnecting, retryAt: 1_005_000)))
+        #expect(ConnectionSentence.ticks(status(.connecting, attempts: 1, retryAt: 1_005_000)))
+        #expect(!ConnectionSentence.ticks(status(.reconnecting)))
+        #expect(!ConnectionSentence.ticks(status(.offline)))
     }
 }
 
@@ -84,19 +123,19 @@ struct HostFixTests {
 
     @Test func `titles`() {
         #expect(HostFix.retry.title == "Retry Now")
-        #expect(HostFix.pairAgain.title == "Pair Again")
+        #expect(HostFix.pairAgain.title == "Sign In Again")
     }
 
     @Test func `the explanation names which side needs the update`() {
-        #expect(HostFix.explanation(for: status(.offline, halt: hostNewer)) == "Update this app to talk to the host.")
-        #expect(HostFix.explanation(for: status(.offline, halt: hostOlder)) == "Update the host to talk to this app.")
+        #expect(HostFix.explanation(for: status(.offline, halt: hostNewer)) == "Update this app to talk to it.")
+        #expect(HostFix.explanation(for: status(.offline, halt: hostOlder)) == "Update it to talk to this app.")
         #expect(HostFix.explanation(for: status(.open)) == nil)
         #expect(HostFix.explanation(for: status(.connecting)) == nil)
-        #expect(HostFix.explanation(for: status(.connecting, attempts: 2)) == "The phone keeps trying on its own; Retry tries now.")
-        #expect(HostFix.explanation(for: status(.offline)) == "The phone will try again when the network returns.")
-        #expect(HostFix.explanation(for: status(.offline, halt: identityChanged)) == "The address now answers as another host. Pair again to trust it.")
-        #expect(HostFix.explanation(for: status(.unauthorized)) == "The host refused this key. A new pairing link from its Remote access pane replaces it.")
-        #expect(HostFix.explanation(for: status(.suspended)) == "Reconnects when the app comes forward.")
+        #expect(HostFix.explanation(for: status(.connecting, attempts: 2)) == "The phone keeps trying on its own.")
+        #expect(HostFix.explanation(for: status(.offline)) == "The phone tries again when the network returns.")
+        #expect(HostFix.explanation(for: status(.offline, halt: identityChanged)) == "Sign in again to trust it.")
+        #expect(HostFix.explanation(for: status(.unauthorized)) == "Make a sign-in link on it in Settings → Sharing, then sign in again.")
+        #expect(HostFix.explanation(for: status(.suspended)) == nil)
     }
 
     @Test(arguments: [
@@ -148,23 +187,39 @@ struct HostPushWordTests {
     }
 }
 
-@Suite("Capability words")
-struct CapabilityWordsTests {
-    @Test func `the four in the pane's order`() {
-        #expect(Capability.ordered == [.read, .operate, .approve, .admin])
-        #expect(Capability.ordered.map(\.title) == ["Read", "Operate", "Approve", "Admin"])
-        #expect(Capability.read.detail == "See threads, files and the inbox")
-        #expect(Capability.operate.detail == "Send turns, stop and start threads")
-        #expect(Capability.approve.detail == "Decide approvals and run full-access threads")
-        #expect(Capability.admin.detail == "Pair devices, manage keys and move threads")
+@Suite("KeyRights")
+struct KeyRightsTests {
+    @Test(arguments: [
+        ([Capability.read], KeyRights.look),
+        ([.read, .operate], .run),
+        ([.read, .operate, .approve], .approve),
+        ([.read, .operate, .approve, .admin], .manage),
+        // The highest the key holds decides, whatever else rides with it.
+        ([.admin, .give], .manage),
+        ([.device, .operate, .pending], .run),
+        ([], .look),
+    ] as [([Capability], KeyRights)])
+    func `a key holds one level`(caps: [Capability], level: KeyRights) {
+        #expect(KeyRights.of(caps) == level)
     }
 
+    @Test func `the desktop's It may words`() {
+        #expect(KeyRights.allCases.map { $0.title(computer: "the box") } == ["Look only", "Run threads", "Run threads and approve", "Manage the box"])
+        #expect(KeyRights.look.detail(computer: "the box") == "Read threads and files")
+        #expect(KeyRights.run.detail(computer: "the box") == "Start, steer and stop threads")
+        #expect(KeyRights.approve.detail(computer: "the box") == "Also answer when a thread asks before a risky step")
+        #expect(KeyRights.manage.detail(computer: "the box") == "Everything above, and add devices and change every setting on the box")
+    }
+}
+
+@Suite("Capability words")
+struct CapabilityWordsTests {
     @Test func `give and device show only on a key that holds them`() {
-        #expect(Capability.rows(holding: [.read, .operate, .approve, .admin]) == Capability.ordered)
-        #expect(Capability.rows(holding: [.device, .operate, .approve, .pending]) == Capability.ordered + [.device])
-        #expect(Capability.rows(holding: [.admin, .give]) == Capability.ordered + [.give])
-        #expect(Capability.give.title == "Give")
-        #expect(Capability.device.title == "Given computer")
+        #expect(Capability.extras(holding: [.read, .operate, .approve, .admin]) == [])
+        #expect(Capability.extras(holding: [.device, .operate, .approve, .pending]) == [.device])
+        #expect(Capability.extras(holding: [.admin, .give]) == [.give])
+        #expect(Capability.give.title == "Set up other computers")
+        #expect(Capability.device.title == "Set up from another computer")
     }
 
     @Test func `an unknown capability keeps its raw name`() {

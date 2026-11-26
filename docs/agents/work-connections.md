@@ -7,8 +7,8 @@ in the Work group, and a read-only tool a thread reads the same rows with.
 ## What he sees
 
 **Settings → Connections** (src/renderer/src/work/connections/, its own lazy
-chunk `work-connections`, listed in the Work group after the Work page only
-while Work is on for some host).
+chunk `work-connections`, last in the list's Work group, shown only while
+Work is on for some computer).
 
 - One section per kind of connection, in the order the rest leans on them:
   LifeOS, Mail and calendar, Google, Office, Files, Browser, Windows VM,
@@ -34,7 +34,7 @@ while Work is on for some host).
   the fix he needs, so none of it is cut.
 - The Office add-in's row is the add-in's own control (`AddinRow`): Pair…
   and each paired add-in with Remove live here and nowhere else.
-- A host this window is not linked to now sits under **Hosts** as Offline
+- A computer this window is not linked to now sits under **Computers** as Offline
   ("Checked when it is back"), never as broken, and is checked the moment
   its link opens. A host that refuses (Work off there, an older build)
   did answer: it is "Not checked" with its reason in his words
@@ -79,12 +79,14 @@ while Work is on for some host).
   state says who can, by the act ("Sign in from a computer that manages the
   box", `signInElsewhere`; else `managedElsewhere`).
 
-**What left Settings → Work.** "Where it runs" gave way to Connections: each
+**What left the Work page.** "Where it runs" gave way to Connections: each
 host's LifeOS sign-in, the conversion tools (ToolchainRow, removed) and the
 Office add-in's pairings are on Connections now, so no fact is said on both
-pages. The Work page keeps what he sets: the switch, the sectors LifeOS has
-(shown while signed in), models, where new Work workspaces are made, which
-folders count as Teams files, guest links and mail settings. With Work off,
+pages. So are the Windows VM's Office and OneDrive sign-ins and its edition's
+end: the Windows VM's own page under Other computers holds none of them. A
+sign-out asks first, naming what stops working until the next sign-in
+(`signOutAsk`), as does a paired add-in's Remove…. What he sets lives on the
+other Work pages (docs/agents/settings.md "The pages: Work"). With Work off,
 a Connections page left open says "Work is off".
 
 ## The frame's side

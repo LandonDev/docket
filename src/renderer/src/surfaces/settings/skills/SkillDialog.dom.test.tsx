@@ -148,7 +148,7 @@ describe("SkillDialog", () => {
     expect(editor().value).toBe("---\nname: tidy\ndescription: \n---\n\n");
     fireEvent.change(editor(), { target: { value: "---\nname: tidy\ndescription: Tidy the code\n---\n" } });
     // A box can be unticked, never the last one ticked.
-    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Muse" }));
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Muse Code" }));
     await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Create" })));
     expect(host.sent("skills.set")).toEqual([
       {
@@ -159,10 +159,10 @@ describe("SkillDialog", () => {
     expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ name: "tidy" }));
   });
 
-  it("keeps the last CLI ticked", async () => {
+  it("keeps the last agent app ticked", async () => {
     const { dialog } = await open(metaOf({ ...polish, harnesses: ["codex"] }));
     expect(within(dialog).getByRole("checkbox", { name: "Codex" }).hasAttribute("data-disabled")).toBe(true);
-    expect(within(dialog).getByRole("checkbox", { name: "Claude" }).hasAttribute("data-disabled")).toBe(false);
+    expect(within(dialog).getByRole("checkbox", { name: "Claude Code" }).hasAttribute("data-disabled")).toBe(false);
   });
 
   it("asks before Escape drops edits: Cancel keeps the dialog, Discard closes it", async () => {

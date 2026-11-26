@@ -77,7 +77,7 @@ name everywhere (the control, its menu, Settings, asks, the Forms workbook's wor
 
 `liveAddress(library, path, {libraries})`: OneDrive's own URL namespace for the mount (the VM's and a PC's from
 `UrlNamespace`, the Mac's from OneDrive's settings, `office/files/macOneDrive.ts`), else the same place on another
-machine (a twin), else a folder address he gave the library in Settings → Teams files (a sharing link or a view page
+machine (a twin), else a folder address he gave the library in Settings → Files (a sharing link or a view page
 is refused). The path below the mount, each segment encoded once, then `?web=1`. `cloudKey(url)` gives one key for
 every form of one file, so an add-in's `document.url`, Word's `FullName` and the tab's address meet.
 `bun scripts/probe-mac-onedrive.ts` prints a Mac's mounts and namespaces.
@@ -99,7 +99,7 @@ every form of one file, so an add-in's `document.url`, Word's `FullName` and the
   makes it again where it was, asking a fresh ticket (`LiveLayer.retry`), so the press ends in the file or the reason.
 - `work.office.live.of {workspaceId, tabId}` answers `{mode, address, why?, app, tenant, desktops}`. The mode is kept
   per file in `work_office_live (workspace_id, ref_key, mode, at)` by the tab's stable key, with a library default in
-  `work_office_files` as `live:<libraryId>` (Settings → Teams files, "Opens in", `work.office.live.setLibraryDefault`).
+  `work_office_files` as `live:<libraryId>` (Settings → Files, a library's dialog, `work.office.live.setLibraryDefault`).
 - Opening: Files asks the live module first (`registerSeatChooser`, files/hooks.ts). A file remembered as Live is
   seated as `{at: 'microsoft', app, host, name, ref: {kind: 'url', url}}` (`isLiveSource`, shared/work/officeLive.ts):
   no copy, no VM wake. A live tab of another host's file keeps `copyOf` for Edit here and is not drawn as a copy.

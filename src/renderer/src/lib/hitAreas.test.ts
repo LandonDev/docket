@@ -17,9 +17,8 @@ describe("hit areas and insets", () => {
     expect(read("chrome/MessageQueue.tsx")).toContain("relative h-5 px-1 text-xs font-normal text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-['']");
     expect(read("chrome/ConnectionLine.tsx")).toContain("h-5 px-1.5 text-xs font-normal text-muted-foreground after:absolute after:inset-x-0 after:-inset-y-0.5 after:content-['']");
     // Settings' 16px text links: 4px above and below, nothing around them clipping it.
-    expect(read("surfaces/settings/General.tsx")).toContain(`h-auto px-0 text-xs ${STRETCH}`);
-    expect(read("surfaces/settings/hosts/Devices.tsx")).toContain(`hover:text-foreground ${STRETCH}`);
-    expect(read("chrome/ThreadDefaultsDialog.tsx")).toContain(`h-auto px-0 text-xs ${STRETCH}`);
+    expect(read("surfaces/settings/Updates.tsx")).toContain(`h-auto px-0 text-xs ${STRETCH}`);
+    expect(read("surfaces/settings/computers/Devices.tsx")).toContain(`hover:text-foreground ${STRETCH}`);
     // An account row's action ("Make a new one"): the same 16px link.
     expect(read("aliax/views/accounts/usage.tsx")).toContain(`h-auto px-0 text-xs ${STRETCH}`);
   });

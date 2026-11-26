@@ -129,7 +129,7 @@ is taken as now. Until one has said, the host's own zone.
 | `work.digest.here {zone, at?}` | operate | null |
 | `work.digest.seen {day}` | operate | null |
 
-Settings → Work → Digest writes `set` only to the hosts this window's key
+Settings → Digest writes `set` only to the computers this window's key
 may set (`linkMay`, docs/agents/work.md "The switch"), and so does the
 window bringing a host to the newest setting; with none, the time and the
 levels stand as words.
@@ -219,7 +219,7 @@ or `{key, tell, by?, open?}`.
 
 `src/renderer/src/work/digest/` is one lazy chunk, `work-digest`
 (`workDigestChunk` in surfaces/chunks.ts), mounted by `WorkRailHost`
-(`DigestHost`) and by Settings → Work (`SettingsSection`). Nothing of it
+(`DigestHost`) and by Settings → Digest (`SettingsSection`). Nothing of it
 is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
 
 | File | Holds |
@@ -229,7 +229,7 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
 | `open.ts` | pure: `routeOf` turns a `TellOpen` into a route (`thread`, `view` with `at` in that view's own field: Agenda's and Prep's event, Mail's mail, Tasks' task, Projects' project, People's person, Messages' conversation (`chat`); `file`, a guest's edit's LifeOS document or sheet (`at: 'lifeos:docs:<id>'`); `place` with its moment; `outbox` with the page's item key; `settings`), `go` runs it and answers false when nothing opened |
 | `DigestHost.tsx` | the two toasts through `useToastSync` (the digest's asked first, so what cannot wait stands in front of it when both come at once; an interrupt is a warning toast, but one of held work alone is plain with the Outbox's muted glyph, never amber: held is not Needs you), their system notifications, the routes, the sheet's mount |
 | `DigestSheet.tsx` | the list (`DigestList`) in a 480px `Sheet`; its bones stand where the words land, the day's heading on the titles' edge; a clash's detail names its jobs by their workspaces (`tellDetail` in notice.ts, which also words the toast: a host that wrote the sector's word, "Purdue", reads "Purdue Esports", notices already saved included) |
-| `SettingsSection.tsx` | Settings → Work → Digest |
+| `SettingsSection.tsx` | Settings → Digest |
 
 - The digest's toast opens `digestOpensPort.get()` when one is registered
   (Today), the one unseen day is today (`onlyToday`: Today shows that
@@ -267,7 +267,7 @@ is in the first paint (`scripts/entryGraph.test.ts`, `check:bundle`).
   is carried into `work.digest.closed` once every host has answered
   (`carryLegacy`); the rest are dropped.
 - A view: every overlay closes (`shell.closeOverlays`, Settings among
-  them: a press from Settings → Work → Digest, or a toast over Settings,
+  them: a press from Settings → Digest, or a toast over Settings,
   must not open behind it), the window enters the job's workspace as its
   rail row does (`workEnterPort`, else `project.enterWorkspace`), and the
   view opens on the thing. A guest's edit opens its document or sheet in a
@@ -378,7 +378,7 @@ day's count.
 - `winvm`: a failure only he can fix, from `work.winvm.state` each 5
   minutes, under `winvm:`. Only a setup that failed before it made the disk
   (`none` with an `error`) is told, `winvm:setup`, its reason the detail,
-  opening Settings → Work; a later setup step, a restore point and a wake
+  opening Settings at the Work page (`settings: 'work'`; the Windows VM's own page is `winvm`); a later setup step, a restore point and a wake
   that fail leave the same bare `error`, which the state does not place.
 
 ## The phone
@@ -438,12 +438,13 @@ rules; nothing about the wire is the phone's own.
   now validates and carries `tc.work` to APNs, with the same targets,
   grouping, categories and collapse IDs as the box. This takes effect
   when the hub Worker deploys.
-- **Settings → Work.** A Digest section follows the group with the Work
-  switch and LifeOS (the first host with Work on, once for every host), and
-  shows only while some host has Work on: Time (a time picker of the "HH:mm"
-  wall time, written once the wheel rests), Held items, Routine results,
-  Messages and mail, Meetings (the desktop's `SETTING_GROUPS`), each "In the
-  digest", "When it can’t wait" or "Right away". A change goes to every host with Work on as
+- **Settings → Digest.** A page of its own (docs/agents/settings.md "The
+  pages: Work"), shown only while some computer has Work on, with Open the
+  digest on its title line: Arrives at (a time picker of the "HH:mm" wall
+  time, written once the wheel rests, the zone it follows named under it),
+  then Tell me about: Things waiting for me, Routine results, Messages and
+  mail, Meetings (the desktop's `SETTING_GROUPS`), each "In the digest",
+  "When it can’t wait" or "Right away". A change goes to every host with Work on as
   `work.digest.set` with only that group in `levels`; a host that refused is
   that row's red line.
 - **Tests.** `DigestModelTests.swift`, `PushTargetTests.swift` and
@@ -453,7 +454,7 @@ rules; nothing about the wire is the phone's own.
   empty Digest; the work set's seeds, a Cosmic job and tells written into the
   ledger by the test server's `POST /work-tells`; the digest's time set one
   minute ahead so the host's own look makes the day; two tells after it),
-  then shoots Home, the Digest, Settings → Work and four notices, each the
+  then shoots Home, the Digest, the phone's Settings → Work and four notices, each the
   host's exact `tc.work` payload handed to the delegate by the
   `TC_TEST_ROUTE=payload` launch route (`TC_TEST_PAYLOAD`), light and dark.
   `xcrun simctl push` is not used: the simulator refuses it until someone

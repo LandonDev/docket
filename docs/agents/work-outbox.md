@@ -1018,7 +1018,7 @@ rail's count follows the `work.outbox` push from boot. No screen reads
 LifeOS's `outbox`; every press goes to the host that holds the item, and a
 LifeOS item's Send carries `rev` = its `updatedAt` as shown. The page's
 keys E (Edit), D (Discard) and Esc (clear the ticks) are rows of the Work
-group in Settings → Keybindings, "In the Outbox"; its tips read them with
+group in Settings → Shortcuts, "In the Outbox"; its tips read them with
 `shortcutFor`, never a typed key (lib/menuShortcuts.test.ts).
 
 What the store asks (the perf pass's M2; `outbox/store.dom.test.tsx`):
@@ -1269,7 +1269,7 @@ digest's rule decides whether it interrupts:
   pruned only once its watch has answered (`loadedTables`), and nothing is
   pruned from a read of 500, which may be cut short.
 
-He can set held items louder or quieter in Settings → Work → Digest. The
+He can set held items louder or quieter in Settings → Digest (Tell me about, Things waiting for me). The
 Outbox count in the rail and the thread's own row say what they always did.
 
 ### On the phone (milestone 46)

@@ -21,7 +21,7 @@ The look is the round-two prototype `mail.html` ("The thread drafts").
 | The live proof (not shipped) | `src/main/server/work/mail/proof/live.ts` |
 | The client with Send through the host | `src/renderer/src/work/mail/client.ts` |
 | TempCode's `MailKit` (toast with its countdown, faces, Save to Downloads, Print, who drafted a mail) | `src/renderer/src/work/mail/kit.tsx` |
-| Settings, Work, Mail | `MailSettingsSection.tsx` (work-kit's `MailSettings` on the host's whole session) |
+| Settings → Mail | `MailSettingsSection.tsx` (the page's own rows over work-kit's mail client, on the host's whole session) |
 | The page policy and LifeOS's address | `src/shared/pagePolicy.ts` |
 | Save to Downloads (main) | `src/main/downloads.ts` |
 | The preview page, its scenes and the reader's proof (not shipped) | `src/renderer/src/work/mail/preview/`, `scripts/mail-preview.ts` |
@@ -30,7 +30,7 @@ The look is the round-two prototype `mail.html` ("The thread drafts").
 | A held mail in the Outbox | `MailAct.tsx`, `act.ts`, `model.ts` |
 | Type steps and the menu wash | `mail.css` |
 | Waiting on: the nudge press, the workspace's days and routine, dropped nudges, `mail_waiting` | `src/main/server/work/mail/waiting.ts` |
-| Waiting on in the workspace's settings | `WaitingSection.tsx` (and `WaitingSection.preview.tsx`) |
+| Waiting on's rows on a job's page (`WaitingRows`) | `WaitingSection.tsx` (and `WaitingSection.preview.tsx`) |
 | The chat beside the mail, on the host: adopt, find, the narrowing, the preamble part, `mail_offer` | `src/main/server/work/mail/chat/` (names and rules: `src/shared/work/mailChat.ts`) |
 
 ## Send
@@ -468,8 +468,8 @@ reply in that thread with `draft_mail`. The window shows "Starting a thread
 to draft the nudge" and opens the thread. The draft is held as every draft
 is: it opens beside its thread and goes only on his Send.
 
-**The routine.** A Work workspace's settings page has a Waiting on section:
-"Count as waiting after" (1 to 10 working days; LifeOS's value for the sector) and
+**The routine.** A job's settings page has two rows under Writing and mail:
+"Count sent mail as unanswered after" (1 to 10 working days; LifeOS's value for the sector) and
 "Draft nudges by themselves", off until he turns it on, since each firing
 is a model run. On, it makes one ordinary routine through the routines
 pillar (`work.routines.save`: "Nudge mail with no reply", a LifeOS trigger
@@ -718,18 +718,18 @@ docs/DESIGN.md "The Mail view"):
 
 ## Settings
 
-Settings, Work, Mail is work-kit's `MailSettings` on the host's whole LifeOS
-session (a sector's session may read mail's settings and change none): the
-account a new mail goes from, who a reply goes to, the undo time, pictures
-from the web (Show, Ask, Never, with the senders allowed under Ask), list
-rows, mark as read, the signatures, and each account's name, sector,
-signatures and notices. LifeOS keeps all of it, so LifeOS desktop reads the
-same values. On the page it is one of the page's sections, "Mail"
-(`PageSection`, the kit's own title left out): the kit's four groups sit
-inside it under 12px regular muted headings, 8px to their first row and
-16px apart (mail.css `data-mail-settings`, since the kit has no slot for a
-host's section part); signed out, the section says "Not signed in to
-LifeOS" under its heading, with Sign in opening Settings → Connections.
+Settings → Mail is a page of its own (docs/agents/settings.md "The pages:
+Work") on the host's whole LifeOS session (a sector's session may read
+mail's settings and change none): the account a new mail goes from, who a
+reply goes to, the undo time, pictures from the web (Show, Ask, Never, with
+the senders allowed under Ask in a dialog), list rows, mark as read, the
+signatures, and each account's name, job, signatures and notices. LifeOS
+keeps all of it, so LifeOS desktop reads the same values. The page draws it
+with its own `PageSection` and `PageRow` over work-kit's mail client (the
+settings hooks of `useMailClient`), its signature and account dialogs ours
+around work-kit's `MailEditor`; deleting a signature asks first. work-kit's
+own `MailSettings` screen stays LifeOS's. Signed out, the page's one line
+says "Not signed in to LifeOS" with Sign in opening the sign-in in place.
 
 ## The Outbox
 

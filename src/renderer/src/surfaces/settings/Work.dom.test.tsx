@@ -1,94 +1,149 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const state = vi.hoisted(() => ({
-  /** hosts this window's key cannot switch */
+  /** computers this window's key cannot switch */
   cannot: new Set<string>(),
+  offline: new Set<string>(),
   on: new Set<string>(["env_box"]),
   calls: [] as { env: string; method: string; params: unknown }[],
   refuse: new Set<string>(),
+  confirm: true,
+  asked: [] as { title: string; body?: string; action: string }[],
 }));
 const ENVS = [
   { id: "env_box", name: "The box" },
-  { id: "local", name: "Purdue laptop" },
+  { id: "local", name: "MacBook Pro" },
+  { id: "env_pc", name: "PURDUE-LT" },
 ];
 
-vi.mock("../../lib/connection", () => ({
-  useEnvironments: () => ENVS,
-  registry: {
-    environment: (id: string) => ENVS.find((e) => e.id === id),
-    linkOf: (env: string) => ({
-      request: async (method: string, params: { enabled: boolean }) => {
-        state.calls.push({ env, method, params });
-        if (state.refuse.has(env)) throw new Error("work.set: write failed (EIO)");
-        return { enabled: params.enabled };
-      },
-    }),
-  },
+vi.mock("@renderer/lib/sounds", async (original) => ({ ...(await original<typeof import("@renderer/lib/sounds")>()), playCue: () => {} }));
+vi.mock("../../lib/connection", async (original) => {
+  const real = await original<typeof import("../../lib/connection")>();
+  return { ...real, useEnvironments: () => ENVS, registry: Object.assign(Object.create(real.registry), { environment: (id: string) => ENVS.find((e) => e.id === id) }) };
+});
+vi.mock("./parts/hostRpc", () => ({
+  useHost: (env: string) => ({
+    environmentId: env,
+    connected: !state.offline.has(env),
+    name: { name: ENVS.find((e) => e.id === env)!.name, own: env === "local" },
+    may: () => !state.cannot.has(env),
+    request: async (method: string, params: { enabled: boolean }) => {
+      state.calls.push({ env, method, params });
+      if (state.refuse.has(env)) throw new Error("forbidden: work.set needs admin");
+      return { enabled: params.enabled };
+    },
+  }),
 }));
-vi.mock("../../lib/linkMay", () => ({ linkMay: (env: string) => !state.cannot.has(env) }));
 vi.mock("../../lib/workSwitch", () => ({
   useWorkHosts: () => state.on,
   setWorkOn: (env: string, on: boolean) => void (on ? state.on.add(env) : state.on.delete(env)),
 }));
-vi.mock("../chunks", () => ({ workShellChunk: { surface: () => () => null } }));
+vi.mock("../../lib/tcserver/workspaces", () => ({
+  useWorkspaces: () => [
+    { id: "w1", name: "Purdue Esports", kind: "work", environmentId: "env_box" },
+    { id: "w2", name: "Cosmic", kind: "work", environmentId: "env_box" },
+    { id: "c1", name: "temp-code", kind: "code", environmentId: "env_box" },
+  ],
+}));
+vi.mock("../../chrome/ConfirmDialog", () => ({
+  confirmAction: async (request: { title: string; body?: string; action: string }) => {
+    state.asked.push(request);
+    return state.confirm;
+  },
+}));
+vi.mock("../../lib/lazyChunk", () => ({ defineChunk: () => ({ surface: () => () => null }) }));
 
-const { WorkPage, elsewhereLine, switchLine } = await import("./Work");
+const { WorkPage, workOffAsk } = await import("./Work");
 
 afterEach(() => {
   cleanup();
   state.on = new Set(["env_box"]);
   state.cannot = new Set();
+  state.offline = new Set();
   state.calls = [];
   state.refuse = new Set();
+  state.confirm = true;
+  state.asked = [];
 });
 
-describe("Settings → Work's switch", () => {
-  it("turns Work on for the hosts left off alone, never off for the box", async () => {
+const rowOf = (env: string): HTMLElement => document.querySelector<HTMLElement>(`[data-work-on="${env}"]`)!;
+const settle = () => act(async () => void (await new Promise((done) => setTimeout(done, 0))));
+
+describe("Settings → Work: Work is on for", () => {
+  it("draws one row per computer by its one name, this Mac's with its mark, under the section the reveal lands on", () => {
     render(<WorkPage />);
-    expect(screen.getByText(switchLine(ENVS, new Set(["env_box"]))!)).toBeTruthy();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Turn on for Purdue laptop" })));
-    expect(state.calls).toEqual([{ env: "local", method: "work.set", params: { enabled: true } }]);
-    // Every host on now: the press goes, and the switch still reads on.
-    expect(screen.queryByRole("button", { name: /^Turn on for/ })).toBeNull();
+    expect(document.querySelector('section[data-setting="work.on"]')).toBeTruthy();
+    expect(screen.getByText("Work is on for")).toBeTruthy();
+    expect(rowOf("env_box").textContent).toContain("2 jobs");
+    expect(rowOf("local").textContent).toContain("this Mac");
+    expect(screen.getAllByRole("switch")).toHaveLength(3);
   });
 
-  it("never writes to a host this window's key cannot switch, and says where that one is changed", async () => {
-    // His laptop after a setup link: its key may not switch the box, which is off; the laptop itself is on.
-    state.cannot = new Set(["env_box"]);
-    state.on = new Set(["local"]);
+  it("writes one computer per press: no handler on the page reaches a computer its row does not name", async () => {
     render(<WorkPage />);
-    expect(screen.getByText(elsewhereLine(["The box"])!)).toBeTruthy();
-    // No press offers to turn it on for the box: it would end in a refusal.
-    expect(screen.queryByRole("button", { name: /^Turn on for/ })).toBeNull();
-    await act(async () => fireEvent.click(screen.getByRole("switch", { name: "Work" })));
-    expect(state.calls).toEqual([{ env: "local", method: "work.set", params: { enabled: false } }]);
-    expect(screen.queryByRole("alert")).toBeNull();
+    for (const env of ENVS.map((e) => e.id)) {
+      const before = state.calls.length;
+      await act(async () => fireEvent.click(within(rowOf(env)).getByRole("switch")));
+      await settle();
+      const press = state.calls.slice(before);
+      expect(press, env).toEqual([{ env, method: "work.set", params: { enabled: env !== "env_box" } }]);
+    }
+    // Every control the page draws, pressed once more: never two computers at one press.
+    for (const control of [...screen.getAllByRole("switch"), ...screen.queryAllByRole("button")]) {
+      const before = state.calls.length;
+      await act(async () => fireEvent.click(control));
+      await settle();
+      expect(new Set(state.calls.slice(before).map((c) => c.env)).size).toBeLessThanOrEqual(1);
+    }
   });
 
-  it("draws no switch for a key that may switch no host, and keeps the line that says where", () => {
-    state.cannot = new Set(["env_box", "local"]);
+  it("asks before turning Work off, naming what leaves the list, and writes nothing on Cancel", async () => {
+    state.confirm = false;
     render(<WorkPage />);
-    expect(screen.queryByRole("switch", { name: "Work" })).toBeNull();
-    expect(screen.getByText("Work for the box and Purdue laptop is changed from a computer that manages them")).toBeTruthy();
+    await act(async () => fireEvent.click(within(rowOf("env_box")).getByRole("switch")));
+    await settle();
+    expect(state.asked).toEqual([workOffAsk("the box", 2)]);
+    expect(state.asked[0]!.body).toBe("The Outbox, Work Chats and 2 jobs leave the list on every device. Nothing is deleted, and turning it on brings them back.");
+    expect(state.calls).toEqual([]);
+    expect(within(rowOf("env_box")).getByRole("switch").getAttribute("aria-checked")).toBe("true");
   });
 
-  it("says a host that did not take the switch in a sentence naming it, never the link's text", async () => {
-    state.on = new Set(["env_box", "local"]);
+  it("turns Work on without asking", async () => {
+    render(<WorkPage />);
+    await act(async () => fireEvent.click(within(rowOf("local")).getByRole("switch")));
+    await settle();
+    expect(state.asked).toEqual([]);
+    expect(state.on.has("local")).toBe(true);
+  });
+
+  it("shows a computer this key may not switch as its state in words and who can, with no switch to refuse", () => {
+    state.cannot = new Set(["env_pc"]);
+    state.on = new Set(["env_box", "env_pc"]);
+    render(<WorkPage />);
+    const row = rowOf("env_pc");
+    expect(within(row).queryByRole("switch")).toBeNull();
+    expect(row.textContent).toContain("Changed from a computer that manages PURDUE-LT");
+    expect(row.textContent).toContain("On");
+    expect(row.textContent).not.toContain("this Mac or");
+  });
+
+  it("says an offline computer is offline, with no switch", () => {
+    state.offline = new Set(["env_pc"]);
+    render(<WorkPage />);
+    expect(within(rowOf("env_pc")).queryByRole("switch")).toBeNull();
+    expect(rowOf("env_pc").textContent).toContain("Offline");
+  });
+
+  it("puts a refused switch back and says why under its row, in the house's words", async () => {
     state.refuse = new Set(["local"]);
     render(<WorkPage />);
-    await act(async () => fireEvent.click(screen.getByRole("switch", { name: "Work" })));
-    expect(screen.getByRole("alert").textContent).toBe("Purdue laptop did not save the change.");
-  });
-
-  it("offers no such press while every host agrees", () => {
-    state.on = new Set(["env_box", "local"]);
-    render(<WorkPage />);
-    expect(screen.queryByRole("button", { name: /^Turn on for/ })).toBeNull();
-    cleanup();
-    state.on = new Set();
-    render(<WorkPage />);
-    expect(screen.queryByRole("button", { name: /^Turn on for/ })).toBeNull();
+    await act(async () => fireEvent.click(within(rowOf("local")).getByRole("switch")));
+    await settle();
+    expect(within(rowOf("local")).getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    expect(rowOf("local").textContent).toContain("This computer's key may not do that on MacBook Pro. Do it from a computer that manages MacBook Pro.");
+    expect(rowOf("local").textContent?.toLowerCase()).not.toContain("forbidden");
+    expect(state.calls).toEqual([{ env: "local", method: "work.set", params: { enabled: true } }]);
   });
 });

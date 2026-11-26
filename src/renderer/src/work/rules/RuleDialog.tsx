@@ -6,7 +6,8 @@ import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Textarea } from "../../components/ui/textarea";
 import { workErrorWords } from "../../lib/workErrorWords";
-import { addRule, editRule, removeRule } from "./data";
+import { addRule, editRule, orderRules, removeRule } from "./data";
+import { loadToast } from "../../components/ui/toaster";
 import { Evidence } from "./Evidence";
 
 /**
@@ -21,6 +22,27 @@ import { Evidence } from "./Evidence";
 
 /** The list's order as the dialog opened on it, and how Save writes a new one (rejects when the host refuses it). */
 export type RuleMoves = { ids: readonly string[]; save(order: string[]): Promise<void> };
+
+/**
+ * A rule deleted at his press says so, with Undo: Undo writes the same words back in the place they stood, and off if
+ * the rule was off (WORK's request: Add and Dismiss on the same page each gave Undo, Delete took the rule for good).
+ */
+export function deleted(env: string, workspaceId: string, rule: HouseRule, moves: RuleMoves | null, landed = true): void {
+  if (!landed) return;
+  const undo = async (): Promise<void> => {
+    const back = await addRule(env, workspaceId, rule.text);
+    if (!rule.on) await editRule(env, back.id, { on: false });
+    if (moves && moves.ids.includes(rule.id)) await orderRules(env, workspaceId, moves.ids.map((id) => (id === rule.id ? back.id : id)));
+  };
+  void loadToast().then((toast) =>
+    toast("Deleted", {
+      action: {
+        label: "Undo",
+        onClick: () => void undo().catch((err: unknown) => void loadToast().then((t) => t.error("Undo did not go through", { description: workErrorWords(err) || undefined }))),
+      },
+    }),
+  );
+}
 
 export type RuleDialogOf = { kind: "new" } | { kind: "rule"; rule: HouseRule } | { kind: "proposal"; proposal: RuleProposal };
 
@@ -86,7 +108,7 @@ function Body({
   const trimmed = text.trim();
   const unchanged = of.kind === "rule" && trimmed === of.rule.text && !reordered;
 
-  const run = async (what: "save" | "delete", work: () => Promise<unknown>): Promise<void> => {
+  const run = async (what: "save" | "delete", work: () => Promise<unknown>): Promise<boolean> => {
     setPending(what);
     setError(null);
     try {
@@ -94,9 +116,11 @@ function Body({
       setPending(null);
       if (close) close(onClose);
       else onClose();
+      return true;
     } catch (err) {
       setError(workErrorWords(err) || "The host did not answer");
       setPending(null);
+      return false;
     }
   };
   const submit = (event: FormEvent): void => {
@@ -150,7 +174,7 @@ function Body({
       <DialogFooter
         start={
           of.kind === "rule" ? (
-            <Button type="button" variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={pending !== null} onClick={() => void run("delete", () => removeRule(env, of.rule.id))}>
+            <Button type="button" variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={pending !== null} onClick={() => void run("delete", () => removeRule(env, of.rule.id)).then((landed) => deleted(env, workspaceId, of.rule, moves, landed))}>
               <BusyLabel busy={pending === "delete"} label="Delete" />
             </Button>
           ) : undefined

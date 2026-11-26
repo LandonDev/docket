@@ -123,7 +123,7 @@ struct MacDevicesSection: View {
             do {
                 try await body(extras)
             } catch {
-                withAnimation(Motion.rowAppear) { actionError = (error as? ActionError)?.message ?? error.localizedDescription }
+                withAnimation(Motion.rowAppear) { actionError = ActionError.wrap(error).message }
             }
         }
     }

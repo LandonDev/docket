@@ -30,6 +30,10 @@ const link = {
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => link } }));
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../lib/native", () => ({ openUrl: (url: string) => host.openUrl(url), thisDesktopInLine: () => "this Mac" }));
+const bridge = vi.hoisted(() => ({ hosts: [] as unknown[], asked: [] as unknown[][] }));
+vi.mock("../../lib/macBridge", () => ({ useMacBridgeHosts: () => bridge.hosts, refreshMacBridgeHosts: async () => bridge.hosts }));
+vi.mock("../../lib/settings/computerName", () => ({ useComputerNames: () => (id: string, said?: string) => ({ name: said ?? id, own: false }) }));
+vi.mock("../../lib/settings/maySheet", () => ({ openMaySheet: (...args: unknown[]) => bridge.asked.push(args) }));
 vi.mock("../../lib/computerSessions", async () => {
   const { useSyncExternalStore } = await import("react");
   const subscribe = (fn: () => void) => {
@@ -45,7 +49,20 @@ vi.mock("../../lib/computerSessions", async () => {
   };
 });
 
-const { ComputerPage } = await import("./Computer");
+const { ComputerPage: Page, appsWords } = await import("./Computer");
+const { ConfirmHost } = await import("../../chrome/ConfirmDialog");
+/** The page with the app's confirm host beside it, as the app mounts it. */
+const ComputerPage = () => (
+  <>
+    <Page />
+    <ConfirmHost />
+  </>
+);
+/** Presses the confirm's verb. */
+const confirmWith = async (verb: string) => {
+  const dialog = await screen.findByRole("alertdialog");
+  await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: verb })));
+};
 
 const SERVICE: ComputerServiceState = { state: "idle", restarts: 0, permissions: null };
 const app = (bundleId: string, name: string | null, classes: ComputerAppVerdict["classes"] = {}): ComputerAppVerdict => ({ bundleId, name, classes, updatedAt: 1 });
@@ -66,6 +83,8 @@ beforeEach(() => {
   host.pushes.clear();
   host.service = SERVICE;
   host.openUrl.mockReset();
+  bridge.hosts = [];
+  bridge.asked = [];
 });
 afterEach(() => {
   cleanup();
@@ -78,8 +97,8 @@ describe("Settings › Computer use", () => {
     host.service = null;
     render(<ComputerPage />);
     expect(firstSection().querySelectorAll("[data-slot=skeleton]").length).toBeGreaterThan(1);
-    expect(within(section("Permissions")).getAllByTestId("permission-skeleton")).toHaveLength(2);
-    expect(section("Apps").querySelector("[aria-busy=true]")).toBeTruthy();
+    expect(within(section("macOS permissions")).getAllByTestId("permission-skeleton")).toHaveLength(2);
+    expect(section("Apps it has learned").querySelector("[aria-busy=true]")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
   });
 
@@ -92,30 +111,29 @@ describe("Settings › Computer use", () => {
     render(<ComputerPage />);
     await settle();
     expect(within(firstSection()).getByRole("alert").textContent).toBe("forbidden: computer.settings.get");
-    expect(within(section("Apps")).getByRole("alert")).toBeTruthy();
+    expect(within(section("Apps it has learned")).getByRole("alert")).toBeTruthy();
     refuse = false;
     fireEvent.click(within(firstSection()).getByRole("button", { name: "Retry" }));
     await settle();
     expect(calls("computer.settings.get")).toHaveLength(2);
-    expect(screen.getByRole("textbox", { name: "Take the screen after minutes" })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Wait after my last input, in minutes" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it.each([
-    ["up", "Running", null],
-    ["off", "Idle", null],
-    ["idle", "Idle", null],
-    ["starting", "Starting", null],
-    ["down", "Down", "Crashed 5 times"],
-    ["unavailable", "Unavailable", "tc-computer is not built"],
-  ] as const)("words the service %s as %s", async (state, word, detail) => {
+    ["up", null],
+    ["off", null],
+    ["idle", null],
+    ["starting", null],
+    ["down", "Crashed 5 times"],
+    ["unavailable", "tc-computer is not built"],
+  ] as const)("shows the helper's row only while it cannot run (%s)", async (state, detail) => {
     host.service = { ...SERVICE, state, reason: state === "unavailable" ? "tc-computer is not built" : undefined, permissions: state === "up" ? GRANTED : null };
     render(<ComputerPage />);
     await settle();
-    const mark = firstSection().querySelector("[data-slot=status-mark]")!;
-    expect(mark.textContent).toContain(word);
-    if (detail) expect(mark.textContent).toContain(detail);
-    expect(!!mark.querySelector("[data-slot=status-glyph]")).toBe(state !== "off" && state !== "idle");
+    const row = document.querySelector('[data-setting="computer.helper"]');
+    expect(!!row).toBe(detail !== null);
+    if (detail) expect(row!.querySelector("[data-slot=status-mark]")!.textContent).toContain(detail);
     expect(!!screen.queryByRole("button", { name: "Try again" })).toBe(state === "down");
   });
 
@@ -127,8 +145,7 @@ describe("Settings › Computer use", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await settle();
     expect(calls("computer.service.retry")).toHaveLength(1);
-    expect(firstSection().querySelector("[data-slot=status-mark]")!.textContent).toContain("Running");
-    expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+    expect(document.querySelector('[data-setting="computer.helper"]')).toBeNull();
   });
 
   it("shows the threshold in minutes and commits milliseconds; a refusal snaps back with the host's line", async () => {
@@ -139,7 +156,7 @@ describe("Settings › Computer use", () => {
     };
     render(<ComputerPage />);
     await settle();
-    const field = screen.getByRole("textbox", { name: "Take the screen after minutes" }) as HTMLInputElement;
+    const field = screen.getByRole("textbox", { name: "Wait after my last input, in minutes" }) as HTMLInputElement;
     expect(field.value).toBe("2");
     fireEvent.focus(field);
     fireEvent.change(field, { target: { value: "5" } });
@@ -153,7 +170,7 @@ describe("Settings › Computer use", () => {
     fireEvent.blur(field);
     await settle();
     expect(field.value).toBe("5");
-    expect(screen.getByText("the host refused it")).toBeTruthy();
+    expect(screen.getByText("The host refused it")).toBeTruthy();
     fireEvent.focus(field);
     fireEvent.change(field, { target: { value: "61" } });
     fireEvent.blur(field);
@@ -162,16 +179,16 @@ describe("Settings › Computer use", () => {
     expect(field.value).toBe("5");
   });
 
-  it("offers Grant… only for a missing grant, opening its pane", async () => {
+  it("lists both grants, Grant… only for a missing one with why in amber, opening its pane", async () => {
     host.handlers["computer.permissions"] = answer({ accessibility: true, screenRecording: false });
     render(<ComputerPage />);
     await settle();
-    const perms = section("Permissions");
+    const perms = section("macOS permissions");
     expect(within(perms).getByText("Granted")).toBeTruthy();
-    expect(within(perms).getByText("Not granted")).toBeTruthy();
-    const grants = within(perms).getAllByRole("button", { name: /^Grant / });
+    expect(within(perms).getByText("Threads cannot see a window without it").className).toContain("text-warning");
+    const grants = within(perms).getAllByRole("button", { name: "Grant…" });
     expect(grants).toHaveLength(1);
-    fireEvent.click(within(perms).getByRole("button", { name: "Grant Screen Recording in System Settings" }));
+    fireEvent.click(grants[0]!);
     expect(host.openUrl).toHaveBeenCalledWith(expect.stringContaining("Privacy_ScreenCapture"));
   });
 
@@ -194,7 +211,7 @@ describe("Settings › Computer use", () => {
       host.service = { ...SERVICE, state: "up", permissions: { accessibility: true, screenRecording: false } };
       host.serviceListeners.forEach((fn) => fn());
     });
-    expect(within(section("Permissions")).getByText("Not granted")).toBeTruthy();
+    expect(within(section("macOS permissions")).getByRole("button", { name: "Grant…" })).toBeTruthy();
     await act(async () => vi.advanceTimersByTime(15000));
     expect(calls("computer.permissions")).toHaveLength(3);
   });
@@ -204,7 +221,7 @@ describe("Settings › Computer use", () => {
     host.handlers["computer.permissions"] = async () => value;
     render(<ComputerPage />);
     await settle();
-    const perms = section("Permissions");
+    const perms = section("macOS permissions");
     expect(within(perms).getByRole("alert").textContent).toBe("Couldn't read the permissions");
     value = GRANTED;
     fireEvent.click(within(perms).getByRole("button", { name: "Retry" }));
@@ -216,12 +233,12 @@ describe("Settings › Computer use", () => {
     host.handlers["computer.settings.get"] = answer({ ...SETTINGS, apps: [...SETTINGS.apps, app("dev.unnamed", null)] });
     render(<ComputerPage />);
     await settle();
-    const rows = [...section("Apps").querySelectorAll<HTMLElement>("[data-slot=page-row]")];
+    const rows = [...section("Apps it has learned").querySelectorAll<HTMLElement>("[data-slot=page-row]")];
     expect(rows.map((r) => r.querySelector("[data-slot=item-title]")!.textContent)).toEqual(["Chrome", "dev.unnamed", "TextEdit"]);
     expect(rows[0].textContent).toContain("May take the screen to click and type");
     expect(rows[1].querySelector("[data-slot=item-description]")).toBeNull();
     expect(rows[2].querySelector("[data-slot=item-description]")).toBeNull();
-    expect(section("Apps").textContent).not.toMatch(/session|process/);
+    expect(section("Apps it has learned").textContent).not.toMatch(/session|process/);
   });
 
   it("forgets one app and every app, Forget all only with two or more", async () => {
@@ -235,22 +252,25 @@ describe("Settings › Computer use", () => {
     await settle();
     expect(calls("computer.verdicts.forget")).toEqual([["computer.verdicts.forget", { bundleId: "com.apple.TextEdit" }]]);
     expect(screen.queryByRole("button", { name: "Forget TextEdit" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Forget all" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Forget all…" })).toBeNull();
     cleanup();
     host.calls = [];
     render(<ComputerPage />);
     await settle();
-    fireEvent.click(screen.getByRole("button", { name: "Forget all" }));
+    fireEvent.click(screen.getByRole("button", { name: "Forget all…" }));
+    await screen.findByRole("alertdialog");
+    expect(calls("computer.verdicts.forget")).toHaveLength(0);
+    await confirmWith("Forget all");
     await settle();
     expect(calls("computer.verdicts.forget")).toEqual([["computer.verdicts.forget", { bundleId: null }]]);
-    expect(within(section("Apps")).getByText("No apps used yet")).toBeTruthy();
+    expect(within(section("Apps it has learned")).getByText("No apps used yet")).toBeTruthy();
   });
 
   it("says no apps in the row's place", async () => {
     host.handlers["computer.settings.get"] = answer({ ...SETTINGS, apps: [] });
     render(<ComputerPage />);
     await settle();
-    expect(section("Apps").querySelector("[data-slot=page-empty]")!.textContent).toBe("No apps used yet");
+    expect(section("Apps it has learned").querySelector("[data-slot=page-empty]")!.textContent).toBe("No apps used yet");
     expect(screen.queryByRole("button", { name: /^Forget/ })).toBeNull();
   });
 
@@ -258,25 +278,24 @@ describe("Settings › Computer use", () => {
     render(<ComputerPage />);
     await settle();
     act(() => host.pushes.forEach((fn) => fn({ push: "computer-settings", settings: { sessionIdleMs: 600_000, activeApp: "brief", keepPictures: true, videoRemote: false, apps: [app("com.apple.Notes", "Notes")] } })));
-    expect((screen.getByRole("textbox", { name: "Take the screen after minutes" }) as HTMLInputElement).value).toBe("10");
+    expect((screen.getByRole("textbox", { name: "Wait after my last input, in minutes" }) as HTMLInputElement).value).toBe("10");
     expect(screen.getByRole("button", { name: "Forget Notes" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Forget TextEdit" })).toBeNull();
   });
 });
 
-describe("Watch from my other devices", () => {
-  const toggle = (): HTMLElement => screen.getByRole("switch", { name: "Watch from my other devices" });
+describe("Let my other devices watch", () => {
+  const toggle = (): HTMLElement => screen.getByRole("switch", { name: "Let my other devices watch" });
 
   it("is one row with a switch, off unless he turned it on, after the pictures row", async () => {
     render(<ComputerPage />);
     await settle();
     const row = toggle().closest("[data-slot=page-row]") as HTMLElement;
-    expect(row.textContent).toContain("Watch from my other devices");
-    expect(row.textContent).toContain("live on your phone and other desktops. Off stops what they are watching.");
+    expect(row.querySelector("[data-slot=item-title]")?.textContent).toBe("Let my other devices watch");
     expect(toggle().getAttribute("aria-checked")).toBe("false");
     expect(within(row).getAllByRole("switch")).toHaveLength(1);
     expect(firstSection().contains(row)).toBe(true);
-    const pictures = screen.getByRole("switch", { name: "Keep pictures of the window" }).closest("[data-slot=page-row]") as HTMLElement;
+    const pictures = screen.getByRole("switch", { name: "Keep pictures of each step" }).closest("[data-slot=page-row]") as HTMLElement;
     expect(pictures.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -295,31 +314,46 @@ describe("Watch from my other devices", () => {
     await act(async () => fireEvent.click(toggle()));
     await settle();
     expect(toggle().getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByText("the host is not connected")).not.toBeNull();
+    expect(screen.getByText("The host is not connected")).not.toBeNull();
   });
 });
 
-describe("Keep pictures of the window", () => {
-  const toggle = (): HTMLElement => screen.getByRole("switch", { name: "Keep pictures of the window" });
+describe("Keep pictures of each step", () => {
+  const toggle = (): HTMLElement => screen.getByRole("switch", { name: "Keep pictures of each step" });
 
-  it("is one row with a switch that reads the setting and says what off does", async () => {
+  it("is one row with a switch that reads the setting", async () => {
     render(<ComputerPage />);
     await settle();
     const row = toggle().closest("[data-slot=page-row]") as HTMLElement;
-    expect(row.textContent).toContain("Keep pictures of the window");
-    expect(row.textContent).toContain("On this Mac: a thread's newest 400, for 30 days after it last used the computer. Off deletes them; the steps and what was read stay.");
+    expect(row.querySelector("[data-slot=item-title]")?.textContent).toBe("Keep pictures of each step");
     expect(toggle().getAttribute("aria-checked")).toBe("true");
     // one control in the row, and it sits in the first section, under the two settings before it
     expect(within(row).getAllByRole("switch")).toHaveLength(1);
     expect(firstSection().contains(row)).toBe(true);
   });
 
-  it("saves the flip and follows the host's answer and its push", async () => {
+  it("asks before off, since off deletes the pictures: Cancel keeps them and sends nothing", async () => {
     host.handlers["computer.settings.set"] = async (params) => ({ ...SETTINGS, ...(params as object) });
     render(<ComputerPage />);
     await settle();
     await act(async () => fireEvent.click(toggle()));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog.textContent).toContain("are deleted");
+    await act(async () => fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" })));
+    await settle();
+    expect(calls("computer.settings.set")).toHaveLength(0);
+    expect(toggle().getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("saves the flip once confirmed, with the mark, and follows the host's answer and its push", async () => {
+    host.handlers["computer.settings.set"] = async (params) => ({ ...SETTINGS, ...(params as object) });
+    render(<ComputerPage />);
+    await settle();
+    await act(async () => fireEvent.click(toggle()));
+    await confirmWith("Delete pictures");
+    await settle();
     expect(calls("computer.settings.set").at(-1)![1]).toEqual({ keepPictures: false });
+    expect(document.querySelector('[data-setting="computer.pictures"] [data-slot=save-mark]')?.getAttribute("data-state")).toBe("saved");
     expect(toggle().getAttribute("aria-checked")).toBe("false");
     // another window turned it back on
     act(() => host.pushes.forEach((fn) => fn({ push: "computer-settings", settings: { ...SETTINGS, keepPictures: true } })));
@@ -333,9 +367,10 @@ describe("Keep pictures of the window", () => {
     render(<ComputerPage />);
     await settle();
     await act(async () => fireEvent.click(toggle()));
+    await confirmWith("Delete pictures");
     await settle();
     expect(toggle().getAttribute("aria-checked")).toBe("true");
-    expect(within(toggle().closest("[data-slot=page-row]") as HTMLElement).getByText("the host is not connected")).toBeTruthy();
+    expect(within(toggle().closest("[data-slot=page-row]") as HTMLElement).getByText("The host is not connected")).toBeTruthy();
   });
 
   it("reads off from a host that has it off", async () => {
@@ -355,16 +390,16 @@ describe("When a step needs the app in front (§26.6)", () => {
     };
     render(<ComputerPage />);
     await settle();
-    const trigger = screen.getByRole("combobox", { name: "When a step needs the app in front" });
-    expect(trigger.textContent).toContain("Bring it forward for a moment");
+    const trigger = screen.getByRole("combobox", { name: "When a step needs an app in front" });
+    expect(trigger.textContent).toContain("Bring it forward briefly");
     await choose(trigger, "Wait until I'm away");
     await settle();
     expect(calls("computer.settings.set")).toEqual([["computer.settings.set", { activeApp: "away" }]]);
     expect(trigger.textContent).toContain("Wait until I'm away");
     refuse = true;
-    await choose(trigger, "Bring it forward for a moment");
+    await choose(trigger, "Bring it forward briefly");
     await settle();
-    expect(screen.getByText("the host refused it")).toBeTruthy();
+    expect(screen.getByText("The host refused it")).toBeTruthy();
   });
 });
 
@@ -378,3 +413,25 @@ async function choose(trigger: HTMLElement, name: string) {
     fireEvent.click(option);
   });
 }
+
+describe("Who may use this Mac's apps", () => {
+  const policy = (over: Record<string, unknown>) => ({ environmentId: "env_box", name: "The box", computer: false, computerLive: 0, computerUnavailable: null, ...over });
+
+  it("says threads here always may, then each linked computer's state, opening what it may do on this Mac", async () => {
+    bridge.hosts = [policy({ computer: true, computerLive: 1 }), policy({ environmentId: "env_pc", name: "PURDUE-LT" })];
+    render(<ComputerPage />);
+    await settle();
+    const who = section("Who may use this Mac's apps");
+    expect(who.querySelector('[data-setting="computer.own"]')?.textContent).toContain("Always");
+    expect(who.textContent).toContain("Allowed, 1 using it now");
+    expect(who.textContent).toContain("Not allowed");
+    fireEvent.click(within(who).getByRole("button", { name: "PURDUE-LT" }));
+    expect(bridge.asked).toContainEqual(["env_pc"]);
+  });
+
+  it("words each state", () => {
+    expect(appsWords({ computer: false, computerLive: 0, computerUnavailable: null })).toBe("Not allowed");
+    expect(appsWords({ computer: true, computerLive: 0, computerUnavailable: null })).toBe("Allowed");
+    expect(appsWords({ computer: true, computerLive: 0, computerUnavailable: "Screen Recording is off" })).toBe("Allowed. Screen Recording is off");
+  });
+});

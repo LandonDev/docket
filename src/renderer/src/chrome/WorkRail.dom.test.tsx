@@ -283,18 +283,19 @@ describe("Today's row in the rail", () => {
 });
 
 describe("the settings list", () => {
-  it("keeps the Work page under its own heading, and lists a Work workspace there only while Work is on", async () => {
+  it("keeps the Work page under its own heading, and lists a job under Jobs only while Work is on", async () => {
     vi.spyOn(registry, "environmentsSnapshot").mockReturnValue([LOCAL]);
     workspaceStore.attach(new FakeLink([CODE, WORK]));
     await flush();
     probe = mountProbe(<SettingsNav section="general" onSelect={() => {}} onClose={() => {}} />);
     const groups = () => [...probe!.container.querySelectorAll('[role="group"]')].map((g) => [...g.querySelectorAll("button")].map((b) => b.textContent?.trim()));
     const off = groups();
-    expect(off.find((g) => g.includes("Work"))).toEqual(["Work"]);
+    expect(off.find((g) => g.includes("Setup"))).toEqual(["Setup"]);
     expect(off.flat()).not.toContain("Purdue Esports");
     probe.act(() => setWorkOn("local", true));
     const on = groups();
-    expect(on.find((g) => g.includes("Work"))).toEqual(["Work", "Connections", "Purdue Esports"]);
+    expect(on.find((g) => g.includes("Digest"))).toEqual(["Setup", "Digest", "Mail", "Files", "Connections"]);
+    expect(on.find((g) => g.includes("Purdue Esports"))).toEqual(["Purdue Esports"]);
     expect(on.find((g) => g.includes("temp-code"))).toEqual(["temp-code"]);
   });
 });

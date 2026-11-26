@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import {
   TURN_PASS_OFF,
   passEnabled,
@@ -7,60 +7,43 @@ import {
 import { linkOfWorkspace } from "../lib/tcserver/projects";
 import { useHostRead } from "../lib/connection/hostRead";
 import type { Link } from "../lib/connection";
-import { Button } from "../components/ui/button";
+import { useLinkMay } from "../lib/linkMay";
+import { settingTitle } from "../lib/settings/map";
+import { BusyLabel, Button } from "../components/ui/button";
 import { ChoiceSelect } from "../components/choice-select";
-import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
+import { PageError, PageRowsSkeleton } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
+import { Switch } from "../components/ui/switch";
+import { FieldRow } from "./DialogField";
+import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
+import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
 
 /**
- * The "completed turn" pass: what an implementation or orchestration thread
- * does after a turn settles and before anything queued. Stored per workspace
- * (`turnpass.set`), with a per-project override the project dialogs edit.
+ * After each turn: what an implementation or orchestration thread does once a turn settles and before anything
+ * queued. Stored per workspace (`turnpass.set`), with a per-project set the project sheet edits.
  */
 
 export const COMMIT_OPTIONS: { value: TurnPass["commit"]; label: string }[] = [
   { value: "off", label: "Off" },
   { value: "commit", label: "Commit" },
-  { value: "push", label: "Commit & push" },
+  { value: "push", label: "Commit and push" },
 ];
 
-const COPY = {
-  verify: { label: "Checks", hint: "Run the project's checks and fix what fails." },
-  // Not "Build": the workspace page's Build section means the command.
-  build: { label: "Fresh build", hint: "Create a build and say where it landed." },
-  commit: { label: "Commit", hint: "Commit the turn's changes to the branch." },
-};
+const commitWords = (commit: TurnPass["commit"]): string => COMMIT_OPTIONS.find((o) => o.value === commit)?.label ?? "Off";
 
-export function TurnPassFields({
-  value,
-  onChange,
-  compact = false,
-}: {
-  value: TurnPass;
-  onChange: (next: TurnPass) => void;
-  /** Small pickers, for dialogs. */
-  compact?: boolean;
-}) {
-  const commit = (
-    <ChoiceSelect
-      label="Commit"
-      size={compact ? "sm" : "default"}
-      value={value.commit}
-      options={COMMIT_OPTIONS}
-      onChange={(commit) => onChange({ ...value, commit })}
-    />
-  );
+/** The three choices as a dialog's rows (the project sheet), each a `FieldRow` like the sheet's others. */
+export function TurnPassFieldRows({ value, onChange }: { value: TurnPass; onChange: (next: TurnPass) => void }) {
   return (
     <>
-      <PageRow title={COPY.verify.label} description={COPY.verify.hint}>
-        <SettingSwitch label={COPY.verify.label} on={value.verify} onChange={(verify) => onChange({ ...value, verify })} />
-      </PageRow>
-      <PageRow title={COPY.build.label} description={COPY.build.hint}>
-        <SettingSwitch label={COPY.build.label} on={value.build} onChange={(build) => onChange({ ...value, build })} />
-      </PageRow>
-      <PageRow title={COPY.commit.label} description={COPY.commit.hint}>
-        {commit}
-      </PageRow>
+      <FieldRow label={settingTitle("ws.checks")}>
+        <Switch aria-label={settingTitle("ws.checks")} checked={value.verify} onCheckedChange={(verify) => onChange({ ...value, verify })} />
+      </FieldRow>
+      <FieldRow label={settingTitle("ws.build")}>
+        <Switch aria-label={settingTitle("ws.build")} checked={value.build} onCheckedChange={(build) => onChange({ ...value, build })} />
+      </FieldRow>
+      <FieldRow label={settingTitle("ws.commit")}>
+        <ChoiceSelect label={settingTitle("ws.commit")} size="sm" value={value.commit} options={COMMIT_OPTIONS} onChange={(commit) => onChange({ ...value, commit })} />
+      </FieldRow>
     </>
   );
 }
@@ -94,12 +77,8 @@ export async function saveTurnPass(
   });
 }
 
-/** The three rows TurnPassFields draws, in their shape. */
-const TURN_PASS_SKELETON = [
-  { description: true, control: "switch" },
-  { description: true, control: "switch" },
-  { description: true },
-] as const;
+/** The three rows, in their shape. */
+const TURN_PASS_SKELETON = [{ control: "switch" }, { control: "switch" }, { control: "select" }] as const;
 
 /** The workspace's host link, or null while the catalog does not know it yet. */
 function linkOrNull(workspaceId: string): Link | null {
@@ -110,15 +89,20 @@ function linkOrNull(workspaceId: string): Link | null {
   }
 }
 
-/** Settings-page group for one workspace's pass; saves on every change.
- *  No answer from the host is the section's error and Retry. */
+/**
+ * A code workspace's After each turn: Run the checks, Make a fresh build, Commit. Each saves at once with the mark; a
+ * refusal puts back what the host last confirmed (unless a newer change is on its way, whose own answer decides) with
+ * the row's red line. No answer to the read is the section's error with Retry. A key that may not set it reads the
+ * values as words.
+ */
 export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
-  // The value the host last confirmed (its answer to the read, or a save it
-  // took), never an optimistic one still in flight; and the newest change.
+  const link = linkOrNull(workspaceId);
+  const may = useLinkMay(link?.environmentId ?? "", "turnpass.set");
+  // The value the host last confirmed (its answer to the read, or a save it took), and the newest change.
   const confirmed = useRef<TurnPass | null>(null);
   const latest = useRef(0);
   const read = useHostRead(
-    linkOrNull(workspaceId),
+    link,
     async () => {
       const pass = (await loadTurnPass(workspaceId)) ?? TURN_PASS_OFF;
       confirmed.current = pass;
@@ -126,45 +110,53 @@ export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
     },
     workspaceId,
   );
+  const checks = useSaved();
+  const build = useSaved();
+  const commit = useSaved();
   const value = read.value;
-  const [error, setError] = useState<string | null>(null);
 
-  const change = (next: TurnPass) => {
+  const change = (saved: Saved, next: TurnPass): Promise<boolean> => {
     const n = ++latest.current;
     read.set(next);
-    setError(null);
-    saveTurnPass(workspaceId, next).then(
-      () => {
+    return saved.run(async () => {
+      try {
+        await saveTurnPass(workspaceId, next);
         confirmed.current = next;
-      },
-      (err) => {
-        // A refusal puts back what the host holds, under its red line, unless
-        // a newer change is on its way (its own answer decides then).
+      } catch (err) {
         if (n === latest.current && confirmed.current) read.set(confirmed.current);
-        setError(err instanceof Error ? err.message : String(err));
-      },
-    );
+        throw err;
+      }
+    });
   };
+  const words = (on: boolean): string => (on ? "On" : "Off");
 
   return (
-    <PageSection
-      title="Completed turn"
-      action={
-        !value && read.error ? (
-          <Button variant="ghost" size="sm" onClick={read.retry}>
-            Retry
-          </Button>
-        ) : null
-      }
-    >
+    <SettingSection of="ws.checks">
       {value ? (
-        <TurnPassFields value={value} onChange={change} />
+        <>
+          <SettingRow id="ws.checks" saved={may ? checks : undefined} description={may ? undefined : words(value.verify)}>
+            {may ? <SettingSwitch label={settingTitle("ws.checks")} on={value.verify} onChange={(verify) => change(checks, { ...value, verify })} /> : null}
+          </SettingRow>
+          <SettingRow id="ws.build" saved={may ? build : undefined} description={may ? undefined : words(value.build)}>
+            {may ? <SettingSwitch label={settingTitle("ws.build")} on={value.build} onChange={(on) => change(build, { ...value, build: on })} /> : null}
+          </SettingRow>
+          <SettingRow id="ws.commit" saved={may ? commit : undefined} description={may ? undefined : commitWords(value.commit)}>
+            {may ? <ChoiceSelect label={settingTitle("ws.commit")} value={value.commit} options={COMMIT_OPTIONS} onChange={(next) => void change(commit, { ...value, commit: next })} /> : null}
+          </SettingRow>
+        </>
       ) : read.error ? (
-        <PageError>{read.error}</PageError>
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" onClick={read.retry}>
+              <BusyLabel busy={false} label="Retry" />
+            </Button>
+          }
+        >
+          {read.error}
+        </PageError>
       ) : (
         <PageRowsSkeleton rows={TURN_PASS_SKELETON} />
       )}
-      {value && error ? <PageError>{error}</PageError> : null}
-    </PageSection>
+    </SettingSection>
   );
 }

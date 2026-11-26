@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { expectModalShape } from "../../chrome/modalShape.testkit";
 
@@ -7,37 +7,63 @@ const linear = vi.hoisted(() => ({
   connected: false,
   pending: null as null | Promise<{ connected: boolean }>,
   save: vi.fn(),
+  disconnect: vi.fn(async () => ({ connected: false })),
   teams: [] as { id: string; name: string; key: string }[],
 }));
-const update = vi.hoisted(() => ({ snapshot: { phase: "idle", currentVersion: "1.0.300" } as Record<string, unknown> }));
-
-vi.mock("../../lib/linear", () => ({
+vi.mock("../../lib/linear", async (original) => ({
+  ...(await original<typeof import("../../lib/linear")>()),
   linearConnected: () => linear.pending ?? Promise.resolve({ connected: linear.connected }),
   saveLinearToken: (...args: unknown[]) => linear.save(...args),
-  disconnectLinear: async () => ({ connected: false }),
+  disconnectLinear: () => linear.disconnect(),
   listLinearTeams: async () => linear.teams,
-  loadHiddenLinearTeamIds: () => ["t2"],
-  saveHiddenLinearTeamIds: vi.fn(),
   notifyLinearChange: vi.fn(),
 }));
-const link = vi.hoisted(() => ({ environmentId: "local", connected: true, onOpen: () => () => {} }));
-vi.mock("../../lib/connection", () => ({ registry: { primary: () => link } }));
+
+/** The computer's answers: Keep awake's read and write. */
+const host = vi.hoisted(() => ({
+  power: { mode: "while-working", supported: true, holding: false, onBattery: false } as Record<string, unknown>,
+  refuse: null as string | null,
+  calls: [] as { method: string; params: unknown }[],
+}));
+const link = vi.hoisted(() => ({
+  environmentId: "local",
+  connected: true,
+  onOpen: () => () => {},
+  request: async (method: string, params: unknown) => {
+    host.calls.push({ method, params });
+    if (method === "power.status") return host.power;
+    if (method === "power.settings.set") {
+      if (host.refuse) throw new Error(host.refuse);
+      host.power = { ...host.power, mode: (params as { keepAwake: string }).keepAwake };
+      return host.power;
+    }
+    throw new Error(`no ${method}`);
+  },
+}));
+vi.mock("../../lib/connection", async (original) => ({ ...(await original<typeof import("../../lib/connection")>()), registry: { primary: () => link, primaryEnvironmentId: "local" } }));
+vi.mock("../../lib/settings/computerName", async (original) => ({
+  ...(await original<typeof import("../../lib/settings/computerName")>()),
+  useComputerName: () => ({ name: "MacBook Pro", own: true }),
+}));
 vi.mock("../../lib/githubTasks", () => ({ clearInboxCache: vi.fn() }));
-vi.mock("../../lib/updateStore", () => ({
-  updateStore: { install: vi.fn(), check: vi.fn() },
-  useUpdateSnapshot: () => update.snapshot,
+vi.mock("../../lib/sounds", async (original) => ({ ...(await original<typeof import("../../lib/sounds")>()), playCue: vi.fn() }));
+const probe = vi.hoisted(() => ({ answer: "installed" as "installed" | "none" | "pending" | "refused", reads: 0 }));
+vi.mock("../../lib/harness/availability", () => ({
+  readHarnessAvailability: () => {
+    probe.reads += 1;
+    if (probe.answer === "pending") return new Promise(() => {});
+    if (probe.answer === "refused") return Promise.reject(new Error("doctor.get failed: no handler"));
+    const on = probe.answer === "installed";
+    return Promise.resolve({ claude: on, codex: on, cursor: false, grok: false, opencode: false, pi: false, omp: false, fx: false, muse: false });
+  },
 }));
-const sounds = vi.hoisted(() => ({ save: vi.fn() }));
-vi.mock("../../lib/sounds", () => ({ loadSoundsEnabled: () => true, saveSoundsEnabled: sounds.save, playCue: vi.fn() }));
-vi.mock("../chunks", () => ({ releaseNotesChunk: { intent: {} } }));
-vi.mock("../../lib/native", async (original) => ({
-  ...(await original<typeof import("../../lib/native")>()),
-  isWebMode: () => false,
-  openUrl: vi.fn(),
-}));
+vi.mock("../../chrome/HarnessIcon", () => ({ HarnessIcon: () => <svg /> }));
+const web = vi.hoisted(() => ({ on: false }));
+vi.mock("../../lib/native", async (original) => ({ ...(await original<typeof import("../../lib/native")>()), isWebMode: () => web.on }));
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 
-const { GeneralPage, updateActionLabel } = await import("./General");
+const { GeneralPage } = await import("./General");
+const { ConfirmHost } = await import("../../chrome/ConfirmDialog");
 
 function mockLocalStorage() {
   const data = new Map<string, string>();
@@ -56,224 +82,243 @@ function mockLocalStorage() {
   });
 }
 
+const flush = async (): Promise<void> => {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+};
+
+/** Picks `name` in the select labelled `label`. */
+const choose = async (label: string, name: string): Promise<void> => {
+  fireEvent.click(screen.getByLabelText(label));
+  await flush();
+  const option = await screen.findByRole("option", { name });
+  fireEvent.pointerDown(option, { pointerType: "mouse", button: 0 });
+  fireEvent.pointerUp(option, { pointerType: "mouse", button: 0 });
+  fireEvent.mouseUp(option, { button: 0 });
+  fireEvent.click(option);
+  await flush();
+};
+
 beforeEach(() => {
   mockLocalStorage();
   linear.connected = false;
+  linear.pending = null;
   linear.teams = [];
   linear.save.mockReset();
-  update.snapshot = { phase: "idle", currentVersion: "1.0.300" };
+  linear.disconnect.mockClear();
+  host.power = { mode: "while-working", supported: true, holding: false, onBattery: false };
+  host.refuse = null;
+  host.calls = [];
+  probe.answer = "installed";
+  probe.reads = 0;
+  web.on = false;
 });
 afterEach(cleanup);
 
-const page = () => render(<GeneralPage onOpenWhatsNew={() => {}} />);
+const page = () =>
+  render(
+    <>
+      <GeneralPage />
+      <ConfirmHost />
+    </>,
+  );
 
 describe("General", () => {
-  it("lays its sections out in order", async () => {
+  it("lays its sections out in order, with no About: the version is Updates'", async () => {
     page();
-    await act(async () => {});
-    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual([
-      "Transcript",
-      "Composer",
-      "Linear",
-      "Extras",
-      "About",
-    ]);
+    await flush();
+    expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(["Transcript", "Composer", "Sounds and power", "Inbox"]);
+    expect(screen.queryByText("Release notes")).toBeNull();
   });
 
-  it("saves a switch's setting", async () => {
+  it("writes each row kept in this window to its own key at once, with no save mark", async () => {
     page();
-    await act(async () => {});
-    const cues = screen.getByRole("switch", { name: "Sounds" });
-    expect(cues.getAttribute("aria-checked")).toBe("true");
-    fireEvent.click(cues);
-    expect(sounds.save).toHaveBeenCalledWith(false);
-    expect(cues.getAttribute("aria-checked")).toBe("false");
+    await flush();
+    fireEvent.click(screen.getByRole("switch", { name: "Keep my prompt at the top" }));
+    expect(localStorage.getItem("docket.transcriptAnchor")).not.toBeNull();
+    fireEvent.click(screen.getByRole("switch", { name: "Sounds" }));
+    expect(localStorage.getItem("docket.sounds")).toBe("0");
+    await choose("Enter while a thread is working", "Queue");
+    expect(localStorage.getItem("docket.midTurnDefault")).toBe("queue");
+    expect(document.querySelector('[data-setting="general.sounds"] [data-slot=save-mark]')).toBeNull();
   });
 
-  it("has no switches for the retired rail features", async () => {
+  it("offers Steer first and says what each does", async () => {
     page();
-    await act(async () => {});
-    for (const name of ["Rail", "Notes", "Working agents"]) expect(screen.queryByText(name)).toBeNull();
+    await flush();
+    expect(screen.getByText(/Steer sends into the running turn, Queue waits for it\./)).toBeTruthy();
   });
 
-  it("connects Linear in a dialog: Enter checks the key, a refusal stays in the dialog", async () => {
-    let refuse: (error: Error) => void = () => {};
-    linear.save.mockReturnValue(new Promise((_, reject) => (refuse = reject)));
-    page();
-    await act(async () => {});
-    // The row has one control and no field of its own.
-    expect(screen.queryByLabelText("API key")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Connect…" }));
-    const field = await screen.findByLabelText("API key");
-    expectModalShape(screen.getByRole("dialog", { name: "Connect Linear" }));
-    fireEvent.change(field, { target: { value: "lin_api_x" } });
-    fireEvent.keyDown(field, { key: "Enter" });
-    expect(linear.save).toHaveBeenCalledWith("local", "lin_api_x");
-    expect(screen.getByRole("button", { name: /Connect$/ }).querySelector("[data-slot=spinner]")).toBeTruthy();
-    await act(async () => refuse(new Error("That key was refused.")));
-    expect(screen.getByText("That key was refused.").className).toContain("text-destructive");
-    expect(screen.getByRole("dialog", { name: "Connect Linear" })).toBeTruthy();
-  });
-
-  it("closes the dialog once the key is taken, and the row's control becomes Disconnect", async () => {
-    linear.save.mockResolvedValue(undefined);
-    page();
-    await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Connect…" }));
-    fireEvent.change(await screen.findByLabelText("API key"), { target: { value: "lin_api_x" } });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Connect" }));
-    });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
-    expect(screen.queryByText(/Create a personal key/)).toBeNull();
-  });
-
-  it("says where to make a Linear key in its dialog only, and nothing under Sounds", async () => {
-    page();
-    await act(async () => {});
-    expect(screen.queryByText(/Create a personal key/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Connect…" }));
-    expect(await screen.findByText(/Create a personal key/)).toBeTruthy();
-    expect(screen.queryByText(/Short cues/)).toBeNull();
-  });
-
-  it("lists the teams with a switch each, as every on/off setting is, hidden ones off", async () => {
-    linear.connected = true;
-    linear.teams = [
-      { id: "t1", name: "Core", key: "COR" },
-      { id: "t2", name: "Web", key: "WEB" },
-    ];
-    page();
-    await waitFor(() => screen.getByRole("region", { name: "Teams in the inbox" }));
-    expect(screen.getByRole("switch", { name: "Core" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("switch", { name: "Web" }).getAttribute("aria-checked")).toBe("false");
-    expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
-  });
-
-  it("names the release action for each updater phase", () => {
-    const plain = { canApply: true, retry: false };
-    expect(updateActionLabel("idle", plain)).toBe("Check for updates");
-    expect(updateActionLabel("available", plain)).toBe("Update");
-    expect(updateActionLabel("available", { canApply: false, retry: false })).toBe("Check for updates");
-    expect(updateActionLabel("ready", plain)).toBe("Restart");
-    expect(updateActionLabel("error", { canApply: true, retry: true })).toBe("Retry");
-  });
-
-  it("reserves the download label before Update starts", async () => {
-    update.snapshot = { phase: "available", currentVersion: "1.0.300", availableVersion: "1.0.301", canApply: true };
-    page();
-    await act(async () => {});
-    const button = screen.getByRole("button", { name: "Update" });
-    expect(button.querySelector("[data-slot=busy-label]")?.getAttribute("data-busy-text")).toBe("Check for updates");
-    expect(button.querySelector("[data-slot=spinner]")).toBeNull();
-  });
-
-  it("draws the release row with its version and one updater button in every phase", async () => {
-    const phases: Record<string, unknown>[] = [
-      { phase: "idle", currentVersion: "1.0.300", canApply: true },
-      { phase: "checking", currentVersion: "1.0.300", canApply: true },
-      { phase: "available", currentVersion: "1.0.300", availableVersion: "1.0.301", canApply: true },
-      { phase: "downloading", currentVersion: "1.0.300", availableVersion: "1.0.301", percent: 10, canApply: true },
-      { phase: "ready", currentVersion: "1.0.300", availableVersion: "1.0.301", canApply: true },
-    ];
-    for (const snapshot of phases) {
-      update.snapshot = snapshot;
+  describe("Model picker shows", () => {
+    it("names the agent apps shown, and opens a dialog of a switch each that writes the hidden list", async () => {
       page();
-      await act(async () => {});
-      const row = document.querySelector("[data-slot=page-row] [class*=font-mono]")?.closest("[data-slot=page-row]") as HTMLElement;
-      expect(row.textContent).toContain("1.0.300");
-      expect(row.querySelectorAll("button")).toHaveLength(1);
+      await flush();
+      const row = document.querySelector('[data-setting="general.picker"]') as HTMLElement;
+      expect(row.textContent).toContain("Claude Code and Codex");
+      fireEvent.click(within(row).getByRole("button", { name: "Model picker shows" }));
+      const dialog = await screen.findByRole("dialog", { name: "Model picker shows" });
+      expectModalShape(dialog, { cancel: false });
+      const switches = within(dialog).getAllByRole("switch");
+      expect(switches).toHaveLength(2);
+      fireEvent.click(switches[0]!);
+      expect(JSON.parse(localStorage.getItem("docket.hiddenPickerProviders") ?? "[]")).toEqual(["claude"]);
+      expect(row.textContent).toContain("Codex");
+      expect(row.textContent).not.toContain("Claude Code");
+    });
+
+    it("holds the dialog's rows in their shape until the computer answers", async () => {
+      probe.answer = "pending";
+      page();
+      await flush();
+      fireEvent.click(screen.getByRole("button", { name: "Model picker shows" }));
+      const dialog = await screen.findByRole("dialog", { name: "Model picker shows" });
+      expect(within(dialog).queryAllByRole("switch")).toHaveLength(0);
+      expect([...dialog.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")].map((r) => r.dataset.control)).toEqual(["switch", "switch"]);
+    });
+
+    it("says a refused read with Retry in the dialog, never as if no agent app were installed", async () => {
+      probe.answer = "refused";
+      page();
+      await flush();
+      fireEvent.click(screen.getByRole("button", { name: "Model picker shows" }));
+      const dialog = await screen.findByRole("dialog", { name: "Model picker shows" });
+      expect((await within(dialog).findByRole("alert")).textContent).toBe("doctor.get failed: no handler");
+      probe.answer = "installed";
+      fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+      expect(await within(dialog).findAllByRole("switch")).toHaveLength(2);
+      expect(probe.reads).toBe(2);
+    });
+
+    it("leaves the row out only when the computer answered with none", async () => {
+      probe.answer = "none";
+      page();
+      await flush();
+      expect(document.querySelector('[data-setting="general.picker"]')).toBeNull();
+    });
+  });
+
+  describe("Keep this Mac awake", () => {
+    it("asks this computer, says On now while held, and writes power.settings.set with the save mark", async () => {
+      host.power = { ...host.power, holding: true };
+      page();
+      await flush();
+      const row = document.querySelector('[data-setting="general.awake"]') as HTMLElement;
+      expect(row.querySelector("[data-slot=item-title]")?.textContent).toBe("Keep this Mac awake");
+      expect(row.textContent).toContain("On now");
+      await choose("Keep this Mac awake", "Never");
+      expect(host.calls).toContainEqual({ method: "power.settings.set", params: { keepAwake: "never" } });
+      expect(row.querySelector("[data-slot=save-mark]")?.getAttribute("data-state")).toBe("saved");
+    });
+
+    it("snaps back and says why when the computer refuses", async () => {
+      host.refuse = "forbidden: power.settings.set needs admin";
+      page();
+      await flush();
+      await choose("Keep this Mac awake", "Never");
+      const row = document.querySelector('[data-setting="general.awake"]') as HTMLElement;
+      expect(row.querySelector("[class*=text-destructive]")?.textContent).toBeTruthy();
+      expect(screen.getByLabelText("Keep this Mac awake").textContent).toContain("While threads work");
+    });
+
+    it("is absent where the computer cannot, and at /ui", async () => {
+      host.power = { ...host.power, supported: false };
+      page();
+      await flush();
+      expect(document.querySelector('[data-setting="general.awake"]')).toBeNull();
       cleanup();
-    }
-    update.snapshot = { phase: "ready", currentVersion: "1.0.300", availableVersion: "1.0.301", canApply: true };
-    page();
-    await act(async () => {});
-    expect(screen.getByRole("button", { name: "Restart" }).dataset.variant).toBe("default");
+      host.power = { ...host.power, supported: true };
+      web.on = true;
+      host.calls = [];
+      page();
+      await flush();
+      expect(document.querySelector('[data-setting="general.awake"]')).toBeNull();
+      expect(host.calls.some((call) => call.method === "power.status")).toBe(false);
+    });
   });
 
-  it("ends a failed update's line with a link to the installer", async () => {
-    update.snapshot = { phase: "error", currentVersion: "1.0.300", error: "The signature did not match.", canApply: true };
-    page();
-    await act(async () => {});
-    const native = await import("../../lib/native");
-    const link = screen.getByRole("button", { name: "Download the installer" });
-    expect(link.dataset.variant).toBe("link");
-    expect(link.closest("[class*=text-destructive]")?.textContent).toContain("The signature did not match.");
-    fireEvent.click(link);
-    expect(native.openUrl).toHaveBeenCalled();
-  });
+  describe("Linear", () => {
+    it("connects in a dialog: Enter checks the key, a refusal stays in the dialog", async () => {
+      let refuse: (error: Error) => void = () => {};
+      linear.save.mockReturnValue(new Promise((_, reject) => (refuse = reject)));
+      page();
+      await flush();
+      expect(screen.queryByLabelText("API key")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Connect…" }));
+      const field = await screen.findByLabelText("API key");
+      expectModalShape(screen.getByRole("dialog", { name: "Connect Linear" }));
+      fireEvent.change(field, { target: { value: "lin_api_x" } });
+      fireEvent.keyDown(field, { key: "Enter" });
+      expect(linear.save).toHaveBeenCalledWith("local", "lin_api_x");
+      await act(async () => refuse(new Error("That key was refused.")));
+      expect(screen.getByText("That key was refused.").className).toContain("text-destructive");
+      expect(screen.getByRole("dialog", { name: "Connect Linear" })).toBeTruthy();
+    });
 
-  it("opens the bundled release notes, or a waiting update's from the feed", async () => {
-    const open = vi.fn();
-    render(<GeneralPage onOpenWhatsNew={open} />);
-    await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Open" }));
-    expect(open).toHaveBeenCalledWith(expect.any(String), expect.anything());
-    expect(open.mock.calls[0][0]).not.toBe("1.0.301");
-    cleanup();
-    open.mockClear();
-    update.snapshot = { phase: "available", currentVersion: "1.0.300", availableVersion: "1.0.301", notes: "Faster.", canApply: true };
-    render(<GeneralPage onOpenWhatsNew={open} />);
-    await act(async () => {});
-    expect(screen.getByText("For 1.0.301")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Open" }));
-    expect(open).toHaveBeenCalledWith("1.0.301", "Faster.");
-  });
+    it("names its computer once connected, and Disconnect… asks first with what stops working", async () => {
+      linear.save.mockResolvedValue(undefined);
+      page();
+      await flush();
+      fireEvent.click(screen.getByRole("button", { name: "Connect…" }));
+      fireEvent.change(await screen.findByLabelText("API key"), { target: { value: "lin_api_x" } });
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Connect" })));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+      expect(screen.getByText("Connected on this Mac")).toBeTruthy();
+      const disconnect = screen.getByRole("button", { name: "Disconnect…" });
+      expect(disconnect.dataset.variant).toBe("ghost");
+      fireEvent.click(disconnect);
+      const confirm = await screen.findByRole("alertdialog");
+      expect(confirm.textContent).toContain("The inbox stops showing Linear issues");
+      expect(linear.disconnect).not.toHaveBeenCalled();
+      await act(async () => fireEvent.click(within(confirm).getByRole("button", { name: "Disconnect" })));
+      await flush();
+      expect(linear.disconnect).toHaveBeenCalledOnce();
+      await waitFor(() => expect(screen.getByRole("button", { name: "Connect…" })).toBeTruthy());
+    });
 
-  it("names a ready code update and restarts into it, beside the version with its commit", async () => {
-    update.snapshot = { phase: "ready", currentVersion: "1.0.300 + 3f9c2ab", codeSubject: "Fix the rail's spacing", canApply: true };
-    page();
-    await act(async () => {});
-    expect(screen.getByText("Code update: Fix the rail's spacing. Restart to finish.")).toBeTruthy();
-    expect(screen.getByText("1.0.300 + 3f9c2ab")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
-    const store = await import("../../lib/updateStore");
-    expect(store.updateStore.install).toHaveBeenCalled();
-    cleanup();
-    update.snapshot = { phase: "ready", currentVersion: "1.0.300", codeSubject: "Pack the built tree of each green commit…", canApply: true };
-    page();
-    await act(async () => {});
-    expect(screen.getByText("Code update: Pack the built tree of each green commit… Restart to finish.")).toBeTruthy();
-  });
+    it("counts the teams shown and opens a dialog of a switch each, writing the hidden list", async () => {
+      linear.connected = true;
+      linear.teams = [
+        { id: "t1", name: "Core", key: "COR" },
+        { id: "t2", name: "Web", key: "WEB" },
+      ];
+      localStorage.setItem("docket.linearHiddenTeams", JSON.stringify(["t2"]));
+      page();
+      await flush();
+      const row = document.querySelector('[data-setting="general.linearTeams"]') as HTMLElement;
+      expect(row.textContent).toContain("1 of 2");
+      fireEvent.click(within(row).getByRole("button", { name: "Linear teams in the inbox" }));
+      const dialog = await screen.findByRole("dialog", { name: "Linear teams in the inbox" });
+      expect(within(dialog).getByRole("switch", { name: "Core" }).getAttribute("aria-checked")).toBe("true");
+      const web = within(dialog).getByRole("switch", { name: "Web" });
+      expect(web.getAttribute("aria-checked")).toBe("false");
+      fireEvent.click(web);
+      expect(JSON.parse(localStorage.getItem("docket.linearHiddenTeams") ?? "[]")).toEqual([]);
+      expect(row.textContent).toContain("2 of 2");
+    });
 
-  it("shows the download's progress", async () => {
-    update.snapshot = { phase: "downloading", currentVersion: "1.0.300", availableVersion: "1.0.301", percent: 40, canApply: true };
-    page();
-    await act(async () => {});
-    expect(screen.getByRole("progressbar", { name: "Download" }).getAttribute("aria-valuenow")).toBe("40");
-  });
+    it("holds the row in its shape until the computer says whether it is connected", async () => {
+      let answer: (status: { connected: boolean }) => void = () => {};
+      linear.pending = new Promise((resolve) => (answer = resolve));
+      page();
+      const section = screen.getByRole("region", { name: "Inbox" });
+      expect(section.querySelector("[data-slot=page-row-skeleton]")).toBeTruthy();
+      await act(async () => answer({ connected: true }));
+      expect(screen.getByRole("button", { name: "Disconnect…" })).toBeTruthy();
+    });
 
-  it("holds the Linear row in its shape until the host says whether it is connected", async () => {
-    let answer: (status: { connected: boolean }) => void = () => {};
-    linear.pending = new Promise((resolve) => (answer = resolve));
-    page();
-    const section = screen.getByRole("region", { name: "Linear" });
-    expect(section.querySelector("[data-slot=page-row-skeleton]")).toBeTruthy();
-    expect(screen.queryByLabelText("API key")).toBeNull();
-    await act(async () => answer({ connected: true }));
-    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
-    linear.pending = null;
-  });
-
-  it("never offers Connect… when linear.status fails: the error and Retry, which asks again", async () => {
-    linear.pending = Promise.reject(new Error("The host did not answer"));
-    linear.pending.catch(() => {});
-    linear.connected = true;
-    page();
-    await act(async () => {});
-    const section = screen.getByRole("region", { name: "Linear" });
-    expect(screen.queryByRole("button", { name: "Connect…" })).toBeNull();
-    expect(section.querySelector("[role=alert]")?.textContent).toBe("The host did not answer");
-    linear.pending = null;
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
-    expect(screen.getByRole("button", { name: "Disconnect" })).toBeTruthy();
-  });
-
-  it("leaves Plans to Thread defaults", async () => {
-    page();
-    await act(async () => {});
-    expect(screen.queryByRole("region", { name: "Plans" })).toBeNull();
+    it("never offers Connect… when the read fails: the error and Retry, which asks again", async () => {
+      linear.pending = Promise.reject(new Error("The host did not answer"));
+      linear.pending.catch(() => {});
+      linear.connected = true;
+      page();
+      await flush();
+      const section = screen.getByRole("region", { name: "Inbox" });
+      expect(screen.queryByRole("button", { name: "Connect…" })).toBeNull();
+      expect(section.querySelector("[role=alert]")?.textContent).toBe("The host did not answer");
+      linear.pending = null;
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+      expect(screen.getByRole("button", { name: "Disconnect…" })).toBeTruthy();
+    });
   });
 });

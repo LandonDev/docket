@@ -4,7 +4,17 @@ import type { SkillMeta, SkillsList } from "@shared/contract-skills";
 import type { Link } from "../../../lib/connection";
 import { useHostRead } from "../../../lib/connection/hostRead";
 import { useRecheckWhileOffline } from "../../../lib/settingsHome";
+import { registry } from "../../../lib/connection";
 import { byNameThenScope, useAskAgainOnLinks } from "../addons/useAddons";
+import { searchNames } from "../parts/searchNames";
+
+/** Every skill's name for Settings' search (`useSearchResults`), each opening Skills. */
+export const skillNames = searchNames("skills", "Everywhere, Skills", () =>
+  registry
+    .primary()
+    .request<SkillsList>("skills.list", { workspaceId: null })
+    .then((list) => list.skills.map((skill) => skill.name)),
+);
 
 export interface SkillsPageData {
   /** sorted by name, then the global row before a workspace's */
@@ -58,6 +68,9 @@ export function useSkillsPage(link: Link) {
   );
 
   const value = main.value;
+  useEffect(() => {
+    if (value) skillNames.set(value.skills.map((skill) => skill.name));
+  }, [value]);
   const skills = useMemo(() => (value ? [...value.skills].sort(byNameThenScope) : []), [value]);
   const data: SkillsPageData | undefined = value ? { skills, home: value.home } : undefined;
   return { data, error: main.error, retry, replaceRow, dropRow };

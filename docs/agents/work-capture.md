@@ -70,7 +70,8 @@ A frame change in the main process, kept small:
   window. Default: ⌘⇧Space on macOS, Alt+Shift+Space on Windows and Linux
   (`captureKeyDefault`; Spotlight, the input menu, Finder's search, Word's
   no-break space and the window menu all take the others). He sets it in
-  Settings → Work → Capture key (`CaptureKeyRow`, work/capture/): press the
+  Settings → Shortcuts → From any app → Open capture (`CaptureKeyRow`,
+  work/capture/; on a desktop with Work on for that computer): press the
   button, then the keys; Escape keeps the key, Delete turns it off. A key
   another app holds is refused and the one before stays. Kept in
   `<userData>/capture.json` (`{key}`; `null` is off).

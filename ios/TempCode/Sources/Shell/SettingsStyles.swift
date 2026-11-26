@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// The one SwiftUI piece Settings, Hosts and the pairing sheet share. The
+/// The SwiftUI pieces Settings, Computers and the sign-in sheet share. The
 /// words they say (the connection word, the fixes, the build line, the
 /// capability titles) are the client package's `Shell/HostPresentation.swift`,
 /// where they have tests.
@@ -24,5 +24,34 @@ struct InlineFieldError: View {
         }
         .foregroundStyle(Tint.destructive)
         .accessibilityIdentifier("field-error")
+    }
+}
+
+/// A section's rows while its first read is out: the rows' own shape,
+/// redacted, so the section holds its place instead of arriving late and
+/// pushing the screen down (docs/IOS-DESIGN.md "Settings"). `labels` are
+/// the words the rows will carry, so the bones are the right length; one
+/// "Loading" for VoiceOver stands for all of them.
+struct SettingsPlaceholderRows: View {
+    let labels: [String]
+    /// A trailing switch's shape (Away, Work's switches) in place of a value.
+    var toggles = false
+
+    var body: some View {
+        ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
+            Group {
+                if toggles {
+                    // The system's own switch, off and still: the row is the shape it will be.
+                    Toggle(isOn: .constant(false)) { Text(label) }
+                        .disabled(true)
+                } else {
+                    LabeledContent(label) { Text("Value") }
+                }
+            }
+            .redacted(reason: .placeholder)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(verbatim: index == 0 ? "Loading" : ""))
+            .accessibilityHidden(index > 0)
+        }
     }
 }

@@ -29,7 +29,7 @@ export const winvm: Source = {
     const st = await env.call<WinvmState>('work.winvm.state', {})
     const tells: Tell[] = []
     if (!st.cannot && st.state === 'none' && st.error) {
-      tells.push({ kind: 'winvm.failed', workspaceId: null, title: "The Windows VM's setup failed", detail: st.error, key: 'winvm:setup', open: { settings: 'work' } })
+      tells.push({ kind: 'winvm.failed', workspaceId: null, title: "The Windows VM's setup failed", detail: st.error, key: 'winvm:setup', open: { settings: 'winvm' } })
     }
     return tells
   }

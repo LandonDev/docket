@@ -407,23 +407,23 @@ none of them. The link rides request bodies alone and lives in component state
 until the setup starts. Shapes: `SetupItems`, `SetupStep`, `SetupPeek`,
 `SetupState`, `SetupSeeds`, `ComputersAnswer` in contract-devices.ts.
 
-- **Computers** (Settings → Hosts, under Clients; `surfaces/settings/hosts/Computers.tsx`).
-  The giver's row ("Giver"), the box's row (what it holds, from the giver's rows
-  alone, `boxHolds` in giverDevices.ts, and the box link's `lastSyncAt`; no
-  actions), then each given computer: what it holds by provider ("2 Claude, 1
-  Codex"), paused, when it synced, Stop or Start, Remove behind a confirm. While
-  a removal waits the row says "Waiting for <name> to be in touch" and has no
-  actions. A refusal is the row's red line. Read again on each computer push.
-  The heading's verb is **Set up a computer…** on the giver (its saved box key
-  is the giver record's, `isGiverHere`) and **Use a setup link…** anywhere else.
+- **Set up from this Mac** (on the given computer's own page in Settings; `surfaces/settings/computers/SetUpHere.tsx`).
+  What it was given by provider ("2 Claude, 1 Codex"), paused, when it synced,
+  Stop… (it asks first: signed out of every account until Start) or Start, and
+  Remove… behind a confirm. While a removal waits the row says "Waiting for
+  <name> to be in touch" and has no actions. A refusal is the row's red line.
+  Read again on each computer push. Setting a computer up and using a setup
+  link start from Add a computer… (lib/settings/addComputer.ts).
 - **Sign in to LifeOS** (work/shell/settings.tsx) offers the device token
   field for the window's own host alone: `setToken` is local-only.
-- **Set up a computer…** (`dialogs/SetupComputerDialog.tsx`): Name; Link to the
+- **Set up a new computer** (a way of Add a computer…,
+  `surfaces/settings/computers/setup.tsx`): Name; It gets: Link to the
   box (ticked, not his to untick); Your accounts; LifeOS signed in, off with a
   tip while this Mac's Work is not signed in (`work.lifeos.status`), and Outlook
   and Teams reader under it; Folders in Files with each Work workspace, all
-  ticked. **Make link** shows the link with Copy and "Ends in m:ss"; Cancel
-  withdraws it (`devices.setup.cancel`), Done and Escape keep it.
+  ticked. **Make the link** shows the link with Copy and "One use. Ends in
+  m:ss." under the title; Cancel the link withdraws it (`devices.setup.cancel`),
+  Done and Escape keep it.
 - **The Allow notice** (`chrome/ComputerAllowToasts.tsx`, with the first screen in
   `surfaces/setup/SetupHost.tsx`, the `setupHost` chunk App mounts on the desktop; none of the setup's
   modules is in the first paint, `NEVER_IN_ENTRY` in scripts/check-bundle-size.ts): on
@@ -484,7 +484,7 @@ LifeOS backend on :3330 and the SMB share on :44500 running (the script's header
 pictures and times, is .temp-code/plans/landed/pc-setup/rig/.
 
 What the run showed that setup does not do: the PC's bridge for the box stays Off, so the box cannot read J: until
-he sets Settings → Hosts → Mac bridge for the box → Access → Read on the PC; and Add folders… opens the native
+he sets, on the PC, Settings → Sharing → What the box may do on this PC → Files and commands → Read; and Add folders… opens the native
 picker, which the run did not drive (it sends the same pick through `devices.setup.folders`).
 
 

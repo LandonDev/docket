@@ -11,7 +11,7 @@ import { CheckRow, Field, FieldRow } from "./DialogField";
 import { Dialog } from "@renderer/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
 import { Skeleton } from "@renderer/components/ui/skeleton";
-import { PageRow, PageRowsSkeleton } from "@renderer/components/page";
+import { PageRowsSkeleton } from "@renderer/components/page";
 import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
 import { START_ON_OPTIONS } from "../lib/tcserver/defaults";
 import { useThreadDefaults } from "../lib/tcserver/workspaces";
@@ -21,8 +21,9 @@ import { Input } from "@renderer/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import { ChoiceToggle } from "../components/choice-toggle";
 import { BUILD_EMPTY, BuildFields, buildOrNull } from "./rail/buildSettings";
-import { ConfirmDialog, DialogFooter as Footer, ErrorLine, errorText } from "./ConfirmDialog";
-import { TurnPassFields, loadTurnPass, saveTurnPass } from "./TurnPassFields";
+import { ConfirmDialog, DialogFooter as Footer, ErrorLine, confirmAction } from "./ConfirmDialog";
+import { COMMIT_OPTIONS, TurnPassFieldRows, loadTurnPass, saveTurnPass } from "./TurnPassFields";
+import { settingTitle } from "../lib/settings/map";
 import { PlanSettingsFields } from "./PlanSettingsFields";
 import { savePlanSettings, samePlanSettings, usePlanSettings, usePlanSettingsError } from "../lib/tcserver/plans";
 import type { PlanSettings } from "@server/shared/plans";
@@ -30,7 +31,8 @@ import { ReviewFields, saveReviewSettings, useReviewScope } from "./ReviewFields
 import { DEFAULT_REVIEW_SETTINGS, type ReviewSettings } from "@server/shared/review";
 import { AccountPinFields, projectInheritLabel } from "./AccountPinFields";
 import { registry } from "../lib/connection";
-import { useLinkMay } from "../lib/linkMay";
+import { managedElsewhere, useLinkMay } from "../lib/linkMay";
+import { refusalWords } from "../lib/settingsHome";
 import { useAccounts } from "../stores/accounts";
 import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 import type { BuildConfig } from "@server/shared/build";
@@ -66,25 +68,27 @@ const samePins = (a: AccountPins, b: AccountPins) =>
 const sameReview = (a: ReviewSettings | null, b: ReviewSettings | null) =>
   a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b));
 
-/** One project's pass override, plus the workspace pass it would inherit. */
+/**
+ * One project's pass, plus the workspace pass it would inherit: each undefined until its read answers. A failed read
+ * is `error` (with `retry`), never a pass of nothing standing in for the host's.
+ */
 function useTurnPass(workspaceId: string, projectId?: string) {
   const [pass, setPass] = useState<TurnPass | null | undefined>(undefined);
-  const [inherited, setInherited] = useState<TurnPass | null>(null);
+  const [inherited, setInherited] = useState<TurnPass | null | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let live = true;
-    loadTurnPass(workspaceId)
-      .then((p) => live && setInherited(p))
-      .catch(() => {});
-    if (projectId) {
-      loadTurnPass(workspaceId, projectId)
-        .then((p) => live && setPass(p))
-        .catch(() => live && setPass(null));
-    } else setPass(null);
+    setError(null);
+    const failed = (err: unknown) => live && setError(refusalWords(err));
+    loadTurnPass(workspaceId).then((p) => live && setInherited(p), failed);
+    if (projectId) loadTurnPass(workspaceId, projectId).then((p) => live && setPass(p), failed);
+    else setPass(null);
     return () => {
       live = false;
     };
-  }, [workspaceId, projectId]);
-  return { pass, setPass, inherited };
+  }, [workspaceId, projectId, attempt]);
+  return { pass, setPass, inherited, error, retry: () => setAttempt((n) => n + 1) };
 }
 
 function useBranches(workspaceId: string, enabled: boolean): BranchList | null {
@@ -219,6 +223,28 @@ function Section({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+/** A value a key may not change, as words where its control would stand. */
+function Value({ children }: { children: ReactNode }) {
+  return <span className="text-[13px] text-muted-foreground">{children}</span>;
+}
+
+/** After each turn as words, for a key that may not set it. */
+function TurnPassWords({ value }: { value: TurnPass }) {
+  return (
+    <>
+      <FieldRow label={settingTitle("ws.checks")}>
+        <Value>{value.verify ? "On" : "Off"}</Value>
+      </FieldRow>
+      <FieldRow label={settingTitle("ws.build")}>
+        <Value>{value.build ? "On" : "Off"}</Value>
+      </FieldRow>
+      <FieldRow label={settingTitle("ws.commit")}>
+        <Value>{COMMIT_OPTIONS.find((o) => o.value === value.commit)?.label}</Value>
+      </FieldRow>
+    </>
+  );
+}
+
 // ---------------------------------------------------------------------------
 
 export function NewWorkspaceDialog({
@@ -248,7 +274,7 @@ export function NewWorkspaceDialog({
       const workspace = await createWorkspace(environmentId ?? registry.primary().environmentId, path);
       // Made is made: a setting the host then refuses is said by name, and
       // the dialog closes on the workspace, so Add never makes a second one.
-      if (passEnabled(pass)) await saveTurnPass(workspace.id, pass).catch((err) => actionFailed("save Completed turn", workspace.name, err));
+      if (passEnabled(pass)) await saveTurnPass(workspace.id, pass).catch((err) => actionFailed("save After each turn", workspace.name, err));
       setPending(false);
       closeThen(() => onCreated(workspace));
     } catch (err) {
@@ -262,8 +288,8 @@ export function NewWorkspaceDialog({
       <ModalPanel onClose={onClose} busy={pending} title={`Add ${baseName(path)}`} description={prettyCwd(path)} size="sm">
         <form onSubmit={submit}>
           <div className="flex flex-col gap-4 px-5 py-4">
-            <Section label="Completed turn">
-              <TurnPassFields value={pass} onChange={setPass} compact />
+            <Section label="After each turn">
+              <TurnPassFieldRows value={pass} onChange={setPass} />
             </Section>
             <ErrorLine error={error} />
           </div>
@@ -315,8 +341,8 @@ export function NewProjectDialog({
           ? { baseRef }
           : {}),
       });
-      if (pass && !samePass(pass, inherited)) {
-        await saveTurnPass(workspace.id, pass, project.id).catch((err) => actionFailed("save Completed turn", project.name, err));
+      if (pass && !samePass(pass, inherited ?? null)) {
+        await saveTurnPass(workspace.id, pass, project.id).catch((err) => actionFailed("save After each turn", project.name, err));
       }
       setPending(false);
       closeThen(() => onCreated(project));
@@ -360,8 +386,8 @@ export function NewProjectDialog({
                 {exists ? null : <BaseRefField value={baseRef} onChange={setBaseRef} branches={branches} />}
               </>
             ) : null}
-            <Section label="Completed turn">
-              <TurnPassFields value={shownPass} onChange={setPass} compact />
+            <Section label="After each turn">
+              <TurnPassFieldRows value={shownPass} onChange={setPass} />
             </Section>
             <ErrorLine error={error} />
           </div>
@@ -457,8 +483,12 @@ function ProjectSettingsBody({
   const [buildOverride, setBuildOverride] = useState<BuildConfig | null>(null);
   const [wsBuild, setWsBuild] = useState<BuildConfig | null>(null);
   const [detected, setDetected] = useState<BuildConfig | null>(null);
+  // A failed read of the project's own build is said with Retry: an empty field standing in for it would save over it.
+  const [buildError, setBuildError] = useState<string | null>(null);
+  const [buildAttempt, setBuildAttempt] = useState(0);
   useEffect(() => {
     let live = true;
+    setBuildError(null);
     void registry.linkOf(home.environmentId)
       .request<BuildConfig | null>("build.get", { workspaceId: homeWorkspace.id, projectId: home.id })
       .then((c) => {
@@ -466,7 +496,7 @@ function ProjectSettingsBody({
         setSavedBuild(c);
         setBuildOverride(c);
       })
-      .catch(() => live && setSavedBuild(null));
+      .catch((err: unknown) => live && setBuildError(refusalWords(err)));
     void registry.linkOf(home.environmentId)
       .request<BuildConfig | null>("build.get", { workspaceId: homeWorkspace.id })
       .then((c) => live && setWsBuild(c))
@@ -478,12 +508,24 @@ function ProjectSettingsBody({
     return () => {
       live = false;
     };
-  }, [homeWorkspace.id, home.id, home.cwd, home.environmentId]);
+  }, [homeWorkspace.id, home.id, home.cwd, home.environmentId, buildAttempt]);
   const [pins, setPins] = useState<AccountPins>(home.accountPins ?? {});
   const { snapshot } = useAccounts(home.environmentId);
   // A key that may not pin accounts (a given computer's) is not drawn them: the host would refuse the save.
   const mayPin = useLinkMay(home.environmentId, "project.setAccounts");
-  const { pass, setPass, inherited } = useTurnPass(homeWorkspace.id, home.id);
+  // The rest of the sheet but the name and branch is the host's admin rule: a key that may not save a group reads it
+  // as words, and the sheet says once who can.
+  const may = {
+    pass: useLinkMay(home.environmentId, "turnpass.set"),
+    review: useLinkMay(home.environmentId, "review.set"),
+    plans: useLinkMay(home.environmentId, "plans.set"),
+    startOn: useLinkMay(home.environmentId, "project.setStartOn"),
+    build: useLinkMay(home.environmentId, "build.set"),
+  };
+  const managed = !mayPin || !may.pass || !may.review || !may.plans || !may.startOn || !may.build;
+  const hostName = liveHostFacts.nameOf(home.environmentId);
+  const turnPass = useTurnPass(homeWorkspace.id, home.id);
+  const { pass, setPass, inherited } = turnPass;
   const reviewLoad = useReviewScope(home.environmentId, home.id);
   const reviewScope = reviewLoad.scope;
   // undefined until the scope loads; null = follows the global set.
@@ -531,38 +573,49 @@ function ProjectSettingsBody({
   const pinsDirty = !samePins(pins, home.accountPins ?? {});
   const { root, closeThen } = useClosingDialog(onClose, pending);
   const dirty = nameDirty || branchDirty || buildDirty || passDirty || pinsDirty || plansDirty || reviewDirty || startOnDirty;
+  // Each changed group saves on its own, in the sheet's order: one refused leaves the others saved, and the line says
+  // which did not and why, and which did. A group that saved is the new baseline, so Save again tries the rest.
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!dirty || pending || blocked) return;
     setPending(true);
     setError(null);
-    try {
-      if (branchDirty) {
-        await setProjectBranch(
-          project.id,
-          branch.trim(),
-          !exists && baseRef !== "@head" ? baseRef : undefined,
-        );
+    const groups: { name: string; dirty: boolean; save: () => Promise<unknown>; landed?: () => void }[] = [
+      { name: "Branch", dirty: branchDirty, save: () => setProjectBranch(project.id, branch.trim(), !exists && baseRef !== "@head" ? baseRef : undefined) },
+      { name: "Name", dirty: nameDirty, save: () => renameProject(home.id, name.trim()) },
+      { name: "New threads", dirty: startOnDirty, save: () => setProjectStartOn(home.id, startOn) },
+      { name: "After each turn", dirty: passDirty, save: () => saveTurnPass(homeWorkspace.id, pass ?? null, home.id), landed: () => setSavedPass(pass ?? null) },
+      { name: "Reviews", dirty: reviewDirty, save: () => saveReviewSettings(home.environmentId, home.id, review ?? null) },
+      { name: "Accounts", dirty: pinsDirty, save: () => setProjectAccounts(home.id, pins) },
+      { name: "Plans", dirty: plansDirty, save: () => savePlanSettings(home.environmentId, home.id, plans ?? null) },
+      {
+        name: "Build",
+        dirty: buildDirty,
+        save: () => registry.linkOf(home.environmentId).request("build.set", { workspaceId: homeWorkspace.id, projectId: home.id, config: nextBuild }),
+        landed: () => setSavedBuild(nextBuild),
+      },
+    ];
+    const saved: string[] = [];
+    const refused: { name: string; why: string }[] = [];
+    for (const group of groups.filter((g) => g.dirty)) {
+      try {
+        await group.save();
+        group.landed?.();
+        saved.push(group.name);
+      } catch (err) {
+        refused.push({ name: group.name, why: refusalWords(err) });
       }
-      if (nameDirty) await renameProject(home.id, name.trim());
-      if (passDirty) await saveTurnPass(homeWorkspace.id, pass ?? null, home.id);
-      if (reviewDirty) await saveReviewSettings(home.environmentId, home.id, review ?? null);
-      if (pinsDirty) await setProjectAccounts(home.id, pins);
-      if (plansDirty) await savePlanSettings(home.environmentId, home.id, plans ?? null);
-      if (startOnDirty) await setProjectStartOn(home.id, startOn);
-      if (buildDirty) {
-        await registry.linkOf(home.environmentId).request("build.set", {
-          workspaceId: homeWorkspace.id,
-          projectId: home.id,
-          config: nextBuild,
-        });
-      }
-      setPending(false);
-      closeThen(onClose);
-    } catch (err) {
-      setError(errorText(err));
-      setPending(false);
     }
+    setPending(false);
+    if (refused.length === 0) closeThen(onClose);
+    else setError(partialSaveWords(saved, refused));
+  };
+
+  // Cancel, Escape, the backdrop and the close button: a changed draft asks before it is dropped.
+  const cancel = async (): Promise<void> => {
+    if (pending) return;
+    if (dirty && !(await confirmAction({ title: "Discard your changes?", body: `What you changed in ${home.name}'s settings is not saved.`, action: "Discard", danger: true }))) return;
+    closeThen(onClose);
   };
 
   const linkButton = (label: string, onClick: () => void) => (
@@ -572,7 +625,7 @@ function ProjectSettingsBody({
   );
 
   return (
-    <Sheet {...root}>
+    <Sheet {...root} onOpenChange={(open) => (open ? root.onOpenChange(open) : void cancel())}>
       <SheetContent side="right" showCloseButton={!pending} aria-busy={pending || undefined}>
         <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col">
           <SheetHeader>
@@ -600,27 +653,49 @@ function ProjectSettingsBody({
                   </>
                 ) : null}
               </div>
+              {managed ? <p data-managed className="text-xs text-muted-foreground">{managedElsewhere(hostName)}</p> : null}
               {linked ? (
                 <Section label="New threads">
-                  <PageRow title="Start on">
-                    <ChoiceSelect
-                      label="New threads start on"
-                      size="sm"
-                      value={startOn ?? globalStartOn}
-                      options={START_ON_OPTIONS}
-                      onChange={(next: string) => setStartOn(next as StartOn)}
-                    />
-                  </PageRow>
-                  {startOn ? linkButton("Use global setting", () => setStartOn(null)) : null}
+                  <FieldRow label="Start on">
+                    {may.startOn ? (
+                      <ChoiceSelect
+                        label="New threads start on"
+                        size="sm"
+                        value={startOn ?? globalStartOn}
+                        options={START_ON_OPTIONS}
+                        onChange={(next: string) => setStartOn(next as StartOn)}
+                      />
+                    ) : (
+                      <Value>{START_ON_OPTIONS.find((o) => o.value === (startOn ?? globalStartOn))?.label}</Value>
+                    )}
+                  </FieldRow>
+                  {startOn && may.startOn ? linkButton("Use global setting", () => setStartOn(null)) : null}
                 </Section>
               ) : null}
-              <Section label="Completed turn">
-                <TurnPassFields value={shownPass} onChange={setPass} compact />
-                {pass ? linkButton("Use workspace setting", () => setPass(null)) : null}
+              <Section label="After each turn">
+                {pass !== undefined && inherited !== undefined ? (
+                  may.pass ? (
+                    <TurnPassFieldRows value={shownPass} onChange={setPass} />
+                  ) : (
+                    <TurnPassWords value={shownPass} />
+                  )
+                ) : turnPass.error ? (
+                  <>
+                    <p className="text-xs text-destructive">{turnPass.error}</p>
+                    {linkButton("Retry", turnPass.retry)}
+                  </>
+                ) : (
+                  <PageRowsSkeleton rows={[{ control: "switch" }, { control: "switch" }, { control: "select" }]} />
+                )}
+                {pass && may.pass ? linkButton("Use workspace setting", () => setPass(null)) : null}
               </Section>
               <Section label="Reviews">
                 {/* Editable once the project's scope answered, as Plans below. */}
-                {reviewScope ? (
+                {reviewScope && !may.review ? (
+                  <FieldRow label="Review before merge">
+                    <Value>{shownReview.beforeMerge ? "On" : "Off"}</Value>
+                  </FieldRow>
+                ) : reviewScope ? (
                   <ReviewFields value={shownReview} onChange={setReview} environmentId={home.environmentId} compact />
                 ) : reviewLoad.error ? (
                   <>
@@ -630,7 +705,7 @@ function ProjectSettingsBody({
                 ) : (
                   <Skeleton className="h-16 w-full rounded-lg" />
                 )}
-                {review ? linkButton("Use global setting", () => setReview(null)) : null}
+                {review && may.review ? linkButton("Use global setting", () => setReview(null)) : null}
               </Section>
               {mayPin ? (
                 <Section label="Accounts">
@@ -645,7 +720,11 @@ function ProjectSettingsBody({
               <Section label="Plans">
                 {/* Editable only once the project's own scope answered: a
                     change made on the inherited set alone would never save. */}
-                {planScope && shownPlans ? (
+                {planScope && shownPlans && !may.plans ? (
+                  <FieldRow label="Start the build when a plan is done">
+                    <Value>{shownPlans.autoImplement ? "On" : "Off"}</Value>
+                  </FieldRow>
+                ) : planScope && shownPlans ? (
                   <PlanSettingsFields value={shownPlans} onChange={setPlans} environmentId={home.environmentId} compact />
                 ) : plansFailure ? (
                   <>
@@ -656,11 +735,31 @@ function ProjectSettingsBody({
                   // The five rows PlanSettingsFields draws, in their shape.
                   <PageRowsSkeleton rows={5} />
                 )}
-                {plans ? linkButton("Use global setting", () => setPlans(null)) : null}
+                {plans && may.plans ? linkButton("Use global setting", () => setPlans(null)) : null}
               </Section>
               <Section label="Build">
-                <BuildFields value={buildOverride ?? wsBuild ?? BUILD_EMPTY} onChange={setBuildOverride} detected={detected} compact />
-                {buildOverride ? linkButton("Use workspace setting", () => setBuildOverride(null)) : null}
+                {savedBuild === undefined ? (
+                  buildError ? (
+                    <>
+                      <p className="text-xs text-destructive">{buildError}</p>
+                      {linkButton("Retry", () => setBuildAttempt((n) => n + 1))}
+                    </>
+                  ) : (
+                    <PageRowsSkeleton rows={2} control="none" />
+                  )
+                ) : may.build ? (
+                  <BuildFields value={buildOverride ?? wsBuild ?? BUILD_EMPTY} onChange={setBuildOverride} detected={detected} />
+                ) : (
+                  <>
+                    <FieldRow label="Command">
+                      <Value>{(buildOverride ?? wsBuild)?.command || detected?.command || "None"}</Value>
+                    </FieldRow>
+                    <FieldRow label="What it makes">
+                      <Value>{(buildOverride ?? wsBuild)?.outputs || detected?.outputs || "None"}</Value>
+                    </FieldRow>
+                  </>
+                )}
+                {buildOverride && may.build ? linkButton("Use workspace setting", () => setBuildOverride(null)) : null}
               </Section>
             </div>
           </div>
@@ -670,11 +769,18 @@ function ProjectSettingsBody({
               <ErrorLine error={error} />
             </div>
           ) : null}
-          <Footer onCancel={() => closeThen(onClose)} confirmLabel="Save" pending={pending} disabled={!dirty || !!blocked} note={note} />
+          <Footer onCancel={() => void cancel()} confirmLabel="Save" pending={pending} disabled={!dirty || !!blocked} note={note} />
         </form>
       </SheetContent>
     </Sheet>
   );
+}
+
+/** A save that landed in part: the groups refused, each with why, then the groups that saved. */
+export function partialSaveWords(saved: readonly string[], refused: readonly { name: string; why: string }[]): string {
+  const list = (names: readonly string[]) => (names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
+  const why = refused.map((r) => `${r.name} did not save: ${r.why.replace(/\.$/, "")}.`).join(" ");
+  return saved.length ? `${why} ${list(saved)} saved.` : why;
 }
 
 export function ProjectTeardownDialog({

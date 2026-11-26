@@ -695,6 +695,21 @@ describe("the held request and the audit list", () => {
     render(<GuestLinksSection hosts={["box"]} />);
     expect(await screen.findByText("No guest links")).toBeTruthy();
   });
+
+  it("is one open row on Files saying how many links are live and when the next ends, opening the list in a sheet with a find field past eight", async () => {
+    const { GuestLinksRow, guestsWords } = await import("./GuestLinksSection");
+    expect(guestsWords([], NOW)).toBe("None");
+    expect(guestsWords([{ ...LINK, revokedAt: NOW - 1 }], NOW)).toBe("None");
+    expect(guestsWords([LINK, { ...LINK, id: "b", expiresAt: LINK.expiresAt + 86_400_000 }], NOW)).toMatch(/^2 links\. The next ends \w{3} \d+$/);
+    calls.links = Array.from({ length: 9 }, (_, i) => ({ ...LINK, id: `l${i}`, name: i === 3 ? "Dana Lee" : `Guest ${i}` }));
+    render(<GuestLinksRow hosts={["box"]} />);
+    expect(await screen.findByText(/^9 links\. The next ends/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Shared with guests" }));
+    const sheet = await screen.findByRole("dialog");
+    fireEvent.change(within(sheet).getByRole("searchbox", { name: "Find a link" }), { target: { value: "dana" } });
+    expect(within(sheet).getByText("Dana Lee")).toBeTruthy();
+    expect(within(sheet).queryByText("Guest 1")).toBeNull();
+  });
 });
 
 // jsdom has neither; the editor's paste builds one of each, as a browser's paste event carries them.

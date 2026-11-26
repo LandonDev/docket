@@ -45,16 +45,27 @@ export function stepTitle(step: SetupStep, giverName: string): string {
     case "link":
       return "Link to the box";
     case "allow":
-      return `Waiting for Allow on ${giverName}`;
+      return `Allow on ${giverName}`;
     case "accounts":
       return "Accounts";
     case "lifeos":
       return "LifeOS";
     case "work":
-      return "Docket's Work signed in to LifeOS";
+      return "Work signed in to LifeOS";
     case "folders":
       return "Folders in Files";
   }
+}
+
+/**
+ * A failed step's reason as the row under its title says it, beside the row's own Retry: no "Retry." in the sentence,
+ * and the LifeOS installer's exit code left to the log ("The LifeOS installer did not finish.").
+ */
+export function stepReasonWords(step: SetupStep, reason: string | null | undefined): string {
+  if (!reason) return "It did not finish.";
+  if (step === "lifeos" && /^The installer (stopped with code|did not finish)/.test(reason)) return "The LifeOS installer did not finish.";
+  const bare = reason.replace(/\s*Retry\.?$/, "").trim();
+  return /[.!?]$/.test(bare) ? bare : `${bare}.`;
 }
 
 /** A step that moved, over the row on file; a step the host had not listed yet joins at its place in the order. */

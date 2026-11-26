@@ -129,25 +129,25 @@ describe("addonMenuRows", () => {
 
   it("disables the grant rows while the grants are unread", () => {
     expect(items(addonMenuRows(row(), undefined, { web: false, unread: "Loading" }))).toEqual(["Edit…", "Add key… (Loading)", "sep", "Remove… danger"]);
-    expect(items(addonMenuRows(row({ spec: http }), undefined, { web: false, unread: "Loading" }))).toEqual(["Edit…", "Sign in… (Loading)", "Sign out (Loading)", "sep", "Remove… danger"]);
+    expect(items(addonMenuRows(row({ spec: http }), undefined, { web: false, unread: "Loading" }))).toEqual(["Edit…", "Sign in… (Loading)", "Sign out… (Loading)", "sep", "Remove… danger"]);
   });
 
   it("offers Sign in on the desktop for an http OAuth add-on, again once signed in or refused, Cancel while one runs", () => {
     expect(items(addonMenuRows(row({ spec: http }), null, { web: false }))).toEqual(["Edit…", "Sign in…", "sep", "Remove… danger"]);
     const signedIn = grant({ oauth: { signedIn: true, expiresAt: null, refreshedBy: null, refused: false } });
-    expect(items(addonMenuRows(row({ spec: http }), signedIn, { web: false }))).toEqual(["Edit…", "Sign in again…", "Sign out", "sep", "Remove… danger"]);
+    expect(items(addonMenuRows(row({ spec: http }), signedIn, { web: false }))).toEqual(["Edit…", "Sign in again…", "Sign out…", "sep", "Remove… danger"]);
     const refused = grant({ oauth: { signedIn: false, expiresAt: null, refreshedBy: null, refused: true } });
-    expect(items(addonMenuRows(row({ spec: http }), refused, { web: false }))).toEqual(["Edit…", "Sign in again…", "Sign out", "sep", "Remove… danger"]);
+    expect(items(addonMenuRows(row({ spec: http }), refused, { web: false }))).toEqual(["Edit…", "Sign in again…", "Sign out…", "sep", "Remove… danger"]);
     const running = grant({ signIn: { state: "waiting", since: 1 } });
     expect(items(addonMenuRows(row({ spec: http }), running, { web: false }))).toEqual(["Edit…", "Cancel sign-in", "sep", "Remove… danger"]);
   });
 
   it("never offers Sign in at /ui, Sign out there all the same", () => {
     const signedIn = grant({ oauth: { signedIn: true, expiresAt: null, refreshedBy: "box", refused: false } });
-    expect(items(addonMenuRows(row({ spec: http }), signedIn, { web: true }))).toEqual(["Edit…", "Sign out", "sep", "Remove… danger"]);
+    expect(items(addonMenuRows(row({ spec: http }), signedIn, { web: true }))).toEqual(["Edit…", "Sign out…", "sep", "Remove… danger"]);
     // A stdio OAuth add-on (a thread's) signs out but never signs in here.
     const stdioOauth: AddonSpec = { ...stdio, env: [], auth: "oauth", tokenEnv: "TOKEN" };
-    expect(items(addonMenuRows(row({ spec: stdioOauth }), signedIn, { web: false }))).toEqual(["Edit…", "Sign out", "sep", "Remove… danger"]);
+    expect(items(addonMenuRows(row({ spec: stdioOauth }), signedIn, { web: false }))).toEqual(["Edit…", "Sign out…", "sep", "Remove… danger"]);
   });
 });
 

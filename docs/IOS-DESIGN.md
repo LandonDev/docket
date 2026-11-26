@@ -151,7 +151,7 @@ shows one status row at the top of Home with the action (Retry, Pair
 again), never a blank screen; a host reached through the box folds under
 the box's row while the box is in trouble (`HomeHostInput.via`). A host's
 one-off notes ("3 threads resumed after restart") are quiet lines at the
-top. Pairing lives in Settings → Hosts.
+top. Adding a computer lives in Settings → Computers.
 
 **Workspace: the project cards.** The title is the workspace's name, New
 Thread (`square.and.pencil`) in the bar. Each project is one card, the
@@ -425,7 +425,7 @@ rows under its header with the event motion and no action.
 **A host's name.** Every host shows once, under the name it gives itself
 without the network's domain ("Mac", not "Mac.attlocal.net"), whole only
 where two hosts would read the same, or under the name the person gave it in
-Settings → Hosts (`HostNames.labels`, applied by the registry to every
+Settings → Computers (`HostNames.labels`, applied by the registry to every
 client's `environment.name`; the desktop's rule is src/shared/hostNames.ts).
 Pairing asks for no name: the hello says what the host is.
 
@@ -472,7 +472,7 @@ button then. The presence line cross-fades in place on a change
 (`Motion.crossFade`, blur; opacity alone under reduced motion), never on
 first paint, and re-renders once a minute at most. Forgetting the box
 forgets the Mac with it (the dialog names it: "Studio Mac goes with it."); a
-relayed host has no Pair Again and no Forget of its own.
+relayed computer has no Sign In Again and no Forget of its own.
 
 **Home's extension points** (`HomeSlots`, one value passed from `RootView`'s
 `HomeView(path: $homePath, slots: …)`; every slot optional, a nil slot draws
@@ -2072,19 +2072,34 @@ list, as Settings → Wi-Fi is, because the user already knows how to read it
 and nothing here is the product. Rows carry no glyphs (the desktop's
 settings rows carry none). Every row that needs explaining gets one sentence
 of footer, never a paragraph; the app's version and contract close the
-screen, dim and centred, so a screenshot answers "which build". Section
+screen, dim and centred under the Diagnostics row, so a screenshot answers
+"which build". The words are the Settings 2 glossary's, the desktop's
+(src/renderer/src/lib/settings/map.ts): a computer, never a host; Sign In
+Again, Forget, It may, Effort. Section
 headers are the system inset grouped headers, not `GroupHeader`: that one
 is for a hand-built card on a plain background, and the brief here is
 "indistinguishable from Apple's Settings". Rows keep the system highlight;
 nothing in a grouped list scales on press (Apple's Settings never does, and
 a scale fights the swipe actions). The screens hold only SwiftUI; every
-word they say (the connection word, the fix per state, the build line, the
-push word, the capability titles) and the forget flow are the client
-package's `Shell/HostPresentation.swift`, where they have tests.
+word they say (the connection word and sentence, the fix per state, the
+build line, the push word, the key's rights) and the forget flow are the
+client package's `Shell/HostPresentation.swift` and `Shell/SettingsWords.swift`,
+where they have tests. A section whose first read is out holds its place in
+its rows' shape (`SettingsPlaceholderRows`, redacted), never arriving late.
 
-- **Hosts** pushes the list; the row's trailing half is one connection dot
-  per host and the single host's name, or the count (stacked under the
-  label at accessibility sizes).
+The root, in order: Computers, then Work and Away, Notifications,
+Appearance, then Diagnostics with the version under it.
+
+- **Computers** pushes the list; the row's trailing half is one connection
+  dot per computer and the single computer's name, or the count (stacked
+  under the label at accessibility sizes).
+- **Work** pushes Settings → Work once a computer has answered `work.get`;
+  while none has and one is still connecting it is a placeholder row
+  (`WorkRowState`).
+- **Away** pushes a section per computer (named when there are several):
+  Code threads, and Work threads while Work is on there, the host menu's own
+  switches over `away.get` and `away.set`, one computer per flip. The row's
+  trailing word is On while any is away; the last footer says what Away does.
 - **Notifications** is one row: the switch with the registrar's word beside
   it ("Off", "On", "Registering…", "No relay", "Failed", "Not allowed"). The
   switch moves at once and holds its position while the permission prompt
@@ -2092,87 +2107,95 @@ package's `Shell/HostPresentation.swift`, where they have tests.
   permission an "Allow in Settings" row opens the system Settings. The footer
   names what stands in the way.
 - **Appearance** is the inline picker with checkmarks: System, Light, Dark.
+- **Diagnostics** is a plain row that pushes `DiagnosticsScreen`.
   A theme flip snaps; nothing animates it.
 
-**Hosts.** One row per paired host: the connection dot leading in the mark
+**Computers.** One row per computer this phone is signed in to: the connection dot leading in the mark
 column (`Layout.markWidth`; a host the box relays follows its relay state
 over an open lane: locked in the warning tint, asleep in the quiet gray,
 unreachable in destructive), the name, a second line in the meta step (the
 address while connected, else what is wrong in two words: "Connecting…",
-"Unreachable", "Reconnecting…", "Offline", "Different host", "Needs an
-update", "Key refused", "Paused"), and the environment id abbreviated
+"Not answering", "Reconnecting…", "Offline", "Another computer", "Needs an
+update", "Refuses this key"), and the environment id abbreviated
 (`env_AbCd…StUv`) trailing in mono `caption`, `tertiary` (an id must stay
 legible; the stamp step's `caption2` is under the floor for eight glyphs of
 mono). The second line is destructive only when the state waits on the
-person: Key refused, Different host, Needs an update (`HostFix.waitsOnUser`).
-Offline, Unreachable, Connecting and Reconnecting are the phone's to fix
+person: Refuses this key, Another computer, Needs an update
+(`HostFix.waitsOnUser`). Offline, Not answering, Connecting and
+Reconnecting are the phone's to fix
 and stay `secondary`. The second line swaps in place with
 `.swapTransition()` (150 ms, opacity and 2 pt of blur; opacity alone under
-reduced motion). Swipe and long press offer Pair Again and Forget; every row
+reduced motion). Swipe and long press offer Sign In Again and Forget; every row
 pushes the detail through the stack's `NavigationPath`, and the proof's
 `TC_TEST_OPEN=host` hook appends the same `HostDetailRoute` to that path,
 so the bar's title is the host's name on either path with no principal item.
 
-**Host detail.** Five sections, in this order:
+**A computer's detail.** Five sections, in this order:
 
-1. **Status**: the dot, the live `StatusText` with its countdown, a spinner
+1. **Status**: the dot, the connection in the desktop's sentence
+   (`ConnectionSentence`, the words of lib/connection/degraded.ts: "the box
+   dropped; retrying in 5 s", "the box no longer accepts this key", "the box
+   is offline"; never the host's raw error) with its countdown, a spinner
    while connecting; under it the one action that fixes the state (Retry Now
-   when the host is out of reach, Pair Again when the key was refused or the
-   address answers as another host, nothing when the host needs an update
-   the phone cannot do); the footer says why.
+   when the computer is out of reach, Sign In Again when the key was refused
+   or the address answers as another computer, nothing when it needs an
+   update the phone cannot do); the footer says only what is his to do, never
+   the state again.
 2. **Activity**: `HostActivitySections(client:)` (`Shell/Hosts/`): Build,
    Mac bridge, Devices, Sync, in that order; "Host activity" below has
    their rules.
-3. **Key**: Read, Operate, Approve, Admin, each with one line of what it
-   allows and a checkmark in the tint when the key has it, then Give and
-   Given computer only on a key that holds them (`Capability.rows`; admin
-   never implies either, docs/agents/pc-setup.md); the footer says
-   a new key on the host is how to change it.
-4. **Host**: Name (editable in place), Address, Environment id in mono
-   (selectable), Version as `1.0.N (<sha7>)` from the hello's `build`
-   (`HostBuildLine`; the version alone without a commit; no row for a host
-   that sent none), Contract from the last hello, Notifications for this
-   host, the pairing date.
-5. **Pair Again** and the red **Forget This Host**.
+3. **It may**: the desktop's four levels, Look only, Run threads, Run
+   threads and approve, Manage <computer>, each with one line of what it
+   allows and a checkmark in the tint on the one the key holds
+   (`KeyRights`), then Set up other computers and Set up from another
+   computer only on a key that holds them (`Capability.extras`; admin never
+   implies either, docs/agents/pc-setup.md); the footer says a new sign-in
+   link is how to change it.
+4. **Computer**: Name (editable in place; the footer says it is this phone's
+   own name for it), Address, ID in mono (selectable), Version as
+   `1.0.N (<sha7>)` from the hello's `build` (`HostBuildLine`; the version
+   alone without a commit; no row for a computer that sent none), Contract
+   from the last hello, Notifications for this computer, the sign-in date.
+5. **Sign In Again** and the red **Forget This Computer**, with no footer.
 
-**Relayed hosts in Settings → Hosts.** A host reached through another sits
+**Relayed computers in Settings → Computers.** A host reached through another sits
 under its carrier's row (`RelayedHostRow`): the lane's dot in the mark
 column, the name, "through <carrier>, <presence>" in the meta step (the
 presence line's words above, nothing after the carrier's name when the host
 is up and unlocked), the abbreviated id trailing; no swipe and no menu,
 since nothing waits on the person. Its detail (`RelayedHostDetailView`) has
-two sections: Status (the dot, the lane's `StatusText`, the presence line
+two sections: Status (the dot, the lane's `ConnectionSentence`, the presence line
 under it, a spinner while connecting; the footer names the carrier and that
 it relays the host's threads while the host is awake and its link is up; no
 Retry Now, `HostFix.fix(for:environment:)` answers nil for a relayed host)
-and Host (Name read-only, since it is the Mac's own hostname; Through;
-Environment id in mono; Version from the presence row's build, else the
+and Computer (Name read-only, since it is the Mac's own hostname; Through;
+ID in mono; Version from the presence row's build, else the
 lane's hello; Contract). No Key section (a footer says whose key it uses),
-no Pair Again, no Forget: the footer says forgetting the carrier forgets
-this host with it.
+no Sign In Again, no Forget: the footer says forgetting the carrier forgets
+this computer with it.
 
-Forgetting is a confirmation dialog naming the host. `forgetHost` first
+Forgetting is a confirmation dialog naming the computer, its verb Forget. `forgetHost` first
 sends `remote.push.unregister` on the host while the socket is open (best
 effort, so a forgotten host stops sending notices whose tap would land on an
 environment the phone no longer knows), then removes the key, stops the
-socket and clears the cache. The message says what holds: the threads stay
-on the host, it stops sending notifications here when it can be reached, and
-the key stays valid there until revoked; a carrier's names the relayed hosts
-that go with it (`forgetCopy`).
+socket and clears the cache. The message says what this phone drops and what
+the computer keeps: its notifications stop, its threads stay there, and it
+still lets this phone in until the key is removed there; a carrier's names
+the relayed computers that go with it (`forgetCopy`).
 
 **Host activity.** Four kinds of section, each absent when the host has
 nothing of the kind, all in the same inset grouped grammar: system headers,
 no glyphs on rows except the status column (`Layout.markWidth`: a dot, a
 spinner, a check or a cross), footers of at most two lines.
 
-- **Build**: a Master row with master's version, read by the phone itself
+- **Build**: a Newest row with master's version, read by the phone itself
   from GitHub (`MasterReleaseWatcher`: every ten minutes while a drift mark
   or a detail shows, and on foreground after fifteen; a failure keeps the
-  last value). For a box, Deploy Master, behind a confirm naming both
+  last value). For a box, Update…, behind a confirm (red Update) naming both
   versions ("v1.0.270 → v1.0.273, 3 releases. …"), and once a run exists the
   job row: spinner, check or cross, the title swapping in place, the note or
   ending under it, a chevron to the log sheet. The footer names the gap and
-  the fix ("3 releases behind master: v1.0.270 → v1.0.273. Deploy from
+  the fix ("3 releases behind master: v1.0.270 → v1.0.273. Update from
   here.", "Publish from the Mac." on a Mac) or why it is out of reach (not
   connected, not installed, an admin key). The host's own version stays in
   the Host section; nothing says it twice. The `+N` mark (`DriftMark`)
@@ -2211,8 +2234,8 @@ spinner, a check or a cross), footers of at most two lines.
   memory crosses both ways, the newer copy wins.") or that sync is off.
 
 A key that lacks a capability sees the section and its rows with the
-control disabled and the reason in the footer: "Deploying needs an admin
-key.", "Reading the sync state needs an admin key." (one quiet row instead
+control disabled and the reason in the footer: "Updating needs a key that
+may manage it.", "Reading the sync state needs an admin key." (one quiet row instead
 of the lines), "Shutting down or deleting a simulator needs an operate
 key.", "Stopping a command needs an operate key on the Mac." An action the
 host refuses lands as the destructive footnote line under the section's
@@ -2226,23 +2249,23 @@ detail ends them all and sends the unwatch. The words are the client
 package's `Client/HostExtrasText.swift`, ported from the desktop's; the
 stores are `Client/HostExtras.swift`.
 
-**Pairing** (Add a Host, Pair Again) is a form sheet (`tcSheet(.form)`: medium
+**Signing in** (Add a Computer, Sign In Again) is a form sheet (`tcSheet(.form)`: medium
 with the large detent for the keyboard on the phone, centered unfolded; see
 "iPhone Duo"): a segmented
-Pairing Link / Key, the field with a paste button at its trailing edge while
+Sign-In Link / Key, the field with a paste button at its trailing edge while
 empty (a pasted link that reads cleanly is redeemed at once; a typed one is
-recognised, the footer naming the host it pairs with, and submitted with
-Return or Add), an optional name, and the refusal under the field inside the
+recognised, the footer naming the computer it signs in to, and submitted with
+Return or Add), and the refusal under the field inside the
 same card, footnote in destructive with the `exclamationmark.circle` glyph
 at the same weight, arriving with `.rowAppearTransition()` (200 ms, 8 pt of
 travel) and leaving 150 ms when typing resumes. Never an alert. Add swaps
 for a spinner with a 150 ms cross-fade; a success haptic and the sheet
-dismisses with the host already in the list; an error haptic on a refusal.
+dismisses with the computer already in the list; an error haptic on a refusal.
 The first field takes the keyboard once the sheet has settled (350 ms), with
 no animation.
 
 Nothing here needs more than a `read` key: `remote.push.*` are `read`,
-pairing is `POST /api/pair`, forgetting is local. The Key section is where
+pairing is `POST /api/pair`, forgetting is local. The It may section is where
 a person learns why a control elsewhere is disabled.
 
 ### The diff screen
@@ -2669,12 +2692,19 @@ milestone 46 built, where it lives now:
   Decided without you (a thread and its count, which opens it), Written on
   your files (Undo where the write has a way back), each left out when
   empty, and one footer line: "Away never sends a held item."
-- **Settings → Work** is a row under Hosts while any host has Work: per
-  host, the switch, LifeOS's state in words, Grants (each with Remove, no
-  confirm), and each add-on's tools with Runs, Held or Off. The first
-  host's group also holds the phone's own switch, "Require Face ID to Send"
-  (Touch ID, Optic ID or Passcode as the phone has), on by default, right
-  under Work; turning it off asks the check once. With no passcode set its
+- **Settings → Work** is a row under Computers while any computer has Work: per
+  computer, the switch, LifeOS's state in words, Things threads may send on
+  their own (each with Remove, no confirm, no press scale), and each add-on's
+  tools with Runs, Held or Off. Guest links, the grants and the tools hold
+  their place in their rows' shape while read; a computer that leaves its
+  links to another is remembered for the launch, so its section never shows
+  and goes. New Address… asks first, naming the address that stops opening.
+  The Digest's footer says "One set for every computer with Work on"; its
+  rows are Arrives at and the four groups (Things waiting for me for held
+  items). The first computer's group also holds the phone's own switch,
+  "Require Face ID to Send" (Touch ID, Optic ID or Passcode as the phone
+  has) with "This phone" under it, on by default, right under Work; turning
+  it off asks the check once. With no passcode set its
   footer says "Set a passcode on this iPhone to send from here."
 - **A Work workspace's screen** is the workspace screen; a host that
   cannot reach LifeOS says so once above the threads ("Sign in to LifeOS
@@ -3341,8 +3371,8 @@ card. Connections and Computers sit in the Work list's foot.
 - **Computers** leads with the Windows VM where a host keeps it: "Windows VM", how it stands ("Asleep", the step while
   it wakes), its last fault in the destructive ink, and one bordered capsule, Wake or Sleep, a spinner while it moves.
   The live picture's foot has Copy beside Paste while he drives.
-- **Settings → Work** lists each host's jobs (sector dot, name); one pushes its settings as plain values (Model,
-  Reasoning, Write in My Voice, Windows VM, its computers) and "Open on <computer>".
+- **Settings → Work** lists each computer's jobs (sector dot, name); one pushes its settings as plain values (Model,
+  Effort, Learn how I write from my sent mail, Windows VM, Computers its threads may use) and "Open on <computer>".
 
 ## A file on the phone
 

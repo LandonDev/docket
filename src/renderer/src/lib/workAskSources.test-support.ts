@@ -7,7 +7,7 @@ const R = "src/renderer/src";
 const WORK = `${R}/work`;
 const SETTINGS = `${R}/surfaces/settings`;
 const WIRE_PREFIXES = new Set(ClientRequestSchema.options.map(({ shape }) => shape.method.value.split(".")[0]));
-const WRAPPERS = new Set(["ask", "call", "rpc", "act", "run", "guestsCall", "useAsked", "seeded", "useEachWorkspace", "change", "host", "onAct", "request", "askOf"]);
+const WRAPPERS = new Set(["ask", "call", "rpc", "act", "run", "guestsCall", "useAsked", "seeded", "useEachWorkspace", "change", "host", "onAct", "request", "askOf", "hostRequest", "useComputerRead"]);
 const isMethod = (text: string): boolean => /^[a-z][\w]*(?:\.[\w]+)+$/.test(text) && WIRE_PREFIXES.has(text.split(".")[0]);
 
 // Work also presses these shared entry points. Read their bodies so a request they stop making falls out of the inventory.
@@ -80,8 +80,9 @@ export function askSources() {
   const files = [
     ...sourcePaths(WORK),
     ...sourcePaths(`${R}/lib`).filter((file) => /^work[^/]*\.ts$/.test(file.slice(R.length + 5)) && !file.endsWith(".test-support.ts")),
-    `${SETTINGS}/Work.tsx`, `${SETTINGS}/Workspace.tsx`,
+    `${SETTINGS}/Work.tsx`, `${SETTINGS}/Workspace.tsx`, `${SETTINGS}/General.tsx`, `${SETTINGS}/Updates.tsx`,
     ...sourcePaths(`${SETTINGS}/hosts`),
+    ...sourcePaths(`${SETTINGS}/computers`),
   ];
   for (const file of [...files, ...Object.keys(SHARED).map((name) => `${R}/lib/${name}`)]) {
     const source = sourceFile(file);
@@ -123,7 +124,7 @@ export function askSources() {
       if (bridge) add(preload, bridge, node);
       if (name === "invoke" && node.arguments[0]?.getText() === '"drag_files_out"') add(preload, "dragFilesOut", node);
       if (!WRAPPERS.has(name)) return;
-      const methodAt = name === "rpc" ? 0 : name === "useEachWorkspace" ? 1
+      const methodAt = name === "rpc" ? 0 : name === "useEachWorkspace" || name === "useComputerRead" ? 1
         : name === "request" && ts.isPropertyAccessExpression(callee) ? 0 : undefined;
       const args = methodAt === undefined ? node.arguments : node.arguments.slice(methodAt, methodAt + 1);
       for (const arg of args) {

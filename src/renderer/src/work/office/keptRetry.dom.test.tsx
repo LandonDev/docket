@@ -55,7 +55,7 @@ describe("his Retry on a row whose read failed", () => {
   it("keeps the Teams copy switch's failure with Retry spinning until it answers", async () => {
     const host = failsThenWaits("work.office.filesCopyGet");
     vi.spyOn(registry, "linkOf").mockReturnValue(host.link as never);
-    render(<TeamsCopyRow workspace={{ id: "w", environmentId: "env_box" }} hostName="the box" desktops={["MacBook Pro"]} />);
+    render(<TeamsCopyRow workspace={{ id: "w", environmentId: "env_box" }} computer="the box" />);
     await pressAndHold();
     await act(async () => host.answer({ on: false }));
     await waitFor(() => expect(screen.getByRole("switch", { name: "Copy Teams files to the box" })).toBeTruthy());

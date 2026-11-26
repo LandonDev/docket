@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Settings → Work, Start places: seven rows from LifeOS, each opening a dialog whose Save sends `settings:update` with that one place alone. */
+/** Settings → Work, Travel's Start addresses: seven rows from LifeOS, each opening a dialog whose Save sends `settings:update` with that one place alone. */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { getFunctionName } from "convex/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -41,7 +41,7 @@ vi.mock("../shell/lifeos", async (original) => ({
   },
 }));
 
-const { StartPlacesSection } = await import("./StartPlaces");
+const { StartAddressesRow, StartPlacesSection } = await import("./StartPlaces");
 
 const SECTORS = [
   { key: "cosmic", label: "Cosmic", order: 0 },
@@ -92,10 +92,9 @@ const save = async (dialog: HTMLElement) => {
   await act(async () => {});
 };
 
-describe("Start places", () => {
+describe("Start addresses", () => {
   it("draws seven rows, Home first, then the jobs in LifeOS's order", () => {
     const { container } = render(<StartPlacesSection environmentId="box" />);
-    expect(screen.getByText("Start places")).toBeTruthy();
     expect(rows(container).map((r) => r.dataset.start)).toEqual(["home", "cosmic", "hypixel", "purdue", "ref", "unify", "life"]);
     expect(row(container, "purdue").textContent).toContain("Purdue");
   });
@@ -110,6 +109,20 @@ describe("Start places", () => {
     const notFound = within(row(container, "ref")).getByText("Not found");
     expect(notFound.className).toContain("text-destructive");
     expect(row(container, "ref").textContent).toContain("2 Gym Ln");
+  });
+
+  it("is one open row on Work whose dialog lists the places, and says why where LifeOS is down", async () => {
+    render(<StartAddressesRow environmentId="box" />);
+    expect(screen.getByText("Home and each job. Used to spot meetings too far apart to drive between.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Start addresses" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Start addresses")).toBeTruthy();
+    expect([...dialog.querySelectorAll<HTMLElement>("[data-start]")].map((r) => r.dataset.start)).toEqual(["home", "cosmic", "hypixel", "purdue", "ref", "unify", "life"]);
+    cleanup();
+    lifeos.state = "signed-out";
+    render(<StartAddressesRow environmentId="box" />);
+    fireEvent.click(screen.getByRole("button", { name: "Start addresses" }));
+    expect((await screen.findByRole("dialog")).querySelector("[data-session-down]")).toBeTruthy();
   });
 
   it("Home with no address is not set", () => {

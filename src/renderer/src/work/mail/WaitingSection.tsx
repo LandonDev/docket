@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { MailWaiting } from "@shared/contract-work-mail";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { PageError, PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Skeleton } from "../../components/ui/skeleton";
-import { loadToast } from "../../components/ui/toaster";
 import { registry, TimeoutError } from "../../lib/connection";
 import { nameInLine } from "../../lib/hostWords";
 import { useLinkMay } from "../../lib/linkMay";
@@ -17,15 +16,16 @@ import { downIsSilence, downWords, useDownPress } from "../shell/lifeosDown";
 import { savedOf, savedOfState, useLiveDown, type SavedDown } from "../shell/lifeosLive";
 import { connectingWords } from "../shell/lifeosWords";
 import { useDownAction } from "../shell/DownSignIn";
+import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
+import { useSaved } from "../../surfaces/settings/parts/useSaved";
+import { inWords } from "../../lib/settings/workWords";
 
 /**
- * A Work workspace's Waiting on (docs/agents/work-mail.md "Waiting on"), on its
- * settings page: how many working days a sent question waits before Waiting on
- * lists it (LifeOS keeps it for the sector, so LifeOS desktop reads the same),
- * and the switch for the routine that drafts nudges by itself. The switch is
- * off until he turns it on, since each nudge it drafts is a model run. Both are
- * the host's admin rule: a key that may not change them is not shown the
- * section (the page says once who can).
+ * A job's Waiting on rows (docs/agents/work-mail.md "Waiting on"), under its page's Writing and mail: how many working
+ * days a sent question waits before Waiting on lists it (LifeOS keeps it for the sector, so LifeOS desktop reads the
+ * same), and the switch for the routine that drafts nudges by itself. The switch is off until he turns it on, since
+ * each nudge it drafts is a model run. Both are the host's admin rule: a key that may not change them is not shown the
+ * rows (the page says once who can). Each saves with the mark, and a refusal puts it back with the row's red line.
  */
 
 export const WAIT_DAYS = ["1", "2", "3", "5", "7", "10"] as const;
@@ -78,7 +78,7 @@ export function laidOver(shown: Shown | null, n: number, value: MailWaiting, own
 
 const BOTH: Owns = { days: true, routine: true };
 
-export function WaitingSection({ workspace }: { workspace: WorkspaceMeta }) {
+export function WaitingRows({ workspace }: { workspace: WorkspaceMeta }) {
   if (!useLinkMay(workspace.environmentId, "work.mail.setWaiting")) return null;
   return <Waiting workspace={workspace} />;
 }
@@ -141,18 +141,19 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
   const live = useLiveDown(saved, env, () => new Promise<void>((done) => ((landed.current = done), setAttempt((n) => n + 1))));
   useLifeosStatus(env);
 
-  const change = async (patch: { days?: number; routine?: boolean }, failed: string): Promise<boolean> => {
-    const n = ++asked.current;
-    try {
-      const value = await ask(env, "work.mail.setWaiting", { workspaceId: workspace.id, ...patch });
-      shown.current = laidOver(shown.current, n, value, { days: patch.days !== undefined, routine: patch.routine !== undefined });
-      setLoad({ status: "ready", value: shown.current.value });
-      return true;
-    } catch (err) {
-      void loadToast().then((toast) => toast.error(failed, { description: workErrorWords(err) || undefined }));
-      return false;
-    }
-  };
+  const daysSaved = useSaved();
+  const routineSaved = useSaved();
+  // The days he picked, shown at once until the host's answer replaces them (or a refusal puts the old ones back).
+  const [pickedDays, setPickedDays] = useState<string | null>(null);
+  const change = (patch: { days?: number; routine?: boolean }): Promise<boolean> =>
+    (patch.days !== undefined ? daysSaved : routineSaved).run(() =>
+      inWords(env, async () => {
+        const n = ++asked.current;
+        const value = await ask(env, "work.mail.setWaiting", { workspaceId: workspace.id, ...patch });
+        shown.current = laidOver(shown.current, n, value, { days: patch.days !== undefined, routine: patch.routine !== undefined });
+        setLoad({ status: "ready", value: shown.current.value });
+      }),
+    );
 
   const host = lifeosHostName(env);
   // A LifeOS that is signed out, refused, waiting for a sign-in or off is a state, said muted with the rule's press
@@ -181,15 +182,16 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
     </Button>
   );
   return (
-    <PageSection title="Waiting on">
-      {load.status === "loading" ? <PageRowsSkeleton rows={2} control="switch" /> : null}
+    <>
+      {load.status === "loading" ? <PageRowsSkeleton rows={[{ control: "select" }, { description: true, control: "switch" }]} /> : null}
       {load.status === "error" ? (
         <PageError action={retry}>{load.error}</PageError>
       ) : null}
       {value ? (
         <>
-          <PageRow
-            title="Count as waiting after"
+          <SettingRow
+            id="job.unanswered"
+            saved={noDays ? undefined : daysSaved}
             description={
               muted ? (
                 <>
@@ -213,20 +215,23 @@ function Waiting({ workspace }: { workspace: WorkspaceMeta }) {
               retry
             ) : value.days !== null && !noDays ? (
               <ChoiceSelect
-                label="Count as waiting after"
+                label="Count sent mail as unanswered after"
                 size="sm"
-                value={String(value.days)}
+                value={pickedDays ?? String(value.days)}
                 options={DAY_CHOICES.some((c) => c.value === String(value.days)) ? DAY_CHOICES : [...DAY_CHOICES, { value: String(value.days), label: `${value.days} working days` }]}
-                onChange={(days) => void change({ days: Number(days) }, "The waiting time did not change")}
+                onChange={(days) => {
+                  setPickedDays(days);
+                  void change({ days: Number(days) }).then(() => setPickedDays(null));
+                }}
               />
             ) : null}
-          </PageRow>
-          <PageRow title="Draft nudges by themselves" description="Starts a thread each time a mail comes due">
-            <SettingSwitch label="Draft nudges by themselves" on={value.routine} onChange={(routine) => change({ routine }, "The nudge routine did not change")} />
-          </PageRow>
+          </SettingRow>
+          <SettingRow id="job.nudges" saved={routineSaved} description="Starts a thread each time one comes due">
+            <SettingSwitch label="Draft nudges by themselves" on={value.routine} onChange={(routine) => change({ routine })} />
+          </SettingRow>
           {dialog}
         </>
       ) : null}
-    </PageSection>
+    </>
   );
 }

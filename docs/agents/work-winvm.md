@@ -49,7 +49,7 @@ and opens the door at the next call.
 | `work.winvm.point.restore` | admin | `{ id }`: back to a point; the machine stays asleep |
 | `work.winvm.point.delete` | admin | `{ id }` |
 
-Settings → Work draws a press only where this window's key may make it (`linkMay`, docs/agents/work.md
+The Windows VM's page in Settings (under Other computers, beside the computer that keeps it) draws a press only where this window's key may make it (`linkMay`, docs/agents/work.md
 "The switch"): a given computer's key wakes, sleeps and saves a point; Set up, Go back and Delete are not
 drawn, Sleeps after stands as words and the screen size is not read. A read key gets no press.
 
@@ -72,7 +72,7 @@ ios-client.md "A job's small places"). Setup, restore points and the screen's se
 
 ## Setup
 
-One press later (B10, Settings → Work); `work.winvm.setup` now. It needs the base image the rig has
+One press: Set up on the Windows VM's page, `work.winvm.setup`. It needs the base image the rig has
 (`install.sh`). In order:
 
 1. The disk: an overlay on the base image under `/srv/agents/win-vm/standing/run/`, with its own firmware
@@ -154,7 +154,7 @@ At a thread's first call (B5), his Wake press, or by itself after a restart of t
 A box build with no `tc-computer.exe` never starts the machine: wake, setup and live resize refuse before
 anything moves (`mayStart`, `NO_SERVICE`: "This update left out the Windows VM's helper. Redeploy the box from
 master."), and the state carries the words in `blocked`, beside the machine's own state. The Computers page then
-asks no wake and its plate says "Can't wake the Windows VM" with the cause and no press; Settings' Windows row
+asks no wake and its plate says "Can't wake the Windows VM" with the cause and no press; the Windows VM page's Windows row
 shows it as its error. Until 2026-11-25 such a build started the machine, read awake beside the error, and every
 viewer's wake started the round again. A deploy no longer makes such a build (docs/box.md "What box-update does
 with it").
@@ -296,8 +296,8 @@ Windows' Basic Display Driver, one size until a cold boot; or `virtio`, virtio-v
 never after, and every start reads it; **no file is `vga`**, so a disk from before live resize wakes exactly as it
 did. The keeper's state says it (`display`), and only virtio has `canResize`.
 
-**Turn on** (Settings → Work → Windows VM → Live resize → Turn on…, `work.winvm.display.upgrade`). The confirm:
-"Windows restarts once. Save your work in it first. Sign-ins stay. A restore point is saved first, in place of
+**Turn on** (the Windows VM page: Screen size → Fits my window where live resize is off, `work.winvm.display.upgrade`).
+The confirm, "Fit the Windows VM to your window?": "Windows restarts once. Save your work in it first. Sign-ins stay. A restore point is saved first, in place of
 your oldest if you have three." Refused while a thread holds the machine, while he drives, and while a OneDrive
 write is still owed (`owed()`, as the idle sleep waits for it). The keeper runs six steps, each its words in the
 state (`LIVE_RESIZE_WORDS`) and on the row:
@@ -332,7 +332,7 @@ the guest last ran on std VGA and the file says so; between the write and the st
 so it boots afresh on either; after it both say virtio (keeper.test.ts holds each step to this).
 
 **Each step's undo.** After 2: nothing (the staged driver binds nothing; `pnputil /delete-driver` removes it).
-After 3: a plain start (it is still `vga`). After 5 or 6: **Turn off…** (`work.winvm.display.downgrade`, "Windows
+After 3: a plain start (it is still `vga`). After 5 or 6: Turn off (`work.winvm.display.downgrade`, no press in Settings now; its words "Windows
 restarts once, at 1280 × 800. Save your work in it first. Sign-ins stay."): a sleeping machine woken on the
 device it slept on, the same clean shutdown and 3-minute call-off, machine.json `vga` and screen.json 1280×800,
 and a start on `-vga std`; Windows goes back to its Basic Display Driver by itself (viogpudo binds only the
@@ -344,9 +344,10 @@ starts every machine on `-vga std` and would resume a virtio hibernate on change
 when machine.json says `virtio` and the build it deploys does not read it (box-update-lib.sh
 `vm_device_warning`, docs/box.md "Live resize and a rollback").
 
-**The settings.** Screen size: Fit to window (the default), 1280 × 800, 1920 × 1200 or 2560 × 1600; on std VGA it
-says "Used when the VM is set up again". Detail (Sharp, Faster) shows once live resize is on. The Computers bar's
-Size and Detail set the same host settings, and are off with "Turn on live resize in Settings → Work" on std VGA.
+**The settings.** Screen size: Fits my window (the default), 1280 × 800, 1920 × 1200 or 2560 × 1600; on std VGA a
+size says "Used when the VM is set up again". Picture quality (Sharp, Faster; the host's `detail`) shows once live
+resize is on. The Computers bar's
+Size and Detail set the same host settings, and are off on std VGA with `NO_RESIZE`'s words (ComputerBar.tsx).
 Applying a size to a running Windows is the VM display's own work (`VmDisplay`, live-video.md "The Windows VM").
 
 ## Take over
@@ -432,7 +433,7 @@ slept until a thread or his press woke it, so after every deploy the VM he had l
    the machine sleeps and is not held, `Keeper.wakeAfterStop` waits 25 s (`AFTER_STOP_WAKE_MS`, so the service's
    first answers come first), then makes the usual wake, as a thread's would, under QEMU's lowered priority (the
    `vm` kind, childPriority.ts). Its step is "Waking after an update…" throughout, which the Computers page's plate,
-   Settings → Work and the phone show as they show every step. A Sleep or a wake asked meanwhile, or Work turned off,
+   the Windows VM's page in Settings and the phone show as they show every step. A Sleep or a wake asked meanwhile, or Work turned off,
    leaves the machine as that left it.
 4. **A failure** reads as any wake's does: the state that is true with `error` in words. It is not tried again; the
    next thread's call or his press wakes it as before.
@@ -478,8 +479,8 @@ host, his own, signed in as he left it; one thread uses it at a time; a send or 
 so drive up to it and stop; never type a password, say he must take over; no command line. What they answer
 names `windows_*` where the shared words say `computer_*`.
 
-- **Who gets them**: a Work thread of a workspace whose Work settings turn on `windowsVm` ("Computer use on
-  the Windows VM", on for a Work workspace made since 2026-11-22; its switch is B10's), on the host whose VM is set up. A Work Chat never.
+- **Who gets them**: a Work thread of a workspace whose Work settings turn on `windowsVm` (the job's page,
+  Computers its threads may use → Windows VM; on for a Work workspace made since 2026-11-22), on the host whose VM is set up. A Work Chat never.
   The setting is read when the tools are listed and again at every call (`vmOffered`), so turning it off
   stops a running thread with "refused: computer use on the Windows VM is off for this workspace".
 - **Waking**: a call on a sleeping machine wakes it first; while it wakes, its row's hold reads "Waking the
@@ -632,30 +633,30 @@ In order, once the box runs a build with all of Track B:
    the keeper copies that service into the guest at each wake. `box-update v1.0.N` builds it too, from the
    commit's own crate (the release asset carries none); with no service, setup and wake refuse with
    `NO_SERVICE`.
-2. **Set it up**: Settings → Work → Windows VM → Set up. About ten minutes: the disk from the base image,
+2. **Set it up**: Settings → Windows VM (under Other computers) → Set up. About ten minutes: the disk from the base image,
    Windows' admin steps, one restart. The row says each step; it ends Awake.
-3. **Per workspace**: a Work workspace's page → "Computer use on the Windows VM". On for a workspace made since
+3. **Per workspace**: a job's page → Computers its threads may use → "Windows VM". On for a workspace made since
    2026-11-22 (an older one keeps what it had); only those workspaces' threads get the `windows_*` tools.
-   Settings → Work → Windows VM then says Office and OneDrive in it as last read (`work.office.vmStatus`,
+   Settings → Connections then says Office and OneDrive in it as last read (`work.office.vmStatus`,
    which never wakes it): which Office apps and who they are signed in as, who OneDrive is signed in as and how
-   many Teams libraries it syncs, or Sign in where it needs him (`work.office.vmSignIn`, then the Computers
+   many Teams libraries it syncs, or Sign in… where it needs him (`work.office.vmSignIn`, then the Computers
    page on the VM).
-4. **Choose its sleep and screen** if the defaults do not suit: Sleeps after (30 minutes) and Screen size
+4. **Choose its sleep and screen** on its page if the defaults do not suit: Sleeps after (30 minutes) and Screen size
    (on std VGA a size is used by a new Set up: Windows keeps the size it was set up at through every sleep).
    **Live resize is his press**: a deploy changes nothing in his VM (it has no machine.json, so it wakes on std
-   VGA as before). Settings → Work → Windows VM → Live resize → Turn on…, with nothing unsaved in Windows and no
-   thread on it: about two minutes and one restart the first time (plus the 877 MB driver download), a restore
-   point first. Then Screen size (Fit to window) and Detail. Turn off… goes back. Before any rollback of the box
-   past this code, Turn off… first.
+   VGA as before). On its page, Screen size → Fits my window (it asks first), with nothing unsaved in Windows and
+   no thread on it: about two minutes and one restart the first time (plus the 877 MB driver download), a restore
+   point first. Then Picture quality. No press goes back to std VGA now: before any rollback of the box past this
+   code, call `work.winvm.display.downgrade` with an admin key.
 5. **Sign in to what else threads should use**, in a Take over from the Computers page: the VM keeps it across
    sleeps. A thread never types a password.
-6. **Before the evaluation ends** (about 17 February 2027, Settings' Edition row; Connections warns 14 days
+6. **Before the evaluation ends** (about 17 February 2027, Connections' edition row; Connections warns 14 days
    ahead): buy and enter a real Windows key in a Take over, or rebuild the image (`install.sh --force` after
    the standing disk is gone; what is signed in is lost).
 7. **Sign in to OneDrive and Office** (once each; Microsoft 365 Apps is installed since 2026-11-22): Settings →
    Connections → "OneDrive on the Windows VM" → Sign in… walks OneDrive's sign-in to a number for his phone
    and opens the Computers page on the VM; the same press on "Office on the Windows VM" opens Word, where he
-   presses Sign in in its title bar. Settings' Office and OneDrive rows say who is signed in.
+   presses Sign in in its title bar. Connections' Office and OneDrive rows say who is signed in.
 
 ## The whole job, proven
 
@@ -665,7 +666,7 @@ the job on an isolated windowed instance of the built tree under xvfb, with its 
 and ports, the box's tools linked read-only and the box's Claude login copied into its own config. It builds
 `tc-computer.exe` from the tree unless `TEMP_CODE_WINVM_EXE` names one (a build from before the door's
 `serve --listen` exits 64 in the guest and setup ends "The service in the Windows VM did not answer"). It sets
-the standing VM up through `work.winvm.setup`, turns Work and a workspace's "Computer use on the Windows VM"
+the standing VM up through `work.winvm.setup`, turns Work and a job's "Windows VM"
 on, narrows the guest's `tc-block-host-tcp` to one port where it serves a form, and starts ONE Work thread on
 Claude Opus 5.5 at low effort: type a line in Notepad and save it with Ctrl+S, then fill and submit the form
 in Edge. At the end the rule is put back, the instance killed and its root removed, and the standing folder

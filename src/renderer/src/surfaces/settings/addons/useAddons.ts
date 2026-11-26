@@ -4,7 +4,17 @@ import type { AddonRow, AddonsList, AddonStatus, StoreHome } from "@shared/contr
 import type { Link } from "../../../lib/connection";
 import { useHostRead } from "../../../lib/connection/hostRead";
 import { useRecheckWhileOffline } from "../../../lib/settingsHome";
+import { registry } from "../../../lib/connection";
 import { useEnvironmentStatuses } from "../../../lib/connection/status";
+import { searchNames } from "../parts/searchNames";
+
+/** Every add-on's name for Settings' search (`useSearchResults`), each opening Add-ons. */
+export const addonNames = searchNames("addons", "Everywhere, Add-ons", () =>
+  registry
+    .primary()
+    .request<AddonsList>("addons.list", { workspaceId: null })
+    .then((list) => list.addons.map((addon) => addon.name)),
+);
 
 export interface AddonsPageData {
   /** sorted by name, then the global row before a workspace's */
@@ -106,6 +116,9 @@ export function useAddonsPage(link: Link) {
   );
 
   const value = main.value;
+  useEffect(() => {
+    if (value) addonNames.set(value.addons.map((addon) => addon.name));
+  }, [value]);
   const grantList = grantsRead.value?.grants;
   const grantsFailed = grantsRead.value === undefined && grantsRead.error !== null;
   const grants = useMemo(() => (grantList ? new Map(grantList.map((g) => [g.addonId, g])) : grantsFailed ? null : undefined), [grantList, grantsFailed]);

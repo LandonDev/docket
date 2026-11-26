@@ -16,7 +16,7 @@ struct SyncSection: View {
         let allowed = HostExtrasAccess.sync.allowed(client.environment)
         Section {
             if !allowed || extras.sync.forbidden {
-                Text("Harness config and memory")
+                Text("Agent settings and agents’ memory")
                     .foregroundStyle(.secondary)
             } else if !extras.syncLoaded {
                 LookingRow()
@@ -88,7 +88,7 @@ struct SyncSection: View {
         guard allowed else { return [HostExtrasAccess.sync.reason] }
         let sync = client.extras.sync
         guard client.extras.syncLoaded else { return [] }
-        if peers(sync).isEmpty { return ["Nothing to sync with: this host has no paired peer."] }
+        if peers(sync).isEmpty { return ["Nothing to sync with: no other computer is linked to this one."] }
         let enabled = sync.harness?.enabled ?? false
         let skipped = sync.harness?.skipped ?? 0
         return FooterLines.join([SyncWords.footer(enabled: enabled, skipped: skipped), sync.error])
@@ -100,7 +100,7 @@ struct SyncSection: View {
             do {
                 try await extras.syncNow(environmentId: id)
             } catch {
-                withAnimation(Motion.rowAppear) { actionError = (error as? ActionError)?.message ?? error.localizedDescription }
+                withAnimation(Motion.rowAppear) { actionError = ActionError.wrap(error).message }
             }
         }
     }

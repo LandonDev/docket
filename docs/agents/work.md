@@ -14,7 +14,7 @@ the server, with their fence and their preamble
 ([work-scope.md](work-scope.md)); the hold on what a Work thread does that
 leaves the machine ([work-outbox.md](work-outbox.md)); and the screens that
 make them visible: the rail's Work heading and Work Chats, the Work column
-with its six views, linking a workspace to a sector, and Settings → Work
+with its six views, linking a workspace to a sector, and Settings' Work pages
 ("The screens" below). Every pillar is built; each has its own account in
 `docs/agents/work-<pillar>.md`.
 
@@ -22,13 +22,15 @@ with its six views, linking a workspace to a sector, and Settings → Work
 
 - One setting per host: `settings.work = {"enabled": false}`, read by
   `work.get` (any key) and set by `work.set` (admin). `WorkSettingsStore`
-  (src/main/server/work/settings.ts) holds it. No sync engine carries it: a
-  client that turns Work on writes `work.set` to every host it is linked to
-  and may change: Settings → Work asks each link first (`linkMay`,
-  src/renderer/src/lib/linkMay.ts: the host's own `capabilityRefusal` on the
-  caps its hello named), writes only where it can, and names the hosts a
-  given computer's key cannot switch ("Work for the box is changed from a
-  computer that manages it") in place of a refusal.
+  (src/main/server/work/settings.ts) holds it. No sync engine carries it, and
+  no press writes more than one computer: Settings → Work's "Work is on for"
+  is one switch per computer this window reaches, each writing `work.set` to
+  its own computer alone (surfaces/settings/Work.tsx, held by
+  Work.dom.test.tsx), and turning one off asks first. A computer whose key
+  here may not switch it (`linkMay`, src/renderer/src/lib/linkMay.ts: the
+  host's own `capabilityRefusal` on the caps its hello named) shows its state
+  in words and who can ("Changed from a computer that manages PURDUE-LT"),
+  never a switch that would end in a refusal.
 - **A control a key cannot use is not drawn.** Every Work control whose
   method this window's key may not call on its host asks `linkMay` first
   (`useLinkMay` and `useLinksMay` in the same file read the link's status, so
@@ -190,12 +192,11 @@ Settings → Work.
   the hosts that were on are remembered so a launch paints the rail it had.
   With every host off the rail and the column are today's
   (chrome/WorkRail.dom.test.tsx compares the rows with and without a Work
-  workspace) and Settings → Work is the switch alone. The switch writes
-  `work.set` to every host the window is linked to and its line names the
-  hosts that differ; while it is on somewhere and off on another, **Turn on
-  for <hosts>** (the line's one press, secondary) writes `work.set` to the
-  hosts left off alone: a host already on is never written, and turning one
-  on never needs the switch off. Environment zero carries this machine's
+  workspace) and Settings → Work is "Work is on for" alone: one switch per
+  computer, each writing `work.set` to its own computer and no other, off
+  asking first ("The Outbox, Work Chats and its jobs leave the list on every
+  device; nothing is deleted"); the rest of Settings' Work pages are
+  docs/agents/settings.md "The pages: Work". Environment zero carries this machine's
   platform (`localEnvironment`), so a PC's own window draws its workspace row
   "Computer use on This PC".
 - **The rail** (chrome/ProjectRail.tsx): `splitWorkRows` (lib/linkedRail.ts)
@@ -330,22 +331,25 @@ Settings → Work.
   in its first render and painted from the window's last read while the live
   answer comes back. Sessions stay open 15 idle minutes, 8 at most
   ([work-lifeos.md](work-lifeos.md) "Sessions kept", "Rows kept").
-- **Settings**: a **Work** group after Threads holds the Work page, then
-  (Work on) each Work workspace led by its dot; they leave the Workspaces
-  group. The Work page (surfaces/settings/Work.tsx, then
-  `WorkSettingsBody`): the switch; the sectors LifeOS has; Work threads'
-  model, which is his Thread defaults for the workspace, as a code
-  thread's is (the row opens Thread defaults; new-thread-access.md "The
-  model"): a thread the host starts (a routine, Run now, a play, a meeting
-  brief or follow-up, a Waiting on nudge, a capture) takes them too unless
-  a routine names its own model; where new
-  Work workspaces are made. **Connections** follows it in the group
-  ([work-connections.md](work-connections.md)): each host's LifeOS
-  sign-in (pairing, the code and its countdown, a device token, sign out),
-  its tools and every other sign-in and helper Work leans on. A Work workspace's page
-  (`WorkWorkspacePage`): its sector, its key's state, the host its threads
-  run on, "Computer use on <desktop>" per Mac or Windows host
-  (`work.workspace.set {mayUseDesktop}`), its thread defaults. **A new Work
+- **Settings**: the list's **Work** group (Setup, the Work page; Digest,
+  Mail, Files, Connections) and, while Work is on, **Jobs**: each Work
+  workspace led by its dot, out of Code workspaces (docs/agents/settings.md
+  "The pages: Work"). The Work page (surfaces/settings/Work.tsx, then
+  `work/shell/WorkPage.tsx`): Work is on for, a switch per computer ("The
+  switch" above); Access for each job's new threads; Without asking you;
+  Travel; On this Mac, where new jobs are made. A Work thread's model is
+  his New threads set for the workspace, as a code thread's is
+  (new-thread-access.md "The model"): a thread the host starts (a routine,
+  Run now, a play, a meeting brief or follow-up, a Waiting on nudge, a
+  capture) takes it too unless a routine names its own model.
+  **Connections** ends the group ([work-connections.md](work-connections.md)):
+  each computer's LifeOS sign-in (pairing, the code and its countdown, a
+  device token, sign out), its tools and every other sign-in and helper Work
+  leans on. A job's page
+  (`WorkWorkspacePage`, work/shell/JobSettings.tsx; settings.md "The pages: jobs, workspaces, Archive"):
+  Computers its threads may use, one row per Mac or Windows computer by its one name
+  (`work.workspace.set {mayUseDesktop}`), the Windows VM and the Teams copy; New threads; its Rules;
+  Writing and mail. **A new Work
   workspace starts with things on** (the owner's ruling, 2026-11-22): the
   host stores, when it makes one (`createWorkspace`, work/scope.ts), his
   desktops it knows in `mayUseDesktop` (itself when it is a Mac or a PC,
@@ -620,8 +624,8 @@ loads the chunk and is pixel-identical.
   held to Work's providers (`WORK_PROVIDERS`, src/shared/work/providers.ts,
   which the host's `workProviderRefusal` reads too; ModelPicker's
   `providers`) and access in Work's words (work/composer/access.ts;
-  docs/agents/new-thread-access.md "In a Work thread"). His Thread defaults
-  stay the defaults. ⌘. and a failure card's "Continue on another model"
+  docs/agents/new-thread-access.md "In a Work thread"). His New threads set
+  stays the default. ⌘. and a failure card's "Continue on another model"
   open the popover, then the model menu in it.
 - **The title bar.** An unsent Work draft's bar is its crumb alone (the
   job's dot and its project, `WorkCrumb last`), with no strip of chips;

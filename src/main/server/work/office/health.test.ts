@@ -118,7 +118,7 @@ describe('Teams files', () => {
 
   it('names a folder he added that is gone, with the list as its fix', async () => {
     const rows = await officeRows(probe({ gone: () => ['/Users/o/Purdue/Esports - Documents'] }), signal)
-    expect(rows.find((r) => r.group === 'Files')).toMatchObject({ title: 'Esports - Documents', state: 'broken', fix: { kind: 'page', page: 'settings:work' } })
+    expect(rows.find((r) => r.group === 'Files')).toMatchObject({ title: 'Esports - Documents', state: 'broken', fix: { kind: 'page', page: 'settings:files' } })
   })
 })
 

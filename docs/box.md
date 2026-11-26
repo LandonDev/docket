@@ -1002,10 +1002,10 @@ Mac's home comes from its manifest. Hooks in `settings.json` that call
 macOS-only tools just fail here; each landing of `settings.json` logs one
 `[harness-sync]` line naming the hook executables not on the box's PATH.
 
-Status: Settings → Hosts on the Mac. This Mac's Sync group has the Harness
-config switch, with how many files stay on the Mac (over 16 MiB, a symlink
-out of reach, or a macOS binary) under it; each paired host's Sync group has
-a Harness config row, `143 files  synced 2m ago` (every set with files, in
+Status: Settings → Sync on the Mac. Its Agent settings switch has how many
+files stay on the Mac (over 16 MiB, a symlink out of reach, or a macOS
+binary) under it; each paired computer's row under Last synced has an Agent
+settings line, `143 files  synced 2m ago` (every set with files, in
 the set's order, from `sets` of `harness.status`, in its tooltip; only the
 sets still carried, `HARNESS_SET_LABELS`, so an older build's status shows no
 skill set), `Never
@@ -1083,10 +1083,11 @@ down the Mac's link and the Mac syncs), and from Sync now. A round that
 made something the other side should have (a union result, a conflict copy)
 runs one more at once.
 
-Status: Settings → Hosts on the Mac, a Memory row under each paired host's
-Harness config row: `42 files  synced 2m ago  1 conflict`; This Mac's Sync
-group folds the conflict copies on this machine open under its Memory switch
-(the file it sits beside, whose copy, when, and Reveal); that switch is the
+Status: Settings → Sync on the Mac, a Memory line under each paired
+computer's Agent settings line: `42 files  synced 2m ago  1 conflict`; the
+conflict copies on this machine open in a dialog from Conflict copies, a row
+shown only while there are any (the file it sits beside, whose copy, when);
+the Agents' memory switch is the
 `memory.sync.enabled` setting (on by default). `memory.status`,
 `memory.sync` and `memory.settings.set` on the host's own socket; on the
 box, `tc-local memory.status` and the `[memory-sync]` lines in the journal.
@@ -1258,8 +1259,8 @@ Limit: `attachment.maxBytes` in the host's settings table, default 200 MB per
 file, read with `attachment.settings` and set with `attachment.settings.set
 {maxBytes}` (admin; null for the default). The composer checks a file it will
 copy against the thread host's limit when it is attached and says so; begin
-refuses it too. Settings → Hosts (Attachment limit) edits this machine's limit; on the
-box: `tc-local attachment.settings.set '{"maxBytes":524288000}'`.
+refuses it too. Settings → Threads (Largest attachment) edits this machine's limit, and a
+computer's own page edits its; on the box by hand: `tc-local attachment.settings.set '{"maxBytes":524288000}'`.
 
 Fence: for a remote caller, every `session.send` and `queue.add` attachment
 path (an appshot's `textPath` too; `kind: 'thread'` references are not files)
@@ -1566,8 +1567,8 @@ On the Mac (`src/main/server/remote/macBridge.ts`, `macRunner.ts`):
   default), `read`, `read+run` or `full` (Settings: Off, Read, Read and run,
   Full access); `macBridge.shared.<envId>` lists shared
   folders: absolute, real paths, never `/`, the home directory or a directory
-  above it. Settings → Hosts edits both: the policy in the host's Mac bridge
-group, the folders in its Mac bridge settings dialog.
+  above it. Settings edits both in the "What <host> may do on this Mac" sheet (Settings → Sharing, a row per linked computer): the policy is Files and
+commands, the folders Folders it reads without asking.
 - Reads, listings and fetches inside the Mac's own managed roots (its
   projects, workspaces and work root) or a shared folder go through without a
   prompt. A path is judged by its real spelling: a symlink out of a shared
@@ -1606,9 +1607,8 @@ group, the folders in its Mac bridge settings dialog.
   sends no permission and its threads ask as before.
 - What reaches the screen. A card is only ever a decision: a request that
   waits on the person. A command or job that runs, prompted or not, is a
-  row of the thread's Activity section in its right panel and of the host's
-  Mac bridge list on Settings → Hosts ("n commands running on this Mac from
-  <host>", Stop per command and Stop all), and of the thread's "Mac
+  row of the thread's Activity section in its right panel and of Running now
+  in the "What <host> may do on this Mac" sheet (Settings → Sharing, a row per linked computer) (Stop per command), and of the thread's "Mac
   approvals…" dialog; it is never a card or a toast. The server still marks
   a call admitted without a prompt `quiet` while
   `macBridge.showRunning.<envId>` is off (`runPresentation`, off by default
@@ -1645,7 +1645,7 @@ group, the folders in its Mac bridge settings dialog.
     limit, the cores, the host's cap and running count), re-pushed on every
     change of standing, and the box thread's tool result is simply later.
     On the Mac it is a row after the running ones in the host's running
-    list (the host's Mac bridge on Settings → Hosts) and in the thread's "Mac
+    list (Running now in that computer's sheet on Settings → Sharing) and in the thread's "Mac
     approvals…" dialog, never a card: "Waiting for the Mac, load 12.3 of
     8, 3rd in line" (or "4 of 4 running"), with Stop, which takes it out of
     the line and fails the call as stopped. The count line says "n commands
@@ -1695,8 +1695,8 @@ group, the folders in its Mac bridge settings dialog.
   macBridgeRules.ts, the one place to change them. Nothing is persisted:
   `macBridge.rules.list {sessionId?}` and `macBridge.rules.forget
   {sessionId, ruleId?}` (local) back the thread menu's "Mac approvals…"
-  (each rule with Remove, and Forget all) and the Remembered approvals group
-  in This Mac's section of Settings → Hosts. A thread's rules also go when its host pushes
+  (each rule with Remove, and Forget all) and Allowed until Docket quits
+  in the "What <host> may do on this Mac" sheet (Settings → Sharing, a row per linked computer). A thread's rules also go when its host pushes
   `session-removed` or `session-moved` for it (the Mac cannot otherwise see a
   box thread end), and all of them when the app quits.
 - A command runs through the Mac's login shell (`loginShell.ts`, `-lc`; argv
@@ -1823,7 +1823,7 @@ need no prompt (a shared, managed or remembered folder, or full access); one
 that would have asked is refused with the same text and raises no card. The
 Mac lists what the box holds (`mac.held` carries the thread's whole held set
 on every change) as `paused` rows (`mb_held_<id>`, status `paused`) in the
-host's running list on Settings → Hosts and in the thread's "Mac
+host's Running now in its sheet on Settings → Sharing and in the thread's "Mac
 approvals…" dialog, with "Paused" where Stop would be, never as a card; they
 go when the box releases or refuses them, or the link drops. The box pushes
 `macBridge.held` (the count under the root) to its own clients and answers it
@@ -1928,9 +1928,10 @@ A box thread with the Mac bridge on can use the Mac's apps: the same four
 call run on the Mac in a session the Mac owns for that thread. The box
 carries the call; the Mac decides it.
 
-The switch. Each host's Mac bridge group on the Mac's Settings → Hosts has a
-Computer use row under Access, off by default and hidden while Access is
-Off. Turned on, the Mac offers computer use in its `peer.register`; the box
+The switch. Each host's "What <host> may do on this Mac" sheet (the Mac's
+Settings → Sharing, also opened from Computer use's "Who may use this Mac's
+apps") has Use this Mac's apps under Files and commands, off by default and
+offered only above Off. Turned on, the Mac offers computer use in its `peer.register`; the box
 keeps that offer for while the Mac is offline, and the threads bridged to that
 Mac get the tools at their next turn. Where the Mac cannot serve computer use
 (no tc-computer, no screen) the switch is off with the reason. A call while it
@@ -2294,10 +2295,10 @@ no SSH key, no DNS, nothing public, and the box dials only its own loopback.
   holds more than 1 MiB unsent, or the Mac has 32 frames unanswered, and
   resumes below 256 KiB and half that. The box side is
   remote/portForward.ts.
-- **The switch.** "Dev server forwarding" in each host's Mac bridge settings
-  on Settings → Hosts (`ports.forward.<envId>`, on by default; RPCs
+- **The switch.** "Its dev sites open here" in each host's "What <host> may
+  do on this Mac" sheet on Settings → Sharing (`ports.forward.<envId>`, on by default; RPCs
   `ports.forwards` and `ports.setForwarding`, local). Off closes every
-  forward of that host. The host's Mac bridge group lists what is
+  forward of that host. The same sheet lists what is
   forwarded, one row each with Open, the number here and, when it moved,
   which one was taken.
 - **Where it shows.** A shell call's transcript row ends with "Open on the
@@ -2539,7 +2540,7 @@ gets a worktree there as it would locally. Such a child is not archived
 with its parent (the parent is not here); archive it from here, or through
 the batch. Admission: on a Mac the Mac bridge's thread cap
 (`MacBridge.admitThread`, `macBridge.maxThreads.<envId>`, default 2, the
-"Threads at once" in the host's Mac bridge settings on Settings → Hosts); on the box
+"Its threads here at once" in the host's sheet on Settings → Sharing); on the box
 its own `crossHost.maxThreads.<envId>` (default 4, cap 32, a settings row,
 no pane), counting the threads that host started here that are live now
 (`liveThreadsOf`); at the cap the start fails with the count and the key,
@@ -2600,9 +2601,8 @@ release, publish and deploy steps.
 
 ### Devices on the Mac
 
-"What is crippling my machine" used to take a terminal. Settings → Remote
-access on the Mac now has, under the Mac bridge's host rows, a block
-"Devices on this Mac": one summary line ("3 simulators, 1 booted · iPhone 17
+"What is crippling my machine" used to take a terminal. Settings → Threads
+on the Mac now has a section "Simulators and phones": one summary line ("3 simulators, 1 booted · iPhone 17
 Pro Max paired · load 44.9 / 16 cores") and a compact table of every
 simulator and every iPhone or iPad Xcode knows: device and runtime, a state
 dot (green booted, muted shutdown, amber while changing) with the booted
@@ -2722,7 +2722,7 @@ the same query). Nothing on the phone has to know the hop.
   learns a host's own name on every connect. The phone's copy of the rule is
   `HostNames` (ios/TempCodeClient, Environments/HostNames.swift): labels
   short unless two hosts would read the same, a name the person gave in
-  Settings → Hosts never shortened, and a relayed row that is a machine
+  Settings → Computers never shortened, and a relayed row that is a machine
   already listed (`HostNames.pastIdentities`) dropped on arrival. Until
   2026-11-10 the phone's pairing sheet had a Name field whose text named the
   host on the phone and the phone's key on the box: the person typed "Mac"
@@ -2785,7 +2785,7 @@ Mac as covered while the person is away (src/main/server/keepAwake.ts).
   (measured: the same type, dropped when the process dies). To measure: that
   it keeps the idle saver from starting (docs/computer-protocol.md §20.7).
 - **The setting.** `power.keepAwake`: `while-working` (unset) or `never`,
-  This Mac's Keep awake row on Settings → Hosts (While threads work, Never),
+  Settings → General → Keep this Mac awake (While threads work, Never),
   which says On now while the hold is taken; `power.status` and
   `power.settings.set` (admin). The app hands the mode to its children as
   `TEMP_CODE_KEEP_AWAKE`, and the proofs wake a dark display only under
@@ -3047,7 +3047,7 @@ are catalog rows under both the claude and codex harnesses (`vendor:
 codex rows and `low`..`max` on the claude rows, since the installed Claude
 CLI takes no `minimal`). The account is an API key from dev.meta.ai, held
 in Aliax's vault as the `meta` service (static, owned by nobody, every host
-holds it; add one on Settings → Accounts → Meta Model API → Add key…, which
+holds it; add one on Settings → AI accounts → Meta Model API → Add key…, which
 verifies it against `GET /v1/models` before saving; Remove is the only other
 action, there is nothing to switch). Facts verified against dev.meta.ai on
 2026-11-04: one origin `https://api.meta.ai`; Claude Code appends
@@ -3081,7 +3081,7 @@ headroom.json keeps both keys under `meta`. Last run 2026-11-04 on the Mac:
 all 17 checks passed.
 
 The live smoke (the user's key, a dev instance with `TEMP_CODE_USER_DATA`,
-`TEMP_CODE_GATEWAY_TRACE=1`): Settings → Accounts → Add key…, one chat turn
+`TEMP_CODE_GATEWAY_TRACE=1`): Settings → AI accounts → Add key…, one chat turn
 on Wonder under claude and one under codex. What to read off the trace and
 write here: whether `api.meta.ai` answers over h2 with `reused=true` on the
 pooled path (then `DEFAULT_POOLED` in src/main/server/upstream.ts admits it;
@@ -3430,8 +3430,8 @@ macOS. The per-process figure is the median RSS of the live harnesses,
 450 MB until five samples exist. Admission pauses while free memory is
 under 10% of the budget. On the box that is near 120 threads; on a 48 GiB
 Mac, near 54. Every harness process counts, roots and subagents; Start
-now and the focused thread's sends go past it. Settings → Hosts has a
-Running threads row in each host's section: "118 of 120 running  7 queued".
+now and the focused thread's sends go past it. Settings → Threads (this
+Mac) and each computer's page have Threads at once: "118 of 120 running, 7 waiting".
 
 **The sweep of 2026-10-27** (the plan `.temp-code/plan-uwzJrzlRpSL0.md`,
 the report `.temp-code/reports/6hOLqAs21Udx.md`; the probe suite that
@@ -4261,8 +4261,8 @@ window, and the broker dying with the instance.
 
 ## Updating
 
-For a ref already on GitHub, press "Deploy master…" in the Mac
-app's Settings → Hosts (below, "Deploy from the app"), or run from
+For a ref already on GitHub, press Update… on the box's page in
+the Mac app's Settings (below, "Deploy from the app"), or run from
 the Mac:
 
 ```sh
@@ -4482,7 +4482,7 @@ main process's peer links keep each host's `build` on their state. The
 renderer's `useDeployDrift(environmentId)` (`lib/deployDrift.ts`) yields
 `{ behind, deployedVersion, masterVersion }` and `chrome/DeployDrift.tsx`
 draws a muted tabular `+3` at the trailing edge of the host's row in the
-rail's host rows and the host's header on Settings → Hosts,
+rail's host rows (Settings says it in words on Updates and on the computer's page),
 with the tooltip
 "3 releases behind master (runs v1.0.270, master is v1.0.273). Deploy
 with: ssh box 'box-update master'" (a Mac host says "Publish with: bun run
@@ -4495,7 +4495,8 @@ The standing Windows VM's display device is its `run/machine.json`
 (docs/agents/work-winvm.md "The device, and live resize"). Code from before
 that file starts every machine on std VGA, so a Windows hibernated on
 virtio-gpu would wake on other hardware. Before rolling the box back past
-it, Turn off live resize (Settings → Work → Windows VM). box-update checks
+it, turn off live resize (`work.winvm.display.downgrade`, with an admin
+key; Settings has no press for it). box-update checks
 each candidate once it is built: when
 `/srv/agents/win-vm/standing/run/machine.json` says `virtio` and the
 candidate's `out/main` never names `machine.json`, the deploy log says so in
@@ -4603,7 +4604,7 @@ follows the tail through the box's restart).
 
 ### Deploy from the app
 
-"Deploy master…" on the box's Deploy row in Settings → Hosts is the same `box-update master`, pressed in the app with the log streamed
+Update… on the box's page in Settings (Other computers → the box, its Docket row) is the same `box-update master`, pressed in the app with the log streamed
 back. `box-update` must run as root and the host runs as agents, so the app
 never runs it: the root-owned trigger of stage 87
 (scripts/box/87-deploy-trigger.sh) does. One-time install, from the Mac
@@ -5029,7 +5030,7 @@ something says otherwise (src/renderer/src/lib/projectHostChoice.ts
 `chooseCopy`): the host of the thread on screen when that thread is in the
 project, else the host "New threads start on" names when it has a copy and
 its link is open, else another connected host with a copy. The value is
-`box` (a host that is not a Mac, by the hello's `build.platform`) or `mac`. Settings → Thread defaults holds the global
+`box` (a host that is not a Mac, by the hello's `build.platform`) or `mac`. Settings → New threads ("Linked projects start on") holds the global
 one as `startOn` on the global set (one copy, on the box, below; it shows
 once a second host is saved); a project overrides it from its settings
 sheet's New threads section (`project.setStartOn`, kept in the bundle above),
@@ -5096,15 +5097,17 @@ A Mac whose catalog changes (a probe landing after boot, `catalog.get
 with an unknown method; the rules still sync, and the log says so once.
 
 `rules.get` and `defaults.get` answer `home: { name, online }` when the copy is
-another host's. Settings → Orchestration and Thread defaults print it under
-their first section ("Saved on box"); while the box is out of reach they say
-"box is offline" and every control is off. A write refused anyway
-(`refused: orchestration rules and thread defaults live on box; it is
-offline`) rolls back on the page, a switch slides back, and a toast says why;
+another host's. Settings → Subagents, New threads, Reviews, Add-ons and Skills
+print it under the page's title ("Saved on the box, for every computer.", from
+`everyLine` in lib/settingsHome.ts); while the box is out of reach they say
+"The box is offline. These are as last saved, and changes wait for it." and
+every control is held. A write refused anyway (`refused: orchestration rules
+and thread defaults live on box; it is offline`) rolls back on the page, a
+switch slides back, and the row's red line says why;
 the page reads the rules again at each mount, when a host's link comes or
 goes, and on the host's `workspaces` push. `online` is the host's link at the
 instant it answers, and a window's first read runs before the Mac has dialed
-the box: Thread defaults asks again at each mount too, and a page that says
+the box: New threads asks again at each mount too, and a page that says
 offline asks again every 5 s until the link is up (`useRecheckWhileOffline`).
 
 Tests: `remote/rulesSync.test.ts` (the seed, the follow, the rule for a model

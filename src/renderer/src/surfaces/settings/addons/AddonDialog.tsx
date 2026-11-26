@@ -10,13 +10,15 @@ import { Input } from "../../../components/ui/input";
 import { Textarea } from "../../../components/ui/textarea";
 import type { Link } from "../../../lib/connection";
 import { refusalWords } from "../../../lib/settingsHome";
-import { COMMAND_NO_SIGNIN, NAME_RULE, formOf, inputOf, specOf, type AddonForm, type AddonHosts } from "./addonWords";
+import { COMMAND_NO_SIGNIN, NAME_RULE, everyWorkspace, formOf, inputOf, specOf, type AddonForm, type AddonHosts } from "./addonWords";
 
 type Props = {
   link: Link;
   /** null: a new add-on */
   row: AddonRow | null;
   workspaces: readonly { id: string; name: string }[];
+  /** Where the one copy for every workspace is kept: "Where" names it. */
+  home?: { name: string } | null;
   onClose: () => void;
   /** After the dialog's exit has played: the row the host answered, and whether it is new. */
   onSaved: (row: AddonRow, isNew: boolean) => void;
@@ -47,12 +49,12 @@ const RUNS: ToggleChoice<AddonForm["transport"]>[] = [
   { value: "http", label: "Address" },
 ];
 const HOSTS: ToggleChoice<AddonHosts>[] = [
-  { value: "all", label: "Every host" },
+  { value: "all", label: "Every computer" },
   { value: "darwin", label: "Macs only" },
   { value: "linux", label: "Linux only" },
 ];
 
-function AddonForm({ link, row, workspaces, onClose, onSaved, pending, setPending }: Props & { pending: boolean; setPending: (pending: boolean) => void }) {
+function AddonForm({ link, row, workspaces, home, onClose, onSaved, pending, setPending }: Props & { pending: boolean; setPending: (pending: boolean) => void }) {
   const close = useModalClose();
   const [form, setForm] = useState<AddonForm>(() => formOf(row));
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +68,7 @@ function AddonForm({ link, row, workspaces, onClose, onSaved, pending, setPendin
     { value: "fields", label: "Key" },
     { value: "oauth", label: "Sign in", ...(command && !commandSignsIn ? { disabled: true, note: COMMAND_NO_SIGNIN } : {}) },
   ];
-  const where = [{ value: "", label: "Every workspace" }, ...workspaces.map((w) => ({ value: w.id, label: w.name }))];
+  const where = [{ value: "", label: everyWorkspace(home) }, ...workspaces.map((w) => ({ value: w.id, label: w.name }))];
 
   const save = () => {
     const name = form.name.trim();
@@ -91,7 +93,7 @@ function AddonForm({ link, row, workspaces, onClose, onSaved, pending, setPendin
       },
       (err: unknown) => {
         setPending(false);
-        setError(refusalWords(err) || "The host refused it");
+        setError(refusalWords(err) || "The computer refused it");
       },
     );
   };
@@ -114,8 +116,8 @@ function AddonForm({ link, row, workspaces, onClose, onSaved, pending, setPendin
           <FieldRow label="Where">
             <ChoiceSelect label="Where" size="sm" value={form.workspaceId ?? ""} onChange={(v) => patch({ workspaceId: v || null })} options={where} />
           </FieldRow>
-          <FieldRow label="Runs">
-            <ChoiceToggle label="Runs" value={form.transport} options={RUNS} onChange={(transport) => patch({ transport, ...(transport === "stdio" && form.auth === "oauth" && !form.tokenEnv ? { auth: "none" } : {}) })} />
+          <FieldRow label="Connects by">
+            <ChoiceToggle label="Connects by" value={form.transport} options={RUNS} onChange={(transport) => patch({ transport, ...(transport === "stdio" && form.auth === "oauth" && !form.tokenEnv ? { auth: "none" } : {}) })} />
           </FieldRow>
         </div>
         {command ? (
@@ -133,7 +135,7 @@ function AddonForm({ link, row, workspaces, onClose, onSaved, pending, setPendin
                 className={MONO}
               />
             </Field>
-            <Field label="Variables" hint="Their values go in the key">
+            <Field label="Secret names" hint="Their values go in the key">
               <Input value={form.env} onChange={(e) => patch({ env: e.target.value })} placeholder="GITHUB_TOKEN" spellCheck={false} autoComplete="off" className={MONO} />
             </Field>
           </>
@@ -142,7 +144,7 @@ function AddonForm({ link, row, workspaces, onClose, onSaved, pending, setPendin
             <Field label="Address">
               <Input value={form.url} onChange={(e) => patch({ url: e.target.value })} placeholder="https://mcp.example.com/mcp" spellCheck={false} autoComplete="off" />
             </Field>
-            <Field label="Headers" hint="Their values go in the key">
+            <Field label="Request header names" hint="Their values go in the key">
               <Input value={form.headers} onChange={(e) => patch({ headers: e.target.value })} placeholder="X-Api-Key" spellCheck={false} autoComplete="off" className={MONO} />
             </Field>
           </>
@@ -151,12 +153,12 @@ function AddonForm({ link, row, workspaces, onClose, onSaved, pending, setPendin
           <FieldRow label="Sign-in">
             <ChoiceToggle label="Sign-in" value={form.auth} options={auths} onChange={(auth) => patch({ auth })} />
           </FieldRow>
-          <FieldRow label="Hosts">
-            <ChoiceToggle label="Hosts" value={form.hosts} options={HOSTS} onChange={(hosts) => patch({ hosts })} />
+          <FieldRow label="Computers">
+            <ChoiceToggle label="Computers" value={form.hosts} options={HOSTS} onChange={(hosts) => patch({ hosts })} />
           </FieldRow>
         </div>
         {commandSignsIn ? (
-          <Field label="Token variable">
+          <Field label="Name for the sign-in token">
             <Input value={form.tokenEnv} onChange={(e) => patch({ tokenEnv: e.target.value })} spellCheck={false} autoComplete="off" className={MONO} />
           </Field>
         ) : null}

@@ -35,11 +35,14 @@ vi.mock("../../lib/connection", () => {
   return { registry: { primary: () => link } };
 });
 vi.mock("../../lib/tcserver/workspaces", () => ({ useProjects: () => [{ id: "p1", name: "Alpha" }] }));
-vi.mock("../../lib/editorConfig", () => ({ useEditorConfig: () => host.editor, chooseEditorSetting: vi.fn() }));
+const chooseEditor = vi.hoisted(() => vi.fn(async () => null));
+vi.mock("../../lib/editorConfig", () => ({ useEditorConfig: () => host.editor, chooseEditorSetting: chooseEditor }));
+vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../lib/monaco/lspGate", () => ({ retryBlockedEnsures: vi.fn() }));
 vi.mock("../../lib/sounds", () => ({ playCue: vi.fn() }));
+vi.mock("../../lib/settings/computerName", () => ({ useComputerName: () => ({ name: "MacBook Pro", own: true }), computerInLine: () => "this Mac" }));
 
-const { EditorPage, lspFigures } = await import("./Editor");
+const { EditorPage, serverWords } = await import("./Editor");
 
 beforeEach(() => {
   host.accept = null;
@@ -56,18 +59,45 @@ describe("Editor", () => {
   it("lays out its sections, the external editor only with a config", async () => {
     render(<EditorPage />);
     await act(async () => {});
-    expect(headings()).toEqual(["Saving", "Completions", "Java", "Language servers"]);
+    expect(headings()).toEqual(["Saving", "Suggestions", "Java on this Mac"]);
     cleanup();
-    host.editor = { editor: "auto", effective: "code", installed: { idea: false, code: true, xcode: false } };
+    host.editor = { editor: "auto", effective: "code", installed: { idea: false, code: true, xed: false } };
     render(<EditorPage />);
     await act(async () => {});
-    expect(headings()).toEqual(["Saving", "Completions", "Open files in", "Java", "Language servers"]);
-    expect(screen.getByText("Found VS Code; Auto opens VS Code.")).toBeTruthy();
+    expect(headings()).toEqual(["Saving", "Suggestions", "Other editors", "Java on this Mac"]);
+    expect(screen.getByText("Auto opens VS Code")).toBeTruthy();
+  });
+
+  it("writes each Saving and Suggestions row to its own key at once", async () => {
+    localStorage.clear();
+    render(<EditorPage />);
+    await act(async () => {});
+    fireEvent.click(screen.getByRole("switch", { name: "Save as I type" }));
+    expect(localStorage.getItem("docket.editor.autoSave")).not.toBeNull();
+    fireEvent.click(screen.getByRole("switch", { name: "Format Java and Kotlin on save" }));
+    expect(JSON.parse(localStorage.getItem("docket.editor.formatOnSave") ?? "{}").java).toBe(true);
+    fireEvent.click(screen.getByRole("switch", { name: "Inline suggestions" }));
+    expect(localStorage.getItem("docket.editor.ghostText")).not.toBeNull();
+  });
+
+  it("hands Open files in to this computer's editor setting with the save mark", async () => {
+    host.editor = { editor: "auto", effective: "code", installed: { idea: false, code: true, xed: false } };
+    render(<EditorPage />);
+    await act(async () => {});
+    fireEvent.click(screen.getByLabelText("Open files in"));
+    await act(async () => {});
+    const option = await screen.findByRole("option", { name: "VS Code" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse", button: 0 });
+      fireEvent.click(option);
+    });
+    expect(chooseEditor).toHaveBeenCalledWith("code");
+    expect(document.querySelector('[data-setting="editor.openIn"] [data-slot=save-mark]')?.getAttribute("data-state")).toBe("saved");
   });
 
   it("names no engine verb before the doctor answers: the button's place is a skeleton", () => {
     render(<EditorPage />);
-    const java = screen.getByRole("region", { name: "Java" });
+    const java = screen.getByRole("region", { name: "Java on this Mac" });
     expect(java.querySelector("[data-engine-action]")).toBeTruthy();
     expect(within(java).queryByRole("button")).toBeNull();
   });
@@ -76,38 +106,33 @@ describe("Editor", () => {
     host.doctorFails = true;
     render(<EditorPage />);
     await act(async () => {});
-    const java = screen.getByRole("region", { name: "Java" });
+    const java = screen.getByRole("region", { name: "Java on this Mac" });
     expect(java.textContent).not.toContain("No JDK found");
     expect(java.textContent).not.toContain("Not downloaded");
     expect(java.querySelector("[role=alert]")?.textContent).toBe("The host did not answer");
     host.doctorFails = false;
     await act(async () => fireEvent.click(within(java).getByRole("button", { name: "Retry" })));
-    expect(java.textContent).toContain("JDK 21");
+    expect(java.textContent).toContain("21, language support ready");
   });
 
-  it("never says None running when lsp.status fails: the error and Retry", async () => {
+  it("adds nothing to the Java rows when lsp.status fails, and never says a server is idle that it did not report", async () => {
     render(<EditorPage />);
-    // The first poll is refused: resolving with a rejected promise rejects it.
+    await act(async () => {});
     await act(async () => (host.lsp as unknown as (v: unknown) => void)(Promise.reject(new Error("refused"))));
-    const servers = screen.getByRole("region", { name: "Language servers" });
-    expect(servers.textContent).not.toContain("None running");
-    expect(within(servers).getByRole("alert").textContent).toBe("refused");
-    expect(within(servers).getByRole("button", { name: "Retry" })).toBeTruthy();
+    const java = screen.getByRole("region", { name: "Java on this Mac" });
+    expect(java.textContent).toContain("21, language support ready");
+    expect(java.textContent).not.toContain("running for");
+    expect(within(java).queryByRole("alert")).toBeNull();
   });
 
-  it("polls only once the rows have loaded, so a slow host still ends in its deadline", async () => {
+  it("asks the servers again every 5 s only once the first answer is in", async () => {
     vi.useFakeTimers();
     try {
       render(<EditorPage />);
-      // Each lsp.status ask replaces the resolver: none past the first for 10 s.
       const first = host.lsp;
       await act(async () => vi.advanceTimersByTime(10_000));
       expect(host.lsp).toBe(first);
-      const servers = screen.getByRole("region", { name: "Language servers" });
-      expect(within(servers).getByRole("alert").textContent).toBe("The computer did not answer");
-      // A late answer lands, and from then on the poll runs every 5 s.
       await act(async () => host.lsp?.([]));
-      expect(screen.getByText("None running")).toBeTruthy();
       const before = host.lsp;
       await act(async () => vi.advanceTimersByTime(5_000));
       expect(host.lsp).not.toBe(before);
@@ -116,67 +141,72 @@ describe("Editor", () => {
     }
   });
 
-  it("holds skeletons until the first poll answers", async () => {
+  it("folds each Java server into its row: the projects it runs for and its memory, its failure as the row's red line", async () => {
+    host.engine = { dist: true, accepted: true, build: "263.1" };
     render(<EditorPage />);
-    const servers = screen.getByRole("region", { name: "Language servers" });
-    expect(servers.querySelectorAll("[data-slot=skeleton]")).toHaveLength(4);
-    await act(async () => host.lsp?.([]));
-    expect(screen.getByText("None running")).toBeTruthy();
-  });
-
-  it("names each server, its project and its figures", async () => {
-    render(<EditorPage />);
+    await act(async () => {});
     await act(async () =>
       host.lsp?.([
         { serverId: "s1", lang: "java", projectId: "p1", state: "running", memoryBytes: 512 * 1024 ** 2, idleMs: 180_000 },
-        { serverId: "s2", lang: "web", projectId: "p1", state: "error", error: "Exited 1", idleMs: 0 },
+        { serverId: "s2", lang: "idea", projectId: "p1", state: "error", error: "Exited 1", idleMs: 0 },
+        { serverId: "s3", lang: "web", projectId: "p1", state: "running", memoryBytes: 1, idleMs: 0 },
       ]),
     );
-    const servers = screen.getByRole("region", { name: "Language servers" });
-    expect(servers.textContent).toContain("jdtls");
-    expect(servers.textContent).toContain("512 MB");
-    expect(servers.textContent).toContain("idle 3m");
+    const jdk = document.querySelector('[data-setting="editor.jdk"]') as HTMLElement;
+    expect(jdk.textContent).toContain("21, language support ready, running for Alpha, 512 MB");
+    const engine = document.querySelector('[data-setting="editor.intellij"]') as HTMLElement;
+    expect(engine.textContent).toContain("Build 263.1");
     expect(screen.getByText("Exited 1").className).toContain("text-destructive");
-    expect(screen.getAllByText("Alpha")).toHaveLength(2);
+    expect(screen.queryByText("Language servers")).toBeNull();
+    host.engine = undefined;
   });
 
-  it("shows the JDK and its path once the doctor answers", async () => {
+  it("shows the JDK once the doctor answers", async () => {
     render(<EditorPage />);
     await act(async () => {});
-    expect(screen.getByText("JDK 21, jdtls ready")).toBeTruthy();
-    expect(screen.getByText("/usr/lib/jvm/21").className).toContain("font-mono");
+    expect(screen.getByText("21, language support ready")).toBeTruthy();
   });
 
-  it("words a server's figures", () => {
-    expect(lspFigures({ state: "starting", idleMs: 0 } as never)).toEqual(["Starting…"]);
-    expect(lspFigures({ state: "running", idleMs: 0 } as never)).toEqual(["Running"]);
+  it("words what a kind of server is doing", () => {
+    const names = new Map([["p1", "Alpha"], ["p2", "Beta"]]);
+    expect(serverWords([], names)).toEqual({ line: null, error: null });
+    expect(serverWords([{ state: "starting", projectId: "p1", idleMs: 0 } as never], names)).toEqual({ line: "starting", error: null });
+    expect(
+      serverWords(
+        [
+          { state: "running", projectId: "p1", memoryBytes: 1024 ** 3, idleMs: 0 } as never,
+          { state: "running", projectId: "p2", memoryBytes: 512 * 1024 ** 2, idleMs: 0 } as never,
+        ],
+        names,
+      ).line,
+    ).toBe("running for Alpha and Beta, 1.5 GB");
   });
 
   it("reads the EULA in a dialog: a spinner while it downloads, then the text, Cancel and the verb", async () => {
     render(<EditorPage />);
     await act(async () => {});
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Accept EULA" }));
+      fireEvent.click(screen.getByRole("button", { name: "Read the licence…" }));
     });
     const dialog = await screen.findByRole("dialog");
-    expect(screen.getByRole("heading", { name: "JetBrains EULA" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "JetBrains licence" })).toBeTruthy();
     expect(dialog.querySelector("[data-slot=spinner]")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Accept and enable" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Accept and turn on" }) as HTMLButtonElement).disabled).toBe(true);
     await act(async () => host.eula?.({ build: "263.1", text: "You may use it." }));
     expect(screen.getByText("You may use it.")).toBeTruthy();
-    expect(screen.getByText("intellij-server 263.1")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Accept and enable" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText("IntelliJ engine, build 263.1")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Accept and turn on" }) as HTMLButtonElement).disabled).toBe(false);
     expect(screen.getByRole("button", { name: "Cancel" }).dataset.variant).toBe("secondary");
     expectModalShape(dialog);
   });
 
-  it("holds Accept and enable's width and sends once while acceptance waits", async () => {
+  it("holds Accept and turn on's width and sends once while acceptance waits", async () => {
     host.engine = { dist: true, accepted: false, build: "263.1" };
     render(<EditorPage />);
     await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Accept EULA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the licence…" }));
     await act(async () => host.eula?.({ build: "263.1", text: "You may use it." }));
-    const accept = screen.getByRole<HTMLButtonElement>("button", { name: "Accept and enable" });
+    const accept = screen.getByRole<HTMLButtonElement>("button", { name: "Accept and turn on" });
     const widths = accept.querySelector("[data-slot=busy-label]")!.className;
     fireEvent.click(accept);
     fireEvent.click(accept);
@@ -192,9 +222,9 @@ describe("Editor", () => {
     host.engine = { dist: true, accepted: false, build: "263.1" };
     render(<EditorPage />);
     await act(async () => {});
-    fireEvent.click(screen.getByRole("button", { name: "Accept EULA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the licence…" }));
     await act(async () => host.eula?.({ build: "263.1", text: "You may use it." }));
-    fireEvent.click(screen.getByRole("button", { name: "Accept and enable" }));
+    fireEvent.click(screen.getByRole("button", { name: "Accept and turn on" }));
     await act(async () => host.refuse?.(new Error("disk full")));
     const dialog = screen.getByRole("dialog");
     expect(dialog.textContent).toContain("disk full");

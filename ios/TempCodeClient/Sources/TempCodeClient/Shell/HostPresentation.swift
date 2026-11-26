@@ -1,29 +1,63 @@
 import Foundation
 import TempCodeContract
 
-/// What the Settings, Hosts and host-detail screens say about a host, as
+/// What the Settings, Computers and computer-detail screens say about a computer, as
 /// pure functions of the client's models, so the app target holds only the
 /// SwiftUI and every word here has a test. Value code throughout; only
 /// `forgetHost` touches the registry and runs on the main actor.
 
-/// A host's state in one word or short phrase: the Hosts row's second line
-/// and the detail's status row. The reconnect countdown is the app's
-/// `StatusText`; this is the static word.
+/// A computer's state in one word or short phrase: the Computers row's
+/// second line. The detail's status row says the whole sentence
+/// (`ConnectionSentence`).
 public enum ConnectionWord {
     public static func text(for status: EnvironmentStatus) -> String {
         switch status.transport {
         case .open: "Connected"
-        case .connecting: status.attempts > 0 ? "Unreachable" : "Connecting…"
-        case .reconnecting: "Reconnecting…"
+        case .connecting: status.attempts > 0 ? "Not answering" : "Connecting…"
+        // A suspended socket is the app's own rest in the background: it reconnects as the app comes forward.
+        case .reconnecting, .suspended: "Reconnecting…"
         case .offline:
             switch status.halt {
-            case .identityChanged?: "Different host"
+            case .identityChanged?: "Another computer"
             case .contractMismatch?: "Needs an update"
             case nil: "Offline"
             }
-        case .unauthorized: "Key refused"
-        case .suspended: "Paused"
+        case .unauthorized: "Refuses this key"
         }
+    }
+}
+
+/// A computer's connection as one sentence, in the desktop's words
+/// (src/renderer/src/lib/connection/degraded.ts `degradedText`): "the box
+/// dropped; retrying in 5 s", "the box no longer accepts this key", "the box
+/// is offline". `now` keeps the countdown honest. The host's own error text
+/// never shows: the phone says what it knows, not what the socket printed.
+public enum ConnectionSentence {
+    public static func text(name: String, status: EnvironmentStatus, now: Date) -> String {
+        let wait = status.nextRetryAt.map { max(0, Int(($0 / 1000 - now.timeIntervalSince1970).rounded())) } ?? 0
+        switch status.transport {
+        case .open:
+            return "Connected"
+        case .connecting:
+            return status.attempts > 0 && wait > 0 ? "\(name) did not answer; retrying in \(wait) s" : "Connecting to \(name)…"
+        case .reconnecting:
+            return wait > 0 ? "\(name) dropped; retrying in \(wait) s" : "Reconnecting to \(name)…"
+        case .suspended:
+            return "Reconnecting to \(name)…"
+        case .offline:
+            switch status.halt {
+            case .identityChanged?: return "\(name)’s address answers as another computer"
+            case .contractMismatch(let app, let host)?: return host > app ? "\(name) is newer than this app" : "\(name) is older than this app"
+            case nil: return "\(name) is offline"
+            }
+        case .unauthorized:
+            return "\(name) no longer accepts this key"
+        }
+    }
+
+    /// Whether the sentence counts down, so its view ticks each second.
+    public static func ticks(_ status: EnvironmentStatus) -> Bool {
+        (status.transport == .reconnecting || status.transport == .connecting) && status.nextRetryAt != nil
     }
 }
 
@@ -47,10 +81,12 @@ public func sentence(_ fragment: String) -> String {
     return capitalised.last.map { ".!?".contains($0) } == true ? capitalised : capitalised + "."
 }
 
-/// The one action that helps a host in a given state, and the sentence that
-/// says why. A new key when the key or the host's identity is wrong, a retry
-/// when the host is out of reach, nothing while it is connected, on its
-/// first attempt, suspended, or needs an update this app cannot do.
+/// The one action that helps a computer in a given state, and the sentence
+/// under it that says what to do. A new sign-in when the key or the
+/// computer's identity is wrong, a retry when it is out of reach, nothing
+/// while it is connected, on its first attempt, suspended, or needs an
+/// update this app cannot do. The status row above already says the state,
+/// so the footer never says it again.
 public enum HostFix: Sendable, Hashable {
     case retry
     case pairAgain
@@ -58,7 +94,7 @@ public enum HostFix: Sendable, Hashable {
     public var title: String {
         switch self {
         case .retry: "Retry Now"
-        case .pairAgain: "Pair Again"
+        case .pairAgain: "Sign In Again"
         }
     }
 
@@ -80,20 +116,19 @@ public enum HostFix: Sendable, Hashable {
         }
     }
 
-    /// The footer under the status row: why the host is where it is, and
-    /// what the phone does about it on its own. Nothing when connected.
+    /// The footer under the status row: what the phone does on its own, or
+    /// what is his to do. Nothing when connected or while it reconnects.
     public static func explanation(for status: EnvironmentStatus) -> String? {
         switch status.transport {
-        case .open: nil
-        case .connecting, .reconnecting: status.attempts > 0 ? "The phone keeps trying on its own; Retry tries now." : nil
+        case .open, .suspended: nil
+        case .connecting, .reconnecting: status.attempts > 0 ? "The phone keeps trying on its own." : nil
         case .offline:
             switch status.halt {
-            case .identityChanged?: "The address now answers as another host. Pair again to trust it."
-            case .contractMismatch(let app, let host)?: host > app ? "Update this app to talk to the host." : "Update the host to talk to this app."
-            case nil: "The phone will try again when the network returns."
+            case .identityChanged?: "Sign in again to trust it."
+            case .contractMismatch(let app, let host)?: host > app ? "Update this app to talk to it." : "Update it to talk to this app."
+            case nil: "The phone tries again when the network returns."
             }
-        case .unauthorized: "The host refused this key. A new pairing link from its Remote access pane replaces it."
-        case .suspended: "Reconnects when the app comes forward."
+        case .unauthorized: "Make a sign-in link on it in Settings → Sharing, then sign in again."
         }
     }
 
@@ -143,24 +178,60 @@ public enum HostPushWord {
     }
 }
 
-/// A capability of a key, in the words the host's Remote access pane uses.
-public extension Capability {
-    static let ordered: [Capability] = [.read, .operate, .approve, .admin]
+/// What a key may do on its computer, as the desktop's "It may" says it
+/// (src/renderer/src/surfaces/settings/computers/addWords.ts
+/// `allowChoices`): four levels, each the one before and more, so a key
+/// holds exactly one.
+public enum KeyRights: Int, CaseIterable, Sendable, Hashable {
+    case look
+    case run
+    case approve
+    case manage
 
-    /// The rows of a key: the four, then `give` and `device` only on a key
-    /// that holds them (admin never implies either), never `pending`.
-    static func rows(holding caps: [Capability]) -> [Capability] {
-        ordered + [Capability.give, .device].filter(caps.contains)
+    /// The level a key's capabilities come to (`mayWords` on the desktop).
+    public static func of(_ caps: [Capability]) -> KeyRights {
+        if caps.contains(.admin) { return .manage }
+        if caps.contains(.approve) { return .approve }
+        if caps.contains(.operate) { return .run }
+        return .look
+    }
+
+    /// `computer` is the computer's name, as the last level says it.
+    public func title(computer: String) -> String {
+        switch self {
+        case .look: "Look only"
+        case .run: "Run threads"
+        case .approve: "Run threads and approve"
+        case .manage: "Manage \(computer)"
+        }
+    }
+
+    public func detail(computer: String) -> String {
+        switch self {
+        case .look: "Read threads and files"
+        case .run: "Start, steer and stop threads"
+        case .approve: "Also answer when a thread asks before a risky step"
+        case .manage: "Everything above, and add devices and change every setting on \(computer)"
+        }
+    }
+}
+
+/// The two capabilities a key may hold beside its level, never implied by
+/// it: setting other computers up, and being a computer set up that way.
+public extension Capability {
+    /// `give` and `device` on a key that holds them, never `pending`.
+    static func extras(holding caps: [Capability]) -> [Capability] {
+        [Capability.give, .device].filter(caps.contains)
     }
 
     var title: String {
         switch self {
-        case .read: "Read"
-        case .operate: "Operate"
+        case .read: "Look only"
+        case .operate: "Run threads"
         case .approve: "Approve"
-        case .admin: "Admin"
-        case .give: "Give"
-        case .device: "Given computer"
+        case .admin: "Manage"
+        case .give: "Set up other computers"
+        case .device: "Set up from another computer"
         case .pending: "Waiting to be allowed"
         case .unknown(let raw): raw.capitalized
         }
@@ -169,23 +240,24 @@ public extension Capability {
     /// One line on what the capability lets the phone do.
     var detail: String {
         switch self {
-        case .read: "See threads, files and the inbox"
-        case .operate: "Send turns, stop and start threads"
-        case .approve: "Decide approvals and run full-access threads"
-        case .admin: "Pair devices, manage keys and move threads"
+        case .read: "Read threads and files"
+        case .operate: "Start, steer and stop threads"
+        case .approve: "Answer when a thread asks before a risky step"
+        case .admin: "Add devices and change every setting"
         case .give: "Give accounts to computers and set them up"
-        case .device: "A computer set up from the giver"
+        case .device: "Its accounts came from the computer that set it up"
         case .pending: "Set up, until the giver allows it"
         case .unknown: "Not known to this app"
         }
     }
 }
 
-/// The Forget dialog's message for a carrier: the sentence every host gets,
-/// then the relayed hosts that go with it, by name ("Studio Mac goes with
-/// it.", "Studio Mac and Office Mac go with it.").
+/// The Forget dialog's message for a carrier: what this phone drops and what
+/// the computer keeps (the plan's section 5), then the computers relayed
+/// through it that go with it, by name ("Studio Mac goes with it.", "Studio
+/// Mac and Office Mac go with it.").
 public func forgetCopy(carrier: String, relayed: [String]) -> String {
-    let base = "Its threads stay on the host, and it stops sending notifications here when it can be reached. The key stays valid there until revoked. Pair again to come back."
+    let base = "This phone drops its key and stops getting \(carrier)’s notifications. Its threads stay there, and \(carrier) still lets this phone in until the key is removed there."
     guard !relayed.isEmpty else { return base }
     let names: String
     if relayed.count == 1 {
@@ -196,7 +268,7 @@ public func forgetCopy(carrier: String, relayed: [String]) -> String {
     return "\(base) \(names) \(relayed.count == 1 ? "goes" : "go") with it."
 }
 
-/// Forgetting a host: drop its push registration there while the socket is
+/// Forgetting a computer: drop its push registration there while the socket is
 /// open (best effort, no retry: the key stays valid on the host, so a
 /// registration left behind would keep sending notices for an environment
 /// the phone no longer knows), then remove the key here. The removal stops

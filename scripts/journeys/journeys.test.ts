@@ -55,10 +55,11 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = join(HERE, '../..')
 
 it('registers every journey once with its file id, a shape and an end check', async () => {
-  const files = readdirSync(HERE).filter((file) => /^J\d{2}-.+\.ts$/.test(file))
-  expect(files.length).toBeGreaterThan(0)
-  const modules = await Promise.all(files.map((file) => import('./' + file) as Promise<{ default: typeof JOURNEYS[number] }>))
-  expect(JOURNEYS.map((j) => j.id)).toEqual(files.map((file) => file.slice(0, 3)))
+  const work = readdirSync(HERE).filter((file) => /^J\d{2}-.+\.ts$/.test(file)).sort()
+  const settings = readdirSync(join(HERE, 'settings')).filter((file) => /^J-.+\.ts$/.test(file)).sort()
+  expect(JOURNEYS.map((j) => j.id)).toEqual([...work.map((file) => file.slice(0, 3)), ...settings.map((file) => file.slice(0, -3))])
+  const paths = [...work, ...settings.map((file) => 'settings/' + file)]
+  const modules = await Promise.all(paths.map((file) => import('./' + file) as Promise<{ default: typeof JOURNEYS[number] }>))
   for (const { default: journey } of modules) {
     expect(JOURNEYS.filter((j) => j === journey)).toHaveLength(1)
     expect(journey.shapes.length).toBeGreaterThan(0)
@@ -67,6 +68,15 @@ it('registers every journey once with its file id, a shape and an end check', as
       expect(journey.steps.filter((step) => !step.shapes || step.shapes.includes(shape)).at(-1)?.name).toMatch(/^end:/)
     }
   }
+})
+
+it('runs the five Settings checks on one pair without a sandbox or the shared tools mount', async () => {
+  const picks = options(['--only', 'J-computers', '--desk'])
+  expect(picks.jobs).toHaveLength(1)
+  const job = picks.jobs[0]!
+  expect(job.spec.steps).toHaveLength(5)
+  expect(job.spec.continueOnFailure).toBe(true)
+  expect(walkSetup(job, picks.desk)).toMatchObject({ desk: false, sandbox: false, launch: { withoutTools: true } })
 })
 
 it('never spreads the launch shell environment before filtering it', () => {
@@ -287,7 +297,7 @@ it('keeps each Fix and rows outside the run when it updates the table', () => {
     .toContain('| J40 | S | not run: no sandbox |')
 })
 
-it('records a failed step with evidence and skips the rest of that walk', async () => {
+it.each([false, true])('records a failed step with evidence (continue on failure: %s)', async (continueOnFailure) => {
   const folder = mkdtempSync(join(tmpdir(), 'journeys-walk-'))
   try {
     const hostErrors: string[] = ['old']
@@ -299,18 +309,19 @@ it('records a failed step with evidence and skips the rest of that walk', async 
     const next = vi.fn()
     const wrongShape = vi.fn()
     const result = await walk({
-      id: 'J00', title: 'test', tier: 1, shapes: ['A'], steps: [
+      id: 'J00', title: 'test', tier: 1, shapes: ['A'], continueOnFailure, steps: [
         step('Another shape', wrongShape, ['S']),
         step('Try it', () => { hostErrors.push('Host refused'); throw new Error('No row') }),
         step('end: next step', next)
       ]
     }, { pair, shape: 'A', folder, workspace: { id: 'a', name: 'a', path: folder } }, new Promise<never>(() => undefined))
-    expect(result.steps).toEqual([{
+    expect(result.steps[0]).toEqual({
       name: 'Try it', error: 'No row', picture: 'J00-A/01-try-it.png',
       toasts: ['Toast'], saveLine: 'Saved', hostErrors: ['Host refused']
-    }])
+    })
     expect(readFileSync(join(folder, '01-try-it.png'), 'utf8')).toBe('picture')
-    expect(next).not.toHaveBeenCalled()
+    expect(next).toHaveBeenCalledTimes(continueOnFailure ? 1 : 0)
+    expect(result.steps).toHaveLength(continueOnFailure ? 2 : 1)
     expect(wrongShape).not.toHaveBeenCalled()
   } finally {
     rmSync(folder, { recursive: true, force: true })

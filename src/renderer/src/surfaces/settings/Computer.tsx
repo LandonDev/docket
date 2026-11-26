@@ -1,18 +1,22 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { ComputerAppVerdict, ComputerServiceState } from "@server/shared/contract-computer";
+import type { ComputerAppVerdict, ComputerServiceState, ComputerSettings } from "@server/shared/contract-computer";
 import type { ActiveAppMode } from "@server/shared/computer/scheduleRules";
 import { verdictWords } from "@server/shared/computer/words";
+import type { MacBridgeHostPolicy } from "@server/shared/contract-macbridge";
+import { confirmAction } from "../../chrome/ConfirmDialog";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
 import { StatusMark, computerServiceMarkOf } from "../../components/ui/status";
+import { setComputerService, useComputerService } from "../../lib/computerSessions";
 import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
 import type { Link } from "../../lib/connection/link";
-import { setComputerService, useComputerService } from "../../lib/computerSessions";
+import { refreshMacBridgeHosts, useMacBridgeHosts } from "../../lib/macBridge";
+import { openMaySheet } from "../../lib/settings/maySheet";
 import { thisDesktopInLine } from "../../lib/native";
+import { useComputerNames } from "../../lib/settings/computerName";
 import {
   IDLE_MINUTES,
   appTitle,
@@ -27,83 +31,42 @@ import {
   useComputerPermissions,
 } from "../../lib/tcserver/computerSettings";
 import { CommitField } from "./hosts/CommitField";
-import { PermissionRow } from "./PermissionRow";
+import { ListFilter, useListFilter } from "./parts/ListFilter";
+import { Permissions } from "./parts/Permissions";
+import { SettingRow, SettingSection } from "./parts/SettingRow";
+import { useSaved, type Saved } from "./parts/useSaved";
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 /** When a step that needs the app in front gets it (docs/computer-protocol.md §26.6). */
 const ACTIVE_APP_CHOICES: { value: ActiveAppMode; label: string }[] = [
-  { value: "brief", label: "Bring it forward for a moment" },
+  { value: "brief", label: "Bring it forward briefly" },
   { value: "away", label: "Wait until I'm away" },
 ];
 
 /**
- * Settings › Computer use, on this Mac's own host: the service and how long
- * the person must be away before a thread may take the pointer and keyboard,
- * whether a picture of the window is kept after each action (the Computer
- * section's history), the two macOS grants, and every app TempCode learned
- * with Forget.
+ * Settings › Computer use, on this Mac's own computer (`computer.*`): how threads use this Mac's apps. The helper's
+ * row only while it is down; how long he must be away before a thread takes the pointer, what a step does about the
+ * app in front, the pictures kept of each step and who may watch, each saved with the mark; who may use the apps
+ * (threads here always, each linked computer as Sharing set it); the two macOS grants, the one place both are listed;
+ * and every app it learned, with Forget.
  */
 export function ComputerPage() {
   const link = registry.primary();
+  const mac = thisDesktopInLine();
   const service = useComputerService(link.environmentId);
   const settings = useHostRead(link, () => readComputerSettings(link));
   const { set } = settings;
   const perms = useComputerPermissions(link, service);
-  const [idleError, setIdleError] = useState<string | null>(null);
-  const [activeError, setActiveError] = useState<string | null>(null);
-  const [picturesError, setPicturesError] = useState<string | null>(null);
-  const [watchError, setWatchError] = useState<string | null>(null);
-
   useEffect(() => onComputerSettings(link, set), [link, set]);
 
-  const commitIdle = async (minutes: number | null): Promise<boolean> => {
-    if (minutes === null) return false;
-    try {
-      set(await setComputerSettings(link, { sessionIdleMs: idleMs(minutes) }));
-      setIdleError(null);
-      return true;
-    } catch (err) {
-      setIdleError(message(err));
-      return false;
-    }
-  };
-
-  const chooseActiveApp = async (activeApp: ActiveAppMode): Promise<void> => {
-    try {
-      set(await setComputerSettings(link, { activeApp }));
-      setActiveError(null);
-    } catch (err) {
-      setActiveError(message(err));
-    }
-  };
-
-  /** Off also deletes the kept pictures on the host; a refusal slides the switch back and says the host's line. */
-  const keepPictures = async (keep: boolean): Promise<boolean> => {
-    try {
-      set(await setComputerSettings(link, { keepPictures: keep }));
-      setPicturesError(null);
-      return true;
-    } catch (err) {
-      setPicturesError(message(err));
-      return false;
-    }
-  };
-
-  /** Off also closes what his other devices are watching of this machine; a refusal slides the switch back. */
-  const watchRemote = async (on: boolean): Promise<boolean> => {
-    try {
-      set(await setComputerSettings(link, { videoRemote: on }));
-      setWatchError(null);
-      return true;
-    } catch (err) {
-      setWatchError(message(err));
-      return false;
-    }
-  };
-
   const retryRead = (
-    <Button variant="ghost" size="sm" onClick={settings.retry}>
+    <Button variant="ghost" size="sm" onClick={() => void settings.retry()}>
+      Retry
+    </Button>
+  );
+  const permsRetry = (
+    <Button variant="ghost" size="sm" onClick={perms.retry}>
       Retry
     </Button>
   );
@@ -111,100 +74,101 @@ export function ComputerPage() {
   return (
     <>
       <PageSection>
-        <ServiceRow link={link} service={service} />
+        <HelperRow link={link} service={service} />
         {settings.value ? (
-          <PageRow title="Take the screen after" description="Minutes without input before a thread may use the pointer and keyboard." error={idleError}>
-            <CommitField
-              kind="int"
-              aria-label="Take the screen after minutes"
-              value={idleMinutes(settings.value.sessionIdleMs)}
-              min={IDLE_MINUTES.min}
-              max={IDLE_MINUTES.max}
-              onCommit={commitIdle}
-            />
-          </PageRow>
+          <SettingsRows link={link} value={settings.value} onSaved={set} />
         ) : settings.error ? (
           <PageError action={retryRead}>{settings.error}</PageError>
         ) : (
-          <PageRowsSkeleton rows={[{ description: true, control: "number" }, { control: "select" }, { description: true, control: "switch" }, { description: true, control: "switch" }]} />
+          <PageRowsSkeleton rows={[{ control: "number" }, { control: "select" }, { control: "switch" }, { control: "switch" }]} />
         )}
-        {settings.value ? (
-          <PageRow title="When a step needs the app in front" error={activeError}>
-            <ChoiceSelect
-              label="When a step needs the app in front"
-              value={settings.value.activeApp}
-              options={ACTIVE_APP_CHOICES}
-              onChange={(choice) => void chooseActiveApp(choice)}
-            />
-          </PageRow>
-        ) : null}
-        {settings.value ? (
-          <PageRow title="Keep pictures of the window" description="On this Mac: a thread's newest 400, for 30 days after it last used the computer. Off deletes them; the steps and what was read stay." error={picturesError}>
-            <SettingSwitch label="Keep pictures of the window" on={settings.value.keepPictures} onChange={keepPictures} />
-          </PageRow>
-        ) : null}
-        {settings.value ? (
-          <PageRow title="Watch from my other devices" description={`A window a thread drives on ${thisDesktopInLine()}, live on your phone and other desktops. Off stops what they are watching.`} error={watchError}>
-            <SettingSwitch label="Watch from my other devices" on={settings.value.videoRemote} onChange={watchRemote} />
-          </PageRow>
-        ) : null}
       </PageSection>
 
-      <PageSection title="Permissions">
+      <WhoMayUse mac={mac} />
+
+      <SettingSection of="computer.accessibility">
         {perms.value === null ? (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" onClick={perms.retry}>
-                Retry
-              </Button>
-            }
-          >
-            Couldn't read the permissions
-          </PageError>
+          <PageError action={permsRetry}>Couldn't read the permissions</PageError>
         ) : perms.error ? (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" onClick={perms.retry}>
-                Retry
-              </Button>
-            }
-          >
-            {perms.error}
-          </PageError>
+          <PageError action={permsRetry}>{perms.error}</PageError>
         ) : (
-          <>
-            <PermissionRow
-              label="Accessibility"
-              description="Reads apps and sends them input."
-              granted={perms.value ? perms.value.accessibility : null}
-              pane="Privacy_Accessibility"
-            />
-            <PermissionRow
-              label="Screen Recording"
-              description="Takes pictures of windows."
-              granted={perms.value ? perms.value.screenRecording : null}
-              pane="Privacy_ScreenCapture"
-            />
-          </>
+          <Permissions
+            accessibility={perms.value ? perms.value.accessibility : null}
+            screen={perms.value ? perms.value.screenRecording : null}
+            without={{ accessibility: "Threads cannot read or use an app without it", screen: "Threads cannot see a window without it" }}
+          />
         )}
-      </PageSection>
+      </SettingSection>
 
       <AppsSection link={link} apps={settings.value?.apps} error={settings.error} retry={retryRead} onForgot={set} />
     </>
   );
 }
 
-/** The service's state; Try again only while it is down after crashes. */
-function ServiceRow({ link, service }: { link: Link; service: ComputerServiceState | null }) {
+/** The four settings, each asked of this computer and saved with the mark; a refusal puts the control back. */
+function SettingsRows({ link, value, onSaved }: { link: Link; value: ComputerSettings; onSaved: (settings: ComputerSettings) => void }) {
+  const wait = useSaved();
+  const front = useSaved();
+  const pictures = useSaved();
+  const watch = useSaved();
+  const [activeApp, setActiveApp] = useState<ActiveAppMode | null>(null);
+  const save = (saved: Saved, patch: Partial<Omit<ComputerSettings, "apps">>) => saved.run(async () => onSaved(await setComputerSettings(link, patch)));
+
+  return (
+    <>
+      <SettingRow id="computer.wait" saved={wait}>
+        <CommitField
+          kind="int"
+          aria-label="Wait after my last input, in minutes"
+          value={idleMinutes(value.sessionIdleMs)}
+          min={IDLE_MINUTES.min}
+          max={IDLE_MINUTES.max}
+          onCommit={(minutes) => (minutes === null ? false : save(wait, { sessionIdleMs: idleMs(minutes) }))}
+        />
+        <span className="text-xs text-muted-foreground">min</span>
+      </SettingRow>
+      <SettingRow id="computer.front" saved={front}>
+        <ChoiceSelect
+          label="When a step needs an app in front"
+          value={activeApp ?? value.activeApp}
+          options={ACTIVE_APP_CHOICES}
+          onChange={(choice) => {
+            setActiveApp(choice);
+            void save(front, { activeApp: choice }).then(() => setActiveApp(null));
+          }}
+        />
+      </SettingRow>
+      <SettingRow id="computer.pictures" saved={pictures}>
+        <SettingSwitch
+          label="Keep pictures of each step"
+          on={value.keepPictures}
+          onChange={async (keep) => {
+            // Off deletes what was kept: it asks first.
+            if (!keep) {
+              const yes = await confirmAction({
+                title: "Stop keeping pictures",
+                body: "The pictures kept of each step are deleted. The steps and what was read stay.",
+                action: "Delete pictures",
+                danger: true,
+              });
+              if (!yes) return false;
+            }
+            return save(pictures, { keepPictures: keep });
+          }}
+        />
+      </SettingRow>
+      <SettingRow id="computer.watch" saved={watch}>
+        <SettingSwitch label="Let my other devices watch" on={value.videoRemote} onChange={(on) => save(watch, { videoRemote: on })} />
+      </SettingRow>
+    </>
+  );
+}
+
+/** The helper's state, only while it cannot run; Try again only while it is down after crashes. */
+function HelperRow({ link, service }: { link: Link; service: ComputerServiceState | null }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  if (!service) {
-    return (
-      <PageRow title="Service">
-        <Skeleton className="h-3.5 w-20" />
-      </PageRow>
-    );
-  }
+  if (!service || (service.state !== "down" && service.state !== "unavailable")) return null;
   const mark = computerServiceMarkOf(service);
   const retry = async () => {
     setBusy(true);
@@ -218,19 +182,56 @@ function ServiceRow({ link, service }: { link: Link; service: ComputerServiceSta
     }
   };
   return (
-    // a mark with its detail and Try again outgrow a narrow page: they take a line of their own there
-    <PageRow title="Service" error={error} wide={mark.detail !== undefined}>
+    // A mark with its detail and Try again outgrow a narrow page: they take a line of their own there.
+    <SettingRow id="computer.helper" error={error} wide={mark.detail !== undefined}>
       <StatusMark state={mark.state} word={mark.word} detail={mark.detail} glyph={mark.state !== "idle"} />
       {service.state === "down" ? (
         <Button variant="secondary" size="sm" disabled={busy} onClick={() => void retry()}>
           <BusyLabel busy={busy} label="Try again" />
         </Button>
       ) : null}
-    </PageRow>
+    </SettingRow>
   );
 }
 
-/** Every app TempCode learned, with Forget; the next call to a forgotten app learns it again, so nothing confirms. */
+/** What a linked computer may do with this Mac's apps, as Sharing set it. */
+export function appsWords(pc: Pick<MacBridgeHostPolicy, "computer" | "computerLive" | "computerUnavailable">): string {
+  if (!pc.computer) return "Not allowed";
+  const why = pc.computerUnavailable;
+  // His grant stands; the reason this Mac cannot serve it now is the host's own sentence.
+  if (why) return `Allowed. ${why}`;
+  return pc.computerLive > 0 ? `Allowed, ${pc.computerLive} using it now` : "Allowed";
+}
+
+/** Threads here always may; each linked computer by its own name, a row that opens what it may do on this Mac (its sheet). */
+function WhoMayUse({ mac }: { mac: string }) {
+  const hosts = useMacBridgeHosts();
+  const names = useComputerNames();
+  useEffect(() => {
+    void refreshMacBridgeHosts().catch(() => {});
+  }, []);
+  return (
+    <SettingSection of="computer.others" vars={{ mac }}>
+      <SettingRow id="computer.own" vars={{ mac }} description="Always" />
+      {hosts.map((host) => {
+        const name = names(host.environmentId, host.name).name;
+        return (
+          <PageRow
+            key={host.environmentId}
+            data-computer={host.environmentId}
+            title={name}
+            description={appsWords(host)}
+            onOpen={() => openMaySheet(host.environmentId)}
+            openLabel={name}
+          />
+        );
+      })}
+    </SettingSection>
+  );
+}
+
+/** Every app it learned, with Forget; the next call to a forgotten app learns it again, so one asks nothing. Forget
+ *  all… asks first. */
 function AppsSection({
   link,
   apps,
@@ -244,11 +245,22 @@ function AppsSection({
   retry: ReactNode;
   onForgot: (settings: Awaited<ReturnType<typeof forgetComputerApps>>) => void;
 }) {
-  // the app being forgotten ("" for all), and a refusal with the key it belongs to
+  // The app being forgotten ("" for all), and a refusal with the key it belongs to.
   const [forgetting, setForgetting] = useState<string | null>(null);
   const [refused, setRefused] = useState<{ key: string; line: string } | null>(null);
+  const sorted = apps ? sortApps(apps) : [];
+  const filter = useListFilter(sorted, appTitle);
   const forget = async (bundleId: string | null) => {
     const key = bundleId ?? "";
+    if (bundleId === null) {
+      const yes = await confirmAction({
+        title: "Forget every app",
+        body: `Docket forgets what it learned about driving ${sorted.length} apps. Each is learned again the next time a thread uses it.`,
+        action: "Forget all",
+        danger: true,
+      });
+      if (!yes) return;
+    }
     setForgetting(key);
     setRefused(null);
     try {
@@ -259,14 +271,13 @@ function AppsSection({
       setForgetting(null);
     }
   };
-  const sorted = apps ? sortApps(apps) : [];
   return (
-    <PageSection
-      title="Apps"
+    <SettingSection
+      of="computer.apps"
       action={
         sorted.length >= 2 ? (
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" disabled={forgetting !== null} onClick={() => void forget(null)}>
-            <BusyLabel busy={forgetting === ""} label="Forget all" />
+          <Button data-setting="computer.forgetAll" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" disabled={forgetting !== null} onClick={() => void forget(null)}>
+            <BusyLabel busy={forgetting === ""} label="Forget all…" />
           </Button>
         ) : null
       }
@@ -274,29 +285,32 @@ function AppsSection({
       {refused?.key === "" ? <PageError>{refused.line}</PageError> : null}
       {apps ? (
         sorted.length ? (
-          sorted.map((app) => {
-            const name = appTitle(app);
-            return (
-              <PageRow
-                key={app.bundleId}
-                data-app={app.bundleId}
-                title={name}
-                description={verdictWords(app.classes) ?? undefined}
-                error={refused?.key === app.bundleId ? refused.line : undefined}
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground hover:text-destructive"
-                  aria-label={`Forget ${name}`}
-                  disabled={forgetting !== null}
-                  onClick={() => void forget(app.bundleId)}
+          <>
+            <ListFilter filter={filter} label="Find an app" />
+            {filter.shown.map((app) => {
+              const name = appTitle(app);
+              return (
+                <PageRow
+                  key={app.bundleId}
+                  data-app={app.bundleId}
+                  title={name}
+                  description={verdictWords(app.classes) ?? undefined}
+                  error={refused?.key === app.bundleId ? refused.line : undefined}
                 >
-                  <BusyLabel busy={forgetting === app.bundleId} label="Forget" />
-                </Button>
-              </PageRow>
-            );
-          })
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground hover:text-destructive"
+                    aria-label={`Forget ${name}`}
+                    disabled={forgetting !== null}
+                    onClick={() => void forget(app.bundleId)}
+                  >
+                    <BusyLabel busy={forgetting === app.bundleId} label="Forget" />
+                  </Button>
+                </PageRow>
+              );
+            })}
+          </>
         ) : (
           <PageEmpty>No apps used yet</PageEmpty>
         )
@@ -305,6 +319,6 @@ function AppsSection({
       ) : (
         <PageRowsSkeleton rows={[{ description: true, control: "button" }, { control: "button" }]} />
       )}
-    </PageSection>
+    </SettingSection>
   );
 }

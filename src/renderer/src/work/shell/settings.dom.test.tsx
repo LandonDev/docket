@@ -50,7 +50,7 @@ const requestSettings = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/monaco/debugTab", async (original) => ({ ...(await original<object>()), requestSettings }));
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
 const { GIVEN_KEY, OWNER_KEY, resetTestKey, testKey } = await import("../../lib/linkMay.testkit");
-const { CodeWorkspaceSector, SignInDialog, WorkSettingsBody, WorkWorkspacePage } = await import("./settings");
+const { SignInDialog } = await import("./settings");
 
 afterEach(() => {
   cleanup();
@@ -58,186 +58,6 @@ afterEach(() => {
   workSwitch.reset();
   vi.restoreAllMocks();
   resetTestKey();
-});
-
-describe("Settings → Work", () => {
-  it("says no host's LifeOS sign-in, since Connections holds it", () => {
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({})), onPush: () => () => {}, onOpen: () => () => {} } as never);
-    setWorkOn("env_box", true);
-    setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] });
-    render(<WorkSettingsBody />);
-    expect(screen.queryByText("The box")).toBeNull();
-    expect(screen.queryByText("Not signed in")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
-  });
-
-  it("holds how a Teams Word file with no choice of its own saves, set to ask the first time", () => {
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({})), onPush: () => () => {}, onOpen: () => () => {} } as never);
-    setWorkOn("env_box", true);
-    render(<WorkSettingsBody />);
-    expect(screen.getByText("Word files")).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "Save to Teams" }).textContent).toContain("Ask the first time");
-  });
-
-  it("a workspace page whose settings did not load offers Retry, which reads them again", async () => {
-    reads.fail = true;
-    reads.asked = 0;
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
-    render(<WorkWorkspacePage workspaceId="ws" />);
-    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.getByText("The host did not answer")).toBeTruthy();
-    reads.fail = false;
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    // Council round 12 (the walk): the line stays, its Retry spinning, until the answer replaces it.
-    expect(screen.getByText("The host did not answer")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
-    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(reads.asked).toBe(2);
-    expect(screen.queryByText("The host did not answer")).toBeNull();
-  });
-
-  it("says a read that failed in his words and names the computer, never the link's own text", async () => {
-    reads.fail = true;
-    reads.error = "work.workspace.get failed at /srv/agents/work/x.json";
-    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box", routes: [], credentialRef: "env_box" } as never);
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
-    render(<WorkWorkspacePage workspaceId="ws" />);
-    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.getByText("The box did not send this workspace's settings.")).toBeTruthy();
-    expect(screen.queryByText(/srv\/agents/)).toBeNull();
-    reads.error = "The host did not answer";
-  });
-
-  /** Council round 10 (Opus Settings 3): the Sector row said the sign-out a second time, above Waiting on's line. */
-  it("lets the Sector row say only its sector while the host's LifeOS is down, and its key line once it is connected", async () => {
-    reads.fail = false;
-    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box", routes: [], credentialRef: "env_box" } as never);
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => new Promise(() => {})), onPush: () => () => {}, onOpen: () => () => {} } as never);
-    setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [{ workspaceId: "ws", sectors: ["purdue"], state: "waiting" }] });
-    render(<WorkWorkspacePage workspaceId="ws" />);
-    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.queryByText(/Its key is made once/)).toBeNull();
-    act(() => setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "o", since: 1 }, keys: [{ workspaceId: "ws", sectors: ["purdue"], state: "failed", error: "Its key could not be made" }] }));
-    expect(screen.getByText("Its key could not be made")).toBeTruthy();
-  });
-
-  it("draws Computer use on a PC the workspace's host knows, though this window has no link to it", async () => {
-    reads.fail = false;
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
-    render(<WorkWorkspacePage workspaceId="ws" />);
-    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.getByRole("switch", { name: "Computer use on PURDUE-LT" })).toBeTruthy();
-  });
-});
-
-describe("a workspace page for a key that may not change it", () => {
-  it("a given computer's key sees one line where the switches were, and writes nothing", async () => {
-    reads.fail = false;
-    testKey.current = GIVEN_KEY;
-    const request = vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] }));
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request, onPush: () => () => {}, onOpen: () => () => {} } as never);
-    render(<WorkWorkspacePage workspaceId="ws" />);
-    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.queryAllByRole("switch")).toEqual([]);
-    expect(document.querySelector("[data-defaults]")).toBeNull();
-    expect(screen.getAllByText("Computer use is changed from a computer that manages the box")).toHaveLength(1);
-    expect(request.mock.calls.map((c: unknown[]) => c[0]).filter((m) => m === "work.workspace.set" || m === "work.mail.waiting")).toEqual([]);
-  });
-});
-
-describe("a code workspace's LifeOS sector", () => {
-  const box = () => {
-    setWorkOn("env_box", true);
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
-  };
-
-  it("offers the sector's select to a key that may link it", async () => {
-    box();
-    render(<CodeWorkspaceSector workspaceId="code" />);
-    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.getByRole("combobox", { name: "LifeOS sector" })).toBeTruthy();
-  });
-
-  it("shows a given computer the sector and who changes it, with no select the host would refuse", async () => {
-    // work.lifeos.link needs admin (W-37).
-    testKey.current = GIVEN_KEY;
-    box();
-    render(<CodeWorkspaceSector workspaceId="code" />);
-    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.queryByRole("combobox", { name: "LifeOS sector" })).toBeNull();
-    expect(screen.getByText("Purdue")).toBeTruthy();
-    expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
-  });
-});
-
-describe("a code workspace with no sector, LifeOS signed out", () => {
-  it("says Not signed in to LifeOS with Sign in, which opens the sign-in dialog in place", async () => {
-    setWorkOn("env_box", true);
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(async () => ({ lifeos: { state: "signed-out" }, keys: [] })), onPush: () => () => {}, onOpen: () => () => {} } as never);
-    setLifeosStatus("env_box", { lifeos: { state: "signed-out" }, keys: [] });
-    render(<CodeWorkspaceSector workspaceId="bare" />);
-    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.getByText(/^Not signed in to LifeOS/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy(), { timeout: 5000 });
-    expect(requestSettings).not.toHaveBeenCalledWith("connections");
-  });
-});
-
-describe("a code workspace with no sector, LifeOS not signed out (Sol round 2 P1)", () => {
-  const status = (answer: () => Promise<unknown>) => {
-    // The link first: turning Work on wakes every store that watches it (the outbox's among them), and each asks the host.
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(answer), onPush: () => () => {}, onOpen: () => () => {} } as never);
-    setWorkOn("env_box", true);
-  };
-
-  it("draws the sector row's bones while the host's status is on its way, never the signed-out line", async () => {
-    status(() => new Promise(() => {}));
-    transport.now = "open";
-    try {
-      render(<CodeWorkspaceSector workspaceId="bare" />);
-      await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-      expect(screen.queryByText(/^Not signed in to LifeOS/)).toBeNull();
-      expect(screen.getByLabelText("Loading")).toBeTruthy();
-    } finally {
-      transport.now = null;
-    }
-  });
-
-  /** Sol round 3 P1: a first status ask that timed out on an open link stops the bones and names the host with Retry. */
-  it("names the host whose first status ask timed out, and Retry asks again until the sector row shows", async () => {
-    let reply: () => Promise<unknown> = () => Promise.reject(Object.assign(new Error("no answer in 15 s"), { name: "TimeoutError" }));
-    status(() => reply());
-    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "the box" } as never);
-    transport.now = "open";
-    try {
-      render(<CodeWorkspaceSector workspaceId="bare" />);
-      await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-      expect(screen.queryByLabelText("Loading")).toBeNull();
-      expect(screen.getByRole("alert").textContent).toBe("The box did not answer");
-      reply = async () => ({ lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
-      await act(async () => {
-        fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-        await new Promise((r) => setTimeout(r, 0));
-      });
-      expect(screen.queryByRole("alert")).toBeNull();
-      expect(screen.getByText("Sector")).toBeTruthy();
-      // The session the connected status opens lands before the reset, so nothing of it reaches the next test.
-      await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    } finally {
-      transport.now = null;
-    }
-  });
-
-  it("says LifeOS did not answer with Retry when the host cannot reach it", async () => {
-    status(async () => ({ lifeos: { state: "unreachable", since: 1, error: "x" }, keys: [] }));
-    setLifeosStatus("env_box", { lifeos: { state: "unreachable", since: 1, error: "x" }, keys: [] });
-    render(<CodeWorkspaceSector workspaceId="bare" />);
-    await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.queryByText(/^Not signed in to LifeOS/)).toBeNull();
-    expect(screen.getByRole("alert").textContent).toMatch(/^LifeOS did not answer/);
-    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
-  });
 });
 
 describe("Sign in to LifeOS", () => {
@@ -342,6 +162,19 @@ describe("Sign in to LifeOS", () => {
     expect(screen.queryByRole("button", { name: "New code" })).toBeNull();
   });
 
+  /** WORK's request (POLISH-work item 51): a New code ask that failed after the old code ran out left the dead code. */
+  it("clears a code past its life when the ask for a new one fails, and says why in its place with Retry", async () => {
+    const request = vi.fn(() => Promise.reject(new Error("forbidden")));
+    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request, onPush: () => () => {}, onOpen: () => () => {} } as never);
+    render(<SignInDialog environmentId="env_box" state={{ state: "pairing", code: "ABCD-1234", expiresAt: Date.now() - 1_000 } as never} onClose={() => {}} />);
+    await act(() => Promise.resolve());
+    await act(async () => screen.getByRole("button", { name: "New code" }).click());
+    expect(screen.queryByText("ABCD-1234")).toBeNull();
+    expect(screen.queryByRole("button", { name: "New code" })).toBeNull();
+    expect(document.querySelector("[data-code-failed]")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
   it("offers no token at /ui, where this window's own link is a key's and the token is local-only", async () => {
     testKey.current = OWNER_KEY;
     host(registry.primaryEnvironmentId);
@@ -349,46 +182,5 @@ describe("Sign in to LifeOS", () => {
     await act(() => Promise.resolve());
     expect(screen.queryByPlaceholderText("lo_…")).toBeNull();
     expect(screen.queryByText("ABCD-1234")).not.toBeNull();
-  });
-});
-
-/** Council round 12 (Opus, Settings 2): the sectors read that failed under a connected status had no Retry. */
-describe("Settings → Work's sectors read", () => {
-  it("says LifeOS did not answer with Retry, which reads it again, spinning in place until the sectors land", async () => {
-    vi.spyOn(registry, "linkOf").mockReturnValue({ environmentId: "env_box", connected: true, request: vi.fn(() => new Promise(() => {})), onPush: () => () => {}, onOpen: () => () => {} } as never);
-    vi.spyOn(registry, "environment").mockReturnValue({ id: "env_box", name: "The box" } as never);
-    setWorkOn("env_box", true);
-    const read = { mode: "fail" as "fail" | "wait" | "ready", listeners: new Set<() => void>() };
-    const client = {
-      url: "https://lifeos.test",
-      watchQuery: (ref: unknown) => ({
-        localQueryResult: () => {
-          if (getFunctionName(ref as never) !== "sectors:list") return undefined;
-          if (read.mode === "fail") throw new Error("socket closed");
-          return read.mode === "wait" ? undefined : [{ key: "purdue", label: "Purdue", order: 2 }];
-        },
-        onUpdate: (fn: () => void) => {
-          read.listeners.add(fn);
-          return () => void read.listeners.delete(fn);
-        },
-      }),
-      mutation: async () => null,
-      close: async () => {},
-    };
-    setLifeosStatus("env_box", { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] });
-    setLifeosSession({ environmentId: "env_box", sector: null, client: client as never, state: "connected" });
-    render(<WorkSettingsBody />);
-    const line = await screen.findByText("LifeOS did not answer the box");
-    read.mode = "wait";
-    await act(async () => fireEvent.click(within(line.closest("section")!).getByRole("button", { name: "Retry" })));
-    const section = screen.getByText("LifeOS did not answer the box").closest("section")!;
-    // The read is out: the line stays, its Retry spinning, never the bones.
-    expect(section.textContent).toContain("LifeOS did not answer the box");
-    expect(section.querySelector('[data-slot="skeleton"]')).toBeNull();
-    expect(within(section).getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeTruthy();
-    read.mode = "ready";
-    await act(async () => read.listeners.forEach((fn) => fn()));
-    await waitFor(() => expect(screen.queryByText("LifeOS did not answer the box")).toBeNull());
-    expect(screen.getByText("Purdue")).toBeTruthy();
   });
 });

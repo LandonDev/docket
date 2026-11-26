@@ -75,7 +75,7 @@ final class ProjectSettingsModel {
             review = ReviewDraft(scope: reviewed)
             plans = PlanDraft(scope: planned, global: (await globalPlans)?.settings)
         } catch {
-            loadError = (error as? ActionError)?.message ?? String(describing: error)
+            loadError = ActionError.wrap(error).message
         }
         catalog = await loadedCatalog
         rules = await loadedRules
@@ -94,7 +94,7 @@ final class ProjectSettingsModel {
                 try await client.saveReview(projectId: projectId, settings: review.payload)
             } catch {
                 failed = .review
-                saveError = (error as? ActionError)?.message ?? String(describing: error)
+                saveError = ActionError.wrap(error).message
                 return false
             }
         }
@@ -103,7 +103,7 @@ final class ProjectSettingsModel {
                 try await client.savePlans(projectId: projectId, settings: plans.payload)
             } catch {
                 failed = .plans
-                saveError = (error as? ActionError)?.message ?? String(describing: error)
+                saveError = ActionError.wrap(error).message
                 return false
             }
         }
@@ -226,12 +226,12 @@ struct ProjectSettingsSheet: View {
                         }
                         .accessibilityIdentifier("preamble-project")
                     } header: {
-                        Text("Rules for its threads")
+                        Text("Rules read before the first message")
                     }
                 } else if let project {
                     Section {
                         NavigationLink(value: PreambleScope.project(projectId: project.id, workspaceId: project.workspaceId)) {
-                            LabeledContent("Project rules") {
+                            LabeledContent("This project") {
                                 Text(TempCodeClient.PreambleRow.summary(project: project, workspace: workspace))
                                     .foregroundStyle(.secondary)
                             }
@@ -247,9 +247,7 @@ struct ProjectSettingsSheet: View {
                             .accessibilityIdentifier("preamble-workspace")
                         }
                     } header: {
-                        Text("Preamble")
-                    } footer: {
-                        Text("Opens every new thread in \(project.name) as its project rules.")
+                        Text("Rules read before the first message")
                     }
                 }
                 if model.review != nil, !isWork {

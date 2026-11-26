@@ -303,11 +303,12 @@ what gets a leg measured. A round trip is two calls.
 `events:update {id, patch}` (mutations). Tests stub them
 (`clashes/clashes.test.ts`, `src/shared/work/clashes.test.ts`).
 
-## Start places (Settings → Work)
+## Start addresses (Settings → Work, Travel)
 
-Where each job's drives begin. `StartPlacesSection`
-(`src/renderer/src/work/clashes/StartPlaces.tsx`) is a section of Settings →
-Work on the Work home host, after Where it runs. It reads LifeOS live on the
+Where each job's drives begin. Settings → Work's Travel section has one open
+row, Start addresses (`StartAddressesRow`), whose dialog lists the places
+(`StartPlacesSection`, `src/renderer/src/work/clashes/StartPlaces.tsx`) on the
+Work home host. It reads LifeOS live on the
 owner session and draws nothing while that session is not connected; bones
 while it reads, the read's error in a red line if it fails.
 

@@ -1,5 +1,6 @@
 import "../work/files/bindings";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { HEALTH_PAGES } from "@shared/work/health";
 import {
   filterKeybindings,
   isSettingsSectionId,
@@ -11,6 +12,13 @@ import {
   visibleSettingsSections,
   visibleKeybindingGroups,
   settingsSectionLabel,
+  settingsSectionTitle,
+  settingsSectionDescription,
+  settingsGroupLabel,
+  settingsPageOf,
+  computerOfSection,
+  computerSettingsSection,
+  type SettingsSectionId,
   loadMidTurnDefault,
   MID_TURN_DEFAULT,
   saveMidTurnDefault,
@@ -43,7 +51,7 @@ function mockLocalStorage() {
 
 describe("settings sections", () => {
   it("puts every section in exactly one known group", () => {
-    const groups = new Set(SETTINGS_GROUPS.map((group) => group.id));
+    const groups = new Set<string>(SETTINGS_GROUPS.map((group) => group.id));
     for (const section of SETTINGS_SECTIONS) expect(groups.has(section.group)).toBe(true);
     const ids = SETTINGS_SECTIONS.map((section) => section.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -54,44 +62,117 @@ describe("settings sections", () => {
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  it("lists Add-ons then Skills in the threads group, after Providers, on every surface", () => {
-    const threads = SETTINGS_SECTIONS.filter((section) => section.group === "threads").map((section) => section.id);
-    const at = threads.indexOf("providers");
-    expect(threads.slice(at, at + 3)).toEqual(["providers", "addons", "skills"]);
+  it("names a group for what a row in it changes, in this window's words", () => {
+    const mac = { web: false, platform: "darwin" };
+    expect((["mac", "every", "others", "work"] as const).map((id) => settingsGroupLabel(id, mac))).toEqual(["This Mac", "Everywhere", "Other computers", "Work"]);
+    expect(settingsGroupLabel("mac", { ...mac, platform: "win32" })).toBe("This PC");
+    // The box's web page: the window is a browser, and the one computer is the one that serves it.
+    expect(settingsGroupLabel("mac", { web: true, platform: "" })).toBe("This browser");
+    expect(settingsGroupLabel("others", { web: true, platform: "" })).toBe("Computers");
+    // One word for the shared set in every window: a scope, never a list of machines.
+    expect(settingsGroupLabel("every", { web: true, platform: "" })).toBe("Everywhere");
+    expect(settingsGroupLabel("last", mac)).toBe("");
+  });
+
+  it("lists Add-ons then Skills among the shared pages, on every surface", () => {
+    const every = SETTINGS_SECTIONS.filter((section) => section.group === "every").map((section) => section.id);
+    expect(every).toEqual(["defaults", "reviews", "orchestration", "away", "addons", "skills", "sync", "accounts"]);
     expect(settingsSectionLabel("addons")).toBe("Add-ons");
     expect(settingsSectionLabel("skills")).toBe("Skills");
     for (const id of ["addons", "skills"]) expect(SETTINGS_SECTIONS.find((section) => section.id === id)?.desktopOnly).toBeUndefined();
   });
 
-  it("lists Computer use after Appshots, only in the desktop app on a Mac", () => {
-    const ids = (web: boolean, mac: boolean) => visibleSettingsSections(web, mac).map((section) => section.id);
-    const mac = ids(false, true);
-    expect(mac.slice(mac.indexOf("appshots"), mac.indexOf("appshots") + 3)).toEqual(["appshots", "computer", "archive"]);
+  it("holds this Mac's pages together: the app's, then the computer's, Computer use only on a Mac", () => {
+    const ids = (web: boolean, mac: boolean) => visibleSettingsSections(web, mac).filter((s) => s.group === "mac").map((section) => section.id);
+    expect(ids(false, true)).toEqual(["general", "appearance", "editor", "keybindings", "updates", "appshots", "computer", "here", "sharing"]);
+    // Sync shows once there is another computer to keep in step.
+    expect(visibleSettingsSections(false, true).map((s) => s.id)).not.toContain("sync");
+    expect(visibleSettingsSections(false, true, false, { others: true }).map((s) => s.id)).toContain("sync");
     expect(settingsSectionLabel("computer")).toBe("Computer use");
     expect(ids(false, false)).not.toContain("computer");
     expect(ids(false, false)).toContain("appshots");
-    expect(ids(true, true)).not.toContain("computer");
-    expect(ids(true, true)).not.toContain("appshots");
-    expect(ids(true, false)).not.toContain("computer");
-    expect(ids(true, true)).toContain("skills");
   });
 
-  it("lists Connections after the Work page, only while Work is on somewhere", () => {
-    const ids = (work: boolean) => visibleSettingsSections(false, true, work).map((section) => section.id);
-    expect(ids(false)).not.toContain("connections");
-    expect(ids(true).slice(-2)).toEqual(["work", "connections"]);
+  it("shows a browser at /ui what a browser has: no page about a computer it is not", () => {
+    const ids = visibleSettingsSections(true, false, true, { winvm: true }).map((section) => section.id);
+    expect(ids.slice(0, 4)).toEqual(["general", "appearance", "editor", "keybindings"]);
+    for (const id of ["updates", "appshots", "computer", "here", "sharing", "publish", "sync", "accounts"]) expect(ids).not.toContain(id);
+    expect(ids).toContain("skills");
+    expect(ids).toContain("away");
+  });
+
+  it("offers Publish and the Windows VM only where there is one", () => {
+    const ids = (has: { publish?: boolean; winvm?: boolean }) => visibleSettingsSections(false, true, true, has).map((section) => section.id);
+    expect(ids({})).not.toContain("publish");
+    expect(ids({})).not.toContain("winvm");
+    expect(ids({ publish: true, winvm: true })).toEqual(expect.arrayContaining(["publish", "winvm"]));
+    // Publishing is a Mac's job.
+    expect(visibleSettingsSections(false, false, true, { publish: true }).map((s) => s.id)).not.toContain("publish");
+  });
+
+  it("lists Work's own pages after the Work page, only while Work is on somewhere", () => {
+    const ids = (work: boolean) => visibleSettingsSections(false, true, work).filter((s) => s.group === "work").map((section) => section.id);
+    expect(ids(false)).toEqual(["work"]);
+    expect(ids(true)).toEqual(["work", "digest", "mail", "files", "connections"]);
     expect(settingsSectionLabel("connections")).toBe("Connections");
+    // Its row is Setup; its page is still Work.
+    expect(settingsSectionLabel("work")).toBe("Setup");
+    expect(settingsSectionTitle("work")).toBe("Work");
   });
 
-  it("names the remote page Hosts", () => {
-    expect(settingsSectionLabel("remote")).toBe("Hosts");
+  it("stands Archive last, alone", () => {
+    expect(SETTINGS_SECTIONS.at(-1)?.id).toBe("archive");
+    expect(SETTINGS_SECTIONS.filter((section) => section.group === "last").map((s) => s.id)).toEqual(["archive"]);
   });
 
-  it("loads a saved environments page as Hosts", () => {
+  it("titles a page by its row, or by its own fuller name, in this window's words", () => {
+    expect(settingsSectionTitle("here", "darwin")).toBe("Threads on this Mac");
+    expect(settingsSectionTitle("here", "win32")).toBe("Threads on this PC");
+    expect(settingsSectionTitle("sharing")).toBe("Sharing");
+    expect(settingsSectionDescription("sharing", "win32")).toBe("Who and what may reach this PC.");
+    expect(settingsSectionLabel("keybindings")).toBe("Shortcuts");
+    expect(settingsSectionLabel("defaults")).toBe("New threads");
+    expect(settingsSectionLabel("orchestration")).toBe("Subagents");
+  });
+
+  // Every id Settings was ever asked for keeps a page: a stored id, a link from the rail or a view, a fix a computer sends.
+  const STORED_OR_SENT = ["general", "appearance", "editor", "keybindings", "remote", "environments", "defaults", "providers", "addons", "skills", "orchestration", "reviews", "appshots", "computer", "archive", "work", "connections"];
+  // The callers listed in the plan's inventory ("Inbound Settings links"), and src/shared/work/health.ts HEALTH_PAGES.
+  const INBOUND = ["remote", "archive", "editor", "appshots", "defaults", "connections", "work", "ws:w1"];
+  const HOST_SENT = HEALTH_PAGES.filter((page) => page.startsWith("settings:")).map((page) => page.slice("settings:".length));
+
+  it("keeps a page for every old id, every inbound link and every page a computer can send", () => {
+    const pages = new Set<string>(SETTINGS_SECTIONS.map((section) => section.id));
+    for (const id of [...STORED_OR_SENT, ...INBOUND, ...HOST_SENT]) {
+      expect(isSettingsSectionId(id), id).toBe(true);
+      const page = settingsPageOf(id as SettingsSectionId);
+      expect(pages.has(page) || page.startsWith("ws:"), `${id} → ${page}`).toBe(true);
+    }
+    expect(HOST_SENT).toEqual(expect.arrayContaining(["work", "remote", "connections", "files", "winvm"]));
+    // A fix that means the Windows VM or Files lands on that page, not on Work.
+    expect(settingsPageOf("files" as SettingsSectionId)).toBe("files");
+    expect(settingsPageOf("winvm" as SettingsSectionId)).toBe("winvm");
+  });
+
+  it("opens Sharing for the old Hosts and Environments ids, and Threads for Providers", () => {
+    expect(settingsPageOf("remote")).toBe("sharing");
+    expect(settingsPageOf("environments")).toBe("sharing");
+    expect(settingsPageOf("providers")).toBe("here");
+    expect(settingsSectionLabel("remote")).toBe("Sharing");
     mockLocalStorage();
     localStorage.setItem("docket.settingsSection", "environments");
-    expect(loadSettingsSection()).toBe("remote");
-    expect(isSettingsSectionId("environments")).toBe(false);
+    expect(loadSettingsSection()).toBe("sharing");
+    localStorage.setItem("docket.settingsSection", "providers");
+    expect(loadSettingsSection()).toBe("here");
+  });
+
+  it("takes a workspace's and another computer's page by id, and refuses an empty one", () => {
+    expect(isSettingsSectionId("ws:w1")).toBe(true);
+    expect(isSettingsSectionId("computer:env_box")).toBe(true);
+    expect(isSettingsSectionId("ws:")).toBe(false);
+    expect(isSettingsSectionId("computer:")).toBe(false);
+    expect(computerOfSection(computerSettingsSection("env_box"))).toBe("env_box");
+    expect(computerOfSection("general")).toBeNull();
   });
 
   it("has no Build page; a saved one loads as the default", () => {

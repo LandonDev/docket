@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Skill, SkillMeta } from "@shared/contract-skills";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
-import { PageActions, PageEmpty, PageError, PageRowsSkeleton, PageSection } from "../../../components/page";
+import { PageActions, PageEmpty, PageError, PageRowsSkeleton } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { registry, type Link } from "../../../lib/connection";
 import { homeNote, refusalWords } from "../../../lib/settingsHome";
@@ -10,13 +10,22 @@ import { scopeName } from "../addons/addonWords";
 import { SkillDialog } from "./SkillDialog";
 import { SkillRowView, type SkillMenuPick } from "./SkillRow";
 import { useSkillsPage } from "./useSkills";
+import { usePublishHome } from "../../../lib/settings/pageHome";
+import { useHost } from "../parts/hostRpc";
+import { ListFilter, useListFilter } from "../parts/ListFilter";
+import { ManagedLine } from "../parts/ManagedLine";
+import { SettingSection } from "../parts/SettingRow";
+
+const NONE: readonly SkillMeta[] = [];
+/** What the find field matches: the name and the description. */
+const skillWords = (skill: SkillMeta): string => `${skill.name} ${skill.description}`;
 
 /**
- * Settings → Skills (docs/LAYOUT.md "Settings → Add-ons and Skills"): one
- * list of every skill this host knows, the scope said on each row, New
- * skill… on the page's title line. Reads through this machine; every write
- * goes to the scope's home and carries the row's `updatedAt`, so a skill that
- * moved since it was read is refused rather than written over.
+ * Settings → Skills (docs/agents/settings.md "The pages: Everywhere"): one list of every skill this computer knows,
+ * where it applies said on each row, a find field past eight, New skill… on the page's title line. Reads through this
+ * window's own computer; every write goes to the one copy on the box and carries the row's `updatedAt`, so a skill
+ * that moved since it was read is refused rather than written over. A key that may not change skills sees the list
+ * as words and one line saying who can.
  */
 export function SkillsPage() {
   return <SkillsBody link={registry.primary()} />;
@@ -28,7 +37,11 @@ export function SkillsBody({ link }: { link: Link }) {
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const workspaces = useWorkspaces().filter((w) => w.environmentId === link.environmentId);
   const names = new Map(workspaces.map((w) => [w.id, w.name]));
-  const { note, blocked } = homeNote(data?.home);
+  const { blocked } = homeNote(data?.home);
+  usePublishHome("skills", data ? (data.home ?? null) : undefined);
+  const host = useHost(link.environmentId);
+  const readOnly = !host.may("skills.set");
+  const filter = useListFilter(data?.skills ?? NONE, skillWords);
 
   const act = <T,>(skill: SkillMeta, run: () => Promise<T>): Promise<T | false> => {
     setRowErrors((cur) => {
@@ -38,7 +51,7 @@ export function SkillsBody({ link }: { link: Link }) {
       return next;
     });
     return run().catch((err: unknown) => {
-      setRowErrors((cur) => ({ ...cur, [skill.id]: refusalWords(err) || "The host refused it" }));
+      setRowErrors((cur) => ({ ...cur, [skill.id]: refusalWords(err) || "The computer refused it" }));
       return false as const;
     });
   };
@@ -66,12 +79,15 @@ export function SkillsBody({ link }: { link: Link }) {
 
   return (
     <>
-      <PageActions>
-        <Button variant="ghost" size="sm" disabled={!data || blocked} onClick={() => setEditing("new")}>
-          New skill…
-        </Button>
-      </PageActions>
-      <PageSection description={note}>
+      {readOnly ? null : (
+        <PageActions>
+          <Button variant="ghost" size="sm" disabled={!data || blocked} onClick={() => setEditing("new")}>
+            New skill…
+          </Button>
+        </PageActions>
+      )}
+      <SettingSection of="skills.list">
+        {data ? <ListFilter filter={filter} label="Find a skill" /> : null}
         {!data ? (
           error ? (
             <PageError
@@ -89,24 +105,27 @@ export function SkillsBody({ link }: { link: Link }) {
         ) : data.skills.length === 0 ? (
           <PageEmpty>No skills</PageEmpty>
         ) : (
-          data.skills.map((skill) => (
+          filter.shown.map((skill) => (
             <SkillRowView
               key={skill.id}
               skill={skill}
               workspaceName={scopeName(skill.workspaceId, names)}
               blocked={blocked}
+              readOnly={readOnly}
               error={rowErrors[skill.id]}
               onToggle={(on) => toggle(skill, on)}
               onPick={(id) => pick(skill, id)}
             />
           ))
         )}
-      </PageSection>
+        {data && readOnly ? <ManagedLine computer={host.name.name} /> : null}
+      </SettingSection>
       {editing ? (
         <SkillDialog
           link={link}
           skill={editing === "new" ? null : editing}
           workspaces={workspaces}
+          home={data?.home}
           onClose={() => setEditing(null)}
           onSaved={(saved) => {
             replaceRow(saved);

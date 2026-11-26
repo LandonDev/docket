@@ -137,8 +137,8 @@ names the far child).
   `box` (a host that is not a Mac, `startOnHostOf` in
   src/shared/projectLinks.ts, still read by platform) or `mac`: the global
   value is `ThreadDefaults.startOn` (absent = the box; only the global set's
-  counts; its row on Settings → Thread defaults shows with two or more
-  hosts), a project's own is `ProjectMeta.startOn` (`projects.start_on`,
+  counts; its row, "Linked projects start on" on Settings → New threads, shows
+  with two or more hosts), a project's own is `ProjectMeta.startOn` (`projects.start_on`,
   `project.setStartOn`, admin, forwarded to the settings home, in the
   settings bundle; the project sheet's New threads section with "Use global
   setting", linked projects only); `startOnOf` takes the copy stamped last.

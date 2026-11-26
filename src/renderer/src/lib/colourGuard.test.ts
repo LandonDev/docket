@@ -16,7 +16,7 @@ const ALLOWED: Record<string, { reason: string; count: number }> = {
   "lib/tabGroups.ts": { reason: "Group colours are the named palette offered to the user.", count: 9 },
   "lib/terminalPalette.ts": { reason: "The ANSI tables map terminal colour codes; the fallbacks stand in for the tokens on a page without the stylesheet.", count: 42 },
   "surfaces/monaco/theme.ts": { reason: "Monaco requires hex palettes, including syntax and fallback colours.", count: 29 },
-  "surfaces/settings/hosts/dialogs/PairDialog.tsx": { reason: "The QR encoder requires black and white for its image.", count: 2 },
+  "surfaces/settings/computers/device.tsx": { reason: "The QR encoder requires black and white for its image.", count: 2 },
   "work/msforms/Share.tsx": { reason: "The QR encoder requires black and white for its image.", count: 2 },
 };
 

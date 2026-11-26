@@ -1,16 +1,17 @@
 import SwiftUI
 import TempCodeClient
 
-/// Pair a host from its link, or add one from a key made on the desktop. A
-/// medium sheet with the system's 16 pt radius: the method on top, the
-/// field, a refusal under the field in destructive (never an alert), and
-/// a successful pairing dismisses with the host already in the list.
+/// Sign this phone in to a computer from its sign-in link, or add one from a
+/// key made on the desktop. A medium sheet with the system's 16 pt radius:
+/// the method on top, the field, a refusal under the field in destructive
+/// (never an alert), and a successful sign-in dismisses with the computer
+/// already in the list.
 struct AddEnvironmentSheet: View {
-    /// Pairing again: the host whose key is replaced; the sheet keeps its address, the host its name.
+    /// Signing in again: the computer whose key is replaced; the sheet keeps its address, the computer its name.
     var replacing: PairedEnvironment? = nil
 
     private enum Method: String, CaseIterable, Identifiable {
-        case link = "Pairing Link"
+        case link = "Sign-In Link"
         case key = "Key"
         var id: String { rawValue }
     }
@@ -51,7 +52,7 @@ struct AddEnvironmentSheet: View {
                     switch method {
                     case .link:
                         HStack(alignment: .top, spacing: Layout.rowGap) {
-                            TextField("https://host/pair#XXXXX-XXXXX", text: $link)
+                            TextField("Sign-in link", text: $link)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .keyboardType(.URL)
@@ -78,7 +79,7 @@ struct AddEnvironmentSheet: View {
                         }
                         .animation(Motion.crossFade, value: link.isEmpty)
                     case .key:
-                        TextField("https://host", text: $origin)
+                        TextField("Address", text: $origin)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .keyboardType(.URL)
@@ -87,7 +88,7 @@ struct AddEnvironmentSheet: View {
                             .focused($focus, equals: .origin)
                             .onSubmit { focus = .key }
                             .accessibilityIdentifier("pair-origin")
-                        SecureField("tc_…", text: $key)
+                        SecureField("Key", text: $key)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .submitLabel(.go)
@@ -106,7 +107,7 @@ struct AddEnvironmentSheet: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle(replacing == nil ? "Add a Host" : "Pair Again")
+            .navigationTitle(replacing == nil ? "Add a Computer" : "Sign In Again")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -115,7 +116,7 @@ struct AddEnvironmentSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     ZStack {
-                        Button(replacing == nil ? "Add" : "Pair") { submit() }
+                        Button(replacing == nil ? "Add" : "Sign In") { submit() }
                             .disabled(!canAdd || busy)
                             .opacity(busy ? 0 : 1)
                             .accessibilityIdentifier("pair-submit")
@@ -171,13 +172,13 @@ struct AddEnvironmentSheet: View {
         switch method {
         case .link:
             if let parsed = PairingLink(link) {
-                return "Pairs with \(parsed.origin.host ?? parsed.origin.absoluteString)."
+                return "Signs in to \(parsed.origin.host ?? parsed.origin.absoluteString)."
             }
             return link.isEmpty
-                ? "Make a link in the host's Settings → Hosts, then paste it here."
-                : "A pairing link looks like https://host/pair#XXXXX-XXXXX."
+                ? "Make a link on the computer in Settings → Sharing → Add…, then paste it here."
+                : "That is not a sign-in link. Copy the whole link from the computer."
         case .key:
-            return "A key made in the host's Remote access pane, with the host's address."
+            return "A key made on the computer in Settings → Sharing, and the computer's address."
         }
     }
 
@@ -198,7 +199,7 @@ struct AddEnvironmentSheet: View {
         do {
             switch method {
             case .link:
-                // The key is named for this phone on the host; the host keeps its own name here.
+                // The key is named for this phone on the computer; the computer keeps its own name here.
                 _ = try await model.registry.add(pairingLink: link, clientName: UIDevice.current.model)
             case .key:
                 guard let url = URL(string: origin.trimmingCharacters(in: .whitespaces)) else { return }

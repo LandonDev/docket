@@ -37,7 +37,8 @@
   document size (15/24).
 - Settings rows and sections use `components/page.tsx` (`PageRow`,
   `PageSection`), which pass native props and data attributes to their roots;
-  Hosts exports these as `Row` and `Group` without copying their markup.
+  `surfaces/settings/hosts/Group.tsx` still exports them as `Row` and `Group` for
+  the few files that import them by those names (the Hosts page itself is gone).
   A section's failure is `PageError` and its empty state `PageEmpty`, one
   line in a row's place (`lib/pageLineGuard.test.ts` refuses a hand-built
   one); its wait is `PageRowsSkeleton` in its rows' shape; a page reads its

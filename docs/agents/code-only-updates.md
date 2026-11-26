@@ -121,7 +121,7 @@ socket the Mac already authenticated with its saved key.
   it. The setting (`code-updates`) holds a saved environment's id, or
   `off`. With nothing set, the Mac's only admin host is chosen at first use
   and written down; with several, none is taken until the owner picks one
-  in Settings → Hosts. A host saved later is never taken on its own: a host
+  in Settings → Updates. A host saved later is never taken on its own: a host
   states its own caps when it is saved (`remote/environments.ts` keeps what
   its hello says), so "admin" alone says only that the Mac holds an admin
   key to it. The host is the link's, never a frame's `from`. The Mac asks
@@ -303,24 +303,25 @@ is the newer and on the same base, and waits for its own press.
 
 ## The setting and the line of truth
 
-Settings → Hosts, This Mac, the Release group under Publish: **Code
-updates**, a choice of host or Off (`code.settings.get`,
-`code.settings.set { host }`, loopback only;
-surfaces/settings/hosts/CodeUpdates.tsx). With one admin host it is chosen
-by default. The row is absent on a build that cannot take code and on a Mac
-with no admin host. Off, or another host, forgets the staged tree. Main's
-one line (a fallback, a refusal, an unencrypted link) is the row's state
-line, and a toast once per line per launch (lib/updater.ts `firstSaying`).
+Settings → Updates (This Mac): **Quick updates from**, a choice of computer
+or Off (`code.settings.get`, `code.settings.set { host }`, loopback only;
+`QuickUpdatesRow` in surfaces/settings/Updates.tsx, saved with the row's
+mark). With one admin host it is chosen by default. The row is absent on a
+build that cannot take code and on a Mac with no admin host. Off, or another
+host, forgets the staged tree. Main's one line (a fallback, a refusal, an
+unencrypted link) stands in for the row's line ("Small updates between
+releases. Each runs after a restart."), and a toast once per line per launch
+(lib/updater.ts `firstSaying`).
 
 The rail's row for a code offer is the release's own "Restart to update",
-with the commit's subject on hover; Settings → General's Release row reads
-"Code update: <subject>. Restart to finish." A downloaded release outranks
+with the commit's subject on hover; Settings → Updates' Docket row reads
+"Quick update: <subject>. Restart to finish." A downloaded release outranks
 a code offer on both, and a code offer outranks a release that is only
 available.
 
 Wherever the app says its version it says the bundle's version plus the
 commit when staged code runs: "1.0.371 + 3f9c2ab" (`versionLine`), in the
-About panel, the rail's update row and Settings → General's Release row.
+About panel, the rail's update row and Settings → Updates' Docket row.
 
 ## What it does not do
 
@@ -355,8 +356,7 @@ app says that in one line, and that commit needs the next full release.
   mid-fetch), `src/shared/codeUpdate.test.ts`,
   `src/main/codePaths.test.ts`, `src/main/server/appRoot.test.ts`,
   `src/main/buildInfo.test.ts`, and the renderer's `updater.test.ts`,
-  `updateStore.test.ts`, `UpdateRow.test.ts`, `General.dom.test.tsx`,
-  `CodeUpdates.dom.test.tsx`, `HostsPage.dom.test.tsx`.
+  `updateStore.test.ts`, `UpdateRow.test.ts`, `Updates.dom.test.tsx`.
 - Packaged, on the Mac: `bun scripts/e2e-code-update.ts` builds one signed,
   un-notarized copy (bundle id dev.landon.tempcode.e2ecode, product
   TempCodeCodeE2E, under /private/tmp/tc-code-update-e2e, CDP 9232). The

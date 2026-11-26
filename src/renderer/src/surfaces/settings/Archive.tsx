@@ -1,50 +1,102 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { SessionMeta, WireSessionMeta } from "../../lib/tcserver/types";
+import type { SessionPage } from "@shared/wire";
 import { DeleteThreadDialog } from "../../chrome/DeleteThreadDialog";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { RemoveProjectDialog } from "../../chrome/RemoveProjectDialog";
-import { prettyCwd, projectName } from "../../lib/paths";
-import {
-  loadArchivedProjects,
-  looksLikeProject,
-  subscribeArchivedProjects,
-  type ArchivedProject,
-} from "../../lib/recents";
-import { HARNESS_TITLE, sessionDisplayTitle } from "../../lib/session";
-import { loadSessionSidebarFilters, saveSessionSidebarFilters } from "../../lib/sessionFilters";
-import { loadTabGroupLabels, resolveTabGroupLabel } from "../../lib/tabGroups";
-import { useSessionMetas } from "../../lib/tcserver/store";
-import { useProjects } from "../../lib/tcserver/workspaces";
-import type { SessionMeta } from "@shared/events";
-import { useWorkspaces, workspaceLabelKey } from "../../lib/tcserver/workspaces";
-import { PageEmpty, PageRow, PageSection } from "../../components/page";
-import { SettingSwitch } from "../../components/setting-switch";
-import { Button } from "../../components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
-import { reveal } from "../../components/ui/reveal";
 import { MoreHorizontal } from "../../chrome/icons";
+import { PageEmpty, PageError, PageRow, PageRowsSkeleton } from "../../components/page";
+import { BusyLabel, Button } from "../../components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Input } from "../../components/ui/input";
+import { reveal } from "../../components/ui/reveal";
+import { LOCAL_ENVIRONMENT_ID, registry, useEnvironments } from "../../lib/connection";
+import { prettyCwd, projectName } from "../../lib/paths";
+import { loadArchivedProjects, looksLikeProject, subscribeArchivedProjects, type ArchivedProject } from "../../lib/recents";
+import { HARNESS_TITLE, sessionDisplayTitle } from "../../lib/session";
+import { computerInLine, useComputerNames } from "../../lib/settings/computerName";
+import { refusalWords } from "../../lib/settingsHome";
+import { NO_ANSWER } from "../../lib/connection/openRead";
+import { loadTabGroupLabels, resolveTabGroupLabel } from "../../lib/tabGroups";
+import { sessionStore, useSessionMetas } from "../../lib/tcserver/store";
+import { useProjects, useWorkspaces, workspaceLabelKey } from "../../lib/tcserver/workspaces";
+import { SettingSection } from "./parts/SettingRow";
+
+/**
+ * Archive (docs/agents/settings.md "The pages: jobs, workspaces, Archive"): the projects and the threads he archived.
+ * The page asks each computer for its archived threads itself (`session.list {archived: true}`, every page of it), so
+ * "No archived threads" is true and the search covers every one; each row names its computer. A computer still
+ * answering holds the list's shape; one that did not answer says so with Retry, the others' threads still listed.
+ */
 
 function useArchivedProjects(): ArchivedProject[] {
   const [items, setItems] = useState(loadArchivedProjects);
-  useEffect(
-    () => subscribeArchivedProjects(() => setItems(loadArchivedProjects())),
-    [],
-  );
+  useEffect(() => subscribeArchivedProjects(() => setItems(loadArchivedProjects())), []);
   return items;
 }
 
 function useArchivedProjectLabel(): (path: string) => string {
   const workspaces = useWorkspaces();
-  return (path) =>
-    resolveTabGroupLabel(
-      workspaceLabelKey(workspaces, path, projectName(path)),
-      loadTabGroupLabels(),
-      projectName(path),
-    );
+  return (path) => resolveTabGroupLabel(workspaceLabelKey(workspaces, path, projectName(path)), loadTabGroupLabels(), projectName(path));
 }
 
 /** Archived threads render a page at a time: thousands of rows in one mount stalled the page switch. */
 const ARCHIVE_PAGE = 100;
+
+type Read = { status: "loading" } | { status: "ready"; metas: SessionMeta[] } | { status: "failed"; error: string };
+
+/** Every archived root thread on one computer, walked page by page where its link pages them. */
+async function archivedOn(environmentId: string): Promise<SessionMeta[]> {
+  const link = registry.linkOf(environmentId);
+  const all: SessionMeta[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    const answer: WireSessionMeta[] | SessionPage = await link.request<WireSessionMeta[] | SessionPage>("session.list", cursor ? { archived: true, cursor } : { archived: true });
+    const page = Array.isArray(answer) ? answer : answer.sessions;
+    for (const meta of page) all.push({ ...meta, environmentId });
+    cursor = Array.isArray(answer) ? null : answer.cursor;
+    if (!cursor) return all;
+  }
+}
+
+/**
+ * Each computer's archived threads, asked of it, with what this window learned since: a thread restored or deleted
+ * here leaves the list, one archived since joins it. The session store is asked too, so a restore finds the thread's
+ * computer.
+ */
+function useArchivedThreads(): { threads: SessionMeta[]; reads: Map<string, Read>; retry: (environmentId: string) => void } {
+  const environments = useEnvironments();
+  const ids = environments.map((e) => e.id).join("\n");
+  const [reads, setReads] = useState<Map<string, Read>>(new Map());
+  const [attempts, setAttempts] = useState<Record<string, number>>({});
+  const metas = useSessionMetas();
+  useEffect(() => {
+    let live = true;
+    for (const id of ids ? ids.split("\n") : []) {
+      setReads((map) => new Map(map).set(id, { status: "loading" }));
+      archivedOn(id).then(
+        (list) => {
+          if (!live) return;
+          setReads((map) => new Map(map).set(id, { status: "ready", metas: list }));
+          void sessionStore.ensureArchived(id);
+        },
+        (err: unknown) => live && setReads((map) => new Map(map).set(id, { status: "failed", error: refusalWords(err) })),
+      );
+    }
+    return () => {
+      live = false;
+    };
+  }, [ids, attempts]);
+  const threads = useMemo(() => {
+    const known = new Map(metas.map((meta) => [meta.id, meta] as const));
+    const byId = new Map<string, SessionMeta>();
+    for (const read of reads.values()) if (read.status === "ready") for (const meta of read.metas) byId.set(meta.id, known.get(meta.id) ?? meta);
+    for (const meta of metas) if (meta.archived) byId.set(meta.id, meta);
+    // The store's word wins: a thread restored in any window since it was listed reads archived false there.
+    return [...byId.values()].filter((meta) => !meta.parentId && meta.archived).sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [reads, metas]);
+  return { threads, reads, retry: (id) => setAttempts((a) => ({ ...a, [id]: (a[id] ?? 0) + 1 })) };
+}
 
 export function ArchivePage({
   onOpenSession,
@@ -55,81 +107,51 @@ export function ArchivePage({
 }: {
   onOpenSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string, archived: boolean) => void;
-  onDeleteSession: (
-    sessionId: string,
-    options?: { confirmed?: boolean },
-  ) => void;
+  onDeleteSession: (sessionId: string, options?: { confirmed?: boolean }) => void;
   onRestoreProject?: (path: string) => void;
   onDeleteProject?: (path: string) => Promise<void> | void;
 }) {
   const archivedProjectLabel = useArchivedProjectLabel();
-  const [filters, setFilters] = useState(loadSessionSidebarFilters);
   const [deleting, setDeleting] = useState<ArchivedProject | null>(null);
-  const [deletingThread, setDeletingThread] = useState<SessionMeta | null>(
-    null,
-  );
+  const [deletingThread, setDeletingThread] = useState<SessionMeta | null>(null);
+  // Threads restored or deleted from this page leave it at once, before their computer's answer.
+  const [gone, setGone] = useState<ReadonlySet<string>>(new Set());
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(ARCHIVE_PAGE);
   const archivedProjects = useArchivedProjects();
-  const metas = useSessionMetas();
+  const { threads, reads, retry } = useArchivedThreads();
+  const names = useComputerNames();
   const projects = useProjects();
-  const projectNames = useMemo(
-    () => new Map(projects.map((project) => [project.id, project.name])),
-    [projects],
-  );
-  const nameOf = useCallback(
-    (meta: SessionMeta) =>
-      (meta.projectId ? projectNames.get(meta.projectId) : undefined) ??
-      (looksLikeProject(meta.cwd) ? projectName(meta.cwd) : ""),
-    [projectNames],
-  );
-  const archived = useMemo(
-    () =>
-      metas
-        .filter((meta) => meta.archived && !meta.parentId)
-        .sort((a, b) => b.updatedAt - a.updatedAt),
-    [metas],
-  );
+  const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
+  const nameOf = (meta: SessionMeta): string => (meta.projectId ? projectNames.get(meta.projectId) : undefined) ?? (looksLikeProject(meta.cwd) ? projectName(meta.cwd) : "");
+  const archived = threads.filter((meta) => !gone.has(meta.id));
+  const where = (meta: SessionMeta): string => {
+    const computer = computerInLine(names(meta.environmentId || LOCAL_ENVIRONMENT_ID));
+    const project = nameOf(meta);
+    return [project ? `${project}, on ${computer}` : `On ${computer}`, formatDate(meta.updatedAt)].filter(Boolean).join(", ");
+  };
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return archived;
-    return archived.filter((meta) =>
-      [meta.title, nameOf(meta), HARNESS_TITLE[meta.provider], meta.provider]
-        .join(" ")
-        .toLowerCase()
-        .includes(needle),
-    );
-  }, [archived, nameOf, query]);
-
-  const onShowArchived = (showArchived: boolean) => {
-    const next = { ...filters, showArchived };
-    saveSessionSidebarFilters(next);
-    setFilters(next);
-  };
+    return archived.filter((meta) => [meta.title, nameOf(meta), HARNESS_TITLE[meta.provider], meta.provider, names(meta.environmentId || LOCAL_ENVIRONMENT_ID).name].join(" ").toLowerCase().includes(needle));
+  }, [archived, query]);
+  const waiting = [...reads.values()].some((read) => read.status === "loading");
+  const failed = [...reads.entries()].filter((entry): entry is [string, Extract<Read, { status: "failed" }>] => entry[1].status === "failed");
 
   const restore = (meta: SessionMeta) => {
+    setGone((set) => new Set(set).add(meta.id));
     onArchiveSession(meta.id, false);
     onOpenSession(meta.id);
   };
 
   return (
     <>
-      <PageSection>
-        <PageRow title="Archived in the sidebar">
-          <SettingSwitch label="Archived in the sidebar" on={filters.showArchived} onChange={onShowArchived} />
-        </PageRow>
-      </PageSection>
-
-      <PageSection title="Archived projects">
+      <SettingSection of="archive.projects">
         {archivedProjects.length === 0 ? (
           <PageEmpty>No archived projects</PageEmpty>
         ) : (
           archivedProjects.map((project) => (
-            <PageRow
-              key={project.path}
-              title={archivedProjectLabel(project.path)}
-              description={<span className="font-mono">{prettyCwd(project.path)}</span>}
-            >
+            <PageRow key={project.path} title={archivedProjectLabel(project.path)} description={<span className="font-mono">{prettyCwd(project.path)}</span>}>
               <RowActions
                 name={archivedProjectLabel(project.path)}
                 verb="Remove"
@@ -139,53 +161,62 @@ export function ArchivePage({
             </PageRow>
           ))
         )}
-      </PageSection>
+      </SettingSection>
 
-      <PageSection title="Archived threads">
+      <SettingSection of="archive.threads">
+        {archived.length > 0 ? (
+          <Input
+            type="search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setLimit(ARCHIVE_PAGE);
+            }}
+            placeholder="Search archived threads"
+            aria-label="Search archived threads"
+            className="mb-1"
+          />
+        ) : null}
+        {failed.map(([id, read]) => (
+          <PageError
+            key={id}
+            action={
+              <Button variant="ghost" size="sm" onClick={() => retry(id)}>
+                <BusyLabel busy={false} label="Retry" />
+              </Button>
+            }
+          >
+            {archivedFailure(capital(computerInLine(names(id))), read.error)}
+          </PageError>
+        ))}
         {archived.length === 0 ? (
-          <PageEmpty>No archived threads</PageEmpty>
+          waiting ? (
+            <PageRowsSkeleton rows={3} description media control="none" />
+          ) : failed.length ? null : (
+            <PageEmpty>No archived threads</PageEmpty>
+          )
+        ) : shown.length === 0 ? (
+          <PageEmpty>No archived thread matches</PageEmpty>
         ) : (
-          <>
-            <Input
-              type="search"
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setLimit(ARCHIVE_PAGE);
-              }}
-              placeholder="Search archived threads"
-              aria-label="Search archived threads"
-              className="mb-1"
-            />
-            {shown.length === 0 ? (
-              <PageEmpty>No archived thread matches</PageEmpty>
-            ) : (
-              shown.slice(0, limit).map((meta) => (
-                <PageRow
-                  key={meta.id}
-                  media={<HarnessIcon harness={meta.provider} className="size-4 shrink-0" />}
-                  title={sessionDisplayTitle(meta.title, meta.provider)}
-                  description={nameOf(meta) || undefined}
-                >
-                  <RowActions
-                    name={sessionDisplayTitle(meta.title, meta.provider)}
-                    onRestore={() => restore(meta)}
-                    onDelete={() => setDeletingThread(meta)}
-                  />
-                  <span className="text-xs text-muted-foreground tabular-nums">{formatDate(meta.updatedAt)}</span>
-                </PageRow>
-              ))
-            )}
-            {shown.length > limit ? (
-              <div className="mt-3">
-                <Button variant="secondary" size="sm" onClick={() => setLimit((n) => n + ARCHIVE_PAGE)}>
-                  Show more
-                </Button>
-              </div>
-            ) : null}
-          </>
+          shown.slice(0, limit).map((meta) => (
+            <PageRow
+              key={meta.id}
+              media={<HarnessIcon harness={meta.provider} className="size-4 shrink-0" />}
+              title={sessionDisplayTitle(meta.title, meta.provider)}
+              description={where(meta)}
+            >
+              <RowActions name={sessionDisplayTitle(meta.title, meta.provider)} onRestore={() => restore(meta)} onDelete={() => setDeletingThread(meta)} />
+            </PageRow>
+          ))
         )}
-      </PageSection>
+        {shown.length > limit ? (
+          <div className="mt-3">
+            <Button variant="secondary" size="sm" onClick={() => setLimit((n) => n + ARCHIVE_PAGE)}>
+              Show more
+            </Button>
+          </div>
+        ) : null}
+      </SettingSection>
 
       {deleting ? (
         <RemoveProjectDialog
@@ -201,7 +232,10 @@ export function ArchivePage({
           title={clampTitle(sessionDisplayTitle(deletingThread.title, deletingThread.provider))}
           status={deletingThread.status}
           onCancel={() => setDeletingThread(null)}
-          onConfirm={() => onDeleteSession(deletingThread.id, { confirmed: true })}
+          onConfirm={() => {
+            setGone((set) => new Set(set).add(deletingThread.id));
+            onDeleteSession(deletingThread.id, { confirmed: true });
+          }}
           onDone={() => setDeletingThread(null)}
         />
       ) : null}
@@ -209,21 +243,18 @@ export function ArchivePage({
   );
 }
 
-/** Restore, then a ⋯ menu holding the removing verb (Delete… for a thread,
- *  Remove… for a workspace whose folder stays): one verb on the row, the
- *  destructive one a step away. Shown on hover, on focus and while the
- *  menu is open. */
-function RowActions({
-  name,
-  verb = "Delete",
-  onRestore,
-  onDelete,
-}: {
-  name: string;
-  verb?: "Delete" | "Remove";
-  onRestore?: () => void;
-  onDelete?: () => void;
-}) {
+const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** A computer that did not send its list, named; its own reason after, unless that reason is only its silence. */
+export function archivedFailure(computer: string, why: string): string {
+  const said = `${computer} did not send its archived threads.`;
+  if (!why || why === NO_ANSWER) return said;
+  return `${said} ${why.replace(/\.$/, "")}.`;
+}
+
+/** Restore, then a ⋯ menu holding the removing verb (Delete… for a thread, Remove… for a project whose folder stays):
+ *  one verb on the row, the destructive one a step away. Shown on hover, on focus and while the menu is open. */
+function RowActions({ name, verb = "Delete", onRestore, onDelete }: { name: string; verb?: "Delete" | "Remove"; onRestore?: () => void; onDelete?: () => void }) {
   return (
     <span className={`flex items-center gap-1 ${reveal("item", { row: true })}`}>
       {onRestore ? (
@@ -255,10 +286,7 @@ function clampTitle(title: string): string {
 function formatDate(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return "";
   try {
-    return new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-    }).format(new Date(value));
+    return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value));
   } catch {
     return "";
   }

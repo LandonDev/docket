@@ -70,25 +70,31 @@ import j72 from './J72-save-as-library'
 import j73 from './J73-word-leaves-nothing'
 import j74 from './J74-slide-escape'
 import j75 from './J75-draft-survives'
+import computers from './settings/J-computers'
+import { freePort } from '../e2e-work-lib'
 import { startSandbox } from './lib/lifeos'
 import { SECTOR, ZONE } from './lib/lifeosSeed'
 import { mainCheckout, saveResults, step, walk, type Results } from './lib/record'
-import { Pair, SHAPES, words, type Cleanup } from './lib/shape'
+import { Pair, SHAPES, words, type Cleanup, type Instance } from './lib/shape'
 import { writeJourneysTable } from './table'
 
-export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j32, j33, j34, j35, j36, j37, j38, j39, j40, j41, j42, j43, j44, j45, j46, j47, j48, j49, j50, j51, j52, j53, j54, j55, j56, j57, j58, j59, j60, j61, j62, j63, j71, j72, j73, j74, j75]
+export const JOURNEYS = [j01, j02, j03, j04, j05, j06, j07, j08, j09, j10, j11, j12, j13, j14, j15, j16, j17, j18, j19, j20, j21, j22, j23, j24, j25, j26, j27, j28, j29, j30, j31, j32, j33, j34, j35, j36, j37, j38, j39, j40, j41, j42, j43, j44, j45, j46, j47, j48, j49, j50, j51, j52, j53, j54, j55, j56, j57, j58, j59, j60, j61, j62, j63, j71, j72, j73, j74, j75, computers]
 
 const needsSandbox = ({ id, shapes }: typeof JOURNEYS[number]) => shapes.includes('S') || ['J48', 'J49', 'J59'].includes(id)
 type Job = { spec: typeof JOURNEYS[number]; shape: typeof SHAPES[number] }
 
 export function walkSetup({ spec, shape }: Job, desk?: boolean) {
   const { id } = spec
+  const settings = spec === computers
   return {
-    desk: !!desk || shape === 'B2',
+    desk: !settings && (!!desk || shape === 'B2'),
     sandbox: needsSandbox(spec),
     sandboxTools: ['J32', 'J34', 'J36', 'J38', 'J42', 'J50', 'J51', 'J62', 'J63'].includes(id),
     seededMail: shape === 'S',
     launch: {
+      ...(settings ? { withoutTools: true, beforeStart: async (inst: Instance) => {
+        if (inst.name === 'box') inst.debug = await freePort()
+      } } : {}),
       browser: id === 'J60',
       zone: id === 'J47' ? ZONE : undefined,
       localTools: ['J43', 'J45', 'J46', 'J59', 'J60'].includes(id),
@@ -253,7 +259,10 @@ async function main(): Promise<number> {
     process.off('SIGTERM', onSignal)
     saveResults(root, results)
   }
-  if (!flags.noTable && !results.error && !cleanup.errors.length) writeJourneysTable(join(base, 'plans/landed/POLISH-work.md'), results)
+  const workResults = { ...results, journeys: results.journeys.filter(({ id }) => id !== computers.id) }
+  if (!flags.noTable && !results.error && !cleanup.errors.length && workResults.journeys.length) {
+    writeJourneysTable(join(base, 'plans/landed/POLISH-work.md'), workResults)
+  }
   console.log(`Results ${join(root, 'results.json')}`)
   const failed = results.error || cleanup.errors.length
     || results.journeys.some(({ steps }) => steps.some((step) => step.error))

@@ -58,7 +58,7 @@ export function harnessesOf(choice: CliChoice): SkillHarnesses {
 /** Whether a CLI may be unticked: never the last one ticked. */
 export const canUntick = (choice: CliChoice, harness: SkillHarness): boolean => !choice[harness] || SKILL_HARNESSES.some((h) => h !== harness && choice[h]);
 
-export const CLI_LABELS: Record<SkillHarness, string> = { claude: "Claude", codex: "Codex", muse: "Muse" };
+export const CLI_LABELS: Record<SkillHarness, string> = { claude: "Claude Code", codex: "Codex", muse: "Muse Code" };
 
 /** The editor's fields as they stand. */
 export interface SkillDraft {

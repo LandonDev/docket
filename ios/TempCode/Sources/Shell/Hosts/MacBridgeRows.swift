@@ -84,7 +84,7 @@ struct MacBridgeSection: View {
             do {
                 try await extras.stopMacCall(id: call.id)
             } catch {
-                withAnimation(Motion.rowAppear) { actionError = (error as? ActionError)?.message ?? error.localizedDescription }
+                withAnimation(Motion.rowAppear) { actionError = ActionError.wrap(error).message }
             }
         }
     }

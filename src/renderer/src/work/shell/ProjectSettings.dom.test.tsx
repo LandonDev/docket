@@ -141,7 +141,7 @@ describe("which sheet a project gets", () => {
     expect(root.querySelector("[data-project-mode]")).toBeNull();
     expect(root.textContent).not.toContain(WORK.path);
     expect(within(root).queryByLabelText("Branch")).toBeNull();
-    for (const code of ["Completed turn", "Reviews", "Plans", "Build", "New threads"]) expect(headings(root)).not.toContain(code);
+    for (const code of ["After each turn", "Reviews", "Plans", "Build", "New threads"]) expect(headings(root)).not.toContain(code);
     // And it asked the host for none of them.
     expect(hostCalls.filter((c) => /^(build|plans|review|turnpass)\./.test(c.method))).toEqual([]);
   });
@@ -149,7 +149,7 @@ describe("which sheet a project gets", () => {
   it("a code project's sheet draws every code field", async () => {
     render(<ProjectSettingsDialog project={CODE_PROJECT} workspace={CODE} onClose={() => {}} />);
     const root = await sheet();
-    expect(headings(root)).toEqual(["Completed turn", "Reviews", "Accounts", "Plans", "Build"]);
+    expect(headings(root)).toEqual(["After each turn", "Reviews", "Accounts", "Plans", "Build"]);
     expect(root.querySelector("[data-project-mode]")?.textContent).toBe("Worktree");
     expect(within(root).getByLabelText("Branch")).toBeTruthy();
     expect(root.querySelector("[data-work-project-settings]")).toBeNull();
@@ -162,7 +162,7 @@ describe("which sheet a project gets", () => {
     render(<ProjectSettingsDialog project={CODE_PROJECT} workspace={CODE} onClose={() => {}} />);
     const root = await sheet();
     expect(headings(root)).not.toContain("Accounts");
-    expect(headings(root)).toContain("Completed turn");
+    expect(headings(root)).toContain("After each turn");
   });
 });
 

@@ -1,86 +1,86 @@
 import { useState } from "react";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { Button } from "../../components/ui/button";
-import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
-import { SettingSwitch } from "../../components/setting-switch";
+import { PageError, PageRowsSkeleton } from "../../components/page";
 import { registry } from "../../lib/connection";
-import { useHostRead } from "../../lib/connection/hostRead";
-import { readHarnessAvailability } from "../../lib/harness/availability";
+import { useHostRead, type HostRead } from "../../lib/connection/hostRead";
+import { readHarnessAvailability, type HarnessAvailability } from "../../lib/harness/availability";
 import { isPickerProviderVisible, savePickerProviderVisible } from "../../lib/models";
 import { HARNESSES, HARNESS_TITLE, type HarnessId } from "../../lib/session";
-import { loadClaudeHooks, saveClaudeHooks } from "../../lib/settings";
+import { SettingRow } from "./parts/SettingRow";
+import { SwitchListDialog } from "./parts/SwitchListDialog";
 
-/** Which installed CLIs the model picker lists, on Settings › Thread defaults. */
-export function PickerSection() {
+/** "A, B and C". */
+export function namesInLine(names: readonly string[]): string {
+  return names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** The agent apps this computer has, asked of it: a failure says so with Retry, never "none installed". */
+export function useInstalledApps(): HostRead<HarnessAvailability> & { installed: HarnessId[] | undefined } {
   const link = registry.primary();
-  // The page's read (docs/DESIGN.md "A page…"): a failure says so with Retry, never "no CLI installed".
   const read = useHostRead(link, () => readHarnessAvailability({ environmentId: link.environmentId }));
-  const availability = read.value;
-  if (!availability && read.error) {
-    return (
-      <PageSection
-        title="Model picker"
-        action={
-          <Button variant="ghost" size="sm" onClick={read.retry}>
-            Retry
-          </Button>
-        }
-      >
-        <PageError>{read.error}</PageError>
-      </PageSection>
-    );
-  }
-  // Its rows in their shape until the host answers, so the sections under it never move down.
-  if (!availability) {
-    return (
-      <PageSection title="Model picker">
+  return { ...read, installed: read.value ? HARNESSES.filter((harness) => read.value![harness]) : undefined };
+}
+
+/**
+ * General › Composer › Model picker shows: which installed agent apps have a tab in the model picker (LS
+ * `docket.hiddenPickerProviders`). The row names the ones shown and opens a dialog of a switch each; it is absent once
+ * the computer said it has none.
+ */
+export function PickerRow() {
+  const apps = useInstalledApps();
+  const [hidden, setHidden] = useState(() => new Set(HARNESSES.filter((harness) => !isPickerProviderVisible(harness))));
+  const [open, setOpen] = useState(false);
+  if (apps.installed?.length === 0) return null;
+  const shown = apps.installed?.filter((harness) => !hidden.has(harness)).map((harness) => HARNESS_TITLE[harness]);
+  const flip = (id: string, on: boolean) => {
+    const harness = id as HarnessId;
+    savePickerProviderVisible(harness, on);
+    setHidden((was) => {
+      const next = new Set(was);
+      if (on) next.delete(harness);
+      else next.add(harness);
+      return next;
+    });
+  };
+  const body =
+    apps.installed === undefined ? (
+      apps.error ? (
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" onClick={() => void apps.retry()}>
+              Retry
+            </Button>
+          }
+        >
+          {apps.error}
+        </PageError>
+      ) : (
         <PageRowsSkeleton rows={2} media control="switch" />
-      </PageSection>
-    );
-  }
-  const installed = HARNESSES.filter((harness) => availability[harness]);
-  if (installed.length === 0) return null;
+      )
+    ) : undefined;
   return (
-    <PageSection title="Model picker">
-      {installed.map((harness) => (
-        <PickerRow key={harness} harness={harness} />
-      ))}
-    </PageSection>
-  );
-}
-
-function PickerRow({ harness }: { harness: HarnessId }) {
-  const title = HARNESS_TITLE[harness];
-  const [visible, setVisible] = useState(() => isPickerProviderVisible(harness));
-  return (
-    <PageRow media={<HarnessIcon harness={harness} className="size-4" />} title={title}>
-      <SettingSwitch
-        label={`Show ${title} in the model picker`}
-        on={visible}
-        onChange={(next) => {
-          savePickerProviderVisible(harness, next);
-          setVisible(next);
-        }}
+    <>
+      <SettingRow
+        id="general.picker"
+        description={shown ? (shown.length ? namesInLine(shown) : "None") : undefined}
+        onOpen={() => setOpen(true)}
+        openLabel="Model picker shows"
       />
-    </PageRow>
-  );
-}
-
-/** Whether Claude threads run the hooks from the person's settings.json files. */
-export function ClaudeHooksSection() {
-  const [on, setOn] = useState(loadClaudeHooks);
-  return (
-    <PageSection title="Claude Code">
-      <PageRow title="settings.json hooks" description="The hooks from your settings.json files run from the next turn.">
-        <SettingSwitch
-          label="settings.json hooks"
-          on={on}
-          onChange={(next) => {
-            saveClaudeHooks(next);
-            setOn(next);
-          }}
+      {open ? (
+        <SwitchListDialog
+          title="Model picker shows"
+          body={body}
+          items={(apps.installed ?? []).map((harness) => ({
+            id: harness,
+            label: HARNESS_TITLE[harness],
+            media: <HarnessIcon harness={harness} className="size-4" />,
+            on: !hidden.has(harness),
+          }))}
+          onChange={flip}
+          onClose={() => setOpen(false)}
         />
-      </PageRow>
-    </PageSection>
+      ) : null}
+    </>
   );
 }

@@ -12,7 +12,7 @@ export type Context = {
   evidencePage?: Window
 }
 type Step = { name: string; shapes?: readonly Shape[]; run(context: Context): void | Promise<void> }
-type Journey = { id: string; title: string; tier: number; shapes: readonly Shape[]; steps: readonly Step[] }
+type Journey = { id: string; title: string; tier: number; shapes: readonly Shape[]; steps: readonly Step[]; continueOnFailure?: boolean }
 type StepResult = {
   name: string
   error?: string
@@ -60,7 +60,7 @@ export async function walk(spec: Journey, context: Context, stop: Promise<never>
       console.log(`PASS ${spec.id} ${shape} ${name}`)
     } catch (error) {
       entry.error = words(error)
-      console.error(`FAIL ${spec.id} ${shape} ${name}: ${entry.error}`)
+      console.error(`FAIL ${spec.id} ${shape} ${name}: ${entry.error.replace(/\s+/g, ' ')}`)
       const evidence = async <T>(want: string, get: () => Promise<T>): Promise<T | undefined> => {
         try {
           return await get()
@@ -77,7 +77,7 @@ export async function walk(spec: Journey, context: Context, stop: Promise<never>
       entry.hostErrors = [...new Set([...pair.hostErrors.slice(hostErrorStart), ...(context.evidencePage?.hostErrors ?? [])])]
       entry.toasts = toasts
       entry.saveLine = saveLine
-      break
+      if (!spec.continueOnFailure || pair.abort.signal.aborted) break
     }
   }
   return result

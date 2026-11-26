@@ -1,34 +1,29 @@
-import { keyCaps } from "../../lib/keys";
 import { useEffect, useMemo, useState } from "react";
 import { EDITOR_IDS, EDITOR_LABELS, type EditorChoice } from "@shared/editor";
-import { useProjects } from "../../lib/tcserver/workspaces";
 import type { LspStatusRow } from "@shared/domain";
-import {
-  loadAutoSave,
-  loadFormatOnSave,
-  loadGhostText,
-  saveAutoSave,
-  saveFormatOnSave,
-  saveGhostText,
-  type FormatOnSave,
-} from "../../lib/settings";
-import { registry } from "../../lib/connection";
-import { useHostRead } from "../../lib/connection/hostRead";
-import { retryBlockedEnsures } from "../../lib/monaco/lspGate";
-import { chooseEditorSetting, useEditorConfig } from "../../lib/editorConfig";
-import { Dialog } from "../../components/ui/dialog";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
-import { LoadingLine } from "../SurfaceSkeleton";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { PageError } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { Skeleton } from "../../components/ui/skeleton";
-import { Keys } from "./keys";
-import { Facts } from "./hosts/Facts";
 import { CONSOLE } from "../../components/ui/console";
+import { Dialog } from "../../components/ui/dialog";
+import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
+import { registry } from "../../lib/connection";
+import { useHostRead } from "../../lib/connection/hostRead";
+import { chooseEditorSetting, useEditorConfig } from "../../lib/editorConfig";
+import { keyCaps } from "../../lib/keys";
+import { retryBlockedEnsures } from "../../lib/monaco/lspGate";
+import { computerInLine, useComputerName } from "../../lib/settings/computerName";
+import { loadAutoSave, loadFormatOnSave, loadGhostText, saveAutoSave, saveFormatOnSave, saveGhostText, type FormatOnSave } from "../../lib/settings";
+import { useProjects } from "../../lib/tcserver/workspaces";
+import { LoadingLine } from "../SurfaceSkeleton";
+import { Keys } from "./keys";
+import { namesInLine } from "./PickerSettings";
+import { SettingRow, SettingSection } from "./parts/SettingRow";
+import { useSaved } from "./parts/useSaved";
 
 type IdeaEngine = { dist: boolean; accepted: boolean; build: string };
 
@@ -41,211 +36,97 @@ type JavaDoctor = {
   error?: string;
 };
 
-const LSP_LABEL: Record<LspStatusRow["lang"], string> = {
-  java: "jdtls",
-  idea: "IntelliJ engine",
-  web: "vtsls",
-};
-
 function fmtBytes(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
   return `${Math.round(bytes / 1024 ** 2)} MB`;
 }
 
-/** A server's figures for the row's end: memory and idle time, or its state. */
-export function lspFigures(row: LspStatusRow): string[] {
-  if (row.state === "running") {
-    const figures = [row.memoryBytes != null ? fmtBytes(row.memoryBytes) : "Running"];
-    if (row.idleMs > 60_000) figures.push(`idle ${Math.round(row.idleMs / 60_000)}m`);
-    return figures;
+/** What one kind of language server is doing on this computer, for the end of its row's line: the projects it runs
+ *  for and the memory it holds ("running for Alpha and Beta, 1.4 GB"), or "starting"; its failure is the row's red
+ *  line. Nothing while none runs. */
+export function serverWords(rows: readonly LspStatusRow[], names: ReadonlyMap<string, string>): { line: string | null; error: string | null } {
+  const running = rows.filter((row) => row.state === "running");
+  const failed = rows.find((row) => row.state === "error");
+  const error = failed ? (failed.error ?? "Failed") : null;
+  if (running.length) {
+    const projects = [...new Set(running.map((row) => names.get(row.projectId) ?? row.projectId))];
+    const memory = running.reduce((sum, row) => sum + (row.memoryBytes ?? 0), 0);
+    return { line: [`running for ${namesInLine(projects)}`, ...(memory ? [fmtBytes(memory)] : [])].join(", "), error };
   }
-  if (row.state === "error") return [];
-  return [`${row.state[0].toUpperCase()}${row.state.slice(1)}…`];
+  if (rows.some((row) => row.state !== "error")) return { line: "starting", error };
+  return { line: null, error };
 }
 
-/** Live language-server rows, polled while the page is open. M7a's push
- *  of readiness changes can replace the poll once it lands. */
-function LanguageServers() {
+/** This computer's language servers, read every 5 s once the first answer is in, so the Java rows' lines stay
+ *  current. A failed read adds nothing to those lines and keeps the last answer. */
+function useLanguageServers(): LspStatusRow[] | undefined {
   const link = registry.primary();
   const read = useHostRead(link, () => link.request<LspStatusRow[]>("lsp.status"));
-  const rows = read.value;
+  const loaded = read.value !== undefined;
   const { retry } = read;
-  const projects = useProjects();
-  const projectNames = useMemo(
-    () => new Map(projects.map((project) => [project.id, project.name])),
-    [projects],
-  );
-  // Once the rows have loaded the poll asks again every 5 s, and a failed
-  // poll keeps the rows it last had. Before that the first read runs to its
-  // deadline, so a slow host still ends in "The host did not answer".
-  const loaded = rows !== undefined;
   useEffect(() => {
     if (!loaded) return;
     const timer = window.setInterval(retry, 5_000);
     return () => window.clearInterval(timer);
   }, [loaded, retry]);
-  const failed = !rows && read.error;
-  return (
-    <PageSection
-      title="Language servers"
-      action={
-        failed ? (
-          <Button variant="ghost" size="sm" onClick={retry}>
-            Retry
-          </Button>
-        ) : null
-      }
-    >
-      {failed ? (
-        <PageError>{read.error}</PageError>
-      ) : !rows ? (
-        <PageRowsSkeleton rows={2} description control="none" />
-      ) : rows.length === 0 ? (
-        <PageEmpty>None running</PageEmpty>
-      ) : (
-        rows.map((row) => {
-          const project = projectNames.get(row.projectId) ?? row.projectId;
-          return (
-            <PageRow
-              key={row.serverId}
-              title={LSP_LABEL[row.lang]}
-              description={project}
-              error={row.state === "error" ? (row.error ?? "Failed") : undefined}
-            >
-              <Facts parts={lspFigures(row)} className="text-xs text-muted-foreground" />
-            </PageRow>
-          );
-        })
-      )}
-    </PageSection>
-  );
+  return read.value;
 }
 
-/** Which editor "Open in …" and "Open on the Mac" hand a file to. Auto takes
- *  the first of IDEA, VS Code and Xcode installed; a Swift file under ios/
- *  goes to Xcode when Xcode is chosen or IDEA is absent. Absent in web mode
- *  and on a headless host, where no editor runs. */
+/** Which editor "Open in…" and "Open on the Mac" hand a file to. Auto takes the first of IDEA, VS Code and Xcode
+ *  installed; a Swift file under ios/ goes to Xcode when Xcode is chosen or IDEA is absent. Absent at /ui and on a
+ *  headless computer, where no editor runs. */
 function OpenFilesIn() {
   const config = useEditorConfig();
+  const saved = useSaved();
+  const [chosen, setChosen] = useState<EditorChoice | null>(null);
   if (!config) return null;
   const found = EDITOR_IDS.filter((id) => config.installed[id]).map((id) => EDITOR_LABELS[id]);
+  const editor = chosen ?? config.editor;
   const description =
     found.length === 0
       ? "No editor found. Install IntelliJ IDEA, VS Code or Xcode."
-      : config.editor === "auto" && config.effective
-        ? `Found ${listOf(found)}; Auto opens ${EDITOR_LABELS[config.effective]}.`
-        : config.editor !== "auto" && !config.installed[config.editor]
-          ? `${EDITOR_LABELS[config.editor]} is not installed; ${config.effective ? `${EDITOR_LABELS[config.effective]} opens instead` : "nothing opens"}.`
-          : `Found ${listOf(found)}.`;
-  const options: { value: EditorChoice; label: string }[] = [
-    { value: "auto", label: "Auto" },
-    ...EDITOR_IDS.map((id) => ({ value: id, label: EDITOR_LABELS[id] })),
-  ];
+      : editor === "auto" && config.effective
+        ? `Auto opens ${EDITOR_LABELS[config.effective]}`
+        : editor !== "auto" && !config.installed[editor]
+          ? `${EDITOR_LABELS[editor]} is not installed; ${config.effective ? `${EDITOR_LABELS[config.effective]} opens instead` : "nothing opens"}`
+          : undefined;
+  const options: { value: EditorChoice; label: string }[] = [{ value: "auto", label: "Auto" }, ...EDITOR_IDS.map((id) => ({ value: id, label: EDITOR_LABELS[id] }))];
   return (
-    <PageSection title="Open files in">
-      <PageRow title="External editor" description={description}>
-        <ChoiceSelect label="External editor" value={config.editor} options={options} onChange={(choice) => void chooseEditorSetting(choice)} />
-      </PageRow>
-    </PageSection>
+    <SettingSection of="editor.openIn">
+      <SettingRow id="editor.openIn" saved={saved} description={description}>
+        <ChoiceSelect
+          label="Open files in"
+          value={editor}
+          options={options}
+          onChange={(choice) => {
+            setChosen(choice);
+            void saved.run(() => chooseEditorSetting(choice)).then(() => setChosen(null));
+          }}
+        />
+      </SettingRow>
+    </SettingSection>
   );
 }
 
-function listOf(names: string[]): string {
-  if (names.length <= 1) return names.join("");
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-}
-
+/**
+ * Settings › Editor: how files save, inline suggestions and the editor "Open in…" uses, all of this window's, then Java
+ * on this computer: its JDK and the IntelliJ engine, each with what its language server is doing (the separate
+ * list of language servers folded into these two rows).
+ */
 export function EditorPage() {
   const [autoSave, setAutoSave] = useState(loadAutoSave);
   const [formatOnSave, setFormatOnSave] = useState<FormatOnSave>(loadFormatOnSave);
   const [ghostText, setGhostText] = useState(loadGhostText);
-  const link = registry.primary();
-  // The JDK and the engine as the host reports them; until it answers, nothing is said about either.
-  const doctor = useHostRead(link, () => link.request<{ java?: JavaDoctor }>("doctor.get"));
-  const java: JavaDoctor | null | undefined = doctor.value ? (doctor.value.java ?? null) : undefined;
-  const engine: IdeaEngine | null | undefined = doctor.value ? (doctor.value.java?.ideaServer ?? null) : undefined;
-  const [eula, setEula] = useState<{ build: string; text: string } | null>(null);
-  const [gateOpen, setGateOpen] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  // The EULA dialog's own failure (reading or accepting it), said inside the
-  // dialog: the row's note sits behind the scrim.
-  const [eulaError, setEulaError] = useState<string | null>(null);
-
-  const refreshEngine = doctor.retry;
-
   const onFormat = (patch: Partial<FormatOnSave>) => {
     const next = { ...formatOnSave, ...patch };
     saveFormatOnSave(next);
     setFormatOnSave(next);
   };
-
-  const openGate = () => {
-    setGateOpen(true);
-    setEulaError(null);
-    if (eula) return;
-    // The first open downloads the dist to read its license.
-    void registry.primary()
-      .request<{ build: string; text: string }>("idea.eula")
-      .then(setEula)
-      .catch((error) => setEulaError(error instanceof Error ? error.message : String(error)));
-  };
-
-  const [accepting, setAccepting] = useState(false);
-  const accept = () => {
-    if (accepting) return;
-    setAccepting(true);
-    setEulaError(null);
-    void registry.primary()
-      .request("idea.acceptEula")
-      .then(() => {
-        setGateOpen(false);
-        retryBlockedEnsures();
-        refreshEngine();
-      })
-      .catch((error) => setEulaError(error instanceof Error ? error.message : String(error)))
-      .finally(() => setAccepting(false));
-  };
-
-  const [checking, setChecking] = useState(false);
-  const checkUpdate = () => {
-    setNote(null);
-    setChecking(true);
-    void registry.primary()
-      .request<{ current: string; latest: string; updated: boolean }>("idea.checkUpdate")
-      .then((r) => {
-        setNote(r.updated ? `Updated to ${r.latest}. Accept the EULA again.` : "Up to date.");
-        refreshEngine();
-      })
-      .catch(() => setNote("Update check failed."))
-      .finally(() => setChecking(false));
-  };
-
-  const jdkState =
-    java === undefined
-      ? null
-      : !java || !java.found
-        ? (java?.error ?? "No JDK found. Install JDK 21 or newer for Java.")
-        : java.error
-          ? `JDK ${java.version} needs 21 or newer`
-          : `JDK ${java.version}, ${java.jdtls ? "jdtls ready" : "jdtls downloads on first use"}`;
-
-  const engineState =
-    engine === undefined
-      ? null
-      : !engine || !engine.dist
-        ? "Not downloaded"
-        : engine.accepted
-          ? `Ready, build ${engine.build}`
-          : "Needs the EULA";
-
-  const loading = <Skeleton className="mt-1 h-3 w-40" />;
-  const javaFailed = !doctor.value && doctor.error !== null;
-
   return (
     <>
-      <PageSection title="Saving">
-        <PageRow
-          title="Auto save"
+      <SettingSection of="editor.autoSave">
+        <SettingRow
+          id="editor.autoSave"
           description={
             <>
               Writes 800 ms after the last keystroke;
@@ -255,98 +136,176 @@ export function EditorPage() {
           }
         >
           <SettingSwitch
-            label="Auto save"
+            label="Save as I type"
             on={autoSave}
             onChange={(on) => {
               saveAutoSave(on);
               setAutoSave(on);
             }}
           />
-        </PageRow>
-        <PageRow title="Java formatting">
-          <SettingSwitch label="Java formatting" on={formatOnSave.java} onChange={(on) => onFormat({ java: on })} />
-        </PageRow>
-        <PageRow title="TypeScript and JavaScript formatting">
-          <SettingSwitch
-            label="TypeScript and JavaScript formatting"
-            on={formatOnSave.web}
-            onChange={(on) => onFormat({ web: on })}
-          />
-        </PageRow>
-      </PageSection>
+        </SettingRow>
+        <SettingRow id="editor.formatJava">
+          <SettingSwitch label="Format Java and Kotlin on save" on={formatOnSave.java} onChange={(on) => onFormat({ java: on })} />
+        </SettingRow>
+        <SettingRow id="editor.formatWeb">
+          <SettingSwitch label="Format TypeScript and JavaScript on save" on={formatOnSave.web} onChange={(on) => onFormat({ web: on })} />
+        </SettingRow>
+      </SettingSection>
 
-      <PageSection title="Completions">
-        <PageRow title="Ghost text" description="Inline completions from Claude on your existing login.">
+      <SettingSection of="editor.inline">
+        <SettingRow id="editor.inline" description="From Claude, on your sign-in">
           <SettingSwitch
-            label="Ghost text"
+            label="Inline suggestions"
             on={ghostText}
             onChange={(on) => {
               saveGhostText(on);
               setGhostText(on);
             }}
           />
-        </PageRow>
-      </PageSection>
+        </SettingRow>
+      </SettingSection>
 
       <OpenFilesIn />
+      <JavaSection />
+    </>
+  );
+}
 
-      <PageSection
-        title="Java"
-        action={
-          javaFailed ? (
-            <Button variant="ghost" size="sm" onClick={doctor.retry}>
-              Retry
-            </Button>
-          ) : null
-        }
-      >
-        {javaFailed ? (
-          <PageError>{doctor.error}</PageError>
-        ) : (
-          <>
-            <PageRow
-              title="JDK"
-              description={
-                jdkState === null ? (
-                  loading
-                ) : (
-                  <>
-                    <span className={java?.error ? "block text-warning" : "block"}>{jdkState}</span>
-                    {java?.path ? <span className="block truncate font-mono text-xs">{java.path}</span> : null}
-                  </>
-                )
-              }
-            />
-            <PageRow title="IntelliJ engine" description={note ?? engineState ?? loading}>
-              {engine === undefined ? (
-                // Which verb applies is the doctor's to say: its button's place until then.
-                <Skeleton data-engine-action className="h-7 w-28 rounded-md" />
-              ) : (
-                <Button variant="secondary" size="sm" disabled={checking} onClick={engine?.accepted ? checkUpdate : openGate}>
-                  <BusyLabel busy={checking} label={engine?.accepted ? "Check for update" : "Accept EULA"} />
-                </Button>
-              )}
-            </PageRow>
-          </>
-        )}
-      </PageSection>
+/** Java on this window's computer: the JDK and the IntelliJ engine as its doctor reports them; until it answers,
+ *  nothing is said about either, and a failure is the section's line with Retry. */
+function JavaSection() {
+  const link = registry.primary();
+  const mac = computerInLine(useComputerName(link.environmentId));
+  const doctor = useHostRead(link, () => link.request<{ java?: JavaDoctor }>("doctor.get"));
+  const java: JavaDoctor | null | undefined = doctor.value ? (doctor.value.java ?? null) : undefined;
+  const engine: IdeaEngine | null | undefined = doctor.value ? (doctor.value.java?.ideaServer ?? null) : undefined;
+  const servers = useLanguageServers();
+  const projects = useProjects();
+  const names = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
+  const jdtls = serverWords(servers?.filter((row) => row.lang === "java") ?? [], names);
+  const idea = serverWords(servers?.filter((row) => row.lang === "idea") ?? [], names);
 
-      <LanguageServers />
+  const [eula, setEula] = useState<{ build: string; text: string } | null>(null);
+  const [gateOpen, setGateOpen] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  // The licence dialog's own failure (reading or accepting it), said inside the dialog: the row's note sits behind
+  // the scrim.
+  const [eulaError, setEulaError] = useState<string | null>(null);
+  const [accepting, setAccepting] = useState(false);
+  const [checking, setChecking] = useState(false);
+
+  const openGate = () => {
+    setGateOpen(true);
+    setEulaError(null);
+    if (eula) return;
+    // The first open downloads the engine to read its licence.
+    void link
+      .request<{ build: string; text: string }>("idea.eula")
+      .then(setEula)
+      .catch((error) => setEulaError(error instanceof Error ? error.message : String(error)));
+  };
+
+  const accept = () => {
+    if (accepting) return;
+    setAccepting(true);
+    setEulaError(null);
+    void link
+      .request("idea.acceptEula")
+      .then(() => {
+        setGateOpen(false);
+        retryBlockedEnsures();
+        void doctor.retry();
+      })
+      .catch((error) => setEulaError(error instanceof Error ? error.message : String(error)))
+      .finally(() => setAccepting(false));
+  };
+
+  const checkUpdate = () => {
+    setNote(null);
+    setChecking(true);
+    void link
+      .request<{ current: string; latest: string; updated: boolean }>("idea.checkUpdate")
+      .then((r) => {
+        setNote(r.updated ? `Updated to build ${r.latest}. Read the licence again to turn it on.` : "Up to date.");
+        void doctor.retry();
+      })
+      .catch(() => setNote("The update check failed."))
+      .finally(() => setChecking(false));
+  };
+
+  const jdkLine =
+    java === undefined
+      ? null
+      : !java || !java.found
+        ? (java?.error ?? "No JDK found. Install JDK 21 or newer for Java.")
+        : java.error
+          ? `${java.version} needs 21 or newer`
+          : [java.version, java.jdtls ? "language support ready" : "language support downloads on first use", ...(jdtls.line ? [jdtls.line] : [])].join(", ");
+
+  const engineLine =
+    engine === undefined
+      ? null
+      : !engine || !engine.dist
+        ? "Not downloaded"
+        : engine.accepted
+          ? [`Build ${engine.build}`, ...(idea.line ? [idea.line] : [])].join(", ")
+          : `Build ${engine.build}, waiting for the licence`;
+
+  const loading = <Skeleton className="mt-1 h-3 w-40" />;
+  const failed = !doctor.value && doctor.error !== null;
+
+  return (
+    <SettingSection
+      of="editor.jdk"
+      vars={{ mac }}
+      action={
+        failed ? (
+          <Button variant="ghost" size="sm" onClick={() => void doctor.retry()}>
+            Retry
+          </Button>
+        ) : null
+      }
+    >
+      {failed ? (
+        <PageError>{doctor.error}</PageError>
+      ) : (
+        <>
+          <SettingRow
+            id="editor.jdk"
+            description={jdkLine === null ? loading : <span className={java?.error || !java?.found ? "text-warning" : undefined}>{jdkLine}</span>}
+            error={jdtls.error}
+          />
+          <SettingRow id="editor.intellij" description={note ?? engineLine ?? loading} error={idea.error}>
+            {engine === undefined ? (
+              // Which verb applies is the doctor's to say: its button's place until then.
+              <Skeleton data-engine-action className="h-7 w-28 rounded-md" />
+            ) : engine?.accepted ? (
+              <Button variant="secondary" size="sm" disabled={checking} onClick={checkUpdate}>
+                <BusyLabel busy={checking} label="Check for update" />
+              </Button>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={openGate}>
+                Read the licence…
+              </Button>
+            )}
+          </SettingRow>
+        </>
+      )}
       <Dialog open={gateOpen} onOpenChange={(next) => (next || !accepting) && setGateOpen(next)}>
-        <ModalPanel title="JetBrains EULA" description={eula ? `intellij-server ${eula.build}` : undefined} busy={accepting}>
+        <ModalPanel title="JetBrains licence" description={eula ? `IntelliJ engine, build ${eula.build}` : undefined} busy={accepting}>
           <ModalBody>
             {eula ? (
               <pre tabIndex={0} className={cn(CONSOLE, "max-h-80 overflow-x-hidden overflow-y-auto whitespace-pre-wrap")}>
                 {eula.text}
               </pre>
             ) : eulaError ? null : (
-              <LoadingLine label="Downloading the engine to read its license…" />
+              <LoadingLine label="Downloading the engine to read its licence…" />
             )}
             <ErrorLine error={eulaError} />
           </ModalBody>
-          <DialogFooter onCancel={() => setGateOpen(false)} confirmLabel="Accept and enable" pending={accepting} disabled={!eula} onConfirm={accept} />
+          <DialogFooter onCancel={() => setGateOpen(false)} confirmLabel="Accept and turn on" pending={accepting} disabled={!eula} onConfirm={accept} />
         </ModalPanel>
       </Dialog>
-    </>
+    </SettingSection>
   );
 }

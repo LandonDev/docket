@@ -9,21 +9,26 @@ import {
   useAppshotSettingsStatus,
 } from "../lib/appshots";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
-import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
+import { PageError, PageRowsSkeleton, PageSection } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../components/ui/empty";
-import { PermissionRow } from "./settings/PermissionRow";
+import { Permissions } from "./settings/parts/Permissions";
+import { SettingRow } from "./settings/parts/SettingRow";
 
 const DESTINATIONS: Choice<AppshotDestination>[] = [
   { value: "automatic", label: "Automatic" },
-  { value: "last-chat", label: "Last chat" },
-  { value: "new-chat", label: "New chat" },
+  { value: "last-chat", label: "The last chat" },
+  { value: "new-chat", label: "A new chat" },
 ];
 
 const POLL_MS = 5000;
 
-/** Settings › Appshots: the capture switch, where a shot lands, and the two macOS grants it needs. */
+/**
+ * Settings › Appshots: the capture switch, where a shot lands and its sound, kept by this Mac (`appshots.*` through
+ * lib/appshots.ts, which moves the control at once, puts a refused value back and says why under its row). A macOS
+ * grant shows here only while it is missing, as the reason the double ⌘ does nothing; both are listed on Computer use.
+ */
 export function AppshotsPage() {
   const settings = useAppshotSettings();
   const { loaded, loadError, writeError } = useAppshotSettingsStatus();
@@ -57,63 +62,47 @@ export function AppshotsPage() {
   }
 
   return (
-    <>
-      <PageSection>
-        {loaded ? (
-          <>
-            <PageRow title="Double-⌘ capture" error={errorOf("enabled")}>
-              <SettingSwitch
-                label="Double-⌘ capture"
-                on={settings.enabled}
-                onChange={(on) => {
-                  setAppshotSettings({ enabled: on });
-                  // The hotkey monitor hears nothing until Accessibility is granted,
-                  // so turning the feature on asks for what is missing right away.
-                  if (on && perms && !(perms.screen && perms.ax)) prompt();
-                }}
-              />
-            </PageRow>
-            <PageRow title="Destination" description="Automatic uses the open chat, else a new one." error={errorOf("destination")}>
-              <ChoiceSelect
-                label="Destination"
-                value={settings.destination}
-                options={DESTINATIONS}
-                onChange={(destination) => setAppshotSettings({ destination })}
-              />
-            </PageRow>
-            <PageRow title="Shutter sound" error={errorOf("sound")}>
-              <SettingSwitch label="Shutter sound" on={settings.sound} onChange={(sound) => setAppshotSettings({ sound })} />
-            </PageRow>
-          </>
-        ) : loadError ? (
-          <PageError
-            action={
-              <Button variant="ghost" size="sm" onClick={() => void loadAppshotSettings()}>
-                Retry
-              </Button>
-            }
-          >
-            {loadError}
-          </PageError>
-        ) : (
-          <PageRowsSkeleton rows={[{ control: "switch" }, { description: true }, { control: "switch" }]} />
-        )}
-      </PageSection>
-
-      <PageSection title="Permissions">
-        <PermissionRow
-          label="Screen Recording"
-          description="Captures the window image."
-          granted={perms ? perms.screen : null}
-          pane="Privacy_ScreenCapture"
-          />
-        <PermissionRow
-          label="Accessibility"
-          description="Reads the window's text and hears the double-⌘."
-          granted={perms ? perms.ax : null}
-          pane="Privacy_Accessibility"
-          />
-      </PageSection>
-    </>
+    <PageSection>
+      {loaded ? (
+        <>
+          <SettingRow id="appshots.on" error={errorOf("enabled")}>
+            <SettingSwitch
+              label="Appshots"
+              on={settings.enabled}
+              onChange={(on) => {
+                setAppshotSettings({ enabled: on });
+                // The hotkey monitor hears nothing until Accessibility is granted,
+                // so turning the feature on asks for what is missing right away.
+                if (on && perms && !(perms.screen && perms.ax)) prompt();
+              }}
+            />
+          </SettingRow>
+          <SettingRow id="appshots.into" description="Automatic uses the open chat, else a new one." error={errorOf("destination")}>
+            <ChoiceSelect label="Add the window to" value={settings.destination} options={DESTINATIONS} onChange={(destination) => setAppshotSettings({ destination })} />
+          </SettingRow>
+          <SettingRow id="appshots.sound" error={errorOf("sound")}>
+            <SettingSwitch label="Shutter sound" on={settings.sound} onChange={(sound) => setAppshotSettings({ sound })} />
+          </SettingRow>
+        </>
+      ) : loadError ? (
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" onClick={() => void loadAppshotSettings()}>
+              Retry
+            </Button>
+          }
+        >
+          {loadError}
+        </PageError>
+      ) : (
+        <PageRowsSkeleton rows={[{ control: "switch" }, { description: true, control: "select" }, { control: "switch" }]} />
+      )}
+      <Permissions
+        missingOnly
+        accessibility={perms ? perms.ax : null}
+        screen={perms ? perms.screen : null}
+        without={{ accessibility: "Appshots cannot hear the double ⌘ without it", screen: "Appshots cannot see a window without it" }}
+      />
+    </PageSection>
   );
 }

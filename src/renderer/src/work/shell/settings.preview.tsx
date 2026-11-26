@@ -9,7 +9,7 @@ import { setWorkOn } from "../../lib/workSwitch";
 import { answerAs, asGivenComputer, JOB, Unsettled } from "../kit.preview";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { setLifeosStatus } from "./lifeos";
-import { WorkWorkspacePage } from "./settings";
+import { WorkWorkspacePage } from "./JobSettings";
 
 type State = "page" | "failed" | "given" | "signedout";
 

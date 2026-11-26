@@ -2,7 +2,7 @@ import { useState } from "react";
 import { grantFieldNames } from "@shared/addons";
 import type { AddonRow } from "@shared/contract-addons";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
-import { PageActions, PageEmpty, PageError, PageRowsSkeleton, PageSection } from "../../../components/page";
+import { PageActions, PageEmpty, PageError, PageRowsSkeleton } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { registry, type Link } from "../../../lib/connection";
 import { isWebMode } from "../../../lib/nativeWeb";
@@ -13,14 +13,22 @@ import { AddonKeyDialog } from "./AddonKeyDialog";
 import { AddonRowView } from "./AddonRow";
 import { scopeName, type AddonMenuPick } from "./addonWords";
 import { useAddonsPage } from "./useAddons";
+import { usePublishHome } from "../../../lib/settings/pageHome";
+import { useHost } from "../parts/hostRpc";
+import { ListFilter, useListFilter } from "../parts/ListFilter";
+import { ManagedLine } from "../parts/ManagedLine";
+import { SettingSection } from "../parts/SettingRow";
+
+const NONE: readonly AddonRow[] = [];
+/** What the find field matches: the name, its description, and where it connects. */
+const addonWords = (row: AddonRow): string => `${row.name} ${row.description} ${row.spec.transport === "http" ? row.spec.url : row.spec.command}`;
 
 /**
- * Settings → Add-ons (docs/LAYOUT.md "Settings → Add-ons and Skills"): one
- * list of every add-on this host knows, the scope said on each row, Add… on
- * the page's title line. It reads through this machine; the host forwards
- * every write to the scope's home, whose name the section's line says
- * ("Saved on box"), and while that host is out of reach every control is
- * off under "box is offline".
+ * Settings → Add-ons (docs/agents/settings.md "The pages: Everywhere"): one list of every add-on this computer knows,
+ * where it applies said on each row, a find field past eight, Add… on the page's title line. It reads through this
+ * window's own computer, which forwards every write to the one copy on the box; the page's line says where that is
+ * (`usePublishHome`), and while the box is out of reach every control is held. A key that may not change add-ons sees
+ * the list as words and one line saying who can.
  */
 export function AddonsPage() {
   return <AddonsBody link={registry.primary()} />;
@@ -33,7 +41,11 @@ export function AddonsBody({ link }: { link: Link }) {
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const workspaces = useWorkspaces().filter((w) => w.environmentId === link.environmentId);
   const names = new Map(workspaces.map((w) => [w.id, w.name]));
-  const { note, blocked } = homeNote(data?.home);
+  const { blocked } = homeNote(data?.home);
+  usePublishHome("addons", data ? (data.home ?? null) : undefined);
+  const host = useHost(link.environmentId);
+  const readOnly = !host.may("addons.set");
+  const filter = useListFilter(data?.addons ?? NONE, addonWords);
   const web = isWebMode();
   const unread = data?.grants === undefined ? "Loading" : data.grants === null ? (grantsError ?? "Couldn't read the keys") : undefined;
 
@@ -49,7 +61,7 @@ export function AddonsBody({ link }: { link: Link }) {
   const act = <T,>(row: AddonRow, run: () => Promise<T>): Promise<T | false> => {
     setRowError(row.id, null);
     return run().catch((err: unknown) => {
-      setRowError(row.id, refusalWords(err) || "The host refused it");
+      setRowError(row.id, refusalWords(err) || "The computer refused it");
       return false as const;
     });
   };
@@ -76,7 +88,14 @@ export function AddonsBody({ link }: { link: Link }) {
         void act(row, () => link.request("addons.grant.cancel", { id: row.id }));
         return;
       case "signout":
-        void act(row, () => link.request("addons.grant.clear", { id: row.id }));
+        void confirmAction({
+          title: `Sign out of ${row.name}`,
+          body: "Its tools stop working until you sign in again.",
+          action: "Sign out",
+          danger: true,
+        }).then((ok) => {
+          if (ok) void act(row, () => link.request("addons.grant.clear", { id: row.id }));
+        });
         return;
       case "remove":
         void confirmAction({
@@ -94,12 +113,15 @@ export function AddonsBody({ link }: { link: Link }) {
   const keyRow = keyFor ? data?.addons.find((r) => r.id === keyFor) : undefined;
   return (
     <>
-      <PageActions>
-        <Button variant="ghost" size="sm" disabled={!data || blocked} onClick={() => setEditing("new")}>
-          Add…
-        </Button>
-      </PageActions>
-      <PageSection description={note}>
+      {readOnly ? null : (
+        <PageActions>
+          <Button variant="ghost" size="sm" disabled={!data || blocked} onClick={() => setEditing("new")}>
+            Add…
+          </Button>
+        </PageActions>
+      )}
+      <SettingSection of="addons.list">
+        {data ? <ListFilter filter={filter} label="Find an add-on" /> : null}
         {!data ? (
           error ? (
             <PageError
@@ -117,7 +139,7 @@ export function AddonsBody({ link }: { link: Link }) {
         ) : data.addons.length === 0 ? (
           <PageEmpty>No add-ons</PageEmpty>
         ) : (
-          data.addons.map((row) => {
+          filter.shown.map((row) => {
             const grant = data.grants === undefined || data.grants === null ? undefined : (data.grants.get(row.id) ?? null);
             const signInError = grant?.signIn?.state === "failed" ? grant.signIn.error : undefined;
             return (
@@ -130,6 +152,7 @@ export function AddonsBody({ link }: { link: Link }) {
                 workspaceName={scopeName(row.workspaceId, names)}
                 web={web}
                 blocked={blocked}
+                readOnly={readOnly}
                 error={rowErrors[row.id] ?? signInError}
                 onToggle={(on) => toggle(row, on)}
                 onPick={(id) => pick(row, id)}
@@ -148,12 +171,14 @@ export function AddonsBody({ link }: { link: Link }) {
             {grantsError}
           </PageError>
         ) : null}
-      </PageSection>
+        {data && readOnly ? <ManagedLine computer={host.name.name} /> : null}
+      </SettingSection>
       {editing ? (
         <AddonDialog
           link={link}
           row={editing === "new" ? null : editing}
           workspaces={workspaces}
+          home={data?.home}
           onClose={() => setEditing(null)}
           onSaved={(saved, isNew) => {
             replaceRow(saved);

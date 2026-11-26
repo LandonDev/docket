@@ -18,8 +18,10 @@ vi.mock("../../components/choice-select", async () => await import("../../compon
 vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
 vi.mock("../../lib/connection", () => ({ registry: { primary: () => ({ environmentId: "local" }) }, useEnvironments: () => [{ id: "local", name: "The box" }] }));
 vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMay.testkit")).linkMayMock(await original()));
-vi.mock("../../chrome/ThreadDefaultsDialog", () => ({ ThreadDefaultsEditor: () => <h2>New threads</h2> }));
-vi.mock("../../chrome/TurnPassFields", () => ({ TurnPassEditor: () => <h2>Completed turn</h2> }));
+vi.mock("./parts/StartSetRow", () => ({ StartSetRow: () => <div data-start-set /> }));
+vi.mock("../../chrome/PreambleDialog", () => ({ PreambleDialog: () => <div role="dialog">Rules read before the first message</div> }));
+vi.mock("../../lib/settings/computerName", () => ({ useComputerName: () => ({ name: "The box", own: false }) }));
+vi.mock("../../chrome/TurnPassFields", () => ({ TurnPassEditor: () => <h2>After each turn</h2> }));
 vi.mock("../../chrome/ProjectDialogs", () => ({
   ProjectSettingsDialog: ({ project }: { project: { name: string } }) => <div role="dialog">{project.name} settings</div>,
 }));
@@ -40,6 +42,8 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
   useProjects: () => state.projects,
 }));
 vi.mock("../../lib/tcserver/rules", () => ({
+  useRulesScope: () => ({ scope: { overridden: state.overridden }, catalog: null, error: null, retry: () => {} }),
+  rulesStore: { clear: async () => {} },
   takeRequestedRulesFocus: () => {
     const focus = state.rulesFocus;
     state.rulesFocus = false;
@@ -100,14 +104,7 @@ describe("Workspace page", () => {
   it("orders its sections", () => {
     state.projects = [{ id: "p1", workspaceId: "w1", name: "App", archived: false }];
     render(<WorkspacePage workspaceId="w1" />);
-    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual([
-      "New threads",
-      "Completed turn",
-      "Accounts",
-      "Build",
-      "Orchestration w1",
-      "Projects",
-    ]);
+    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual(["New threads", "After each turn", "Accounts", "Build", "Subagents", "Projects"]);
   });
 
   it("pins an account and removes the pin on Auto", async () => {
@@ -129,16 +126,17 @@ describe("Workspace page", () => {
     expect(screen.queryByRole("combobox", { name: "Claude account" })).toBeNull();
     expect(screen.queryByRole("combobox", { name: "Codex account" })).toBeNull();
     const section = screen.getByRole("heading", { name: "Accounts" }).closest("section")!;
-    expect(section.textContent).toContain("Changed from a computer that manages the box");
+    // Who can is said once, at the page's top.
+    expect(screen.getAllByText("Changed from a computer that manages the box")).toHaveLength(1);
     expect(section.textContent).toContain("bob");
     expect(section.textContent).toContain("Auto");
     expect(section.textContent).not.toContain("Auto picks by model");
   });
 
-  it("names a pin Aliax does not know", () => {
+  it("names a pin AI accounts does not know", () => {
     state.workspace = { ...state.workspace, accountPins: { claude: "gone" } };
     render(<WorkspacePage workspaceId="w1" />);
-    expect(screen.getByRole("combobox", { name: "Claude account" }).textContent).toContain("gone (not in Aliax)");
+    expect(screen.getByRole("combobox", { name: "Claude account" }).textContent).toContain("gone, not in AI accounts");
   });
 
   it("shows a failed pin under its row", async () => {
@@ -147,7 +145,8 @@ describe("Workspace page", () => {
     });
     render(<WorkspacePage workspaceId="w1" />);
     await choose(screen.getByRole("combobox", { name: "Claude account" }), "bob");
-    expect(screen.getByText("refused: offline").className).toContain("text-destructive");
+    expect(screen.getByText("Offline").className).toContain("text-destructive");
+    expect(screen.getByRole("combobox", { name: "Claude account" }).textContent).toContain("Auto");
   });
 
   it("lists this workspace's live projects with their pins", () => {
@@ -196,11 +195,30 @@ describe("Workspace page", () => {
     expect(document.activeElement).toBe(document.getElementById("settings-build"));
   });
 
-  it("focuses the rules when the workspace menu asked for them", () => {
+  it("opens the rules for its agents in their sheet when the workspace menu asked for them", () => {
     Element.prototype.scrollIntoView = vi.fn();
     state.rulesFocus = true;
     render(<WorkspacePage workspaceId="w1" />);
     expect(document.activeElement).toBe(document.getElementById("settings-orchestration"));
+    expect(screen.getByText("Orchestration w1")).toBeTruthy();
+  });
+
+  it("says whose rules its agents follow, and Change… opens the Subagents editor for this workspace in a sheet", async () => {
+    state.overridden = true;
+    render(<WorkspacePage workspaceId="w1" />);
+    expect(document.querySelector('[data-setting="ws.agents"]')?.textContent).toContain("Set for this workspace");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Change…" })));
+    // The editor (Orchestration.dom.test.tsx) holds the one Use Subagents…, which asks first: the sheet adds none.
+    expect(screen.getByText("Orchestration w1")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Use Subagents…" })).toBeNull();
+  });
+
+  it("says the rules read before the first message by their length and state, and Edit… opens their dialog", async () => {
+    state.workspace = { ...state.workspace, preamble: "Run the gate before you land.", preambleEnabled: true } as typeof state.workspace;
+    render(<WorkspacePage workspaceId="w1" />);
+    expect(document.querySelector('[data-setting="ws.rules"]')?.textContent).toContain("6 words, on");
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Edit…" })));
+    expect(screen.getByRole("dialog").textContent).toBe("Rules read before the first message");
   });
 
   it("offers no Meta row on a host with no key", () => {
@@ -222,7 +240,7 @@ describe("Workspace page", () => {
   it("keeps the Meta row for a pin whose key left", () => {
     state.workspace = { ...state.workspace, accountPins: { meta: "Gone key" } };
     render(<WorkspacePage workspaceId="w1" />);
-    expect(screen.getByRole("combobox", { name: "Meta account" }).textContent).toContain("Gone key (not in Aliax)");
+    expect(screen.getByRole("combobox", { name: "Meta account" }).textContent).toContain("Gone key, not in AI accounts");
   });
 });
 

@@ -1,7 +1,7 @@
 # A new thread's access
 
-Every new thread or chat, however it starts, takes the access his Thread defaults name (Settings →
-Thread defaults → Access) for its own workspace on its own host; where he has set none, the app's one
+Every new thread or chat, however it starts, takes the access his New threads set names (Settings →
+New threads → Access) for its own workspace on its own host; where he has set none, the app's one
 built-in (`DEFAULT_THREAD_DEFAULTS.permission`, `edits`, src/shared/defaults.ts). No start path
 carries a fallback of its own. The table of every path and what it did before is
 `.temp-code/plans/landed/F-full-access-everywhere.md`.
@@ -37,7 +37,7 @@ carries a fallback of its own. The table of every path and what it did before is
   thread's access as a ceiling (a plan an agent started at `edits` builds at `edits` at most).
 - Work threads the host starts (routines, plays, meeting prep, the Waiting on nudge, digest, review)
   take his default for their workspace. They used to be fixed at Full access. Their provider, model
-  and effort are his Thread defaults for the workspace too (work/threads.ts passes none), unless a
+  and effort are his New threads set for the workspace too (work/threads.ts passes none), unless a
   routine names its own model or effort; the per-workspace Work model they used to read is unread.
 - His own pick on a thread (the picker on a thread, or on a draft before its first send) stays.
   A thread that is lower only because an old build fell back stays as it is; he raises it with the
@@ -63,8 +63,8 @@ loosens. The defaults and the pick rules are the ones above; only the words chan
 
 ## The model: the same rule
 
-A new thread's provider, model and effort follow the same shape as its access. His Thread defaults
-(provider, model, effort) for the thread's own workspace on its own host decide, unless he picked.
+A new thread's provider, model and effort follow the same shape as its access. His New threads set
+(provider, model, effort) for the thread's own workspace on its own host decides, unless he picked.
 
 - **A draft sends no model unless he picked it** (`Session.modelPicked`, set by the composer's model
   picker and effort control; `modelParams` in lib/tcserver/commands.ts, carried by `ensureCreated`):

@@ -41,29 +41,39 @@ function fakeHost() {
 }
 
 describe("Folders in Settings", () => {
-  it("says where each library's Office files open, Edit here until he picks Office for the web", async () => {
+  it("says on each library's row where its Office files open, and changes it in the row's dialog", async () => {
     const { link, calls, host } = fakeHost();
     host.opensIn = "live";
     await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
-    const select = await screen.findByLabelText("Where Purdue Esports's Office files open");
-    expect(select.textContent).toContain("Office for the web");
+    expect(await screen.findByText("Office files open in Office for the web")).toBeTruthy();
     expect(calls).toContainEqual({ method: "work.office.live.libraryDefault", params: { libraryId: FOUND.id } });
-  });
-
-  it("puts a library's three controls on their own line in a narrow page, so its name keeps the row's width", async () => {
-    const { link } = fakeHost();
-    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
-    await screen.findByLabelText("Where Purdue Esports's Office files open");
+    // The row's one control is its switch; where its files open and its web link are in its dialog.
     const row = screen.getByText("Purdue Esports").closest<HTMLElement>("[data-slot=page-row]")!;
-    // PageRow's wide row: under 480px of page content its controls take a full line under the name.
-    expect(row.hasAttribute("data-wide")).toBe(true);
-    expect(row.querySelector("[data-wide-control]")!.textContent).toContain("web link");
+    expect(within(row).queryByRole("combobox")).toBeNull();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Purdue Esports: where its files open" })));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("combobox", { name: "Office files open in" }).textContent).toContain("Office for the web");
   });
 
-  it("offers no choice where this window cannot edit the host's list", async () => {
+  it("offers no choice where this window cannot edit the computer's list, and says where it is changed", async () => {
     const { link } = fakeHost();
-    await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable={false} />));
-    expect(screen.queryByLabelText("Where Purdue Esports's Office files open")).toBeNull();
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders on PURDUE-LT" editable={false} elsewhere="Changed in Docket on PURDUE-LT" />));
+    await screen.findByText("Purdue Esports");
+    expect(screen.queryByRole("button", { name: "Purdue Esports: where its files open" })).toBeNull();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.getByText("Changed in Docket on PURDUE-LT")).toBeTruthy();
+  });
+
+  it("lists the Windows VM's libraries apart from the computer's own", async () => {
+    const { link } = fakeHost();
+    const request = link.request;
+    (link as unknown as { request: typeof request }).request = (async (method: string, params: unknown) => {
+      const answer = (await request(method, params)) as { libraries: TeamsLibrary[] };
+      return method === "work.office.filesLibraries" ? { ...answer, libraries: [...answer.libraries, { ...FOUND, id: "h~vm", path: "C:/Users/tc/Events", team: "Events", vm: true }] } : answer;
+    }) as typeof request;
+    await act(async () => void render(<TeamsFilesRow link={link} title="Folders in the Windows VM" editable vm />));
+    expect(await screen.findByText("Events")).toBeTruthy();
+    expect(screen.queryByText("Purdue Esports")).toBeNull();
   });
 
   it("names a found library by its team, its folder in the row's tip; a folder he added shows its path", async () => {
@@ -101,15 +111,15 @@ describe("Folders in Settings", () => {
     await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
     const reads = () => calls.filter((c) => c.method === "work.office.filesLibraries").length;
     const before = reads();
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add web link…" })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Purdue Esports: where its files open" })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Cancel" })));
     // The rows stay while the host is asked again.
     expect(screen.getByText("Purdue Esports")).toBeTruthy();
     await waitFor(() => expect(reads()).toBe(before + 1));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add web link…" })));
-    fireEvent.change(screen.getByLabelText("Link"), { target: { value: "https://p.sharepoint.com/x" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Purdue Esports: where its files open" })));
+    fireEvent.change(screen.getByLabelText("Web link"), { target: { value: "https://p.sharepoint.com/x" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
-    await screen.findByRole("button", { name: "Web link…" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(reads()).toBe(before + 1);
   });
 
@@ -144,18 +154,17 @@ describe("Folders in Settings", () => {
   it("gives a folder its web link through a dialog", async () => {
     const { link, calls } = fakeHost();
     await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add web link…" })));
-    fireEvent.change(screen.getByLabelText("Link"), { target: { value: "https://p.sharepoint.com/sites/e/Shared Documents" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Purdue Esports: where its files open" })));
+    fireEvent.change(screen.getByLabelText("Web link"), { target: { value: "https://p.sharepoint.com/sites/e/Shared Documents" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Save" })));
     expect(calls.filter((c) => c.method === "work.office.filesSetRoots").at(-1)!.params).toEqual({ roots: [{ folder: FOUND.path, web: "https://p.sharepoint.com/sites/e/Shared Documents" }] });
-    expect(await screen.findByRole("button", { name: "Web link…" })).toBeTruthy();
   });
 
   it("heads its host's folders as a section, Add folder… at the heading's end, and says a raw failure in his words", async () => {
     const { link, host } = fakeHost();
     await act(async () => void render(<TeamsFilesRow link={link} title="Folders on MacBook Pro" host="MacBook Pro" editable />));
     const section = screen.getByRole("region", { name: "Folders on MacBook Pro" });
-    // Its box ends on the column's edge as the Remove presses' do, so their words end on one edge (Opus round 3 P3).
+    // Its box ends on the column's edge as the Stop listing presses' do, so their words end on one edge (Opus round 3 P3).
     expect(within(section).getByRole("button", { name: "Add folder…" }).className).not.toMatch(/-me-|-mr-/);
     host.refuse = "work.office.filesSetRoots: EIO at /Users/landon/.tc";
     await act(async () => fireEvent.click(screen.getByRole("switch", { name: "Purdue Esports" })));
@@ -163,16 +172,23 @@ describe("Folders in Settings", () => {
     expect(document.body.textContent).not.toContain("filesSetRoots");
   });
 
-  /** Sol round 4 P3: Remove's words end on the box's edge, where Add folder…'s end, the spinner's room kept at the start. */
-  it("ends Remove's words on its box's edge, as Add folder…'s are", async () => {
-    const { link } = fakeHost();
+  it("stops listing a folder he added at one press, and puts a find field over a list past eight", async () => {
+    const { link, calls } = fakeHost();
     await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
     fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/c/S/Scrims" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add" })));
-    const remove = await screen.findByRole("button", { name: "Remove" });
-    expect(remove.querySelector(".justify-end")?.textContent).toBe("Remove");
-    expect(remove.querySelector(".justify-center")).toBeNull();
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Stop listing" })));
+    expect(calls.filter((c) => c.method === "work.office.filesSetRoots").at(-1)!.params).toEqual({ roots: [] });
+    await waitFor(() => expect(screen.queryByText("/c/S/Scrims")).toBeNull());
+    for (let i = 0; i < 8; i++) {
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
+      fireEvent.change(screen.getByLabelText("Folder"), { target: { value: `/c/S/Team ${i}` } });
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add" })));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    }
+    fireEvent.change(screen.getByRole("searchbox", { name: "Find a folder" }), { target: { value: "team 3" } });
+    expect([...document.querySelectorAll("[data-folder]")].map((r) => r.getAttribute("data-folder"))).toEqual(["/c/S/Team 3"]);
   });
 
   it("is read only from another computer's window", async () => {

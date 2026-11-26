@@ -7,6 +7,7 @@ import { GRANT_PROBE_REFUSED } from "@shared/addonGrantWords";
 import { expectModalShape } from "../../../chrome/modalShape.testkit";
 import { fakeStoreHost } from "../storeHost.testkit";
 import { AddonKeyDialog } from "./AddonKeyDialog";
+import { ConfirmHost } from "../../../chrome/ConfirmDialog";
 
 afterEach(cleanup);
 
@@ -35,7 +36,12 @@ const grant = (set: Record<string, boolean>, over: Partial<AddonGrantView> = {})
 
 function open(spec: AddonSpec, g: AddonGrantView | null, host = fakeStoreHost()) {
   const onClose = vi.fn();
-  const view = render(<AddonKeyDialog link={host.link} row={row(spec)} grant={g} onClose={onClose} />);
+  const view = render(
+    <>
+      <AddonKeyDialog link={host.link} row={row(spec)} grant={g} onClose={onClose} />
+      <ConfirmHost />
+    </>,
+  );
   return { host, onClose, view, dialog: screen.getByRole("dialog") };
 }
 const field = (dialog: HTMLElement, name: string) => within(dialog).getByLabelText(name) as HTMLInputElement;
@@ -70,21 +76,24 @@ describe("AddonKeyDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("clears every value with Clear, for a values add-on and for an OAuth one before its first sign-in", async () => {
+  it("clears every value with Clear all…, once the confirm says so, for a values add-on and for an OAuth one before its first sign-in", async () => {
     const one = open(fields, grant({ "X-Api-Key": true, "X-Org": true }));
-    await act(async () => fireEvent.click(within(one.dialog).getByRole("button", { name: "Clear" })));
+    await act(async () => fireEvent.click(within(one.dialog).getByRole("button", { name: "Clear all…" })));
+    expect(one.host.sent("addons.grant.setFields")).toEqual([]);
+    await act(async () => fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Clear all" })));
     expect(one.host.sent("addons.grant.setFields")).toEqual([{ id: "ad_key000000001", fields: { "X-Api-Key": null, "X-Org": null } }]);
     expect(one.onClose).toHaveBeenCalled();
     cleanup();
     const two = open(oauth, grant({ "X-Team": true }, { oauth: { signedIn: false, expiresAt: null, refreshedBy: null, refused: false } }));
-    await act(async () => fireEvent.click(within(two.dialog).getByRole("button", { name: "Clear" })));
+    await act(async () => fireEvent.click(within(two.dialog).getByRole("button", { name: "Clear all…" })));
+    await act(async () => fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Clear all" })));
     expect(two.host.sent("addons.grant.setFields")).toEqual([{ id: "ad_key000000001", fields: { "X-Team": null } }]);
     expect(two.host.sent("addons.grant.clear")).toEqual([]);
   });
 
-  it("offers no Clear while nothing is saved", () => {
+  it("offers no Clear all… while nothing is saved", () => {
     const { dialog } = open(fields, null);
-    expect(within(dialog).queryByRole("button", { name: "Clear" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Clear all…" })).toBeNull();
   });
 
   it("holds the dialog while a save is in flight", async () => {

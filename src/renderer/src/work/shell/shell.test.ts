@@ -2,10 +2,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MenuRow } from "../../chrome/menuRows";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
-import { switchLine } from "../../surfaces/settings/Work";
 import { sectorName } from "./actions";
 import { columnProjects, foldRows } from "./WorkColumn";
-import { keyLine } from "./settings";
+import { keyLine } from "./JobSettings";
 import { addMenuRows, addMenuState, freeSectors, sectorMenuRows, sectorMenuShown } from "./WorkRailHost";
 import { rowOfView, TEMPLATES_ROW, WORK_VIEWS, workColumnViews, workViewList, workViewRows } from "../views/registry";
 
@@ -137,18 +136,6 @@ describe("a code workspace's LifeOS sector submenu", () => {
 });
 
 describe("Settings → Work's lines", () => {
-  const envs = [
-    { id: "local", name: "This Mac" },
-    { id: "env_box", name: "tempcode-box" },
-  ];
-  it("says what the switch adds while off, nothing while every host agrees, and which hosts differ", () => {
-    expect(switchLine(envs, new Set())).toBe("On adds the Outbox, Work Chats and your Work workspaces to the rail");
-    expect(switchLine(envs, new Set(["local", "env_box"]))).toBeUndefined();
-    expect(switchLine(envs, new Set(["env_box"]))).toBe("On for tempcode-box, off for this Mac");
-    // "the box" mid-line, as every Work line names it.
-    expect(switchLine([{ id: "env_box", name: "The box" }, { id: "local", name: "This Mac" }], new Set(["env_box"]))).toBe("On for the box, off for this Mac");
-  });
-
   it("says nothing of a ready key, and why another is not", () => {
     expect(keyLine(undefined)).toBeNull();
     expect(keyLine({ workspaceId: "w", sectors: ["purdue"], state: "ready" })).toBeNull();

@@ -190,7 +190,7 @@ A thread's call to any but the two reads is refused: an agent asks with
 the thread's sector (a file: within the thread's reach, as `resolve` rules) and holds a `share.guestLink` act (no matcher, so no
 grant fits and Away releases none). His Create link in the Outbox makes the
 link and resumes the thread with the link's id, never its address: he sends
-the address himself, copied from Settings → Work → Guest links. The act's Result's way back is Revoke link:
+the address himself, copied from Settings → Files → Guests → Shared with guests. The act's Result's way back is Revoke link:
 `guest_link_revoke {linkId}`, which revokes only a link the same thread
 tree asked for. The preamble tells Work threads that sending one of his
 documents means sending such a link.
@@ -434,8 +434,8 @@ service (work-kit `guardPresence`): the link's name, no picture, and a hue
 the service picks so two guests in one document never wear the same one
 while eight are free (`presenceHue`: a principal keeps its hue while it
 stays, its second tab wears the same, a newcomer takes one nobody wears).
-The owner's own connections carry his name as he set it in Settings → Work
-(`ServiceConfig.owner`, `namePresence`) and keep the rest they sent; unset,
+The owner's own connections carry his name as the host keeps it (`work.ownerName`,
+learned from his default mail identity; `ServiceConfig.owner`, `namePresence`) and keep the rest they sent; unset,
 his client's word stands.
 
 An edit link's guest leaving a document cuts a `guest-end` version.
@@ -478,7 +478,7 @@ thread, and with no deadline, so both wait for the day's digest
 A title holds the name he gave the link and the item's title as it was when
 he made it: never a word a guest typed. A press opens the document or sheet
 in its job (a file's job by its folder, a LifeOS row's by its sector), else
-Settings → Work, where the links are listed. The service says what it saw
+Settings → Files, where the links are listed (Guests). The service says what it saw
 (`routes/seen.ts`: `at`, `open`, and `wrote`, set when a guest's document
 frame that adds content is passed on or a guest's sheet batch is
 acknowledged), main reads it on its 30 s pass (`tellSeen`), and what he was
@@ -734,7 +734,7 @@ main frame alone (ios HostedItemView.swift).
 - **The held request** in the Outbox (`ShareActView.tsx`): To (the item by
   its glyph and title, a file's with its folder's name alone: "Field trip
   plan in Trips", never a disk path), For, Can, Ends.
-- **Guest links** in Settings → Work (`GuestLinksSection.tsx`): every link on
+- **Shared with guests** in Settings → Files, Guests (`GuestLinksSection.tsx`, its list in a sheet): every link on
   every Work host, live first: who, then `linkFacts` with the item (a
   project's as "Spring LAN project", a file's with its folder's name): the
   role where there is a choice, made, "in it now", "opened …" or "not opened

@@ -47,7 +47,8 @@ export interface OfficeProbe {
 
 const NAME: Record<OfficeApp, string> = { excel: 'Excel', word: 'Word', powerpoint: 'PowerPoint', outlook: 'Outlook' }
 const PAIR: HealthFix = { kind: 'page', label: 'Pair…', page: 'settings:work' }
-const EDIT_LIST: HealthFix = { kind: 'page', label: 'Edit', page: 'settings:work' }
+/** A folder of the Teams list is Settings → Files' (a client a release behind does not know the page, and shows the row with no press). */
+const EDIT_LIST: HealthFix = { kind: 'page', label: 'Edit', page: 'settings:files' }
 /** His sign-in in the Windows VM: the page walks OneDrive's sign-in to his phone's number and opens the Computers page on the VM. */
 const VM_SIGN_IN: HealthFix = { kind: 'page', label: 'Sign in…', page: 'windows-vm-sign-in' }
 

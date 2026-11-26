@@ -32,6 +32,9 @@ vi.mock("../../lib/connection", () => {
   return { registry: { linkOf: () => link } };
 });
 
+vi.mock("../../lib/linkMay", () => ({ useLinkMay: () => true }));
+vi.mock("../../lib/sounds", () => ({ playCue: () => {} }));
+
 const { BuildEditor, openBuildSettings, takeRequestedBuildFocus } = await import("./buildSettings");
 const { OPEN_SETTINGS_EVENT } = await import("../../lib/monaco/debugTab");
 
@@ -72,36 +75,29 @@ describe("BuildEditor", () => {
     expect(command.closest("[data-slot=page-row]")).toBeTruthy();
   });
 
-  it("saves the trimmed config once, 500ms after typing", async () => {
+  it("saves the trimmed config once, on Enter, and not while typing", async () => {
     render(<BuildEditor workspaceId="w1" />);
     const command = await screen.findByRole("textbox", { name: "Build command" });
-    vi.useFakeTimers();
+    act(() => (command as HTMLInputElement).focus());
     fireEvent.change(command, { target: { value: " make" } });
     fireEvent.change(command, { target: { value: " make all " } });
-    act(() => {
-      vi.advanceTimersByTime(499);
-    });
     expect(state.set).not.toHaveBeenCalled();
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
+    await act(async () => fireEvent.keyDown(command, { key: "Enter" }));
     expect(state.set).toHaveBeenCalledTimes(1);
     expect(state.set).toHaveBeenCalledWith("build.set", { workspaceId: "w1", config: { command: "make all", outputs: "" } });
   });
 });
 
 describe("BuildEditor errors", () => {
-  it("shows a failed save under the fields", async () => {
+  it("snaps a refused value back and says why under its row", async () => {
     state.failSet = true;
     render(<BuildEditor workspaceId="w1" />);
-    const command = await screen.findByRole("textbox", { name: "Build command" });
-    vi.useFakeTimers();
+    const command = (await screen.findByRole("textbox", { name: "Build command" })) as HTMLInputElement;
+    act(() => command.focus());
     fireEvent.change(command, { target: { value: "make" } });
-    await act(async () => {
-      vi.advanceTimersByTime(500);
-    });
-    vi.useRealTimers();
-    expect((await screen.findByText("build.set refused")).className).toContain("text-destructive");
+    await act(async () => fireEvent.keyDown(command, { key: "Enter" }));
+    expect((await screen.findByText("Build.set refused")).className).toContain("text-destructive");
+    expect(command.value).toBe("");
   });
 });
 

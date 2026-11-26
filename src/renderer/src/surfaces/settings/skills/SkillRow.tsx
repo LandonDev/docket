@@ -1,5 +1,6 @@
-import { harnessWords } from "@shared/skills";
-import { scopeWords } from "@shared/addons";
+import { SKILL_HARNESSES } from "@shared/skills";
+import { andList, scopeWords } from "@shared/addons";
+import { CLI_LABELS } from "./skillForm";
 import type { SkillMeta } from "@shared/contract-skills";
 import { MoreHorizontal } from "../../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../../chrome/menuRows";
@@ -12,9 +13,9 @@ import { Facts } from "../hosts/Facts";
 export type SkillMenuPick = "edit" | "remove";
 const MENU: MenuRow[] = [{ kind: "item", id: "edit", label: "Edit…" }, { kind: "sep" }, { kind: "item", id: "remove", label: "Remove…", danger: true }];
 
-/** The row's third line: which CLIs get it, where it applies, its version, the thread that wrote it. */
+/** The row's third line: which agent apps get it, where it applies, its version, the thread that wrote it. */
 export const skillFacts = (skill: SkillMeta, workspaceName: string | null): string[] => [
-  harnessWords(skill.harnesses),
+  andList((skill.harnesses === "all" ? [...SKILL_HARNESSES] : SKILL_HARNESSES.filter((h) => skill.harnesses.includes(h))).map((h) => CLI_LABELS[h])),
   scopeWords(workspaceName),
   `v${skill.version}`,
   ...(skill.writtenBy.kind === "thread" ? [`written by ${skill.writtenBy.title || "a thread"}`] : []),
@@ -31,6 +32,7 @@ export function SkillRowView({
   skill,
   workspaceName,
   blocked,
+  readOnly = false,
   error,
   onToggle,
   onPick,
@@ -38,6 +40,8 @@ export function SkillRowView({
   skill: SkillMeta;
   workspaceName: string | null;
   blocked: boolean;
+  /** This window's key may not change skills there: the row is words alone. */
+  readOnly?: boolean;
   error?: string;
   onToggle: (on: boolean) => Promise<unknown>;
   onPick: (pick: SkillMenuPick) => void;
@@ -58,11 +62,10 @@ export function SkillRowView({
         </>
       }
       error={error}
-      onOpen={() => onPick("edit")}
-      openLabel={`Edit ${skill.name}`}
-      openTip={cut ? skill.description : undefined}
-      openDisabled={blocked}
+      {...(readOnly ? {} : { onOpen: () => onPick("edit"), openLabel: `Edit ${skill.name}`, openTip: cut ? skill.description : undefined, openDisabled: blocked })}
     >
+      {readOnly ? null : (
+        <>
       <SettingSwitch label={skill.name} on={skill.enabled} disabled={blocked} onChange={onToggle} />
       <RowsMenu
         label={`${skill.name} actions`}
@@ -75,6 +78,8 @@ export function SkillRowView({
         onPick={(id) => onPick(id as SkillMenuPick)}
         align="end"
       />
+        </>
+      )}
     </PageRow>
   );
 }

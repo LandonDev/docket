@@ -1,22 +1,22 @@
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { registry } from "../lib/connection";
 import { useEnvironmentStatuses } from "../lib/connection/status";
-import { loadToast } from "../components/ui/toaster";
-import { Fragment, useEffect, useId, useMemo, useState } from "react";
 import { TruncateTip } from "../components/tip";
-import { ChevronRight, Plus } from "./icons";
+import { MoreHorizontal } from "./icons";
 import { HarnessIcon } from "./HarnessIcon";
-import { confirmAction } from "./ConfirmDialog";
+import { confirmAction, DialogFooter, ErrorLine } from "./ConfirmDialog";
+import { RowsMenu, type MenuRow } from "./menuRows";
 import { Facts } from "../surfaces/settings/hosts/Facts";
 import { ChoiceSelect, type Choice } from "../components/choice-select";
-import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
-import { ItemButton, ItemContent, ItemDescription, ItemMedia, ItemTitle } from "../components/ui/item";
+import { ChoiceCombobox } from "../components/choice-combobox";
+import { PageEmpty, PageError, PageRow, PageRowsSkeleton } from "../components/page";
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
-import { DialogFooter } from "./ConfirmDialog";
 import { Field, FieldRow } from "./DialogField";
-import { Modal, ModalBody, useModalClose } from "./Modal";
+import { Modal, ModalBody, useClosingDialog, useModalClose } from "./Modal";
 import { Input } from "../components/ui/input";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { cn } from "../lib/cn";
 import { EFFORT_LABELS } from "../lib/tcserver/defaults";
@@ -37,317 +37,209 @@ import {
   type RoutingRule,
   type RulesCatalog,
 } from "../lib/tcserver/rules";
-import { homeNote, refusalWords } from "../lib/settingsHome";
+import { usePublishHome } from "../lib/settings/pageHome";
+import { homeNote } from "../lib/settingsHome";
 import type { HarnessId } from "../lib/session";
-import type { ModelInfo, ProviderId, Reasoning } from "../lib/tcserver/types";
+import type { ModelInfo, ProviderId, Reasoning as Effort } from "../lib/tcserver/types";
+import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
+import { ListFilter, useListFilter } from "../surfaces/settings/parts/ListFilter";
+import { SaveMark } from "../surfaces/settings/parts/SaveMark";
+import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
 
 /**
- * Structured orchestration rules (server/shared/rules.ts): conduct bounds,
- * which models subagents may run, and an ordered routing table mapping kinds
- * of work to an exact provider/model/effort. Changes save immediately: these
- * are settings, not a document. Global scope is the Orchestration page; a
- * workspace override (whole-object) is the same page with that workspace
- * picked as the scope. The rules have one copy, on the box
- * (remote/rulesSync.ts): the first section says so ("Saved on box"), and
- * while that host is out of reach every control is off under "box is
- * offline"; a write it refuses anyway rolls back and says why in a toast.
+ * Subagents (server/shared/rules.ts; docs/agents/settings.md "The pages: Everywhere"): what a lead thread that starts
+ * agents does itself and its limits, which models agents may run on (a sheet), and the rules that say which model
+ * gets which work, in order. One set on the box for every computer; a code workspace may keep its own (the same
+ * editor, `workspaceId`). Every change saves at once with its row's mark; a refusal slides the control back and the
+ * row's red line says why. While the box that keeps the set is out of reach the controls are held.
  */
 
 type Delegation = OrchestrationRules["conduct"]["delegation"];
 
-const DELEGATION_OPTIONS: Choice<Delegation>[] = [
-  { value: "strict", label: "Strict" },
-  { value: "balanced", label: "Balanced" },
-  { value: "free", label: "Free" },
-];
-
-export const DELEGATION_HINTS: Record<Delegation, string> = {
-  strict: "Delegates everything; the orchestrator never does the work itself.",
-  balanced: "Delegates substantive work; handles trivial glue itself.",
-  free: "May work directly whenever that is faster.",
+/** "Gives its agents": Everything (strict) or Everything but small tasks (balanced). A set saved with `free` keeps
+ *  that value, shown by its own name, until he picks one of the two. */
+const DELEGATION_LABELS: Record<Delegation, string> = {
+  strict: "Everything",
+  balanced: "Everything but small tasks",
+  free: "Only what is faster to hand off",
 };
+const delegationChoices = (current: Delegation): Choice<Delegation>[] =>
+  (current === "free" ? (["strict", "balanced", "free"] as const) : (["strict", "balanced"] as const)).map((value) => ({ value, label: DELEGATION_LABELS[value] }));
 
 type Approval = "everyone" | "orchestrators" | "off";
 
+/** "Who may start it": every thread, only a lead thread (one that starts agents), or none. */
 const APPROVAL_OPTIONS: Choice<Approval>[] = [
   { value: "everyone", label: "Everyone" },
-  { value: "orchestrators", label: "Orchestrators only" },
+  { value: "orchestrators", label: "Lead threads only" },
   { value: "off", label: "Off" },
 ];
 
-/** Every provider the host's catalog lists, in its order. */
+/** Every agent app the computer's catalog lists, in its order. */
 const providersOf = (catalog: RulesCatalog | null): ProviderId[] => Object.keys(catalog ?? {}) as ProviderId[];
 
-/** A model's effort ladder as its host serves it, cut to the policy's bounds. */
-const ladderOf = (rules: OrchestrationRules, provider: ProviderId, model: ModelInfo | undefined): Reasoning[] =>
+/** A model's effort ladder as its computer serves it, cut to the policy's bounds. */
+const ladderOf = (rules: OrchestrationRules, provider: ProviderId, model: ModelInfo | undefined): Effort[] =>
   model ? sliceLadder(rules, provider, model.id, model.reasoning) : [];
 
-const effortChoices = (levels: readonly Reasoning[]): Choice<Reasoning>[] =>
-  levels.map((level) => ({ value: level, label: EFFORT_LABELS[level] }));
+const effortChoices = (levels: readonly Effort[]): Choice<Effort>[] => levels.map((level) => ({ value: level, label: EFFORT_LABELS[level] }));
 
-/** The Conduct section's rows, in their shape: Delegation, five switches, the two caps. */
-const CONDUCT_SKELETON = [
-  { description: true },
-  { description: true, control: "switch" },
-  { description: true, control: "switch" },
-  { control: "switch" },
-  { description: true, control: "switch" },
-  { description: true, control: "switch" },
-  {},
-  { description: true },
-] as const;
+type ConductRow = "gives" | "edits" | "commands" | "checks" | "retries" | "checkout" | "atOnce" | "perThread";
+type SwitchKey = "selfEdit" | "selfShell" | "verifyResults" | "escalate" | "useWorktrees";
+const SWITCHES: { row: ConductRow; id: string; key: SwitchKey }[] = [
+  { row: "edits", id: "sub.edits", key: "selfEdit" },
+  { row: "commands", id: "sub.commands", key: "selfShell" },
+  { row: "checks", id: "sub.checks", key: "verifyResults" },
+  { row: "retries", id: "sub.retries", key: "escalate" },
+  { row: "checkout", id: "sub.checkout", key: "useWorktrees" },
+];
 
-/** The Conduct section's rows while the scope loads, under its real
- *  heading; once the host has failed to answer, its error and Retry. */
-export function RulesSkeleton({ workspaceId, error, onRetry }: { workspaceId: string | null; error?: string | null; onRetry?: () => void }) {
+/** The lead thread's rows in their shape: one select, five switches. */
+const LEAD_SKELETON = [{}, { control: "switch" }, { control: "switch" }, { control: "switch" }, { control: "switch" }, { control: "switch" }] as const;
+
+/** The first section's rows while the set loads, under its real heading; once the computer failed to answer, its
+ *  error with Retry. */
+export function RulesSkeleton({ error, onRetry }: { workspaceId?: string | null; error?: string | null; onRetry?: () => void }) {
   return (
-    <PageSection
-      title={titlesFor(workspaceId).conduct}
-      action={
-        error && onRetry ? (
-          <Button variant="ghost" size="sm" onClick={onRetry}>
-            Retry
-          </Button>
-        ) : null
-      }
-    >
+    <SettingSection of="sub.gives">
       {error ? (
-        <PageError>{error}</PageError>
+        <PageError
+          action={
+            onRetry ? (
+              <Button variant="ghost" size="sm" onClick={onRetry}>
+                Retry
+              </Button>
+            ) : null
+          }
+        >
+          {error}
+        </PageError>
       ) : (
         <div data-testid="rules-skeleton">
-          <PageRowsSkeleton rows={CONDUCT_SKELETON} />
+          <PageRowsSkeleton rows={LEAD_SKELETON} />
         </div>
       )}
-    </PageSection>
+    </SettingSection>
   );
 }
 
-/** On a workspace's page the sections sit among others, so they name what they are about. */
-const titlesFor = (workspaceId: string | null) =>
-  workspaceId
-    ? { conduct: "Orchestration", models: "Subagent models", routing: "Subagent routing" }
-    : { conduct: "Conduct", models: "Subagent models", routing: "Routing" };
-
 export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string | null }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
-  // Global app settings belong to this machine.
+  // The one set is asked of this window's own computer, which forwards it to the box.
   const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
-  if (!environmentId) return <RulesSkeleton workspaceId={workspaceId} />;
+  if (!environmentId) return <RulesSkeleton />;
   return <RulesEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
-}
-
-/** A refused save, from any of the editor's sections: one toast with the host's reason. */
-function saveFailed(err: unknown): false {
-  const description = refusalWords(err);
-  void loadToast().then((toast) => toast.error("Couldn't save the rules", description ? { description } : undefined));
-  return false;
 }
 
 export function RulesEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
   const { scope, catalog, error, retry } = useRulesScope(environmentId, workspaceId, true);
   const [editing, setEditing] = useState<RoutingRule | "new" | null>(null);
-  // A host's link coming or going may move where the copy can be written:
-  // the answer says so again.
+  const [modelsOpen, setModelsOpen] = useState(false);
+  const saved: Record<ConductRow, Saved> = {
+    gives: useSaved(),
+    edits: useSaved(),
+    commands: useSaved(),
+    checks: useSaved(),
+    retries: useSaved(),
+    checkout: useSaved(),
+    atOnce: useSaved(),
+    perThread: useSaved(),
+  };
+  const cleared = useSaved();
+  const moved = useSaved();
+  usePublishHome("orchestration", workspaceId === null ? (scope ? (scope.home ?? null) : undefined) : undefined);
+  // A computer's link coming or going may move where the copy can be written: the answer says so again.
   const statuses = useEnvironmentStatuses();
   const linkStates = [...statuses.values()].map((s) => s.transport).join();
   useEffect(() => {
     void rulesStore.load(environmentId, workspaceId, true).catch(() => undefined);
   }, [environmentId, workspaceId, linkStates]);
 
-  if (!scope) return <RulesSkeleton workspaceId={workspaceId} error={error} onRetry={retry} />;
-  const titles = titlesFor(workspaceId);
+  if (!scope) return <RulesSkeleton error={error} onRetry={retry} />;
   const { rules, overridden } = scope;
-  const stale = catalog ? staleModels(rules, catalog) : [];
-  const { note, blocked } = homeNote(scope.home);
+  const { blocked } = homeNote(scope.home);
 
-  // Settings semantics: every change persists immediately; a refused one rolls back.
-  const push = (next: OrchestrationRules): Promise<unknown> =>
-    rulesStore.save(environmentId, workspaceId, next).catch(saveFailed);
-  const patchConduct = (patch: Partial<OrchestrationRules["conduct"]>) =>
-    push({ ...rules, conduct: { ...rules.conduct, ...patch } });
-  // The global Reset wipes every routing rule and model policy too: it asks first.
-  const clearScope = async () => {
-    if (
-      workspaceId === null &&
-      !(await confirmAction({
-        title: "Reset rules",
-        body: "Every setting, model policy and routing rule goes back to the defaults.",
-        action: "Reset rules",
-        danger: true,
-      }))
-    )
-      return;
-    void rulesStore.clear(environmentId, workspaceId).catch(saveFailed);
-  };
-  const saveRule = (rule: RoutingRule, position?: number) => {
-    const next = upsertRoutingRule(rules, rule);
-    const at = next.routing.findIndex((r) => r.id === rule.id);
-    void push(position === undefined ? next : moveRoutingRule(next, at, position));
-    setEditing(null);
-  };
-  const deleteRule = (id: string) => {
-    void push(removeRoutingRule(rules, id));
-    setEditing(null);
-  };
-
-  const scopeState = workspaceId
-    ? overridden
-      ? "Overrides the global rules."
-      : "Follows the global rules."
-    : undefined;
-  // One line each: whose rules these are, then where they live, 4px under it.
-  const conductState =
-    scopeState && note ? (
-      <>
-        {scopeState}
-        <span className="mt-1 block">{note}</span>
-      </>
-    ) : (
-      (scopeState ?? note)
+  // The store shows the change at once and puts the last set back on a refusal; the row's save says which.
+  const write = (next: OrchestrationRules) => rulesStore.save(environmentId, workspaceId, next);
+  const patchConduct = (row: ConductRow, patch: Partial<OrchestrationRules["conduct"]>) => saved[row].run(() => write({ ...rules, conduct: { ...rules.conduct, ...patch } }));
+  const reset = async () => {
+    const ok = await confirmAction(
+      workspaceId === null
+        ? { title: "Use Docket's defaults", body: "Every row on this page goes back to Docket's, and every rule for which model gets which work is deleted.", action: "Use Docket's defaults", danger: true }
+        : { title: "Use Subagents", body: "This workspace's own set is deleted. Its threads follow Subagents.", action: "Use Subagents", danger: true },
     );
-  // Only while the scope holds its own copy: the defaults have nothing to reset.
-  const conductAction =
-    overridden ? (
-      <Button variant="ghost" size="sm" onClick={() => void clearScope()} disabled={blocked}>
-        {workspaceId ? "Remove override" : "Reset"}
-      </Button>
-    ) : null;
+    if (ok) void cleared.run(() => rulesStore.clear(environmentId, workspaceId));
+  };
+  const move = (from: number, to: number) => void moved.run(() => write(moveRoutingRule(rules, from, to)));
 
-  const switchRow = (title: string, description: string | undefined, key: "selfEdit" | "selfShell" | "verifyResults" | "escalate" | "useWorktrees") => (
-    <PageRow title={title} description={description}>
-      <SettingSwitch
-        label={title}
-        on={rules.conduct[key]}
-        disabled={blocked}
-        onChange={(on) => patchConduct({ [key]: on } as Partial<OrchestrationRules["conduct"]>)}
-      />
-    </PageRow>
-  );
+  const models = providersOf(catalog).flatMap((p) => (catalog?.[p]?.models ?? []).map((m) => ({ provider: p, id: m.id })));
+  const allowed = models.filter((m) => modelApproved(rules, m.provider, m.id, "orchestrator")).length;
 
   return (
     <>
-      <PageSection title={titles.conduct} description={conductState} action={conductAction}>
-        <PageRow title="Delegation" description={DELEGATION_HINTS[rules.conduct.delegation]}>
-          <ChoiceSelect
-            label="Delegation"
-            value={rules.conduct.delegation}
-            options={DELEGATION_OPTIONS}
-            disabled={blocked}
-            onChange={(delegation) => patchConduct({ delegation })}
-          />
-        </PageRow>
-        {switchRow("File edits", "Off removes its edit tools.", "selfEdit")}
-        {switchRow("Shell commands", "Off removes its shell; agents gather context.", "selfShell")}
-        {switchRow("Result checks", undefined, "verifyResults")}
-        {switchRow("Escalation", "Rerun with a smarter model when a result misses.", "escalate")}
-        {switchRow("Worktree isolation", "Writing agents get their own git worktree.", "useWorktrees")}
-        <PageRow title="Parallel agents">
-          <CapSelect
-            label="Parallel agents"
-            value={rules.conduct.maxParallel}
-            options={[0, 2, 4, 8, 16, 32, 64, 128]}
-            disabled={blocked}
-            onChange={(maxParallel) => patchConduct({ maxParallel })}
-          />
-        </PageRow>
-        <PageRow title="Total per thread" description="Over one orchestration's life.">
-          <CapSelect
-            label="Total per thread"
-            value={rules.conduct.maxAgents}
-            options={[0, 10, 20, 50]}
-            disabled={blocked}
-            onChange={(maxAgents) => patchConduct({ maxAgents })}
-          />
-        </PageRow>
-      </PageSection>
-
-      <PageSection title={titles.models} description="A thread may run any model.">
-        <Table>
-          {/* A narrow page lays each model on two lines (MODEL_ROW), where the column heads would name nothing. */}
-          <TableHeader className="@max-[36rem]/page:hidden">
-            <TableRow>
-              <TableHead>Model</TableHead>
-              <TableHead>Spawned by</TableHead>
-              <TableHead className="text-end">Effort</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {providersOf(catalog).map((p) => {
-              const info = catalog?.[p];
-              const label = info?.label ?? p;
-              const models = info?.models ?? [];
-              return (
-                <Fragment key={p}>
-                  <TableRow data-slot="table-group-row" className="border-b-0">
-                    <TableCell colSpan={3} className="h-8 pt-2">
-                      <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                        <HarnessIcon harness={p as HarnessId} className="size-3.5 shrink-0" />
-                        {label}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                  {models.length === 0 ? (
-                    <TableRow data-slot="table-empty-row">
-                      <TableCell colSpan={3} className="h-auto min-h-10 py-3 text-xs whitespace-normal text-muted-foreground">
-                        No models until {label} is installed and signed in
-                      </TableCell>
-                    </TableRow>
-                  ) : null}
-                  {models.map((m) => (
-                    <ModelRow
-                      key={m.id}
-                      provider={p}
-                      id={m.id}
-                      model={m}
-                      rules={rules}
-                      disabled={blocked}
-                      onChange={(patch) => push(patchModelPolicy(rules, p, m.id, patch))}
-                    />
-                  ))}
-                  {stale
-                    .filter((m) => m.provider === p)
-                    .map((m) => (
-                      <ModelRow
-                        key={`stale:${m.id}`}
-                        provider={p}
-                        id={m.id}
-                        rules={rules}
-                        disabled={blocked}
-                        onChange={(patch) => push(patchModelPolicy(rules, p, m.id, patch))}
-                      />
-                    ))}
-                </Fragment>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </PageSection>
-
-      <PageSection
-        title={titles.routing}
-        description="The first rule that matches decides provider, model and effort."
+      <SettingSection
+        of="sub.gives"
         action={
-          <Button variant="ghost" size="sm" onClick={() => setEditing("new")} disabled={blocked}>
-            <Plus />
-            Add rule
+          overridden ? (
+            <Button variant="ghost" size="sm" data-setting="sub.reset" disabled={blocked} onClick={() => void reset()}>
+              {workspaceId === null ? "Use Docket's defaults…" : "Use Subagents…"}
+            </Button>
+          ) : null
+        }
+      >
+        <SettingRow id="sub.gives" saved={saved.gives}>
+          <ChoiceSelect
+            label="Gives its agents"
+            value={rules.conduct.delegation}
+            options={delegationChoices(rules.conduct.delegation)}
+            disabled={blocked}
+            onChange={(delegation) => void patchConduct("gives", { delegation })}
+          />
+        </SettingRow>
+        {SWITCHES.map(({ row, id, key }) => (
+          <SettingRow key={id} id={id} saved={saved[row]}>
+            <SettingSwitch label={TITLES[row]} on={rules.conduct[key]} disabled={blocked} onChange={(on) => patchConduct(row, { [key]: on } as Partial<OrchestrationRules["conduct"]>)} />
+          </SettingRow>
+        ))}
+        {cleared.error ? <PageError>{cleared.error}</PageError> : null}
+      </SettingSection>
+
+      <SettingSection of="sub.atOnce">
+        <SettingRow id="sub.atOnce" description="For each thread" saved={saved.atOnce}>
+          <CapSelect label="Agents at once" value={rules.conduct.maxParallel} options={[0, 2, 4, 8, 16, 32, 64, 128]} disabled={blocked} onChange={(maxParallel) => void patchConduct("atOnce", { maxParallel })} />
+        </SettingRow>
+        <SettingRow id="sub.perThread" saved={saved.perThread}>
+          <CapSelect label="Agents per thread" value={rules.conduct.maxAgents} options={[0, 10, 20, 50]} disabled={blocked} onChange={(maxAgents) => void patchConduct("perThread", { maxAgents })} />
+        </SettingRow>
+      </SettingSection>
+
+      <SettingSection of="sub.models">
+        <SettingRow id="sub.models" description={catalog ? `${allowed} of ${models.length} allowed` : undefined} onOpen={() => setModelsOpen(true)} openLabel="Models agents may run on" />
+      </SettingSection>
+
+      <SettingSection
+        of="sub.routing"
+        action={
+          <Button variant="ghost" size="sm" data-setting="sub.addRule" onClick={() => setEditing("new")} disabled={blocked}>
+            Add rule…
           </Button>
         }
       >
-        {rules.routing.map((r) => (
-          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={blocked} onEdit={() => setEditing(r)} />
+        {rules.routing.map((r, i) => (
+          <RuleRow key={r.id} rule={r} rules={rules} catalog={catalog} disabled={blocked} first={i === 0} last={i === rules.routing.length - 1} onEdit={() => setEditing(r)} onMove={(by) => move(i, i + by)} />
         ))}
-        {rules.routing.length === 0 ? (
-          <PageEmpty>No rules</PageEmpty>
-        ) : null}
-      </PageSection>
+        {rules.routing.length === 0 ? <PageEmpty>No rules</PageEmpty> : null}
+        {moved.error ? <PageError>{moved.error}</PageError> : null}
+      </SettingSection>
 
+      {modelsOpen ? <ModelsSheet rules={rules} catalog={catalog} disabled={blocked} write={write} onClose={() => setModelsOpen(false)} /> : null}
       {editing ? (
         <RuleDialog
           rule={editing === "new" ? null : editing}
           rules={rules}
           catalog={catalog}
-          onSave={saveRule}
-          onDelete={editing === "new" ? undefined : () => deleteRule(editing.id)}
+          onSave={(rule) => write(upsertRoutingRule(rules, rule))}
+          onDelete={editing === "new" ? undefined : () => write(removeRoutingRule(rules, editing.id))}
           onClose={() => setEditing(null)}
         />
       ) : null}
@@ -355,19 +247,18 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
   );
 }
 
-function CapSelect({
-  label,
-  value,
-  options,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  options: number[];
-  disabled?: boolean;
-  onChange: (v: number) => void;
-}) {
+const TITLES: Record<ConductRow, string> = {
+  gives: "Gives its agents",
+  edits: "May edit files itself",
+  commands: "May run commands itself",
+  checks: "Checks its agents' work",
+  retries: "Retries with a stronger model",
+  checkout: "Gives each agent its own checkout",
+  atOnce: "Agents at once",
+  perThread: "Agents per thread",
+};
+
+function CapSelect({ label, value, options, disabled, onChange }: { label: string; value: number; options: number[]; disabled?: boolean; onChange: (v: number) => void }) {
   const values = options.includes(value) ? options : [...options, value].sort((a, b) => a - b);
   return (
     <ChoiceSelect
@@ -375,42 +266,119 @@ function CapSelect({
       value={String(value)}
       onChange={(v) => onChange(Number(v))}
       disabled={disabled}
-      options={values.map((o) => ({ value: String(o), label: o === 0 ? "Unlimited" : String(o) }))}
+      options={values.map((o) => ({ value: String(o), label: o === 0 ? "No limit" : String(o) }))}
     />
   );
 }
 
+/** "Models agents may run on": every model of every agent app this computer has, a find field over them, who may
+ *  start each and its lowest and highest effort. Each change saves as it is made. */
+function ModelsSheet({
+  rules,
+  catalog,
+  disabled,
+  write,
+  onClose,
+}: {
+  rules: OrchestrationRules;
+  catalog: RulesCatalog | null;
+  disabled: boolean;
+  write: (next: OrchestrationRules) => Promise<void>;
+  onClose: () => void;
+}) {
+  const { root } = useClosingDialog(onClose, false);
+  const stale = catalog ? staleModels(rules, catalog) : [];
+  const rows = providersOf(catalog).flatMap((p) => [
+    ...(catalog?.[p]?.models ?? []).map((m) => ({ provider: p, id: m.id, model: m as ModelInfo | undefined, name: m.label })),
+    ...stale.filter((m) => m.provider === p).map((m) => ({ provider: p, id: m.id, model: undefined, name: m.id })),
+  ]);
+  const live = rows.filter((row) => row.model);
+  const filter = useListFilter(rows, (row) => `${row.name} ${catalog?.[row.provider]?.label ?? row.provider}`);
+  const shown = new Set(filter.shown);
+  return (
+    <Sheet {...root}>
+      <SheetContent side="right" width={640}>
+        <SheetHeader>
+          <SheetTitle>Models agents may run on</SheetTitle>
+          <SheetDescription className="text-xs">{`${live.filter((r) => modelApproved(rules, r.provider, r.id, "orchestrator")).length} of ${live.length} allowed`}</SheetDescription>
+        </SheetHeader>
+        {/* The sheet's own column is the page container the model rows read their width from. */}
+        <div className="@container/page min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pb-5">
+          <ListFilter filter={filter} label="Find a model" />
+          <Table>
+            <TableHeader className="@max-[36rem]/page:hidden">
+              <TableRow>
+                <TableHead>Model</TableHead>
+                <TableHead>Who may start it</TableHead>
+                <TableHead className="text-end">Effort</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {providersOf(catalog).map((p) => {
+                const info = catalog?.[p];
+                const label = info?.label ?? p;
+                const mine = rows.filter((row) => row.provider === p && shown.has(row));
+                if (filter.query && mine.length === 0) return null;
+                return (
+                  <Fragment key={p}>
+                    <TableRow data-slot="table-group-row" className="border-b-0">
+                      <TableCell colSpan={3} className="h-8 pt-2">
+                        <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <HarnessIcon harness={p as HarnessId} className="size-3.5 shrink-0" />
+                          {label}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                    {(info?.models.length ?? 0) === 0 && !filter.query ? (
+                      <TableRow data-slot="table-empty-row">
+                        <TableCell colSpan={3} className="h-auto min-h-10 py-3 text-xs whitespace-normal text-muted-foreground">
+                          No models until {label} is installed and signed in
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    {mine.map((row) => (
+                      <ModelRow key={`${row.model ? "" : "stale:"}${row.id}`} provider={p} id={row.id} model={row.model} rules={rules} disabled={disabled} write={write} />
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 /**
- * A model's row under 36rem of page: the name on a line of its own, then who
- * may spawn it and its effort pair on the next, so the Effort column never
- * runs past the table's edge. The effort selects are one width (w-28, the
+ * A model's row under 36rem of its column: the name on a line of its own, then who may start it and its effort pair
+ * on the next, so the Effort column never runs past the table's edge. The effort selects are one width (w-28, the
  * widest rung, "Extra high"), so the pairs line up down the table.
  */
 const MODEL_ROW = "@max-[36rem]/page:flex @max-[36rem]/page:flex-wrap @max-[36rem]/page:items-center @max-[36rem]/page:gap-x-3 @max-[36rem]/page:gap-y-1 @max-[36rem]/page:py-2";
 const MODEL_NAME = "@max-[36rem]/page:h-5 @max-[36rem]/page:max-w-none @max-[36rem]/page:basis-full @max-[36rem]/page:px-0";
 const MODEL_CONTROL = "@max-[36rem]/page:h-auto @max-[36rem]/page:px-0";
 
-/** One model's policy. With no `model` the rules name a model this host's
- *  catalog lacks: its row stays, muted and without effort, so the saved
- *  policy is seen and kept. */
+/** One model's policy. With no `model` the rules name a model this computer's catalog lacks: its row stays, muted and
+ *  without effort, so the saved policy is seen and kept. */
 function ModelRow({
   provider,
   id,
   model,
   rules,
   disabled,
-  onChange,
+  write,
 }: {
   provider: ProviderId;
   id: string;
   model?: ModelInfo;
   rules: OrchestrationRules;
   disabled?: boolean;
-  onChange: (patch: Partial<ModelPolicy>) => void;
+  write: (next: OrchestrationRules) => Promise<void>;
 }) {
-  // Everyone / Orchestrators only / Off (CLAUDE.md "Master threads"): an
-  // orchestrators-only model keeps its effort bounds, it is approved for
-  // someone. A model the saved rules do not list reads Off.
+  const saved = useSaved();
+  // A lead-threads-only model keeps its effort bounds: it is allowed for someone. A model the saved rules do not
+  // list reads Off.
   const policy = rules.models[modelKey(provider, id)]?.approved ?? false;
   const approved = policy !== false;
   const name = model?.label ?? id;
@@ -418,29 +386,33 @@ function ModelRow({
   const ladder = model?.reasoning ?? [];
   const min = range[0];
   const max = range[range.length - 1];
+  const change = (patch: Partial<ModelPolicy>) => void saved.run(() => write(patchModelPolicy(rules, provider, id, patch)));
   return (
     <TableRow data-stale={model ? undefined : ""} className={MODEL_ROW}>
-      {/* `max-w-0` bounds the cell to what the controls leave, so a long name
-          (a stale id and "not on this host") is cut here, never pushing the
-          effort pair past the table's edge. */}
+      {/* `max-w-0` bounds the cell to what the controls leave, so a long name is cut here, never pushing the effort
+          pair past the table's edge. */}
       <TableCell className={cn("w-full max-w-0", MODEL_NAME, approved && model ? "text-foreground" : "text-muted-foreground")}>
-        <TruncateTip text={model ? name : `${name}, not on this host`}>
+        <TruncateTip text={model ? name : `${name}, not on this computer`}>
           <span data-slot="model-name" className="block truncate">
             {name}
-            {model ? null : <span className="ms-1 text-xs">not on this host</span>}
+            {model ? null : <span className="ms-1 text-xs">not on this computer</span>}
           </span>
         </TruncateTip>
+        {saved.error ? <span className="block text-xs whitespace-normal text-destructive">{saved.error}</span> : null}
       </TableCell>
       <TableCell className={MODEL_CONTROL}>
-        <ChoiceSelect
-          size="sm"
-          label={`Who may spawn ${name}`}
-          value={policy === true ? "everyone" : policy === false ? "off" : "orchestrators"}
-          onChange={(v) => onChange({ approved: v === "everyone" ? true : v === "off" ? false : "orchestrators" })}
-          options={APPROVAL_OPTIONS}
-          disabled={disabled}
-          className="w-44"
-        />
+        <span className="flex items-center justify-end gap-2">
+          <SaveMark state={saved.state} />
+          <ChoiceSelect
+            size="sm"
+            label={`Who may start ${name}`}
+            value={policy === true ? "everyone" : policy === false ? "off" : "orchestrators"}
+            onChange={(v) => change({ approved: v === "everyone" ? true : v === "off" ? false : "orchestrators" })}
+            options={APPROVAL_OPTIONS}
+            disabled={disabled}
+            className="w-44"
+          />
+        </span>
       </TableCell>
       <TableCell className={cn("text-end", MODEL_CONTROL)}>
         {approved && ladder.length > 1 ? (
@@ -451,17 +423,17 @@ function ModelRow({
               value={min}
               disabled={disabled}
               options={effortChoices(ladder.slice(0, ladder.indexOf(max) + 1))}
-              onChange={(v) => onChange({ minReasoning: v === ladder[0] ? undefined : v })}
+              onChange={(v) => change({ minReasoning: v === ladder[0] ? undefined : v })}
               className="w-28"
             />
-            <span className="text-muted-foreground">–</span>
+            <span className="text-muted-foreground">to</span>
             <ChoiceSelect
               size="sm"
               label={`${name} highest effort`}
               value={max}
               disabled={disabled}
               options={effortChoices(ladder.slice(ladder.indexOf(min)))}
-              onChange={(v) => onChange({ maxReasoning: v === ladder[ladder.length - 1] ? undefined : v })}
+              onChange={(v) => change({ maxReasoning: v === ladder[ladder.length - 1] ? undefined : v })}
               className="w-28"
             />
           </span>
@@ -471,55 +443,68 @@ function ModelRow({
   );
 }
 
-/** One rule: the whole row opens its dialog, which holds every change. */
+/** One rule: the row opens its dialog; its ⋯ moves it up or down the list, since the first rule that fits decides. */
 function RuleRow({
   rule,
   rules,
   catalog,
   disabled,
+  first,
+  last,
   onEdit,
+  onMove,
 }: {
   rule: RoutingRule;
   rules: OrchestrationRules;
   catalog: RulesCatalog | null;
   disabled?: boolean;
+  first: boolean;
+  last: boolean;
   onEdit: () => void;
+  onMove: (by: -1 | 1) => void;
 }) {
   const provider = catalog?.[rule.provider];
   const modelId = rule.model || provider?.defaultModel || "";
   const model = provider?.models.find((m) => m.id === modelId);
   const approved = modelApproved(rules, rule.provider, modelId);
-  const orchestratorsOnly = !approved && modelApproved(rules, rule.provider, modelId, "orchestrator");
-  const factsId = useId();
-  // The row keeps the page's hairline; the button inside it carries the hover fill.
+  const leadOnly = !approved && modelApproved(rules, rule.provider, modelId, "orchestrator");
+  const menu: MenuRow[] = [
+    { kind: "item", id: "up", label: "Move up", disabled: first },
+    { kind: "item", id: "down", label: "Move down", disabled: last },
+  ];
   return (
-    <div data-slot="page-row" className="py-1 [[data-slot=page-row]+&]:border-t [[data-slot=page-row]+&]:border-border">
-      <ItemButton
-        aria-label={`Edit rule: ${rule.task}`}
-        aria-describedby={factsId}
-        onClick={onEdit}
-        disabled={disabled}
-        className="-mx-2 w-[calc(100%+1rem)] rounded-md px-2 py-2 hover:bg-foreground/5"
-      >
-        <ItemMedia>
-          <HarnessIcon harness={rule.provider as HarnessId} className="size-4 shrink-0" />
-        </ItemMedia>
-        <ItemContent className="min-w-0">
-          <ItemTitle className={rule.enabled ? undefined : "text-muted-foreground"}>{rule.task}</ItemTitle>
-          <ItemDescription id={factsId} className="line-clamp-none">
-            <Facts
-              parts={[
-                rule.enabled ? null : "Off",
-                model?.label ?? modelId,
-                model?.reasoning.length ? EFFORT_LABELS[rule.reasoning] : null,
-                orchestratorsOnly ? "Orchestrators only" : !approved ? <span className="text-warning">Not approved</span> : null,
-              ]}
-            />
-          </ItemDescription>
-        </ItemContent>
-        <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
-      </ItemButton>
-    </div>
+    <PageRow
+      data-rule={rule.id}
+      title={<span className={rule.enabled ? undefined : "text-muted-foreground"}>{rule.task}</span>}
+      media={<HarnessIcon harness={rule.provider as HarnessId} className="size-4 shrink-0" />}
+      description={
+        <Facts
+          parts={[
+            rule.enabled ? null : "Off",
+            model?.label ?? modelId,
+            model?.reasoning.length ? EFFORT_LABELS[rule.reasoning] : null,
+            leadOnly ? "Lead threads only" : !approved ? <span className="text-warning">Not allowed</span> : null,
+          ]}
+        />
+      }
+      onOpen={onEdit}
+      openLabel={`Edit rule: ${rule.task}`}
+      openDisabled={disabled}
+    >
+      {first && last ? null : (
+        <RowsMenu
+          label={`${rule.task} actions`}
+          trigger={
+            <Button variant="ghost" size="icon-sm" aria-label={`${rule.task} actions`} disabled={disabled} className="text-muted-foreground">
+              <MoreHorizontal />
+            </Button>
+          }
+          rows={() => menu}
+          onPick={(id) => onMove(id === "up" ? -1 : 1)}
+          align="end"
+        />
+      )}
+    </PageRow>
   );
 }
 
@@ -527,9 +512,9 @@ type RuleDialogProps = {
   rule: RoutingRule | null;
   rules: OrchestrationRules;
   catalog: RulesCatalog | null;
-  /** The rule, and for an existing one its 0-based place in the list. */
-  onSave: (r: RoutingRule, position?: number) => void;
-  onDelete?: () => void;
+  /** Saves the rule; a refusal keeps the dialog open with the reason. */
+  onSave: (r: RoutingRule) => Promise<unknown>;
+  onDelete?: () => Promise<unknown>;
   onClose: () => void;
 };
 
@@ -541,35 +526,44 @@ export function RuleDialog(props: RuleDialogProps) {
   );
 }
 
-/** Save and Delete play the dialog's exit, then change the rules. */
+/** Save and Delete… change the rules, then play the dialog's exit; a refusal stays, its reason over the footer. */
 function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialogProps) {
   const close = useModalClose();
-  const thenClose = (fn: () => void) => (close ? close(fn) : fn());
   const providers = providersOf(catalog).filter((p) => (catalog?.[p]?.models.length ?? 0) > 0);
-  const index = rule ? rules.routing.findIndex((r) => r.id === rule.id) : -1;
   const [enabled, setEnabled] = useState(rule?.enabled ?? true);
-  const [position, setPosition] = useState(Math.max(index, 0));
   const [task, setTask] = useState(rule?.task ?? "");
   const [provider, setProvider] = useState<ProviderId>(rule?.provider ?? providers[0] ?? "claude");
   const [model, setModel] = useState(rule?.model ?? "");
-  const [reasoning, setReasoning] = useState<Reasoning>(rule?.reasoning ?? "medium");
+  const [reasoning, setReasoning] = useState<Effort>(rule?.reasoning ?? "medium");
+  const [running, setRunning] = useState<"save" | "delete" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const models = useMemo(
-    () => (catalog?.[provider]?.models ?? []).filter((m) => modelApproved(rules, provider, m.id)),
-    [catalog, provider, rules],
-  );
+  const models = useMemo(() => (catalog?.[provider]?.models ?? []).filter((m) => modelApproved(rules, provider, m.id)), [catalog, provider, rules]);
   const effective = model || catalog?.[provider]?.defaultModel || "";
-  const ladder = useMemo(
-    () => ladderOf(rules, provider, models.find((m) => m.id === effective)),
-    [models, effective, rules, provider],
-  );
+  const ladder = useMemo(() => ladderOf(rules, provider, models.find((m) => m.id === effective)), [models, effective, rules, provider]);
   // Keep effort valid for the picked model (render-time adjust).
   if (ladder.length && !ladder.includes(reasoning)) setReasoning(ladder[0]);
 
+  const run = async (which: "save" | "delete", change: () => Promise<unknown>) => {
+    setRunning(which);
+    setError(null);
+    try {
+      await change();
+      if (close) close(onClose);
+      else onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message.replace(/^refused:\s*/i, "") : String(err));
+      setRunning(null);
+    }
+  };
   const save = () => {
     if (!task.trim()) return;
-    const next = { id: rule?.id ?? newRuleId(), task: task.trim(), provider, model, reasoning, enabled };
-    thenClose(() => onSave(next, index >= 0 ? position : undefined));
+    void run("save", () => onSave({ id: rule?.id ?? newRuleId(), task: task.trim(), provider, model, reasoning, enabled }));
+  };
+  const remove = async () => {
+    if (!onDelete) return;
+    const ok = await confirmAction({ title: "Delete this rule", body: `“${rule?.task}” is deleted. Its work goes to the next rule that fits.`, action: "Delete", danger: true });
+    if (ok) void run("delete", onDelete);
   };
 
   return (
@@ -584,9 +578,9 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
           <Input autoFocus value={task} onChange={(e) => setTask(e.target.value)} placeholder="Bulk or mechanical work with a clear spec" />
         </Field>
         <div className="flex flex-col">
-          <FieldRow label="Provider">
+          <FieldRow label="Agent app">
             <ChoiceSelect
-              label="Provider"
+              label="Agent app"
               size="sm"
               value={provider}
               onChange={(v) => {
@@ -597,47 +591,33 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
             />
           </FieldRow>
           <FieldRow label="Model">
-            <ChoiceSelect
-              label="Model"
-              size="sm"
-              value={model}
-              onChange={setModel}
-              options={[{ value: "", label: "Provider default" }, ...models.map((m) => ({ value: m.id, label: m.label }))]}
-            />
+            <ChoiceCombobox label="Model" size="sm" value={model} onChange={setModel} options={[{ value: "", label: "Default" }, ...models.map((m) => ({ value: m.id, label: m.label }))]} />
           </FieldRow>
           {ladder.length > 1 ? (
             <FieldRow label="Effort">
               <ChoiceSelect label="Effort" size="sm" value={reasoning} onChange={setReasoning} options={effortChoices(ladder)} />
             </FieldRow>
           ) : null}
-          {index >= 0 ? (
-            <>
-              <FieldRow label="Position">
-                <ChoiceSelect
-                  label="Position"
-                  size="sm"
-                  value={String(position)}
-                  onChange={(v) => setPosition(Number(v))}
-                  options={rules.routing.map((_, i) => ({ value: String(i), label: String(i + 1) }))}
-                />
-              </FieldRow>
-              <FieldRow label="Enabled">
-                <SettingSwitch label="Enabled" on={enabled} onChange={setEnabled} />
-              </FieldRow>
-            </>
+          {rule ? (
+            <FieldRow label="On">
+              <SettingSwitch label="On" on={enabled} onChange={setEnabled} />
+            </FieldRow>
           ) : null}
         </div>
+        <ErrorLine error={error} />
       </ModalBody>
       <DialogFooter
         start={
           onDelete ? (
-            <Button type="button" variant="ghost" className="text-muted-foreground hover:text-destructive" onClick={() => thenClose(onDelete)}>
-              Delete
+            <Button type="button" variant="ghost" className="text-muted-foreground hover:text-destructive" disabled={running !== null} onClick={() => void remove()}>
+              Delete…
             </Button>
           ) : null
         }
         onCancel={onClose}
         confirmLabel="Save"
+        pending={running === "save"}
+        busy={running === "delete"}
         disabled={!task.trim()}
       />
     </form>

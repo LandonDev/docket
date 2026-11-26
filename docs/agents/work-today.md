@@ -24,7 +24,7 @@ read. The phone gets no host method either: it ports these rules to Swift
   (`workOnly` in src/shared/menuTree.ts; the window names it in
   `MenuState.hidden` otherwise, and main takes only `WORK_ONLY_IDS` from
   that list, src/main/menu.ts), and the key does nothing while Work is off.
-  The key is listed in Settings → Keybindings under Work; that page lists
+  The key is listed in Settings → Shortcuts under Work; that page lists
   keys and changes none.
 - The day's digest notice (`digestOpensPort`, set in lib/workPlaces.ts).
 - It does not open by itself. `localStorage["work.today.opensAtDayStart"] =

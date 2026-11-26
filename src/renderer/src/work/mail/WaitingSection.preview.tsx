@@ -1,7 +1,7 @@
 import type { MailWaiting } from "@shared/contract-work-mail";
 import { Page, PageRow, PageSection } from "../../components/page";
 import { registry, type Link } from "../../lib/connection";
-import { WaitingSection } from "./WaitingSection";
+import { WaitingRows } from "./WaitingSection";
 
 /**
  * A Work workspace's Waiting on over one fixed host, for `bun run ui:preview
@@ -47,12 +47,12 @@ const WS = { id: "ws", name: "Purdue Esports", path: "/home/work/Purdue Esports"
 export function WaitingPreview({ state: s = "off" }: { state?: State }) {
   state = s;
   return (
-    <Page title="Purdue Esports" description="A Work workspace">
-      {/* The section before it on the real page, for its spacing. */}
-      <PageSection title="Voice">
-        <PageRow title="Read my sent mail for how I write" description="48 mails from landon@purdue.edu since Oct 19" />
+    <Page title="Purdue Esports" description="Purdue, on this Mac">
+      {/* The row before them on the real page, for its spacing. */}
+      <PageSection title="Writing and mail">
+        <PageRow title="Learn how I write from my sent mail" description="48 mails from landon@purdue.edu since Oct 19" />
+        <WaitingRows key={s} workspace={WS} />
       </PageSection>
-      <WaitingSection key={s} workspace={WS} />
     </Page>
   );
 }

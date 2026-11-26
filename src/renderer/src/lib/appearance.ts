@@ -23,6 +23,8 @@ const RETIRED_KEYS = [
   "docket.transcriptLayout",
   "docket.transcriptZen",
   "docket.tc.projectFolds",
+  // The "settings.json hooks" switch: nothing read it (Settings 2).
+  "docket.claudeHooks",
 ];
 
 export type ColorScheme = "dark" | "light";

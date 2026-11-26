@@ -12,6 +12,17 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock("../components/choice-select", async () => await import("../components/choice-select-body"));
+vi.mock("../components/choice-combobox", async () => await import("../components/choice-combobox-body"));
+vi.mock("../chrome/ProjectDialogs", () => ({
+  ProjectSettingsDialog: ({ project }: { project: { name: string } }) => <div role="dialog" aria-label={`Sheet ${project.name}`} />,
+}));
+const catalog = vi.hoisted(() => ({
+  projects: [] as { id: string; name: string; environmentId: string; workspaceId: string }[],
+  own: new Set<string>(),
+}));
+vi.mock("../lib/tcserver/workspaces", () => ({
+  useWorkspaceCatalog: () => ({ projects: catalog.projects, workspaces: [{ id: "w1", name: "temp-code", environmentId: "local" }] }),
+}));
 vi.mock("../lib/connection", () => ({
   registry: {
     primary: () => ({ environmentId: "local" }),
@@ -23,8 +34,12 @@ vi.mock("../lib/connection", () => ({
         state.opens.add(l);
         return () => state.opens.delete(l);
       },
-      request: (method: string, params: unknown, options?: unknown) =>
-        method === "review.get" ? state.get!({ params, options }) : state.set(params),
+      request: (method: string, params: unknown, options?: unknown) => {
+        const projectId = (params as { projectId?: string | null }).projectId;
+        if (method === "review.get" && projectId)
+          return Promise.resolve({ override: null, global: null, settings: null, source: catalog.own.has(projectId) ? "project" : "global" });
+        return method === "review.get" ? state.get!({ params, options }) : state.set(params);
+      },
     }),
   },
 }));
@@ -71,6 +86,8 @@ beforeEach(() => {
   state.set.mockImplementation(async () => ({}));
   state.connected = true;
   state.opens.clear();
+  catalog.projects = [];
+  catalog.own = new Set();
 });
 afterEach(() => {
   cleanup();
@@ -190,11 +207,11 @@ describe("Reviews page", () => {
     expect(document.querySelectorAll("[data-slot=page-row]")).toHaveLength(4);
   });
 
-  it("saves Blocking findings", async () => {
+  it("saves Stop the merge for", async () => {
     answer({ ...SETTINGS, beforeMerge: true });
     await renderPage();
     await act(async () => {
-      fireEvent.click(screen.getByRole("combobox", { name: "Blocking findings" }));
+      fireEvent.click(screen.getByRole("combobox", { name: "Stop the merge for" }));
     });
     const option = await screen.findByRole("option", { name: "Any finding" });
     await act(async () => {
@@ -204,11 +221,11 @@ describe("Reviews page", () => {
     expect(lastSet().blockOn).toBe("any");
   });
 
-  it("picks the reviewer from one list over both providers", async () => {
+  it("picks the review model from one searchable list over both agent apps", async () => {
     answer({ ...SETTINGS, beforeMerge: true });
     await renderPage();
     await act(async () => {
-      fireEvent.click(screen.getByRole("combobox", { name: "Reviewer" }));
+      fireEvent.click(document.querySelector("[data-slot=combobox-trigger][aria-label='Review model']")!);
     });
     const option = await screen.findByRole("option", { name: "Opus 5.5" });
     await act(async () => {
@@ -218,10 +235,11 @@ describe("Reviews page", () => {
     expect(lastSet()).toMatchObject({ provider: "claude", model: "claude-opus-5-5" });
   });
 
-  it("commits the time limit on Enter and reverts what is out of range", async () => {
+  it("commits Wait at most on Enter and reverts what is out of range", async () => {
     answer({ ...SETTINGS, beforeMerge: true });
     await renderPage();
-    const field = screen.getByRole("textbox", { name: "Time limit" }) as HTMLInputElement;
+    expect(screen.getByText("Past it the merge goes ahead unreviewed")).toBeTruthy();
+    const field = screen.getByRole("textbox", { name: "Wait at most" }) as HTMLInputElement;
     fireEvent.change(field, { target: { value: "30" } });
     await act(async () => {
       field.focus();
@@ -239,25 +257,56 @@ describe("Reviews page", () => {
     }
   });
 
-  it("shows a failed save under the rows", async () => {
+  it("puts a refused change back and says why under its row", async () => {
     state.set.mockImplementation(async () => {
-      throw new Error("review.set refused");
+      throw new Error("refused: review settings live on box; it is offline");
     });
     await renderPage();
     await act(async () => {
       fireEvent.click(screen.getByRole("switch", { name: "Review before merge" }));
     });
-    expect(screen.getByText("review.set refused").className).toContain("text-destructive");
+    const row = document.querySelector("[data-setting='reviews.on']") as HTMLElement;
+    expect(row.textContent).toContain("Review settings live on box; it is offline");
+    expect(screen.getByRole("switch", { name: "Review before merge" }).getAttribute("aria-checked")).toBe("false");
+    expect(document.querySelectorAll("[data-slot=page-row]")).toHaveLength(1);
+  });
+
+  it("holds the controls while the box that keeps the set is offline", async () => {
+    state.get = async () => ({ override: null, global: SETTINGS, settings: SETTINGS, source: "global", home: { name: "The box", online: false } });
+    await renderPage();
+    expect((screen.getByRole("switch", { name: "Review before merge" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("lists the projects with their own set, while review is on, each opening its sheet", async () => {
+    catalog.projects = [
+      { id: "p1", name: "settings-2", environmentId: "local", workspaceId: "w1" },
+      { id: "p2", name: "docket", environmentId: "local", workspaceId: "w1" },
+    ];
+    catalog.own = new Set(["p1"]);
+    answer({ ...SETTINGS, beforeMerge: true });
+    await renderPage();
+    await act(async () => {});
+    const row = document.querySelector("[data-setting='reviews.different']") as HTMLElement;
+    expect(row.textContent).toContain("Different in 1 project");
+    expect(row.textContent).toContain("settings-2");
+    await act(async () => {
+      fireEvent.click(row.querySelector("[data-row-open]")!);
+    });
+    const list = await screen.findByRole("dialog");
+    await act(async () => {
+      fireEvent.click(list.querySelector("[data-row-open]")!);
+    });
+    expect(await screen.findByRole("dialog", { name: "Sheet settings-2" })).toBeTruthy();
   });
 });
 
 describe("ReviewFields compact", () => {
-  it("hides the three rows while review is off", () => {
+  it("hides the other rows while review is off", () => {
     const { rerender } = render(<ReviewFields value={SETTINGS} onChange={() => {}} environmentId="local" compact />);
-    expect(screen.queryByRole("combobox", { name: "Blocking findings" })).toBeNull();
-    expect(screen.queryByRole("textbox", { name: "Time limit" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Stop the merge for" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Wait at most" })).toBeNull();
     rerender(<ReviewFields value={{ ...SETTINGS, beforeMerge: true }} onChange={() => {}} environmentId="local" compact />);
-    expect(screen.getByRole("combobox", { name: "Blocking findings" })).toBeTruthy();
-    expect(screen.getByRole("textbox", { name: "Time limit" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Stop the merge for" })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Wait at most" })).toBeTruthy();
   });
 });

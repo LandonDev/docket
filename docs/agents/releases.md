@@ -192,10 +192,10 @@ for an older release shows “No release notes for this version”.
    has the phase times.
 
 3. **Both are buttons in the app too, still pressed by the user** (Settings →
-   Hosts: a box's Deploy row and This Mac's Release group;
+   the box's page: Update…; Settings → Publish: New release;
    src/main/server/hostJobs.ts, src/shared/contract-host.ts,
-   src/renderer/src/surfaces/settings/hosts/Deploy.tsx).
-   Publish… on This Mac's Mac release row runs `bun scripts/release.ts
+   src/renderer/src/surfaces/settings/computers/ComputerPage.tsx and PublishPage.tsx).
+   Publish… on New release runs `bun scripts/release.ts
    --notes-file <tmp>` (the notes in a file under the tmp dir, named by
    `TC_RELEASE_NOTES_FILE` and removed when the scripts close; a peer's
    publish with the train off carries no notes) then `bun run

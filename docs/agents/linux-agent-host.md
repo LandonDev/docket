@@ -53,10 +53,11 @@
   local only; headless hosts never fetch). `useDeployDrift(environmentId)`
   in the renderer's lib/deployDrift.ts gives `{behind, deployedVersion,
   masterVersion}`; chrome/DeployDrift.tsx is the muted tabular `+N` at the
-  end of the host's submenu trigger in the rail's Hosts row and on its
-  header on Settings → Hosts,
+  end of the host's submenu trigger in the rail's Hosts row, with a
   tooltip naming both versions and the deploy (box) or publish (Mac)
-  command; nothing when current or unknown. docs/box.md "Knowing the box
+  command; nothing when current or unknown. Settings says the same in
+  words on Updates' row for each computer and on the computer's own page
+  beside Update…. docs/box.md "Knowing the box
   is behind". Every "ask the login shell" call goes
   through src/main/server/loginShell.ts (`$SHELL`, else zsh on macOS, bash
   elsewhere): never hardcode /bin/zsh. `-lc` skips .zshrc and .bashrc,
@@ -104,9 +105,9 @@
   `<name>.conflict-<host>-<time>.md` on both hosts, a project `MEMORY.md`
   is unioned, deletions travel as 30-day tombstones. Runs on link-up,
   every 5 minutes, after a thread goes idle on either host (the box nudges
-  over the Mac's link) and from Sync now. Each paired host's Sync group on
-  Settings → Hosts shows files and time for both legs, and This Mac's Sync
-  group folds the conflict copies open under its Memory switch. docs/box.md "Memory: synced both ways"; proof is
+  over the Mac's link) and from Sync now. Settings → Sync has a
+  row per computer under Last synced with each leg's line and Sync now,
+  and Conflict copies, a dialog, only while there are any. docs/box.md "Memory: synced both ways"; proof is
   the memory step of `bun run script:e2e-harness-sync`.
 - Attachments on a remote thread: a file from another host (or a big paste)
   is uploaded to the thread's host before the turn names it
@@ -178,8 +179,8 @@
   permission with every call and the Mac treats every call the policy admits
   as remembered. A card (above the thread's composer, a sonner toast for a
   thread off screen) is only ever a decision: a call that runs is a row of
-  the thread's Activity section and of the host's Mac bridge list on
-  Settings → Hosts, each with Stop, never a card. The cards are capped
+  the thread's Activity section and of Running now in that computer's
+  "What <computer> may do on this Mac" sheet, each with Stop, never a card. The cards are capped
   (`queueOf` in the renderer's lib/macBridge.ts): one waiting card per host
   with "and N more". The server still marks a call admitted without a prompt
   `quiet` while its `macBridge.showRunning.<envId>` is off
@@ -200,12 +201,11 @@
   own deadline. `macBridge.maxThreads.<envId>` (default 2) caps the
   Mac-local threads a host starts here: `MacBridge.admitThread(envId)`
   (also `macBridge.admitThread`, local) is asked by crossHostThreads.ts
-  before every `thread.start` and `thread.spawn`. On Settings → Hosts a
-  host's Mac bridge group holds its policy (a Select), its running and held
-  calls with Stop and its forwarded ports; its caps with the live counts,
-  forwarding and the shared folders are in the
-  host's Mac bridge settings dialog (surfaces/settings/hosts/
-  MacBridgeHostDialog.tsx); This Mac's section has the load with its limit. docs/box.md "The Mac bridge: what a box thread may touch on the
+  before every `thread.start` and `thread.spawn`. A
+  computer's "What <computer> may do on this Mac" sheet (opened from Settings → Sharing, one row per linked computer;
+  surfaces/settings/computers/MaySheet.tsx) holds its policy, its apps switch, its caps with the live counts,
+  its forwarded dev sites, the folders it reads without asking, its running and held calls with Stop and what is
+  allowed until Docket quits; Sharing's Advanced has the load with its limit. docs/box.md "The Mac bridge: what a box thread may touch on the
   Mac"; proof `bun run script:e2e-mac-bridge`. Computer use is one more
   class of call, off by default per host (`macBridge.computer.<envId>`):
   "Computer use: the Mac's apps from any thread" below and docs/box.md
@@ -409,11 +409,11 @@
 - Keep awake: the Mac holds its display awake (Electron's
   `prevent-display-sleep`) while a thread on it or on the box is live, on AC
   power, under `power.keepAwake` (`while-working`, the default, or `never`;
-  Settings → Hosts, This Mac's Keep awake row). The box says whether it has
+  Settings → General, Keep this Mac awake). The box says whether it has
   live work with a `live-work` push down the Mac's link, on a change and
   every minute; the Mac trusts it 150 s or until the link drops
   (src/main/server/keepAwake.ts). docs/box.md "Keep awake".
-- Devices on the Mac: Settings → Hosts, a Devices group in the Mac's own
+- Devices on the Mac: Settings → Threads (on this Mac), its Simulators and phones
   section, lists this Mac's simulators and iPhones with their state words, the
   booted ones' CPU, the thread that holds each (the `thread_resources`
   ledger by UDID, "—" without it), the Xcode in use and the load; Shutdown,

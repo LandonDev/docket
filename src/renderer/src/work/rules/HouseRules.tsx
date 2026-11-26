@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import type { HouseRule, RuleProposal, RulesPage } from "@shared/contract-work-rules";
 import { ChevronRight, GripVertical, Search } from "../../chrome/icons";
-import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
+import { PageEmpty, PageError, PageRow, PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger, DISCLOSURE_CHEVRON } from "../../components/ui/collapsible";
@@ -10,7 +10,6 @@ import { reveal } from "../../components/ui/reveal";
 import { loadToast } from "../../components/ui/toaster";
 import { useSortable } from "../../hooks/useSortable";
 import { cn } from "../../lib/cn";
-import { useLinkMay } from "../../lib/linkMay";
 import { workErrorWords } from "../../lib/workErrorWords";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { setWorkspaceSettings } from "../shell/actions";
@@ -19,16 +18,18 @@ import { downWords } from "../shell/lifeosDown";
 import { useLiveDown } from "../shell/lifeosLive";
 import { addRule, decideProposal, editRule, orderRules, removeRule, useRulesPage, useVoice, type Again } from "./data";
 import { Evidence, fromEdits } from "./Evidence";
+import { SaveMark } from "../../surfaces/settings/parts/SaveMark";
+import { SettingRow, SettingSection } from "../../surfaces/settings/parts/SettingRow";
+import { useSaved } from "../../surfaces/settings/parts/useSaved";
+import { inWords } from "../../lib/settings/workWords";
 import { RuleDialog, type RuleDialogOf, type RuleMoves } from "./RuleDialog";
 
 /**
- * A Work workspace's house rules, on its settings page
- * (docs/agents/work-rules.md "The screens", prototype rules.html): the rules
- * as one-line rows that open their edit dialog, a switch each, a grip in the
- * gutter on hover to reorder, a find field past twelve rules; then the
- * proposals his edits made, each opening to the edits; then the voice
- * switch, only where the workspace has a sector to read mail from. Every
- * write is his press.
+ * A job's house rules, on its settings page (docs/agents/work-rules.md "The screens", prototype rules.html): the rules
+ * as one-line rows that open their edit dialog, a switch each, a grip in the gutter on hover to reorder, a find field
+ * past twelve rules; then the proposals his edits made, each opening to the edits. The voice switch is a row of the
+ * page's Writing and mail (`VoiceRow`). Every write is his press; a switch saves with the mark and a refusal puts it back
+ * with the row's red line.
  */
 
 /** Past this many rules, a find field sits over the list. */
@@ -63,8 +64,6 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
   const [load, put, again] = useRulesPage(env, workspace.id);
   const [dialog, setDialog] = useState<RuleDialogOf | null>(null);
   const page = load.status === "ready" ? load.value : null;
-  // The voice switch is a workspace setting, the host's admin rule: a key that may not write it is not shown it.
-  const mayVoice = useLinkMay(env, "work.workspace.set");
 
   // The edit dialog's Move up and Move down, written with its Save through the grip's reorder; a refusal stays in the dialog.
   const moves: RuleMoves | null = page
@@ -81,8 +80,8 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
 
   return (
     <>
-      <PageSection
-        title="House rules"
+      <SettingSection
+        of="job.rules"
         action={
           <Button variant="ghost" size="sm" onClick={() => setDialog({ kind: "new" })}>
             Add rule…
@@ -92,15 +91,14 @@ export function HouseRules({ workspace }: { workspace: WorkspaceMeta }) {
         {load.status === "loading" ? <PageRowsSkeleton rows={3} control="switch" /> : null}
         {load.status === "error" ? <PageError action={<RetryRead again={again} />}>{load.error}</PageError> : null}
         {page ? <RuleList env={env} workspaceId={workspace.id} page={page} put={put} onOpen={(rule) => setDialog({ kind: "rule", rule })} /> : null}
-      </PageSection>
+      </SettingSection>
       {page?.proposals.length ? (
-        <PageSection title="Proposed">
+        <SettingSection of="job.proposed">
           {page.proposals.map((p) => (
             <ProposalRow key={p.id} env={env} proposal={p} onAdded={added} onEdit={() => setDialog({ kind: "proposal", proposal: p })} />
           ))}
-        </PageSection>
+        </SettingSection>
       ) : null}
-      {workspace.sector && mayVoice ? <Voice workspace={workspace} /> : null}
       {dialog ? <RuleDialog env={env} workspaceId={workspace.id} of={dialog} onClose={() => setDialog(null)} onAdded={dialog.kind === "proposal" ? added : undefined} moves={moves} /> : null}
     </>
   );
@@ -130,15 +128,6 @@ function RuleList({ env, workspaceId, page, put, onOpen }: { env: string; worksp
   const shown = useMemo(() => (q ? page.rules.filter((r) => r.text.toLowerCase().includes(q.toLowerCase())) : page.rules), [page.rules, q]);
   const ids = useMemo(() => page.rules.map((r) => r.id), [page.rules]);
   const sortable = useSortable(ids, (order) => void reorder(env, workspaceId, page, put, order), "y");
-  const flip = async (rule: HouseRule, on: boolean): Promise<boolean> => {
-    try {
-      await editRule(env, rule.id, { on });
-      return true;
-    } catch (err) {
-      failed(on ? "The rule was not turned on" : "The rule was not turned off")(err);
-      return false;
-    }
-  };
 
   return (
     <>
@@ -167,22 +156,32 @@ function RuleList({ env, workspaceId, page, put, onOpen }: { env: string; worksp
                 <GripVertical className="size-3.5" />
               </span>
             )}
-            <PageRow
-              title={
-                <span className={cn("block min-w-0 truncate font-normal @max-[30rem]/page:line-clamp-2 @max-[30rem]/page:whitespace-normal", !rule.on && "text-muted-foreground")}>
-                  <Marked text={rule.text} find={q} />
-                </span>
-              }
-              onOpen={() => onOpen(rule)}
-              openLabel={`Edit rule: ${rule.text}`}
-              openTip={rule.text.length > 72 ? rule.text : undefined}
-            >
-              <SettingSwitch label={`Give threads the rule: ${rule.text}`} on={rule.on} onChange={(on) => flip(rule, on)} />
-            </PageRow>
+            <RuleRow env={env} rule={rule} find={q} onOpen={() => onOpen(rule)} />
           </div>
         );
       })}
     </>
+  );
+}
+
+/** One rule: its words open its dialog; its switch saves with the mark, and a refusal puts it back with the row's red line. */
+function RuleRow({ env, rule, find, onOpen }: { env: string; rule: HouseRule; find: string; onOpen: () => void }) {
+  const saved = useSaved();
+  return (
+    <PageRow
+      title={
+        <span className={cn("block min-w-0 truncate font-normal @max-[30rem]/page:line-clamp-2 @max-[30rem]/page:whitespace-normal", !rule.on && "text-muted-foreground")}>
+          <Marked text={rule.text} find={find} />
+        </span>
+      }
+      error={saved.error ?? undefined}
+      onOpen={onOpen}
+      openLabel={`Edit rule: ${rule.text}`}
+      openTip={rule.text.length > 72 ? rule.text : undefined}
+    >
+      <SaveMark state={saved.state} />
+      <SettingSwitch label={`Give threads the rule: ${rule.text}`} on={rule.on} onChange={(on) => saved.run(() => inWords(env, () => editRule(env, rule.id, { on })))} />
+    </PageRow>
   );
 }
 
@@ -238,22 +237,24 @@ function ProposalRow({ env, proposal, onAdded, onEdit }: { env: string; proposal
 
 const DAY = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
 
-function Voice({ workspace }: { workspace: WorkspaceMeta }) {
+/**
+ * Learn how I write from my sent mail: a row of the job page's Writing and mail, shown only where the job has a sector
+ * to read mail from and this key may write the job's settings. It saves with the mark; a refusal puts it back.
+ */
+export function VoiceRow({ workspace }: { workspace: WorkspaceMeta }) {
   const [facts, put, again] = useVoice(workspace.environmentId, workspace.id);
-  const flip = async (voice: boolean): Promise<boolean> => {
-    try {
-      await setWorkspaceSettings(workspace, { voice });
-      if (facts.status === "ready") put({ ...facts.value, on: voice });
-      return true;
-    } catch (err) {
-      failed("The voice switch did not change")(err);
-      return false;
-    }
-  };
+  const saved = useSaved();
+  const flip = (voice: boolean): Promise<boolean> =>
+    saved.run(() =>
+      inWords(workspace.environmentId, async () => {
+        await setWorkspaceSettings(workspace, { voice });
+        if (facts.status === "ready") put({ ...facts.value, on: voice });
+      }),
+    );
   const v = facts.status === "ready" ? facts.value : null;
-  // While the host's LifeOS is down the row is quiet: the page says the state once, at Waiting on, with its press; the
-  // switch stays, a workspace setting. The count is read again once the host is back. A read of a connected session
-  // that failed is LifeOS's silence, its computer named.
+  // While the host's LifeOS is down the row is quiet: the page says the state once, at the unanswered row, with its
+  // press; the switch stays, a job setting. The count is read again once the host is back. A read of a connected
+  // session that failed is LifeOS's silence, its computer named.
   const quiet = useLiveDown(null, workspace.environmentId, again.retry);
   const down = !!quiet.down || quiet.waits;
   const error = !down && v?.error ? downWords("unreachable", lifeosHostName(workspace.environmentId)) : undefined;
@@ -263,31 +264,26 @@ function Voice({ workspace }: { workspace: WorkspaceMeta }) {
       : v.count === 0
         ? "No mail sent in the last 30 days"
         : `${v.count} ${v.count === 1 ? "mail" : "mails"}${v.from[0] ? ` from ${v.from[0]}` : ""} since ${DAY.format(v.since ?? Date.now())}`;
+  if (facts.status === "loading") return <PageRowsSkeleton rows={1} description control="switch" />;
+  if (facts.status === "error") return <PageError action={<RetryRead again={again} />}>{facts.error}</PageError>;
   return (
-    <PageSection title="Voice">
-      {facts.status === "loading" ? (
-        <PageRowsSkeleton rows={1} description control="switch" />
-      ) : facts.status === "error" ? (
-        <PageError action={<RetryRead again={again} />}>{facts.error}</PageError>
-      ) : (
-        <PageRow
-          title="Read my sent mail for how I write"
-          description={line}
-          error={
-            error ? (
-              // LifeOS's silence: Retry reads the count again, spinning in place until the answer replaces the line.
-              <span data-voice-failed className="inline-flex flex-wrap items-center gap-x-2">
-                {error}
-                <Button variant="ghost" size="xs" className="-my-1" disabled={again.retrying} onClick={again.retry}>
-                  <BusyLabel busy={again.retrying} label="Retry" />
-                </Button>
-              </span>
-            ) : undefined
-          }
-        >
-          <SettingSwitch label="Read my sent mail for how I write" on={facts.value.on} onChange={flip} />
-        </PageRow>
-      )}
-    </PageSection>
+    <SettingRow
+      id="job.voice"
+      saved={saved}
+      description={line}
+      error={
+        error ? (
+          // LifeOS's silence: Retry reads the count again, spinning in place until the answer replaces the line.
+          <span data-voice-failed className="inline-flex flex-wrap items-center gap-x-2">
+            {error}
+            <Button variant="ghost" size="xs" className="-my-1" disabled={again.retrying} onClick={again.retry}>
+              <BusyLabel busy={again.retrying} label="Retry" />
+            </Button>
+          </span>
+        ) : undefined
+      }
+    >
+      <SettingSwitch label="Learn how I write from my sent mail" on={facts.value.on} onChange={flip} />
+    </SettingRow>
   );
 }

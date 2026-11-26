@@ -14,7 +14,7 @@ vi.mock("../../components/ui/toaster", () => {
   return { loadToast: async () => toast, toast };
 });
 
-const { WaitingSection } = await import("./WaitingSection");
+const { WaitingRows } = await import("./WaitingSection");
 
 const CONNECTED = { lifeos: { state: "connected", ownerId: "landon", since: 1 }, keys: [] };
 const SIGNED_OUT = { lifeos: { state: "signed-out" }, keys: [] };
@@ -61,7 +61,7 @@ const push = async (status: unknown): Promise<void> => {
   });
   await settle();
 };
-const daysControl = () => screen.queryByRole("combobox", { name: "Count as waiting after" });
+const daysControl = () => screen.queryByRole("combobox", { name: "Count sent mail as unanswered after" });
 const reads = () => asked.filter((m) => m === "work.mail.waiting").length;
 
 afterEach(() => {
@@ -78,7 +78,7 @@ afterEach(() => {
 describe("Waiting on, the host's LifeOS dropping while the page is open", () => {
   it("takes the days' row down at once on a sign-out, keeps the switch, and reads again when the host is back", async () => {
     host();
-    render(<WaitingSection workspace={WORKSPACE} />);
+    render(<WaitingRows workspace={WORKSPACE} />);
     await settle();
     expect(daysControl()).toBeTruthy();
     expect(reads()).toBe(1);
@@ -104,7 +104,7 @@ describe("Waiting on, the host's LifeOS dropping while the page is open", () => 
     status = SIGNED_OUT;
     readError = "Not signed in to LifeOS";
     host();
-    render(<WaitingSection workspace={WORKSPACE} />);
+    render(<WaitingRows workspace={WORKSPACE} />);
     await settle();
     expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
     await push({ lifeos: { state: "pairing", expiresAt: Date.now() + 600_000 }, keys: [] });
@@ -125,7 +125,7 @@ describe("Waiting on, the host's LifeOS dropping while the page is open", () => 
     status = SIGNED_OUT;
     readError = "Not signed in to LifeOS";
     host();
-    render(<WaitingSection workspace={WORKSPACE} />);
+    render(<WaitingRows workspace={WORKSPACE} />);
     await settle();
     expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
     let go: () => void = () => {};
@@ -145,7 +145,7 @@ describe("Waiting on, the host's LifeOS dropping while the page is open", () => 
 
   it("says LifeOS's silence in red with Retry in the control's place, and reads again when it answers", async () => {
     host();
-    render(<WaitingSection workspace={WORKSPACE} />);
+    render(<WaitingRows workspace={WORKSPACE} />);
     await settle();
     await push(UNREACHABLE);
     expect(daysControl()).toBeNull();

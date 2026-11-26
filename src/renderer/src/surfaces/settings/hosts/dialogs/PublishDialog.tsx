@@ -16,7 +16,7 @@ type Props = {
 export function PublishDialog(props: Props): ReactNode {
   const [pending, setPending] = useState(false);
   return (
-    <Modal onClose={props.onClose} busy={pending} title="Publish Mac release" description={props.line} size="sm">
+    <Modal onClose={props.onClose} busy={pending} title="Publish a new release" description={props.line} size="sm">
       <Body {...props} pending={pending} setPending={setPending} />
     </Modal>
   );

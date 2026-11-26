@@ -23,14 +23,14 @@ struct ReviewSettingsSection: View {
                 if ladder.count > 1 {
                     // The saved level stays a choice even when the model's ladder lacks it.
                     let levels = ladder.contains(draft.reasoning) ? ladder : [draft.reasoning] + ladder
-                    Picker("Reasoning", selection: field(\.reasoning)) {
+                    Picker("Effort", selection: field(\.reasoning)) {
                         ForEach(levels, id: \.rawValue) { level in
                             Text(level.label).tag(level)
                         }
                     }
                     .pickerStyle(.menu)
                 }
-                Picker("Hold the merge on", selection: field(\.blockOn)) {
+                Picker("Stop the merge for", selection: field(\.blockOn)) {
                     Text("Confirmed defects").tag(ReviewSettings.BlockOn.confirmed)
                     Text("Any finding").tag(ReviewSettings.BlockOn.any)
                     if case .unknown(let word) = draft.blockOn {
@@ -38,7 +38,7 @@ struct ReviewSettingsSection: View {
                     }
                 }
                 .pickerStyle(.menu)
-                Picker("Time limit", selection: field(\.maxMinutes)) {
+                Picker("Wait at most", selection: field(\.maxMinutes)) {
                     ForEach(Reviewers.minuteChoices(current: draft.maxMinutes), id: \.self) { minutes in
                         Text("\(minutes) min").tag(minutes)
                     }
@@ -66,7 +66,7 @@ struct ReviewSettingsSection: View {
     @ViewBuilder
     private var reviewerRow: some View {
         if let catalog = model.catalog {
-            Picker("Reviewer", selection: Binding(
+            Picker("Review model", selection: Binding(
                 get: { ModelKey(provider: draft.provider, model: draft.model) },
                 set: { key in
                     edit { draft in
@@ -92,7 +92,7 @@ struct ReviewSettingsSection: View {
             .pickerStyle(.navigationLink)
             .accessibilityIdentifier("review-reviewer")
         } else {
-            ValueRow(label: "Reviewer", value: Reviewers.modelLabel(provider: draft.provider, model: draft.model, catalog: nil), loading: true)
+            ValueRow(label: "Review model", value: Reviewers.modelLabel(provider: draft.provider, model: draft.model, catalog: nil), loading: true)
         }
     }
 

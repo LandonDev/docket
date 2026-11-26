@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { OfficeAddinCode, OfficeAddinKey } from "@shared/contract-work-office";
 import { ModalBody, ModalPanel, useClosingDialog } from "../../chrome/Modal";
-import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
+import { confirmAction, DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { PageRow, PageRowsSkeleton } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
@@ -13,10 +13,9 @@ import { timeAgo } from "../../lib/duration";
 import { useKeptRetry } from "./keptRetry";
 
 /**
- * Settings → Work, "Where it runs": our Office add-in on one host
- * (docs/agents/work-office.md "Pairing"). Pair… shows a short code the
- * add-in's pane takes once; each paired add-in is a row of its own with
- * Remove and no confirm, as a grant is.
+ * Settings → Connections, Office: our Office add-in on one computer (docs/agents/work-office.md "Pairing"). Pair…
+ * shows a short code the add-in's pane takes once; each paired add-in is a row of its own with Remove…, which asks
+ * first: the add-in stops reaching Work until it is paired again.
  */
 
 /** A paired add-in's line: connected now, or when it last was. */
@@ -47,7 +46,9 @@ export function AddinRow({ link, title }: { link: Link | null | undefined; title
       </PageRow>
     );
   }
-  const remove = async (id: string): Promise<void> => {
+  const remove = async (id: string, name: string): Promise<void> => {
+    const sure = await confirmAction({ title: `Remove ${name}?`, body: "This add-in stops reaching Work until you pair it again.", action: "Remove", danger: true });
+    if (!sure) return;
     setRemoving(id);
     setError(null);
     try {
@@ -68,8 +69,8 @@ export function AddinRow({ link, title }: { link: Link | null | undefined; title
       </PageRow>
       {keys.map((key) => (
         <PageRow key={key.id} title={key.name} description={addinLine(key)}>
-          <Button variant="ghost" size="sm" disabled={removing === key.id} onClick={() => void remove(key.id)}>
-            <BusyLabel busy={removing === key.id} label="Remove" />
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" disabled={removing === key.id} onClick={() => void remove(key.id, key.name)}>
+            <BusyLabel busy={removing === key.id} label="Remove…" />
           </Button>
         </PageRow>
       ))}

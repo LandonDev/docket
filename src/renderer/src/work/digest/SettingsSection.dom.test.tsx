@@ -18,7 +18,8 @@ vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMa
 import { GIVEN_KEY, resetTestKey, testKey } from "../../lib/linkMay.testkit";
 // The select's own chunk: the section is tested through its cold trigger's words and the body once it lands.
 import { setWorkOn, workSwitch } from "../../lib/workSwitch";
-import { SETTING_GROUPS, SettingsSection } from "./SettingsSection";
+import { Page } from "../../components/page";
+import { SETTING_GROUPS, SettingsSection, zoneWords } from "./SettingsSection";
 import { hostsHold, newestSettings, resetDigestStore, staleSettings, useDigestSheetOpen } from "./store";
 import { push, resetWorld, SETTINGS, type World } from "./world.testkit";
 
@@ -42,23 +43,29 @@ afterEach(() => {
 });
 
 describe("Settings → Work → Digest", () => {
-  it("is one section: the time, then four rows that all start at the same level, and nothing explained under them", async () => {
+  it("is the time with the zone it follows, then four rows that all start at the same level, and nothing explained under them", async () => {
     render(<SettingsSection />);
-    const section = within(await screen.findByRole("region", { name: "Digest" }));
-    const time = (await section.findByLabelText("Time of the digest")) as HTMLInputElement;
+    const time = (await screen.findByLabelText("Arrives at")) as HTMLInputElement;
     expect(time.type).toBe("time");
     expect(time.value).toBe("08:00");
+    expect(within(screen.getByRole("region", { name: "The day's digest" })).getByText(zoneWords(SETTINGS.zone))).toBeTruthy();
     expect(SETTING_GROUPS).toEqual(["held", "results", "people", "meetings"]);
-    expect(section.getAllByText(/^(Time|Held items|Routine results|Messages and mail|Meetings)$/).map((el) => el.textContent)).toEqual(["Time", "Held items", "Routine results", "Messages and mail", "Meetings"]);
+    const tell = within(screen.getByRole("region", { name: "Tell me about" }));
+    expect(tell.getAllByText(/^(Things waiting for me|Routine results|Messages and mail|Meetings)$/).map((el) => el.textContent)).toEqual(["Things waiting for me", "Routine results", "Messages and mail", "Meetings"]);
     // every select reads the default, in his words
-    expect(section.getAllByText("When it can't wait")).toHaveLength(4);
-    // no describing line under any row
-    expect(document.querySelectorAll("[data-slot=item-description]")).toHaveLength(0);
+    expect(tell.getAllByText("When it can't wait")).toHaveLength(4);
+    // no describing line under any level's row: the zone's is the page's one
+    expect(document.querySelectorAll("[data-slot=item-description]")).toHaveLength(1);
+  });
+
+  it("says the zone by its everyday name", () => {
+    expect(zoneWords("America/Chicago")).toBe("Central Time, from the computer you used last");
+    expect(zoneWords("Not/AZone")).toBe("Not/AZone, from the computer you used last");
   });
 
   it("a new time is written to every host with Work on, once it is a whole time and he has stopped typing", async () => {
     render(<SettingsSection />);
-    const time = (await screen.findByLabelText("Time of the digest")) as HTMLInputElement;
+    const time = (await screen.findByLabelText("Arrives at")) as HTMLInputElement;
     // The hour typed a digit at a time: "01:30" is on the way to "10:30", and is never written.
     fireEvent.change(time, { target: { value: "01:30" } });
     fireEvent.change(time, { target: { value: "10:30" } });
@@ -84,7 +91,7 @@ describe("Settings → Work → Digest", () => {
     // His laptop with the box's given key: the laptop's own Work takes the change, the box is never asked.
     testKey.of = { box: GIVEN_KEY };
     render(<SettingsSection />);
-    const time = await screen.findByLabelText("Time of the digest");
+    const time = await screen.findByLabelText("Arrives at");
     fireEvent.change(time, { target: { value: "09:00" } });
     fireEvent.blur(time);
     await waitFor(() => expect(sets()).toHaveLength(1));
@@ -93,18 +100,40 @@ describe("Settings → Work → Digest", () => {
     cleanup();
     testKey.current = GIVEN_KEY;
     render(<SettingsSection />);
-    await screen.findByText("Held items");
-    expect(screen.queryByLabelText("Time of the digest")).toBeNull();
+    await screen.findByText("Things waiting for me");
+    expect(screen.queryByLabelText("Arrives at")).toBeNull();
     expect(screen.queryAllByRole("combobox")).toEqual([]);
     expect(screen.getAllByText("When it can't wait")).toHaveLength(4);
     expect(sets()).toHaveLength(1);
+  });
+
+  it("moves a level at once and puts it back when every computer refuses it, the refusal under the row", async () => {
+    w().refuses.add("box");
+    w().refuses.add("mac");
+    render(<SettingsSection />);
+    const trigger = await screen.findByRole("combobox", { name: "Routine results" });
+    await act(async () => fireEvent.click(trigger));
+    const option = await screen.findByRole("option", { name: "Right away" });
+    await act(async () => {
+      fireEvent.pointerDown(option, { pointerType: "mouse" });
+      fireEvent.click(option);
+    });
+    expect(await screen.findByText("The box and The Mac did not take it")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Routine results" }).textContent).toContain("When it can't wait"));
+  });
+
+  it("says who can change them to a key that may set none", async () => {
+    testKey.current = GIVEN_KEY;
+    render(<SettingsSection />);
+    await screen.findByText("Things waiting for me");
+    expect(document.querySelector("[data-managed]")!.textContent).toMatch(/^Changed from a computer that manages /);
   });
 
   it("shows what he set: a group he made quieter reads so", async () => {
     w().settings.set("box", { ...SETTINGS, at: "17:30", levels: { results: "digest", held: "now" } });
     w().settings.set("mac", { ...SETTINGS, at: "17:30", levels: { results: "digest", held: "now" } });
     render(<SettingsSection />);
-    expect(((await screen.findByLabelText("Time of the digest")) as HTMLInputElement).value).toBe("17:30");
+    expect(((await screen.findByLabelText("Arrives at")) as HTMLInputElement).value).toBe("17:30");
     expect(screen.getByText("In the digest")).toBeTruthy();
     expect(screen.getByText("Right away")).toBeTruthy();
     expect(screen.getAllByText("When it can't wait")).toHaveLength(2);
@@ -113,7 +142,7 @@ describe("Settings → Work → Digest", () => {
   it("the hosts that refused are the row's red line by name, in his words, and it stays through an edit of another row", async () => {
     w().refuses.add("mac");
     render(<SettingsSection />);
-    const time = await screen.findByLabelText("Time of the digest");
+    const time = await screen.findByLabelText("Arrives at");
     fireEvent.change(time, { target: { value: "09:00" } });
     fireEvent.blur(time);
     expect(await screen.findByText("The Mac did not take it")).toBeTruthy();
@@ -136,7 +165,7 @@ describe("Settings → Work → Digest", () => {
     w().settings.set("mac", { ...SETTINGS, at: "08:00", levels: { meetings: "digest" }, setAt: { meetings: 3_000 } });
     render(<SettingsSection />);
     // He sees both of his changes, whichever host answered first.
-    expect(((await screen.findByLabelText("Time of the digest")) as HTMLInputElement).value).toBe("07:30");
+    expect(((await screen.findByLabelText("Arrives at")) as HTMLInputElement).value).toBe("07:30");
     expect(screen.getByText("In the digest")).toBeTruthy();
     await waitFor(() => expect(sets()).toHaveLength(2));
     // Each host is written only the field it missed, stamped with when it was set: neither change undoes the other.
@@ -170,7 +199,7 @@ describe("Settings → Work → Digest", () => {
   it("a refusal's line goes once every host holds what he asked for, whoever wrote it there", async () => {
     w().refuses.add("mac");
     render(<SettingsSection />);
-    const time = await screen.findByLabelText("Time of the digest");
+    const time = await screen.findByLabelText("Arrives at");
     fireEvent.change(time, { target: { value: "09:00" } });
     fireEvent.blur(time);
     expect(await screen.findByText("The Mac did not take it")).toBeTruthy();
@@ -184,7 +213,7 @@ describe("Settings → Work → Digest", () => {
     // The Mac answers nothing at first, then refuses the write: nothing is known of what it holds.
     w().down.add("mac");
     render(<SettingsSection />);
-    const time = await screen.findByLabelText("Time of the digest");
+    const time = await screen.findByLabelText("Arrives at");
     fireEvent.change(time, { target: { value: "09:00" } });
     fireEvent.blur(time);
     expect(await screen.findByText("The Mac did not take it")).toBeTruthy();
@@ -199,7 +228,7 @@ describe("Settings → Work → Digest", () => {
     let answer: (() => void) | null = null;
     w().slow = new Promise<void>((resolve) => (answer = resolve));
     render(<SettingsSection />);
-    const time = (await screen.findByLabelText("Time of the digest")) as HTMLInputElement;
+    const time = (await screen.findByLabelText("Arrives at")) as HTMLInputElement;
     fireEvent.change(time, { target: { value: "07:30" } });
     fireEvent.blur(time);
     await waitFor(() => expect(sets()).toHaveLength(2));
@@ -220,7 +249,7 @@ describe("Settings → Work → Digest", () => {
     let answer: (() => void) | null = null;
     w().slow = new Promise<void>((resolve) => (answer = resolve));
     render(<SettingsSection />);
-    const time = (await screen.findByLabelText("Time of the digest")) as HTMLInputElement;
+    const time = (await screen.findByLabelText("Arrives at")) as HTMLInputElement;
     fireEvent.change(time, { target: { value: "07:30" } });
     fireEvent.blur(time);
     await waitFor(() => expect(sets()).toHaveLength(2));
@@ -235,7 +264,7 @@ describe("Settings → Work → Digest", () => {
 
   it("a time he typed and left the section before the rest was over is still written", async () => {
     const view = render(<SettingsSection />);
-    fireEvent.change(await screen.findByLabelText("Time of the digest"), { target: { value: "05:15" } });
+    fireEvent.change(await screen.findByLabelText("Arrives at"), { target: { value: "05:15" } });
     expect(sets()).toHaveLength(0);
     view.unmount();
     await waitFor(() => expect(sets().map((c) => [c.env, c.params.at])).toEqual([["box", "05:15"], ["mac", "05:15"]]));
@@ -245,7 +274,7 @@ describe("Settings → Work → Digest", () => {
     let answer: (() => void) | null = null;
     w().slow = new Promise<void>((resolve) => (answer = resolve));
     render(<SettingsSection />);
-    const time = (await screen.findByLabelText("Time of the digest")) as HTMLInputElement;
+    const time = (await screen.findByLabelText("Arrives at")) as HTMLInputElement;
     fireEvent.change(time, { target: { value: "06:45" } });
     fireEvent.blur(time);
     await waitFor(() => expect(sets()).toHaveLength(2));
@@ -255,17 +284,18 @@ describe("Settings → Work → Digest", () => {
     await waitFor(() => expect(time.value).toBe("06:45"));
   });
 
-  it("Open the digest opens the list", async () => {
+  it("Open the digest stands on the page's title line and opens the list", async () => {
     render(
       <>
-        <SettingsSection />
+        <Page title="Digest">
+          <SettingsSection />
+        </Page>
         <SheetFlag />
       </>,
     );
     expect(screen.getByTestId("sheet").textContent).toBe("shut");
     const open = await screen.findByRole("button", { name: "Open the digest" });
-    // Its word ends on the selects' edge: the ghost box overhangs by its own padding.
-    expect(open.className).toContain("-me-2.5");
+    expect(open.closest("[data-slot=page-actions]")).toBeTruthy();
     fireEvent.click(open);
     expect(screen.getByTestId("sheet").textContent).toBe("open");
   });
@@ -278,10 +308,10 @@ describe("Settings → Work → Digest", () => {
     render(<SettingsSection />);
     // In his words, never the link's own error text.
     expect((await screen.findByRole("alert")).textContent).toBe("The box and The Mac did not answer");
-    expect(screen.queryByLabelText("Time of the digest")).toBeNull();
+    expect(screen.queryByLabelText("Arrives at")).toBeNull();
     w().down.clear();
     expect(screen.getByRole("button", { name: "Retry" }).className).toContain("-me-2.5");
     await act(async () => void fireEvent.click(screen.getByRole("button", { name: "Retry" })));
-    expect(await screen.findByLabelText("Time of the digest")).toBeTruthy();
+    expect(await screen.findByLabelText("Arrives at")).toBeTruthy();
   });
 });

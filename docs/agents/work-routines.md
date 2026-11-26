@@ -203,7 +203,7 @@ page sets; with no port set, or nothing to open, the row is plain text.
 A firing starts a root Work thread through `ctx.threads.start({workspaceId,
 projectId, text, model, reasoning, routineRunId})` (registry `startWith`: the queue
 and the running cap apply; `startedBy` stays null). Its provider, model and
-effort are his Thread defaults for the workspace (the rule a window's draft
+effort are his New threads set for the workspace (the rule a window's draft
 takes, `resolveThreadDefaults`; new-thread-access.md "The model"), unless the
 routine stores its own: its `model` and its `reasoning` each ride when set;
 the host fits any effort to the model it resolves to (`clampReasoning`), so

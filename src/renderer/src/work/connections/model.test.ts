@@ -145,3 +145,20 @@ describe("the rest of the page's words", () => {
     expect(usableFix({ kind: "run", label: "Sign out", method: "work.lifeos.signOut" }, false)).not.toBeNull();
   });
 });
+
+describe("a row's command and its sign-out", () => {
+  it("takes a host's install command out of the line, the words left a sentence", async () => {
+    const { commandOf } = await import("./model");
+    expect(commandOf("Its files are missing. Install it again with bun scripts/work-tools/install.ts --only ffmpeg")).toEqual({ words: "Its files are missing. Install it again.", command: "bun scripts/work-tools/install.ts --only ffmpeg" });
+    expect(commandOf("None installed. Install them with bun scripts/work-tools/install.ts on this host.")).toEqual({ words: "None installed. Install them on this host.", command: "bun scripts/work-tools/install.ts" });
+    expect(commandOf("No live video until the screen relay is installed: bun scripts/work-tools/install.ts --only screen-relay")).toEqual({ words: "No live video until the screen relay is installed.", command: "bun scripts/work-tools/install.ts --only screen-relay" });
+    expect(commandOf("Synced 3 min ago")).toEqual({ words: "Synced 3 min ago", command: null });
+  });
+
+  it("asks before a sign-out, naming what stops working", async () => {
+    const { signOutAsk, signsOut } = await import("./model");
+    expect(signsOut({ kind: "run", label: "Sign out", method: "work.office.live.signOut" })).toBe(true);
+    expect(signsOut({ kind: "run", label: "Install", method: "work.formats.install" })).toBe(false);
+    expect(signOutAsk("Office and Forms for the web, Purdue University", "the box").title).toBe("Sign out of Office and Forms for the web, Purdue University on the box?");
+  });
+});

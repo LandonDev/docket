@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-/** Mail's settings in Settings → Work: one of the page's sections, "Mail", with no second title of the kit's own. */
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+/** Settings → Mail: mail's settings in the page's own sections over work-kit's client, and the page when LifeOS is down. */
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MailClientProvider } from "work-kit/mail";
 import { corpusSignatures, corpusThreads, createFixtureMailClient } from "work-kit/mail/fixtures";
@@ -29,30 +29,120 @@ vi.mock("../../lib/monaco/debugTab", () => ({ requestSettings }));
 // The sign-in dialog the line's press opens in place (its own chunk, DownSignIn.tsx).
 vi.mock("../shell/settings", () => ({ SignInDialog: () => <div role="dialog" aria-label="Sign in to LifeOS" /> }));
 
+const confirm = vi.hoisted(() => ({ answer: true, asked: [] as { title: string }[] }));
+vi.mock("../../chrome/ConfirmDialog", async (original) => ({
+  ...(await original<object>()),
+  confirmAction: async (request: { title: string }) => {
+    confirm.asked.push(request);
+    return confirm.answer;
+  },
+}));
+vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
+// The signature's editor is work-kit's, tested there: jsdom lays out no text for it.
+vi.mock("work-kit/mail", async (original) => ({ ...(await original<object>()), MailEditor: () => <div data-editor="" /> }));
+// The grants' row is Work's page's own, tested there (work/shell/WorkPageSends.dom.test.tsx).
+vi.mock("../shell/WorkPageSends", () => ({ GrantsRow: () => null }));
+
 const { MailSettingsBody, Section } = await import("./MailSettingsSection");
 
 afterEach(cleanup);
 
-describe("Mail's settings on the Work settings page", () => {
-  it("are one section headed Mail, the kit's groups inside it and no title of the kit's own", async () => {
-    const client = createFixtureMailClient({ write: async ({ run }) => run(), instant: true, threads: corpusThreads(), signatures: corpusSignatures });
+/** The fixture client with its settings writes seen, and refused on asking. */
+function watched(senders?: string[]) {
+  const client = createFixtureMailClient({ write: async ({ run }) => run(), instant: true, threads: corpusThreads(), signatures: corpusSignatures, ...(senders ? { settings: { pictures: "ask" as const } } : {}) });
+  const calls: [string, unknown][] = [];
+  const box = { refuse: false };
+  const real = client.useSettingsActions();
+  const actions = Object.fromEntries(
+    Object.entries(real).map(([name, act]) => [
+      name,
+      async (...args: unknown[]) => {
+        calls.push([name, args[0]]);
+        if (box.refuse) throw new Error("refused");
+        return (act as (...a: unknown[]) => Promise<unknown>)(...args);
+      },
+    ]),
+  ) as typeof real;
+  return { client: Object.assign(Object.create(client), { useSettingsActions: () => actions, ...(senders ? { useImageSenders: () => senders } : {}) }) as typeof client, calls, box };
+}
+
+async function choose(trigger: HTMLElement, name: string) {
+  await act(async () => fireEvent.click(trigger));
+  const option = await screen.findByRole("option", { name });
+  await act(async () => {
+    fireEvent.pointerDown(option, { pointerType: "mouse" });
+    fireEvent.click(option);
+  });
+}
+
+describe("Settings → Mail", () => {
+  it("draws mail's settings in the page's own sections and rows, named by the map, with no title of the kit's own", async () => {
+    const { client } = watched();
     render(
       <MailClientProvider client={client}>
         <MailSettingsBody />
       </MailClientProvider>,
     );
-    await waitFor(() => expect(screen.getByText("Writing")).toBeTruthy());
-    const section = screen.getByRole("region", { name: "Mail" });
-    expect(section.getAttribute("data-slot")).toBe("page-section");
-    // The page's section heading is the one "Mail" on the page.
-    expect(screen.getAllByText("Mail")).toHaveLength(1);
-    expect(section.querySelector("[data-mail-settings]")).not.toBeNull();
-    for (const group of ["Writing", "Reading", "Signatures", "Accounts"]) expect(section.contains(screen.getByText(group))).toBe(true);
+    await waitFor(() => expect(screen.getByRole("region", { name: "Writing" })).toBeTruthy());
+    for (const group of ["Writing", "Reading", "Signatures", "Accounts"]) expect(screen.getByRole("region", { name: group }).getAttribute("data-slot")).toBe("page-section");
+    for (const id of ["mail.from", "mail.replies", "mail.undo", "mail.pictures", "mail.density", "mail.markRead", "mail.signatures", "mail.accounts"]) expect(document.querySelector(`[data-setting="${id}"]`), id).toBeTruthy();
+    expect(screen.queryByText("Mail")).toBeNull();
+    expect(document.querySelector("[data-mail-settings]")).toBeNull();
+  });
+
+  it("writes a change at once and puts it back with LifeOS's reason when refused", async () => {
+    const { client, calls, box } = watched();
+    render(
+      <MailClientProvider client={client}>
+        <MailSettingsBody />
+      </MailClientProvider>,
+    );
+    const undo = await screen.findByRole("combobox", { name: "Undo send" });
+    await choose(undo, "30 seconds");
+    await waitFor(() => expect(calls).toContainEqual(["update", { undoSeconds: 30 }]));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Undo send" }).textContent).toContain("30 seconds"));
+    box.refuse = true;
+    await choose(screen.getByRole("combobox", { name: "Mark as read" }), "Never");
+    const row = document.querySelector<HTMLElement>('[data-setting="mail.markRead"]')!;
+    await waitFor(() => expect(row.querySelector(".text-destructive")?.textContent).toBeTruthy());
+    expect(screen.getByRole("combobox", { name: "Mark as read" }).textContent).not.toContain("Never");
+  });
+
+  it("opens the senders whose pictures always show in a dialog while pictures ask, each removed at one press", async () => {
+    const { client, calls } = watched(["news@purdue.edu", "events@cosmicgames.com"]);
+    render(
+      <MailClientProvider client={client}>
+        <MailSettingsBody />
+      </MailClientProvider>,
+    );
+    expect((await screen.findByText("2 senders")).closest('[data-setting="mail.senders"]')).toBeTruthy();
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Pictures always show from" })));
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => fireEvent.click(within(dialog).getAllByRole("button", { name: "Remove" })[0]!));
+    expect(calls).toContainEqual(["disallowImages", "news@purdue.edu"]);
+  });
+
+  it("asks before deleting a signature, and deletes it only on Delete", async () => {
+    const { client, calls } = watched();
+    render(
+      <MailClientProvider client={client}>
+        <MailSettingsBody />
+      </MailClientProvider>,
+    );
+    const first = corpusSignatures[0]!;
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: `Signature ${first.name}` })));
+    confirm.answer = false;
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Delete…" })));
+    expect(confirm.asked.at(-1)!.title).toBe(`Delete the signature “${first.name}”?`);
+    expect(calls.some(([name]) => name === "removeSignature")).toBe(false);
+    confirm.answer = true;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Delete…" })));
+    await waitFor(() => expect(calls).toContainEqual(["removeSignature", first.id]));
   });
 
   it("say signed out under the same heading, the computer named, with Sign in opening the sign-in dialog in place", async () => {
     render(<Section environmentId="local" />);
-    const section = screen.getByRole("region", { name: "Mail" });
+    const section = document.querySelector<HTMLElement>("[data-mail-down]")!;
     expect(screen.getByText("Not signed in to LifeOS on the box").textContent).toBe("Not signed in to LifeOS on the box");
     fireEvent.click(within(section).getByRole("button", { name: "Sign in" }));
     await waitFor(() => expect(screen.getByRole("dialog", { name: "Sign in to LifeOS" })).toBeTruthy());

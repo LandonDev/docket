@@ -8,6 +8,8 @@ const h = vi.hoisted(() => ({ cut: new Set<string>() }));
 
 vi.mock("../../../components/choice-select", async () => await import("../../../components/choice-select-body"));
 vi.mock("../../../lib/sounds", () => ({ playCue: () => {} }));
+const keyMay = vi.hoisted(() => ({ write: true }));
+vi.mock("../parts/hostRpc", () => ({ useHost: () => ({ may: () => keyMay.write, name: { name: "The box", own: false } }) }));
 vi.mock("../../../lib/connection/status", () => ({ useEnvironmentStatuses: () => new Map() }));
 vi.mock("../../../lib/connection", () => ({ registry: { primary: () => null } }));
 vi.mock("../../../lib/tcserver/workspaces", () => ({ useWorkspaces: () => [{ id: "ws_1", name: "temp-code", environmentId: "local" }] }));
@@ -84,34 +86,19 @@ async function menu(name: string) {
 }
 
 describe("Settings → Skills", () => {
-  const NOTE = "Threads read skills from here, not from the skill folders in your home.";
-  /** The page's one line under its title: the store is the source, said the same whatever the list shows. */
-  const noteUnderTitle = () => {
-    const title = screen.getByRole("heading", { level: 1, name: "Skills" });
-    return title.nextElementSibling?.textContent ?? null;
-  };
-
-  it("says under the title that threads read skills from here, while loading, failed, empty and loaded", async () => {
-    const silent = seeded();
-    silent.state.silent.add("skills.list");
-    await show(silent);
-    expect(noteUnderTitle()).toBe(NOTE);
-    cleanup();
-    const failed = seeded();
-    failed.state.refuse.set("skills.list", NO_ANSWER);
-    await show(failed);
-    expect(screen.getByRole("alert")).toBeTruthy();
-    expect(noteUnderTitle()).toBe(NOTE);
-    cleanup();
-    await show(fakeStoreHost());
-    expect(screen.getByText("No skills")).toBeTruthy();
-    expect(noteUnderTitle()).toBe(NOTE);
-    cleanup();
-    await show(seeded());
-    expect(rowOf("tidy")).toBeTruthy();
-    expect(noteUnderTitle()).toBe(NOTE);
-    // Said once: no second copy anywhere on the page.
-    expect(document.body.textContent?.split(NOTE).length).toBe(2);
+  it("tells the page's line where the one copy is kept, and says nothing of it in the list", async () => {
+    const { usePageHome } = await import("../../../lib/settings/pageHome");
+    let seen: unknown;
+    function Probe() {
+      seen = usePageHome("skills");
+      return null;
+    }
+    const host = seeded();
+    host.state.home = { name: "The box", online: true };
+    render(<Probe />);
+    await show(host);
+    expect(seen).toEqual({ name: "The box", online: true });
+    expect(document.body.textContent).not.toContain("Saved on");
   });
 
   it("draws rows in their shape while the host is silent", async () => {
@@ -136,10 +123,10 @@ describe("Settings → Skills", () => {
     expect(screen.getByText("No skills")).toBeTruthy();
   });
 
-  it("says each skill's CLIs, scope, version and thread writer, sorted by name", async () => {
+  it("says each skill's agent apps, scope, version and thread writer, sorted by name", async () => {
     await show(seeded());
     expect([...document.querySelectorAll("[data-skill]")].map((r) => r.getAttribute("data-skill"))).toEqual(["impeccable", "tidy"]);
-    expect(rowOf("impeccable")!.textContent).toContain("Claude, Codex and Muse");
+    expect(rowOf("impeccable")!.textContent).toContain("Claude Code, Codex and Muse Code");
     expect(rowOf("impeccable")!.textContent).toContain("Every workspace");
     expect(rowOf("impeccable")!.textContent).toContain("v3");
     expect(rowOf("impeccable")!.textContent).toContain("written by Polish the rail");
@@ -152,7 +139,6 @@ describe("Settings → Skills", () => {
     const host = seeded();
     host.state.home = { name: "box", online: false };
     await show(host);
-    expect(screen.getByText("box is offline")).toBeTruthy();
     expect((screen.getByRole("switch", { name: "tidy" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "tidy actions" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Edit tidy" }) as HTMLButtonElement).disabled).toBe(true);

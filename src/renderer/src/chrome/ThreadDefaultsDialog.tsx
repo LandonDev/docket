@@ -1,336 +1,341 @@
+import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
+import { useState, type ReactNode } from "react";
 import { registry } from "../lib/connection";
 import { useEnvironments } from "../lib/connection/status";
-import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
-import { useEffect, useState } from "react";
-import { DialogFooter, ErrorLine } from "./ConfirmDialog";
+import { ACCESS_LABEL, ACCESS_LINE, ACCESS_ORDER, FULL_ACCESS_CONFIRM } from "../lib/settings/access";
+import { settingTitle } from "../lib/settings/map";
+import { usePublishHome } from "../lib/settings/pageHome";
 import { homeNote } from "../lib/settingsHome";
-import { FieldRow } from "./DialogField";
+import { EFFORT_LABELS, effortLadder, modelForDefaults, modelOptions, normalizeDefaults, providerOptions, storedModelId } from "../lib/tcserver/defaults";
+import { scopeKey, useThreadDefaults, useThreadDefaultsError, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
+import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components/page";
-import { Facts } from "../surfaces/settings/hosts/Facts";
-import { BusyLabel, Button } from "../components/ui/button";
-import { Dialog } from "../components/ui/dialog";
-import { ModalPanel, useClosingDialog } from "./Modal";
-import {
-  EFFORT_LABELS,
-  PERMISSION_HINTS,
-  START_ON_HINT,
-  START_ON_OPTIONS,
-  PERMISSION_LABELS,
-  effortLadder,
-  modelForDefaults,
-  modelOptions,
-  normalizeDefaults,
-  providerOptions,
-  storedModelId,
-  type DefaultsScope,
-} from "../lib/tcserver/defaults";
-import { scopeKey, useThreadDefaults, useThreadDefaultsError, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
-import { openWorkspaceSettings } from "../lib/settings";
-import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
+import { Button } from "../components/ui/button";
+import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
+import { SaveMark } from "../surfaces/settings/parts/SaveMark";
+import { useDraft } from "../surfaces/settings/parts/useDraft";
+import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
+import { confirmAction, DialogFooter } from "./ConfirmDialog";
+import { FieldRow } from "./DialogField";
+import { Modal, ModalBody } from "./Modal";
 
 /**
- * What a NEW thread starts with: provider, model, reasoning effort and access
- * policy. Stored server-side globally and per workspace (`defaults.set`), so
- * every entry point — the empty composer, a plan handoff, a model's
- * app_start_thread — resolves the same answer. A workspace without an
- * override of its own follows the global set.
+ * What a new thread starts with (docs/agents/settings.md "The pages: Everywhere"): agent app, model, effort and
+ * access. One set on the box for every new thread (`defaults.set` with no workspace), and a job's or a workspace's own
+ * set over it, which only its dialog edits (`ThreadDefaultsDialog`). Every change saves at once, with its row's mark;
+ * a refusal puts back the set the computer last confirmed. While the box that keeps the set is out of reach the
+ * controls are held.
  */
 
-const PERMISSIONS: ThreadDefaults["permission"][] = ["safe", "edits", "auto"];
+type Row = "app" | "model" | "effort" | "access" | "startOn";
 
-type Change = (next: ThreadDefaults) => void;
+/** "Linked projects start on": which copy of a project kept on two computers a new thread starts on. */
+const START_ON_CHOICES: { value: StartOn; label: string }[] = [
+  { value: "box", label: "The box" },
+  { value: "mac", label: "The Mac" },
+];
 
-function useDefaultsRows(value: ThreadDefaults, onChange: Change, environmentId?: string) {
-  const model = modelForDefaults(value, environmentId);
-  const ladder = effortLadder(model);
-  const set = (patch: Partial<ThreadDefaults>) => onChange(normalizeDefaults({ ...value, ...patch }, environmentId));
-  return {
-    ladder,
-    provider: {
-      value: value.provider,
-      options: providerOptions(),
-      onChange: (provider: string) => set({ provider: provider as ThreadDefaults["provider"], model: "" }),
-    },
-    model: {
-      value: storedModelId(value),
-      options: [{ value: "", label: "Provider default" }, ...modelOptions(value.provider, environmentId)],
-      onChange: (model: string) => set({ model }),
-    },
-    reasoning: {
-      value: value.reasoning,
-      options: ladder.map((level) => ({ value: level, label: EFFORT_LABELS[level] })),
-      onChange: (reasoning: string) => set({ reasoning: reasoning as ThreadDefaults["reasoning"] }),
-    },
-    permission: {
-      value: value.permission,
-      options: PERMISSIONS.map((p) => ({ value: p, label: PERMISSION_LABELS[p] })),
-      onChange: (permission: string) => set({ permission: permission as ThreadDefaults["permission"] }),
-    },
-  };
+/** One scope's set as an editor holds it: what the computer confirmed, what is shown, each row's save. */
+function useDefaultsSet(environmentId: string, workspaceId: string | null) {
+  const scope = useThreadDefaults(environmentId, workspaceId, true);
+  const failure = useThreadDefaultsError(environmentId, workspaceId);
+  const draft = useDraft(scope?.defaults);
+  const saved: Record<Row, Saved> = { app: useSaved(), model: useSaved(), effort: useSaved(), access: useSaved(), startOn: useSaved() };
+  const cleared = useSaved();
+  const { blocked } = homeNote(scope?.home);
+  const write = (row: Row, next: ThreadDefaults) =>
+    draft.change(saved[row], normalizeDefaults(next, environmentId), (set) => workspaceStore.saveDefaults(environmentId, workspaceId, set));
+  /** Drops the scope's own set: a workspace follows New threads again, New threads takes Docket's. */
+  const clear = () => cleared.run(() => workspaceStore.saveDefaults(environmentId, workspaceId, null));
+  return { scope, failure, value: draft.value, saved, write, blocked, clear, cleared };
 }
+type DefaultsSet = ReturnType<typeof useDefaultsSet>;
 
-/** Settings-page rows; the Reasoning row only when the model has a ladder,
- *  "New threads start on" only on the global set (`startOn`). */
-export function ThreadDefaultsFields({
-  value,
-  onChange,
-  environmentId,
-  disabled,
-  startOn = false,
-}: {
-  value: ThreadDefaults;
-  onChange: Change;
-  environmentId?: string;
-  disabled?: boolean;
-  startOn?: boolean;
-}) {
-  const rows = useDefaultsRows(value, onChange, environmentId);
+/** The set's rows: on the New threads page each is its map row, in a dialog a field row. Effort only for a model
+ *  with a ladder; Linked projects start on only on the one set, with two or more computers. */
+function DefaultsRows({ set, environmentId, startOn, layout }: { set: DefaultsSet; environmentId: string; startOn: boolean; layout: "setting" | "page" | "dialog" }) {
+  const value = set.value!;
+  const ladder = effortLadder(modelForDefaults(value, environmentId));
+  const disabled = set.blocked;
+  const size = layout === "dialog" ? "sm" : undefined;
+  const pickAccess = async (permission: ThreadDefaults["permission"]) => {
+    // Full access as the start of every new thread widens what they do unasked: it asks first.
+    if (permission === "auto" && value.permission !== "auto" && !(await confirmAction(FULL_ACCESS_CONFIRM))) return;
+    void set.write("access", { ...value, permission });
+  };
+  const row = (id: Row, mapId: string, title: string, control: ReactNode, description?: string) =>
+    layout === "setting" ? (
+      <SettingRow key={id} id={mapId} saved={set.saved[id]} description={description}>
+        {control}
+      </SettingRow>
+    ) : layout === "page" ? (
+      <PageRow key={id} title={title} description={description} error={set.saved[id].error}>
+        <SaveMark state={set.saved[id].state} />
+        {control}
+      </PageRow>
+    ) : (
+      <FieldRow key={id} label={title} description={description} error={set.saved[id].error}>
+        <span className="flex items-center gap-2">
+          <SaveMark state={set.saved[id].state} />
+          {control}
+        </span>
+      </FieldRow>
+    );
   return (
     <>
-      <PageRow title="Provider">
-        <ChoiceSelect label="Provider" disabled={disabled} {...rows.provider} />
-      </PageRow>
-      <PageRow title="Model">
-        <ChoiceSelect label="Model" disabled={disabled} {...rows.model} />
-      </PageRow>
-      {rows.ladder.length > 1 ? (
-        <PageRow title="Reasoning">
-          <ChoiceSelect label="Reasoning" disabled={disabled} {...rows.reasoning} />
-        </PageRow>
-      ) : null}
-      <PageRow title="Permission mode" description={PERMISSION_HINTS[value.permission]}>
-        <ChoiceSelect label="Permission mode" disabled={disabled} {...rows.permission} />
-      </PageRow>
-      {startOn ? (
-        <PageRow title="New threads start on" description={START_ON_HINT}>
-          <ChoiceSelect
-            label="New threads start on"
-            disabled={disabled}
-            value={value.startOn ?? DEFAULT_START_ON}
-            options={START_ON_OPTIONS}
-            onChange={(next: string) => onChange({ ...value, startOn: next as StartOn })}
-          />
-        </PageRow>
-      ) : null}
+      {row(
+        "app",
+        "defaults.app",
+        "Agent app",
+        <ChoiceSelect label="Agent app" size={size} disabled={disabled} value={value.provider} options={providerOptions()} onChange={(provider) => void set.write("app", { ...value, provider, model: "" })} />,
+      )}
+      {row(
+        "model",
+        "defaults.model",
+        "Model",
+        <ChoiceSelect
+          label="Model"
+          size={size}
+          disabled={disabled}
+          value={storedModelId(value)}
+          options={[{ value: "", label: "Default" }, ...modelOptions(value.provider, environmentId)]}
+          onChange={(model) => void set.write("model", { ...value, model })}
+        />,
+      )}
+      {ladder.length > 1
+        ? row(
+            "effort",
+            "defaults.effort",
+            "Effort",
+            <ChoiceSelect
+              label="Effort"
+              size={size}
+              disabled={disabled}
+              value={value.reasoning}
+              options={ladder.map((level) => ({ value: level, label: EFFORT_LABELS[level] }))}
+              onChange={(reasoning) => void set.write("effort", { ...value, reasoning })}
+            />,
+          )
+        : null}
+      {row(
+        "access",
+        "defaults.access",
+        "Access",
+        <ChoiceSelect
+          label="Access"
+          size={size}
+          disabled={disabled}
+          value={value.permission}
+          options={ACCESS_ORDER.map((p) => ({ value: p, label: ACCESS_LABEL[p] }))}
+          onChange={(permission) => void pickAccess(permission)}
+        />,
+        ACCESS_LINE[value.permission],
+      )}
+      {startOn
+        ? row(
+            "startOn",
+            "defaults.startOn",
+            "Linked projects start on",
+            <ChoiceSelect
+              label="Linked projects start on"
+              size={size}
+              disabled={disabled}
+              value={value.startOn ?? DEFAULT_START_ON}
+              options={START_ON_CHOICES}
+              onChange={(next) => void set.write("startOn", { ...value, startOn: next })}
+            />,
+          )
+        : null}
     </>
   );
 }
 
-/** A workspace's page says whose set it shows; the global page's description already does. */
-function scopeHint(workspaceId: string | null, scope: DefaultsScope): string | undefined {
-  if (workspaceId === null) return undefined;
-  return scope.overridden
-    ? "Overrides the global defaults."
-    : "Follows the global defaults.";
-}
-
-/** The four rows ThreadDefaultsFields draws, in their shape. */
+/** The five rows in their shape while the set loads. */
 const DEFAULTS_SKELETON = [{}, {}, {}, { description: true }];
 
-/** Self-loading group for one scope; every change saves at once. */
+/**
+ * A scope's set on a page: `null` is New threads' "Start with" section; a workspace id is that workspace's own set
+ * (its page's "New threads" section, until the job and workspace pages open `ThreadDefaultsDialog` instead).
+ */
 export function ThreadDefaultsEditor({ workspaceId }: { workspaceId: string | null }) {
   const workspace = useWorkspaceCatalog().workspaces.find((w) => w.id === workspaceId);
-  // Global app settings belong to this machine.
+  // The one set is asked of this window's own computer, which forwards it to the box.
   const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
   if (!environmentId) return <PageRowsSkeleton rows={DEFAULTS_SKELETON} />;
-  return <DefaultsEditor key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
+  return workspaceId === null ? <StartWith key={environmentId} environmentId={environmentId} /> : <WorkspaceSet key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
 }
 
-function DefaultsEditor({ environmentId, workspaceId }: { environmentId: string; workspaceId: string | null }) {
-  const scope = useThreadDefaults(environmentId, workspaceId, true);
-  const failure = useThreadDefaultsError(environmentId, workspaceId);
-  // Which host a new thread starts on is a question only with two hosts, and only the global set answers it.
-  const multiHost = useEnvironments().length > 1;
-  const startOn = workspaceId === null && multiHost;
-  const skeleton = startOn ? [...DEFAULTS_SKELETON, { description: true }] : DEFAULTS_SKELETON;
-  const [error, setError] = useState<string | null>(null);
-  const save = (next: ThreadDefaults | null) => {
-    setError(null);
-    workspaceStore
-      .saveDefaults(environmentId, workspaceId, next)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+function StartWith({ environmentId }: { environmentId: string }) {
+  const set = useDefaultsSet(environmentId, null);
+  usePublishHome("defaults", set.scope ? (set.scope.home ?? null) : undefined);
+  // Which copy of a linked project a thread starts on is a question only with two computers.
+  const startOn = useEnvironments().length > 1;
+  const reset = async () => {
+    const ok = await confirmAction({
+      title: "Use Docket's defaults",
+      body: "The set you saved is cleared. New threads start with Claude Code, its default model, Medium effort and Auto-accept edits.",
+      action: "Use Docket's defaults",
+    });
+    if (ok) void set.clear();
   };
-  // Reset and Remove override show only when something differs from what
-  // this scope would otherwise use.
-  const resettable = scope?.overridden === true;
-  // The set lives on the box with the orchestration rules (remote/rulesSync.ts).
-  const { note, blocked } = homeNote(scope?.home);
-  // Only the host's answer says where the values come from: while the scope
-  // loads, or after its read failed, there is no line.
-  const hint = scope ? scopeHint(workspaceId, scope) : undefined;
+  return (
+    <SettingSection
+      of="defaults.app"
+      action={
+        set.scope?.overridden ? (
+          <Button variant="ghost" size="sm" data-setting="defaults.reset" disabled={set.blocked} onClick={() => void reset()}>
+            Use Docket's defaults…
+          </Button>
+        ) : null
+      }
+    >
+      {set.value ? (
+        <>
+          <DefaultsRows set={set} environmentId={environmentId} startOn={startOn} layout="setting" />
+          <DifferentPlaces />
+        </>
+      ) : set.failure ? (
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" onClick={set.failure.retry}>
+              Retry
+            </Button>
+          }
+        >
+          {set.failure.error}
+        </PageError>
+      ) : (
+        <PageRowsSkeleton rows={startOn ? [...DEFAULTS_SKELETON, {}] : DEFAULTS_SKELETON} />
+      )}
+      {set.cleared.error ? <PageError>{set.cleared.error}</PageError> : null}
+    </SettingSection>
+  );
+}
+
+/** A workspace's own set on its page: the same rows as plain page rows (the map's are the one set's alone), and Use
+ *  New threads while it keeps one. */
+function WorkspaceSet({ environmentId, workspaceId }: { environmentId: string; workspaceId: string }) {
+  const set = useDefaultsSet(environmentId, workspaceId);
   return (
     <PageSection
-      // The global page's own title says what this is; a workspace page names it.
-      title={workspaceId === null ? undefined : "New threads"}
-      description={
-        hint && note ? (
-          <>
-            {hint}
-            <span className="mt-1 block">{note}</span>
-          </>
-        ) : (
-          (hint ?? note)
-        )
-      }
+      title="New threads"
       action={
-        resettable ? (
-          <Button variant="ghost" size="sm" onClick={() => save(null)} disabled={blocked}>
-            {workspaceId === null ? "Reset" : "Remove override"}
+        set.scope?.overridden ? (
+          <Button variant="ghost" size="sm" disabled={set.blocked} onClick={() => void set.clear()}>
+            Use New threads
           </Button>
-        ) : !scope && failure && workspaceId !== null ? (
-          <Button variant="ghost" size="sm" onClick={failure.retry}>
+        ) : !set.scope && set.failure ? (
+          <Button variant="ghost" size="sm" onClick={set.failure.retry}>
             Retry
           </Button>
         ) : null
       }
     >
-      {scope ? (
-        <ThreadDefaultsFields
-          value={scope.defaults}
-          onChange={save}
-          environmentId={environmentId}
-          disabled={blocked}
-          startOn={startOn}
-        />
-      ) : failure ? (
-        // The global page's section has no title, so no heading line: its Retry ends the error line.
-        <PageError
-          action={
-            workspaceId === null ? (
-              <Button variant="ghost" size="sm" onClick={failure.retry}>
-                Retry
-              </Button>
-            ) : null
-          }
-        >
-          {failure.error}
-        </PageError>
+      {set.value ? (
+        <DefaultsRows set={set} environmentId={environmentId} startOn={false} layout="page" />
+      ) : set.failure ? (
+        <PageError>{set.failure.error}</PageError>
       ) : (
-        <PageRowsSkeleton rows={skeleton} />
+        <PageRowsSkeleton rows={DEFAULTS_SKELETON} />
       )}
-      {workspaceId === null ? <OverridingWorkspaces environmentId={environmentId} /> : null}
-      {error ? <PageError>{error}</PageError> : null}
+      {set.cleared.error ? <PageError>{set.cleared.error}</PageError> : null}
     </PageSection>
   );
 }
 
-/** Under the global editor: which workspaces keep their own set. Each name
- *  opens that workspace's page, where the override lives. */
-function OverridingWorkspaces({ environmentId }: { environmentId: string }) {
+
+/** A set in one comma sentence: "Opus 5.5, High, Full access" (the model names its app). */
+export function summary(value: ThreadDefaults, environmentId?: string): string {
+  const model = modelForDefaults(value, environmentId);
+  const effort = effortLadder(model).length > 1 ? EFFORT_LABELS[value.reasoning] : null;
+  return [model.name, effort, ACCESS_LABEL[value.permission]].filter(Boolean).join(", ");
+}
+
+/** "Different in N places": the jobs and workspaces that keep a set of their own, opening a dialog of them. */
+function DifferentPlaces() {
   const { workspaces, defaults } = useWorkspaceCatalog();
-  const overriding = workspaces.filter((w) => w.environmentId === environmentId && defaults.get(scopeKey(w.environmentId, w.id))?.overridden);
-  if (overriding.length === 0) return null;
+  const [open, setOpen] = useState(false);
+  const own = workspaces.filter((w) => defaults.get(scopeKey(w.environmentId, w.id))?.overridden).sort((a, b) => a.name.localeCompare(b.name));
   return (
-    <p className="flex flex-wrap items-center gap-x-1 py-3 text-xs text-muted-foreground" data-testid="defaults-overrides">
-      Overridden in
-      <Facts
-        parts={overriding.map((w) => (
-          <Button key={w.id} variant="link" size="xs" className="h-auto px-0 text-xs after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']" onClick={() => openWorkspaceSettings(w.id)}>
-            {w.name}
-          </Button>
-        ))}
-      />
-    </p>
-  );
-}
-
-/** The sidebar's quick editor for one workspace: edits stay local until Save. */
-export function ThreadDefaultsDialog({
-  workspace,
-  onClose,
-}: {
-  workspace: WorkspaceMeta;
-  onClose: () => void;
-}) {
-  const scope = useThreadDefaults(workspace.environmentId, workspace.id);
-  // A host that never answers says so in the rows' place, with Retry, as the page editor does.
-  const failure = useThreadDefaultsError(workspace.environmentId, workspace.id);
-  const [value, setValue] = useState<ThreadDefaults | null>(scope?.defaults ?? null);
-  // Which verb runs: Save, or Remove override; the one clicked spins.
-  const [running, setRunning] = useState<"save" | "remove" | null>(null);
-  const pending = running !== null;
-  const [error, setError] = useState<string | null>(null);
-  const { root, closeThen } = useClosingDialog(onClose, pending);
-  useEffect(() => {
-    if (scope) setValue((current) => current ?? scope.defaults);
-  }, [scope]);
-
-  const save = async (next: ThreadDefaults | null) => {
-    setRunning(next ? "save" : "remove");
-    setError(null);
-    try {
-      await workspaceStore.saveDefaults(workspace.environmentId, workspace.id, next);
-      // The verb keeps spinning through the exit.
-      closeThen(onClose);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setRunning(null);
-    }
-  };
-
-  return (
-    <Dialog {...root}>
-      <ModalPanel onClose={onClose} title="Thread defaults" description={workspace.name} size="sm" busy={pending}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (value) void save(value);
-          }}
-        >
-          <div className="flex flex-col gap-4 px-5 py-4">
-            {value ? (
-              <DialogFields value={value} onChange={setValue} environmentId={workspace.environmentId} hint={scope ? scopeHint(workspace.id, scope) : undefined} />
-            ) : failure ? (
-              <PageError>{failure.error}</PageError>
-            ) : (
-              <PageRowsSkeleton rows={4} />
-            )}
-            <ErrorLine error={error} />
-          </div>
-          <DialogFooter
-            start={
-              scope?.overridden ? (
-                <Button variant="ghost" disabled={pending} onClick={() => void save(null)}>
-                  <BusyLabel busy={running === "remove"} label="Remove override" />
-                </Button>
-              ) : !value && failure ? (
-                <Button variant="ghost" onClick={failure.retry}>
-                  Retry
-                </Button>
-              ) : null
-            }
-            onCancel={() => closeThen(onClose)}
-            confirmLabel="Save"
-            pending={running === "save"}
-            busy={running === "remove"}
-            disabled={!value}
-          />
-        </form>
-      </ModalPanel>
-    </Dialog>
-  );
-}
-
-/** The dialog's rows: the label at the start, the picker at the end; the scope hint under the last. */
-function DialogFields({ value, onChange, environmentId, hint }: { value: ThreadDefaults; onChange: Change; environmentId?: string; hint?: string }) {
-  const rows = useDefaultsRows(value, onChange, environmentId);
-  return (
-    <div className="flex flex-col">
-      <FieldRow label="Provider">
-        <ChoiceSelect label="Provider" size="sm" {...rows.provider} />
-      </FieldRow>
-      <FieldRow label="Model">
-        <ChoiceSelect label="Model" size="sm" {...rows.model} />
-      </FieldRow>
-      {rows.ladder.length > 1 ? (
-        <FieldRow label="Reasoning">
-          <ChoiceSelect label="Reasoning" size="sm" {...rows.reasoning} />
-        </FieldRow>
+    <>
+      {own.length ? (
+        <SettingRow id="defaults.different" vars={{ n: own.length }} description={own.map((w) => w.name).join(", ")} onOpen={() => setOpen(true)} openLabel={settingTitle("defaults.different", { n: own.length })} />
       ) : null}
-      <FieldRow label="Permission mode" description={hint}>
-        <ChoiceSelect label="Permission mode" size="sm" {...rows.permission} />
-      </FieldRow>
-    </div>
+      {/* The dialog keeps the places it opened with, so one he sets back stays in the list, saying so. */}
+      {open ? <DifferentPlacesDialog places={own} onClose={() => setOpen(false)} /> : null}
+    </>
+  );
+}
+
+/** Each job and workspace with its own set, what it starts with, and Use New threads beside it. */
+function DifferentPlacesDialog({ places, onClose }: { places: readonly WorkspaceMeta[]; onClose: () => void }) {
+  const [shown] = useState(places);
+  return (
+    <Modal title="Different from New threads" size="sm" onClose={onClose}>
+      <ModalBody className="gap-0">
+        {shown.map((place) => (
+          <OwnSetRow key={`${place.environmentId}|${place.id}`} place={place} />
+        ))}
+      </ModalBody>
+      <DialogFooter confirmLabel="Done" closeOnConfirm onConfirm={onClose} />
+    </Modal>
+  );
+}
+
+function OwnSetRow({ place }: { place: WorkspaceMeta }) {
+  const scope = useThreadDefaults(place.environmentId, place.id);
+  const saved = useSaved();
+  const { blocked } = homeNote(scope?.home);
+  const own = scope?.overridden === true;
+  return (
+    <FieldRow label={place.name} description={scope ? (own ? summary(scope.defaults, place.environmentId) : "Same as New threads") : undefined} error={saved.error}>
+      <span className="flex items-center gap-2">
+        <SaveMark state={saved.state} />
+        {own ? <Button variant="outline" size="sm" disabled={blocked || saved.state === "saving" || saved.state === "slow"} onClick={() => void saved.run(() => workspaceStore.saveDefaults(place.environmentId, place.id, null))}>
+          Use New threads
+        </Button> : null}
+      </span>
+    </FieldRow>
+  );
+}
+
+/**
+ * A job's or a workspace's own start set, the one editor of it: the rows save as they change, as New threads' do,
+ * and Use New threads drops the set so the place follows New threads again. Opened from the rail's item, the job
+ * and workspace pages and the Work page. Its props stay `workspace` and `onClose`.
+ */
+export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: WorkspaceMeta; onClose: () => void }) {
+  const set = useDefaultsSet(workspace.environmentId, workspace.id);
+  return (
+    <Modal title="New threads" description={workspace.name} size="sm" onClose={onClose}>
+      <ModalBody className="gap-0">
+        {set.value ? (
+          <DefaultsRows set={set} environmentId={workspace.environmentId} startOn={false} layout="dialog" />
+        ) : set.failure ? (
+          <PageError>{set.failure.error}</PageError>
+        ) : (
+          <PageRowsSkeleton rows={DEFAULTS_SKELETON} />
+        )}
+        {set.cleared.error ? <PageError>{set.cleared.error}</PageError> : null}
+      </ModalBody>
+      <DialogFooter
+        start={
+          set.scope?.overridden ? (
+            <Button variant="ghost" disabled={set.blocked} onClick={() => void set.clear()}>
+              Use New threads
+            </Button>
+          ) : !set.value && set.failure ? (
+            <Button variant="ghost" onClick={set.failure.retry}>
+              Retry
+            </Button>
+          ) : null
+        }
+        note={set.scope && !set.scope.overridden ? "Same as New threads" : undefined}
+        confirmLabel="Done"
+        closeOnConfirm
+        onConfirm={onClose}
+      />
+    </Modal>
   );
 }

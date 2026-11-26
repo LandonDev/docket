@@ -1,139 +1,230 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { PROVIDER_NAME } from "@server/shared/usageMeter";
+import { wordCount } from "@server/shared/preamble";
+import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 import { BuildEditor, takeRequestedBuildFocus } from "../../chrome/rail/buildSettings";
-import { ThreadDefaultsEditor } from "../../chrome/ThreadDefaultsDialog";
 import { TurnPassEditor } from "../../chrome/TurnPassFields";
 import { ProjectSettingsDialog } from "../../chrome/ProjectDialogs";
+import { PreambleDialog } from "../../chrome/PreambleDialog";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
-import { ChoiceSelect } from "../../components/choice-select";
-import { PageRow, PageSection } from "../../components/page";
-import { Button } from "../../components/ui/button";
-import { takeRequestedRulesFocus } from "../../lib/tcserver/rules";
 import { OrchestrationRulesEditor } from "../../chrome/OrchestrationRules";
+import { ChoiceSelect } from "../../components/choice-select";
+import { PageRow, PageRowsSkeleton } from "../../components/page";
+import { BusyLabel, Button } from "../../components/ui/button";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
+import { takeRequestedRulesFocus, useRulesScope } from "../../lib/tcserver/rules";
 import { useProjects, useWorkspaces } from "../../lib/tcserver/workspaces";
 import type { ProjectMeta, WorkspaceMeta } from "../../lib/tcserver/types";
 import { setWorkspaceAccounts } from "../../lib/tcserver/projects";
 import { useAccounts } from "../../stores/accounts";
 import { pinRowShown, shortName } from "../../lib/accountScope";
-import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
-import { useEnvironments } from "../../lib/connection";
-import { managedElsewhere, useLinkMay } from "../../lib/linkMay";
+import { useLinkMay } from "../../lib/linkMay";
+import { useComputerName } from "../../lib/settings/computerName";
+import { ListFilter, useListFilter } from "./parts/ListFilter";
+import { ManagedLine } from "./parts/ManagedLine";
+import { SaveMark } from "./parts/SaveMark";
+import { SettingRow, SettingSection } from "./parts/SettingRow";
+import { StartSetRow } from "./parts/StartSetRow";
+import { useSaved } from "./parts/useSaved";
 
 /**
- * One workspace's page: its overrides (anything untouched inherits the
- * global setting), its build, its orchestration rules and its projects.
- * The Build rail tab and the workspace menu's rules item deep-link here
- * with their section in view.
+ * A code workspace's page (docs/agents/settings.md "The pages: jobs, workspaces, Archive"): New threads, After each
+ * turn, Accounts, Build, Subagents, its job (`job`, drawn from Work's chunk while Work is on for its computer), then
+ * its projects. Every row changes this workspace alone, on its own computer. The rows an admin key alone may change
+ * are words for any other key, with one line saying who can, said once at the top. The Build rail tab and the
+ * workspace menu's rules item deep-link here with their section in view.
  */
-export function WorkspacePage({ workspaceId }: { workspaceId: string }) {
+export function WorkspacePage({ workspaceId, job }: { workspaceId: string; job?: ReactNode }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
   const build = useRef<HTMLDivElement>(null);
   const rules = useRef<HTMLDivElement>(null);
+  // What a deep link asked for, taken once: the Build section in view, or the rules for its agents open in their sheet.
+  const [asked] = useState(() => ({ build: takeRequestedBuildFocus(), rules: takeRequestedRulesFocus() }));
   useEffect(() => {
-    // A jump the person asked for: no smooth scroll. Focus lands on the
-    // section, so the next Tab reaches its first control.
-    const target = takeRequestedBuildFocus() ? build.current : takeRequestedRulesFocus() ? rules.current : null;
+    // A jump the person asked for: no smooth scroll. Focus lands on the section, so the next Tab reaches its first control.
+    const target = asked.build ? build.current : asked.rules ? rules.current : null;
     target?.scrollIntoView({ block: "start" });
     target?.focus({ preventScroll: true });
-  }, []);
+  }, [asked]);
+  if (!workspace) return null;
   return (
     <>
-      <ThreadDefaultsEditor workspaceId={workspaceId} />
+      <NewThreadsSection workspace={workspace} />
       <TurnPassEditor workspaceId={workspaceId} />
-      {workspace ? <AccountsSection workspace={workspace} /> : null}
+      <AccountsSection workspace={workspace} />
       <div id="settings-build" ref={build} tabIndex={-1} className="outline-none">
         <BuildEditor workspaceId={workspaceId} />
       </div>
-      <div id="settings-orchestration" ref={rules} tabIndex={-1} className="flex flex-col gap-6 outline-none">
-        <OrchestrationRulesEditor workspaceId={workspaceId} />
+      <div id="settings-orchestration" ref={rules} tabIndex={-1} className="outline-none">
+        <AgentsSection workspace={workspace} startOpen={asked.rules} />
       </div>
-      {workspace ? <ProjectsSection workspace={workspace} /> : null}
+      {job}
+      <ProjectsSection workspace={workspace} />
     </>
   );
 }
 
+/** Model and access, the rules read before the first message; and, for a key that may change none of the page, who can. */
+function NewThreadsSection({ workspace }: { workspace: WorkspaceMeta }) {
+  const env = workspace.environmentId;
+  const mayDefaults = useLinkMay(env, "defaults.set");
+  const mayRules = useLinkMay(env, "workspace.setPreamble");
+  const mayAdmin = useLinkMay(env, "turnpass.set");
+  const computer = useComputerName(env);
+  const [editing, setEditing] = useState(false);
+  return (
+    <SettingSection of="ws.threads">
+      <StartSetRow id="ws.threads" workspace={workspace} whose="workspace" may={mayDefaults} />
+      <SettingRow id="ws.rules" description={preambleWords(workspace)}>
+        {mayRules ? (
+          <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
+            Edit…
+          </Button>
+        ) : null}
+      </SettingRow>
+      {mayAdmin ? null : <ManagedLine computer={computer.name} />}
+      {editing ? <PreambleDialog scope={{ kind: "workspace", workspace }} onClose={() => setEditing(false)} /> : null}
+    </SettingSection>
+  );
+}
+
+/** "214 words, on", "214 words, off", or "None". */
+export function preambleWords(workspace: Pick<WorkspaceMeta, "preamble" | "preambleEnabled">): string {
+  const text = workspace.preamble?.trim();
+  if (!text) return "None";
+  const n = wordCount(text);
+  return `${n} ${n === 1 ? "word" : "words"}, ${workspace.preambleEnabled === false ? "off" : "on"}`;
+}
+
 /**
- * The Aliax account this workspace's threads spend from, per provider.
- * Auto picks by model and moves a thread when its account runs out; a
- * project or a thread can still pin its own.
+ * The AI account this workspace's threads spend from, per agent app. Auto picks by model and moves a thread when its
+ * account runs out; a project or a thread can still pin its own. Each saves with the mark; a refusal puts it back.
  */
 function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
   const { snapshot } = useAccounts(workspace.environmentId);
-  const pins = workspace.accountPins ?? {};
-  const [error, setError] = useState<{ provider: string; message: string } | null>(null);
-  // A key that may not pin accounts here sees what is pinned, as words, and who can change it.
   const may = useLinkMay(workspace.environmentId, "workspace.setAccounts");
-  const host = useEnvironments().find((e) => e.id === workspace.environmentId)?.name ?? "this host";
+  const pins = workspace.accountPins ?? {};
+  const rows = ROUTED_PROVIDERS.filter((provider) => pinRowShown(provider, snapshot.providers[provider].profiles, pins[provider] ?? ""));
+  if (rows.length === 0) return null;
   return (
-    <PageSection title="Accounts" description={may ? "Auto picks by model and moves a thread when its account runs out." : managedElsewhere(host)}>
-      {ROUTED_PROVIDERS.map((provider) => {
-        const profiles = snapshot.providers[provider].profiles;
-        const current = pins[provider] ?? "";
-        const pinned = profiles.find((p) => p.name === current);
-        const known = current === "" || !!pinned;
-        if (!pinRowShown(provider, profiles, current)) return null;
-        return (
-          <PageRow
-            key={provider}
-            media={<HarnessIcon harness={provider} className="size-4 shrink-0" />}
-            title={PROVIDER_NAME[provider]}
-            description={may ? undefined : pinned ? shortName(pinned) : current || "Auto"}
-            error={error?.provider === provider ? error.message : undefined}
-          >
-            {may ? (
-              <ChoiceSelect
-                label={`${PROVIDER_NAME[provider]} account`}
-                value={current}
-                disabled={profiles.length === 0 && current === ""}
-                onChange={(next) => {
-                  const updated = { ...pins };
-                  if (next) updated[provider] = next;
-                  else delete updated[provider];
-                  setError(null);
-                  void setWorkspaceAccounts(workspace.id, updated).catch((err) =>
-                    setError({ provider, message: err instanceof Error ? err.message : String(err) }),
-                  );
-                }}
-                options={[
-                  { value: "", label: "Auto" },
-                  ...profiles.map((p) => ({ value: p.name, label: shortName(p) })),
-                  ...(known ? [] : [{ value: current, label: `${current} (not in Aliax)` }]),
-                ]}
-              />
-            ) : null}
-          </PageRow>
-        );
-      })}
-    </PageSection>
+    <SettingSection of="ws.accounts" description={may ? "Auto picks by model and moves a thread when its account runs out" : undefined}>
+      {rows.map((provider) => (
+        <AccountRow key={provider} workspace={workspace} provider={provider} profiles={snapshot.providers[provider].profiles} may={may} />
+      ))}
+    </SettingSection>
   );
 }
 
+type Profile = ReturnType<typeof useAccounts>["snapshot"]["providers"][(typeof ROUTED_PROVIDERS)[number]]["profiles"][number];
+
+function AccountRow({ workspace, provider, profiles, may }: { workspace: WorkspaceMeta; provider: (typeof ROUTED_PROVIDERS)[number]; profiles: Profile[]; may: boolean }) {
+  const saved = useSaved();
+  const [picked, setPicked] = useState<string | null>(null);
+  const pins = workspace.accountPins ?? {};
+  const current = pins[provider] ?? "";
+  const pinned = profiles.find((p) => p.name === current);
+  const known = current === "" || !!pinned;
+  const choose = (next: string): void => {
+    const updated: AccountPins = { ...pins };
+    if (next) updated[provider] = next;
+    else delete updated[provider];
+    setPicked(next);
+    void saved.run(() => setWorkspaceAccounts(workspace.id, updated)).then(() => setPicked(null));
+  };
+  return (
+    <PageRow
+      media={<HarnessIcon harness={provider} className="size-4 shrink-0" />}
+      title={PROVIDER_NAME[provider]}
+      description={may ? undefined : pinned ? shortName(pinned) : current || "Auto"}
+      error={saved.error ?? undefined}
+    >
+      {may ? (
+        <>
+          <SaveMark state={saved.state} />
+          <ChoiceSelect
+            label={`${PROVIDER_NAME[provider]} account`}
+            value={picked ?? current}
+            disabled={profiles.length === 0 && current === ""}
+            onChange={choose}
+            options={[
+              { value: "", label: "Auto" },
+              ...profiles.map((p) => ({ value: p.name, label: shortName(p) })),
+              ...(known ? [] : [{ value: current, label: `${current}, not in AI accounts` }]),
+            ]}
+          />
+        </>
+      ) : null}
+    </PageRow>
+  );
+}
+
+/**
+ * Subagents: this workspace's own rules for its agents, or the set every computer reads. Change… opens the Subagents
+ * editor for this workspace in a sheet; once it keeps its own, the editor's Use Subagents… asks first, since the set
+ * it kept goes.
+ */
+function AgentsSection({ workspace, startOpen = false }: { workspace: WorkspaceMeta; startOpen?: boolean }) {
+  const env = workspace.environmentId;
+  const { scope, error, retry } = useRulesScope(env, workspace.id);
+  const may = useLinkMay(env, "rules.set");
+  const [open, setOpen] = useState(startOpen);
+  return (
+    <SettingSection of="ws.agents">
+      {scope ? (
+        <SettingRow id="ws.agents" description={scope.overridden ? "Set for this workspace" : "Same as Subagents"}>
+          {may ? (
+            <Button variant="ghost" size="sm" onClick={() => setOpen(true)}>
+              Change…
+            </Button>
+          ) : null}
+        </SettingRow>
+      ) : error ? (
+        <PageRow title={<span className="sr-only">Rules for its agents</span>} error={error}>
+          <Button variant="ghost" size="sm" onClick={retry}>
+            <BusyLabel busy={false} label="Retry" />
+          </Button>
+        </PageRow>
+      ) : (
+        <PageRowsSkeleton rows={[{ description: true, control: may ? "button" : "none" }]} />
+      )}
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetContent side="right" width={560}>
+          {/* The editor holds its own Use Subagents…, which asks first: the sheet adds no second one. */}
+          <SheetHeader>
+            <SheetTitle>Rules for {workspace.name}'s agents</SheetTitle>
+          </SheetHeader>
+          <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-x-hidden overflow-y-auto px-5 pb-5 @container/page">
+            <OrchestrationRulesEditor workspaceId={workspace.id} />
+          </div>
+        </SheetContent>
+      </Sheet>
+    </SettingSection>
+  );
+}
+
+/** Its projects by name, each opening its sheet; a find field past eight. */
 function ProjectsSection({ workspace }: { workspace: WorkspaceMeta }) {
-  const { snapshot } = useAccounts(workspace.environmentId);
   const projects = useProjects()
     .filter((p) => p.workspaceId === workspace.id && !p.archived)
     .sort((a, b) => a.name.localeCompare(b.name));
+  const filter = useListFilter(projects, projectWords);
+  const { snapshot } = useAccounts(workspace.environmentId);
   const [open, setOpen] = useState<ProjectMeta | null>(null);
   if (projects.length === 0) return null;
   return (
-    <PageSection title="Projects">
-      {projects.map((project) => (
-        <PageRow
-          key={project.id}
-          title={project.name}
-          description={pinsLine({ ...workspace.accountPins, ...project.accountPins }, snapshot)}
-        >
-          <Button variant="ghost" size="sm" aria-label={`${project.name} settings`} onClick={() => setOpen(project)}>
-            Settings…
-          </Button>
-        </PageRow>
+    <SettingSection of="ws.projects">
+      <ListFilter filter={filter} label="Find a project" />
+      {filter.shown.map((project) => (
+        <PageRow key={project.id} title={project.name} description={pinsLine({ ...workspace.accountPins, ...project.accountPins }, snapshot)} onOpen={() => setOpen(project)} openLabel={`${project.name} settings`} />
       ))}
       {open ? <ProjectSettingsDialog project={open} workspace={workspace} onClose={() => setOpen(null)} /> : null}
-    </PageSection>
+    </SettingSection>
   );
 }
 
-/** The accounts a project's threads spend from (its pins over the workspace's), one span per provider; nothing when none is pinned. */
+const projectWords = (project: ProjectMeta): string => project.name;
+
+/** The accounts a project's threads spend from (its pins over the workspace's), one span per agent app; nothing when none is pinned. */
 function pinsLine(pins: AccountPins, snapshot: ReturnType<typeof useAccounts>["snapshot"]): ReactNode {
   const pinned = ROUTED_PROVIDERS.filter((provider) => pins[provider]);
   if (pinned.length === 0) return undefined;

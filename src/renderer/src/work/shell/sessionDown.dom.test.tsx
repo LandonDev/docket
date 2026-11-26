@@ -43,7 +43,7 @@ const { View: ChatReply } = await import("../messages/ChatReplyAct");
 const { View: CalendarAct } = await import("../agenda/CalendarActView");
 const { PageVerbs } = await import("../prep/PrepView");
 const { TodayPageView } = await import("../today/TodayView");
-const { WaitingSection } = await import("../mail/WaitingSection");
+const { WaitingRows } = await import("../mail/WaitingSection");
 const { HeldDetail } = await import("../outbox/HeldDetail");
 
 const NOW = Date.UTC(2026, 10, 24, 17);
@@ -434,7 +434,7 @@ describe("a session that comes back", () => {
         <OnSession sector="purdue">{(session) => <DownLine session={session} />}</OnSession>
         <OnSession sector={null}>{(session) => <LifeosLine session={session} waiting={<span data-waiting />} />}</OnSession>
         <ViewFrame view="tasks" environmentId="env_box" workspaceId="ws" sector="purdue" />
-        <WaitingSection workspace={workspace as never} />
+        <WaitingRows workspace={workspace as never} />
       </>,
     );
     await waitFor(() => expect(times(WORDS["signed-out"])).toBe(4));
@@ -448,7 +448,7 @@ describe("a session that comes back", () => {
     expect(document.querySelector("[data-session-down]")).toBeNull();
     // Waiting on read its days again, through its own ask, and shows them.
     expect(asked.filter((m) => m === "work.mail.waiting").length).toBe(daysAsked + 1);
-    expect(screen.getByRole("combobox", { name: "Count as waiting after" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Count sent mail as unanswered after" })).toBeTruthy();
   });
 });
 

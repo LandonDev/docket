@@ -26,19 +26,20 @@ enum Appearance: String, CaseIterable {
     }
 }
 
-/// Settings, from the Home navigation bar: the hosts, notifications and the
-/// appearance, as Apple's own Settings lays them out. Inset grouped, one
-/// sentence of footer where a row needs explaining, the app's version last
-/// (a long press on it opens Diagnostics, `DiagnosticsScreen`).
+/// Settings, from the Home navigation bar, as Apple's own Settings lays it
+/// out: the computers, Work, Away, notifications and the appearance, then
+/// Diagnostics with the app's version under it. Inset grouped, one sentence
+/// of footer where a row needs explaining. The words are the Settings 2
+/// glossary's: a computer, never a host.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openURL) private var openURL
     @AppStorage("appearance") private var appearance = Appearance.system
     @Environment(\.dynamicTypeSize) private var typeSize
-    /// Where the switch sits while the permission prompt and the hosts are
+    /// Where the switch sits while the permission prompt and the computers are
     /// asked; nil once they have answered and the registrar's word is true.
     @State private var pushPending: Bool?
-    /// The hidden Diagnostics screen, from a long press on the version line.
+    /// Diagnostics, from its row (and the proof's route).
     @State private var showsDiagnostics = false
 
     var body: some View {
@@ -47,15 +48,15 @@ struct SettingsView: View {
         List {
             Section {
                 NavigationLink(value: Route.hosts) {
-                    // The host's name wraps under the label at accessibility sizes instead of truncating.
+                    // The computer's name wraps under the label at accessibility sizes instead of truncating.
                     if typeSize.isAccessibilitySize {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Hosts")
+                            Text("Computers")
                             HostsSummary(clients: clients)
                         }
                     } else {
                         HStack(spacing: Layout.rowGap) {
-                            Text("Hosts")
+                            Text("Computers")
                             Spacer(minLength: Layout.rowGap)
                             HostsSummary(clients: clients)
                         }
@@ -63,14 +64,29 @@ struct SettingsView: View {
                 }
                 .accessibilityIdentifier("hosts-row")
             } footer: {
-                Text(clients.isEmpty ? "Pair a desktop or the agent host to see its threads here." : "Threads from every paired host appear on Home.")
+                if clients.isEmpty { Text("Sign this phone in to a computer to see its threads here.") }
             }
 
-            // Work (milestone 46): the switch, LifeOS, grants and tool rules of each host that has Work.
-            if clients.contains(where: { $0.work.settings != nil }) {
+            // Work (milestone 46): each computer's switch, LifeOS, grants and tool rules. It holds its place, in the
+            // row's shape, until a computer has answered.
+            if !clients.isEmpty {
                 Section {
-                    NavigationLink(value: Route.workSettings) { Text("Work") }
-                        .accessibilityIdentifier("work-settings-row")
+                    switch WorkRowState.of(clients.map { (answered: $0.work.settings != nil, settled: Self.settled($0.status)) }) {
+                    case .shown:
+                        NavigationLink(value: Route.workSettings) { Text("Work") }
+                            .accessibilityIdentifier("work-settings-row")
+                    case .waiting:
+                        SettingsPlaceholderRows(labels: ["Work"])
+                    case .hidden:
+                        EmptyView()
+                    }
+                    // Away (the host menu's switches, `away.get` and `away.set`): Code and Work threads per computer.
+                    NavigationLink {
+                        AwaySettingsScreen().sidebarButtonPage()
+                    } label: {
+                        LabeledContent("Away", value: AwayWords.summary(clients.map(\.work.awayOn)))
+                    }
+                    .accessibilityIdentifier("away-settings-row")
                 }
             }
 
@@ -109,12 +125,14 @@ struct SettingsView: View {
             }
 
             Section {
+                NavigationLink {
+                    DiagnosticsScreen().sidebarButtonPage()
+                } label: {
+                    Text("Diagnostics")
+                }
+                .accessibilityIdentifier("diagnostics-row")
+            } footer: {
                 VersionFooter()
-                    .contentShape(Rectangle())
-                    .onLongPressGesture { showsDiagnostics = true }
-                    .accessibilityAction(named: "Diagnostics") { showsDiagnostics = true }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets())
             }
         }
         .listStyle(.insetGrouped)
@@ -125,6 +143,14 @@ struct SettingsView: View {
         // The proof's `diagnostics` route (RootView): Settings opens straight onto Diagnostics and its Work Checks.
         .task { if ProcessInfo.processInfo.environment["TC_TEST_ROUTE"] == "diagnostics" { showsDiagnostics = true } }
         #endif
+    }
+
+    /// A link that has answered or stopped trying: its Work settings will not come by waiting.
+    static func settled(_ status: EnvironmentStatus) -> Bool {
+        switch status.transport {
+        case .open, .offline, .unauthorized: true
+        case .connecting, .reconnecting, .suspended: false
+        }
     }
 
     private var pushBinding: Binding<Bool> {
@@ -148,18 +174,18 @@ struct SettingsView: View {
 
     /// One sentence under the row: what the switch does, or what stands in its way.
     private func pushFooter(_ push: PushRegistrar) -> String {
-        guard push.enabled else { return "Approvals, questions, errors and finished work from every paired host." }
+        guard push.enabled else { return "Approvals, questions, errors and finished work from every computer." }
         if push.permission == .denied { return "Notifications for Docket are turned off in the phone's Settings." }
         if let error = push.tokenError { return "The phone could not register for push: \(sentence(error))" }
         if push.device == nil { return "Waiting for the phone's push token." }
-        if let failure = push.failures.values.first { return "A host refused the registration: \(sentence(failure))" }
+        if let failure = push.failures.values.first { return "A computer refused the registration: \(sentence(failure))" }
         let registered = push.statuses.values.filter(\.registered)
-        if registered.contains(where: { $0.relay == .ok }) { return "Every paired host sends approvals, questions, errors and finished work here." }
+        if registered.contains(where: { $0.relay == .ok }) { return "Approvals, questions, errors and finished work come here from every computer." }
         if let failed = registered.first(where: { $0.relay == .failed }) {
-            return failed.error.map { "A host could not reach the relay: \(sentence($0))" } ?? "A host could not reach the relay."
+            return failed.error.map { "A computer could not reach the relay: \(sentence($0))" } ?? "A computer could not reach the relay."
         }
-        if !registered.isEmpty { return "A paired host has no relay to Apple; its notifications stay on the desktop." }
-        return "Registering with the paired hosts."
+        if !registered.isEmpty { return "A computer has no relay to Apple; its notifications stay on it." }
+        return "Registering with the computers."
     }
 
     private func openSystemSettings() {
@@ -168,8 +194,74 @@ struct SettingsView: View {
     }
 }
 
-/// The trailing half of the Hosts row: one connection dot per host and the
-/// single host's name, or the count.
+/// Settings → Away: each computer's switches, the host menu's own
+/// (`AwayMenuItem`, `away.get` and `away.set`): Code threads, and Work
+/// threads while Work is on there. A flip goes to that computer alone, as the
+/// menu's does; a refusal puts the switch back and says so in a toast.
+struct AwaySettingsScreen: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let clients = model.registry.ordered
+        List {
+            ForEach(clients, id: \.environment.id) { client in
+                AwayComputerSection(client: client, named: clients.count > 1, last: client.environment.id == clients.last?.environment.id)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Away")
+        .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("away-settings")
+    }
+}
+
+/// One computer's Away: its switches once `away.get` has answered, their shape while it has not, and a line when it
+/// will not (out of reach, or a computer from before Away).
+private struct AwayComputerSection: View {
+    let client: EnvironmentClient
+    let named: Bool
+    /// The last section carries the screen's one footer, what Away does.
+    let last: Bool
+
+    var body: some View {
+        let work = client.work
+        let threads = client.listedSessions
+        let switches = work.awaySwitches { id in threads.first { $0.id == id }?.scope }
+            .filter { $0.kind != .work || work.isOn }
+        Section {
+            if work.away == nil {
+                if SettingsView.settled(client.status) {
+                    Text(client.status.transport == .open ? "Away needs a newer Docket on \(client.environment.name)." : ConnectionSentence.text(name: client.environment.name, status: client.status, now: .now))
+                        .textStep(.meta)
+                } else {
+                    SettingsPlaceholderRows(labels: [AwayWords.title(.code)], toggles: true)
+                }
+            }
+            ForEach(switches) { item in
+                Toggle(isOn: Binding(get: { item.on }, set: { on in Task { await flip(item.kind, on) } })) {
+                    Text(AwayWords.title(item.kind))
+                    if let tally = item.tally { Text(tally) }
+                }
+                .disabled(!work.may(.awaySet))
+                .accessibilityIdentifier("away-settings-\(item.id)")
+            }
+        } header: {
+            if named { Text(client.environment.name) }
+        } footer: {
+            let lines = (work.away != nil && !work.may(.awaySet) ? ["This phone may not change Away on \(client.environment.name)."] : []) + (last ? [AwayWords.footer] : [])
+            if !lines.isEmpty { Text(lines.joined(separator: "\n")) }
+        }
+    }
+
+    private func flip(_ kind: AwayKinds.Kind?, _ on: Bool) async {
+        do { try await client.work.setAway(kind, on) } catch {
+            FleetToastCenter.shared.post(message: "Away not changed: \(ActionError.wrap(error).message)")
+        }
+    }
+}
+
+/// The trailing half of the Computers row: one connection dot per computer
+/// and the single computer's name, or the count.
 private struct HostsSummary: View {
     let clients: [EnvironmentClient]
 
@@ -190,9 +282,9 @@ private struct HostsSummary: View {
     }
 }
 
-/// The app's version and the contract it speaks, centred and dim at the
-/// bottom, as Apple's Settings ends: the first thing to read off a
-/// screenshot when a host says the app is too old.
+/// The app's version and the contract it speaks, centred and dim under
+/// Diagnostics, as Apple's Settings ends: the first thing to read off a
+/// screenshot when a computer says the app is too old.
 private struct VersionFooter: View {
     var body: some View {
         let info = Bundle.main.infoDictionary

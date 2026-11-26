@@ -586,7 +586,7 @@ nothing (decision 2 of the files pass), the mod key with A selects all and with 
 parent folder, `/` is Search, Escape lets go of the selection. A key pressed in
 the Beside seat, or one an editor took (`defaultPrevented`: a deck's Delete), is
 the file's: the folder hears none of these (Page.tsx `onKeyDown`). Settings →
-Keybindings lists them under "Files (Work)". Only the port is in the first
+Shortcuts lists them under "Files (Work)". Only the port is in the first
 paint: the rule for whose focus it is, the chords, the menu map and the key table
 (`bindings.ts`, which lists itself when the view or the Keybindings page
 loads, `addKeybindingGroup`) ride lazy chunks.
@@ -2784,7 +2784,7 @@ over a colleague's Word file but his own press.
   files/wordSave.ts): what the import that made the document did not keep (its warnings, kept in the window by the
   document's file, formats/importOnce.ts `importLosses`) and Preview's count for Word (`dropsOf`), none when it has
   none, and the list of what this editor never keeps (`WORD_LOSSES`) where this window did not import it. Settings →
-  Work, Word files, "Save to Teams" holds the default for a file with no choice (work/files/wordDefault.ts: Ask the
+  Files, On this Mac, "Word files save to Teams" holds the default for a file with no choice (work/files/wordDefault.ts: Ask the
   first time, the default; As I work; When I press Save), which a tab sets on the file's record when it is not to
   ask. Save As… on such a document never offers the file's own path: its name starts as "Plan copy" (SaveAs.tsx
   `offeredStem`). The file as it is
@@ -3211,7 +3211,7 @@ share, listing a folder of 300 entries did not answer in 30 s and opening a 5 MB
   it), and a mapped drive's rows always count as here, so the window never downloads one first.
 - **Which way a folder is read, said.** Without the folder reader (Windows refused to make it, or a
   harness run turned it off with `TEMP_CODE_DIR_HELPER=0`), a folder on a mapped drive is one `readdir`
-  with types and its rows looked at by a pool of 32 (`stateRows`), and Settings → Work says under each
+  with types and its rows looked at by a pool of 32 (`stateRows`), and Settings → Files says under each
   such folder, on its own line under the path, "Read row by row, which is slower: Windows did not let
   TempCode make its folder reader."
   `doctor.get` carries `folderReader` (`one read`, `row by row` with why, `not started`).

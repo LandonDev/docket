@@ -14,6 +14,7 @@ import type { Link } from "../../../lib/connection";
 import { useHostRead } from "../../../lib/connection/hostRead";
 import { refusalWords } from "../../../lib/settingsHome";
 import { editorChunk } from "../../chunks";
+import { everyWorkspace } from "../addons/addonWords";
 import { CLI_LABELS, bytesOf, canUntick, choiceOf, fileBytes, filesToSave, harnessesOf, isBinary, isDirty, newSkillFiles, orderFiles, skillTemplate, type CliChoice, type SkillDraft } from "./skillForm";
 
 /** CodeMirror loads with the editor chunk, never with Settings. */
@@ -24,6 +25,8 @@ type Props = {
   /** null: a new skill */
   skill: SkillMeta | null;
   workspaces: readonly { id: string; name: string }[];
+  /** Where the one copy for every workspace is kept: "Where" names it. */
+  home?: { name: string } | null;
   onClose: () => void;
   /** After the dialog's exit has played: the row the host answered. */
   onSaved: (skill: SkillMeta) => void;
@@ -41,7 +44,7 @@ const sentence = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
  * that moved meanwhile is refused. Closing with unsaved edits asks first.
  * Its own `Dialog` root, since a close may have to wait for that answer.
  */
-export function SkillDialog({ link, skill, workspaces, onClose, onSaved }: Props) {
+export function SkillDialog({ link, skill, workspaces, home, onClose, onSaved }: Props) {
   const read = useHostRead<{ skill: Skill }>(skill ? link : null, () => link.request<{ skill: Skill }>("skills.get", { id: skill!.id }), skill?.id ?? "");
   const loaded = read.value?.skill ?? null;
   const initial = useRef<SkillDraft>({ name: skill?.name ?? "", workspaceId: skill?.workspaceId ?? null, choice: choiceOf(skill?.harnesses ?? "all"), drafts: {} });
@@ -119,7 +122,7 @@ export function SkillDialog({ link, skill, workspaces, onClose, onSaved }: Props
       );
   };
 
-  const where = [{ value: "", label: "Every workspace" }, ...workspaces.map((w) => ({ value: w.id, label: w.name }))];
+  const where = [{ value: "", label: everyWorkspace(home) }, ...workspaces.map((w) => ({ value: w.id, label: w.name }))];
   const current = files?.find((f) => f.path === path) ?? files?.[0];
   const textFile = files?.find((f) => f.path === textPath && !isBinary(f));
   const textOf = (p: string): string => drafts[p] ?? (skill ? (files?.find((f) => f.path === p)?.text ?? "") : skillTemplate(name.trim()));
@@ -152,7 +155,7 @@ export function SkillDialog({ link, skill, workspaces, onClose, onSaved }: Props
               <FieldRow label="Where">
                 <ChoiceSelect label="Where" size="sm" value={workspaceId ?? ""} onChange={(v) => setWorkspaceId(v || null)} options={where} />
               </FieldRow>
-              <FieldRow label="CLIs">
+              <FieldRow label="Agent apps">
                 <div role="group" className="flex items-center gap-4">
                   {SKILL_HARNESSES.map((h) => (
                     <CheckRow
