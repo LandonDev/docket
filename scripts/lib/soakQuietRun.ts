@@ -14,7 +14,7 @@ import type { Verdict } from './soakJudge'
 import { spread } from './soakTyping'
 import { CENSUS, flushesBetween, IDLE_PAGE, IDLE_PHASES, IDLE_RULE, IDLE_TIMING, judgeIdle, summarizeIdlePhase, type Census, type FlushRecord, type IdlePhase, type IdlePhaseName } from './soakIdle'
 import { frameMainMs, judgeLong, LONG_JUMP_SEQ, LONG_PAGE, LONG_RULE, LONG_TIMING, taskList, type LongResult } from './soakLong'
-import { DAY_RULE, DAY_TIMING, judgeDay, rawRows, STORE_CENSUS, type DayResult, type StoreCensus } from './soakDay'
+import { DAY_RULE, DAY_TIMING, extraLoaded, judgeDay, rawRows, STORE_CENSUS, type DayResult, type StoreCensus } from './soakDay'
 
 export interface QuietCtx {
   c: Cdp
@@ -346,11 +346,14 @@ export async function recordDay(ctx: QuietCtx): Promise<boolean> {
   const verdict = judgeDay(result)
   const raw = rawRows(end)
   log(`heap after GC ${heapStartMb} → ${heapEndMb} MB; ${end.loaded.length} transcripts loaded, ${end.mounted} mounted (${end.closure ?? '–'} with their closure), raw rows ${raw.total} (the most ${raw.max}, ${raw.perLoaded} a loaded one); CPU ${cpuPct}%`)
+  const extra = extraLoaded(end)
+  if (extra.length) log(`past the kept set: ${extra.map((x) => `${x.id} (${x.why})`).join(', ')}`)
   const md = [
     `# ${ctx.label}: day scene, ${opened.length} threads opened and left inside ${DAY_TIMING.windowMs / 1000} s while ${ctx.children.length} stream (${process.platform})`,
     '',
     `Heap after GC ${heapStartMb} MB at the start, ${heapEndMb} MB at the end. Renderer CPU ${cpuPct}% of one core over the window.`,
     '',
+    ...(extra.length ? [`Loaded past the kept set: ${extra.map((x) => `${x.id}, ${x.why}`).join('; ')}.`, ''] : []),
     `At the end: ${end.loaded.length} transcripts loaded, ${end.mounted} mounted (${end.closure ?? '–'} with their subagents and batch), ${end.recent ?? '–'} kept as recently shown; raw rows kept ${raw.total} in all, the most ${raw.max}, ${raw.perLoaded} a loaded transcript.`,
     '',
     '| loaded transcript | mounted | busy | blocks | raw rows |',

@@ -18,19 +18,36 @@ export const STORE_CENSUS = `(() => {
   const st = window.__docket.sessionStore
   const mounted = st.mounted ? [...st.mounted] : []
   const closure = typeof st.mountedClosure === 'function' ? st.mountedClosure() : null
+  const kept = typeof st.keptLoaded === 'function' ? st.keptLoaded() : null
+  const recent = Array.isArray(st.recent) ? st.recent : []
+  // Why a loaded transcript stays: kept (mounted, its closure, recently shown), or the unload's refusal.
+  const why = (e) => {
+    const id = e.meta.id
+    if (mounted.includes(id)) return 'mounted'
+    if (closure && closure.has(id)) return 'closure'
+    if (kept && kept.has(id)) return recent.includes(id) ? 'recent' : 'kept'
+    if (e.loading) return 'refused: a load in flight'
+    if (e.session.blocks.some((b) => b.pending)) return 'refused: a send pending'
+    return st.unloadTimer ? 'the unload pass is on its way' : 'no unload pass since it left the kept set'
+  }
   const loaded = []
   for (const e of st.entries.values()) {
     if (!e.meta || !e.loaded) continue
-    loaded.push({ id: e.meta.id, rows: e.rows ? e.rows.length : null, blocks: e.session.blocks.length, busy: !!e.session.busy, mounted: mounted.includes(e.meta.id) })
+    loaded.push({ id: e.meta.id, rows: e.rows ? e.rows.length : null, blocks: e.session.blocks.length, busy: !!e.session.busy, mounted: mounted.includes(e.meta.id), why: why(e) })
   }
-  return { mounted: mounted.length, closure: closure ? closure.size : null, recent: Array.isArray(st.recent) ? st.recent.length : null, loaded }
+  return { mounted: mounted.length, closure: closure ? closure.size : null, recent: recent.length, loaded }
 })()`
 
 export interface StoreCensus {
   mounted: number
   closure: number | null
   recent: number | null
-  loaded: { id: string; rows: number | null; blocks: number; busy: boolean; mounted: boolean }[]
+  loaded: { id: string; rows: number | null; blocks: number; busy: boolean; mounted: boolean; why?: string }[]
+}
+
+/** The loaded transcripts past the kept set, each with why it stays: what a day over its bound reads. */
+export function extraLoaded(c: StoreCensus): { id: string; why: string }[] {
+  return c.loaded.filter((l) => l.why && !['mounted', 'closure', 'recent', 'kept'].includes(l.why)).map((l) => ({ id: l.id, why: l.why! }))
 }
 
 export interface DayResult {
