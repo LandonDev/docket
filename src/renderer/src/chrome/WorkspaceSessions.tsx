@@ -86,7 +86,8 @@ import { useSessionMetas } from "../lib/tcserver/store";
 import { usePlanReady } from "../hooks/usePlanReady";
 import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog, useWorkspaces, WORK_CHATS } from "../lib/tcserver/workspaces";
-import { isWorkWorkspace } from "../lib/workRow";
+import { isWorkThread, isWorkWorkspace } from "../lib/workRow";
+import { ProviderLead, TrailingType, markWords } from "./RowMarks";
 import { LIFEOS_CARD, openWorkView, useLifeosProjects, useWorkHosts, workColumnPort } from "../lib/workSwitch";
 import { loadToast } from "../components/ui/toaster";
 import { subagentRows, subagentRowsOpen, useSubagentRows } from "../stores/subagentRows";
@@ -411,6 +412,9 @@ export function ThreadRowView({
   const verdict = word && row.failure && rowState(row) === "failed" ? row.failure : null;
   const mark = rowMark(row, planReady);
   const shownTitle = row.title || (child && !row.masterId ? "Subagent" : "Untitled");
+  // A Work root leads with its provider and says a type other than chat after its title (chrome/RowMarks.tsx).
+  const work = !child && isWorkThread(row);
+  const named = work ? [shownTitle, ...markWords(row)].join(", ") : shownTitle;
   // Hover and focus put More over the glyph, so the row itself says the
   // word and its detail: the pointer anywhere on it, or the keyboard on it.
   const state =
@@ -443,7 +447,7 @@ export function ThreadRowView({
     <ItemButton
       data-row-open
       aria-current={selected || undefined}
-      aria-label={marksAtRest(mark.state) && !word ? `${shownTitle}, ${mark.label}` : shownTitle}
+      aria-label={marksAtRest(mark.state) && !word ? `${named}, ${mark.label}` : named}
       onClick={() => onOpen?.()}
       className={ROW_OPEN}
     />
@@ -472,9 +476,9 @@ export function ThreadRowView({
           {tip ? <TooltipContent side="right">{tip}</TooltipContent> : null}
         </Tooltip>
       )}
-      {/* The lead column: a root's type glyph; under it a child's one step in. */}
+      {/* The lead column: a root's type glyph (a Work root's provider); under it a child's one step in. */}
       <span aria-hidden className={cn(ROW_SHOWS, "grid size-4 shrink-0 place-items-center")}>
-        {child ? null : <TypeGlyph type={row.threadType} className="size-3" />}
+        {child ? null : work ? <ProviderLead provider={row.provider} /> : <TypeGlyph type={row.threadType} className="size-3" />}
       </span>
       {RoleGlyph ? (
         <span aria-hidden className={cn(ROW_SHOWS, "grid size-4 shrink-0 place-items-center text-muted-foreground")}>
@@ -501,6 +505,11 @@ export function ThreadRowView({
       )}
       {!editing ? (
         <>
+          {work && row.threadType && row.threadType !== "chat" ? (
+            <span aria-hidden className={cn(ROW_SHOWS, "flex shrink-0")}>
+              <TrailingType type={row.threadType} />
+            </span>
+          ) : null}
           <span aria-hidden className={cn(ROW_SHOWS, "flex shrink-0")}>
             <HostGlyph environmentId={row.environmentId} />
           </span>

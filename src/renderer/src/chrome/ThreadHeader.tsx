@@ -148,7 +148,7 @@ export function ThreadHeader({
             ? { ...model, live: [], dormant: [], list: [...model.live, ...model.dormant], heading: workHeading ? activeChip : null }
             : model
         }
-        crumb={workHeading ? <WorkCrumb thread={activeChip.thread} /> : draftWhere ? <WorkCrumb thread={draftWhere} last /> : undefined}
+        crumb={workHeading ? <WorkCrumb thread={activeChip.thread} type={activeChip.thread.threadType ?? null} /> : draftWhere ? <WorkCrumb thread={draftWhere} last /> : undefined}
         planReady={planReady}
         renamingId={renamingId}
         onSelect={onSelect}

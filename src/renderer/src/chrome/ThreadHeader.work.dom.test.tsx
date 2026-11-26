@@ -27,7 +27,12 @@ vi.mock("./ThreadHeaderStrip", () => ({
 }));
 // The crumb rides the head's lazy chunk: the test stands its surface in.
 vi.mock("../surfaces/chunks", () => ({
-  workHeadChunk: { surface: () => ({ last, thread }: { last?: boolean; thread: { projectId?: string | null } }) => <span data-testid="crumb" data-last={String(!!last)} data-project={thread.projectId ?? ""} /> },
+  workHeadChunk: {
+    surface: () =>
+      ({ last, thread, type }: { last?: boolean; thread: { projectId?: string | null }; type?: string | null }) => (
+        <span data-testid="crumb" data-last={String(!!last)} data-project={thread.projectId ?? ""} data-type={type === undefined ? "none" : String(type)} />
+      ),
+  },
 }));
 vi.mock("./ThreadMenu", () => ({
   ThreadMenu: ({ terminal }: { terminal: { onShow?: () => void; onNew?: () => void } }) => (
@@ -85,7 +90,8 @@ describe("ThreadHeader", () => {
     const strip = screen.getByTestId("strip");
     expect(strip.dataset.chips).toBe("0");
     expect(strip.dataset.heading).toBe("t1");
-    expect(screen.getByTestId("crumb")).toBeTruthy();
+    // The crumb ends on the thread's type, beside its title.
+    expect(screen.getByTestId("crumb").dataset.type).toBe("chat");
     scope.work = false;
   });
 
@@ -106,6 +112,8 @@ describe("ThreadHeader", () => {
     expect(strip.dataset.heading).toBe("");
     expect(screen.getByTestId("crumb").dataset.last).toBe("true");
     expect(screen.getByTestId("crumb").dataset.project).toBe("p-lan");
+    // A draft's type is not set until it is sent: no glyph.
+    expect(screen.getByTestId("crumb").dataset.type).toBe("none");
     scope.work = false;
   });
 

@@ -4,6 +4,7 @@ import { useHostsOffline } from "../../chrome/hostOffline";
 import { Outbox } from "../../chrome/icons";
 import { RailRow } from "../../chrome/RailRow";
 import { ThreadListPopover } from "../../chrome/ThreadListPopover";
+import { ProviderLead, TrailingType, markWords } from "../../chrome/RowMarks";
 import { InlineRename, MoreMenu, MoreRow, PlanReadyContext, type RowActions } from "../../chrome/WorkspaceSessions";
 import { useTruncated } from "../../components/tip";
 import { Button } from "../../components/ui/button";
@@ -199,7 +200,8 @@ export const WorkThreadsSection = memo(function WorkThreadsSection({
 });
 
 /**
- * One thread, two lines: the lead, its title and its time (none while it works: the spinner says now); under them
+ * One thread, two lines: the lead (its provider at rest), its title, its type when not a chat, and its time (none
+ * while it works: the spinner says now); under them
  * its project and what it left him, "Spring LAN, 1 mail to send". Unread is weight on the title. A right-click or
  * its ⋯ opens the thread's menu; a double-click renames it.
  */
@@ -212,7 +214,7 @@ export const WorkThreadRow = memo(function WorkThreadRow({ row, project, actions
   const selected = row.id === actions.activeSessionId;
   const renaming = actions.renamingId === row.id;
   const working = lead?.kind === "state" && lead.state === "working";
-  const label = [title, leadWords(lead), line].filter(Boolean).join(", ");
+  const label = [title, ...markWords(row), leadWords(lead), line].filter(Boolean).join(", ");
   // A title or second line the column cuts is said whole on hover and focus, only while one is cut (as Today's rows).
   const { ref: measure, cut } = useTruncated(`${title}\n${line ?? ""}`);
   return (
@@ -239,8 +241,9 @@ export const WorkThreadRow = memo(function WorkThreadRow({ row, project, actions
           </TooltipContent>
         </Tooltip>
       )}
+      {/* The provider, until something live takes the slot. */}
       <span aria-hidden className={cn(ROW_SHOWS, "grid h-5 w-4 shrink-0 place-items-center")}>
-        <LeadMark lead={lead} />
+        {lead ? <LeadMark lead={lead} /> : <ProviderLead provider={row.provider} />}
       </span>
       <span ref={measure} aria-hidden={!renaming || undefined} className={cn(!renaming && ROW_SHOWS, "flex min-w-0 flex-1 flex-col")}>
         <span className="flex h-5 min-w-0 items-baseline gap-1">
@@ -257,6 +260,7 @@ export const WorkThreadRow = memo(function WorkThreadRow({ row, project, actions
           ) : (
             <span className={cn("min-w-0 flex-1 truncate text-[13px] leading-5", row.unread && "font-medium text-foreground")}>{title}</span>
           )}
+          {renaming ? null : <TrailingType type={row.threadType} className="me-1" />}
           {renaming ? null : <HostGlyph environmentId={row.environmentId} />}
           {renaming || working ? null : <span className={cn("shrink-0 text-xs tabular-nums text-muted-foreground", TIME_YIELDS)}>{threadTime(row.updatedAt, Date.now())}</span>}
         </span>

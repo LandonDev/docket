@@ -3344,12 +3344,16 @@ host anything per row: the rows read the session summaries (`workOutcome`) and L
   mail shows the Outbox glyph): what waits on him comes first.
 - **Threads**: a 12px heading, then every root thread of the job, loose and in its projects, newest first, a page
   at a time. A row is two lines, 6px top and bottom: the lead slot (the same marks, and the thread's own at-rest
-  marks: watching, paused, …), the title in 13px (medium foreground while unread) and its time at the end in 12px
+  marks: watching, paused, …; with none of them, the thread's provider at 12px, as a code row's type glyph, so one
+  slot never draws two marks), the title in 13px (medium foreground while unread), a type other than chat as its
+  12px tinted glyph 8px before the time (a chat, the common case, says nothing) and its time at the end in 12px
   muted tabular ("10:02 AM" today, "Tue" this week, "Nov 3" before), none while it works, since the spinner says
   now; under them in 12px muted the project, then what it left him, one comma sentence ("Spring LAN, 1 mail to
   send"), or nothing when it has neither. A row with neither is its first line alone. Done and idle draw no mark.
   A title or second line the column cuts is said whole in a tip on hover and focus, only while one is cut.
-  Right-click or ⋯ (over the time on hover) is the thread's menu; a double-click renames it.
+  Right-click or ⋯ (over the time on hover) is the thread's menu; a double-click renames it. **Work Chats** draws
+  the code rows (its state at the row's end) with the same two marks: the provider in the lead, a type other than
+  chat after the title.
 - **Archived**: a quiet row on the names' column at the end of Threads, "3 archived", opening the archived list
   (`ThreadListPopover`, Restore on hover) of the job's threads, loose and in projects; a pick restores and opens
   the thread. Work Chats ends its list with the same row. Nothing while none are archived.
@@ -3387,8 +3391,10 @@ docs/agents/work.md "What a thread left him"). It is the transcript's own top, i
   with one 12px muted line under the rows: "Couldn't refresh. As of 10:02 AM"; so does one whose LifeOS read
   failed, which keeps the task as last known.
 - **The title bar** of a Work thread is its crumb: the job's dot (12px), the project (a muted button opening its
-  page) or, loose in a job, the job's name, a 12px chevron, then the title in 13px medium; no strip of thread chips.
-  A Work Chat shows its title alone. A code thread's bar and transcript are unchanged (pixel-diffed).
+  page) or, loose in a job, the job's name, a 12px chevron, then the thread's type glyph (14px, tinted, as a code
+  chip leads with it) 6px before the title in 13px medium; no strip of thread chips. The head is where a chat says
+  its type, since its row does not. A Work Chat shows its type glyph and title alone, the glyph on the 18px a code
+  heading starts at; an unsent draft has no glyph. A code thread's bar and transcript are unchanged (pixel-diffed).
 - **The right panel** lists Results but opens on them only when he picks them.
 
 #### A Work draft

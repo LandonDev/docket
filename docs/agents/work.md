@@ -243,7 +243,11 @@ Settings → Work.
   `workspacePathOfSession` answer it for a row with `scope: "work"` and no
   workspace, so the code home never lists a Work Chat; it is never a folder
   (`looksLikeProject`). A draft there carries `scope: "work"`, which
-  `ensureCreated` sends on `session.create`.
+  `ensureCreated` sends on `session.create`. Its rows are the code column's
+  (`ThreadRowView`), but a Work root leads with its provider where a code row
+  has its type, says a type other than chat after its title, and keeps its
+  state at the row's end (chrome/RowMarks.tsx; code rows pixel-diffed
+  unchanged).
 - **The column** (chrome/Sidebar.tsx, WorkspaceSessions.tsx; the look is
   docs/DESIGN.md "The column"): a Work workspace offers no New project and no
   Orchestration. A linked one shows `WorkColumnHead`
@@ -282,7 +286,10 @@ Settings → Work.
   and is lit while that page shows; the heading is lit only on the list.
   **Threads** (`workThreadItems`): every root of the job, loose and in its
   projects, newest first, a page at a time, two lines each: `threadLead`
-  (question, failure, held, the row's own mark), title and time; then the
+  (question, failure, held, the row's own mark), else the thread's provider
+  (`ProviderLead`, chrome/RowMarks.tsx, from the `provider` and `scope`
+  `threadRow` copies onto a Work root), title, a type other than chat after
+  it (`TrailingType`) and time; then the
   project's name and the thread's `workOutcome.words` (the host's fold,
   "What a thread left him"), `threadLine`; a title or line the column cuts is
   said whole in a tip on hover and focus, as Today's rows. No row asks a host anything. A

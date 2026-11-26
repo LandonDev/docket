@@ -277,6 +277,29 @@ describe("the Threads section", () => {
     expect((await focusTip())?.textContent).toBe("Ask ITaP for two switchesSpring LAN, 1 mail to send");
   });
 
+  it("leads a thread at rest with its provider, hands the slot to what is live, and trails a type other than chat", () => {
+    const mixed = [
+      { row: row({ id: "rest", title: "Notes", provider: "codex" }), project: null },
+      { row: row({ id: "live", title: "Travel lines", provider: "claude", status: "running", running: true }), project: null },
+      { row: row({ id: "held", title: "Ask ITaP", provider: "claude", workOutcome: { words: "1 mail to send", tone: "held" } }), project: null },
+      { row: row({ id: "look", title: "Venues", provider: "muse", threadType: "research" }), project: null },
+    ];
+    render(<WorkThreadsSection items={mixed} actions={actions()} requested={30} onMore={() => {}} archived={scope} />);
+    const [rest, live, held, look] = [...document.querySelectorAll("[data-work-thread]")];
+    expect(rest!.querySelector("[data-provider]")!.getAttribute("data-provider")).toBe("codex");
+    // One mark in the lead: the spinner or the Outbox glyph, never beside the provider.
+    expect(live!.querySelector('[data-slot="status-mark"]')!.getAttribute("data-state")).toBe("working");
+    expect(live!.querySelector("[data-provider]")).toBeNull();
+    expect(held!.querySelector('[data-lead="held"]')).toBeTruthy();
+    expect(held!.querySelector("[data-provider]")).toBeNull();
+    // A chat says no type; research says it once, after the title.
+    expect(rest!.querySelector("[data-type-glyph]")).toBeNull();
+    expect(look!.querySelectorAll("[data-type-glyph]")).toHaveLength(1);
+    expect(look!.querySelector("[data-type-glyph]")!.getAttribute("data-type-glyph")).toBe("research");
+    expect(screen.getByRole("button", { name: "Venues, Research, Muse Code" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Notes, Codex" })).toBeTruthy();
+  });
+
   it("shows one page (32 rows), then N more", () => {
     const more = vi.fn();
     const many = Array.from({ length: 34 }, (_, i) => ({ row: row({ id: `t${i}`, title: `Thread ${i}` }), project: null }));

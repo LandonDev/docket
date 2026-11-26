@@ -4,10 +4,11 @@
 // the Outbox row. States: `waiting` (the Outbox with a count), `failed` (its failed mark) and `quiet` (nothing
 // waits). `#WorkColumnPreview` draws a Work job's whole column (docs/DESIGN.md "The column"): its four daily views
 // and More, its Projects (a working one, a held one, one past its target, one paused, one in backlog), its Threads on two lines and
-// the archived row. Rendered by nothing in the app.
+// the archived row, its threads on mixed providers and types. `#WorkChatsPreview` draws the Work Chats column, the
+// same mix. Rendered by nothing in the app.
 import { useState } from "react";
 import { ProjectRail } from "../../chrome/ProjectRail";
-import { workspaceStore } from "../../lib/tcserver/workspaces";
+import { WORK_CHATS, workspaceStore } from "../../lib/tcserver/workspaces";
 import { sessionStore } from "../../lib/tcserver/store";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { setWorkOn } from "../../lib/workSwitch";
@@ -83,9 +84,10 @@ const thread = (over: Partial<SessionMeta>): SessionMeta =>
   ({ id: "t", title: "", status: "idle", threadType: "chat", provider: "claude", cwd: JOB.path, scope: "work", createdAt: at(-2), updatedAt: at(-2), archived: false, ...over }) as SessionMeta;
 const THREADS: SessionMeta[] = [
   thread({ id: "t-itap", title: "Ask ITaP for two more switches", projectId: "m-lan", updatedAt: at(0, 10, 2), workOutcome: { words: "1 mail to send", tone: "held" } }),
-  thread({ id: "t-travel", title: "Fill the travel lines", projectId: "m-budget", status: "running", busySince: at(0, 11), updatedAt: at(0, 11, 4), workOutcome: { words: "Editing Budget FY27.xlsx", tone: "working" } }),
-  thread({ id: "t-seat", title: "Seat map for 64", projectId: "m-lan", updatedAt: at(0, 9, 35), workOutcome: { words: "Made Seat map.xlsx", tone: "made" } }),
+  thread({ id: "t-travel", title: "Fill the travel lines", projectId: "m-budget", provider: "codex", status: "running", busySince: at(0, 11), updatedAt: at(0, 11, 4), workOutcome: { words: "Editing Budget FY27.xlsx", tone: "working" } }),
+  thread({ id: "t-seat", title: "Seat map for 64", projectId: "m-lan", provider: "muse", threadType: "research", updatedAt: at(0, 9, 35), workOutcome: { words: "Made Seat map.xlsx", tone: "made" } }),
   thread({ id: "t-dana", title: "Reply to Dana about the venue", workspaceId: JOB.id, updatedAt: at(-1, 16, 20), workOutcome: { words: "Mail sent", tone: "done" } }),
+  thread({ id: "t-venues", title: "Venues that seat 200 near campus", workspaceId: JOB.id, provider: "codex", threadType: "research", updatedAt: at(-2, 15) }),
   thread({ id: "t-notes", title: "Notes from the staff meeting", workspaceId: JOB.id, updatedAt: at(-6, 14) }),
 ];
 const ARCHIVED: SessionMeta[] = [1, 2, 3].map((n) => thread({ id: `t-old${n}`, title: `Old thread ${n}`, workspaceId: JOB.id, archived: true, updatedAt: at(-20 - n) }));
@@ -120,6 +122,43 @@ export function WorkColumnPreview() {
     <div ref={setScroller} className="w-full overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-sidebar" style={{ maxWidth: 260, height: 760 }}>
       <WorkColumnHead workspace={JOB as WorkspaceMeta} />
       <WorkspaceSessions workspaceId={JOB.id} selectedProjectId={null} activeSessionId="t-seat" onSelectProject={none} onOpenSession={none} onNewChat={none} onNewProject={none} onRenameSession={none} onDeleteSession={none} scroller={scroller} />
+      <Unsettled ms={900} />
+    </div>
+  );
+}
+
+let chats = false;
+
+/** Work Chats, threads of no job: a chat, a working chat, a research thread, each on its own provider. */
+const CHATS: SessionMeta[] = [
+  thread({ id: "c-plan", title: "Plan the week", provider: "codex", status: "running", busySince: at(0, 11), updatedAt: at(0, 11, 2) }),
+  thread({ id: "c-rules", title: "What the NCAA says about streaming", provider: "muse", threadType: "research", updatedAt: at(0, 9, 12) }),
+  thread({ id: "c-gift", title: "A gift for Sam", updatedAt: at(-1, 18) }),
+];
+
+/** The Work Chats column: its threads as the code rows draw them, with the provider in the lead. */
+export function WorkChatsPreview() {
+  if (!chats) {
+    chats = true;
+    Object.assign(virtualChunk, { loaded: () => null, load: () => new Promise(() => {}) });
+    const link = answerAs((method, params) => {
+      if (method === "workspace.list") return [{ ...JOB, path: JOB.path, git: false } as WorkspaceMeta];
+      if (method === "project.list") return [];
+      if (method === "session.list") return params.archived ? [] : CHATS;
+      if (method === "session.changes") return { reset: false, seq: 0, generation: "g", sessions: [], removed: [] };
+      throw new Error(`no ${method}`);
+    });
+    workspaceStore.reset();
+    workspaceStore.attach(link);
+    sessionStore.reset();
+    sessionStore.attach(link);
+    setWorkOn("local", true);
+  }
+  const none = (): void => undefined;
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
+  return (
+    <div ref={setScroller} className="w-full overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-sidebar p-1" style={{ maxWidth: 260, height: 160 }}>
+      <WorkspaceSessions workspaceId={WORK_CHATS} selectedProjectId={null} activeSessionId="c-gift" onSelectProject={none} onOpenSession={none} onNewChat={none} onNewProject={none} onRenameSession={none} onDeleteSession={none} scroller={scroller} />
       <Unsettled ms={900} />
     </div>
   );

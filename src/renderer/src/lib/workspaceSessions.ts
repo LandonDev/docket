@@ -68,6 +68,8 @@ export type ThreadRow = {
   environmentId?: string;
   /** A Work root: what it left him, folded by the host ("1 mail to send", tone held); the Work column's second line. */
   workOutcome?: NonNullable<SessionMeta["workOutcome"]>;
+  /** A Work thread (lib/workRow.ts `isWorkThread`): its root rows carry `provider` for their lead. */
+  scope?: SessionMeta["scope"];
 };
 
 export type ProjectGroup = {
@@ -213,6 +215,7 @@ export function threadRow(
     createdAt: meta.createdAt,
     environmentId: meta.environmentId,
     ...(meta.workOutcome ? { workOutcome: meta.workOutcome } : {}),
+    ...(meta.scope === "work" ? { scope: meta.scope, provider: meta.provider } : {}),
     ...(meta.parentId
       ? { agentType: meta.agentType, provider: meta.provider, model: meta.model }
       : meta.masterId
