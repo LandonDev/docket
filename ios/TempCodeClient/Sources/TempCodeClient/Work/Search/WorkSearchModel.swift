@@ -199,7 +199,7 @@ public nonisolated struct WorkSearchModel: Sendable, Equatable {
         let kept = slots.filter { slot in hosts.contains { $0.id == slot.host } }
         next.slots = Self.inScope(kept, within: scope == self.scope || scope == nil ? nil : (within ?? []))
         next.out = Set(hosts.map { Self.outKey($0.id) })
-        next.quiet = offline.map { Quiet(key: "offline:\($0)", line: "\($0) is offline.") } + (unsearched.map { [Quiet(key: "unsearched", line: $0)] } ?? [])
+        next.quiet = offline.map { Quiet(key: "offline:\($0)", line: $0.hasSuffix("…") ? $0 : "\($0).") } + (unsearched.map { [Quiet(key: "unsearched", line: $0)] } ?? [])
         next.orderGen = same && orderGen == gen ? gen + 1 : orderGen
         next.searched = false
         next.deeper = hosts.count == self.hosts.count && hosts.allSatisfy { h in self.hosts.contains { $0.id == h.id } } ? deeper : []

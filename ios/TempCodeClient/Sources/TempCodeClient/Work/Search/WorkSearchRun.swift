@@ -145,7 +145,8 @@ public nonisolated enum WorkSearchHosts {
     }
 
     /// The hosts to ask, the Work home first (the desktop's `workHome`: the box, else the first), and the hosts
-    /// with Work on that are not connected, by name. A key that may not search a host leaves it out: a host
+    /// with Work on that are not connected, each as its quiet line's words ("Purdue laptop is offline"), as the
+    /// desktop's `searchHosts` gives them. A key that may not search a host leaves it out: a host
     /// would only refuse it. When the home is not connected the first host that is stands in, so LifeOS is
     /// still asked once.
     public static func hosts(_ inputs: [Input]) -> (hosts: [WorkSearchModel.Host], offline: [String]) {
@@ -153,7 +154,7 @@ public nonisolated enum WorkSearchHosts {
         let home = (on.first { $0.platform == "linux" } ?? on.first)?.id
         var hosts = on.filter(\.open).map { WorkSearchModel.Host(id: $0.id, name: $0.name, home: $0.id == home) }
         if !hosts.isEmpty, !hosts.contains(where: \.home) { hosts[0].home = true }
-        return (hosts.filter(\.home) + hosts.filter { !$0.home }, on.filter { !$0.open }.map(\.name))
+        return (hosts.filter(\.home) + hosts.filter { !$0.home }, on.filter { !$0.open }.map { "\($0.name) is offline" })
     }
 
     /// The Work scope is offered while some host with Work on lets this key search it.

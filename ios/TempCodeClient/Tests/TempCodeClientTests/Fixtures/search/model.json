@@ -1656,14 +1656,14 @@
             }
           ],
           "offline": [
-            "Purdue laptop"
+            "Purdue laptop is offline"
           ],
           "unsearched": "Folders on Purdue laptop were not searched.",
           "expect": {
             "rows": [
               {
                 "type": "note",
-                "id": "quiet:offline:Purdue laptop",
+                "id": "quiet:offline:Purdue laptop is offline",
                 "text": "Purdue laptop is offline.",
                 "cause": true
               },
@@ -1713,7 +1713,7 @@
             "rows": [
               {
                 "type": "note",
-                "id": "quiet:offline:Purdue laptop",
+                "id": "quiet:offline:Purdue laptop is offline",
                 "text": "Purdue laptop is offline.",
                 "cause": true
               },
@@ -1767,7 +1767,7 @@
               },
               {
                 "type": "note",
-                "id": "quiet:offline:Purdue laptop",
+                "id": "quiet:offline:Purdue laptop is offline",
                 "text": "Purdue laptop is offline.",
                 "cause": true
               },

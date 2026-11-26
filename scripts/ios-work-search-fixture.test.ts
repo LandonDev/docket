@@ -130,7 +130,7 @@ const CASES: Case[] = [
   {
     name: 'quiet lines',
     steps: [
-      { op: 'begin', text: 'budget', hosts: [BOX, MAC], offline: ['Purdue laptop'], unsearched: 'Folders on Purdue laptop were not searched.' },
+      { op: 'begin', text: 'budget', hosts: [BOX, MAC], offline: ['Purdue laptop is offline'], unsearched: 'Folders on Purdue laptop were not searched.' },
       { op: 'instant', host: 'box', answer: answer({ quiet: [{ cause: 'lifeos', line: 'LifeOS is still connecting.' }, { cause: 'files', line: 'A library is asleep.' }], searched: 1 }) },
       { op: 'instant', host: 'mac', answer: answer({ quiet: [{ cause: 'files', line: 'A library is asleep.' }], searched: 1 }) },
       { op: 'begin', text: 'budget2', hosts: [BOX, MAC] },

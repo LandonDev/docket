@@ -111,7 +111,7 @@ import TempCodeContract
         let (hosts, offline) = WorkSearchHosts.hosts(inputs)
         #expect(hosts.map(\.id) == ["box", "mac"])
         #expect(hosts.map(\.home) == [true, false])
-        #expect(offline == ["Purdue laptop"])
+        #expect(offline == ["Purdue laptop is offline"])
         // The box offline: the first connected host asks LifeOS.
         let without = WorkSearchHosts.hosts(inputs.map { var i = $0; if i.id == "box" { i.open = false }; return i })
         #expect(without.hosts.map(\.id) == ["mac"])
