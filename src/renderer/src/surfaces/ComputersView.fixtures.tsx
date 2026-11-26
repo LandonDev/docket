@@ -4,7 +4,7 @@
 // fixtures (src/main/server/computer/fixtures/apps): scratch content only.
 import type { ReactNode } from "react";
 import type { ComputerTile } from "../lib/computers";
-import type { ComputersPageProps, Place } from "./ComputersView";
+import { stoppedPlate, type ComputersPageProps, type Place } from "./ComputersView";
 import { drawnPixelated, fitStage, type PictureKind } from "../lib/stageLayout";
 import { VM_STILL, tile } from "./threads/computer/FullWindow.fixtures";
 import { PIXELATED, Viewport, ViewportLine, pictureClass, type PlateProps } from "./threads/computer/Viewport";
@@ -34,7 +34,8 @@ const sized = (node: ReactNode) => (place: Place): ReactNode => {
   return <div style={fit ? { width: fit.width } : undefined} className={fit ? undefined : "w-full"}>{node}</div>;
 };
 const elsewhere = (machine: string) => sized(<Viewport fill face={{ kind: "none" }} label={`Shown on ${machine} only`} line={<ViewportLine words={`Shown on ${machine} only`} />} />);
-const ended = () => sized(<Viewport fill face={{ kind: "none" }} label="Live view" line={<ViewportLine words="The preview stopped" onRetry={noop} />} />);
+// The page's own stopped face (`stoppedPlate`): a plate with Retry, as every face of the stage.
+const ended = () => sized(<Viewport fill face={{ kind: "plate", plate: stoppedPlate({ status: "ended", reason: "error" }, null, noop) }} label="Live view" />);
 const coming = sized(<Viewport fill face={{ kind: "skeleton" }} label="Live view" size={{ width: 1280, height: 800 }} />);
 
 const browser = tile({ entry: { ...tile().entry, row: { ...tile().entry.row, lastCallAt: 30 } } });

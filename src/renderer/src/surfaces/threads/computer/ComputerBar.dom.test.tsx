@@ -64,6 +64,8 @@ describe("the computer's bar", () => {
     // under 640px Pop out gives way, whole; Full screen stays
     expect(screen.getByRole("button", { name: "Pop out" }).className).toContain(FOLD);
     expect(screen.getByRole("button", { name: "Full screen" }).className).not.toContain(FOLD);
+    // once the sentence gives way the title has the row
+    expect(screen.getByRole("button", { name: "File the March expense report" }).className).toContain("@max-[480px]/bar:max-w-full");
     // under 400px Full screen too: a click on the picture still opens it
     expect(screen.getByRole("button", { name: "Full screen" }).className).toContain(FOLD_LAST);
   });

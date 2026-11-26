@@ -98,6 +98,8 @@ export function ViewButton({ label, onClick, children, fold = false }: { label: 
 
 /** What gives way first on a narrow bar: the delay and Pop out, whole. */
 export const FOLD = "@max-[640px]/bar:hidden";
+/** The title keeps half the row beside the sentence; once the sentence gives way (under 480px) it has the row. */
+const TITLE_ROOM = "@max-[480px]/bar:max-w-full @max-[480px]/bar:shrink";
 /** What gives way last, under 400px of bar: Full screen, so the title reads whole beside Take over and Stop. */
 export const FOLD_LAST = "@max-[400px]/bar:hidden";
 
@@ -482,11 +484,11 @@ export function ComputerBar({ tile, linkLost = false, name, onOpenSession, onToo
         <Glyph tile={tile} />
         <TruncateTip text={title}>
           {thread && onOpenSession ? (
-            <Button variant="link" size="xs" className={cn("h-5 max-w-[50%] shrink-0 justify-start p-0 leading-5 font-medium text-foreground", small ? "text-xs" : "text-[13px]")} onClick={() => onOpenSession(thread, tile!.entry.host)}>
+            <Button variant="link" size="xs" className={cn("h-5 max-w-[50%] shrink-0 justify-start p-0 leading-5 font-medium text-foreground", TITLE_ROOM, small ? "text-xs" : "text-[13px]")} onClick={() => onOpenSession(thread, tile!.entry.host)}>
               <span className="truncate">{title}</span>
             </Button>
           ) : (
-            <span className={cn("max-w-[50%] shrink-0 truncate leading-5 font-medium", small ? "text-xs" : "text-[13px]")}>{title}</span>
+            <span className={cn("max-w-[50%] shrink-0 truncate leading-5 font-medium", TITLE_ROOM, small ? "text-xs" : "text-[13px]")}>{title}</span>
           )}
         </TruncateTip>
         {small ? null : <BarSentence parts={parts} words={words} />}
