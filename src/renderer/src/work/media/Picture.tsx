@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MediaPlay, MediaRegion, MediaShape } from "@shared/contract-work-media";
+import { Skeleton } from "../../components/ui/skeleton";
 import { RegionLayer } from "./parts";
 import type { MediaActions } from "./store";
 
@@ -63,8 +64,12 @@ export function Picture({
   const [view, setView] = useState({ left: 0, top: 0 });
   // A picture that did not draw leaves its frame, at its own size, empty: never the browser's broken-image mark.
   const [broken, setBroken] = useState(false);
+  // Until its bytes land the frame holds a bone in the picture's own shape, never a blank (each Retry, each new URL).
+  const loadKey = `${play.via === "image" ? play.url : play.preview}#${attempt}`;
+  const [settled, setSettled] = useState<string | null>(null);
   const drawn = (ok: boolean): void => {
     setBroken(!ok);
+    setSettled(loadKey);
     onDrawn?.(ok);
   };
   useLayoutEffect(() => {
@@ -94,6 +99,8 @@ export function Picture({
     >
       <div className="m-auto p-3">
         <div className="relative overflow-hidden rounded-lg outline-1 -outline-offset-1 outline-(--image-outline)" style={box}>
+          {/* Under the picture, which paints over it as it draws; gone once the bytes settle, drawn or not. */}
+          {settled !== loadKey ? <Skeleton data-media-picture-loading className="absolute inset-0 size-full rounded-none" /> : null}
           {play.via === "image" ? (
             <img
               key={`${play.url}#${attempt}`}

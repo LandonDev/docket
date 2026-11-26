@@ -244,9 +244,11 @@ shows at once: the host's answer is the note, kept in the item's view
   quote carries the exact frames, timecodes and region for the thread.
   The bar's own control after Ask is Comment, which opens the comment
   field at the selection.
-- **Keys** on the player: Space or K plays; the arrows (or , and .) step
-  a frame, Shift a second; Home and End. A focused button or menu keeps
-  its own keys.
+- **Keys** on the scrubber, the player's one Tab stop (a focusable
+  `slider` with its ring): Space or K plays; the arrows (or , and .) step
+  a frame, Shift a second; Home and End. The player itself takes the
+  focus only from a click on the picture or full screen, and keeps the
+  same keys there. A focused button or menu keeps its own keys.
 - **Versions**: the bar's Versions menu lists them (its tip names it where
   the narrow bar keeps the glyph alone); picking another plays
   it beside the shown one on one transport, kept on the same frame index,
@@ -254,9 +256,12 @@ shows at once: the host's answer is the note, kept in the item's view
   takes no region.
 - **An image** fits the stage (`--stage`) 12px in at radius 8, as the
   video's frame is; the bar holds its size and bytes as one sentence
-  ("1600 × 2000, 2.1 MB") and zoom (Fit, 25% to 400%). Zoom in and out
+  ("1600 × 2000, 2.1 MB") and zoom (Fit, 25% to 400%), Zoom out and Zoom in
+  the plain magnifiers with − and + (`ZoomOutIcon`, `ZoomInIcon`). They
   step from the scale Fit shows (`stepZoom`): a poster fitted at 30% goes
-  to 50% or 25%, never to 200%.
+  to 50% or 25%, never to 200%. Until the picture's bytes land its frame
+  holds a bone in the picture's own shape, under the picture, never a blank
+  (`data-media-picture-loading`, Picture.tsx).
 - **States**: bones while the host reads the file, the frame at the file's
   own shape once the probe has read it (`frameRatio`, the box the player's
   frame takes) and the track and transport at their own heights, so a

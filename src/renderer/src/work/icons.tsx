@@ -20,6 +20,7 @@ import ReceiptIcon from "@hugeicons/core-free-icons/ReceiptIcon";
 import Presentation01Icon from "@hugeicons/core-free-icons/Presentation01Icon";
 import Share08Icon from "@hugeicons/core-free-icons/Share08Icon";
 import Table01Icon from "@hugeicons/core-free-icons/Table01Icon";
+import Xls01Icon from "@hugeicons/core-free-icons/Xls01Icon";
 import TaskDone01Icon from "@hugeicons/core-free-icons/TaskDone01Icon";
 import TextSelectionIcon from "@hugeicons/core-free-icons/TextSelectionIcon";
 import WorkHistoryIcon from "@hugeicons/core-free-icons/WorkHistoryIcon";
@@ -27,8 +28,8 @@ import Video01Icon from "@hugeicons/core-free-icons/Video01Icon";
 import VolumeHighIcon from "@hugeicons/core-free-icons/VolumeHighIcon";
 import VolumeOffIcon from "@hugeicons/core-free-icons/VolumeOffIcon";
 import FullScreenIcon from "@hugeicons/core-free-icons/FullScreenIcon";
-import ZoomInAreaIcon from "@hugeicons/core-free-icons/ZoomInAreaIcon";
-import ZoomOutAreaIcon from "@hugeicons/core-free-icons/ZoomOutAreaIcon";
+import ZoomInIcon from "@hugeicons/core-free-icons/ZoomInIcon";
+import ZoomOutIcon from "@hugeicons/core-free-icons/ZoomOutIcon";
 import Comment01Icon from "@hugeicons/core-free-icons/Comment01Icon";
 import Download01Icon from "@hugeicons/core-free-icons/Download01Icon";
 import FileExportIcon from "@hugeicons/core-free-icons/FileExportIcon";
@@ -88,8 +89,10 @@ export const News = wrap(News01Icon, "News");
 export const Chat = wrap(Message01Icon, "Chat");
 /** A document in the block editor. */
 export const Doc = wrap(Doc01Icon, "Doc");
-/** A sheet. */
-export const Table = wrap(Table01Icon, "Table");
+/** A sheet: the kind's one mark, the pair of `Doc`, wherever Work shows a sheet. */
+export const Table = wrap(Xls01Icon, "Table");
+/** A table put into a slide or a page: Insert's row, never a sheet. */
+export const TableInsert = wrap(Table01Icon, "TableInsert");
 export const Pdf = wrap(Pdf01Icon, "Pdf");
 /** Money: its row in the column, a receipt with no picture, File as receipt. */
 export const Receipt = wrap(ReceiptIcon, "Receipt");
@@ -113,8 +116,8 @@ export const Video = wrap(Video01Icon, "Video");
 export const Volume = wrap(VolumeHighIcon, "Volume");
 export const VolumeOff = wrap(VolumeOffIcon, "VolumeOff");
 export const FullScreen = wrap(FullScreenIcon, "FullScreen");
-export const ZoomIn = wrap(ZoomInAreaIcon, "ZoomIn");
-export const ZoomOut = wrap(ZoomOutAreaIcon, "ZoomOut");
+export const ZoomIn = wrap(ZoomInIcon, "ZoomIn");
+export const ZoomOut = wrap(ZoomOutIcon, "ZoomOut");
 export const Comment = wrap(Comment01Icon, "Comment");
 /** A task in LifeOS: what a meeting's task is once it is filed. */
 export const Lifeos = wrap(LifeosMark, "Lifeos");

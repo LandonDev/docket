@@ -167,6 +167,25 @@ describe("the media canvas", () => {
     expect(container.querySelector("[data-media-frame]")!.getAttribute("style")).toBe(boneBox);
   });
 
+  it("makes the scrubber the player's one Tab stop, a focusable slider that takes the stepping keys itself", async () => {
+    await mount();
+    const slider = screen.getByRole("slider", { name: "Frame" });
+    const player = document.querySelector<HTMLElement>("[data-media-player]")!;
+    expect(slider.tabIndex).toBe(0);
+    expect(slider.className.split(" ")).toContain("focus-ring");
+    // The player itself is no Tab stop: a click on the picture or full screen gives it the focus.
+    expect(player.tabIndex).toBe(-1);
+    slider.focus();
+    expect(document.activeElement).toBe(slider);
+    seeks.step = 984;
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    await waitFor(() => expect(slider.getAttribute("aria-valuenow")).toBe("984"));
+    // One step a key: the player does not step again as the key passes it.
+    seeks.to = [];
+    fireEvent.keyDown(slider, { key: "Home" });
+    await waitFor(() => expect(seeks.to).toEqual([0]));
+  });
+
   it("keeps a comment at the frame it was made on, and a click on it goes back to that frame", async () => {
     await mount();
     // Step to frame 984 (0:41), as the arrow keys do.
@@ -637,6 +656,23 @@ describe("the media canvas", () => {
     fireEvent.load(again);
     await waitFor(() => expect(shell.statusLine).toHaveBeenLastCalledWith(null));
     expect(again.className).not.toContain("invisible");
+  });
+
+  it("holds a bone in the picture's frame until its bytes land, under the picture, and never after", async () => {
+    const IMG: MediaVersion = { ...V3, id: "p1", name: "LAN poster.png", plays: [{ via: "image", url: "tempcode-asset://file/x/poster.png", width: 1080, height: 1350 }] };
+    host.view = { itemId: "item1", kind: "image", versions: [IMG], notes: [], mode: "writes", shared: false, rev: 1 };
+    const { container } = render(<Body item={ITEM} source={ITEM.source} env="local" state={undefined} setState={() => undefined} shell={fakeShell()} />);
+    const picture = await waitFor(() => {
+      const el = container.querySelector<HTMLImageElement>("[data-media-picture]");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    const bone = picture.parentElement!.querySelector("[data-media-picture-loading]")!;
+    expect(bone).not.toBeNull();
+    // First in the frame, so the picture paints over it as it draws.
+    expect(picture.parentElement!.firstElementChild).toBe(bone);
+    fireEvent.load(picture);
+    await waitFor(() => expect(container.querySelector("[data-media-picture-loading]")).toBeNull());
   });
 
   it("says a tiled picture whose preview did not load on the state line, with Retry", async () => {

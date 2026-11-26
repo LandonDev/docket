@@ -291,8 +291,8 @@ describe("the PDF kind", () => {
   it("says a form only Adobe's apps fill on the quiet line, in plain words: no red, no XFA", async () => {
     await open(pdfView({ xfaOnly: true }));
     const line = await found('[data-canvas-state="quiet"]');
-    expect(line.textContent).toContain("Can't be filled here");
-    expect(line.textContent).toContain("Only Adobe's apps fill this form");
+    // One sentence, never two that say the same thing.
+    expect(line.textContent).toBe("Only Adobe's apps fill this form");
     expect(line.textContent).not.toContain("XFA");
     expect(document.querySelector('[data-canvas-state="failed"]')).toBeNull();
   });

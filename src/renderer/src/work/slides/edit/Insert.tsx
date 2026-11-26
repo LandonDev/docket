@@ -4,7 +4,7 @@ import type { DeckSlide, DeckView, SlideOp } from "@shared/contract-work-slides"
 import { RowMenuItem, RowMenuSeparator, RowSubmenu } from "work-kit/format";
 import { Plus } from "../../../chrome/icons";
 import { sayError } from "../../canvas/frame";
-import { Media, Shapes, Table, TextBox, Video } from "../../icons";
+import { Media, Shapes, TableInsert, TextBox, Video } from "../../icons";
 import { ATTACH_PIECE, type DeckHost, type DeckStore } from "../deck";
 import type { Size } from "./drag";
 import { quadOf } from "./drag";
@@ -255,7 +255,7 @@ export function insertRows(insert: Inserter, { onSlide, canAdd }: { onSlide: boo
       <RowMenuItem icon={<Media />} disabled={!onSlide} onSelect={insert.picture}>
         Picture…
       </RowMenuItem>
-      <RowSubmenu icon={<Table />} label="Table" disabled={!onSlide}>
+      <RowSubmenu icon={<TableInsert />} label="Table" disabled={!onSlide}>
         <TableGrid onPick={insert.table} />
       </RowSubmenu>
       <RowMenuItem icon={<Video />} disabled={!onSlide} onSelect={insert.video}>

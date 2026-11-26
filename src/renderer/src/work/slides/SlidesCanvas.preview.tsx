@@ -26,7 +26,7 @@ import { layoutsFor, PRESETS } from "./edit/add";
 import { PresetGlyph } from "./edit/Insert";
 import { MENU_ROW } from "work-kit/format";
 import { ChevronRight, Plus } from "../../chrome/icons";
-import { Media, Shapes, Table, TextBox, Video } from "../icons";
+import { Media, Shapes, TableInsert, TextBox, Video } from "../icons";
 import { change, deckView, fakeDeckHost, slide, textShape } from "./testkit";
 
 export type SlidesMoment =
@@ -406,7 +406,7 @@ function InsertOpen() {
         {row(<TextBox />, "Text box")}
         <div className="rounded-lg bg-(--ui-wash,var(--accent))">{row(<Shapes />, "Shape", true)}</div>
         {row(<Media />, "Picture…")}
-        {row(<Table />, "Table", true)}
+        {row(<TableInsert />, "Table", true)}
         {row(<Video />, "Video…")}
       </div>
       <div className="mt-[44px] h-fit w-[196px] rounded-xl bg-popover p-1 text-popover-foreground shadow-overlay ring-1 ring-border">

@@ -11,7 +11,7 @@ import type { SavedLine } from "../canvas/kind";
 import type { Busy } from "./busy";
 import { Facts } from "./FileKind";
 import { answerAs, OverFrame, usePress, useTyped } from "../kit.preview";
-import { cloudLine, copyLine, notSavedWords, type CopyAsk, type HeaderLine } from "./fileText";
+import { cloudLine, copyLine, notSavedWords, offlineNamed, type CopyAsk, type HeaderLine } from "./fileText";
 import { savedLine } from "../sheets/model";
 import { wordLine } from "./wordSave";
 import { FileHeader } from "./FileTabView";
@@ -541,7 +541,8 @@ export function FilesMarksDown() {
 const saveLines: { name: string; line: SavedLine | null }[] = [
   { name: "Run of show.md", line: { state: "saved", at: NOW - 13 * 60_000 } },
   { name: "Run of show.md", line: { state: "saving" } },
-  { name: "Run of show.md", line: { state: "offline", pending: 3, actions: [{ id: "retry", label: "Retry", run: noop }] } },
+  // The frame names the computer that is not answering (FileTabView's `offlineNamed`).
+  { name: "Run of show.md", line: offlineNamed({ state: "offline", pending: 3, actions: [{ id: "retry", label: "Retry", run: noop }] }, "the box") },
   { name: "Run of show.md", line: { state: "conflict", detail: "This file changed at 2:04 PM", actions: [{ id: "reload", label: "Reload", run: noop }, { id: "keep", label: "Keep Both", run: noop }] } },
   { name: "Vendor contacts.xlsx", line: { state: "copy", detail: "MacBook", actions: [{ id: "there", label: "Open on MacBook", run: noop }] } },
   { name: "Ballroom contract.pdf", line: { state: "readonly", detail: "a mail's file", actions: [{ id: "keep", label: "Save to workspace", run: noop }] } },

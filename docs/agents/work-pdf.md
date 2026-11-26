@@ -225,8 +225,7 @@ ourselves (pdf-lib's own redraw is Helvetica and stops at the first field
 it cannot draw); flatten with pdf-lib's `flatten()`, never by dropping
 widgets; drop the XFA part of a hybrid form and keep its AcroForm values;
 a form that is XFA only takes no values and says so, on the quiet line
-("Can't be filled here", "Only Adobe's apps fill this form"): no red, no
-"XFA".
+("Only Adobe's apps fill this form", one sentence): no red, no "XFA".
 
 ## The extract job
 
@@ -438,8 +437,7 @@ How it works:
   field and Open; a wrong password says so. A moved file is the quiet
   line "Moved. The copy from Nov 16, 9:12 AM" over the copy the host
   kept, with no mode. A form only Adobe's apps fill (XFA) is the quiet
-  line "Can't be filled here. Only Adobe's apps fill this form", never
-  the red of a failure. A file that will not open is one Empty.
+  line "Only Adobe's apps fill this form", never the red of a failure. A file that will not open is one Empty.
 
 Not built here, and why: History in the bar (the `history` kind keeps
 block documents' versions, milestone 19; a PDF's versions are not kept

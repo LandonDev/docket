@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode, type Ref } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type Ref } from "react";
 import { clock, frameCentre, frameCount, frameStart, tableDuration, tableFps } from "@shared/mediaFrames";
 import type { FrameTable, MediaNote, MediaRegion, MediaVersion } from "@shared/contract-work-media";
 import { RowsMenu } from "../../chrome/menuRows";
@@ -401,25 +401,32 @@ export function Player({
     });
   };
 
+  /** The player's keys: the scrubber's own, and the player's where a click on the picture gave it the focus. */
+  const onKeys = (e: KeyboardEvent<HTMLElement>): void => {
+    if (!table || chordKey(e)) return;
+    const step = e.shiftKey ? Math.max(1, Math.round(tableFps(table))) : 1;
+    if (e.key === " " || e.key === "k") toggle();
+    else if (e.key === "ArrowLeft" || e.key === ",") stepBy(-step);
+    else if (e.key === "ArrowRight" || e.key === ".") stepBy(step);
+    else if (e.key === "Home") void seek(0);
+    else if (e.key === "End") void seek(total - 1);
+    else if (e.key === "Escape" && stretch) onStretch(null, null);
+    else return;
+    e.preventDefault();
+  };
+
   return (
+    // The scrubber is the player's one Tab stop, its keys its own. The player takes the focus only from a click on the
+    // picture or full screen, and keeps the same keys there.
     <div
       ref={root}
       data-media-player
-      tabIndex={0}
+      tabIndex={-1}
       className={`focus-ring @container min-w-0 px-3 pt-3 ${FULL}`}
       onKeyDown={(e) => {
-        if (!table || chordKey(e)) return;
-        // A focused control keeps its own keys: Space presses the button, the arrows move in a menu.
-        if (e.target !== e.currentTarget && (e.target as HTMLElement).closest("button, input, textarea, [role=menu], [role=menuitem]")) return;
-        const step = e.shiftKey ? Math.max(1, Math.round(tableFps(table))) : 1;
-        if (e.key === " " || e.key === "k") toggle();
-        else if (e.key === "ArrowLeft" || e.key === ",") stepBy(-step);
-        else if (e.key === "ArrowRight" || e.key === ".") stepBy(step);
-        else if (e.key === "Home") void seek(0);
-        else if (e.key === "End") void seek(total - 1);
-        else if (e.key === "Escape" && stretch) onStretch(null, null);
-        else return;
-        e.preventDefault();
+        // A focused control keeps its own keys: Space presses the button, the arrows move in a menu, the scrubber's are its own.
+        if (e.target !== e.currentTarget && (e.target as HTMLElement).closest("button, input, textarea, [role=menu], [role=menuitem], [role=slider]")) return;
+        onKeys(e);
       }}
     >
       {/* Two cuts sit side by side from a 600px player; narrower, one over the other, so neither shrinks to a sliver. */}
@@ -456,7 +463,9 @@ export function Player({
         aria-valuemax={Math.max(0, total - 1)}
         aria-valuenow={shown}
         aria-valuetext={clock(table ? frameStart(table, shown) - start : 0)}
-        className="relative mt-1.5 flex h-6 cursor-default touch-none items-center"
+        tabIndex={0}
+        className="focus-ring relative mt-1.5 flex h-6 cursor-default touch-none items-center rounded-sm"
+        onKeyDown={onKeys}
         onPointerDown={(e) => {
           if (e.button !== 0 || !total) return;
           e.currentTarget.setPointerCapture(e.pointerId);

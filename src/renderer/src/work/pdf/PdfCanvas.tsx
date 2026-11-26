@@ -183,7 +183,8 @@ function useFeeds(
     // A moved file shows the copy the host kept: the line says which, by its time.
     if (view.missing) shell.statusLine({ tone: "quiet", word: "Moved.", detail: `The copy from ${dayTime(view.missing.asOf)}` });
     // A form only Adobe's apps fill asks nothing of him here: the quiet line, as read only is, never the red of a failure.
-    else if (view.xfaOnly) shell.statusLine({ tone: "quiet", word: "Can't be filled here", detail: "Only Adobe's apps fill this form" });
+    // One sentence says both that it cannot be filled here and why.
+    else if (view.xfaOnly) shell.statusLine({ tone: "quiet", word: "Only Adobe's apps fill this form" });
     else shell.statusLine(null);
     return () => shell.statusLine(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
