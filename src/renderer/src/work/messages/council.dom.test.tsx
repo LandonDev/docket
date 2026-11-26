@@ -53,7 +53,7 @@ const flush = () => act(async () => {});
 describe("the list", () => {
   it("laps a group's faces by 4px, ringed in the row's own fill", () => {
     mount();
-    const faces = row("Dana, Omar, Mia").querySelectorAll("[aria-hidden] > span");
+    const faces = row("Dana, Omar, Mia").querySelectorAll("[data-slot=avatar]");
     expect(faces[1]!.className).toContain("start-2.5");
     expect(faces[1]!.className).toContain("ring-(--row-fill)");
     expect(row("Dana, Omar, Mia").className).toContain("tc-row");

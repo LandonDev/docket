@@ -38,9 +38,21 @@ describe("a file from a mail", () => {
 describe("a face", () => {
   const { Face } = tempcodeMailKit;
   const PIXEL = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+  // jsdom loads no image: the face (the shared Avatar) draws a picture once the browser has it, so a test says whether
+  // the browser has it at once (decoded, `complete`) or failed it.
+  const browserHas = (loads: boolean) =>
+    vi.stubGlobal(
+      "Image",
+      class {
+        complete = true;
+        naturalWidth = loads ? 1 : 0;
+        src = "";
+      },
+    );
 
   it("is the stored picture where there is one, drawn at once when it needs no reading", async () => {
     const { render, cleanup } = await import("@testing-library/react");
+    browserHas(true);
     const { container } = render(<Face name="Marisol Rivera" picture={PIXEL} size="row" />);
     expect(container.querySelector("img")?.getAttribute("src")).toBe(PIXEL);
     expect(container.textContent).toBe("");
@@ -48,9 +60,9 @@ describe("a face", () => {
   });
 
   it("falls back to initials quietly when the picture does not load", async () => {
-    const { render, cleanup, fireEvent } = await import("@testing-library/react");
+    const { render, cleanup } = await import("@testing-library/react");
+    browserHas(false);
     const { container } = render(<Face name="Marisol Rivera" picture={PIXEL} size="row" />);
-    fireEvent.error(container.querySelector("img")!);
     expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toBe("MR");
     cleanup();
@@ -61,6 +73,7 @@ describe("a face", () => {
     const fetched = vi.fn(async () => new Response(new Uint8Array([1, 2, 3])));
     vi.stubGlobal("fetch", fetched);
     URL.createObjectURL = vi.fn(() => "blob:face-1");
+    browserHas(true);
     const url = "https://lifeos.example/api/storage/face-1";
     const first = render(<Face name="Tom Beck" picture={url} size="head" />);
     // Initials stand until the bytes are here.

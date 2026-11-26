@@ -63,6 +63,8 @@ vi.mock("../../../surfaces/threadChat", () => ({ useSessionActions: () => ({ onS
 const views = vi.hoisted(() => [] as unknown[]);
 vi.mock("../../../lib/workSwitch", async (original) => ({ ...(await original<object>()), openWorkView: (v: unknown) => void views.push(v) }));
 
+// New task's and New event's days by the field's value; the field itself is proven in components/ui and work/dateField.dom.test.tsx.
+vi.mock("../../../components/ui/date-field", async () => ({ DateField: (await import("../../testDateField")).DateFieldStandIn }));
 const { MailClientProvider } = await import("work-kit/mail");
 const { OfferCard, SessionLine } = await import("./OfferCard");
 const { AddKeeper, AddRow } = await import("./AddRow");
