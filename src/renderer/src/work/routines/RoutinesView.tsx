@@ -24,7 +24,7 @@ import { routineJobOpenPort } from "./jobOpen";
 import { RoutineDialog } from "./RoutineForm";
 import { loadFailure, usePlays } from "./plays/data";
 import { noRunsLine, rowLine, rowMark, runMark, runWords } from "./model";
-import { Tip } from "../../components/tip";
+import { Tip, TruncateTip } from "../../components/tip";
 import { HostLine } from "../shell/DownLine";
 import { useHostLive } from "../shell/lifeosLive";
 
@@ -170,7 +170,7 @@ export function View({ env, workspace }: WorkViewProps) {
           >
             {rows.map((r) => (
               <li key={r.id} className="flex flex-col">
-                <RoutineItem lifeosWait={lifeosWait} row={r} current={r.id === current?.id} onPick={() => setPicked(r.id)} />
+                <RoutineItem lifeosWait={lifeosWait} row={r} current={r.id === current?.id} picked={r.id === picked} onPick={() => setPicked(r.id)} />
               </li>
             ))}
           </ul>
@@ -184,19 +184,33 @@ export function View({ env, workspace }: WorkViewProps) {
   );
 }
 
-function RoutineItem({ row, current, onPick, lifeosWait }: { row: RoutineRow; current: boolean; onPick: () => void; lifeosWait: string | null }) {
+/**
+ * A row. `current` is the routine the detail shows: wide, the picked one or the first; `picked`, the one he chose. Under
+ * 640px the list stands alone until he picks, so only a picked row is marked open there (its ground and `aria-current`).
+ */
+function RoutineItem({ row, current, picked, onPick, lifeosWait }: { row: RoutineRow; current: boolean; picked: boolean; onPick: () => void; lifeosWait: string | null }) {
   const mark = rowMark(row);
   const line = rowLine(row);
+  const shown = row.waiting === LIFEOS_WAIT && lifeosWait ? line.replace(/waiting on LifeOS$/, midLine(lifeosWait)) : line;
   return (
-    <ItemButton aria-current={current ? "true" : undefined} onClick={onPick} className={cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5")}>
+    <ItemButton
+      aria-current={picked ? "true" : undefined}
+      onClick={onPick}
+      className={cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5", current && !picked && "@max-[40rem]/routines:bg-transparent @max-[40rem]/routines:hover:bg-foreground/5")}
+    >
       <span className="flex min-w-0 items-baseline gap-2 text-[13px]">
         <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.name}</span>
         {mark ? <StatusMark state={mark} word={false} className="shrink-0" /> : null}
       </span>
-      <span className="truncate text-xs text-muted-foreground">{row.waiting === LIFEOS_WAIT && lifeosWait ? line.replace(/waiting on LifeOS$/, lifeosWait) : line}</span>
+      <TruncateTip text={shown}>
+        <span className="truncate text-xs text-muted-foreground">{shown}</span>
+      </TruncateTip>
     </ItemButton>
   );
 }
+
+/** LifeOS's words after the row's trigger and a comma: their head word lowered ("not signed in", "the box"), a name kept. */
+export const midLine = (words: string): string => words.replace(/^(Not|The|This|Work)\b/, (w) => w.toLowerCase());
 
 function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: string; row: RoutineRow; play: string | null; tick: number; narrowShown: boolean; onBack: () => void; onEdit: () => void }) {
   const [runs, retryRuns] = useRuns(env, row.id, tick);
@@ -389,10 +403,11 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
 /** A run's row: 32px at least, growing with an outcome too long for its cell (a narrow pane), which wraps and is never cut. */
 const RUN_ROW = "-mx-2 min-h-8 w-[calc(100%+1rem)] flex-nowrap items-start gap-3 border-0 px-2 py-1.5 text-[13px] leading-5";
 
+/** The list and the detail in their own shapes, by the view's own container rule: under 640px the list alone, as the view lands. */
 function ListSkeleton() {
   return (
-    <div aria-busy="true" aria-label="Loading routines" className="flex h-full min-h-0">
-      <div className="flex w-70 shrink-0 flex-col gap-3 border-r border-border p-4">
+    <div aria-busy="true" aria-label="Loading routines" className="@container/routines flex h-full min-h-0">
+      <div data-bones="list" className="flex w-70 shrink-0 flex-col gap-3 border-r border-border p-4 @max-[40rem]/routines:w-full @max-[40rem]/routines:border-r-0">
         {[64, 48, 72, 40].map((w, i) => (
           <div key={i} className="flex flex-col gap-1.5">
             <Skeleton className="h-3.5" style={{ width: `${w}%` }} />
@@ -400,7 +415,7 @@ function ListSkeleton() {
           </div>
         ))}
       </div>
-      <div className="flex flex-1 flex-col gap-3 px-6 py-5">
+      <div data-bones="detail" className="flex flex-1 flex-col gap-3 px-6 py-5 @max-[40rem]/routines:hidden">
         <Skeleton className="h-5 w-1/3" />
         <Skeleton className="h-4 w-4/5" />
         <Skeleton className="h-4 w-2/3" />

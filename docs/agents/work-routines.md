@@ -233,8 +233,8 @@ the proposal names a time of day, the reply names its zone. The row keeps its zo
   routine changed; a screen asks `list` again.
 - `routine_propose` (tool): writes a proposed row (`proposed = 1`, not
   enabled, no due time). It runs nothing; the Routines view lists it first
-  with Dismiss and Add…, which opens the form filled, and his Save makes
-  it a routine.
+  with Dismiss and Add…, which opens the form filled ("Add routine"), and
+  his Add makes it a routine.
 - `watch_create` (tool): only a tool he set to Runs and its server calls
   read-only, in the thread's workspace or a global add-on allowed in Work;
   arguments fixed now; every 5 to 1440 minutes; ends on its day (at most 30
@@ -258,7 +258,8 @@ Agenda and Docs (`WORK_VIEWS.routines`, the `work-routines-view` chunk).
 The view (prototype routines.html, "List and detail"): the routines,
 proposals first, on the left at 280px, each its name, a status mark only for
 Working, Paused, Failed or Watching, and one muted line ("Weekdays at 7:00
-AM, next Thu", "Every 10 minutes, once", "…, waiting on LifeOS"); on the
+AM, next Thu", "Every 10 minutes, once", "…, waiting on LifeOS"), whole in a
+tip when cut; on the
 right the one picked: its name with Edit, Pause or Resume and Run now (a
 proposal: Dismiss and Add…), what it does, Starts, Ends, Model, Runs on,
 the thread it was made in or wakes, then every run as a 32px row (time,
@@ -321,4 +322,6 @@ proposal shown as a card in the thread.
 
 ## When a read or link fails
 
-New routine works while the list is loading. A known lost link holds it with one named line and Retry. When the host reports why its LifeOS session is down, a waiting row uses those words.
+New routine works while the list is loading. The loading bones take the view's shape: the list and the detail, and under 640px the list alone. A known lost link holds it with one named line and Retry. When the host reports why its LifeOS session is down, a waiting row uses those words, their head word lowered after the trigger's comma ("When mail comes from a sponsor, not signed in to LifeOS on the box").
+
+Under 640px the list stands alone until he picks one: no row is marked open there before that (the wide view shows the first routine's detail, so its row keeps the open ground there).

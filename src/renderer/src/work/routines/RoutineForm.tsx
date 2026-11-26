@@ -19,7 +19,7 @@ import { blankForm, DAY_CHOICES, EVENT_CHOICES, EVERY_CHOICES, FORM_JOBS, formOf
 type Props = {
   env: string;
   workspaceId: string;
-  /** null: a new routine; a proposal: his Create */
+  /** null: a new routine; a proposal: his Add */
   row: RoutineRow | null;
   onClose: () => void;
   onSaved: (row: RoutineRow) => void;
@@ -39,13 +39,13 @@ const ENDS: ToggleChoice<EndsOn>[] = [
 const MONO = "font-mono text-xs";
 
 /**
- * New routine, Edit, and Create on an agent's proposal (prototype
+ * New routine, Edit, and Add on an agent's proposal (prototype
  * routines.html, "A form"): what to do, then what starts it, whose fields
  * the four-part control swaps, then when it ends. An end makes it a watch.
  */
 export function RoutineDialog(props: Props) {
   const [pending, setPending] = useState(false);
-  const title = props.row === null ? "New routine" : props.row.proposed ? "Create routine" : "Edit routine";
+  const title = props.row === null ? "New routine" : props.row.proposed ? "Add routine" : "Edit routine";
   return (
     <Modal onClose={props.onClose} title={title} size="md" busy={pending}>
       <Body {...props} pending={pending} setPending={setPending} />
@@ -291,7 +291,7 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
           ) : undefined
         }
         onCancel={onClose}
-        confirmLabel={row && !row.proposed ? "Save" : "Create"}
+        confirmLabel={row === null ? "Create" : row.proposed ? "Add" : "Save"}
         pending={pending}
         busy={removing}
       />

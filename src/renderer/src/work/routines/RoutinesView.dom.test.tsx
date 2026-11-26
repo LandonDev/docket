@@ -88,7 +88,8 @@ describe("the Routines view", () => {
     const starts = document.querySelector("[data-routine-detail] dl")!;
     expect(starts.textContent).toContain("When a mail arrives");
     expect(starts.textContent).toContain("Not signed in to LifeOS on the box");
-    expect(screen.getByRole("list", { name: "Routines" }).textContent).toContain("Not signed in to LifeOS on the box");
+    // Council round 1, sitting E (R1-E3): mid-line, after the trigger and its comma, the head word is lowered.
+    expect(screen.getByRole("list", { name: "Routines" }).textContent).toContain("When a mail arrives, not signed in to LifeOS on the box");
     expect(starts.textContent).not.toContain("waiting on LifeOS");
     // Council round 11, the walk: on its way, the one wait with the computer named and no press.
     act(() => setLifeosStatus("box", { lifeos: { state: "connecting" }, keys: [] }));
@@ -208,13 +209,39 @@ describe("the Routines view", () => {
     // A plain list of buttons, the picked one current: no listbox that answers no arrow keys.
     expect(screen.queryByRole("listbox")).toBeNull();
     const pick = screen.getByRole("button", { name: /Morning brief/ });
-    expect(pick.getAttribute("aria-current")).toBe("true");
+    // Council round 1, sitting E (R1-E1): before a pick the first row is the wide detail's, never marked open where the
+    // list stands alone: its ground drops under 640px and it is not `aria-current`.
+    expect(pick.getAttribute("aria-current")).toBeNull();
+    expect(pick.className).toContain("bg-muted");
+    expect(pick.className).toContain("@max-[40rem]/routines:bg-transparent");
     expect(pick.closest("li")).toBeTruthy();
     fireEvent.click(pick);
+    expect(pick.getAttribute("aria-current")).toBe("true");
+    expect(pick.className).not.toContain("@max-[40rem]/routines:bg-transparent");
     expect(list.className).toContain("@max-[40rem]/routines:hidden");
     expect((document.querySelector("[data-routine-detail]") as HTMLElement).className).not.toContain("@max-[40rem]/routines:hidden");
     fireEvent.click(screen.getByRole("button", { name: "Routines" }));
     expect(list.className).not.toContain("@max-[40rem]/routines:hidden");
+  });
+
+  /** Council round 1, sitting E (R1-E2; S9): the bones were two panes at every width, where a narrow pane lands as one list. */
+  it("loads in the view's own shape: under 640px the list's bones fill the pane and the detail's go", async () => {
+    host.list = () => new Promise(() => {});
+    render(<View {...props} />);
+    const bones = screen.getByLabelText("Loading routines");
+    expect(bones.className).toContain("@container/routines");
+    expect(bones.querySelector('[data-bones="list"]')!.className).toContain("@max-[40rem]/routines:w-full");
+    expect(bones.querySelector('[data-bones="detail"]')!.className).toContain("@max-[40rem]/routines:hidden");
+  });
+
+  it("calls a proposal's dialog Add routine, confirmed by Add", async () => {
+    host.list = async () => ({ routines: [row({ proposed: true, enabled: false, createdBy: "agent" as never, trigger: { on: "schedule", rrule: "FREQ=WEEKLY;BYDAY=MO;BYHOUR=7;BYMINUTE=0", tz: "UTC" } as never })] });
+    render(<View {...props} />);
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Add…" }));
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Add routine" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add" })).toBeTruthy();
   });
 
   it("names the play a routine runs, and shows no empty words of its own", async () => {
