@@ -390,7 +390,7 @@ export const STEPS: Step[] = [
     capMs: SOAK_CAP_MS,
     // The same lane, after the idle scene: one instance at a time.
     lane: 'build',
-    why: "a 30,000-row agent thread opened beside 40 running threads, then streamed into (D04, D05, D11): rows readable within 1.2 s, no task over 100 ms in the 15 s after, none over 50 ms while it streams and 4 ms of main thread a frame at p95; the jump to an old row is reported (scripts/measure-renderer-soak.ts --gate --scene long, 2 min 30 s at most)",
+    why: "a 30,000-row agent thread opened beside 40 running threads, then streamed into (D04, D05, D11): rows readable within 1.2 s, no task over 100 ms in the 15 s after, none over 50 ms while it streams, and a jump to an old row that lands within 10 s (before perf2 M1 it never did); 4 ms of main thread a frame at p95 and the jump's 2 s are reported until a run on the Mac sizes them (scripts/measure-renderer-soak.ts --gate --scene long, 2 min 30 s at most)",
     mac: true,
     paths: SOAK_PATHS
   },

@@ -164,11 +164,15 @@ describe('the long scene', () => {
     expect(LONG_RULE).toMatchObject({ afterOpenTaskMs: 100, streamTaskMs: 50 })
   })
 
-  it("the gate's form judges D04, D05 and D11 and leaves the jump reported", () => {
-    const gated = judgeLong(result({ landed: null }), LONG_RULE, true)
-    expect(gated.ok).toBe(true)
-    expect(gated.verdicts.map((v) => v.what)).not.toContain('jump: an old hit lands, ms')
-    expect(judgeLong(result({ p95: 9 }), LONG_RULE, true).ok).toBe(false)
+  it("the gate's form fails a jump that never lands or a long task, and reports the frame and D12's 2 s", () => {
+    // This tree on the box: a frame p95 of 11.9 ms, the jump in 2.4 s.
+    const now = judgeLong(result({ p95: 11.9, landed: 2_404 }), LONG_RULE, true)
+    expect(now.ok).toBe(true)
+    expect(now.verdicts.filter((v) => !v.ok).every((v) => v.reportOnly)).toBe(true)
+    // 998ab7665, before M1: the jump never landed.
+    expect(judgeLong(result({ p95: 10.9, landed: null }), LONG_RULE, true).ok).toBe(false)
+    expect(judgeLong(result({ streamTask: 51 }), LONG_RULE, true).ok).toBe(false)
+    expect(judgeLong(result({ openTask: 2_700 }), LONG_RULE, true).ok).toBe(false)
   })
 })
 

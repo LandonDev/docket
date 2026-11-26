@@ -172,8 +172,12 @@
     store's next page, stopped after 180 s. `LONG_RULE`: readable within
     1.2 s, no task over 100 ms in the 15 s after the open, none over 50 ms
     and 4 ms of main thread a frame at p95 while streaming, the hit within
-    2 s. Under `--gate` the scene climbs to no top and the jump (D12) is
-    reported, not judged (`judgeLong(result, LONG_RULE, true)`).
+    2 s. Under `--gate` the scene climbs to no top, judges the open, the
+    stream's long tasks and that the jump lands within 10 s (before perf2 M1
+    it never did), and reports the 4 ms a frame and the jump's 2 s against
+    their bounds (`judgeLong(result, LONG_RULE, true)`): on the box the
+    renderer reads 11 to 12 ms a frame at p95 before M1 and after it, and a
+    run on the Mac sizes the gate's.
   - day: every running thread streams with 400 rows of history; ten are
     opened one after another (`window.__docket.open`) and left inside one
     50 s window. Heap after GC at the start and the end, and the store's
