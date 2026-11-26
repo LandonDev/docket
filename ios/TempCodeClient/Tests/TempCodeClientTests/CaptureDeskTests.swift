@@ -37,6 +37,13 @@ import Testing
         #expect(CaptureRules.plan(D(hasWords: true, files: 0, job: nil, busy: true)) == nil)
     }
 
+    @Test func `the files' failure line counts each file once`() {
+        // A pick that would not copy in, and one still in the sheet that Save could not queue, of three added.
+        #expect(CaptureRules.failedLine(unpicked: ["a.pdf"], unqueued: ["b.pdf"], files: 2) == "Could not read 2 of 3 files.")
+        #expect(CaptureRules.failedLine(unpicked: [], unqueued: ["b.pdf"], files: 1) == "Could not read b.pdf.")
+        #expect(CaptureRules.failedLine(unpicked: [], unqueued: [], files: 2) == nil)
+    }
+
     @Test func `the job a file goes to`() {
         let environment = PairedEnvironment(id: "box", name: "The box", origin: URL(string: "https://box.example")!, caps: [.read, .operate], keyId: "K1", keyName: "iphone", addedAt: 0)
         let host = ShareTargets.Host(id: "box", name: "The box", environment: environment, workspaces: [

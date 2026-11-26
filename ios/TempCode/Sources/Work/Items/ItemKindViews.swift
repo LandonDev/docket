@@ -389,15 +389,36 @@ struct DashboardItemView: View {
     let item: CanvasItem
     /// The next read is his pull: every figure read again, not the page as last read.
     @State private var fresh = false
+    /// His pull failed over the figures kept on screen: the reason with Try Again, until a read lands.
+    @State private var refreshError: String?
+    /// A read is out since his Try Again: the row's spinner waits on it.
+    @State private var retrying = false
 
     var body: some View {
         let refreshes = client.work.may(.dashboardsRefresh)
         ItemLoad(read: { [fresh] in
             try await (fresh && refreshes ? client.work.refreshDashboard(item.id) : client.work.canvas.dashboard(item.id))
-        }, onRead: { _ in fresh = false }) { dashboard, reload in
+        }, onRead: { _ in
+            fresh = false
+            refreshError = nil
+            retrying = false
+        }, onRefreshFailed: { words in
+            refreshError = words
+            retrying = false
+        }) { dashboard, reload in
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if let failed = dashboard.failed {
+                    if let refreshError {
+                        // The failed-read row of every Work place; the figures under it are the last read's.
+                        FailedRead(words: refreshError, retry: {
+                            fresh = true
+                            retrying = true
+                            reload()
+                            while retrying && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(100)) }
+                        }, identifier: "dashboard-refresh-failed", insets: nil)
+                    }
+                    // A failed pull says its own failure over the host's older one; the time says how old the figures are.
+                    if let failed = dashboard.failed, refreshError == nil {
                         Text(failed).textStep(.meta, tint: Tint.destructiveText)
                     } else if let asOf = dashboard.asOf {
                         Text((dashboard.stale ? "Last read " : "As of ") + Date(timeIntervalSince1970: asOf / 1000).formatted(date: .omitted, time: .shortened))

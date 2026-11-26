@@ -90,6 +90,13 @@ public nonisolated enum CaptureRules {
         return targets.first
     }
 
+    /// The files' failure line: picks that would not copy in, and files still in the sheet that the last Save
+    /// could not queue, out of every file he added (`files` counts the ones still in the sheet). Only the second
+    /// kind holds the note back; a failed pick is told here and nowhere else.
+    public static func failedLine(unpicked: [String], unqueued: [String], files: Int) -> String? {
+        ShareSummary.unread(unpicked + unqueued, of: unpicked.count + files)
+    }
+
     /// The line under the files once Save has queued them and the note is still to file (or failed).
     public static func queuedLine(_ count: Int, job: String) -> String {
         "\(count == 1 ? "1 file goes" : "\(count) files go") to \(job)."

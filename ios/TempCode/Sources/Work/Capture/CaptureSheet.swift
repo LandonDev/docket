@@ -33,7 +33,10 @@ struct CaptureSheet: View {
     @State private var importing = false
     /// Picks still being copied in from Photos or Files.
     @State private var reading = 0
+    /// Picks that would not copy in: told in the footer, never a hold on Save.
     @State private var unread: [String] = []
+    /// Picks the last Save could not queue: they stay in the sheet, and only they stop that Save before the note.
+    @State private var unqueued: Set<SharePick.ID> = []
     /// The job he chose for the files (`ShareTargets.Target.id`); nil follows the note's sector.
     @State private var job: String?
     @State private var targets: [ShareTargets.Target] = []
@@ -169,7 +172,7 @@ struct CaptureSheet: View {
         } footer: {
             if let filesError {
                 Text(filesError).foregroundStyle(Tint.destructiveText)
-            } else if let line = ShareSummary.unread(unread, of: unread.count + picks.count) {
+            } else if let line = CaptureRules.failedLine(unpicked: unread, unqueued: picks.filter { unqueued.contains($0.id) }.map(\.name), files: picks.count) {
                 Text(line).foregroundStyle(Tint.destructiveText)
             } else if let queued {
                 Text(queued)
@@ -188,8 +191,13 @@ struct CaptureSheet: View {
                 defer { reading -= 1 }
                 let access = url.startAccessingSecurityScopedResource()
                 defer { if access { url.stopAccessingSecurityScopedResource() } }
-                if let copy = PickedFile.copy(url) { picks.append(SharePick(url: copy, name: url.lastPathComponent, size: PickedFile.size(copy), kind: .file, thumbnail: nil)) }
-                else { unread.append(url.lastPathComponent) }
+                if let copy = PickedFile.copy(url) {
+                    picks.append(SharePick(url: copy, name: url.lastPathComponent, size: PickedFile.size(copy), kind: .file, thumbnail: nil))
+                    // Picked again and copied: its earlier failure is over.
+                    if let failed = unread.firstIndex(of: url.lastPathComponent) { unread.remove(at: failed) }
+                } else {
+                    unread.append(url.lastPathComponent)
+                }
             }
         }
     }
@@ -237,9 +245,10 @@ struct CaptureSheet: View {
                 let registry = model.registry
                 Task { await ShareBridge.drain(registry) }
             }
-            unread += picks.filter { !kept.contains($0.id) }.map(\.name)
+            // Only this press's queue failures hold the note back; a pick that failed earlier stays in the footer.
+            unqueued = Set(picks.map(\.id)).subtracting(kept)
             picks.removeAll { kept.contains($0.id) }
-            guard picks.isEmpty, unread.isEmpty else { return }
+            guard unqueued.isEmpty else { return }
         }
         guard plan.note else {
             dismiss()

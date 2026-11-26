@@ -2700,7 +2700,8 @@ milestone 46 built, where it lives now:
   "Scheduled" only where the word adds to the check (LifeOS's words only on the host's own verdict on the item,
   never because a mail's stored result reads sent), or the destructive dot and the reason),
   a row the press did not take reads "Left out" at full ink, and the foot
-  is Done. Not Now declines
+  is Done. VoiceOver names each row's mark by its result ("Sent", "May have gone", "Not sent", "Left out"), never by
+  the ticks the settled sheet no longer holds. Not Now declines
   and closes. A key that may not answer it reads why and cannot press. Nothing
   here wears the warning colour: held is not Needs you.
 - **The thread's card**: a Work thread's `outbox_request` call (its
@@ -2980,7 +2981,9 @@ phone"):
   picker of the jobs a file can go to, each with its dot) when there is more
   than one, and the footer saying where they went ("2 files go to Purdue.")
   or what could not be read, a Files picker that failed too ("Could not read
-  the files you picked."). Last, one section of plain rows: Scan Receipt
+  the files you picked."). A pick that would not copy in is told there and holds nothing back: Save queues the files
+  still in the sheet, then files the note, and stops before the note only for a file that press could not queue.
+  Picked again and copied, a file's failure is gone. Last, one section of plain rows: Scan Receipt
   (`doc.viewfinder`), Add Photos (`photo.on.rectangle`, the system's photo
   picker) and Add Files (`doc`, the system's file picker). Cancel keeps the
   draft; Save is the one confirm, a spinner while it goes, the success
@@ -3465,7 +3468,8 @@ card. Connections and Computers sit in the Work list's foot.
 - **Files' New** adds "From a Template" under the kinds where the place makes files: a row a template with its kind's
   glyph; it pushes its fields, one field a row, and Make writes it into the folder; the toast says what is left to
   fill.
-- **A dashboard** reads every figure again on a pull; a block whose sheet the phone has opens it on a tap (a LifeOS
+- **A dashboard** reads every figure again on a pull; a pull that fails keeps the figures under the failed-read row
+  (`FailedRead`, its Try Again) until a read lands, with their time but not the host's older failure; a block whose sheet the phone has opens it on a tap (a LifeOS
   sheet in the hosted editor, a form's answers), with the press's scale and no other mark.
 - **Connections**: a section a group, in the desktop's order, "Ending Soon" first when an end is within two weeks;
   the first group draws no band when its one row says the group's name ("LifeOS" over "LifeOS", `Section.headed`); a

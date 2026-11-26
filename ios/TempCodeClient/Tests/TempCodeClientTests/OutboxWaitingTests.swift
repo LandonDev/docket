@@ -204,6 +204,21 @@ import TempCodeContract
         #expect(RequestSheetModel.closedLine(done, time: { _ in "9:41 AM" }) == "By you at 9:41 AM")
     }
 
+    /// Once a request settles every tick is off, so the mark names the row's result: a row that went never reads
+    /// "Left out" to VoiceOver.
+    @Test func aSettledRowsMarkSaysItsResult() {
+        let a = item("a", at: 1), b = item("b", at: 2), c = item("c", at: 3), d = item("d", at: 4)
+        let done = request("q", rows: [row(a, result: .init(ok: true, state: "sent")), row(b, result: .init(ok: false, error: "Teams did not answer")),
+                                       row(c, result: .init(ok: false, error: "timed out", unknown: true)), row(d)], state: .answered, answeredAt: 1)
+        #expect(RequestSheetModel.markLabel(done.rows[0], ticked: false, settled: true) == "Sent")
+        #expect(RequestSheetModel.markLabel(done.rows[1], ticked: false, settled: true) == "Not sent")
+        #expect(RequestSheetModel.markLabel(done.rows[2], ticked: false, settled: true) == "May have gone")
+        #expect(RequestSheetModel.markLabel(done.rows[3], ticked: false, settled: true) == "Left out")
+        // While he chooses, the tick itself.
+        #expect(RequestSheetModel.markLabel(done.rows[0], ticked: true, settled: false) == "Included")
+        #expect(RequestSheetModel.markLabel(done.rows[0], ticked: false, settled: false) == "Left out")
+    }
+
     // MARK: - ticks bound to receipts (the review's finding 3)
 
     @Test func aReloadThatChangesARowsReceiptOrMarksItChangedClearsItsTick() {

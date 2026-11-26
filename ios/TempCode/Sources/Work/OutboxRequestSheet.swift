@@ -453,8 +453,9 @@ private struct RequestRowView: View {
                 .frame(width: Layout.rowHeight, height: Layout.rowHeight)
                 .contentShape(Rectangle())
                 .disabled(phase != .choosing || !RequestSheetModel.pressable(row))
-                .accessibilityLabel(ticked ? "Included" : "Left out")
-                .accessibilityHint(RequestSheetModel.pressable(row) ? "Double tap to change" : "Open it first")
+                // Once settled every tick is off: the mark names the row's result, never "Left out" for mail that went.
+                .accessibilityLabel(RequestSheetModel.markLabel(row, ticked: ticked, settled: phase == .done))
+                .accessibilityHint(phase != .choosing ? "" : RequestSheetModel.pressable(row) ? "Double tap to change" : "Open it first")
                 .accessibilityIdentifier("outbox-request-tick")
             NavigationLink {
                 RequestRowDetail(row: row, request: request, client: client, opened: opened)

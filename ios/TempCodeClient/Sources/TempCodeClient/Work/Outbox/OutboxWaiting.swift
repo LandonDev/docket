@@ -509,6 +509,19 @@ public enum RequestSheetModel {
         return result.ok && result.text == "Sent" ? rowWords(row).line : result.text
     }
 
+    /// The tick's spoken name: Included or Left out while a press can still change; once the request settled, the
+    /// row's own result (Sent, May have gone, Not sent), so mail that went never reads "Left out".
+    public nonisolated static func markLabel(_ row: OutboxRequestRow, ticked: Bool, settled: Bool) -> String {
+        guard settled else { return ticked ? "Included" : "Left out" }
+        guard let result = resultWords(row) else { return "Left out" }
+        if result.ok || result.text == mayHaveGone { return result.text }
+        switch row.do {
+        case .discard: return "Not discarded"
+        case .later: return "Not scheduled"
+        default: return "Not sent"
+        }
+    }
+
     /// The muted line under the head once it is over: who answered and when, Not now, or why it ran out.
     public nonisolated static func closedLine(_ request: OutboxRequest, time: (Int) -> String) -> String? {
         switch request.state {
