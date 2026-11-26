@@ -8,7 +8,7 @@ import { cleanup, render } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-kit/views";
+import { AgendaMonth, AgendaWeek, type ViewsKit, ViewsKitProvider } from "work-kit/views";
 import { workTestClock } from "../testClock";
 
 const NOW = workTestClock();
@@ -52,5 +52,27 @@ describe("the Week's narrow blocks", () => {
     expect(narrow).toMatch(/\.wk-calendar \.line-clamp-2 \{[^}]*white-space: nowrap;[^}]*\}/);
     expect(narrow).toMatch(/\.wk-calendar \.line-clamp-2 \{[^}]*overflow-wrap: normal;[^}]*\}/);
     expect(narrow).toMatch(/\.wk-calendar button\.absolute > span ~ span \{\s*display: none;/);
+  });
+});
+
+describe("the Month's day numbers", () => {
+  it("are a day cell's first button, the shape agenda.css names", () => {
+    const day = new Date(NOW).setHours(0, 0, 0, 0);
+    const { container } = render(
+      <ViewsKitProvider kit={kit}>
+        <div className="wk-calendar">
+          <AgendaMonth events={[]} day={day} weekStart={0} onOpen={() => {}} onPickDay={() => {}} marked={new Set()} />
+        </div>
+      </ViewsKitProvider>,
+    );
+    const numbers = [...container.querySelectorAll<HTMLButtonElement>(".wk-calendar .grid-rows-6 > div > button:first-child")];
+    expect(numbers).toHaveLength(42);
+    expect(numbers.every((b) => /^\d{1,2}$/.test(b.textContent ?? ""))).toBe(true);
+  });
+
+  it("are held by agenda.css: each number's press reaches 24px", () => {
+    const css = readFileSync(join(import.meta.dirname, "agenda.css"), "utf8");
+    expect(css).toMatch(/\.wk-calendar \.grid-rows-6 > div > button:first-child \{\s*position: relative;/);
+    expect(css).toMatch(/\.wk-calendar \.grid-rows-6 > div > button:first-child::before \{\s*content: "";\s*position: absolute;\s*inset: -2px -4px;/);
   });
 });

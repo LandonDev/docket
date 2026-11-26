@@ -34,3 +34,18 @@
     display: none;
   }
 }
+
+/*
+ * A day's number in the Month opens that day's list, but it is 20px tall and
+ * as wide as its digits ("1" is 16px): a hand misses it. Its press reaches
+ * 24px each way, laid over the cell's own padding; nothing moves.
+ * agendaWeek.dom.test.tsx holds work-kit's shape this names.
+ */
+.wk-calendar .grid-rows-6 > div > button:first-child {
+  position: relative;
+}
+.wk-calendar .grid-rows-6 > div > button:first-child::before {
+  content: "";
+  position: absolute;
+  inset: -2px -4px;
+}
