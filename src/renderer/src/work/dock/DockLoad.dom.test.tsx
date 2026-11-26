@@ -33,6 +33,7 @@ vi.mock("./dockThread", () => ({
 }));
 
 const { Dock } = await import("./Dock");
+const { seatedSession } = await import("../../lib/toastAnchor");
 
 afterEach(() => {
   cleanup();
@@ -61,5 +62,15 @@ describe("a docked chat's first read", () => {
     draw();
     expect(bones()).not.toBeNull();
     expect(document.querySelector("[data-composer-input]")).not.toBeNull();
+  });
+
+  it("seats the toast stack over its composer while the rows come, so the thread on screen gets no toast of its own", () => {
+    h.meta = { id: "c1", environmentId: "box", title: "Budget" } as SessionMeta;
+    h.session = { id: "c1", blocks: [], load: { phase: "loading", since: 0, attempt: 1 } } as unknown as Session;
+    draw();
+    expect(document.querySelector("[data-toast-anchor]")?.getAttribute("data-toast-anchor")).toBe("c1");
+    expect(seatedSession()).toBe("c1");
+    cleanup();
+    expect(seatedSession()).toBeNull();
   });
 });

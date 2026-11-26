@@ -250,7 +250,9 @@ function DockThreadView({ session, focus, top, quiet }: { session: Session; focu
       {quiet ? (
         <>
           {quiet}
-          <ChatFooter slots={{ transcript: null, strip: null, composer: chat.composerOf(top ? { topSlot: top } : undefined) }} />
+          {/* As the loaded view's footer does (useThreadChat, focused and visible here): the toast stack sits over this
+              composer, and this thread, on screen, gets no toast of its own. */}
+          <ChatFooter slots={{ transcript: null, strip: null, composer: chat.composerOf(top ? { topSlot: top } : undefined), anchor: session.id }} />
         </>
       ) : (
         <ThreadView
