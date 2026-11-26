@@ -1,4 +1,5 @@
 import type { ProjectFile } from "./fs";
+import { loweredPaths } from "./fuzzy";
 import { isMarkdownBlockquotePosition } from "./quoteDraft";
 import type { SessionMeta, SlashCommand } from "./tcserver/types";
 
@@ -83,9 +84,12 @@ export function matchCommands(commands: readonly SlashCommand[], query: string):
 export function rankFiles(files: readonly ProjectFile[], query: string, max = 8): ProjectFile[] {
   if (!query) return files.slice(0, max);
   const q = query.toLowerCase();
+  // Each path lower-cased once a list, not once a key (fuzzy.ts loweredPaths).
+  const lowered = loweredPaths(files).relative;
   const scored: { f: ProjectFile; s: number }[] = [];
-  for (const f of files) {
-    const lower = f.relative.toLowerCase();
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i]!;
+    const lower = lowered[i]!;
     const base = lower.slice(lower.lastIndexOf("/") + 1);
     const s = base.startsWith(q) ? 0 : lower.startsWith(q) ? 1 : lower.includes(q) ? 2 : -1;
     if (s >= 0) scored.push({ f, s });

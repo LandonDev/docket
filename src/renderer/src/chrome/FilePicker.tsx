@@ -13,6 +13,7 @@ import {
   recentOpenedFiles,
   type RankedFile,
 } from "../lib/fileIndex";
+import { useRankQuery } from "../lib/rankQuery";
 import { looksLikeProject } from "../lib/recents";
 import { useLockOverscroll } from "../hooks/useLockOverscroll";
 import { usePointerHighlight } from "../hooks/usePointerHighlight";
@@ -53,9 +54,11 @@ export function FilePicker({
     return out;
   }, [cwd, openPaths, open]);
 
+  // Past 5,000 paths the ranking runs in a transition (lib/rankQuery.ts).
+  const rankQuery = useRankQuery(query, files.length);
   const results = useMemo(
-    () => rankProjectFiles(files, query, recents),
-    [files, query, recents],
+    () => rankProjectFiles(files, rankQuery, recents),
+    [files, rankQuery, recents],
   );
 
   useEffect(() => {

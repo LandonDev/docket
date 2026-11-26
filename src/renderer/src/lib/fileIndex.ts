@@ -2,7 +2,7 @@ import { hostOfCwd } from "./tcserver/projects";
 import { registry } from "./connection";
 import { sameCheckout, subscribeGitChangedAt } from "./gitChanged";
 import { listProjectFiles, type ProjectFile } from "./fs";
-import { scorePath, type FuzzyHit } from "./fuzzy";
+import { loweredPaths, prepareQuery, scorePathPrepared, type FuzzyHit } from "./fuzzy";
 import { resolveWorkspacePath } from "./paths";
 import { looksLikeProject } from "./recents";
 import { normalizeEditorPath } from "./search";
@@ -185,9 +185,13 @@ export function rankProjectFiles(
     return out;
   }
 
+  // The query split once a key, each path lower-cased once a list: a key visits each path once.
+  const tokens = prepareQuery(query);
+  const lower = loweredPaths(files);
   const scored: RankedFile[] = [];
-  for (const file of files) {
-    const hit = scorePath(query, file.relative, file.name);
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]!;
+    const hit = scorePathPrepared(tokens, file.relative, lower.relative[i]!, file.name, lower.name[i]!);
     if (!hit) continue;
     const recency = recentRank.get(file.path);
     const score =
