@@ -1049,7 +1049,7 @@ async function runScene(rig: Rig, result: Result, profilePath: string): Promise<
   }
 }
 
-async function confirmedCopy(path: string): Promise<string> {
+export async function confirmedCopy(path: string): Promise<string> {
   const data = realpathSync(path)
   // Reject prod and any ancestor or child of it before calling the marker check.
   for (const prod of ['/srv/agents/docket-data', '/srv/agents/temp-code-data']) {

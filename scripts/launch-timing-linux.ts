@@ -7,7 +7,7 @@
  * chunk split and the V8 code cache are measured as the packaged app has
  * them; Node's compile cache stays off (packaged apps only).
  *
- *   bun scripts/launch-timing-linux.ts --tree <checkout> [--launches 5] [--port 9242] [--label after]
+ *   bun scripts/launch-timing-linux.ts --tree <checkout> [--launches 5] [--port 9242] [--label after] [--copy <dir>]
  *
  * Every launch: a fresh userData for launch 1 only (so launch 2 produces the
  * renderer's code cache and 3+ consume it), `xvfb-run -a` + a private D-Bus,
@@ -16,10 +16,24 @@
  * the module scripts fetched before it (count, bytes) and the index chunk's
  * size. The result lands as one `TIMING {...}` line and under
  * /tmp/tc-launch-linux/<label>.json. Nothing of the user's data is touched.
+ *
+ * `--copy <dir>` boots every launch on a scrubbed copy of real data (D01): the
+ * copy must pass `confirmedCopy` (scripts/perf/host.ts: not his data, no link
+ * out of it, `requireScrubbed`, no thread marked to resume) before anything
+ * boots, the environment is stripped as perf:host's is (a scratch HOME, no
+ * remote port, a dead provider, an empty WINVM_DIR), and the copy's paths are
+ * moved aside for the launches and put back after (lib/copyPaths.ts). Each
+ * launch also times the rail whole (`tc:rail-complete`). Only counts and times
+ * are printed: no log tail, and of the `[boot]` marks only their labels and
+ * times. The copy is written by each boot: that is expected. Run it under
+ * scripts/perf/guarded.ts.
  */
 import { spawn, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+import { isolatedEnvironment } from './journeys/lib/shape'
+import { restoreCopyPaths, stageCopyPaths } from './perf/lib/copyPaths'
 
 const args = process.argv.slice(2)
 const opt = (name: string, fallback: string): string => {
@@ -30,8 +44,9 @@ const TREE = resolve(opt('tree', '.'))
 const LAUNCHES = Number(opt('launches', '5'))
 const PORT = Number(opt('port', '9242'))
 const LABEL = opt('label', 'run')
+const COPY = args.includes('--copy') ? resolve(opt('copy', '')) : null
 const ROOT = '/tmp/tc-launch-linux'
-const USER_DATA = join(ROOT, LABEL, 'userData')
+let USER_DATA = COPY ?? join(ROOT, LABEL, 'userData')
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 type Target = { type: string; url: string; webSocketDebuggerUrl?: string }
@@ -99,7 +114,61 @@ type Launch = {
   spawnToNavigationMs: number
   readyMs: number
   readyFromSpawnMs: number
+  /** the rail whole (`tc:rail-complete`), ms after the spawn; null when it never came in 60 s */
+  railFromSpawnMs: number | null
   bootLine: string | null
+  /** with `--copy`: every `[boot]` mark, its time and label alone */
+  bootMarks?: string[]
+}
+
+/**
+ * A `[boot]` line as a launch on a copy prints it: the mark's time, its label, and of what follows only a step's
+ * word (start, done, progress) and numbers, never a path or a name. A line with no time first is dropped.
+ */
+export function bootMarkOf(line: string): string | null {
+  const m = /^\[boot\] (\d+) ([a-z][\w:.-]*)(.*)$/i.exec(line.trim())
+  if (!m) return null
+  const kept = m[3]!.split(/\s+/).filter((w) => /^(start|done|progress|\d[\d/.,]*(ms|s|%)?)$/.test(w))
+  return [m[1], m[2], ...kept].join(' ')
+}
+
+/** The environment a launch runs with: on a copy, nothing of this shell's but PATH and the locale. */
+export function launchEnvironment(source: NodeJS.ProcessEnv, o: { root: string; userData: string; port: number; copy: boolean }): Record<string, string | undefined> {
+  const env = (o.copy ? { ...isolatedEnvironment(source) } : { ...source }) as Record<string, string | undefined>
+  delete env.ELECTRON_RUN_AS_NODE
+  delete env.ELECTRON_RENDERER_URL
+  // The isolated instance's own home, vault and a dead provider origin, as
+  // the e2e scripts give theirs; a window is forced (the box's service is
+  // headless, this measurement is not).
+  Object.assign(env, {
+    HOME: join(o.root, 'home'),
+    NODE_ENV: 'production',
+    WINVM_DIR: o.copy ? join(o.root, 'no-vm') : `${o.userData}/no-vm`,
+    TEMP_CODE_USER_DATA: o.userData,
+    TEMP_CODE_DEBUG_PORT: String(o.port),
+    TEMP_CODE_REMOTE_PORT: '0',
+    TEMP_CODE_HEADLESS: '0',
+    TEMP_CODE_CLAIM_SHIM: '0',
+    TEMP_CODE_ALIAX_DATA_DIR: join(o.copy ? o.root : o.userData, 'aliax'),
+    TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9',
+    TEMP_CODE_UPDATE_FEED: 'http://127.0.0.1:1/',
+    ...(o.copy
+      ? {
+          TMPDIR: join(o.root, 'tmp'),
+          CLAUDE_CONFIG_DIR: join(o.root, 'home', '.claude'),
+          CODEX_HOME: join(o.root, 'home', '.codex'),
+          TEMP_CODE_LIFEOS_URL: 'http://127.0.0.1:0',
+          TEMP_CODE_LIFEOS_MCP_URL: 'http://127.0.0.1:0/mcp',
+          TEMP_CODE_WORK_ROOT: join(o.root, 'home', 'work'),
+          TEMP_CODE_WARM_HARNESS: '0',
+          SHELL: '/bin/bash',
+          DISABLE_AUTOUPDATER: '1',
+          DISABLE_TELEMETRY: '1',
+          DISABLE_NONESSENTIAL_MODEL_CALLS: '1'
+        }
+      : {})
+  })
+  return env
 }
 
 function dirBytes(dir: string): number {
@@ -113,25 +182,8 @@ function dirBytes(dir: string): number {
 }
 
 async function launch(n: number): Promise<Launch> {
-  const env = { ...process.env } as Record<string, string | undefined>
-  delete env.ELECTRON_RUN_AS_NODE
-  delete env.ELECTRON_RENDERER_URL
-  // The isolated instance's own home, vault and a dead provider origin, as
-  // the e2e scripts give theirs; a window is forced (the box's service is
-  // headless, this measurement is not).
-  Object.assign(env, {
-    HOME: join(ROOT, LABEL, 'home'),
-    NODE_ENV: 'production',
-    WINVM_DIR: `${USER_DATA}/no-vm`,
-    TEMP_CODE_USER_DATA: USER_DATA,
-    TEMP_CODE_DEBUG_PORT: String(PORT),
-    TEMP_CODE_REMOTE_PORT: '0',
-    TEMP_CODE_HEADLESS: '0',
-    TEMP_CODE_CLAIM_SHIM: '0',
-    TEMP_CODE_ALIAX_DATA_DIR: join(USER_DATA, 'aliax'),
-    TEMP_CODE_FAKE_PROVIDERS: 'http://127.0.0.1:9',
-    TEMP_CODE_UPDATE_FEED: 'http://127.0.0.1:1/'
-  })
+  const env = launchEnvironment(process.env, { root: join(ROOT, LABEL), userData: USER_DATA, port: PORT, copy: !!COPY })
+  for (const dir of ['home', 'tmp', 'no-vm']) mkdirSync(join(ROOT, LABEL, dir), { recursive: true })
   // The file:// localStorage migration (originMigration.ts) opens and closes
   // a hidden window before the first real one; on Linux with a display that
   // close is window-all-closed and the app quits. A migrated profile skips
@@ -150,8 +202,10 @@ async function launch(n: number): Promise<Launch> {
   child.stdout!.on('data', (d) => {
     out += String(d)
     const m = /\[boot\] index [^\n]*/.exec(out)
-    if (m && !bootLine) bootLine = m[0]
+    if (m && !bootLine) bootLine = COPY ? bootMarkOf(m[0]) : m[0]
   })
+  // on a copy the log is his: what is said of it is counts and times alone
+  const tail = (n: number): string => (COPY ? '' : out.slice(-n))
   child.stderr!.on('data', (d) => {
     out += String(d)
   })
@@ -161,7 +215,7 @@ async function launch(n: number): Promise<Launch> {
   })
   try {
     const target = await pageTarget(60_000).catch((e: Error) => {
-      throw new Error(`${e.message}${exited ? `; ${exited}` : ''}\n${out.slice(-3000)}`)
+      throw new Error(`${e.message}${exited ? `; ${exited}` : ''}\n${tail(3000)}`)
     })
     const cdp = new Cdp(target.webSocketDebuggerUrl!)
     await cdp.open()
@@ -170,10 +224,16 @@ async function launch(n: number): Promise<Launch> {
     while (Date.now() < until) {
       ready = await cdp.evaluate<number | null>(`performance.getEntriesByName('tc:ready')[0]?.startTime ?? null`)
       if (ready !== null) break
-      if (exited) throw new Error(`${exited} before tc:ready\n${out.slice(-2000)}`)
+      if (exited) throw new Error(`${exited} before tc:ready\n${tail(2000)}`)
       await sleep(50)
     }
-    if (ready === null) throw new Error(`tc:ready never fired\n${out.slice(-2000)}`)
+    if (ready === null) throw new Error(`tc:ready never fired\n${tail(2000)}`)
+    let rail: number | null = null
+    while (Date.now() < until + 60_000 && !exited) {
+      rail = await cdp.evaluate<number | null>(`performance.getEntriesByName('tc:rail-complete')[0]?.startTime ?? null`)
+      if (rail !== null) break
+      await sleep(50)
+    }
     const timeOrigin = await cdp.evaluate<number>('performance.timeOrigin')
     cdp.close()
     return {
@@ -181,7 +241,9 @@ async function launch(n: number): Promise<Launch> {
       spawnToNavigationMs: Math.round(timeOrigin - spawnedAt),
       readyMs: Math.round(ready),
       readyFromSpawnMs: Math.round(timeOrigin - spawnedAt + ready),
-      bootLine
+      railFromSpawnMs: rail === null ? null : Math.round(timeOrigin - spawnedAt + rail),
+      bootLine,
+      ...(COPY ? { bootMarks: out.split('\n').map(bootMarkOf).filter((m): m is string => !!m) } : {})
     }
   } finally {
     try {
@@ -214,15 +276,37 @@ const median = (xs: number[]) => {
 async function main(): Promise<void> {
   if (!existsSync(join(TREE, 'out/renderer/index.html'))) throw new Error(`${TREE}: build the renderer first (electron-vite build)`)
   mkdirSync(join(ROOT, LABEL), { recursive: true })
-  rmSync(USER_DATA, { recursive: true, force: true })
+  if (COPY) {
+    // the copy is checked before anything boots on it, and never removed
+    const { confirmedCopy } = await import('./perf/host')
+    USER_DATA = await confirmedCopy(COPY)
+    const db = new DatabaseSync(join(USER_DATA, 'docket.db'))
+    try {
+      stageCopyPaths(db, join(ROOT, LABEL))
+    } finally {
+      db.close()
+    }
+  } else rmSync(USER_DATA, { recursive: true, force: true })
   const launches: Launch[] = []
-  for (let n = 1; n <= LAUNCHES; n++) {
-    const l = await launch(n)
-    launches.push(l)
-    console.log(
-      `launch ${n}: tc:ready ${l.readyMs} ms after navigation (${l.readyFromSpawnMs} ms after spawn)` +
-        (l.bootLine ? `; ${l.bootLine}` : '')
-    )
+  try {
+    for (let n = 1; n <= LAUNCHES; n++) {
+      const l = await launch(n)
+      launches.push(l)
+      console.log(
+        `launch ${n}: tc:ready ${l.readyMs} ms after navigation (${l.readyFromSpawnMs} ms after spawn); the rail whole ${l.railFromSpawnMs ?? 'never'} ms after spawn` +
+          (l.bootLine ? `; ${l.bootLine}` : '') +
+          (l.bootMarks ? `; [boot] ${l.bootMarks.join(', ')}` : '')
+      )
+    }
+  } finally {
+    if (COPY) {
+      const db = new DatabaseSync(join(USER_DATA, 'docket.db'))
+      try {
+        restoreCopyPaths(db)
+      } finally {
+        db.close()
+      }
+    }
   }
   const warm = launches.slice(2)
   const summary = {
@@ -232,6 +316,7 @@ async function main(): Promise<void> {
     coldReadyMs: launches[0]?.readyMs ?? null,
     warmReadyMedianMs: median(warm.map((l) => l.readyMs)),
     warmReadyFromSpawnMedianMs: median(warm.map((l) => l.readyFromSpawnMs)),
+    railFromSpawnMedianMs: median(launches.flatMap((l) => (l.railFromSpawnMs === null ? [] : [l.railFromSpawnMs]))),
     // The index chunk on disk: a custom scheme's fetches leave no resource timing entries to read it from.
     indexBytes: indexChunkBytes(),
     codeCacheBytes: dirBytes(join(USER_DATA, 'Code Cache'))
@@ -240,7 +325,8 @@ async function main(): Promise<void> {
   console.log(`TIMING ${JSON.stringify(summary)}`)
 }
 
-main().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})
+if (import.meta.main)
+  main().catch((e) => {
+    console.error(e)
+    process.exit(1)
+  })
