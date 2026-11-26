@@ -437,6 +437,25 @@ describe("a text file open", () => {
     expect(h.lines.at(-1)?.state ?? null).not.toBe("saved");
   });
 
+  it("after a look that failed, the line's own timer never says Saved later (Sol S11)", async () => {
+    const h = standIn("first\n");
+    await h.session.load();
+    const host = (h.session as unknown as { host: FileSessionHost }).host;
+    const real = host.request.bind(host);
+    host.request = async <T,>(method: string, params: Record<string, unknown>): Promise<T> => {
+      if (method === "work.files.read" && params.length === 1 && h.calls.some((c) => c.method === "work.files.write")) throw new Error("The request timed out.");
+      const got = await real<T>(method, params);
+      if (method === "work.files.write") void h.session.check();
+      return got;
+    };
+    h.session.edit("mine\n");
+    await h.fire();
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    h.tick(60_000);
+    h.tick(60_000);
+    expect(h.lines.at(-1)?.state ?? null).not.toBe("saved");
+  });
+
   it("keeps an unlisted open copy writable after a scoped look and a failed look", async () => {
     const h = standIn("first\n", { unlisted: true });
     await h.session.load();

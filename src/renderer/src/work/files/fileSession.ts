@@ -139,6 +139,9 @@ export class FileSession {
    *  saw one come is read again before its text and its save line go in, so Saved never names a file gone by. */
   private reading = 0;
   private noted = 0;
+  /** The host answered a save, but whether the file still holds it is not known (a look is out, or failed): no
+   *  Saved time is said for it, by the line or its timer. */
+  private unconfirmed = false;
 
   constructor(
     private readonly host: FileSessionHost,
@@ -251,6 +254,7 @@ export class FileSession {
       this.failure = null;
       this.conflicted = false;
       this.gone = false;
+      this.unconfirmed = false;
       await this.lookForDrafts(text.text);
       if (this.disposed) return;
       // Checked again just before the text and its line go in: a change noted meanwhile reads again.
@@ -325,6 +329,10 @@ export class FileSession {
       return this.host.saved(linkDropped(failure) ? { state: "offline", pending: this.pending, detail: failure, actions: retry } : { state: "conflict", detail: notSavedWords(failure), actions: retry });
     }
     if (saving) return this.host.saved({ state: "saving" });
+    if (this.unconfirmed) {
+      this.later(null);
+      return this.host.saved(this.saving ? { state: "saving" } : null);
+    }
     this.host.saved({ state: "saved", at: this.changed });
   }
 
@@ -419,6 +427,7 @@ export class FileSession {
           // Looked at again while notices keep coming: a look ends only when none came while it was out.
           let now: FileBytes | null | undefined;
           let seen: number;
+          this.unconfirmed = true;
           do {
             seen = this.noted;
             now = await this.look();
@@ -426,8 +435,12 @@ export class FileSession {
           this.saving = null;
           this.sentAt = null;
           if (this.disposed) return;
-          // A look that failed says nothing of saving, as a failed read does: never Saved unproven.
-          if (now === undefined) return this.host.saved(null);
+          // A look that failed says nothing of saving, as a failed read does: never Saved unproven, and its timer goes.
+          if (now === undefined) {
+            this.later(null);
+            return this.host.saved(null);
+          }
+          this.unconfirmed = false;
           if (now?.version === this.version) return this.line();
           if (now && !this.dirty) return void (await this.load());
           this.conflicted = true;
@@ -437,6 +450,8 @@ export class FileSession {
         }
         this.saving = null;
         this.sentAt = null;
+        // The host's answer with no word from the folder meanwhile is the file holding it.
+        if ("version" in got) this.unconfirmed = false;
         this.line();
       } catch (err) {
         const lost = await digest;
