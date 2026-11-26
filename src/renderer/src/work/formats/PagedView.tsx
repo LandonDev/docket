@@ -418,7 +418,7 @@ function Rail({ doc, page, width, onPick }: { doc: PdfDoc; page: number; width: 
         aria-current={n === page ? "true" : undefined}
         aria-label={`Page ${n}`}
         onClick={() => onPick(n)}
-        className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 rounded-md px-2 pt-1.5 pb-1 text-xs leading-4 text-muted-foreground tabular-nums transition-[background-color] duration-(--dur-hover) hover:bg-foreground/5 active:bg-foreground/12 active:transition-none aria-[current=true]:bg-muted aria-[current=true]:text-foreground"
+        className="absolute left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 rounded-md px-2 pt-1.5 pb-1 text-xs leading-4 text-muted-foreground tabular-nums transition-[background-color] duration-(--dur-hover) hover:bg-foreground/5 active:bg-foreground/12 active:transition-none aria-[current=true]:bg-sidebar-group-selected aria-[current=true]:text-foreground"
         style={{ top: 8 + (n - 1) * row }}
       >
         <Thumb doc={doc} page={n} width={thumb} height={pictureHeight} />

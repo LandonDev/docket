@@ -84,6 +84,8 @@ describe("the pages", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Page 4" })));
     await waitFor(() => expect(long.seen.at(-1)).toEqual([4, RAIL_FROM]));
     expect(screen.getByRole("button", { name: "Page 4" }).getAttribute("aria-current")).toBe("true");
+    // The page being read is marked with the selected fill, which shows on the stage's sidebar ground in light.
+    expect(screen.getByRole("button", { name: "Page 4" }).className).toContain("aria-[current=true]:bg-sidebar-group-selected");
     expect(sheets()).toContain(4);
   });
 

@@ -211,8 +211,12 @@ only by case resolve to one on the Mac's disk, where the release is built.
 - Mount it over your editor, not in place of it: keep the editor mounted,
   `inert` and unseen, so its caret, its scroll and its connection are kept
   (the document draws the frame through a portal into a slot of its Body).
-- A format's `unit: 'slide'` makes the count read "Slide 1 of 12" and the
-  loading shape 16:9.
+- A format's `unit: 'slide'` makes the count read "Slide 1 of 12", the
+  waiting line "Drawing the slides" ("Drawing 12 slides") and the loading
+  shape 16:9, whatever the paper set-up says (a handout, with no unit, keeps
+  the paper's shape). A CSV's table is as wide as its cells, so the Sheet
+  row's picker ends where the table does; the rail marks the page being read
+  with `sidebar-group-selected`.
 - `export` may answer `where` when it saved the file somewhere itself; the
   frame then toasts "Saved <name> to <where>". Without it the system's own
   dialog was the answer. **`export` writes the file as it stands when he

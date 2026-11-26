@@ -482,6 +482,32 @@ describe("the keys", () => {
   });
 });
 
+describe("a deck's slides and a table's values", () => {
+  it("draws a slide format as slides while it comes: 16:9 bones and its own word, whatever the paper set-up", async () => {
+    const f = fake({
+      formats: [{ id: "pptx", label: "PowerPoint", ext: "pptx", paged: true, verb: "Export", unit: "slide" }],
+      setup: { kind: "document", common: { paper: "Letter", orientation: "portrait", margins: { ...MARGIN_PRESETS.Narrow }, header: true, footer: true }, columns: 1, differentFirst: false, set: (async () => {}) as never },
+    });
+    await show(f);
+    expect(head()).toBe("Drawing the slides");
+    const bones = [...document.querySelectorAll<HTMLElement>("[aria-busy=true] .bg-card")];
+    expect(bones.length).toBeGreaterThan(0);
+    for (const bone of bones) {
+      expect(bone.className).toContain("aspect-video");
+      expect(bone.style.aspectRatio).toBe("");
+    }
+  });
+
+  it("keeps the Sheet row as wide as the table, so its picker ends where the table does", async () => {
+    const f = fake({ formats: [{ id: "csv", label: "CSV", ext: "csv", paged: false, verb: "Export" }] });
+    await show(f, { kind: "sheet" });
+    await f.answer({ picture: { kind: "table", name: "Budget", sheets: ["Budget", "Hotel"], rows: [["Item", "Cost"], ["Tables", "1,200.00"]] }, drops: [] });
+    const table = document.querySelector<HTMLElement>("[data-preview-table]")!;
+    expect(table.className).toContain("w-fit");
+    expect(table.className).toContain("max-w-full");
+  });
+});
+
 describe("the real app's own picture", () => {
   const office = (state: "ready" | "asleep" | "not open" | "none") => async () => ({ app: "Word" as const, state });
 

@@ -408,18 +408,21 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
     );
   } else if (draw.status === "drawing" || !picture) {
     const pages = known.current.get(formatId);
+    // A slide format is drawn as slides, so it says so and its bones are 16:9, never the paper set-up's page.
+    const slides = current?.unit === "slide";
+    const [one, many] = slides ? ["slide", "slides"] : ["page", "pages"];
     const waiting = (
       <>
         <Spinner className="size-3" aria-hidden="true" />
-        <span className="min-w-0 truncate">{paged ? (pages ? `Drawing ${pages.toLocaleString("en-US")} ${pages === 1 ? "page" : "pages"}` : "Drawing the pages") : "Drawing the file"}</span>
+        <span className="min-w-0 truncate">{paged ? (pages ? `Drawing ${pages.toLocaleString("en-US")} ${pages === 1 ? one : many}` : `Drawing the ${many}`) : "Drawing the file"}</span>
       </>
     );
     body = paged ? (
       <PagedSkeleton
         head={head(waiting)}
         side={settings ? <div data-preview-column className="flex min-w-0 flex-col">{settings}</div> : undefined}
-        wide={current?.unit === "slide"}
-        {...(setup ? { aspect: paperAspect(setup.common) } : {})}
+        wide={slides}
+        {...(setup && !slides ? { aspect: paperAspect(setup.common) } : {})}
         width={width}
       />
     ) : (
@@ -846,7 +849,8 @@ const WEB_HEIGHT = 900;
 function TablePicture({ picture, onDraw }: { picture: Extract<PreviewPicture, { kind: "table" }>; onDraw(sheet: string): void }) {
   const sheets = picture.sheets ?? [];
   return (
-    <div data-preview-table className="flex min-w-0 flex-col gap-2">
+    // As wide as the table, so the Sheet row's picker ends where the table does.
+    <div data-preview-table className="flex w-fit max-w-full min-w-0 flex-col gap-2">
       {sheets.length > 1 ? (
         <PageMenuRow label="Sheet" value={picture.name} options={sheets.map((s) => ({ id: s, label: s }))} onPick={onDraw} />
       ) : null}
