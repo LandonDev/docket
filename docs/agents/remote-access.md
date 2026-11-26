@@ -179,6 +179,23 @@
   signed out`), on which tcserver/link.ts replaces the page with
   `/pair?signed-out`. `/asset/<host>/…`
   mirrors `tempcode-asset://` for logos, media and agent pages.
+- A window's link (lib/connection/supervisor.ts): the host's ping finds a
+  silent socket only at its third 30 s tick, so a visible window beats its
+  own heartbeat. When 10 s pass with no frame in, it asks `away.get` (from
+  memory, no effect, `read`); 5 s with nothing at all in after the ask is a
+  miss, and two misses in a row close the socket (`local`) and redial at
+  once: a dead link is found 20 s after its last frame. Any frame counts,
+  a push or part of a long answer. A hidden window sends no heartbeat
+  (`ConnectionRegistry.setVisible`, from the window hooks), and coming on
+  screen probes as before. A dial that reached no hello, or a socket the
+  link took (no close code of the host's own), waits at most
+  `VISIBLE_RETRY_MS` (2 s, jittered) for its next dial while the window is
+  visible, so the link's return is met within that, not after a doubled
+  backoff; a hidden window keeps the 1 s to 5 min backoff, and a host that
+  pushed back (1008, 1011, 1013, 4xxx) keeps it in either. A redial never
+  sends a write again: a press cut by the close fails with
+  `connection closed` (registry.test.ts), and only `SAFE_READS` are asked
+  again (link.ts).
 - Webhook targets (remote/addressGuard.ts, R2 M3): a key's webhook URL and
   a hub subscription URL must be https to a public host; loopback, RFC 1918,
   CGNAT, link-local (169.254.169.254), v6 unique-local/link-local, `.internal`,

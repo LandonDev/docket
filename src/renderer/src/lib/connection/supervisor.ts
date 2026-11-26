@@ -38,8 +38,28 @@ export const PROBE_TIMEOUT_MS = 5_000;
 export const PROBE_LIMIT_MS = 30_000;
 /** A cheap read the probe sends over the live session. */
 export const PROBE_METHOD = "workspace.list";
+/** A visible window asks once when this long passes with no frame in. */
+export const HEARTBEAT_MS = 10_000;
+/** A heartbeat missed: this long after its ask, nothing at all came in. */
+export const HEARTBEAT_MISS_MS = 5_000;
+/** Misses in a row that close the socket and redial: a dead link is found 20 s after its last frame. */
+export const HEARTBEAT_MISSES = 2;
+/** The heartbeat's ask: answered from memory, with no effect, to any key (capability `read`). */
+export const HEARTBEAT_METHOD = "away.get";
+/**
+ * A visible window's wait between dials that could not reach the host: the
+ * link's return is met within this, not after a doubled backoff. A host that
+ * answered and then pushed back (a close code of its own) keeps the backoff.
+ */
+export const VISIBLE_RETRY_MS = 2_000;
 
 export type ProbeTrigger = "foreground" | "online" | "offline" | "retry";
+
+/** A close the host chose with a code that asks us to stay away (overloaded, policy, its own 4xxx). */
+export function isPushback(reason: CloseReason): boolean {
+  const code = reason.code;
+  return code !== undefined && (code === 1008 || code === 1011 || code === 1013 || code >= 4000);
+}
 
 /** The delay before attempt `attempt` (0-based, after that many failures). */
 export function backoffDelay(attempt: number, random: number, b: Backoff = BACKOFF): number {
@@ -64,6 +84,9 @@ export type SupervisorOptions = {
   preflightMs?: number;
   probeTimeoutMs?: number;
   probeMethod?: string;
+  heartbeatMs?: number;
+  heartbeatMissMs?: number;
+  visibleRetryMs?: number;
   onStatus?: (status: EnvironmentStatus) => void;
   /** The live session changed: a replacement transport, or null while none. */
   onSession?: (session: Transport | null) => void;
@@ -74,7 +97,9 @@ export type SupervisorOptions = {
  * one session, retries involuntary losses on a jittered exponential backoff
  * that resets only after the session stays up, probes the live session on
  * foreground / online / explicit retry and reconnects only when the probe
- * fails, preflights earlier routes while sitting on a later one, and never
+ * fails, beats a heartbeat while the window is visible (a link that went
+ * silent is closed and redialed after two missed asks), meets a link's
+ * return within VISIBLE_RETRY_MS while visible, preflights earlier routes while sitting on a later one, and never
  * retries a refused credential or a host that changed identity by itself.
  */
 export class Supervisor {
@@ -88,6 +113,12 @@ export class Supervisor {
   private preflightTimer: unknown = null;
   private attempting: Promise<void> | null = null;
   private probing: Promise<void> | null = null;
+  private heartbeatTimer: unknown = null;
+  /** The heartbeat counts quiet from here at least: the session's adoption, or the window coming on
+   *  screen (which probes on its own, so a beat then would be a second ask). */
+  private quietFrom = 0;
+  /** The window is on screen: only then does the heartbeat run and a failed dial retry soon. */
+  private visible = false;
   private everOpened = false;
   private stopped = true;
   private online = true;
@@ -119,6 +150,7 @@ export class Supervisor {
     this.clearRetry();
     this.clearUp();
     this.clearPreflight();
+    this.clearHeartbeat();
     const session = this.session;
     this.session = null;
     this.liveRoute = null;
@@ -134,6 +166,15 @@ export class Supervisor {
     if (this.status.transport === "unauthorized" || this.status.transport === "offline")
       this.status = { ...this.status, attempts: 0 };
     void this.probe("retry");
+  }
+
+  /** The window came on screen or left it. A hidden window sends no heartbeat. */
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    if (!visible) return this.clearHeartbeat();
+    this.quietFrom = this.clock.now();
+    if (this.session && !this.stopped) this.armHeartbeat(this.session);
   }
 
   /** The OS or browser said the network came or went. */
@@ -240,7 +281,8 @@ export class Supervisor {
       this.set({ ...this.status, transport: "offline", lastError, nextRetryAt: null });
       return;
     }
-    this.scheduleRetry(lastError);
+    // No route reached a hello: nothing on the host was asked to do work, so a visible window may try again soon.
+    this.scheduleRetry(lastError, this.visible);
   }
 
   private open(url: string, route: Route): Transport {
@@ -261,6 +303,7 @@ export class Supervisor {
     }
     const previous = this.session;
     this.session = transport;
+    this.quietFrom = this.clock.now();
     this.liveRoute = route;
     this.everOpened = true;
     this.clearRetry();
@@ -282,6 +325,7 @@ export class Supervisor {
     this.options.onSession?.(transport);
     previous?.close({ kind: "replaced", message: "a better route answered" });
     this.schedulePreflight(index);
+    this.armHeartbeat(transport);
     return true;
   }
 
@@ -292,6 +336,7 @@ export class Supervisor {
     this.liveRoute = null;
     this.clearUp();
     this.clearPreflight();
+    this.clearHeartbeat();
     this.status = { ...this.status, fresh: false, route: null };
     this.options.onSession?.(null);
     if (this.stopped || reason.kind === "replaced") {
@@ -312,12 +357,17 @@ export class Supervisor {
       this.set({ ...this.status, transport: "offline", lastError: reason.message, nextRetryAt: null });
       return;
     }
-    this.scheduleRetry(reason.message);
+    // The link went (no close of the host's choosing): a visible window meets its return soon.
+    this.scheduleRetry(reason.message, this.visible && !isPushback(reason));
   }
 
-  private scheduleRetry(lastError: string | null): void {
+  /** The next try on the backoff; `soon` holds it to VISIBLE_RETRY_MS (jittered) at most. */
+  private scheduleRetry(lastError: string | null, soon = false): void {
     const attempts = this.status.attempts + 1;
-    const delay = backoffDelay(attempts - 1, this.clock.random(), this.backoff);
+    const random = this.clock.random();
+    const backoff = backoffDelay(attempts - 1, random, this.backoff);
+    const cap = this.options.visibleRetryMs ?? VISIBLE_RETRY_MS;
+    const delay = soon ? Math.min(backoff, Math.round(cap * (1 - this.backoff.jitter + 2 * this.backoff.jitter * random))) : backoff;
     this.clearRetry();
     this.retryTimer = this.clock.setTimeout(() => {
       this.retryTimer = null;
@@ -394,6 +444,50 @@ export class Supervisor {
         },
       );
     });
+  }
+
+  // ── heartbeat ──────────────────────────────────────────────────────
+
+  /**
+   * While visible: when HEARTBEAT_MS pass with no frame in, one small ask;
+   * HEARTBEAT_MISS_MS with nothing at all in after it is a miss, and a
+   * second miss in a row closes the socket and redials at once. Any frame
+   * (an answer, a push, part of a long answer) is the link alive. The host's
+   * own ping finds a silent socket only at its third 30 s tick; a window
+   * left on screen through a sleep or a Wi-Fi change waited 87 s for that.
+   */
+  private armHeartbeat(session: Transport, delay?: number): void {
+    this.clearHeartbeat();
+    if (!this.visible || this.stopped || this.session !== session) return;
+    const every = this.options.heartbeatMs ?? HEARTBEAT_MS;
+    const lastFrame = (): number => Math.max(session.lastFrameAt ?? 0, this.quietFrom);
+    const quietFor = (): number => this.clock.now() - lastFrame();
+    this.heartbeatTimer = this.clock.setTimeout(() => {
+      this.heartbeatTimer = null;
+      if (this.session !== session) return;
+      const quiet = quietFor();
+      if (quiet < every) return this.armHeartbeat(session, every - quiet);
+      this.beat(session, 0);
+    }, delay ?? Math.max(0, every - quietFor()));
+  }
+
+  private beat(session: Transport, misses: number): void {
+    const before = session.bytesIn ?? 0;
+    session.request(HEARTBEAT_METHOD, undefined).catch(() => undefined);
+    this.heartbeatTimer = this.clock.setTimeout(() => {
+      this.heartbeatTimer = null;
+      if (this.session !== session || session.state !== "open") return;
+      if ((session.bytesIn ?? 0) !== before) return this.armHeartbeat(session);
+      if (misses + 1 < HEARTBEAT_MISSES) return this.beat(session, misses + 1);
+      const message = "heartbeat: the link went silent";
+      session.close({ kind: "local", message });
+      this.lost(session, { kind: "local", message });
+    }, this.options.heartbeatMissMs ?? HEARTBEAT_MISS_MS);
+  }
+
+  private clearHeartbeat(): void {
+    if (this.heartbeatTimer !== null) this.clock.clearTimeout(this.heartbeatTimer);
+    this.heartbeatTimer = null;
   }
 
   // ── preflight ──────────────────────────────────────────────────────

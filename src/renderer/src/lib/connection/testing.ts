@@ -51,6 +51,7 @@ export class FakeTransport {
   hello: Hello | null = null;
   closeReason: CloseReason | null = null;
   bytesIn = 0;
+  lastFrameAt = 0;
   requests: { method: string; params: unknown; resolve: (v: unknown) => void; reject: (e: Error) => void }[] = [];
   private closeListeners = new Set<(r: CloseReason) => void>();
   private opened: Promise<Hello>;
@@ -111,6 +112,11 @@ export class FakeTransport {
     for (const r of this.requests) r.reject(new ConnectionLostError("connection closed"));
     this.requests = [];
     for (const l of this.closeListeners) l(reason);
+  }
+  /** A frame of `bytes` came in at `at` (the test's clock). */
+  receive(bytes: number, at: number): void {
+    this.bytesIn += bytes;
+    this.lastFrameAt = at;
   }
   /** The network took the socket. */
   drop(): void {

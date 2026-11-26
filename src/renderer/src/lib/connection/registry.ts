@@ -44,6 +44,8 @@ export class ConnectionRegistry {
    *  asks preload for the port first); `add` adopts it, so listeners that
    *  attached early hear the first open. */
   private pendingPrimary: EnvLink | null = null;
+  /** The window is on screen (installWindowHooks): every supervisor's heartbeat and retry pace read it. */
+  private visible = false;
   private statusListeners = new Set<() => void>();
   private linkListeners = new Set<(link: EnvLink, event: LinkEvent) => void>();
 
@@ -122,6 +124,7 @@ export class ConnectionRegistry {
     this.environmentList = this.environments();
     this.setStatus(environment.id, supervisor.status);
     for (const l of this.linkListeners) l(link, "added");
+    supervisor.setVisible(this.visible);
     supervisor.start();
     return link;
   }
@@ -149,6 +152,7 @@ export class ConnectionRegistry {
       // unauthorized state and any ticket request still in flight.
       entry.supervisor.stop();
       entry.supervisor = this.createSupervisor(environment, entry.link);
+      entry.supervisor.setVisible(this.visible);
       entry.supervisor.start();
     } else {
       entry.supervisor.update(environment);
@@ -183,6 +187,12 @@ export class ConnectionRegistry {
   /** Foreground, online: every supervisor probes its session. */
   probeAll(trigger: ProbeTrigger): void {
     for (const e of this.entries.values()) void e.supervisor.probe(trigger);
+  }
+
+  /** The window came on screen or left it: hidden, no supervisor sends a heartbeat. */
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    for (const e of this.entries.values()) e.supervisor.setVisible(visible);
   }
 
   setOnline(online: boolean): void {
@@ -239,10 +249,13 @@ export class ConnectionRegistry {
   }
 
   /** Window hooks: a window coming forward or the network returning probes
-   *  every session; the network leaving pauses retries. */
+   *  every session; the network leaving pauses retries; the heartbeat runs
+   *  while the page is visible. */
   installWindowHooks(win: Window = window): () => void {
     const onVisible = (): void => {
-      if (win.document.visibilityState === "visible") this.probeAll("foreground");
+      const visible = win.document.visibilityState === "visible";
+      this.setVisible(visible);
+      if (visible) this.probeAll("foreground");
     };
     const onFocus = (): void => this.probeAll("foreground");
     const onOnline = (): void => this.setOnline(true);
@@ -252,6 +265,7 @@ export class ConnectionRegistry {
     win.addEventListener("online", onOnline);
     win.addEventListener("offline", onOffline);
     if (win.navigator && win.navigator.onLine === false) this.setOnline(false);
+    this.setVisible(win.document.visibilityState === "visible");
     return () => {
       win.document.removeEventListener("visibilitychange", onVisible);
       win.removeEventListener("focus", onFocus);

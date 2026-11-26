@@ -310,4 +310,60 @@ describe("/ui's host name", () => {
     expect(webEnvironmentNamed(env, { ...hello, name: undefined })).toBeNull();
     expect(webEnvironmentNamed(env, null)).toBeNull();
   });
+
+  it("the window hooks hand every supervisor the page's visibility: hidden, no heartbeat; visible, one ask after 10 s quiet", async () => {
+    const h = harness();
+    const listeners = new Map<string, () => void>();
+    const doc = { visibilityState: "hidden", addEventListener: (k: string, f: () => void) => listeners.set(k, f), removeEventListener: () => undefined };
+    const win = { document: doc, navigator: { onLine: true }, addEventListener: () => undefined, removeEventListener: () => undefined } as unknown as Window;
+    const off = h.registry.installWindowHooks(win);
+    h.registry.add(localEnvironment(4000));
+    await flush();
+    h.transports[0].answerHello();
+    await flush();
+    await h.clock.advance(30_000);
+    expect(h.transports[0].requests).toHaveLength(0);
+    doc.visibilityState = "visible";
+    listeners.get("visibilitychange")!();
+    await flush();
+    // Coming forward probes once (workspace.list); its answer is the last frame, and 10 s of quiet after it one beat.
+    expect(h.transports[0].requests.map((r) => r.method)).toEqual(["workspace.list"]);
+    h.transports[0].requests[0].resolve([]);
+    h.transports[0].receive(100, h.clock.now());
+    await h.clock.advance(10_000);
+    expect(h.transports[0].requests.map((r) => r.method)).toEqual(["workspace.list", "away.get"]);
+    off();
+  });
+
+  it("a held press cut by the heartbeat's close is not sent again on the new socket", async () => {
+    const h = harness();
+    const listeners = new Map<string, () => void>();
+    const doc = { visibilityState: "visible", addEventListener: (k: string, f: () => void) => listeners.set(k, f), removeEventListener: () => undefined };
+    const win = { document: doc, navigator: { onLine: true }, addEventListener: () => undefined, removeEventListener: () => undefined } as unknown as Window;
+    const off = h.registry.installWindowHooks(win);
+    const link = h.registry.add(localEnvironment(4000));
+    await flush();
+    h.transports[0].answerHello();
+    await flush();
+    let outcome = "";
+    const press = link.request("work.outbox.decide", { ids: ["held_1"], decision: "send" }).then(
+      () => (outcome = "answered"),
+      (e: Error) => (outcome = e.message),
+    );
+    await flush();
+    expect(h.transports[0].requests.filter((r) => r.method === "work.outbox.decide")).toHaveLength(1);
+    // The link goes silent: two missed beats close it and the redial opens a second socket.
+    await h.clock.advance(20_000);
+    await press;
+    expect(outcome).toBe("connection closed");
+    expect(h.transports).toHaveLength(2);
+    h.transports[1].answerHello();
+    await flush();
+    await h.clock.advance(15_000);
+    expect(h.transports).toHaveLength(2);
+    expect(h.transports[1].requests.map((r) => r.method)).toEqual(["away.get", "away.get"]);
+    expect(h.transports[1].requests.some((r) => r.method === "work.outbox.decide")).toBe(false);
+    off();
+  });
 });
+

@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { BACKOFF, PROBE_LIMIT_MS, Supervisor, backoffDelay, type SupervisorOptions } from "./supervisor";
+import {
+  BACKOFF,
+  HEARTBEAT_METHOD,
+  HEARTBEAT_MISS_MS,
+  HEARTBEAT_MS,
+  PROBE_LIMIT_MS,
+  Supervisor,
+  VISIBLE_RETRY_MS,
+  backoffDelay,
+  type SupervisorOptions,
+} from "./supervisor";
 import { FakeClock, FakeTransport, HELLO, flush } from "./testing";
 import type { Environment, EnvironmentStatus } from "./types";
 
@@ -365,3 +375,149 @@ describe("Supervisor", () => {
     expect(h.supervisor.status.fresh).toBe(false);
   });
 });
+
+/** One route: a session opened on it with nothing else scheduled but the 30 s reset. */
+async function openOne(visible: boolean) {
+  const h = harness({}, { routes: [ROUTES.tunnel] });
+  h.supervisor.setVisible(visible);
+  h.supervisor.start();
+  await flush();
+  h.transports[0].answerHello();
+  await flush();
+  const live = h.transports[0];
+  live.receive(200, h.clock.now()); // the hello
+  return { h, live };
+}
+
+const asks = (t: FakeTransport): number => t.requests.filter((r) => r.method === HEARTBEAT_METHOD).length;
+
+describe("Supervisor heartbeat (M6)", () => {
+  it("a visible window finds a blackholed link and redials it within 20 s: two asks, one new socket", async () => {
+    const { h, live } = await openOne(true);
+    // Nothing comes in from here on: no bytes, no close.
+    await h.clock.advance(HEARTBEAT_MS - 1);
+    expect(asks(live)).toBe(0);
+    await h.clock.advance(1);
+    expect(asks(live)).toBe(1);
+    await h.clock.advance(HEARTBEAT_MISS_MS);
+    expect(asks(live)).toBe(2);
+    expect(live.state).toBe("open");
+    await h.clock.advance(HEARTBEAT_MISS_MS);
+    // 20 s after the last frame: closed, and the redial already out, with no backoff wait.
+    expect(live.state).toBe("closed");
+    expect(live.closeReason?.message).toContain("heartbeat");
+    expect(h.transports).toHaveLength(2);
+    expect(h.tickets).toHaveLength(2);
+    expect(h.supervisor.status).toMatchObject({ transport: "reconnecting", nextRetryAt: null });
+  });
+
+  it("a hidden window sends no heartbeat and keeps a silent socket", async () => {
+    const { h, live } = await openOne(false);
+    await h.clock.advance(100_000);
+    expect(live.requests).toHaveLength(0);
+    expect(live.state).toBe("open");
+    expect(h.transports).toHaveLength(1);
+  });
+
+  it("hiding stops the heartbeat; coming back on screen starts it again, counted from then", async () => {
+    const { h, live } = await openOne(true);
+    await h.clock.advance(HEARTBEAT_MS);
+    expect(asks(live)).toBe(1);
+    h.supervisor.setVisible(false);
+    await h.clock.advance(60_000);
+    expect(asks(live)).toBe(1);
+    expect(live.state).toBe("open");
+    // Coming forward probes on its own (the registry's hook), so the next beat is a full quiet spell away.
+    h.supervisor.setVisible(true);
+    await h.clock.advance(HEARTBEAT_MS - 1);
+    expect(asks(live)).toBe(1);
+    await h.clock.advance(1);
+    expect(asks(live)).toBe(2);
+  });
+
+  it("a link that keeps delivering is never asked; an answer to an ask keeps the socket", async () => {
+    const { h, live } = await openOne(true);
+    for (let i = 0; i < 20; i++) {
+      await h.clock.advance(3_000);
+      live.receive(500, h.clock.now());
+    }
+    expect(live.requests).toHaveLength(0);
+    await h.clock.advance(HEARTBEAT_MS);
+    expect(asks(live)).toBe(1);
+    // The answer lands inside the miss window: alive, and the next ask waits another full quiet spell.
+    await h.clock.advance(1_000);
+    live.receive(40, h.clock.now());
+    await h.clock.advance(HEARTBEAT_MISS_MS);
+    expect(live.state).toBe("open");
+    expect(asks(live)).toBe(1);
+    await h.clock.advance(HEARTBEAT_MS - HEARTBEAT_MISS_MS);
+    expect(asks(live)).toBe(2);
+  });
+});
+
+describe("Supervisor retry pace while visible (M6)", () => {
+  it("a visible window's failed dials wait at most VISIBLE_RETRY_MS, a hidden one's double", async () => {
+    const paced = async (visible: boolean): Promise<number[]> => {
+      const h = harness();
+      h.supervisor.setVisible(visible);
+      h.supervisor.start();
+      await failAll(h);
+      const delays: number[] = [];
+      for (let i = 0; i < 6; i++) {
+        const wait = h.supervisor.status.nextRetryAt! - h.clock.now();
+        delays.push(wait);
+        await h.clock.advance(wait);
+        await failAll(h);
+      }
+      return delays;
+    };
+    expect(await paced(true)).toEqual([1000, 2000, 2000, 2000, 2000, 2000]);
+    expect(await paced(false)).toEqual([1000, 2000, 4000, 8000, 16000, 32000]);
+  });
+
+  it("the link's return after a long cut is met within VISIBLE_RETRY_MS, not a doubled backoff", async () => {
+    const h = harness({}, { routes: [ROUTES.tunnel] });
+    h.supervisor.setVisible(true);
+    h.supervisor.start();
+    await flush();
+    h.transports[0].answerHello();
+    await flush();
+    // Cut: the socket drops and every dial fails for a minute.
+    h.transports[0].drop();
+    await flush();
+    const cutEnds = h.clock.now() + 60_000;
+    while (h.clock.now() < cutEnds) {
+      await h.clock.advance(h.supervisor.status.nextRetryAt! - h.clock.now());
+      await failAll(h);
+    }
+    expect(h.supervisor.status.attempts).toBeGreaterThan(20);
+    // Back: the next dial is at most VISIBLE_RETRY_MS × 1.25 away.
+    const wait = h.supervisor.status.nextRetryAt! - h.clock.now();
+    expect(wait).toBeLessThanOrEqual(VISIBLE_RETRY_MS * 1.25);
+    const dials = h.transports.length;
+    await h.clock.advance(wait);
+    expect(h.transports).toHaveLength(dials + 1);
+    h.transports.at(-1)!.answerHello();
+    await flush();
+    expect(h.supervisor.status.transport).toBe("open");
+  });
+
+  it("a host that pushed back (1013) keeps its backoff even when visible", async () => {
+    const h = harness({}, { routes: [ROUTES.tunnel] });
+    h.supervisor.start();
+    await failAll(h);
+    for (let i = 0; i < 4; i++) {
+      await h.clock.advance(h.supervisor.status.nextRetryAt! - h.clock.now());
+      await failAll(h);
+    }
+    await h.clock.advance(h.supervisor.status.nextRetryAt! - h.clock.now());
+    h.transports.at(-1)!.answerHello();
+    await flush();
+    expect(h.supervisor.status).toMatchObject({ transport: "open", attempts: 5 });
+    h.supervisor.setVisible(true);
+    h.transports.at(-1)!.close({ kind: "network", code: 1013, message: "socket send queue exceeded 64 MiB" });
+    await flush();
+    expect(h.supervisor.status.nextRetryAt! - h.clock.now()).toBe(backoffDelay(5, 0.5));
+  });
+});
+
