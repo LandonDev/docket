@@ -1936,7 +1936,7 @@ down to 8em, before the name does.
 
 **The list in a narrow window** (Page.tsx). A busy row's words take By's
 room too from 480px of list, so "Opening… 8.0 of 20 MB" reads whole. The
-selection bar keeps its verbs beside the count from 34rem of list; narrower,
+selection bar keeps its verbs beside the count from 30rem of list; narrower,
 they are one Actions menu with the same rows, between the count and Clear. The
 note over the list ("Searched by name only: …") says the whole of a cut part on
 hover. A cut place keeps the space before its "›" ("Dummy Es… › Events").

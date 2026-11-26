@@ -495,11 +495,11 @@ describe("the selection", () => {
     expect(bar.textContent).toContain("3 selected");
     // The bar names its verbs as DESIGN.md does, and the list keeps its last row clear of the bar.
     expect(within(bar).getAllByRole("button").map((b) => b.textContent)).toEqual(["Ask", "Download", "Move", "Copy", "Delete", "Actions", "Clear"]);
-    // Polish 2 council round 1 (R1-C4): in a narrow list the verbs ran off the bar, Clear with them. Under 34rem they
+    // Polish 2 council round 1 (R1-C4): in a narrow list the verbs ran off the bar, Clear with them. Under 30rem they
     // are one Actions menu with the same rows; wider, the verbs stand and the menu is gone.
     expect(bar.className).toContain("@container/files-bulk");
-    expect(bar.querySelector("[data-files-bulk-verbs]")!.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "@[34rem]/files-bulk:flex"]));
-    expect(bar.querySelector("[data-files-bulk-menu]")!.className).toContain("@[34rem]/files-bulk:hidden");
+    expect(bar.querySelector("[data-files-bulk-verbs]")!.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "@[30rem]/files-bulk:flex"]));
+    expect(bar.querySelector("[data-files-bulk-menu]")!.className).toContain("@[30rem]/files-bulk:hidden");
     fireEvent.click(within(bar).getByRole("button", { name: "Actions" }));
     expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Ask", "Download", "Move", "Copy", "Delete"]);
     fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });

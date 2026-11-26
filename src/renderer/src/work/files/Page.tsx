@@ -784,7 +784,7 @@ const ROW_KEYS: Partial<Record<EntryAct, string>> = { "quick-look": "Quick Look"
 
 /**
  * With two or more selected, one bar floats at the foot of the list: how many, the verbs for them all, and Clear. Under
- * 34rem of list the verbs are one Actions menu between the count and Clear, so none is cut off the bar's end.
+ * 30rem of list the verbs are one Actions menu between the count and Clear, so none is cut off the bar's end.
  */
 function BulkBar({ count, rows, onAsk, onAct, onClear }: { count: number; rows: readonly ActRow[]; onAsk?(): void; onAct(act: EntryAct): void; onClear(): void }) {
   const shown = rows.filter((row) => row.act === "download" || row.act === "move" || row.act === "copy" || row.act === "keep" || row.act === "delete" || row.act === "restore" || row.act === "purge");
@@ -797,7 +797,7 @@ function BulkBar({ count, rows, onAsk, onAct, onClear }: { count: number; rows: 
     <div data-files-bulk role="toolbar" aria-label={`${count} selected`} className="@container/files-bulk pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center px-3">
       <div className="pointer-events-auto flex h-10 max-w-full items-center gap-1 rounded-xl bg-popover px-2 shadow-overlay ring-1 ring-border">
         <span className="px-2 text-[13px] font-medium whitespace-nowrap text-foreground tabular-nums">{count} selected</span>
-        <span data-files-bulk-verbs className="hidden items-center gap-1 @[34rem]/files-bulk:flex">
+        <span data-files-bulk-verbs className="hidden items-center gap-1 @[30rem]/files-bulk:flex">
           {onAsk ? (
             <Button variant="ghost" size="sm" data-files-bulk-ask onClick={onAsk}>
               Ask
@@ -814,7 +814,7 @@ function BulkBar({ count, rows, onAsk, onAct, onClear }: { count: number; rows: 
           ))}
         </span>
         {menu.length ? (
-          <span data-files-bulk-menu className="inline-flex @[34rem]/files-bulk:hidden">
+          <span data-files-bulk-menu className="inline-flex @[30rem]/files-bulk:hidden">
             <RowsMenu
               label="Actions"
               align="center"
