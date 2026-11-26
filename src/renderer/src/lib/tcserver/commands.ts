@@ -288,9 +288,10 @@ async function createDraft(session: Session, first?: FirstSend): Promise<{ meta:
     // The host stored the message and ran the steps before it answered: the rows load as any thread's.
     const step = created.get(session.id);
     created.delete(session.id);
-    // The message did not go: the thread stays as create-then-send left it (adopted as made here, his message on
-    // screen) and the send's own error is the caller's.
-    sessionStore.adopt(meta, sendError === undefined ? { folded: true } : { created: true });
+    // The rows load as any folded thread's, his message on screen until its echo claims it. A send that failed may
+    // have stored his row and an error row first (create-then-send heard them on its subscription): read them too.
+    // The thread stays and the send's own error is the caller's.
+    sessionStore.adopt(meta, { folded: true });
     if (itemsFailed?.length) step?.onItemsFailed?.(itemsFailed);
     if (sendError !== undefined) throw new Error(sendError);
     return { meta, sent: true };

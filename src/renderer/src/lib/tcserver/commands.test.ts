@@ -81,6 +81,7 @@ class FakeLink implements Link {
   pushBeforeReply = false;
   /** A folded `send` the host refuses (createSteps.ts `sendError`): the thread stays, no row stored. */
   sendFails: string | null = null;
+  sendFailsStored = false;
   request<T>(method: string, params?: unknown): Promise<T> {
     this.calls.push({ method, params });
     if (method === "session.list") return Promise.resolve([] as T);
@@ -99,7 +100,14 @@ class FakeLink implements Link {
     if (method === "session.create" && (params as any).send) {
       // A whole first send (`create.draft`): the host ran the steps, then the message as its own send, then answered.
       const p = params as any;
-      if (this.sendFails) return Promise.resolve({ ...this.made(wireMeta({ id: p.id, status: "idle" })), sendError: this.sendFails } as T);
+      if (this.sendFails) {
+        // A send that stored his row and an error row before it failed.
+        if (this.sendFailsStored) this.rows.set(p.id, [
+          { sessionId: p.id, seq: 1, ts: 1, event: { type: "user-text", text: p.send.text } },
+          { sessionId: p.id, seq: 2, ts: 2, event: { type: "error", message: "the harness did not start" } },
+        ]);
+        return Promise.resolve({ ...this.made(wireMeta({ id: p.id, status: "idle" })), sendError: this.sendFails } as T);
+      }
       const wire = this.made(wireMeta({ id: p.id, status: "running", fast: !!p.tune?.fast, ultrafast: !!p.tune?.ultrafast }));
       this.rows.set(p.id, [{ sessionId: p.id, seq: 1, ts: 1, event: { type: "user-text", text: p.send.text } }]);
       setTimeout(() => {
@@ -400,6 +408,19 @@ describe("a new thread's first send on a host that folds a draft whole (create.d
     expect(beforeTurn()).toEqual(["session.create", "session.tune", "session.send"]);
     expect(link.of("session.create")[0]).not.toHaveProperty("send");
     expect(link.of("session.create")[0]).not.toHaveProperty("tune");
+  });
+
+  it("a folded send that failed after the host stored his row reads the thread once: his row once, the error row with it", async () => {
+    hello(["create.steps", "create.draft"]);
+    link.sendFails = "the harness did not start";
+    link.sendFailsStored = true;
+    const draft = newSession("local", "claude", "/repo");
+    sessionStore.mutate([draft]);
+    await expect(send(draft, "hello", [], undefined, undefined)).rejects.toThrow("the harness did not start");
+    await vi.waitFor(() => expect(link.of("session.events").filter((p) => p.sessionId === draft.id)).toHaveLength(1));
+    const blocks = sessionStore.get(draft.id)!.blocks;
+    expect(blocks.filter((b) => b.role === "user").map((b) => [b.text, !!b.pending])).toEqual([["hello", false]]);
+    expect(JSON.stringify(blocks)).toContain("the harness did not start");
   });
 
   it("a first send the host refuses leaves what create-then-send left: the thread, his message on screen, the send's error", async () => {

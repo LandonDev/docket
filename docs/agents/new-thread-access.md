@@ -110,8 +110,9 @@ context window, `about`), then the steps the window used to send after it, in th
 caller's capability check, the path fence and the one dispatcher (src/main/server/createSteps.ts), so a refusal is
 the separate call's own error, and the new-thread defaults and the key's ceiling are the create's
 (`newThreadPermission`, `withNewThreadModel` unchanged). A send that fails leaves what create-then-send left: the
-thread, his message on screen, the send's error (the reply's `sendError`; the window adopts the thread as made and
-throws it). A failed mail chat step still sends nothing. A host with `create.steps` alone folds a dock's draft
+thread, his message on screen, the send's error (the reply's `sendError`; the window adopts the thread as a folded one,
+reading the rows the send stored, his row and its error row, which create-then-send heard on its subscription, and
+throws the error). A failed mail chat step still sends nothing. A host with `create.steps` alone folds a dock's draft
 (`firstMessage`) and nothing else; an older host gets create, bridge, tune, send. No thread exists before he sends.
 Tests: commands.test.ts "a new thread's first send on a host that folds a draft whole", createSteps.test.ts,
 createSteps.server.test.ts (operate and approve keys, the fence's error, the defaults).
