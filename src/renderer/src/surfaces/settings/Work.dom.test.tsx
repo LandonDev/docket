@@ -56,7 +56,6 @@ vi.mock("./parts/hostRpc", () => ({
   }),
 }));
 vi.mock("../../lib/workSwitch", () => ({
-  workOnRow: (env: string) => `work.on:${env}`,
   useWorkHosts: () => state.on,
   setWorkOn: (env: string, on: boolean) => void (on ? state.on.add(env) : state.on.delete(env)),
 }));
@@ -76,9 +75,8 @@ vi.mock("../../chrome/ConfirmDialog", () => ({
 vi.mock("../../lib/lazyChunk", () => ({ defineChunk: () => ({ surface: () => () => null }) }));
 
 const { WorkPage, workOffAsk } = await import("./Work");
-const { useFoundRow } = await import("../../lib/settings/reveal");
+const { useFoundRow, workOnRow } = await import("../../lib/settings/reveal");
 const { requestSettings } = await import("../../lib/monaco/debugTab");
-const { workOnRow } = await import("../../lib/workSwitch");
 const { useState } = await import("react");
 
 afterEach(() => {

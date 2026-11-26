@@ -726,12 +726,12 @@ const openRow = (row: LedgerRow): void => set({ dialog: { kind: "row", row } });
 /** One entry, drawn again only when its row changed. */
 const EntryRow = memo(function EntryRow({ row, place, onReceipt }: { row: LedgerRow; place: TableRowPlace; onReceipt: (receipt: NonNullable<LedgerRow["receipt"]>) => void }) {
   // The row is one press over its cells, so a Who or Category it cuts reads whole in the press's own tip, no stop of its own.
-  const who = useTruncated(row.who);
-  const category = useTruncated(row.category ?? "");
+  const { ref: whoRef, cut: whoCut } = useTruncated(row.who);
+  const { ref: categoryRef, cut: categoryCut } = useTruncated(row.category ?? "");
   return (
     <TableRow {...place} data-money-row={row.row} className="relative focus-within:bg-muted hover:bg-muted">
       <TableCell className="first:pl-2">
-        <Tip label={[row.who, row.category].filter(Boolean).join(", ")} disabled={!who.cut && !category.cut}>
+        <Tip label={[row.who, row.category].filter(Boolean).join(", ")} disabled={!whoCut && !categoryCut}>
           <Button
             variant="link"
             aria-label={`${row.who || "Entry"}, ${rowMoney(row)}${row.date ? `, ${formatDay(row.date)}` : ""}`}
@@ -743,11 +743,11 @@ const EntryRow = memo(function EntryRow({ row, place, onReceipt }: { row: Ledger
           </Button>
         </Tip>
       </TableCell>
-      <TableCell ref={who.ref} className="max-w-0">
+      <TableCell ref={whoRef} className="max-w-0">
         <span className="block truncate">{row.who}</span>
         {row.category ? <span className={cn("truncate text-xs leading-4 text-muted-foreground", NARROW_ONLY)}>{row.category}</span> : null}
       </TableCell>
-      <TableCell ref={category.ref} className={cn("max-w-0 truncate text-muted-foreground", WIDE_ONLY)}>
+      <TableCell ref={categoryRef} className={cn("max-w-0 truncate text-muted-foreground", WIDE_ONLY)}>
         {row.category}
       </TableCell>
       <TableCell className={cn("text-end", row.in && row.out ? "whitespace-normal" : null)}>

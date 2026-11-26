@@ -17,6 +17,9 @@ export const FOLD_OPEN_EVENT = "docket:settings-fold-open";
 export const FOUND_ROW =
   "relative isolate before:pointer-events-none before:absolute before:-inset-x-2 before:inset-y-0 before:-z-10 before:rounded-md before:bg-muted before:opacity-0 before:transition-opacity before:duration-(--dur-base) before:ease-(--ease-out) data-[found]:before:opacity-100 data-[opens]:before:inset-y-1";
 
+/** The reveal's id for one computer's row of Settings → Work's "Work is on for" (`requestSettings("work", workOnRow(id))`). */
+export const workOnRow = (environmentId: string): string => `work.on:${environmentId}`;
+
 /** A map row by its id, or one row of a list by its own (`data-setting-row`, e.g. `work.on:<computer>`): the map names
  *  the list, the reveal can still land on one of its rows. */
 const rowOf = (root: ParentNode, id: string): HTMLElement | null =>

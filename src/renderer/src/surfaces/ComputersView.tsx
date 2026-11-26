@@ -275,19 +275,19 @@ export function Tile({ tile, picture, stage = true, onStage }: TileProps) {
   const where = picture && tile.shownOn ? null : tile.where;
   const caption = [tile.title, line ?? where].filter(Boolean).join(", ");
   // a caption the strip cuts reads whole in the tile's press's tip
-  const cut = useTruncated(caption);
+  const { ref: captionRef, cut } = useTruncated(caption);
   return (
     <article data-slot="computer-tile" data-stage={stage || undefined} aria-label={tile.title} className={cn("relative flex min-w-0 flex-col", !stage && "gap-1.5 transition-transform duration-(--dur-fast) ease-(--ease-out) active:scale-[0.98]", FADE_IN)}>
       {picture}
       {stage ? null : (
-        <div ref={cut.ref} className="flex min-w-0 flex-col">
+        <div ref={captionRef} className="flex min-w-0 flex-col">
           <span className="flex min-w-0 items-center gap-1.5 text-[13px] leading-5 font-medium">
             {tile.entry.row.asking ? <StatusMark state="waiting" word={false} /> : null}
             <span className="min-w-0 truncate">{tile.title}</span>
           </span>
           <span className="truncate text-xs leading-4 text-muted-foreground">{line ?? where}</span>
           {/* the whole tile is the press that puts it on the stage */}
-          <Tip label={caption} disabled={!cut.cut}>
+          <Tip label={caption} disabled={!cut}>
             <Button variant="link" aria-label={`Show ${tile.title}`} onClick={onStage} className="absolute inset-0 h-auto rounded-lg p-0" />
           </Tip>
         </div>

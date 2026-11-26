@@ -20,8 +20,8 @@ export const jobsWords = (n: number): string => (n === 0 ? "No jobs" : n === 1 ?
 const withStop = (line: string): string => (/[.!?]$/.test(line) ? line : `${line}.`);
 
 import { useWorkspaces } from "../../lib/tcserver/workspaces";
-import { setWorkOn, useWorkHosts, workOnRow } from "../../lib/workSwitch";
-import { FOUND_ROW } from "../../lib/settings/reveal";
+import { setWorkOn, useWorkHosts } from "../../lib/workSwitch";
+import { FOUND_ROW, workOnRow } from "../../lib/settings/reveal";
 import { ComputerName } from "./parts/ComputerName";
 import { useHost } from "./parts/hostRpc";
 import { SaveMark } from "./parts/SaveMark";
