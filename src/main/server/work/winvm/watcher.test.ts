@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { stopBlocked } from './machine/daemons'
 import { HIBERNATE_COMMAND, startWatcher, watcherScript, type WatcherSpec } from './watcher'
-import { AWAKE_AT_STOP, heldMark, takeAwakeAtStop } from './afterStop'
+import { AWAKE_AT_STOP, awakeMark, heldMark, takeAwakeAtStop } from './afterStop'
 
 /**
  * The stop watcher run for real under bash, with a stand-in for QEMU (a
@@ -91,10 +91,24 @@ describe('the stop watcher', () => {
     process.kill(pid, 'SIGTERM')
     expect(await exited(pid)).toBe(true)
     expect(readFileSync(join(dir, 'watcher.log'), 'utf8')).toContain('noted it was awake at the stop')
-    // the keeper's start (index.ts wires this as `awakeAtStop`)
-    expect(takeAwakeAtStop(dir)).toBe(true)
+    // the keeper's start (index.ts wires this as `awakeAtStop`), QEMU gone
+    expect(takeAwakeAtStop(dir, false)).toBe(true)
     expect(existsSync(join(dir, AWAKE_AT_STOP))).toBe(false)
-    expect(takeAwakeAtStop(dir)).toBe(false)
+    expect(takeAwakeAtStop(dir, false)).toBe(false)
+  })
+
+  it("a watcher of an older build writes no record; the keeper's mark still says awake at the next start (the deploy of 2026-11-25)", async () => {
+    const { awakeRecord: _none, ...old } = spec()
+    const pid = startWatcher(join(dir, 'watcher.sh'), join(dir, 'watcher.log'), old, env())!
+    await ready()
+    // the keeper held it awake
+    awakeMark(dir).set(true)
+    process.kill(pid, 'SIGTERM')
+    expect(await exited(pid)).toBe(true)
+    expect(readFileSync(join(dir, 'watcher.log'), 'utf8')).toContain('QEMU exited: the guest hibernated')
+    expect(existsSync(join(dir, AWAKE_AT_STOP))).toBe(false)
+    expect(takeAwakeAtStop(dir, false)).toBe(true)
+    expect(takeAwakeAtStop(dir, false)).toBe(false)
   })
 
   it("his Sleep's hold is a file that outlasts the service", () => {

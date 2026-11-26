@@ -1,7 +1,11 @@
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { LIVE_RESIZE_WORDS, WAKING_AFTER_UPDATE_WORDS, WAKING_WORDS, type WinvmDetail, type WinvmDevice, type WinvmScreen, type WinvmSleepAfter, type WinvmState } from '@shared/contract-work-winvm'
 import type { WinvmPoint } from '@shared/contract-work-winvm'
 import { AFTER_STOP_WAKE_MS, BEFORE_LIVE_RESIZE, BEFORE_SETUP, DRIVES, HELD, Keeper, median, OWED, RESTARTING_WORDS, SHUTDOWN_REFUSED, WAKES_KEPT, NO_DOOR, NO_LIVE_RESIZE, NO_POINT, NO_SERVICE, NOT_HIBERNATED, NOT_SET_UP, ONLY_ASLEEP, type DoorLink, type KeeperDeps, type KeeperDisplay, type VmGuest, type VmMachine } from './keeper'
+import { awakeMark, AWAKE_MARK, takeAwakeAtStop } from './afterStop'
 import { CURSOR_SCRIPT, IBEAM_PATH, VIRTIO_ADAPTER } from './liveResize'
 import type { PointStore } from './points'
 import { DISALLOWED, NO_RUN_FOLDERS, SETUP_STEPS, TERMINAL_DELEGATION } from './setup'
@@ -187,7 +191,7 @@ class FakeGuest implements VmGuest {
   }
 }
 
-function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: string | null; owed?: () => boolean; beforeSleep?: () => Promise<void>; device?: WinvmDevice; liveResize?: boolean; awakeAtStop?: boolean; held?: boolean } = {}) {
+function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: string | null; owed?: () => boolean; beforeSleep?: () => Promise<void>; device?: WinvmDevice; liveResize?: boolean; awakeAtStop?: boolean; held?: boolean; run?: string } = {}) {
   let token: string | null = o.token === undefined ? 'T'.repeat(64) : o.token
   const machine = new FakeMachine()
   machine.disk = o.disk ?? true
@@ -227,6 +231,8 @@ function make(o: { disk?: boolean; up?: boolean; exe?: string | null; token?: st
       return was
     },
     held: { get: () => afterStop.held, set: (on) => (afterStop.held = on) },
+    // the real files of afterStop.ts in a run folder of the test's, as index.ts wires them
+    ...(o.run ? { awakeAtStop: () => takeAwakeAtStop(o.run!, machine.running()), awakeMark: awakeMark(o.run) } : {}),
     ...(o.owed ? { owed: o.owed } : {}),
     ...(o.beforeSleep ? { beforeSleep: o.beforeSleep } : {}),
     ...(o.liveResize !== false ? { display } : {})
@@ -1059,5 +1065,59 @@ describe('after a restart of the service', () => {
     expect(await done).toBeNull()
     await vi.advanceTimersByTimeAsync(AFTER_STOP_WAKE_MS)
     expect(r.machine.starts).toBe(0)
+  })
+})
+
+describe('after a restart, by the keeper\'s own mark', () => {
+  let run = ''
+  afterEach(() => rmSync(run, { recursive: true, force: true }))
+  const fresh = () => (run = mkdtempSync(join(tmpdir(), 'winvm-run-')))
+
+  it('the deploy of 2026-11-25: woken under one build, hibernated by that build\'s watcher with no record, woken by the next', async () => {
+    fresh()
+    const before = make({ run })
+    await before.keeper.wake()
+    expect(existsSync(join(run, AWAKE_MARK))).toBe(true)
+    // the stop: the watcher QEMU started with hibernates it and writes no record; the server is gone and its keeper sees nothing
+    before.machine.up = false
+    const after = make({ run, up: false })
+    expect(after.keeper.state().state).toBe('asleep')
+    expect(await after.keeper.wakeAfterStop(0)).toMatchObject({ state: 'awake', error: null })
+    expect(after.machine.starts).toBe(1)
+    expect(after.pushes.find((p) => p.state === 'waking')?.step).toBe(WAKING_AFTER_UPDATE_WORDS)
+    // awake again, so marked again for the next stop
+    expect(existsSync(join(run, AWAKE_MARK))).toBe(true)
+  })
+
+  it('reads the mark once: a second start after the same stop wakes nothing', async () => {
+    fresh()
+    awakeMark(run).set(true)
+    expect(takeAwakeAtStop(run, false)).toBe(true)
+    const r = make({ run })
+    expect(await r.keeper.wakeAfterStop(0)).toBeNull()
+    expect(r.machine.starts).toBe(0)
+  })
+
+  it('his Sleep and the idle sleep take the mark away, so the next start leaves it asleep', async () => {
+    fresh()
+    const a = make({ run })
+    await a.keeper.wake()
+    await a.keeper.sleep()
+    expect(existsSync(join(run, AWAKE_MARK))).toBe(false)
+    expect(await make({ run }).keeper.wakeAfterStop(0)).toBeNull()
+    const b = make({ run })
+    await b.keeper.wake()
+    await b.keeper.sleep('idle')
+    const c = make({ run })
+    expect(await c.keeper.wakeAfterStop(0)).toBeNull()
+    expect(c.machine.starts).toBe(0)
+  })
+
+  it('a keeper beside a running machine (Work off and on, a deploy\'s trial before the stop) wakes nothing and leaves the mark', async () => {
+    fresh()
+    const r = make({ run, up: true })
+    expect(existsSync(join(run, AWAKE_MARK))).toBe(true)
+    expect(await r.keeper.wakeAfterStop(0)).toBeNull()
+    expect(existsSync(join(run, AWAKE_MARK))).toBe(true)
   })
 })

@@ -410,13 +410,19 @@ runs setup, the policies' checks, sleep and wake.
 A deploy or a restart of the box's service hibernates the machine (the watcher, above). Before 2026-11-25 it then
 slept until a thread or his press woke it, so after every deploy the VM he had left awake was asleep. Now:
 
-1. **The record.** The watcher writes `run/awake-at-stop` (the time) first thing at the stop signal, before it asks
-   Windows to hibernate: the server may be gone by then, and the watcher runs only while QEMU does, so the file
-   means "awake at the stop". QEMU exiting on its own (the keeper's sleep, a shutdown) writes nothing.
+1. **The record and the mark.** The watcher writes `run/awake-at-stop` (the time) first thing at the stop signal,
+   before it asks Windows to hibernate: the server may be gone by then, and the watcher runs only while QEMU does, so
+   the file means "awake at the stop". QEMU exiting on its own (the keeper's sleep, a shutdown) writes nothing. The
+   keeper also keeps its own mark, `run/awake` (afterStop.ts `awakeMark`): written whenever it comes awake or starts
+   beside a running QEMU, gone whenever it reads the machine asleep or not set up. Either one counts. The mark is
+   there because the watcher is the one QEMU started with: on 2026-11-25 the VM was woken under 0ee1190e0, the build
+   before this change, and the deploy of 1.0.392 stopped it under that build's watcher, which wrote no record, so it
+   stayed asleep (keeper.test.ts "the deploy of 2026-11-25", watcher.test.ts "a watcher of an older build").
 2. **His Sleep.** A person's Sleep is kept as `<userData>/winvm/held-asleep` (afterStop.ts `heldMark`), written as
    his Sleep begins and gone at the next wake or an idle sleep, so it outlasts the restart: a keeper that starts on a
    held machine reads `heldAsleep` and never wakes it. A hold found beside a running machine is from before and goes.
-3. **The wake.** Work's start reads the record once and removes it (`takeAwakeAtStop`), and when it said awake and
+3. **The wake.** Work's start reads both once and removes them (`takeAwakeAtStop`); beside a running QEMU (Work turned
+   off and on, a deploy's trial instance, which runs before the stop) it reads no and leaves the mark. When it said awake and
    the machine sleeps and is not held, `Keeper.wakeAfterStop` waits 25 s (`AFTER_STOP_WAKE_MS`, so the service's
    first answers come first), then makes the usual wake, as a thread's would, under QEMU's lowered priority (the
    `vm` kind, childPriority.ts). Its step is "Waking after an update…" throughout, which the Computers page's plate,

@@ -106,8 +106,10 @@ export interface KeeperDeps {
   timeouts?: Partial<Timeouts>
   /** live resize (liveResize.ts); a keeper without it offers none */
   display?: KeeperDisplay
-  /** the watcher's record that the machine was awake when the service stopped (afterStop.ts): true once, then gone */
+  /** whether the machine was awake when the service stopped (afterStop.ts `takeAwakeAtStop`): true once, then gone */
   awakeAtStop?(): boolean
+  /** the keeper's own mark that it holds the machine awake (afterStop.ts `awakeMark`), which outlasts the service */
+  awakeMark?: { set(on: boolean): void }
   /** his Sleep's hold, kept across a restart of the service (afterStop.ts `heldMark`) */
   held?: { get(): boolean; set(on: boolean): void }
 }
@@ -208,6 +210,8 @@ export class Keeper {
     // his Sleep holds it across a restart of the service; a hold on a machine that is not asleep is from before
     this.heldAsleep = this.name === 'asleep' && (d.held?.get() ?? false)
     if (!this.heldAsleep) d.held?.set(false)
+    // asleep, the mark is left for wakeAfterStop to read
+    if (this.name === 'awake') d.awakeMark?.set(true)
   }
 
   /** His Sleep's hold, here and in the file that outlasts the service. */
@@ -257,6 +261,8 @@ export class Keeper {
     this.step = step
     this.error = error
     if (changed) this.since = this.now()
+    if (changed && name === 'awake') this.d.awakeMark?.set(true)
+    if (changed && (name === 'asleep' || name === 'none')) this.d.awakeMark?.set(false)
     // coming awake (a setup, a wake, a failed setup that left it running) is a use: the idle clock starts now, not
     // at the keeper's own start, which a box's service may have had hours before (1.0.356 hibernated a minute after setup)
     if (changed && name === 'awake') this.lastUse = this.now()
