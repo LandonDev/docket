@@ -8,6 +8,9 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../../componen
 import { Skeleton } from "../../components/ui/skeleton";
 import { Spinner } from "../../components/ui/spinner";
 import { Tip, TruncateTip } from "../../components/tip";
+import { ItemButton } from "../../components/ui/item";
+import { ROW_OPEN } from "../../components/ui/press";
+import { cn } from "../../lib/cn";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { Lifeos, TaskAdd } from "../icons";
 import { dueOf, markRuns, progressLine, speakerName, timeOf, waveBars, type FindHit } from "./model";
@@ -119,6 +122,10 @@ export function PlayerRow({ meeting, player, span }: { meeting: Pick<Meeting, "d
 export function TaskRow({ action, current, doc = false, onPick, at }: { action: MeetingAction; current: boolean; doc?: boolean; onPick?(): void; at?: ReactNode }) {
   const due = dueOf(action.due);
   const waiting = action.state === "proposed";
+  // A proposal steps the review to itself: one press laid over the row (`ROW_OPEN`), so Tab reaches it and its ring
+  // draws round the row. What the row shows sits above it, its words' tip and the minute's own press kept; a press
+  // there is the row's too.
+  const pick = waiting && onPick;
   return (
     <div
       data-task={action.id}
@@ -126,28 +133,43 @@ export function TaskRow({ action, current, doc = false, onPick, at }: { action: 
       data-current={(waiting && current) || undefined}
       onClick={(event) => {
         event.stopPropagation();
-        onPick?.();
+        if (pick) onPick();
       }}
-      className={`flex min-h-7 min-w-0 items-center gap-2 rounded-md px-2 py-1 data-current:outline-1 data-current:-outline-offset-1 data-current:outline-success/50 data-[state=proposed]:bg-(--add-bg) ${
-        doc ? "-mx-2 mt-1 text-[15px] leading-6" : "mt-1.5 text-[13px] leading-5"
-      }`}
+      className={cn(
+        "relative flex min-h-7 min-w-0 items-center gap-2 rounded-md px-2 py-1 data-current:outline-1 data-current:-outline-offset-1 data-current:outline-success/50 data-[state=proposed]:bg-(--add-bg)",
+        doc ? "-mx-2 mt-1 text-[15px] leading-6" : "mt-1.5 text-[13px] leading-5",
+      )}
     >
-      {waiting ? <TaskAdd aria-label="Waiting for you" className="size-3.5 shrink-0 text-muted-foreground" /> : <Lifeos aria-label="In LifeOS" className="size-3.5 shrink-0 text-muted-foreground" />}
-      {doc ? (
-        <span className="min-w-0">
-          {action.text}
-          {due ? `, ${due}` : null}
-          {at}
-        </span>
-      ) : (
-        <TruncateTip text={action.text}>
-          <span className="min-w-0 truncate font-medium">
+      {pick ? (
+        <ItemButton
+          data-row-open
+          aria-label={`Review ${action.text}`}
+          aria-current={current || undefined}
+          onClick={(event) => {
+            event.stopPropagation();
+            onPick();
+          }}
+          className={ROW_OPEN}
+        />
+      ) : null}
+      <span className="contents [&>*]:relative">
+        {waiting ? <TaskAdd aria-label="Waiting for you" className="size-3.5 shrink-0 text-muted-foreground" /> : <Lifeos aria-label="In LifeOS" className="size-3.5 shrink-0 text-muted-foreground" />}
+        {doc ? (
+          <span className="min-w-0">
             {action.text}
+            {due ? `, ${due}` : null}
             {at}
           </span>
-        </TruncateTip>
-      )}
-      {!doc && due ? <span className="shrink-0 text-xs text-muted-foreground">{due}</span> : null}
+        ) : (
+          <TruncateTip text={action.text}>
+            <span className="min-w-0 truncate font-medium">
+              {action.text}
+              {at}
+            </span>
+          </TruncateTip>
+        )}
+        {!doc && due ? <span className="shrink-0 text-xs text-muted-foreground">{due}</span> : null}
+      </span>
     </div>
   );
 }

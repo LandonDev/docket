@@ -14,6 +14,8 @@ import type { LifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
 import { DownLine, HostLine } from "../shell/DownLine";
 import { useHostLive } from "../shell/lifeosLive";
+import { OfflineLine } from "./OfflineLine";
+import { useComputerOffline } from "./offline";
 
 /**
  * New task (prototype workspace.html, the Tasks header's verb): a plain write
@@ -106,8 +108,10 @@ function Body({
   // The host said its LifeOS is on its way: the named wait, Add held, what he typed kept.
   const host = useHostLive(session?.environmentId ?? "");
   const waits = !!session && !session.client && !down && host.waits;
-  // Add waits for a client to write through: the form's own writes, or, for Mail's Make task, the session it files on.
-  const held = file ? !!session && !session.client : !writes;
+  const offline = useComputerOffline();
+  // Add waits for a client to write through: the session it writes on (writers mounted under a client since closed
+  // write nowhere), the form's own writes unless Mail's Make task files it, and this computer online.
+  const held = (!!session && !session.client) || (!file && !writes) || offline;
   const [title, setTitle] = useState(initial?.title ?? "");
   const [due, setDue] = useState(initial?.due ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -166,7 +170,7 @@ function Body({
       )}
       <ModalBody>
         {/* The session dropped while the form was open: its line, with the rule's press; what he typed stays. */}
-        {down ? <DownLine session={down} /> : waits ? <HostLine live={host} /> : null}
+        {down ? <DownLine session={down} /> : offline ? <OfflineLine /> : waits ? <HostLine live={host} /> : null}
         <Field label="Task">
           <Input value={title} onChange={(e) => setTitle(e.target.value)} autoComplete="off" />
         </Field>

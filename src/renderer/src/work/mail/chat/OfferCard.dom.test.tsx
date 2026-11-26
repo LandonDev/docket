@@ -446,6 +446,27 @@ describe("an event's Added", () => {
     expect(toasts).toEqual([]);
   });
 
+  // Council round 2 (sitting B): an added event's title the row cut had no way to be read whole.
+  it("gives a title the row cuts a tip with the whole of it", async () => {
+    const { tooltipChunk, warmTooltips } = await import("../../../components/ui/tooltip");
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    const wide = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("data-add-title") ? 300 : 100;
+    });
+    const box = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    try {
+      draw({ event: { title: "Walk the venue with Dana before the doors open", start: "2026-12-04T12:30:00", end: "2026-12-04T13:30:00", where: "Harry's" } });
+      // The whole title rides a tip only while the row cuts it (`TruncateTip`).
+      expect(document.querySelector("[data-add-title]")!.getAttribute("data-slot")).toBe("tooltip-trigger");
+    } finally {
+      wide.mockRestore();
+      box.mockRestore();
+    }
+  });
+
   it("is told by its toast when Agenda's own New event made it, with no card to say it", async () => {
     convex.sources = [{ _id: "cal1", kind: "gcal", account: "me@example.com", sector: "life", enabled: true }];
     render(<NewEventDialog sector="life" startsAt={null} initial={{ title: "Staff sync", day: "2026-12-04", from: "09:00", to: "09:30" }} onClose={() => undefined} />);

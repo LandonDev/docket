@@ -17,6 +17,8 @@ import type { LifeosSession } from "../shell/lifeos";
 import { downOf } from "../shell/lifeosDown";
 import { DownLine, HostLine } from "../shell/DownLine";
 import { useHostLive } from "../shell/lifeosLive";
+import { OfflineLine } from "../tasks/OfflineLine";
+import { useComputerOffline } from "../tasks/offline";
 
 /**
  * New event (prototype workspace.html, the Agenda header's verb): a calendar
@@ -122,6 +124,10 @@ function Body({
   const down = session && downOf(session) ? session : null;
   const host = useHostLive(session?.environmentId ?? "");
   const waits = !!session && !session.client && !down && host.waits;
+  const offline = useComputerOffline();
+  // Add waits for a client to write through: the session it writes on (writers mounted under a client since closed
+  // write nowhere), the form's own writes, and this computer online.
+  const held = (!!session && !session.client) || !writes || offline;
   const calendars = (sources ?? []).filter((s) => s.kind === "gcal" && s.enabled && s.sector === sector);
   // A slot picked in the week, else the next whole hour.
   const start = startsAt ?? Math.ceil(Date.now() / 3_600_000) * 3_600_000;
@@ -137,7 +143,7 @@ function Body({
 
   const submit = () => {
     if (typeof made === "string") return setError(made);
-    if (!sourceId || !writes) return;
+    if (!sourceId || !writes || held) return;
     const { saveOp, sendOp, convex } = writes;
     setError(null);
     setPending(true);
@@ -176,11 +182,12 @@ function Body({
       ) : (
         <Live onWrites={setWrites} onSources={setSources} />
       )}
-      <ModalBody>
+      <ModalBody className={none ? "pb-5" : undefined}>
         {/* The session dropped while the form was open: its line, with the rule's press; what he typed stays. */}
-        {down ? <DownLine session={down} /> : waits ? <HostLine live={host} /> : null}
-        {/* No calendar of the job takes events: the line alone, and Cancel. Fields he could fill and an Add that cannot work
-            are not offered; what he typed stays in the form's state and comes back if a calendar does. */}
+        {down ? <DownLine session={down} /> : offline ? <OfflineLine /> : waits ? <HostLine live={host} /> : null}
+        {/* No calendar of the job takes events: the line alone, closed by the title's × or Escape. Fields he could fill, an Add
+            that cannot work and a Cancel with nothing to cancel are not offered; what he typed stays in the form's state and
+            comes back if a calendar does. */}
         {none ? (
           <p data-no-calendar className="text-[13px] leading-5 text-muted-foreground">
             {jobNameNow(sector)} has no calendar that takes new events.
@@ -220,7 +227,7 @@ function Body({
         )}
         <ErrorLine error={error} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} {...(none ? {} : { confirmLabel: asks ? "Send invites" : "Add" })} pending={pending} disabled={sources === undefined || none || !writes} />
+      {none ? null : <DialogFooter onCancel={onClose} confirmLabel={asks ? "Send invites" : "Add"} pending={pending} disabled={sources === undefined || held} />}
     </form>
   );
 }

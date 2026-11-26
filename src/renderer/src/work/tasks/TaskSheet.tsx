@@ -1,4 +1,5 @@
 import { useQuery } from "convex/react";
+import { HeldTip } from "../../components/heldTip";
 import { useEffect } from "react";
 import { makeFunctionReference } from "convex/server";
 import { Button } from "../../components/ui/button";
@@ -42,7 +43,8 @@ type Props = {
   onClose: () => void;
   onStart: (task: Task) => void;
   onDone: (task: Task) => void;
-  doneHeld?: boolean;
+  /** The link's words while it is down: Done is held, with them as its tip (`HeldTip`). */
+  heldWords?: string | null;
   onCode: (task: Task) => void;
   /** The thread a link names for a task, if one works on it: Open thread takes Start thread's place; undefined until the link read answers. */
   useThread?: (taskId: string) => string | null | undefined;
@@ -59,7 +61,7 @@ export function TaskSheet({ open, ...props }: Props & { open: { id: string; row:
   );
 }
 
-function Body({ id, row, projectOf, onClose, onStart, onDone, doneHeld, onCode, useThread = noThread }: Props & { id: string; row: Task | null }) {
+function Body({ id, row, projectOf, onClose, onStart, onDone, heldWords = null, onCode, useThread = noThread }: Props & { id: string; row: Task | null }) {
   const detail = useQuery(get, { id }) as Detail | undefined;
   // A linked thread the window holds no meta for yet is still its thread: Open asks the hosts for it (links.ts); one
   // every host answered without (deleted) is none, so Start.
@@ -132,9 +134,11 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, doneHeld, onCode, 
             Start thread
           </Button>
         )}
-        <Button size="sm" variant="secondary" disabled={doneHeld} onClick={() => (onClose(), onDone(full))}>
-          Done
-        </Button>
+        <HeldTip held={heldWords}>
+          <Button size="sm" variant="secondary" disabled={!!heldWords} onClick={() => (onClose(), onDone(full))}>
+            Done
+          </Button>
+        </HeldTip>
         <Button size="sm" variant="ghost" onClick={() => (onClose(), onCode(full))}>
           Open a code thread…
         </Button>

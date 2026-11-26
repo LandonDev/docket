@@ -188,6 +188,21 @@ describe("the meeting canvas", () => {
     expect(within(bar).getByText("1/2")).toBeTruthy();
   });
 
+  // Council round 2, sitting B (Sol, the meeting canvas 1): a pointer could pick a proposal to step to it; Tab could not.
+  it("a waiting task is one press the keyboard reaches, stepping the review to it; a filed one is no press", async () => {
+    const { container } = await seat(sampleMeeting({ notes: SAMPLE_NOTES }));
+    await waitFor(() => expect(container.querySelector('[data-task="a1"]')).toBeTruthy());
+    const bar = container.querySelector("[data-canvas-bar]") as HTMLElement;
+    const second = container.querySelector('[data-task="a2"] > [data-row-open]') as HTMLButtonElement;
+    expect(second.tagName).toBe("BUTTON");
+    expect(second.getAttribute("aria-label")).toMatch(/^Review /);
+    expect(container.querySelector('[data-task="a4"] > [data-row-open]')).toBeNull();
+    second.focus();
+    fireEvent.click(second);
+    await waitFor(() => expect(within(bar).getByText("2/3")).toBeTruthy());
+    expect(container.querySelector('[data-task="a2"]')!.hasAttribute("data-current")).toBe(true);
+  });
+
   it("a task LifeOS would not take stays waiting, and the state line says why with Retry", async () => {
     // The host's "not connected" is any state but connected: the line never claims he is signed out.
     host.decide = () => ({ meeting: host.meeting, failed: [{ id: "a1", error: "LifeOS is not connected on this host." }] });

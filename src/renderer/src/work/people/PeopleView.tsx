@@ -25,7 +25,9 @@ import { sayError } from "../canvas/frame";
 import { readAnswered, type AnsweredForm } from "../msforms/answered";
 import { Face } from "../mail/face";
 import { mailTo, writeMail } from "../mail/mailto";
-import { sessionWaits, useLifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { refreshLifeos, sessionWaits, useLifeosQuery, type LifeosSession } from "../shell/lifeos";
+import { useHostLinkDown } from "../shell/hostLinkDown";
+import { retryLink } from "../shell/linkRetry";
 import { downOf } from "../shell/lifeosDown";
 import { keepPlace, keptPlace } from "../shell/place";
 import type { WorkViewProps } from "../views/registry";
@@ -202,21 +204,23 @@ function SearchField({ workspaceId }: { workspaceId: string }) {
  * A LifeOS read that failed, with Retry: his press asks LifeOS once while the failure stays, Retry spinning in place;
  * an answer starts the live read again (`onBack`), a failure says its own words where the old ones stood. The error is
  * said in Work's words (`workErrorWords`), and LifeOS's raw text (a query name, a request id, a stack) never at all.
+ * While the link to the host is down its words are the cause, and Retry waits for the link first (`retryLink`). A
+ * failure asks the host's LifeOS status once, so a sign-out it has not yet pushed takes this place with the frame's
+ * own Sign in rather than a Retry that cannot help.
  */
 function ReadFailed({ title, error, env, session, name, args, onBack }: { title: string; error: string; env: string; session: LifeosSession; name: string; args: Record<string, unknown>; onBack(): void }) {
   const [retrying, setRetrying] = useState(false);
   const [failedAgain, setFailedAgain] = useState(false);
+  const linkDown = useHostLinkDown(env);
+  useEffect(() => void refreshLifeos(env).catch(() => undefined), [env]);
+  const ask = (): Promise<void> | undefined =>
+    session.client?.query(makeFunctionReference<"query">(name), args).then(onBack, () => setFailedAgain(true));
   const retry = (): void => {
-    const client = session.client;
-    if (!client) return;
     setRetrying(true);
-    void client
-      .query(makeFunctionReference<"query">(name), args)
-      .then(onBack, () => setFailedAgain(true))
-      .finally(() => setRetrying(false));
+    void (linkDown ? retryLink(env).then(ask) : (ask() ?? Promise.resolve())).finally(() => setRetrying(false));
   };
   const host = registry.environment(env)?.name;
-  const line = failedAgain ? "" : workErrorWords(error, host ? { host: nameInLine(host) } : {});
+  const line = linkDown ?? (failedAgain ? "" : workErrorWords(error, host ? { host: nameInLine(host) } : {}));
   return <EmptyState title={title} line={line || undefined} action={{ label: "Retry", busy: retrying, onClick: retry }} />;
 }
 

@@ -9,6 +9,9 @@ import { ChevronDown, Plus } from "../../chrome/icons";
 import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { ItemButton } from "../../components/ui/item";
+import { HeldTip } from "../../components/heldTip";
+import { useTruncated } from "../../components/tip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { ROW_CONTROLS, ROW_HOLDS, ROW_OPEN, ROW_SHOWS } from "../../components/ui/press";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "../../components/ui/context-menu";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
@@ -186,7 +189,9 @@ export function Tasks({
   const tasks = useKeptRows(client.useOpenTasks() ?? null, idOfTask);
   const projects = client.useProjectsById();
   const actions = client.useTaskActions();
-  const doneHeld = !!useHostLinkDown(place?.environmentId);
+  // The link's words while it is down: Done is held, and its tooltip says why (`HeldTip`).
+  const heldWords = useHostLinkDown(place?.environmentId);
+  const doneHeld = !!heldWords;
   const now = useMinute();
   // The rows are memoised: they reach the latest start through a ref, so a new function never redraws them.
   const latest = useRef(startThread);
@@ -230,7 +235,7 @@ export function Tasks({
   const projectOf = (task: Task | null | undefined): string | undefined => (task ? projects?.get(task.projectId ?? "")?.name : undefined);
   const sheet = (
     <>
-      <TaskSheet doneHeld={doneHeld} open={sheetOf} projectOf={projectOf} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} onCode={code} useThread={useThread} />
+      <TaskSheet heldWords={heldWords} open={sheetOf} projectOf={projectOf} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} onCode={code} useThread={useThread} />
       {coding ? <CodeThreadDialog task={coding} sector={sector} onStart={startCode} onClose={() => setCoding(null)} /> : null}
     </>
   );
@@ -245,7 +250,7 @@ export function Tasks({
   return (
     // ↑ and ↓ move between the rows, as in People and on a meeting's page; Tab still walks each row's tick and Start.
     <div onKeyDown={rowKeys} className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
-      {lead ? <Lead doneHeld={doneHeld} task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} onCode={code} useThread={useThread} /> : null}
+      {lead ? <Lead heldWords={heldWords} task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} onCode={code} useThread={useThread} /> : null}
       {rest.map(({ g, rows }, i) => (
         <section key={g} aria-label={TASK_GROUP_LABELS[g]} className={cn("flex flex-col", lead || i ? "mt-6" : "")}>
           {/* The heading starts on its rows' title edge: past the row's inset, the tick and its gap. */}
@@ -308,7 +313,7 @@ function Lead({
   onStart,
   onOpen,
   onCode,
-  doneHeld,
+  heldWords,
   useThread,
 }: {
   task: Task;
@@ -318,9 +323,11 @@ function Lead({
   onStart: (task: Task) => void;
   onOpen: (task: Task) => void;
   onCode: (task: Task) => void;
-  doneHeld: boolean;
+  /** The link's words while it is down; Done is held with them as its tip. */
+  heldWords: string | null;
   useThread: UseThread;
 }) {
+  const doneHeld = !!heldWords;
   const overdue = task.dueAt !== undefined && task.dueAt < now;
   const thread = useTaskThread(useThread, task._id);
   const lead = thread ? taskThreadMark(thread) : null;
@@ -355,9 +362,11 @@ function Lead({
               Start thread
             </Button>
           )}
-          <Button size="sm" variant="secondary" disabled={doneHeld} onClick={() => actions.complete(task)}>
-            Done
-          </Button>
+          <HeldTip held={heldWords}>
+            <Button size="sm" variant="secondary" disabled={doneHeld} onClick={() => actions.complete(task)}>
+              Done
+            </Button>
+          </HeldTip>
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button size="sm" variant="ghost" />}>
               Snooze
@@ -453,6 +462,7 @@ const TaskRow = memo(function TaskRow({
   const [ticked, setTicked] = useState(false);
   const thread = useTaskThread(useThread, task._id);
   const lead = thread ? taskThreadMark(thread) : null;
+  const { ref: cutRef, cut } = useTruncated(`${task.title}\n${meta ?? ""}`);
   // A Done that failed (its toast says so) puts the row back as it was.
   const complete = () => void Promise.resolve(actions.complete(task)).then((r) => r === undefined && setTicked(false));
   const done = useRef(complete);
@@ -467,10 +477,17 @@ const TaskRow = memo(function TaskRow({
     <ContextMenu>
       <ContextMenuTrigger render={<div role="listitem" {...place} className={cn("group/row flex min-h-8 items-start gap-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
         {/* The open control lies over the whole row, so keyboard focus rings the row; the tick and Start sit above it. */}
-        <ItemButton data-row-open aria-label={`Open ${task.title}`} onClick={() => onOpen(task)} className={ROW_OPEN} />
+        {/* A title or line the column cuts is said whole on the row's hover and focus, only while one is cut (Agenda's rule). */}
+        <Tooltip disabled={!cut}>
+          <TooltipTrigger render={<ItemButton data-row-open aria-label={`Open ${task.title}`} onClick={() => onOpen(task)} className={ROW_OPEN} />} />
+          <TooltipContent side="top" align="start">
+            {task.title}
+            {meta ? <span className="block">{meta}</span> : null}
+          </TooltipContent>
+        </Tooltip>
         {/* Its press reaches 8px a side, a 32px target that ends where the title starts, so the title opens the row. */}
         <Checkbox shape="round" className={cn("mt-0.5 after:-inset-x-2", ROW_CONTROLS)} checked={ticked} disabled={doneHeld} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
-        <span className={cn("flex min-w-0 flex-1 flex-col", ROW_SHOWS)}>
+        <span ref={cutRef} className={cn("flex min-w-0 flex-1 flex-col", ROW_SHOWS)}>
           <span className={cn("max-w-full truncate text-[13px] leading-5 text-foreground transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
           {meta ? <span className="max-w-full truncate text-xs text-muted-foreground">{meta}</span> : null}
         </span>

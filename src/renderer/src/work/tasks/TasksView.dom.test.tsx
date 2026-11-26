@@ -205,16 +205,42 @@ describe("the Tasks view", () => {
       status = { ...status, transport: "reconnecting" };
       view.rerender(tree());
       expect(done().disabled).toBe(true);
+      // Council round 2, sitting B: a held Done says why in its tooltip (`HeldTip`), here and in the sheet.
+      expect(done().closest("[data-held]")).toBeTruthy();
       expect(tick().matches('[disabled], [aria-disabled="true"]')).toBe(true);
       await act(async () => void vi.advanceTimersByTime(400));
       expect(client.acts).toEqual([]);
       status = { ...status, transport: "open" };
       view.rerender(tree());
       expect(done().disabled).toBe(false);
+      expect(done().closest("[data-held]")).toBeNull();
       expect(tick().matches('[disabled], [aria-disabled="true"]')).toBe(false);
     } finally {
       statusOf.mockRestore();
       vi.useRealTimers();
+    }
+  });
+
+  // Council round 2, sitting B (Sol, Tasks 3): a title or project line the column cuts had no way to be read whole.
+  it("says a cut title and its line whole in the row's tip, only while one is cut", async () => {
+    vi.useRealTimers();
+    const { tooltipChunk, warmTooltips } = await import("../../components/ui/tooltip");
+    await act(async () => {
+      await tooltipChunk.load();
+      warmTooltips();
+    });
+    const wide = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+      return this.textContent === "Send Dana the budget" && this.classList.contains("truncate") ? 300 : 100;
+    });
+    const box = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(100);
+    try {
+      render(<Tasks client={fakeTasksClient(rows)} place={{ environmentId: "box", id: "w", path: "/w" }} startThread={() => {}} />);
+      const open = screen.getByRole("button", { name: "Open Send Dana the budget" });
+      expect(open.getAttribute("data-slot")).toBe("tooltip-trigger");
+      expect(screen.getByRole("button", { name: "Open Approve the scrim schedule" }).hasAttribute("data-base-ui-tooltip-trigger")).toBe(false);
+    } finally {
+      wide.mockRestore();
+      box.mockRestore();
     }
   });
 

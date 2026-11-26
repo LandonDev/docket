@@ -18,8 +18,12 @@ const directory = [
   { _id: "p_maya", name: "Maya Chen", emails: ["maya@school.edu"], lastAt: NOW - 3_600_000 },
   { _id: "p_tom", name: "Tom Beck", emails: ["tom@school.edu"] },
 ];
+const link = vi.hoisted(() => ({ down: null as string | null, refreshed: [] as string[], retried: [] as string[] }));
+vi.mock("../shell/hostLinkDown", async (original) => ({ ...(await original<object>()), useHostLinkDown: () => link.down }));
+vi.mock("../shell/linkRetry", () => ({ retryLink: async (env: string) => void link.retried.push(env) }));
 vi.mock("../shell/lifeos", async (original) => ({
   ...(await original<object>()),
+  refreshLifeos: async (env: string) => void link.refreshed.push(env),
   useLifeosQuery: (_session: unknown, name: string, args: Record<string, unknown>) => {
     lifeos.asked.push({ name, args });
     if (name === "people:directory") return lifeos.directoryFails ? { status: "failed", error: "LifeOS refused" } : { status: "ready", value: directory };
@@ -227,6 +231,31 @@ describe("a person's page", () => {
     } finally {
       lifeos.pageFails = false;
       lifeos.pageError = "LifeOS refused the page";
+    }
+  });
+
+  // Council round 2 (sitting B): a page that failed while the link was down named no cause, and its Retry asked a
+  // LifeOS the window could not reach; a sign-out the host had not pushed yet kept a Retry that could not help.
+  it("names the down link as a failed page's cause, waits for the link on Retry, and asks the host's LifeOS status", async () => {
+    setPlace("ws", { person: "p_maya" });
+    lifeos.page = mayaPage;
+    lifeos.pageFails = true;
+    lifeos.once.length = 0;
+    link.down = "The box is offline";
+    link.refreshed = [];
+    link.retried = [];
+    try {
+      mount();
+      const retry = await screen.findByRole("button", { name: "Retry" });
+      expect(screen.getByText("The box is offline")).toBeTruthy();
+      expect(link.refreshed).toEqual(["box"]);
+      fireEvent.click(retry);
+      await act(async () => {});
+      expect(link.retried).toEqual(["box"]);
+      expect(lifeos.once[0].args).toMatchObject({ id: "p_maya", sector: "purdue" });
+    } finally {
+      lifeos.pageFails = false;
+      link.down = null;
     }
   });
 

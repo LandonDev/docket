@@ -242,7 +242,12 @@ function Row({ task, event, at, keep }: { task?: TaskOffer; event?: EventOffer; 
     <div data-mail-offer={task ? "task" : "event"} className={`${CARD} flex h-11 items-center gap-2.5 px-3`}>
       <Glyph className="size-3.5 shrink-0 text-muted-foreground" />
       <div className="flex min-w-0 flex-1 items-baseline gap-2">
-        <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{title}</span>
+        {/* A title the row cuts (when and the press take their room first) says the whole of itself on hover. */}
+        <TruncateTip text={title}>
+          <span data-add-title className="min-w-0 truncate text-[13px] font-medium text-foreground">
+            {title}
+          </span>
+        </TruncateTip>
         {refused ? (
           <TruncateTip text={refused}>
             <span data-add-refused role="alert" className="min-w-0 truncate text-xs text-destructive">

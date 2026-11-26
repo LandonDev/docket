@@ -28,14 +28,16 @@ afterEach(() => {
 const add = () => screen.getByRole("button", { name: "Add" });
 
 describe("New event", () => {
-  // Council round 1 (R1-B18): no fields to fill and no Add that cannot work, only the line and Cancel.
-  it("with no calendar of the job that takes events, says so with Cancel alone", () => {
+  // Council round 1 (R1-B18): no fields to fill and no Add that cannot work. Round 2: nor a lone Cancel with nothing
+  // to cancel; the title's × closes it.
+  it("with no calendar of the job that takes events, says so with no footer, the × to close", () => {
     lifeos.sources = [{ _id: "s2", kind: "gcal", account: "a@b.c", sector: "ref", enabled: true }];
     render(<NewEventDialog sector="purdue" startsAt={null} onClose={() => {}} />);
     expect(document.querySelector("[data-no-calendar]")?.textContent).toBe("Purdue Esports has no calendar that takes new events.");
     expect(screen.queryByRole("button", { name: "Add" })).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Event" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
   });
 
   it("gives Day a row of its own where the three fields do not fit, From and To together under it (council round 9)", () => {

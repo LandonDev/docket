@@ -73,4 +73,21 @@ describe("New task", () => {
       resetLifeos();
     }
   });
+  /** Council round 2, sitting B (Sol, Tasks 1 P1): with this computer offline, Add stood ready though LifeOS was out of reach. */
+  it("says this computer is offline, keeps what he typed and holds Add, then adds once it is back online", async () => {
+    const online = vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    try {
+      render(<NewTaskDialog sector="purdue" onClose={() => {}} />);
+      fireEvent.change(screen.getByRole("textbox", { name: "Task" }), { target: { value: "Book the hall" } });
+      expect(document.querySelector("[data-computer-offline]")!.textContent).toBe("This computer is offline");
+      expect((screen.getByRole("button", { name: "Add" }) as HTMLButtonElement).disabled).toBe(true);
+      online.mockReturnValue(true);
+      act(() => void window.dispatchEvent(new Event("online")));
+      expect(document.querySelector("[data-computer-offline]")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Add" }));
+      await waitFor(() => expect(lifeos.add).toHaveBeenCalledWith(expect.objectContaining({ title: "Book the hall" })));
+    } finally {
+      online.mockRestore();
+    }
+  });
 });
