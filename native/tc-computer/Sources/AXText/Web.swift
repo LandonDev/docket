@@ -298,7 +298,7 @@ public enum PageRule {
     }
 }
 
-/// §25.11: the address `browser.target` gives the host's guard, and `checkBrowser` reads again before each
+/// §25.12: the address `browser.target` gives the host's guard, and `checkBrowser` reads again before each
 /// step. A whole scan is the first condition: a capped one may have left a second page unread. One top-level
 /// web area names its URL. Beside the page, a window may hold only panes the browser draws itself, each
 /// checked by its own address (Aside's assistant panel is a `chrome-extension:` page; `BrowserAddressTests`

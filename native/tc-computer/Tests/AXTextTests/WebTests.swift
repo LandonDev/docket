@@ -475,7 +475,7 @@ func rawRead(_ n: RawAXNode) -> TabScan.Read<RawAXNode> { TabScan.Read(role: n.r
     }
 }
 
-/// Aside 1.0.1125.1's window as the Mac probe walked it on a scratch profile (2026-11-26, §25.11): the page 8
+/// Aside 1.0.1125.1's window as the Mac probe walked it on a scratch profile (2026-11-26, §25.12): the page 8
 /// levels down under six groups and a scroll area, the tab sidebar's buttons 13 down under a group at 12, a
 /// bookmarks list from 12 to 16, and with the assistant open a second top-level web area 8 down beside the
 /// page, a `chrome-extension:` page titled "New Session" (or "Aside").

@@ -186,8 +186,13 @@ The service uses physical pixels for window geometry and input at every Windows 
   changes the address, further steps stop. The closing read then runs
   again at the new address, checked like any read's (run.ts `runActions`),
   so a click that follows a link reads the next page and a TempCode page
-  stays refused. Aside (`at.studio.AsideBrowser`) is in the browser lists;
-  its reads stay refused until the service can name its tab's page. Linked hosts share their listener ports,
+  stays refused. Aside (`at.studio.AsideBrowser`) is in the browser lists.
+  Its tabs sit 13 levels down, so the tab scan reads 24. With its
+  assistant open, the window holds a second page beside the tab's. The
+  service names the tab's page only when every other pane is the
+  browser's own (`chrome-extension:` and the like) and the selected tab
+  names that page. Anything else stays refused (`BrowserAddress`,
+  docs/computer-protocol.md §25.12). Linked hosts share their listener ports,
   LAN addresses and names, and tunnel names when they connect and on each
   heartbeat. Before browser input the host confirms the lists over the
   live peer links. A missing or stale list stops input on every site,

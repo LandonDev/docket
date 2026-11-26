@@ -72,7 +72,7 @@ enum LiveTabs {
     }
 }
 
-/// The live, top-level document URL, from AXWebArea rather than editable browser chrome (§25.11's `BrowserAddress`).
+/// The live, top-level document URL, from AXWebArea rather than editable browser chrome (§25.12's `BrowserAddress`).
 public func activeBrowserURL(_ window: AXUIElement) -> String? {
     let found = LiveTabs.scan(window)
     let areas = found.webAreas.map { el in
