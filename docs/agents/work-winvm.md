@@ -347,7 +347,9 @@ when machine.json says `virtio` and the build it deploys does not read it (box-u
 **The settings.** Screen size: Fits my window (the default), 1280 × 800, 1920 × 1200 or 2560 × 1600; on std VGA a
 size says "Used when the VM is set up again". Picture quality (Sharp, Faster; the host's `detail`) shows once live
 resize is on. The Computers bar's
-Size and Detail set the same host settings, and are off on std VGA with `NO_RESIZE`'s words (ComputerBar.tsx).
+Size and Detail set the same host settings, and are off on std VGA with `NO_RESIZE`'s words ("Set Screen size to Fits
+my window in Settings, Windows VM", ComputerBar.tsx) and one Open Settings row that opens that row
+(`requestSettings("winvm", "winvm.screen")`); a VM not set up has Open Settings on its bar, to the same page.
 Applying a size to a running Windows is the VM display's own work (`VmDisplay`, live-video.md "The Windows VM").
 
 ## Take over

@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { registry } from "../../../lib/connection/registry";
 import type { VmState } from "../../../lib/winvmWake";
-import { ComputerBar, DelayButton, FOLD, FOLD_LAST, NO_LIVE_PICTURE, barSentence, NO_RESIZE, THREAD_HOLDS, ViewButton, delayWords, vmMenuRows, type VmScreenSeam } from "./ComputerBar";
+import { OPEN_SETTINGS_EVENT, peekSettingsRow } from "../../../lib/monaco/debugTab";
+import { ComputerBar, DelayButton, FOLD, FOLD_LAST, NO_LIVE_PICTURE, OpenSettingsButton, barSentence, NO_RESIZE, THREAD_HOLDS, ViewButton, delayWords, vmMenuRows, type VmScreenSeam } from "./ComputerBar";
 import { tile } from "./FullWindow.fixtures";
 
 const press = vi.hoisted(() => ({ take: null as null | (() => Promise<void>), toasts: [] as { title: string; description?: string }[] }));
@@ -195,6 +196,31 @@ describe("the computer's bar", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Sleep" }));
     await act(async () => {});
     expect(calls).toEqual(["work.winvm.sleep"]);
+  });
+
+  it("where Windows cannot take a new size, says where to turn it on and opens Screen size on the Windows VM's page", async () => {
+    expect(NO_RESIZE).toBe("Set Screen size to Fits my window in Settings, Windows VM");
+    const opened: string[] = [];
+    const hear = (event: Event) => opened.push((event as CustomEvent<string>).detail);
+    window.addEventListener(OPEN_SETTINGS_EVENT, hear);
+    render(<ComputerBar tile={vmTile()} vm={awake} screen={seam({ canResize: false })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Windows VM" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Open Settings" }));
+    expect(opened).toEqual(["winvm"]);
+    expect(peekSettingsRow()).toBe("winvm.screen");
+    // where it can, no such row
+    expect(vmMenuRows({ state: "awake", held: false, screen: seam(), may: { admin: true, operate: true } }).some((r) => r.kind === "item" && r.id === "screen-settings")).toBe(false);
+    window.removeEventListener(OPEN_SETTINGS_EVENT, hear);
+  });
+
+  it("Open Settings for a VM not set up goes to the Windows VM's page, where it is set up", () => {
+    const opened: string[] = [];
+    const hear = (event: Event) => opened.push((event as CustomEvent<string>).detail);
+    window.addEventListener(OPEN_SETTINGS_EVENT, hear);
+    render(<OpenSettingsButton />);
+    fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+    expect(opened).toEqual(["winvm"]);
+    window.removeEventListener(OPEN_SETTINGS_EVENT, hear);
   });
 
   it("a VM not set up has one press, to Settings, and no menu or Take over", () => {

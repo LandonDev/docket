@@ -1,3 +1,4 @@
+import type { SetupStep } from "@server/shared/contract-devices";
 import { saveThemePreference, type ThemePreference } from "../../lib/appearance";
 import { saveDefaultModel } from "../../lib/models";
 import type { HarnessId } from "../../lib/session";
@@ -57,13 +58,16 @@ export function hostOf(origin: string): string {
 }
 
 /**
- * A failed step's line beside its Retry button: the host's reason without a
- * closing "Retry." (the button says it) and without an exit code ("The
- * installer stopped with code 1603" is "The LifeOS installer did not finish").
+ * A failed step's reason as the row under its title says it, beside the row's own Retry: a sentence with its period,
+ * no closing "Retry." (the button says it), and the LifeOS installer's exit code left to the log ("The LifeOS
+ * installer did not finish."). Settings says a computer's setup steps in the same words: its copy
+ * (surfaces/settings/hosts/computersText.ts) is held equal to this one by setupFlow.test.ts until it imports this.
  */
-export function stepReasonWords(reason: string | undefined): string {
-  const text = (reason ?? "").trim().replace(/\s*Retry\.?$/i, "").trim();
-  if (/^the installer stopped with code -?\d+$/i.test(text)) return "The LifeOS installer did not finish";
-  return text.replace(/\.$/, "") || "It did not finish";
+export function stepReasonWords(step: SetupStep, reason: string | null | undefined): string {
+  if (!reason) return "It did not finish.";
+  if (step === "lifeos" && /^The installer (stopped with code|did not finish)/.test(reason)) return "The LifeOS installer did not finish.";
+  const bare = reason.replace(/\s*Retry\.?$/, "").trim();
+  if (!bare) return "It did not finish.";
+  return /[.!?]$/.test(bare) ? bare : `${bare}.`;
 }
 

@@ -117,7 +117,7 @@ names the far child).
   hosts only): a connection dot per host, coloured only in trouble, and a
   menu with a submenu per
   host (its state, the deploy drift, Switch to, Add workspace here, Mark
-  all read, the fleet switches), then Host settings; a boot resume is a
+  all read, the fleet switches, Settings: that computer's own page); a boot resume is a
   toast.
   `chrome/HostGlyph.tsx` (12 px, laptop for darwin, server otherwise, the
   name on hover, platform from the hello, remembered on the saved host row

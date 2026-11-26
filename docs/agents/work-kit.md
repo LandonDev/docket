@@ -50,7 +50,8 @@ it and who owns each folder.
   (`HOST_RULES` in `work-kit/ui/host-rules`: Kobra's raised button, check
   badge, toggle, spinner bar, ring transition, two type steps). TempCode
   defines them all, on its own tokens and motion values: `t-raise` and its
-  kinds with `t-raise-outline` and `t-flat` in `index.css`, the rest in
+  kinds with `t-raise-outline` (and `t-raise-field`, the same button standing
+  as a field: the field's edge, `--outline-field-edge`) and `t-flat` in `index.css`, the rest in
   `assets/components.css`, and `text-lead` (15/24) and `text-sheet-title`
   (16/24) as theme steps. The check badge's arc does not turn by CSS here (a
   new keyframe needs a row in `lib/motionGuard.test.ts`); work-kit's own

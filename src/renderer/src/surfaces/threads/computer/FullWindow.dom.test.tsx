@@ -79,6 +79,13 @@ const flush = () => act(async () => {});
 const view = (over: Partial<Parameters<typeof FullWindowView>[0]> = {}) => <FullWindowView tile={tile()} stream={streamOf({ status: "starting" })} room={{ width: 900, height: 700 }} name="Live view" onExit={noop} onOpenSession={noop} {...over} />;
 
 describe("the full window's body", () => {
+  it("draws the picture on its way as the bone made for matte, which shows on black in light too", () => {
+    const v = render(view());
+    const bone = v.container.querySelector('[data-face="live"] [data-slot="skeleton"]')!;
+    expect(bone.className).toContain("bg-skeleton-matte");
+    expect(bone.className).not.toMatch(/\bbg-skeleton\b(?!-)/);
+  });
+
   it("draws every fixture: the picture or its line, and one bar over it", () => {
     for (const fixture of fixtures) {
       const v = render(<FullWindowView {...fixture.props} />);

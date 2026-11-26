@@ -145,8 +145,10 @@ time:
 | A waiting task's mark is a lighter, yellower orange than late's red, as in light | `--stage-waiting` in `:root` to a dark value clearly apart from `--destructive` (light has `#d9620b`); tokenContrast.test.ts's waiting-mark case then checks dark too |
 | A hover on the chrome is the hovered group's step, lighter than the selected one, as in light | `--chrome-hover` and `--chrome-hover-ghost` in `:root` to `var(--sidebar-group-hover)` |
 | A loading bone shows on a card and a popover as it does on the page | `--skeleton` in `:root` to a wash of foreground (light has 8%) |
+| A bone on matte is a light wash, as in light | `--skeleton-matte` in `:root` to `color-mix(in srgb, var(--background) 16%, transparent)` |
 | A read-only field's words step back to muted | `--field-readonly` in `:root` to `var(--muted-foreground)` |
 | An unchecked checkbox and radio have an edge at 3:1 | `--check-edge` in `:root` to a foreground mix that reaches it (about 37%), and drop its `HELD_IN_DARK` rows |
+| An outline button that stands as a field takes the field's edge | `--outline-field-edge` in `:root` to `var(--input)` |
 | An outline button, a select and an attachment hover like a row, not like a selection | `--hover-fill`, `--hover-fill-field` and `--hover-fill-file` in `:root` to `color-mix(in srgb, var(--foreground) 5%, transparent)` |
 | The splash and the Windows caption glyphs take the app's own tokens | `--boot-background`, `--boot-foreground` in index.html's `:root`; `SYMBOL.dark` and `BACKING.dark` in `src/main/windowFrame.ts` |
 

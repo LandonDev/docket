@@ -53,11 +53,30 @@ describe("the setup's rules", () => {
 });
 
 describe("stepReasonWords", () => {
-  it("drops the closing Retry. the button already says, and an installer's exit code", async () => {
+  const CASES: [Parameters<typeof import("./setupFlow").stepReasonWords>[0], string | null | undefined][] = [
+    ["accounts", "The box could not be saved. Retry."],
+    ["accounts", "The box did not answer"],
+    ["lifeos", "The installer stopped with code 1603"],
+    ["lifeos", "The installer did not finish."],
+    ["folders", "The installer stopped with code 1603"],
+    ["work", undefined],
+    ["work", null],
+    ["allow", "Is it gone?"],
+  ];
+
+  it("says the reason as a sentence, with no closing Retry. and no installer's exit code", async () => {
     const { stepReasonWords } = await import("./setupFlow");
-    expect(stepReasonWords("The box could not be saved. Retry.")).toBe("The box could not be saved");
-    expect(stepReasonWords("The installer stopped with code 1603")).toBe("The LifeOS installer did not finish");
-    expect(stepReasonWords(undefined)).toBe("It did not finish");
-    expect(stepReasonWords("Retry.")).toBe("It did not finish");
+    expect(stepReasonWords("accounts", "The box could not be saved. Retry.")).toBe("The box could not be saved.");
+    expect(stepReasonWords("accounts", "The box did not answer")).toBe("The box did not answer.");
+    expect(stepReasonWords("lifeos", "The installer stopped with code 1603")).toBe("The LifeOS installer did not finish.");
+    expect(stepReasonWords("work", undefined)).toBe("It did not finish.");
+    // A reason that was only "Retry." says the fact, never a lone period (Settings' copy draws "." here today).
+    expect(stepReasonWords("work", "Retry.")).toBe("It did not finish.");
+  });
+
+  it("says each step's reason as Settings says it, one set of words", async () => {
+    const { stepReasonWords } = await import("./setupFlow");
+    const settings = await import("../settings/hosts/computersText");
+    for (const [step, reason] of CASES) expect(stepReasonWords(step, reason), `${step}: ${reason}`).toBe(settings.stepReasonWords(step, reason));
   });
 });

@@ -153,7 +153,7 @@ describe("HostsRow", () => {
     expect(boxes[1].contains(spinner)).toBe(true);
   });
 
-  it("lists a submenu per host, with the glyph, the name and the state, then Host settings", async () => {
+  it("lists a submenu per host, with the glyph, the name and the state", async () => {
     hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: status("offline", "linux") });
     render(<HostsRow onAddWorkspace={() => {}} />);
     fireEvent.click(screen.getByRole("button", { name: /^Hosts:/ }));
@@ -172,10 +172,11 @@ describe("HostsRow", () => {
     const label = triggers[1].querySelector("[data-menu-trailing]")!.previousElementSibling!;
     expect(label.className).toContain("flex-1");
     expect(triggers[1].querySelector("[data-menu-trailing]")!.className).not.toContain("ms-auto");
-    expect(screen.getByRole("menuitem", { name: "Host settings" })).toBeTruthy();
+    // Settings is each computer's own, in its submenu: no foot row that could name none.
+    expect(screen.queryByRole("menuitem", { name: "Host settings" })).toBeNull();
   });
 
-  it("a host's submenu: Switch to, Add workspace here, Mark all read, the fleet switches", async () => {
+  it("a host's submenu: Switch to, Add workspace here, Mark all read, the fleet switches, Settings", async () => {
     hosts([LOCAL, BOX], {});
     const onAdd = vi.fn();
     render(<HostsRow onAddWorkspace={onAdd} />);
@@ -183,7 +184,7 @@ describe("HostsRow", () => {
     const names = within(screen.getByRole("menu", { name: "box actions" }))
       .getAllByRole("menuitem")
       .map((el) => el.textContent);
-    expect(names).toEqual(["Switch to box", "Add workspace here…", "Mark all read", "Pause all", "Resume all", "Stop all", "Archive done…"]);
+    expect(names).toEqual(["Switch to box", "Add workspace here…", "Mark all read", "Pause all", "Resume all", "Stop all", "Archive done…", "Settings"]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Add workspace here…" }));
     expect(onAdd).toHaveBeenCalledWith("env_box");
   });
@@ -201,13 +202,13 @@ describe("HostsRow", () => {
   });
 
   // D5: a key that may only read is offered no verb its host would refuse: Switch to alone.
-  it("offers a read key's host Switch to alone", async () => {
+  it("offers a read key's host Switch to and its Settings page alone", async () => {
     const read = { ...status("open", "linux"), lastHello: { environmentId: "x", contract: 1, caps: ["read"], key: { id: "k", name: "Laptop" } } } as EnvironmentStatus;
     hosts([LOCAL, BOX], { local: status("open", "darwin"), env_box: read });
     render(<HostsRow onAddWorkspace={() => {}} />);
     await openHost(/^box/);
     const names = within(screen.getByRole("menu", { name: "box actions" })).getAllByRole("menuitem").map((el) => el.textContent);
-    expect(names).toEqual(["Switch to box"]);
+    expect(names).toEqual(["Switch to box", "Settings"]);
   });
 
   it("the host on screen has no Switch to", async () => {
@@ -244,14 +245,17 @@ describe("HostsRow", () => {
     expect(screen.getByTestId("pending").textContent).toBe('stop:{"kind":"host","environmentId":"env_box","name":"box"}');
   });
 
-  it("opens the Hosts settings page from the menu's foot", async () => {
+  it.each([
+    [/^box/, "computer:env_box"],
+    [/^This Mac/, "sharing"],
+  ])("opens the pressed computer's own page in Settings (%s)", async (name, page) => {
     hosts([LOCAL, BOX], {});
     const open = vi.spyOn(shell, "openSettings").mockImplementation(() => {});
     render(<HostsRow onAddWorkspace={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: /^Hosts:/ }));
-    await act(flush);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Host settings" }));
-    expect(open).toHaveBeenCalledWith("remote");
+    await openHost(name);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+    expect(open).toHaveBeenCalledWith(page);
+    open.mockRestore();
   });
 });
 

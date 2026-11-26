@@ -12,6 +12,7 @@ vi.mock("../lib/connection", async (original) => ({
   registry: { retry: (id: string) => retry(id) },
 }));
 
+import { shell } from "../stores/shell";
 import { ConnectionLine, useEnvironmentBlock } from "./ConnectionLine";
 
 const status = { transport: "reconnecting", fresh: false, lastHello: null, lastError: null, nextRetryAt: null, route: null, attempts: 2 } as never;
@@ -23,6 +24,18 @@ afterEach(() => {
 });
 
 describe("ConnectionLine", () => {
+  it.each([
+    ["env_box", "computer:env_box"],
+    ["local", "sharing"],
+  ])("opens the refused computer's own page from Pair again (%s)", (environmentId, page) => {
+    degraded = { kind: "unauthorized", status: { ...(status as object), transport: "unauthorized" } as never };
+    const open = vi.spyOn(shell, "openSettings").mockImplementation(() => {});
+    render(<ConnectionLine environmentId={environmentId} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pair again" }));
+    expect(open).toHaveBeenCalledWith(page);
+    open.mockRestore();
+  });
+
   it("spins the one Spinner while the host reconnects, with no pulse", () => {
     degraded = { kind: "reconnecting", status };
     const { container } = render(<ConnectionLine environmentId="env_box" />);

@@ -28,6 +28,7 @@ import { tidy, useMenuBody, type MenuRow } from "./menuRows";
 import { RailRow } from "./RailRow";
 import { hostsHeld } from "./hostOffline";
 import { linkMay } from "../lib/linkMayCore";
+import { computerPageOf } from "../lib/computerPage";
 
 /** A host's connection dot: quiet while open, amber while it tries or is slow, red refused. */
 export function toneOf(status: EnvironmentStatus, slow = false): string {
@@ -53,7 +54,7 @@ function hostWord(environment: Environment, status: EnvironmentStatus | undefine
  * The hosts at the rail's foot: one row, drawn only with two or more
  * hosts, ending in one dot per host. Its menu has a submenu per host (the
  * glyph, the name, the state and the `+N` deploy drift), each with Switch
- * to, Add workspace here and the fleet switches, then Host settings.
+ * to, Add workspace here, the fleet switches and Settings (its own page).
  */
 export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: string) => void }) {
   const environments = useEnvironments();
@@ -108,7 +109,7 @@ export function HostsRow({ onAddWorkspace }: { onAddWorkspace: (environmentId: s
 /** The Hosts menu as `MenuRow` data (DESIGN.md "Panels, modals, menus"):
  *  a submenu per host, its glyph, name, state and deploy drift, with Switch
  *  to, Add workspace here and the fleet switches (counted when the menu
- *  opens), then Host settings. Drawn by the menu body, which an open menu
+ *  opens), and last that computer's own page in Settings. Drawn by the menu body, which an open menu
  *  has always loaded. */
 function HostsMenuRows({
   environments,
@@ -162,18 +163,19 @@ function HostsMenuRows({
                 ),
               ]
             : []),
+          // Its own page in Settings (Sharing for this computer); a key that may only read still sees it as words there.
+          { kind: "sep" },
+          { kind: "item", id: `settings:${id}`, label: "Settings", icon: Settings },
         ]),
       };
     }),
-    { kind: "sep" },
-    { kind: "item", id: "settings", label: "Host settings", icon: Settings },
   ];
   const onPick = (pick: string) => {
-    if (pick === "settings") return shell.openSettings("remote");
     const at = pick.lastIndexOf(":");
     const verb = pick.slice(0, at);
     const id = pick.slice(at + 1);
-    if (verb === "switch") requestEnvironmentSwitch(id);
+    if (verb === "settings") shell.openSettings(computerPageOf(id));
+    else if (verb === "switch") requestEnvironmentSwitch(id);
     else if (verb === "add") onAddWorkspace(id);
     else if (verb === "read") {
       const unread = threadsToMarkReadOnHost(sessionStore.metas(), id);

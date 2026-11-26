@@ -245,7 +245,7 @@ function Steps({ state, steps, onClose, onReread }: { state: SetupState; steps: 
             data-state={step.state}
             title={stepTitle(step.step, state.giver)}
             description={step.step === "allow" && state.words && step.state !== "done" ? <span data-setup-words className="font-medium text-foreground">{state.words.join(" · ")}</span> : undefined}
-            error={errors[step.step] ?? (step.state === "failed" ? stepReasonWords(step.reason) : undefined)}
+            error={errors[step.step] ?? (step.state === "failed" ? stepReasonWords(step.step, step.reason) : undefined)}
           >
             {/* One button weight in the list: Retry and Add folders… are both secondary. */}
             {step.state === "failed" ? (

@@ -80,7 +80,9 @@ light one is built is "The light theme".
 | `sidebar-group-selected` | that group selected; and the selected fill of an item on the chrome (a rail row, a thread row, the strip's active tab, a pressed control in the title bar) | `muted` | oklch(0.922 0.006 264) |
 | `chrome-hover`, `chrome-hover-ghost` | the hover fill of a row, a tab or a quiet control on the chrome, and of a ghost button there | `foreground` 5%, 7% | `sidebar-group-hover` |
 | `skeleton` | a loading bone | `muted` | `foreground` 8% over what it lies on |
+| `skeleton-matte` | a loading bone on `matte` (a computer's picture on its way, full screen and the pop-out) | `skeleton` | `background` 16% |
 | `check-edge` | an unchecked checkbox's or radio's edge | `input` | `foreground` 50% (3:1) |
+| `outline-field-edge` | the edge of an outline button that stands as a field beside one (`t-raise-field`: a date field beside a select) | `border` | `input` |
 | `field-readonly` | a read-only field's words | `foreground` | `muted-foreground` |
 | `hover-fill`, `hover-fill-field`, `hover-fill-file` | what an outline button and a linked row, a select's trigger, and an attachment that opens hover to | `muted`, `muted` 60%, `muted` 50% | `foreground` 5%, a row's hover wash |
 | `secondary` | the secondary button | oklch 0.29 | oklch(0.935 0.005 264) |
@@ -1088,7 +1090,7 @@ hovering 8px past the words (7px and the item's 1px border, so its words and
 its control start and end on a plain row's edges), and the switch and ⋯ at
 its end sit above it, so pressing them never opens the row. A row's
 control is one `Switch`, one `ChoiceSelect`, one `Input` or one `Button`;
-a row whose control is a wide field (`PageRow wide`, Hosts' Public origin)
+a row whose control is a wide field (`PageRow wide`, Advanced's Web address)
 lays it on a full-width line 8px under its words once the page's content is
 under 480px, its error 4px under the field and its skeleton the same, so the
 words never thin to a word a line;
@@ -1139,7 +1141,10 @@ Every computer being driven now, on every connected host, in one place
   medium; a press closes the page and goes to the thread that drives it;
   the VM's own name is no link), then on the same line one 12px muted
   comma sentence: what it is doing in the step's own words, then where it
-  runs ("Clicking Save in TextEdit, Landon's MacBook"). While he drives the
+  runs ("Clicking Save in TextEdit, Landon's MacBook"). Only its first fact
+  cuts, at its end; a later fact that does not fit drops whole, its comma
+  with it. The place is in lower case after another fact ("…, the box")
+  and left out after a card's question. While he drives the
   first words are "You are driving", in foreground; while a card waits on
   him they are the card's question, in foreground. A VM that shows only
   its 4 fps picture says "No live picture to drive", which is why it has
@@ -1159,7 +1164,9 @@ Every computer being driven now, on every connected host, in one place
   - **The VM's menu** (a ghost icon button, "Size, sleep and more"): Size
     (Fit to window, 1280 × 800, 1920 × 1200, 2560 × 1600) and Detail
     (Sharp, Faster), ticked by the host's choice, off with their reason as
-    the row's line while a thread holds it or until live resize is on;
+    the row's line while a thread holds it or until live resize is on
+    ("Set Screen size to Fits my window in Settings, Windows VM", with one
+    Open Settings row that opens that row on the Windows VM's page);
     then Sleep and Restart Windows… (a confirm first; off while a thread
     holds it), Sign in to Office and OneDrive… (the sign-in Connections
     walks), Restore points… (Settings' own dialog). A row this window's
@@ -1173,7 +1180,9 @@ Every computer being driven now, on every connected host, in one place
   - **The views**, 8px on: Pop out and Full screen, quiet icon buttons
     with tips.
   Under 640px of its own width the delay and Pop out give way, whole;
-  under 480px the status sentence too, so the title reads whole. Afloat
+  under 480px the status sentence too, so the title reads whole; under
+  400px Full screen too (a click on the picture opens it). A picture that
+  stopped is a plate with Retry, in the pop-out too. Afloat
   in full screen it gives nothing way. No toast says the
   leave chord: Hand back wears it. While he drives, Escape is the
   computer's key and never closes the page. Leaving the page with nothing
@@ -1304,22 +1313,25 @@ Every computer being driven now, on every connected host, in one place
   computer on the stage. Full screen (or ⌃⌘F) takes it over its own
   display, its picture on `matte`. The main window draws it, on the
   stream it already plays: it is never a second stream.
-- **The Windows VM in Settings → Work** (`WinvmSection`, work/winvm/): a
-  section of its own on each Work host that can have the VM (a host that
-  cannot shows nothing). Its first row, "Windows", says what the machine is
-  doing in a few words ("Not set up", "Asleep", "Awake", the keeper's step
-  while it works) with the one press that fits, secondary: Set up, Wake or
-  Sleep, spinning while the keeper works; a failure is the row's red line.
-  Once set up: "Sleeps after" (15 minutes, 30 minutes, 2 hours, Never),
-  "Screen size" (1280 × 800, 1920 × 1200; "Used when the VM is set up again" under it,
-  since Windows keeps the size it was set up at through every sleep),
-  "Restore points" (a row that opens a dialog of the points, newest first,
-  each with Go back… after a confirm naming what is lost, and Delete; Save
-  a point at its foot; saving and going back only while it sleeps; a bone
-  holds its count's line while the points are read), the
-  edition with its end date, and Office. A Work workspace's own page has
-  "Computer use on the Windows VM" under Where it runs, a switch shown only
-  where its host has the VM set up.
+- **The Windows VM in Settings** (`computers/Winvm.tsx`, page `winvm`): a
+  page of its own under Other computers, listed under the computer that
+  keeps the VM and only while one does. Its first row, "Windows", says what
+  the machine is doing in a few words ("Not set up", "Asleep", "Awake", the
+  keeper's step while it works) with the one press that fits, secondary:
+  Set up, Wake or Sleep, spinning while the keeper works; a failure is the
+  row's red line. Once set up: "Sleeps after" (15 minutes, 30 minutes, 2
+  hours, Never), "Screen size" (Fits my window, 1280 × 800, 1920 × 1200,
+  2560 × 1600; "Used when the VM is set up again" under a size where live
+  resize is off, since Windows keeps the size it was set up at through
+  every sleep; Fits my window there asks first, since Windows restarts
+  once), "Picture quality" once live resize is on, and "Restore points" (a
+  row that opens a dialog of the points, newest first, each with Go back…
+  after a confirm naming what is lost, and Delete… after its own; Save a
+  point at its foot; saving and going back only while it sleeps; a bone
+  holds its count's line while the points are read). The VM's Office and
+  OneDrive sign-ins and its edition's end are Connections' rows, never
+  this page's. A job's page has "Windows VM" under Computers its threads
+  may use, a switch shown only where its computer has the VM.
 
 #### The canvas pane
 
@@ -1329,7 +1341,7 @@ row); the slides kind's PowerPoint side is "Open in PowerPoint" in the
 `EmptyState`'s title, the bar keeping what waits in TempCode and Review. A sheet's
 chart axis is 12px, not the prototype's 11px (the type scale allows 11px only
 for key caps and menu labels). Around the canvas, the Outbox, Back from Away,
-routines, house rules and Settings → Work are built to the rules below, but
+routines, house rules and Settings' Work pages are built to the rules below, but
 for the routines' week grid, which is not.
 
 A Work thread opens an item (a mail, a document, a sheet, a PDF, slides,
@@ -1394,7 +1406,11 @@ thread; nothing answers inside the canvas.
   kind's own tools, Download and Save to workspace (a copy of someone
   else's file: a mail's attachment), History, then the review stepper at
   the end. A kind
-  with nothing to put there draws no bar. A second file beside a Files
+  with nothing to put there draws no bar, nor does a shut item (a centred
+  failure, a PDF's password ask) or one whose quiet line ends with
+  History; a bar whose tools all give way in its narrow form draws none
+  there. A mode that cannot change has no menu: why it is fixed is its
+  tip. A second file beside a Files
   tab's own leads the bar with its glyph, name and save line and ends it
   with its close, one row level with the bar beside it. A quiet line's cut
   reason is a Tab stop with its whole words in a tooltip, as a state
@@ -1428,7 +1444,8 @@ thread; nothing answers inside the canvas.
   may not change; "Moved." and "The copy from Nov 16, 9:12 AM" on a PDF
   whose file moved), is the quiet line: 12px muted, the word
   medium, its one press a link, a hairline under (`QuietLine`, tone
-  `quiet`). A sheet he can only read, or whose file moved, ends that line
+  `quiet`). A state line whose word wraps (a long computer's name) puts its
+  detail on a 12px line of its own under it. A sheet he can only read, or whose file moved, ends that line
   with History (`StatusLine.history`) and its bar offers none, so the sheet
   has one row above the grid, as a read-only deck's line ends with Present.
   A document gone offline asks nothing of him either: its quiet
@@ -1593,7 +1610,8 @@ The kinds, each a hand-made body built from components/ui:
   launch: "Press ⌃⌥ to leave the page".
   Its bar holds the host (12px foreground, a lock glyph, never a
   field), who drives (12px muted, foreground while the person drives) and
-  one verb, in place of the mode. Where it runs is said once, after the
+  one verb, in place of the mode. In a narrow bar the host and a held
+  act's site give way whole; the act's verb stays. Where it runs is said once, after the
   page title in the tab row ("Landon's MacBook"). A held submit ends the
   bar in the one primary named for the act ("Submit in Arbiter") with
   Discard as a ghost, and never counts down. The agent never types a
@@ -1601,7 +1619,8 @@ The kinds, each a hand-made body built from components/ui:
 - **Form.** Its two halves are a 24px segmented switch after the mode.
   The bar ends in the stepper while changes wait, Publish (the one
   primary) while unpublished, otherwise the live link in `accent` with
-  Copy and Close form. Publish is held, since it shares the link; Close
+  Copy and Close form. A closed form says "Closed 12:00 PM" with Reopen
+  at the bar's end, as a closed Microsoft form does. Publish is held, since it shares the link; Close
   form and Reopen are not. Answer bars are `chart-neutral`, 8px tall,
   square at the base and 4px round at the end, the count beside them in
   muted tabular text.
@@ -1653,7 +1672,7 @@ Around the canvas:
   (it gives way first), with Select N on hover; a group over five shows four
   and "N more". A row is one 32px line: the kind's 14px glyph (the red mark
   for a failed send), the act, what it is about muted (it gives way first,
-  and hides under 640px), and one trailing word at 12px: the event's start in
+  whole, never to a stub, and hides under 640px), and one trailing word at 12px: the event's start in
   the foreground, when it goes, "Out of date", "Changed", else when it was
   held. A tick takes the glyph's place on hover and stays on every row while
   any is ticked, but a failed row keeps its red mark until it is ticked
@@ -1676,7 +1695,8 @@ Around the canvas:
   the fix's menu, one click away, so the bar fits a narrow window; a failure that may clear (a service that
   did not answer) keeps Send again first. A kind's view that fails is one
   quiet line, "Its details could not be read." with Retry, no bones under it.
-  Rows that share an act keep what they are about before the time. The verb bar
+  Rows that share an act keep what they are about before the time; a row of
+  one act keeps its time. The verb bar
   is a hairline and one row: Discard at the start, Edit, and the primary verb
   joined to its menu (Send later's four times above the grant row); an
   out-of-date item's bar is Discard and Ask the thread again, a timed one's
@@ -1694,8 +1714,9 @@ Around the canvas:
   word wrapping under it. Groups stand 12px apart; a row's trailing word keeps
   its column at every width and gives way first on a very narrow row; the
   header keeps "Outbox" when Grants no longer fits. Done groups by day under
-  12px headings, a row's outcome ("Discarded", "Out of date") in its trailing
-  slot; its head says who decided. Held work's toasts step aside while the
+  12px headings, a row's outcome ("Discarded", "Out of date", and what
+  LifeOS did with a mail: "Queued in LifeOS for 12m", "Back in drafts in
+  LifeOS", "No longer in LifeOS") in its trailing slot; its head says who decided. Held work's toasts step aside while the
   Outbox is the page. Keys move,
   tick and press without motion; their caps show only in tooltips. A
   computer-use act names the computer and says it "takes its screen for a
@@ -1920,37 +1941,48 @@ Around the canvas:
   "Nothing since Oct 25" (the thirty days the ledger keeps); a host that
   did not answer is one muted line at the foot with Retry, and with no
   host answering the empty state says so instead. A Retry on its way is
-  the busy label and takes no second press. Settings → Work → Digest is
-  one section after Capture: Time (a time field, written once he stops
-  typing or leaves it), then Held items, Routine results, Messages and
-  mail and Meetings, each a select of three levels in his words ("In the
-  digest", "When it can't wait", "Right away"), all starting at the middle
-  one; Open the digest is the section's own verb on its heading line. No
-  line explains a row. The hosts that refused a change are that row's red
-  line by name ("The Mac did not take it"), until the row is written
-  everywhere; a failure is said in his words, never the link's own error
-  text. The time field keeps what he typed until the hosts answer that
-  edit, whatever arrives meanwhile, and a time typed just before he left
-  is still written. The
-  section shows each setting's newest value, and a host that missed a
+  the busy label and takes no second press. Settings → Digest is
+  a page of its own in the Work group, its line saying it is one set for
+  every computer with Work on: The day's digest, Arrives at (a time field,
+  written once he stops typing or leaves it, the zone it follows named
+  under it), then Tell me about: Things waiting for me, Routine results,
+  Messages and mail and Meetings, each a select of three levels in his
+  words ("In the digest", "When it can't wait", "Right away"), all
+  starting at the middle one; Open the digest is the page's own verb on
+  its title line. No line explains a row. The computers that refused a
+  change are that row's red line by name ("The Mac did not take it"),
+  until the row is written everywhere; a failure is said in his words,
+  never the link's own error text. The time field keeps what he typed
+  until the computers answer that edit, whatever arrives meanwhile, and a
+  time typed just before he left is still written. The
+  page shows each setting's newest value, and a host that missed a
   write is brought to it, field by field, when the window reads it. The Go menu
   has Digest, greyed while no host has Work on.
-- **Settings for Work.** The settings list gains a Work heading after
-  Threads: the Work page, then each Work workspace led by its sector's
-  dot. A grant row is the dot (on mixed lists only), the grant's name and
-  "<workspace>, made <date> from a held <kind>" as its muted line, with
-  Remove and no confirm. With the switch off, the Work page is the switch
-  alone. A Work workspace's sector is shown, never edited. Models is one
-  row that opens Thread defaults. "Where it runs" names the host new Work
-  workspaces are made on (only with two or more hosts with Work on); each
-  desktop host's folders are a section of their own, "Folders" or, with
-  two hosts, "Folders on <host>", Add folder… at the heading's end, its
-  box on the column's edge as the Remove presses' are, so their words end
-  on one edge;
-  computer use is one switch per desktop host on each workspace's page,
-  and for a key that may not change them one line says so ("Computer use
-  is changed from a computer that manages the box"). A key that may switch
-  no host gets no Work switch, only the line saying where Work is changed.
+- **Settings for Work.** The settings list has a Work group, Setup (the
+  Work page), Digest, Mail, Files and Connections, then Jobs: each job led
+  by its sector's dot. The Work page leads with Work is on for, one row
+  and one switch per computer by its one name; a press writes that
+  computer alone, and turning one off asks first. With Work off
+  everywhere, the Work page is that list alone and the other Work pages
+  and the jobs leave the list. Then: Access for each job's new threads,
+  one open row per job opening its New threads in a dialog; Without
+  asking you (Things threads may send on their own, the standing grants
+  in a sheet; What each add-on's tools may do, a sheet of each computer's
+  tools; While you are away, an open row to Away); Travel; and On this
+  Mac, where new jobs are made (only with two or more computers with Work
+  on). A grant row is the dot (on mixed lists only), the grant's name and
+  "<job>. <made date and held kind>" as its muted line, with Remove and no
+  confirm. A job's page has Computers its threads may use, one switch per
+  desktop computer by its one name, with an amber line under a computer
+  that refuses the job's computer itself (this Mac's ends in Open
+  Sharing); New threads; Rules and Proposed; Writing and mail. Files has
+  each desktop computer's folders as a section of their own, "Folders on
+  <computer>", and "Folders in the Windows VM", Add folder… at the
+  heading's end, its box on the column's edge as the Remove presses'
+  are, so their words end on one edge. A key that may not change a row
+  sees its value in words and one line saying who can ("Changed from a
+  computer that manages the box"); a computer whose key may not switch
+  Work shows On or Off in words the same way.
   A section that needs LifeOS with no session says the state the host
   answered in the views' words (`LifeosLine`), never disabled controls:
   bones while the answer is out; "Not signed in to LifeOS on the box" (or
@@ -1962,8 +1994,8 @@ Around the canvas:
   status or session ask went unanswered, "<Host> did not answer" in red with
   Retry (bones are for an ask still out, never one that timed out); a computer
   kept from LifeOS with no press; Work off with a press named Work, the
-  section it opens, where this window may turn it on, else who can, and on
-  Settings → Work itself, where the switch is, neither. A
+  page it opens, where this window may turn it on, else who can, and on
+  the Work page itself, where the switch is, neither. A
   workspace's Waiting on words its days' failed read from the cause the
   host sent, in the same words, the host named: a state ("Not signed in to
   LifeOS on the box") muted, with the rule's press at the row's end; silence
@@ -2274,7 +2306,7 @@ Around the canvas:
   Save to Teams (the file is Word already). Nothing asks while he types. His
   first press on a file asks once in the house confirm ("Save Plan.docx to
   Teams as you work?", Save automatically and Ask me each time; either saves
-  it now), unless Settings → Work, Word files, says how new files save (Ask
+  it now), unless Settings → Files, On this Mac, Word files save to Teams, says how new files save (Ask
   the first time, the default; As I work; When I press Save); after Ask me
   each time each press asks "Replace Plan.docx in Teams?" with Replace and
   Keep Both. Each question names only what this file loses (what its import
@@ -2524,12 +2556,13 @@ Around the canvas:
   Open, or the refusal in red in the line's place with Add… again). A mail or a
   person named in an answer is a 20px chip on `muted` at radius 6 with a
   12px glyph.
-  Mail's settings are flat groups of 44px rows; in Settings → Work they
-  are one page section, "Mail", with the groups (Writing, Reading,
-  Signatures, Accounts) inside it under 12px regular muted headings, 16px
-  apart, and no second title; a signature and an account open as dialogs in the one dialog
-  shape (the title beside a quiet Close, a hairline over the footer), every
-  control in the account dialog at one width.
+  Mail's settings are flat groups of 44px rows; in Settings they are a
+  page of their own, Mail, its groups (Writing, Reading, Signatures,
+  Accounts, then Without asking you) as the page's sections under their
+  own headings, and no second title; a signature and an account open as
+  dialogs in the one dialog shape (the title beside a quiet Close, a
+  hairline over the footer), every control in the account dialog at one
+  width.
 - **The Messages view** (TempCode's own, src/renderer/src/work/messages/;
   docs/agents/work-messages.md). Mail's frame: no header of its own, the
   list's 44px head the page's, the list 296px (260 to 480, kept as
@@ -2658,6 +2691,16 @@ Around the canvas:
   line, a time at the end. A section with nothing is not drawn, and no
   row repeats what its heading says. An Agenda row names the people at
   an event as one muted comma line ("With …"), each name a link on hover.
+- **Agenda and Tasks** (work/agenda/, work/tasks/). An Agenda row opens
+  the meeting's page on a press anywhere on it; its verb (Prepare, or
+  Follow up once the event is over) is a pointer's shortcut out of the Tab
+  order, drawn on hover over the title's end on the row's own fill, its
+  first 12px fading the title out, so the title runs the row's width at
+  rest. ↑ ↓ move between rows in Tasks and Agenda as in People. Under
+  Waiting a task's second line is the name alone: the heading says the
+  rest. A closed task's sheet says so at its foot as a fact, "Done Nov 24"
+  (or "Done yesterday") where LifeOS kept the time, else "Marked done";
+  "Dropped" for a dropped one.
 - **Clashes** (work/clashes/; docs/agents/work-clashes.md). A clash is a
   fact about an event, so it sits on the event, in words, where he already
   reads it: no page, no count on the rail, no badge.
@@ -2673,7 +2716,8 @@ Around the canvas:
   drive lines that would read alike each take the other event's start
   ("15 min short before Site visit (Ref), 10:30 AM"). An event with several
   clashes has a line for each, so every one named can be opened. A line
-  is a link `Button` at the line's own 16px that takes an underline on
+  wraps whole, never cut, and is a link `Button` at the line's own 16px,
+  its press 24px tall, that takes an underline on
   hover and opens that clash's dialog; the row's menu has
   Show clash, or with several "Show clash with Varsity Basketball" for
   each (two of one name take their job and time, the time as the line
@@ -2685,7 +2729,9 @@ Around the canvas:
   read and nothing pulses for it. "Leave 4:35 PM" under the time is from
   where he will be: the event before when that ends within three hours,
   else the day's start.
-  The Clash dialog is the `sm` Modal. Its title is the fact ("Two things
+  The Clash dialog is the `sm` Modal. While it reads, it draws its own
+  shape in bones: the day's line, then each event's title, its two lines
+  and, 8px under, the row its ways out stand in. Its title is the fact ("Two things
   at once", "15 minutes short", "About 15 minutes short"), the later
   event's day the 12px line under it. The body holds the two events in
   time order, 12px apart: each its title (14/22 medium), then one 12px
@@ -2781,8 +2827,8 @@ Around the canvas:
   time line, since where it stands says the time (agenda/agenda.css);
   pressing the event opens its day's list, where the line is. An event
   that is over wears none, as its row carries no line.
-  Start places is a section of Settings → Work on the Work home host,
-  after Where it runs (`StartPlacesSection`): Home, then the six jobs in
+  Start addresses is a row of the Work page's Travel section that opens
+  a dialog (`StartPlaces`, work/clashes/StartPlaces.tsx): Home, then the six jobs in
   LifeOS's order, each job's title its sector dot and name. A row's line
   is the place as the map named it; "Home" in muted text where a job has
   no start of its own; "Not set" for Home with none; a 12px spinner, 8px,
@@ -2838,12 +2884,12 @@ Around the canvas:
   Entries' Amount column, Owed's and To confirm's amounts all end 120px
   inside the column, and what follows an amount (the paperclip, Paid,
   Review and a row's menu) sits in those 120px, ending on the column's
-  edge (layout.ts). Under 520px the least fact gives way first: Entries'
+  edge (layout.ts). Under 640px of view the least fact gives way first: Entries'
   Category becomes a 12px muted line under Who and Date narrows to 64px,
   By category and Entries
   end their amounts 48px in (the paperclip's room), Owed and To confirm
   keep their 120px for their presses, Owed's who and what wrap as one run
-  of words rather than cut beside Paid (whose name says both), and Month or Year moves to two
+  of words rather than cut beside Paid (whose name says both); and under 520px of header Month or Year moves to two
   ticked rows at the head of More, so Add and More stay in the header. The 520px is the header's
   content box, inside its padding, for both the toggle's container query and More's measure
   (`headIsNarrow`, on the fractional width), so at no width is the choice in neither. To confirm leads the column while anything waits: a
@@ -2851,15 +2897,16 @@ Around the canvas:
   glyph where there is none), who or the file's name in foreground with
   the date 4px after it in 12px muted (the year only when it is not this
   year's), the amount, Review and the row's menu; a receipt still being
-  read shows the spinner and "Reading" and nothing to press, its slots
+  read shows the spinner and "Reading…" and nothing to press, its slots
   kept so the rows line up. Discard is in the row's menu and is said back
   in a toast with Undo, never asked about. The calendar's games and paid
   events follow under a 12px medium muted group name, "From the calendar",
   16px below the receipts (still drawn when only offers wait), with Add
   all at the end of that line once two can be added ("Add 2" when some
-  need Review, so the label says its reach): the day ("Sat Nov 21") in
-  12px muted, the event, then its fee with cents and its miles as a muted
-  comma run (`Facts`), never a dot; Add when both are known and the miles
+  need Review, so the label says its reach), each as a receipt's row: the
+  event, then its day ("Sat Nov 21") and its miles as a muted comma run
+  (`Facts`), never a dot, and its fee with cents in the amount column, on
+  money's one edge; Add when both are known and the miles
   were measured, else Review, its word on the column's edge as Review's;
   Skip in the row's menu, said back in a toast with Undo (an event skipped
   meanwhile is added by nothing and said by nothing). Then the figures, as text on one row with a hairline under it
@@ -3039,7 +3086,9 @@ Around the canvas:
   sheet. The mail is one row, "Follow-up to Maya Chen and Tom Beck" over
   "Waiting in the Outbox", which opens the Outbox on it. A part that did
   not load, or a filing LifeOS did not take, is the view's one state line
-  with Retry. The one-time offer of Prepare ahead is a 12px muted line
+  with Retry. A recording its computer cannot transcribe reads "The
+  transcriber is not set up on the box." (that computer named), with Open
+  Settings, at Connections, only where this window may change it. The one-time offer of Prepare ahead is a 12px muted line
   under his first brief with a ghost Turn on and a dismiss. Loading draws
   bones in the page's shape. The Notes dialog is the 576px form dialog:
   one field at 14/22 that keeps its height and scrolls, under it two
@@ -3274,6 +3323,9 @@ own selected fill is a card's fill at rest in light.
 - **One live line**: under a meeting's time, 12px medium `foreground`,
   "Leave 5:10 PM" while that is ahead, then "in 25 min" within the hour,
   then "Now". Nothing else on the page moves by itself.
+- **A clash's note** leads the row's second line in its fault's tone, and
+  the row's own place and people follow it muted, 4px after (two facts in
+  two colours); a row with no note is one comma sentence.
 - **Late is the only colour**: an overdue task's fact and a clash's note are
   `destructive`. No amber: held is not Needs you, and a page of asks must
   not read as a page of alarms.
@@ -4794,7 +4846,7 @@ Waiting on's days and the rail's + menu too, and Connections' LifeOS rows,
 worded by the window from the state the host names, each naming its
 computer once (in its line, else in its title) and LifeOS answers with Retry
 for that host alone, as the sign-in row of a host that says LifeOS is unreachable has beside its Sign out; while that
-host does not answer its own check, the Hosts row says so with the one Retry, and its old LifeOS silence is not
+host does not answer its own check, the Computers row says so with the one Retry, and its old LifeOS silence is not
 drawn. On Today a job's session on another host that is down
 is one line for the page a host and state, naming what every section left
 out ("Refereeing's meetings, tasks and mail left out"), its Retry asking

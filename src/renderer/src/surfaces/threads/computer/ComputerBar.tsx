@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@renderer/components/ui
 import { Tip, TruncateTip } from "@renderer/components/tip";
 import { cn } from "@renderer/lib/cn";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
-import { Desktop, Globe, Keyboard, Laptop, LogIn, Moon, MoreHorizontal, RefreshCw, RotateCcw, Square } from "../../../chrome/icons";
+import { Desktop, Globe, Keyboard, Laptop, LogIn, Moon, MoreHorizontal, RefreshCw, RotateCcw, Settings, Square } from "../../../chrome/icons";
 import { LazyPopover, RowsMenu, type MenuRow } from "../../../chrome/menuRows";
 import { pressKeys } from "../../../lib/computerVideo";
 import { canTakeOver, handBack, takeOver, type ComputerTile } from "../../../lib/computers";
@@ -20,8 +20,8 @@ import { useLinkMay } from "../../../lib/linkMay";
 import { workErrorWords } from "../../../lib/workErrorWords";
 import { LEAVE_CHORD } from "../../../lib/video/videoInput";
 import { VM_SCREEN_PICKS, wakeVm, type VmDetail, type VmScreenPick, type VmState } from "../../../lib/winvmWake";
-import { shell } from "../../../stores/shell";
-import { PointsDialog } from "../../../work/winvm/WinvmSection";
+import { requestSettings } from "../../../lib/monaco/debugTab";
+import { PointsDialog } from "../../settings/computers/Winvm";
 import { signInOnVm } from "../../../work/winvm/signIn";
 import { restartVm, setVmScreen, sleepVm } from "../../../work/winvm/vmPresses";
 
@@ -67,7 +67,7 @@ export interface VmScreenSeam {
 /** The menu's Size rows. */
 const SIZE_WORDS: Record<VmScreenPick, string> = { fit: "Fit to window", "1280x800": "1280 × 800", "1920x1200": "1920 × 1200", "2560x1600": "2560 × 1600" };
 /** Why Size and Detail are off. */
-export const NO_RESIZE = "Turn on live resize in Settings → Work";
+export const NO_RESIZE = "Set Screen size to Fits my window in Settings, Windows VM";
 export const THREAD_HOLDS = "A thread is using it";
 
 /** The glyph a computer wears: the Windows VM's screen, the box's page, a Mac's or a PC's window. */
@@ -322,6 +322,8 @@ export function vmMenuRows({ state, held, screen, may }: Pick<VmMenuProps, "stat
     for (const pick of VM_SCREEN_PICKS) rows.push({ kind: "item", id: `screen:${pick}`, label: SIZE_WORDS[pick], checked: screen.screen === pick, ...(off ? { disabled: true, reason: off } : {}) });
     rows.push({ kind: "sep" }, { kind: "label", label: "Detail" });
     for (const detail of ["sharp", "faster"] as const) rows.push({ kind: "item", id: `detail:${detail}`, label: detail === "sharp" ? "Sharp" : "Faster", checked: screen.detail === detail, ...(off ? { disabled: true, reason: off } : {}) });
+    // Off for want of live resize: the one press that turns it on, Screen size on the Windows VM's page.
+    if (!screen.canResize) rows.push({ kind: "item", id: "screen-settings", label: "Open Settings", icon: Settings });
     rows.push({ kind: "sep" });
   }
   if (may.operate) {
@@ -348,6 +350,7 @@ export function VmMenu({ host, state, held, screen, onOpenChange }: VmMenuProps)
         onOpenChange={onOpenChange}
         rows={rows}
         onPick={(id) => {
+          if (id === "screen-settings") return requestSettings("winvm", "winvm.screen");
           if (id.startsWith("screen:")) return screen?.onPick({ screen: id.slice(7) as VmScreenPick });
           if (id.startsWith("detail:")) return screen?.onPick({ detail: id.slice(7) as VmDetail });
           if (id === "sleep") return void sleepVm(host).catch(fail("did not put the Windows VM to sleep"));
@@ -520,10 +523,10 @@ export function WakeButton({ host }: { host: string }) {
   );
 }
 
-/** Settings → Work, where a VM that is not set up is set up: the bar's one press for it. */
+/** Settings, Windows VM, where a VM that is not set up is set up: the bar's one press for it. */
 export function OpenSettingsButton() {
   return (
-    <Button variant="secondary" size="sm" onClick={() => shell.openSettings("work")}>
+    <Button variant="secondary" size="sm" onClick={() => requestSettings("winvm")}>
       Open Settings
     </Button>
   );

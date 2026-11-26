@@ -105,7 +105,7 @@ export function PopOutView({ tile, stream, name, boxRef, measureRef, room, dpr =
               data-face="live"
               className={cn("absolute inset-0 overflow-hidden bg-card", face.driving && DRIVEN_CLASS)}
             >
-              {face.drawn ? null : <Skeleton className="absolute inset-0 rounded-none" />}
+              {face.drawn ? null : <Skeleton className="absolute inset-0 rounded-none bg-skeleton-matte" />}
               {picture ?? face.picture}
               <div className="pointer-events-none absolute inset-0">{face.mark}</div>
             </div>

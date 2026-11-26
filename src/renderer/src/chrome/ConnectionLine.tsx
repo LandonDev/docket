@@ -3,6 +3,7 @@ import { identityChanged, linkWords, registry, useEnvironmentDegraded, useEnviro
 import { Spinner } from "../components/ui/spinner";
 import { BusyLabel, Button } from "../components/ui/button";
 import { shell } from "../stores/shell";
+import { computerPageOf } from "../lib/computerPage";
 import { settingsChunk } from "../surfaces/chunks";
 
 /**
@@ -45,7 +46,7 @@ export function ConnectionLine({ environmentId }: { environmentId: string }) {
     setPressed(degraded.status);
     registry.retry(environmentId);
   };
-  return <ConnectionLineView kind={degraded.kind} pair={identityChanged(degraded.status)} text={linkWords(name, degraded, now)} retrying={pressed === degraded.status} onRetry={retry} onPair={() => shell.openSettings("remote")} />;
+  return <ConnectionLineView kind={degraded.kind} pair={identityChanged(degraded.status)} text={linkWords(name, degraded, now)} retrying={pressed === degraded.status} onRetry={retry} onPair={() => shell.openSettings(computerPageOf(environmentId))} />;
 }
 
 export function ConnectionLineView({ kind, text, pair = false, retrying = false, onRetry, onPair }: { kind: Degraded["kind"]; text: string; pair?: boolean; retrying?: boolean; onRetry: () => void; onPair: () => void }) {
