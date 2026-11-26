@@ -55,6 +55,15 @@ function linkKeyOf(host: string): string {
   return env ? `${env.keyId ?? ""}\n${env.credentialRef ?? ""}` : "";
 }
 
+/** A kept list goes as soon as its host's key changes or its host leaves the registry, not at its next read. */
+let offKeys: (() => void) | null = null;
+function watchKeys(): void {
+  if (offKeys || typeof registry.subscribe !== "function") return;
+  offKeys = registry.subscribe(() => {
+    for (const [slot, entry] of kept) if (entry.key !== linkKeyOf(entry.host)) kept.delete(slot);
+  });
+}
+
 /** The window's git-changed event marks the checkouts it names (all, unscoped) to be asked again on their next open. */
 function watchGitChanged(): void {
   if (offGitChanged || typeof window === "undefined") return;
@@ -119,6 +128,7 @@ export function loadProjectFiles(
 ): Promise<ProjectFile[]> {
   if (!looksLikeProject(cwd)) return Promise.resolve([]);
   watchGitChanged();
+  watchKeys();
   const host = hostOfCwd(cwd);
   const slot = slotOf(host, cwd);
   const entry = keptFor(cwd);
@@ -157,7 +167,8 @@ export function loadProjectFiles(
 
 /**
  * An open picker's names for `cwd` are no longer good: its host's link key (or credential) changed, or the host
- * left. `dropped` is told once a change; the picker clears what it shows and asks again (Composer's @, SearchView).
+ * left (its key then reads empty). `dropped` is told once a change; the picker clears what it shows and asks again
+ * (Composer's @, SearchView, Go to File).
  */
 export function subscribeProjectFilesDropped(cwd: string, dropped: () => void): () => void {
   const host = hostOfCwd(cwd);
@@ -177,6 +188,8 @@ export function resetProjectFiles(): void {
   epochs.clear();
   offGitChanged?.();
   offGitChanged = null;
+  offKeys?.();
+  offKeys = null;
 }
 
 export type RankedFile = ProjectFile & FuzzyHit;

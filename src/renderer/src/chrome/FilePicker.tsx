@@ -12,6 +12,7 @@ import {
   rankProjectFiles,
   recentOpenedFiles,
   type RankedFile,
+  subscribeProjectFilesDropped,
 } from "../lib/fileIndex";
 import { useRankQuery } from "../lib/rankQuery";
 import { looksLikeProject } from "../lib/recents";
@@ -79,19 +80,31 @@ export function FilePicker({
       return;
     }
     let cancelled = false;
-    void loadProjectFiles(cwd, true)
-      .then((next) => {
-        if (cancelled) return;
-        setFiles(next);
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-        setLoading(false);
-      });
+    const load = () =>
+      void loadProjectFiles(cwd, true)
+        .then((next) => {
+          if (cancelled) return;
+          setFiles(next);
+          setLoading(false);
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          setError(err instanceof Error ? err.message : String(err));
+          setLoading(false);
+        });
+    load();
+    // The host's key changed or the host left while the picker is open: its names were another key's
+    // (lib/fileIndex.ts). They go, the loading state shows, and the list is asked again.
+    const offDropped = subscribeProjectFilesDropped(cwd, () => {
+      if (cancelled) return;
+      setFiles([]);
+      setError(null);
+      setLoading(true);
+      load();
+    });
     return () => {
       cancelled = true;
+      offDropped();
     };
   }, [open, cwd]);
 

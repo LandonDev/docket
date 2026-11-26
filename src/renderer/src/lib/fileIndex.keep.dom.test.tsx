@@ -139,6 +139,17 @@ describe("the kept file list", () => {
     off();
   });
 
+  it("a host that leaves the registry drops its kept list at once and tells an open picker", async () => {
+    await loadProjectFiles(cwd, true);
+    const dropped = vi.fn();
+    const off = subscribeProjectFilesDropped(cwd, dropped);
+    h.env = undefined;
+    for (const fn of h.subs) fn();
+    expect(dropped).toHaveBeenCalledTimes(1);
+    expect(peekProjectFiles(cwd)).toBeNull();
+    off();
+  });
+
   it("invalidate drops the list, so the next open asks", async () => {
     await loadProjectFiles(cwd, true);
     invalidateProjectFiles(cwd);

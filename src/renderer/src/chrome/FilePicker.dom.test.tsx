@@ -14,10 +14,16 @@ const FILES = ["src/app.ts", "src/main.ts", "README.md"].map((relative) => ({
   name: relative.slice(relative.lastIndexOf("/") + 1),
 }));
 
-const index = vi.hoisted(() => ({ fail: false }));
+const index = vi.hoisted(() => ({ fail: false, files: null as { path: string; relative: string; name: string }[] | null, dropped: null as (() => void) | null }));
 vi.mock("../lib/fileIndex", () => ({
-  loadProjectFiles: () => (index.fail ? Promise.reject(new Error("ENOENT: rg not found at /usr/bin/rg")) : Promise.resolve(FILES)),
-  peekProjectFiles: () => (index.fail ? null : FILES),
+  loadProjectFiles: () => (index.fail ? Promise.reject(new Error("ENOENT: rg not found at /usr/bin/rg")) : Promise.resolve(index.files ?? FILES)),
+  peekProjectFiles: () => (index.fail ? null : (index.files ?? FILES)),
+  subscribeProjectFilesDropped: (_cwd: string, dropped: () => void) => {
+    index.dropped = dropped;
+    return () => {
+      if (index.dropped === dropped) index.dropped = null;
+    };
+  },
   recentOpenedFiles: () => [],
   rankProjectFiles: (files: typeof FILES, query: string) =>
     files.filter((file) => file.relative.includes(query.trim())).map((file) => ({ ...file, positions: [] })),
@@ -30,7 +36,11 @@ import { FilePicker } from "./FilePicker";
 beforeAll(() => {
   Element.prototype.scrollIntoView = () => {};
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  index.files = null;
+  index.dropped = null;
+});
 
 async function mount() {
   await act(async () => {
@@ -71,5 +81,16 @@ describe("FilePicker", () => {
     expect(screen.getByText("Couldn't list this project's files")).toBeTruthy();
     expect(document.body.textContent).not.toContain("ENOENT");
     index.fail = false;
+  });
+
+  it("drops the old key's names when its host's key changes or it leaves, and shows the list asked again", async () => {
+    await mount();
+    expect(screen.getAllByRole("option").map((row) => row.textContent)).toEqual(expect.arrayContaining([expect.stringContaining("app.ts")]));
+    // the host's key changed: the open picker hears it, and the new key's list has other names
+    index.files = [{ path: "/srv/app/NEW.md", relative: "NEW.md", name: "NEW.md" }];
+    await act(async () => index.dropped!());
+    const shown = screen.getAllByRole("option").map((row) => row.textContent ?? "");
+    expect(shown.some((text) => text.includes("NEW.md"))).toBe(true);
+    for (const old of FILES) expect(shown.some((text) => text.includes(old.name))).toBe(false);
   });
 });
