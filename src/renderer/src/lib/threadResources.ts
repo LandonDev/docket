@@ -8,6 +8,7 @@ import { macBridgeStore } from './macBridge'
 import { thisDesktopInLine } from './native'
 import { sessionStore } from './tcserver/store'
 import { setResourceCleanup } from './threadBatch'
+import { afterOpen } from './tcserver/openPhase'
 
 /**
  * Thread resources in the renderer (docs/box.md "Thread resources"): the
@@ -113,7 +114,7 @@ export function startThreadResources(): void {
       if (push.push !== 'resources') return
       store.setState((s) => ({ bySession: { ...s.bySession, [push.sessionId]: push.resources } }))
     })
-    link.onOpen(() => void loadAll(link))
+    link.onOpen(() => afterOpen(link, () => loadAll(link)))
     if (link.connected) void loadAll(link)
   }
   registry.onLink((link, event) => {

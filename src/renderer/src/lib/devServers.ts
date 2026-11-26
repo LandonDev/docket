@@ -17,6 +17,7 @@ import type { ProjectMeta } from './tcserver/types'
 import { useProjects, useWorkspaces } from './tcserver/workspaces'
 import { sameProjectPath } from './recents'
 import { useDevPane } from './devPane'
+import { afterOpen } from './tcserver/openPhase'
 
 /**
  * The Dev Server button's state (docs/box.md "Dev servers on the box"): per
@@ -122,7 +123,7 @@ function attach(link: EnvLink): void {
   const offPush = link.onPush((push) => {
     if (push.push === 'dev-run') applyDevRunPush(link.environmentId, push)
   })
-  const offOpen = link.onOpen(() => void loadHostRuns(link))
+  const offOpen = link.onOpen(() => afterOpen(link, () => loadHostRuns(link)))
   attached.set(link, () => {
     offPush()
     offOpen()

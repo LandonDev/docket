@@ -44,6 +44,19 @@
   bytes=<b>` (` from=boot` while the server boots; the boot read itself is
   the `boot-mirror <ms>` mark), and the renderer measures the ask to the
   hydrate as `tc:launch-mirror` (performance marks around it).
+- The open in two phases (lib/tcserver/openPhase.ts): what the first paint
+  needs is asked the moment a host's socket opens (the session changes, the
+  workspaces and projects, accounts, the Work switch, the model catalog, the
+  shown thread and its focus, and on the local host the saved hosts); the
+  rest waits for `afterOpen`: the inbox, dev servers, port forwards, host
+  jobs, computer history, thread resources and the providers' doctor run in
+  an idle slot once the window is usable (`markUsable` at `tc:ready`; a
+  hidden window runs them at once), one at a time on a remote host, and only
+  if no close came since that open. One `doctor.get` answers both the
+  connect report and which CLIs are installed (`probeDoctor` shares the
+  ask). lib/tcserver/openPhase.test.ts counts a host's asks on open by
+  phase for the stores main.tsx connects and the parts App starts, with no
+  thread shown: 7 before usable (at most 15), none twice, 6 after.
 - The writer (`installLaunchMirrorWriter`) follows `onMetaChange` and the
   workspace catalog, diffs each LISTED host's rows against what it last
   wrote (object identity), and sends the difference over

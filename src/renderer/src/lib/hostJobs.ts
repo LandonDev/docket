@@ -4,6 +4,7 @@ import { HOST_LOG_CAP } from "@server/shared/contract-host";
 import type { DeployStatus, HostJob, HostJobStatus, HostLogPush, PublishStatus } from "@server/shared/contract-host";
 import type { ServerPush } from "@server/shared/contract";
 import { LOCAL_ENVIRONMENT_ID, registry } from "./connection/registry";
+import { afterOpen } from "./tcserver/openPhase";
 
 /**
  * Deploy and publish from the app, renderer side (docs/box.md "Updating" →
@@ -109,10 +110,9 @@ export function watchJob(environmentId: string, job: HostJob): void {
   };
   const offPush = link.onPush(onPush);
   // Every (re)open: the socket is new, so the subscription is, and the log comes back whole.
-  const offOpen = link.onOpen(() => {
-    void load(environmentId, job);
-    if (job === "deploy") void refreshDeployStatus(environmentId);
-  });
+  const offOpen = link.onOpen(() =>
+    afterOpen(link, () => Promise.all([load(environmentId, job), job === "deploy" ? refreshDeployStatus(environmentId) : null])),
+  );
   watchers.set(key, () => {
     offPush();
     offOpen();

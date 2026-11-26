@@ -4,6 +4,7 @@ import { createStore } from 'zustand/vanilla'
 import type { ForwardHost } from '@server/shared/contract-ports'
 import { LOCAL_ENVIRONMENT_ID, registry } from './connection/registry'
 import { isWebMode } from './nativeWeb'
+import { afterOpen } from './tcserver/openPhase'
 
 /**
  * This Mac's dev server forwards (docs/box.md "Dev servers on the box"): per
@@ -35,7 +36,7 @@ function start(): void {
   link.onPush((push) => {
     if (push.push === 'port-forwards') store.setState({ hosts: push.hosts })
   })
-  link.onOpen(() => void load())
+  link.onOpen(() => afterOpen(link, load))
   void load()
 }
 

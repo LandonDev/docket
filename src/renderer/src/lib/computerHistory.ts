@@ -13,6 +13,7 @@ import { HISTORY_READ_MAX_KEYS } from "@server/shared/computer/limits";
 import { macComputerKey } from "@server/shared/computer/macKey";
 import type { EnvLink } from "./connection/link";
 import { LOCAL_ENVIRONMENT_ID, registry } from "./connection/registry";
+import { afterOpen } from "./tcserver/openPhase";
 import type { ComputerEntry, PreviewContext } from "./computerSessions";
 
 /**
@@ -168,7 +169,7 @@ export function startComputerHistory(): void {
       }
     });
     // a subscription dies with its socket: every key on screen is read, and so heard, again
-    link.onOpen(() => void read([...wanted.keys()]));
+    link.onOpen(() => afterOpen(link, () => read([...wanted.keys()])));
   };
   registry.onLink((link, event) => {
     if (event === "added") attach(link);

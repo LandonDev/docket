@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GithubInboxItem, GithubInboxSnapshot } from "@server/shared/contract-github";
 import type { Link } from "./tcserver/store";
+import { markUsable } from "./tcserver/openPhase";
 import type { ProjectMeta, WorkspaceMeta } from "./tcserver/types";
 import {
   githubInboxLoading,
@@ -175,15 +176,22 @@ function fakeLink(connected: boolean): FakeLink {
       return () => openers.delete(listener);
     },
     open: () => {
+      // a socket that opened is connected, as an EnvLink's is
+      (link as { connected: boolean }).connected = true;
       for (const l of openers) l();
     },
   };
   return link;
 }
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
+/** A few turns: the open's read is in its second phase (tcserver/openPhase.ts), an idle slot. */
+const flush = async () => {
+  for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+};
 
 beforeEach(() => {
+  // the window is usable: a host's open runs its second phase (tcserver/openPhase.ts)
+  markUsable();
   invoke.mockReset();
   inboxStore.reset();
 });

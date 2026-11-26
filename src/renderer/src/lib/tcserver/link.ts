@@ -16,11 +16,11 @@ import { focusSignal } from "./commands";
 import { sessionStore } from "./store";
 import { docketOpen } from "../docketOpen";
 import { environmentStore } from "../../stores/environment";
-import { refreshCatalog } from "./catalog";
+import { probeDoctor, refreshCatalog } from "./catalog";
+import { afterOpen } from "./openPhase";
 import { dropHarnessModels, setDefaultCatalogEnvironment } from "../models";
 import { dropHarnessAvailability, probeHarnessAvailability } from "../harness/availability";
 
-type Doctor = Record<string, { found: boolean; version?: string; error?: string }>;
 type SavedEnvironmentRow = { id: string; name: string; routes: { url: string; kind: "loopback" | "lan" | "tunnel" }[]; keyId?: string; platform?: string };
 
 declare global {
@@ -64,14 +64,15 @@ export function initServerLink(): void {
       dropHarnessAvailability(link.environmentId);
       return;
     }
-    link.onOpen(() => void report(link));
     // A new socket holds no focus: tell it which thread this window shows.
     link.onOpen(() => focusSignal.reopened(link.environmentId));
-    // Each host's model catalog and installed CLIs, so a picker on its thread shows its rows.
-    link.onOpen(() => {
-      void refreshCatalog(link.environmentId).catch(() => undefined);
-      void probeHarnessAvailability({ environmentId: link.environmentId, force: true });
-    });
+    // Each host's model catalog, so a picker on its thread shows its rows.
+    link.onOpen(() => void refreshCatalog(link.environmentId).catch(() => undefined));
+    // Its providers' doctor after the first paint (openPhase.ts): one `doctor.get` answers the report and which
+    // CLIs are installed (the pickers keep every provider until it has).
+    link.onOpen(() =>
+      afterOpen(link, () => Promise.all([report(link), probeHarnessAvailability({ environmentId: link.environmentId, force: true })])),
+    );
     if (link.environmentId === LOCAL_ENVIRONMENT_ID) link.onOpen(() => void loadSavedEnvironments(link));
   });
   if (isWebMode()) {
@@ -134,9 +135,9 @@ export async function loadSavedEnvironments(local: EnvLink = registry.linkOf(LOC
 
 async function report(link: EnvLink): Promise<void> {
   try {
-    const doctor = await link.request<Doctor>("doctor.get");
+    const doctor = await probeDoctor(link.environmentId, { force: true });
     const providers = Object.entries(doctor)
-      .map(([id, r]) => `${id} ${!r.found ? "missing" : r.error ? "error" : "ok"}`)
+      .map(([id, r]) => `${id} ${!r?.found ? "missing" : r.error ? "error" : "ok"}`)
       .join(", ");
     console.info(`${TAG} ${link.environmentId} connected ${link.transport?.url ?? ""}, providers: ${providers}`);
   } catch (e) {

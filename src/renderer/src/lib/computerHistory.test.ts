@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { markUsable } from "./tcserver/openPhase";
 import type { ComputerHistoryCall, ComputerHistoryStep, ComputerSessionRow } from "@server/shared/contract-computer";
 import { macComputerKey } from "@server/shared/contract-maccomputer";
 
@@ -73,10 +74,15 @@ function localLink(journal: Record<string, { born: number; calls: ComputerHistor
   for (const l of links.listeners) l(link, "added");
   return { link, requests, failNext: (on: boolean) => (fail = on) };
 }
-const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+/** A few turns: a reopen's read waits for the open's second phase (tcserver/openPhase.ts), an idle slot. */
+const settle = async (): Promise<void> => {
+  for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+};
 const held = (key: string) => H.computerHistoryStore.getState().byKey[key];
 
 beforeEach(() => {
+  // the window is usable: a host's open runs its second phase (tcserver/openPhase.ts)
+  markUsable();
   H.resetComputerHistory();
   links.local = null;
 });

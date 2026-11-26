@@ -16,6 +16,7 @@ import {
 import { contextForCwd, type Catalog } from "./projectContext";
 import type { Link } from "./connection";
 import type { ProjectMeta, WorkspaceMeta } from "./tcserver/types";
+import { afterOpen } from "./tcserver/openPhase";
 
 /**
  * The inbox's data, beside `workspaceStore`. The GitHub snapshot is what
@@ -255,7 +256,7 @@ class InboxStore {
     if (current?.link === link) return;
     if (current) this.detach(id);
     const slot: Slot = { link, detach: [], githubInflight: null, linearInflight: null, linearKey: null };
-    slot.detach = [link.onOpen(() => void this.load(slot))];
+    slot.detach = [link.onOpen(() => afterOpen(link, () => this.load(slot)))];
     this.slots.set(id, slot);
     if (link.connected) void this.load(slot);
   }

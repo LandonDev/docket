@@ -14,6 +14,7 @@ import { initPlaceScheme } from "./lib/placeScheme";
 import { initSounds } from "./lib/sounds";
 import { focusSignal } from "./lib/tcserver/commands";
 import { initServerLink } from "./lib/tcserver/link";
+import { markUsable } from "./lib/tcserver/openPhase";
 import { askLaunchMirror, hydrateFromLaunchMirror, installLaunchMirror } from "./lib/tcserver/launchMirror";
 import { registry } from "./lib/connection";
 import { sessionStore } from "./lib/tcserver/store";
@@ -83,6 +84,8 @@ function dismissBootSplash() {
     document.documentElement.classList.add("ready");
     // Launch-timing probe (scripts/e2e-launch-timing.ts): the UI is on screen.
     performance.mark("tc:ready");
+    // The second phase of every host's open may run now (lib/tcserver/openPhase.ts).
+    markUsable();
     // The rail's first full paint (scripts/e2e-launch-mirror.ts): every
     // host's rows are on screen, listed or painted from the launch mirror.
     void sessionStore.whenPainted().then(() => {

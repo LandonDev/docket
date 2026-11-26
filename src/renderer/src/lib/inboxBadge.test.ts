@@ -3,6 +3,7 @@ import type { GithubInboxItem, GithubInboxSnapshot } from "@server/shared/contra
 import type { Link } from "./tcserver/store";
 import { workspaceStore } from "./tcserver/workspaces";
 import { inboxStore } from "./inboxStore";
+import { markUsable } from "./tcserver/openPhase";
 import { inboxUnseenFromCache, resetInboxBadge, subscribeInboxBadge } from "./inboxBadge";
 import { DEFAULT_INBOX_FILTERS, saveInboxFilters } from "./inboxFilters";
 import { markInboxItemSeen } from "./inboxSeen";
@@ -96,9 +97,14 @@ function fakeLink(answer: () => GithubInboxSnapshot): Link & { calls: string[]; 
   return link;
 }
 
-const flush = () => new Promise((r) => setTimeout(r, 0));
+/** A few turns: the open's read is in its second phase (tcserver/openPhase.ts), an idle slot. */
+const flush = async () => {
+  for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
+};
 
 beforeEach(() => {
+  // the window is usable: a host's open runs its second phase (tcserver/openPhase.ts)
+  markUsable();
   mockLocalStorage();
   inboxStore.reset();
   workspaceStore.reset();
