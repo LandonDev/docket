@@ -7,7 +7,8 @@ import { minuteAge } from "../lib/duration";
 import { mergeModelSettings, nativeModelId, resolveModel } from "../lib/models";
 import type { HarnessId } from "../lib/session";
 import * as serverCommands from "../lib/tcserver/commands";
-import { sessionFromMeta, usePendingApprovals, useSessionMetas } from "../lib/tcserver/store";
+import { sessionFromMeta, usePendingApprovals } from "../lib/tcserver/store";
+import { useSessionMetasWhere } from "../lib/tcserver/metaSelect";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { stateLine } from "@shared/notes";
 import { useThreadNotes } from "../lib/threadNotes";
@@ -31,6 +32,11 @@ type Props = {
 type Kind = "recovery" | "paused" | "needs-you" | "watching";
 
 const GLOBAL_ROOT = (m: SessionMeta): boolean => !m.parentId && !m.archived;
+
+/** Every meta a banner can name: a root that is paused, can continue, waits on
+ *  the person or watches. A push of any other thread renders no banner. */
+const BANNER_HELD = (m: SessionMeta): boolean =>
+  GLOBAL_ROOT(m) && (!!m.treeHasPaused || !!m.treeCanContinue || m.status === "waiting" || m.status === "watching");
 
 const ROOT = (m: SessionMeta, projectId: string | null): boolean =>
   GLOBAL_ROOT(m) && (projectId === null || m.projectId === projectId);
@@ -123,7 +129,7 @@ export function pausedText(paused: readonly Pick<SessionMeta, "title">[], held: 
  * and a muted detail; no wash, the mark carries the tone.
  */
 export function ThreadBanners({ projectId, activeSessionId, onOpen }: Props) {
-  const metas = useSessionMetas();
+  const metas = useSessionMetasWhere(BANNER_HELD);
   const approvals = usePendingApprovals();
   // One pass per meta change, never per render: the lists feed the buttons below.
   const { paused, recovery, needsYou, batchPaused } = useMemo(

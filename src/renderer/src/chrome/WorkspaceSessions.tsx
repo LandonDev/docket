@@ -83,10 +83,10 @@ import { dormantByType, dormantThreads, focusedTree, marksAtRest, threadStatus }
 import { sameSet, useKept } from "../lib/keptValue";
 import { archiveLinked, projectHomeNow, renameLinked } from "../lib/projectHome";
 import { sessionPrefetch } from "../lib/sessionPrefetch";
-import { useSessionMetas } from "../lib/tcserver/store";
+import { useSessionMetasWhere } from "../lib/tcserver/metaSelect";
 import { usePlanReady } from "../hooks/usePlanReady";
-import type { ProjectMeta, WorkspaceMeta } from "../lib/tcserver/types";
-import { useWorkspaceCatalog, useWorkspaces, WORK_CHATS } from "../lib/tcserver/workspaces";
+import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
+import { useWorkspaceCatalog, useWorkspaces, WORK_CHATS, workspaceIdOf } from "../lib/tcserver/workspaces";
 import { isWorkThread, isWorkWorkspace } from "../lib/workRow";
 import { ProviderLead, TrailingType, markWords } from "./RowMarks";
 import { LIFEOS_CARD, openWorkView, useLifeosProjects, useWorkHosts, workColumnPort } from "../lib/workSwitch";
@@ -99,6 +99,7 @@ import {
   withLifeosCards,
   keepRowCaches,
   rowCacheFor,
+  scopeTest,
   type ProjectGroup,
   type ThreadRow,
 } from "../lib/workspaceSessions";
@@ -1551,6 +1552,27 @@ function setScrollTop(el: HTMLElement, top: number): void {
 const groupHolds = (group: ProjectGroup, projectId: string | null): boolean =>
   !!projectId && (group.project.id === projectId || !!group.projectIds?.includes(projectId));
 
+/** Whether the column of `scopeKey` (one workspace, the home as null or
+ *  undefined, or a linked workspace's copies joined by newlines) can draw a
+ *  meta: what `groupWorkspaceSessions` reads of it. A child goes with its root. */
+export function columnHolds(
+  scopeKey: string | null | undefined,
+  projects: readonly ProjectMeta[],
+  workspaces: readonly WorkspaceMeta[],
+): (meta: SessionMeta) => boolean {
+  const inScope = scopeTest(scopeKey == null ? null : scopeKey.includes("\n") ? scopeKey.split("\n") : scopeKey);
+  return (meta) => {
+    let at: SessionMeta | null = meta;
+    // A parent chain past its depth, or one whose parent the store lacks, is held.
+    for (let depth = 0; at?.parentId; depth++) {
+      if (depth > 64) return true;
+      at = sessionStore.metaOf(at.parentId);
+    }
+    if (!at) return true;
+    return !!at.isMaster || !!at.masterId || inScope(workspaceIdOf(at, projects, workspaces));
+  };
+}
+
 export default function WorkspaceSessions({
   workspaceId,
   workspaceIds,
@@ -1564,14 +1586,19 @@ export default function WorkspaceSessions({
   onDeleteSession,
   scroller,
 }: Props) {
-  const metas = useSessionMetas();
-  const planReady = usePlanReady(metas);
   const memory = memoryOf(workspaceId ?? "home");
   const { workspaces, projects: catalogProjects } = useWorkspaceCatalog();
   // A linked Work workspace lists its LifeOS projects live, a card for each (lib/workspaceSessions.ts).
   const workWorkspace = workspaces.find((w) => w.id === workspaceId && w.kind === "work");
   const lifeos = useLifeosProjects(workWorkspace?.sector ? workWorkspace.id : null);
   const projects = useMemo(() => withLifeosCards(catalogProjects, workWorkspace, lifeos), [catalogProjects, workWorkspace, lifeos]);
+  // The metas the column can draw: its scope's roots, masters and batch threads
+  // (a batch row sits under its master, whose home may be elsewhere), and the
+  // children of those. A push of a thread in another workspace renders nothing.
+  const scopeKey = workspaceIds && workspaceIds.length > 1 ? workspaceIds.join("\n") : workspaceId;
+  const keep = useMemo(() => columnHolds(scopeKey, projects, workspaces), [scopeKey, projects, workspaces]);
+  const metas = useSessionMetasWhere(keep);
+  const planReady = usePlanReady(metas);
   // Each copy's host, for the card's offline tint: one string, so a
   // memoized card sees the same prop until a host changes.
   const hostsOf = useCallback(

@@ -2,7 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { DUR } from "../../lib/ease";
 import type { PanelMotion, RightPanelProps } from "../RightPanel";
 import type { OpenFileFn } from "../../lib/search";
-import type { Session } from "../../lib/session";
+import { sameSessionChrome, type Session } from "../../lib/session";
+import { useKept } from "../../lib/keptValue";
 import { heldRowOf, type ChatSource } from "./chatSlots";
 import { ChatView } from "./ChatView";
 import { threadViewsChunk, workCanvasChunk } from "../chunks";
@@ -116,9 +117,14 @@ export function ThreadView(props: ThreadViewProps) {
  * while the store's thread of that id is another host's, the panel's place
  * holds its skeleton rather than draw the wrong thread.
  */
-function PaneRightPanel({ pane, ...props }: Omit<RightPanelProps, "session" | "paneId"> & { pane: Session }) {
+const sameChromeOrNone = (a: Session | undefined, b: Session | undefined): boolean => a === b || (!!a && !!b && sameSessionChrome(a, b));
+
+function PaneRightPanel({ pane: streamed, ...props }: Omit<RightPanelProps, "session" | "paneId"> & { pane: Session }) {
+  // The panel reads the thread's chrome alone (no block): a streamed frame
+  // that moves only the transcript keeps the session it drew, so it skips it.
+  const pane = useKept(streamed, sameSessionChrome);
   const shown = useShownThread(pane.id);
-  const child = useSessionById(shown?.id ?? null);
+  const child = useKept(useSessionById(shown?.id ?? null), sameChromeOrNone);
   if (!shown) return <RightPanel session={pane} paneId={pane.id} {...props} />;
   if (!child || child.environmentId !== shown.environmentId) {
     return (

@@ -1,4 +1,4 @@
-import { useRef, useSyncExternalStore } from "react";
+import { useMemo, useRef, useSyncExternalStore } from "react";
 import type { ApprovalToastNotice } from "../approvalToast";
 import { noteBootResume } from "../bootResume";
 import type { Attachment, Block, HarnessId, LoadState, Session } from "../session";
@@ -774,6 +774,25 @@ class SessionStore {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
+    };
+  };
+
+  /** Listeners of one session, by id, and the session object they last heard. */
+  private sessionListeners = new Map<string, { listeners: Set<() => void>; heard: Session | undefined }>();
+
+  /**
+   * Hear a flush only when `get(id)` is another object than the one last
+   * heard: a pane of one thread sits out every other thread's push, stream
+   * and meta (the store's flush calls `subscribe`'s listeners all at once).
+   */
+  subscribeSession = (id: string, listener: () => void): (() => void) => {
+    let group = this.sessionListeners.get(id);
+    if (!group) this.sessionListeners.set(id, (group = { listeners: new Set(), heard: this.entries.get(id)?.session }));
+    const held = group;
+    held.listeners.add(listener);
+    return () => {
+      held.listeners.delete(listener);
+      if (held.listeners.size === 0 && this.sessionListeners.get(id) === held) this.sessionListeners.delete(id);
     };
   };
 
@@ -2884,8 +2903,15 @@ class SessionStore {
 
   setApprovalNoticeBuilder(build: (session: Session, previous?: ApprovalToastNotice) => ApprovalToastNotice | null): void {
     this.approvalNoticeOf = build;
+    this.approvalVisited = new Map();
     this.refreshPendingApprovals(this.currentSnapshot());
   }
+
+  /** Each open session as the approval index last read it: a notice is the
+   *  session's own (approvalToast.ts), so one that is the same object holds it still. */
+  private approvalVisited = new Map<string, Session>();
+  /** Sessions the approval index read on the last flush; tests count them. */
+  approvalVisits = 0;
 
   private refreshPendingApprovals(sessions: Session[]): void {
     const approvalToastNotice = this.approvalNoticeOf;
@@ -2893,8 +2919,15 @@ class SessionStore {
     let next: Map<string, ApprovalToastNotice> | null = null;
     const update = (): Map<string, ApprovalToastNotice> => next ??= new Map(this.pendingApprovals);
     const removed = this.pendingApprovals.size ? new Set(this.pendingApprovals.keys()) : null;
+    this.approvalVisits = 0;
+    const visited = new Map<string, Session>();
+    const was = this.approvalVisited;
+    this.approvalVisited = visited;
     for (const session of sessions) {
       removed?.delete(session.id);
+      visited.set(session.id, session);
+      if (was.get(session.id) === session) continue;
+      this.approvalVisits++;
       const previous = this.pendingApprovals.get(session.id);
       const notice = approvalToastNotice(session, previous);
       if (!notice) {
@@ -2925,7 +2958,10 @@ class SessionStore {
   private currentSnapshot(): Session[] {
     if (this.snapshotDirty) {
       this.snapshotDirty = false;
-      this.snapshot = this.buildSnapshot();
+      // The same sessions in the same order keep the array: a flush for a
+      // thread no tab holds (its meta, another's stream) re-renders no reader.
+      const next = this.buildSnapshot();
+      if (next.length !== this.snapshot.length || next.some((session, i) => session !== this.snapshot[i])) this.snapshot = next;
     }
     return this.snapshot;
   }
@@ -2937,6 +2973,12 @@ class SessionStore {
     this.snapshotDirty = true;
     this.refreshProjections();
     for (const listener of this.listeners) listener();
+    for (const [id, group] of this.sessionListeners) {
+      const now = this.entries.get(id)?.session;
+      if (now === group.heard) continue;
+      group.heard = now;
+      for (const listener of [...group.listeners]) listener();
+    }
     if (this.metaPending) this.bumpMeta();
     for (const [id, waiters] of this.idleWaiters) {
       const entry = this.entries.get(id);
@@ -2981,9 +3023,17 @@ export function useSessionShells(): SessionShell[] {
   return useSyncExternalStore(sessionStore.subscribe, sessionStore.getShells);
 }
 
-/** One open session as React state; re-renders only when that session changes. */
+const NO_SUBSCRIPTION = (): (() => void) => () => {};
+
+/** `subscribeSession` for one id, the same function while the id holds. */
+function useSessionSubscription(id: string | null | undefined): (listener: () => void) => () => void {
+  return useMemo(() => (id ? (listener: () => void) => sessionStore.subscribeSession(id, listener) : NO_SUBSCRIPTION), [id]);
+}
+
+/** One open session as React state; re-renders only when that session changes,
+ *  and hears no other thread's flush (`subscribeSession`). */
 export function useSession(id: string | null | undefined): Session | undefined {
-  return useSyncExternalStore(sessionStore.subscribe, () =>
+  return useSyncExternalStore(useSessionSubscription(id), () =>
     id ? sessionStore.get(id) : undefined,
   );
 }
@@ -2993,7 +3043,7 @@ export function useSession(id: string | null | undefined): Session | undefined {
  *  model never re-renders for a delta of the thread on screen. */
 export function useSessionChrome(id: string | null | undefined): Session | undefined {
   const kept = useRef<Session | undefined>(undefined);
-  return useSyncExternalStore(sessionStore.subscribe, () => {
+  return useSyncExternalStore(useSessionSubscription(id), () => {
     const next = id ? sessionStore.get(id) : undefined;
     if (!next || !kept.current || !sameSessionChrome(kept.current, next)) kept.current = next;
     return kept.current;
@@ -3002,7 +3052,7 @@ export function useSessionChrome(id: string | null | undefined): Session | undef
 
 /** One session's server status ("idle" for a draft); re-renders on that value alone. */
 export function useSessionStatus(id: string | null | undefined): SessionStatus | undefined {
-  return useSyncExternalStore(sessionStore.subscribe, () => {
+  return useSyncExternalStore(useSessionSubscription(id), () => {
     if (!id) return undefined;
     const session = sessionStore.get(id);
     if (!session) return undefined;
@@ -3012,7 +3062,7 @@ export function useSessionStatus(id: string | null | undefined): SessionStatus |
 
 /** Whether one session has a turn in flight. */
 export function useSessionBusy(id: string | null | undefined): boolean {
-  return useSyncExternalStore(sessionStore.subscribe, () =>
+  return useSyncExternalStore(useSessionSubscription(id), () =>
     id ? !!sessionStore.get(id)?.busy : false,
   );
 }

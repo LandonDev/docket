@@ -1,4 +1,4 @@
-import { useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button } from "../components/ui/button";
 import { STATUS_ON_TIP, STATUS_WORD, StatusMark } from "../components/ui/status";
 import { plainStatus } from "@shared/statusWords";
@@ -9,7 +9,9 @@ import { liveAgentTracker } from "../lib/liveAgentTracker";
 import { WORKING_CAP, WORKING_MIN, withoutOpenWork, workingRows, type WorkingRow } from "../lib/railWorking";
 import { sameProjectPath } from "../lib/recents";
 import { isWorkWorkspace } from "../lib/workRow";
-import { useSessionMetas } from "../lib/tcserver/store";
+import { useSessionMeta } from "../lib/tcserver/store";
+import { useSessionMetasDerived } from "../lib/tcserver/metaSelect";
+import type { SessionMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import { threadStatus } from "../lib/threadStripModel";
 import { useClock } from "../lib/turnClock";
@@ -49,7 +51,11 @@ export function workingTipLine(row: WorkingRow, now: number): string {
  *  project under them. It mounts only while the tooltip shows, so its second
  *  hand runs only then: the Working section itself never re-renders on the
  *  clock. `at` fixes the time (a fixture). */
-function TipBody({ row, title, project, at }: { row: WorkingRow; title: string | null; project: string | null; at?: number }) {
+function TipBody({ row: drawn, title, project, at }: { row: WorkingRow; title: string | null; project: string | null; at?: number }) {
+  // The section keeps a row while what it draws holds (sameWorkingRows): the
+  // open tooltip reads the thread's live meta for its detail and its clock.
+  const live = useSessionMeta(drawn.id);
+  const row = live && live !== drawn.meta ? { ...drawn, meta: live } : drawn;
   const ticking = useClock(at === undefined && row.state === "working");
   const now = at ?? ticking;
   const { detail, elapsed } = workingTip(row, now);
@@ -153,18 +159,35 @@ export function RailWorkingView({
 /** The Working section wired to the session store, the catalog and the
  *  live agent tracker; the second hand runs only inside an open tooltip. A Work workspace open beside the rail
  *  (`openPath`) lists its own threads in its column, so they leave this section. */
+/** What a row draws (its glyph, title, host, state and project) and the rows'
+ *  order: a meta push that changes none of it keeps the rows drawn. */
+export function sameWorkingRows(a: readonly WorkingRow[], b: readonly WorkingRow[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  const drawn = (x: SessionMeta, y: SessionMeta): boolean =>
+    x === y ||
+    (x.title === y.title &&
+      x.threadType === y.threadType &&
+      x.environmentId === y.environmentId &&
+      x.projectId === y.projectId &&
+      x.workspaceId === y.workspaceId);
+  return a.every((row, i) => row.id === b[i].id && row.state === b[i].state && drawn(row.meta, b[i].meta));
+}
+
 export function RailWorking({ activeSessionId, openPath, onSelect }: { activeSessionId?: string; openPath?: string; onSelect?: (sessionId: string) => void }) {
-  const metas = useSessionMetas();
   const { projects, workspaces } = useWorkspaceCatalog();
   const unseen = useSyncExternalStore(liveAgentTracker.subscribe, liveAgentTracker.unseenIds);
   const open = useMemo(
     () => new Set(openPath ? workspaces.filter((w) => isWorkWorkspace(w) && sameProjectPath(w.path, openPath)).map((w) => w.id) : []),
     [openPath, workspaces],
   );
-  const rows = useMemo(
-    () => withoutOpenWork(workingRows(metas, unseen), open, (id) => projects.find((p) => p.id === id)?.workspaceId),
-    [metas, unseen, open, projects],
+  // Derived on each meta flush, drawn again only when a drawn row changed: a
+  // push of a thread past "N more", or one whose row draws the same, renders nothing.
+  const derive = useCallback(
+    (metas: SessionMeta[]) => withoutOpenWork(workingRows(metas, unseen), open, (id) => projects.find((p) => p.id === id)?.workspaceId),
+    [unseen, open, projects],
   );
+  const rows = useSessionMetasDerived(derive, sameWorkingRows);
   const projectOf = (row: WorkingRow): string | null =>
     projects.find((p) => p.id === row.meta.projectId)?.name ?? workspaces.find((w) => w.id === row.meta.workspaceId)?.name ?? null;
   return <RailWorkingView rows={rows} activeSessionId={activeSessionId} projectOf={projectOf} onSelect={onSelect} />;

@@ -1,3 +1,4 @@
+import type { Session } from "../lib/session";
 import { registry } from "../lib/connection";
 import { isAppQuitting } from "../lib/appLifecycle";
 import { installDockBadge } from "../lib/dockBadge";
@@ -489,10 +490,15 @@ function sameSettings(
  */
 export function installProjectDraftWriter(): Teardown {
   const written = new Map<string, string>();
+  // The session object each draft was last read from: a store flush that left
+  // it the same object (another thread's push, a stream) reads nothing again.
+  const read = new Map<string, Session>();
   const sync = () => {
     for (const [key, record] of Object.entries(projectDraftsStore.getState().records)) {
       const session = sessionStore.get(record.id);
       if (!session || !sessionStore.isDraft(record.id)) continue;
+      if (read.get(record.id) === session) continue;
+      read.set(record.id, session);
       const picks = draftPicks(session);
       const stamp = JSON.stringify(picks);
       if (written.get(record.id) === stamp) continue;

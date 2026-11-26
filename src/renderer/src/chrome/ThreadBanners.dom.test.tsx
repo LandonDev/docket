@@ -8,6 +8,10 @@ const { metas, notes, approvals } = vi.hoisted(() => ({
   approvals: new Map<string, unknown>(),
   notes: new Map<string, { text: string; updatedAt: number | null; path: string | null }>(),
 }));
+// The banner reads its metas through a filter (metaSelect.ts); the tests fill one list in place.
+vi.mock("../lib/tcserver/metaSelect", () => ({
+  useSessionMetasWhere: (keep: (m: SessionMeta) => boolean) => metas.filter(keep),
+}));
 vi.mock("../lib/tcserver/store", () => ({
   useSessionMetas: () => metas,
   usePendingApprovals: () => approvals,

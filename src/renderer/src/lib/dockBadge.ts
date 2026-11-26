@@ -1,7 +1,8 @@
 import type { SessionMeta } from "./tcserver/types";
 import { threadStateOf } from "../components/ui/status";
 import { invoke } from "./native";
-import { sessionStore } from "./tcserver/store";
+import { IS_MAC } from "./platform";
+import { sessionStore, type MetaChanges } from "./tcserver/store";
 import { workspaceStore } from "./tcserver/workspaces";
 import { loadLastSeen, seenFloor, subscribeLastSeen, type SeenMap } from "./sessionSeen";
 import { rowUnread } from "./sidebarRows";
@@ -52,8 +53,37 @@ function unreadRoot(meta: SessionMeta, housed: ReadonlySet<string>, archivedProj
   return rowUnread({ ...meta, unread, housed: housed.has(meta.id) });
 }
 
+/**
+ * The facts of a meta the count reads, as one string: a push that moves none of
+ * them (a tool call, a phase, a context reading, a title) runs no pass.
+ */
+export function countingFacts(m: SessionMeta): string {
+  return [
+    m.status,
+    m.archived ? 1 : 0,
+    m.parentId ?? "",
+    m.projectId ?? "",
+    m.masterId ?? "",
+    m.isMaster ? 1 : 0,
+    m.updatedAt,
+    m.readAt ?? "",
+    m.treeHasPaused ? 1 : 0,
+    m.treeCanContinue ? 1 : 0,
+    m.treeHasLiveWork ? 1 : 0,
+    m.background?.agents.length ? 1 : 0,
+  ].join("\u0000");
+}
+
 let lastCount = -1;
 let ready = false;
+let passes = 0;
+/** Each meta's counting facts as of the last pass, by id. */
+let counted = new Map<string, string>();
+
+/** Badge passes since load: tests count them. */
+export function badgePasses(): number {
+  return passes;
+}
 
 function archivedProjectIds(): Set<string> {
   return new Set(workspaceStore.getSnapshot().projects.filter((p) => p.archived).map((p) => p.id));
@@ -63,7 +93,12 @@ export function syncDockBadge(): void {
   // Nothing is said until every host has painted (its list, or the launch
   // mirror's rows): a count from half the hosts would flash and change.
   if (!ready) return;
-  const count = badgeCount(sessionStore.metas(), archivedProjectIds(), loadLastSeen(), seenFloor());
+  passes++;
+  const metas = sessionStore.metas();
+  const facts = new Map<string, string>();
+  for (const meta of metas) facts.set(meta.id, countingFacts(meta));
+  counted = facts;
+  const count = badgeCount(metas, archivedProjectIds(), loadLastSeen(), seenFloor());
   if (count === lastCount) return;
   lastCount = count;
   void invoke("set_dock_badge", { count }).catch((err) => {
@@ -71,15 +106,31 @@ export function syncDockBadge(): void {
   });
 }
 
-/** Follows every input of the count: the metas, the read marks, the catalog. */
-export function installDockBadge(): () => void {
+/** Whether a meta flush moved a fact the count reads; a flush that names no ids may have. */
+export function movesCount(changes: MetaChanges, metaOf: (id: string) => SessionMeta | null = (id) => sessionStore.metaOf(id)): boolean {
+  if (changes.ids.size === 0) return true;
+  for (const id of changes.ids) {
+    const meta = metaOf(id);
+    if ((meta ? countingFacts(meta) : undefined) !== counted.get(id)) return true;
+  }
+  return false;
+}
+
+/** Follows every input of the count: the metas, the read marks, the catalog.
+ *  Only macOS draws a Dock badge (main's `applyBadge`): elsewhere nothing is
+ *  counted. `mac` is for tests. */
+export function installDockBadge(mac = IS_MAC): () => void {
+  if (!mac) return () => {};
   let live = true;
   void sessionStore.settledEnvironments().then(() => {
     if (!live) return;
     ready = true;
     syncDockBadge();
   });
-  const offs = [sessionStore.onMetaChange(syncDockBadge), subscribeLastSeen(syncDockBadge), workspaceStore.subscribe(syncDockBadge)];
+  const onMetas = (changes: MetaChanges): void => {
+    if (movesCount(changes)) syncDockBadge();
+  };
+  const offs = [sessionStore.onMetaChange(onMetas), subscribeLastSeen(syncDockBadge), workspaceStore.subscribe(syncDockBadge)];
   return () => {
     live = false;
     for (const off of offs) off();

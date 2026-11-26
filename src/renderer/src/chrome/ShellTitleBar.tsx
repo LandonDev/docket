@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, type ComponentProps } from "react";
 import { sameData, useKept } from "../lib/keptValue";
 import { resolveSessionContext } from "../lib/projectContext";
 import { usePanelRoom, useRightPanel } from "../lib/rightPanel";
-import { useWorkspaceCatalog, WORK_CHATS } from "../lib/tcserver/workspaces";
+import { useWorkspaceCatalog, WORK_CHATS, workspaceIdOf } from "../lib/tcserver/workspaces";
 import {
   filterTabsForProjectId,
   filterTabsForWorkspace,
@@ -20,9 +20,9 @@ import type { Session } from "../lib/session";
 import { useLastSeen, useSeenFloor } from "../lib/sessionSeen";
 import {
   sessionStore,
-  useSessionMetas,
   useSessionShells,
 } from "../lib/tcserver/store";
+import { useSessionMetasWhere } from "../lib/tcserver/metaSelect";
 import type { SessionMeta } from "../lib/tcserver/types";
 import {
   buildHeaderModel,
@@ -119,12 +119,6 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
       ? open
       : filterTabsForWorkspace(open, shells, catalog, headerWorkspaceId);
   }, [catalog, headerWorkspaceId, tabs, shells, selectedProjectId, projectScope]);
-  const sessionMetas = useSessionMetas();
-  const sessions = useTitleSessions(sessionMetas);
-  const lastSeen = useLastSeen();
-  const seenFloor = useSeenFloor();
-  // The strip is the scope's root threads, open in a tab or not.
-  const chipThreads = useMemo(() => chipThreadsOf(sessionMetas, sessions), [sessionMetas, sessions]);
   // The selected project's threads, else the scope's loose chats (every
   // linked copy's).
   const stripScope = useMemo<StripScope>(
@@ -134,6 +128,16 @@ function ShellTitleBarComponent({ headerEvents, ...titleBar }: Props) {
         : { loose: looseScopeOf(headerWorkspaceId, catalog), catalog },
     [catalog, headerWorkspaceId, projectScope, selectedProjectId],
   );
+  // The metas the strip can draw (stripHolds): a push of another scope's
+  // thread that no tab holds renders no title bar.
+  const tabIds = useMemo(() => tabs.flatMap((tab) => leafIds(tab.layout)).join("\n"), [tabs]);
+  const keep = useMemo(() => stripHolds(stripScope, tabIds), [stripScope, tabIds]);
+  const sessionMetas = useSessionMetasWhere(keep);
+  const sessions = useTitleSessions(sessionMetas);
+  const lastSeen = useLastSeen();
+  const seenFloor = useSeenFloor();
+  // The strip is the scope's root threads, open in a tab or not.
+  const chipThreads = useMemo(() => chipThreadsOf(sessionMetas, sessions), [sessionMetas, sessions]);
   // A plan is ready whether or not a tab holds it: the scope's roots and the
   // open sessions (their tabs read it too).
   const planThreads = useMemo(() => {
@@ -273,6 +277,37 @@ export const ShellTitleBar = memo(ShellTitleBarComponent);
  * streamed event, and reading it as state re-ran every derivation here
  * once per frame while any thread streamed.
  */
+/**
+ * Whether the title bar can draw a meta: a root of the strip's scope (the
+ * shelf's archived ones too, `stripRootThreads`' own test), a master (a batch
+ * thread's chip waits on its master), a thread a tab holds and the parents up
+ * from it (a chip is its tab's root). `tabIds` is the tabs' threads joined by
+ * newlines.
+ */
+export function stripHolds(scope: StripScope, tabIds: string): (meta: SessionMeta) => boolean {
+  const inTabs = new Set(tabIds ? tabIds.split("\n") : []);
+  let lineage = new Set<string>();
+  let lineageOf: readonly SessionMeta[] | null = null;
+  const inLineage = (id: string): boolean => {
+    const all = sessionStore.metas();
+    if (lineageOf !== all) {
+      lineage = new Set();
+      for (const tabId of inTabs) for (const up of sessionStore.ancestorsOf(tabId)) lineage.add(up);
+      lineageOf = all;
+    }
+    return lineage.has(id);
+  };
+  return (meta) => {
+    if (meta.isMaster && !meta.parentId) return true;
+    if (inTabs.has(meta.id) || inLineage(meta.id)) return true;
+    if (meta.parentId) return false;
+    if ("project" in scope) return inProjectScope(meta.projectId, scope.project);
+    if (meta.projectId) return false;
+    const at = workspaceIdOf({ ...meta, cwd: meta.cwd ?? "" }, scope.catalog.projects, scope.catalog.workspaces);
+    return scope.loose ? !!at && scope.loose.has(at) : at === null;
+  };
+}
+
 function useTitleSessions(metas: readonly SessionMeta[]): Session[] {
   const shells = useSessionShells();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- shells and metas are the change signal

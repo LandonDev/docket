@@ -211,4 +211,45 @@ describe("installLaunchMirrorWriter", () => {
     vi.advanceTimersByTime(2_000);
     expect(writes).toHaveLength(1);
   });
+
+  it("a flush that names its ids visits those alone, and a push of transient fields writes nothing", () => {
+    const rows = Array.from({ length: 50 }, (_, i) => meta({ id: `t${i}`, status: "running" }));
+    sessions.rows = rows;
+    sessions.listed = ["local"];
+    const named = new Sessions();
+    let reads = 0;
+    const byId = () => new Map(sessions.rows.map((m) => [m.id, m]));
+    const source: WriterSessionSource = {
+      onMetaChange: (l) => named.onMetaChange(l as () => void),
+      metas: () => (reads++, sessions.rows),
+      metaOf: (id) => byId().get(id) ?? null,
+      cursorOf: () => null,
+      listedEnvironmentIds: () => sessions.listed,
+    };
+    let say: ((changes?: { ids: ReadonlySet<string> }) => void) | null = null;
+    source.onMetaChange = (l) => ((say = l), () => (say = null));
+    off = installLaunchMirrorWriter({ sessions: source, catalog, write: (w) => writes.push(w), delayMs: 100 });
+    vi.advanceTimersByTime(100);
+    expect(writes).toHaveLength(1);
+    reads = 0;
+    // A running thread's tool call: activity and background move, nothing the mirror keeps.
+    sessions.rows = rows.map((m) => (m.id === "t3" ? { ...m, activity: "Reading a.ts", background: { tasks: [], agents: [], batch: null, watchingSince: null } } : m));
+    say!({ ids: new Set(["t3"]) });
+    vi.advanceTimersByTime(100);
+    expect(writes).toHaveLength(1);
+    expect(reads).toBe(0);
+    // Its title moves: one upsert, and still no pass over every row.
+    sessions.rows = sessions.rows.map((m) => (m.id === "t3" ? { ...m, title: "renamed" } : m));
+    say!({ ids: new Set(["t3"]) });
+    vi.advanceTimersByTime(100);
+    expect(writes).toHaveLength(2);
+    expect(writes[1].upserts?.map((u) => u.id)).toEqual(["t3"]);
+    expect(reads).toBe(0);
+    // It leaves: removed by id.
+    sessions.rows = sessions.rows.filter((m) => m.id !== "t3");
+    say!({ ids: new Set(["t3"]) });
+    vi.advanceTimersByTime(100);
+    expect(writes[2].removed).toEqual(["t3"]);
+    expect(reads).toBe(0);
+  });
 });

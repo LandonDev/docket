@@ -8,7 +8,8 @@ import { stopComputer, useComputerEntries, type ComputerEntry } from "./computer
 import { stopLiveServer, useLiveDevServers, type LiveServer } from "./devServers";
 import { stopMacBridgeAll, useMacBridgeRunning } from "./macBridge";
 import { killBackground, stopTask } from "./tcserver/commands";
-import { useSessionMeta, useSessionMetas } from "./tcserver/store";
+import { useSessionMeta } from "./tcserver/store";
+import { useSessionTree } from "./tcserver/metaSelect";
 import type { SessionMeta } from "./tcserver/types";
 
 /**
@@ -188,10 +189,10 @@ export function treeIds(rootId: string, metas: readonly SessionMeta[]): Set<stri
 /** The thread's Activity rows, live. */
 export function useActivity(threadId: string): { rows: ActivityRow[]; meta: SessionMeta | null } {
   const meta = useSessionMeta(threadId);
-  const metas = useSessionMetas();
   const servers = useLiveDevServers();
   const macCalls = useMacBridgeRunning({ environmentId: meta?.environmentId, sessionId: threadId });
-  const tree = useMemo(() => treeIds(threadId, metas), [metas, threadId]);
+  // Read by parent: a push of a thread outside the tree renders nothing here.
+  const tree = useSessionTree(threadId);
   const computer = useComputerEntries(tree, meta?.environmentId);
   const rows = useMemo(() => {
     if (!meta) return [];

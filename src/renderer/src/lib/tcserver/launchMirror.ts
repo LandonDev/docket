@@ -1,7 +1,7 @@
 import type { LaunchMirrorSnapshot, MirrorCursor, MirrorSummary, MirrorWrite } from "@server/shared/launchMirror";
 import { isWebMode, readLaunchMirror, writeLaunchMirror } from "../native";
 import { registry, savedEnvironment } from "../connection";
-import { sessionStore } from "./store";
+import { metaEqual, sessionStore } from "./store";
 import { workspaceStore } from "./workspaces";
 import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./types";
 
@@ -20,6 +20,18 @@ import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "./types";
 const TRANSIENT: readonly (keyof SessionMeta)[] = ["activity", "activityKind", "background"];
 
 export const MIRROR_WRITE_DELAY_MS = 750;
+
+/** Two metas the mirror keeps the same: equal but for the transient fields. A
+ *  running thread's push moves its activity and nothing the mirror holds. */
+export function sameSummary(a: SessionMeta, b: SessionMeta): boolean {
+  if (a === b) return true;
+  const left = a as unknown as Record<string, unknown>;
+  const right = b as unknown as Record<string, unknown>;
+  for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
+    if (!(TRANSIENT as readonly string[]).includes(key) && !metaEqual(left[key], right[key])) return false;
+  }
+  return true;
+}
 
 /** A meta as the mirror keeps it: the same object minus its transient fields. */
 export function summarize(meta: SessionMeta): MirrorSummary {
@@ -52,8 +64,11 @@ export function hydrateFromLaunchMirror(snapshot: LaunchMirrorSnapshot | null): 
 }
 
 export type WriterSessionSource = {
-  onMetaChange(listener: () => void): () => void;
+  /** A flush's changed ids, when the source names them: the writer then visits those alone. */
+  onMetaChange(listener: (changes?: { ids: ReadonlySet<string> }) => void): () => void;
   metas(): SessionMeta[];
+  /** One meta by id; a source without it is diffed whole at each write. */
+  metaOf?(id: string): SessionMeta | null;
   cursorOf(environmentId: string): MirrorCursor | null;
   listedEnvironmentIds(): string[];
 };
@@ -91,6 +106,14 @@ export function installLaunchMirrorWriter(deps: WriterDeps): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let dirty = false;
 
+  /** The ids changed since the last write; null when a change named none (diff every row). */
+  let changed: Set<string> | null = new Set();
+  /** The hosts listed at the last write: one listed again may have missed changes while it was not. */
+  let wasListed = new Set<string>();
+
+  /** Whether a meta moves what the mirror holds for it. */
+  const moves = (was: SessionMeta | undefined, now: SessionMeta): boolean => was !== now && (!was || !sameSummary(was, now));
+
   const flush = (): void => {
     if (timer) clearTimeout(timer);
     timer = null;
@@ -98,24 +121,50 @@ export function installLaunchMirrorWriter(deps: WriterDeps): () => void {
     dirty = false;
     const listed = new Set(deps.sessions.listedEnvironmentIds());
     if (listed.size === 0) return;
-    const byHost = new Map<string, Map<string, SessionMeta>>();
-    for (const meta of deps.sessions.metas()) {
-      if (!listed.has(meta.environmentId)) continue;
-      let rows = byHost.get(meta.environmentId);
-      if (!rows) byHost.set(meta.environmentId, (rows = new Map()));
-      rows.set(meta.id, meta);
+    const ids = changed;
+    changed = new Set();
+    const metaOf = deps.sessions.metaOf ? (id: string) => deps.sessions.metaOf!(id) : null;
+    // A host's first write, a change that named no ids or a source that cannot
+    // look one up diffs every row; otherwise only the changed ids are visited.
+    let byHost: Map<string, Map<string, SessionMeta>> | null = null;
+    const anew = [...listed].some((environmentId) => !hosts.has(environmentId) || !wasListed.has(environmentId));
+    wasListed = listed;
+    if (!ids || !metaOf || anew) {
+      byHost = new Map();
+      for (const meta of deps.sessions.metas()) {
+        if (!listed.has(meta.environmentId)) continue;
+        let rows = byHost.get(meta.environmentId);
+        if (!rows) byHost.set(meta.environmentId, (rows = new Map()));
+        rows.set(meta.id, meta);
+      }
     }
     const catalog = deps.catalog.getSnapshot();
     for (const environmentId of listed) {
-      const current = byHost.get(environmentId) ?? new Map<string, SessionMeta>();
       let state = hosts.get(environmentId);
       const first = !state;
       if (!state) hosts.set(environmentId, (state = { written: new Map(), workspaces: null, projects: null, cursor: null }));
       const write: MirrorWrite = { environmentId };
       const upserts: MirrorSummary[] = [];
-      for (const [id, meta] of current) if (state.written.get(id) !== meta) upserts.push(summarize(meta));
       const removed: string[] = [];
-      for (const id of state.written.keys()) if (!current.has(id)) removed.push(id);
+      if (byHost) {
+        const current = byHost.get(environmentId) ?? new Map<string, SessionMeta>();
+        for (const [id, meta] of current) if (moves(state.written.get(id), meta)) upserts.push(summarize(meta));
+        for (const id of state.written.keys()) if (!current.has(id)) removed.push(id);
+        state.written = current;
+      } else {
+        for (const id of ids!) {
+          const meta = metaOf!(id);
+          const here = meta && meta.environmentId === environmentId ? meta : null;
+          const was = state.written.get(id);
+          if (here) {
+            if (moves(was, here)) upserts.push(summarize(here));
+            state.written.set(id, here);
+          } else if (was) {
+            removed.push(id);
+            state.written.delete(id);
+          }
+        }
+      }
       if (first) write.full = true;
       if (upserts.length > 0) write.upserts = upserts;
       if (removed.length > 0) write.removed = removed;
@@ -127,9 +176,8 @@ export function installLaunchMirrorWriter(deps: WriterDeps): () => void {
       const projects = catalog.projects.filter((p) => p.environmentId === environmentId);
       if (first || !sameRows(workspaces, state.workspaces)) write.workspaces = workspaces;
       if (first || !sameRows(projects, state.projects)) write.projects = projects;
-      const changed = first || upserts.length > 0 || removed.length > 0 || "cursor" in write || "workspaces" in write || "projects" in write;
-      if (!changed) continue;
-      state.written = current;
+      const wrote = first || upserts.length > 0 || removed.length > 0 || "cursor" in write || "workspaces" in write || "projects" in write;
+      if (!wrote) continue;
       state.cursor = cursor;
       state.workspaces = workspaces;
       state.projects = projects;
@@ -149,7 +197,12 @@ export function installLaunchMirrorWriter(deps: WriterDeps): () => void {
   const onVisibility = (): void => {
     if (deps.doc?.visibilityState === "hidden") flush();
   };
-  const offs = [deps.sessions.onMetaChange(schedule), deps.catalog.subscribe(schedule)];
+  const onMetas = (changes?: { ids: ReadonlySet<string> }): void => {
+    if (!changes || changes.ids.size === 0) changed = null;
+    else if (changed) for (const id of changes.ids) changed.add(id);
+    schedule();
+  };
+  const offs = [deps.sessions.onMetaChange(onMetas), deps.catalog.subscribe(schedule)];
   deps.doc?.addEventListener("visibilitychange", onVisibility);
   // The lists that landed before the writer was installed.
   schedule();

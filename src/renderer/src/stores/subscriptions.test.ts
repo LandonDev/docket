@@ -886,6 +886,25 @@ describe("installProjectDraftWriter", () => {
     });
   });
 
+  it("a store flush that leaves the draft's session the same object reads and writes nothing", async () => {
+    projectDrafts.reload();
+    const draft = session("d1", { projectId: "p1", workspaceId: "w1", cwd: "/repo" });
+    sessionStore.mutate([draft, session("other")]);
+    projectDrafts.put("p1", { ...draftPicksOf(draft), segments: [{ text: "keep me" }], attachments: [] });
+    teardown = installProjectDraftWriter();
+    await microtasks();
+    const put = vi.spyOn(projectDrafts, "put");
+    const stringify = vi.spyOn(JSON, "stringify");
+    // Another thread moves; the draft's session stays the object it was.
+    sessionStore.mutate((prev) => prev.map((s) => (s.id === "other" ? { ...s, title: "moved" } : s)));
+    await microtasks();
+    const reads = stringify.mock.calls.length;
+    stringify.mockRestore();
+    expect(put).not.toHaveBeenCalled();
+    expect(reads).toBe(0);
+    put.mockRestore();
+  });
+
   it("leaves a session with no record alone", async () => {
     projectDrafts.reload();
     sessionStore.mutate([session("loose-1")]);

@@ -16,6 +16,20 @@ vi.mock("../lib/tcserver/store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tcserver/store")>()),
   useSessionMetas: () => h.metas,
 }));
+// The column reads its metas through a filter (metaSelect.ts): the same list, filtered, kept while the list holds.
+vi.mock("../lib/tcserver/metaSelect", async (importOriginal) => {
+  const filtered = new Map<unknown, { from: unknown; value: unknown[] }>();
+  return {
+    ...(await importOriginal<typeof import("../lib/tcserver/metaSelect")>()),
+    useSessionMetasWhere: (keep: (m: unknown) => boolean) => {
+      const kept = filtered.get(keep);
+      if (kept && kept.from === h.metas) return kept.value;
+      const value = h.metas.filter(keep);
+      filtered.set(keep, { from: h.metas, value });
+      return value;
+    },
+  };
+});
 vi.mock("../lib/tcserver/workspaces", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/tcserver/workspaces")>()),
   useWorkspaceCatalog: () => h.catalog,
