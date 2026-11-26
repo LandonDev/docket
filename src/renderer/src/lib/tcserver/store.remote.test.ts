@@ -482,6 +482,57 @@ describe("remote profile: the catch-up after a reconnect", () => {
     second();
   });
 
+  /** A background fetch out (a hover prefetch, a reconnect's replay) and nothing on screen yet. */
+  async function backgroundOut(): Promise<{ asked: () => string[] }> {
+    link.pages = [[wireMeta({ id: "bg" }), wireMeta({ id: "b" }), wireMeta({ id: "c" })]];
+    for (const id of ["bg", "b", "c"]) link.events.set(id, turns(id, 2));
+    await boot(link);
+    sessionStore.followShown({ shown: () => null, onChange: () => () => {} });
+    link.holdEvents = [];
+    void sessionStore.ensureLoaded("bg", "prefetch").catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    const asked = (): string[] => link.calls.filter((c) => c.method === "session.events").map((c) => (c.params as { sessionId: string }).sessionId);
+    expect(asked()).toEqual(["bg"]);
+    return { asked };
+  }
+
+  it("a pressed thread's fetch starts while a background fetch is out, before any pane mounts", async () => {
+    const { asked } = await backgroundOut();
+    sessionStore.pressOnScreen("b");
+    void sessionStore.ensureLoaded("b", "load").catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["bg", "b"]);
+  });
+
+  it("a press ends at the next press: the thread he left waits its turn again", async () => {
+    const { asked } = await backgroundOut();
+    sessionStore.pressOnScreen("b");
+    sessionStore.pressOnScreen("c");
+    void sessionStore.ensureLoaded("b", "load").catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(asked()).toEqual(["bg"]);
+  });
+
+  it("a press ends when the focused pane shows the thread", async () => {
+    link.pages = [[wireMeta({ id: "bg" }), wireMeta({ id: "b" })]];
+    for (const id of ["bg", "b"]) link.events.set(id, turns(id, 2));
+    await boot(link);
+    let shown: string | null = null;
+    const listeners = new Set<() => void>();
+    sessionStore.followShown({ shown: () => shown, onChange: (l) => (listeners.add(l), () => listeners.delete(l)) });
+    sessionStore.pressOnScreen("b");
+    shown = "b";
+    for (const l of listeners) l();
+    // The pane moves on: nothing holds b on screen any longer.
+    shown = null;
+    for (const l of listeners) l();
+    link.holdEvents = [];
+    void sessionStore.ensureLoaded("bg", "prefetch").catch(() => undefined);
+    void sessionStore.ensureLoaded("b", "prefetch").catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(link.calls.filter((c) => c.method === "session.events").map((c) => (c.params as { sessionId: string }).sessionId)).toEqual(["bg"]);
+  });
+
   it("Retry on a load waiting its turn starts it now", async () => {
     const { asked } = await masterWithChild();
     void sessionStore.ensureLoaded("c", "byId").catch(() => undefined);

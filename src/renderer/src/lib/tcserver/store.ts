@@ -214,6 +214,10 @@ const TAIL_ROWS = 300;
  *  (the remote pager caps a page). The server answers the second request
  *  whole or as a fresh tail, so one is the norm; the bound is a guard. */
 const MORE_AFTER_PAGES = 8;
+/** The longest a pressed thread stays on screen with no pane showing it
+ *  (`pressOnScreen`): the open waits OPEN_WAIT_MS at most before its tab
+ *  lands, so a press past this was dropped. */
+const PRESS_HOLD_MS = 5_000;
 /** How long one slice of a page's fold may hold the main thread. */
 export const FOLD_SLICE_MS = 8;
 /** One macrotask: the window paints and takes input before the fold goes on. */
@@ -507,7 +511,37 @@ class SessionStore {
   followShown(source: { shown(): string | null; onChange(listener: () => void): () => void }): void {
     this.offShown?.();
     this.shownSource = () => source.shown();
-    this.offShown = source.onChange(() => this.promoteShown());
+    this.offShown = source.onChange(() => {
+      // The pressed thread's pane is up: the pane speaks for it from here.
+      if (this.press && this.press.id === source.shown()) this.endPress();
+      this.promoteShown();
+    });
+  }
+
+  /** The thread he pressed to open, on screen before its pane mounts (`pressOnScreen`). */
+  private press: { id: string; undo: () => void; timer: ReturnType<typeof setTimeout> } | null = null;
+
+  /**
+   * He pressed a thread to open it (App's onSelectHistorySession): it is on
+   * screen for the catch-up lane from the click, so its fetch goes in front
+   * of a background one even while the open's hold keeps the pane from
+   * mounting. It ends when the focused pane shows it, when he presses
+   * another (his latest choice), or PRESS_HOLD_MS after the click for an
+   * open that was dropped; by then the fetch has left or the pane speaks.
+   */
+  pressOnScreen(id: string): void {
+    this.endPress();
+    const undo = this.drawOnScreen(id);
+    const timer = setTimeout(() => this.endPress(), PRESS_HOLD_MS);
+    this.press = { id, undo, timer };
+  }
+
+  private endPress(): void {
+    const press = this.press;
+    if (!press) return;
+    this.press = null;
+    clearTimeout(press.timer);
+    press.undo();
   }
 
   /**
@@ -658,6 +692,7 @@ class SessionStore {
     this.offShown?.();
     this.offShown = null;
     this.shownSource = () => null;
+    this.endPress();
     this.drawn.clear();
     for (const a of this.attached.values()) {
       for (const off of a.detach) off();

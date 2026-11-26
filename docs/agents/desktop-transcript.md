@@ -84,7 +84,11 @@
   master's child, a subagent inside a child or a thread, the chat docked
   beside a file or a mail; a fleet row that only quotes a waiting agent's
   question passes `drawn: false` and waits its turn; focus,
-  `session.focus` and the read mark stay the pane's), go at once, jump
+  `session.focus` and the read mark stay the pane's), and a thread he
+  presses to open, from the click until its pane mounts
+  (`sessionStore.pressOnScreen` in App's onSelectHistorySession; it ends
+  when the focused pane shows it, at his next press, or PRESS_HOLD_MS 5 s
+  after a dropped open), go at once, jump
   the queue when what is on screen changes, and are the lane's first pick when a window
   opening names one a microtask after asking (the pick waits a few
   microtasks); no other starts while its fetch is out

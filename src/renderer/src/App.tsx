@@ -1710,6 +1710,8 @@ export default function App() {
       const mine = o.behind ? null : choose();
       if (seq !== undefined) requestTranscriptJump(sessionId, seq);
       if (focusOpenSession(sessionId, o)) return;
+      // On screen from the click: its fetch goes ahead of background ones while the pane waits to mount.
+      sessionStore.pressOnScreen(sessionId);
       const session = await ensureOpenSession(sessionId);
       if (!session || (mine !== null && !stillChosen(mine, null, ""))) return;
       perfMark("open-ready", sessionId);
