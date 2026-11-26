@@ -217,6 +217,8 @@ const MORE_AFTER_PAGES = 8;
 export const FOLD_SLICE_MS = 8;
 /** One macrotask: the window paints and takes input before the fold goes on. */
 const yieldToWindow = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+/** A hidden page (a minimized window, a background tab) runs no animation frames. */
+const pageHidden = (): boolean => typeof document !== "undefined" && document.visibilityState === "hidden";
 /** Rows folded per slice while the head of a long log folds in the background. */
 const HEAD_CHUNK = 2000;
 /** Rows per `session.events` call while a long head loads: the server reads
@@ -2559,11 +2561,15 @@ class SessionStore {
   }
 
   private notifyPending: number | null = null;
+  /** The pending flush waits on a frame, not a timer. */
+  private notifyOnFrame = false;
 
   /**
    * Streamed events arrive far faster than frames paint. The snapshot updates
    * now; listeners hear once per frame, so React reconciles once per frame
-   * instead of once per delta. A synchronous bump() flushes it early.
+   * instead of once per delta. A synchronous bump() flushes it early. A
+   * hidden page (a minimized window) paints no frames, so it flushes on a
+   * timer: the Dock badge and the rail still hear a thread go unread.
    */
   private bumpSoon(): void {
     this.version += 1;
@@ -2571,16 +2577,26 @@ class SessionStore {
     // flush, however many merges land before it: a 1,000-row list push is
     // one build, not a thousand.
     this.snapshotDirty = true;
-    if (this.notifyPending != null) return;
+    const onFrame = typeof requestAnimationFrame === "function" && !pageHidden();
+    if (this.notifyPending != null) {
+      // A frame asked for before the page hid never comes: move it to a timer.
+      if (onFrame || !this.notifyOnFrame) return;
+      this.cancelNotify();
+    }
     const flush = () => {
       if (this.notifyPending == null) return;
       this.notifyPending = null;
       this.bump();
     };
-    this.notifyPending =
-      typeof requestAnimationFrame === "function"
-        ? requestAnimationFrame(flush)
-        : (setTimeout(flush, 0) as unknown as number);
+    this.notifyOnFrame = onFrame;
+    this.notifyPending = onFrame ? requestAnimationFrame(flush) : (setTimeout(flush, 0) as unknown as number);
+  }
+
+  private cancelNotify(): void {
+    if (this.notifyPending == null) return;
+    if (this.notifyOnFrame) cancelAnimationFrame(this.notifyPending);
+    else clearTimeout(this.notifyPending);
+    this.notifyPending = null;
   }
 
   /**
@@ -2660,12 +2676,8 @@ class SessionStore {
   }
 
   private bump(): void {
-    if (this.notifyPending != null) {
-      // A sync bump supersedes the scheduled one; the flush sees null and skips.
-      if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(this.notifyPending);
-      else clearTimeout(this.notifyPending);
-      this.notifyPending = null;
-    }
+    // A sync bump supersedes the scheduled one; the flush sees null and skips.
+    this.cancelNotify();
     this.version += 1;
     this.snapshotDirty = true;
     this.refreshProjections();

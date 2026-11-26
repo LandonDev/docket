@@ -926,6 +926,37 @@ describe("meta push coalescing", () => {
     expect(sessionStore.childrenOf("b")).toEqual([]);
   });
 
+  it("a hidden page, which paints no frames, still tells meta listeners: the Dock badge hears a minimized window's news", async () => {
+    link.metas = [wireMeta()];
+    sessionStore.attach(link);
+    await sessionStore.ready();
+    // frames come only while visible; a minimized window gets none
+    let visibility = "visible";
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("document", { get visibilityState() { return visibility; } });
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => frames.push(cb));
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => { delete frames[id - 1]; });
+    try {
+      const changed = vi.fn();
+      const off = sessionStore.onMetaChange(changed);
+      // the frame asked for while visible never comes once the page hides
+      link.push({ push: "session", session: wireMeta({ title: "One" }) });
+      expect(frames).toHaveLength(1);
+      visibility = "hidden";
+      link.push({ push: "session", session: wireMeta({ title: "Two", updatedAt: 2 }) });
+      await flush();
+      expect(changed).toHaveBeenCalledTimes(1);
+      expect(sessionStore.metas().find((m) => m.id === "s1")?.title).toBe("Two");
+      link.push({ push: "session", session: wireMeta({ title: "Three", updatedAt: 3 }) });
+      await flush();
+      expect(changed).toHaveBeenCalledTimes(2);
+      expect(frames).toHaveLength(1);
+      off();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("many session pushes in one tick reach meta listeners once, after the flush", async () => {
     link.metas = [wireMeta()];
     sessionStore.attach(link);

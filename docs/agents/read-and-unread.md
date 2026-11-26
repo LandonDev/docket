@@ -72,4 +72,8 @@
   once every host has painted (`settledEnvironments`), so a launch shows
   the mirror's number and no flash; main shows the largest window's report
   and bounces once when it rises with no window in front
-  (src/main/windows.ts `applyBadge`). Windows and Linux show none.
+  (src/main/windows.ts `applyBadge`). A minimized window paints no frames,
+  so the store flushes its pushes on a timer while the page is hidden
+  (tcserver/store.ts `bumpSoon`); waiting on a frame there held the badge
+  and the rail still until the window came back, as the Mac's live check
+  found. Windows and Linux show none.
