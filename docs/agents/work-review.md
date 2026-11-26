@@ -62,8 +62,9 @@ Outbox's store merges lists:
 - `left`: the sources that did not answer, in plain words (`LEFT`).
 
 A host that is on and not linked to the window is one muted line ("The Mac
-is not connected. Its threads and held items are not counted.",
-`hostNotCountedWords` over the link rule's words) and the page stands.
+is offline. Its threads and held items are not counted.",
+`hostNotCountedWords` over the link's one wording, `linkDownWords` and
+`linkWords`) and the page stands.
 
 ## Hours: what is measured and what is a guess
 
@@ -551,4 +552,4 @@ his identity.
 
 ## When a read or link fails
 
-When a Work computer’s link is closed, Review says the computer is not connected and names the counts it left out. A computer that stopped answering on an open link has its own failed-read line.
+When a Work computer’s link is closed, Review says the link's state in its one wording ("The Mac is offline", "Reconnecting to the Mac…") and names the counts it left out. A computer that stopped answering on an open link has its own failed-read line.

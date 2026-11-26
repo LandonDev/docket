@@ -221,7 +221,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {away ? (
           <EmptyState
-            title={linkDownWords(host)}
+            title={linkDown ?? linkDownWords(host, registry.statusOf(environmentId))}
             action={{
               label: "Retry",
               busy: linkRetrying,

@@ -315,7 +315,7 @@ function view(week: ReviewWeek): ReviewView {
     review: mergeReview(parts, now(), { home: home(), names: (sector) => jobNameNow(sector, home()), order: jobOrder(parts), jobs: knownJobs(parts), fresh: live.every((id) => hosts?.get(id)?.loaded && !hosts.get(id)?.error), whole: live.length === on.length }),
     settled: live.every((id) => hosts?.get(id)?.loaded),
     making: making.has(week.from),
-    off: on.filter((id) => !linked(id)).map((id) => hostNotCountedWords(linkDownWords(hostName(id)))),
+    off: on.filter((id) => !linked(id)).map((id) => hostNotCountedWords(linkDownWords(hostName(id), registry.statusOf(id)))),
     errors: live.flatMap((id) => {
       const host = hosts?.get(id);
       return host?.error ? [{ environmentId: id, name: hostName(id), error: host.error, kept: host.body !== null }] : [];

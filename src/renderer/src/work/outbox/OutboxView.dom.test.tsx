@@ -280,7 +280,8 @@ it("holds the selected draft and its shortcut while the link is down, then frees
       status = { ...status, transport };
       view.rerender(<OutboxView besideRail onClose={() => {}} />);
       expect(send().disabled).toBe(true);
-      expect(screen.getAllByText("The box is not connected")).toHaveLength(1);
+      // The link's one wording (`linkWords`), as the line over the composer says it.
+      expect(screen.getAllByText(transport === "offline" ? "The box is offline" : "Reconnecting to the box…")).toHaveLength(1);
       fireEvent.click(send());
       fireEvent.keyDown(document.body, { key: "Enter", ctrlKey: true });
       expect(sends()).toHaveLength(0);
@@ -288,14 +289,14 @@ it("holds the selected draft and its shortcut while the link is down, then frees
     world.listDown.add("box");
     const { loadHost } = await import("./store");
     await act(async () => loadHost("box"));
-    expect(screen.getAllByText("The box is not connected")).toHaveLength(1);
+    expect(screen.getAllByText("The box is offline")).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
     expect(send().disabled).toBe(true);
     world.listDown.clear();
     status = { ...status, transport: "open" };
     view.rerender(<OutboxView besideRail onClose={() => {}} />);
     expect(send().disabled).toBe(false);
-    expect(screen.queryByText("The box is not connected")).toBeNull();
+    expect(screen.queryByText("The box is offline")).toBeNull();
   } finally {
     cleanup();
     statuses.mockRestore();

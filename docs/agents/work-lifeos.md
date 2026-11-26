@@ -204,8 +204,8 @@ Settings section (`LifeosLine`), a mirrored project's sheet and an open Start
 places form say that wait too, in their reads' place. LifeOS on its way reads one way
 everywhere, `connectingWords`: "LifeOS is still connecting on the box". A Retry
 he presses keeps its line, spinning in place, until the answer replaces it: a
-read that mounts afresh through `useAgainKept` (`shell/againKept.ts`), "<host>
-is not connected" through `retryLink` (`shell/linkRetry.ts`), which waits for
+read that mounts afresh through `useAgainKept` (`shell/againKept.ts`), a link
+that is down ("The box is offline", `linkDownWords` over `linkWords`) through `retryLink` (`shell/linkRetry.ts`), which waits for
 the link to try; only a read the reader asks by itself draws its bones. A way
 back from a page inside a view (Back to Agenda, Back to People, Back to
 Projects) is drawn in every state: the frame draws a view's `Title` whatever

@@ -135,7 +135,7 @@ describe("the week across hosts", () => {
     await loadWeek(WEEK);
     expect(links["env-mac"]!.calls).toEqual([]);
     const view = reviewNow(WEEK);
-    expect(view.off).toEqual(["The Mac is not connected. Its threads and held items are not counted."]);
+    expect(view.off).toEqual(["The Mac is offline. Its threads and held items are not counted."]);
     expect(view.errors).toEqual([]);
     expect(view.settled).toBe(true);
     expect(view.review!.hours.find((h) => h.job === "cosmic")!.ranMs).toBe(3_600_000);
@@ -252,7 +252,7 @@ describe("the week across hosts", () => {
     await loadWeek(WEEK);
     links["env-mac"]!.status = offline;
     const view = reviewNow(WEEK);
-    expect(view.off).toEqual(["The Mac is not connected. Its threads and held items are not counted."]);
+    expect(view.off).toEqual(["The Mac is offline. Its threads and held items are not counted."]);
     // Neither its last answer nor its last failure is on the page while it is off.
     expect(view.errors).toEqual([]);
     expect(view.review!.hours.find((h) => h.job === "cosmic")!.ranMs).toBe(3_600_000);

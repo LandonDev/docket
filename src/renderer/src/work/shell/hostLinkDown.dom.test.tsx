@@ -24,6 +24,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const LINE = /^(The box is offline|Reconnecting to the box…)$/;
+
 it("holds each host header press from the first known failure to the next open link", () => {
   let state: EnvironmentStatus = { ...IDLE_STATUS, transport: "connecting" };
   vi.spyOn(registry, "statusOf").mockImplementation((id) => id === "box" ? state : IDLE_STATUS);
@@ -49,17 +51,18 @@ it("holds each host header press from the first known failure to the next open l
     const shown = render(view());
     const disabled = () => screen.getByRole<HTMLButtonElement>("button", { name: action }).disabled;
     expect(disabled(), action).toBe(false);
-    expect(screen.queryByText("The box is not connected")).toBeNull();
+    expect(screen.queryByText(LINE)).toBeNull();
     for (const transport of ["reconnecting", "offline"] as const) {
       state = { ...state, transport };
       shown.rerender(view());
       expect(disabled(), action).toBe(true);
-      expect(screen.getAllByText("The box is not connected")).toHaveLength(1);
+      // The link's one wording (`linkWords`), never the transport's own.
+      expect(screen.getAllByText(transport === "offline" ? "The box is offline" : "Reconnecting to the box…")).toHaveLength(1);
     }
     state = { ...state, transport: "open" };
     shown.rerender(view());
     expect(disabled(), action).toBe(false);
-    expect(screen.queryByText("The box is not connected")).toBeNull();
+    expect(screen.queryByText(LINE)).toBeNull();
     shown.unmount();
   }
 });

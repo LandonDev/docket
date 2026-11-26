@@ -1,5 +1,6 @@
 import { useState, useSyncExternalStore } from "react";
 import { BusyLabel, Button } from "../../components/ui/button";
+import { linkWords, type Degraded } from "../../lib/connection/degraded";
 import { IDLE_STATUS, type EnvironmentStatus } from "../../lib/connection/types";
 import { registry } from "../../lib/connection/registry";
 import { retryLink } from "./linkRetry";
@@ -9,14 +10,15 @@ export function linkIsDown(status: EnvironmentStatus): boolean {
   return status !== IDLE_STATUS && status.transport !== "open" && (status.transport !== "connecting" || !!status.lastHello || status.attempts > 0);
 }
 
-export const linkDownWords = (name: string): string => `${name} is not connected`;
+/** A link that is not open (`linkIsDown`, a host that is off) in the link's one wording, `linkWords`: "The box is offline", "Reconnecting to the box…". */
+export const linkDownWords = (name: string, status: EnvironmentStatus): string => linkWords(name, { kind: status.transport as Degraded["kind"], status });
 
 const subscribe = (listener: () => void) => registry.subscribe(listener);
 
 export function useHostLinkDown(environmentId?: string | null): string | null {
   return useSyncExternalStore(subscribe, () =>
     environmentId && linkIsDown(registry.statusOf(environmentId))
-      ? linkDownWords(registry.environment(environmentId)?.name ?? "This computer")
+      ? linkDownWords(registry.environment(environmentId)?.name ?? "This computer", registry.statusOf(environmentId))
       : null,
   );
 }

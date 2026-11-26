@@ -1070,7 +1070,8 @@ const LIFEOS_LEFT = new Set<string>(Object.keys(LINE_LISTS))
 const LINE_MEETS = new Set<string>([LEFT.lifeos, LEFT.lifeosKept, LEFT.calendar, LEFT.calendarKept, LEFT.mail, LEFT.mailKept, LEFT.self, LEFT.carried])
 
 /** What Review leaves out when this window cannot read a host. */
-export const hostNotCountedWords = (state: string): string => `${state}. Its threads and held items are not counted.`
+/** A state that ends in a wait ("Reconnecting to the box…") is not given a second stop. */
+export const hostNotCountedWords = (state: string): string => `${state}${state.endsWith('…') ? '' : '.'} Its threads and held items are not counted.`
 
 /** The phone’s existing words for a host that is off. */
 export const hostOffWords = (name: string): string => hostNotCountedWords(`${name} is off`)

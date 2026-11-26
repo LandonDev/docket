@@ -213,7 +213,7 @@ export function fixtureView(state: FixtureState): { view: ReviewView; now: numbe
     case "clear":
       return { now, view: { ...base, review: merged(both({ ...friday(), slipped: { at: FRIDAY, rows: [] } })) } };
     case "off":
-      return { now, view: { ...base, off: [hostNotCountedWords("The Mac is not connected")], review: merged([{ environmentId: "env-box", body: friday() }], { whole: false }) } };
+      return { now, view: { ...base, off: [hostNotCountedWords("The Mac is offline")], review: merged([{ environmentId: "env-box", body: friday() }], { whole: false }) } };
     case "lifeos":
       return { now, view: { ...base, review: merged(both({ ...friday(), lifeos: null, slipped: { at: FRIDAY, rows: [HELD] }, before: null, left: [LEFT.lifeos] }).map((p) => ({ ...p, body: { ...p.body, lifeos: null, left: [LEFT.lifeos] } }))) } };
     case "lifeos-silent":
