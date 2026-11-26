@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
-import { lstat, readFile } from 'node:fs/promises'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
+import { lstat, open, readFile } from 'node:fs/promises'
 import { webcrypto } from 'node:crypto'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,13 +8,13 @@ import { ClientRequestSchema } from '@shared/contract'
 import { requiredCapability } from '@shared/capabilities'
 import { parseMapping } from '../pathMap'
 import { flushStallLog, recordSlowRequest, setStallLog, withRequestNotes } from '../stalls'
-import { MEMORY_NO_WINDOWS, MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory } from './memorySync'
+import { MEMORY_NO_WINDOWS, MemorySync, PEER_HOMES_KEY, SETTLE_GAP_MS, handleMemory, readWalked } from './memorySync'
 import { encodeProjectDir } from './memorySet'
 import { TOMBSTONE_MS } from './memoryMerge'
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs/promises')>()
-  return { ...fs, lstat: vi.fn(fs.lstat), readFile: vi.fn(fs.readFile) }
+  return { ...fs, lstat: vi.fn(fs.lstat), open: vi.fn(fs.open), readFile: vi.fn(fs.readFile) }
 })
 
 let root: string
@@ -216,15 +216,15 @@ describe('manifest hashes', () => {
     const digest = vi.spyOn(webcrypto.subtle, 'digest')
     try {
       vi.mocked(lstat).mockClear()
-      vi.mocked(readFile).mockClear()
+      vi.mocked(open).mockClear()
       expect((await exchange([peerFile])).push).toEqual([])
       expect(vi.mocked(lstat).mock.calls.filter(([name]) => name === path)).toHaveLength(1)
-      expect(vi.mocked(readFile).mock.calls.filter(([name]) => name === path)).toHaveLength(0)
+      expect(vi.mocked(open).mock.calls.filter(([name]) => name === path)).toHaveLength(0)
       expect(digest).toHaveBeenCalledTimes(0)
 
       utimesSync(path, new Date(T0 + 1000), new Date(T0 + 1000))
       expect((await exchange([peerFile])).push).toEqual([])
-      expect(vi.mocked(readFile).mock.calls.filter(([name]) => name === path)).toHaveLength(1)
+      expect(vi.mocked(open).mock.calls.filter(([name]) => name === path)).toHaveLength(1)
       expect(digest).toHaveBeenCalledTimes(1)
       expect((await exchange([peerFile])).push).toEqual([])
       expect(digest).toHaveBeenCalledTimes(1)
@@ -254,12 +254,12 @@ describe('manifest hashes', () => {
     const { receiver } = pair()
     const files = ['one', 'two', 'three'].map((name) => join(box, boxMem(name + '.md')))
     for (const name of ['one', 'two', 'three']) put(box, boxMem(name + '.md'), name, T0)
-    vi.mocked(readFile).mockClear()
-    const actual = vi.mocked(readFile).getMockImplementation()!
+    vi.mocked(open).mockClear()
+    const actual = vi.mocked(open).getMockImplementation()!
     const finish: (() => void)[] = []
     let firstPair!: () => void
     const started = new Promise<void>((resolve) => { firstPair = resolve })
-    vi.mocked(readFile).mockImplementation(async (...args) => {
+    vi.mocked(open).mockImplementation(async (...args) => {
       if (files.includes(String(args[0])) && finish.length < 2) {
         await new Promise<void>((resolve) => {
           finish.push(resolve)
@@ -271,7 +271,7 @@ describe('manifest hashes', () => {
     const scan = receiver.conflicts()
     try {
       await started
-      const reads = () => vi.mocked(readFile).mock.calls.filter(([name]) => files.includes(String(name)))
+      const reads = () => vi.mocked(open).mock.calls.filter(([name]) => files.includes(String(name)))
       expect(reads()).toHaveLength(2)
       for (const release of finish) release()
       await scan
@@ -279,10 +279,46 @@ describe('manifest hashes', () => {
     } finally {
       for (const release of finish) release()
       await scan
-      vi.mocked(readFile).mockImplementation(actual)
+      vi.mocked(open).mockImplementation(actual)
     }
   })
 })
+
+
+  it('reads a file only when it is the one the walk checked: one swapped for a link out of the set is not read or sent', async () => {
+    const { sender, receiver, sent } = pair()
+    put(mac, macMem('note.md'), 'a memory', T0)
+    put(mac, 'outside.txt', 'NOT A MEMORY', T0)
+    const path = join(mac, macMem('note.md'))
+    const walked = await lstat(path)
+    expect((await readWalked(path, walked))?.toString()).toBe('a memory')
+    // Swapped after the walk: a link out of the set, then another file in its place.
+    rmSync(path)
+    symlinkSync(join(mac, 'outside.txt'), path)
+    expect(await readWalked(path, walked)).toBeUndefined()
+    expect(await readWalked(path, undefined)).toBeUndefined()
+    // A whole round with the swap between the walk and the send: the outside bytes never cross.
+    rmSync(path)
+    put(mac, macMem('note.md'), 'a memory', T0)
+    const actual = vi.mocked(open).getMockImplementation()!
+    let swapped = false
+    vi.mocked(open).mockImplementation(async (...args) => {
+      if (!swapped && String(args[0]) === path) {
+        swapped = true
+        rmSync(path)
+        symlinkSync(join(mac, 'outside.txt'), path)
+      }
+      return actual(...args)
+    })
+    try {
+      await sender.syncWith('env_box')
+    } finally {
+      vi.mocked(open).mockImplementation(actual)
+    }
+    expect(JSON.stringify(sent)).not.toContain(Buffer.from('NOT A MEMORY').toString('base64'))
+    expect(has(box, boxMem('note.md'))).toBe(false)
+    void receiver
+  })
 
 describe('changes after the first sync', () => {
   it('an edit on either side crosses; a new file on either side crosses', async () => {

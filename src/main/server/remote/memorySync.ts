@@ -1,8 +1,8 @@
 import { randomBytes, randomUUID, webcrypto } from 'node:crypto'
 import { chmodSync, existsSync, lstatSync, mkdirSync, renameSync, rmSync, rmdirSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { open, readFile } from 'node:fs/promises'
 import { homedir, hostname } from 'node:os'
-import { basename, dirname, join, sep } from 'node:path'
+import { basename, dirname, join, relative, sep } from 'node:path'
 import type { ClientRequest, ServerPush } from '@shared/contract'
 import {
   MEMORY_FILES_FRAME_BYTES,
@@ -193,8 +193,36 @@ export const MEMORY_NO_WINDOWS = 'memory sync takes no Windows host yet: its pat
 
 const within = (path: string, root: string): boolean => path === root || path.startsWith(root.endsWith(sep) ? root : root + sep)
 
+/** The file a walk checked: its device and inode (the walk's stat follows a link it allowed). */
+export interface Walked {
+  dev: number
+  ino: number
+}
+
+/**
+ * The bytes at `path`, only if the file opened there is the one the walk checked. A read waits its turn after the
+ * walk (two slots for every peer), and a transfer reads later still: a file swapped for a link in between would
+ * otherwise send bytes from outside the memory set. Undefined when it is another file or is gone.
+ */
+export async function readWalked(path: string, walked: Walked | undefined): Promise<Buffer | undefined> {
+  if (!walked) return undefined
+  const handle = await open(path, 'r').catch(() => undefined)
+  if (!handle) return undefined
+  try {
+    const st = await handle.stat()
+    if (!st.isFile() || st.dev !== walked.dev || st.ino !== walked.ino) return undefined
+    return await handle.readFile()
+  } catch {
+    return undefined
+  } finally {
+    await handle.close().catch(() => {})
+  }
+}
+
 export class MemorySync {
   private cache = new Map<string, HashEntry>()
+  /** The last walk's files by relPath: what a transfer may read (`readWalked`). */
+  private walked = new Map<string, Walked>()
   private cacheVersion = 0
   private scanQueue: Promise<unknown> = Promise.resolve()
   // Reads and digests share two slots across all peers and scans on this host.
@@ -532,8 +560,12 @@ export class MemorySync {
       chmodSync(tmp, mode)
       const t = new Date(mtime)
       utimesSync(tmp, t, t)
+      // A file this sync writes is one it may send in the same round (a conflict copy): it counts as walked.
+      const { dev, ino } = statSync(tmp)
       renameSync(tmp, dest)
       this.dropHash(dest)
+      const rel = relative(this.home(), dest).split(sep).join('/')
+      if (!rel.startsWith('..')) this.walked.set(rel, { dev, ino })
       return true
     } catch (err) {
       rmSync(tmp, { force: true })
@@ -590,9 +622,14 @@ export class MemorySync {
     return timings.hashWork(() => this.content(() => readFile(path)))
   }
 
-  private async fileOf(relPath: string, entry: MemoryEntry, timings?: MemoryTimings): Promise<MemoryFile> {
+  /** The file to send, or undefined when it is no longer the file the walk checked (it goes next round). */
+  private async fileOf(relPath: string, entry: MemoryEntry, timings?: MemoryTimings): Promise<MemoryFile | undefined> {
     const run = () => this.content(async () => {
-      const data = await readFile(join(this.home(), relPath))
+      const data = await readWalked(join(this.home(), relPath), this.walked.get(relPath))
+      if (!data) {
+        this.log(`${JSON.stringify(relPath)} changed after the walk; it goes next round`)
+        return undefined
+      }
       const sha256 = await this.digest(data, timings)
       return { relPath, mtime: entry.mtime, sha256, mode: entry.mode & 0o777, dataBase64: data.toString('base64') }
     })
@@ -605,6 +642,7 @@ export class MemorySync {
       const hashBefore = timings?.hashMs ?? 0
       const version = this.cacheVersion
       const next = new Map<string, HashEntry>()
+      const walked = new Map<string, Walked>()
       const manifest = await listMemory(home, async (files) => {
         const hashes = new Array<HashEntry | undefined>(files.length)
         const needsHash: number[] = []
@@ -620,7 +658,7 @@ export class MemorySync {
           const run = async () => {
             await Promise.all(batch.map((index) => this.content(async () => {
               const file = files[index]
-              const data = await readFile(file.path).catch(() => undefined)
+              const data = await readWalked(file.path, file.stat)
               if (data) hashes[index] = manifestHash(file.stat, data, await this.digest(data, timings))
             })))
           }
@@ -630,12 +668,14 @@ export class MemorySync {
         for (const [index, file] of files.entries()) {
           const hash = hashes[index]
           if (hash) next.set(file.real, hash)
+          walked.set(file.relPath, { dev: file.stat.dev, ino: file.stat.ino })
         }
         return hashes
       })
       // A landing during the scan can preserve an old mtime. Never publish
       // hashes read before that write. The next scan rebuilds the table.
       if (version === this.cacheVersion) this.cache = next
+      this.walked = walked
       if (timings) {
         timings.statMs += performance.now() - started - (timings.hashMs - hashBefore)
         timings.files += manifest.entries.length
@@ -684,6 +724,7 @@ export class MemorySync {
         const entry = byPath.get(relPath)
         if (!entry) throw new Error(`${link.env.name} asked for ${relPath}, which is not in the manifest`)
         const file = await this.fileOf(relPath, entry)
+        if (!file) continue
         if (file.dataBase64.length > MEMORY_MAX_WIRE_BYTES * 2) continue
         if (frames[frames.length - 1].length >= MEMORY_FILES_PER_FRAME || bytes + file.dataBase64.length > MEMORY_FILES_FRAME_BYTES) {
           frames.push([])
@@ -811,6 +852,7 @@ export class MemorySync {
     const now = this.now()
     const sendMine = async (localRel: string, entry: MemoryEntry): Promise<void> => {
       const file = await this.fileOf(localRel, entry, timings)
+      if (!file) return
       push.push(file)
       g.pushed.set(localRel, file.sha256)
     }
