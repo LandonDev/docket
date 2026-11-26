@@ -166,4 +166,11 @@ import TempCodeContract
         #expect(MessagesRules.offLine(MessagesRules.lateLine(.mayHaveGone)!, name: "", shown: false) == "A reply: It may have gone. Check the conversation before sending it again.")
         #expect(MessagesRules.offLine(MessagesRules.lateLine(.failed("refused"))!, name: "Dana Lee", shown: true) == nil)
     }
+
+    @Test func `an older page that failed heads the messages with its failure, never a spinner that never ends`() {
+        // A failed page has no rows, so it is still "loading more" to the paged query: the failure wins.
+        #expect(MessagesRules.olderPage(waiting: true, failed: true) == .failed)
+        #expect(MessagesRules.olderPage(waiting: true, failed: false) == .reading)
+        #expect(MessagesRules.olderPage(waiting: false, failed: false) == nil)
+    }
 }

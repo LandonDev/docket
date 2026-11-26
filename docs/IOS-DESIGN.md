@@ -3297,7 +3297,10 @@ Teams) as LifeOS holds it, the desktop's Messages view on the phone (docs/agents
   The title is the conversation's name with its fact under it in the secondary ink ("Slack, CosmicGames"); More holds Mark Unread and
   Open in <app>. The messages run oldest to newest and open at the foot; a run (one writer, under five minutes'
   gap) shows its writer and time once. A Slack reply shows what it answers in one muted line. Opening it marks
-  it read when someone wrote since he last saw it.
+  it read when someone wrote since he last saw it. A failed first read is "Can’t Read This Conversation", LifeOS
+  out of reach "Can’t Reach LifeOS" with the host's words, each with Try Again. Scrolling up reads the older page
+  under a spinner; one that fails heads the messages with "Older messages did not load" and Try Again, which asks
+  that page again.
 - **His reply** is the house's composer box at the foot (`ComposerBox`, no `+`). Send is the composer's own
   button; it goes through the host only by his press: no link says "Not connected to <host>" at once, the owner's
   check runs (`PressGates`), then the undo capsule waits five seconds ("Sending to Dana Lee", Undo) in which the
@@ -3333,7 +3336,9 @@ People is a place of the Work tab, after Agenda in the Work list (docs/agents/wo
   a meeting opens its page, a task its sheet, a form the job's forms. A shared item says what the link lets them
   do and until when; it opens nothing on the phone. Nothing open: one line. The page is asked at once, never
   waiting on the directory: LifeOS out of reach is "Can’t Reach LifeOS" with the host's words, a failed read
-  "Can’t Read This Person", each with Try Again, and a person LifeOS does not hold "Can’t Find This Person".
+  "Can’t Read This Person", each with Try Again, and a person LifeOS does not hold "Can’t Find This Person". A
+  read that fails over a page on screen keeps the page under "This person did not refresh" with Try Again, gone
+  once a fresh read lands.
   At accessibility sizes a row's name wraps; an address keeps one line, never hyphenated inside it, shrinking to fit
   whole (to half its size, then its middle gives way), in the list and on the page.
 - **The bar** holds Write (LifeKitUI's own composer to their first address; its send is held like every send) and

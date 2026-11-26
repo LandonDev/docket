@@ -68,7 +68,8 @@ private struct PersonPageView: View {
         let query = store.map { PeopleReads.page($0, personId: personId, sector: sector, shared: mine) }
         let read = Self.page(query, personId: personId)
         let page = read ?? shown
-        content(page: page, waiting: Self.waiting(phase: host.phase, query: query), links: mine, retry: {
+        let stale = PeopleRules.refreshLine(kept: page != nil, failing: Self.failing(query))
+        content(page: page, waiting: Self.waiting(phase: host.phase, query: query), stale: stale, links: mine, retry: {
             if host.store == nil { Task { await host.prepare() } } else { query?.retryNow() }
         })
             // Write's Send counts its five seconds here too: this page draws no Mail capsule, so TempCode's own shows
@@ -115,9 +116,13 @@ private struct PersonPageView: View {
             .accessibilityIdentifier("person")
     }
 
-    @ViewBuilder private func content(page: PersonPage?, waiting: Waiting, links: [GuestLinkRow], retry: @escaping () -> Void) -> some View {
+    @ViewBuilder private func content(page: PersonPage?, waiting: Waiting, stale: String?, links: [GuestLinkRow], retry: @escaping () -> Void) -> some View {
         if let page {
             List {
+                // A read that failed over the page on screen: the last read stays under it, said once, with Try Again.
+                if let stale {
+                    Section { FailedRead(words: stale, retry: { retry() }, identifier: "person-failed", tint: Tint.destructiveText) }
+                }
                 Section {
                     // Each address and number on its own line, never hyphenated inside an address (a wrapped one is:
                     // "dana@cos-micgames"). At accessibility sizes it shrinks to fit whole, to half its size; past that,
@@ -252,6 +257,15 @@ private struct PersonPageView: View {
         if query.hasFailed { return .failed }
         if case .some(.none) = query.value { return .missing }
         return .loading
+    }
+
+    /// The page's query is failing, whether or not it holds an answer: a kept answer, or the page shown from the ask
+    /// before (new guest links), says nothing of it. The next answer clears it.
+    static func failing(_ query: LiveQuery<PersonPage?>?) -> Bool {
+        #if DEBUG
+        if PeopleFixtures.on { return false }
+        #endif
+        return query?.failure != nil
     }
 
     static func page(_ query: LiveQuery<PersonPage?>?, personId: String) -> PersonPage? {

@@ -95,31 +95,36 @@ private struct ChatConversation: View {
         let oldestFirst = Array(messages.reversed())
         if messages.isEmpty, Self.failed(page) {
             ContentUnavailableView {
-                Label("Couldn’t Load", systemImage: WorkPlace.messages.glyph)
-            } description: {
-                Text("LifeOS did not answer.")
+                Label("Can’t Read This Conversation", systemImage: WorkPlace.messages.glyph)
             } actions: {
-                PillButton("Try Again") { page?.retryNow() }
+                Button("Try Again") { page?.retryNow() }
             }
         } else if messages.isEmpty, Self.loading(host: host, page: page) {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if messages.isEmpty, case .unavailable(let why) = host.phase {
-            // LifeOS out of reach is not an empty conversation: say why.
+            // LifeOS out of reach is not an empty conversation: say why, as a person's page does.
             ContentUnavailableView {
-                Label("Couldn’t Load", systemImage: WorkPlace.messages.glyph)
+                Label("Can’t Reach LifeOS", systemImage: WorkPlace.messages.glyph)
             } description: {
                 Text(why)
             } actions: {
                 // Try Again only for silence: a sign-in, a connect or an ended access asks nothing again (the shared rule).
-                if host.down?.isSilence == true { PillButton("Try Again") { Task { await host.prepare() } } }
+                if host.down?.isSilence == true { Button("Try Again") { Task { await host.prepare() } } }
             }
         } else if messages.isEmpty {
             ContentUnavailableView("No Messages Yet", systemImage: WorkPlace.messages.glyph)
         } else {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Layout.rowGap) {
-                    if page?.isLoadingMore == true { ProgressView().frame(maxWidth: .infinity) }
+                    // The older page: its spinner while it reads; once it fails, its failure with Try Again, which
+                    // asks that page again (a failed page has no rows, so the query still counts it as reading).
+                    switch MessagesRules.olderPage(waiting: page?.isLoadingMore == true, failed: page?.more.last?.hasFailed == true) {
+                    case .reading: ProgressView().frame(maxWidth: .infinity)
+                    case .failed:
+                        FailedRead(words: MessagesRules.olderFailed, retry: { page?.more.last?.retryNow() }, identifier: "chat-older-failed", insets: nil, tint: Tint.destructiveText)
+                    case nil: EmptyView()
+                    }
                     ForEach(Array(oldestFirst.enumerated()), id: \.element.id) { index, message in
                         ChatMessageView(
                             message: message,

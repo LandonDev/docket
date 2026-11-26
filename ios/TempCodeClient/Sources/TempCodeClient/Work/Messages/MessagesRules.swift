@@ -6,6 +6,15 @@ import TempCodeContract
 /// writes the desktop's answers to Fixtures/messages/rules.json and MessagesRulesTests replays them, so the two cannot
 /// drift unseen.
 public enum MessagesRules {
+    /// What heads a conversation's messages while it pages back: the older page's failure with Try Again, else its
+    /// spinner while it reads, else nothing. A failed page still has no rows, so it is read as failed first.
+    public enum OlderPage: Equatable, Sendable { case reading, failed }
+    public static let olderFailed = "Older messages did not load"
+
+    public static func olderPage(waiting: Bool, failed: Bool) -> OlderPage? {
+        failed ? .failed : waiting ? .reading : nil
+    }
+
     /// A reply's outcome said off its conversation (the sticky toast when he has left it), named: "Not sent to Dana Lee:
     /// TempCode left the screen". Nil while the conversation is on screen: its own field and line say it there.
     /// What a reply read back late says off its conversation: nil when it went, or nothing is known yet.

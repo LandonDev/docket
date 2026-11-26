@@ -101,7 +101,7 @@ struct WorkViewScreen: View {
                 RoutinesScreen(client: client, workspace: workspace)
             }
         } else {
-            ContentUnavailableView("Workspace Not Found", systemImage: "folder")
+            ContentUnavailableView("Job Not Found", systemImage: "folder")
         }
     }
 }

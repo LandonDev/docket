@@ -126,6 +126,12 @@ public nonisolated struct PersonPage: Codable, Hashable, Sendable {
 }
 
 public enum PeopleRules {
+    /// A read that failed over a page on screen: the kept page stays under this line with Try Again, gone once a
+    /// fresh read lands. Nil with no page (the page's own failed state says it) or no failure.
+    public static func refreshLine(kept: Bool, failing: Bool) -> String? {
+        kept && failing ? "This person did not refresh" : nil
+    }
+
     /// The page's sections, in the desktop's order; a section with nothing is not drawn.
     public enum Section: String, Sendable, Hashable, CaseIterable {
         case mail, coming, asked, waiting, shared, recent, answered

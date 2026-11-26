@@ -98,4 +98,11 @@ private func link(_ id: String, name: String, item: String, created: Int, expire
         #expect(page.coming.first?.id == "e")
         #expect(page.tasks.first?.relation == "asked")
     }
+
+    @Test func `a read that fails over a page on screen says so above it, and only then`() {
+        #expect(PeopleRules.refreshLine(kept: true, failing: true) == "This person did not refresh")
+        #expect(PeopleRules.refreshLine(kept: true, failing: false) == nil)
+        // No page: the page's own "Can’t Read This Person" says it.
+        #expect(PeopleRules.refreshLine(kept: false, failing: true) == nil)
+    }
 }
