@@ -84,6 +84,8 @@ import { sameSet, useKept } from "../lib/keptValue";
 import { archiveLinked, projectHomeNow, renameLinked } from "../lib/projectHome";
 import { sessionPrefetch } from "../lib/sessionPrefetch";
 import { useSessionMetasWhere } from "../lib/tcserver/metaSelect";
+import { useOnScreen } from "../lib/onScreen";
+import { useDocumentVisible } from "../hooks/paneVisibility";
 import { usePlanReady } from "../hooks/usePlanReady";
 import type { ProjectMeta, SessionMeta, WorkspaceMeta } from "../lib/tcserver/types";
 import { useWorkspaceCatalog, useWorkspaces, WORK_CHATS, workspaceIdOf } from "../lib/tcserver/workspaces";
@@ -867,10 +869,12 @@ export const CardNowContext = createContext<number | null>(null);
 /** A working line's elapsed: the one part of a card the second hand moves.
  *  It reads the shared second ticker while its thread runs (the half-minute
  *  one otherwise), so a tick renders this span alone, never the card. */
-function LineElapsed({ thread }: { thread: ThreadRow }) {
+function LineElapsed({ thread, seen }: { thread: ThreadRow; seen: boolean }) {
   const fixed = useContext(CardNowContext);
-  const fast = useClock(fixed === null && thread.running);
-  const slow = useSlowClock(fixed === null && !thread.running);
+  // The second hand runs only while the line can be seen (on screen or about
+  // to be, the document shown); else the half-minute one keeps its text.
+  const fast = useClock(fixed === null && thread.running && seen);
+  const slow = useSlowClock(fixed === null && !(thread.running && seen));
   const now = fixed ?? (fast || slow);
   const ms = runningElapsed(thread, now);
   return now > 0 && ms >= SHOWS_ELAPSED_MS ? <span className={LINE_TIME}>{duration(ms)}</span> : null;
@@ -913,10 +917,13 @@ const AgentsLine = memo(function AgentsLine({ summary, indent }: { summary: Agen
 
 /** One root's line: its mark, type glyph, title and host; at the end the
  *  elapsed while it works, Paused and the frozen elapsed while paused. */
-function ThreadLine({ kind, thread }: { kind: "working" | "paused" | "unread"; thread: ThreadRow }) {
+export function ThreadLine({ kind, thread }: { kind: "working" | "paused" | "unread"; thread: ThreadRow }) {
   const tasks = kind === "unread" ? null : cardTasks(thread);
+  const line = useRef<HTMLSpanElement>(null);
+  const onScreen = useOnScreen(line);
+  const page = useDocumentVisible();
   return (
-    <span className="flex min-w-0 flex-col" data-card-line={kind}>
+    <span ref={line} className="flex min-w-0 flex-col" data-card-line={kind}>
       <span className={LINE}>
         <LineMark state={kind === "unread" ? null : rowState(thread)} />
         <LineGlyph thread={thread} />
@@ -924,7 +931,7 @@ function ThreadLine({ kind, thread }: { kind: "working" | "paused" | "unread"; t
           {thread.title || "Untitled"}
         </span>
         <HostGlyph environmentId={thread.environmentId} />
-        {kind === "working" ? <LineElapsed thread={thread} /> : null}
+        {kind === "working" ? <LineElapsed thread={thread} seen={onScreen && page} /> : null}
         {kind === "paused" ? (
           <StatusMark state="paused" glyph={false} detail={duration(pausedElapsed(thread))} className="shrink-0 text-xs" />
         ) : null}
@@ -974,8 +981,11 @@ const MasterLines = memo(function MasterLines({ block }: { block: MasterBlock })
  *  reads the same): one child settling renders its line, not the block's. */
 const BatchLine = memo(function BatchLine({ thread, state, agents }: MasterBlock["lines"][number]) {
   const tasks = state === "working" ? cardTasks(thread) : null;
+  const line = useRef<HTMLSpanElement>(null);
+  const onScreen = useOnScreen(line);
+  const page = useDocumentVisible();
   return (
-    <span className="flex min-w-0 flex-col pl-4">
+    <span ref={line} className="flex min-w-0 flex-col pl-4">
       <span className={LINE}>
         <LineMark state={state} still />
         <LineGlyph thread={thread} />
@@ -986,7 +996,7 @@ const BatchLine = memo(function BatchLine({ thread, state, agents }: MasterBlock
             {tasks.done}/{tasks.total}
           </span>
         ) : state === "working" ? (
-          <LineElapsed thread={thread} />
+          <LineElapsed thread={thread} seen={onScreen && page} />
         ) : null}
       </span>
       {agents ? <AgentsLine summary={agents} indent="pl-10" /> : null}

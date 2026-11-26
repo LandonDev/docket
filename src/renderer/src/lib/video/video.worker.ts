@@ -104,6 +104,7 @@ function close(stream: number): void {
   const entry = players.get(stream);
   if (!entry) return;
   players.delete(stream);
+  pace();
   stopTimer(entry);
   entry.player.close();
 }
@@ -120,6 +121,7 @@ function open(stream: number, url: string, drive: boolean): void {
     closed: (code, fault) => {
       if (players.get(stream) !== entry) return;
       players.delete(stream);
+      pace();
       stopTimer(entry);
       const now = performance.now();
       if (code === VIDEO_CLOSE.slow) health.slowClose(now);
@@ -129,6 +131,7 @@ function open(stream: number, url: string, drive: boolean): void {
   const now = performance.now();
   const entry: Playing = { player, drive, counted: 0, at: now, health, readingAt: now, readingFrames: 0 };
   players.set(stream, entry);
+  pace();
   for (const surface of surfaces.values()) if (surface.stream === stream) player.show(surface);
 }
 
@@ -161,7 +164,8 @@ scope.onmessage = (event: MessageEvent<ToWorker>) => {
   }
 };
 
-setInterval(() => {
+/** The counts and the readings, every COUNT_MS and READING_MS while a player lives. */
+const countAll = () => {
   const now = performance.now();
   for (const [stream, entry] of [...players]) {
     entry.player.check(now);
@@ -175,9 +179,9 @@ setInterval(() => {
     entry.counted = frames;
     entry.at = now;
   }
-}, COUNT_MS);
+};
 
-setInterval(() => {
+const readAll = () => {
   const now = performance.now();
   for (const [stream, entry] of players) {
     const frames = entry.player.frames;
@@ -187,4 +191,14 @@ setInterval(() => {
     entry.readingFrames = frames;
     entry.player.ping(now);
   }
-}, READING_MS);
+};
+
+/** The two intervals run while a stream plays: they start with the first player and stop with the last. */
+let pacing: ReturnType<typeof setInterval>[] = [];
+function pace(): void {
+  if (players.size > 0 && pacing.length === 0) pacing = [setInterval(countAll, COUNT_MS), setInterval(readAll, READING_MS)];
+  else if (players.size === 0 && pacing.length > 0) {
+    for (const timer of pacing) clearInterval(timer);
+    pacing = [];
+  }
+}
