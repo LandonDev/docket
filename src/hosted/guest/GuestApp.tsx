@@ -1,7 +1,8 @@
-import { createElement, lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { createElement, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@renderer/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@renderer/components/ui/empty";
 import { Skeleton } from "@renderer/components/ui/skeleton";
+import { Spinner } from "@renderer/components/ui/spinner";
 import { ArrowLeft, RefreshCw } from "@renderer/chrome/icons";
 import { Doc, Project, Table } from "@renderer/work/icons";
 import { Face } from "@renderer/work/mail/face";
@@ -129,6 +130,18 @@ export function GuestApp() {
   // The line's first place, before the glyph: a task's way back goes there, where a document's does.
   const [lead, setLead] = useState<HTMLElement | null>(null);
   const back = useCallback(() => setChild(null), []);
+  // The project stays under a document or sheet it opened: going back gives the focus to the row that opened it.
+  const opener = useRef<HTMLElement | null>(null);
+  const open = useCallback((item: ChildItem & { title: string }) => {
+    opener.current = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    setChild(item);
+  }, []);
+  useEffect(() => {
+    if (child || !opener.current) return;
+    const to = opener.current;
+    opener.current = null;
+    if (to.isConnected) to.focus();
+  }, [child]);
   // A document or sheet the project no longer lists is closed at the page's next read: its socket is already shut.
   const shown = useCallback((p: GuestProjection) => setChild((open) => (open && !projectionLists(p, open.table, open.id) ? null : open)), []);
 
@@ -185,7 +198,7 @@ export function GuestApp() {
           <Suspense fallback={<Bones />}>
             {opened.kind === "project" ? (
               <>
-                <ProjectPage session={session!} opened={opened} slot={slot} lead={lead} hidden={!!child} onOpen={setChild} onShown={shown} onGone={gone} />
+                <ProjectPage session={session!} opened={opened} slot={slot} lead={lead} hidden={!!child} onOpen={open} onShown={shown} onGone={gone} />
                 {child ? <ChildPage key={`${child.table}:${child.id}`} session={session!} item={child} onBack={back} onGone={gone} /> : null}
               </>
             ) : opened.kind === "doc" ? (
@@ -211,6 +224,8 @@ export function GuestApp() {
 function ChildPage({ session, item, onBack, onGone }: { session: Session; item: ChildItem; onBack(): void; onGone(): void }) {
   const own = useMemo(() => session.child(item), [session, item]);
   const [got, setGot] = useState<{ opened: Opened } | { failed: true } | null>(null);
+  // Retry keeps the failure in view, its press spinning, until the read answers.
+  const [retrying, setRetrying] = useState(false);
   // Gone: the link itself may have ended. The project's own answer says which, at once.
   const left = useCallback(() => void session.refresh().then(onBack, (err: unknown) => (err instanceof OpenFailed && err.why === "gone" ? onGone() : onBack())), [session, onBack, onGone]);
   const load = useCallback(
@@ -224,6 +239,16 @@ function ChildPage({ session, item, onBack, onGone }: { session: Session; item: 
     },
     [own, left],
   );
+  const retry = (): void => {
+    setRetrying(true);
+    void own
+      .refresh()
+      .then(
+        (opened) => setGot({ opened }),
+        (err: unknown) => (err instanceof OpenFailed && err.why === "gone" ? left() : setGot({ failed: true })),
+      )
+      .finally(() => setRetrying(false));
+  };
   useEffect(() => load(), [load]);
   // Escape goes back to the project, as from a task's page; never from a field, a dialog or a menu that takes it.
   useEffect(() => {
@@ -257,8 +282,9 @@ function ChildPage({ session, item, onBack, onGone }: { session: Session; item: 
             <EmptyTitle>{isDoc ? "Couldn't open this document" : "Couldn't open this sheet"}</EmptyTitle>
             <EmptyDescription>Try again in a minute.</EmptyDescription>
           </EmptyHeader>
-          <Button variant="secondary" size="sm" onClick={() => load()}>
-            <RefreshCw />
+          {/* The spinner stands in the glyph's place, so the press keeps its width, as the page's own Retry looks. */}
+          <Button variant="secondary" size="sm" disabled={retrying} aria-busy={retrying || undefined} onClick={retry}>
+            {retrying ? <Spinner aria-hidden /> : <RefreshCw />}
             Retry
           </Button>
         </Empty>

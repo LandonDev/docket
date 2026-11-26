@@ -53,6 +53,16 @@ describe("a tab's name among tabs that share a start", () => {
     expect(end.getAttribute("aria-hidden")).toBe("true");
   });
 
+  it("is drawn whole when 5.5rem holds it, even beside a name it shares a start with (council R2-C1)", () => {
+    render(
+      <button role="tab">
+        <TabName name="Sponsors" keep={7} titleRef={() => undefined} />
+      </button>,
+    );
+    expect(screen.getByRole("tab", { name: "Sponsors" }).querySelector("[data-middle-cut]")).toBeNull();
+    expect(screen.getByText("Sponsors").className.split(" ")).toContain("truncate");
+  });
+
   it("is cut at its end when nothing is shared", () => {
     render(
       <button role="tab">

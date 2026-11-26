@@ -374,7 +374,7 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
         <div className="flex min-h-[360px] w-[440px] max-w-full">
           <Empty>
             <EmptyHeader>
-              <EmptyTitle>{`${current?.label ?? "File"} preview failed.`}</EmptyTitle>
+              <EmptyTitle>{current?.label ? `Couldn't draw it as ${current.label}` : "Couldn't draw the preview"}</EmptyTitle>
               {why ? <EmptyDescription>{why}</EmptyDescription> : null}
             </EmptyHeader>
             {wake ? (
@@ -509,7 +509,8 @@ export function Preview({ source, title, kind, initial, readOnly, onClose, pageR
         )}
         <span aria-hidden="true" className="mx-1.5 h-4 w-px shrink-0 bg-border" />
         <FormatControl formats={source.formats} value={formatId} onPick={pick} tight={tightProp} />
-        {paged && !tiny ? <ZoomMenu zoom={zoom} onZoom={setZoom} /> : null}
+        {/* Over a failure there are no pages to zoom: no press (the zoom chosen stays for the next picture). */}
+        {paged && !tiny && draw.status !== "failed" ? <ZoomMenu zoom={zoom} onZoom={setZoom} /> : null}
         {picture?.kind === "paged" && place ? (
           // The count gives way before the verb: on a bar too narrow for both it wraps to a second line the bar never
           // shows, behind an empty first item that keeps the first line.

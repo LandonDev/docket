@@ -376,9 +376,10 @@ tab closes both. The side follows a rename, lets go of a file that went to
 Trash or whose item was closed another way, is kept through the boot
 check, and a remote key is told of no side it could not name. Each half
 keeps at least 320px (`sideWidth`); where the body has no room for two the
-side lies over the tab's own file. A file on another computer is refused
-at the side as in the seat. A document's History takes the same seat while
-it is open (work-history.md "The canvas").
+side lies over the tab's own file; Escape closes the side or History lying
+over it, and the file takes the focus back (files/escapeOver.ts). A file on
+another computer is refused at the side as in the seat. A document's History
+takes the same seat while it is open (work-history.md "The canvas").
 
 **Drag out.** Rows that are all files lying on this computer (the window's
 own machine, never the Windows VM; a file others can open only where the
@@ -1927,6 +1928,10 @@ A row leaves when:
 - a verb renames, moves or deletes it: `renameName` and `dropName` (the rows
   under a folder go, and come back when it is listed), for the verbs to call;
 - the workspace is deleted.
+
+Escape from Go to's or Search's field gives the focus back to what opened it,
+else to the bar's press of the same name (`closedBack`, files/GoTo.tsx); a
+press elsewhere that closes the field leaves the focus where it landed.
 
 **Go to** (`names {text}`) answers 20 rows at once from the database, never a
 walk and never a call to the Windows VM: the open tabs and recents that hold

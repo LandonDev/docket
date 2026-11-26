@@ -124,8 +124,10 @@ export interface SavedFacts {
  * The line under a file's name for a sheet. A file he cannot change says why; a save that failed says so, with its
  * press (an opened Excel file refuses for good, so its grid is loaded again; elsewhere the edits wait and are sent
  * again); edits on their way are "saving"; else everything is in the file, since his last edit when he has made one.
+ * Before he edits it says nothing, as a document does, and the frame names where the file is kept ("In Events"): no
+ * save was made, so none is said. An import says where his edits will go from the first ("Saved in the Excel copy").
  */
-export function savedLine(view: Pick<SheetView, "name" | "store" | "missing" | "readOnly" | "saveError" | "imported">, sendError: string | null, saving: boolean, savedAt: number | null): SavedFacts {
+export function savedLine(view: Pick<SheetView, "name" | "store" | "missing" | "readOnly" | "saveError" | "imported">, sendError: string | null, saving: boolean, savedAt: number | null): SavedFacts | null {
   if (view.missing) return { state: "conflict", detail: MOVED, again: "Keep Both" };
   if (view.readOnly !== undefined) return { state: "readonly", detail: view.readOnly };
   const failed = sendError ?? view.saveError;
@@ -136,6 +138,6 @@ export function savedLine(view: Pick<SheetView, "name" | "store" | "missing" | "
   }
   if (saving) return { state: "saving" };
   // An .xls, .ods or .tsv is untouched until Save back: what saved is its Excel copy, and the line says so.
-  const where = view.imported ? { where: "the Excel copy" } : {};
-  return savedAt ? { state: "saved", at: savedAt, ...where } : { state: "saved", ...where };
+  if (view.imported) return savedAt ? { state: "saved", at: savedAt, where: "the Excel copy" } : { state: "saved", where: "the Excel copy" };
+  return savedAt ? { state: "saved", at: savedAt } : null;
 }

@@ -201,8 +201,8 @@ describe("a deck's open box", () => {
     expect(line).toMatchObject({ state: "conflict", detail: "Not saved. No room.", actions: [{ id: "retry", label: "Retry" }] });
     // Retry sends them over the notes as the deck has them now, and the line is saved again.
     host.edit = edit;
-    line.actions![0].run();
-    await vi.waitFor(() => expect(session.saved(() => undefined).state).toBe("saved"));
+    line!.actions![0].run();
+    await vi.waitFor(() => expect(session.saved(() => undefined)?.state).toBe("saved"));
     expect(host.view.slides[0].notes).toBe("Thank the sponsors");
     await before.s.settled();
     expect(await before.kept()).toEqual([]);

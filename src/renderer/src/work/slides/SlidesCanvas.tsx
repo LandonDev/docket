@@ -35,6 +35,7 @@ import { Manipulate, movable, turnable, type ManipulateHandle, type Movable } fr
 import { CONFLICT_WORD, HandSession, SHAPE_GONE, unsavedOf, type HandState, type Mark, type Start } from "./edit/session";
 import { Prompt, TypingBox } from "./edit/TypingBox";
 import { NotesField, notesCut } from "./edit/NotesField";
+import { useTellAgain } from "./tellAgain";
 import { askAnchor, groundOf, HANDLE, inkOn, HANDLE_EDGE, hit, KIND_WORDS, pickable, ROTATE_HANDLE, selectionOf, shapeLabel, textFrameOf, type Quad } from "./geometry";
 import { SectionName } from "./edit/SectionName";
 import { newSlideAfter, sayWaits, type NameAsk } from "./edit/slides";
@@ -864,6 +865,10 @@ function Main({
   const pick = (shape: DeckShape, el: HTMLElement): void => {
     told.current = shape.id;
     session.pick(slide.key, shape.id);
+    tell(shape, el);
+  };
+  /** Ask's chip for the picked shape, anchored under the slide's lower right as the stage stands now. */
+  const tell = (shape: DeckShape, el: HTMLElement): void => {
     const words = shape.text.replace(/\s+/g, " ").trim();
     const short = words.length > 40 ? `${words.slice(0, 40).trimEnd()}…` : words;
     // A shape with no words is named by what it is.
@@ -930,6 +935,12 @@ function Main({
     wasTyping.current = typingHere;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typingHere]);
+  // The bar's anchor is a point on the screen: when the stage grows, shrinks or moves (the window, a sash, the dock), it is
+  // told again, so the bar stays under the slide's lower right and never over a shape (docs/DESIGN.md "The floating bar").
+  useTellAgain(selected && !typingHere ? `${selected.id}:${w}:${h}` : null, () => {
+    const el = selected && buttonOf(selected.id);
+    if (el && told.current === selected.id) tell(selected, el);
+  });
   /** A second press on a picked text shape, Return or F2 on it: his words go in a box over it (a table's: the cell pressed, else its first). */
   const openBox = (shape: DeckShape, start: Start): boolean => {
     const stage = layer.current?.getBoundingClientRect();

@@ -131,9 +131,10 @@ describe("words in an open box reach the file while he types", () => {
     try {
       const { host, session, slide, shape } = setUp();
       session.open(slide, shape, "end");
-      expect(session.saved(() => undefined).state).toBe("saved");
+      // Nothing was saved yet, so nothing is said (council R2-D4).
+      expect(session.saved(() => undefined)).toBeNull();
       type(session, " today");
-      expect(session.saved(() => undefined).state).toBe("saving");
+      expect(session.saved(() => undefined)?.state).toBe("saving");
       expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(0);
       await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
       expect(host.calls.filter(([name]) => name === "edit")).toHaveLength(1);
@@ -458,7 +459,7 @@ describe("a close while the box's words are on their way", () => {
     const copied: string[] = [];
     const line = session.saved(() => undefined, () => void copied.push(session.draftWords()));
     expect(line).toMatchObject({ state: "conflict", actions: [{ id: "copy", label: "Copy words" }] });
-    line.actions![0].run();
+    line!.actions![0].run();
     expect(copied).toEqual(["Who comes today"]);
   });
 
@@ -536,7 +537,7 @@ describe("a close while the box's words are on their way", () => {
       const box = session.get().box!;
       expect(box.phase).toBe("typing");
       expect(JSON.stringify(box.initial)).toBe(JSON.stringify(box.model));
-      expect(session.saved(() => undefined).state).toBe("saved");
+      expect(session.saved(() => undefined)?.state).toBe("saved");
       void session.commit();
       await session.flush();
       expect(sentEdits(host)).toHaveLength(1);

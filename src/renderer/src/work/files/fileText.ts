@@ -94,13 +94,19 @@ export function savedWords(line: SavedLine, where: string | null, now = Date.now
 }
 
 /**
+ * A computer's name at a line's head, from its mid-line form (`nameInLine`): "the box" and "this Mac" are raised again,
+ * and any other name keeps its own letters, so "tempcode-box" is never "Tempcode-box" a press from where it is not.
+ */
+export const headName = (name: string): string => (/^(the|this) /.test(name) ? `${name[0]!.toUpperCase()}${name.slice(1)}` : name);
+
+/**
  * A kind's Offline, in the frame, names the computer whose link dropped (`host`, mid-line as `nameInLine` writes it):
  * "The box is not answering. Changes wait here", as every other line of the family does, with no count (the text
  * kind counts keystrokes). Any other line stands, and so does an Offline whose computer this window cannot name.
  */
 export function offlineNamed<L extends SavedLine & { words?: string }>(line: L | null, host: string | undefined): L | null {
   if (line?.state !== "offline" || line.words || !host) return line;
-  return { ...line, words: `${host[0]!.toUpperCase()}${host.slice(1)} is not answering. Changes wait here` };
+  return { ...line, words: `${headName(host)} is not answering. Changes wait here` };
 }
 
 /**
@@ -169,10 +175,10 @@ export function copyLine(kind: SavedLine | null, back: CopyBack, host: string, n
     case "gone":
       return { state: "conflict", words: `This file was moved or deleted on ${host}` };
     case "away":
-      return { state: "offline", words: `${host[0]!.toUpperCase()}${host.slice(1)} is not answering. Changes wait here`, needs: true };
+      return { state: "offline", words: `${headName(host)} is not answering. Changes wait here`, needs: true };
     case "refused": {
       const why = back.detail?.trim().replace(/\.$/, "");
-      const who = `${host[0]!.toUpperCase()}${host.slice(1)}`;
+      const who = headName(host);
       return { state: "conflict", words: why ? `${who} refused the save. ${why[0]!.toUpperCase()}${why.slice(1)}` : `${who} refused the save` };
     }
     default:
@@ -188,7 +194,7 @@ export function copyLine(kind: SavedLine | null, back: CopyBack, host: string, n
 
 /** Why an upload is late, as the line says it, with what he can do about it. */
 const LATE_WHY: Record<NonNullable<CloudBack["why"]> | "paused", (computer: string) => string> = {
-  asleep: (computer) => `${computer[0]!.toUpperCase()}${computer.slice(1)} is asleep. It uploads when it wakes`,
+  asleep: (computer) => `${headName(computer)} is asleep. It uploads when it wakes`,
   stopped: (computer) => `OneDrive is not running on ${computer}. Start it there`,
   "signed-out": (computer) => `OneDrive is signed out on ${computer}. Sign in there`,
   paused: (computer) => `OneDrive on ${computer} may be paused. Resume it there`,

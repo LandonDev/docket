@@ -38,7 +38,9 @@ describe("the saved line", () => {
   const view = { name: "Budget.xlsx", store: "package" as const };
 
   it("says saved, with the time of his last edit once he has made one, and saving while one is on its way", () => {
-    expect(savedLine(view, null, false, null)).toEqual({ state: "saved" });
+    // Before he edits, no save was made: nothing is said, and the frame names where the file is kept (council R2-D1).
+    expect(savedLine(view, null, false, null)).toBeNull();
+    expect(savedLine({ ...view, imported: { format: "xls", name: "Ledger.xls" } }, null, false, null)).toEqual({ state: "saved", where: "the Excel copy" });
     expect(savedLine(view, null, false, 1_700_000_000_000)).toEqual({ state: "saved", at: 1_700_000_000_000 });
     expect(savedLine(view, null, true, 1_700_000_000_000)).toEqual({ state: "saving" });
   });

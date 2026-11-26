@@ -552,7 +552,9 @@ google/grid.test.ts, sheets/host/host.test.ts, sheets/SheetBody.dom.test.tsx
 ## Other formats in
 
 The save line (`savedLine`, sheets/model.ts) names the Excel copy where a view is `imported` ("Saved 3:04 PM in
-the Excel copy"): the .xls, .ods or .tsv the tab names is unchanged until Save back. A failed send on a .tcsheet,
+the Excel copy"): the .xls, .ods or .tsv the tab names is unchanged until Save back. Any other sheet says no save
+line before his first edit (no save was made), and the frame names where the file is kept ("In Events"), as a
+document does; a deck's line reads the same way (slides/edit/session.ts `saved`). A failed send on a .tcsheet,
 a CSV or a LifeOS sheet is "Not saved." and the host's reason with Retry where the host refused it, and Offline
 only where the link dropped or the host did not answer (`linkDropped`, files/fileText.ts); the text file's line
 reads the same way (fileSession.ts). The pane's "Couldn't save" state line is marked `saving`, so a Files tab

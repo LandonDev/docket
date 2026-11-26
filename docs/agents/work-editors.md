@@ -160,7 +160,7 @@ interface PreviewSource {
 - **`PreviewBytes`** is one finished render read by range: `rev` names it and
   every read is of that render. A kind keeps its renders by content hash on
   the host that holds the file and reads them from that host.
-- A failed draw shows "Word preview failed." (the selected format's name)
+- A failed draw shows "Couldn't draw it as Word" (the selected format's name)
   and under it the reason in Work's words (`useFailedWords`, naming the
   computer). Retry draws again. When the draw failed because the Windows VM
   is asleep and the format's app can be asked (`office` answers `asleep`),

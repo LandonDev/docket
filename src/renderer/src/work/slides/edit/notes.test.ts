@@ -14,7 +14,7 @@ function setUp(notes = "Say hello") {
   store.view(view);
   const session = new HandSession(host, store);
   const edits = () => host.calls.filter(([name]) => name === "edit").map(([, ops]) => ops);
-  const line = () => session.saved(() => undefined).state;
+  const line = () => session.saved(() => undefined)?.state;
   return { host, store, session, edits, line };
 }
 
@@ -102,9 +102,9 @@ describe("notes he types", () => {
     await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS * 2);
     expect(edits()).toHaveLength(1);
     expect(session.pendingNotes(3)).toBe("Mine, more");
-    expect(session.saved(() => undefined).state).toBe("conflict");
+    expect(session.saved(() => undefined)?.state).toBe("conflict");
     // Replace writes them over the notes as they are now, the other save kept in the deck's versions.
-    session.saved(() => undefined).actions!.find((a) => a.id === "replace")!.run();
+    session.saved(() => undefined)!.actions!.find((a) => a.id === "replace")!.run();
     await vi.waitFor(() => expect(edits().at(-1)).toEqual([{ op: "notes", slide: 3, text: "Mine, more", was: "Changed in PowerPoint" }]));
     await vi.waitFor(() => expect(session.notesPending(3)).toBe(false));
   });
@@ -117,11 +117,12 @@ describe("notes he types", () => {
     await session.keepNotes();
     host.refuse = undefined;
     const reloads = session.get().notesReload ?? 0;
-    session.saved(() => undefined).actions!.find((a) => a.id === "reload")!.run();
+    session.saved(() => undefined)!.actions!.find((a) => a.id === "reload")!.run();
     await vi.waitFor(() => expect(session.notesPending(3)).toBe(false));
     expect(session.pendingNotes(3)).toBeNull();
     expect(session.get().notesReload).toBe(reloads + 1);
-    expect(session.saved(() => undefined).state).toBe("saved");
+    // Nothing of his was saved: the line says nothing.
+    expect(session.saved(() => undefined)).toBeNull();
     await session.flush();
     expect(edits()).toHaveLength(1);
   });
@@ -135,16 +136,16 @@ describe("notes he types", () => {
     expect(await session.keepNotes()).toBe(false);
     host.refuse = undefined;
     expect(session.saved(() => undefined).detail).toBe("Notes on slide 3 changed while you typed");
-    session.saved(() => undefined).actions!.find((a) => a.id === "reload")!.run();
+    session.saved(() => undefined)!.actions!.find((a) => a.id === "reload")!.run();
     await vi.waitFor(() => expect(session.notesPending(3)).toBe(false));
     // Slide 5's words stay in its field, and the line now names it.
     expect(session.pendingNotes(5)).toBe("Mine on five");
     expect(session.saved(() => undefined)).toMatchObject({ state: "conflict", detail: "Notes on slide 5 changed while you typed" });
     const now = store.get().view!.slides.find((s) => s.id === 5)!.notes;
-    session.saved(() => undefined).actions!.find((a) => a.id === "replace")!.run();
+    session.saved(() => undefined)!.actions!.find((a) => a.id === "replace")!.run();
     await vi.waitFor(() => expect(session.notesPending(5)).toBe(false));
     expect(edits().slice(2)).toEqual([[{ op: "notes", slide: 5, text: "Mine on five", was: now }]]);
-    expect(session.saved(() => undefined).state).toBe("saved");
+    expect(session.saved(() => undefined)?.state).toBe("saved");
   });
 
   it("refused on one slide stay that slide's when he types in another's: the field, the line and Retry keep them", async () => {
@@ -157,9 +158,9 @@ describe("notes he types", () => {
     expect(session.pendingNotes(3)).toBe("Thank the sponsors");
     expect(session.saved(() => undefined)).toMatchObject({ state: "conflict", detail: "Not saved. No room.", actions: [{ id: "retry" }] });
     // His key on slide 5 cleared only slide 5's: Retry sends slide 3's, and slide 5's go with the pause.
-    session.saved(() => undefined).actions![0].run();
+    session.saved(() => undefined)!.actions![0].run();
     await vi.advanceTimersByTimeAsync(TYPING_SAVE_MS);
-    await vi.waitFor(() => expect(session.saved(() => undefined).state).toBe("saved"));
+    await vi.waitFor(() => expect(session.saved(() => undefined)?.state).toBe("saved"));
     expect(edits().slice(1)).toEqual(expect.arrayContaining([[{ op: "notes", slide: 3, text: "Thank the sponsors", was: "Say hello" }], [{ op: "notes", slide: 5, text: "Five", was: "" }]]));
     expect(session.notesPending(3)).toBe(false);
   });

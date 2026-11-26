@@ -37,6 +37,9 @@ export const lastWord = (name: string): number | null => {
 /** Whether `keep` cuts `text` in its middle: something before it and something after. */
 export const cutsMiddle = (text: string, keep: number | null | undefined): keep is number => keep != null && keep > 0 && keep < text.length;
 
+/** The letters a tab's 5.5rem of name holds whole at the tab's type. */
+const WHOLE_IN_TAB = 12;
+
 /**
  * A tab's name in Files' row (files/TabRow.tsx) and the canvas tab row (CanvasTabs.tsx) alike. Squeezed under the room
  * of one letter and its ellipsis, the name gives way whole, and the tab is its glyph alone (docs/DESIGN.md "Spacing":
@@ -46,16 +49,19 @@ export const cutsMiddle = (text: string, keep: number | null | undefined): keep 
  * With `keep` (tabShrink.ts `tabEnds`: open tabs share a start) the name is cut in its middle (`MiddleCut`).
  */
 export function TabName({ name, keep = null, titleRef }: { name: string; keep?: number | null; titleRef: (el: HTMLElement | null) => void }) {
+  // A name 5.5rem holds whole is drawn whole: its middle cut would hide its start in a tab no wider than itself, and
+  // "Sponsors" beside "Sponsor deck.pptx" would read "s".
+  const cut = name.length > WHOLE_IN_TAB && cutsMiddle(name, keep);
   return (
     <span
       data-tab-name={name}
       className="grid min-w-0 before:invisible before:col-start-1 before:row-start-1 before:h-0 before:overflow-hidden before:whitespace-nowrap before:content-[attr(data-tab-name)]"
     >
       <span className="@container/tab-name col-start-1 row-start-1 min-w-0">
-        {cutsMiddle(name, keep) ? (
+        {cut ? (
           // Under 5.5rem a start's ellipsis would leave the end a sliver: the end alone is drawn, cut at its own end, so
           // a 128px tab (70px of name) reads "Pages.pdf" whole, never "T…Page…".
-          <MiddleCut ref={titleRef} text={name} keep={keep} className="@max-[1.25rem]/tab-name:sr-only" startClass="@max-[5.5rem]/tab-name:hidden" endClass="@max-[5.5rem]/tab-name:max-w-full" />
+          <MiddleCut ref={titleRef} text={name} keep={keep!} className="@max-[1.25rem]/tab-name:sr-only" startClass="@max-[5.5rem]/tab-name:hidden" endClass="@max-[5.5rem]/tab-name:max-w-full" />
         ) : (
           <span ref={titleRef} className="block min-w-0 truncate @max-[1.25rem]/tab-name:sr-only">
             {name}

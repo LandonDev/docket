@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CanvasSource } from "@shared/work";
 import { refKey, type FileEntry } from "@shared/work/files";
 import { formatForFile, formatOf, SAVE_AS_FORMATS, saveAsName, saveAsOutcome, savesLinked, type SaveAsFormat, type SavedAs } from "@shared/work/saveAs";
@@ -11,6 +11,7 @@ import { Button } from "../../components/ui/button";
 import { Checkbox } from "../../components/ui/checkbox";
 import { GroupInput, InputGroup } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../../components/ui/tooltip";
 import { loadToast } from "../../components/ui/toaster";
 import { registry } from "../../lib/connection";
 import { nameInLine } from "../../lib/hostWords";
@@ -216,10 +217,42 @@ export function SaveAsDialog({ workspace, source, title, itemId, format: asked }
           ) : null
         }
         // Two lines at most, within the buttons' height: where the file will live is read whole, not cut mid-word.
-        note={<span data-save-as-outcome className="line-clamp-2 min-w-0 text-xs leading-4 whitespace-normal text-muted-foreground">{saveAsOutcome({ name, place: at?.folder.name ?? null, link })}</span>}
+        note={<Outcome words={saveAsOutcome({ name, place: at?.folder.name ?? null, link })} />}
         onConfirm={() => void save()}
       />
     </Modal>
+  );
+}
+
+/**
+ * Where the file will live, two lines at most within the buttons' height, read whole, never cut mid-word. A narrow
+ * sheet can still cut it: then it is the whole line on hover and on focus (Tab reaches it only while cut).
+ */
+export function Outcome({ words }: { words: string }) {
+  const [el, ref] = useState<HTMLSpanElement | null>(null);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    if (!el) return;
+    const measure = () => setCut(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el, words]);
+  const line = (
+    <span ref={ref} data-save-as-outcome tabIndex={cut ? 0 : undefined} className="line-clamp-2 min-w-0 rounded-sm text-xs leading-4 whitespace-normal text-muted-foreground">
+      {words}
+    </span>
+  );
+  if (!cut) return line;
+  return (
+    <Tooltip>
+      <TooltipTrigger render={line} />
+      <TooltipContent>
+        <span className="min-w-0 break-words">{words}</span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 

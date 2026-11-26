@@ -46,6 +46,7 @@ import { importLosses } from "../formats/importOnce";
 import { canvasFlushPort } from "../../lib/canvasFlushPort";
 import { saveKeyPort } from "../../lib/saveKey";
 import { NameField, useSideOver } from "./rowParts";
+import { useEscapeOver } from "./escapeOver";
 import { cloudLine, cloudOfBack, copyBackDue, copyLine, isCopyBack, newestBack, offlineNamed, staysLine, type CopyAsk, type HeaderLine } from "./fileText";
 import { FolderLink, HEAD_NARROW, LINK_ROOM, SaveActions, SaveLine, TUCKED, tuckedRows } from "./SaveLine";
 import { SidePane, SideSash, sideWidth } from "./SideFile";
@@ -373,6 +374,7 @@ export function FileTabView({
       : null;
   const sideW = beside ? sideWidth(filesRoom, sideKept) : 0;
   const sideOver = !!beside && sideW === 0 && room > 0;
+  const main = useRef<HTMLDivElement>(null);
   const dropSide = useSideOver() === tab.id;
   const name = tab.name || item?.title || "File";
   // Reload read the file into the copy: the kind draws it again from the start.
@@ -571,20 +573,9 @@ export function FileTabView({
   // A switch says its own wait; the guest's bar is not drawn over a body it is leaving or has not reached.
   const liveProgress = live && liveState && !switching && liveState.stage !== "ready" && !liveState.failed ? STAGE_SHARE[liveState.stage] : null;
   const [renaming, setRenaming] = useState(false);
-  // History lying over the file (no room for the two side by side) is what Escape closes first, as a sheet over it would.
-  const historyOver = !!historyItem && sideOver && !(docked && shape.over);
-  // Escape closes that History, else leaves the full window, unless a menu, a dialog or the thing holding the key took it first.
-  useEffect(() => {
-    if (!full && !historyOver) return;
-    const onKey = (event: globalThis.KeyboardEvent): void => {
-      if (event.key !== "Escape" || event.defaultPrevented || (event.target as HTMLElement | null)?.closest?.('[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"]')) return;
-      if (!historyOver) return setFull(false);
-      event.preventDefault();
-      onCloseHistory?.();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [full, historyOver, onCloseHistory]);
+  // History or a second file lying over the file (no room for the two side by side) is what Escape closes first.
+  const sideOnTop = sideOver && !(docked && shape.over);
+  useEscapeOver({ full, onTop: sideOnTop, close: beside?.close, leaveFull: () => setFull(false), main });
   const canRename = !!manage && verbs.some((row) => row.act === "rename" && !row.refused);
   return (
     <div
@@ -650,7 +641,7 @@ export function FileTabView({
       />
       <div ref={body} data-files-body className="relative flex min-h-0 min-w-0 flex-1">
         {/* Under the chat that lies over it, the file takes no focus. */}
-        <div data-files-main tabIndex={-1} inert={(docked && shape.over) || sideOver || undefined} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none">
+        <div ref={main} data-files-main tabIndex={-1} inert={(docked && shape.over) || sideOver || undefined} className="flex min-h-0 min-w-0 flex-1 flex-col outline-none">
           {item && live ? (
             <LiveBody itemId={item.id} ask={live.url} app={live.app} covered={(docked && shape.over) || sideOver || dropSide} full={full} />
           ) : item ? (

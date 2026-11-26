@@ -33,6 +33,13 @@ describe("the line of a copy that saves back", () => {
     expect(on({ is: "refused" })).toBe("This Mac refused the save");
   });
 
+  /** Council R2-C2: "Tempcode-box is not answering" beside "tempcode-box did not answer" a press away. */
+  it("keeps a computer's own lower-case name at a line's head", () => {
+    expect(copyLine({ state: "saved" }, { is: "away" }, "tempcode-box", NOW).words).toBe("tempcode-box is not answering. Changes wait here");
+    expect(copyLine({ state: "saved" }, { is: "refused" }, "tempcode-box", NOW).words).toBe("tempcode-box refused the save");
+    expect(copyLine({ state: "saved" }, { is: "away" }, "the box", NOW).words).toBe("The box is not answering. Changes wait here");
+  });
+
   it("never reads as saved while his window's ask is unanswered, and says the host's refusal of it", () => {
     expect(copyLine({ state: "saved", at: AT }, { is: "ok", at: AT - 60_000 }, "the Windows VM", NOW, { owed: true }).words).toBe("Saving to the Windows VM…");
     expect(copyLine({ state: "saved" }, { is: "ok" }, "MacBook", NOW, { owed: true }).state).toBe("saving");

@@ -1002,7 +1002,7 @@ export class HandSession {
    * What saved means now, for a file's save line (FILES-SEAM.md "Save state"). `saving` is canvas/calm.ts's answer
    * over `unsaved()`: words in the box inside its pause, and a send out less than 600 ms, keep the last Saved line.
    */
-  saved(reload: () => void, copy?: () => void, saving = this.busyOrTyped()): { state: "saved" | "saving" | "conflict"; at?: number; detail?: string; actions?: Array<{ id: string; label: string; run(): void }> } {
+  saved(reload: () => void, copy?: () => void, saving = this.busyOrTyped()): { state: "saved" | "saving" | "conflict"; at?: number; detail?: string; actions?: Array<{ id: string; label: string; run(): void }> } | null {
     const { savedAt, failure, offer } = this.state;
     if (offer) {
       const when = whenWords(offer.at);
@@ -1025,7 +1025,8 @@ export class HandSession {
       return { state: "conflict", detail: notesFailure, actions: [{ id: "replace", label: "Replace", run: () => void this.retryNotes(notesConflict) }, { id: "reload", label: "Reload", run: () => void this.reloadNotes(notesConflict) }] };
     if (notesFailure) return { state: "conflict", detail: notSavedWords(notesFailure), actions: [{ id: "retry", label: "Retry", run: () => void this.retryNotes() }] };
     if (saving) return { state: "saving" };
-    return savedAt ? { state: "saved", at: savedAt } : { state: "saved" };
+    // Before he edits, no save was made: nothing is said, as a document does, and the frame names where the file is kept.
+    return savedAt ? { state: "saved", at: savedAt } : null;
   }
 
   /** With no clock asked: anything not written yet. */

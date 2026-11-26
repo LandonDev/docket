@@ -446,6 +446,18 @@ describe("the floating bar", () => {
     await found("[data-slide-typing]");
     expect(selections.at(-1)).toBeNull();
   });
+  /** Council R2-D2: the bar stayed where the slide's corner was when he picked, after the window grew. */
+  it("follows the slide's corner when the window changes its size", async () => {
+    const { press } = await stage();
+    const stageEl = document.querySelector<HTMLElement>("[data-slides-stage]")!;
+    const box = (right: number, bottom: number) => ({ left: right - 600, top: bottom - 337.5, width: 600, height: 337.5, right, bottom, x: right - 600, y: bottom - 337.5, toJSON: () => ({}) }) as DOMRect;
+    stageEl.getBoundingClientRect = () => box(800, 437.5);
+    press(0.5, 0.2);
+    stageEl.getBoundingClientRect = () => box(1200, 500);
+    act(() => void window.dispatchEvent(new Event("resize")));
+    const fed = selections.filter((s): s is CanvasSelection => s !== null).at(-1)!;
+    expect([fed.rect.left, fed.rect.top]).toEqual([1200, 500 + 42]);
+  });
 });
 
 describe("the format row", () => {
@@ -599,7 +611,8 @@ describe("History", () => {
 describe("what saved means", () => {
   it("says saving while his edit is on its way and saved with the time after", async () => {
     const { words } = await typing();
-    await waitFor(() => expect(saved.at(-1)).toEqual({ state: "saved" }));
+    // Before his first save there is none to say: the frame names where the deck is kept (council R2-D4).
+    await waitFor(() => expect(saved.at(-1)).toBeNull());
     let write!: () => void;
     deckHost.hold = new Promise<void>((done) => (write = done));
     (words.querySelector('[data-r="0:0"]')!.firstChild as Text).data = "Who now ";

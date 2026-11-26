@@ -27,6 +27,8 @@ export const COLUMN = 288;
 /** Under this the column stacks under the slide and the clock and the timer's buttons go. */
 export const PRESENTER_NARROW = 640;
 const STRIP_THUMB = 64;
+/** The thumbs drawn as bones while the deck is read. */
+const STRIP_BONES = 6;
 const NEXT_NARROW = 176;
 
 export interface PresenterProps {
@@ -246,7 +248,7 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
           </div>
         </div>
       </div>
-      <Strip state={state} doc={doc} ratio={ratio} dispatch={dispatch} surface={root} />
+      <Strip state={state} doc={doc} loading={loading && !doc} ratio={ratio} dispatch={dispatch} surface={root} />
     </div>
   );
 }
@@ -334,7 +336,7 @@ function TargetMenu({ target, onTarget }: { target: Target; onTarget(target: Tar
  * (the arrows then move along it and Return jumps); at every other time the
  * arrows are the show's, so a thumbnail is never a Tab stop.
  */
-function Strip({ state, doc, ratio, dispatch, surface }: { state: ShowState; doc: PdfDoc | null; ratio: number; dispatch(act: ShowAct): void; surface: { current: HTMLElement | null } }) {
+function Strip({ state, doc, loading, ratio, dispatch, surface }: { state: ShowState; doc: PdfDoc | null; loading: boolean; ratio: number; dispatch(act: ShowAct): void; surface: { current: HTMLElement | null } }) {
   const list = useRef<HTMLDivElement>(null);
   const current = state.slides[state.at]?.id;
   // The current slide stays in the middle of the strip.
@@ -364,6 +366,15 @@ function Strip({ state, doc, ratio, dispatch, surface }: { state: ShowState; doc
       onKeyDown={onKeyDown}
       className="flex h-[60px] shrink-0 items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-contain border-t border-border bg-sidebar px-3"
     >
+      {/* While the deck is read and no slide is known, the strip holds thumbs' bones in their place, as Now and Next do. */}
+      {loading && state.slides.length === 0
+        ? Array.from({ length: STRIP_BONES }, (_, index) => (
+            <span key={index} data-show-strip-bone aria-hidden className="flex shrink-0 items-start gap-1">
+              <span className="min-w-4 shrink-0" />
+              <Skeleton className="m-[3px] aspect-video rounded-[3px]" style={{ width: STRIP_THUMB - 6 }} />
+            </span>
+          ))
+        : null}
       {state.slides.map((slide, index) => {
         const on = index === state.at && !state.ended;
         return (

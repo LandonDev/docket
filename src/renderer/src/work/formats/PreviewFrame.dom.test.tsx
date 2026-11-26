@@ -233,8 +233,10 @@ describe("the frame", () => {
     await f.fail("the machine that converts docx to pdf+word is asleep, and only his own press wakes it");
     const failed = document.querySelector("[data-preview-failed]")!;
     // No app to ask here, so the line names no press: "Check in Word wakes it" is said only beside that press.
-    expect(failed.textContent).toBe("Word preview failed.The Windows VM is asleep.Retry");
+    expect(failed.textContent).toBe("Couldn't draw it as WordThe Windows VM is asleep.Retry");
     expect(count()).toBeNull();
+    // No pages, so no zoom to offer (council R2-D6).
+    expect(screen.queryByRole("button", { name: /^Zoom/ })).toBeNull();
     expect(column()).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Export" })));
     expect(f.exported).toEqual(["docx"]);
@@ -250,9 +252,9 @@ describe("the frame", () => {
     await waitFor(() => expect(count()).toBe("Page 1 of 3"));
     await act(async () => fireEvent.click(screen.getByRole("tab", { name: "PDF" })));
     await f.fail("The document’s host could not print the page.");
-    expect(screen.getByText("PDF preview failed.")).toBeTruthy();
+    expect(screen.getByText("Couldn't draw it as PDF")).toBeTruthy();
     expect(screen.getByText("The document’s host could not print the page.")).toBeTruthy();
-    expect(screen.queryByText(/^Word preview failed/)).toBeNull();
+    expect(screen.queryByText(/^Couldn't draw it as Word/)).toBeNull();
   });
 
   it("a render that went under the pages (the document was drawn again elsewhere) is drawn once more by itself; only a second loss is said, with Retry", async () => {
@@ -266,7 +268,7 @@ describe("the frame", () => {
     // The same render lost again is a host that cannot keep it: said, with Retry.
     await f.answer({ picture: paged("r1"), drops: [] });
     // In Work's words, never the host's raw line.
-    expect(await screen.findByText("Word preview failed.")).toBeTruthy();
+    expect(await screen.findByText("Couldn't draw it as Word")).toBeTruthy();
     expect(screen.getByText("This preview is gone. Close it and open it again from the file's tab.")).toBeTruthy();
     expect(screen.queryByText(/draw it again/)).toBeNull();
     expect(f.asked).toHaveLength(2);
@@ -570,7 +572,7 @@ describe("the real app's own picture", () => {
     await f.fail("the machine that converts docx to pdf+word is asleep, and only his own press wakes it");
     const failed = (): Element => document.querySelector("[data-preview-failed]")!;
     // The press the line names is on the screen; Retry, which would ask the sleeping machine again, is not.
-    await waitFor(() => expect(failed().textContent).toBe("Word preview failed.The Windows VM is asleep. Check in Word wakes it.Check in Word"));
+    await waitFor(() => expect(failed().textContent).toBe("Couldn't draw it as WordThe Windows VM is asleep. Check in Word wakes it.Check in Word"));
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Check in Word" })));
     expect(f.asked.at(-1)?.opts).toEqual({ by: "office" });

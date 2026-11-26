@@ -28,7 +28,7 @@ import { useHostLive, useLiveDown } from "../shell/lifeosLive";
 import { refreshLifeos } from "../shell/lifeos";
 import { readsLifeos, readsSession, useLifeosPlace } from "./lifeosPlace";
 import type { UploadProgress } from "./acts";
-import { GoToField, SearchField, type GoToRow } from "./GoTo";
+import { closedBack, GoToField, SearchField, type GoToRow } from "./GoTo";
 import { KindGlyph } from "./KindGlyph";
 import { DetailsPane, FileBeside, FileGallery, type BesideSeatOf } from "./Looks";
 import {
@@ -579,6 +579,22 @@ export function PageBar({
   onFilter?(text: string): void;
   children?: ReactNode;
 }) {
+  // Escape gives the focus back once the bar has its presses again (`closedBack`).
+  const gotoPress = useRef<HTMLButtonElement>(null);
+  const searchPress = useRef<HTMLButtonElement>(null);
+  const back = useRef<{ to: Element | null; field: "goto" | "search" } | null>(null);
+  const mode = find?.mode ?? null;
+  useEffect(() => {
+    if (mode !== null || !back.current) return;
+    const { to, field } = back.current;
+    back.current = null;
+    closedBack(to, (field === "goto" ? gotoPress : searchPress).current);
+  }, [mode]);
+  const closeFind = (field: "goto" | "search") => (to?: Element | null) => {
+    // A blur as the field leaves the page must not drop what Escape asked.
+    if (to !== undefined) back.current = { to, field };
+    find?.setMode(null);
+  };
   return (
     <div data-files-bar className="@container/files-bar flex h-11 shrink-0 items-center gap-1 border-b border-border px-2">
       <Tip label="Back" shortcut={shortcutFor("Files (Work)", "Back")}>
@@ -592,7 +608,7 @@ export function PageBar({
         </Button>
       </Tip>
       {find?.mode === "goto" ? (
-        <GoToField link={find.link} workspaceId={find.workspaceId} tabs={find.tabs} onPick={find.onGoTo} onClose={() => find.setMode(null)} />
+        <GoToField link={find.link} workspaceId={find.workspaceId} tabs={find.tabs} onPick={find.onGoTo} onClose={closeFind("goto")} />
       ) : find?.mode === "search" ? (
         <SearchField
           start={filter}
@@ -602,7 +618,7 @@ export function PageBar({
             find.setMode(null);
             find.onSearch(text);
           }}
-          onClose={() => find.setMode(null)}
+          onClose={closeFind("search")}
         />
       ) : (
         <Trail trail={trail} name={name} onGo={onGo} {...(find ? { onEmpty: () => find.setMode("goto") } : {})} />
@@ -610,12 +626,12 @@ export function PageBar({
       {find && find.mode === null ? (
         <>
           <Tip label="Go to" shortcut={shortcutFor("Files (Work)", "Go to")}>
-            <Button variant="ghost" size="icon-sm" aria-label="Go to" className="shrink-0 text-muted-foreground" onClick={() => find.setMode("goto")}>
+            <Button ref={gotoPress} variant="ghost" size="icon-sm" aria-label="Go to" className="shrink-0 text-muted-foreground" onClick={() => find.setMode("goto")}>
               <CornerDownRight />
             </Button>
           </Tip>
           <Tip label="Search" shortcut={shortcutFor("Files (Work)", "Search")}>
-            <Button variant="ghost" size="icon-sm" aria-label="Search" className="shrink-0 text-muted-foreground" onClick={() => find.setMode("search")}>
+            <Button ref={searchPress} variant="ghost" size="icon-sm" aria-label="Search" className="shrink-0 text-muted-foreground" onClick={() => find.setMode("search")}>
               <Search />
             </Button>
           </Tip>

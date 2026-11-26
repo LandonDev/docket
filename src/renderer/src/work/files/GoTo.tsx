@@ -5,6 +5,7 @@ import { MAKE_WORDS, type FileEntry } from "@shared/work/files";
 import { Plus, Search } from "../../chrome/icons";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { TruncateTip } from "../../components/tip";
 import { Spinner } from "../../components/ui/spinner";
 import { registry } from "../../lib/connection";
 import { KindGlyph } from "./KindGlyph";
@@ -41,6 +42,18 @@ export function goToRows(text: string, tabs: readonly FileTab[], names: readonly
   return [...open.map((tab): GoToRow => ({ is: "tab", tab })), ...names.filter((entry) => !shown.has(entry.key)).map((entry): GoToRow => ({ is: "entry", entry }))];
 }
 
+/** What held the focus as a field opened: where Escape gives it back (a press elsewhere leaves it where it landed). */
+const openedFrom = (): Element | null => (document.activeElement && document.activeElement !== document.body ? document.activeElement : null);
+
+/**
+ * Gives the focus back after Escape closed Go to or Search: to what opened it while that is still on the page (the
+ * list, a row), else to the bar's press of the same name, which stands again where the field was.
+ */
+export function closedBack(opener: Element | null, press: HTMLElement | null): void {
+  const to = opener instanceof HTMLElement && opener.isConnected ? opener : press;
+  to?.focus();
+}
+
 export function GoToField({
   link,
   workspaceId,
@@ -53,9 +66,11 @@ export function GoToField({
   workspaceId: string;
   tabs: readonly FileTab[];
   onPick(row: GoToRow): void;
-  onClose(): void;
+  /** `back`: closed by Escape, so the focus goes back where Go to was opened from (`closedBack`) */
+  onClose(back?: Element | null): void;
 }) {
   const [text, setText] = useState("");
+  const [opener] = useState(openedFrom);
   // The names the host answered, and the words they answer: the rows stay drawn, inert, while newer words are asked,
   // and give way to Loading… once the lookup is slow, so no row of older words is taken or read as his.
   // A lookup that failed says so, with Retry, rather than reading as no match.
@@ -121,7 +136,7 @@ export function GoToField({
     if (event.key === "ArrowUp") return void (event.preventDefault(), setAt(Math.max(0, on - 1)));
     // Return takes a row of the names for the words in the field, never of words he has since typed over.
     if (event.key === "Enter") return void (event.preventDefault(), fresh ? take(rows[on]) : setWaiting(text));
-    if (event.key === "Escape") return void (event.preventDefault(), onClose());
+    if (event.key === "Escape") return void (event.preventDefault(), onClose(opener));
   };
   const line = (row: GoToRow): { glyph: ReactNode; name: string; fact: ReactNode } => {
     // A name as every row shows it: TempCode's own ending (".tcdoc", ".tcsheet") is no word.
@@ -140,7 +155,7 @@ export function GoToField({
       onKeyDown={(event) => {
         // The page's keys are Go to's while it is open; Escape from Retry closes it as from the field.
         event.stopPropagation();
-        if (event.key === "Escape" && event.target !== field.current) return void (event.preventDefault(), onClose());
+        if (event.key === "Escape" && event.target !== field.current) return void (event.preventDefault(), onClose(opener));
       }}
     >
       <Input
@@ -187,7 +202,9 @@ export function GoToField({
                   {glyph}
                   {/* The name is what he picks: it keeps its room, and where the file lives gives way first, down to
                       10em (the place's 4em and 6em of folder), the folder it lies in kept and the place cut (`WhereWords`), as search's Where does. */}
-                  <span className="min-w-0 flex-auto truncate text-foreground">{name}</span>
+                  <TruncateTip text={name}>
+                    <span className="min-w-0 flex-auto truncate text-foreground">{name}</span>
+                  </TruncateTip>
                   {fact ? <span data-files-goto-fact className="flex max-w-[45%] min-w-[10em] shrink-[8] justify-end text-xs text-muted-foreground">{typeof fact === "string" ? <span className="truncate">{fact}</span> : fact}</span> : null}
                 </div>
               );
@@ -221,8 +238,9 @@ export function GoToField({
  * Search (docs/DESIGN.md "The Files place"): a field in the trail's place. As he types it filters the folder
  * shown; Return searches every place, as a page of results; Escape puts the trail and the whole folder back.
  */
-export function SearchField({ start, onFilter, onSearch, onClose }: { start: string; onFilter(text: string): void; onSearch(text: string): void; onClose(): void }) {
+export function SearchField({ start, onFilter, onSearch, onClose }: { start: string; onFilter(text: string): void; onSearch(text: string): void; onClose(back?: Element | null): void }) {
   const [text, setText] = useState(start);
+  const [opener] = useState(openedFrom);
   const field = useRef<HTMLInputElement>(null);
   useEffect(() => {
     field.current?.focus();
@@ -246,7 +264,7 @@ export function SearchField({ start, onFilter, onSearch, onClose }: { start: str
         onKeyDown={(event) => {
           event.stopPropagation();
           if (event.key === "Enter" && text.trim()) return void (event.preventDefault(), onSearch(text.trim()));
-          if (event.key === "Escape") return void (event.preventDefault(), onFilter(""), onClose());
+          if (event.key === "Escape") return void (event.preventDefault(), onFilter(""), onClose(opener));
         }}
         // Left empty, the trail comes back; with words in it the filter stays until he clears it.
         onBlur={() => (text.trim() ? undefined : onClose())}

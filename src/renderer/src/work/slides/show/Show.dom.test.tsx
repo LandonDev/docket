@@ -318,7 +318,9 @@ describe("the presenter's view", () => {
 
   it("shows bones while the deck is read, and the line the slideshow's display left", () => {
     const { root } = mount(startShowState([], "start"), { doc: null, loading: true, notice: "The slideshow's display was disconnected" });
-    expect(root.querySelectorAll('[data-slot="skeleton"]').length).toBe(4);
+    // Now, Next, the notes' two lines, and the strip's six thumbs (council R2-D3).
+    expect(root.querySelectorAll('[data-slot="skeleton"]').length).toBe(10);
+    expect(root.querySelectorAll('[data-show-strip] [data-show-strip-bone]').length).toBe(6);
     // The notes are unknown, not empty: two bones, never "None", until the deck answers.
     expect(root.querySelectorAll('[data-show-notes-bones] [data-slot="skeleton"]').length).toBe(2);
     expect(within(root).queryByText("None")).toBeNull();

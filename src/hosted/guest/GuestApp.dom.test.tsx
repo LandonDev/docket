@@ -103,12 +103,20 @@ describe("a project's link on the guest's page", () => {
   it("says a document that did not open as the page's own failures are said, with Retry", async () => {
     service.docDown = true;
     render(<GuestApp />);
-    fireEvent.click(await first("Run of show"));
+    const row = (await first("Run of show")).closest<HTMLElement>("button, a, [tabindex]")!;
+    row.focus();
+    fireEvent.click(row);
     expect(await screen.findByText("Couldn't open this document")).toBeTruthy();
     expect(screen.getByText("Try again in a minute.")).toBeTruthy();
     service.docDown = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    // The failure stays in view while Retry spins, never bones in its place (council R2-D8).
+    expect(screen.getByText("Couldn't open this document")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" }).getAttribute("aria-busy")).toBe("true");
     expect(await screen.findByText("Check-in opens at the north doors.")).toBeTruthy();
+    // Back gives the focus to the row that opened the document (council R2-D7).
+    fireEvent.click(within(line()).getByRole("button", { name: "Back to Spring LAN" }));
+    await waitFor(() => expect(document.activeElement).toBe(row));
   });
 
   it("puts a task page's way back first in the line, where a document's is, and Escape goes back from either", async () => {
