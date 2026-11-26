@@ -12,14 +12,16 @@ export function Counts({ status, additions, deletions, className }: { status?: s
   return <DiffCounts added={additions} removed={deletions} className={cn("font-sans", className)} />;
 }
 
-/** A file's name with its folder after it, the folder truncating first. */
+/** A file's name with its folder after it, the folder truncating first and from its start
+ *  ("…renderer/src/lib"), so its last folder is what stays: laid out right to left, the path
+ *  held in its order between two left-to-right marks, so a leading "." never jumps to the end. */
 export function FileName({ relative, muted }: { relative: string; muted?: boolean }) {
   const name = basename(relative);
   const dir = relative.includes("/") ? relative.slice(0, relative.lastIndexOf("/")) : "";
   return (
     <span className="flex min-w-0 items-baseline gap-2">
       <span className={cn("shrink-0 truncate text-[13px]", muted ? "text-muted-foreground" : "text-foreground")}>{name}</span>
-      {dir ? <span className="min-w-0 truncate text-xs text-muted-foreground">{dir}</span> : null}
+      {dir ? <span dir="rtl" className="min-w-0 truncate text-left text-xs text-muted-foreground">{`\u200E${dir}\u200E`}</span> : null}
     </span>
   );
 }

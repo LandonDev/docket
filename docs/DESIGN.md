@@ -618,7 +618,8 @@ button, link (an `a` or anything with `role="link"`, an inline file link
 in the prose among them), option, menu item and tab, unlayered so it beats a utility's
 `outline-none`, and so a row in a tight list never clips it. An element it
 does not name (a scroll region, a `pre`, a `div` with `tabIndex`, a checkbox
-root) takes `focus-ring`, the same outline. Nothing draws a second band
+root) takes `focus-ring`, the same outline; a row whose focus sits in its
+field (a question's free-form option) wears it too. Nothing draws a second band
 (`focus-visible:ring`); a field keeps `focus-field`. `lib/focusGuard.test.ts`
 holds it.
 
@@ -1056,7 +1057,9 @@ verbs; a popover is content (a picker, a preview, a list of accounts). A
 menu's rows are `MenuRow` data rendered by `RowsMenu` (from a trigger) or
 `RowsContextMenu` (one per list, at the pointer), each row a 14px glyph, a
 label and the key cap of a real binding (`shortcutFor`); the window's menu
-bar alone is words and keys. Menus come in one size: the row of "Spacing",
+bar alone is words and keys. A row is red only for what deletes (Delete…,
+Remove…); a stop loses nothing, so Stop, Stop background tasks and Stop all
+keep the menu's ink. Menus come in one size: the row of "Spacing",
 in the dropdown and the context menu alike. A thread offers the same rows on every
 surface (lib/threadMenu.ts). Menus and popovers load with their first use,
 out of the first paint (chrome/menuRows.tsx). A label on hover is `Tip` or
@@ -4913,7 +4916,7 @@ never cut (`StatusMark`'s `wrap`).
 | Toast (sonner, on `--layer-toast`; index.css overrides its 400-500ms defaults, out-specifying its injected stylesheet) | rise and fade, `--dur-base` `--ease-out`, no height or shadow transition | fade, `--dur-fast` `--ease-exit` | fade, `--dur-fast` |
 | Right panel (a toggle in place; the thread takes its width at once, so no frame lays out the transcript) | slides in from the row's right edge (`translate-x-full`→0) and fades, `--dur-slow` `--ease-out`; mounted open (a tab switch, a launch) it is just there; a section's body fades `--dur-fast` | drawn over the thread, inert: a quarter of its width back out and a fade, `--dur-fast` `--ease-exit` | fade only |
 | Rail | no width animation; content fades `--dur-fast` | same | same |
-| The composer's slash and @ menu (transitions; the entry is `@starting-style`; open while a `/` or `@` is typed, with nothing to pick one muted 28px row, "No matches", or "Loading…" while the project's files or the host's commands are read, or "Couldn't load commands" in red when the host gave no list, which Escape closes and the next `/` asks again) | fade + rise 4px from the box's edge, `--dur-base` `--ease-out`; a row keeps its element as the filter narrows, and the frame's height follows the list on the same transition | its last rows stay, inert, while it fades 1px back down, `--dur-fast` `--ease-exit`; typing it open again turns it back | fade only |
+| The composer's slash and @ menu (transitions; the entry is `@starting-style`; open while a `/` or `@` is typed, with nothing to pick one muted 28px row, "No matches" (on a bare `/` with no commands at all, "No commands"), or "Loading…" while the project's files or the host's commands are read, or "Couldn't load commands" in red when the host gave no list, which Escape closes and the next `/` asks again) | fade + rise 4px from the box's edge, `--dur-base` `--ease-out`; a row keeps its element as the filter narrows, and the frame's height follows the list on the same transition | its last rows stay, inert, while it fades 1px back down, `--dur-fast` `--ease-exit`; typing it open again turns it back | fade only |
 | Tab indicator | segmented: the pill glides on `SPRING_LAYOUT_CSS` (`TabsIndicator`); line tabs and the tab strip: instant | — | jump |
 | Press, a raised button (`default`, `secondary`, `destructive`) | its fill layer scales 0.985 (0.997 × 0.985 full width) while the label stays put, `--dur-fast` | release, `--dur-hover` | none |
 | Press, ghost, link, outline and every row (a rail row, an Item, a toggle, a tab, a hover action, a board row, a task list's header, a row control around the composer) | the fill steps to `foreground/12` at once; nothing scales (`ROW_PRESS` in components/ui/press.ts for a row drawn by hand, `ROW_CONTROL` in chrome/composerRow.ts for the quiet controls under and over the composer's box); a control floating on its own fill (jump to latest) lays `foreground/12` over that fill instead | back over `--dur-hover` | same |
@@ -5153,7 +5156,7 @@ in the flow; the closing line says what the turn took and nothing else. A
 live turn's time is the slot above the composer's: the transcript draws
 the closing line once the turn is over, and a paused turn is not over (only
 a surface with no slot, the fleet's agent detail, draws the live state as
-its last row). A thread still watching ends in "Watching" with the watch's
+its last row, working on the still dot under the working line's moving mark). A thread still watching ends in "Watching" with the watch's
 age under its last closing line, on every surface; in a pane it opens the
 Activity section.
 An approval card carries the amber glyph and its two buttons, not the
@@ -5243,7 +5246,10 @@ below the 14px label's 20px line) with an option's description as a muted
 13px line under it; the 20px key cap sits on the label's first line. Selected
 is the row's fill (`foreground/10`) and the cap turned primary, never a
 border on the row; a multi-select question's cap is a hairline box at rest
-and a check once picked, so several read as several before a click; hover is `foreground/5`, a press `foreground/12`, all at once. Its
+and a check once picked, so several read as several before a click; hover is `foreground/5`, a press `foreground/12`, all at once. A
+single-choice question is one tab stop whose arrow keys move the choice (the
+letters pick as well), and the free-form row wears the one focus ring while
+its field holds the focus. Its
 actions end the card 16px under the options, right-aligned 8px apart, the
 raised buttons at `sm`: Back and Skip `secondary`, Next or Continue (with ⌘⏎)
 `default`; Back arrives at the group's start, so Skip and Next never move. Every action
@@ -5271,13 +5277,19 @@ No bullet points in the UI. A toast never covers a control: the stack sits
 and no wider than that column less 16px a side (`toastInset` in
 components/ui/toaster.tsx, measured from the footer `ChatFooter` registers in
 lib/toastAnchor.ts); while that thread's waiting card (a question, an
-approval) is wholly in view, 8px above the card instead (`registerToastSeat`,
-`seatRect`), back above the strip once he answers or scrolls it away; on a
+approval) or the composer's open `/` or `@` menu is wholly in view, 8px above
+it instead (`registerToastSeat`, `seatRect`), back above the strip once he
+answers, scrolls it away or the menu closes; a thread with no rows yet (a
+draft docked in a split, a held thread, one still loading) seats the stack
+above its footer all the same; on a
 master view whose chat is folded, 8px above the board's foot (BatchFoot
 registers while the chat is folded, and a folded, inert column seats
 nothing); and 16px from the window's corner where no thread is focused or a
 page (Inbox, Search, Settings, a Work view) lies over the board (App asks the
-stack again as the page opens and closes). Nothing is said twice: the thread
+stack again as the page opens and closes), or where the anchor's rect is no
+footer on screen (a side lost, a hidden pane's zeros, one off the window).
+Wherever it sits, the stack stays 16px inside the window and inside the part
+of its column the window shows. Nothing is said twice: the thread
 on screen, the one whose footer holds the stack, gets no toast for its own
 approval wherever the focus sits, and a thread whose approval a toast carries
 is left out of the Needs you banner. Confirmation dialogs only for destructive,
@@ -5289,7 +5301,9 @@ a computer's Allow and its asks (ComputerAllowToasts.tsx, ComputerAskToasts.tsx)
 and a Mac bridge card (MacBridgeCards.tsx) hold two presses (Allow and Deny,
 or the ask's own two), stay until answered or until the ask goes, and draw no
 close; the title opens the thread that asks, and the stack keeps the same seat
-as every toast. Whether a held ask gets a close, as a batch's failure toasts
+as every toast. For a key that may not approve there is no pair: the line
+under the ask says who can ("Answer from a computer that manages the box"),
+as the card does. Whether a held ask gets a close, as a batch's failure toasts
 have, is the owner's call; until then it has none.
 
 ## Verifying without a dev instance

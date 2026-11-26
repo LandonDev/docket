@@ -156,6 +156,18 @@ describe("PlanView's header", () => {
     const handoff = screen.getByRole("button", { name: /Implementation/ });
     expect(handoff.className).toContain("gap-2");
     expect((handoff.querySelector("[data-slot=status-mark]") as HTMLElement).className).not.toContain("ml-1");
+    // A narrow header keeps the plan's title: the noun leaves the eye but stays in the button's name.
+    expect((handoff.querySelector("[data-build-noun]") as HTMLElement).className).toContain("@max-[22rem]/header:sr-only");
     delete metas.impl;
+  });
+
+  it("gives every section after the first the 20px a heading has above it", () => {
+    doc = "# Ship the raids\n\nWhy we do it.\n\n## Tasks\n- [ ] one\n\n## Risks\nA restart.\n";
+    render(<PlanView {...props(session({ status: "idle" }))} />);
+    const sections = [...document.querySelectorAll("[data-md]")].map((e) => e.parentElement!);
+    expect(sections.length).toBeGreaterThan(2);
+    // Each section is its own markdown root, so the markdown's own heading gap never fires between them.
+    expect(new Set(sections.map((s) => s.className))).toEqual(new Set(["not-first:mt-5"]));
+    expect(sections[0]!.parentElement!.firstElementChild).toBe(sections[0]);
   });
 });

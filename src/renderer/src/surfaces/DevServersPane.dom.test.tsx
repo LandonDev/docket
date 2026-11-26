@@ -120,6 +120,14 @@ describe('DevServersPane', () => {
     vi.restoreAllMocks()
   })
 
+  it('keeps its list to half a narrow dock, at most 288px, so the console or the empty state keeps the rest', async () => {
+    mount()
+    await flush()
+    const column = probe!.container.querySelector<HTMLElement>('[data-dev-column]')!
+    for (const c of ['w-1/2', 'max-w-72', 'shrink-0']) expect(column.className.split(' ')).toContain(c)
+    expect(column.className.split(' ')).not.toContain('w-72')
+  })
+
   it('says nothing runs and shows the command Run would start', async () => {
     mount()
     await flush()

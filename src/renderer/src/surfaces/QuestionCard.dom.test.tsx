@@ -188,9 +188,12 @@ describe("QuestionCard", () => {
   it("says no position for one question, and where the person is for two", () => {
     const one = render(<QuestionCard question={meta([spec("Which?", ["A"])])} onAnswer={() => {}} />);
     expect(one.container.querySelector('[data-slot="question-progress"]')).toBeNull();
+    // One question with no header is titled in the singular.
+    expect(one.container.querySelector("h3")!.textContent).toBe("Question");
     one.unmount();
     const two = render(<QuestionCard question={meta([spec("A?", ["A"]), spec("B?", ["B"])])} onAnswer={() => {}} />);
     expect(two.container.querySelector('[data-slot="question-progress"]')!.textContent).toBe("1 of 2");
+    expect(two.container.querySelector("h3")!.textContent).toBe("Questions");
   });
 
   it("cardQuestions passes descriptions through, carries each header as its question's own, and adds Other", () => {

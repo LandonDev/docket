@@ -100,7 +100,8 @@ export function AddMenu({
         </TooltipTrigger>
         <TooltipContent>Add</TooltipContent>
       </Tooltip>
-      <DropdownMenuContent side="top" align="start" finalFocus={() => fieldOf()} data-add-menu className="w-56" aria-label="Add">
+      {/* Each row one 28px line: the popup takes its longest row's width, never wraps a label to two lines. */}
+      <DropdownMenuContent side="top" align="start" finalFocus={() => fieldOf()} data-add-menu className="whitespace-nowrap" aria-label="Add">
         {/* A harness that takes no files has no row for them: never a dead one. */}
         {attachable ? (
           <DropdownMenuItem onClick={onAttach}>

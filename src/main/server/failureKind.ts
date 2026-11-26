@@ -161,8 +161,11 @@ function turnEndedCause(subtype: string, harness: string): string {
       return "The CLI's spend limit was reached."
     case 'error_max_structured_output_retries':
       return 'The CLI gave up on a structured answer.'
+    case 'error_during_execution':
+      return `${harness} hit an error during the turn.`
     default:
-      return `${harness} reported ${subtype || 'an error'} and gave no reason.`
+      // An unmapped subtype is an id, never words for the card.
+      return `${harness} ended the turn and gave no reason.`
   }
 }
 
@@ -187,6 +190,9 @@ function retryAfterOf(message: string): number | null {
   const n = m ? Number(m[1] ?? m[2]) : NaN
   return Number.isFinite(n) ? n : null
 }
+
+/** The cause of a failure no rule names: the harness's words are raw text, never the card's. */
+export const UNKNOWN_CAUSE = 'The harness stopped on an error it did not explain.'
 
 /** The raw message as one line, short enough for a card's second line. */
 function oneLine(message: string, max = 160): string {
@@ -254,7 +260,7 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext, room: bo
     }
     case 'quota':
       if (routedOf(ctx) === 'meta') {
-        return { summary: `Meta billing: ${oneLine(ctx.message, 100) || 'the balance is spent'}`, cause: 'Pay as you go: top up the team at dev.meta.ai.' }
+        return { summary: 'Meta billing refused the request', cause: 'Pay as you go: top up the team at dev.meta.ai.' }
       }
       return {
         summary: account ? `${account} is out of credits` : `The ${provider} plan is out of credits`,
@@ -296,8 +302,9 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext, room: bo
         cause: 'The conversation can pick up from its last message.'
       }
     case 'turn_ended': {
-      const [, subtype = '', line = ''] = TURN_ENDED.exec(ctx.message) ?? []
-      return { summary: TURN_ENDED_SUMMARY, cause: line.trim() ? oneLine(line) : turnEndedCause(subtype, harness) }
+      // The CLI's own line is raw harness text: the card says the subtype's meaning.
+      const [, subtype = ''] = TURN_ENDED.exec(ctx.message) ?? []
+      return { summary: TURN_ENDED_SUMMARY, cause: turnEndedCause(subtype, harness) }
     }
     case 'context_thrash': {
       const row = parseContextThrashRow(ctx.message)
@@ -306,13 +313,13 @@ export function describeFailure(kind: FailureKind, ctx: FailureContext, room: bo
       return { summary: CONTEXT_THRASH_SUMMARY, cause: row.first && row.window ? `${span}; the first request held ${row.first} of a ${row.window} window` : span }
     }
     case 'unknown': {
-      // No reason at all reads as the renderer's fallback, word for word.
-      const line = oneLine(ctx.message)
-      if (!line) {
+      // No reason at all reads as the renderer's fallback, word for word; a
+      // reason no rule knows is raw harness text and stays off the card.
+      if (!oneLine(ctx.message)) {
         const { summary, cause } = fallbackFailure()
         return { summary, cause }
       }
-      return { summary: 'The turn failed', cause: line }
+      return { summary: 'The turn failed', cause: UNKNOWN_CAUSE }
     }
   }
 }

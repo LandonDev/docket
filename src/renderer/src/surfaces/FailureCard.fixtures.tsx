@@ -52,7 +52,7 @@ export const fixtures = [
     ),
   },
   { name: "Network", props: card("network", "The provider could not be reached", "The connection dropped before the first reply") },
-  { name: "Harness crashed", props: card("harness_crashed", "Claude Code exited mid-turn", "The process ended with code 137, likely out of memory") },
+  { name: "Harness crashed", props: card("harness_crashed", "The Claude Code process died mid-turn", "The conversation can pick up from its last message.") },
   {
     name: "Retrying, the buttons at rest",
     props: card("network", "The provider could not be reached", "The connection dropped before the first reply", { pending: "retry", outcome: null }),

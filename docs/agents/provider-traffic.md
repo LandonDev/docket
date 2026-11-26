@@ -163,8 +163,11 @@ routed to (aliax-core's `forward`). Two listeners:
   `stopped: true` and never classified. A turn the CLI ended itself (its
   result's `error_*` subtype, the row `turn ended: <subtype>[: <the CLI's
   first error line>]`) is kind `turn_ended`, summary `TURN_ENDED_SUMMARY`
-  (the fallback's words), cause the CLI's line or the subtype's meaning; a
-  line naming a death or a network cut keeps that kind. The stop rule
+  (the fallback's words), cause the subtype's meaning (an unmapped subtype
+  reads "<harness> ended the turn and gave no reason."); a line naming a
+  death or a network cut keeps that kind. No card prints the harness's raw
+  line: a failure no rule names reads "The turn failed" over
+  `UNKNOWN_CAUSE`. The stop rule
   (`stopping` in sessions.ts): the flag survives the `running` a question's
   or an approval's cleanup emits and a `waiting`, clears on a settle, on
   `starting` and at the top of `send()`; a Stop while the harness boots

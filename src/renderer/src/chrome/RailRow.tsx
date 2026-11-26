@@ -46,8 +46,10 @@ type Props = {
    *  their presses never reach the row. */
   hoverActions?: readonly RailRowAction[];
   /** A label on hover (a shortcut as `Kbd`); never a `title=`. Without
-   *  one, a string label that is cut shows whole on hover. */
-  tooltip?: ReactNode;
+   *  one, a string label that is cut shows whole on hover. A function is
+   *  told whether the label is cut, so a tooltip of its own can say the
+   *  whole label only then. */
+  tooltip?: ReactNode | ((cut: boolean) => ReactNode);
   /** The row is the trigger of the `DropdownMenu` around it. */
   menuTrigger?: boolean;
   onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
@@ -131,7 +133,7 @@ export function RailRow({
   // A string label the row cuts is its own tooltip, only while it is cut.
   const text = typeof label === "string" ? label : "";
   const { ref: labelRef, cut } = useTruncated(text);
-  const tip = tooltip ?? (cut ? text : null);
+  const tip = typeof tooltip === "function" ? tooltip(cut) : (tooltip ?? (cut ? text : null));
   const actions = hoverActions.slice(0, 2);
   const group = surface === "group";
   // Beside an interactive control (a status glyph) the actions lie over the

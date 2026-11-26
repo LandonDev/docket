@@ -25,11 +25,10 @@ type Props = {
   ) => void;
 };
 
-/** Why a toast's presses wait: its host away (the link's words), or a key that may not approve (who can). */
-export function approvalHeldFor(environmentId: string | undefined): string | null {
-  if (!environmentId) return null;
-  if (!linkMay(environmentId, "session.approve")) return approveElsewhere(registry.environment(environmentId)?.name ?? environmentId);
-  return hostsHeld([environmentId]);
+/** A key that may not approve draws no presses: these words, who can answer, stand in their place (as the card's). */
+export function approvalElsewhere(environmentId: string | undefined): string | null {
+  if (!environmentId || linkMay(environmentId, "session.approve")) return null;
+  return approveElsewhere(registry.environment(environmentId)?.name ?? environmentId);
 }
 
 /** Toasts for approvals pending in threads not on screen. The thread on
@@ -45,7 +44,11 @@ export function HiddenApprovalToasts(rest: Omit<Props, "notices">) {
     () =>
       [...pending.values()]
         .filter((notice) => notice.sessionId !== onScreen)
-        .map((notice) => ({ ...notice, held: approvalHeldFor(sessionStore.environmentOf(notice.sessionId)) })),
+        .map((notice) => {
+          const environmentId = sessionStore.environmentOf(notice.sessionId);
+          const elsewhere = approvalElsewhere(environmentId);
+          return { ...notice, elsewhere, held: elsewhere ? null : hostsHeld(environmentId ? [environmentId] : []) };
+        }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- statuses is the cue to read the links again
     [pending, onScreen, statuses],
   );
@@ -61,7 +64,7 @@ export function ApprovalToasts({ notices, onFocusSession, onApproval }: Props) {
   useToastSync(
     notices,
     (notice) => `approval:${notice.sessionId}:${notice.requestId}`,
-    (toast, { sessionId, title, label, requestId, choices, held }, id) => {
+    (toast, { sessionId, title, label, requestId, choices, held, elsewhere }, id) => {
       const runSkip = choices === "run-skip";
       const allow = runSkip ? "Run now" : "Allow";
       const deny = runSkip ? "Skip" : "Deny";
@@ -71,9 +74,17 @@ export function ApprovalToasts({ notices, onFocusSession, onApproval }: Props) {
         </Button>,
         {
           id,
-          description: label,
+          // A key that may not approve: no pair; under the ask, the words who can answer (the card's own).
+          description: elsewhere ? (
+            <>
+              {label}
+              <span data-approve-elsewhere className="block">{elsewhere}</span>
+            </>
+          ) : label,
           duration: Infinity,
-          ...(held
+          ...(elsewhere
+            ? { cancel: undefined, action: undefined }
+            : held
             ? {
                 // Held: the same pair, disabled, one tooltip the host's state; the toast stays until it is answered.
                 // sonner merges an update into the toast it replaces, so the live pair's cancel is cleared by name.
@@ -94,7 +105,7 @@ export function ApprovalToasts({ notices, onFocusSession, onApproval }: Props) {
         },
       );
     },
-    (notice) => JSON.stringify([notice.title, notice.label, notice.choices ?? null, notice.held ?? null]),
+    (notice) => JSON.stringify([notice.title, notice.label, notice.choices ?? null, notice.held ?? null, notice.elsewhere ?? null]),
   );
   return null;
 }

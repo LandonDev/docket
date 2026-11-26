@@ -593,7 +593,8 @@ export function ChangesView({
         <TooltipProvider>
           <TopRow index={index} pr={pr} rules={rules} busy={busy} actions={actions} branchPicker={branchPicker} />
         </TooltipProvider>
-      ) : (
+      ) : failed ? null : (
+        // Bones only while the index loads: a failed read with nothing cached is the red line alone.
         <TopRowSkeleton />
       )}
       {error ? (

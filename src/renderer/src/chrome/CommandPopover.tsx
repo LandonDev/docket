@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { addonTitle } from "@shared/addonNames";
 import { SECTION_LABELS } from "../lib/composerTriggers";
 import type { ProjectFile } from "../lib/fs";
@@ -9,6 +9,7 @@ import { MENU_ROW } from "../components/ui/menu-row";
 import { timeAgo } from "../lib/duration";
 import { DUR } from "../lib/ease";
 import { marksAtRest } from "../lib/threadStripModel";
+import { registerToastSeat } from "../lib/toastAnchor";
 import { AddonMark, hasOwnMark } from "./AddonMark";
 import { FileText, MessageSquare, StickyNote } from "./icons";
 
@@ -47,6 +48,8 @@ export type PopoverMatches =
       loading?: boolean;
       /** The host's last answer was no list: said, never "No matches". */
       failed?: boolean;
+      /** What follows the "/": empty, nothing was typed to match, so an empty list is "No commands". */
+      query?: string;
     }
   | {
       mode: "file";
@@ -89,13 +92,25 @@ export function CommandPopover({
   onAccept: (index: number) => void;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
-  const frameRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
   const open = !!matches;
   // The rows on screen: the live ones while open, the last ones while it leaves.
   const [held, setHeld] = useState<PopoverMatches | null>(open ? matches : null);
   if (open && held !== matches) setHeld(matches);
   const ending = !open && !!held;
   const shown = open ? matches : held;
+  // Open, the menu is a seat of the toast stack (lib/toastAnchor.ts): a toast rises above its rows, never over them.
+  const frameSeat = useCallback(
+    (el: HTMLDivElement | null) => {
+      frameRef.current = el;
+      const off = ending ? undefined : registerToastSeat(el);
+      return () => {
+        frameRef.current = null;
+        off?.();
+      };
+    },
+    [ending],
+  );
 
   // The frame's height is the list's, so a narrowing filter glides it.
   useLayoutEffect(() => {
@@ -137,7 +152,8 @@ export function CommandPopover({
   const rows = shown;
   return (
     <div
-      ref={frameRef}
+      ref={frameSeat}
+      data-toast-seat={ending ? undefined : ""}
       data-command-popover
       data-ending-style={ending ? "" : undefined}
       inert={ending}
@@ -163,7 +179,7 @@ export function CommandPopover({
             aria-disabled
             className={`${ROW} ${!rows.loading && rows.mode === "command" && rows.failed ? "text-destructive" : "text-muted-foreground"}`}
           >
-            {rows.loading ? "Loading…" : rows.mode === "command" && rows.failed ? "Couldn't load commands" : (rows.mode === "file" && rows.note) || "No matches"}
+            {rows.loading ? "Loading…" : rows.mode === "command" && rows.failed ? "Couldn't load commands" : rows.mode === "command" && rows.query === "" ? "No commands" : (rows.mode === "file" && rows.note) || "No matches"}
           </div>
         ) : rows.mode === "command"
           ? rows.rows.map((c, n) => (

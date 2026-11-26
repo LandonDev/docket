@@ -69,7 +69,7 @@ function Card({
         hidden={hidden}
         onMore={noop}
         counts={projectCardCounts(threads, null, {}, SEEN, archived)}
-        ariaLabel={projectCardAriaLabel(name, status)}
+        ariaLabel={projectCardAriaLabel(name, status, archived)}
         unread={status.unread.length > 0}
         selected={selected}
         onSelect={noop}

@@ -205,6 +205,10 @@ describe("AccountsView", () => {
       expect(within(section).queryByRole("button", { name: "Meta Model API actions" })).toBeNull();
       fireEvent.click(within(section).getByRole("button", { name: "Add key…" }));
       expect(props.onAddKey).toHaveBeenCalledWith("meta");
+      // The ⋯ column keeps its 28px, so Add key… lines up with the Add account buttons above.
+      const slot = section.querySelector<HTMLElement>("[data-menu-slot]")!;
+      expect(slot.className).toContain("size-7");
+      expect(slot.previousElementSibling?.textContent).toBe("Add key…");
     });
 
     it("shows each key masked from its account id, and its state in the status column", () => {

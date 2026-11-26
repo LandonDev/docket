@@ -82,6 +82,8 @@ const PARTS = {
  *  separator or label (Base UI wants a group label inside its group). */
 export function MenuRows({ items, onPick, kind }: { items: readonly MenuRow[]; onPick: (id: string) => void; kind: MenuRowsKind }) {
   const { Group, Label, Sep, Radios } = PARTS[kind];
+  // Once one row has a glyph, a row without one keeps the 14px column empty: every label starts on one edge.
+  const glyphs = items.some((row) => (row.kind === "item" || row.kind === "sub") && !!row.icon);
   const out: ReactNode[] = [];
   for (let index = 0; index < items.length; index++) {
     const item = items[index]!;
@@ -91,7 +93,7 @@ export function MenuRows({ items, onPick, kind }: { items: readonly MenuRow[]; o
       let end = index + 1;
       while (end < items.length && items[end]!.kind !== "sep" && items[end]!.kind !== "label") end++;
       const rows = items.slice(index + 1, end).map((row, offset) => (
-        <Row key={rowKey(row, index + 1 + offset)} item={row} onPick={onPick} kind={kind} radio={item.radio !== undefined} />
+        <Row key={rowKey(row, index + 1 + offset)} item={row} onPick={onPick} kind={kind} radio={item.radio !== undefined} glyphs={glyphs} />
       ));
       out.push(
         <Group key={`group-${index}`}>
@@ -108,7 +110,7 @@ export function MenuRows({ items, onPick, kind }: { items: readonly MenuRow[]; o
       );
       index = end - 1;
     } else {
-      out.push(<Row key={rowKey(item, index)} item={item} onPick={onPick} kind={kind} />);
+      out.push(<Row key={rowKey(item, index)} item={item} onPick={onPick} kind={kind} glyphs={glyphs} />);
     }
   }
   return <>{out}</>;
@@ -149,7 +151,10 @@ function rowKey(row: MenuRow, index: number): string {
   return row.kind === "item" || row.kind === "sub" || row.kind === "note" ? row.id : `${row.kind}-${index}`;
 }
 
-function Row({ item, onPick, kind, radio = false }: { item: MenuRow; onPick: (id: string) => void; kind: MenuRowsKind; radio?: boolean }) {
+/** A glyph column's empty 14px, for a row without a glyph in a menu whose other rows have one. */
+const GLYPH_SLOT = <span data-menu-glyph-slot aria-hidden className="size-3.5 shrink-0" />;
+
+function Row({ item, onPick, kind, radio = false, glyphs = false }: { item: MenuRow; onPick: (id: string) => void; kind: MenuRowsKind; radio?: boolean; glyphs?: boolean }) {
   const { Row: Item, Check, Radio, Shortcut, Sub, SubTrigger, SubContent } = PARTS[kind];
   if (item.kind === "sep" || item.kind === "label") return null;
   if (item.kind === "note") {
@@ -164,7 +169,7 @@ function Row({ item, onPick, kind, radio = false }: { item: MenuRow; onPick: (id
     const sub = (
       <Sub>
         <SubTrigger disabled={item.disabled} data-menu-row={item.id} aria-description={item.reason}>
-          {Icon ? <Icon /> : null}
+          {Icon ? <Icon /> : glyphs ? GLYPH_SLOT : null}
           {/* The label takes the free room, so the trailing words sit right
               before the chevron on every row instead of halving the room with it. */}
           {item.trailing ? <span className="min-w-0 flex-1 truncate">{item.label}</span> : item.label}
@@ -184,7 +189,7 @@ function Row({ item, onPick, kind, radio = false }: { item: MenuRow; onPick: (id
   const Icon = item.icon;
   const body = (
     <>
-      {item.busy ? <Spinner aria-hidden /> : Icon ? <Icon /> : null}
+      {item.busy ? <Spinner aria-hidden /> : Icon ? <Icon /> : glyphs ? GLYPH_SLOT : null}
       {item.description ? (
         <span className="flex min-w-0 flex-col gap-0.5">
           <span>{item.label}</span>

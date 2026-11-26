@@ -73,6 +73,18 @@ describe("the / menu with nothing to pick", () => {
   });
 });
 
+describe("the / menu with no commands at all", () => {
+  it("says No commands on a bare /, since nothing was typed to match", async () => {
+    // Its own thread: the "/" stays as that thread's draft.
+    const { container } = render(<Composer {...props({ sessionId: "s-bare-slash" })} />);
+    const field = container.querySelector<HTMLElement>("[data-composer-input]")!;
+    field.focus();
+    type(field, "/");
+    await act(async () => {});
+    expect(container.querySelector<HTMLElement>("[data-command-empty]")?.textContent).toBe("No commands");
+  });
+});
+
 describe("the menu to a screen reader", () => {
   it("the field names the open list and its highlighted row, which the arrow keys move; closed, it names none", async () => {
     slash.commands = [

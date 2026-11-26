@@ -460,8 +460,10 @@ export function projectCardCounts<T extends CardThread>(
 }
 
 /** A card's accessible name: the project, then what needs saying, loudest
- *  first ("Alpha, 1 needs you, 2 working, 3 unread"). */
-export function projectCardAriaLabel(name: string, status: ProjectCardStatus): string {
+ *  first, the count line's quiet facts last ("Alpha, 1 needs you, 2 working,
+ *  3 unread, 4 dormant, 2 archived"), so a fact the narrow count line drops
+ *  is still said to a reader. */
+export function projectCardAriaLabel(name: string, status: ProjectCardStatus, archivedCount = 0): string {
   return [
     name,
     status.waiting > 0 && `${status.waiting} ${status.waiting === 1 ? "needs" : "need"} you`,
@@ -469,6 +471,8 @@ export function projectCardAriaLabel(name: string, status: ProjectCardStatus): s
     status.running.length > 0 && `${status.running.length} working`,
     status.paused.length > 0 && `${status.paused.length} paused`,
     status.unread.length > 0 && `${status.unread.length} unread`,
+    status.dormant > 0 && `${status.dormant} dormant`,
+    archivedCount > 0 && `${archivedCount} archived`,
   ]
     .filter(Boolean)
     .join(", ");

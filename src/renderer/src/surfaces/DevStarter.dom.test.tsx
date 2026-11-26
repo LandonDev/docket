@@ -161,6 +161,26 @@ describe('DevStarter', () => {
     expect(probe.container.querySelector('[aria-label="Stop"]')).toBeNull()
   })
 
+  it("words a refused start for a person: the call's name dropped, never the host's raw text", async () => {
+    const real = registry.linkOf
+    vi.spyOn(registry, 'linkOf').mockImplementation((env: string) => {
+      const link = (real as unknown as (e: string) => { request: (m: string, p: unknown) => Promise<unknown> })(env)
+      return {
+        request: async (method: string, params: unknown) => {
+          if (method === 'devServer.start') throw new Error('devServer.start: the host has no copy of this project')
+          return link.request(method, params)
+        }
+      } as never
+    })
+    probe = mountProbe(<DevServerPanel projectId="p1" />)
+    await flush()
+    const button = [...probe.container.querySelectorAll('button')].find((b) => b.textContent?.trim().startsWith('Run')) as HTMLElement
+    await probe.act(async () => button.click())
+    await flush()
+    const line = probe.container.querySelector('p.text-destructive')!
+    expect(line.textContent).toBe('The host has no copy of this project')
+  })
+
   it('asks before a second dev server for the thread on screen, and Replace stops the first', async () => {
     vi.spyOn(sessionStore, 'environmentOf').mockReturnValue('env_mac')
     applyDevRunPush('env_mac', { push: 'dev-run', projectId: 'p1', run: run({ projectId: 'p1', sessionId: 't1' }), lines: [] })

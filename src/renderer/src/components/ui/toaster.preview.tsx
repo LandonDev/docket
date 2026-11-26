@@ -10,6 +10,7 @@ import { COLUMN_MAX_CLASS } from "../../surfaces/transcriptOutlineModel";
 import type { Block } from "../../lib/session";
 import { Input } from "./input";
 import { QuestionCard } from "../../surfaces/QuestionCard";
+import { CommandPopover } from "../../chrome/CommandPopover";
 import { loadToast, Toaster } from "./toaster";
 
 const noop = () => {};
@@ -47,7 +48,13 @@ export function ToastPreview({ state = "approval" }: { state?: string }) {
         {/* The transcript's last row: a waiting question in this thread while another thread's approval arrives. */}
         {state === "waiting question" ? <div className={`mx-auto w-full ${COLUMN_MAX_CLASS} px-4 pb-2`}><QuestionCard question={question} onAnswer={noop} /></div> : null}
       </div>
-      {corner ? null : <ChatFooter slots={{ transcript: null, anchor: "toast-preview", strip: <p className="px-2 py-1 text-xs text-muted-foreground">Working</p>, composer: <Input aria-label="Message" placeholder="Message" /> }} />}
+      {corner ? null : <ChatFooter slots={{ transcript: null, anchor: "toast-preview", strip: <p className="px-2 py-1 text-xs text-muted-foreground">Working</p>, composer: (
+        <div className="relative">
+          {/* The composer's open `@` menu while another thread's approval arrives: the stack rises above its rows. */}
+          {state === "mention menu" ? <CommandPopover matches={{ mode: "file", rows: [{ kind: "file", file: { path: "/guide/routes.md", relative: "routes.md", name: "routes.md" } }, { kind: "file", file: { path: "/guide/bridge.md", relative: "bridge.md", name: "bridge.md" } }] }} active={0} projectId={null} projects={[]} onActive={noop} onAccept={noop} /> : null}
+          <Input aria-label="Message" placeholder="Message" />
+        </div>
+      ) }} />}
       <Toaster expand={state === "batch"} />
       {state === "batch" ? <BatchNoticesToasts onOpen={noop} notices={[{
         key: 1, action: "pause", succeeded: 3, failed: [
@@ -55,7 +62,7 @@ export function ToastPreview({ state = "approval" }: { state?: string }) {
           { sessionId: "proof", environmentId: "local", title: "Proof the print copy", error: "The box did not answer." },
         ],
       }]} /> : null}
-      {state === "approval" || state === "host away" || state === "waiting question" ? <ApprovalToasts notices={[{ sessionId: "guide", title: "Check the bridge", requestId: 1, tool: "Bash", label: "Run the route checks?", held: state === "host away" ? "The box is offline" : null }]} onFocusSession={noop} onApproval={noop} /> : null}
+      {state === "approval" || state === "host away" || state === "read key" || state === "waiting question" || state === "mention menu" ? <ApprovalToasts notices={[{ sessionId: "guide", title: "Check the bridge", requestId: 1, tool: "Bash", label: "Run the route checks?", held: state === "host away" ? "The box is offline" : null, elsewhere: state === "read key" ? "Answer from a computer that manages the box" : null }]} onFocusSession={noop} onApproval={noop} /> : null}
       {state === "allow" ? <AllowToasts notices={[{ pairingId: "preview", name: "Field laptop", words: ["map", "river", "birch"] }]} onAnswered={noop} /> : null}
     </div>
   );

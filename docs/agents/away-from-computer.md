@@ -81,7 +81,11 @@
   `notice` of kind `away`
   (`away: { kind: decision | question | allowed | approval, text }`;
   `approval` is a denial, "Skipped while away", `allowed` "Allowed while
-  away", drawn with the open lock) that counts toward the tally.
+  away", drawn with the open lock) that counts toward the tally. The
+  window draws the host's lead ("Allowed while away") in medium weight and
+  the ask as its muted detail, with no colon and no question mark
+  (NoticeRow.tsx `awayParts`); a decision, or an older row with no `away`
+  part, is the message as one sentence.
 - The app: the rail foot's Away row above Settings (chrome/AwayRow.tsx, a
   switch on lib/away.ts, its track from components/ui/switch-track.ts). Its
   press flips the kind of the place the window is on (Code in a code place,

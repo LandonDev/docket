@@ -5,6 +5,8 @@ import type { ProjectFile } from "../lib/fs";
 import type { SessionMeta } from "../lib/tcserver/types";
 import { MENU_ROW } from "../components/ui/menu-row";
 import { CommandPopover, type PopoverMatches } from "./CommandPopover";
+import { ChatFooter } from "../surfaces/threads/chatSlots";
+import { toastAnchor, toastSeatOver } from "../lib/toastAnchor";
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = () => {};
@@ -35,6 +37,22 @@ describe("CommandPopover", () => {
     expect(container.querySelector("[data-command-popover]")).toBeNull();
   });
 
+  // An approval from another thread covered the `@` rows he was picking from (council F9.1, F9.2).
+  it("open, the menu seats the toast stack above itself; leaving, it gives the seat back to the footer", () => {
+    const at: PopoverMatches = { mode: "file", rows: [{ kind: "file", file: file("src/a.ts") }] };
+    const composer = (matches: PopoverMatches | null) => <ChatFooter slots={{ transcript: null, strip: null, anchor: "s1", composer: <CommandPopover matches={matches} {...props} /> }} />;
+    const { container, rerender } = render(<div>{composer(at)}</div>);
+    const frame = container.querySelector<HTMLElement>("[data-command-popover]")!;
+    expect(toastSeatOver(toastAnchor()!)).toBe(frame);
+    expect(frame.hasAttribute("data-toast-seat")).toBe(true);
+    rerender(<div>{composer(null)}</div>);
+    expect(frame.hasAttribute("data-ending-style")).toBe(true);
+    expect(toastSeatOver(toastAnchor()!)).toBeNull();
+    expect(frame.hasAttribute("data-toast-seat")).toBe(false);
+    rerender(<div>{composer(at)}</div>);
+    expect(toastSeatOver(toastAnchor()!)).toBe(frame);
+  });
+
   it("no match is one muted row, a menu row's box, and it stays open rather than vanishing", () => {
     const at: PopoverMatches = { mode: "file", rows: [{ kind: "file", file: file("src/a.ts") }] };
     const { container, rerender } = render(<CommandPopover matches={at} {...props} />);
@@ -57,7 +75,13 @@ describe("CommandPopover", () => {
     expect(empty().className).toContain("text-muted-foreground");
     rerender(<CommandPopover matches={{ mode: "command", rows: [], loading: false }} {...props} />);
     expect(empty().textContent).toBe("No matches");
-    rerender(<CommandPopover matches={{ mode: "command", rows: [], loading: false, failed: true }} {...props} />);
+    rerender(<CommandPopover matches={{ mode: "command", rows: [], loading: false, query: "zzz" }} {...props} />);
+    expect(empty().textContent).toBe("No matches");
+    // A bare "/" typed nothing to match: the list itself is empty.
+    rerender(<CommandPopover matches={{ mode: "command", rows: [], loading: false, query: "" }} {...props} />);
+    expect(empty().textContent).toBe("No commands");
+    expect(empty().className).toContain("text-muted-foreground");
+    rerender(<CommandPopover matches={{ mode: "command", rows: [], loading: false, failed: true, query: "" }} {...props} />);
     expect(empty().textContent).toBe("Couldn't load commands");
     expect(empty().className).toContain("text-destructive");
   });

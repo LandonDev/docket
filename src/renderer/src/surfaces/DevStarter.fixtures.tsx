@@ -25,5 +25,5 @@ export default [
   { name: "two hosts", props: { starter: { ...starter, hosts: [mac, box] } } },
   { name: "starting", props: { starter: { ...starter, starting: true } } },
   { name: "the thread already runs one", props: { starter: { ...starter, asking: true } } },
-  { name: "nothing to serve, and a refusal", props: { starter: { ...starter, targets: [], target: undefined, error: "devServer.start: the host has no copy of this project" } } },
+  { name: "nothing to serve, and a refusal", props: { starter: { ...starter, targets: [], target: undefined, error: "The host has no copy of this project" } } },
 ];

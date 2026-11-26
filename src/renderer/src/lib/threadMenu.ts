@@ -167,8 +167,9 @@ export function threadMenuRows(facts: ThreadMenuFacts, extra: ThreadMenuExtra = 
   else if (working) rows.push({ kind: "item", id: "pause", label: "Pause", icon: Pause });
   if (canCompact(facts)) rows.push({ kind: "item", id: "compact", label: "Compact", icon: FoldVertical });
   // A watching thread is idle behind its background tasks: this ends them.
-  if (status === "watching") rows.push({ kind: "item", id: "killBackground", label: "Stop background tasks", icon: StopCircle, danger: true });
-  if (live) rows.push({ kind: "item", id: "stop", label: "Stop", icon: Square, danger: true });
+  // A stop loses nothing (Continue and Resume follow it), so it stays in the menu's ink: red is for Delete alone.
+  if (status === "watching") rows.push({ kind: "item", id: "killBackground", label: "Stop background tasks", icon: StopCircle });
+  if (live) rows.push({ kind: "item", id: "stop", label: "Stop", icon: Square });
   rows.push({ kind: "sep" });
 
   if (facts.bridge) {

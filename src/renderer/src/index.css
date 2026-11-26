@@ -824,6 +824,7 @@ html.theme-light {
 .focus-ring:focus-visible,
 .focus-ring-held:focus,
 [data-slot="slider-thumb"]:has(:focus-visible),
+[data-slot="question-option"]:has(> input:focus-visible),
 button:focus-visible,
 a:focus-visible,
 [role="link"]:focus-visible,

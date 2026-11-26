@@ -20,7 +20,8 @@ export default [
       },
     },
   },
-  { name: "No match on /zzz", props: { active: 0, typed: "/zzz", matches: { mode: "command", rows: [] } } },
+  { name: "No match on /zzz", props: { active: 0, typed: "/zzz", matches: { mode: "command", rows: [], query: "zzz" } } },
+  { name: "Nothing to list on a bare /", props: { active: 0, typed: "/", matches: { mode: "command", rows: [], query: "" } } },
   { name: "Commands could not load", props: { active: 0, typed: "/", matches: { mode: "command", rows: [], failed: true } } },
   {
     name: "Files, threads and notes",

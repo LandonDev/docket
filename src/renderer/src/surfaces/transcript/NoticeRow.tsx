@@ -89,11 +89,23 @@ const AWAY_GLYPH = { question: CircleHelp, allowed: LockOpen, approval: Lock } a
 
 /** What happened while the person was away: a decision the thread noted, a
  *  question the host answered for them, an approval it allowed or skipped;
- *  the host's words, muted like every notice. */
+ *  the host's words, muted like every notice. The host's lead ("Allowed while
+ *  away") is the line's lead and the ask its detail, with no colon between
+ *  and no question mark after; a decision, or a row with no `away` part, is one sentence. */
 export function AwayNoticeLine({ block }: { block: Block }) {
-  const kind = block.notice?.away?.kind;
+  const away = block.notice?.away;
+  const kind = away?.kind;
   const Glyph = kind && kind !== "decision" ? AWAY_GLYPH[kind] : null;
-  return <NoticeLine data-away={kind ?? "decision"} glyph={Glyph ? <Glyph /> : undefined} lead={block.text} wrap />;
+  const { lead, detail } = awayParts(block.text, away?.text);
+  return <NoticeLine data-away={kind ?? "decision"} glyph={Glyph ? <Glyph /> : undefined} lead={lead} details={detail ? [detail] : []} wrap />;
+}
+
+/** "Allowed while away: Run bun test?" with its text "Run bun test?" → lead "Allowed while away", detail "Run bun test". */
+export function awayParts(message: string, text: string | undefined): { lead: string; detail?: string } {
+  if (!text || !message.endsWith(text)) return { lead: message };
+  const lead = message.slice(0, message.length - text.length).replace(/[:\s]+$/, "");
+  if (!lead) return { lead: message };
+  return { lead, detail: text.replace(/\?+$/, "") };
 }
 
 /** A plan's automatic build that could not start, with the host's reason. */

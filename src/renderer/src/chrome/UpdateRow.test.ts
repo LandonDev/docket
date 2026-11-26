@@ -121,6 +121,20 @@ describe("UpdateRow", () => {
     expect(onOpenWhatsNew).toHaveBeenCalledWith("1.0.11", "# notes");
   });
 
+  it("in a rail under 15rem the target version yields whole, never cut to \"Update to 1.0.…\"; the row's name keeps it", () => {
+    for (const [state, name] of [
+      [{ kind: "available", version: "1.0.11", retry: false }, "Update to 1.0.11"],
+      [{ kind: "updated", version: "1.0.10" }, "Updated to 1.0.10, what's new"],
+    ] as const) {
+      const view = render(createElement(UpdateRow, { state }));
+      const row = screen.getByRole("button", { name });
+      const version = [...row.querySelectorAll("span")].find((s) => s.textContent === ` to ${state.version}`)!;
+      expect(version.className).toBe("@max-[15rem]/railrow:hidden");
+      expect(row.closest(".\\@container\\/railrow")).not.toBeNull();
+      view.unmount();
+    }
+  });
+
   it("available without notes has no hover action; a retry says so", () => {
     mount({ kind: "available", version: "1.0.11", retry: true, error: "net::ERR_CONNECTION_RESET at https://github.com/x" });
     expect(screen.getByRole("button", { name: "Retry update" })).toBeTruthy();

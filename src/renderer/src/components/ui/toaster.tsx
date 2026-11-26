@@ -49,14 +49,28 @@ export function toastInset(
   viewport: { width: number; height: number },
   anchor: { top: number; right: number; left?: number } | null,
 ): ToastInset {
-  if (!anchor) return { bottom: INSIDE, right: INSIDE, width: TOAST_WIDTH };
-  const room = anchor.left === undefined ? TOAST_WIDTH : Math.round(anchor.right - anchor.left - 2 * INSIDE);
+  const corner = { bottom: INSIDE, right: INSIDE, width: TOAST_WIDTH };
+  // A rect that is not a footer on screen (a side lost, a hidden or detached pane's zeros, one wholly off the
+  // window) seats nothing: the stack takes the corner rather than offsets beyond the window.
+  if (!anchor || !seen(viewport, anchor)) return corner;
+  // The column as far as it shows: a part past the window's edge holds no toast.
+  const right = Math.min(anchor.right, viewport.width);
+  const room = anchor.left === undefined ? TOAST_WIDTH : Math.round(right - Math.max(anchor.left, 0) - 2 * INSIDE);
+  const width = Math.max(0, Math.min(TOAST_WIDTH, room));
   return {
-    bottom: Math.max(INSIDE, Math.round(viewport.height - anchor.top + ABOVE)),
-    right: Math.max(INSIDE, Math.round(viewport.width - anchor.right + INSIDE)),
-    width: Math.max(0, Math.min(TOAST_WIDTH, room)),
+    bottom: clamp(Math.round(viewport.height - anchor.top + ABOVE), INSIDE, viewport.height - INSIDE),
+    right: clamp(Math.round(viewport.width - right + INSIDE), INSIDE, viewport.width - width - INSIDE),
+    width,
   };
 }
+
+function seen(viewport: { width: number; height: number }, anchor: { top: number; right: number; left?: number }): boolean {
+  const left = anchor.left ?? 0;
+  if (![anchor.top, anchor.right, left].every(Number.isFinite)) return false;
+  return anchor.top > 0 && anchor.top <= viewport.height && anchor.right > 0 && left < viewport.width && anchor.right > left;
+}
+
+const clamp = (value: number, low: number, high: number): number => Math.max(low, Math.min(value, Math.max(low, high)));
 
 function viewport(): { width: number; height: number } {
   return { width: window.innerWidth, height: window.innerHeight };
@@ -73,7 +87,8 @@ type Rect = { top: number; bottom: number; left: number; right: number };
 export function seatRect(anchor: Rect, card: Rect | null, view: { top: number; bottom: number } | null): Rect {
   if (!card || card.bottom - card.top <= 0 || card.top >= anchor.top) return anchor;
   if (view && (card.top < view.top || card.bottom > view.bottom + 1)) return anchor;
-  return { ...anchor, top: card.top };
+  // Named, not spread: a DOMRect's sides are getters on its prototype, and a spread of one has no right edge.
+  return { top: card.top, bottom: anchor.bottom, left: anchor.left, right: anchor.right };
 }
 
 /** The nearest ancestor that scrolls: the transcript a card sits in. */
@@ -109,11 +124,14 @@ function useToastInset(): ToastInset {
       if (anchor.parentElement) observer?.observe(anchor.parentElement);
     }
     if (card) observer?.observe(card);
+    // A popup seat (the composer's menu) rises 4px on a transform no observer sees: measure again where it lands.
+    card?.addEventListener("transitionend", measure);
     scroller?.addEventListener("scroll", measure, { passive: true });
     window.addEventListener("resize", measure);
     return () => {
       cancelAnimationFrame(frame);
       observer?.disconnect();
+      card?.removeEventListener("transitionend", measure);
       scroller?.removeEventListener("scroll", measure);
       window.removeEventListener("resize", measure);
     };

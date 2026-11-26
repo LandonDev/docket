@@ -65,7 +65,7 @@ describe("releaseNotesForVersion", () => {
     expect(releaseNotesForVersion("0.1.2", malformed)).toBeNull();
   });
 
-  it.each(["## [0.1.2]\n\nUndated.", "## [0.1.2] - 2026-08-31\n\nDated."])(
+  it.each(["## [0.1.2]\n\nUndated.", "## [0.1.2] - 2026-08-31\n\nDated.", "## 0.1.2\n\nBare.", "## v0.1.2 - 2026-08-31\n\nBare with v.", "## [v0.1.2]\n\nBracketed with v."])(
     "accepts supported heading %j",
     (changelog) => {
       expect(releaseNotesForVersion("0.1.2", changelog)?.markdown).toBe(
@@ -73,6 +73,16 @@ describe("releaseNotesForVersion", () => {
       );
     },
   );
+
+  it("drops a bare version heading as it drops a bracketed one, so What's New says the version once", () => {
+    expect(presentReleaseNotes("9.1.0", "## 9.1.0\n\n### Files\n\nThe viewer keeps your place.")).toEqual({
+      version: "9.1.0",
+      date: null,
+      markdown: "### Files\n\nThe viewer keeps your place.",
+    });
+    expect(presentReleaseNotes("9.1.0", "## 9.1.0 - 2026-11-01\n\nNotes.")?.date).toBe("2026-11-01");
+    expect(releaseNotesForVersion("9.1.0", "## 9.1.01\n\nNo.")).toBeNull();
+  });
 
   it("extracts the final release through the end of the changelog", () => {
     const release = releaseNotesForVersion("0.1.1", fixture);

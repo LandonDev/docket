@@ -54,12 +54,18 @@ describe("Naming a new thread in the draft row", () => {
     expect(onDraftTitleChange).toHaveBeenLastCalledWith("Gateway audit");
   });
 
-  it("gives way whole in a draft row under 20rem, never cut to Name…", () => {
+  it("gives way whole in a draft row under 24rem, never cut to Name…", () => {
     const view = mount({ threadType: "chat", draftTitle: "", onDraftTitleChange: vi.fn() });
     const input = field(view)!;
     const row = view.container.querySelector<HTMLElement>("[data-composer-draft-row]")!;
     expect(row.className.split(" ")).toContain("@container/draft-row");
-    expect(input.className.split(" ")).toContain("@max-[20rem]/draft-row:hidden");
+    expect(input.className.split(" ")).toContain("@max-[24rem]/draft-row:hidden");
+  });
+
+  it("takes the row's squeeze before the folder's name does, so the folder is never cut to its first letter", () => {
+    const input = field(mount({ threadType: "chat", draftTitle: "", onDraftTitleChange: vi.fn() }))!;
+    // Flex shrink is weighted: the field's 100 against the folder's default 1 hands it the whole squeeze until it is at its least.
+    expect(input.className.split(" ")).toEqual(expect.arrayContaining(["shrink-100", "min-w-16"]));
   });
 
   it("holds 80 characters on one line", () => {

@@ -27,7 +27,8 @@ describe("FilePreview", () => {
     expect(name.className).toContain("shrink-0");
     expect(name.className).toContain("text-foreground");
     const folder = name.nextElementSibling as HTMLElement;
-    expect(folder.textContent).toBe("src");
+    // The folder is cut from its start (its last part stays), so it carries the marks that keep it reading left to right.
+    expect(folder.textContent!.replace(/\u200e/g, "")).toBe("src");
     expect(folder.className.split(" ")).toEqual(expect.arrayContaining(["truncate", "text-muted-foreground"]));
     const counts = container.querySelector("[data-slot=counts]")!;
     expect(counts.className).toContain("font-sans");

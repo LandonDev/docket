@@ -1,7 +1,8 @@
 // Fixtures for `bun run ui:preview src/renderer/src/chrome/Composer.tsx#Composer`:
 // the box before a first message (its draft row open), three lines in the
 // field, the meter amber, a draft with its row under the box, and chat
-// drafts with Master thread and the name field. The docked footer of a
+// drafts with Master thread and the name field (one with its folder, where
+// the name gives way first). The docked footer of a
 // thread with messages (the slot, the queue, attachments) is
 // Composer.preview.tsx#DockedComposerPreview. Sending and dismissal need interaction.
 import type { ComponentProps } from "react";
@@ -49,6 +50,11 @@ export default [
   {
     name: "Chat draft, named",
     props: { ...base, sessionId: undefined, shell: true, hideProjectPicker: true, threadType: "chat", onThreadTypeChange: noop, master: false, onMasterChange: noop, draftTitle: "Gateway deadline audit", onDraftTitleChange: noop },
+  },
+  {
+    // The row's whole set in a narrow column: the name field gives way before the folder does.
+    name: "Chat draft with its folder, unnamed",
+    props: { ...base, sessionId: undefined, shell: true, threadType: "chat", onThreadTypeChange: noop, master: false, onMasterChange: noop, draftTitle: "", onDraftTitleChange: noop },
   },
   {
     name: "Inbox card",

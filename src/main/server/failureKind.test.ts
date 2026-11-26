@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { FailureKindSchema } from '@shared/events'
 import { fallbackFailure } from '@shared/failureFallback'
 import { UpstreamTimeout } from './upstream'
-import { classifyFailure, describeFailure, failureKindOf, networkRefusalOf, refusalCodeOf, type FailureContext } from './failureKind'
+import { classifyFailure, describeFailure, failureKindOf, networkRefusalOf, refusalCodeOf, UNKNOWN_CAUSE, type FailureContext } from './failureKind'
 
 const ctx = (over: Partial<FailureContext> = {}): FailureContext => ({
   message: '',
@@ -156,13 +156,15 @@ describe('failureKindOf on captured messages', () => {
       kind: 'turn_ended',
       account: 'landon@example.com',
       summary: 'The turn ended before it finished',
-      cause: 'Invalid tool input: missing field'
+      cause: 'Claude Code hit an error during the turn.'
     })
-    expect(classifyFailure(ctx({ message: 'turn ended: error_during_execution' })).cause).toBe('Claude Code reported error_during_execution and gave no reason.')
+    expect(classifyFailure(ctx({ message: 'turn ended: error_during_execution' })).cause).toBe('Claude Code hit an error during the turn.')
+    // An unmapped subtype is an id: the card never prints it.
+    expect(classifyFailure(ctx({ message: 'turn ended: error_something_new' })).cause).toBe('Claude Code ended the turn and gave no reason.')
     expect(classifyFailure(ctx({ message: 'turn ended: error_max_turns' })).cause).toBe("The CLI's turn limit was reached.")
     expect(classifyFailure(ctx({ message: 'turn ended: error_max_budget_usd' })).cause).toBe("The CLI's spend limit was reached.")
     expect(classifyFailure(ctx({ message: 'turn ended: error_max_structured_output_retries' })).cause).toBe('The CLI gave up on a structured answer.')
-    expect(classifyFailure(ctx({ provider: 'codex', message: 'turn ended: error_during_execution' })).cause).toBe('Codex reported error_during_execution and gave no reason.')
+    expect(classifyFailure(ctx({ provider: 'codex', message: 'turn ended: error_during_execution' })).cause).toBe('Codex hit an error during the turn.')
   })
 
   it("an unknown with no reason reads as the renderer's fallback, word for word", () => {
@@ -171,14 +173,12 @@ describe('failureKindOf on captured messages', () => {
     expect({ summary: failure.summary, cause: failure.cause }).toEqual({ summary: fallbackFailure().summary, cause: fallbackFailure().cause })
   })
 
-  it('anything else is unknown and keeps the words on the second line', () => {
+  it('anything else is unknown, and its raw words never reach the card', () => {
     const failure = classifyFailure(ctx({ message: 'declined unhandled harness request: item/foo' }))
     expect(failure.kind).toBe('unknown')
     expect(failure.summary).toBe('The turn failed')
-    expect(failure.cause).toBe('declined unhandled harness request: item/foo')
-    const long = classifyFailure(ctx({ message: 'x'.repeat(400) })).cause
-    expect(long.length).toBe(160)
-    expect(long.endsWith('…')).toBe(true)
+    expect(failure.cause).toBe(UNKNOWN_CAUSE)
+    expect(classifyFailure(ctx({ message: 'x'.repeat(400) })).cause).toBe(UNKNOWN_CAUSE)
   })
 
   it('a missing account changes the wording, never the kind', () => {
@@ -217,7 +217,7 @@ describe('a Meta thread', () => {
   })
   it('402 or billing words are quota with the billing line; 429 is the per-minute limit with Retry-After', () => {
     expect(failureKindOf(meta({ gateway: { status: 402, code: null, account: 'k' }, message: 'insufficient balance' }))).toBe('quota')
-    expect(classifyFailure(meta({ gateway: { status: 402, code: null, account: 'k' }, message: 'insufficient balance' })).summary).toBe('Meta billing: insufficient balance')
+    expect(classifyFailure(meta({ gateway: { status: 402, code: null, account: 'k' }, message: 'insufficient balance' })).summary).toBe('Meta billing refused the request')
     expect(failureKindOf(meta({ gateway: { status: 429, code: null, account: 'k' }, message: 'rate limited, retry-after: 30' }))).toBe('rate_limited')
     const limited = classifyFailure(meta({ gateway: { status: 429, code: null, account: 'k' }, message: 'Too many requests, retry-after: 30' }))
     expect(limited.summary).toBe('Meta rate limit, retry in 30 s')

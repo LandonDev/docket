@@ -239,6 +239,17 @@ describe("ChangesPanel", () => {
     expect(screen.queryByLabelText("Commit message")).toBeNull();
   });
 
+  it("cuts a row's folder from its start, so its last folder is what stays", async () => {
+    h.index = indexOf({ files: [file(".temp-code/plans/a.ts")] });
+    const { container } = mount();
+    await flush();
+    const folder = [...container.querySelectorAll<HTMLElement>("span[dir=rtl]")].find((s) => s.textContent?.includes("plans"))!;
+    expect(folder.className).toContain("truncate");
+    expect(folder.className).toContain("text-left");
+    // The path keeps its order between two left-to-right marks: a leading "." stays in front.
+    expect(folder.textContent).toBe("\u200E.temp-code/plans\u200E");
+  });
+
   it("names the groups only when both have rows", async () => {
     h.index = indexOf({ files: [file("src/a.ts")] });
     const { rerender } = mount();
@@ -514,6 +525,8 @@ describe("ChangesPanel", () => {
     await flush();
     expect(screen.getByRole("alert").textContent).toContain("Couldn't read the changes");
     expect(screen.queryByLabelText("Loading changes")).toBeNull();
+    // No branch row's bone over the red line: nothing is on its way.
+    expect(document.querySelector('[data-slot="changes-section"] [data-slot="skeleton"]')).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(h.refresh).toHaveBeenCalled();
     h.index = indexOf({ files: [file("a.ts")] });

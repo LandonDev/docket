@@ -68,6 +68,9 @@ describe("TurnDuration", () => {
     const working = render(<TurnDuration elapsedMs={12_000} live />);
     expect(working.container.textContent).toBe("Working12s");
     expect(working.container.querySelector('[data-state="working"]')).not.toBeNull();
+    // It sits under the working line, which holds the one moving mark: a still dot, no spinner.
+    expect(working.container.querySelector('[data-slot="spinner"]')).toBeNull();
+    expect(working.container.querySelector('[data-slot="working-dot"]')).not.toBeNull();
     working.unmount();
     const waiting = render(<TurnDuration elapsedMs={12_000} live waiting />);
     expect(waiting.container.textContent).toBe("Needs you");

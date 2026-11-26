@@ -52,6 +52,34 @@ describe("toastInset", () => {
     expect(toastInset({ width: 480, height: 600 }, { top: 640, right: 520 })).toEqual({ bottom: 16, right: 16, width: TOAST_WIDTH });
   });
 
+  // Council M F9.1: a bad rect turned into offsets beyond the window. Walk scene 48 (the question thread) is the
+  // lost right edge; a hidden or detached pane's footer reads all zeros; a footer scrolled away lies off the window.
+  it("takes the corner for a rect that is no footer on screen: a lost side, a hidden pane's zeros, one off the window", () => {
+    const corner = { bottom: 16, right: 16, width: TOAST_WIDTH };
+    expect(toastInset(WINDOW, { top: 520, right: Number.NaN, left: Number.NaN })).toEqual(corner);
+    expect(toastInset(WINDOW, { top: 520, right: undefined as unknown as number })).toEqual(corner);
+    expect(toastInset(WINDOW, { top: 0, right: 0, left: 0 })).toEqual(corner);
+    expect(toastInset(WINDOW, { top: -40, right: 1168, left: 272 })).toEqual(corner);
+    expect(toastInset(WINDOW, { top: 752, right: -10, left: -900 })).toEqual(corner);
+    expect(toastInset(WINDOW, { top: 752, right: 2400, left: 1500 })).toEqual(corner);
+  });
+
+  it("keeps every toast inside the window and its column, 16px from each edge, whatever the footer's rect", () => {
+    for (const viewport of [WINDOW, { width: 800, height: 520 }, { width: 400, height: 700 }]) {
+      for (const top of [1, 60, viewport.height / 2, viewport.height - 1, viewport.height]) {
+        for (const [left, right] of [[0, viewport.width], [200, viewport.width - 100], [viewport.width - 120, viewport.width + 300], [-200, 180]]) {
+          const inset = toastInset(viewport, { top, left, right });
+          expect(inset.bottom).toBeGreaterThanOrEqual(16);
+          expect(inset.bottom).toBeLessThanOrEqual(viewport.height - 16);
+          const box = toastBox(viewport, inset);
+          expect(box.right).toBeLessThanOrEqual(viewport.width - 16);
+          expect(box.left).toBeGreaterThanOrEqual(16);
+          if (inset.width > 0) expect(box.left).toBeGreaterThanOrEqual(Math.max(left, 0) + 16);
+        }
+      }
+    }
+  });
+
   it("in a master's chat beside its board, stays inside the chat's column: no wider than it less 16px a side", () => {
     // 1000px window: the board to 640, the master's chat from 641 to the edge.
     const viewport = { width: 1000, height: 900 };
@@ -115,6 +143,20 @@ describe("a waiting card's seat", () => {
     expect(toastInset(WINDOW, seat)).toEqual({ bottom: WINDOW.height - 520 + 8, right: 1440 - 1168 + 16, width: TOAST_WIDTH });
     // No toast meets the card: its foot (Back, Skip, Next) stays clear.
     expect(meets(toastBox(WINDOW, toastInset(WINDOW, seat)), card)).toBe(false);
+  });
+
+  it("keeps the footer's sides when the rects are the browser's own, whose sides are prototype getters", () => {
+    // A spread of a DOMRect has no right edge: the stack fell to the window's left, over the rail (council F9.1).
+    class Box {
+      constructor(private readonly r: { top: number; bottom: number; left: number; right: number }) {}
+      get top() { return this.r.top; }
+      get bottom() { return this.r.bottom; }
+      get left() { return this.r.left; }
+      get right() { return this.r.right; }
+    }
+    const seat = seatRect(new Box(footer), new Box({ top: 520, bottom: 744, left: 336, right: 1104 }), view);
+    expect(seat).toEqual({ ...footer, top: 520 });
+    expect(toastInset(WINDOW, seat)).toEqual({ bottom: WINDOW.height - 520 + 8, right: 1440 - 1168 + 16, width: TOAST_WIDTH });
   });
 
   it("gives the seat back to the footer when the card is scrolled out of view, cut by the scroller, or folded shut", () => {

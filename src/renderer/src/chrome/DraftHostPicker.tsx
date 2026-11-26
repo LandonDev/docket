@@ -123,7 +123,8 @@ export function DraftHostPicker({ sessionId, onClose }: { sessionId: string; onC
         render={<Button variant="ghost" size="xs" className={cn("min-w-0", ROW_CONTROL)} />}
       >
         <HostGlyph environmentId={current.id} />
-        <span className="max-w-32 truncate">{current.name}</span>
+        {/* Under a 24rem draft row the name gives way to the glyph (its name is the trigger's), so the folder keeps its word. */}
+        <span data-draft-host-name className="max-w-32 truncate @max-[24rem]/draft-row:hidden">{current.name}</span>
         <ChevronDown aria-hidden className="size-3" />
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" finalFocus={onClose ? false : undefined} className="w-64" aria-label="Start this thread on">

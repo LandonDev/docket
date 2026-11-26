@@ -155,12 +155,13 @@ type Dialog =
 
 // --- small parts -----------------------------------------------------------
 
-/** Where a "N more" row sits: on its list's own columns. Under a project
- *  card it is a 28px row whose label starts on the card's titles (12px
- *  inset, the 12px mark and the 12px glyph 8px apart: 52px); in a thread
- *  list it is one of the list's 32px rows, its label on their titles (12px
- *  inset, the 16px glyph, 8px: 36px). */
-const MORE_PLACE = { card: "h-7 pl-13", list: "h-8 pl-9" } as const;
+/** Where a "N more" row sits: on its list's own columns. In a project card
+ *  it is a 28px row laid 4px in from the card's sides, under its lines, its
+ *  label on the card's titles (12px inset, the 12px mark and the 12px glyph
+ *  8px apart: 52px from the card's edge); in a thread list it is one of the
+ *  list's 32px rows, its label on their titles (12px inset, the 16px glyph,
+ *  8px: 36px). */
+const MORE_PLACE = { card: "h-7 pl-12", list: "h-8 pl-9" } as const;
 
 /** The row behind which a windowed list keeps the rest: a row of 13px words
  *  on its list's title column (`MORE_PLACE`), the /5 hover fill at once (as
@@ -993,7 +994,10 @@ const BatchLine = memo(function BatchLine({ thread, state, agents }: MasterBlock
 });
 
 /** The count line's facts, two spaces apart: needs you in amber and failed
- *  in red with their glyphs, the rest muted. */
+ *  in red with their glyphs, the rest muted. A quiet fact that does not fit
+ *  gives way whole, from the last: each is its own word in a one-line run
+ *  that wraps what does not fit out of its 16px (the empty 16px `before:`
+ *  item, which Chromium drops without a height, lets even the first one go), never cut to "1 do…". */
 function CountLine({ counts }: { counts: readonly CardCount[] }) {
   // The loud counts lead, each by its glyph and tone; the quiet ones that
   // follow are one comma run in muted, so no two facts differ by space alone.
@@ -1005,7 +1009,16 @@ function CountLine({ counts }: { counts: readonly CardCount[] }) {
         // A glyph keeps 8px from the count before it, as from its own word.
         <StatusMark key={c.kind} state={c.kind} word={c.text} className="shrink-0 font-normal not-first:ms-1 [&_svg]:size-3" />
       ))}
-      {quiet.length ? <span className={cn("min-w-0 truncate", loud.length > 0 && "ms-1")}>{quiet.map((c) => c.text).join(", ")}</span> : null}
+      {quiet.length ? (
+        <span data-card-quiet className={cn("flex h-4 min-w-0 flex-wrap overflow-hidden before:h-4 before:content-['']", loud.length > 0 && "ms-1")}>
+          {quiet.map((c, i) => (
+            // The comma rides with the fact after it, so it goes with that fact.
+            <span key={c.kind} className="shrink-0 whitespace-pre">
+              {i > 0 ? `, ${c.text}` : c.text}
+            </span>
+          ))}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -1042,7 +1055,8 @@ export type ProjectCardViewProps = {
  * master's batch as a block), then the counts. The card is one button: a
  * click anywhere selects the project, and its lines never open a thread
  * (the strip above the pane is where threads are picked). ⋯ and "N more"
- * sit beside it, never inside.
+ * are laid over it, never inside its button: "N more" on a room the card
+ * keeps under its lines, so it reads as the card's.
  */
 export function ProjectCardView({
   name,
@@ -1067,6 +1081,7 @@ export function ProjectCardView({
   const editing = title != null;
   // Unread is said once: by a shown line's weight, else (its line is past the page) by the dot.
   const dot = unread && !lines.some((line) => (line.kind === "master" ? line.block.unread : line.kind === "unread"));
+  const more = hidden > 0 && !!onMore;
   const body = (
     <>
       {/* The 13px name and the 12px time share a baseline. */}
@@ -1103,6 +1118,8 @@ export function ProjectCardView({
           )}
         </span>
       ) : null}
+      {/* The room "N more" is laid over: it reads as the card's, under its lines, yet is no button inside the card's button. */}
+      {more ? <span aria-hidden data-more-room className="h-7 shrink-0" /> : null}
       {counts.length ? <CountLine counts={counts} /> : null}
     </>
   );
@@ -1139,7 +1156,12 @@ export function ProjectCardView({
           align="start"
         />
       ) : null}
-      {hidden > 0 && onMore ? <MoreRow hidden={hidden} onMore={onMore} place="card" /> : null}
+      {more && onMore ? (
+        // On the card's room (`data-more-room`): over the count line's 20px and the card's 8px foot, else the foot alone.
+        <div className={cn("absolute inset-x-1", counts.length ? "bottom-7" : "bottom-2")}>
+          <MoreRow hidden={hidden} onMore={onMore} place="card" />
+        </div>
+      ) : null}
     </div>
   );
   return menu ? (
@@ -1281,7 +1303,7 @@ export const ProjectCard = memo(function ProjectCard({
       hidden={hidden}
       counts={projectCardCounts(threads, active, lastSeen, seenFloor, archivedCount)}
       unread={status.unread.length > 0}
-      ariaLabel={projectCardAriaLabel(project.name, status)}
+      ariaLabel={projectCardAriaLabel(project.name, status, archivedCount)}
       selected={selected}
       offline={offline}
       onSelect={() => selectProject(project.id)}

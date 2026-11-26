@@ -408,7 +408,7 @@ export function Composer({
   const matches = useMemo<PopoverMatches | null>(() => {
     if (!live) return null
     if (live.mode === 'command') {
-      return { mode: 'command', rows: matchCommands(commands, live.query), loading: !commandsLoaded, failed: commandsFailed }
+      return { mode: 'command', rows: matchCommands(commands, live.query), loading: !commandsLoaded, failed: commandsFailed, query: live.query }
     }
     const fileHits: AtMatch[] = looksLikeProject(executionCwd)
       ? rankFiles(mentionable, live.query).map((file) => ({ kind: 'file', file }))

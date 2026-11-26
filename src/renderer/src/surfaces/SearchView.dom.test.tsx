@@ -207,6 +207,8 @@ describe("SearchView across hosts", () => {
     expect(note.textContent).toContain("about the gateway");
     expect(hostOf(note)).toBe("box");
     expect(project.textContent).toContain("gateway-kit");
+    // A workspace row is its name alone: never its folder's path.
+    expect(project.textContent).not.toContain("/");
 
     // Every host asked: both answered, each its name then its time in muted, no colon.
     const footer = view.getByLabelText("Hosts searched");
@@ -313,6 +315,21 @@ describe("SearchView across hosts", () => {
     expect(failed.lastElementChild!.className).toContain("text-destructive");
     view.unmount();
     h.statuses = new Map([["env_box", { transport: "open", fresh: true }]]);
+  });
+
+  it("while every host is still out and no hit has landed, the results are the rows' skeleton", async () => {
+    h.invokeOn.mockImplementation(() => new Promise(() => {}));
+    h.searchProject.mockImplementation(() => new Promise(() => {}));
+    const view = render(<SearchView open cwd="/Users/me/app" recents={recents} {...props()} />);
+    await search(view, "zzqx");
+    const skeleton = view.container.querySelector<HTMLElement>("[data-search-results] [data-search-skeleton]")!;
+    expect(skeleton.getAttribute("aria-busy")).toBe("true");
+    // Each bone row as tall as a hit and on its glyph column: 28px, the 1px edge and 10px in.
+    const row = skeleton.querySelector<HTMLElement>("[data-skeleton-row]")!;
+    for (const cls of ["h-7", "border", "px-2.5"]) expect(row.className.split(" ")).toContain(cls);
+    expect(view.container.querySelector('[data-slot="empty"]')).toBeNull();
+    view.unmount();
+    answers();
   });
 
   it("with one host there is no host mark, no host: hint and no footer", async () => {

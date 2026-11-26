@@ -8,6 +8,7 @@ import { AgentRowView } from "../surfaces/threads/fleet/AgentRow";
 import { FLEET_ROWS } from "../surfaces/threads/fleet/fleetFixture";
 import { Folder } from "./icons";
 import { RailRow } from "./RailRow";
+import { RailWorkingView } from "./RailWorking";
 import { rowMark, ThreadRowView } from "./WorkspaceSessions";
 
 const TITLE = "Port the settings pages onto the shared row and keep their widths";
@@ -124,5 +125,22 @@ describe("a clipped rail row label", () => {
     render(<RailRow icon={Folder} label={NAME} tooltip="Inbox ⌘I" onClick={() => {}} />);
     hover(screen.getByRole("button", { name: NAME }));
     await waitFor(() => expect(tipText()).toBe("Inbox ⌘I"), { timeout: 2000 });
+  });
+});
+
+describe("a Working row in the rail", () => {
+  it("leads its state tooltip with the whole title while the row cuts it; a title that fits is not said twice", async () => {
+    const working = { id: "t1", state: "working" as const, meta: meta({ status: "running", busySince: 1 }) };
+    cutEverything();
+    const cut = render(<RailWorkingView rows={[working]} now={0} projectOf={() => "Alpha"} />);
+    hover(screen.getByRole("button", { name: `${TITLE}, Working` }));
+    await waitFor(() => expect(document.querySelector("[data-working-tip-title]")?.textContent).toBe(TITLE), { timeout: 2000 });
+    expect(tipText()).toBe(`${TITLE}WorkingAlpha`);
+    cut.unmount();
+    vi.restoreAllMocks();
+    render(<RailWorkingView rows={[working]} now={0} projectOf={() => "Alpha"} />);
+    hover(screen.getByRole("button", { name: `${TITLE}, Working` }));
+    await waitFor(() => expect(tipText()).toBe("WorkingAlpha"), { timeout: 2000 });
+    expect(document.querySelector("[data-working-tip-title]")).toBeNull();
   });
 });

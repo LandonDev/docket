@@ -62,7 +62,7 @@ import {
 import { listProjectFiles, type ProjectFile } from "../lib/fs";
 import { invokeOn } from "../lib/native";
 import { loadNotes, peekNotes, type Note } from "../lib/notes";
-import { prettyCwd, projectName } from "../lib/paths";
+import { projectName } from "../lib/paths";
 import { IS_MAC } from "../lib/platform";
 import { pairWorkspaces, partnersOf } from "../lib/projectPairs";
 import { looksLikeProject, type RecentProject } from "../lib/recents";
@@ -72,6 +72,7 @@ import { environmentOfCwd, hostOfCwd } from "../lib/tcserver/projects";
 import { sessionStore, useServerSessions, useSessionMetas } from "../lib/tcserver/store";
 import { useWorkspaces } from "../lib/tcserver/workspaces";
 import { EmptyState } from "./SurfaceSkeleton";
+import { Skeleton } from "../components/ui/skeleton";
 import { Tip } from "../components/tip";
 
 /**
@@ -539,6 +540,8 @@ export function SearchView({
             line={filtered ? "Filters are narrowing this search" : undefined}
             action={filtered ? { label: "Clear filters", onClick: clearFilters } : undefined}
           />
+        ) : searching && hits.length === 0 ? (
+          <SearchRowsSkeleton />
         ) : (
           <ResultList
             hits={hits}
@@ -553,6 +556,22 @@ export function SearchView({
       </div>
 
       {multiHost && !empty && progress.length > 0 ? <HostFooter progress={progress} /> : null}
+    </div>
+  );
+}
+
+/** Hits on their way: result rows in their own shape (28px, the 16px glyph on the rows' column, a title
+ *  bar), still, until the first host answers. */
+const SKELETON_TITLES = [72, 48, 88, 36, 64, 56];
+function SearchRowsSkeleton() {
+  return (
+    <div role="status" aria-label="Searching" aria-busy data-search-skeleton className="select-none">
+      {SKELETON_TITLES.map((width, i) => (
+        <div key={i} data-skeleton-row className="flex h-7 items-center gap-2 border border-transparent px-2.5">
+          <Skeleton className="size-4 shrink-0 rounded-sm" />
+          <Skeleton className="h-3" style={{ width: `${width}%` }} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -741,8 +760,9 @@ function rowCopy(hit: AppSearchHit, query: string): RowCopy {
   return {
     icon: <FolderGlyph path={hit.path} className="size-3.5 shrink-0" mascotClassName="size-3 shrink-0" />,
     title: <MatchText text={hit.name} positions={hit.positions} />,
-    meta: prettyCwd(hit.path),
-    mono: true,
+    // A path is never on screen; the row's host mark names the computer where more than one answers.
+    meta: "",
+    mono: false,
   };
 }
 

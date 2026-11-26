@@ -8,6 +8,7 @@ import { BusyLabel, Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { ChoiceToggle } from "../components/choice-toggle";
 import { devPane } from "../lib/devPane";
+import { dialogErrorWords } from "../lib/dialogErrorWords";
 import {
   runChoice,
   startDevServer,
@@ -87,7 +88,8 @@ export function useDevStarter(projectId: string | null): DevStarterState {
       }
       devPane.open(`${envId}/${started.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      // In a person's words, the host by its name; never the host's raw text.
+      setError(dialogErrorWords(err, host?.name));
     } finally {
       setStarting(false);
     }

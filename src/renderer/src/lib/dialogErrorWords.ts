@@ -6,13 +6,15 @@ import { nameInLine } from "./hostWords";
  * tool answers that were never written for a person each get a sentence: the
  * link down or silent, a key the host refuses ("forbidden: turnpass.set needs
  * admin"), git's stderr (its "error: " prefix, the tab-indented file list and
- * "Aborting" dropped, its first sentence kept). A refusal already in words
+ * "Aborting" dropped, its first sentence kept). A call's name the link puts
+ * before the host's words ("devServer.start: …") is dropped first. A refusal already in words
  * passes with "refused: " dropped and a plain first word raised; it keeps
  * its own ending (a one-line label has no period). `host` is the
  * computer asked, by its name ("The box"), set mid-line by `nameInLine`.
  */
 export function dialogErrorWords(err: unknown, host?: string): string {
-  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim();
+  // A method's dotted name ("devServer.start: ", "work.files.list: ") is the link's, never the person's.
+  const raw = (err instanceof Error ? err.message : String(err ?? "")).trim().replace(/^[a-z][a-zA-Z]*(?:\.[a-z][a-zA-Z]*)+:\s+(?=\S)/, "");
   if (!raw) return "";
   const named = host ? nameInLine(host) : "its host";
   const Named = named.charAt(0).toUpperCase() + named.slice(1);

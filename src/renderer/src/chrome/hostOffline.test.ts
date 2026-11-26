@@ -35,14 +35,14 @@ describe("a workspace row's verbs while its host is away (rail-05)", () => {
 });
 
 describe("an approval toast for a key or a host that would refuse it", () => {
-  it("says who can for a key that may not approve, the host's state while it is away, else nothing", async () => {
-    const { approvalHeldFor } = await import("./ApprovalToasts");
+  it("says who can for a key that may not approve, and nothing for a key that may, the host's state aside", async () => {
+    const { approvalElsewhere } = await import("./ApprovalToasts");
     statuses.env_box = { ...IDLE_STATUS, transport: "open", lastHello: { environmentId: "env_box", contract: 3, caps: ["read", "operate"], key: { id: "k", name: "Laptop" } } as never };
-    expect(approvalHeldFor("env_box")).toBe("Answer from a computer that manages the box");
+    expect(approvalElsewhere("env_box")).toBe("Answer from a computer that manages the box");
     statuses.env_box = { ...IDLE_STATUS, transport: "reconnecting" };
-    expect(approvalHeldFor("env_box")).toBe("Reconnecting to the box…");
+    expect(approvalElsewhere("env_box")).toBeNull();
     statuses.env_box = { ...IDLE_STATUS, transport: "open" };
-    expect(approvalHeldFor("env_box")).toBeNull();
-    expect(approvalHeldFor(undefined)).toBeNull();
+    expect(approvalElsewhere("env_box")).toBeNull();
+    expect(approvalElsewhere(undefined)).toBeNull();
   });
 });

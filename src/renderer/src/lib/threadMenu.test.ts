@@ -55,11 +55,13 @@ describe("threadMenuRows by status", () => {
     expect(got).not.toContain("compact");
   });
 
-  it("watching: Stop background tasks beside Stop, both destructive", () => {
+  // Council M F6.1: red means failed or delete (DESIGN.md); a stop loses nothing, so only Delete is red at rest.
+  it("watching: Stop background tasks beside Stop, neither red; Delete alone is", () => {
     const got = threadMenuRows(facts({ status: "watching" }));
     expect(row(got, "killBackground")).toMatchObject({ label: "Stop background tasks" });
-    expect(row(got, "killBackground")).toMatchObject({ danger: true });
-    expect(row(got, "stop")).toMatchObject({ danger: true });
+    expect(row(got, "killBackground")).not.toHaveProperty("danger");
+    expect(row(got, "stop")).not.toHaveProperty("danger");
+    expect(got.filter((r) => r.kind === "item" && r.danger).map((r) => (r.kind === "item" ? r.id : ""))).toEqual(["delete"]);
     expect(ids(threadMenuRows(facts({ status: "running" })))).not.toContain("killBackground");
   });
 

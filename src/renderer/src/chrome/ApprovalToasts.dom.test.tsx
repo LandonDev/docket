@@ -214,6 +214,20 @@ describe("ApprovalToasts", () => {
     expect(onApproval).toHaveBeenLastCalledWith("s1", 7, "allow");
   });
 
+  // Council F9.3: a control a key may not use is not drawn; the toast says who can answer, as the card does.
+  it("draws no pair for a key that may not approve: the words who can answer stand in its place", async () => {
+    render(<ApprovalToasts notices={[{ ...notice, elsewhere: "Answer from a computer that manages the box" }]} onFocusSession={vi.fn()} onApproval={vi.fn()} />);
+    await flushToast();
+    const options = vi.mocked(toast.warning).mock.calls[0][1] as unknown as { action?: unknown; cancel?: unknown; description: React.ReactElement };
+    // Named, so sonner's merge into a live toast drops its pair.
+    expect("cancel" in options && options.cancel === undefined).toBe(true);
+    expect("action" in options && options.action === undefined).toBe(true);
+    const view = render(<>{options.description}</>);
+    expect(view.queryAllByRole("button")).toEqual([]);
+    expect(view.container.textContent).toContain(notice.label);
+    expect(view.container.querySelector("[data-approve-elsewhere]")?.textContent).toBe("Answer from a computer that manages the box");
+  });
+
   it("dismisses the toast once the approval is answered", async () => {
     const props = { onFocusSession: vi.fn(), onApproval: vi.fn() };
     const { rerender } = render(<ApprovalToasts notices={[notice]} {...props} />);

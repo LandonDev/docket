@@ -44,16 +44,18 @@ export function workingTipLine(row: WorkingRow, now: number): string {
   return plainStatus(STATUS_WORD[row.state], [detail, elapsed].filter(Boolean).join(", "));
 }
 
-/** The tooltip: the word, its detail and the elapsed time 4px after it as
- *  spans (StatusMark), the project under them. It mounts only while the
- *  tooltip shows, so its second hand runs only then: the Working section
- *  itself never re-renders on the clock. `at` fixes the time (a fixture). */
-function TipBody({ row, project, at }: { row: WorkingRow; project: string | null; at?: number }) {
+/** The tooltip: the whole title while the row cuts it, then the word, its
+ *  detail and the elapsed time 4px after it as spans (StatusMark), the
+ *  project under them. It mounts only while the tooltip shows, so its second
+ *  hand runs only then: the Working section itself never re-renders on the
+ *  clock. `at` fixes the time (a fixture). */
+function TipBody({ row, title, project, at }: { row: WorkingRow; title: string | null; project: string | null; at?: number }) {
   const ticking = useClock(at === undefined && row.state === "working");
   const now = at ?? ticking;
   const { detail, elapsed } = workingTip(row, now);
   return (
     <span data-working-tip role="group" aria-label={workingTipLine(row, now)} className="flex flex-col text-left">
+      {title ? <span data-working-tip-title>{title}</span> : null}
       <StatusMark
         state={row.state}
         glyph={false}
@@ -72,8 +74,9 @@ function TipBody({ row, project, at }: { row: WorkingRow; project: string | null
   );
 }
 
-function tipOf(row: WorkingRow, project: string | null, at?: number): ReactNode {
-  return <TipBody row={row} project={project} at={at} />;
+/** The row's tooltip, told by the row whether it cuts the title. */
+function tipOf(row: WorkingRow, project: string | null, at?: number): (cut: boolean) => ReactNode {
+  return (cut) => <TipBody row={row} title={cut ? row.meta.title.trim() || "Untitled" : null} project={project} at={at} />;
 }
 
 /**

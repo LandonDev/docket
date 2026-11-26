@@ -356,7 +356,8 @@ export function StatsPage(): React.JSX.Element {
         </Button>
       }
     >
-      <StatsView data={data} status={status} />
+      {/* A Reindex is an index pass: the sections' bones until it lands, never the old charts under its count. */}
+      <StatsView data={reindexing ? null : data} status={status} />
     </Page>
   );
 }

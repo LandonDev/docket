@@ -152,6 +152,64 @@ describe("QuestionCard", () => {
     }
   });
 
+  // Council S F11.1: a radio group is one Tab stop and the arrows move its choice; the letters stay.
+  it("a single-select question is one Tab stop whose arrows move the choice, wrapping, through the Other field and back", () => {
+    vi.useFakeTimers();
+    try {
+      render(<QuestionCard questions={one} />);
+      const radios = () => screen.getAllByRole("radio") as HTMLElement[];
+      const stops = () => radios().map((radio) => radio.tabIndex);
+      const field = screen.getByRole("textbox", { name: "Other" }) as HTMLInputElement;
+      expect(stops()).toEqual([0, -1, -1]);
+      const [alpha, beta] = radios();
+      alpha.focus();
+      fireEvent.keyDown(alpha, { key: "ArrowDown" });
+      expect(beta.getAttribute("aria-checked")).toBe("true");
+      expect(document.activeElement).toBe(beta);
+      expect(stops()).toEqual([-1, 0, -1]);
+      fireEvent.keyDown(beta, { key: "ArrowLeft" });
+      expect(document.activeElement).toBe(alpha);
+      // Up from the first wraps to Other: its field takes the focus and the stop.
+      fireEvent.keyDown(alpha, { key: "ArrowUp" });
+      act(() => vi.runAllTimers());
+      expect(radios()[2].getAttribute("aria-checked")).toBe("true");
+      expect(document.activeElement).toBe(field);
+      expect(stops()).toEqual([-1, -1, -1]);
+      expect(field.tabIndex).toBe(0);
+      // In the field Left and Right keep the caret; Down leaves it for the next row.
+      fireEvent.keyDown(field, { key: "ArrowLeft" });
+      expect(document.activeElement).toBe(field);
+      fireEvent.keyDown(field, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(alpha);
+      expect(alpha.getAttribute("aria-checked")).toBe("true");
+      fireEvent.keyDown(alpha, { key: "b" });
+      expect(beta.getAttribute("aria-checked")).toBe("true");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a multi-select question's rows are each a Tab stop, and an arrow picks nothing", () => {
+    render(<QuestionCard questions={[{ ...one[0], multiSelect: true }]} />);
+    const boxes = screen.getAllByRole("checkbox") as HTMLElement[];
+    expect(boxes.slice(0, 2).map((box) => box.tabIndex)).toEqual([0, 0]);
+    boxes[0].focus();
+    fireEvent.keyDown(boxes[0], { key: "ArrowDown" });
+    expect(boxes.map((box) => box.getAttribute("aria-checked"))).toEqual(["false", "false", "false"]);
+  });
+
+  // Council S F11.2: the caret was the Other field's only focus cue.
+  it("the Other row wears the option's one focus ring while its field holds the focus", () => {
+    const css = readFileSync(resolve(__dirname, "../../index.css"), "utf8");
+    const rule = css.slice(css.indexOf(".focus-ring:focus-visible"), css.indexOf("}", css.indexOf(".focus-ring:focus-visible")));
+    expect(rule).toContain('[data-slot="question-option"]:has(> input:focus-visible)');
+    expect(rule).toContain("outline: 2px solid var(--color-accent)");
+    const { container } = render(<QuestionCard questions={one} />);
+    const field = screen.getByRole("textbox", { name: "Other" });
+    expect(field.parentElement!.matches('[data-slot="question-option"]')).toBe(true);
+    expect(container.querySelector('[data-slot="question-option"]:has(> input)')).toBe(field.parentElement);
+  });
+
   it("a single-select question keeps one pick; a multi-select one takes several and submits them together", () => {
     const onSubmitAnswers = vi.fn();
     const questions: Question[] = [

@@ -20,6 +20,8 @@ export type ApprovalToastNotice = Pick<PendingApprovalNotice, "sessionId" | "req
   choices?: "run-skip";
   /** The thread's host away (D5): both presses held, this their tooltip. */
   held?: string | null;
+  /** A key that may not approve: no presses are drawn, these words (who can answer) stand in their place. */
+  elsewhere?: string | null;
 };
 
 const approvalLabels = new WeakMap<Block, { cwd: string; label: string; tool: string }>();

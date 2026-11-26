@@ -39,7 +39,7 @@ export function PanelPreview() {
       {changesPreviewCases.map(({ name }, state) => (
         <section key={name}>
           <h2 className="mb-2 text-xs text-muted-foreground">{name}</h2>
-          <PanelCase width={[260, 320, 480][state]} section="changes" state={state} />
+          <PanelCase width={[260, 320, 480, 320][state] ?? 320} section="changes" state={state} />
         </section>
       ))}
       <section>

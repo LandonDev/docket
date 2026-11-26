@@ -17,6 +17,8 @@ describe("thread batch menu rows", () => {
   it("builds the rows with Mark all read first when a count is given, each with its glyph", () => {
     expect(batchMenuRows(null).map((i) => (i.kind === "item" ? i.id : "sep"))).toEqual(["batch-pause", "batch-resume", "batch-stop", "batch-archiveDone"]);
     expect(batchMenuRows(null).every((i) => i.kind === "item" && i.icon && i.disabled)).toBe(true);
+    // Council M F6.1: Stop all loses nothing, so no fleet row is red at rest.
+    expect(batchMenuRows({ pause: 1, resume: 1, stop: 1, archiveDone: 1 }, 1).some((i) => i.kind === "item" && i.danger)).toBe(false);
     const items = batchMenuRows({ pause: 0, resume: 3, stop: 0, archiveDone: 1 }, 0);
     expect(items.map((i) => (i.kind === "item" ? [i.id, i.disabled] : "sep"))).toEqual([
       ["read", true],

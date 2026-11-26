@@ -28,8 +28,8 @@ export const fixtures = [
       ),
     },
   },
-  { name: "Away: an approval the host allowed", props: { glyph: <LockOpen />, lead: "Allowed while away: Run bun test?", wrap: true } },
-  { name: "Away: a money act the host skipped", props: { glyph: <Lock />, lead: "Skipped while away: Pay in Safari: Buy the Pro plan?", wrap: true } },
+  { name: "Away: an approval the host allowed", props: { glyph: <LockOpen />, lead: "Allowed while away", details: ["Run bun test"], wrap: true } },
+  { name: "Away: a money act the host skipped", props: { glyph: <Lock />, lead: "Skipped while away", details: ["Pay in Safari: Buy the Pro plan"], wrap: true } },
   {
     name: "A long detail truncates; the lead never does",
     props: { glyph: <StatusMark state="done" word={false} />, lead: "Reviewed by GPT-6.1 Sol", details: ["no blocking findings", "a detail long enough to run past the edge of a narrow column and truncate there"] },

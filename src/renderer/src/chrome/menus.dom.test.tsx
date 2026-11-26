@@ -85,6 +85,17 @@ describe("MenuRows", () => {
     await waitFor(() => expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toBe("The box is offline"), { timeout: 2000 });
   });
 
+  // Council O F11.1: a row with no glyph among rows with one drew its label 22px left of theirs.
+  it("keeps the glyph column once any row has a glyph: a row without one holds an empty 14px slot; a menu with none draws none", async () => {
+    const { list } = await openDropdown(ROWS);
+    const slotOf = (id: string) => list.querySelector(`[data-menu-row="${id}"]`)!.querySelector("[data-menu-glyph-slot]");
+    for (const id of ["bridge", "type", "move"]) expect(slotOf(id)?.className.split(" ")).toEqual(expect.arrayContaining(["size-3.5", "shrink-0"]));
+    expect(slotOf("pause")).toBeNull();
+    cleanup();
+    const bare = await openDropdown([{ kind: "item", id: "edit", label: "Edit…" }, { kind: "item", id: "remove", label: "Remove…", danger: true }]);
+    expect(bare.list.querySelector("[data-menu-glyph-slot]")).toBeNull();
+  });
+
   it("a pick calls onPick with the row's id, in a submenu too", async () => {
     const { list, onPick } = await openDropdown(ROWS);
     fireEvent.click(within(list).getByRole("menuitem", { name: /Archive/ }));

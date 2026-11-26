@@ -170,6 +170,15 @@ export function QuestionCard({
     if (question?.options[index]?.freeform) window.setTimeout(() => fields.current[at]?.focus(), 0);
   };
 
+  /** A radio group's arrow: the choice moves with the focus, wrapping (the Other row's field takes it). */
+  const move = (from: number, by: number) => {
+    if (!question) return;
+    const to = (from + by + question.options.length) % question.options.length;
+    setPicked((all) => ({ ...all, [at]: [to] }));
+    if (question.options[to]?.freeform) window.setTimeout(() => fields.current[at]?.focus(), 0);
+    else lists.current[at]?.querySelectorAll<HTMLElement>('[role="radio"]')[to]?.focus();
+  };
+
   const submit = () => {
     if (!answered) return;
     if (!last) {
@@ -193,6 +202,18 @@ export function QuestionCard({
       return;
     }
     const target = event.target;
+    // One of several is one Tab stop: the arrows move the choice. In the Other field, Up and Down
+    // still do (Left and Right keep the caret), so the keyboard is never shut in the field.
+    const by = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[event.key];
+    if (by && !question.multiSelect && !chordKey(event)) {
+      const field = target === fields.current[at];
+      const from = field ? question.options.findIndex((option) => option.freeform) : [...(lists.current[at]?.querySelectorAll('[role="radio"]') ?? [])].indexOf(target as Element);
+      if (from >= 0 && !(field && (event.key === "ArrowLeft" || event.key === "ArrowRight"))) {
+        event.preventDefault();
+        move(from, by);
+        return;
+      }
+    }
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
     if (chordKey(event)) return;
     const letter = /^[a-z]$/i.test(event.key) ? event.key.toUpperCase() : undefined;
@@ -229,6 +250,8 @@ export function QuestionCard({
         <MorphFrame at={at}>
           {questions.map((entry, qIndex) => {
             const choices = picked[qIndex] ?? [];
+            // A radio group's one Tab stop: its choice, else its first row (multi-select rows are each a stop).
+            const stop = entry.multiSelect ? -1 : (choices[0] ?? 0);
             return (
               <div key={entry.prompt}>
                 <div aria-live="polite">
@@ -250,6 +273,7 @@ export function QuestionCard({
                     const key = KEYS[index];
                     const optionId = `${id}-${qIndex}-${index}`;
                     const fill = active ? "bg-foreground/10" : "hover:bg-foreground/5";
+                    const tabIndex = entry.multiSelect ? undefined : index === stop ? 0 : -1;
                     // The cap sits on the label's first line: 20px, the line's own height. A multi-select
                     // question's cap is a hairline box at rest and a check once picked: several, not one.
                     const cap = (
@@ -270,8 +294,10 @@ export function QuestionCard({
                       // the row; the field rises above it once the row is picked.
                       return (
                         <li key={option.label} role="presentation">
+                          {/* While its field holds the focus, the row wears the option's one ring (index.css), so the
+                              caret is never the only cue; picked, the field is the group's Tab stop. */}
                           <div data-slot="question-option" className={cn("relative", OPTION, fill)}>
-                            <button type="button" role={role} aria-checked={active} aria-label={option.label} onClick={() => pick(index)} className="absolute inset-0 rounded-lg" />
+                            <button type="button" role={role} aria-checked={active} aria-label={option.label} tabIndex={active ? -1 : tabIndex} onClick={() => pick(index)} className="absolute inset-0 rounded-lg" />
                             {cap}
                             <input
                               ref={(node) => {
@@ -298,6 +324,7 @@ export function QuestionCard({
                           type="button"
                           role={role}
                           data-slot="question-option"
+                          tabIndex={tabIndex}
                           aria-checked={active}
                           aria-labelledby={`${optionId}-label`}
                           aria-describedby={option.description ? `${optionId}-description` : undefined}

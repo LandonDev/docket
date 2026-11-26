@@ -189,6 +189,13 @@ describe('a project card', () => {
     // The loud count by its glyph and tone; the quiet ones one muted sentence 8px on, never apart by space alone.
     expect(Array.from(counts.children).map((c) => c.textContent)).toEqual(['1 needs you', '4 dormant, 2 archived'])
     expect(counts.children[1].className).toContain('ms-1')
+    // A quiet fact that does not fit gives way whole, from the last, never cut to "4 do…": each is its own
+    // unbreakable word (its comma with it) in a one-line run that wraps the rest out of its 16px.
+    const quiet = counts.querySelector<HTMLElement>('[data-card-quiet]')!
+    for (const c of ['flex-wrap', 'h-4', 'overflow-hidden', 'before:h-4', "before:content-['']"]) expect(quiet.className.split(' ')).toContain(c)
+    expect(quiet.className).not.toContain('truncate')
+    expect(Array.from(quiet.children).map((c) => c.textContent)).toEqual(['4 dormant', ', 2 archived'])
+    for (const fact of Array.from(quiet.children)) expect(fact.className.split(' ')).toEqual(expect.arrayContaining(['shrink-0', 'whitespace-pre']))
     expect(counts.querySelector('[data-state="waiting"]')).not.toBeNull()
     expect(counts.className).toContain('gap-1')
     expect(counts.className).not.toContain('gap-2')
@@ -409,18 +416,30 @@ describe('a project card', () => {
     probe.unmount()
   })
 
-  it('shows one page of lines and "N more" beside the card, not inside it', () => {
+  it('shows one page of lines and "N more" on the card, under its lines, yet not inside its button', () => {
     const many = Array.from({ length: SESSION_LIST_PAGE + 2 }, (_, i) => threadRow(meta(`r${i}`, { status: 'running', busySince: 5 }), {}))
-    const probe = mountProbe(projectCard(many))
+    const probe = mountProbe(projectCard(many, { archivedCount: 2 }))
     expect(probe.container.querySelectorAll('[data-card-line]')).toHaveLength(SESSION_LIST_PAGE)
     const more = moreButton(probe.container)!
     expect(more.textContent).toBe('2 more')
-    expect(cardOf(probe.container).contains(more)).toBe(false)
-    // A 28px row of 13px words, its label on the card's titles (52px: the
-    // 12px inset, the mark and the type glyph), the /5 fill at once.
-    for (const c of ['h-7', 'pl-13', 'text-[13px]', 'transition-none', 'hover:bg-chrome-hover']) expect(more.className.split(/\s+/)).toContain(c)
+    const card = cardOf(probe.container)
+    expect(card.contains(more)).toBe(false)
+    // The card keeps a 28px room after its lines and before its count line; the row is laid over it, 4px in from
+    // the card's sides, over the count line's 20px and the 8px foot (bottom-7), so it reads as the card's.
+    const room = card.querySelector<HTMLElement>('[data-more-room]')!
+    expect(room.className.split(/\s+/)).toContain('h-7')
+    expect(room.previousElementSibling?.querySelector('[data-card-line]')).not.toBeNull()
+    expect(room.nextElementSibling?.hasAttribute('data-card-counts')).toBe(true)
+    for (const c of ['absolute', 'inset-x-1', 'bottom-7']) expect(more.parentElement!.className.split(/\s+/)).toContain(c)
+    // A 28px row of 13px words, its label on the card's titles (52px from the card's edge: 4px in, then 48px), the /5 fill at once.
+    for (const c of ['h-7', 'pl-12', 'text-[13px]', 'transition-none', 'hover:bg-chrome-hover']) expect(more.className.split(/\s+/)).toContain(c)
     for (const c of ['h-6', 'pl-9']) expect(more.className.split(/\s+/)).not.toContain(c)
     probe.unmount()
+    // With no count line under it the row sits on the card's 8px foot.
+    const bare = mountProbe(projectCard(many))
+    expect(moreButton(bare.container)!.parentElement!.className.split(/\s+/)).toContain('bottom-2')
+    expect(bare.container.querySelector('[data-more-room]')?.nextElementSibling).toBeNull()
+    bare.unmount()
   })
 
   it("⋯ and the right-click show the same project rows", async () => {
@@ -513,7 +532,7 @@ describe('ThreadList window', () => {
     expect(more.textContent).toBe(`${100 - SESSION_LIST_PAGE} more`)
     // One of the list's 32px rows, its label on their titles (36px).
     for (const c of ['h-8', 'pl-9']) expect(more.className.split(/\s+/)).toContain(c)
-    for (const c of ['h-7', 'pl-13']) expect(more.className.split(/\s+/)).not.toContain(c)
+    for (const c of ['h-7', 'pl-12']) expect(more.className.split(/\s+/)).not.toContain(c)
     act(() => {
       fireEvent.click(more)
     })

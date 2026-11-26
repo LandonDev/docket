@@ -13,7 +13,7 @@ act on is disabled. The rules per row and the toast line are
 `lib/threadBatchCopy.ts` (out of the first paint; both unit-tested); the
 confirm is red for Stop, and for Archive done only while its removal box is
 ticked;
-the menus' rows are `threadBatchMenu.ts`; the dialog and toast are
+the menus' rows are `threadBatchMenu.ts` (Stop all in the menu's ink, not red: only its confirm's verb is); the dialog and toast are
 `chrome/ThreadBatchDialog.tsx` and `chrome/ThreadBatchToasts.tsx` (a sonner
 toast per batch, through `chrome/toastSync.ts`). Pause,
 Stop and Archive confirm; Resume and Mark all read do not. Pause all's

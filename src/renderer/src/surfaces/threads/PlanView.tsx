@@ -216,6 +216,9 @@ export function PlanView(props: ThreadViewProps) {
             {rendered.map(({ s, i, milestones }) => (
               <div
                 key={i}
+                // Each section is its own markdown root, so its heading is a first child the
+                // markdown's 20px above a heading never reaches: the section keeps that room itself.
+                className="not-first:mt-5"
                 ref={(el) => {
                   sectionRefs.current[i] = el;
                 }}
@@ -323,17 +326,21 @@ const BUILD_NOUN: Partial<Record<ThreadType, string>> = {
   orchestration: "Orchestration",
 };
 
-/** After Start: the header points at the thread working the plan. */
+/** After Start: the header points at the thread working the plan. In a
+ *  narrow header (SplitShell's `@container/header`, under 22rem, where the
+ *  plan's fact leaves) the build's noun goes to the tooltip and the button's
+ *  name, its glyph and state stay, so the plan's title keeps the room. */
 function HandoffButton({ spawned, onOpen }: { spawned: SessionMeta; onOpen: () => void }) {
   const type: ThreadType = spawned.threadType ?? "implementation";
+  const noun = BUILD_NOUN[type] ?? THREAD_LABELS[type];
   return (
     <Tooltip>
       <TooltipTrigger render={<Button variant="ghost" size="sm" className="gap-2" onClick={onOpen} />}>
         <TypeGlyph type={type} className="size-3.5" />
-        {BUILD_NOUN[type] ?? THREAD_LABELS[type]}
+        <span data-build-noun className="@max-[22rem]/header:sr-only">{noun}</span>
         <StatusMark state={threadStateOf(spawned.status, { settled: true })} />
       </TooltipTrigger>
-      <TooltipContent>Open the build</TooltipContent>
+      <TooltipContent>Open the {noun.toLowerCase()}</TooltipContent>
     </Tooltip>
   );
 }

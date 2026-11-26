@@ -51,7 +51,7 @@ export function batchMenuRows(counts: BatchCounts | null, readCount?: number): M
       label: BATCH_LABEL[action],
       icon: ICON[action],
       disabled: counts ? counts[action] === 0 : true,
-      danger: action === "stop",
+      // Stop all loses nothing (Resume all follows it): the row is the menu's ink; its confirm keeps the red verb.
     });
   }
   return rows;

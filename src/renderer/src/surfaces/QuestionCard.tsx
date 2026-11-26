@@ -84,7 +84,9 @@ export function QuestionCard({
       void loadToast().then((toast) => toast.error("Couldn't send the answer"));
     });
   };
-  const title = question.questions[0]?.header ?? "Questions";
+  // The set's title, which a question's own header replaces while it shows: the first header, else
+  // what it is, in the singular when it stands alone.
+  const title = question.questions[0]?.header ?? (question.questions.length > 1 ? "Questions" : "Question");
   return (
     <>
       <Collapsible open={!done}>

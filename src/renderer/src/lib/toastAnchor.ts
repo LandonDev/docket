@@ -8,9 +8,10 @@
  * folds a column, or lays a page over the board, says so with
  * `refreshToastAnchor`.
  *
- * A waiting card (a question, an approval) registers as a seat: while the
- * footer it sits above is the anchor and the card is wholly in view, the
- * stack sits above the card instead, so a toast never covers its presses.
+ * A waiting card (a question, an approval) registers as a seat, and so does
+ * the composer's open `/` or `@` menu: while the footer it sits above is the
+ * anchor and the seat is wholly in view, the stack sits above it instead, so
+ * a toast never covers its presses or its rows.
  */
 const anchors: HTMLElement[] = [];
 const seats: HTMLElement[] = [];

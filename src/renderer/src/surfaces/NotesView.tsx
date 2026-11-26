@@ -9,7 +9,6 @@ import { Textarea } from "../components/ui/textarea";
 import { EmptyState, PAGE_LIST_WIDTH, SurfaceSkeleton } from "./SurfaceSkeleton";
 import { FailLine, rawError } from "./FailLine";
 import { nameInLine } from "../lib/hostWords";
-import { Facts } from "./settings/hosts/Facts";
 import { ConfirmDialog } from "../chrome/ConfirmDialog";
 import {
   Fragment,
@@ -160,24 +159,21 @@ export function NotesView({
 
   usePageEscape(() => onCloseRef.current(), { fields: "blur" });
 
-  const visible = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return notes;
-    return notes.filter((note) => {
-      const project = noteSourceProject(note.sourceCwd)?.toLowerCase() ?? "";
-      return (
-        note.title.toLowerCase().includes(needle) ||
-        note.body.toLowerCase().includes(needle) ||
-        note.slug.toLowerCase().includes(needle) ||
-        project.includes(needle)
-      );
-    });
-  }, [notes, query]);
+  // The open note as the filter last read it: it stays listed while its own edit
+  // stops it matching, so the editor never leaves under the person's typing.
+  const [kept, setKept] = useState<{ query: string; selectedId: string | null; id: string | null }>(() => ({ query, selectedId, id: null }));
+  if (kept.query !== query || kept.selectedId !== selectedId) {
+    const open = notes.find((note) => note.id === selectedId);
+    setKept({ query, selectedId, id: open && noteMatches(open, query) ? open.id : null });
+  }
 
-  const selected =
-    visible.find((note) => note.id === selectedId) ??
-    notes.find((note) => note.id === selectedId) ??
-    null;
+  const visible = useMemo(
+    () => (query.trim() ? notes.filter((note) => note.id === kept.id || noteMatches(note, query)) : notes),
+    [notes, query, kept.id],
+  );
+
+  // Only a listed note is open: a filter that hides it leaves the detail blank, and clearing the filter brings it back.
+  const selected = visible.find((note) => note.id === selectedId) ?? null;
 
   const visibleIds = useMemo(() => visible.map((note) => note.id), [visible]);
   const roving = useRovingList({
@@ -611,23 +607,15 @@ function NoteEditor({
       {/* A narrow pane (under 576px) insets 16px a side, so the text keeps its room. */}
       <div data-note-detail className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 @xl/detail:px-8">
         <header className="flex flex-col">
-          {note.slug || project ? (
+          {project ? (
+            // The project's mark alone: the slug is the title's machine twin, never on screen.
             <div className="flex min-w-0 items-center gap-3 text-xs text-muted-foreground">
-              {/* The slug and the project, one comma run. */}
-              <Facts
-                className="[&>span]:min-w-0 [&>span]:truncate"
-                parts={[
-                  note.slug,
-                  project ? (
-                    <NoteProjectMark
-                      project={project}
-                      logos={logos}
-                      mascots={mascots}
-                      colors={colors}
-                      customColors={customColors}
-                    />
-                  ) : null,
-                ]}
+              <NoteProjectMark
+                project={project}
+                logos={logos}
+                mascots={mascots}
+                colors={colors}
+                customColors={customColors}
               />
             </div>
           ) : null}
@@ -644,7 +632,7 @@ function NoteEditor({
             }}
             onKeyDown={onTitleKeyDown}
             aria-label="Note title"
-            className={`${note.slug || project ? "mt-2 " : ""}h-auto rounded-none border-0 border-b border-transparent p-0 text-base font-semibold leading-6 tracking-[-0.01em] text-foreground shadow-none!`}
+            className={`${project ? "mt-2 " : ""}h-auto rounded-none border-0 border-b border-transparent p-0 text-base font-semibold leading-6 tracking-[-0.01em] text-foreground shadow-none!`}
             placeholder="Untitled"
           />
           {time ? (
@@ -774,5 +762,18 @@ function NoteSource({
         style={{ paddingLeft: textOffset }}
       />
     </div>
+  );
+}
+
+/** Whether a note answers the filter: its title, body, slug or source project. */
+function noteMatches(note: Note, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return true;
+  const project = noteSourceProject(note.sourceCwd)?.toLowerCase() ?? "";
+  return (
+    note.title.toLowerCase().includes(needle) ||
+    note.body.toLowerCase().includes(needle) ||
+    note.slug.toLowerCase().includes(needle) ||
+    project.includes(needle)
   );
 }

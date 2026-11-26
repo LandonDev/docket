@@ -115,7 +115,8 @@ export function DevServersPane({
 
 /** The pane's left column: the starter, then every live server under the
  *  thread it belongs to, rows and headings on the 12px inset, groups 16px
- *  apart. */
+ *  apart. 288px, or half the dock while the dock is under 576px, so the
+ *  console (or the empty state) always keeps the other half. */
 export function DevServerColumn({
   starter,
   servers,
@@ -128,7 +129,7 @@ export function DevServerColumn({
   onPick: (key: string) => void;
 }) {
   return (
-    <div className="flex w-72 shrink-0 flex-col border-r border-border">
+    <div data-dev-column className="flex w-1/2 max-w-72 shrink-0 flex-col border-r border-border">
       <DevStarter starter={starter} />
       {servers.length > 0 ? (
         <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">

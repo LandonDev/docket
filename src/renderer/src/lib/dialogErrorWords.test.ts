@@ -15,6 +15,15 @@ describe("dialogErrorWords", () => {
     expect(dialogErrorWords("fatal: not a git repository (or any of the parent directories): .git")).toBe("Not a git repository (or any of the parent directories): .git");
   });
 
+  it("drops the call's name the link puts before the host's words", () => {
+    expect(dialogErrorWords(new Error("devServer.start: the host has no copy of this project"), "The box")).toBe("The host has no copy of this project");
+    expect(dialogErrorWords(new Error("work.files.list: refused: the project is moving"))).toBe("The project is moving");
+    expect(dialogErrorWords(new Error("session.create: not connected"), "The box")).toBe("The box is not connected. Try again once it is back.");
+    // A program's name with no dot stays, as does a file's name with no colon after it.
+    expect(dialogErrorWords(new Error("simctl: device is booting"))).toBe("simctl: device is booting");
+    expect(dialogErrorWords(new Error("index.lock exists"))).toBe("index.lock exists");
+  });
+
   it("passes a worded refusal with refused: dropped, a plain first word raised and its own ending", () => {
     expect(dialogErrorWords(new Error("refused: the project is moving"))).toBe("The project is moving");
     expect(dialogErrorWords(new Error("index.lock exists"))).toBe("index.lock exists");

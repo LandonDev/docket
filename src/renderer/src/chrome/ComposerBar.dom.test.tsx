@@ -158,6 +158,14 @@ describe("AddMenu", () => {
     expect(onAttach).toHaveBeenCalledOnce();
   });
 
+  it("keeps each row one line: the popup takes its longest row's width, never a fixed one that wraps a label", async () => {
+    add({});
+    const menu = await openAdd();
+    const classes = menu.className.split(/\s+/);
+    expect(classes).toContain("whitespace-nowrap");
+    expect(classes.some((c) => /^w-\d/.test(c))).toBe(false);
+  });
+
   // composer-26: never a dead row; the harness that takes no files has none.
   it("has no Attach files row where the harness takes no attachments", async () => {
     add({ attachable: false });

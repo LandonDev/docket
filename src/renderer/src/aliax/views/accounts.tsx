@@ -171,6 +171,9 @@ function ProviderSection({ service, props, now, columns }: { service: ServiceVie
                   ) : null}
                 </DropdownMenuContent>
               </DropdownMenu>
+            ) : keyed || service.canAddAccount ? (
+              // The ⋯ column keeps its width, so Add key… stands under the Add account buttons above it.
+              <span aria-hidden data-menu-slot className="size-7 shrink-0" />
             ) : null}
           </>
         ) : undefined

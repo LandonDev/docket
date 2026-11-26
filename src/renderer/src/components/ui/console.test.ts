@@ -13,7 +13,7 @@ describe("the console recipe", () => {
   });
 
   it("is what the batch step's console, a job's log and the licence draw, each reachable by the keyboard", () => {
-    for (const file of ["surfaces/threads/master/BatchFoot.tsx", "surfaces/settings/hosts/JobLog.tsx", "surfaces/settings/Editor.tsx"]) {
+    for (const file of ["surfaces/threads/master/BatchFoot.tsx", "surfaces/settings/computers/JobLog.tsx", "surfaces/settings/Editor.tsx"]) {
       const text = readFileSync(resolve(src, file), "utf8");
       expect(text, file).toContain("cn(CONSOLE,");
       expect(text, file).toMatch(/tabIndex=\{0\}[\s\S]{0,80}cn\(CONSOLE,|cn\(CONSOLE,[\s\S]{0,200}tabIndex=\{0\}|<pre tabIndex=\{0\} className=\{cn\(CONSOLE/);
@@ -23,7 +23,7 @@ describe("the console recipe", () => {
 
 describe("red in rows", () => {
   it("a row's remove, stop or revoke is a ghost that turns red on hover; solid red stays in confirms", () => {
-    for (const file of ["surfaces/settings/hosts/JobLog.tsx", "surfaces/settings/hosts/Devices.tsx", "surfaces/settings/hosts/MacBridgeHostDialog.tsx", "surfaces/settings/hosts/Clients.tsx"]) {
+    for (const file of ["surfaces/settings/computers/JobLog.tsx", "surfaces/settings/computers/Devices.tsx", "surfaces/settings/computers/SignIns.tsx"]) {
       const text = readFileSync(resolve(src, file), "utf8");
       expect(text, file).not.toContain('variant="destructive"');
       expect(text, file).toContain("hover:text-destructive");

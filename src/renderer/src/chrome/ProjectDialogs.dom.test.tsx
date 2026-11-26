@@ -520,7 +520,7 @@ describe('NewProjectDialog', () => {
     const local = screen.getByRole('button', { name: 'Local' })
     expect(worktree.getAttribute('aria-pressed')).toBe('true')
     expect(screen.getByLabelText('Branch')).toBeTruthy()
-    expect(screen.getByText('Own branch and folder, isolated from your checkout.')).toBeTruthy()
+    expect(screen.getByText('Own branch and folder.')).toBeTruthy()
 
     fireEvent.click(local)
     expect(local.getAttribute('aria-pressed')).toBe('true')

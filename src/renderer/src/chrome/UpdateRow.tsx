@@ -83,6 +83,14 @@ export function UpdateRow({
 }) {
   if (!state) return null;
   const label = (text: string) => <span className="text-foreground">{text}</span>;
+  /** "Update to 1.0.N": in a rail under 15rem the version yields whole, as the running one does, never
+   *  cut to "Update to 1.0.…"; the row's name keeps it. */
+  const toVersion = (lead: string, version: string) => (
+    <span className="text-foreground">
+      {lead}
+      <span className="@max-[15rem]/railrow:hidden"> to {version}</span>
+    </span>
+  );
   switch (state.kind) {
     case "check":
       return (
@@ -110,10 +118,11 @@ export function UpdateRow({
       return (
         <RailRow
           icon={ArrowDownCircle}
-          label={label(`Updated to ${state.version}`)}
+          label={toVersion("Updated", state.version)}
           ariaLabel={`Updated to ${state.version}, what's new`}
           onClick={() => onOpenWhatsNew?.(state.version)}
           hoverActions={[{ label: "Dismiss", icon: X, onClick: onDismiss }]}
+          className="@container/railrow"
         />
       );
     case "available":
@@ -121,7 +130,8 @@ export function UpdateRow({
         <RailRow
           icon={ArrowDownCircle}
           glyphClassName="text-accent"
-          label={label(state.retry ? "Retry update" : `Update to ${state.version}`)}
+          label={state.retry ? label("Retry update") : toVersion("Update", state.version)}
+          ariaLabel={state.retry ? undefined : `Update to ${state.version}`}
           // Plain words on hover; the updater's own text stays in its snapshot, never on screen.
           tooltip={state.retry ? RETRY_TIP : undefined}
           onClick={onInstall}
@@ -130,6 +140,7 @@ export function UpdateRow({
               ? [{ label: "What's new", icon: FileText, onClick: () => onOpenWhatsNew(state.version, state.notes) }]
               : undefined
           }
+          className="@container/railrow"
         />
       );
     case "downloading":

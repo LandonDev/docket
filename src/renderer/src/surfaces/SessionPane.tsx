@@ -203,13 +203,15 @@ export const SessionPane = memo(function SessionPane({
     return () => window.removeEventListener(ADD_TO_CHAT_EVENT, onAdd);
   }, [addSelectionToChat, focused]);
 
+  // A footer of the focused, shown pane holds the toast stack (ChatSlots.anchor), rows or none.
+  const anchor = focused && visible ? session.id : undefined;
   // The pane's word while the host holds no rows, or they are still coming.
   const quiet = hostEmpty ? (
     <>
       <div className="relative flex min-h-0 flex-1 flex-col" data-transcript-empty>
         <NoRowsLine summary={session.failure?.summary} />
       </div>
-      <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
+      <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf(), anchor }} />
     </>
   ) : waiting ? (
     <>
@@ -222,7 +224,7 @@ export const SessionPane = memo(function SessionPane({
           <SurfaceSkeleton kind="transcript" label="Loading thread" />
         </div>
       </div>
-      <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
+      <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf(), anchor }} />
     </>
   ) : null;
 
@@ -256,7 +258,7 @@ export const SessionPane = memo(function SessionPane({
             <EmptySession composer={dockComposer ? undefined : composerOf()} />
           </div>
           {dockComposer ? (
-            <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf() }} />
+            <ChatFooter slots={{ transcript: null, strip: null, composer: composerOf(), anchor }} />
           ) : null}
         </>
       ) : quiet && !work ? (

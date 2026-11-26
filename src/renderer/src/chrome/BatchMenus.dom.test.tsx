@@ -42,7 +42,8 @@ describe("the fleet switches as menu rows", () => {
     );
     expect(screen.getAllByRole("menuitem")[0]!.textContent).toBe("Customize…");
     expect(screen.getByRole("menuitem", { name: "Resume all" }).getAttribute("aria-disabled")).toBe("true");
-    expect(screen.getByRole("menuitem", { name: "Stop all" }).getAttribute("data-variant")).toBe("destructive");
+    // Stop all loses nothing (Resume all follows it): the row keeps the menu's ink, only its confirm's verb is red (council M F6.1).
+    expect(screen.getByRole("menuitem", { name: "Stop all" }).getAttribute("data-variant")).toBe("default");
     expect(screen.getByRole("menuitem", { name: "Archive done…" })).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "Pause all" }));
     expect(onPick).toHaveBeenCalledWith("batch-pause");

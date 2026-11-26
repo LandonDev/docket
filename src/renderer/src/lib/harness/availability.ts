@@ -75,11 +75,12 @@ export function harnessInstallCommand(id: HarnessId): string | undefined {
 }
 
 /** Why a provider's models cannot be picked, in a person's words: no program's name, no command, no plan.
- *  The install line lives on Settings → Providers alone. */
+ *  It names the computer by its own name, never "this host"; the model is named once already, by the
+ *  picker beside it. The install line lives on Settings → Providers alone. */
 export function harnessUnavailableHint(id: HarnessId, environmentId: string = here()): string {
-  if (!isLiveHarness(id)) return "Not available on this host";
   const name = registry.environment(environmentId)?.name;
-  return name ? `Not installed on ${nameInLine(name)}` : "Not installed";
+  const lead = isLiveHarness(id) ? "Not installed" : "Not available";
+  return name ? `${lead} on ${nameInLine(name)}` : lead;
 }
 
 /** One `doctor.get` per host per 30 s answers for every harness; `force` refreshes. */

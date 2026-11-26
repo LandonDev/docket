@@ -36,7 +36,7 @@ vi.mock("../chrome/TitleBar", () => ({ OverlayNav: () => null }));
 vi.mock("../chrome/WindowControls", () => ({ WindowControls: () => null }));
 
 import { NotesView } from "./NotesView";
-import { createNote, deleteNote } from "../lib/notes";
+import { createNote, deleteNote, upsertNote } from "../lib/notes";
 
 afterEach(cleanup);
 
@@ -79,11 +79,12 @@ describe("the notes view", () => {
     }
   });
 
-  it("says a note's slug through Facts, one comma run with its project", async () => {
+  it("never prints a note's slug: its title is its one name", async () => {
     const view = await mount();
-    fireEvent.click(view.getByRole("button", { name: /Deploy/ }));
-    const facts = view.container.querySelector("[data-note-detail] header [data-slot=facts]") as HTMLElement;
-    expect(facts.textContent).toContain("deploy");
+    fireEvent.click(view.getByRole("button", { name: /Gate notes/ }));
+    const header = view.container.querySelector("[data-note-detail] header") as HTMLElement;
+    expect(header.textContent).not.toContain("gate-notes");
+    expect((view.getByLabelText("Note title") as HTMLInputElement).value).toBe("Gate notes");
   });
 
   it("switches Preview and Source with line tabs, the source a Textarea", async () => {
@@ -198,6 +199,34 @@ describe("the notes view", () => {
     expect(view.getByRole("button", { name: /Deploy/ })).toBeTruthy();
   });
 
+  it("opens only a listed note: a filter that hides it blanks the detail, and clearing the filter brings it back", async () => {
+    const view = await mount();
+    fireEvent.click(view.getByRole("button", { name: /Deploy/ }));
+    const filter = view.getByLabelText("Filter notes") as HTMLInputElement;
+    fireEvent.change(filter, { target: { value: "zzz" } });
+    expect(view.getByText("No matching notes")).toBeTruthy();
+    expect(view.queryByLabelText("Note title")).toBeNull();
+    expect(view.queryByRole("button", { name: "Delete" })).toBeNull();
+    fireEvent.change(filter, { target: { value: "gate" } });
+    expect(view.queryByLabelText("Note title")).toBeNull();
+    fireEvent.change(filter, { target: { value: "" } });
+    expect((view.getByLabelText("Note title") as HTMLInputElement).value).toBe("Deploy");
+  });
+
+  it("keeps the open note listed while its own edit stops it matching the filter", async () => {
+    const view = await mount();
+    fireEvent.click(view.getByRole("button", { name: /Deploy/ }));
+    fireEvent.change(view.getByLabelText("Filter notes"), { target: { value: "green" } });
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "Source" }));
+    });
+    fireEvent.change(view.getByLabelText("Note source"), { target: { value: "Ship on red." } });
+    await waitFor(() => expect(vi.mocked(upsertNote)).toHaveBeenCalledWith("local", expect.objectContaining({ id: "n2", body: "Ship on red." })), { timeout: 2000 });
+    await act(async () => {});
+    expect(view.getByRole("button", { name: /Deploy/ })).toBeTruthy();
+    expect((view.getByLabelText("Note source") as HTMLTextAreaElement).value).toBe("Ship on red.");
+  });
+
   it("moves through the list with the arrows from the field, and the list is one tab stop", async () => {
     Element.prototype.scrollIntoView = () => {};
     const view = await mount();
@@ -231,7 +260,8 @@ describe("the notes view", () => {
     const label = [...view.container.querySelectorAll("span")].find((el) => el.textContent === "Notes")!;
     expect(label.className).toContain("font-medium");
     expect(view.container.querySelector("[data-note-detail]")!.className).toContain("gap-6");
-    expect((view.getByLabelText("Note title") as HTMLElement).className).toContain("mt-2");
+    // A note with no project has nothing over its title, so the title starts the header.
+    expect((view.getByLabelText("Note title") as HTMLElement).className.split(/\s+/)).not.toContain("mt-2");
   });
 
   it("says a failed New note over the listed notes as one red line under the list's head", async () => {

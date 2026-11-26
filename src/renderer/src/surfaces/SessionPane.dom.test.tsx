@@ -299,6 +299,33 @@ describe("the pane in a split", () => {
   });
 });
 
+// The toast stack sits above the focused pane's footer whether or not the thread has rows: a split's right pane
+// with no messages, or a thread over the terminal dock, once sent the stack to the window's corner (council F9.1).
+describe("the toast stack's seat on a pane with no rows", () => {
+  const anchor = () => document.querySelector<HTMLElement>("[data-toast-anchor]");
+
+  it("a held thread with no rows, a loading one and a draft docked in a split: the focused pane's footer holds the stack", () => {
+    store.draft = false;
+    const held = pane(session({ phase: "loaded", since: NOW, attempt: 0, empty: true }));
+    expect(anchor()?.dataset.toastAnchor).toBe("s1");
+    expect(anchor()!.contains(screen.getByTestId("composer"))).toBe(true);
+    held.unmount();
+    const loading = pane(session({ phase: "loading", since: NOW, attempt: 0 }));
+    expect(anchor()?.dataset.toastAnchor).toBe("s1");
+    loading.unmount();
+    store.draft = true;
+    pane(session({ phase: "loaded", since: NOW, attempt: 0 }), { inSplit: true });
+    expect(anchor()?.dataset.toastAnchor).toBe("s1");
+  });
+
+  it("a pane without the focus holds no seat", () => {
+    store.draft = false;
+    pane(session({ phase: "loaded", since: NOW, attempt: 0, empty: true }), { inSplit: true, focused: false });
+    expect(document.querySelector("[data-chat-footer]")).not.toBeNull();
+    expect(anchor()).toBeNull();
+  });
+});
+
 describe("loadLineText", () => {
   it("words each phase in parts, with no dots or parentheses", () => {
     expect(loadLineText("box", { phase: "loading", since: NOW, attempt: 0 }, NOW)).toBeNull();

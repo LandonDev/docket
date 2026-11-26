@@ -566,4 +566,10 @@ describe("projectCardAriaLabel", () => {
     expect(projectCardAriaLabel("Alpha", status)).toBe("Alpha, 1 needs you, 2 working, 3 unread");
     expect(projectCardAriaLabel("Quiet", projectCardStatus([], null, {}, 0))).toBe("Quiet");
   });
+
+  it("ends with the count line's quiet facts, so one the narrow line drops is still said", () => {
+    const status = projectCardStatus([row("w", { status: "waiting" }), row("d", { status: "done", updatedAt: 0 })], null, {}, 1000);
+    expect(status.dormant).toBe(1);
+    expect(projectCardAriaLabel("Blocked", status, 2)).toBe("Blocked, 1 needs you, 1 dormant, 2 archived");
+  });
 });

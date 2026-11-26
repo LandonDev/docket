@@ -9,7 +9,8 @@ import { AgentNumbersLine } from "./rowBits";
 import type { NumberPart } from "./useFleetModel";
 
 /** The header: the role glyph and title, the status as on the row but in
- *  full, and the numbers line led by the host, model, effort and branch. */
+ *  full (working says the word on a still dot, its phase is the transcript's),
+ *  and the numbers line led by the host, model, effort and branch. */
 export function AgentDetailHeader({
   meta,
   status,
@@ -32,10 +33,11 @@ export function AgentDetailHeader({
           {Glyph ? <Glyph className="size-4 shrink-0 text-muted-foreground" /> : null}
           <h2 className="truncate text-base font-semibold leading-6 tracking-[-0.01em] text-foreground">{meta.title || "Subagent"}</h2>
         </div>
+        {/* Working is the word alone on a still dot: the transcript's working line holds the one moving mark and the phase. */}
         <StatusMark
           state={status.state}
-          word={status.phrase ? status.detail : true}
-          detail={status.phrase ? undefined : status.detail}
+          still={status.state === "working"}
+          detail={status.state === "working" ? undefined : status.detail}
           className="mt-0.5 items-start [&_[data-slot=status-detail]]:whitespace-normal [&_[data-slot=status-word]]:whitespace-normal"
         />
         <AgentNumbersLine

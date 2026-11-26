@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Button } from "../../components/ui/button";
 import type { Block } from "../../lib/session";
 import { NoticeLine } from "./NoticeLine";
-import { NoticeRow, PassRow } from "./NoticeRow";
+import { NoticeRow, PassRow, awayParts } from "./NoticeRow";
 import { STEP_NOTICE, StepRowContext } from "./stepLine";
 
 afterEach(cleanup);
@@ -202,27 +202,40 @@ describe("NoticeRow", () => {
     expect(container.textContent).toBe(text);
     expect(container.querySelectorAll('[data-slot="notice-line"]').length).toBe(1);
   });
-  it("an away notice is one line of the host's words; a question, an allowed and a skipped approval lead with their still glyph, a decision with none", () => {
-    const line = (kind: "decision" | "question" | "approval" | "allowed", text: string) => {
-      const { container } = render(<NoticeRow block={system({ text, notice: { kind: "away", away: { kind, text } } })} />);
+  it("an away notice is one line: the host's lead in medium weight, the ask its muted detail with no colon or question mark; a question, an allowed and a skipped approval lead with their still glyph, a decision with none", () => {
+    const line = (kind: "decision" | "question" | "approval" | "allowed", message: string, text: string) => {
+      const { container } = render(<NoticeRow block={system({ text: message, notice: { kind: "away", away: { kind, text } } })} />);
       const notice = container.querySelector<HTMLElement>('[data-slot="notice-line"]')!;
       expect(container.querySelectorAll('[data-slot="notice-line"]').length).toBe(1);
-      expect(notice.textContent).toBe(text);
       expect(notice.dataset.away).toBe(kind);
-      return notice.querySelector("svg");
+      return notice;
     };
-    expect(line("decision", "Decided without asking: kept the old schema")).toBeNull();
-    const question = line("question", "Answered for you: Tabs or spaces?");
-    const approval = line("approval", "Skipped while away: Run bun test");
-    expect(question).not.toBeNull();
-    expect(approval).not.toBeNull();
-    const allowed = line("allowed", "Allowed while away: Run bun test?");
-    expect(allowed).not.toBeNull();
-    expect(new Set([question!.outerHTML, approval!.outerHTML, allowed!.outerHTML]).size).toBe(3);
-    expect(allowed!.getAttribute("class") ?? "").not.toMatch(/text-(warning|destructive|success)/);
+    const decision = line("decision", "Kept the old schema", "Kept the old schema");
+    expect(decision.textContent).toBe("Kept the old schema");
+    expect(decision.querySelector("svg")).toBeNull();
+    expect(decision.querySelector(".font-medium")).toBeNull();
+    const question = line("question", "Decided without asking: Tabs or spaces?", "Tabs or spaces?");
+    const approval = line("approval", "Skipped while away: Pay in Safari: Buy the Pro plan?", "Pay in Safari: Buy the Pro plan?");
+    const allowed = line("allowed", "Allowed while away: Run bun test?", "Run bun test?");
+    expect(allowed.textContent).toBe("Allowed while awayRun bun test");
+    expect(allowed.querySelector(".font-medium")!.textContent).toBe("Allowed while away");
+    expect(allowed.querySelector('[data-slot="notice-details"]')!.textContent).toBe("Run bun test");
+    expect(allowed.querySelector('[data-slot="notice-details"]')!.className).toContain("text-muted-foreground");
+    expect(approval.querySelector('[data-slot="notice-details"]')!.textContent).toBe("Pay in Safari: Buy the Pro plan");
+    expect(question.querySelector('[data-slot="notice-details"]')!.textContent).toBe("Tabs or spaces");
+    const glyphs = [question, approval, allowed].map((n) => n.querySelector("svg"));
+    expect(glyphs.every(Boolean)).toBe(true);
+    expect(new Set(glyphs.map((g) => g!.outerHTML)).size).toBe(3);
+    expect(glyphs[2]!.getAttribute("class") ?? "").not.toMatch(/text-(warning|destructive|success)/);
     // Still and muted: the glyph slot's tone, no status colour, no spinner.
-    expect(question!.closest("span")!.className).toContain("text-muted-foreground");
-    expect(question!.getAttribute("class") ?? "").not.toMatch(/text-(warning|destructive)/);
+    expect(glyphs[0]!.closest("span")!.className).toContain("text-muted-foreground");
+  });
+  it("an away row written before the row kept its parts reads as the host's one sentence", () => {
+    const text = "Skipped while away: Run bun test";
+    const { container } = render(<NoticeRow block={system({ text, notice: { kind: "away" } })} />);
+    expect(container.textContent).toBe(text);
+    expect(awayParts(text, undefined)).toEqual({ lead: text });
+    expect(awayParts("Allowed while away: Run x?", "Something else")).toEqual({ lead: "Allowed while away: Run x?" });
   });
   it("a review's line arrives with the diff chunk, holding a line's height until then", async () => {
     const review = {

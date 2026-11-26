@@ -320,7 +320,8 @@ export function TurnDuration({
   // One line through every state: the glyph cross-fades in its box, the word morphs.
   return (
     <div role={live ? "status" : undefined} aria-label={STATUS_WORD[state]} className={LINE}>
-      <StatusMark state={state} word={false} className="me-1" />
+      {/* Under the working line, which holds the one moving mark: working is the still dot. */}
+      <StatusMark state={state} word={false} still className="me-1" />
       <MorphText state={state}>
         <span className={cn("font-medium", statusToneClass(state))}>{STATUS_WORD[state]}</span>
       </MorphText>

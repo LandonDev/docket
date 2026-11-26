@@ -117,6 +117,13 @@ describe("DraftHostPicker", () => {
     expect(container.querySelector("[data-draft-host-picker]")).toBeNull();
   });
 
+  it("under a 24rem draft row drops the host's name to its glyph, so the folder keeps its word; the trigger still names the host", () => {
+    const { container } = render(<DraftHostPicker sessionId="d" />);
+    const trigger = container.querySelector<HTMLElement>("[data-draft-host-picker]")!;
+    expect(trigger.querySelector("[data-draft-host-name]")!.className.split(" ")).toContain("@max-[24rem]/draft-row:hidden");
+    expect(trigger.getAttribute("aria-label")).toMatch(/^Start on /);
+  });
+
   it("a chat outside every workspace starts on any connected host, at its home and outside every workspace there", async () => {
     h.sessions = [{ id: "d", environmentId: "local", projectId: null, workspaceId: null, cwd: "~", blocks: [] }];
     h.statuses.set("mini", { transport: "offline" });

@@ -9,6 +9,10 @@ function bundledReleaseMarkdown(): string {
   return `## [${BUNDLED_RELEASE.version}] - ${BUNDLED_RELEASE.date}\n\n${BUNDLED_RELEASE.notes}`;
 }
 
+/** A release's heading names its version in brackets (Keep a Changelog, "## [1.0.3]") or bare ("## 1.0.3"),
+ *  either way with an optional "v"; the pattern for an already escaped version. */
+const versionIn = (escaped: string) => `(?:\\[v?${escaped}\\]|v?${escaped})`;
+
 export function releaseNotesForVersion(
   version: string,
   changelog?: string,
@@ -23,7 +27,7 @@ export function releaseNotesForVersion(
 
   const escapedVersion = normalized.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const heading = new RegExp(
-    `^## \\[${escapedVersion}\\](?: - \\d{4}-\\d{2}-\\d{2})?\\r?$`,
+    `^## ${versionIn(escapedVersion)}(?: - \\d{4}-\\d{2}-\\d{2})?\\r?$`,
     "gm",
   );
   const match = heading.exec(changelog);
@@ -66,7 +70,7 @@ export function presentReleaseNotes(
     "\\$&",
   );
   const heading = new RegExp(
-    `^## \\[${escapedVersion}\\](?: - (\\d{4}-\\d{2}-\\d{2}))?\\r?\\n*`,
+    `^## ${versionIn(escapedVersion)}(?: - (\\d{4}-\\d{2}-\\d{2}))?\\r?\\n*`,
   );
   const match = heading.exec(release.markdown);
 

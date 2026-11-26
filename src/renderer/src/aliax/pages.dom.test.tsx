@@ -439,6 +439,25 @@ describe('StatsPage', () => {
     }
   })
 
+  it('a Reindex over drawn charts draws the sections\' bones until it lands, then the new charts', async () => {
+    const b = emptyBundle()
+    b.totals = { ...b.totals, turns: 40 }
+    b.daily = [{ day: '2026-10-08', claude: 3000, codex: 1000 }]
+    aliax.stats.mockResolvedValue(b)
+    render(<StatsPage />)
+    await act(flush)
+    await act(flush)
+    expect(document.querySelector('[aria-busy=true]')).toBeNull()
+    let finish: (r: { ok: true }) => void = () => {}
+    aliax.statsReindex.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve }) as never)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Reindex' })) })
+    expect(document.querySelector('[aria-busy=true]')).toBeTruthy()
+    expect(document.querySelector('[data-section-skeleton="Daily output"]')).toBeTruthy()
+    await act(async () => { finish({ ok: true }) })
+    await act(flush)
+    expect(document.querySelector('[aria-busy=true]')).toBeNull()
+  })
+
   it('says how far indexing has got, and Reindex reindexes', async () => {
     aliax.statsStatus.mockResolvedValue({ indexing: true, filesDone: 120, filesTotal: 3400, rows: 0 })
     render(<StatsPage />)
