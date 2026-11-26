@@ -327,7 +327,10 @@ describe("the chat beside the mail", () => {
     await waitFor(() => expect(dock()).not.toBeNull());
     const close = screen.getByRole("button", { name: "Close chat" });
     close.focus();
-    act(() => void fireEvent.keyDown(close, { key: "Escape" }));
+    // Round 6 (Sol, Mail 1): the press is claimed, so Mail's own Escape (back from a narrow reader) never takes it too.
+    let unclaimed = true;
+    act(() => void (unclaimed = fireEvent.keyDown(close, { key: "Escape" })));
+    expect(unclaimed).toBe(false);
     expect(dock()).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole("button", { name: "Ask" }));
   });

@@ -258,6 +258,8 @@ export function MailScreen({
     const target = event.target as HTMLElement;
     if (event.key !== "Escape" || event.defaultPrevented || !event.currentTarget.contains(target)) return;
     if (!room.over && !target.closest("[data-composer-input]")) return;
+    // Claimed, so Mail's own keys (work-kit's Escape: back from the reader) never take the same press too.
+    event.preventDefault();
     target.blur();
     if (!room.over) return toMail();
     giveBack.current = true;
