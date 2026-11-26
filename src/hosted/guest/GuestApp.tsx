@@ -99,9 +99,12 @@ export function GuestApp() {
     if (session?.mode.kind === "owner") tellPhone({ kind: "passEnded" });
     setState({ at: "failed", why: "gone" });
   }, [session, kept]);
-  const load = useCallback(() => {
+  // Retry keeps the page that said why in view, its press spinning, until the link answers.
+  const [retrying, setRetrying] = useState(false);
+  const load = useCallback((again = false) => {
     if (!session) return;
-    setState({ at: "loading" });
+    if (again) setRetrying(true);
+    else setState({ at: "loading" });
     // A host that is starting is asked again under the same bones: a start is not an end.
     openWhenUp(() => session.refresh()).then(
       (opened) => {
@@ -118,9 +121,9 @@ export function GuestApp() {
         if (why === "gone") gone();
         else setState({ at: "failed", why });
       },
-    );
+    ).finally(() => setRetrying(false));
   }, [session, gone, chrome]);
-  useEffect(load, [load]);
+  useEffect(() => load(), [load]);
   const [people, setPeople] = useState<readonly Person[]>([]);
   // A sheet that never came: out of reach, with Retry. (One that has its sheet keeps trying under its own line.)
   const down = useCallback(() => setState({ at: "failed", why: "down" }), []);
@@ -151,7 +154,7 @@ export function GuestApp() {
     if (failed) frame?.drawn({ format: false, find: false, undo: false });
   }, [failed, frame]);
 
-  if (state.at === "failed") return <Ended why={state.why} owner={session?.mode.kind === "owner"} kept={session?.remembered() ?? kept} retry={load} />;
+  if (state.at === "failed") return <Ended why={state.why} owner={session?.mode.kind === "owner"} kept={session?.remembered() ?? kept} retry={() => load(true)} retrying={retrying} />;
   const opened = state.at === "open" ? state.opened : null;
   const TitleTag = opened?.kind === "doc" ? "h1" : "span";
   return (
@@ -338,7 +341,7 @@ const ENDED: Record<Exclude<Failure, "gone" | "starting">, { title: string; deta
   down: { title: "This page cannot be reached right now", detail: "Try again in a minute." },
 };
 
-export function Ended({ why, owner, kept = null, retry }: { why: Failure; owner: boolean; kept?: Remembered | null; retry(): void }) {
+export function Ended({ why, owner, kept = null, retry, retrying = false }: { why: Failure; owner: boolean; kept?: Remembered | null; retry(): void; retrying?: boolean }) {
   // A host that is still starting after the wait is out of reach, said as that: never as an end.
   const out = why === "down" || why === "starting";
   const words = out ? ENDED.down : why === "busy" ? ENDED.busy : owner ? { title: "This page has already been opened, or it ran out", detail: "Open it again from Docket." } : endWords(kept);
@@ -352,8 +355,8 @@ export function Ended({ why, owner, kept = null, retry }: { why: Failure; owner:
           <EmptyDescription>{words.detail}</EmptyDescription>
         </EmptyHeader>
         {out ? (
-          <Button variant="secondary" size="sm" onClick={retry}>
-            <RefreshCw />
+          <Button variant="secondary" size="sm" disabled={retrying} aria-busy={retrying || undefined} onClick={retry}>
+            {retrying ? <Spinner aria-hidden /> : <RefreshCw />}
             Retry
           </Button>
         ) : null}

@@ -223,6 +223,12 @@ describe("a page that does not open", () => {
       expect(tried).toBe(1);
       cleanup();
     }
+    // While it asks again the page stays and Retry spins in its glyph's place (council R3-D3).
+    render(<Ended why="down" owner={false} retry={() => {}} retrying />);
+    expect(screen.getByRole("heading").textContent).toBe("This page cannot be reached right now");
+    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
+    expect([retry.disabled, retry.getAttribute("aria-busy")]).toEqual([true, "true"]);
+    cleanup();
   });
 
   it("waits out a host that is starting under the page's bones, and opens when it can say the link stands", async () => {

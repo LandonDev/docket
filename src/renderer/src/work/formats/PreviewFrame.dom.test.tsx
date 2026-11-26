@@ -120,9 +120,12 @@ describe("the frame", () => {
     expect(column()).toBeNull();
     expect(screen.queryByText("In this format")).toBeNull();
     expect((screen.getByRole("button", { name: "Export" }) as HTMLButtonElement).disabled).toBe(false);
+    // No pages yet, so nothing to zoom (council R3-D2); it comes with them.
+    expect(screen.queryByRole("button", { name: /^Zoom/ })).toBeNull();
 
     await f.answer({ picture: paged("r1"), drops: ["3 suggestions go as tracked changes", "Aptos is drawn as Carlito here; Word will use Aptos"] });
     await waitFor(() => expect(count()).toBe("Page 1 of 3"));
+    expect(screen.getByRole("button", { name: /^Zoom/ })).toBeTruthy();
     expect(head()).toBe("As drawn here");
     const col = column()!;
     expect(within(col).getByText("In this format")).toBeTruthy();

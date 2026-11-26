@@ -325,6 +325,9 @@ describe("the presenter's view", () => {
     expect(root.querySelectorAll('[data-show-notes-bones] [data-slot="skeleton"]').length).toBe(2);
     expect(within(root).queryByText("None")).toBeNull();
     expect(within(root).getByRole("status").textContent).toBe("The slideshow's display was disconnected");
+    // Nothing to step or blank yet; End show stays (council R3-D1).
+    for (const name of ["Previous", "Next", "Blank"]) expect((within(root).getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(root).getByRole("button", { name: "End show" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });
 

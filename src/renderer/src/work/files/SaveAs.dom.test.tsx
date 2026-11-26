@@ -287,7 +287,8 @@ describe("the sheet for a document made of a file", () => {
     fromFile("Practice register.doc");
     const dialog = await sheet();
     expect(within(dialog).getByRole("button", { name: "Word" })).toBeTruthy();
-    expect(within(dialog).getByText("A .doc is saved as .docx")).toBeTruthy();
+    // Cut, the note is a Tab stop with its ring and its whole words in a tip (council R3-C2).
+    expect(within(dialog).getByText("A .doc is saved as .docx").className.split(" ")).toEqual(expect.arrayContaining(["focus-ring", "truncate"]));
     fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(saved()).toHaveLength(1));
     expect(saved()[0]).toMatchObject({ at: at("/cloud/General"), format: "docx", name: "Run of show.docx" });

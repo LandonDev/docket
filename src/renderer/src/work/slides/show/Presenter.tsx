@@ -78,6 +78,7 @@ function IconButton({ label, onClick, children }: { label: string; onClick(): vo
 }
 
 export function Presenter({ state, dispatch, doc, loading = false, error = null, notice = null, ratio = 1, timer, target, onTimer, onTarget, notesSize, onNotesSize, now = Date.now, room: fixedRoom }: PresenterProps) {
+  const stepless = state.slides.length === 0;
   const root = useRef<HTMLDivElement>(null);
   const room = useRoom(root, fixedRoom);
   const at = useNow(now);
@@ -141,17 +142,18 @@ export function Presenter({ state, dispatch, doc, loading = false, error = null,
           </>
         )}
         <span className="min-w-2 flex-1" />
-        <Button variant="ghost" size="icon-sm" aria-label="Previous" onClick={() => dispatch({ t: "prev" })}>
+        {/* Before the deck is read there is no slide to step or blank: those rest; End show and the timer stay. */}
+        <Button variant="ghost" size="icon-sm" aria-label="Previous" disabled={stepless} onClick={() => dispatch({ t: "prev" })}>
           <ChevronLeft />
         </Button>
         <span data-show-place aria-live="polite" aria-label={placeLabel(state)} className="min-w-11 px-1 text-center text-xs leading-4 tabular-nums">
           {placeText(state)}
         </span>
-        <Button variant="ghost" size="icon-sm" aria-label="Next" onClick={() => dispatch({ t: "next" })}>
+        <Button variant="ghost" size="icon-sm" aria-label="Next" disabled={stepless} onClick={() => dispatch({ t: "next" })}>
           <ChevronRight />
         </Button>
         {RULE}
-        <Toggle size="sm" className="px-2.5" pressed={state.blank} onPressedChange={() => dispatch({ t: "blank" })}>
+        <Toggle size="sm" className="px-2.5" pressed={state.blank} disabled={stepless} onPressedChange={() => dispatch({ t: "blank" })}>
           Blank
         </Toggle>
         <Button variant="secondary" size="sm" className="ml-1.5" onClick={() => dispatch({ t: "end" })}>

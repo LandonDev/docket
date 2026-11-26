@@ -33,6 +33,7 @@ describe("Save As's outcome", () => {
     const { container } = render(<Outcome words={WORDS} />);
     const line = container.querySelector<HTMLElement>("[data-save-as-outcome]")!;
     expect(line.getAttribute("tabindex")).toBe("0");
-    expect(line.className.split(" ")).toContain("line-clamp-2");
+    // A Tab stop draws its ring (council R3-C1).
+    expect(line.className.split(" ")).toEqual(expect.arrayContaining(["line-clamp-2", "focus-ring"]));
   });
 });
