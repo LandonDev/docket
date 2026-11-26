@@ -62,7 +62,9 @@ async function load(link: EnvLink): Promise<void> {
 
 /** Follow one host: its state at open, then its pushes. */
 export function attachAwayLink(link: EnvLink): () => void {
-  const offOpen = link.onOpen(() => afterOpen(link, () => load(link)));
+  // The primary host's state is read at once: its switch acts on it. Another host's tally may wait for the second
+  // phase (tcserver/openPhase.ts).
+  const offOpen = link.onOpen(() => (link.environmentId === registry.primaryEnvironmentId ? void load(link) : afterOpen(link, () => load(link))));
   const offPush = link.onPush((push) => {
     if (push.push !== "away") return;
     const before = awayStore.getState().hosts[link.environmentId];

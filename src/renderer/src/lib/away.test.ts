@@ -4,7 +4,7 @@ import { attachAwayLink, awayKinds, awayStore, onAwayPush, resetAwayForTest, set
 import { registry } from "./connection/registry";
 import * as toaster from "../components/ui/toaster";
 import type { ServerPush } from "./tcserver/types";
-import { markUsable } from "./tcserver/openPhase";
+import { markUsable, resetOpenPhase } from "./tcserver/openPhase";
 
 // the window is usable: a host's open runs its second phase, where Away's read is (tcserver/openPhase.ts)
 markUsable();
@@ -104,3 +104,25 @@ describe("the away store", () => {
     vi.restoreAllMocks();
   });
 });
+
+describe("Away's read at open, by phase", () => {
+  afterEach(() => markUsable());
+
+  it("reads the primary host's state at once, before the second phase; another host's waits for it", async () => {
+    resetOpenPhase();
+    const local = fakeLink(registry.primaryEnvironmentId, snap(true, 10));
+    const box = fakeLink("env_box", snap(true, 10));
+    attachAwayLink(local.link);
+    attachAwayLink(box.link);
+    local.open();
+    box.open();
+    await new Promise((r) => setTimeout(r, 0));
+    const asked = (f: ReturnType<typeof fakeLink>) => (f.link as unknown as { request: { mock: { calls: unknown[] } } }).request.mock.calls.length;
+    expect(asked(local)).toBe(1);
+    expect(asked(box)).toBe(0);
+    markUsable();
+    await vi.waitFor(() => expect(asked(box)).toBe(1));
+    expect(asked(local)).toBe(1);
+  });
+});
+
