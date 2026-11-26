@@ -146,7 +146,8 @@ struct ReviewScreen: View {
         } header: {
             SectionHeader("Hours").listRowInsets(EdgeInsets())
         } footer: {
-            Text(WeekReview.hoursNote).textStep(.meta).padding(.horizontal, Layout.textEdge)
+            // The header's zero insets and the text edge's pad, so the note starts where the bands and lines do.
+            Text(WeekReview.hoursNote).textStep(.meta).padding(.horizontal, Layout.textEdge).listRowInsets(EdgeInsets())
         }
     }
 

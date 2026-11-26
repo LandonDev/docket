@@ -172,7 +172,8 @@ private struct ConnectionRowView: View {
         HStack(alignment: .firstTextBaseline, spacing: Layout.rowGap) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).textStep(.title).lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
-                if let line { Text(line).textStep(.meta).foregroundStyle(.secondary).lineLimit(2) }
+                // The host's line whole: its last words are often the fix.
+                if let line { Text(line).textStep(.meta).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
             }
             Spacer(minLength: 8)
             if busy {

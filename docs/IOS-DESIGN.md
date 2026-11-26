@@ -2932,7 +2932,7 @@ for a short one); a picture from its tiles, or whole at phone size; a meeting's 
   sidebar in the split poses), one inset section per tile, the one that
   acted last first: the live picture, then the thread's title (title step,
   medium; it opens the thread) over one meta line, what it is doing (or
-  "You are driving") and where it runs. No buttons on a tile: Take Over,
+  "You are driving") then where it runs at medium weight, never joined with a dot. No buttons on a tile: Take Over,
   Hand Back and Stop are on its full screen. With nothing driven the list
   tells three states apart (`ComputersState`): a spinner while a connected
   host has not said; "Not Connected to the box" when no host is connected;
@@ -3224,7 +3224,7 @@ own row says one row down (`TodayModel.workListLine`), and where the tab opens a
 - **States.** A host whose whole LifeOS session is down gives way to the next host that can read the day, as the
   desktop passes a down reader over (`LifeReach.reach`'s `down`), and keeps that host while it can read: the one
   passed over takes the day back only once the host read in its place is down (`LifeReach.PassedOver`, the desktop's
-  `tried`). The LifeOS sections give way to one line when no
+  `tried`). The LifeOS sections give way to one line, set off from the rows above by a section's gap, when no
   host can read LifeOS ("Not signed in to LifeOS on Box"; Retry only where LifeOS was silent), or
   when the host it reads through says LifeOS is connecting ("LifeOS is still connecting on Box", a spinner, no
   press); a host that did not answer is a line with Retry (`PillButton`, 44 pt) in the section it feeds; the hosts
@@ -3448,7 +3448,7 @@ card. Connections and Computers sit in the Work list's foot.
 - **A dashboard** reads every figure again on a pull; a block whose sheet the phone has opens it on a tap (a LifeOS
   sheet in the hosted editor, a form's answers), with the press's scale and no other mark.
 - **Connections**: a section a group, in the desktop's order, "Ending Soon" first when an end is within two weeks; a
-  row's title, the host's one line under it, its word trailing ("Ready" muted, "Needs you" in the warning ink,
+  row's title, the host's line under it whole (its last words are often the fix), its word trailing ("Ready" muted, "Needs you" in the warning ink,
   "Broken" in the destructive ink, both semibold). A row that does not work offers "Open on <computer>" in its swipe
   and context menu. A Work host whose checks did not come back is named in the one line over the rows, never "Nothing
   to Check" (`Connections.missedLine`): not connected, did not answer (its kept rows "Showing what it said at 2:10

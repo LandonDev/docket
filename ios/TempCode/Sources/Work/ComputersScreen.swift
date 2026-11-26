@@ -142,9 +142,11 @@ private struct ComputerTileView: View {
                     Text(tile.title)
                         .textStep(.title, weight: .medium)
                         .lineLimit(1)
-                    Text(meta)
-                        .textStep(.meta)
-                        .lineLimit(1)
+                    // What it is doing, then where it runs, told apart by weight, never joined with a dot.
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        if let doing { Text(doing).textStep(.meta).lineLimit(1) }
+                        Text(tile.place).textStep(.meta, weight: .medium).lineLimit(1).layoutPriority(1)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
@@ -156,9 +158,6 @@ private struct ComputerTileView: View {
         .accessibilityIdentifier("computer-tile")
     }
 
-    /// What it is doing (or that he drives it) and where it runs, said once (`tileLine` and `Facts` on the desktop).
-    private var meta: String {
-        let line = tile.driving ? "You are driving" : tile.doing
-        return [line, tile.place].compactMap { $0 }.joined(separator: " · ")
-    }
+    /// What it is doing, or that he drives it (`tileLine` on the desktop); where it runs is said beside it.
+    private var doing: String? { tile.driving ? "You are driving" : tile.doing }
 }

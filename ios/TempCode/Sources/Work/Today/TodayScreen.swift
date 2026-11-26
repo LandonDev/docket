@@ -98,10 +98,14 @@ struct TodayScreen: View {
             Section {
                 // Only silence may answer another try: a sign-out, a refusal or Work off needs him elsewhere.
                 TodayLine(words: down.words(host: store.lifeHost.isEmpty ? (down == .locked ? lockedName : nil) : hostName(store.lifeHost)), late: down.isSilence, retry: down.isSilence ? { await store.retry(.lifeos(what: "")) } : nil)
+            } header: {
+                PageLineGap()
             }
         case .connecting:
             Section {
                 TodayLine(words: LifeosWords.connecting(host: hostName(store.lifeHost)), waits: true)
+            } header: {
+                PageLineGap()
             }
         case .lost(let failure) where failure.waits:
             // A job's session on another host waits on that host's LifeOS: the wait, the computer named, what it left out.
@@ -750,5 +754,16 @@ struct TodayBones: View {
         .redacted(reason: .placeholder)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// A gap over a line that stands for whole sections (LifeOS down or connecting; the desktop's `mt-6`): set off from
+/// the rows above it, never read as one more of them.
+private struct PageLineGap: View {
+    var body: some View {
+        Color.clear
+            .frame(height: Layout.textEdge)
+            .listRowInsets(EdgeInsets())
+            .accessibilityHidden(true)
     }
 }

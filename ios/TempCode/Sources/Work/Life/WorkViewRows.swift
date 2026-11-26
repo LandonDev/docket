@@ -26,7 +26,7 @@ struct WorkViewRows: View {
         // The job's repeated work, started with one press (M5b): his plays, then the routines that run on their own.
         WorkViewRow(title: "Plays", symbol: "play.square.stack", route: route("plays"), id: "work-view-plays")
         WorkViewRow(title: "Routines", symbol: "clock.arrow.circlepath", route: route("routines"), id: "work-view-routines")
-        WorkViewRow(title: "Forms", symbol: "checklist", route: route("forms"), id: "work-view-forms")
+        WorkViewRow(title: "Forms", symbol: "list.clipboard", route: route("forms"), id: "work-view-forms")
     }
 
     private func route(_ view: String) -> Route {

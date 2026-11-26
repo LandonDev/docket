@@ -17,10 +17,12 @@ struct LifeViewScreen: View {
         var title: String { rawValue.capitalized }
         var symbol: String {
             switch self {
-            case .mail: Symbol.mail
-            case .tasks: Symbol.tasks
-            case .agenda: Symbol.agenda
-            case .projects: "folder"
+            // The Work list's glyph for each place, so a place has one glyph wherever it is named; Projects its own,
+            // apart from Files' folder.
+            case .mail: WorkPlace.mail.glyph
+            case .tasks: WorkPlace.tasks.glyph
+            case .agenda: WorkPlace.agenda.glyph
+            case .projects: "square.stack.3d.up"
             }
         }
     }

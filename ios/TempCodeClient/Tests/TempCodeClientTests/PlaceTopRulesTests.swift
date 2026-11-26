@@ -8,6 +8,8 @@ struct PlaceTopRulesTests {
         let rows = ["fold:earlier:held", "row:a", "row:b", "fold:more:held"]
         #expect(PlaceTopRules.target(kept: "row:b", rows: rows) == "row:b")
         #expect(PlaceTopRules.target(kept: "fold:more:held", rows: rows) == "fold:more:held")
+        // The first row is where the list opens: no scroll, so the large title stays (council round 1, R1-F23).
+        #expect(PlaceTopRules.target(kept: "fold:earlier:held", rows: rows) == nil)
         // A section's own id, or a row now folded away: the list stays at its top.
         #expect(PlaceTopRules.target(kept: "section:held", rows: rows) == nil)
         #expect(PlaceTopRules.target(kept: "row:c", rows: rows) == nil)

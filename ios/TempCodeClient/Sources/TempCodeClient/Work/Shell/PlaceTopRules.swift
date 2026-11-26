@@ -6,8 +6,9 @@ public enum PlaceTopRules {
     /// The kept row only while the list draws it as a row; else none, and the list stays at its top. A section's
     /// own id, a row folded under "3 more" or one in a section not built yet is no place to scroll to: the list
     /// cannot show it, and asking it to ends the app.
+    /// A kept first row is no scroll at all: the list is already there, and a scroll to it would hide the large title.
     public static func target(kept: String?, rows: [String]) -> String? {
-        guard let kept, rows.contains(kept) else { return nil }
+        guard let kept, rows.contains(kept), kept != rows.first else { return nil }
         return kept
     }
 }
