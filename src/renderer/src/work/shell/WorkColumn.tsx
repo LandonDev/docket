@@ -11,7 +11,7 @@ import { rowOfView, type WorkViewDef, workColumnViews } from "../views/registry"
 import { openLifeosProject } from "./actions";
 import { setColumnProjects, setColumnProjectsReading, type ColumnProject } from "./columnProjects";
 import { HOLD, KeptRegion, useKeptRegion, useLifeosQuery, useLifeosSession } from "./lifeos";
-import { shell, shellStore, threadsCovered } from "../../stores/shell";
+import { shell, shellStore, threadsCovered, useShell } from "../../stores/shell";
 
 /** The statuses whose projects the column lists: what is still under way. */
 const LISTED = new Set(["backlog", "active", "paused"]);
@@ -79,10 +79,12 @@ export function WorkColumnHead({ workspace }: { workspace: WorkspaceMeta }) {
   }, [moreShown]);
   const [open, setOpen] = useState(false);
   const { kept: keptView, fold } = foldRows(more, keptId, open);
+  const covered = useShell(threadsCovered);
 
   if (!sector) return null;
   const row = (view: WorkViewDef, onPick?: () => void) => (
-    <ViewRow key={view.id} view={view} workspace={workspace} sector={sector} selected={here === view.id} on={shown?.workspaceId === workspace.id && shown.view === view.id} onPick={onPick} />
+    // A page in front (Today, Review, the Outbox, Settings) is the one place lit: the view under it is not.
+    <ViewRow key={view.id} view={view} workspace={workspace} sector={sector} selected={here === view.id && !covered} on={shown?.workspaceId === workspace.id && shown.view === view.id} onPick={onPick} />
   );
   return (
     <KeptRegion value={kept.scope}>

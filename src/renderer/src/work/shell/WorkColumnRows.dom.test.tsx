@@ -146,6 +146,21 @@ describe("the Projects section", () => {
     expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-current")).toBe("true");
   });
 
+  it("leaves the project and the heading unlit while a page (Today) is in front of the view (council R3-A1)", async () => {
+    const { shell } = await import("../../stores/shell");
+    render(<Section />);
+    act(() => openWorkView({ workspaceId: "w-job", view: "projects", project: "lan" }));
+    expect(screen.getByRole("button", { name: /^Spring LAN/ }).getAttribute("aria-current")).toBe("true");
+    act(() => shell.openWorkPlace("today"));
+    expect(screen.getByRole("button", { name: /^Spring LAN/ }).getAttribute("aria-current")).toBeNull();
+    act(() => shell.openWorkPlace(null));
+    act(() => openWorkView({ workspaceId: "w-job", view: "projects" }));
+    act(() => shell.openWorkPlace("review"));
+    expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-current")).toBeNull();
+    act(() => shell.openWorkPlace(null));
+    expect(screen.getByRole("button", { name: "Projects" }).getAttribute("aria-current")).toBe("true");
+  });
+
   it("keeps the project lit once the view takes the request, and lights one opened from elsewhere, from where the view stands", () => {
     render(<Section />);
     // The view takes the open request and clears it; where it stands now says the project.

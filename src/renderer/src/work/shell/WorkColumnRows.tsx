@@ -89,8 +89,10 @@ export const WorkProjectsSection = memo(function WorkProjectsSection({
   const here = shown?.workspaceId === workspaceId && shown.view === "projects" ? shown : null;
   // Where the view stands now (projects/here.ts), however he came to it; an open request not yet taken leads.
   const at = useProjectsHere(workspaceId);
-  const current = here ? (here.project ?? (at && !at.list ? at.project : null)) : null;
-  const on = !!here && !here.project && (at?.list ?? true);
+  // A page in front (Today, Review, the Outbox) is the one place lit: the projects under it are not.
+  const covered = useShell(threadsCovered);
+  const current = here && !covered ? (here.project ?? (at && !at.list ? at.project : null)) : null;
+  const on = !!here && !covered && !here.project && (at?.list ?? true);
   // A paused or backlog project's page opens its fold, so its row is seen lit; shut by hand, it stays shut.
   const quietHit = !!current && projects.quiet.some((row) => isShown(row, current));
   useEffect(() => {
