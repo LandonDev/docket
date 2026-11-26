@@ -40,6 +40,13 @@ describe("projectCardStatus", () => {
     expect(ids(status.running)).toEqual(["w"]);
     expect(status.dormant).toBe(0);
   });
+  it("reads a master watching its batch unread once a child's news clears its mark, and no other watching thread", () => {
+    const threads = [thread("m", { status: "watching", isMaster: true }), thread("w", { status: "watching" })];
+    expect(ids(projectCardStatus(threads, null, { m: 0, w: 0 }).unread)).toEqual(["m"]);
+    expect(ids(projectCardStatus(threads, null, { m: 200, w: 0 }).unread)).toEqual([]);
+    // The selected master is being read: no news.
+    expect(ids(projectCardStatus(threads, "m", { m: 0, w: 0 }).unread)).toEqual([]);
+  });
 
   it("puts each thread in one bucket, loudest first", () => {
     const status = projectCardStatus(

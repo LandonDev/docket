@@ -33,7 +33,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { agentSummaryParts, leadStripped, modelLabel, type AgentSummary } from "../lib/threads/agents";
 import { AGENT_GLYPHS, THREAD_MENU_ICONS } from "../surfaces/threads/threadTypes";
 import { TypeGlyph } from "../surfaces/threads/TypeGlyph";
-import { STATUS_ON_TIP, STATUS_WORD, StatusMark, type ThreadState } from "../components/ui/status";
+import { STATUS_ON_TIP, STATUS_WORD, StatusMark, UnreadMark, type ThreadState } from "../components/ui/status";
 import { plainStatus } from "@shared/statusWords";
 import { reveal, yields } from "../components/ui/reveal";
 import { Button } from "../components/ui/button";
@@ -982,6 +982,8 @@ export type ProjectCardViewProps = {
   /** Lines behind "N more". */
   hidden: number;
   counts: readonly CardCount[];
+  /** A thread in it reads unread (`ProjectCardStatus.unread`): the dot before the time. */
+  unread?: boolean;
   ariaLabel: string;
   selected?: boolean;
   offline?: boolean;
@@ -995,7 +997,7 @@ export type ProjectCardViewProps = {
 };
 
 /**
- * A project card, presentational: the name and its last-active time, the
+ * A project card, presentational: the name, the unread dot and its last-active time, the
  * branch line, one read-only line per working, paused or unread thread (a
  * master's batch as a block), then the counts. The card is one button: a
  * click anywhere selects the project, and its lines never open a thread
@@ -1010,6 +1012,7 @@ export function ProjectCardView({
   lines,
   hidden,
   counts,
+  unread = false,
   ariaLabel,
   selected = false,
   offline = false,
@@ -1031,6 +1034,7 @@ export function ProjectCardView({
         ) : (
           <>
             <span className="min-w-0 flex-1 truncate text-[13px] leading-5 font-medium text-foreground">{name}</span>
+            {unread ? <UnreadMark className={cn("self-center", menu && YIELDS)} /> : null}
             <CardAgo latest={latest} yields={!!menu} />
           </>
         )}
@@ -1228,6 +1232,7 @@ export const ProjectCard = memo(function ProjectCard({
       lines={shown}
       hidden={hidden}
       counts={projectCardCounts(threads, rows.activeSessionId ?? null, lastSeen, seenFloor, archivedCount)}
+      unread={status.unread.length > 0}
       ariaLabel={projectCardAriaLabel(project.name, status)}
       selected={selected}
       offline={offline}

@@ -123,7 +123,7 @@ const SettingsNav = settingsChunk.surface(
 );
 import { Kbd } from "../components/ui/kbd";
 import { Skeleton } from "../components/ui/skeleton";
-import { StatusMark } from "../components/ui/status";
+import { StatusMark, UnreadMark } from "../components/ui/status";
 import { isWorkWorkspace } from "../lib/workRow";
 
 /** Whether a rail row asks git for its change counts: only the selected one, never the home, and never a Work
@@ -547,22 +547,28 @@ export function ProjectRail({
     // Always while Work is on: Sent and the grants are reached from it with nothing waiting.
     outbox: workOn && onOpenOutbox !== undefined,
   });
+  // A chats row's end: the unread dot, then needs you or working.
+  const chatsTrailing = (key: string) => {
+    const state = needsYou.has(key) ? "waiting" : busy.has(key) ? "working" : null;
+    const unread = !!railStatuses.get(key)?.unread;
+    if (!state && !unread) return null;
+    return (
+      <>
+        {unread ? <UnreadMark /> : null}
+        {state ? <StatusMark state={state} word={false} /> : null}
+      </>
+    );
+  };
   // Work Chats: under the Work heading, after the pages above the workspaces (Today, Projects, Review), before the jobs.
   const workChatsRow = () => (
     <RailRow
       key="workChats"
       icon={MessageMultiple}
       label="Work Chats"
-      ariaLabel={chatsAriaLabel(busy.has(WORK_CHATS), needsYou.has(WORK_CHATS), "Work Chats")}
+      ariaLabel={chatsAriaLabel(busy.has(WORK_CHATS), needsYou.has(WORK_CHATS), "Work Chats", !!railStatuses.get(WORK_CHATS)?.unread)}
       onClick={onOpenWorkChats}
       selected={!overlayOpen && cwd === WORK_CHATS}
-      trailing={
-        needsYou.has(WORK_CHATS) ? (
-          <StatusMark state="waiting" word={false} />
-        ) : busy.has(WORK_CHATS) ? (
-          <StatusMark state="working" word={false} />
-        ) : null
-      }
+      trailing={chatsTrailing(WORK_CHATS)}
     />
   );
   const topRow = (id: RailTopRowId) => {
@@ -622,16 +628,10 @@ export function ProjectRail({
             key={id}
             icon={MessageSquare}
             label="Chats"
-            ariaLabel={chatsAriaLabel(busy.has("~"), needsYou.has("~"))}
+            ariaLabel={chatsAriaLabel(busy.has("~"), needsYou.has("~"), "Chats", !!railStatuses.get("~")?.unread)}
             onClick={onOpenChats}
             selected={!overlayOpen && cwd === "~"}
-            trailing={
-              needsYou.has("~") ? (
-                <StatusMark state="waiting" word={false} />
-              ) : busy.has("~") ? (
-                <StatusMark state="working" word={false} />
-              ) : null
-            }
+            trailing={chatsTrailing("~")}
           />
         );
       case "accounts":
@@ -975,8 +975,8 @@ function ProjectSection({
 /**
  * One workspace, a container on the sidebar-group fill: its glyph (the
  * logo, else the repo icon, else the mascot: WorkspaceGlyph, the leader
- * copy's look), its alias-resolved name (medium while a thread in it is
- * unread), the selected row's uncommitted lines muted and the
+ * copy's look), its alias-resolved name, the selected row's uncommitted
+ * lines muted, the unread dot while a thread in it is unread, and the
  * state's one glyph as its trailing marks, and Pin or Unpin then ⋯ (the
  * same menu as a right-click) as its hover actions; drag reorders it.
  */
@@ -1058,9 +1058,8 @@ function WorkspaceRow({
           )
         }
         label={name}
-        ariaLabel={workspaceRowAriaLabel(name, busy, needsYou, stats)}
+        ariaLabel={workspaceRowAriaLabel(name, busy, needsYou, stats, !!railStatus?.unread)}
         selected={selected}
-        emphasis={!!railStatus?.unread}
         trailingInteractive
         trailing={
           railStatus?.mark && workspaceId ? (
@@ -1073,12 +1072,18 @@ function WorkspaceRow({
           ) : null
         }
         trailingYield={
-          changed ? (
-            // Muted: the colours belong to the Changes section. It shares the
-            // hover actions' slot and fades as they show, and leaves for the
-            // name in a rail under 15rem; the button's name still says it.
-            <span data-workspace-diff className="pointer-events-none block pr-1 whitespace-nowrap @max-[15rem]/railrow:hidden">
-              {diffWords(stats.additions, stats.deletions)}
+          changed || railStatus?.unread ? (
+            <span className="flex items-center">
+              {changed ? (
+                // Muted: the colours belong to the Changes section. It shares the
+                // hover actions' slot and fades as they show, and leaves for the
+                // name in a rail under 15rem; the button's name still says it.
+                <span data-workspace-diff className="pointer-events-none block pr-1 whitespace-nowrap @max-[15rem]/railrow:hidden">
+                  {diffWords(stats.additions, stats.deletions)}
+                </span>
+              ) : null}
+              {/* 20px wide: alone at the row's end its dot stands on the state glyph's column. */}
+              {railStatus?.unread ? <UnreadMark className="w-5" /> : null}
             </span>
           ) : null
         }
@@ -1132,10 +1137,12 @@ function pathIn(path: string, paths: Set<string>): boolean {
 }
 
 /** The rail's Chats entry: loose chats signal like a workspace card does. */
-export function chatsAriaLabel(busy: boolean, needsYou: boolean, name = "Chats"): string {
-  if (needsYou) return `${name}, needs you`;
-  if (busy) return `${name}, working`;
-  return name;
+export function chatsAriaLabel(busy: boolean, needsYou: boolean, name = "Chats", unread = false): string {
+  const parts = [name];
+  if (needsYou) parts.push("needs you");
+  else if (busy) parts.push("working");
+  if (unread) parts.push("unread");
+  return parts.join(", ");
 }
 
 /** A workspace row's name for assistive tech: the name, the one state that
@@ -1146,10 +1153,12 @@ export function workspaceRowAriaLabel(
   busy: boolean,
   needsYou = false,
   stats?: Pick<GitDiffStats, "files" | "additions" | "deletions"> | null,
+  unread = false,
 ): string {
   const parts = [name];
   if (needsYou) parts.push("needs you");
   else if (busy) parts.push("working");
+  if (unread) parts.push("unread");
   if (stats && (stats.files > 0 || stats.additions > 0 || stats.deletions > 0))
     parts.push(`${stats.files} ${stats.files === 1 ? "file" : "files"} changed`, `+${stats.additions}`, `-${stats.deletions}`);
   return parts.join(", ");

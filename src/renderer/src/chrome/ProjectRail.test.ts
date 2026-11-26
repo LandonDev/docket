@@ -10,6 +10,11 @@ describe("workspaceRowAriaLabel", () => {
     expect(workspaceRowAriaLabel("Repo", true)).toBe("Repo, working");
     expect(workspaceRowAriaLabel("Repo", true, true)).toBe("Repo, needs you");
   });
+
+  it("says unread after the state, before the changes", () => {
+    expect(workspaceRowAriaLabel("Repo", false, false, null, true)).toBe("Repo, unread");
+    expect(workspaceRowAriaLabel("Repo", true, false, { files: 1, additions: 2, deletions: 0 }, true)).toBe("Repo, working, unread, 1 file changed, +2, -0");
+  });
 });
 
 describe("chatsAriaLabel", () => {
@@ -17,6 +22,11 @@ describe("chatsAriaLabel", () => {
     expect(chatsAriaLabel(false, false)).toBe("Chats");
     expect(chatsAriaLabel(true, false)).toBe("Chats, working");
     expect(chatsAriaLabel(true, true)).toBe("Chats, needs you");
+  });
+
+  it("says unread after the state", () => {
+    expect(chatsAriaLabel(false, false, "Chats", true)).toBe("Chats, unread");
+    expect(chatsAriaLabel(true, true, "Work Chats", true)).toBe("Work Chats, needs you, unread");
   });
 });
 

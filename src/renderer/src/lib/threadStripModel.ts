@@ -350,6 +350,12 @@ export function settledWithAgents(state: ThreadState, background: BackgroundWork
   return (state === "idle" || state === "done") && !!background?.agents.length;
 }
 
+/** Can a thread in this status read unread: settled, or a master watching its
+ *  batch, whose news is a child's completed turn (src/main/server/masterNews.ts). */
+export function unreadCanShow(t: { status: SessionStatus; isMaster?: boolean }): boolean {
+  return t.status === "idle" || t.status === "done" || (t.status === "watching" && !!t.isMaster);
+}
+
 /** Does the state draw a mark at rest: not when it would only say "nothing is happening". */
 export function marksAtRest(state: ThreadState): boolean {
   return state !== "idle" && state !== "done";

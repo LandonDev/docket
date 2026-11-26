@@ -1,5 +1,6 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { markSessionSeen } from "../lib/sessionSeen";
 import { sessionStore } from "../lib/tcserver/store";
 import { workspaceStore } from "../lib/tcserver/workspaces";
 import { FakeMetaLink, wireMeta } from "../test/fakeMetaLink";
@@ -64,5 +65,37 @@ describe("the rail's workspace marks and the pushes they do not show", () => {
     await flush();
     expect(renders).toBe(first + 1);
     expect(container.querySelector('[data-slot="status-mark"]')?.getAttribute("data-state")).toBe("waiting");
+  });
+  it("re-renders the rail once for one thread's unread flip, and gives only that row's mark a new object", async () => {
+    let renders = 0;
+    let marks = new Map<string, unknown>();
+    const Rail = () => {
+      renders++;
+      marks = useWorkspaceMarks();
+      return null;
+    };
+    // A first window's floor is its first read, so b's news is stamped after it.
+    const news = Date.now() + 60_000;
+    const settled = (updatedAt: number) => ({ ...wireMeta("b", { workspaceId: "w2", cwd: "/beta", status: "idle" }), updatedAt });
+    link.push({ push: "session", session: settled(news) });
+    render(<Rail />);
+    await flush();
+    const before = new Map(marks);
+    expect((before.get("/beta") as { unread: boolean }).unread).toBe(true);
+
+    let first = renders;
+    act(() => markSessionSeen("b", news));
+    await flush();
+    expect(renders).toBe(first + 1);
+    expect(marks.has("/beta")).toBe(false);
+    expect(marks.get("/alpha")).toBe(before.get("/alpha"));
+
+    const alpha = marks.get("/alpha");
+    first = renders;
+    link.push({ push: "session", session: settled(news + 1) });
+    await flush();
+    expect(renders).toBe(first + 1);
+    expect((marks.get("/beta") as { unread: boolean }).unread).toBe(true);
+    expect(marks.get("/alpha")).toBe(alpha);
   });
 });

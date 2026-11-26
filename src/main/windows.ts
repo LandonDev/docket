@@ -159,8 +159,9 @@ const closeSubscribers = new Set<number>()
 const destroying = new Set<number>()
 /** Renderers that want the last word before the app exits. */
 const quitSubscribers = new Set<number>()
-/** Needs-you counts per window; every window reports the same hosts, so the
- *  dock shows the largest. */
+/** Each window's badge count (threads unread or needing him, once each, from
+ *  renderer lib/dockBadge.ts); every window reports the same hosts, so the
+ *  dock shows the largest. Windows and Linux leave it unshown. */
 const badges = new Map<number, number>()
 let lastBadgeTotal = 0
 /** Called when a slot is gone for good so its snapshot goes with it. */

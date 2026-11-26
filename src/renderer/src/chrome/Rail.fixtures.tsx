@@ -4,7 +4,7 @@
 // except RailRealistic, which names two hosts to the registry so the host glyphs draw.
 import type { ReactNode } from "react";
 import type { UsageMeter } from "@server/shared/usageMeter";
-import { StatusMark } from "../components/ui/status";
+import { StatusMark, UnreadMark } from "../components/ui/status";
 import { registry, type Environment } from "../lib/connection";
 import { cn } from "../lib/cn";
 import type { WorkingRow } from "../lib/railWorking";
@@ -76,13 +76,17 @@ function Workspace({
       }
       label={name}
       selected={selected}
-      emphasis={unread}
       data-host-offline={offline || undefined}
       className={offline ? "@container/railrow opacity-50" : "@container/railrow"}
       trailingInteractive
       trailing={mark ? <WorkspaceMarkView mark={mark} /> : null}
       trailingYield={
-        diff ? <span className="block pr-1 whitespace-nowrap @max-[15rem]/railrow:hidden">{diffWords(diff[0], diff[1])}</span> : null
+        diff || unread ? (
+          <span className="flex items-center">
+            {diff ? <span className="block pr-1 whitespace-nowrap @max-[15rem]/railrow:hidden">{diffWords(diff[0], diff[1])}</span> : null}
+            {unread ? <UnreadMark className="w-5" /> : null}
+          </span>
+        ) : null
       }
       hoverActions={[
         { label: pinned ? "Unpin workspace" : "Pin workspace", icon: pinned ? PinOff : Pin, onClick: noop },

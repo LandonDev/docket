@@ -331,14 +331,17 @@ describe("the rail", () => {
     });
   });
 
-  it("an unread workspace's name is medium, a read one regular", async () => {
+  it("an unread workspace draws the dot at its end and says unread, a read one neither; both names stay regular", async () => {
     // Every thread settled after the floor is unseen (an earlier test read them all).
     pruneLastSeen(new Set());
     markAllSeen([], 1);
     const root = await mountRail([LOCAL, BOX]);
     const [linked, quiet] = workspaceRows(root);
-    expect(linked.querySelector("button")!.className).toContain("font-medium");
-    expect(quiet.querySelector("button")!.className).not.toContain("font-medium");
+    expect(linked.querySelectorAll('[data-slot="unread-mark"]')).toHaveLength(1);
+    expect(linked.querySelector("button")!.getAttribute("aria-label")).toMatch(/unread/);
+    expect(quiet.querySelector('[data-slot="unread-mark"]')).toBeNull();
+    expect(quiet.querySelector("button")!.getAttribute("aria-label")).not.toMatch(/unread/);
+    for (const row of [linked, quiet]) expect(row.querySelector("button")!.className).not.toContain("font-medium");
   });
 
   it("the state is a glyph button, never a word: it opens the threads popover and does not select the row", async () => {

@@ -1,6 +1,6 @@
 import { registry } from "../lib/connection";
 import { isAppQuitting } from "../lib/appLifecycle";
-import { syncDockBadge } from "../lib/dockBadge";
+import { installDockBadge } from "../lib/dockBadge";
 import { sessionChildHarnesses } from "../lib/handoff";
 import {
   forgetHarnessSession,
@@ -420,7 +420,6 @@ export function installLayoutSync(): Teardown {
 /** Once per window: the dock badge, checkpoints, the default folder and the harness catalogs. */
 export function installBootTasks(): Teardown {
   let live = true;
-  syncDockBadge();
   // The seen map only ever grew: ids of deleted threads stayed in every
   // write. The known set is every host's list together with what the launch
   // mirror had for a host that has not answered; the prune waits BOOT_SETTLE_MS
@@ -434,8 +433,8 @@ export function installBootTasks(): Teardown {
     if (known.length > 0) pruneLastSeen(new Set(known.map((meta) => meta.id)));
   });
   const offs = [
-    // The badge counts waiting metas: a meta change is the only thing that moves it.
-    sessionStore.onMetaChange(syncDockBadge),
+    // The badge counts what wants the person: it follows the metas, the read marks and the catalog.
+    installDockBadge(),
     installStallRecorder(),
     () => {
       live = false;

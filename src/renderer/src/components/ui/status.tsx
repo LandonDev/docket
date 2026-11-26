@@ -66,7 +66,8 @@ export function statusToneClass(state: ThreadState): string {
  * `idle` after a completed turn is done (`settled`), else idle; an
  * undefined status (a row not yet listed) is idle. Every row that shows a
  * thread's state reads this, never a map of its own. A tally (3/7) is the
- * mark's detail text beside it; unread is weight on the title, never a dot.
+ * mark's detail text beside it; a thread's own unread is weight on its title,
+ * and a row that gathers threads (a workspace, a project) says it with `UnreadMark`.
  */
 export function threadStateOf(
   status: SessionStatus | null | undefined,
@@ -148,6 +149,20 @@ export function computerServiceMarkOf(service: Pick<ComputerServiceState, "state
     case "unavailable":
       return { state: "failed", word: "Unavailable", ...(service.reason ? { detail: service.reason } : {}) };
   }
+}
+
+/**
+ * Unread behind a row that gathers threads (a workspace, Chats, a project's
+ * card): a 6px dot in the foreground, centred in the status glyph's 14px box
+ * so it sits where a state's glyph would. Still, and said by the row's own
+ * name ("alpha, unread"), so the dot itself is hidden from assistive tech.
+ */
+export function UnreadMark({ className, ...props }: ComponentProps<"span">) {
+  return (
+    <span aria-hidden data-slot="unread-mark" className={cn("grid size-3.5 shrink-0 place-items-center", className)} {...props}>
+      <span className="size-1.5 rounded-full bg-foreground" />
+    </span>
+  );
 }
 
 /** Does the state need the person's eyes: a live dot in the rail, an unread-style weight. */

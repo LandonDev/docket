@@ -70,6 +70,7 @@ function Card({
         onMore={noop}
         counts={projectCardCounts(threads, null, {}, SEEN, archived)}
         ariaLabel={projectCardAriaLabel(name, status)}
+        unread={status.unread.length > 0}
         selected={selected}
         onSelect={noop}
         menu={{ rows: () => [], onPick: noop }}
@@ -99,6 +100,14 @@ export function ProjectCards({ width = 260 }: { width?: number }) {
       row("c2", { title: "Queued two", masterId: "m2", status: "queued" }, true),
     ],
   };
+  // A child just finished, so the host cleared the master's read mark (masterNews.ts); the batch still runs.
+  const newsMaster: ThreadRow = {
+    ...row("m3", { title: "Rail marks", status: "watching", isMaster: true, updatedAt: minutes(1) }),
+    batch: [
+      row("e1", { title: "Card dot", masterId: "m3", status: "done", updatedAt: minutes(1) }, true),
+      row("e2", { title: "Dock badge", masterId: "m3", threadType: "implementation", status: "running", busySince: minutes(6) }, true),
+    ],
+  };
   return (
     <div className="flex flex-col gap-1 bg-sidebar px-2 py-2" style={{ width }}>
       <Card name="Quiet" threads={[row("q1"), row("q2")]} minutesAgo={90} />
@@ -123,6 +132,7 @@ export function ProjectCards({ width = 260 }: { width?: number }) {
       <Card name="Unread" mode="local" branch="main" threads={[row("u1", { title: "Fix login", status: "done", updatedAt: minutes(5) })]} minutesAgo={5} />
       <Card name="Batch" threads={[master]} minutesAgo={1} />
       <Card name="Batch waiting" threads={[waitingMaster]} minutesAgo={2} />
+      <Card name="Batch news" threads={[newsMaster]} minutesAgo={1} />
       <Card name="Blocked" threads={[row("n1", { status: "waiting" }), row("f1", { status: "error" }), row("f2", { status: "error" }), row("d3")]} minutesAgo={8} />
       <Card name="Empty" branch={null} mode="local" threads={[]} />
     </div>

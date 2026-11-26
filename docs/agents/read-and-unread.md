@@ -34,3 +34,33 @@
   src/main/server/db-read.test.ts, lib/readMarks.test.ts,
   lib/sessionSeen.test.ts, the phone's ReadMarksTests and the two cases in
   EnvironmentClientTests.
+- **Where unread shows.** A thread's own row says it by its title's
+  weight. A row that gathers threads says it with one 6px dot
+  (`UnreadMark`, components/ui/status.tsx): a workspace row, after its
+  diff in the slot the hover actions take; the Chats and Work Chats rows,
+  before their state; a project card's name line, before its time. A
+  row's rule is `rowUnread` (lib/sidebarRows.ts): a root past its read
+  mark, settled (idle or done) or a master watching its batch
+  (`unreadCanShow`, lib/threadStripModel.ts), never a housed one. A
+  workspace reads every project and linked copy under it (`workspaceMarks`
+  through `aliasKeys`); Chats reads the home's. The rail's marks are one
+  `useSyncExternalStore` snapshot, and `shareMarks` keeps each unchanged
+  row's object, so one thread's flip re-renders the one row
+  (chrome/WorkspaceRowMarks.push.dom.test.tsx).
+- **A master's batch.** Nothing inside a master is unread (`housedIds`).
+  The master is: when a child of its batch completes a turn (done, or idle
+  with a turn behind it, not stopped by the person, no failure, no
+  background agents still out), its host sets the master's `read_at` to 0
+  (src/main/server/masterNews.ts `watchMasterNews`, through
+  `registry.markUnread`). A child that errors or that the person stopped
+  lights nothing here; its Failed reads on the master's row as before.
+  Opening the master clears it like any thread, on every client. Only a
+  child on the master's own host is heard.
+- **The Dock badge** (macOS): one number, the rows that want the person on
+  every host: unread by `rowUnread`, or a thread waiting on him. Each counts
+  once, as the row he would open: a subagent as its root, a batch thread
+  as its master (lib/dockBadge.ts `badgeCount`). The window reports it
+  once every host has painted (`settledEnvironments`), so a launch shows
+  the mirror's number and no flash; main shows the largest window's report
+  and bounces once when it rises with no window in front
+  (src/main/windows.ts `applyBadge`). Windows and Linux show none.

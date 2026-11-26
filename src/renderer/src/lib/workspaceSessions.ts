@@ -2,7 +2,7 @@ import type { AgentType, ProjectMeta, SessionMeta, WorkspaceMeta } from "./tcser
 import { workspaceIdOf } from "./tcserver/workspaces";
 import { sortAgents } from "./threads/agents";
 import { projectLeaders } from "./linkedRail";
-import { batchHome, railMasters } from "./threadStripModel";
+import { batchHome, railMasters, unreadCanShow } from "./threadStripModel";
 
 // The one rule for where a batch thread lives, which the strip reads too.
 export { batchHome, railMasters };
@@ -55,6 +55,8 @@ export type ThreadRow = {
    *  master or of one of its threads. The master reads these; they are
    *  never unread and never count toward an unread sum. */
   housed?: boolean;
+  /** A master thread: watching its batch, it still reads unread (`unreadCanShow`). */
+  isMaster?: boolean;
   /** A root of a master's batch: the master's id (CLAUDE.md "Master threads"). */
   masterId?: string;
   /** The project the root belongs to; the rail's "Make master thread" needs it. */
@@ -183,7 +185,6 @@ export function threadRow(
   housed = false,
 ): ThreadRow {
   const running = meta.status === "starting" || meta.status === "running";
-  const settled = meta.status === "idle" || meta.status === "done";
   return {
     id: meta.id,
     title: meta.title,
@@ -195,7 +196,8 @@ export function threadRow(
     failed: meta.status === "error",
     failure: meta.failure?.summary ?? null,
     needsYou: meta.status === "waiting",
-    unread: !housed && settled && !running && meta.updatedAt > (lastSeen[meta.id] ?? floor),
+    unread: !housed && unreadCanShow(meta) && meta.updatedAt > (lastSeen[meta.id] ?? floor),
+    ...(meta.isMaster ? { isMaster: true } : {}),
     ...(housed ? { housed: true } : {}),
     busySince: meta.busySince ?? null,
     threadType: meta.threadType,

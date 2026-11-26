@@ -213,15 +213,25 @@ export function groupMark<T extends GroupRow>(roots: readonly T[]): GroupMark<T>
   return null;
 }
 
-/** Is any root unread: settled, unseen, quiet, and not inside a master. */
-export function groupUnread(roots: readonly (RowStateInput & { unread?: boolean; housed?: boolean })[]): boolean {
-  return roots.some((r) => !!r.unread && !r.housed && !marksAtRest(rowState(r)));
+type UnreadInput = RowStateInput & { unread?: boolean; housed?: boolean; isMaster?: boolean };
+
+/** Does a root read unread: unseen, quiet (or a master watching its batch),
+ *  and not inside a master. The one rule behind a row's dot, a card's and the Dock's count. */
+export function rowUnread(r: UnreadInput): boolean {
+  if (!r.unread || r.housed) return false;
+  const state = rowState(r);
+  return !marksAtRest(state) || (state === "watching" && !!r.isMaster);
+}
+
+/** Is any root unread (`rowUnread`). */
+export function groupUnread(roots: readonly UnreadInput[]): boolean {
+  return roots.some(rowUnread);
 }
 
 /** A rail row's state: its word with the thread behind it, and whether it reads unread. */
 export type WorkspaceMark = { mark: GroupMark<ThreadRow> | null; unread: boolean };
 
-/** Two marks a row draws the same: the state's glyph, the count and the unread weight. */
+/** Two marks a row draws the same: the state's glyph, the count and the unread dot. */
 function sameMark(a: WorkspaceMark, b: WorkspaceMark): boolean {
   if (a.unread !== b.unread) return false;
   if (a.mark === b.mark) return true;
@@ -252,7 +262,7 @@ export function shareMarks(prev: Map<string, WorkspaceMark> | null, next: Map<st
 /**
  * One mark per workspace path: the roots of every unarchived project (and the
  * loose chats) folded into `groupMark` and `groupUnread`. A thread inside a
- * master (`housedIds`) still lights the word, never the unread weight.
+ * master (`housedIds`) still lights the word, never the unread dot.
  * `keyOf` folds a workspace's copies on other hosts into its leader's path
  * (lib/linkedRail.ts `aliasKeys`), so a linked row reads every copy as one.
  */

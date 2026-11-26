@@ -276,7 +276,7 @@ Read the file a task touches before changing that subject.
   Work, Outbox requests, sim proofs. [docs/agents/ios-client.md](docs/agents/ios-client.md)
 - **Read and unread** — the host owns a thread's read mark
   (`sessions.read_at`, `SessionMeta.readAt`; `session.markRead` and
-  `session.markUnread`), the desktop and the phone lay it over their own maps.
+  `session.markUnread`), laid over each client's map; masters, the dot, the Dock badge.
   [docs/agents/read-and-unread.md](docs/agents/read-and-unread.md)
 - **Files and the editors on the phone** — one open file's page (`FileReaderPage`, `Route.file`; More's rows
   `ReaderVerbs`), a deck with notes and a filmstrip, the place kept (`ReaderPlaces`), renders in memory alone

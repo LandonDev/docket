@@ -773,6 +773,15 @@ works, waits or fails (the type glyph comes back at rest), so a tab's width
 never moves with its state; its hover line and the transcript's working
 line say the word and the rest.
 
+Unread is not a state. A thread's own row says it by weight: its title in
+medium `foreground`. A row that gathers threads says it with one 6px
+`foreground` dot (`UnreadMark`), still, in a 14px box where a status glyph
+would sit: a workspace row's after its diff (both give way to the hover
+actions), the Chats and Work Chats rows' before their state, a project
+card's on its name line before the time. The dot is the same at every level
+and Mail's and Messages' own; it is never a count, never tinted, and never
+on a line inside a card, where a still dot is a working batch thread.
+
 Nothing loops. Every status glyph is still except working's spinner, a
 rotation and the one moving glyph. A row has one moving mark at most: a
 line that depends on a row's own mark (a subagent's under its board row, a

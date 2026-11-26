@@ -274,15 +274,24 @@ describe('a project card', () => {
     probe.unmount()
   })
 
-  it('an unread thread weights its own line and the accessible name says so; the name is set as always, with no dot', () => {
+  it('an unread thread weights its own line, the name line carries one dot before the time, and the accessible name says so', () => {
     const probe = mountProbe(projectCard([threadRow(meta('d', { title: 'Fix login', status: 'done', updatedAt: 200 }), { d: 100 })]))
     const name = Array.from(cardOf(probe.container).querySelectorAll('span')).find((s) => s.textContent === 'Project p1')!
     expect(name.className).toBe('min-w-0 flex-1 truncate text-[13px] leading-5 font-medium text-foreground')
+    const dots = cardOf(probe.container).querySelectorAll('[data-slot="unread-mark"]')
+    expect(dots).toHaveLength(1)
+    expect(dots[0].previousElementSibling).toBe(name)
     const line = lineOf(probe.container, 'Fix login')
     expect(line.getAttribute('data-card-line')).toBe('unread')
     expect(line.querySelector('.font-medium')?.textContent).toBe('Fix login')
-    expect(line.querySelector('.rounded-full')).toBeNull()
+    expect(line.querySelector('[data-slot="unread-mark"]')).toBeNull()
     expect(cardOf(probe.container).getAttribute('aria-label')).toMatch(/unread/)
+    probe.unmount()
+  })
+
+  it('a card with nothing unread draws no dot', () => {
+    const probe = mountProbe(projectCard([threadRow(meta('r', { status: 'running', busySince: 5 }), {})]))
+    expect(cardOf(probe.container).querySelector('[data-slot="unread-mark"]')).toBeNull()
     probe.unmount()
   })
 

@@ -4,6 +4,7 @@
 import type { SessionMeta } from "../lib/tcserver/types";
 import { groupMark, type GroupMark } from "../lib/sidebarRows";
 import { threadRow, type ThreadRow } from "../lib/workspaceSessions";
+import { UnreadMark } from "../components/ui/status";
 import { RailHeading, RailRow } from "./RailRow";
 import { MoreHorizontal } from "./icons";
 import { ProjectRowView, ThreadRowView } from "./WorkspaceSessions";
@@ -44,9 +45,9 @@ function Workspace({ name, mark, unread = false, selected = false }: { name: str
       glyph={<WorkspaceGlyphView sources={[]} mascot={{ project: name, name: null, color: tabGroupColor(name) }} />}
       label={name}
       selected={selected}
-      emphasis={unread}
       trailingInteractive
       trailing={mark ? <WorkspaceMarkView mark={mark} /> : null}
+      trailingYield={unread ? <UnreadMark className="w-5" /> : null}
       hoverActions={[{ label: "Workspace options", icon: MoreHorizontal, menu: true, onClick: noop }]}
     />
   );

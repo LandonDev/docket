@@ -577,8 +577,10 @@ this is the short one.
   the queued ones as one "N queued" line; settled ones are the tally.
   Nothing inside a master is unread (`housedIds`: the batch and every
   subagent of the master or of its batch): no weight and no count in the
-  project card, the rail row, the popover or Mark all read; the master
-  keeps its own. They still light their project's and workspace's Needs
+  project card, the rail row, the popover, Mark all read or the Dock
+  badge; the master keeps its own, and reads unread again when a child
+  completes a turn (src/main/server/masterNews.ts; read-and-unread.md
+  "A master's batch"), watching or not. They still light their project's and workspace's Needs
   you and Working (`groupMark` over `cardThreads`).
 - **Proofs and tests.** `bun run script:e2e-master-batch`
   (scripts/e2e-master-batch.ts: the whole flow in one process, a haiku

@@ -281,6 +281,7 @@ import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills
 import type { SkillInput, SkillMeta } from '@shared/contract-skills'
 import { ProjectPlans, handleProjectPlan } from './projectPlan'
 import { Batches, batchChildren, handleBatch, setBatches } from './batch'
+import { watchMasterNews } from './masterNews'
 import { hostBoardDigests } from './boardDigest'
 import { BoardWatch } from './boardWatch'
 import { LocalPublish, MacPublish, macPublishOffers } from './remote/macPublish'
@@ -2198,6 +2199,8 @@ export async function startServer(
   })
 
   batchRuns.attach()
+  // A batch child's completed turn is the master's news: it reads unread (masterNews.ts).
+  watchMasterNews(registry)
   batchRuns.startStallWatch()
   setBatches(batchRuns)
   // A master's board in one answer (batch.board) and its pushes, only to

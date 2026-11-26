@@ -12,6 +12,7 @@ import {
   projectCardAriaLabel,
   rowState,
   sessionItemIndex,
+  shareMarks,
   sidebarItems,
   windowRows,
   workspaceMarks,
@@ -286,6 +287,12 @@ describe("groupUnread", () => {
     // A root whose tree still works says Working, not unread.
     expect(groupUnread([row("a", { status: "done", updatedAt: 50, treeHasLiveWork: true }, { a: 10 })])).toBe(false);
   });
+
+  it("reads a master watching its batch, and no other watching thread", () => {
+    expect(groupUnread([row("m", { status: "watching", isMaster: true, updatedAt: 50 }, { m: 0 })])).toBe(true);
+    expect(groupUnread([row("m", { status: "watching", isMaster: true, updatedAt: 50 }, { m: 90 })])).toBe(false);
+    expect(groupUnread([row("w", { status: "watching", updatedAt: 50 }, { w: 0 })])).toBe(false);
+  });
 });
 
 describe("masterBlock", () => {
@@ -402,6 +409,45 @@ describe("workspaceMarks", () => {
     );
     expect([...marks.keys()]).toEqual(["/a"]);
     expect(marks.get("/a")?.mark).toMatchObject({ state: "working", about: { id: "t2" }, more: 1 });
+  });
+
+  it("reads a master unread and never the children of its batch", () => {
+    const batch = [
+      meta("m", { ...at("/a"), isMaster: true, threadType: "orchestration" }),
+      meta("k1", { ...at("/a"), masterId: "m", status: "done" }),
+      meta("k2", { ...at("/a"), masterId: "m" }),
+    ];
+    // The children unseen, the master read: the workspace says nothing.
+    expect(workspaceMarks(batch, empty, { m: 200 }).has("/a")).toBe(false);
+    // The host cleared the master's mark when a child completed (read_at 0).
+    expect(workspaceMarks(batch, empty, { m: 0, k1: 0, k2: 0 }).get("/a")).toEqual({ mark: null, unread: true });
+    // While the batch still runs the master watches; its mark shows all the same.
+    const running = batch.map((m) => (m.id === "m" ? { ...m, status: "watching" as const } : m.id === "k2" ? { ...m, status: "running" as const } : m));
+    expect(workspaceMarks(running, empty, { m: 0, k1: 0, k2: 0 }).get("/a")?.unread).toBe(true);
+    expect(workspaceMarks(running, empty, { m: 200, k1: 0, k2: 0 }).get("/a")?.unread).toBe(false);
+  });
+
+  it("folds an unread thread on another host into the leader's row", () => {
+    const keyOf = (path: string) => (path === "/srv/b" ? "/a" : path);
+    const marks = workspaceMarks([meta("t2", { ...at("/srv/b"), environmentId: "env_box" })], empty, { t2: 50 }, 0, keyOf);
+    expect([...marks]).toEqual([["/a", { mark: null, unread: true }]]);
+  });
+
+  it("puts a chat outside every workspace on the home's row", () => {
+    expect(workspaceMarks([meta("c", at("/nowhere"))], empty, { c: 50 }).get("~")).toEqual({ mark: null, unread: true });
+  });
+});
+
+describe("shareMarks", () => {
+  const unread = { mark: null, unread: true };
+  it("keeps every unchanged row's mark, and the map itself when no row changed", () => {
+    const prev = new Map([["/a", unread], ["/b", { ...unread }]]);
+    expect(shareMarks(prev, new Map([["/a", { ...unread }], ["/b", { ...unread }]]))).toBe(prev);
+    // One thread read in /b: /b's mark is new, /a keeps its object, so only /b's row re-renders.
+    const next = shareMarks(prev, new Map([["/a", { ...unread }], ["/b", { mark: null, unread: false }]]));
+    expect(next).not.toBe(prev);
+    expect(next.get("/a")).toBe(prev.get("/a"));
+    expect(next.get("/b")).not.toBe(prev.get("/b"));
   });
 });
 

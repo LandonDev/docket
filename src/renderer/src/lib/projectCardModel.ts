@@ -1,4 +1,5 @@
 import type { SessionMeta } from "./tcserver/types";
+import { unreadCanShow } from "./threadStripModel";
 
 /**
  * The sidebar project card's tree-aware status, as temp-code's ProjectRow
@@ -25,6 +26,7 @@ export type CardThread = Pick<
       | "treeCanContinue"
       | "treeFrozenActiveElapsed"
       | "background"
+      | "isMaster"
     >
   > & {
     /** Inside a master (lib/workspaceSessions.ts `housedIds`): never unread. */
@@ -68,7 +70,7 @@ export function projectCardStatus<T extends CardThread>(
     (t) =>
       !t.housed &&
       !isPaused.has(t) &&
-      (t.status === "idle" || t.status === "done") &&
+      unreadCanShow(t) &&
       !t.treeCanContinue &&
       !t.treeHasLiveWork &&
       t.id !== selectedId &&
