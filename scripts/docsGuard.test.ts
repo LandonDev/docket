@@ -88,7 +88,7 @@ describe('the wire-name extractor', () => {
 const NOT_WIRE: Record<string, string> = {
   'work.canvas.view.v1': 'src/renderer/src/work/canvas/store.ts', // localStorage
   'work.files.view.v1': 'src/renderer/src/work/files/store.ts', // localStorage
-  'work.projects.place.v1': 'src/renderer/src/work/projects/place.ts', // localStorage
+  'work.projects.place.v1': 'src/renderer/src/work/projects/bones.tsx', // localStorage (place.ts reads it from there)
   'work.return.v1': 'src/renderer/src/lib/workReturn.ts', // localStorage
   'work.digest.closed': 'src/renderer/src/work/digest/DigestHost.tsx', // localStorage
   'work.digest.dismissed': 'src/renderer/src/work/digest/DigestHost.tsx', // localStorage
