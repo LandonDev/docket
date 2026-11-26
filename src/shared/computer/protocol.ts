@@ -73,8 +73,9 @@ export const AX_WALK = {
   webReadAheadAbove: 1,
   /** …and this many below it */
   webReadAheadBelow: 3,
-  /** the scan for a window's tab strip (§25.1): it stops at this depth or node count and never enters a web area */
-  tabScanMaxDepth: 12,
+  /** the scan for a window's tab strip (§25.1): it stops at this depth or node count and never enters a web area;
+   *  Aside's tabs sit 13 levels down and its sidebar 16 (§25.11) */
+  tabScanMaxDepth: 24,
   tabScanMaxNodes: 600,
   /** the `scroll-into-view` route's scan for the element at the scroll's distance (§25.6) */
   intoViewMaxNodes: 400

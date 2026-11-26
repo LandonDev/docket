@@ -297,3 +297,49 @@ public enum PageRule {
         return Reading(tabs: tabs, selectedTab: selected, webAreas: areas, page: selected.flatMap { page(selectedTab: $0, webAreas: areas) })
     }
 }
+
+/// §25.11: the address `browser.target` gives the host's guard, and `checkBrowser` reads again before each
+/// step. A whole scan is the first condition: a capped one may have left a second page unread. One top-level
+/// web area names its URL. Beside the page, a window may hold only panes the browser draws itself, each
+/// checked by its own address (Aside's assistant panel is a `chrome-extension:` page; `BrowserAddressTests`
+/// holds its recorded shape), and then the selected tab must name that page by `PageRule.page`. Two pages (a split view),
+/// a pane with no address, or a tab that names the panel are all unverified: nil, and the host refuses.
+public enum BrowserAddress {
+    /// Chromium's own documents, which no site can be: a side pane with one of these is no page
+    public static let browserSchemes: Set<String> = ["chrome", "chrome-extension", "chrome-untrusted", "devtools"]
+
+    public struct Area: Sendable, Equatable {
+        public var title: String?
+        public var url: String?
+
+        public init(title: String? = nil, url: String?) {
+            self.title = title
+            self.url = url
+        }
+    }
+
+    /// `selectedTab` is read only for a window with more than one top-level web area.
+    public static func page(capped: Bool, areas: [Area], selectedTab: () -> PageRule.Tab?) -> String? {
+        guard !capped, !areas.isEmpty else { return nil }
+        var schemes: [String] = []
+        for area in areas {
+            guard let url = area.url, !url.isEmpty, let scheme = URLComponents(string: url)?.scheme?.lowercased() else { return nil }
+            schemes.append(scheme)
+        }
+        if areas.count == 1 { return areas[0].url }
+        let pages = schemes.indices.filter { !browserSchemes.contains(schemes[$0]) }
+        guard pages.count == 1, let tab = selectedTab() else { return nil }
+        let candidates = areas.enumerated().map { PageRule.WebArea(id: NodeID($0.offset), title: $0.element.title, url: $0.element.url) }
+        guard let named = PageRule.page(selectedTab: tab, webAreas: candidates), Int(named.id) == pages[0] else { return nil }
+        return areas[pages[0]].url
+    }
+
+    /// The same rule over a walked (or recorded) window root, through `TabScan`'s caps.
+    public static func read(_ root: AXNode) -> String? {
+        let found = TabScan.find(root: root) { TabScan.Read(role: $0.role, subrole: $0.subrole, children: $0.children) }
+        return page(capped: found.capped, areas: found.webAreas.map { Area(title: $0.title, url: $0.url) }) {
+            found.tabs.map { TabInfo(title: TabTitle.clean($0.title ?? ""), selected: $0.flags.selected == true) }
+                .first { $0.selected }.map { PageRule.Tab(title: $0.title) }
+        }
+    }
+}

@@ -61,13 +61,13 @@ func rawRead(_ n: RawAXNode) -> TabScan.Read<RawAXNode> { TabScan.Read(role: n.r
     @Test func theScanStopsAtItsDepthAndItsNodes() {
         let t = Tree()
         var deep = t.node("AXRadioButton", "AXTabButton", title: "Deep")
-        for _ in 0..<13 { deep = t.node("AXGroup", nil, [deep]) }
+        for _ in 0..<25 { deep = t.node("AXGroup", nil, [deep]) }
         let read = { (n: AXNode) in TabScan.Read(role: n.role, subrole: n.subrole, children: n.children) }
         let window = t.window([deep])
-        // the tab is 14 levels down: past the 12 the scan reads
+        // the tab is 26 levels down: past the 24 the scan reads
         #expect(TabScan.find(root: window, read: read).tabs.isEmpty)
         #expect(TabScan.find(root: window, read: read).capped)
-        #expect(TabScan.find(root: window, maxDepth: 14, read: read).tabs.count == 1)
+        #expect(TabScan.find(root: window, maxDepth: 26, read: read).tabs.count == 1)
         let wide = t.window((0..<700).map { _ in t.node("AXGroup") } + [t.node("AXRadioButton", "AXTabButton", title: "Late")])
         let capped = TabScan.find(root: wide, read: read)
         #expect(capped.tabs.isEmpty && capped.capped && capped.visited == TabScan.maxNodes)
@@ -472,5 +472,109 @@ func rawRead(_ n: RawAXNode) -> TabScan.Read<RawAXNode> { TabScan.Read(role: n.r
     func theWalkerAndRawTreeCutTheRecordedChromeAlike(_ state: String) throws {
         let (walker, raw) = parity(try recorded(state))
         #expect(walker == raw, "\(state)")
+    }
+}
+
+/// Aside 1.0.1125.1's window as the Mac probe walked it on a scratch profile (2026-11-26, §25.11): the page 8
+/// levels down under six groups and a scroll area, the tab sidebar's buttons 13 down under a group at 12, a
+/// bookmarks list from 12 to 16, and with the assistant open a second top-level web area 8 down beside the
+/// page, a `chrome-extension:` page titled "New Session" (or "Aside").
+@Suite struct BrowserAddressTests {
+    static let one = "http://127.0.0.1:8765/one.html"
+    static let two = "http://127.0.0.1:8765/two.html"
+    static let panel = "chrome-extension://fjdhphbdlfjogobdofoaagnlnkoibdge/"
+    typealias Area = BrowserAddress.Area
+
+    func area(_ t: Tree, _ title: String?, _ url: String?, _ children: [AXNode] = []) -> AXNode {
+        AXNode(id: t.id(), role: "AXWebArea", title: title, children: children, url: url)
+    }
+
+    func under(_ t: Tree, _ levels: Int, _ leaf: AXNode) -> AXNode {
+        var n = leaf
+        for _ in 0..<levels { n = t.node("AXGroup", nil, [n]) }
+        return n
+    }
+
+    /// `tabs` as (title, selected); each page in its scroll area; the panel beside them.
+    func aside(_ t: Tree, tabs: [(String, Bool)] = [("Probe One - Memory usage - 25.1 MB", true)],
+               pages: [AXNode], panel: AXNode? = nil) -> AXNode {
+        let buttons = tabs.map { t.node("AXRadioButton", "AXTabButton", title: $0.0, flags: AXFlags(selected: $0.1), actions: ["AXPress", "AXShowMenu"]) }
+        let sidebar = under(t, 11, t.node("AXGroup", nil, buttons))
+        let bookmarks = under(t, 11, t.node("AXScrollArea", nil, [under(t, 3, t.node("AXButton", title: "Bookmark"))]))
+        let content = pages.map { under(t, 6, t.node("AXScrollArea", nil, [$0])) }
+        return t.window(title: "Probe One", [sidebar, bookmarks] + content + (panel.map { [under(t, 7, $0)] } ?? []))
+    }
+
+    @Test func onePageNamesItsAddressOnceTheScanIsWhole() {
+        let t = Tree()
+        let window = aside(t, pages: [area(t, "Probe One", Self.one, [t.node("AXLink", title: "Two")])])
+        let read = { (n: AXNode) in TabScan.Read(role: n.role, subrole: n.subrole, children: n.children) }
+        // the old 12 levels stopped above the tabs: capped, no tabs, so no address
+        let shallow = TabScan.find(root: window, maxDepth: 12, read: read)
+        #expect(shallow.capped && shallow.tabs.isEmpty && shallow.webAreas.count == 1)
+        let whole = TabScan.find(root: window, read: read)
+        #expect(!whole.capped && whole.tabs.count == 1 && whole.webAreas.count == 1)
+        #expect(BrowserAddress.read(window) == Self.one)
+    }
+
+    @Test func thePanelBesideThePageIsCheckedAndThePageNamed() {
+        for title in ["New Session", "Aside"] {
+            let t = Tree()
+            let window = aside(t, pages: [area(t, "Probe One", Self.one)], panel: area(t, title, Self.panel))
+            #expect(BrowserAddress.read(window) == Self.one)
+        }
+    }
+
+    @Test func framesStayInsideTheirPage() {
+        let t = Tree()
+        let frames = [area(t, "One", Self.one), area(t, "Two", Self.two), area(t, nil, "about:srcdoc")].map { under(t, 1, $0) }
+        let window = aside(t, tabs: [("Probe Frames - Memory usage - 50.8 MB", true)], pages: [area(t, "Probe Frames", "http://127.0.0.1:8765/frames.html", frames)],
+                           panel: area(t, "New Session", Self.panel))
+        #expect(BrowserAddress.read(window) == "http://127.0.0.1:8765/frames.html")
+    }
+
+    @Test func twoTabsShowTheSelectedPageAlone() {
+        let t = Tree()
+        let window = aside(t, tabs: [("Probe One - Memory usage - 25.1 MB", false), ("Probe Two - Memory usage - 43.0 MB", true)],
+                           pages: [area(t, "Probe Two", Self.two)], panel: area(t, "New Session", Self.panel))
+        #expect(BrowserAddress.read(window) == Self.two)
+    }
+
+    @Test func anAmbiguousWindowStaysUnverified() {
+        let t = Tree()
+        let tab = [("Probe One - Memory usage - 25.1 MB", true)]
+        // a split view: two pages, whichever the tab names
+        #expect(BrowserAddress.read(aside(t, pages: [area(t, "Probe One", Self.one), area(t, "Probe Two", Self.two)])) == nil)
+        // a pane holding a site, one of the app's own pages among them, is a second page
+        #expect(BrowserAddress.read(aside(t, pages: [area(t, "Probe One", Self.one)], panel: area(t, "Pair", "https://docket.landonhale.com/pair"))) == nil)
+        // a pane with no address, or an empty one
+        #expect(BrowserAddress.read(aside(t, pages: [area(t, "Probe One", Self.one)], panel: area(t, "New Session", nil))) == nil)
+        #expect(BrowserAddress.read(aside(t, pages: [area(t, "Probe One", Self.one)], panel: area(t, "New Session", ""))) == nil)
+        // the selected tab names the panel, or no tab is selected
+        #expect(BrowserAddress.read(aside(t, tabs: [("New Session", true)], pages: [area(t, "Probe One", Self.one)], panel: area(t, "New Session", Self.panel))) == nil)
+        #expect(BrowserAddress.read(aside(t, tabs: [("Probe One", false)], pages: [area(t, "Probe One", Self.one)], panel: area(t, "New Session", Self.panel))) == nil)
+        // the page itself is the browser's own with the panel open: no page to name
+        #expect(BrowserAddress.read(aside(t, tabs: [("New Tab", true)], pages: [area(t, "New Tab", "chrome://newtab/")], panel: area(t, "New Session", Self.panel))) == nil)
+        // the cold start: no web area yet
+        #expect(BrowserAddress.read(aside(t, tabs: tab, pages: [])) == nil)
+    }
+
+    @Test func theRuleAlone() {
+        let page = Area(title: "Probe One", url: Self.one)
+        let side = Area(title: "New Session", url: Self.panel)
+        let tab = { PageRule.Tab(title: "Probe One") }
+        #expect(BrowserAddress.page(capped: false, areas: [page, side], selectedTab: tab) == Self.one)
+        #expect(BrowserAddress.page(capped: false, areas: [side, page], selectedTab: tab) == Self.one)
+        // a capped scan may have left a page unread
+        #expect(BrowserAddress.page(capped: true, areas: [page], selectedTab: tab) == nil)
+        #expect(BrowserAddress.page(capped: true, areas: [page, side], selectedTab: tab) == nil)
+        // one area needs no tab: the rule other browsers had
+        #expect(BrowserAddress.page(capped: false, areas: [page]) { Issue.record("read the tab"); return nil } == Self.one)
+        // an address with no scheme is unparsed
+        #expect(BrowserAddress.page(capped: false, areas: [Area(title: "Probe One", url: "docket.landonhale.com/pair")], selectedTab: tab) == nil)
+        #expect(BrowserAddress.page(capped: false, areas: [page, Area(title: "New Session", url: "fjdhphbdlfjogobdofoaagnlnkoibdge")], selectedTab: tab) == nil)
+        // the scheme's case does not make a site of the browser's own page
+        #expect(BrowserAddress.page(capped: false, areas: [page, Area(title: "New Session", url: "CHROME-EXTENSION://abc/")], selectedTab: tab) == Self.one)
+        #expect(BrowserAddress.page(capped: false, areas: [], selectedTab: tab) == nil)
     }
 }

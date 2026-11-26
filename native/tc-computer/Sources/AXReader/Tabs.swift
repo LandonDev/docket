@@ -72,11 +72,16 @@ enum LiveTabs {
     }
 }
 
-/// The live, top-level document URL, from AXWebArea rather than editable browser chrome.
+/// The live, top-level document URL, from AXWebArea rather than editable browser chrome (§25.11's `BrowserAddress`).
 public func activeBrowserURL(_ window: AXUIElement) -> String? {
     let found = LiveTabs.scan(window)
-    guard !found.capped, found.webAreas.count == 1, let area = found.webAreas.first else { return nil }
-    return AX.string(AX.batch(area, ["AXURL"])["AXURL"]?.value)
+    let areas = found.webAreas.map { el in
+        let a = AX.batch(el, ["AXTitle", "AXURL"])
+        return BrowserAddress.Area(title: AX.string(a["AXTitle"]?.value), url: AX.string(a["AXURL"]?.value))
+    }
+    return BrowserAddress.page(capped: found.capped, areas: areas) {
+        found.tabs.map(LiveTabs.info).first { $0.selected }.map { PageRule.Tab(title: $0.title) }
+    }
 }
 
 /// §25.4's tab selection, for the ComputerService handlers: they call it under the app's exclusive action

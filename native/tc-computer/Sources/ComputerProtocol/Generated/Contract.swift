@@ -37,7 +37,7 @@ public enum ComputerDefaults {
         public static let messagingTimeoutMs = 2000
         public static let webReadAheadAbove = 1
         public static let webReadAheadBelow = 3
-        public static let tabScanMaxDepth = 12
+        public static let tabScanMaxDepth = 24
         public static let tabScanMaxNodes = 600
         public static let intoViewMaxNodes = 400
     }
