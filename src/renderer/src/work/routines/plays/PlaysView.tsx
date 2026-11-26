@@ -11,13 +11,17 @@ import { loadToast } from "../../../components/ui/toaster";
 import { cn } from "../../../lib/cn";
 import { useEnvironments } from "../../../lib/connection";
 import { headAsk } from "../../../lib/headAsk";
-import { managedElsewhere, useLinkMay } from "../../../lib/linkMay";
+import { nameInLine } from "../../../lib/hostWords";
+import { useLinkMay } from "../../../lib/linkMay";
 import { EmptyState } from "../../../surfaces/SurfaceSkeleton";
 import type { WorkViewProps } from "../../views/registry";
 import { startPlay, usePlays } from "./data";
 import { PlayDialog, type PlaySource } from "./PlayDialog";
 import { RunDialog } from "./RunDialog";
 import { startersLeft, takesLine } from "./model";
+
+/** Who can, over an empty list this window's key may not add to: said by the act, since nothing was changed. */
+const addedElsewhere = (host: string): string => `Added from a computer that manages ${nameInLine(host)}`;
 
 /**
  * A Work workspace's Plays (docs/agents/work-plays.md): the work he repeats
@@ -86,7 +90,7 @@ export function View({ env, workspace, sector }: WorkViewProps) {
         maySave ? (
           <EmptyState title="No plays yet" action={{ label: "New play", onClick: () => setDialog({ kind: "new" }) }} />
         ) : (
-          <EmptyState title="No plays yet" line={managedElsewhere(host)} />
+          <EmptyState title="No plays yet" line={addedElsewhere(host)} />
         )
       ) : (
         <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">

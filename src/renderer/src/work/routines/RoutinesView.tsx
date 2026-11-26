@@ -297,7 +297,7 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
         <dl className="grid grid-cols-[96px_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px]">
           {play ? (
             <>
-              <dt className="text-muted-foreground">Runs</dt>
+              <dt className="text-muted-foreground">Play</dt>
               <dd className="min-w-0 text-foreground">{play}</dd>
             </>
           ) : null}
@@ -337,11 +337,12 @@ function Detail({ env, row, play, tick, narrowShown, onBack, onEdit }: { env: st
             {runs === null ? (
               <Skeleton className="h-4 w-1/2" />
             ) : "error" in runs ? (
-              <p className="flex items-baseline gap-2 text-xs">
+              <p className="inline-flex flex-wrap items-center gap-x-2 text-xs">
                 <span className="min-w-0 text-destructive">{runs.error}</span>
                 <Button
                   variant="ghost"
                   size="xs"
+                  className="-my-1"
                   disabled={runsAgain}
                   onClick={() => {
                     setRunsAgain(true);

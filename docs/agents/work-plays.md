@@ -160,7 +160,7 @@ no review round.
   work/views/registry.ts. The dialogs it opens are the `work-plays` chunk.
 - A routine's form gains **Runs** (a select of his plays that take nothing)
   when there is one; with a play picked, "What to do" becomes "Also" and may
-  be empty. The routine's detail says Runs and the play's name.
+  be empty. The routine's detail says Play and the play's name.
 
 ## Not built
 

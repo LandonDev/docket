@@ -7,7 +7,7 @@ import { Field, FieldRow } from "../../chrome/DialogField";
 import { Modal, ModalBody, useModalClose } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
 import { ChoiceToggle, type ToggleChoice } from "../../components/choice-toggle";
-import { Button } from "../../components/ui/button";
+import { BusyLabel, Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Skeleton } from "../../components/ui/skeleton";
 import { Textarea } from "../../components/ui/textarea";
@@ -284,14 +284,15 @@ function Body({ env, workspaceId, row, onClose, onSaved, pending, setPending }: 
       <DialogFooter
         start={
           row && !row.proposed ? (
-            <Button variant="ghost" size="sm" disabled={pending || removing} onClick={() => void remove()}>
-              Delete
+            <Button type="button" variant="ghost" disabled={pending || removing} onClick={() => void remove()}>
+              <BusyLabel busy={removing} label="Delete" />
             </Button>
           ) : undefined
         }
         onCancel={onClose}
         confirmLabel={row && !row.proposed ? "Save" : "Create"}
         pending={pending}
+        busy={removing}
       />
     </form>
   );

@@ -152,11 +152,11 @@ function Body({ env, workspaceId, source, onClose, onSaved, pending, setPending 
       <DialogFooter
         start={
           row ? (
-            <Button type="button" variant="ghost" size="sm" disabled={pending || other !== null} onClick={() => void remove()}>
+            <Button type="button" variant="ghost" disabled={pending || other !== null} onClick={() => void remove()}>
               <BusyLabel busy={other === "remove"} label={row.proposed ? "Dismiss" : "Delete"} />
             </Button>
           ) : source.kind === "thread" && source.mayDraft ? (
-            <Button type="button" variant="ghost" size="sm" disabled={pending || other !== null} onClick={draft}>
+            <Button type="button" variant="ghost" disabled={pending || other !== null} onClick={draft}>
               <BusyLabel busy={drafting} label="Draft from the thread" busyLabel="Drafting…" />
             </Button>
           ) : undefined

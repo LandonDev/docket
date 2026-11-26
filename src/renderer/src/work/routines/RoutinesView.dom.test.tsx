@@ -223,7 +223,7 @@ describe("the Routines view", () => {
     render(<View {...props} />);
     await settle();
     const detail = document.querySelector("[data-routine-detail]") as HTMLElement;
-    expect(detail.querySelector("dt")?.textContent).toBe("Runs");
+    expect(detail.querySelector("dt")?.textContent).toBe("Play");
     expect(detail.querySelector("dd")?.textContent).toBe("Weekly pay check");
     expect(detail.querySelector("p.whitespace-pre-wrap")).toBeNull();
   });
