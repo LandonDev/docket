@@ -6,6 +6,17 @@
   `CF-Connecting-IP` / `X-Forwarded-Proto` are believed only from a loopback
   socket. The renderer's random-port loopback socket is unchanged and stays
   implicitly admin.
+- `docket.landonhale.com`, the app's new name, answers beside the old one,
+  which stays live for good. Both reach the same rules in the same order
+  (scripts/box/ingress.yml), and every check that takes one public name
+  takes the other the same way: one rule, `hostAliases` and `originAliases`
+  in src/shared/publicHosts.ts. tempcodeOrigins.ts applies it when it
+  matches, so the browser's Host check, the `/ws` upgrade, linked peers'
+  names and the computer tools' self-guard (which refuses both) all see
+  both names, and a peer's announcement stays as it is. `learnedOrigin` is
+  not moved by a request through the other name, so pairing links keep the
+  name they had. Defaults, `remote.publicOrigin` and every link made still
+  say `tempcode.landonhale.com`. `share.landonhale.com` is no alias.
 - `TEMP_CODE_REMOTE_PORT=<n>` overrides the port for a dev instance (so it
   never fights the installed app for 7677); `0` turns the listener off. The
   settings `remote.enabled`, `remote.port`, `remote.publicOrigin` live in the

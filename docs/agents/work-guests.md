@@ -317,6 +317,10 @@ CSP between. So guest pages have a hostname of their own,
 service, whose closed route list answers 404 for everything else; the cookie
 is host-only and never reaches it; the page's CSP (`connect-src 'self'`)
 holds as it is, since the page and its socket share the new origin.
+`docket.landonhale.com`, the app's new name, is an owner origin like
+`tempcode.landonhale.com` (src/shared/publicHosts.ts), never a guest one: a
+guest page asked for there is sent on to the guest origin as from the old
+name.
 
 - Which origin new links and tickets carry is one host setting,
   `work.guests.origin` (service/config.ts `GUEST_ORIGIN_SETTING`), unset by

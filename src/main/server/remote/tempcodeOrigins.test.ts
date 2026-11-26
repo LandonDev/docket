@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isTempCodeOrigin, type TempCodeOrigins } from './tempcodeOrigins'
+import { isTempCodeBrowserHost, isTempCodeOrigin, type TempCodeOrigins } from './tempcodeOrigins'
 
 const origins: TempCodeOrigins = {
   listenerPorts: [7677, 17117],
@@ -42,4 +42,43 @@ describe('TempCode browser origins', () => {
     'https://ordinary.test/',
     'not a URL'
   ])('allows %s', (url) => expect(isTempCodeOrigin(url, origins)).toBe(false))
+})
+
+describe('the box’s two public names', () => {
+  const saved = (route: string): TempCodeOrigins => ({
+    listenerPorts: [7677],
+    lanAddresses: [],
+    tunnelHosts: [new URL(route).hostname],
+    remoteRoutes: [route]
+  })
+
+  it.each([
+    ['https://tempcode.landonhale.com', 'https://tempcode.landonhale.com/ui'],
+    ['https://tempcode.landonhale.com', 'https://docket.landonhale.com/ui'],
+    ['https://tempcode.landonhale.com', 'wss://docket.landonhale.com/ws'],
+    ['https://tempcode.landonhale.com', 'https://docket.landonhale.com/w/addin/taskpane.html'],
+    ['https://docket.landonhale.com', 'https://tempcode.landonhale.com/g/x'],
+    ['https://docket.landonhale.com', 'https://docket.landonhale.com/pair']
+  ])('saved as %s, refuses %s', (route, url) => expect(isTempCodeOrigin(url, saved(route))).toBe(true))
+
+  it('refuses either name where only a linked peer announced the other', () => {
+    const local: TempCodeOrigins = { listenerPorts: [7677], lanAddresses: [], remoteRoutes: [], linkedEndpoints: [saved('https://tempcode.landonhale.com')] }
+    expect(isTempCodeOrigin('https://docket.landonhale.com/ui', local)).toBe(true)
+    expect(isTempCodeOrigin('https://tempcode.landonhale.com/ui', local)).toBe(true)
+  })
+
+  it('makes no alias of the guest origin or a lookalike', () => {
+    const box = saved('https://tempcode.landonhale.com')
+    expect(isTempCodeOrigin('https://share.landonhale.com/g/x', box)).toBe(false)
+    expect(isTempCodeOrigin('https://docket.landonhale.com.evil.test/', box)).toBe(false)
+    expect(isTempCodeOrigin('https://docket.example/', saved('https://box.example'))).toBe(false)
+  })
+
+  it('answers the listener’s browser pages on both names, never another port of the tunnel', () => {
+    const box = saved('https://tempcode.landonhale.com')
+    expect(isTempCodeBrowserHost('tempcode.landonhale.com', 'https', box)).toBe(true)
+    expect(isTempCodeBrowserHost('docket.landonhale.com', 'https', box)).toBe(true)
+    expect(isTempCodeBrowserHost('docket.landonhale.com:8443', 'https', box)).toBe(false)
+    expect(isTempCodeBrowserHost('share.landonhale.com', 'https', box)).toBe(false)
+  })
 })

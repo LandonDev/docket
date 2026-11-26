@@ -660,6 +660,34 @@ describe('/ui and /pair', () => {
     }
   }, 10_000)
 
+  it('answers the box’s two public names alike, keeps the learned one, and gives the guest origin nothing', async () => {
+    const cookie = await cookieFor(['approve'])
+    const wsUrl = base.replace('http', 'ws') + '/ws'
+    const oldPublic = server.store.getSetting('remote.publicOrigin')
+    const oldLearned = server.store.getSetting('remote.learnedOrigin')
+    server.store.setSetting('remote.publicOrigin', null)
+    server.store.setSetting('remote.learnedOrigin', 'https://tempcode.landonhale.com')
+    try {
+      for (const Host of ['tempcode.landonhale.com', 'docket.landonhale.com']) {
+        const headers = { Cookie: cookie, Host, Origin: `https://${Host}`, 'X-Forwarded-Proto': 'https' }
+        await waitForOwnerUi(headers)
+        expect(await upgradeStatus(wsUrl, headers)).toBe(101)
+        // His key through the new name leaves pairing links on the name they carry.
+        await call('GET', '/api/hello', { headers: { ...bearer(await adminKey()), Host, 'X-Forwarded-Proto': 'https' } })
+        expect(server.store.getSetting('remote.learnedOrigin')).toBe('https://tempcode.landonhale.com')
+      }
+      const guest = { Cookie: cookie, Host: 'share.landonhale.com', Origin: 'https://share.landonhale.com', 'X-Forwarded-Proto': 'https' }
+      expect((await call('GET', '/ui/', { headers: guest })).status).toBe(403)
+      expect(await upgradeStatus(wsUrl, guest)).toBe(403)
+      // A page of one name may not ride the other's socket.
+      expect(await upgradeStatus(wsUrl, { Cookie: cookie, Host: 'docket.landonhale.com', Origin: 'https://tempcode.landonhale.com', 'X-Forwarded-Proto': 'https' })).toBe(403)
+    } finally {
+      server.store.setSetting('remote.publicOrigin', oldPublic)
+      server.store.setSetting('remote.learnedOrigin', oldLearned)
+      await waitForOwnerUi({ Cookie: cookie })
+    }
+  }, 10_000)
+
   it('holds a restored owner socket for the proof lifetime with no linked peers', async () => {
     const previous = server.store.getSetting('remote.publicOrigin')
     const cookie = await cookieFor(['approve'])

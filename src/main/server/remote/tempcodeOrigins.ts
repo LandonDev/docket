@@ -6,6 +6,7 @@ import { hostname, networkInterfaces } from 'node:os'
 import { kindOf, listEnvironments, type EnvironmentsStore } from './environments'
 import { isForbiddenHostname, isPrivateAddress } from './addressGuard'
 import { readRemoteSettings } from './handlers'
+import { hostAliases, originAliases } from '@shared/publicHosts'
 
 export const TEMPCODE_ORIGIN_REFUSAL = 'refused: Docket pages are off limits to computer tools.'
 
@@ -51,11 +52,25 @@ function endpoint(value: string): { host: string; port: number } | undefined {
   }
 }
 
+/** A set with each public name's alias beside it (src/shared/publicHosts.ts), so either name is the host's, whichever one it saved or a peer announced. */
+function aliased<T extends BrowserEndpoints>(set: T): T {
+  return {
+    ...set,
+    remoteRoutes: [...new Set(set.remoteRoutes.flatMap(originAliases))],
+    ...(set.tunnelHosts ? { tunnelHosts: [...new Set(set.tunnelHosts.flatMap(hostAliases))] } : {})
+  }
+}
+
+function withAliases(origins: TempCodeOrigins): TempCodeOrigins {
+  return { ...aliased(origins), ...(origins.linkedEndpoints ? { linkedEndpoints: origins.linkedEndpoints.map(aliased) } : {}) }
+}
+
 /** HTTP and WebSocket share the same endpoint. Paths, credentials and fragments do not change it. */
 export function isTempCodeOrigin(url: string, origins: TempCodeOrigins): boolean {
   const target = endpoint(url)
   if (!target) return false
-  return matchesEndpoint(target, origins, true) || (origins.linkedEndpoints?.some((peer) => matchesEndpoint(target, peer, false)) ?? false)
+  const all = withAliases(origins)
+  return matchesEndpoint(target, all, true) || (all.linkedEndpoints?.some((peer) => matchesEndpoint(target, peer, false)) ?? false)
 }
 
 function matchesEndpoint(target: { host: string; port: number }, origins: BrowserEndpoints, local: boolean): boolean {
@@ -81,8 +96,9 @@ function matchesEndpoint(target: { host: string; port: number }, origins: Browse
 /** Resolve both sides at a protected port. A failed or empty lookup leaves the caller unable to verify the target. */
 export async function resolvesToTempCodeOrigin(
   url: string,
-  origins: TempCodeOrigins
+  given: TempCodeOrigins
 ): Promise<boolean> {
+  const origins = withAliases(given)
   if (isTempCodeOrigin(url, origins)) return true
   const target = endpoint(url)
   if (!target) {

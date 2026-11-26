@@ -158,6 +158,14 @@ sends paths matching `^/(g|w|f)/` to the installed host's Work port, 7695
 (docs/agents/work-service.md). The rule is in `scripts/box/ingress.yml` and
 is live on the tunnel.
 
+`docket.landonhale.com`, the app's new name, has the same two rules in the
+same order, after the old name's, which stays live for good
+(src/shared/publicHosts.ts; scripts/box/ingress.test.ts). `tunnel.sh` routes
+DNS for both names. To make it live: from a Mac checkout at a master that
+has the rules, `scripts/box/apply.sh --from 60 --through 60` (it routes the
+DNS, writes `/etc/cloudflared/config.yml` and restarts cloudflared if the
+config changed), then `box-update` so the host's checks take the name.
+
 Guest pages have a hostname of their own, `share.landonhale.com`: the whole
 host goes to the Work port, 7695, whose closed route list answers 404 for
 anything that is not a Work route, so nothing of the remote listener (`/ui`,

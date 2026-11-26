@@ -19,9 +19,12 @@ else echo "SKIP: tempcode-box tunnel $id exists"; fi
 [[ $id =~ ^[a-f0-9-]{36}$ ]] || { echo 'ERROR: invalid tunnel ID' >&2; exit 1; }
 credential=$HOME/.cloudflared/$id.json
 [[ -s $credential ]] || { echo 'ERROR: tunnel exists but its Mac credentials are missing; refusing to recreate it' >&2; exit 1; }
-route=$("${CF[@]}" route dns tempcode-box tempcode.landonhale.com 2>&1)
-printf '%s\n' "$route"
-if [[ $route == *'Added CNAME'* ]]; then echo 'CHANGED: tunnel DNS route'; else echo 'SKIP: tunnel DNS route'; fi
+# Both public names (src/shared/publicHosts.ts) point at this tunnel.
+for host in tempcode.landonhale.com docket.landonhale.com; do
+  route=$("${CF[@]}" route dns tempcode-box "$host" 2>&1)
+  printf '%s\n' "$route"
+  if [[ $route == *'Added CNAME'* ]]; then echo "CHANGED: tunnel DNS route $host"; else echo "SKIP: tunnel DNS route $host"; fi
+done
 ssh -o BatchMode=yes box 'test -d /etc/cloudflared || install -d -m 700 /etc/cloudflared'
 # This is the only private Cloudflare file sent to the server.
 copied=$(rsync -rltzic -e 'ssh -o BatchMode=yes' "$credential" "box:/etc/cloudflared/$id.json")

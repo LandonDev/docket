@@ -247,6 +247,18 @@ describe('the guest origin', () => {
     for (const path of ['/', '/ui', '/ws', '/api/x', '/pair']) expect((await on(r, SHARE, 'GET', path)).status, path).toBe(404)
   })
 
+  it('the box’s new name is an owner origin like the old one: a guest page there is sent on to the guest origin', async () => {
+    const r = await rig()
+    const g = await make(r, 'edit')
+    r.service.setOrigins({ allowed: ['https://tempcode.landonhale.com', 'https://docket.landonhale.com', `https://${SHARE}`], guest: `https://${SHARE}`, loopback: true })
+    for (const host of ['tempcode.landonhale.com', 'docket.landonhale.com']) {
+      expect(await on(r, host, 'GET', `/g/${g.id}`)).toMatchObject({ status: 308, location: `https://${SHARE}/g/${g.id}` })
+      expect((await on(r, host, 'POST', `/g/${g.id}/open`, { secret: g.secret })).status).toBe(404)
+      expect(await socketOn(r, host, `/g/ws/${g.id}`)).toBe(404)
+      expect((await on(r, host, 'GET', '/w/healthz')).status).toBe(200)
+    }
+  })
+
   it('takes a name only once it answers as this very service, keeps it, and a link made after carries it', async () => {
     const r = await rig()
     const before = await make(r, 'view')

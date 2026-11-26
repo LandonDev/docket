@@ -13,4 +13,11 @@ ingress:
     service: http://127.0.0.1:7695
   - hostname: tempcode.landonhale.com
     service: http://127.0.0.1:7677
+  # The app's new name answers beside the old one, rule for rule and in the same order
+  # (src/shared/publicHosts.ts); the old name stays live for good.
+  - hostname: docket.landonhale.com
+    path: ^/(g|w|f)/
+    service: http://127.0.0.1:7695
+  - hostname: docket.landonhale.com
+    service: http://127.0.0.1:7677
   - service: http_status:404

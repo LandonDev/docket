@@ -15,6 +15,7 @@ import { FAREWELL_CLOSE } from '@shared/contract-devices'
 import { refuseVideoUpgrade, type VideoSockets } from '../video/sockets'
 import { COOKIE_NAME, RemoteAuth, RemoteAuthError, SESSION_TTL_MS, type Verified } from './auth'
 import { isTempCodeBrowserHost, readLocalTempCodeOrigins } from './tempcodeOrigins'
+import { originAliases } from '@shared/publicHosts'
 import { pairingOrigin, readRemoteSettings, writeRemoteSettings } from './handlers'
 import { SetupError, type SetupPairings } from '../devices/setupPairings'
 import { SetupClaimBodySchema, SetupCodeBodySchema } from '@shared/devices/setupLink'
@@ -226,11 +227,15 @@ export async function startRemoteListener(options: RemoteListenerOptions): Promi
 
   /** The proxy's view of this host, remembered for pairing links. Taught
    *  only by an admin's own authenticated request (R2 L1): the Host of an
-   *  unauthenticated loopback request is anyone's to choose. */
+   *  unauthenticated loopback request is anyone's to choose. The other public
+   *  name of the one learned (src/shared/publicHosts.ts) teaches nothing, so
+   *  links keep the name they carry. */
   const learnOrigin = (ctx: Pick<RequestContext, 'host' | 'origin' | 'req'>): void => {
     if (!LOOPBACK.has(ctx.req.socket.remoteAddress ?? '') || isLoopbackHost(ctx.host)) return
     if (!header(ctx.req, 'x-forwarded-proto')) return
-    if (readRemoteSettings(store).learnedOrigin !== ctx.origin) writeRemoteSettings(store, { learnedOrigin: ctx.origin })
+    const learned = readRemoteSettings(store).learnedOrigin
+    if (learned !== null && originAliases(learned).includes(ctx.origin)) return
+    writeRemoteSettings(store, { learnedOrigin: ctx.origin })
   }
 
   const refuseLimited = (ctx: Pick<RequestContext, 'ip'>): void => {

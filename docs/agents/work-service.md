@@ -208,7 +208,9 @@ Hocuspocus 4.4 with garbage collection off, behind our own listener (`ws` in
 
 `scripts/box/ingress.yml` sends `tempcode.landonhale.com` paths matching
 `^/(g|w|f)/` to the installed host's port, 7695, before the remote
-listener's rule. Milestone 18 wrote the rule and proved on a quick tunnel
+listener's rule, and `docket.landonhale.com` the same way after them
+(src/shared/publicHosts.ts; scripts/box/ingress.test.ts holds the two to
+one shape). Milestone 18 wrote the rule and proved on a quick tunnel
 that a path rule carries a WebSocket upgrade. The rule is live on the box's
 tunnel (checked 2026-11-24: `/g/<id>` answers this service's page through
 Cloudflare, and `/w/doc`, `/w/sheet` and `/g/ws` upgrade). A change to it is
@@ -228,6 +230,12 @@ tracker's `ALLOWED_ORIGINS`.
 |---|---|
 | a guest's (`/g/ws/*`) | the guest pages' origin alone: this host's public origin until guest pages have their own (`work.guests.origin`), then that one only. On a public host it must name an origin: only a browser page is a guest |
 | any other (`/w/doc`, `/w/sheet`, `/w/office`, `/w/full`) | no `Origin` (a native client, main's own relay); this host's own origins; a page on loopback (a dev build of LifeOS or of ours); `file://` (LifeOS's desktop window is a file) |
+
+This host's own origins are its public origin with its other public name
+(`originAliases`, src/shared/publicHosts.ts: `tempcode.landonhale.com` and
+`docket.landonhale.com` pass alike) and the guest origin, never widened. A
+guest page asked for on either public name is sent on to the guest origin
+once it has one (308, routes/guests.ts).
 
 A sandboxed frame's `null` passes nowhere. An isolated instance or a test
 (`loopback`) also takes a loopback page, or no origin, as a guest. Main
