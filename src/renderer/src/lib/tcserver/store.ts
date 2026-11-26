@@ -153,6 +153,10 @@ type Entry = {
   meta: SessionMeta | null;
   /** highest persisted seq folded; drives the reconnect gap replay */
   lastSeq: number;
+  /** The time of the row at `lastSeq`, when the fold knows it: a resume names
+   *  it (`afterTs`) so a host that gave that seq to another row after a crash
+   *  answers a fresh tail (`reset`). Unset, the host checks the seq alone. */
+  lastTs?: number;
   nextId: number;
   loaded: boolean;
   loading: Promise<void> | null;
@@ -1465,6 +1469,7 @@ class SessionStore {
     this.subsOf(entry)?.remove(entry.meta.id);
     entry.loaded = false;
     entry.lastSeq = 0;
+    entry.lastTs = undefined;
     entry.nextId = 1;
     entry.held = null;
     entry.resyncHold = false;
@@ -1766,6 +1771,7 @@ class SessionStore {
     const id = entry.session.id;
     return {
       cursor: () => entry.lastSeq,
+      cursorTs: () => entry.lastTs,
       shown: () => this.onScreen(id),
       begin: () => {
         // Rows held since a resync push stay held: they fold after the page.
@@ -1883,6 +1889,7 @@ class SessionStore {
     const pending = entry.session.blocks.filter((b) => b.pending);
     this.settleHead(entry);
     entry.lastSeq = 0;
+    entry.lastTs = undefined;
     entry.nextId = 1;
     if (entry.rows) entry.rows = [];
     entry.session = { ...sessionFromMeta(entry.meta), loaded: entry.session.loaded, load: entry.load, blocks: pending };
@@ -1929,7 +1936,7 @@ class SessionStore {
         // The person's unechoed rows meet the refolded log: an echo among
         // the rows stands for its row, the rest stay pending in their place.
         state = reconcilePending(state, entry.session.blocks.filter((b) => b.pending));
-        entry.lastSeq = Math.max(state.lastSeq, entry.lastSeq);
+        this.refoldCursor(entry, state.lastSeq);
         entry.nextId = Math.max(state.nextId, entry.nextId);
         entry.session = {
           ...entry.session,
@@ -2082,7 +2089,7 @@ class SessionStore {
     // Pushes that landed while the head folded are in `since`, after the tail.
     for (const row of head.since) state = foldEvent(state, row, cwd);
     state = reconcilePending(state, entry.session.blocks.filter((b) => b.pending));
-    entry.lastSeq = Math.max(state.lastSeq, entry.lastSeq);
+    this.refoldCursor(entry, state.lastSeq);
     entry.nextId = Math.max(state.nextId, entry.nextId);
     entry.session = {
       ...entry.session,
@@ -2244,6 +2251,14 @@ class SessionStore {
     for (const l of this.liveEditListeners) l();
   }
 
+  /** A refold of the whole kept log moved the cursor past what the fold knew:
+   *  its row's time is not at hand, so the next resume checks the seq alone. */
+  private refoldCursor(entry: Entry, foldedSeq: number): void {
+    if (foldedSeq <= entry.lastSeq) return;
+    entry.lastSeq = foldedSeq;
+    entry.lastTs = undefined;
+  }
+
   private foldRow(entry: Entry, row: EventRow): boolean {
     const head = entry.head;
     if (head) {
@@ -2259,6 +2274,7 @@ class SessionStore {
     const after = foldEvent(before, row, entry.session.cwd);
     if (after === before) return false;
     if (entry.rows && !row.ephemeral && row.seq >= 0) entry.rows.push(row);
+    if (after.lastSeq !== entry.lastSeq) entry.lastTs = row.ts;
     entry.lastSeq = after.lastSeq;
     entry.nextId = after.nextId;
     entry.session = {

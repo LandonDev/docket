@@ -143,6 +143,15 @@ class RemoteLink implements Link {
         return Promise.resolve(page as T);
       }
       if (this.resume) return Promise.resolve({ ...this.resume, ...said } as T);
+      // The host's resume guard (wire.ts eventsPageReads): a cursor past the log, or on a row of another time, starts over from the tail.
+      const { afterTs } = params as { afterTs?: number };
+      if (afterSeq > 0) {
+        const held = all.find((r) => r.seq === afterSeq);
+        if (!held || (afterTs !== undefined && held.ts !== afterTs)) {
+          const rows = all.slice(-this.pageRows);
+          return Promise.resolve({ rows, moreBefore: rows.length > 0 && rows[0].seq > 1, moreAfter: false, reset: true, ...said } as T);
+        }
+      }
       // A resume without a tail answers the oldest rows after the cursor,
       // capped at a page, and says when more follow (the wire's pager caps
       // the oldest page this way; from a cursor it answers whole or resets).
@@ -413,7 +422,12 @@ describe("remote profile: history", () => {
       .filter((c) => c.method === "session.events")
       .slice(before)
       .map((c) => c.params as { afterSeq: number; tail?: number });
-    expect(pages).toEqual([{ sessionId: "s1", afterSeq: 12 }, { sessionId: "s1", afterSeq: 16 }, { sessionId: "s1", afterSeq: 20 }]);
+    // Each names the time of the row it holds at its cursor (`row` stamps 1,000 + seq).
+    expect(pages).toEqual([
+      { sessionId: "s1", afterSeq: 12, afterTs: 1_012 },
+      { sessionId: "s1", afterSeq: 16, afterTs: 1_016 },
+      { sessionId: "s1", afterSeq: 20, afterTs: 1_020 },
+    ]);
     expect(sessionStore.get("s1")!.blocks.map((b) => b.text).slice(-2)).toEqual(["prompt 12", "answer 12"]);
     expect(sessionStore.hasOlderHistory("s1")).toBe(true);
   });
@@ -655,6 +669,43 @@ describe("remote profile: a cold open's lost answer", () => {
     const events = link.calls.filter((c) => c.method === "session.events").map((c) => c.params as { subscribe?: boolean });
     expect(events.filter((e) => e.subscribe)).toHaveLength(1);
     expect(link.subscribed).toEqual(new Set(["s1"]));
+  });
+});
+
+describe("remote profile: a resume after the host lost rows", () => {
+  it("names the time of its last row, and the reset page leaves no row of the lost run and no row twice", async () => {
+    link.pages = [[wireMeta({ id: "s1" })]];
+    link.pageRows = 300;
+    link.events.set("s1", turns("s1", 3));
+    await boot(link);
+    sessionStore.setMounted(["s1"]);
+    await sessionStore.ensureLoaded("s1");
+    expect(sessionStore.get("s1")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "prompt 3", "answer 3"]);
+    // The host died after pushing seqs 5 and 6 and before writing them: its next rows took those seqs, at other times.
+    const reborn = (seq: number, event: EventRow["event"]): EventRow => ({ sessionId: "s1", seq, ts: 9_000 + seq, event });
+    link.events.set("s1", [
+      ...turns("s1", 2),
+      reborn(5, { type: "user-text", text: "again 3" }),
+      reborn(6, { type: "assistant-text", text: "again answer 3", delta: false }),
+      reborn(7, { type: "user-text", text: "prompt 4" }),
+    ]);
+    link.holdEvents = [];
+    link.open();
+    await new Promise((r) => setTimeout(r, 0));
+    const resume = link.calls.filter((c) => c.method === "session.events").at(-1)!.params as { afterSeq: number; afterTs?: number };
+    expect(resume).toMatchObject({ afterSeq: 6, afterTs: 1_006 });
+    // A row of the new run pushed while the page is out folds once, after it.
+    link.push({ push: "event", row: reborn(7, { type: "user-text", text: "prompt 4" }) });
+    const held = link.holdEvents;
+    link.holdEvents = null;
+    for (const release of held) release();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(sessionStore.get("s1")!.blocks.map((b) => b.text)).toEqual(["prompt 1", "answer 1", "prompt 2", "answer 2", "again 3", "again answer 3", "prompt 4"]);
+    // The next resume names the new run's time at its cursor.
+    link.holdEvents = [];
+    link.open();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(link.calls.filter((c) => c.method === "session.events").at(-1)!.params).toMatchObject({ afterSeq: 7, afterTs: 9_007 });
   });
 });
 

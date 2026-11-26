@@ -11,6 +11,9 @@ import type { Link } from "./link";
 export type SubscriptionHandlers = {
   /** The highest seq folded so far; the resume asks for what follows it. */
   cursor(): number;
+  /** The time of the row at the cursor, when known: a resume names it (`afterTs`), and a host
+   *  that gave that seq to another row (a crash between a row's push and its write) answers `reset`. */
+  cursorTs?(): number | undefined;
   /** A fetch is in flight: hold live pushes until `end`. */
   begin?(): void;
   /** May fold in slices across tasks; `end` waits for it. */
@@ -40,6 +43,12 @@ export function asPage(result: EventRow[] | EventsPage, tailFirst: boolean): Eve
 }
 
 export const RESUME_CONCURRENCY = 4;
+
+/** A resume from a cursor names the time of the row it holds there. */
+function resumeTs(afterSeq: number, handlers: SubscriptionHandlers): { afterTs?: number } {
+  const ts = afterSeq > 0 ? handlers.cursorTs?.() : undefined;
+  return ts === undefined ? {} : { afterTs: ts };
+}
 
 /** A cold open's deadline: its answer is a tail of at most TAIL_BYTES (1 MiB,
  *  about 150 KiB on the deflated socket), the same 8 s that marks a host slow.
@@ -204,7 +213,7 @@ export class Subscriptions {
         const params = {
           sessionId,
           afterSeq,
-          ...(tailFirst ? { tail: options.tail } : {}),
+          ...(tailFirst ? { tail: options.tail } : resumeTs(afterSeq, handlers)),
           ...(handlers.shown?.() ? { shown: true } : {}),
         };
         const ask = (extra: { subscribe?: true }): Promise<EventRow[] | EventsPage> =>
@@ -242,7 +251,12 @@ export class Subscriptions {
             await subscribe();
             const gap = await this.link.request<EventRow[] | EventsPage>(
               "session.events",
-              { sessionId, afterSeq: handlers.cursor(), ...(handlers.shown?.() ? { shown: true } : {}) },
+              {
+                sessionId,
+                afterSeq: handlers.cursor(),
+                ...resumeTs(handlers.cursor(), handlers),
+                ...(handlers.shown?.() ? { shown: true } : {}),
+              },
               { retry: false },
             );
             if (this.handlers.get(sessionId) === handlers) await handlers.page(asPage(gap, false));

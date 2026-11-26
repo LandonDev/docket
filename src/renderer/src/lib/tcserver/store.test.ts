@@ -316,7 +316,7 @@ describe("sessionStore", () => {
     link.reopen();
     await new Promise((r) => setTimeout(r, 0));
     const last = link.calls.filter((c) => c.method === "session.events").at(-1);
-    expect(last?.params).toEqual({ sessionId: "s1", afterSeq: 1 });
+    expect(last?.params).toEqual({ sessionId: "s1", afterSeq: 1, afterTs: 1_001 });
     expect(sessionStore.get("s1")!.blocks).toHaveLength(2);
   });
 
@@ -792,7 +792,7 @@ describe("tail-first load", () => {
     // lastSeq is the log's end: a reconnect replays nothing.
     link.reopen();
     await tick();
-    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 600 });
+    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 600, afterTs: 1_600 });
   });
 
   it("a push during the head fetch survives the refold, in order", async () => {
@@ -814,7 +814,7 @@ describe("tail-first load", () => {
     expect(s.busy).toBe(true);
     link.reopen();
     await tick();
-    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 601 });
+    expect(link.calls.filter((c) => c.method === "session.events").at(-1)?.params).toEqual({ sessionId: "s1", afterSeq: 601, afterTs: 1_601 });
   });
 
   it.each([false, true])("keeps one of 200 partial previews per call and every persisted row while a head is open (completed: %s)", async (completed) => {

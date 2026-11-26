@@ -89,7 +89,9 @@
   past RESUME_ROWS or RESUME_BYTES, and also when the row at `afterSeq` is
   gone or, where the reader names its time in `afterTs`, is another row: a
   host that died between a row's push and its write gave that seq again,
-  wire.ts `eventsPageReads`); the thread the focused pane shows
+  wire.ts `eventsPageReads`; every resume the window asks names it, the
+  `ts` of the last row it folded, kept beside `lastSeq` in the store, and
+  the `reset` page replaces the transcript); the thread the focused pane shows
   (`FocusSignal.shown`, `sessionStore.followShown`), and every thread a
   mounted view draws in front of him at any depth (`useSessionById`
   counts it on screen while mounted, `sessionStore.drawOnScreen`: a

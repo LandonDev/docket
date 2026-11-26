@@ -387,6 +387,31 @@ describe("Subscriptions", () => {
     await expect(both).rejects.toThrow("first");
   });
 
+  it("a resume from a cursor names the time of the row it holds there; a cold open and an unknown time do not", async () => {
+    const link = new FakeLink("local");
+    const subs = new Subscriptions(link);
+    const a = owner(0);
+    let ts: number | undefined;
+    a.handlers.cursorTs = () => ts;
+    subs.add("s1", a.handlers);
+    void subs.resume("s1", { tail: 300 });
+    await flush();
+    link.answer("session.subscribe", {});
+    await flush();
+    expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 0, tail: 300 }]);
+    link.answer("session.events", [row(4), row(5)]);
+    await flush();
+    void subs.resume("s1");
+    await flush();
+    expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 5 }]);
+    link.answer("session.events", []);
+    await flush();
+    ts = 5_005;
+    void subs.resume("s1");
+    await flush();
+    expect(link.pendingOf("session.events")).toEqual([{ sessionId: "s1", afterSeq: 5, afterTs: 5_005 }]);
+  });
+
   it("two resumes in flight for one session share the fetch", async () => {
     const link = new FakeLink();
     const subs = new Subscriptions(link);
