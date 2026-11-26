@@ -545,8 +545,24 @@ function connectorReauth(item: Item): { app: string; url: string } | undefined {
  * keeps `chatgpt_base_url` and no provider block.
  */
 export const META_CONTEXT_WINDOW = 1_048_576
-/** How long, and how often, the first turn waits for `model/list` to name the thread's model. */
+/** How long, and how often, the first turn waits for `model/list` to name the thread's model, from the thread's start. */
 export const MODEL_LIST_WAIT = { everyMs: 250, capMs: 10_000 }
+/** The most the first turn waits for the MCP servers to settle, from the handle's start. */
+export const MCP_GATE_MS = 20_000
+/** A server's runtime state in `mcpServerStatus/list` that will not change before the first turn: one not started
+ *  (a lazy server) included. Any other state, or none, is not known to be settled. */
+const MCP_SETTLED = new Set(['connected', 'failed', 'cancelled', 'disabled', 'authenticationRequired', 'notStarted'])
+
+/** Whether a `mcpServerStatus/list` answer says every server of the thread is known and settled (one whole page, each
+ *  in a settled state), and the servers it names, for the Work fence. Anything else is not settled. */
+export function mcpSettledOf(result: unknown): { settled: boolean; names: string[] } {
+  const r = result as { data?: unknown; nextCursor?: unknown } | null
+  const data = r?.data
+  if (!Array.isArray(data)) return { settled: false, names: [] }
+  const servers = data as { name?: unknown; runtimeStatus?: unknown }[]
+  const names = servers.map((s) => String(s?.name ?? '')).filter(Boolean)
+  return { settled: !r?.nextCursor && servers.every((s) => typeof s?.runtimeStatus === 'string' && MCP_SETTLED.has(s.runtimeStatus)), names }
+}
 /** The window Codex assumes for a model it has no metadata for: 272,000 × 0.95. */
 export const FALLBACK_CONTEXT_WINDOW = 258_400
 
@@ -628,17 +644,39 @@ export const codexDriver: HarnessDriver = {
     /** A Work thread's app-server named an MCP server that is not the app's: no message is sent to it again. */
     let fenceBroken: string | null = null
     let mcpSettled: (() => void) | null = null
+    let mcpGrace: ReturnType<typeof setTimeout> | null = null
+    /** A Work thread's app-server mounted a server that is not the app's: it goes before a turn can list its tools. */
+    const breakFence = (name: string): void => {
+      if (fenceBroken) return
+      fenceBroken = name
+      emit({ type: 'error', message: `Work fence: Codex started an MCP server that is not this app's ("${name}"). The thread's harness was stopped; nothing ran with it.` })
+      setStatus('error')
+      conn.kill()
+      mcpSettled?.()
+      mcpSettled = null
+    }
     // Codex runs a turn on fallback metadata (a 258,400 window, every tool
     // inline) for a model its `model/list` does not name yet: one Mac
     // thread's first request was 309k tokens and compacted after every
     // request (docs/agents/prompt-overhead.md). The first send also waits
     // for the list to name the thread's model, asked every 250 ms for 10 s.
+    // The list is asked once the thread is up on its account (after thread/start or resume), not at the first send,
+    // and that one wait is the connection's: every later send of this handle reuses it. Each ask carries the time
+    // left, so a list that never answers cannot hold the turn past the bound.
     let modelListed: boolean | null = null
     let fallbackLogged = false
+    let modelGate: Promise<void> | null = null
     const waitForModel = async (): Promise<void> => {
       const deadline = Date.now() + MODEL_LIST_WAIT.capMs
       for (;;) {
-        const ids = listedModelIds(await conn.request('model/list', {}).catch(() => null))
+        let ids: string[] | null
+        try {
+          ids = listedModelIds(await conn.request('model/list', {}, { timeoutMs: Math.max(1, deadline - Date.now()) }))
+        } catch (err) {
+          // An ask that ran out the time left is the bound reached; any other failure says nothing, as no list.
+          if (!(err instanceof AppServerTimeout)) return
+          ids = []
+        }
         if (ids === null) return
         if (ids.includes(session.model)) {
           modelListed = true
@@ -655,15 +693,17 @@ export const codexDriver: HarnessDriver = {
     /** A compaction in flight: the context it held before, for the done event's preTokens. */
     let compactionFrom: number | null = null
     let compactionPending = false
+    const mcpBailAt = performance.now() + MCP_GATE_MS
     let firstTurnGate: Promise<void> | null = new Promise((resolve) => {
       const bail = setTimeout(() => {
         mcpGateEndedAt ??= performance.now()
         mcpGateTimedOut = true
         resolve()
-      }, 20_000)
+      }, MCP_GATE_MS)
       mcpSettled = () => {
         mcpGateEndedAt ??= performance.now()
         clearTimeout(bail)
+        if (mcpGrace) clearTimeout(mcpGrace)
         resolve()
       }
     })
@@ -878,12 +918,7 @@ export const codexDriver: HarnessDriver = {
           // and nothing else. A server of any other name means its home was changed between the app's rewrite and
           // codex's read of it. The process goes before a turn can list that server's tools.
           if (work && name && name !== 'app') {
-            fenceBroken = name
-            emit({ type: 'error', message: `Work fence: Codex started an MCP server that is not this app's ("${name}"). The thread's harness was stopped; nothing ran with it.` })
-            setStatus('error')
-            conn.kill()
-            mcpSettled?.()
-            mcpSettled = null
+            breakFence(name)
             break
           }
           if (params.status === 'starting') {
@@ -895,12 +930,14 @@ export const codexDriver: HarnessDriver = {
             if (at !== undefined && !mcpServers.has(name)) mcpServers.set(name, performance.now() - at)
           }
           // Every server reached a terminal state — release the gate.
-          if (mcpStarting.size === 0 && mcpSettled) {
-            const release = mcpSettled
-            mcpSettled = null
+          if (mcpStarting.size === 0 && mcpSettled && !mcpGrace) {
             // Grace beat: statuses arrive one by one at boot; releasing on
             // the first terminal event would race servers not yet announced.
-            setTimeout(release, 500)
+            // The app-server's settled list (below) ends it sooner where it answers.
+            mcpGrace = setTimeout(() => {
+              mcpSettled?.()
+              mcpSettled = null
+            }, 500)
           }
           break
         }
@@ -1337,6 +1374,24 @@ export const codexDriver: HarnessDriver = {
         await new Promise((r) => setTimeout(r, backoff))
       }
     }
+    // The first turn's gates start now, with the thread up on its account: the model list, and the app-server's own
+    // word that every first MCP server is known and settled (`mcpServerStatus/list` on the thread answers once each
+    // has; an older app-server without it leaves the statuses and their grace). Both stay within their bounds.
+    if (firstTurnGate) {
+      modelGate = waitForModel()
+      conn
+        .request('mcpServerStatus/list', { threadId, detail: 'toolsAndAuthOnly' }, { timeoutMs: Math.max(1, mcpBailAt - performance.now()) })
+        .then(
+          (res) => {
+            const { settled, names } = mcpSettledOf(res)
+            const stranger = work ? names.find((n) => n !== 'app') : undefined
+            if (stranger) breakFence(stranger)
+            else if (settled) mcpSettled?.()
+            if (stranger || settled) mcpSettled = null
+          },
+          () => {}
+        )
+    }
     // A move of the scope reaches the live app-server at once (a symlinked root would not refresh).
     const untrackSkills = skillScope
       ? trackCodexSkills({
@@ -1407,7 +1462,7 @@ export const codexDriver: HarnessDriver = {
           const gateFrom = Date.now()
           const mcpWaitFrom = performance.now()
           emit({ type: 'phase', phase: 'initializing' })
-          await Promise.all([firstTurnGate, waitForModel()])
+          await Promise.all([firstTurnGate, modelGate ?? waitForModel()])
           firstTurnGate = null
           gateMs = Date.now() - gateFrom
           ctx.mcpTiming?.({

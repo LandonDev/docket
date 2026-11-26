@@ -39,7 +39,8 @@ class FakeProc extends EventEmitter {
             this.out({ id: frame.id, result: { thread: { id: 't1' } } })
             // the one server a fenced thread mounts; a code thread's fake mounts the same, which is no concern of this test
             this.out({ method: 'mcpServer/startupStatus/updated', params: { name: 'app', status: 'ready' } })
-          } else this.out({ id: frame.id, result: {} })
+          } else if (frame.method === 'mcpServerStatus/list') this.out({ id: frame.id, result: statusList })
+          else this.out({ id: frame.id, result: {} })
         }
         cb()
       }
@@ -53,6 +54,8 @@ class FakeProc extends EventEmitter {
   }
 }
 const spawned: FakeProc[] = []
+/** What the app-server's settled list answers (`mcpServerStatus/list`); none by default, as an older app-server. */
+let statusList: unknown = {}
 vi.mock('node:child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:child_process')>()),
   spawn: (file: string, args: string[], opts: { env: NodeJS.ProcessEnv }) => {
@@ -192,6 +195,21 @@ it('a Work thread whose app-server names any MCP server but the app\'s is stoppe
   code.out({ method: 'mcpServer/startupStatus/updated', params: { name: 'lifeos', status: 'starting' } })
   await new Promise((r) => setTimeout(r, 10))
   expect(code.killed).toBe(false)
+})
+
+it("a Work thread whose app-server's settled list names a server but the app's is stopped the same", async () => {
+  const errors: string[] = []
+  statusList = { data: [{ name: 'app', runtimeStatus: 'connected' }, { name: 'lifeos', runtimeStatus: 'connected' }], nextCursor: null }
+  try {
+    const handle = await codexDriver.start({ session: session({ id: 'cx-8', scope: 'work' }), emit: (e) => void (e.type === 'error' && errors.push(e.message)), setNativeId: () => {}, requestApproval: async () => false })
+    handles.push(handle)
+    await new Promise((r) => setTimeout(r, 10))
+    expect(spawned.at(-1)!.killed).toBe(true)
+    expect(errors).toEqual([expect.stringMatching(/Work fence: Codex started an MCP server that is not this app's \("lifeos"\)/)])
+    await expect(handle.send('carry on')).rejects.toThrow(/Work fence/)
+  } finally {
+    statusList = {}
+  }
 })
 
 it('a Work thread is not started where its home cannot be kept', async () => {

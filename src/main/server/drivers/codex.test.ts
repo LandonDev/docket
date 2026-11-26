@@ -70,7 +70,7 @@ vi.mock('../gatewayObserve', () => ({ observeCodexSnapshot: () => undefined }))
 const driverNotes = vi.fn<(body: string) => void>()
 vi.mock('../stalls', async (importOriginal) => ({ ...(await importOriginal<typeof import('../stalls')>()), recordDriverNote: (body: string) => driverNotes(body) }))
 
-const { codexDriver, codexWarm, bootOptions, setCodexBootFailureLog, withoutImageBytes, codexComputerImages } = await import('./codex')
+const { codexDriver, codexWarm, bootOptions, setCodexBootFailureLog, withoutImageBytes, codexComputerImages, mcpSettledOf } = await import('./codex')
 
 /** Answers the handshake and every later request; starts thread `t1`. */
 const healthy: Script = (proc, frame) => {
@@ -268,6 +268,35 @@ describe('codex app-server boot', () => {
     await handle.send('again')
     expect(marks.filter((m) => m.phase === 'delivered')).toHaveLength(1)
     expect(mcpTiming).toHaveBeenCalledTimes(1)
+    await handle.dispose()
+  })
+
+  it("the app-server's own word that every first server settled ends the gate, with no grace", async () => {
+    vi.useFakeTimers()
+    vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+    const requests: Frame[] = []
+    let statusAsk: number | undefined
+    scripts.push((proc, frame) => {
+      requests.push(frame)
+      if (frame.method === 'mcpServerStatus/list' && frame.id !== undefined) statusAsk = frame.id
+      else healthy(proc, frame)
+    })
+    const handle = await codexDriver.start(ctx())
+    // Asked once, on the thread, right after its start.
+    expect(requests.filter((r) => r.method === 'mcpServerStatus/list').map((r) => r.params)).toEqual([{ threadId: 't1', detail: 'toolsAndAuthOnly' }])
+    const notify = (params: Record<string, unknown>): void => {
+      spawned[0].stdout.write(JSON.stringify({ jsonrpc: '2.0', method: 'mcpServer/startupStatus/updated', params }) + '\n')
+    }
+    notify({ name: 'linear', status: 'starting' })
+    const sent = handle.send('hello')
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(requests.some((r) => r.method === 'turn/start')).toBe(false)
+    notify({ name: 'linear', status: 'ready' })
+    spawned[0].reply(statusAsk!, { data: [{ name: 'linear', runtimeStatus: 'connected' }], nextCursor: null })
+    await vi.advanceTimersByTimeAsync(0)
+    await sent
+    // No 500 ms beat: the turn started on the answer.
+    expect(requests.some((r) => r.method === 'turn/start')).toBe(true)
     await handle.dispose()
   })
 
@@ -582,31 +611,80 @@ describe("the first turn waits for the model's metadata", () => {
   }
   const started = (requests: Frame[]) => requests.some((r) => r.method === 'turn/start')
 
-  it('holds turn/start until model/list names the model (its third answer)', async () => {
+  const lists = (requests: Frame[]) => requests.filter((r) => r.method === 'model/list').length
+  /** The handle up, its gates started, nothing advanced: a send now is the first send of a fresh thread. */
+  const bootBare = async (script: Script) => {
+    vi.useFakeTimers()
+    vi.stubEnv('TEMP_CODE_WARM_HARNESS', '0')
+    driverNotes.mockReset()
+    scripts.push(script)
+    const handle = await codexDriver.start(ctx())
+    spawned[0].stdout.write(JSON.stringify({ jsonrpc: '2.0', method: 'mcpServer/startupStatus/updated', params: { threadId: 't1', name: 'x', status: 'ready' } }) + '\n')
+    return handle
+  }
+
+  it('early: the list is asked as soon as the thread is up, once, and every send of the connection reuses it', async () => {
     const requests: Frame[] = []
-    const { handle } = await boot(listing(3, requests))
+    const { handle } = await boot(listing(1, requests))
+    // Asked at the thread's start, before any send.
+    expect(lists(requests)).toBe(1)
+    expect(requests.findIndex((r) => r.method === 'model/list')).toBeGreaterThan(requests.findIndex((r) => r.method === 'thread/start'))
+    await handle.send('hello')
+    await handle.send('again')
+    expect(requests.filter((r) => r.method === 'turn/start')).toHaveLength(2)
+    expect(lists(requests)).toBe(1)
+    expect(driverNotes).not.toHaveBeenCalled()
+    await handle.dispose()
+  })
+
+  it('late: a send that came first waits for the third answer, and the list is asked no more', async () => {
+    const requests: Frame[] = []
+    const handle = await bootBare(listing(3, requests))
     const sent = handle.send('hello')
     await vi.advanceTimersByTimeAsync(0)
     expect(started(requests)).toBe(false)
     await vi.advanceTimersByTimeAsync(250)
     expect(started(requests)).toBe(false)
-    await vi.advanceTimersByTimeAsync(250)
+    await vi.advanceTimersByTimeAsync(500)
     await sent
-    expect(requests.filter((r) => r.method === 'model/list')).toHaveLength(3)
     expect(started(requests)).toBe(true)
+    expect(lists(requests)).toBe(3)
+    await handle.send('again')
+    expect(lists(requests)).toBe(3)
     expect(driverNotes).not.toHaveBeenCalled()
     await handle.dispose()
   })
 
-  it('releases at 10 s with one stall line when the model is never listed', async () => {
+  it('never named: released 10 s after the thread started, with one fallback line', async () => {
     const requests: Frame[] = []
     const { handle } = await boot(listing(Infinity, requests))
     const sent = handle.send('hello')
     await vi.advanceTimersByTimeAsync(9_000)
     expect(started(requests)).toBe(false)
-    await vi.advanceTimersByTimeAsync(1_500)
+    await vi.advanceTimersByTimeAsync(500)
     await sent
     expect(started(requests)).toBe(true)
+    expect(driverNotes.mock.calls.map((c) => c[0])).toEqual(['[codex] sess-1: gpt-6-astra not in model/list after 10s: first turn may run on fallback metadata'])
+    await handle.send('again')
+    expect(driverNotes).toHaveBeenCalledTimes(1)
+    await handle.dispose()
+  })
+
+  it("never answered: the ask carries the time left, so the 10 s bound holds (not the ask's own 30 s) and the fallback line is written", async () => {
+    const requests: Frame[] = []
+    const silent: Script = (proc, frame) => {
+      requests.push(frame)
+      if (frame.method === 'model/list') return
+      healthy(proc, frame)
+    }
+    const handle = await bootBare(silent)
+    const sent = handle.send('hello')
+    await vi.advanceTimersByTimeAsync(9_900)
+    expect(started(requests)).toBe(false)
+    await vi.advanceTimersByTimeAsync(200)
+    await sent
+    expect(started(requests)).toBe(true)
+    expect(lists(requests)).toBe(1)
     expect(driverNotes.mock.calls.map((c) => c[0])).toEqual(['[codex] sess-1: gpt-6-astra not in model/list after 10s: first turn may run on fallback metadata'])
     await handle.dispose()
   })
@@ -634,5 +712,17 @@ describe("the first turn waits for the model's metadata", () => {
       { type: 'compaction', phase: 'done', trigger: 'auto', preTokens: 250_000, postTokens: 31_000 }
     ])
     await handle.dispose()
+  })
+})
+
+describe('mcpSettledOf', () => {
+  it('settled only for one whole page with every server in a state that will not move before the turn', () => {
+    expect(mcpSettledOf({ data: [] })).toEqual({ settled: true, names: [] })
+    expect(mcpSettledOf({ data: [{ name: 'app', runtimeStatus: 'connected' }, { name: 'lazy', runtimeStatus: 'notStarted' }, { name: 'gone', runtimeStatus: 'failed' }] })).toEqual({ settled: true, names: ['app', 'lazy', 'gone'] })
+    expect(mcpSettledOf({ data: [{ name: 'app', runtimeStatus: 'starting' }] }).settled).toBe(false)
+    expect(mcpSettledOf({ data: [{ name: 'app', runtimeStatus: null }] }).settled).toBe(false)
+    expect(mcpSettledOf({ data: [{ name: 'app', runtimeStatus: 'connected' }], nextCursor: 'p2' }).settled).toBe(false)
+    expect(mcpSettledOf({})).toEqual({ settled: false, names: [] })
+    expect(mcpSettledOf(null)).toEqual({ settled: false, names: [] })
   })
 })
