@@ -90,6 +90,8 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["`Saved ${made.name} to ${made.where}`", "answer"],
   ],
   [`${R}/msforms/NotAnswered.tsx`]: [["Copied", "local"]],
+  // The QR picture on the clipboard: this window's own clipboard answered.
+  [`${R}/msforms/Share.tsx`]: [["Copied", "local"]],
   [`${R}/msforms/MsFormCanvas.tsx`]: [
     ["Copied", "local"],
     ["Copied", "local"],
@@ -189,6 +191,8 @@ export const STATE_LINES: Readonly<Record<string, readonly Line[]>> = {
     ["Copied", "local"],
     ["Copied", "local"],
   ],
+  // Who can add plays, from this window's key alone: no claim about the host.
+  [`${R}/routines/plays/PlaysView.tsx`]: [["`Added from a computer that manages ${nameInLine(host)}`", "local"]],
   [`${R}/routines/model.ts`]: [
     ["Done", "read"],
   ],
