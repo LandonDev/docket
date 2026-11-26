@@ -229,7 +229,7 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
 
   // ── Work ─────────────────────────────────────────────────────────────
   e("work.on", "work", "Work is on for", "Work is on for", "computer", "host", ["Work › Work"], "list"),
-  e("work.connections", "work", "Sign-ins", "LifeOS, Office and Google sign-ins", "work", "none", [], "open"),
+  e("work.connections", "work", "", "LifeOS, Office and Google sign-ins", "work", "none", [], "open"),
   e("work.access", "work", "Access for each job's new threads", "Access for each job's new threads", "workspace", "box", ["Work › Models"], "list"),
   e("work.grants", "work", "Without asking you", "Things threads may send on their own", "work", "host", ["Outbox › Grants"], "open"),
   e("work.tools", "work", "Without asking you", "What each add-on's tools may do", "work", "host", ["The phone › Work › Add-on tools"], "open"),

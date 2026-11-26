@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { settingsList, type ListWindow } from "./list";
-import { searchSettings, type SearchWindow } from "./search";
+import { ADD_COMPUTER_RESULT, SIGN_IN_NAMES, searchSettings, type SearchWindow } from "./search";
 
 const MAC: ListWindow = {
   web: false,
@@ -179,5 +179,19 @@ describe("rows a window cannot draw", () => {
   it("finds Updates and Sharing by what Hosts held", () => {
     const pages = searchSettings("code updates", settingsList(MAC), { mac: "this Mac" }, []).map((r) => r.page);
     expect(pages).toContain("updates");
+  });
+});
+
+describe("sign-ins by name", () => {
+  it("finds LifeOS's sign-in on Connections", () => {
+    const results = searchSettings("lifeos", settingsList(MAC), { mac: "this Mac" }, SIGN_IN_NAMES);
+    expect(results.map((result) => [result.title, result.page])).toContainEqual(["LifeOS sign-in", "connections"]);
+  });
+});
+
+describe("a press found by its old name", () => {
+  it("finds Add a computer… by Hosts' Add host", () => {
+    const results = searchSettings("add host", settingsList(MAC), { mac: "this Mac" }, [ADD_COMPUTER_RESULT]);
+    expect(results[0]).toMatchObject({ title: "Add a computer…", act: "add-computer", was: "Was “Hosts, Add host”" });
   });
 });

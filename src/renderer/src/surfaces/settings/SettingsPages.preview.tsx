@@ -31,7 +31,8 @@ import { setEditorConfigForTest } from "../../lib/editorConfig";
 import { ThreadsPage } from "./computers/ThreadsPage";
 import { SyncLine, SyncPage } from "./computers/SyncPage";
 import { PublishPage } from "./computers/PublishPage";
-import { WinvmPage } from "./computers/Winvm";
+import { WinvmPage, WinvmView } from "./computers/Winvm";
+import type { WinvmPoint, WinvmState } from "@shared/contract-work-winvm";
 import { tellSettingsList } from "../../lib/settings/useListWindow";
 import { ComputerLine, OtherComputerPage } from "./computers/ComputerPage";
 import { deployDriftStore } from "../../lib/deployDrift";
@@ -924,6 +925,35 @@ const PAGES: Record<
     body: () => <AsMac><PublishPage /></AsMac>,
   },
   winvm: { title: "Windows VM", description: settingsSectionDescription("winvm"), environments: THREE_COMPUTERS, body: () => <WithVmOn environmentId="env_box"><WinvmPage /></WithVmOn> },
+  // The machine answered, its display settings' read did not: one Screen size row says so with its own Retry.
+  "winvm-display": {
+    title: "Windows VM",
+    description: settingsSectionDescription("winvm"),
+    environments: THREE_COMPUTERS,
+    answers: { "env_box:work.winvm.settings": () => Promise.reject(new Error(NO_ANSWER)) },
+    body: () => <WithVmOn environmentId="env_box"><WinvmPage /></WithVmOn>,
+  },
+  // A change the box refused: Picture quality is back on Sharp, its reason on its own row.
+  "winvm-change": {
+    title: "Windows VM",
+    description: settingsSectionDescription("winvm"),
+    environments: THREE_COMPUTERS,
+    body: () => (
+      <WinvmView
+        state={ANSWERS["env_box:work.winvm.state"] as WinvmState}
+        points={(ANSWERS["env_box:work.winvm.points"] as { points: WinvmPoint[] }).points}
+        settings={{ screen: "fit", detail: "sharp" }}
+        refused={{ detail: "A thread is using the Windows VM. Stop it or take over first." }}
+        error={null}
+        pressing={false}
+        onPress={() => {}}
+        onSleepAfter={() => {}}
+        onScreen={() => {}}
+        onQuality={() => {}}
+        onPoints={() => {}}
+      />
+    ),
+  },
   sharing: { title: "Sharing", description: settingsSectionDescription("sharing"), environments: THREE_COMPUTERS, body: () => <AsMac><SharingPage /></AsMac> },
   "sharing-advanced": {
     title: "Sharing",

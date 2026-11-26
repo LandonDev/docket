@@ -1,5 +1,5 @@
 import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { registry } from "../lib/connection";
 import { useEnvironments } from "../lib/connection/status";
 import { ACCESS_LABEL, ACCESS_LINE, ACCESS_ORDER, FULL_ACCESS_CONFIRM } from "../lib/settings/access";
@@ -7,7 +7,7 @@ import { settingTitle } from "../lib/settings/map";
 import { useLinkMay } from "../lib/linkMay";
 import { usePublishHome } from "../lib/settings/pageHome";
 import { homeNote } from "../lib/settingsHome";
-import { EFFORT_LABELS, effortLadder, modelForDefaults, modelOptions, normalizeDefaults, providerOptions, storedModelId } from "../lib/tcserver/defaults";
+import { EFFORT_LABELS, effortLadder, modelForDefaults, modelOptions, normalizeDefaults, parseDefaultsScope, providerOptions, storedModelId, type DefaultsScope } from "../lib/tcserver/defaults";
 import { scopeKey, useThreadDefaults, useThreadDefaultsError, useWorkspaceCatalog, workspaceStore } from "../lib/tcserver/workspaces";
 import type { ThreadDefaults, WorkspaceMeta } from "../lib/tcserver/types";
 import { ChoiceSelect } from "../components/choice-select";
@@ -15,7 +15,8 @@ import { PageError, PageRow, PageRowsSkeleton, PageSection } from "../components
 import { Button } from "../components/ui/button";
 import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
 import { SaveMark } from "../surfaces/settings/parts/SaveMark";
-import { FailuresSaidOnce, ReadFailure } from "../surfaces/settings/parts/ReadFailure";
+import { FailureLinesHere, FailuresSaidOnce, ReadFailure } from "../surfaces/settings/parts/ReadFailure";
+import { readWhenOpen, withDeadline } from "../lib/connection/openRead";
 import { Skeleton } from "../components/ui/skeleton";
 import { useDraft } from "../surfaces/settings/parts/useDraft";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
@@ -266,6 +267,17 @@ function DifferentPlaces() {
   const unheard = workspaces.filter((w) => !defaults.has(keyOf(w)));
   const failed = unheard.filter((w) => defaultsErrors.has(keyOf(w)));
   const waiting = unheard.length > failed.length;
+  // A place listed after the catalog's own reads (a workspace push) has its set asked for here, once, under the
+  // store's deadline: the row never waits on an answer nobody asked for.
+  const asked = useRef(new Set<string>());
+  useEffect(() => {
+    for (const w of unheard) {
+      const key = keyOf(w);
+      if (defaultsErrors.has(key) || asked.current.has(key)) continue;
+      asked.current.add(key);
+      void workspaceStore.loadDefaults(w.environmentId, w.id);
+    }
+  });
   // Still reading: the row's shape, never a count it does not have.
   if (waiting) return <PageRowsSkeleton rows={[{ description: true, control: "none" }]} />;
   const n = failed.length ? `at least ${own.length}` : own.length;
@@ -295,15 +307,16 @@ function DifferentPlacesDialog({ places, onClose }: { places: readonly Workspace
   const [shown] = useState(places);
   return (
     <Modal title="Different from New threads" size="sm" onClose={onClose}>
-      {/* The dialog's own failures, said at its head, above the page's. */}
-      <FailuresSaidOnce>
+      {/* The dialog's own failures, said in it under its title, so a Retry is never behind it. */}
+      <FailuresSaidOnce head={false}>
         <ModalBody className="gap-0">
+          <FailureLinesHere />
           {shown.map((place) => (
             <OwnSetRow key={`${place.environmentId}|${place.id}`} place={place} />
           ))}
         </ModalBody>
+        <DialogFooter confirmLabel="Done" closeOnConfirm onConfirm={onClose} />
       </FailuresSaidOnce>
-      <DialogFooter confirmLabel="Done" closeOnConfirm onConfirm={onClose} />
     </Modal>
   );
 }
@@ -338,18 +351,43 @@ function UseNewThreadsPress({ reset, saved, disabled, variant }: { reset: Return
 }
 
 /**
- * Use New threads for one place: offered only to a key that may write that place's set (`defaults.set`), pressable
- * only once the set the place would follow is read (`inherited`; `failure` when its computer did not answer), and
- * asking first whenever that set starts threads with Full access, naming the Access the place has today.
+ * Use New threads for one place: offered only to a key that may write that place's set (`defaults.set`), and acting
+ * only on a current answer. It reads the set the place would follow afresh as it opens (never a cached one: `inherited`
+ * stays null until that read answers, `failure` says it could not, with Retry), reads it again at the press, and asks
+ * first whenever that answer starts threads with Full access, naming the Access the place has today.
  */
 export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentId" | "name">) {
   const may = useLinkMay(place.environmentId, "defaults.set", { workspaceId: place.id, defaults: null });
-  const inherited = useThreadDefaults(place.environmentId, null, true);
-  const failure = useThreadDefaultsError(place.environmentId, null);
+  const [fresh, setFresh] = useState<{ scope: DefaultsScope | null; error: string | null }>({ scope: null, error: null });
+  const [attempt, setAttempt] = useState(0);
+  const environmentId = place.environmentId;
+  const read = useCallback(
+    () => withDeadline(readWhenOpen<unknown>(registry.linkOf(environmentId), "defaults.get", { workspaceId: null })).then(parseDefaultsScope),
+    [environmentId],
+  );
+  useEffect(() => {
+    let live = true;
+    setFresh({ scope: null, error: null });
+    read().then(
+      (scope) => live && setFresh({ scope, error: null }),
+      (err: unknown) => live && setFresh({ scope: null, error: err instanceof Error ? err.message : String(err) }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [read, attempt]);
   const run = async (saved: Saved): Promise<boolean> => {
-    if (!inherited) return false;
+    // The answer in hand at the press: asked again, so a change made meanwhile cannot skip the Full access check.
+    let now: DefaultsScope;
+    try {
+      now = await read();
+      setFresh({ scope: now, error: null });
+    } catch (err) {
+      setFresh({ scope: null, error: err instanceof Error ? err.message : String(err) });
+      return false;
+    }
     const own = workspaceStore.defaultsAt(place.environmentId, place.id);
-    if (inherited.defaults.permission === "auto") {
+    if (now.defaults.permission === "auto") {
       const today = own?.overridden ? ACCESS_LABEL[own.defaults.permission] : null;
       const ok = await confirmAction({
         title: `Give ${place.name} Full access`,
@@ -360,7 +398,13 @@ export function useUseNewThreads(place: Pick<WorkspaceMeta, "id" | "environmentI
     }
     return saved.run(() => workspaceStore.saveDefaults(place.environmentId, place.id, null));
   };
-  return { may, inherited, failure: inherited ? null : failure, environmentId: place.environmentId, run };
+  return {
+    may,
+    inherited: fresh.scope,
+    failure: fresh.error === null ? null : { error: fresh.error, retry: () => setAttempt((n) => n + 1) },
+    environmentId,
+    run,
+  };
 }
 
 /**
@@ -373,9 +417,10 @@ export function ThreadDefaultsDialog({ workspace, onClose }: { workspace: Worksp
   const reset = useUseNewThreads(workspace);
   return (
     <Modal title="New threads" description={workspace.name} size="sm" onClose={onClose}>
-      {/* The dialog's own failures, said at its head. */}
-      <FailuresSaidOnce>
+      {/* The dialog's own failures, said in it under its title, so a Retry is never behind it. */}
+      <FailuresSaidOnce head={false}>
       <ModalBody className="gap-0">
+        <FailureLinesHere />
         {set.value ? (
           <DefaultsRows set={set} environmentId={workspace.environmentId} startOn={false} layout="dialog" />
         ) : set.failure ? (

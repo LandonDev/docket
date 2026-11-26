@@ -17,38 +17,56 @@ public enum AwayWords {
         }
     }
 
-    /// One computer as the root's Away row counts it: its answer, a read still out, or nothing to go on (out of
-    /// reach, refused, a release from before Away).
-    public enum Computer: Sendable, Hashable {
-        case on
-        case off
+    /// One computer's Away as Settings shows it, on its page and in the root's count. Its switches only once this
+    /// link's `away.get` answered: a held answer from before a drop or a failed read is not shown as his setting (the
+    /// council's round 4).
+    public enum Section: Sendable, Hashable {
+        /// The answer: whether any kind is away.
+        case switches(on: Bool)
+        /// The read is out: bones.
         case waiting
-        case unread
+        /// The computer said it does not know Away.
+        case unsupported
+        /// The read failed, with its words: the page's line and Retry.
+        case failed(String)
+        /// The computer is out of reach or refuses this key.
+        case unreachable
+
+        /// Its switches stand: this link's read answered.
+        public var answered: Bool {
+            if case .switches = self { return true }
+            return false
+        }
     }
 
     /// - Parameters:
-    ///   - away: whether any kind is away, once the computer has answered; nil before.
-    ///   - read: how its `away.get` stands (`WorkHost.awayRead`).
-    ///   - transport: its link. A computer out of reach counts as unread even with an answer held: Off is a
-    ///     setting the phone must have from it (the council's round 3).
-    public static func computer(away: Bool?, read: AwayRead, transport: TransportState) -> Computer {
+    ///   - away: whether any kind is away in the answer the phone holds; nil when it holds none.
+    ///   - read: how this link's `away.get` stands (`WorkHost.awayRead`).
+    ///   - transport: the link.
+    public static func section(away: Bool?, read: AwayRead, transport: TransportState) -> Section {
         switch transport {
-        case .offline, .unauthorized: return .unread
+        case .offline, .unauthorized: return .unreachable
         case .open, .connecting, .reconnecting, .suspended: break
         }
-        if let away { return away ? .on : .off }
-        return read == .waiting ? .waiting : .unread
+        switch read {
+        case .waiting: return .waiting
+        case .unsupported: return .unsupported
+        case .failed(let words): return .failed(words)
+        case .answered: return away.map { .switches(on: $0) } ?? .waiting
+        }
     }
 
-    /// The root row's trailing word. On while any computer is away; nil (the row's bones) while a read is out and
-    /// none is away; Off only when every computer answered Off; "Off on 2 of 3" when some could not be read; nil
-    /// again when none could, so nothing stands in for an answer that did not come.
-    public static func summary(_ computers: [Computer]) -> String? {
-        if computers.contains(.on) { return "On" }
+    /// The root row's trailing word, or nil for its bones while a read is out and none is away. "On" while any
+    /// computer is away; "Off" once every computer answered Off; "Off, 4 not read" when some could not be read (never
+    /// "Off on 1 of 5", which reads as on for the rest); "Not read" when every read settled and none answered, so
+    /// the bones end.
+    public static func summary(_ computers: [Section]) -> String? {
+        if computers.contains(.switches(on: true)) { return "On" }
         if computers.contains(.waiting) { return nil }
-        let off = computers.count { $0 == .off }
-        if off == 0 { return nil }
-        return off == computers.count ? "Off" : "Off on \(off) of \(computers.count)"
+        let off = computers.count { $0 == .switches(on: false) }
+        if off == 0 { return "Not read" }
+        let unread = computers.count - off
+        return unread == 0 ? "Off" : "Off, \(unread) not read"
     }
 
     /// The screen's one footer: what Away does (the plan's section 3).

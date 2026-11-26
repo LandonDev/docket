@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { HIDES_EMPTY } from "./computers/read";
 import { ReadFailure } from "./parts/ReadFailure";
 import type { ComputerAppVerdict, ComputerServiceState, ComputerSettings } from "@server/shared/contract-computer";
 import type { ActiveAppMode } from "@server/shared/computer/scheduleRules";
@@ -63,7 +64,7 @@ export function ComputerPage() {
 
   return (
     <>
-      <PageSection>
+      <PageSection className={HIDES_EMPTY}>
         <HelperRow link={link} service={service} />
         {settings.value ? (
           <SettingsRows link={link} value={settings.value} onSaved={set} />

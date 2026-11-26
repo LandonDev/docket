@@ -4,10 +4,11 @@ import { usePointerHighlight } from "../../hooks/usePointerHighlight";
 import { cn } from "../../lib/cn";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { inMaySheet, openMaySheet } from "../../lib/settings/maySheet";
-import { searchSettings, type SearchResult } from "../../lib/settings/search";
+import { ADD_COMPUTER_RESULT, SIGN_IN_NAMES, searchSettings, type SearchResult } from "../../lib/settings/search";
+import { openAddComputer } from "../../lib/settings/addComputer";
 import { settingsSearch, useSettingsSearch } from "../../lib/settings/searchStore";
 import { settingsList } from "../../lib/settings/list";
-import { useListWindow } from "../../lib/settings/useListWindow";
+import { useListWindow, useSettingsKnown } from "../../lib/settings/useListWindow";
 import { thisDesktopInLine } from "../../lib/native";
 import { LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
 import { useWorkHosts } from "../../lib/workSwitch";
@@ -21,6 +22,10 @@ export const RESULTS_TITLE = "Results";
 /** Opens a result: its page, scrolled to its row with the fill held on it; the field is cleared so the list shows where he is. */
 export function openResult(result: SearchResult): void {
   settingsSearch.clear();
+  if (result.act === "add-computer") {
+    openAddComputer();
+    return;
+  }
   // A row in what a computer may do on this Mac is its sheet's: the page lands on the computer's row and the sheet opens.
   if (result.computer && result.row && inMaySheet(result.row)) {
     requestSettings(result.page, "sharing.may");
@@ -38,7 +43,9 @@ export function useSearchResults(): SearchResult[] {
   const addons = addonNames.useExtras();
   const skills = skillNames.useExtras();
   const workHere = useWorkHosts().has(LOCAL_ENVIRONMENT_ID);
-  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills], { web: window.web, mac: window.platform === "darwin", work: window.work, workHere });
+  // Found only where the list offers it (the press is mounted).
+  const { addComputer } = useSettingsKnown();
+  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills, ...(window.work ? SIGN_IN_NAMES : []), ...(addComputer ? [ADD_COMPUTER_RESULT] : [])], { web: window.web, mac: window.platform === "darwin", work: window.work, workHere });
 }
 
 /**
@@ -101,8 +108,9 @@ export function SearchResultsView({
           className={cn("min-w-0 flex-col flex-nowrap items-stretch gap-0.5 rounded-md border-0 px-2 py-2 text-left transition-none", index === active && "bg-muted")}
         >
           <span className="truncate text-[13px] leading-5 text-foreground">{result.title}</span>
-          {result.path ? <span className="truncate text-xs text-muted-foreground">{result.path}</span> : null}
-          {result.was ? <span className="truncate text-xs text-muted-foreground">{result.was}</span> : null}
+          {/* Where it is and what it was wrap whole at a narrow width: the end of an old path is the part that names it. */}
+          {result.path ? <span className="text-xs text-pretty text-muted-foreground">{result.path}</span> : null}
+          {result.was ? <span className="text-xs text-pretty text-muted-foreground">{result.was}</span> : null}
         </ItemButton>
       ))}
     </div>

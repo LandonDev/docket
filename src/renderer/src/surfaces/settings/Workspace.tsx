@@ -96,7 +96,7 @@ function WorkspaceShapes({ workspace, error, retry }: { workspace: WorkspaceMeta
         <PageRowsSkeleton rows={2} media description control="none" />
       </SettingSection>
       <SettingSection of="ws.command">
-        <PageRowsSkeleton rows={2} description control={control("field")} />
+        <PageRowsSkeleton rows={[{ description: true, control: control("field"), wide: may }, { description: true, control: control("field"), wide: may }]} />
       </SettingSection>
       <SettingSection of="ws.agents">
         <PageRowsSkeleton rows={[{ description: true, control: control("button") }]} />

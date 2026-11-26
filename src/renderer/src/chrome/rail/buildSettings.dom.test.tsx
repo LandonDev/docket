@@ -8,6 +8,9 @@ const state = vi.hoisted(() => ({
   detected: { command: "bun run build", outputs: "out/**" } as BuildConfig | null,
   set: vi.fn(),
   failSet: false,
+  /** build.set answers wait for the test to let them go, in order. */
+  hold: false,
+  held: [] as (() => void)[],
 }));
 
 vi.mock("../../lib/tcserver/workspaces", () => ({
@@ -26,6 +29,7 @@ vi.mock("../../lib/connection", () => {
               : Promise.resolve(state.config);
         if (method === "build.detect") return Promise.resolve(state.detected);
         state.set(method, params);
+        if (state.hold) return new Promise((done) => state.held.push(() => done(null)));
         return state.failSet ? Promise.reject(new Error("build.set refused")) : Promise.resolve(null);
       },
   };
@@ -41,6 +45,8 @@ const { OPEN_SETTINGS_EVENT } = await import("../../lib/monaco/debugTab");
 beforeEach(() => {
   state.config = null;
   state.failSet = false;
+  state.hold = false;
+  state.held = [];
   state.set.mockClear();
 });
 afterEach(() => {
@@ -85,6 +91,36 @@ describe("BuildEditor", () => {
     await act(async () => fireEvent.keyDown(command, { key: "Enter" }));
     expect(state.set).toHaveBeenCalledTimes(1);
     expect(state.set).toHaveBeenCalledWith("build.set", { workspaceId: "w1", config: { command: "make all", outputs: "" } });
+  });
+});
+
+describe("BuildEditor writes", () => {
+  it("queues two quick edits against the last confirmed set, so the second keeps the first", async () => {
+    state.config = { command: "", outputs: "" } as BuildConfig;
+    state.hold = true;
+    render(<BuildEditor workspaceId="w1" />);
+    const command = (await screen.findByRole("textbox", { name: "Build command" })) as HTMLInputElement;
+    const makes = screen.getByRole("textbox", { name: "What it makes" }) as HTMLInputElement;
+    act(() => command.focus());
+    fireEvent.change(command, { target: { value: "make" } });
+    await act(async () => fireEvent.keyDown(command, { key: "Enter" }));
+    act(() => makes.focus());
+    fireEvent.change(makes, { target: { value: "dist/**" } });
+    await act(async () => fireEvent.keyDown(makes, { key: "Enter" }));
+    // The second waits for the first.
+    expect(state.set).toHaveBeenCalledTimes(1);
+    await act(async () => state.held.shift()!());
+    expect(state.set).toHaveBeenCalledTimes(2);
+    expect(state.set).toHaveBeenLastCalledWith("build.set", { workspaceId: "w1", config: { command: "make", outputs: "dist/**" } });
+    await act(async () => state.held.shift()!());
+  });
+
+  it("waits in the loaded rows' wide shape", () => {
+    state.config = "pending";
+    render(<BuildEditor workspaceId="w1" />);
+    const bones = screen.getByTestId("build-skeleton").querySelectorAll("[data-slot=page-row-skeleton]");
+    expect(bones).toHaveLength(2);
+    for (const bone of bones) expect(bone.className).toContain("@max-[30rem]/page:flex-wrap");
   });
 });
 

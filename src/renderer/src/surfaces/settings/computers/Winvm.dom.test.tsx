@@ -12,7 +12,7 @@ import { confirmAction } from "../../../chrome/ConfirmDialog";
 vi.mock("../../../lib/linkMay", async (original) => (await import("../../../lib/linkMay.testkit")).linkMayMock(await original()));
 
 
-const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, pointsHold: null as Promise<unknown> | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true }));
+const h = vi.hoisted(() => ({ office: null as unknown, screen: "1280x800", state: null as unknown, points: [] as unknown[], pointsFail: null as string | null, pointsHold: null as Promise<unknown> | null, fail: {} as Record<string, string>, calls: [] as { method: string; params: unknown }[], pushes: [] as ((p: unknown) => void)[], confirm: true, settingsRead: "answers" as "answers" | "pending" | "refused", settingsWriteFail: null as string | null }));
 vi.mock("../../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../../chrome/ConfirmDialog")>()), confirmAction: vi.fn(async () => h.confirm) }));
 
 const at = (s: Partial<WinvmState>): WinvmState => ({ state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 1, ...s });
@@ -29,6 +29,8 @@ beforeEach(() => {
   h.pushes = [];
   h.confirm = true;
   h.office = null;
+  h.settingsRead = "answers";
+  h.settingsWriteFail = null;
   vi.spyOn(registry, "linkOf").mockImplementation(
     () =>
       ({
@@ -40,6 +42,9 @@ beforeEach(() => {
           if (h.fail[method]) throw new Error(h.fail[method]);
           if (method === "work.office.vmStatus") return h.office ?? Promise.reject(new Error("not handled"));
           if (method === "work.office.filesLibraries") return { host: "box", libraries: [{ vm: true, kind: "channels" }], roots: [], off: [] };
+          if (method === "work.winvm.settings" && Object.keys(params as object).length === 0 && h.settingsRead === "pending") return new Promise(() => {});
+          if (method === "work.winvm.settings" && Object.keys(params as object).length === 0 && h.settingsRead === "refused") throw new Error(NO_ANSWER);
+          if (method === "work.winvm.settings" && Object.keys(params as object).length > 0 && h.settingsWriteFail) throw new Error(h.settingsWriteFail);
           if (method === "work.winvm.settings") {
             const next = (params as { screen?: string }).screen;
             if (next) h.screen = next;
@@ -381,6 +386,60 @@ describe("Screen size and picture quality", () => {
     await pick("Picture quality", "Faster");
     expect(h.calls).toContainEqual({ method: "work.winvm.settings", params: { detail: "faster" } });
     expect(pressed()).toEqual([]);
+  });
+
+  it("holds the display's rows as bones while they are read, and says a failed read on its own row with Retry", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: virtio });
+    h.settingsRead = "pending";
+    const v = render(<WinvmHost env="box" />);
+    await flush();
+    expect(v.container.querySelector("[data-setting='winvm.screen'] [data-skeleton-control]")).not.toBeNull();
+    expect(v.container.querySelector("[data-setting='winvm.quality'] [data-skeleton-control]")).not.toBeNull();
+    cleanup();
+    h.settingsRead = "refused";
+    const w = render(<WinvmHost env="box" />);
+    await flush();
+    const row = w.container.querySelector("[data-setting='winvm.screen']")!;
+    expect(row.textContent).toContain("did not answer.");
+    // The Windows row is not where it is said.
+    expect(w.container.querySelector("[data-setting='winvm.windows']")?.textContent).not.toContain("did not answer");
+    h.settingsRead = "answers";
+    await act(async () => fireEvent.click(within(row as HTMLElement).getByRole("button", { name: "Retry" })));
+    await flush();
+    expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1280 × 800");
+    expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).not.toContain("did not answer");
+  });
+
+  it("puts a refused change back to the value last confirmed, says why on its own row, and keeps it through a read again", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: virtio });
+    h.screen = "fit";
+    render(<WinvmHost env="box" />);
+    await flush();
+    h.settingsWriteFail = "A thread is using the Windows VM. Stop it or take over first.";
+    await pick("Picture quality", "Faster");
+    await flush();
+    expect(screen.getByRole("combobox", { name: "Picture quality" }).textContent).toContain("Sharp");
+    const quality = document.querySelector("[data-setting='winvm.quality']")!;
+    expect(quality.textContent).toContain("A thread is using the Windows VM");
+    expect(document.querySelector("[data-setting='winvm.windows']")?.textContent).not.toContain("A thread is using");
+    // A read again (the socket opening, a push) does not wipe the reason.
+    await act(async () => h.pushes.forEach((fn) => fn({ push: "work.winvm", state: at({ state: "awake", display: virtio }) })));
+    expect(document.querySelector("[data-setting='winvm.quality']")?.textContent).toContain("A thread is using the Windows VM");
+  });
+
+  it("asks for the restart only once Fits my window was saved", async () => {
+    vi.spyOn(registry, "environment").mockImplementation((id: string) => ({ id, name: "The box" }) as never);
+    h.state = at({ state: "awake", display: vga });
+    h.settingsWriteFail = "The box refused the change.";
+    render(<WinvmHost env="box" />);
+    await flush();
+    await pick("Screen size", "Fits my window");
+    await flush();
+    expect(pressed()).toEqual([]);
+    expect(screen.getByRole("combobox", { name: "Screen size" }).textContent).toContain("1280 × 800");
+    expect(document.querySelector("[data-setting='winvm.screen']")?.textContent).toContain("refused");
   });
 
   it("a key that is not an admin's reads when it sleeps as words and is offered no screen size", async () => {

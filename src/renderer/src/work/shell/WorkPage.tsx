@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { SectorDot } from "../../chrome/WorkspaceGlyph";
-import { ThreadDefaultsEditor } from "../../chrome/ThreadDefaultsDialog";
-import { Modal, ModalBody } from "../../chrome/Modal";
+import { ThreadDefaultsDialog } from "../../chrome/ThreadDefaultsDialog";
 import { ChoiceSelect } from "../../components/choice-select";
 import { PageRow } from "../../components/page";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -78,7 +77,7 @@ export function WorkPageBody() {
  * said once, with its line, under the heading; a job on another level says its own line (rule 6). The jobs' sets are
  * read together: while any is out the rows hold their shape, and reads that failed are one line with one Retry.
  */
-function JobsAccess() {
+export function JobsAccess() {
   const jobs = useWorkspaces()
     .filter((w) => w.kind === "work")
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -109,13 +108,16 @@ function JobsAccess() {
   });
   // Every job's read failed: the line alone, with no heading and no rows standing on nothing.
   if (failed.length === jobs.length) return <>{failures}</>;
+  // The jobs that answered, or are still out: a job whose read failed draws no row, the page's line stands for it.
+  const shown = jobs.filter((job) => !failed.includes(job));
+  const settled = levels.length === shown.length;
   return (
     <>
-      <SettingSection of="work.access" description={common && levels.length === jobs.length ? accessWords(common) : undefined}>
+      <SettingSection of="work.access" description={common && settled ? accessWords(common) : undefined}>
         {failures}
-        {jobs.map((job) => {
+        {shown.map((job) => {
           const level = levelOf(job);
-          // A job whose set has not come (out, or failed) holds its name alone: no value, and no way in yet.
+          // A job whose set is still out holds its name and a bone: no value, and no way in yet.
           const opens = may(job.environmentId, "defaults.set") && !!level;
           return (
             <PageRow
@@ -124,7 +126,7 @@ function JobsAccess() {
               media={<SectorDot sector={job.sector ?? null} />}
               title={job.name}
               // The shared level's line is the heading's; a job on another level says its own.
-              description={level ? (level === common && levels.length === jobs.length ? ACCESS_NAMES[level] : accessWords(level)) : failed.includes(job) ? undefined : <Skeleton className="mt-0.5 h-3 w-40" />}
+              description={level ? (level === common && settled ? ACCESS_NAMES[level] : accessWords(level)) : <Skeleton className="mt-0.5 h-3 w-40" />}
               onOpen={opens ? () => setOpen(job) : undefined}
               openLabel={`New threads in ${job.name}`}
             >
@@ -133,7 +135,8 @@ function JobsAccess() {
           );
         })}
       </SettingSection>
-      {open ? <JobThreadsDialog job={open} onClose={() => setOpen(null)} /> : null}
+      {/* The same New threads dialog a job's page opens, whose failures it says at its own head. */}
+      {open ? <ThreadDefaultsDialog workspace={open} onClose={() => setOpen(null)} /> : null}
     </>
   );
 }
@@ -147,16 +150,6 @@ export function mostOf(levels: readonly PermissionPolicy[]): PermissionPolicy | 
   return top[1] > 1 || levels.length === 1 ? top[0] : undefined;
 }
 
-/** The job's New threads, in a dialog: the one editor of a workspace's start set (chrome/ThreadDefaultsDialog.tsx). */
-export function JobThreadsDialog({ job, onClose }: { job: WorkspaceMeta; onClose: () => void }) {
-  return (
-    <Modal onClose={onClose} title={job.name} size="sm">
-      <ModalBody>
-        <ThreadDefaultsEditor workspaceId={job.id} />
-      </ModalBody>
-    </Modal>
-  );
-}
 
 /** Away for Work threads is Away's own switch: this row says where it stands and goes there. */
 function AwayRow() {

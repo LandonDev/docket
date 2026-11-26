@@ -167,8 +167,12 @@ public final class WorkHost: CaptureHost {
     /// The host refused this key (revoked or deleted): its client's socket said so, and it holds until a link to the
     /// host truly opens (`refused`, `opened`). A Retry that only starts a new connect does not lift it.
     public internal(set) var keyRevoked = false
-    /// A live socket to this host (its client's status): with none, an outward press is refused at once.
-    public internal(set) var linked = false
+    /// A live socket to this host (its client's status): with none, an outward press is refused at once. A link that
+    /// drops puts Away's read back to waiting: what this host said before counts again only once the next connect's
+    /// `away.get` answers (the council's round 4).
+    public internal(set) var linked = false {
+        didSet { if oldValue, !linked { awayRead = .waiting } }
+    }
 
     /// This key, as the host judges its presses (KeyMay.swift).
     public var key: KeyMay {

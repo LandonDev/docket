@@ -2137,15 +2137,18 @@ Appearance, then Diagnostics with the version as its value.
   (`WorkRowState`).
 - **Away** pushes a section per computer (named when there are several):
   Code threads, and Work threads while Work is on there, the host menu's own
-  switches over `away.get` and `away.set`, one computer per flip. While a
-  computer's read is out its section is the switches' bones; "Away needs a
-  newer Docket on <computer>." only when it answered that it does not know
-  Away (`WorkHost.awayRead`), "<Computer> did not answer." with Retry on
-  another failure, the connection's sentence when it is out of reach. The
-  row's value is On while any is away, bones while a read is out, Off only
-  once every computer answered Off, "Off on 2 of 3" when some could not be
-  read, and nothing when none could (`AwayWords.summary`); the last footer
-  says what Away does.
+  switches over `away.get` and `away.set`, one computer per flip. A
+  computer's switches stand only once this link's read answered: a dropped
+  link puts the read back to waiting, so an answer held from before is not
+  shown as his setting (`AwayWords.section`, `WorkHost.awayRead`). While the
+  read is out its section is the switches' bones; "Away needs a newer Docket
+  on <computer>." only when it answered that it does not know Away;
+  "<Computer> did not answer." with Retry on another failure, even over an
+  answer held from before; the connection's sentence when it is out of
+  reach. The row's value is On while any is away, bones while a read is out,
+  Off once every computer answered Off, "Off, 4 not read" when some could not
+  be read, and "Not read" when every read settled and none answered
+  (`AwayWords.summary`); the last footer says what Away does.
 - **Notifications** is one row: the switch, with the registrar's word beside
   it only when the switch's position cannot say it ("Registering…", "No
   relay", "Failed", "Not allowed"; never "On" or "Off",

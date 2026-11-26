@@ -44,6 +44,10 @@ export function AddonDialog(props: Props) {
 /** Shared words that say "host" said as Settings says it: "computer". */
 const computerWords = (text: string): string => text.replace(/\b(H|h)osts?\b/g, (word) => `${word[0] === "H" ? "C" : "c"}omputer${word.endsWith("s") ? "s" : ""}`);
 
+/** A segmented choice's row: its words keep 10rem before the choice drops under them, so in a narrow dialog the
+ *  choice wraps to its own line instead of drawing over its label. */
+const CHOICE_ROW = "[&>[data-slot=item-content]]:min-w-40";
+
 /** Code in a field: the mono face one size below the field's 13px. */
 const MONO = "font-mono text-xs";
 
@@ -120,10 +124,10 @@ function AddonForm({ link, row, workspaces, home, onClose, onSaved, pending, set
         <FieldRow label="Where">
           <ChoiceSelect label="Where" size="sm" value={form.workspaceId ?? ""} onChange={(v) => patch({ workspaceId: v || null })} options={where} />
         </FieldRow>
-        {/* Every segmented choice stands under its label, one layout for the three, at any width. */}
-        <Field label="Connects by">
+        {/* A choice is a FieldRow, its label beside it; a field's label is a Field over it (docs/DESIGN.md). */}
+        <FieldRow label="Connects by" className={CHOICE_ROW}>
           <ChoiceToggle label="Connects by" value={form.transport} options={RUNS} onChange={(transport) => patch({ transport, ...(transport === "stdio" && form.auth === "oauth" && !form.tokenEnv ? { auth: "none" } : {}) })} />
-        </Field>
+        </FieldRow>
         {command ? (
           <>
             <Field label="Command">
@@ -153,13 +157,13 @@ function AddonForm({ link, row, workspaces, home, onClose, onSaved, pending, set
             </Field>
           </>
         )}
-        <Field label="Sign-in">
+        <FieldRow label="Sign-in" className={CHOICE_ROW}>
           <ChoiceToggle label="Sign-in" value={form.auth} options={auths} onChange={(auth) => patch({ auth })} />
-        </Field>
-        {/* The approval card's words for the transport under Computers, where they wrap whole. */}
-        <Field label="Computers" hint={runsWhere}>
+        </FieldRow>
+        {/* The approval card's words for the transport are Computers' line, where they wrap whole. */}
+        <FieldRow label="Computers" description={runsWhere} className={CHOICE_ROW}>
           <ChoiceToggle label="Computers" value={form.hosts} options={HOSTS} onChange={(hosts) => patch({ hosts })} />
-        </Field>
+        </FieldRow>
         {commandSignsIn ? (
           <Field label="Name for the sign-in token">
             <Input value={form.tokenEnv} onChange={(e) => patch({ tokenEnv: e.target.value })} spellCheck={false} autoComplete="off" className={MONO} />

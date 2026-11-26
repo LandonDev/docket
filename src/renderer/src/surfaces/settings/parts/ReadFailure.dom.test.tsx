@@ -59,10 +59,11 @@ describe("ReadFailure", () => {
         ))}
       </FailuresSaidOnce>
     );
+    // One order whichever failed first: this Mac, then the others by name.
     const { rerender } = render(page(["env_box", "local", "env_pc"]));
-    expect(lines()).toEqual(["The box, this Mac and PURDUE-LT did not answer."]);
+    expect(lines()).toEqual(["This Mac, PURDUE-LT and the box did not answer."]);
     rerender(page(["env_box", "env_pc"]));
-    expect(lines()).toEqual(["The box and PURDUE-LT did not answer."]);
+    expect(lines()).toEqual(["PURDUE-LT and the box did not answer."]);
     rerender(page([]));
     expect(lines()).toEqual([]);
   });

@@ -221,8 +221,11 @@ through `useSaved`.
 - **Windows VM** (`winvm`, `Winvm.tsx`): the computer the list names (`useWinvmKnown`, mounted by SettingsView, asks
   each computer with Work on and tells the list `vmOn`, so the row sits under that computer). Windows with its one
   press; Sleeps after; Screen size (Fits my window, or a size; Fits my window where live resize is off asks first and
-  turns it on); Picture quality; Restore points, a dialog where Go back… and Delete… ask first. While its state is read
-  it stands in as many rows as will land. Its sign-ins and its
+  turns it on, saving first and asking for the restart only once the save landed); Picture quality; Restore points, a
+  dialog where Go back… and Delete… ask first. While its state is read it stands in as many rows as will land. The
+  display settings are their own read: their rows hold a select's bone while it is out, and a failure is one Screen
+  size row in his words with its own Retry. A refused change goes back to the value last confirmed, its reason on its
+  own row (a refused press's on the Windows row), and a read again does not clear it. Its sign-ins and its
   edition's end are Connections' rows alone. The Work page no longer has it.
 
 The preview (`SettingsPages.preview.tsx`) answers per computer: `<environment id>:<method>` answers first, a fixture

@@ -21,6 +21,8 @@ export type SearchResult = {
   row?: string;
   /** The computer a row drawn once per computer is about (its environment id): a row in its sheet opens the sheet. */
   computer?: string;
+  /** A press, not a page: "Add a computer…" opens its dialog. */
+  act?: "add-computer";
 };
 
 /** What pages were called, for a search by an old page name. */
@@ -28,7 +30,7 @@ export const PAGE_WAS: Partial<Record<SettingPage, readonly string[]>> = {
   keybindings: ["Keybindings"],
   updates: ["General › About", "Hosts › Release › Code updates"],
   here: ["Hosts › Running threads, Stuck after, Attachment limit", "Providers"],
-  sharing: ["Hosts › Clients, Mac bridge, Remote access", "Hosts › Add host", "Environments"],
+  sharing: ["Hosts › Clients, Mac bridge, Remote access", "Environments"],
   publish: ["Hosts › Release"],
   defaults: ["Thread defaults"],
   orchestration: ["Orchestration"],
@@ -42,7 +44,25 @@ export const PAGE_WAS: Partial<Record<SettingPage, readonly string[]>> = {
 };
 
 /** Names that live outside the map: add-ons and skills by name, each opening its page. */
-export type SearchExtra = { title: string; page: SettingsPageId; path: string };
+export type SearchExtra = {
+  title: string;
+  page: SettingsPageId;
+  path: string;
+  /** What it was called, for a search by an old name. */
+  was?: readonly string[];
+  /** A press that opens a dialog in place of a row: "Add a computer…". */
+  act?: "add-computer";
+};
+
+/** "Add a computer…", the press at the foot of Other computers, found by its own name and by Hosts' "Add host". */
+export const ADD_COMPUTER_RESULT: SearchExtra = { title: "Add a computer…", page: "sharing", path: "Other computers", was: ["Hosts › Add host"], act: "add-computer" };
+
+/** Connections' sign-ins by name, each opening that page: its rows are per computer and per service, read live. */
+export const SIGN_IN_NAMES: readonly SearchExtra[] = ["LifeOS", "Office", "Google"].map((service) => ({
+  title: `${service} sign-in`,
+  page: "connections",
+  path: "Work, Connections",
+}));
 
 export const SEARCH_LIMIT = 40;
 
@@ -84,7 +104,7 @@ function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly
       else for (const computer of computers) out.push({ ...rowResult(entry, row, place, { ...vars, computer: nameInLine(computer.label) }), computer: computerOfSection(computer.id) ?? undefined });
     }
   }
-  for (const extra of extras) out.push({ key: `extra:${extra.page}:${extra.title}`, title: extra.title, path: extra.path, page: extra.page, names: extra.title, old: [], rank: 1 });
+  for (const extra of extras) out.push({ key: `extra:${extra.page}:${extra.title}`, title: extra.title, path: extra.path, page: extra.page, act: extra.act, names: extra.title, old: extra.was ?? [], rank: 1 });
   return out;
 }
 

@@ -3,6 +3,8 @@
 // SETTINGS_PREVIEW=editor,sharing keeps those pages' fixtures alone, so each page's shots stay readable.
 const PAGES = [
   "winvm",
+  "winvm-display",
+  "winvm-change",
   // The box's page as /ui draws it: a browser, so before the Mac windows.
   "computer-box-web",
   "away",

@@ -10,32 +10,39 @@ struct AwayWordsTests {
     }
 
     @Test func `the root row says On while any computer is away, Off only once every one answered Off`() {
-        #expect(AwayWords.summary([.off, .on]) == "On")
-        #expect(AwayWords.summary([.on, .waiting]) == "On")
-        #expect(AwayWords.summary([.off, .off]) == "Off")
+        #expect(AwayWords.summary([.switches(on: false), .switches(on: true)]) == "On")
+        #expect(AwayWords.summary([.switches(on: true), .waiting]) == "On")
+        #expect(AwayWords.summary([.switches(on: false), .switches(on: false)]) == "Off")
     }
 
     @Test func `a read still out is bones, never Off`() {
         #expect(AwayWords.summary([.waiting]) == nil)
-        #expect(AwayWords.summary([.off, .waiting]) == nil)
+        #expect(AwayWords.summary([.switches(on: false), .waiting]) == nil)
     }
 
-    @Test func `a computer that could not be read makes Off partial, and none read says nothing`() {
-        #expect(AwayWords.summary([.off, .unread, .off]) == "Off on 2 of 3")
-        #expect(AwayWords.summary([.unread]) == nil)
-        #expect(AwayWords.summary([]) == nil)
+    @Test func `computers that could not be read are counted as not read, never as on`() {
+        #expect(AwayWords.summary([.switches(on: false), .unreachable, .unreachable, .unsupported, .failed("x")]) == "Off, 4 not read")
+        #expect(AwayWords.summary([.switches(on: false), .unreachable]) == "Off, 1 not read")
     }
 
-    @Test func `each computer by its answer, its read and its link`() {
-        #expect(AwayWords.computer(away: true, read: .answered, transport: .open) == .on)
-        #expect(AwayWords.computer(away: false, read: .answered, transport: .reconnecting) == .off)
-        #expect(AwayWords.computer(away: nil, read: .waiting, transport: .open) == .waiting)
-        #expect(AwayWords.computer(away: nil, read: .waiting, transport: .connecting) == .waiting)
-        #expect(AwayWords.computer(away: nil, read: .unsupported, transport: .open) == .unread)
-        #expect(AwayWords.computer(away: nil, read: .failed("x"), transport: .open) == .unread)
-        // Out of reach: an answer held from before is not taken as his setting now.
-        #expect(AwayWords.computer(away: false, read: .answered, transport: .offline) == .unread)
-        #expect(AwayWords.computer(away: true, read: .answered, transport: .unauthorized) == .unread)
+    @Test func `every read settled and none answered: Not read, so the bones end`() {
+        #expect(AwayWords.summary([.unreachable, .unreachable]) == "Not read")
+        #expect(AwayWords.summary([.failed("x"), .unsupported]) == "Not read")
+    }
+
+    @Test func `switches only once this link's read answered`() {
+        #expect(AwayWords.section(away: true, read: .answered, transport: .open) == .switches(on: true))
+        #expect(AwayWords.section(away: false, read: .answered, transport: .reconnecting) == .switches(on: false))
+        #expect(AwayWords.section(away: nil, read: .answered, transport: .open) == .waiting)
+        // A held answer from before does not count until the new read answers, nor after it fails.
+        #expect(AwayWords.section(away: false, read: .waiting, transport: .open) == .waiting)
+        #expect(AwayWords.section(away: true, read: .failed("The box did not answer."), transport: .open) == .failed("The box did not answer."))
+        #expect(AwayWords.section(away: nil, read: .unsupported, transport: .open) == .unsupported)
+        // Out of reach: whatever is held.
+        #expect(AwayWords.section(away: false, read: .answered, transport: .offline) == .unreachable)
+        #expect(AwayWords.section(away: true, read: .waiting, transport: .unauthorized) == .unreachable)
+        #expect(AwayWords.Section.switches(on: false).answered)
+        #expect(!AwayWords.Section.waiting.answered)
     }
 }
 

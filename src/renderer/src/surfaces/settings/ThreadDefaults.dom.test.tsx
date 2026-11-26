@@ -17,10 +17,13 @@ const state = vi.hoisted(() => ({
   permission: "edits" as "safe" | "edits" | "auto",
   confirm: vi.fn(async (_request: unknown) => true),
   may: true,
+  load: vi.fn(async (..._args: unknown[]) => {}),
   globalPermission: "edits" as "safe" | "edits" | "auto",
   unheard: [] as string[],
   waiting: [] as string[],
   inheritedOut: false,
+  inheritedFails: false,
+  inheritedReads: 0,
   plansFailed: false,
   plansRetry: vi.fn(),
 }));
@@ -46,7 +49,18 @@ vi.mock("../../chrome/ConfirmDialog", async (original) => ({
   confirmAction: (request: unknown) => state.confirm(request),
 }));
 const link = vi.hoisted(() => ({ environmentId: "local", connected: true, onOpen: () => () => {} }));
-vi.mock("../../lib/connection", () => ({ registry: { primary: () => link, primaryEnvironmentId: "local" } }));
+vi.mock("../../lib/connection", () => ({ registry: { primary: () => link, primaryEnvironmentId: "local", linkOf: () => link } }));
+// Use New threads' own fresh read of the set a place would follow.
+vi.mock("../../lib/connection/openRead", async (original) => ({
+  ...(await original<typeof import("../../lib/connection/openRead")>()),
+  withDeadline: <T,>(p: Promise<T>) => p,
+  readWhenOpen: () => {
+    state.inheritedReads += 1;
+    if (state.inheritedOut) return new Promise(() => {});
+    if (state.inheritedFails) return Promise.reject(new Error("The computer did not answer"));
+    return Promise.resolve({ defaults: { provider: "claude", model: "", reasoning: "medium", permission: state.globalPermission }, overridden: true });
+  },
+}));
 vi.mock("../../lib/connection/status", () => ({
   useEnvironments: () => Array.from({ length: state.hosts }, (_, i) => ({ id: i ? `env_${i}` : "local", name: i ? "box" : "This Mac" })),
 }));
@@ -67,7 +81,7 @@ const defaultsOf = () => ({ provider: "claude", model: "", reasoning: "medium", 
 vi.mock("../../lib/tcserver/workspaces", () => ({
   scopeKey: (env: string, id: string) => `${env}:${id}`,
   useThreadDefaults: (_env: string, id: string | null) =>
-    state.failed || (id === null && state.inheritedOut) ? undefined : { defaults: defaultsOf(), overridden: id === null ? state.overridden : state.overriding.has(id), home: state.home },
+    state.failed ? undefined : { defaults: defaultsOf(), overridden: id === null ? state.overridden : state.overriding.has(id), home: state.home },
   useThreadDefaultsError: () => (state.failed ? { error: "The computer did not answer", retry: state.retry } : null),
   useWorkspaceCatalog: () => ({
     workspaces: state.workspaces,
@@ -76,6 +90,7 @@ vi.mock("../../lib/tcserver/workspaces", () => ({
   }),
   workspaceStore: {
     saveDefaults: (...args: unknown[]) => state.save(...args),
+    loadDefaults: (...args: unknown[]) => state.load(...args),
     defaultsAt: (_env: string, id: string | null) => ({
       defaults: id === null ? { ...defaultsOf(), permission: state.globalPermission } : { ...defaultsOf(), permission: "edits" },
       overridden: id === null ? state.overridden : state.overriding.has(id),
@@ -122,6 +137,9 @@ beforeEach(() => {
   state.unheard = [];
   state.waiting = [];
   state.inheritedOut = false;
+  state.inheritedFails = false;
+  state.inheritedReads = 0;
+  state.load.mockClear();
   state.plansRetry.mockClear();
 });
 afterEach(cleanup);
@@ -289,6 +307,8 @@ describe("Different in N places", () => {
     render(<ThreadDefaultsPage />);
     expect(document.querySelector("[data-setting='defaults.different']")).toBeNull();
     expect(screen.getByRole("region", { name: "Start with" }).querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(1);
+    // A place nobody has read (one a workspace push listed) has its set asked for, so the row never waits for ever.
+    expect(state.load).toHaveBeenCalledWith("local", "w2");
   });
 
   it("says a floor and the places it has not heard from when a computer did not answer", () => {
@@ -349,6 +369,37 @@ describe("Use New threads", () => {
 });
 
 describe("Use New threads, before it knows what it would bring", () => {
+  it("shows its computer's failure inside the dialog, with Retry, even with a set cached", async () => {
+    state.overriding = new Set(["w1"]);
+    state.inheritedFails = true;
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    expect(within(dialog).queryByRole("button", { name: "Use New threads" })).toBeNull();
+    expect(within(dialog).getByRole("alert").textContent).toBe("This Mac did not answer.");
+    state.inheritedFails = false;
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
+    });
+    await act(async () => {});
+    expect(within(dialog).getByRole("button", { name: "Use New threads" })).toBeTruthy();
+  });
+
+  it("checks Full access again on the answer at the press", async () => {
+    state.overriding = new Set(["w1"]);
+    render(<ThreadDefaultsDialog workspace={ALPHA} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
+    await act(async () => {});
+    // New threads turned Full access after the dialog read it.
+    state.globalPermission = "auto";
+    state.confirm.mockImplementation(async () => false);
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Use New threads" }));
+    });
+    expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Give Alpha Full access" }));
+    expect(state.save).not.toHaveBeenCalled();
+  });
+
   it("is a bone while the set the place would follow is out", async () => {
     state.overriding = new Set(["w1"]);
     state.inheritedOut = true;

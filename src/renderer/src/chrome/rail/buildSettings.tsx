@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { BuildConfig } from "@server/shared/build";
 import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
@@ -86,13 +86,28 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
     };
   }, [environmentId, workspaceId, path]);
 
+  // Each field's write waits for the one before it and is made from the set the computer last confirmed, so two quick
+  // edits (Command, then What it makes) never write over each other; a refused one leaves the confirmed set as it was.
+  // Kept for the page's life and touched only by a press, never while drawing.
+  const writesRef = useRef({ confirmed: null as BuildConfig | null, queue: Promise.resolve() as Promise<unknown>, writing: 0 });
   const commit = (saved: Saved, patch: Partial<BuildConfig>): Promise<boolean> => {
     if (!environmentId || !config) return Promise.resolve(false);
-    const next = { ...config, ...patch };
-    return saved.run(async () => {
+    const writes = writesRef.current;
+    // A burst of writes starts from what the page shows; each later one from what the computer confirmed.
+    if (writes.writing === 0) writes.confirmed = config;
+    writes.writing += 1;
+    const write = writes.queue.then(async () => {
+      const next = { ...(writes.confirmed ?? config), ...patch };
       await registry.linkOf(environmentId).request("build.set", { workspaceId, config: buildOrNull(next) });
+      writes.confirmed = next;
       read.set(next);
     });
+    writes.queue = write
+      .catch(() => {})
+      .finally(() => {
+        writes.writing -= 1;
+      });
+    return saved.run(() => write);
   };
 
   const failed = config === undefined && read.error !== null;
@@ -123,7 +138,8 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
         </PageError>
       ) : (
         <div data-testid="build-skeleton">
-          <PageRowsSkeleton rows={2} description control="field" />
+          {/* The loaded rows' own shape: wide, the field under its words on a narrow page. */}
+          <PageRowsSkeleton rows={[{ description: true, control: "field", wide: true }, { description: true, control: "field", wide: true }]} />
         </div>
       )}
     </SettingSection>

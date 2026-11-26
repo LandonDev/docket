@@ -85,9 +85,7 @@ struct SettingsView: View {
                     NavigationLink {
                         AwaySettingsScreen().sidebarButtonPage()
                     } label: {
-                        let word = AwayWords.summary(clients.map { client in
-                            AwayWords.computer(away: client.work.away.map { AwayKinds.any($0.state) }, read: client.work.awayRead, transport: client.status.transport)
-                        })
+                        let word = AwayWords.summary(clients.map(Self.awaySection))
                         LabeledContent("Away") {
                             Text(word ?? "Off")
                                 .redacted(reason: word == nil ? .placeholder : [])
@@ -157,6 +155,11 @@ struct SettingsView: View {
         // The proof's `diagnostics` route (RootView): Settings opens straight onto Diagnostics and its Work Checks.
         .task { if ProcessInfo.processInfo.environment["TC_TEST_ROUTE"] == "diagnostics" { showsDiagnostics = true } }
         #endif
+    }
+
+    /// One computer's Away as Settings shows it: its switches only once this link's read answered.
+    static func awaySection(_ client: EnvironmentClient) -> AwayWords.Section {
+        AwayWords.section(away: client.work.away.map { AwayKinds.any($0.state) }, read: client.work.awayRead, transport: client.status.transport)
     }
 
     /// A link that has answered or stopped trying: its Work settings will not come by waiting.
@@ -243,40 +246,41 @@ private struct AwayComputerSection: View {
         let switches = work.awaySwitches { id in threads.first { $0.id == id }?.scope }
             .filter { $0.kind != .work || work.isOn }
         Section {
-            if work.away == nil {
-                // Old-release words only for a reply that says so; a read still out is bones (the council's round 3).
-                switch (client.status.transport, work.awayRead) {
-                case (.offline, _), (.unauthorized, _):
-                    Text(ConnectionSentence.text(name: client.environment.name, status: client.status, now: .now))
-                        .textStep(.meta)
-                case (_, .unsupported):
-                    Text("Away needs a newer Docket on \(nameInLine(client.environment.name)).")
-                        .textStep(.meta)
-                case (.open, .failed):
-                    HStack(spacing: Layout.rowGap) {
-                        Text("\(nameAtStart(client.environment.name)) did not answer.")
-                            .textStep(.meta, tint: Tint.destructiveText)
-                        Spacer(minLength: Layout.rowGap)
-                        // A grouped list keeps the system highlight: a plain button, no press scale.
-                        Button("Retry") { Task { await work.readAway() } }
-                            .buttonStyle(.borderless)
+            // Switches only once this link's read answered; old-release words only for a reply that says so; a read
+            // still out is bones; a failed one keeps its line and Retry, whatever was held before (the council's rounds
+            // 3 and 4).
+            switch SettingsView.awaySection(client) {
+            case .switches:
+                ForEach(switches) { item in
+                    Toggle(isOn: Binding(get: { item.on }, set: { on in Task { await flip(item.kind, on) } })) {
+                        Text(AwayWords.title(item.kind))
+                        if let tally = item.tally { Text(tally) }
                     }
-                default:
-                    SettingsPlaceholderRows(labels: [AwayWords.title(.code)], toggles: true)
+                    .disabled(!work.may(.awaySet))
+                    .accessibilityIdentifier("away-settings-\(item.id)")
                 }
-            }
-            ForEach(switches) { item in
-                Toggle(isOn: Binding(get: { item.on }, set: { on in Task { await flip(item.kind, on) } })) {
-                    Text(AwayWords.title(item.kind))
-                    if let tally = item.tally { Text(tally) }
+            case .unreachable:
+                Text(ConnectionSentence.text(name: client.environment.name, status: client.status, now: .now))
+                    .textStep(.meta)
+            case .unsupported:
+                Text("Away needs a newer Docket on \(nameInLine(client.environment.name)).")
+                    .textStep(.meta)
+            case .failed:
+                HStack(spacing: Layout.rowGap) {
+                    Text("\(nameAtStart(client.environment.name)) did not answer.")
+                        .textStep(.meta, tint: Tint.destructiveText)
+                    Spacer(minLength: Layout.rowGap)
+                    // A grouped list keeps the system highlight: a plain button, no press scale.
+                    Button("Retry") { Task { await work.readAway() } }
+                        .buttonStyle(.borderless)
                 }
-                .disabled(!work.may(.awaySet))
-                .accessibilityIdentifier("away-settings-\(item.id)")
+            case .waiting:
+                SettingsPlaceholderRows(labels: [AwayWords.title(.code)], toggles: true)
             }
         } header: {
             if named { Text(client.environment.name) }
         } footer: {
-            let lines = (work.away != nil && !work.may(.awaySet) ? ["This phone may not change Away on \(client.environment.name)."] : []) + (last ? [AwayWords.footer] : [])
+            let lines = (SettingsView.awaySection(client).answered && !work.may(.awaySet) ? ["This phone may not change Away on \(nameInLine(client.environment.name))."] : []) + (last ? [AwayWords.footer] : [])
             if !lines.isEmpty { Text(lines.joined(separator: "\n")) }
         }
     }

@@ -281,7 +281,7 @@ function LinkShown({ made, computer, inLine, onClose, onChanged }: { made: MadeL
             </code>
             {/* The whole link rides the attribute for scripts (J54); the line shows its address. */}
             {made.url ? (
-              <span data-sign-in-link={made.url} className="max-w-full truncate text-xs text-muted-foreground">
+              <span data-sign-in-link={made.url} className="max-w-full text-xs break-all text-muted-foreground">
                 {shortLink(made.url)}
               </span>
             ) : null}

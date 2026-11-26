@@ -13,7 +13,7 @@ import { computerInLine, useComputerName, useReadFailWords } from "../../../lib/
  * one, a failure says its own line where it stands.
  */
 
-type Failure = { computer: string; silent: boolean; words: string; retry: () => unknown };
+type Failure = { computer: string; own: boolean; silent: boolean; words: string; retry: () => unknown };
 
 class Failures {
   private byId = new Map<string, Failure>();
@@ -22,7 +22,7 @@ class Failures {
 
   set(id: string, failure: Failure | null): void {
     const was = this.byId.get(id);
-    if (failure ? was?.words === failure.words && was.computer === failure.computer && was.retry === failure.retry : !was) return;
+    if (failure ? was?.words === failure.words && was.computer === failure.computer && was.own === failure.own && was.retry === failure.retry : !was) return;
     // A Map keeps the order failures first said themselves: the page's lines follow it.
     if (failure) this.byId.set(id, failure);
     else this.byId.delete(id);
@@ -35,7 +35,9 @@ class Failures {
     const silent: string[] = [];
     const silentRetries: (() => unknown)[] = [];
     const others = new Map<string, (() => unknown)[]>();
-    for (const failure of this.byId.values()) {
+    // One order whichever read failed first: this window's own computer, then the others by name.
+    const failures = [...this.byId.values()].sort((a, b) => Number(b.own) - Number(a.own) || a.computer.localeCompare(b.computer));
+    for (const failure of failures) {
       if (failure.silent) {
         if (!silent.includes(failure.computer)) silent.push(failure.computer);
         silentRetries.push(failure.retry);
@@ -124,7 +126,9 @@ function FailureLine({ words, retries, className }: { words: string; retries: re
 export function ReadFailure({ computer, error, retry, className }: { computer: string; error: string; retry: () => unknown; className?: string }) {
   const failures = useContext(FailuresContext);
   const words = useReadFailWords(computer)(error);
-  const inLine = computerInLine(useComputerName(computer));
+  const name = useComputerName(computer);
+  const inLine = computerInLine(name);
+  const own = name.own;
   const silent = !error || error === NO_ANSWER;
   const id = useId();
   // The newest retry, through a stable function: a parent's new closure each render does not re-register.
@@ -134,9 +138,9 @@ export function ReadFailure({ computer, error, retry, className }: { computer: s
   });
   const stable = useMemo(() => () => latest.current(), []);
   useLayoutEffect(() => {
-    failures?.set(id, { computer: inLine, silent, words, retry: stable });
+    failures?.set(id, { computer: inLine, own, silent, words, retry: stable });
     return () => failures?.set(id, null);
-  }, [failures, id, inLine, silent, words, stable]);
+  }, [failures, id, inLine, own, silent, words, stable]);
   if (failures) return null;
   return <FailureLine words={words} retries={[retry]} className={className} />;
 }

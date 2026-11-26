@@ -10,7 +10,9 @@ import { BusyLabel, Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Skeleton } from "../../../components/ui/skeleton";
 import { registry, useEnvironments } from "../../../lib/connection";
+import { NO_ANSWER } from "../../../lib/connection/openRead";
 import { hostFailure } from "../../../lib/hostFailure";
+import { useReadFailWords } from "../../../lib/settings/computerName";
 import { dayTime } from "../../../lib/duration";
 import { useLinkMay } from "../../../lib/linkMay";
 import { useSettingsKnown, tellSettingsList } from "../../../lib/settings/useListWindow";
@@ -27,6 +29,11 @@ import { SettingRow } from "../parts/SettingRow";
  * Save a point need operate: a press this window's key may not make is not drawn, and the setting it would change
  * stands as plain words.
  */
+
+/** The guest's screen and picture quality, as the computer confirmed them. */
+type Display = { screen: WinvmScreen; detail: WinvmDetail | null };
+/** What a change on this page writes (`work.winvm.settings`), one setting a change. */
+type Changes = { sleepAfter: WinvmSleepAfter; screen: WinvmScreen; detail: WinvmDetail };
 
 const RESIZE_STEPS = new Set<string>(Object.values(LIVE_RESIZE_WORDS));
 /** Live resize is being turned on or off: the Windows row says only that its display is changing. */
@@ -130,6 +137,13 @@ export function useWinvmKnown(): void {
   }, [key]);
 }
 
+/** `record` without `key`, a new object (the compiler takes no computed rest pattern). */
+function without<T extends object>(record: T, key: keyof T): T {
+  const rest = { ...record };
+  delete rest[key];
+  return rest;
+}
+
 /** The page: the computer the list says holds the VM, or a line where none does. */
 export function WinvmPage() {
   const { vmOn } = useSettingsKnown();
@@ -147,7 +161,16 @@ export function WinvmHost({ env }: { env: string }) {
   const [points, setPoints] = useState<WinvmPoint[] | null>(null);
   /** A failed read of the points: its own line with Retry, never "None yet". */
   const [pointsError, setPointsError] = useState<string | null>(null);
-  const [settings, setSettings] = useState<{ screen: WinvmScreen; detail: WinvmDetail | null } | null>(null);
+  /** The display settings as the computer last confirmed them; null until it has said. */
+  const [settings, setSettings] = useState<Display | null>(null);
+  /** Their read failed before any answer: the screen's row says so with its own Retry. `null` words: no answer. */
+  const [settingsError, setSettingsError] = useState<{ words: string | null } | null>(null);
+  const readWords = useReadFailWords(env);
+  /** A change on its way, shown at once; dropped when the computer answers either way. */
+  const [pending, setPending] = useState<Partial<Changes>>({});
+  /** A refused change's reason, beside its own control; only his next change of that setting clears it. */
+  const [refused, setRefused] = useState<Partial<Record<keyof Changes, string>>>({});
+  /** A press the computer refused (Set up, Wake, Sleep): the Windows row's own line. */
   const [error, setError] = useState<string | null>(null);
   /** The machine's read's own reason, for the page's one failure line. */
   const [readError, setReadError] = useState<string | null>(null);
@@ -169,6 +192,19 @@ export function WinvmHost({ env }: { env: string }) {
       },
     );
   }, [link, env]);
+  // The screen is read with the settings, the admin rule: a key that may not change it never asks. A read again that
+  // fails keeps the values last confirmed.
+  const loadSettings = useCallback((): Promise<void> => {
+    if (!admin) return Promise.resolve();
+    return link.request<WinvmSettings>("work.winvm.settings", {}).then(
+      (v) => {
+        setSettings({ screen: v.screen, detail: v.detail ?? null });
+        setSettingsError(null);
+      },
+      // No answer is said as every read says it ("The box did not answer."); a refusal in the act's words.
+      (err: unknown) => setSettingsError({ words: err instanceof Error && err.message === NO_ANSWER ? null : hostFailure(env, err, "could not read the display settings") }),
+    );
+  }, [link, env, admin]);
   const load = useCallback((): Promise<void> => {
     const read = link.request<WinvmState>("work.winvm.state", {}).then(stateOf).then(
       (s) => {
@@ -181,14 +217,9 @@ export function WinvmHost({ env }: { env: string }) {
       },
     );
     void loadPoints();
-    // The screen is read with the settings, the admin rule: a key that may not change it never asks.
-    if (admin)
-      void link.request<WinvmSettings>("work.winvm.settings", {}).then(
-        (v) => setSettings({ screen: v.screen, detail: v.detail ?? null }),
-        () => setSettings(null),
-      );
+    void loadSettings();
     return read;
-  }, [link, env, admin, loadPoints]);
+  }, [link, env, loadPoints, loadSettings]);
   useEffect(() => {
     void load();
     const offPush = link.onPush((push) => {
@@ -240,47 +271,61 @@ export function WinvmHost({ env }: { env: string }) {
       setPressing(false);
     }
   };
-  /** A change he made shows at once; a refusal reads the computer's values again and says why. */
-  const save = async (change: { sleepAfter: WinvmSleepAfter } | { screen: WinvmScreen } | { detail: WinvmDetail }): Promise<void> => {
-    try {
-      if ("sleepAfter" in change) setState({ ...state, sleepAfter: change.sleepAfter });
-      else if (settings) setSettings({ ...settings, ...change });
-      await link.request("work.winvm.settings", change);
-    } catch (err) {
-      setError(hostFailure(env, err, "did not save the change", true));
-      void load();
-    }
+  /** A change he made shows at once and becomes the confirmed value once the computer takes it; refused, the control
+   *  goes back to the value last confirmed and its row says why. Answers whether it was saved. */
+  const save = <K extends keyof Changes>(field: K, value: Changes[K]): Promise<boolean> => {
+    setPending((p) => ({ ...p, [field]: value }));
+    setRefused((r) => without(r, field));
+    // Only this change's own value leaves pending: a newer pick of the same setting stays shown.
+    const settle = (): void => setPending((p) => (p[field] === value ? without(p, field) : p));
+    return link.request("work.winvm.settings", { [field]: value }).then(
+      () => {
+        if (field === "sleepAfter") setState((s) => (s ? { ...s, sleepAfter: value as WinvmSleepAfter } : s));
+        else setSettings((d) => (d ? { ...d, [field]: value } : d));
+        settle();
+        return true;
+      },
+      (err: unknown) => {
+        setRefused((r) => ({ ...r, [field]: hostFailure(env, err, "did not save the change", true) }));
+        settle();
+        return false;
+      },
+    );
   };
-  /** Fits my window where live resize is off turns it on: Windows restarts once, so it asks first. */
+  /** Fits my window where live resize is off turns it on: Windows restarts once, so it asks first, saves, and asks
+   *  for the restart only once the save landed. */
   const pickScreen = async (screen: WinvmScreen): Promise<void> => {
     const live = state.display?.device === "virtio";
     if (screen === "fit" && state.display && !live) {
       if (!(await confirmAction(TURN_ON))) return;
+      if (!(await save("screen", screen))) return;
       try {
-        await save({ screen });
         // answered at once: the steps come as the state's pushes
         await link.request("work.winvm.display.upgrade", {});
       } catch (err) {
-        setError(hostFailure(env, err, "did not fit the Windows VM to your window", true));
+        setRefused((r) => ({ ...r, screen: hostFailure(env, err, "did not fit the Windows VM to your window", true) }));
       }
       return;
     }
-    await save({ screen });
+    await save("screen", screen);
   };
   return (
     <>
       <WinvmView
-        state={state}
+        state={pending.sleepAfter ? { ...state, sleepAfter: pending.sleepAfter } : state}
         points={points}
         pointsError={pointsError}
         onRetryPoints={loadPoints}
-        settings={settings}
+        settings={settings && { screen: pending.screen ?? settings.screen, detail: pending.detail ?? settings.detail }}
+        settingsError={settingsError && (settingsError.words ?? readWords(NO_ANSWER))}
+        onRetrySettings={loadSettings}
+        refused={refused}
         error={error}
         pressing={pressing}
         onPress={() => void press()}
-        onSleepAfter={(v) => void save({ sleepAfter: v })}
+        onSleepAfter={(v) => void save("sleepAfter", v)}
         onScreen={(v) => void pickScreen(v)}
-        onQuality={(v) => void save({ detail: v })}
+        onQuality={(v) => void save("detail", v)}
         onPoints={() => setShowPoints(true)}
         may={{ admin, operate }}
       />
@@ -297,7 +342,13 @@ export interface WinvmViewProps {
   /** his Retry: it spins until what it returns settles */
   onRetryPoints?: () => void | Promise<void>;
   /** the guest's screen and picture quality; null until the computer has said (or for a key that may not ask) */
-  settings: { screen: WinvmScreen; detail: WinvmDetail | null } | null;
+  settings: Display | null;
+  /** their read failed before any answer: the screen's row says so, with Retry */
+  settingsError?: string | null;
+  onRetrySettings?: () => void | Promise<void>;
+  /** a refused change's reason, on its own setting's row */
+  refused?: Partial<Record<keyof Changes, string>>;
+  /** a refused press (Set up, Wake, Sleep), on the Windows row */
   error: string | null;
   pressing: boolean;
   onPress: () => void;
@@ -310,9 +361,25 @@ export interface WinvmViewProps {
 }
 
 /** The page's rows, pure: the machine's row and, once it is set up, when it sleeps, its screen, its quality and its points. */
-export function WinvmView({ state, points, pointsError, onRetryPoints, settings, error, pressing, onPress, onSleepAfter, onScreen, onQuality, onPoints, may = { admin: true, operate: true } }: WinvmViewProps) {
+export function WinvmView({
+  state,
+  points,
+  pointsError,
+  onRetryPoints,
+  settings,
+  settingsError,
+  onRetrySettings,
+  refused = {},
+  error,
+  pressing,
+  onPress,
+  onSleepAfter,
+  onScreen,
+  onQuality,
+  onPoints,
+  may = { admin: true, operate: true },
+}: WinvmViewProps) {
   const row = winvmRow(state);
-  const [retryingPoints, setRetryingPoints] = useState(false);
   // a computer before live resize says no display: the size is a new Set up's
   const live = state.display?.device === "virtio";
   const turning = resizing(state);
@@ -333,35 +400,46 @@ export function WinvmView({ state, points, pointsError, onRetryPoints, settings,
       </SettingRow>
       {state.state !== "none" ? (
         <>
-          <SettingRow id="winvm.sleeps" description={may.admin ? undefined : sleepWords}>
+          <SettingRow id="winvm.sleeps" description={may.admin ? undefined : sleepWords} error={refused.sleepAfter}>
             {may.admin ? <ChoiceSelect size="sm" label="Sleeps after" value={state.sleepAfter} options={SLEEP_AFTER} onChange={(v) => onSleepAfter(v as WinvmSleepAfter)} /> : null}
           </SettingRow>
-          {settings && may.admin ? (
-            // on the old display Windows keeps the size it was set up at through every sleep (guestScreen.ts): a size is a new Set up's
-            <SettingRow id="winvm.screen" description={turning ? (state.step ?? undefined) : live || settings.screen === "fit" ? undefined : "Used when the VM is set up again"}>
-              <ChoiceSelect size="sm" label="Screen size" value={settings.screen} options={SCREENS} disabled={turning || state.state === "setting-up"} onChange={(v) => onScreen(v as WinvmScreen)} />
+          {!may.admin ? null : settings ? (
+            <>
+              {/* on the old display Windows keeps the size it was set up at through every sleep (guestScreen.ts): a size is a new Set up's */}
+              <SettingRow
+                id="winvm.screen"
+                description={turning ? (state.step ?? undefined) : live || settings.screen === "fit" ? undefined : "Used when the VM is set up again"}
+                error={refused.screen}
+              >
+                <ChoiceSelect size="sm" label="Screen size" value={settings.screen} options={SCREENS} disabled={turning || state.state === "setting-up"} onChange={(v) => onScreen(v as WinvmScreen)} />
+              </SettingRow>
+              {live && settings.detail ? (
+                <SettingRow id="winvm.quality" error={refused.detail}>
+                  <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} onChange={(v) => onQuality(v as WinvmDetail)} />
+                </SettingRow>
+              ) : null}
+            </>
+          ) : settingsError ? (
+            // The display's own read failed: one row says so in his words with its own Retry; the Windows row stays.
+            <SettingRow id="winvm.screen" error={settingsError}>
+              {onRetrySettings ? <RetryButton retry={onRetrySettings} /> : null}
             </SettingRow>
-          ) : null}
-          {live && settings?.detail && may.admin ? (
-            <SettingRow id="winvm.quality">
-              <ChoiceSelect size="sm" label="Picture quality" value={settings.detail} options={QUALITIES} onChange={(v) => onQuality(v as WinvmDetail)} />
-            </SettingRow>
-          ) : null}
+          ) : (
+            // While the display is read, its rows wait in their places with a select's bone each.
+            <>
+              <SettingRow id="winvm.screen">
+                <SelectBone />
+              </SettingRow>
+              {live ? (
+                <SettingRow id="winvm.quality">
+                  <SelectBone />
+                </SettingRow>
+              ) : null}
+            </>
+          )}
           {pointsError ? (
             <SettingRow id="winvm.restore" error={pointsError}>
-              {onRetryPoints ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={retryingPoints}
-                  onClick={() => {
-                    setRetryingPoints(true);
-                    void Promise.resolve(onRetryPoints()).finally(() => setRetryingPoints(false));
-                  }}
-                >
-                  <BusyLabel busy={retryingPoints} label="Retry" />
-                </Button>
-              ) : null}
+              {onRetryPoints ? <RetryButton retry={onRetryPoints} /> : null}
             </SettingRow>
           ) : (
             <SettingRow
@@ -384,6 +462,27 @@ export function WinvmView({ state, points, pointsError, onRetryPoints, settings,
         </>
       ) : null}
     </PageSection>
+  );
+}
+
+/** A small select's bone (`ChoiceSelect size="sm"`, 28px), at a row's end while its value is read. */
+const SelectBone = () => <Skeleton data-skeleton-control aria-label="Loading" className="h-7 w-36 shrink-0 rounded-lg" />;
+
+/** A failed read's Retry on its own row: it spins until the read it asked settles. */
+function RetryButton({ retry }: { retry: () => void | Promise<void> }) {
+  const [retrying, setRetrying] = useState(false);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      disabled={retrying}
+      onClick={() => {
+        setRetrying(true);
+        void Promise.resolve(retry()).finally(() => setRetrying(false));
+      }}
+    >
+      <BusyLabel busy={retrying} label="Retry" />
+    </Button>
   );
 }
 
