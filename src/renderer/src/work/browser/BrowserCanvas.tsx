@@ -22,7 +22,7 @@ import { sharpWidth } from "../../lib/video/support";
 import { sayError } from "../canvas/frame";
 import { OpenFailed } from "../canvas/FetchState";
 import type { CanvasBodyProps } from "../canvas/kind";
-import { barFaceOf, heldSubmitOf, portalValues, siteHost, type BarFace, type HeldSubmitPayload, type PortalValue } from "./portal";
+import { barFaceOf, heldFit, heldSubmitOf, portalValues, siteHost, type BarFace, type HeldSubmitPayload, type PortalValue } from "./portal";
 import { discardHeld, pictureShown, setDriver, setLiveDrawn, submitHeld, useBrowserState, useHeldActs, useHeldPicture, useLiveDrawn } from "./store";
 
 /**
@@ -118,20 +118,62 @@ export function Bar(props: CanvasBodyProps & BrowserSeam) {
   // this canvas is one of his places that show the page he drives: the last of them to go hands it back (driveHold.ts)
   useDriveHold(`${env}\nbrowser:${pane}`, face.face === "owner" || (face.face === "held" && face.owner), () => setDriver(env, pane, "agent"));
   const host = siteHost(state);
+  const bar = useRef<HTMLSpanElement>(null);
+  const fit = useHeldFit(bar, face.face === "held" ? `${host ?? ""}\n${face.act}\n${face.verb}` : null);
   // A first read that failed is the state line's alone: the bar holds no bone that would never fill.
   if (error) return null;
   // Its own container, the free room in the bar: a verb the pane cannot hold gives way by the pane's width, not the window's,
-  // and who drives goes whole before its verb would be cut (the verb already says it).
+  // and who drives goes whole before its verb would be cut (the verb already says it). A held submit's host and words give
+  // way whole by the room measured (`useHeldFit`).
   return (
-    <span data-slot="browser-bar" className="@container/browser flex min-w-0 flex-1 items-center gap-2">
+    <span ref={bar} data-slot="browser-bar" className="@container/browser relative flex min-w-0 flex-1 items-center gap-2">
       {face.face === "loading" ? (
         <Skeleton className="h-3 w-32" />
-      ) : host ? (
+      ) : host && fit.host ? (
         <Host host={host} />
       ) : null}
-      <FaceEnd face={face} env={env} busy={busy} seen={seen} press={press} takeOver={takeOver} handBack={handBack} />
+      <FaceEnd face={face} env={env} busy={busy} seen={seen} press={press} takeOver={takeOver} handBack={handBack} short={fit.short} hostGone={host && !fit.host ? host : null} />
+      {face.face === "held" ? (
+        // Unseen copies, out of the flow: the host and the press's words both ways, measured to decide what gives way.
+        <span aria-hidden data-slot="browser-measure" className="pointer-events-none invisible absolute top-0 left-0 flex h-0 w-0 overflow-hidden whitespace-nowrap">
+          {host ? (
+            <span data-measure="host" className="flex shrink-0 items-center gap-1.5">
+              <Lock className="size-3" />
+              {host}
+            </span>
+          ) : null}
+          <span data-measure="act" className="shrink-0 text-xs font-medium">{face.act}</span>
+          <span data-measure="verb" className="shrink-0 text-xs font-medium">{face.verb}</span>
+        </span>
+      ) : null}
     </span>
   );
+}
+
+/**
+ * What a held submit's bar shows by its room (`heldFit`): measured on every resize of the bar, from the unseen copies
+ * and the presses beside the primary, none of which change with what it decides, so a measure never undoes itself.
+ */
+function useHeldFit(bar: RefObject<HTMLSpanElement | null>, key: string | null): { host: boolean; short: boolean } {
+  const [fit, setFit] = useState({ host: true, short: false });
+  useLayoutEffect(() => {
+    const el = bar.current;
+    if (!el || key === null) return setFit({ host: true, short: false });
+    const width = (selector: string): number => el.querySelector<HTMLElement>(selector)?.offsetWidth ?? 0;
+    const measure = (): void => {
+      const others = [...(el.querySelector("[data-held-end]")?.children ?? [])].filter((c): c is HTMLElement => c instanceof HTMLElement && !c.matches("[data-browser-submit]") && c.offsetWidth > 0);
+      // jsdom and a bar not laid out yet measure nothing: everything shows until the bar has a width.
+      if (!el.clientWidth) return;
+      const next = heldFit({ bar: el.clientWidth, host: width("[data-measure=host]"), others: others.reduce((sum, c) => sum + c.offsetWidth + 4, 0), act: width("[data-measure=act]"), verb: width("[data-measure=verb]") });
+      setFit((was) => (was.host === next.host && was.short === next.short ? was : next));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [bar, key]);
+  return key === null ? { host: true, short: false } : fit;
 }
 
 /**
@@ -160,8 +202,14 @@ function FaceEnd({
   press,
   takeOver,
   handBack,
+  short = false,
+  hostGone = null,
 }: {
   face: BarFace;
+  /** the bar is too narrow for the press's whole words: it reads its verb alone */
+  short?: boolean;
+  /** the site's host gave way: the press's tip names it */
+  hostGone?: string | null;
   env: string;
   busy: string | null;
   /** the page his press approves is on screen */
@@ -206,7 +254,7 @@ function FaceEnd({
       const held = face.item;
       return (
         // The verbs stay whole; the primary takes the room left beside Discard and cuts its words there, never its box or its ring.
-        <span className="ms-auto flex min-w-0 items-center gap-1">
+        <span data-held-end className="ms-auto flex min-w-0 items-center gap-1">
           {face.owner ? (
             <Button variant="ghost" size="xs" data-hand-back className="shrink-0" disabled={!!busy} onClick={handBack}>
               <BusyLabel busy={busy === "back"} label="Hand back" />
@@ -219,7 +267,7 @@ function FaceEnd({
           <Button variant="ghost" size="xs" className="shrink-0" disabled={!!busy} onClick={() => press("discard", () => discardHeld(env, held))}>
             <BusyLabel busy={busy === "discard"} label="Discard" />
           </Button>
-          <Primary label={face.act} busy={busy === "submit"} disabled={!!busy || !seen} onClick={() => press("submit", () => submitHeld(env, held))} />
+          <Primary label={short ? face.verb : face.act} name={face.act} tip={hostGone ? `${face.act}, ${hostGone}` : face.act} given={short || !!hostGone} busy={busy === "submit"} disabled={!!busy || !seen} onClick={() => press("submit", () => submitHeld(env, held))} />
         </span>
       );
     }
@@ -227,11 +275,12 @@ function FaceEnd({
 }
 
 /**
- * The held submit's one primary: its words cut to the room it has (a site's name runs to 80 characters), whole in its
- * name and, while cut, in its tooltip. One tooltip trigger stays mounted around it, the tip off while the words fit, so a
+ * The held submit's one primary: its whole words ("Submit in Concur") where the bar has room, its verb alone where it
+ * has not (`heldFit`), cut only past that; whole in its name, and in its tooltip while cut or short, with the site's host
+ * once the host gave way. One tooltip trigger stays mounted around it, the tip off while the words fit, so a
  * pane that narrows or widens never swaps the button (its focus stays) and the measure keeps watching the words shown.
  */
-function Primary({ label, busy, disabled, onClick }: { label: string; busy: boolean; disabled: boolean; onClick(): void }) {
+function Primary({ label, name = label, tip = name, given = false, busy, disabled, onClick }: { label: string; name?: string; tip?: string; given?: boolean; busy: boolean; disabled: boolean; onClick(): void }) {
   const button = useRef<HTMLButtonElement>(null);
   const [cut, setCut] = useState(false);
   useLayoutEffect(() => {
@@ -249,12 +298,12 @@ function Primary({ label, busy, disabled, onClick }: { label: string; busy: bool
     return () => observer.disconnect();
   }, [label, busy]);
   return (
-    <Tip label={label} disabled={!cut}>
+    <Tip label={tip} disabled={!cut && !given}>
       <Button
         ref={button}
         size="xs"
         data-browser-submit
-        aria-label={label}
+        aria-label={name}
         // `shrink` lifts the recipe's shrink-0, so the primary gives way to the room beside Discard and cuts its words there.
         className="max-w-full min-w-0 shrink [&_[data-slot=busy-label]]:min-w-0 [&_[data-slot=busy-label]:not([data-busy])>span]:block [&_[data-slot=busy-label]:not([data-busy])>span]:truncate"
         disabled={disabled}

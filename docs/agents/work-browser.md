@@ -110,6 +110,10 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   are driving" in foreground and Hand back (secondary); a held submit's
   Take over and Discard (ghost) and the one primary named for the act
   ("Submit in Concur"), never counting down; after it, "Submitted 2:14 PM".
+  A held submit's bar gives way whole, never to a stub (`heldFit`, measured
+  by `useHeldFit`): first the site's host, then "in <site>" from the
+  primary, which reads its verb alone; its tip then holds the whole words
+  and the host.
   Take over is one call (`computer.drive`): the host sets him as driver,
   then stops every live computer session of the tree, drawable here or not. While he drives at a
   held submit the ghost beside the primary is Hand back, and his driving

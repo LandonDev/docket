@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BrowserState } from "@shared/contract-work-browser";
 import type { OutboxItem } from "@shared/contract-work-outbox";
-import { barFaceOf, fieldsOfMark, heldSubmitOf, portalValues, siteHost } from "./portal";
+import { barFaceOf, fieldsOfMark, heldFit, heldSubmitOf, portalValues, siteHost } from "./portal";
 
 const MARK = JSON.stringify([
   "com.google.Chrome",
@@ -49,7 +49,7 @@ describe("the held submit", () => {
 
 describe("the bar", () => {
   it("names the one primary for the act and the site while a submit waits, with Hand back in reach while he drives", () => {
-    expect(barFaceOf(state(), act({}))).toMatchObject({ face: "held", act: "Submit Report in Concur", owner: false });
+    expect(barFaceOf(state(), act({}))).toMatchObject({ face: "held", act: "Submit Report in Concur", verb: "Submit Report", owner: false });
     expect(barFaceOf(state({ site: null }), act({}))).toMatchObject({ face: "held", act: "Submit Report in Google Chrome" });
     expect(barFaceOf(state({ driver: "owner" }), act({ state: "held" }))).toMatchObject({ face: "held", owner: true });
   });
@@ -69,5 +69,20 @@ describe("the bar", () => {
   it("shows the site's host, never a field", () => {
     expect(siteHost(state())).toBe("us2.concursolutions.com");
     expect(siteHost(state({ site: null }))).toBeNull();
+  });
+});
+
+describe("what a held submit's bar gives way", () => {
+  const room = { host: 140, others: 60, act: 180, verb: 60 };
+  it("keeps the host and the whole words where both fit", () => {
+    expect(heldFit({ ...room, bar: 140 + 8 + 60 + 196 })).toEqual({ host: true, short: false });
+  });
+  it("lets the host go whole first, then the site from the press, never a stub of either", () => {
+    expect(heldFit({ ...room, bar: 140 + 8 + 60 + 195 })).toEqual({ host: false, short: false });
+    expect(heldFit({ ...room, bar: 60 + 196 })).toEqual({ host: false, short: false });
+    expect(heldFit({ ...room, bar: 60 + 195 })).toEqual({ host: false, short: true });
+  });
+  it("has nothing to shorten when the press is its verb alone", () => {
+    expect(heldFit({ ...room, act: 60, bar: 100 })).toEqual({ host: false, short: false });
   });
 });

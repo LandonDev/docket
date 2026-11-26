@@ -74,7 +74,8 @@ export function heldSubmitOf(items: readonly OutboxItem[], tree: ReadonlySet<str
 export type BarFace =
   | { face: "loading" }
   /** `owner`: he drives, so the bar offers Hand back where it would offer Take over */
-  | { face: "held"; item: OutboxItem; act: string; owner: boolean }
+  /** `act` is the verb and the site ("Submit in Concur"), `verb` the verb alone, for a bar too narrow for both */
+  | { face: "held"; item: OutboxItem; act: string; verb: string; owner: boolean }
   | { face: "done"; words: string }
   | { face: "owner" }
   | { face: "needs"; words: string }
@@ -88,7 +89,7 @@ export function barFaceOf(state: BrowserState | null, held: OutboxItem | null): 
   if (held && WAITS.has(held.state)) {
     const payload = held.payload as Partial<HeldSubmitPayload> | null;
     const where = state.site?.name ?? payload?.app?.name ?? null;
-    return { face: "held", item: held, act: where ? `${held.verb} in ${where}` : held.verb, owner: state.driver === "owner" };
+    return { face: "held", item: held, act: where ? `${held.verb} in ${where}` : held.verb, verb: held.verb, owner: state.driver === "owner" };
   }
   if (state.driver === "owner") return { face: "owner" };
   if (held && held.decidedAt) {
@@ -108,4 +109,18 @@ export function siteHost(state: BrowserState | null): string | null {
   } catch {
     return url;
   }
+}
+
+/**
+ * What a held submit's bar gives way, in order, by the room it has: the site's host goes first, whole (the press names the
+ * site); then the press drops "in <site>", whole, and reads its verb alone; the full words are in its tip. Never a stub of
+ * either. Widths in CSS pixels: the bar's, the host's with its lock, the other presses' with their gaps, and the press's
+ * words both ways (its 8px padding a side is added here).
+ */
+export function heldFit(room: { bar: number; host: number; others: number; act: number; verb: number }): { host: boolean; short: boolean } {
+  const press = (words: number): number => words + 16;
+  const host = room.host ? room.host + 8 : 0;
+  if (host + room.others + press(room.act) <= room.bar) return { host: true, short: false };
+  if (room.others + press(room.act) <= room.bar) return { host: false, short: false };
+  return { host: false, short: room.act !== room.verb };
 }
