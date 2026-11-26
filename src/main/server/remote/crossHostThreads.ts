@@ -68,6 +68,7 @@ import type { SessionRegistry } from '../sessions'
 import type { HostTransport } from './hostLinks'
 import { servePeerCall, type LinkRequest } from './peerCalls'
 import { WORK_OFF, workEnabled } from '../work/scope'
+import { completedTurn } from '../masterNews'
 
 /**
  * The serving side of threads started from another host (docs/box.md
@@ -138,6 +139,8 @@ export interface CrossHostThreadsDeps {
     | 'onMeta'
     | 'listProjects'
     | 'list'
+    | 'hasCompletedTurn'
+    | 'lastTurnStopped'
   > &
     Partial<Pick<SessionRegistry, 'pauseRun' | 'resumePausedRun' | 'setArchived' | 'setBatchMembership' | 'titleFromTask' | 'stopSubtree' | 'listWorkspaces' | 'delete'>>
   /** The saved hosts (remote.environments), by id and name. */
@@ -951,7 +954,8 @@ export class CrossHostThreads {
         title: meta.title,
         status: meta.status,
         reply: report.reply.slice(-600),
-        pending: report.pending
+        pending: report.pending,
+        completedTurn: completedTurn(this.deps.registry, meta)
       })
     } catch (err) {
       // An older host has no crossHost.settled, or the link is down; a wait still sees the state.

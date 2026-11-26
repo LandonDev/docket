@@ -427,6 +427,18 @@ describe("workspaceMarks", () => {
     expect(workspaceMarks(running, empty, { m: 200, k1: 0, k2: 0 }).get("/a")?.unread).toBe(false);
   });
 
+  it("never reads a batch child on another host unread: the Mac's child of a box master is housed in the linked row", () => {
+    const keyOf = (path: string) => (path === "/srv/b" ? "/a" : path);
+    const batch = [
+      meta("m", { ...at("/srv/b"), environmentId: "env_box", isMaster: true, threadType: "orchestration" }),
+      meta("k", { ...at("/a"), environmentId: "env_mac", masterId: "m", status: "done" }),
+    ];
+    // The Mac's child done and unseen, the box's master read: the linked row says nothing.
+    expect(workspaceMarks(batch, empty, { m: 200 }, 0, keyOf).has("/a")).toBe(false);
+    // The box cleared the master's mark on the child's settle report: the master's news, once.
+    expect([...workspaceMarks(batch, empty, { m: 0 }, 0, keyOf)]).toEqual([["/a", { mark: null, unread: true }]]);
+  });
+
   it("folds an unread thread on another host into the leader's row", () => {
     const keyOf = (path: string) => (path === "/srv/b" ? "/a" : path);
     const marks = workspaceMarks([meta("t2", { ...at("/srv/b"), environmentId: "env_box" })], empty, { t2: 50 }, 0, keyOf);

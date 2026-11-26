@@ -457,7 +457,9 @@ export const CrossHostSettledSchema = z.object({
       toolName: z.string().max(200).optional(),
       title: z.string().max(300).optional()
     })
-    .nullable()
+    .nullable(),
+  /** The settle ended a completed turn, by the running host's rule (masterNews.ts completedTurn): a batch child's is its master's news. Absent from an older host. */
+  completedTurn: z.boolean().optional()
 })
 export type CrossHostSettled = z.infer<typeof CrossHostSettledSchema>
 

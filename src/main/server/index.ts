@@ -281,7 +281,7 @@ import { skillList, skillRemove, skillWrite, type SkillToolDeps } from './skills
 import type { SkillInput, SkillMeta } from '@shared/contract-skills'
 import { ProjectPlans, handleProjectPlan } from './projectPlan'
 import { Batches, batchChildren, handleBatch, setBatches } from './batch'
-import { watchMasterNews } from './masterNews'
+import { markMasterNews, watchMasterNews } from './masterNews'
 import { hostBoardDigests } from './boardDigest'
 import { BoardWatch } from './boardWatch'
 import { LocalPublish, MacPublish, macPublishOffers } from './remote/macPublish'
@@ -2104,6 +2104,7 @@ export async function startServer(
     // A batch child on another host landing, or changing state: the engine here (batch.ts) decides and reviews.
     landing: (l) => batchRuns.remoteLanding(l),
     batchChanged: (masterId) => batchRuns.schedule(masterId),
+    masterNews: (masterId) => markMasterNews(registry, masterId),
     // A Work thread's subagent there carries its workspace (work/scope.ts, by way of orchestration.ts).
     workHomeOf: (session) => farWorkHomeOf(scopeFactsOf(registry), session)
   })

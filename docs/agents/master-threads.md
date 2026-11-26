@@ -111,7 +111,9 @@ this is the short one.
   `<envId>:<sessionId>`, `batch.get` lists every child with its host
   (`children`), its state comes from the settle pushes and one
   `thread.list` per host when the local children are done (a far child is
-  done when its host says `done` or `idle`), a host out of reach blocks the
+  done when its host says `done` or `idle`), its settle report's
+  `completedTurn` marks the master unread as a near child's turn does
+  (docs/agents/read-and-unread.md "A master's batch"), a host out of reach blocks the
   end as `unreachable` naming the host, Pause and Resume cascade to it
   (`thread.pause/resume`), `batch.archive` archives it there
   (`thread.archive`, listed in `succeeded`), `batch.adopt` takes a

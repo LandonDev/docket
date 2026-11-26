@@ -128,6 +128,8 @@ function fakeRegistry() {
       return () => metaListeners.delete(l)
     },
     listProjects: () => [{ id: 'p1', cwd: '/Users/landon/IdeaProjects/temp-code' }] as never,
+    hasCompletedTurn: (id: string) => (events.get(id) ?? []).some((r) => r.event.type === 'turn-complete'),
+    lastTurnStopped: () => false,
     // test seams
     append(id: string, event: AgentEvent) {
       const rows = events.get(id)!
@@ -351,11 +353,13 @@ describe('CrossHostThreads', () => {
     const { svc, registry, requests } = service()
     const { sessionId } = (await svc.handle('thread.start', { caller, args: startArgs }, ctx)) as { sessionId: string }
     registry.append(sessionId, { type: 'assistant-text', text: 'finished' } as AgentEvent)
+    registry.append(sessionId, { type: 'turn-complete' } as AgentEvent)
     registry.setStatus(sessionId, 'idle')
     await vi.advanceTimersByTimeAsync(500)
     const settled = requests.find((r) => r.method === 'crossHost.settled')
     // A started thread names its starter as the parent (the owner's record sits under that thread); a spawned one its parentId.
-    expect(settled?.params).toMatchObject({ from: MAC, sessionId, parentSessionId: 'box-thread', status: 'idle', reply: 'finished' })
+    // completedTurn is the batch's rule judged here (masterNews.ts): the owner marks a master from it.
+    expect(settled?.params).toMatchObject({ from: MAC, sessionId, parentSessionId: 'box-thread', status: 'idle', reply: 'finished', completedTurn: true })
     // Idle → idle again (a meta change with no settle) reports nothing more.
     registry.setStatus(sessionId, 'idle')
     await vi.advanceTimersByTimeAsync(500)

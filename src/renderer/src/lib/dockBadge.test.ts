@@ -57,6 +57,19 @@ describe("badgeCount", () => {
     expect(badgeCount(live, none, { ...seenAt(live), m: 200 })).toBe(0);
   });
 
+  it("never counts a batch child on another host: its master there stands in", () => {
+    const metas = [
+      meta("m", { isMaster: true, environmentId: "env_box" }),
+      meta("k", { masterId: "m", environmentId: "env_mac", status: "done" }),
+      meta("sub", { parentId: "k", environmentId: "env_mac" }),
+    ];
+    expect(badgeCount(metas, none, { ...seenAt(metas), m: 200 })).toBe(0);
+    expect(badgeCount(metas, none, { ...seenAt(metas), m: 0 })).toBe(1);
+    // The child waiting on a question: still the master's one row.
+    const asking = metas.map((m) => (m.id === "k" ? { ...m, status: "waiting" as const } : m));
+    expect(badgeCount(asking, none, { ...seenAt(asking), m: 0 })).toBe(1);
+  });
+
   it("counts a root once, whether it or its subagent wants him", () => {
     const metas = [meta("r"), meta("s1", { parentId: "r", status: "waiting" }), meta("s2", { parentId: "r", status: "waiting" })];
     expect(badgeCount(metas, none, seenAt(metas))).toBe(1);

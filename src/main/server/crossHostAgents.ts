@@ -160,6 +160,8 @@ export interface CrossHostAgentsDeps {
   landing?: (l: RemoteLanding) => CrossHostLandingResult
   /** A batch child on another host changed state: the engine reviews the batch (batch.ts schedule). */
   batchChanged?: (masterId: string) => void
+  /** A batch child on another host completed a turn, by its host's word: the master here reads unread (masterNews.ts markMasterNews). */
+  masterNews?: (masterId: string) => void
   /**
    * A Work thread's workspace as another host can match it (work/scope.ts
    * workHomeOf), or 'orphan' when it has none here. Unset, a Work thread
@@ -817,7 +819,10 @@ export class CrossHostAgents {
     const agentId = encodeAgentId(from, params.sessionId)
     const parentId = this.parentOf(from, params.sessionId, params.parentSessionId)
     if (!parentId) return { ok: true }
+    const masterId = this.children(parentId).find((r) => r.environmentId === from && r.sessionId === params.sessionId)?.masterId
     this.touch(parentId, from, { sessionId: params.sessionId, status: params.status as SessionStatus, title: params.title })
+    // The master's news whether or not a wait covers the settle, as for a child here (masterNews.ts).
+    if (masterId && params.completedTurn) this.deps.masterNews?.(masterId)
     if (this.awaited.has(agentId)) return { ok: true }
     const parent = this.deps.sessions.get(parentId)
     if (!parent || parent.archived) return { ok: true }

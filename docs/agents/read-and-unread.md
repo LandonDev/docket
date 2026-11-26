@@ -54,8 +54,17 @@
   (src/main/server/masterNews.ts `watchMasterNews`, through
   `registry.markUnread`). A child that errors or that the person stopped
   lights nothing here; its Failed reads on the master's row as before.
-  Opening the master clears it like any thread, on every client. Only a
-  child on the master's own host is heard.
+  Opening the master clears it like any thread, on every client. A child
+  on another host is judged there by the same rule: its settle report,
+  `crossHost.settled`, carries `completedTurn`, and the master's host marks
+  the master from it (crossHostAgents.ts `settled`, masterNews.ts
+  `markMasterNews`), whether or not a wait covers the settle. A report
+  from a host older than the field marks nothing. In the window a far
+  child is housed like a near one: ids are raw across hosts, so a Mac
+  child whose `masterId` names the box's master shows no mark and no
+  count of its own; while the master's row is not in the window (its host
+  out of reach) the child reads as an ordinary root
+  (masterNews.pair.test.ts, dockBadge.test.ts, sidebarRows.test.ts).
 - **The Dock badge** (macOS): one number, the rows that want the person on
   every host: unread by `rowUnread`, or a thread waiting on him. Each counts
   once, as the row he would open: a subagent as its root, a batch thread
