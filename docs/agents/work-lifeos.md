@@ -306,3 +306,7 @@ uses its own vault's key; a linked workspace shares the home's row) and
 forwarder it can cut to show `unreachable`). Mint each proof's token with
 its milestone's name, retire every key after (`bots:retire`), list them in
 the landing note.
+
+## When a read or link fails
+
+When a Work view can read LifeOS directly, it keeps those rows while the computer that handles a press is out of reach. The view holds that press under one muted line naming the computer. It frees the press when the link opens. The Work heading’s Add menu uses the same words and retries the home computer’s link.

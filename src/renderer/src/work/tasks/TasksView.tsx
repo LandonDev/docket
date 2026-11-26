@@ -1,6 +1,7 @@
 import { ConvexProvider } from "convex/react";
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ContextChip } from "@shared/work";
+import { useHostLinkDown } from "../shell/hostLinkDown";
 import { playRunner } from "../routines/plays/runOn";
 import { groupTasks, SNOOZE_CHOICES, SNOOZE_LABELS, TASK_GROUP_LABELS, TASK_GROUPS, type SnoozeChoice } from "work-kit/lifeos/tasks";
 import { formatDue } from "work-kit/views/lib/format";
@@ -184,6 +185,7 @@ export function Tasks({
   const tasks = useKeptRows(client.useOpenTasks() ?? null, idOfTask);
   const projects = client.useProjectsById();
   const actions = client.useTaskActions();
+  const doneHeld = !!useHostLinkDown(place?.environmentId);
   const now = useMinute();
   // The rows are memoised: they reach the latest start through a ref, so a new function never redraws them.
   const latest = useRef(startThread);
@@ -226,7 +228,7 @@ export function Tasks({
   const projectOf = (task: Task | null | undefined): string | undefined => (task ? projects?.get(task.projectId ?? "")?.name : undefined);
   const sheet = (
     <>
-      <TaskSheet open={sheetOf} projectOf={projectOf} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} onCode={code} useThread={useThread} />
+      <TaskSheet doneHeld={doneHeld} open={sheetOf} projectOf={projectOf} onClose={() => setOpened(null)} onStart={start} onDone={(task) => actions.complete(task)} onCode={code} useThread={useThread} />
       {coding ? <CodeThreadDialog task={coding} sector={sector} onStart={startCode} onClose={() => setCoding(null)} /> : null}
     </>
   );
@@ -240,7 +242,7 @@ export function Tasks({
   const meta = (task: Task) => metaOf(task, projectOf(task));
   return (
     <div className="mx-auto flex w-full max-w-[720px] flex-col px-6 py-6">
-      {lead ? <Lead task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} onCode={code} useThread={useThread} /> : null}
+      {lead ? <Lead doneHeld={doneHeld} task={lead} meta={meta(lead)} now={now} actions={actions} onStart={start} onOpen={open} onCode={code} useThread={useThread} /> : null}
       {rest.map(({ g, rows }, i) => (
         <section key={g} aria-label={TASK_GROUP_LABELS[g]} className={cn("flex flex-col", lead || i ? "mt-6" : "")}>
           {/* The heading starts on its rows' title edge: past the row's inset, the tick and its gap. */}
@@ -255,6 +257,7 @@ export function Tasks({
               const task = rows[index]!;
               return (
                 <TaskRow
+                doneHeld={doneHeld}
                   key={task._id}
                   task={task}
                   meta={meta(task)}
@@ -299,6 +302,7 @@ function Lead({
   onStart,
   onOpen,
   onCode,
+  doneHeld,
   useThread,
 }: {
   task: Task;
@@ -308,6 +312,7 @@ function Lead({
   onStart: (task: Task) => void;
   onOpen: (task: Task) => void;
   onCode: (task: Task) => void;
+  doneHeld: boolean;
   useThread: UseThread;
 }) {
   const overdue = task.dueAt !== undefined && task.dueAt < now;
@@ -346,7 +351,7 @@ function Lead({
               Start thread
             </Button>
           )}
-          <Button size="sm" variant="secondary" onClick={() => actions.complete(task)}>
+          <Button size="sm" variant="secondary" disabled={doneHeld} onClick={() => actions.complete(task)}>
             Done
           </Button>
           <DropdownMenu>
@@ -367,7 +372,7 @@ function Lead({
           </Button>
         </div>
       </ContextMenuTrigger>
-      <TaskMenu task={task} thread={thread} actions={actions} onStart={onStart} onOpen={onOpen} onCode={onCode} onDone={() => actions.complete(task)} />
+      <TaskMenu doneHeld={doneHeld} task={task} thread={thread} actions={actions} onStart={onStart} onOpen={onOpen} onCode={onCode} onDone={() => actions.complete(task)} />
     </ContextMenu>
   );
 }
@@ -381,6 +386,7 @@ function TaskMenu({
   onOpen,
   onCode,
   onDone,
+  doneHeld,
 }: {
   task: Task;
   thread: TaskThread;
@@ -389,6 +395,7 @@ function TaskMenu({
   onOpen: (task: Task) => void;
   onCode: (task: Task) => void;
   onDone: () => void;
+  doneHeld: boolean;
 }) {
   const runPlay = playRunner();
   return (
@@ -397,7 +404,7 @@ function TaskMenu({
       <ContextMenuItem onClick={() => onCode(task)}>Open a code thread…</ContextMenuItem>
       {runPlay ? <ContextMenuItem onClick={() => runPlay(chipOf(task))}>Run a play…</ContextMenuItem> : null}
       <ContextMenuItem onClick={() => onOpen(task)}>Open</ContextMenuItem>
-      <ContextMenuItem onClick={onDone}>Done</ContextMenuItem>
+      <ContextMenuItem disabled={doneHeld} onClick={onDone}>Done</ContextMenuItem>
       <ContextMenuSeparator />
       {SNOOZE_CHOICES.map((choice: SnoozeChoice) => (
         <ContextMenuItem key={choice} onClick={() => actions.snooze(task, choice)}>
@@ -422,6 +429,7 @@ const TaskRow = memo(function TaskRow({
   onStart,
   onOpen,
   onCode,
+  doneHeld,
   useThread,
   place,
 }: {
@@ -435,6 +443,7 @@ const TaskRow = memo(function TaskRow({
   onStart: (task: Task) => void;
   onOpen: (task: Task) => void;
   onCode: (task: Task) => void;
+  doneHeld: boolean;
   useThread: UseThread;
 }) {
   const [ticked, setTicked] = useState(false);
@@ -446,15 +455,16 @@ const TaskRow = memo(function TaskRow({
   done.current = complete;
   useEffect(() => {
     if (!ticked) return;
+    if (doneHeld) return setTicked(false);
     const timer = window.setTimeout(() => done.current(), HOLD_MS);
     return () => window.clearTimeout(timer);
-  }, [ticked]);
+  }, [ticked, doneHeld]);
   return (
     <ContextMenu>
       <ContextMenuTrigger render={<div role="listitem" {...place} className={cn("group/row flex min-h-8 items-start gap-2 rounded-md px-3 py-1.5", ROW_HOLDS)} />}>
         {/* The open control lies over the whole row, so keyboard focus rings the row; the tick and Start sit above it. */}
         <ItemButton data-row-open aria-label={`Open ${task.title}`} onClick={() => onOpen(task)} className={ROW_OPEN} />
-        <Checkbox shape="round" className={cn("mt-0.5", ROW_CONTROLS)} checked={ticked} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
+        <Checkbox shape="round" className={cn("mt-0.5", ROW_CONTROLS)} checked={ticked} disabled={doneHeld} onCheckedChange={setTicked} aria-label={`Mark ${task.title} done`} />
         <span className={cn("flex min-w-0 flex-1 flex-col", ROW_SHOWS)}>
           <span className={cn("max-w-full truncate text-[13px] leading-5 text-foreground transition-colors duration-(--dur-fast)", ticked && "text-muted-foreground line-through")}>{task.title}</span>
           {meta ? <span className="max-w-full truncate text-xs text-muted-foreground">{meta}</span> : null}
@@ -477,7 +487,7 @@ const TaskRow = memo(function TaskRow({
           )}
         </span>
       </ContextMenuTrigger>
-      <TaskMenu task={task} thread={thread} actions={actions} onStart={onStart} onOpen={onOpen} onCode={onCode} onDone={() => setTicked(true)} />
+      <TaskMenu doneHeld={doneHeld} task={task} thread={thread} actions={actions} onStart={onStart} onOpen={onOpen} onCode={onCode} onDone={() => setTicked(true)} />
     </ContextMenu>
   );
 });

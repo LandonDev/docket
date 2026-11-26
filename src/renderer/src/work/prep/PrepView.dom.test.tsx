@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { registry as linkRegistry } from "../../lib/connection/registry";
+import { IDLE_STATUS, type EnvironmentStatus } from "../../lib/connection/types";
 /**
  * A meeting's page (docs/agents/work-prep.md): the facts the host read from LifeOS, each row
  * opening where its thing lives, the ways back and out in its header, and Add people. The host
@@ -609,6 +611,27 @@ const BRIEF = { matters: [{ text: "Maya needs the seat list by Wednesday.", ref:
 const briefed = (over: Partial<PrepPage> = {}) => facts({ doc: { ...emptyPrepDoc(), brief: BRIEF }, rev: 2, state: "briefed", briefSessionId: "t-brief", ...over });
 
 describe("Brief me", () => {
+  it("keeps the meeting page and holds Brief me until the host link returns", async () => {
+    let status: EnvironmentStatus = { ...IDLE_STATUS, transport: "open" };
+    const statusOf = vi.spyOn(linkRegistry, "statusOf").mockReturnValue(status);
+    try {
+      const view = await mount();
+      const brief = () => head().getByRole<HTMLButtonElement>("button", { name: "Brief me" });
+      expect(brief().disabled).toBe(false);
+      status = { ...status, transport: "reconnecting" };
+      statusOf.mockReturnValue(status);
+      view.rerender(tree());
+      expect(brief().disabled).toBe(true);
+      fireEvent.click(brief());
+      expect(host.asked.some((a) => a.method === "work.prep.brief")).toBe(false);
+      status = { ...status, transport: "open" };
+      statusOf.mockReturnValue(status);
+      view.rerender(tree());
+      expect(brief().disabled).toBe(false);
+    } finally {
+      statusOf.mockRestore();
+    }
+  });
   it("opens the brief being written from More, though a follow-up thread stands too", async () => {
     const opened: string[] = [];
     workOpenPort.set((id) => void opened.push(id));

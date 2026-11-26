@@ -1356,3 +1356,7 @@ what reached the server off the wire); `shared/computer/outward.test.ts`;
 `addons/tools.test.ts`; `addonStore.test.ts`; `remote/macBridge.test.ts`;
 `computer/bridge.test.ts`; `shared/away.test.ts`;
 `shared/work/because.test.ts`.
+
+## When a read or link fails
+
+A held item stays open when the link to its computer drops. Send and its other send times wait for that link. The Outbox names the computer once and gives that link one Retry. A detail read that fails on its own can still offer its own Retry.

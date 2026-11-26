@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { registry as linkRegistry } from "../../lib/connection/registry";
+import { IDLE_STATUS } from "../../lib/connection/types";
 /**
  * The Templates view: still tiles while the shelf loads, its error as the
  * frame's state line with Retry and Add… off, an empty shelf he narrowed
@@ -575,6 +577,27 @@ describe("the Templates view", () => {
     // A failed read over a shelf already shown keeps the shelf, with no state line over it.
     expect(screen.getByRole("button", { name: "Crew memo" })).toBeTruthy();
     expect(document.querySelector('[data-view-state="failed"]')).toBeNull();
+  });
+
+  it("keeps a shelf it read while holding its tile presses until the link opens", async () => {
+    const status = vi.spyOn(linkRegistry, "statusOf").mockReturnValue({ ...IDLE_STATUS, transport: "open" });
+    try {
+      const shown = render(<View {...props} />);
+      const tile = () => screen.getByRole<HTMLButtonElement>("button", { name: "Crew memo" });
+      expect(await screen.findByRole("button", { name: "Crew memo" })).toBeTruthy();
+      status.mockReturnValue({ ...IDLE_STATUS, transport: "reconnecting" });
+      shown.rerender(<View {...props} />);
+      const disabled = () => tile().matches('[disabled], [aria-disabled="true"]');
+      expect(disabled()).toBe(true);
+      fireEvent.keyDown(tile(), { key: "Enter" });
+      fireEvent.click(tile());
+      expect(asked("work.templates.make")).toEqual([]);
+      status.mockReturnValue({ ...IDLE_STATUS, transport: "open" });
+      shown.rerender(<View {...props} />);
+      expect(disabled()).toBe(false);
+    } finally {
+      status.mockRestore();
+    }
   });
 
   it("asks for the shelf again on a new socket after a read that did not answer", async () => {

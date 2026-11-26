@@ -324,9 +324,9 @@ describe("the other states", () => {
     expect(text(section("Slipped"))).toBe("Slipped Nothing slipped");
   });
 
-  it("a host that is off is one muted line and the page stands", () => {
+  it("a host this window has no link to is one muted line, said as not connected, and the page stands", () => {
     const { container } = draw("off");
-    expect(text(container.querySelector("[data-review-off]")!)).toBe("The Mac is off. Its threads and held items are not counted.");
+    expect(text(container.querySelector("[data-review-off]")!)).toBe("The Mac is not connected. Its threads and held items are not counted.");
     expect(container.querySelector('[role="alert"]')).toBeNull();
     expect(section("Hours").querySelectorAll("[data-review-job]")).toHaveLength(6);
     // Its threads were not read, so a job with no hours is known only to have nothing on the calendar. It is out of

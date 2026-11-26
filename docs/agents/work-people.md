@@ -53,3 +53,7 @@ host's `work.guests.list` (the links named for the person, `PeopleRules.links`, 
 names them (`PeopleRules.directory`). Write presents LifeKitUI's composer (`LifeSheet.compose(.new(to:))`); New
 Thread starts the person chip's thread in the job. A row of the directory has no role: LifeOS's directory gives
 none. A shared item opens nothing on the phone.
+
+## When a read or link fails
+
+If Retry fails again, the page keeps its plain load failure and offers Retry again.

@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { registry as linkRegistry } from "../../lib/connection/registry";
+import { IDLE_STATUS } from "../../lib/connection/types";
 /**
  * The Outbox (docs/agents/work-outbox.md, "The screens") over two hosts
  * that answer from memory as `work.outbox.*` does: one list under each
@@ -19,6 +21,7 @@ const world = vi.hoisted(() => ({
   offers: new Map<string, GrantOffer[]>(),
   resultsDown: false,
   listDown: new Set<string>(),
+  namedHosts: false,
   quote: null as string | null,
   getFails: false,
   /** the host's words for a full read it could not make (`work.outbox.get`), as its LifeOS session throws them */
@@ -142,8 +145,11 @@ vi.mock("../../lib/connection", async (original) => {
     },
   });
   const links = { box: link("box"), mac: link("mac") };
+  const environments = [{ id: "box", name: "The box" }, { id: "mac", name: "Mac" }];
+  const noEnvironments: typeof environments = [];
   return {
     ...(await original<typeof import("../../lib/connection")>()),
+    useEnvironments: () => world.namedHosts ? environments : noEnvironments,
     registry: {
       linkOf: (env: "box" | "mac") => links[env],
       environment: (env: string) => ({ name: env === "box" ? "The box" : "Mac" }),
@@ -232,6 +238,7 @@ beforeEach(() => {
   world.offers = new Map();
   world.resultsDown = false;
   world.listDown.clear();
+  world.namedHosts = false;
   world.sendHeld = null;
   world.sendSaid = {};
   world.decides = [];
@@ -259,6 +266,42 @@ async function open(onOpenSession?: (sessionId: string, environmentId: string) =
   await waitFor(() => expect(document.querySelector('[data-outbox-detail] [data-slot="act-payload"]')).not.toBeNull(), { timeout: 5000 });
 }
 const sends = () => world.calls.filter((c) => c.method === "work.outbox.send");
+
+it("holds the selected draft and its shortcut while the link is down, then frees Send", async () => {
+  let status = { ...IDLE_STATUS, transport: "open" as "open" | "reconnecting" | "offline" };
+  const statuses = vi.spyOn(linkRegistry, "statusOf").mockImplementation((id) => id === "box" ? status : IDLE_STATUS);
+  const environment = vi.spyOn(linkRegistry, "environment").mockReturnValue({ name: "The box" } as never);
+  try {
+    const view = render(<OutboxView besideRail onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
+    const send = () => screen.getByRole<HTMLButtonElement>("button", { name: "Send", exact: true });
+    await waitFor(() => expect(send().disabled).toBe(false), { timeout: 5000 });
+    for (const transport of ["reconnecting", "offline"] as const) {
+      status = { ...status, transport };
+      view.rerender(<OutboxView besideRail onClose={() => {}} />);
+      expect(send().disabled).toBe(true);
+      expect(screen.getAllByText("The box is not connected")).toHaveLength(1);
+      fireEvent.click(send());
+      fireEvent.keyDown(document.body, { key: "Enter", ctrlKey: true });
+      expect(sends()).toHaveLength(0);
+    }
+    world.listDown.add("box");
+    const { loadHost } = await import("./store");
+    await act(async () => loadHost("box"));
+    expect(screen.getAllByText("The box is not connected")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    expect(send().disabled).toBe(true);
+    world.listDown.clear();
+    status = { ...status, transport: "open" };
+    view.rerender(<OutboxView besideRail onClose={() => {}} />);
+    expect(send().disabled).toBe(false);
+    expect(screen.queryByText("The box is not connected")).toBeNull();
+  } finally {
+    cleanup();
+    statuses.mockRestore();
+    environment.mockRestore();
+  }
+});
 
 describe("the list's draws", () => {
   it("a read that changed one item draws that row alone", async () => {
@@ -878,7 +921,8 @@ describe("the Outbox", () => {
     expect(inDetail.textContent).toContain("Nothing held");
   });
 
-  it("never says Nothing held beside a host that did not answer: it names the host and says nothing is known", async () => {
+  it("never says Nothing held beside a host whose list failed: it names the host and says nothing is known", async () => {
+    world.namedHosts = true;
     world.items.set("box", []);
     world.items.set("mac", []);
     world.listDown.add("mac");
@@ -888,7 +932,7 @@ describe("the Outbox", () => {
     await waitFor(() => expect(screen.getAllByText("Not known yet").length).toBe(2));
     expect(screen.queryByText("Nothing held")).toBeNull();
     // The named failure and its Retry stay in view.
-    const failure = [...document.querySelectorAll("[role=status]")].find((n) => n.textContent?.includes("did not answer"))!;
+    const failure = [...document.querySelectorAll("[role=status]")].find((n) => n.textContent?.includes("The connection to Mac dropped"))!;
     expect(failure.querySelector("button")!.textContent).toContain("Retry");
     // The row above is the one place that names the host: the empty words do not name it again.
     const empty = document.querySelector("[data-outbox-detail] [data-outbox-empty=detail]") as HTMLElement;
@@ -1216,8 +1260,12 @@ describe("the Outbox, rebuilt around how he decides", () => {
     render(<OutboxView besideRail onClose={() => undefined} onOpenSession={opened} />);
     fireEvent.click(screen.getByRole("tab", { name: "Waiting" }));
     await waitFor(() => expect(screen.getAllByText("Send to Dana Lee").length).toBeGreaterThan(0), { timeout: 5000 });
-    // No title known for the thread here: the facts say nothing of it rather than a bare "from".
-    expect(detail().querySelector("header")!.textContent).not.toMatch(/from\s*$/);
+    // The row can land before the detail. Wait for its facts before checking the missing thread title.
+    await waitFor(() => {
+      const header = detail().querySelector("header");
+      expect(header).not.toBeNull();
+      expect(header!.textContent).not.toMatch(/from\s*$/);
+    }, { timeout: 5000 });
   });
 });
 

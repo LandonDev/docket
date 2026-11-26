@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PlayRow, StarterPlay } from "@shared/contract-work-routines";
+import { HostLinkLine, useHostLinkDown } from "../../shell/hostLinkDown";
 import { Pencil, Plus } from "../../../chrome/icons";
 import { Button } from "../../../components/ui/button";
 import { Item, ItemButton } from "../../../components/ui/item";
@@ -33,9 +34,10 @@ const newPlay = headAsk();
 
 export function Head({ env }: WorkViewProps) {
   newPlay.useHead();
+  const linkDown = useHostLinkDown(env);
   if (!useLinkMay(env, "work.routines.playSave")) return null;
   return (
-    <Button variant="ghost" size="sm" onClick={newPlay.ask}>
+    <Button variant="ghost" size="sm" disabled={!!linkDown} onClick={newPlay.ask}>
       <Plus />
       New play
     </Button>
@@ -56,8 +58,10 @@ export function View({ env, workspace, sector }: WorkViewProps) {
   const maySave = useLinkMay(env, "work.routines.playSave");
   const mayStart = useLinkMay(env, "work.routines.playStart");
   const host = useEnvironments().find((e) => e.id === env)?.name ?? "this host";
-  newPlay.useAnswer(() => setDialog({ kind: "new" }));
+  const linkDown = useHostLinkDown(env);
+  newPlay.useAnswer(() => !linkDown && setDialog({ kind: "new" }));
 
+  if (linkDown) return <HostLinkLine word={linkDown} retryHost={env} />;
   if (load.status === "loading") return <PlaysSkeleton />;
   if (load.status === "error") return <EmptyState title="Plays did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />;
   const proposed = maySave ? load.value.filter((p) => p.proposed) : [];

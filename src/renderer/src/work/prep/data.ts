@@ -109,7 +109,9 @@ export function usePrep(environmentId: string, workspaceId: string, eventId: str
     if (!eventId) return;
     // Every mount asks once more: the facts are LifeOS's as they stand now.
     void loadPrep(environmentId, workspaceId, eventId);
-    return registry.linkOf(environmentId).onPush((push) => {
+    const link = registry.linkOf(environmentId);
+    const offOpen = link.onOpen?.(() => void loadPrep(environmentId, workspaceId, eventId));
+    const offPush = link.onPush((push) => {
       const held = entries.get(key)?.page;
       // The follow-up's mail is LifeOS's own draft: it comes with no page write, so the held feed says when to look again.
       if (push.push === "work.outbox") return void (held?.followSessionId && loadPrep(environmentId, workspaceId, eventId));
@@ -119,6 +121,10 @@ export function usePrep(environmentId: string, workspaceId: string, eventId: str
       if (push.push !== "work.prep" || push.workspaceId !== workspaceId || push.eventId !== eventId) return;
       if (!held || push.rev > held.rev) void loadPrep(environmentId, workspaceId, eventId);
     });
+    return () => {
+      offPush();
+      offOpen?.();
+    };
   }, [environmentId, workspaceId, eventId, key]);
   return view;
 }

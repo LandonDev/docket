@@ -1,3 +1,5 @@
+import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
+import { useLinkMay } from "../../lib/linkMay";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FolderRef } from "@shared/work/files";
 import type { FormListRow, MsFormView } from "@shared/contract-work-msforms";
@@ -28,13 +30,23 @@ import { useFormMaking, useLibraryPlaces } from "./useFormMaking";
  * Teams or OneDrive place he picks there.
  */
 
-type Load = { status: "loading" } | { status: "error"; error: string } | { status: "ready"; rows: FormListRow[]; ms: MsFormView[] };
+type Load = { status: "loading" } | { status: "error" } | { status: "ready"; rows: FormListRow[]; ms: MsFormView[]; missed: string | null };
+
+/** An older host may lack a source. A refusal from a source it has still counts as a failed read. */
+function formSource<T>(request: Promise<T>): Promise<T | null> {
+  return request.catch((error: unknown) => {
+    if (error instanceof Error && /^(?:unknown method|no such method|unsupported method)\b/i.test(error.message)) return null;
+    throw error;
+  });
+}
 
 const listeners = new Set<() => void>();
 /** Something changed the list (a make): every mounted list reads again. */
 const changed = (): void => listeners.forEach((l) => l());
 
 function useForms(env: string, workspaceId: string): [Load, () => void, () => Promise<void>] {
+  const canReadOurs = useLinkMay(env, "work.forms.list", { workspaceId });
+  const canReadMs = useLinkMay(env, "work.msforms.list", { workspaceId });
   const [load, setLoad] = useState<Load>({ status: "loading" });
   const [tick, setTick] = useState(0);
   const again = useCallback(() => setTick((t) => t + 1), []);
@@ -47,16 +59,19 @@ function useForms(env: string, workspaceId: string): [Load, () => void, () => Pr
   useEffect(() => {
     let on = true;
     const link = registry.linkOf(env);
-    const fetch = (): Promise<void> => {
-      const ours = link.request<FormListRow[]>("work.forms.list", { workspaceId }).catch(() => [] as FormListRow[]);
-      const theirs = link.request<{ forms: MsFormView[] }>("work.msforms.list", { workspaceId }).then(
-        (r) => r.forms,
-        () => [] as MsFormView[],
-      );
-      return Promise.all([ours, theirs]).then(
-        ([o, m]) => void (on && setLoad({ status: "ready", rows: mergeForms(o, m), ms: m })),
-        (err: unknown) => void (on && setLoad({ status: "error", error: err instanceof Error ? err.message : "The forms could not be read." })),
-      );
+    let latest: symbol;
+    const fetch = async (): Promise<void> => {
+      const mine = Symbol();
+      latest = mine;
+      const ours = canReadOurs ? formSource(link.request<FormListRow[]>("work.forms.list", { workspaceId })) : Promise.resolve(null);
+      const theirs = canReadMs ? formSource(link.request<{ forms: MsFormView[] }>("work.msforms.list", { workspaceId })).then((r) => r?.forms ?? null) : Promise.resolve(null);
+      const [o, m] = await Promise.allSettled([ours, theirs]);
+      if (!on || mine !== latest) return;
+      const haveAnswer = (o.status === "fulfilled" && o.value !== null) || (m.status === "fulfilled" && m.value !== null);
+      if (!haveAnswer && (o.status === "rejected" || m.status === "rejected")) return setLoad({ status: "error" });
+      const ms = (m.status === "fulfilled" ? m.value : null) ?? [];
+      const missed = o.status === "rejected" ? "Docket forms did not load" : m.status === "rejected" ? "Microsoft forms did not load" : null;
+      setLoad({ status: "ready", rows: mergeForms((o.status === "fulfilled" ? o.value : null) ?? [], ms), ms, missed });
     };
     read.current = fetch;
     void fetch();
@@ -64,20 +79,24 @@ function useForms(env: string, workspaceId: string): [Load, () => void, () => Pr
     const off = link.onPush((push) => {
       if (push.push === "work.msforms" && push.workspaceId === workspaceId) again();
     });
+    const offOpen = link.onOpen(() => void fetch());
     return () => {
+      offOpen();
       on = false;
       off();
     };
-  }, [env, workspaceId, tick, again]);
+  }, [env, workspaceId, tick, again, canReadOurs, canReadMs]);
   return [load, again, useCallback(() => read.current(), [])];
 }
 
 export function Head({ env, workspace }: WorkViewProps) {
+  const linkDown = useHostLinkDown(env);
   const { offered, making, make } = useFormMaking(workspace);
   const places = useLibraryPlaces(env, workspace.id, offered) ?? [];
   const ms: MenuRow[] = offered && places.length ? [{ kind: "sub", id: "ms", label: FORM_KIND_WORDS.microsoft.label, items: places.map((p): MenuRow => ({ kind: "item", id: `in:${p.id}`, label: p.group && p.group !== p.name ? `${p.group}, ${p.name}` : p.name })) }] : [];
   const rows: MenuRow[] = [...ms, { kind: "item", id: "ours", label: FORM_KIND_WORDS.tempcode.label, description: ms.length ? FORM_KIND_WORDS.tempcode.line : undefined }];
   const pick = (id: string): void => {
+    if (linkDown) return;
     if (id === "ours") return void make("tempcode", null).then(() => openWorkView({ workspaceId: workspace.id, view: "files" }));
     const place = places.find((p) => id === `in:${p.id}`);
     if (place) void make("microsoft", place.root as FolderRef).then(() => (changed(), openWorkView({ workspaceId: workspace.id, view: "files" })));
@@ -89,7 +108,7 @@ export function Head({ env, workspace }: WorkViewProps) {
       rows={rows}
       onPick={pick}
       trigger={
-        <Button variant="ghost" size="sm" disabled={making}>
+        <Button variant="ghost" size="sm" disabled={making || !!linkDown}>
           {making ? null : <Plus />}
           <BusyLabel busy={making} label="New form" />
         </Button>
@@ -100,15 +119,16 @@ export function Head({ env, workspace }: WorkViewProps) {
 
 export function View({ env, workspace }: WorkViewProps) {
   const [load, retry, readAgain] = useForms(env, workspace.id);
+  const linkDown = useHostLinkDown(env);
   // His Retry spins in place, the failure kept, until the read answers.
   const [retrying, setRetrying] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
+  if (linkDown) return <HostLinkLine word={linkDown} retryHost={env} />;
   if (load.status === "loading") return <FormsSkeleton />;
   if (load.status === "error")
     return (
       <EmptyState
         title="Forms did not load"
-        line={load.error}
         action={{
           label: "Retry",
           busy: retrying,
@@ -119,7 +139,7 @@ export function View({ env, workspace }: WorkViewProps) {
         }}
       />
     );
-  if (!load.rows.length) return <EmptyState title="No forms yet" />;
+  if (!load.rows.length && !load.missed) return <EmptyState title="No forms yet" />;
 
   const open = (row: FormListRow): void => {
     if (row.kind === "ms") {
@@ -157,6 +177,7 @@ export function View({ env, workspace }: WorkViewProps) {
 
   return (
     <div className="h-full min-h-0 overflow-x-hidden overflow-y-auto">
+      {load.missed ? <p role="status" className="mx-auto max-w-[672px] px-4 pt-3 text-[13px] text-muted-foreground">{load.missed}</p> : null}
       <RowsContextMenu label="Form actions" lazyMount rowsFor={(id) => (id && load.ms.some((f) => f.formId === id) ? [{ kind: "item", id: "forget", label: "Remove from List" }] : null)} onPick={(pick, id) => void (pick === "forget" && id && forget(id))}>
         <ul aria-label="Forms" className="mx-auto flex max-w-[672px] flex-col gap-px px-4 py-4">
           {load.rows.map((row) => (

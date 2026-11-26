@@ -344,6 +344,23 @@ describe("the Money view", () => {
     expect((await screen.findAllByRole("menuitem")).map((m) => m.textContent)).toEqual(["Receipt…", "Entry…", "Trip…", "Invoice…", "Purchase request…"]);
   });
 
+  it("shows only the failed read when the last read was empty: never \"No money yet\" with its Add entry under it", async () => {
+    host.read = EMPTY_READ;
+    mount();
+    await settle();
+    expect(screen.getByText("No money yet")).toBeTruthy();
+    host.read = () => { throw new Error("The box did not answer"); };
+    await act(async () => reopen());
+    await settle();
+    expect(screen.getByText("Money did not load")).toBeTruthy();
+    expect(screen.queryByText("No money yet")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add entry" })).toBeNull();
+    host.read = EMPTY_READ;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await settle();
+    expect(screen.getByText("No money yet")).toBeTruthy();
+  });
+
   it("keeps the last read under a failed one, with Retry", async () => {
     mount();
     await settle();

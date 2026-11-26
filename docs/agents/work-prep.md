@@ -207,3 +207,7 @@ ahead.
 - `series.test.ts`, `gather.test.ts`, `prompts.test.ts`, `prep.rig.test.ts` (a real Work mount on the hold's rig) on the host; `model.test.ts`, `PrepView.dom.test.tsx`, `agenda/AgendaPrep.dom.test.tsx` and the frame's `inside` case in `shell/shell.test.ts` on the screen.
 - `bun run ui:preview src/renderer/src/work/prep/PrepView.preview.tsx#PrepPreview --props '{"state":"briefed"}' --shot`, states `facts`, `nobody`, `preparing`, `briefed`, `after`, `filed`, `failed`, `recording`, `partial`, `loading`.
 - `env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-prep.ts` (through `heavy`, after a build): one whole job on an isolated instance against his real LifeOS with dummy data, by the house pattern of work-proofs.md.
+
+## When a read or link fails
+
+The meeting page keeps the facts it has while the workspace’s computer is out of reach. Brief me, Follow up, and the filing and setup presses wait for the link. The page reads again when the link returns.

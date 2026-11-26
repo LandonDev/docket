@@ -1,6 +1,7 @@
 import { Component, lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { SectorKey } from "@shared/work";
 import type { LifeosStateName } from "@shared/contract-work-lifeos";
+import { HostLinkLine, linkDownWords, useHostLinkDown } from "./hostLinkDown";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { EmptyState, SurfaceSkeleton } from "../../surfaces/SurfaceSkeleton";
 import { loadToast } from "../../components/ui/toaster";
@@ -11,7 +12,7 @@ import { useSelectedWorkspaceIds } from "../../stores/project";
 import { StatusMark } from "../../components/ui/status";
 import { viewChunksAfter, WORK_VIEWS, type WorkViewId, type WorkViewModule, type WorkViewProps } from "../views/registry";
 import { preloadInTurn } from "../../lib/lazyChunk";
-import { registry, useEnvironmentStatus } from "../../lib/connection";
+import { registry } from "../../lib/connection";
 import { isSilence, KeptRegion, lifeosHostName, reopenLifeos, sessionFailure, sessionWords, useKeptRegion, useLifeosSession, useLifeosStatus } from "./lifeos";
 import { startThreadAbout } from "./WorkColumn";
 import { openWorkSettings } from "./open";
@@ -118,6 +119,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const signedOut = gated && (state === "signed-out" || state === "refused" || session.state === "signed-out" || session.state === "refused");
   // A host whose status ask went unanswered on an open link is down too (`unanswered`): its own name and Retry.
   const unreachable = gated && (state === "unreachable" || session.state === "unreachable");
+  const linkDown = useHostLinkDown(environmentId);
+  const actionLinkDown = session.client && (def.id === "tasks" || def.id === "prep") ? linkDown : null;
   const silence = sessionWords(session);
   // The host answers, but this computer's key is never handed its LifeOS session (a given computer's): not silence, and Retry cannot help.
   const withheld = gated && !!session.withheld;
@@ -130,10 +133,9 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
   const offPress = useDownPress("off", environmentId);
   const signPress = useDownPress(pairing ? "pairing" : refused ? "refused" : "signed-out", environmentId);
   // A host never heard from (asleep, offline): its name and Retry, never bones that pulse for ever.
-  const link = useEnvironmentStatus(environmentId);
   // His Retry on it keeps the line, spinning, while the link tries (`retryLink`), never the view's bones under it.
   const [linkRetrying, setLinkRetrying] = useState(false);
-  const away = gated && state === null && ((link.transport !== "open" && link.transport !== "connecting" && link.transport !== "reconnecting") || linkRetrying);
+  const away = gated && !session.client && (state === null || state === "unreachable") && (!!linkDown || linkRetrying);
   const [signingIn, setSigningIn] = useState(false);
   const host = registry.environment(environmentId)?.name ?? "This host";
   // A view with its own head (Mail) has no header over it, but the sign-in has no head and keeps the header, as does the
@@ -199,7 +201,8 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
           {Head && !held ? <Head {...props} /> : null}
         </div>
       )}
-      {unreachable && !blocked ? (
+      {actionLinkDown && !held ? <HostLinkLine word={actionLinkDown} /> : null}
+      {unreachable && !blocked && !actionLinkDown ? (
         // The state line's shape (DESIGN.md "The state line"): 32px, glyph, the word in its tone, a muted detail, one action.
         <div data-view-state="failed" role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-3 py-1 text-[13px] leading-5">
           <StatusMark
@@ -218,7 +221,7 @@ export function ViewFrame({ view, environmentId, workspaceId, sector }: { view: 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
         {away ? (
           <EmptyState
-            title={`${host} is not connected`}
+            title={linkDownWords(host)}
             action={{
               label: "Retry",
               busy: linkRetrying,

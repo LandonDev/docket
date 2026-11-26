@@ -19,3 +19,7 @@ The Tasks view names only the pure work-kit modules (`work-kit/lifeos`, `work-ki
 ## `work.tasks.done {taskId}` (approve)
 
 Done in the view goes through the host, not straight to LifeOS. `tasks/index.ts` reads the task's links (`workLinks:byEntity`) and its sector (`tasks:get`), and completes it with `tasks:complete {id, reason: 'Accepted the work of "<thread title>"', threadLink}` naming this host's newest linked thread of the task's own sector: a Work thread of that sector, or a code thread opened on the task whose workspace is linked to that sector or to none (`worksIn`); with none, it completes it plainly. A code thread on another host than the Work workspace's is not named. Answers `{threadId, nextId}`. A send that goes still completes the thread's linked tasks through `ctx.links.completeFor` (the hold's own path).
+
+## When a read or link fails
+
+Done needs the workspace’s computer. While its link is down, the task list stays readable and Done waits in the lead row, task menu, sheet, and row tick. The link’s return frees those presses.

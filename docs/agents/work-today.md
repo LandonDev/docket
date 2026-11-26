@@ -494,3 +494,7 @@ What the phone leaves out: the Files source (not registered here either),
 the keys, the toasts' strip and the held sheet (the phone opens the
 Outbox's own item), and `hostFailureWords`'s plain words for a host's
 error: the port hands the error on, and the screen words it.
+
+## When a read or link fails
+
+Today names a lost link at the foot and holds task ticks that need that computer. If the host answers that Work is off, Today shows a muted line with Open Settings where this window may turn Work on, or says who can.

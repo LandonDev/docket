@@ -88,6 +88,7 @@ describe("the Routines view", () => {
     const starts = document.querySelector("[data-routine-detail] dl")!;
     expect(starts.textContent).toContain("When a mail arrives");
     expect(starts.textContent).toContain("Not signed in to LifeOS on the box");
+    expect(screen.getByRole("list", { name: "Routines" }).textContent).toContain("Not signed in to LifeOS on the box");
     expect(starts.textContent).not.toContain("waiting on LifeOS");
     // Council round 11, the walk: on its way, the one wait with the computer named and no press.
     act(() => setLifeosStatus("box", { lifeos: { state: "connecting" }, keys: [] }));

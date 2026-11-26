@@ -1069,8 +1069,11 @@ const LIFEOS_LEFT = new Set<string>(Object.keys(LINE_LISTS))
 /** The lines that already say why the meetings were not judged. */
 const LINE_MEETS = new Set<string>([LEFT.lifeos, LEFT.lifeosKept, LEFT.calendar, LEFT.calendarKept, LEFT.mail, LEFT.mailKept, LEFT.self, LEFT.carried])
 
-/** A host that did not answer: "The Mac is off. Its threads and held items are not counted." */
-export const hostOffWords = (name: string): string => `${name} is off. Its threads and held items are not counted.`
+/** What Review leaves out when this window cannot read a host. */
+export const hostNotCountedWords = (state: string): string => `${state}. Its threads and held items are not counted.`
+
+/** The phone’s existing words for a host that is off. */
+export const hostOffWords = (name: string): string => hostNotCountedWords(`${name} is off`)
 
 // --- the words for rows ---------------------------------------------------------------------
 

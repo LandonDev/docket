@@ -73,6 +73,7 @@ function Tile({
   template,
   making,
   focusable,
+  disabled,
   menu,
   held,
   onPress,
@@ -82,6 +83,7 @@ function Tile({
   template: Template;
   making: boolean;
   focusable: boolean;
+  disabled: boolean;
   menu: boolean;
   /** Its menu is open: the ⋯ stays shown. */
   held: boolean;
@@ -101,6 +103,7 @@ function Tile({
       // The kind, for someone who cannot see the glyph or its tint; the name stays the label.
       aria-description={KIND_WORD[template.kind]}
       aria-busy={making || undefined}
+      disabled={disabled}
       tabIndex={focusable ? 0 : -1}
       onFocus={onFocus}
       onClick={onPress}
@@ -190,11 +193,13 @@ export function Shelf({
   menuFor,
   onMenu,
   focusId,
+  disabled = false,
 }: {
   groups: readonly ShelfGroup[];
   layout: ShelfLayout;
   /** The tile that takes the tab stop first (the one Back returns to); the first tile when absent. */
   focusId?: string | null;
+  disabled?: boolean;
   /** The template a make is waiting on, or null. */
   making: string | null;
   onPress: (template: Template) => void;
@@ -211,7 +216,7 @@ export function Shelf({
   const byId = (id: string | null) => all.find((t) => t.id === id) ?? null;
 
   const walk = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof HTMLElement) || !event.target.matches("[data-tile-open]")) return;
+    if (disabled || !(event.target instanceof HTMLElement) || !event.target.matches("[data-tile-open]")) return;
     // Return makes, once: the button's own click on Enter is held back.
     if (event.key === "Enter") {
       event.preventDefault();
@@ -239,7 +244,8 @@ export function Shelf({
                 template={t}
                 making={making === t.id}
                 focusable={t.id === current}
-                menu={!!menuFor}
+                disabled={disabled}
+                menu={!disabled && !!menuFor}
                 held={held === t.id}
                 onPress={() => onPress(t)}
                 onFocus={() => setActive(t.id)}
@@ -260,10 +266,12 @@ export function Shelf({
       label="Template actions"
       lazyMount
       rowsFor={(id) => {
+        if (disabled) return null;
         const t = byId(id);
         return t ? menuFor(t) : null;
       }}
       onPick={(pick, id) => {
+        if (disabled) return;
         const t = byId(id);
         if (t) onMenu(pick, t);
       }}

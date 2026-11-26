@@ -753,3 +753,7 @@ host and in the service; none of it runs on the box until its next deploy from m
   `scripts/e2e-winvm-points.ts` (the standing instance: save, change a file, go back, the file as it was), and
   `scripts/e2e-winvm-picture.ts` (a fresh standing disk with QEMU's window: frames a second through the relay, its
   disk deleted after).
+
+## When a read or link fails
+
+When the stage shows Lost or Reconnecting, its bar holds Take over and the Windows VM menu. They return with the link.

@@ -1,3 +1,5 @@
+import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
+import { useAccountReach } from "./accountReach";
 import { useEffect, useState } from "react";
 import type { GoogleAccounts, GooglePicked } from "@shared/contract-work-google";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
@@ -35,15 +37,20 @@ async function pickAndOpen(env: string, sessionId: string, account: string): Pro
 
 function Body({ env, sessionId, onClose }: { env: string; sessionId: string; onClose(): void }) {
   const close = useModalClose();
+  const pickerHost = registry.primaryEnvironmentId;
+  const accountsReach = useAccountReach(pickerHost);
+  const destinationDown = useHostLinkDown(env === pickerHost ? null : env);
   const [accounts, setAccounts] = useState<GoogleAccounts | null>(null);
   const [account, setAccount] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (accountsReach.held) return;
     let live = true;
+    setError(null);
     // The Picker runs here, in this computer's browser: its own host is asked.
     registry
-      .linkOf(registry.primaryEnvironmentId)
+      .linkOf(pickerHost)
       .request<GoogleAccounts>("work.google.accounts", {})
       .then((got) => {
         if (!live) return;
@@ -56,13 +63,15 @@ function Body({ env, sessionId, onClose }: { env: string; sessionId: string; onC
     return () => {
       live = false;
     };
-  }, []);
+  }, [pickerHost, accountsReach.held]);
 
   const ready = accounts?.accounts.filter((a) => a.files) ?? [];
-  const blocked = accounts && !accounts.picker ? "This computer does not know LifeOS's Google client yet." : accounts && !ready.length ? "No Google account has allowed Drive files yet. Reconnect one in LifeOS." : null;
+  const checkingEmpty = accountsReach.checking && ready.length === 0;
+  const blocked = checkingEmpty ? null : accounts && !accounts.picker ? "This computer does not know LifeOS's Google client yet." : accounts && !ready.length ? "No Google account has allowed Drive files yet. Reconnect one in LifeOS." : null;
 
   // The dialog goes as the Picker comes up: the choosing happens in the browser, and nothing here waits on it.
   const run = (): void => {
+    if (!account || accountsReach.held || destinationDown) return;
     localStorage.setItem(LAST, account);
     const then = () => {
       onClose();
@@ -81,9 +90,9 @@ function Body({ env, sessionId, onClose }: { env: string; sessionId: string; onC
     >
       <ModalBody>
         {/* With no account to pick from, one muted line says what is missing, never an empty select. */}
-        {blocked ? (
+        {accountsReach.held ? accountsReach.line : destinationDown ? <HostLinkLine word={destinationDown} retryHost={env} /> : blocked ? (
           <p className="text-[13px] leading-5 text-muted-foreground">{blocked}</p>
-        ) : accounts ? (
+        ) : accounts && !checkingEmpty ? (
           <FieldRow label="Account">
             <ChoiceSelect label="Account" value={account} options={ready.map((a) => ({ value: a.account, label: a.account }))} onChange={setAccount} />
           </FieldRow>
@@ -92,9 +101,9 @@ function Body({ env, sessionId, onClose }: { env: string; sessionId: string; onC
             <Skeleton className="h-3 w-1/2" />
           </div>
         )}
-        <ErrorLine error={error} />
+        <ErrorLine error={accountsReach.held || destinationDown ? null : error} />
       </ModalBody>
-      <DialogFooter onCancel={onClose} {...(blocked ? {} : { confirmLabel: "Choose files", disabled: !account })} />
+      <DialogFooter onCancel={onClose} {...(blocked ? {} : { confirmLabel: "Choose files", disabled: !account || accountsReach.held || !!destinationDown })} />
     </form>
   );
 }

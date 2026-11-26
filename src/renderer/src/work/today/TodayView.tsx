@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
+import { linkDownWords, useHostLinkDown } from "../shell/hostLinkDown";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { ItemButton } from "../../components/ui/item";
 import { Skeleton } from "../../components/ui/skeleton";
@@ -18,7 +19,7 @@ import { CutDetail } from "../canvas/QuietLine";
 import { useTodayEnv } from "./env";
 import { downIsSilence, downWords, useDownPress, type LifeosDown } from "../shell/lifeosDown";
 import { useDownAction } from "../shell/DownSignIn";
-import { connectingWords } from "../shell/lifeosWords";
+import { connectingWords, lifeosStateOf } from "../shell/lifeosWords";
 import { Spinner } from "../../components/ui/spinner";
 import { HeldSheet } from "./HeldSheet";
 import { foldKey, foldOf, page, type ShownSection, type TodayPage } from "./model";
@@ -219,6 +220,7 @@ export function TodayPageView({
     const key = at.closest("[data-today-row]")?.getAttribute("data-today-row") ?? at.getAttribute("data-roving-key");
     if (key && key !== focused) setFocused(key);
   };
+  const offline = new Set(model.offline);
   const phaseOf = (key: string): RowPhase => (closing.has(key) ? "closing" : leaving.has(key) ? "leaving" : undefined);
   return (
     <div className={cn("flex flex-1 flex-col", TODAY_COLUMN)}>
@@ -226,7 +228,7 @@ export function TodayPageView({
       <div ref={roving.listRef} onKeyDown={onKeyDown} onFocus={onFocus} className={cn("flex flex-col pt-6 pb-24", TODAY_INSET)}>
       {model.blocks.map((block) =>
         block.kind === "section" ? (
-          <Section key={block.section.id} section={block.section} hostName={hostName} jobName={jobName} phaseOf={phaseOf} stop={stop} />
+          <Section key={block.section.id} section={block.section} hostName={hostName} jobName={jobName} phaseOf={phaseOf} stop={stop} offline={offline} />
         ) : block.kind === "lost" ? (
           // A job's session on another host that is down: said once for the page, with what every section left out.
           <div key={`lost:${block.failure.environmentId}:${block.failure.down ?? "connecting"}`} data-today-lost={block.failure.down ?? "connecting"} className="mt-6 first:mt-0">
@@ -247,7 +249,7 @@ export function TodayPageView({
         <div className={cn("mt-6 flex flex-col gap-1 pe-3 text-xs leading-4 text-muted-foreground", TITLE_EDGE)}>
           {model.offline.map((id) => (
             <p key={id} data-today-offline={id}>
-              {hostName(id)} is offline.
+              {linkDownWords(hostName(id))}
             </p>
           ))}
         </div>
@@ -290,12 +292,14 @@ function Section({
   jobName,
   phaseOf,
   stop,
+  offline,
 }: {
   section: ShownSection;
   hostName: (environmentId: string) => string;
   jobName: (sector: SectorKey) => string;
   phaseOf: (key: string) => RowPhase;
   stop: string | null;
+  offline: ReadonlySet<string>;
 }) {
   // The rows the list began with, and those his own unfold showed, stand at once; one that arrives while he looks lands.
   // A box of the section's own, read and written while it renders.
@@ -324,7 +328,7 @@ function Section({
         <div role="list" className="-mb-0.5 flex flex-col">
           {section.earlier > 0 ? <FoldLine which="earlier" section={section.id} label={`${section.earlier} earlier`} stop={stop} /> : null}
           {section.rows.map((row) => (
-            <TodayRowSlot key={row.key} row={row} job={row.job ?? (row.sector ? jobName(row.sector) : null)} phase={phaseOf(row.key)} lands={lands(row.key)} current={row.key === stop} />
+            <TodayRowSlot key={row.key} row={row} tickHeld={row.lead?.kind === "tick" && offline.has(row.workspace?.environmentId ?? "")} job={row.job ?? (row.sector ? jobName(row.sector) : null)} phase={phaseOf(row.key)} lands={lands(row.key)} current={row.key === stop} />
           ))}
           {section.more > 0 ? <FoldLine which="more" section={section.id} label={`${section.more} more`} stop={stop} /> : null}
           {/* A read some job needs is still out: the rows that came are usable, and one bone says more may come. */}
@@ -416,6 +420,11 @@ function LifeosLine({ down, environmentId, host, retry }: { down: LifeosDown; en
  * read the host is not at fault for has its own words (`said`).
  */
 function HostLine({ failure, name }: { failure: TodayFailure; name: string }) {
+  const linkDown = useHostLinkDown(failure.environmentId);
+  if (linkDown) return <PageLine word={linkDown} note={failure.said} />;
+  if (failure.down === "off" || lifeosStateOf(failure.error) === "off") {
+    return <LostLine down="off" failure={failure} name={name} />;
+  }
   if (failure.down) return <LostLine down={failure.down} failure={failure} name={name} />;
   // A job's session on another host waits on that host's LifeOS: the wait, the computer named, what it left out, no press.
   if (failure.waits) return <PageLine waits word={connectingWords(name)} note={failure.said} />;

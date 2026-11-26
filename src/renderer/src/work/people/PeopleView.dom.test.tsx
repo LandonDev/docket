@@ -125,9 +125,10 @@ describe("the list", () => {
       expect(lifeos.once.map((o) => o.args)).toEqual([{ sector: "purdue" }]);
       expect(screen.getByText("People did not load")).toBeTruthy();
       expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).not.toBeNull();
-      // Refused again: its words in place, Retry at rest.
+      // Refused again: the page keeps the plain failure and Retry rests.
       await act(async () => lifeos.once[0].fail(new Error("LifeOS still refused")));
-      expect(screen.getByText("LifeOS still refused")).toBeTruthy();
+      expect(screen.queryByText("LifeOS still refused")).toBeNull();
+      expect(screen.getByText("People did not load")).toBeTruthy();
       expect(screen.getByRole("button", { name: "Retry" }).querySelector("[data-busy]")).toBeNull();
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
       lifeos.directoryFails = false;

@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MoreEntry } from "../canvas/kind";
 
 const wire = vi.hoisted(() => ({ asked: [] as { env: string; method: string; params: unknown }[], accounts: [{ account: "owner@example.test", files: true }] as { account: string; files: boolean }[], refuse: null as string | null }));
+// The host's LifeOS is connected here: what the Google dialogs say while it is not is google/accountReach.dom.test.tsx's.
+vi.mock("../google/accountReach", () => ({ useAccountReach: () => ({ checking: false, held: false, line: null }) }));
 vi.mock("../../lib/connection", () => ({
   registry: {
     primaryEnvironmentId: "box",

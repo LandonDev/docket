@@ -245,3 +245,7 @@ tests check the deck mirror, Read again, the mirror shown when Drive cannot
 be reached, the copy to edit by caller, the exact bytes and MIME type of a
 deck's upload, a peer's upload and a Teams snapshot refused for every kind,
 and the reply for a sheet where the sheets module has registered none.
+
+## When a read or link fails
+
+Open from Google and Save to Google show the host’s connection or LifeOS state while they cannot read the accounts. The account press waits and the list reads again when the session returns.

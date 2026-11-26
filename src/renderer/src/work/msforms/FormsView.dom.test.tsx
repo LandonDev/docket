@@ -13,13 +13,17 @@ const host = vi.hoisted(() => ({
   reads: 0,
   opened: [] as unknown[],
   fail: false,
+  bad: [] as string[],
+  old: false,
   forgot: [] as unknown[],
 }));
 vi.mock("../../chrome/ConfirmDialog", async (original) => ({ ...(await original<typeof import("../../chrome/ConfirmDialog")>()), confirmAction: async () => true }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
     request: async (method: string, params: { formId?: string } = {}) => {
+      if (host.bad.includes(method)) throw new Error("The host refused the read");
       if (method === "work.forms.list") return host.ours;
+      if (host.old && method === "work.msforms.list") throw new Error("Unknown method work.msforms.list");
       if (method === "work.msforms.list") return (host.reads++, { forms: host.ms, offered: false });
       if (method === "work.msforms.forget") return (host.forgot.push(params), (host.ms = host.ms.filter((f) => f.formId !== params.formId)), { ok: true });
       throw new Error(`no ${method}`);
@@ -45,6 +49,8 @@ afterEach(() => {
   host.reads = 0;
   host.opened = [];
   host.fail = false;
+  host.bad = [];
+  host.old = false;
 });
 
 describe("the Forms view", () => {
@@ -77,6 +83,35 @@ describe("the Forms view", () => {
     await waitFor(() => expect(host.forgot).toEqual([{ workspaceId: "w1", formId: FORM }]));
     expect(await screen.findByText("No forms yet")).toBeTruthy();
     expect(host.opened).toEqual([]);
+  });
+
+  it("keeps the forms that came back and names the missing source", async () => {
+    host.ours = [{ kind: "ours", id: "item1", title: "Volunteer sign-up", state: "draft", count: null, lastAnswerAt: null, updatedAt: 10 }];
+    host.bad = ["work.msforms.list"];
+    render(<View {...props} />);
+    expect(await screen.findByText("Volunteer sign-up")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toBe("Microsoft forms did not load");
+    expect(screen.queryByText("No forms yet")).toBeNull();
+  });
+
+  it("retries failed reads without first calling the list empty", async () => {
+    host.ours = [];
+    host.ms = [];
+    host.bad = ["work.forms.list", "work.msforms.list"];
+    render(<View {...props} />);
+    expect(await screen.findByText("Forms did not load")).toBeTruthy();
+    expect(screen.queryByText("No forms yet")).toBeNull();
+    host.bad = [];
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("No forms yet")).toBeTruthy();
+  });
+
+  it("skips an absent source and reports a failure in the only source the host has", async () => {
+    host.old = true;
+    host.bad = ["work.forms.list"];
+    render(<View {...props} />);
+    expect(await screen.findByText("Forms did not load")).toBeTruthy();
+    expect(screen.queryByText("Microsoft forms did not load")).toBeNull();
   });
 
   it("says when there are none", async () => {

@@ -62,7 +62,8 @@ Outbox's store merges lists:
 - `left`: the sources that did not answer, in plain words (`LEFT`).
 
 A host that is on and not linked to the window is one muted line ("The Mac
-is off. Its threads and held items are not counted.") and the page stands.
+is not connected. Its threads and held items are not counted.",
+`hostNotCountedWords` over the link rule's words) and the page stands.
 
 ## Hours: what is measured and what is a guess
 
@@ -547,3 +548,7 @@ Not proven: the page on his real week, and the first real Friday run (they
 need the box deployed with this build). The LifeOS reads were called live
 only without a sign-in, which shows they are registered; no agent holds
 his identity.
+
+## When a read or link fails
+
+When a Work computer’s link is closed, Review says the computer is not connected and names the counts it left out. A computer that stopped answering on an open link has its own failed-read line.

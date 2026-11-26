@@ -385,3 +385,6 @@ Open, found by the proofs:
 - A thread's refused Forms open reads "open refused an item; give documents, folders or web pages", not the
   service's own Forms sentence.
 
+## When a read or link fails
+
+Forms shows one Retry when all the sources it can use fail. When one fails, Forms keeps the rows that came back and names the missing source. A known lost link gets a named line and holds New form until the link opens.

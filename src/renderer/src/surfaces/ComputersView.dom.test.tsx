@@ -491,13 +491,20 @@ describe("driving from the page", () => {
 
   it("waits for a host whose link is down in the picture's own box, with no stream asked for and no Retry", () => {
     vi.spyOn(registry, "statuses").mockReturnValue(new Map([["box", {}]]) as never);
-    vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "reconnecting" } as never);
-    render(<ComputersPage tiles={[vmTile({ driving: false })]} onOpenSession={() => undefined} size={{ width: 1200, height: 800 }} />);
+    const status = vi.spyOn(registry, "statusOf").mockReturnValue({ transport: "reconnecting" } as never);
+    const tree = () => <ComputersPage tiles={[vmTile({ driving: false })]} vms={{ box: { state: "awake", cannot: null, error: null } }} onOpenSession={() => undefined} size={{ width: 1200, height: 800 }} />;
+    const shown = render(tree());
     expect(screen.getByRole("status").textContent).toMatch(/^Reconnecting to /);
+    expect(screen.queryByRole("button", { name: "Take over" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Windows VM" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     expect(h.streams.every((s) => !s.run)).toBe(true);
     // the box keeps the picture's size
     expect((document.querySelector('[data-face="plate"]') as HTMLElement).style.aspectRatio).toBe("1280 / 800");
+    status.mockReturnValue({ transport: "open" } as never);
+    shown.rerender(tree());
+    expect(screen.getByRole("button", { name: "Take over" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Windows VM" })).toBeTruthy();
   });
 
   it("says a lost link's tries, then that the picture stopped, with Retry", () => {

@@ -1,3 +1,5 @@
+import { useHostLinkDown } from "./hostLinkDown";
+import { retryLink } from "./linkRetry";
 import { useLayoutEffect, useMemo, useState, type FormEvent } from "react";
 import type { SectorKey } from "@shared/work";
 import type { LifeosStateName, LifeosStatus } from "@shared/contract-work-lifeos";
@@ -69,7 +71,8 @@ const MENU_PRESS: Record<DownPress, { id: string; label: string }> = {
  * rule's press as the row (`downPress`); where this window may not make it, the state and who can (`elsewhere`) as a
  * note; a computer the host keeps LifeOS from, the state alone as a note. Without a sector keeps its own way.
  */
-export function addMenuRows(state: AddMenuState, free: readonly string[], names?: ReadonlyMap<string, string>, said?: string, elsewhere?: string | null, host?: string | null, retrying = false): MenuRow[] {
+export function addMenuRows(state: AddMenuState, free: readonly string[], names?: ReadonlyMap<string, string>, said?: string, elsewhere?: string | null, host?: string | null, retrying = false, linkDown?: string | null): MenuRow[] {
+  if (linkDown) return [{ kind: "item", ...MENU_PRESS.retry, description: linkDown, keepOpen: true, busy: retrying }];
   const note = (id: string, words: string, who?: string | null): MenuRow => ({ kind: "note", id, content: <span className="text-muted-foreground">{words}{who ? <span className="block">{who}</span> : null}</span> });
   const down = (gone: LifeosDown): MenuRow[] => {
     const words = said ?? downWords(gone);
@@ -163,6 +166,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
   const home = useMemo(() => workHome(environments), [environments, hosts]);
   const status = useLifeosStatus(home);
   const session = useLifeosSession(home ?? "", null);
+  const linkDown = useHostLinkDown(home);
   const state = addMenuState(status, session);
   const hostState: LifeosStateName | null = status?.lifeos.state ?? (session.unanswered ? "unreachable" : null);
   const said = sessionWords(session);
@@ -189,7 +193,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
     const workspaceAt = (path: string | null): WorkspaceMeta | undefined => (path ? workspaceByPath(workspaces, path) : undefined);
     workRailPort.set({
       subscribe: (listener) => (railListeners.add(listener), () => void railListeners.delete(listener)),
-      addRows: () => addMenuRows(state, freeSectors(workspaces, order), names, said, menuPress.elsewhere, home ? lifeosHostName(home) : null, retrying),
+      addRows: () => addMenuRows(state, freeSectors(workspaces, order), names, said, menuPress.elsewhere, home ? lifeosHostName(home) : null, retrying, linkDown),
       sectorRows(path) {
         const workspace = workspaceAt(path);
         if (!workspace || !sectorMenuShown(workspace, hosts)) return [];
@@ -203,8 +207,10 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
         if (action === "work:settings") return openWorkSettings();
         if (action === "work:retry") {
           setRetrying(true);
+          if (linkDown && home) return void retryLink(home).finally(() => setRetrying(false));
           return retryLifeos(home, fail, () => setRetrying(false));
         }
+        if (linkDown && action.startsWith("work:add")) return;
         if (action === "work:add-unlinked") return setNaming(true);
         if (action.startsWith("work:add:") && home) {
           const sector = action.slice("work:add:".length) as SectorKey;
@@ -221,7 +227,7 @@ export function WorkRailHost({ onOpenWorkspace }: { onOpenWorkspace: (path: stri
     // An open + menu reads its rows again: a Retry's answer replaces its row in place.
     for (const listener of railListeners) listener();
     return () => workRailPort.set(null);
-  }, [home, hostState, hosts, names, onOpenWorkspace, order, state, said, menuPress.elsewhere, session.unanswered, workspaces, retrying]);
+  }, [home, hostState, hosts, linkDown, names, onOpenWorkspace, order, state, said, menuPress.elsewhere, session.unanswered, workspaces, retrying]);
 
   return (
     <>

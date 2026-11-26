@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { GoogleAccounts } from "@shared/contract-work-google";
+import { useAccountReach } from "./accountReach";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { FieldRow } from "../../chrome/DialogField";
 import { Modal, ModalBody } from "../../chrome/Modal";
@@ -10,13 +11,16 @@ import { registry } from "../../lib/connection";
 import { openUrl } from "../../lib/native";
 
 export function UploadGoogleDialog({ env, itemId, kind, onClose }: { env: string; itemId: string; kind: "Slides" | "Sheets"; onClose(): void }) {
+  const accountsReach = useAccountReach(env);
   const [accounts, setAccounts] = useState<string[] | null>(null);
   const [account, setAccount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (accountsReach.held) return;
     let live = true;
+    setError(null);
     void registry.linkOf(env).request<GoogleAccounts>("work.google.accounts", {}).then(
       (result) => {
         if (!live) return;
@@ -29,10 +33,10 @@ export function UploadGoogleDialog({ env, itemId, kind, onClose }: { env: string
     return () => {
       live = false;
     };
-  }, [env]);
+  }, [env, accountsReach.held]);
 
   const save = async (): Promise<void> => {
-    if (saving || !account) return;
+    if (saving || !account || accountsReach.held) return;
     setSaving(true);
     setError(null);
     try {
@@ -52,18 +56,18 @@ export function UploadGoogleDialog({ env, itemId, kind, onClose }: { env: string
         void save();
       }}>
         <ModalBody>
-          {accounts?.length ? (
+          {accountsReach.held ? accountsReach.line : accounts?.length ? (
             <FieldRow label="Account">
               <ChoiceSelect label="Account" value={account} options={accounts.map((value) => ({ value, label: value }))} onChange={setAccount} disabled={saving} />
             </FieldRow>
-          ) : accounts ? (
+          ) : accounts && !accountsReach.checking ? (
             <p className="text-[13px] leading-5 text-muted-foreground">No Google account has allowed Drive files. Reconnect one in LifeOS.</p>
           ) : error ? null : (
             <div aria-busy className="flex h-8 items-center"><Skeleton className="h-3 w-1/2" /></div>
           )}
-          <ErrorLine error={error} />
+          <ErrorLine error={accountsReach.held ? null : error} />
         </ModalBody>
-        <DialogFooter onCancel={onClose} confirmLabel="Save" disabled={!account} pending={saving} />
+        <DialogFooter onCancel={onClose} confirmLabel="Save" disabled={!account || accountsReach.held} pending={saving} />
       </form>
     </Modal>
   );

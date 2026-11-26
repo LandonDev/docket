@@ -210,17 +210,17 @@ function SearchField({ workspaceId }: { workspaceId: string }) {
  */
 function ReadFailed({ title, error, session, name, args, onBack }: { title: string; error: string; session: LifeosSession; name: string; args: Record<string, unknown>; onBack(): void }) {
   const [retrying, setRetrying] = useState(false);
-  const [said, setSaid] = useState<string | null>(null);
+  const [failedAgain, setFailedAgain] = useState(false);
   const retry = (): void => {
     const client = session.client;
     if (!client) return;
     setRetrying(true);
     void client
       .query(makeFunctionReference<"query">(name), args)
-      .then(onBack, (err: unknown) => setSaid(err instanceof Error ? err.message : String(err)))
+      .then(onBack, () => setFailedAgain(true))
       .finally(() => setRetrying(false));
   };
-  return <EmptyState title={title} line={said ?? error} action={{ label: "Retry", busy: retrying, onClick: retry }} />;
+  return <EmptyState title={title} line={failedAgain ? undefined : error} action={{ label: "Retry", busy: retrying, onClick: retry }} />;
 }
 
 /** The view, read anew (its live reads too) once a Retry's own read has answered. */

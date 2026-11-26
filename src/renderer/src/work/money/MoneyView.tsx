@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { receiptSource, type CalendarOffer, type MoneyProblem, type MoneyRead } from "@shared/contract-work-money";
+import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
 import { loadToast } from "../../components/ui/toaster";
 import { formatDay, formatMoney, invoiceTotal, isReceiptName, milesLine, RECEIPT_EXTS, sigOf, today, undatedWords, type LedgerRow, type OwedRow } from "@shared/work/money";
 import { ChartLegend } from "@aliax/charts/legend";
@@ -90,6 +91,7 @@ function useNarrowHead(): [(el: HTMLSpanElement | null) => void, boolean] {
 
 export function Head({ env, workspace, sector }: WorkViewProps) {
   // The period is drawn only once the job is KNOWN to have money or something waiting: never before the first read lands, never on a job with none, never in a columns fault.
+  const linkDown = useHostLinkDown(env);
   const { period, bare: bareOf, landed: landedOf } = useShared(ui);
   const bare = bareOf[workspace.id] !== false;
   // Until a read of the period has landed (loading, or the first read failed), a dialog that draws from it could not open: its row waits.
@@ -147,13 +149,14 @@ export function Head({ env, workspace, sector }: WorkViewProps) {
         align="end"
         rows={addRows}
         onPick={(id) => {
+          if (linkDown) return;
           if (id === "entry") set({ dialog: { kind: "entry" } });
           else if (id === "receipt") set({ dialog: { kind: "pick" } });
           else if (id === "trip") set({ dialog: { kind: "trip", offer: null } });
           else if (id === "invoice" || id === "request") set({ dialog: { kind: "invoice", as: id === "request" ? "request" : "invoice" } });
         }}
         trigger={
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" disabled={!!linkDown}>
             <Plus />
             Add
           </Button>
@@ -183,6 +186,7 @@ export function View({ env, workspace }: WorkViewProps) {
   const { period, dialog } = useShared(ui);
   const span = useMemo(() => periodOf(period), [period]);
   const [load, reload] = useMoney(env, workspace.id, span);
+  const linkDown = useHostLinkDown(env);
   useEffect(() => resetMoneyView, []);
   // `read` is this period's own answer, or null until it lands: never another period's figures under this label.
   const read = load.read;
@@ -209,7 +213,7 @@ export function View({ env, workspace }: WorkViewProps) {
   }, [dialog]);
 
   const receive = (files: File[]) => {
-    if (!files.length) return;
+    if (linkDown || !files.length) return;
     const { taken, left } = sortFiles(files);
     if (left) void loadToast().then((toast) => toast(left));
     if (!taken.length) return;
@@ -270,14 +274,15 @@ export function View({ env, workspace }: WorkViewProps) {
 
   const toConfirm = read ? <ToConfirmSection env={env} workspaceId={workspace.id} read={read} reload={reload} onReview={(id) => set({ dialog: { kind: "confirm", id } })} onReviewOffer={(offer) => set({ dialog: { kind: "trip", offer } })} /> : null;
   let body: ReactNode;
-  if (!read) body = load.error ? null : <MoneySkeleton />;
+  if (!read) body = load.error || linkDown ? null : <MoneySkeleton />;
   else if (columns) body = waits(read) ? <Column>{toConfirm}</Column> : null;
+  else if (bare && (load.error || linkDown)) body = null;
   else if (bare) body = <EmptyState title="No money yet" line="Drop a receipt here." action={{ label: "Add entry", onClick: () => set({ dialog: { kind: "entry" } }) }} />;
   else body = <Ledger env={env} workspaceId={workspace.id} read={read} label={periodLabel(period)} year={period.span === "year"} reload={reload} toConfirm={waits(read) ? toConfirm : null} />;
 
   return (
     <div ref={root} data-money-view className="@container/money flex h-full min-h-0 flex-col">
-      {load.error ? <ViewStateLine word="Money did not load" detail={load.error} onRetry={reload} /> : null}
+      {linkDown ? <HostLinkLine word={linkDown} retryHost={env} /> : load.error ? <ViewStateLine word="Money did not load" detail={load.error} onRetry={reload} /> : null}
       {columns ? (
         columns.twice?.length ? (
           // Two columns of one name: which holds his figures cannot be said, so nothing is read until he renames or removes one.

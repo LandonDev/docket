@@ -375,6 +375,8 @@ function VmPoints({ host, onClose }: { host: string; onClose: () => void }) {
 export interface ComputerBarProps {
   /** null: the computer left (full screen and the pop-out keep their bar for the way out) */
   tile: ComputerTile | null;
+  /** The stage is showing Lost or Reconnecting. */
+  linkLost?: boolean;
   /** the name to show with no tile */
   name?: string;
   /** a press on the title: the thread */
@@ -406,7 +408,7 @@ export interface ComputerBarProps {
  * The bar, pure. Its title leads (13px medium), the status sentence follows it on the same line (12px muted, the
  * driving words and a card's question in foreground), and every press sits at its end, always shown.
  */
-export function ComputerBar({ tile, name, onOpenSession, onTookOver, where, reading, onFaster, vm, screen = null, action, views, onMenuOpen, small = false, fold = true, className }: ComputerBarProps) {
+export function ComputerBar({ tile, linkLost = false, name, onOpenSession, onTookOver, where, reading, onFaster, vm, screen = null, action, views, onMenuOpen, small = false, fold = true, className }: ComputerBarProps) {
   const line = tile ? tileLine(tile) : null;
   const asking = !!tile?.entry.row.asking && !tile.driving;
   const thread = tile && !tile.entry.row.threadId.startsWith("vm:") ? tile.entry.row.threadId : null;
@@ -430,13 +432,13 @@ export function ComputerBar({ tile, name, onOpenSession, onTookOver, where, read
         {small ? null : <Facts parts={parts} className="flex-nowrap overflow-hidden text-xs @max-[480px]/bar:hidden leading-4 whitespace-nowrap text-muted-foreground [&>span]:min-w-0 [&>span]:truncate" />}
       </div>
       <span data-slot="computer-reads" className="flex shrink-0 items-center gap-0.5">
-        {reading ? <DelayButton reading={reading} onFaster={onFaster} onOpenChange={onMenuOpen} /> : null}
-        {tile?.driving && vmHere ? <KeysMenu tile={tile} onOpenChange={onMenuOpen} /> : null}
-        {vm && tile && state && state !== "none" && state !== "setting-up" && !small ? (
+        {reading ? <DelayButton reading={reading} onFaster={linkLost ? undefined : onFaster} onOpenChange={onMenuOpen} /> : null}
+        {!linkLost && tile?.driving && vmHere ? <KeysMenu tile={tile} onOpenChange={onMenuOpen} /> : null}
+        {!linkLost && vm && tile && state && state !== "none" && state !== "setting-up" && !small ? (
           <VmMenu host={tile.entry.host} state={state} held={!!thread && !tile.driving} screen={screen} onOpenChange={onMenuOpen} />
         ) : null}
       </span>
-      {tile && (action || !(vm?.state === "none")) ? (
+      {tile && (action || (!linkLost && vm?.state !== "none")) ? (
         <span data-slot="computer-controls" className="ms-2 flex shrink-0 items-center gap-1">
           {action ?? <StageControls tile={tile} onTookOver={onTookOver} small={small} />}
         </span>

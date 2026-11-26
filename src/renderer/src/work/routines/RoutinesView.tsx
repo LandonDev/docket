@@ -1,3 +1,6 @@
+import { downOf, downWords } from "../shell/lifeosDown";
+import { connectingWords } from "../shell/lifeosWords";
+import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RoutineRow, RoutineRun } from "@shared/contract-work-routines";
 import { ChevronLeft, Plus } from "../../chrome/icons";
@@ -45,9 +48,10 @@ const newForm = headAsk();
 
 export function Head({ env }: WorkViewProps) {
   newForm.useHead();
+  const linkDown = useHostLinkDown(env);
   if (!useLinkMay(env, "work.routines.save")) return null;
   return (
-    <Button variant="ghost" size="sm" onClick={newForm.ask}>
+    <Button variant="ghost" size="sm" disabled={!!linkDown} onClick={newForm.ask}>
       <Plus />
       New routine
     </Button>
@@ -81,9 +85,11 @@ function useRoutines(env: string, workspaceId: string): [Load<RoutineRow[]>, num
         setTick((n) => n + 1);
       }
     });
+    const offOpen = link.onOpen?.(() => void fetch());
     return () => {
       live = false;
       off();
+      offOpen?.();
     };
   }, [env, workspaceId]);
   const retry = useCallback(() => read.current(), []);
@@ -128,7 +134,8 @@ export function View({ env, workspace }: WorkViewProps) {
   const playName = (id: string | null) => (id && plays.status === "ready" ? (plays.value.find((p) => p.id === id)?.name ?? null) : null);
   const [picked, setPicked] = useState<string | null>(null);
   const [form, setForm] = useState<{ row: RoutineRow | null } | null>(null);
-  newForm.useAnswer(() => setForm({ row: null }));
+  const linkDown = useHostLinkDown(env);
+  newForm.useAnswer(() => !linkDown && setForm({ row: null }));
 
   const rows = useMemo(() => {
     if (load.status !== "ready") return [];
@@ -136,7 +143,12 @@ export function View({ env, workspace }: WorkViewProps) {
     return [...load.value].sort((a, b) => Number(b.proposed) - Number(a.proposed) || a.createdAt - b.createdAt);
   }, [load]);
   const current = rows.find((r) => r.id === picked) ?? rows[0] ?? null;
+  const hostLive = useHostLive(env);
+  const host = useEnvironments().find((e) => e.id === env)?.name;
+  const down = hostLive.down && downOf(hostLive.down);
+  const lifeosWait = down ? downWords(down, host) : hostLive.waits ? connectingWords(host) : null;
 
+  if (linkDown) return <HostLinkLine word={linkDown} retryHost={env} />;
   if (load.status === "loading") return <ListSkeleton />;
   if (load.status === "error") return <EmptyState title="Routines did not load" line={load.error} action={{ label: "Retry", onClick: again, busy: retrying }} />;
   // Narrow, the detail shows only once a routine is picked; wide, the first is shown until then.
@@ -158,7 +170,7 @@ export function View({ env, workspace }: WorkViewProps) {
           >
             {rows.map((r) => (
               <li key={r.id} className="flex flex-col">
-                <RoutineItem row={r} current={r.id === current?.id} onPick={() => setPicked(r.id)} />
+                <RoutineItem lifeosWait={lifeosWait} row={r} current={r.id === current?.id} onPick={() => setPicked(r.id)} />
               </li>
             ))}
           </ul>
@@ -172,15 +184,16 @@ export function View({ env, workspace }: WorkViewProps) {
   );
 }
 
-function RoutineItem({ row, current, onPick }: { row: RoutineRow; current: boolean; onPick: () => void }) {
+function RoutineItem({ row, current, onPick, lifeosWait }: { row: RoutineRow; current: boolean; onPick: () => void; lifeosWait: string | null }) {
   const mark = rowMark(row);
+  const line = rowLine(row);
   return (
     <ItemButton aria-current={current ? "true" : undefined} onClick={onPick} className={cn("flex-col flex-nowrap items-stretch gap-0.5 px-2 py-1.5 transition-none", current ? "bg-muted" : "hover:bg-foreground/5")}>
       <span className="flex min-w-0 items-baseline gap-2 text-[13px]">
         <span className="min-w-0 flex-1 truncate font-medium text-foreground">{row.name}</span>
         {mark ? <StatusMark state={mark} word={false} className="shrink-0" /> : null}
       </span>
-      <span className="truncate text-xs text-muted-foreground">{rowLine(row)}</span>
+      <span className="truncate text-xs text-muted-foreground">{row.waiting === LIFEOS_WAIT && lifeosWait ? line.replace(/waiting on LifeOS$/, lifeosWait) : line}</span>
     </ItemButton>
   );
 }

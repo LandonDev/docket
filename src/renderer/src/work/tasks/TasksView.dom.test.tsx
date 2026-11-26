@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+import { registry as linkRegistry } from "../../lib/connection/registry";
+import { IDLE_STATUS, type EnvironmentStatus } from "../../lib/connection/types";
 /**
  * A Work workspace's Tasks over the shared task client (work-kit/views),
  * answered from memory: the lead and the groups, Start thread with the task
@@ -143,6 +145,34 @@ describe("the Tasks view", () => {
     fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Start thread" }));
     await act(async () => {});
     expect(startThread).toHaveBeenLastCalledWith({ kind: "task", label: "Send Dana the budget", ref: { at: "lifeos", table: "tasks", id: "t2" } });
+  });
+
+  it("holds Done in a retained task list and cancels a tick if the link drops during its hold", async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ now });
+    let status: EnvironmentStatus = { ...IDLE_STATUS, transport: "open" };
+    const statusOf = vi.spyOn(linkRegistry, "statusOf").mockImplementation((id) => id === "box" ? status : IDLE_STATUS);
+    const client = fakeTasksClient(rows);
+    const tree = () => <Tasks client={client} place={{ environmentId: "box", id: "w", path: "/w" }} startThread={() => {}} />;
+    try {
+      const view = render(tree());
+      const done = () => screen.getByRole<HTMLButtonElement>("button", { name: "Done" });
+      const tick = () => screen.getByRole("checkbox", { name: "Mark Send Dana the budget done" });
+      fireEvent.click(tick());
+      status = { ...status, transport: "reconnecting" };
+      view.rerender(tree());
+      expect(done().disabled).toBe(true);
+      expect(tick().matches('[disabled], [aria-disabled="true"]')).toBe(true);
+      await act(async () => void vi.advanceTimersByTime(400));
+      expect(client.acts).toEqual([]);
+      status = { ...status, transport: "open" };
+      view.rerender(tree());
+      expect(done().disabled).toBe(false);
+      expect(tick().matches('[disabled], [aria-disabled="true"]')).toBe(false);
+    } finally {
+      statusOf.mockRestore();
+      vi.useRealTimers();
+    }
   });
 
   it("marks a row done after its tick holds, through the client", async () => {

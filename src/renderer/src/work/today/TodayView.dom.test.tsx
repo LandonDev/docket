@@ -299,6 +299,17 @@ describe("Today", () => {
     expect(section("held").querySelector('[data-view-state="failed"]')).toBeNull();
   });
 
+  it("offers Settings for a host that answered Work is off", () => {
+    const retry = vi.fn();
+    render(<TodayPageView model={{ kind: "day", blocks: [
+      { kind: "lost", failure: { environmentId: "box", error: "Work is off on this host", retry } },
+    ], offline: [], keys: [] }} hostName={() => "The box"} />);
+    expect(screen.getByText("Work is off on the box")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Settings" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(document.querySelector('[data-view-state="failed"]')).toBeNull();
+  });
+
   it("names a host's LifeOS connecting once, in the place of the sections that read it, with no press; the others stay", async () => {
     // Council round 11 (Sol Today 1, P2): a known wait is one named line for the page's LifeOS block, never bones alone.
     const { resetLifeos } = await import("../shell/lifeos");
@@ -428,14 +439,14 @@ describe("Today", () => {
     const failing: TodaySource = {
       id: "money",
       section: { id: "money", title: "Money", order: 60, empty: "Nothing owed" },
-      use: () => ({ rows: [], failed: [{ environmentId: "box", error: "Work is off on this host" }] }),
+      use: () => ({ rows: [], failed: [{ environmentId: "box", error: "socket closed" }] }),
     };
     resetToday([held, failing]);
     render(<View onClose={() => {}} />);
     const detail = section("money").querySelector<HTMLElement>('[data-slot="status-detail"]')!;
-    expect(detail.textContent).toBe("Turn it on in Settings, Work.");
+    expect(detail.textContent).toBe("Try again once it is back.");
     // Its own box that truncates and, once cut, takes a Tab stop with the whole words in its tip.
-    expect(detail.querySelector(".focus-ring.truncate")?.textContent).toBe("Turn it on in Settings, Work.");
+    expect(detail.querySelector(".focus-ring.truncate")?.textContent).toBe("Try again once it is back.");
   });
 
   it("says did not answer once for a host whose wait ran out, on the rows' grid; a read LifeOS refused is said in its own words", async () => {
@@ -628,11 +639,11 @@ describe("Today", () => {
     render(<View onClose={() => {}} />);
     const lines = document.querySelectorAll("[data-today-offline]");
     expect(lines).toHaveLength(1);
-    expect(lines[0]!.textContent).toBe("Mac is offline.");
+    expect(lines[0]!.textContent).toBe("Mac is not connected");
     // It starts on the titles' edge, as the empty and failed lines do.
     for (const cls of TITLE_EDGE.split(" ")) expect(lines[0]!.parentElement!.className).toContain(cls);
     expect(document.querySelectorAll('[data-view-state="failed"]')).toHaveLength(0);
-    expect(document.body.textContent).not.toContain("not connected");
+    expect(screen.getAllByText("Mac is not connected")).toHaveLength(1);
   });
 
   it("folds Waiting on you at five rows; its line unfolds the rest in place and stays unfolded", async () => {

@@ -300,6 +300,7 @@ export interface ComputersPageProps {
 /** The bar of the computer on the stage, as the page's header has it. */
 function StageBar({ tile, vm, picture, onOpenSession, onTookOver, pictureRect, reading }: { tile: ComputerTile; vm: VmState | null; picture: boolean; onOpenSession: (threadId: string, host: string) => void; onTookOver: () => void; pictureRect: () => ScreenRect | undefined; reading?: BarReading | null }) {
   const isVm = tile.computer.startsWith("vm:");
+  const { linked } = useHostLink(tile.entry.host);
   const views =
     picture && !tile.shownOn && !tile.vm ? (
       <>
@@ -314,10 +315,11 @@ function StageBar({ tile, vm, picture, onOpenSession, onTookOver, pictureRect, r
   const screen = isVm ? vmScreenSeam(tile.entry.host, vm ?? undefined) : null;
   // a poor link's way out: the lighter picture, where Windows takes it now
   const faster = screen?.canResize && screen.detail !== "faster" ? () => screen.onPick({ detail: "faster" }) : undefined;
-  const action = !isVm || !vm ? undefined : vm.state === "none" ? <OpenSettingsButton /> : vm.state === "asleep" && vm.heldAsleep && !vm.blocked ? <WakeButton host={tile.entry.host} /> : undefined;
+  const action = !isVm || !vm ? undefined : vm.state === "none" ? <OpenSettingsButton /> : linked && vm.state === "asleep" && vm.heldAsleep && !vm.blocked ? <WakeButton host={tile.entry.host} /> : undefined;
   return (
     <ComputerBar
       tile={tile}
+      linkLost={!linked}
       onOpenSession={onOpenSession}
       onTookOver={onTookOver}
       // where it runs is said once: a picture this desktop may not draw already names the machine

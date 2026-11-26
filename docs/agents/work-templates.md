@@ -226,3 +226,7 @@ LibreOffice draws a Word run or fill that is `auto` with a theme colour in autom
 - `fixtures/make.ts` makes the fixtures: `split.docx`, `fields.xlsx`, `split.pptx`.
 - `deckFill.test.ts` runs the real deck edit behind `TEMP_CODE_WORK_TOOLS_DATA`.
 - `env -u ELECTRON_RUN_AS_NODE bun scripts/e2e-templates.ts --out <dir>` (after `electron-vite build`, through `heavy`): an isolated instance of the built app with a dummy Work workspace and no LifeOS sign-in. It drives the wire through the real router and fence, a thread's tools through the bridge, and the window's part when the Templates row is on.
+
+## When a read or link fails
+
+A known lost link names the workspace’s computer and offers Retry in place of loading tiles. A shelf that already loaded stays visible with its presses held. Add and file drops wait for the link to open.

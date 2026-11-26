@@ -54,7 +54,7 @@ export type RowPhase = "leaving" | "closing" | undefined;
  * height. Under reduced motion the fade stays and the list steps. A row
  * that arrived while he was looking lands with `.step-land`.
  */
-export const TodayRowSlot = memo(function TodayRowSlot({ row, job, phase, lands, current }: { row: TodayRow; job: string | null; phase: RowPhase; lands: boolean; current: boolean }) {
+export const TodayRowSlot = memo(function TodayRowSlot({ row, job, phase, lands, current, tickHeld }: { tickHeld?: boolean; row: TodayRow; job: string | null; phase: RowPhase; lands: boolean; current: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const drawn = useRef(0);
   const closing = phase === "closing";
@@ -70,7 +70,7 @@ export const TodayRowSlot = memo(function TodayRowSlot({ row, job, phase, lands,
   }, [closing]);
   return (
     <div ref={box} data-today-slot={phase ?? "in"} inert={phase ? true : undefined} className={cn("overflow-hidden", closing ? "" : ROW_SLOT, lands && !phase && "step-land")}>
-      {closing ? null : <TodayRowView row={row} job={job} leaving={phase === "leaving"} current={current} />}
+      {closing ? null : <TodayRowView tickHeld={tickHeld} row={row} job={job} leaving={phase === "leaving"} current={current} />}
     </div>
   );
 });
@@ -81,12 +81,12 @@ export const TodayRowSlot = memo(function TodayRowSlot({ row, job, phase, lands,
  * the job and the fact; none is drawn at rest. Space ticks a task from the
  * row. Memoised: a row redraws only when its own facts change.
  */
-export const TodayRowView = memo(function TodayRowView({ row, job, leaving = false, current = false }: { row: TodayRow; job: string | null; leaving?: boolean; current?: boolean }) {
+export const TodayRowView = memo(function TodayRowView({ row, job, leaving = false, current = false, tickHeld = false }: { tickHeld?: boolean; row: TodayRow; job: string | null; leaving?: boolean; current?: boolean }) {
   const [ticked, setTicked] = useState(false);
   const lead = row.lead;
   const tick = lead?.kind === "tick" ? lead : null;
   const run = useRef(tick?.run);
-  run.current = tick?.run;
+  run.current = tickHeld ? undefined : tick?.run;
   // The tick he made and that has not run yet: it holds a moment so it reads and he may take it back.
   const pending = useRef<number | null>(null);
   // He left the page inside the hold (a key, another row's press): the tick he saw struck through still completes.
@@ -102,6 +102,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
   );
   useEffect(() => {
     if (!ticked) return;
+    if (tickHeld) return setTicked(false);
     // A tick that failed (its own toast says so) puts the row back as it was.
     pending.current = window.setTimeout(() => {
       pending.current = null;
@@ -111,7 +112,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
       if (pending.current !== null) window.clearTimeout(pending.current);
       pending.current = null;
     };
-  }, [ticked]);
+  }, [ticked, tickHeld]);
   const acts = row.acts?.slice(0, 2) ?? [];
   const gives = acts.length > 0 ? yields("row") : "";
   const Glyph = lead?.kind === "glyph" ? lead.glyph : null;
@@ -152,7 +153,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
             ? (event) => {
                 if (event.key !== " ") return;
                 event.preventDefault();
-                setTicked((was) => !was);
+                if (!tickHeld) setTicked((was) => !was);
               }
             : undefined
         }
@@ -175,7 +176,7 @@ export const TodayRowView = memo(function TodayRowView({ row, job, leaving = fal
         </TooltipContent>
       </Tooltip>
       <span className={cn("flex h-5 items-center justify-center", tick ? ROW_CONTROLS : ROW_SHOWS)}>
-        {tick ? <Checkbox shape="round" tabIndex={stop} checked={ticked} onCheckedChange={setTicked} aria-label={tick.label} className={TICK_REST} /> : Glyph ? <Glyph className="size-3.5 text-muted-foreground" /> : null}
+        {tick ? <Checkbox shape="round" tabIndex={stop} checked={ticked} disabled={tickHeld} onCheckedChange={setTicked} aria-label={tick.label} className={TICK_REST} /> : Glyph ? <Glyph className="size-3.5 text-muted-foreground" /> : null}
       </span>
       <span ref={words.ref} className={cn("flex min-w-0 flex-col", ROW_SHOWS)}>
         <span data-row-title className={cn("truncate text-[13px] leading-5 transition-colors duration-(--dur-fast) motion-reduce:transition-none", ticked ? "text-muted-foreground line-through" : row.past ? "text-muted-foreground" : "text-foreground")}>

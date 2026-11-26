@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
 import { Button } from "../../components/ui/button";
 import { StatusMark } from "../../components/ui/status";
 import { Tabs, TabsIndicator, TabsList, TabsTrigger, TABS_PILL_TRIGGER } from "../../components/ui/tabs";
@@ -334,15 +335,10 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
         </Button>
         {IS_MAC ? null : <WindowControls />}
       </div>
-      {outbox.errors.map((e) => (
-        <div key={e.environmentId} role="status" className="flex h-9 shrink-0 items-center gap-2 border-b border-border px-4 text-[13px]">
-          <StatusMark state="failed" word={false} />
-          <span className="min-w-0 flex-1 truncate">
-            {hostName(e.environmentId)} did not answer <span className="text-muted-foreground">{hostWhy(e.error, nameInLine(hostName(e.environmentId)))}</span>
-          </span>
-          <HostRetry environmentId={e.environmentId} />
-        </div>
-      ))}
+      {outbox.errors.map((e) => <HostListFailure key={e.environmentId} {...e} host={hostName(e.environmentId)} />)}
+      {tab === "waiting" && current && !outbox.errors.some((e) => e.environmentId === current.environmentId)
+        ? <HostListFailure key={current.environmentId} environmentId={current.environmentId} host={hostName(current.environmentId)} />
+        : null}
       <div className="@container/outbox flex min-h-0 min-w-0 flex-1">
         <div
           ref={resize.attachPane}
@@ -482,6 +478,7 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
               onPressed={afterPress}
               onReview={review}
               commands={commands}
+              linkLineInPage
             />
           ) : (
             <DoneDetail
@@ -496,6 +493,22 @@ export function OutboxView({ besideRail = false, onClose, onToggleSidebar, onOpe
         </div>
       </div>
       <GrantsSheet open={grantsOpen} onOpenChange={setGrantsOpen} grants={outbox.grants} nameOf={places.jobOf} sectorOf={sectorOf} />
+    </div>
+  );
+}
+
+
+function HostListFailure({ environmentId, host, error }: { environmentId: string; host: string; error?: string }) {
+  const linkDown = useHostLinkDown(environmentId);
+  if (linkDown) return <HostLinkLine word={linkDown} retryHost={environmentId} />;
+  if (!error) return null;
+  return (
+    <div role="status" className="flex min-h-8 min-w-0 shrink-0 items-center gap-2 border-b border-border px-4 py-1 text-[13px]">
+      <StatusMark state="failed" word={false} />
+      <span className="min-w-0 flex-1">
+        {hostWhy(error, nameInLine(host)) ?? (/did not answer|timed out|no answer/i.test(error) ? `${host} did not answer` : `${host} could not read the Outbox`)}
+      </span>
+      <HostRetry environmentId={environmentId} />
     </div>
   );
 }

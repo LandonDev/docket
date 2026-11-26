@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore, type DragEvent } from "react";
 import type { CanvasSource } from "@shared/work/canvas";
 import type { Template } from "@shared/work/templates";
+import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
 import { Briefcase, Copy, Eye, FilePlus, Globe, Minus, MoreHorizontal, Pencil, TextCursor, Trash2 } from "../../chrome/icons";
 import { ConfirmDialog } from "../../chrome/ConfirmDialog";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
@@ -111,13 +112,14 @@ const pickAndAdd = async (env: string, workspaceId: string): Promise<void> => {
 };
 
 export function Head({ env, workspace }: WorkViewProps) {
+  const linkDown = useHostLinkDown(env);
   const { hidden, failed: down, adding } = useHead(workspace.id);
   // From a window away from the workspace's host the press could only be refused, as a drop is: greyed, with why.
   const far = farReason(env);
   return (
     // Add… is the header's last control and never moves: the ⋯ for hidden starters arrives before it.
     <span className="flex items-center gap-1">
-      {hidden > 0 && !down ? (
+      {hidden > 0 && !down && !linkDown ? (
         <RowsMenu
           label="Templates"
           align="end"
@@ -139,7 +141,7 @@ export function Head({ env, workspace }: WorkViewProps) {
           </span>
         </Tip>
       ) : (
-        <Button variant="ghost" size="sm" disabled={adding || down} onClick={() => void pickAndAdd(env, workspace.id)}>
+        <Button variant="ghost" size="sm" disabled={adding || down || !!linkDown} onClick={() => void pickAndAdd(env, workspace.id)}>
           <BusyLabel busy={adding} label="Add…" />
         </Button>
       )}
@@ -170,6 +172,7 @@ function deleteLine(template: Template, env: string): string | undefined {
 
 export function View({ env, workspace }: WorkViewProps) {
   const [load, retry] = useTemplates(env, workspace.id);
+  const linkDown = useHostLinkDown(env);
   const [making, setMaking] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<Template | null>(null);
   // What he is asked to delete, with the file's version as the host saw it then: a file put in its place since is not deleted.
@@ -269,7 +272,7 @@ export function View({ env, workspace }: WorkViewProps) {
   // A file dropped here becomes a template: the view takes the drop, so no thread starts for it.
   // While an add runs, or from a window away from the workspace's host, it refuses a drop where he can see it:
   // no wash, no copy cursor, and the drop itself is kept and does nothing.
-  const refuses = adding || farReason(env) !== null;
+  const refuses = !!linkDown || adding || farReason(env) !== null;
   const drop = {
     onDragEnter: (event: DragEvent) => {
       if (carriesFiles(event) && !refuses) setOver((n) => n + 1);
@@ -296,7 +299,8 @@ export function View({ env, workspace }: WorkViewProps) {
   const narrowed = load.status === "ready" ? hiddenLine(load.value.hidden) : null;
   return (
     <div data-templates-view="" className="relative min-h-full" {...drop}>
-      {load.status === "loading" ? (
+      {linkDown ? <HostLinkLine word={linkDown} retryHost={env} /> : null}
+      {linkDown && groups.length === 0 ? null : load.status === "loading" ? (
         <div className="px-4 pt-3 pb-6">
           <ShelfSkeleton layout="page" count={8} />
         </div>
@@ -315,7 +319,7 @@ export function View({ env, workspace }: WorkViewProps) {
         />
       ) : (
         <div className="px-4 pt-3 pb-6">
-          <Shelf groups={groups} layout="page" making={making} onPress={make} menuFor={(t) => menuRows(tileMenu(t, workspace.name))} onMenu={act} />
+          <Shelf groups={groups} layout="page" making={making} disabled={!!linkDown} onPress={make} menuFor={(t) => menuRows(tileMenu(t, workspace.name))} onMenu={act} />
         </div>
       )}
       {over > 0 && !refuses ? (

@@ -67,9 +67,11 @@ export function usePlays(env: string, workspaceId: string): [Load<PlayRow[]>, ()
     const off = link.onPush((push) => {
       if (push.push === "work.routines.plays" && push.workspaceId === workspaceId) void fetch();
     });
+    const offOpen = link.onOpen?.(() => void fetch());
     return () => {
       live = false;
       off();
+      offOpen?.();
     };
   }, [env, workspaceId]);
   const retry = useCallback(() => read.current(), []);

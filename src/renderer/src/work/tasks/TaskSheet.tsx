@@ -31,6 +31,7 @@ type Props = {
   onClose: () => void;
   onStart: (task: Task) => void;
   onDone: (task: Task) => void;
+  doneHeld?: boolean;
   onCode: (task: Task) => void;
   /** The thread a link names for a task, if one works on it: Open thread takes Start thread's place; undefined until the link read answers. */
   useThread?: (taskId: string) => string | null | undefined;
@@ -47,7 +48,7 @@ export function TaskSheet({ open, ...props }: Props & { open: { id: string; row:
   );
 }
 
-function Body({ id, row, projectOf, onClose, onStart, onDone, onCode, useThread = noThread }: Props & { id: string; row: Task | null }) {
+function Body({ id, row, projectOf, onClose, onStart, onDone, doneHeld, onCode, useThread = noThread }: Props & { id: string; row: Task | null }) {
   const detail = useQuery(get, { id }) as Detail | undefined;
   // A linked thread the window holds no meta for yet is still its thread: Open asks the hosts for it (links.ts); one
   // every host answered without (deleted) is none, so Start.
@@ -120,7 +121,7 @@ function Body({ id, row, projectOf, onClose, onStart, onDone, onCode, useThread 
             Start thread
           </Button>
         )}
-        <Button size="sm" variant="secondary" onClick={() => (onClose(), onDone(full))}>
+        <Button size="sm" variant="secondary" disabled={doneHeld} onClick={() => (onClose(), onDone(full))}>
           Done
         </Button>
         <Button size="sm" variant="ghost" onClick={() => (onClose(), onCode(full))}>

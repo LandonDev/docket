@@ -2,7 +2,7 @@ import { useSyncExternalStore } from "react";
 import type { MoneySums } from "@shared/contract-work-money";
 import type { ReviewKept, ReviewRoutine, ReviewSettled } from "@shared/contract-work-review";
 import {
-  hostOffWords,
+  hostNotCountedWords,
   jobKey,
   localDay,
   mergeReview,
@@ -17,6 +17,7 @@ import {
   type SettleHow,
   type SlippedRow,
 } from "@shared/work/review";
+import { linkDownWords } from "../shell/hostLinkDown";
 import { registry, TimeoutError } from "../../lib/connection";
 import { nameInLine } from "../../lib/hostWords";
 import { workErrorWords } from "../../lib/workErrorWords";
@@ -314,7 +315,7 @@ function view(week: ReviewWeek): ReviewView {
     review: mergeReview(parts, now(), { home: home(), names: (sector) => jobNameNow(sector, home()), order: jobOrder(parts), jobs: knownJobs(parts), fresh: live.every((id) => hosts?.get(id)?.loaded && !hosts.get(id)?.error), whole: live.length === on.length }),
     settled: live.every((id) => hosts?.get(id)?.loaded),
     making: making.has(week.from),
-    off: on.filter((id) => !linked(id)).map((id) => hostOffWords(hostName(id))),
+    off: on.filter((id) => !linked(id)).map((id) => hostNotCountedWords(linkDownWords(hostName(id)))),
     errors: live.flatMap((id) => {
       const host = hosts?.get(id);
       return host?.error ? [{ environmentId: id, name: hostName(id), error: host.error, kept: host.body !== null }] : [];

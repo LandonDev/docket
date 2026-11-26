@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalS
 import type { PrepDraft, PrepFileRef, PrepLine, PrepPage, PrepPerson, PrepSuggestion, PrepTask } from "@shared/contract-work-prep";
 import type { ContextChip } from "@shared/work";
 import { formatDue } from "work-kit/views/lib/format";
+import { useHostLinkDown } from "../shell/hostLinkDown";
 import { ArrowLeft, MoreHorizontal, X } from "../../chrome/icons";
 import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { BusyLabel, Button } from "../../components/ui/button";
@@ -161,6 +162,7 @@ export function BackTitle({ name, onBack }: { name: string | undefined; onBack: 
 }
 
 export function Head(props: WorkViewProps) {
+  const hostHeld = !!useHostLinkDown(props.env);
   const workspaceId = props.workspace.id;
   const eventId = useEventId(workspaceId);
   const { page } = usePrepHeld(workspaceId, eventId);
@@ -189,6 +191,7 @@ export function Head(props: WorkViewProps) {
     <PageVerbs
       verb={verb}
       busy={busy}
+      hostHeld={hostHeld}
       // Add people and the notes open dialogs the page's body holds, which reads LifeOS: none while the session is down.
       dialogs={!downOf(props.lifeos)}
       thread={pageThread(page) !== null}
@@ -224,6 +227,7 @@ export interface PageVerbsProps {
   verb: HeadVerb;
   /** the press in flight: its button spins */
   busy?: "brief" | "followUp" | null;
+  hostHeld?: boolean;
   /** the page has a thread to open */
   thread: boolean;
   /** the body that holds Add people's and the notes' dialogs can draw them (the LifeOS session reads or is on its way); false drops both presses */
@@ -253,20 +257,20 @@ export function PageVerbs(p: PageVerbsProps) {
   const opens = p.dialogs !== false;
   const rows: MenuRow[] = [
     ...(p.thread ? [{ kind: "item" as const, id: "open", label: "Open thread" }] : []),
-    ...(p.brief ? [{ kind: "item" as const, id: "again", label: p.brief === "again" ? "Prepare again" : "Brief me" }] : []),
+    ...(p.brief ? [{ kind: "item" as const, id: "again", disabled: p.hostHeld, label: p.brief === "again" ? "Prepare again" : "Brief me" }] : []),
     ...(opens ? [{ kind: "item" as const, id: "people", label: "Add people…" }] : []),
     // The header already holds Add notes once the meeting is over.
     ...(p.verb === "addNotes" || !opens ? [] : [{ kind: "item" as const, id: "notes", label: p.notes ? "Edit notes…" : "Add notes…" }]),
-    ...(p.rest > 0 ? [{ kind: "item" as const, id: "rest", label: "Dismiss the rest" }] : []),
+    ...(p.rest > 0 ? [{ kind: "item" as const, id: "rest", disabled: p.hostHeld, label: "Dismiss the rest" }] : []),
     { kind: "item", id: "thread", label: "New thread about this" },
-    ...(p.survey ? [{ kind: "item" as const, id: "survey", label: "Make a follow-up survey" }] : []),
-    ...(p.ahead === null ? [] : [{ kind: "sep" as const }, { kind: "item" as const, id: "ahead", label: AHEAD_LABEL, checked: p.ahead }]),
+    ...(p.survey ? [{ kind: "item" as const, id: "survey", disabled: p.hostHeld, label: "Make a follow-up survey" }] : []),
+    ...(p.ahead === null ? [] : [{ kind: "sep" as const }, { kind: "item" as const, id: "ahead", disabled: p.hostHeld, label: AHEAD_LABEL, checked: p.ahead }]),
   ];
   const pick: Record<string, () => void> = { open: p.onOpenThread, again: p.onBrief, people: p.onAddPeople, notes: p.onNotes, rest: p.onDismissRest, thread: p.onThread, survey: () => p.onSurvey?.(), ahead: () => p.onAhead(!p.ahead) };
   return (
     <div className="flex items-center gap-1">
       {p.verb === "brief" ? (
-        <Button variant="ghost" size="sm" disabled={p.busy === "brief"} onClick={p.onBrief}>
+        <Button variant="ghost" size="sm" disabled={p.hostHeld || p.busy === "brief"} onClick={p.onBrief}>
           <BusyLabel busy={p.busy === "brief"} label="Brief me" />
         </Button>
       ) : p.verb === "preparing" || p.verb === "following" ? (
@@ -279,7 +283,7 @@ export function PageVerbs(p: PageVerbsProps) {
           Add notes
         </Button>
       ) : p.verb === "followUp" ? (
-        <Button variant="ghost" size="sm" disabled={p.busy === "followUp"} onClick={p.onFollowUp}>
+        <Button variant="ghost" size="sm" disabled={p.hostHeld || p.busy === "followUp"} onClick={p.onFollowUp}>
           <BusyLabel busy={p.busy === "followUp"} label="Follow up" />
         </Button>
       ) : null}
@@ -326,6 +330,7 @@ export function Kept(props: WorkViewProps) {
 }
 
 export function View(props: WorkViewProps) {
+  const hostHeld = !!useHostLinkDown(props.env);
   const workspaceId = props.workspace.id;
   const eventId = useEventId(workspaceId);
   const { page, loaded, error, reading } = usePrep(props.env, workspaceId, eventId);
@@ -382,6 +387,7 @@ export function View(props: WorkViewProps) {
   if (!eventId) return <EmptyState title="No meeting is open" action={{ label: "Back to Agenda", onClick: () => openWorkView({ workspaceId, view: "agenda" }) }} />;
   const retry = () => loadPrep(props.env, workspaceId, eventId);
   // With no page to show, a read on its way is the bones: a Retry that draws nothing would look deaf.
+  if (!page && hostHeld) return null;
   if (!page)
     return loaded && error && (!reading || pressed) ? (
       <div ref={failedPage} data-prep-failed className="contents">
@@ -439,7 +445,8 @@ export function View(props: WorkViewProps) {
           )
         }
         onDismissOffer={() => settleOffer(workspaceId)}
-        refreshError={error}
+        hostHeld={hostHeld}
+        refreshError={hostHeld ? null : error}
       />
       {dialog === "notes" ? <NotesDialog key={`notes:${eventId}`} env={props.env} page={page} onClose={close} /> : null}
     </>
@@ -495,6 +502,7 @@ export interface PrepBodyProps {
   onRetry: () => void | Promise<void>;
   onAddPeople: () => void;
   /** his word on suggested tasks; answers the ones LifeOS did not take */
+  hostHeld?: boolean;
   onDecide?: (taskIds: string[], decision: "accept" | "reject") => Promise<{ id: string; error: string }[]>;
   onOpenDraft?: (draft: PrepDraft) => void;
   /** opens the file that holds the notes: beside its thread once one reads it, else (a document) beside a new one */
@@ -510,7 +518,7 @@ export interface PrepBodyProps {
 }
 
 /** The page over a `PrepPage`, holding no query: the preview and the tests draw it as the app does. */
-export function PrepPageBody({ page, faces, now = Date.now(), verb = null, briefWorking, offer = false, onRetry, onAddPeople, onDecide, onOpenDraft, onOpenNotesFile, onAhead, onDismissOffer, refreshError = null, failedAtFirst, tickedAtFirst }: PrepBodyProps) {
+export function PrepPageBody({ page, faces, now = Date.now(), verb = null, briefWorking, offer = false, hostHeld = false, onRetry, onAddPeople, onDecide, onOpenDraft, onOpenNotesFile, onAhead, onDismissOffer, refreshError = null, failedAtFirst, tickedAtFirst }: PrepBodyProps) {
   const { event, workspaceId, doc } = page;
   const go = (view: string, target: Record<string, unknown>) => openWorkView({ workspaceId, view, ...target });
   const openLine = (line: PrepLine) => (line.ref ? () => openRef(workspaceId, line.ref!) : undefined);
@@ -531,7 +539,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, brief
     return () => cancelAnimationFrame(frame);
   }, [answered]);
   const decide = (ids: string[], decision: "accept" | "reject"): Promise<void> => {
-    if (!onDecide) return Promise.resolve();
+    if (hostHeld || !onDecide) return Promise.resolve();
     // A press made while another filing waits runs after it (Retry while Add files): no press is lost, and no two overlap.
     const run = queue.current.then(async () => {
       setFiling(true);
@@ -561,11 +569,11 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, brief
     <>
       {stillFailed.length ? (
         // Retry is the one way to try again: the tasks it names cannot be ticked below, so no second button says the same.
-        <ViewStateLine {...failedWords(stillFailed, after?.tasks ?? [])} onRetry={() => decide(stillFailed.map((f) => f.id), "accept")} />
+        hostHeld ? null : <ViewStateLine {...failedWords(stillFailed, after?.tasks ?? [])} onRetry={() => decide(stillFailed.map((f) => f.id), "accept")} />
       ) : refreshError ? (
         <ViewStateLine word="This page did not refresh" detail={refreshError} onRetry={retryRead} />
       ) : problem ? (
-        <ViewStateLine word={problem} onRetry={retryRead} />
+        hostHeld ? null : <ViewStateLine word={problem} onRetry={retryRead} />
       ) : null}
       <div ref={body} onKeyDown={moveBetweenRows} className="mx-auto w-full max-w-[720px] ps-7 pe-6 py-6">
         <header className="flex flex-col gap-0.5">
@@ -587,7 +595,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, brief
                 <LineRow key={i} text={line.text} whole onOpen={openLine(line)} />
               ))}
             </Section>
-            <ToDo tasks={shownTasks(after.tasks)} now={now} filing={filing} failed={stillFailed} onDecide={decide} onOpenTask={(id) => go("tasks", { task: id })} tickedAtFirst={tickedAtFirst} />
+            <ToDo tasks={shownTasks(after.tasks)} now={now} filing={hostHeld || filing} failed={stillFailed} onDecide={decide} onOpenTask={(id) => go("tasks", { task: id })} tickedAtFirst={tickedAtFirst} />
             <Section label="Open questions" show={after.questions.length > 0}>
               {after.questions.map((line, i) => (
                 <LineRow key={i} text={line.text} whole onOpen={openLine(line)} />
@@ -614,7 +622,7 @@ export function PrepPageBody({ page, faces, now = Date.now(), verb = null, brief
                 <Button
                   variant="ghost"
                   size="xs"
-                  disabled={turningOn}
+                  disabled={turningOn || hostHeld}
                   onClick={(e) => {
                     const region = e.currentTarget.closest('[role="region"]');
                     setTurningOn(true);

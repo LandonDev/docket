@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { HostLinkLine, useHostLinkDown } from "../shell/hostLinkDown";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Input } from "../../components/ui/input";
@@ -140,6 +141,7 @@ export function DetailFacts({ item, job, when, onOpenSession, extra }: { item: H
  */
 function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: boolean; error: unknown; retry(): Promise<void> } {
   const gate = item.kind === "mail.send";
+  const linkDown = useHostLinkDown(item.environmentId);
   const key = JSON.stringify([item.environmentId, item.ref, item.updatedAt]);
   const [read, setRead] = useState<{ key: string; item: HostItem | null; error?: unknown } | null>(null);
   // `kept`: his Retry, which keeps the failed read (the note, its Retry spinning) until the answer replaces it. A read the
@@ -172,6 +174,12 @@ function useWhole(item: HostItem): { shown: HostItem; ready: boolean; failed: bo
     if (failed && status?.lifeos.state === "connected" && !pressing.current) setAttempt((a) => ({ n: a.n + 1, kept: false }));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- a fresh answer of the host, not the failure itself
   }, [status]);
+  const wasDown = useRef(false);
+  useEffect(() => {
+    const recovered = wasDown.current && !linkDown;
+    wasDown.current = !!linkDown;
+    if (recovered && failed && !pressing.current) setAttempt((a) => ({ n: a.n + 1, kept: false }));
+  }, [linkDown, failed]);
   // His Retry asks the host's LifeOS status first (a silence it clears, a sign-out it names), then the item.
   const env = item.environmentId;
   const retry = async (): Promise<void> => {
@@ -694,6 +702,7 @@ export function HeldDetail({
   onPressed,
   onReview,
   commands,
+  linkLineInPage = false,
 }: {
   item: HostItem;
   workspace: string;
@@ -706,7 +715,9 @@ export function HeldDetail({
   onReview: (item: HostItem) => void;
   /** Filled with the verbs the page's keys reach. */
   commands?: RefObject<DetailCommands | null>;
+  linkLineInPage?: boolean;
 }) {
+  const linkDown = useHostLinkDown(listed.environmentId);
   const { shown: item, ready: read, failed: unread, error: unreadError, retry } = useWhole(listed);
   const hostInLine = host && host !== "A host" ? nameInLine(host) : undefined;
   const picture = usePicture(listed);
@@ -768,7 +779,7 @@ export function HeldDetail({
   };
 
   const send = (which: "send" | "again" | "grant") =>
-    run(
+    !linkDown && run(
       which,
       async () => {
         const after = which === "grant" ? await grantAndSend(item, grant!) : await sendItem(item, { again: which === "again", via });
@@ -816,7 +827,7 @@ export function HeldDetail({
     );
 
   const sendLater = (at: number) =>
-    run(
+    !linkDown && run(
       "later",
       async () => {
         const [result] = [...(await decideMany([item], { do: "later", at, zone: ownZone() }, { via })).values()];
@@ -849,7 +860,7 @@ export function HeldDetail({
     );
 
   const now = () =>
-    run(
+    !linkDown && run(
       "now",
       async () => {
         const after = await sendNow(item);
@@ -880,7 +891,7 @@ export function HeldDetail({
     setEditError(null);
   };
 
-  const sendOff = !waiting || !ready || busy !== null;
+  const sendOff = !!linkDown || !waiting || !ready || busy !== null;
   const verbs: DetailCommands = {
       primary: () => {
         if (editing) return save();
@@ -912,7 +923,8 @@ export function HeldDetail({
         </header>
         {/* A failed item leads with its refusal: what went wrong comes before what the press would do. */}
         {failedFirst ? null : <Effect item={item} />}
-        <ItemNotes item={item} host={host} refused={refused} unread={unread} unreadError={unreadError} onRetry={retry} showChanges={showChanges} onShowChanges={setShowChanges} noteRef={refusedLine} />
+        {linkDown && !linkLineInPage ? <HostLinkLine word={linkDown} retryHost={item.environmentId} /> : null}
+        <ItemNotes item={item} host={host} refused={refused} unread={unread && !linkDown} unreadError={unreadError} onRetry={retry} showChanges={showChanges} onShowChanges={setShowChanges} noteRef={refusedLine} />
         {failedFirst ? (
           <div className="mt-1">
             <Effect item={item} />
@@ -962,7 +974,7 @@ export function HeldDetail({
           </Button>
           <span className="flex-1" />
           {item.state === "scheduled" ? (
-            <Button variant="secondary" size="sm" disabled={busy !== null} onClick={() => void now()}>
+            <Button variant="secondary" size="sm" disabled={busy !== null || !!linkDown} onClick={() => void now()}>
               <BusyLabel busy={busy === "now"} label={`${item.verb} now`} />
             </Button>
           ) : null}
@@ -1030,7 +1042,7 @@ export function HeldDetail({
               onOpenChange={(o) => (setMenuOpen(o), o || setByKey(false))}
               onPress={() => void send("send")}
               onLater={(at) => void sendLater(at)}
-              onPickTime={() => setPicking(true)}
+              onPickTime={() => !linkDown && setPicking(true)}
               onGrant={() => void send("grant")}
             />
           )}

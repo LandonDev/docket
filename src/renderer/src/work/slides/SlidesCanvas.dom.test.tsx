@@ -33,6 +33,8 @@ const host = vi.hoisted(() => ({
   /** The office pillar's answers: PowerPoint on the deck's computer, the switch, "In PowerPoint". */
   office: { powerpoint: true, present: false, calls: [] as Array<{ method: string; params?: Record<string, unknown> }>, fail: null as string | null, hold: null as Promise<void> | null },
 }));
+// The host's LifeOS is connected here: what the Google dialogs say while it is not is google/accountReach.dom.test.tsx's.
+vi.mock("../google/accountReach", () => ({ useAccountReach: () => ({ checking: false, held: false, line: null }) }));
 vi.mock("../../lib/connection", async (original) => {
   const link = {
     environmentId: "local",

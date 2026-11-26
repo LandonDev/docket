@@ -189,3 +189,7 @@ counts of runs are on the owner's list (.temp-code/plans/landed/F-plays.md).
   that takes nothing, the run dialog from a mail, Draft only on its press.
 - `bun run ui:preview src/renderer/src/work/routines/plays/PlaysView.preview.tsx#PlaysPreview --props '{"state":"list"}'`
   (`list`, `plays`, `starters`).
+
+## When a read or link fails
+
+New play can wait for the list to load. When the link is known to be down, the page names the computer and holds New play until the link opens.

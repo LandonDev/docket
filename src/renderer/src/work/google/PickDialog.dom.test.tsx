@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const answer = vi.hoisted(() => ({ accounts: { picker: true, accounts: [] as { account: string; files: boolean }[] } }));
 vi.mock("../../lib/connection", () => ({ registry: { primaryEnvironmentId: "mac", onLink: () => () => undefined, linkOf: () => ({ request: async () => answer.accounts }) } }));
+// The host's LifeOS is connected here: what the dialog says while it is not is accountReach.dom.test.tsx's.
+vi.mock("./accountReach", () => ({ useAccountReach: () => ({ checking: false, held: false, line: null }) }));
 
 const { PickDialog } = await import("./PickDialog");
 

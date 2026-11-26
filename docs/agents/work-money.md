@@ -679,3 +679,7 @@ reaches. A code workspace has no money.
 - Send… cannot attach the PDF to the mail (above).
 - The view's row says no fact: the count that waits is not drawn in the
   column.
+
+## When a read or link fails
+
+When an empty ledger’s refresh fails, the failure takes the place of No money yet and its Add entry. A known lost link names the workspace’s computer at once and holds the header’s Add; with the link up the Add menu keeps its own rule (rows that draw from a read wait for one, Receipt… stays). A ledger with rows can still show its last read.

@@ -36,6 +36,12 @@ const ids = (rows: MenuRow[]): string[] => rows.map((r) => (r.kind === "sep" ? "
 describe("the Work heading's + menu", () => {
   const work = (sector: string | null) => ({ kind: "work", sector }) as Pick<WorkspaceMeta, "kind" | "sector">;
 
+  it("gives the home computer's lost link one Retry in place of loading or create rows", () => {
+    expect(addMenuRows(null, ["cosmic"], undefined, undefined, null, "The box", false, "The box is not connected")).toEqual([
+      { kind: "item", id: "work:retry", label: "Retry", description: "The box is not connected", keepOpen: true, busy: false },
+    ]);
+  });
+
   it("lists the sectors with no Work workspace yet, in LifeOS's order, then Without a sector", () => {
     const free = freeSectors([work("purdue"), work("hypixel"), { kind: undefined, sector: "cosmic" }, work(null)]);
     // A code workspace linked to a sector does not take it.

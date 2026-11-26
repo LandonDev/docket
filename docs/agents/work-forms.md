@@ -188,3 +188,7 @@ shares the link again, so past the door it asks the person check with approve on
   the browser (M37) and PDF (M33) canvases, which show each value's source.
 - The phone draws a form's answers natively, and its job's Forms lists our forms with Close and Reopen (M5b);
   the form itself is edited on the computer.
+
+## When a read or link fails
+
+The Forms view separates a failed source from a list with no forms. A partial answer keeps the rows it could read and names the missing source.

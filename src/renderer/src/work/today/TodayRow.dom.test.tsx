@@ -4,7 +4,7 @@
  * line, and the job's whole name, which the 112px job column cuts on a long name and which leads the second line under
  * 480px (docs/agents/work-today.md, docs/DESIGN.md "Today": the dot is never the only cue to the job).
  */
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { tooltipChunk, warmTooltips } from "../../components/ui/tooltip";
 import { TodayRowView } from "./TodayRow";
@@ -41,6 +41,19 @@ async function tipOf(container: HTMLElement): Promise<Element | null> {
   });
   return document.querySelector('[data-slot="tooltip-content"]');
 }
+
+it("holds the tick and its Space shortcut until the job's link returns", () => {
+  const complete = vi.fn(async () => {});
+  const task: TodayRow = { ...row, lead: { kind: "tick", label: "Mark task done", run: complete } };
+  const shown = render(<TodayRowView row={task} job={JOB} tickHeld />);
+  const tick = () => screen.getByRole("checkbox", { name: "Mark task done" });
+  expect(tick().matches('[disabled], [aria-disabled="true"]')).toBe(true);
+  fireEvent.keyDown(screen.getByRole("button", { name: `${row.title}, ${row.detail}` }), { key: " " });
+  expect(tick().getAttribute("aria-checked")).toBe("false");
+  expect(complete).not.toHaveBeenCalled();
+  shown.rerender(<TodayRowView row={task} job={JOB} />);
+  expect(tick().matches('[disabled], [aria-disabled="true"]')).toBe(false);
+});
 
 describe("a Today row's whole words", () => {
   it("draws no tooltip while nothing is cut", async () => {

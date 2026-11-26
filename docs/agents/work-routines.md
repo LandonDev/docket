@@ -318,3 +318,7 @@ proposal shown as a card in the thread.
 - `RoutinesView.dom.test.tsx`: a job routine's detail draws no Model, its
   form no "What to do"; a run with `open` calls the port, and is plain text
   without one.
+
+## When a read or link fails
+
+New routine works while the list is loading. A known lost link holds it with one named line and Retry. When the host reports why its LifeOS session is down, a waiting row uses those words.
