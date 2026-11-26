@@ -24,14 +24,29 @@ export function useInstalledApps(): HostRead<HarnessAvailability> & { installed:
 
 /**
  * General › Composer › Model picker shows: which installed agent apps have a tab in the model picker (LS
- * `docket.hiddenPickerProviders`). The row names the ones shown and opens a dialog of a switch each; it is absent once
- * the computer said it has none.
+ * `docket.hiddenPickerProviders`). The row names the ones shown and opens a dialog of a switch each; it is its shape
+ * while the computer is asked, one line with Retry if it refuses, and absent once it said it has none.
  */
 export function PickerRow() {
   const apps = useInstalledApps();
   const [hidden, setHidden] = useState(() => new Set(HARNESSES.filter((harness) => !isPickerProviderVisible(harness))));
   const [open, setOpen] = useState(false);
   if (apps.installed?.length === 0) return null;
+  // Until the computer says which apps it has, the row is its shape; a refusal is its one line with Retry.
+  if (apps.installed === undefined)
+    return apps.error ? (
+      <PageError
+        action={
+          <Button variant="ghost" size="sm" onClick={() => void apps.retry()}>
+            Retry
+          </Button>
+        }
+      >
+        {apps.error}
+      </PageError>
+    ) : (
+      <PageRowsSkeleton rows={1} description control="none" />
+    );
   const shown = apps.installed?.filter((harness) => !hidden.has(harness)).map((harness) => HARNESS_TITLE[harness]);
   const flip = (id: string, on: boolean) => {
     const harness = id as HarnessId;
@@ -43,35 +58,18 @@ export function PickerRow() {
       return next;
     });
   };
-  const body =
-    apps.installed === undefined ? (
-      apps.error ? (
-        <PageError
-          action={
-            <Button variant="ghost" size="sm" onClick={() => void apps.retry()}>
-              Retry
-            </Button>
-          }
-        >
-          {apps.error}
-        </PageError>
-      ) : (
-        <PageRowsSkeleton rows={2} media control="switch" />
-      )
-    ) : undefined;
   return (
     <>
       <SettingRow
         id="general.picker"
-        description={shown ? (shown.length ? namesInLine(shown) : "None") : undefined}
+        description={shown?.length ? namesInLine(shown) : "None"}
         onOpen={() => setOpen(true)}
         openLabel="Model picker shows"
       />
       {open ? (
         <SwitchListDialog
           title="Model picker shows"
-          body={body}
-          items={(apps.installed ?? []).map((harness) => ({
+          items={apps.installed.map((harness) => ({
             id: harness,
             label: HARNESS_TITLE[harness],
             media: <HarnessIcon harness={harness} className="size-4" />,

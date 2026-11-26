@@ -54,6 +54,12 @@ function mount(over: Partial<Props> = {}) {
 }
 const facts = (el: Element | null) => [...(el?.querySelectorAll("[data-slot=facts] > span") ?? [])].map((s) => s.textContent);
 const rows = (root: Element) => [...root.querySelectorAll("[data-device]")];
+/** Opens a simulator's ⋯ menu and presses one of its items. */
+async function pick(device: string, item: string): Promise<void> {
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: `${device} actions` })));
+  const found = await screen.findByRole("menuitem", { name: item });
+  await act(async () => fireEvent.click(found));
+}
 
 afterEach(cleanup);
 
@@ -67,8 +73,8 @@ describe("DevicesBlock", () => {
     expect(sim!.textContent).toContain("iOS 27.0");
     expect(facts(sim!).slice(-2)).toEqual(["Booted", "12% CPU"]);
     expect(sim!.querySelector("[data-slot=item-description] [data-holder]")).not.toBeNull();
-    expect(sim!.querySelector("[data-holder]")!.textContent).toBe("iOS: Home, running");
-    expect(facts(ipad!)).toEqual(["Shut down"]);
+    expect(sim!.querySelector("[data-holder]")!.textContent).toBe("In use by “iOS: Home”");
+    expect(facts(ipad!)).toEqual(["iOS 27.0", "Shut down"]);
     expect(ipad!.querySelector("[data-holder]")).toBeNull();
     // A named phone: its name is the title, the model and the OS under it.
     expect(phone!.querySelector("[data-slot=item-title]")!.textContent).toContain("Landon’s iPhone");
@@ -95,30 +101,32 @@ describe("DevicesBlock", () => {
 
   it("the holder links to its thread", () => {
     const { props } = mount();
-    fireEvent.click(screen.getByRole("button", { name: "iOS: Home, running" }));
+    fireEvent.click(screen.getByRole("button", { name: "In use by “iOS: Home”" }));
     expect(props.onOpenSession).toHaveBeenCalledWith("s1");
   });
 
-  it("Shut down shows on a booted simulator only; Open in Xcode on a phone", async () => {
+  it("Shut down is in a booted simulator's menu only, always in view; Open in Xcode on a phone", async () => {
     const { props } = mount();
-    expect(screen.getAllByRole("button", { name: "Shut down" }).length).toBe(1);
-    expect(screen.getAllByRole("button", { name: "Delete" }).length).toBe(2);
-    fireEvent.click(screen.getByRole("button", { name: "Shut down" }));
-    expect(props.onShutdown).toHaveBeenCalledWith("AAA");
-    // While one action runs every other is disabled; once it settles they come back.
-    expect((screen.getByRole("button", { name: "Open in Xcode" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getAllByRole("button", { name: /actions$/ })).toHaveLength(2);
+    await pick("iPad Pro 13-inch (M4)", "Delete…");
+    expect(screen.queryByRole("menuitem", { name: "Shut down" })).toBeNull();
+    cleanup();
+    const second = mount();
+    await pick("iPhone 17 Pro", "Shut down");
+    expect(second.props.onShutdown).toHaveBeenCalledWith("AAA");
     await act(async () => {});
     fireEvent.click(screen.getByRole("button", { name: "Open in Xcode" }));
-    expect(props.onOpenXcode).toHaveBeenCalled();
+    expect(second.props.onOpenXcode).toHaveBeenCalled();
+    expect(props.onShutdown).not.toHaveBeenCalled();
   });
 
   it("Delete asks first, naming the thread that holds the simulator, and deletes on confirm", async () => {
     const { props } = mount();
-    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+    await pick("iPhone 17 Pro", "Delete…");
     expect(screen.getByText("Held by iOS: Home, running. Delete anyway?")).toBeTruthy();
     expect(props.onDelete).not.toHaveBeenCalled();
     await act(async () => {
-      fireEvent.click(screen.getAllByRole("button", { name: "Delete" }).at(-1)!);
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     });
     expect(props.onDelete).toHaveBeenCalledTimes(1);
     expect(props.onDelete).toHaveBeenCalledWith("AAA");
@@ -127,24 +135,24 @@ describe("DevicesBlock", () => {
   it("a refused Delete is the confirm's red line and the confirm stays; a landed one closes it", async () => {
     const { props } = mount();
     vi.mocked(props.onDelete).mockRejectedValueOnce(new Error("simctl: device is booting"));
-    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]!);
+    await pick("iPhone 17 Pro", "Delete…");
     await act(async () => {
-      fireEvent.click(screen.getAllByRole("button", { name: "Delete" }).at(-1)!);
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     });
     const dialog = screen.getByRole("alertdialog");
     expect(dialog.textContent).toContain("simctl: device is booting");
     // Said once, in the dialog: the group's own failure line stays empty.
     expect(screen.getAllByText("simctl: device is booting")).toHaveLength(1);
     await act(async () => {
-      fireEvent.click(screen.getAllByRole("button", { name: "Delete" }).at(-1)!);
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     });
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(props.onDelete).toHaveBeenCalledTimes(2);
   });
 
-  it("a simulator nobody holds confirms with what is removed", () => {
+  it("a simulator nobody holds confirms with what is removed", async () => {
     mount();
-    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[1]!);
+    await pick("iPad Pro 13-inch (M4)", "Delete…");
     expect(screen.getByText("iPad Pro 13-inch (M4) (iOS 27.0) and its data are removed from this Mac.")).toBeTruthy();
   });
 
@@ -171,12 +179,9 @@ describe("DevicesBlock", () => {
     expect(failed.root.textContent).toContain("Landon’s Mac is not linked right now");
     expect(failed.root.querySelector("[data-summary]")!.textContent).toBe("Not reachable");
   });
-  it("a row's actions wait on the shared hover reveal, never held by a click", () => {
+  it("a row's acts are always in view, never on hover alone", () => {
     mount();
-    const wrapper = screen.getAllByRole("button", { name: "Delete" })[0].closest("[data-device-actions]")!.className;
-    expect(wrapper).toContain("group-hover/item:delay-(--delay-hover)");
-    expect(wrapper).toContain("has-focus-visible:opacity-100");
-    expect(wrapper).toContain("transition-opacity");
-    expect(wrapper).not.toContain("focus-within");
+    const wrapper = screen.getAllByRole("button", { name: /actions$/ })[0]!.closest("[data-device-actions]")!.className;
+    expect(wrapper).not.toContain("opacity");
   });
 });

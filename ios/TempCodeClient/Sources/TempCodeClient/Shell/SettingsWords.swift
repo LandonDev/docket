@@ -43,3 +43,23 @@ public enum WorkRowState: Sendable, Hashable {
         return computers.contains { !$0.settled } ? .waiting : .hidden
     }
 }
+
+/// The sign-in sheet's refusal under its field, in the glossary's words: the
+/// host says "invalid or expired pairing code", the phone says what it was
+/// and the way forward (the council's round 1).
+public enum SignInWords {
+    /// - Parameter link: the sheet was redeeming a sign-in link (else a key with an address).
+    public static func refusal(_ error: EnvironmentStoreError, link: Bool) -> String {
+        switch error {
+        case .invalidPairingLink: return "That is not a sign-in link. Copy the whole link from the computer."
+        case .invalidKey: return "That is not a key. Copy the whole key from the computer."
+        case .notAClientKey: return "That key is for a bot. Make a key for this phone on the computer."
+        case .api(.unauthorized):
+            return link
+                ? "That sign-in link is invalid or expired. Make a new link on the computer."
+                : "The computer refused that key. Make a new one on the computer."
+        case .api(let api): return sentence(api.message)
+        case .keyStore: return "This phone could not keep the key. Try again."
+        }
+    }
+}

@@ -19,6 +19,9 @@ export type ComputerName = {
   own: boolean;
 };
 
+/** What a computer nobody named is called: never its id. */
+export const UNNAMED_COMPUTER = "Another computer";
+
 export type ComputerNames = {
   /** This window's own computer: the id it answers its hello with, and what it calls itself. Null until it has said. */
   own: { id: string | null; name: string | null };
@@ -33,10 +36,11 @@ export function computerNameOf(id: string, known: ComputerNames, said?: string |
   const own = !known.web && (id === LOCAL_ENVIRONMENT_ID || (known.own.id !== null && id === known.own.id));
   if (own) return { name: known.own.name ?? (said ? shortHostName(said) : thisDesktopName()), own: true };
   const saved = known.environments.find((environment) => environment.id === id);
-  if (saved && saved.id !== LOCAL_ENVIRONMENT_ID) return { name: saved.name, own: false };
+  if (saved && (known.web || saved.id !== LOCAL_ENVIRONMENT_ID)) return { name: saved.name, own: false };
   // The box's web page: the computer that serves it, by the page's own id for it or by the id its hello gave.
   if ((id === WEB_ENVIRONMENT_ID || id === known.own.id) && known.own.name) return { name: known.own.name, own: false };
-  return { name: said ? shortHostName(said) : id, own: false };
+  // An id never goes on screen: a computer nobody named is said as one.
+  return { name: said ? shortHostName(said) : UNNAMED_COMPUTER, own: false };
 }
 
 /** A computer's name inside a sentence: this window's own is "this Mac"; "The box" reads "the box". */
@@ -46,6 +50,8 @@ export const computerInLine = (computer: ComputerName): string => (computer.own 
 
 let ownName: string | null = null;
 let asked = false;
+/** This computer has answered (or could not be asked): its rows may draw, by its name or the window's word. */
+let settled = false;
 const listeners = new Set<() => void>();
 
 /** What this computer calls itself, asked of it once (`remote.status` is the window's own to ask). */
@@ -57,13 +63,15 @@ function askOwnName(): void {
     .request<{ name?: string }>("remote.status", {})
     .then(
       (status) => {
-        if (!status.name) return;
-        ownName = shortHostName(status.name);
+        settled = true;
+        if (status.name) ownName = shortHostName(status.name);
         for (const listener of listeners) listener();
       },
       () => {
-        // Asked again by the next page that needs it.
+        // Asked again by the next page that needs it; meanwhile the window's own word stands in.
         asked = false;
+        settled = true;
+        for (const listener of listeners) listener();
       },
     );
 }
@@ -78,6 +86,14 @@ const subscribeOwn = (listener: () => void): (() => void) => {
 export function resetOwnComputerForTests(name: string | null = null): void {
   ownName = name;
   asked = name !== null;
+  settled = name !== null;
+}
+
+/** Whether this window's own computer has said its name (or cannot): a row that names it waits for this, so a
+ *  stand-in name never shows and then changes. Always true in a browser, where no computer is this window's own. */
+export function useOwnComputerNamed(): boolean {
+  const done = useSyncExternalStore(subscribeOwn, () => settled);
+  return isWebMode() || done;
 }
 
 /** Every computer's name in this window, asked per row: `names(id, said)`. */

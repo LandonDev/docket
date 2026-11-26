@@ -15,7 +15,7 @@ import { endsText } from "./addWords";
 export type Frame = {
   title: string;
   description?: string;
-  /** The line counts down to this time: "One use. Ends in 9:42." */
+  /** The line counts down to this time: "One use. Ends in 10 minutes." */
   endsAt?: number;
   busy?: boolean;
 };
@@ -37,19 +37,24 @@ export function useSecondsLeft(at: number): number {
   return Math.max(0, Math.round((at - now) / 1000));
 }
 
-/** The frame's line for a link: "One use. Ends in 9:42.", counting down. */
+/** The frame's line for a link: "One use. Ends in 10 minutes.", counting down. */
 export function Ends({ at }: { at: number }) {
   return <span data-link-ends>{endsText(useSecondsLeft(at))}</span>;
 }
 
 /** A labelled group of choices (It may, the way to add, what a new computer gets): the label as Field draws its own. */
-export function ChoiceField({ label, id, children }: { label: string; id: string; children: ReactNode }) {
+export function ChoiceField({ label, id, hint, children }: { label: string; id: string; hint?: string; children: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
       <span id={id} className="text-xs font-medium text-muted-foreground">
         {label}
       </span>
       {children}
+      {hint ? (
+        <p data-choice-hint className="text-xs text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }

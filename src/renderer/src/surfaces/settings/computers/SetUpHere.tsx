@@ -68,18 +68,21 @@ export function SetUpView({ row, onAct, now = Date.now() }: { row: ComputerRow; 
   const stopped = row.state === "stopped";
   return (
     <SettingSection of="pc.setup" vars={{ mac: thisDesktopInLine() }}>
+      {/* One act a row; Remove…, which takes everything back, sits last. */}
       <SettingRow id="pc.setup" description={computerParts(row, now).join(", ")} error={error ?? row.lastError ?? undefined}>
         {row.waitingForContact ? null : (
-          <>
-            <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void run(stopped ? "start" : "stop")}>
-              <BusyLabel busy={busy === "start" || busy === "stop"} label={stopped ? "Start" : "Stop…"} />
-            </Button>
-            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" disabled={busy !== null} onClick={() => void run("remove")}>
-              <BusyLabel busy={busy === "remove"} label="Remove…" />
-            </Button>
-          </>
+          <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void run(stopped ? "start" : "stop")}>
+            <BusyLabel busy={busy === "start" || busy === "stop"} label={stopped ? "Start" : "Stop…"} />
+          </Button>
         )}
       </SettingRow>
+      {row.waitingForContact ? null : (
+        <SettingRow id="pc.setupRemove">
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" disabled={busy !== null} onClick={() => void run("remove")}>
+            <BusyLabel busy={busy === "remove"} label="Remove…" />
+          </Button>
+        </SettingRow>
+      )}
     </SettingSection>
   );
 }

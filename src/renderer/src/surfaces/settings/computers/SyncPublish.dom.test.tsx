@@ -20,8 +20,14 @@ vi.mock("../../../chrome/ConfirmDialog", async (original) => ({
   },
 }));
 
-const { SyncLine, SyncPage, memoryWords, namesWords } = await import("./SyncPage");
-const { newReleaseWords, publishable, publishShown } = await import("./PublishPage");
+const { SyncLine, SyncPage, conflictWords, memoryWords, namesWords, syncedWords } = await import("./SyncPage");
+let stops = 0;
+vi.mock("../../../lib/hostJobs", async (original) => ({
+  ...(await original<typeof import("../../../lib/hostJobs")>()),
+  watchJob: () => {},
+  stopPublish: async () => void stops++,
+}));
+const { PublishPage, newReleaseWords, publishable, publishShown } = await import("./PublishPage");
 
 const env = (id: string, name: string) => ({ id, name, connected: true, running: false, files: 3, sets: null, syncedAt: Date.now() - 120_000, lastAttemptAt: null, error: null });
 let answers: Record<string, unknown> = {};
@@ -71,7 +77,8 @@ describe("Sync", () => {
     );
     await flush();
     expect(screen.getByText("This Mac keeps the box and PURDUE-LT the same as itself.")).toBeTruthy();
-    expect(screen.getByText("This Mac's Claude Code and Codex settings go to the box and PURDUE-LT. 2 files stay here.")).toBeTruthy();
+    // The page's line names the computers; the row does not say them again.
+    expect(screen.getByText("This Mac's Claude Code and Codex settings. 2 files stay here.")).toBeTruthy();
     // no conflict copies: no row for them
     expect(document.querySelector("[data-setting='sync.conflicts']")).toBeNull();
     expect(document.querySelectorAll("[data-synced]")).toHaveLength(2);
@@ -94,6 +101,18 @@ describe("Sync", () => {
   it("counts the computers the memory is kept the same on", () => {
     expect(memoryWords(2)).toBe("Kept the same both ways");
     expect(memoryWords(3)).toBe("Kept the same on all three, both ways");
+  });
+
+  it("says a computer's last sync as one sentence, the conflict copies in plain words", () => {
+    const now = 1_000_000;
+    const leg = { id: "b", name: "The box", connected: true, running: false, sets: null, lastAttemptAt: null, error: null };
+    expect(syncedWords({ ...leg, files: 212, syncedAt: now - 120_000 }, { ...leg, files: 48, syncedAt: now - 60_000, conflicts: 1 }, now)).toEqual({
+      words: "212 agent settings files and 48 memory files, synced 1m ago",
+      error: null,
+    });
+    expect(syncedWords(null, { ...leg, files: 1, syncedAt: null, conflicts: 0 }, now).words).toBe("Never synced");
+    expect(syncedWords({ ...leg, files: 3, syncedAt: now, running: true }, null, now).words).toBe("Syncing…");
+    expect(conflictWords(1)).toBe("1 note differs. Both copies are kept.");
   });
 
   it("joins names as a sentence does", () => {
@@ -120,8 +139,47 @@ describe("Publish", () => {
   });
 
   it("words a new release", () => {
-    expect(newReleaseWords(status())).toBe("1.0.400 from master, last 1.0.399");
-    expect(newReleaseWords(status({ dirty: true, branch: "fix" }))).toBe("1.0.400 from fix, last 1.0.399, with changes not committed");
+    expect(newReleaseWords(status())).toBe("1.0.400, last published 1.0.399");
+    expect(newReleaseWords(status({ dirty: true, branch: "fix" }))).toBe("1.0.400, last published 1.0.399, from a side branch, with changes not committed");
     expect(newReleaseWords(status({ readable: false, refusal: null }))).toBe("~/x is not a Docket checkout");
+  });
+
+  it("stands in its shape while it reads, and a failed read is one line with Retry and no field", async () => {
+    answers["host.publishStatus"] = () => new Promise(() => {});
+    const { container, unmount } = render(<PublishPage />);
+    expect(container.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(2);
+    expect(screen.queryByLabelText("Release folder")).toBeNull();
+    unmount();
+    answers["host.publishStatus"] = () => Promise.reject(new Error("The computer did not answer"));
+    render(<PublishPage />);
+    await flush();
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    expect(screen.queryByLabelText("Release folder")).toBeNull();
+    expect(screen.queryByText("Publish…")).toBeNull();
+  });
+
+  it("says a running publish on its row, whose press is Stop…, which asks first", async () => {
+    answers["host.publishStatus"] = status({ phase: "running", target: "1.0.400", stoppable: true } as Partial<PublishStatus>);
+    render(<PublishPage />);
+    await flush();
+    expect(screen.getByText("Publishing 1.0.400…")).toBeTruthy();
+    expect(screen.queryByText("Publish…")).toBeNull();
+    answer = false;
+    fireEvent.click(screen.getByText("Stop…"));
+    await flush();
+    expect(confirms.at(-1)).toEqual(expect.objectContaining({ title: "Stop the publish?", body: "The release is left half made." }));
+    expect(stops).toBe(0);
+  });
+
+  it("leaves what runs to the log's own line once the log is drawn, keeping Stop… on the row", async () => {
+    const { hostJobsStore } = await import("../../../lib/hostJobs");
+    const running = { job: "publish", phase: "running", target: "1.0.400", startedAt: 1, finishedAt: null, exit: null, stoppable: true };
+    hostJobsStore.setState({ jobs: { "local:publish": { environmentId: "local", job: "publish", status: running, text: "Signing Docket.app\n" } } } as never);
+    answers["host.publishStatus"] = status({ phase: "running", target: "1.0.400", stoppable: true } as Partial<PublishStatus>);
+    render(<PublishPage />);
+    await flush();
+    expect(document.querySelector("[data-setting='publish.new']")?.textContent).not.toContain("Publishing 1.0.400…");
+    expect(screen.getByText("Stop…")).toBeTruthy();
+    hostJobsStore.setState({ jobs: {} } as never);
   });
 });

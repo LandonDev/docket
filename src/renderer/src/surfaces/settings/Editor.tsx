@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
-import { EDITOR_IDS, EDITOR_LABELS, type EditorChoice } from "@shared/editor";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { EDITOR_IDS, EDITOR_LABELS, type EditorChoice, type EditorConfig } from "@shared/editor";
 import type { LspStatusRow } from "@shared/domain";
 import { DialogFooter, ErrorLine } from "../../chrome/ConfirmDialog";
 import { ModalBody, ModalPanel } from "../../chrome/Modal";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageError } from "../../components/page";
+import { PageError, PageRowsSkeleton } from "../../components/page";
 import { SettingSwitch } from "../../components/setting-switch";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { CONSOLE } from "../../components/ui/console";
@@ -13,7 +13,9 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
 import { useHostRead } from "../../lib/connection/hostRead";
-import { chooseEditorSetting, useEditorConfig } from "../../lib/editorConfig";
+import { chooseEditorSetting, loadEditorConfig, useEditorConfig } from "../../lib/editorConfig";
+import { isWebMode } from "../../lib/nativeWeb";
+import { thisDesktopInLine } from "../../lib/native";
 import { keyCaps } from "../../lib/keys";
 import { retryBlockedEnsures } from "../../lib/monaco/lspGate";
 import { computerInLine, useComputerName } from "../../lib/settings/computerName";
@@ -49,9 +51,11 @@ export function serverWords(rows: readonly LspStatusRow[], names: ReadonlyMap<st
   const failed = rows.find((row) => row.state === "error");
   const error = failed ? (failed.error ?? "Failed") : null;
   if (running.length) {
-    const projects = [...new Set(running.map((row) => names.get(row.projectId) ?? row.projectId))];
+    // A project is named by its name alone: one this window cannot name is left out, never shown as its id.
+    const projects = [...new Set(running.flatMap((row) => names.get(row.projectId) ?? []))];
     const memory = running.reduce((sum, row) => sum + (row.memoryBytes ?? 0), 0);
-    return { line: [`running for ${namesInLine(projects)}`, ...(memory ? [fmtBytes(memory)] : [])].join(", "), error };
+    const what = projects.length ? `running for ${namesInLine(projects)}` : "running";
+    return { line: [what, ...(memory ? [fmtBytes(memory)] : [])].join(", "), error };
   }
   if (rows.some((row) => row.state !== "error")) return { line: "starting", error };
   return { line: null, error };
@@ -76,10 +80,45 @@ function useLanguageServers(): LspStatusRow[] | undefined {
  *  installed; a Swift file under ios/ goes to Xcode when Xcode is chosen or IDEA is absent. Absent at /ui and on a
  *  headless computer, where no editor runs. */
 function OpenFilesIn() {
-  const config = useEditorConfig();
+  const live = useEditorConfig();
+  // This window's own answer: undefined while main is asked, null when it could not say.
+  const [asked, setAsked] = useState<EditorConfig | null | undefined>(live ?? undefined);
   const saved = useSaved();
   const [chosen, setChosen] = useState<EditorChoice | null>(null);
-  if (!config) return null;
+  const web = isWebMode();
+  const ask = useCallback(() => {
+    setAsked(undefined);
+    // A bridge that throws at the call is a failed read too.
+    void Promise.resolve()
+      .then(loadEditorConfig)
+      .then(setAsked, () => setAsked(null));
+  }, []);
+  // Asked once on open; a change he makes comes back through the store.
+  const first = useRef(!web && !live);
+  useEffect(() => {
+    if (first.current) ask();
+  }, [ask]);
+  const config = live ?? asked;
+  if (!config) {
+    if (web) return null;
+    return (
+      <SettingSection of="editor.openIn">
+        {config === undefined ? (
+          <PageRowsSkeleton rows={[{ description: true, control: "select" }]} />
+        ) : (
+          <PageError
+            action={
+              <Button variant="ghost" size="sm" onClick={ask}>
+                Retry
+              </Button>
+            }
+          >
+            Could not read the editors on {thisDesktopInLine()}
+          </PageError>
+        )}
+      </SettingSection>
+    );
+  }
   const found = EDITOR_IDS.filter((id) => config.installed[id]).map((id) => EDITOR_LABELS[id]);
   const editor = chosen ?? config.editor;
   const description =
@@ -258,16 +297,17 @@ function JavaSection() {
     <SettingSection
       of="editor.jdk"
       vars={{ mac }}
-      action={
-        failed ? (
-          <Button variant="ghost" size="sm" onClick={() => void doctor.retry()}>
-            Retry
-          </Button>
-        ) : null
-      }
     >
       {failed ? (
-        <PageError>{doctor.error}</PageError>
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" onClick={() => void doctor.retry()}>
+              Retry
+            </Button>
+          }
+        >
+          {doctor.error}
+        </PageError>
       ) : (
         <>
           <SettingRow

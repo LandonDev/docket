@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   deleteSimulatorConfirm,
   devicesSummary,
-  holderText,
   type HostDevicesHost,
   type HostDevicesReport,
   type Phone,
@@ -10,7 +9,8 @@ import {
 } from "@server/shared/contract-hostdevices";
 import { PageEmpty, PageError, PageRowsSkeleton } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
-import { reveal } from "../../../components/ui/reveal";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../../components/ui/dropdown-menu";
+import { MoreHorizontal } from "../../../chrome/icons";
 import { ConfirmDialog, errorText } from "../../../chrome/ConfirmDialog";
 import { deleteSimulator, openXcodeDevices, refreshHostDevicesHosts, shutdownSimulator, useHostDevices } from "../../../lib/hostDevices";
 import { isWebMode } from "../../../lib/nativeWeb";
@@ -115,20 +115,24 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
               key={sim.udid}
               udid={sim.udid}
               name={sim.name}
-              detail={sim.runtime}
+              detail={[sim.runtime]}
               state={simulatorState(sim)}
               holder={sim.holder}
               onOpenSession={onOpenSession}
               busy={busy === sim.udid}
             >
-              {sim.state === "booted" ? (
-                <Button variant="ghost" size="xs" disabled={busy !== null} onClick={() => void run(sim.udid, () => onShutdown(sim.udid))}>
-                  Shut down
-                </Button>
-              ) : null}
-              <Button variant="ghost" className="text-muted-foreground hover:text-destructive" size="xs" disabled={busy !== null} onClick={() => setConfirm(sim)}>
-                Delete
-              </Button>
+              {/* Two acts, one control: a ⋯ menu, always in view. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label={`${sim.name} actions`} disabled={busy !== null} className="text-muted-foreground" />}>
+                  <MoreHorizontal />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {sim.state === "booted" ? <DropdownMenuItem onClick={() => void run(sim.udid, () => onShutdown(sim.udid))}>Shut down</DropdownMenuItem> : null}
+                  <DropdownMenuItem variant="destructive" onClick={() => setConfirm(sim)}>
+                    Delete…
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </DeviceRow>
           ))}
           {report.phones.map((phone) => (
@@ -137,13 +141,13 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
               udid={phone.udid}
               name={phone.name}
               // The model only when the owner's name for it says something else.
-              detail={<Facts parts={phone.model && phone.model !== phone.name ? [phone.model, phone.os] : [phone.os]} />}
+              detail={phone.model && phone.model !== phone.name ? [phone.model, phone.os] : [phone.os]}
               state={phoneState(phone)}
               holder={phone.holder}
               onOpenSession={onOpenSession}
               busy={busy === "xcode"}
             >
-              <Button variant="ghost" size="xs" disabled={busy !== null} onClick={() => void run("xcode", onOpenXcode)}>
+              <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => void run("xcode", onOpenXcode)}>
                 Open in Xcode
               </Button>
             </DeviceRow>
@@ -174,6 +178,9 @@ export function DevicesBlock({ host, report, error, onOpenSession, onShutdown, o
   );
 }
 
+/** Who holds a device, in a line under it: the thread by its title. */
+export const holderWords = (holder: NonNullable<Simulator["holder"]>): string => `In use by “${holder.title}”`;
+
 /** "Booted", "34% CPU"; "Shut down"; the simulator's own word while it changes. */
 export const simulatorState = (sim: Simulator): string[] => {
   if (sim.state === "booted") return sim.cpu !== undefined ? ["Booted", `${Math.round(sim.cpu)}% CPU`] : ["Booted"];
@@ -200,7 +207,7 @@ function DeviceRow({
 }: {
   udid: string;
   name: string;
-  detail: ReactNode;
+  detail: readonly string[];
   state: string[];
   holder: Simulator["holder"];
   onOpenSession?: (sessionId: string) => void;
@@ -213,7 +220,9 @@ function DeviceRow({
       data-device={udid}
       description={
         <>
-          {detail}
+          <span className="block">
+            <Facts parts={[...detail, ...state]} />
+          </span>
           {holder ? (
             onOpenSession ? (
               // The 16px link reaches 24px; its words truncate inside it, so nothing clips the hit area.
@@ -224,21 +233,21 @@ function DeviceRow({
                   className="h-auto max-w-full min-w-0 shrink px-0 text-xs font-normal text-muted-foreground hover:text-foreground after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']"
                   onClick={() => onOpenSession(holder.sessionId)}
                 >
-                  <span className="min-w-0 truncate">{holderText(holder)}</span>
+                  <span className="min-w-0 truncate">{holderWords(holder)}</span>
                 </Button>
               </span>
             ) : (
               <span data-holder className="block truncate">
-                {holderText(holder)}
+                {holderWords(holder)}
               </span>
             )
           ) : null}
         </>
       }
     >
-      {/* The actions wait on the shared hover reveal; a busy row keeps them shown. */}
-      <span data-device-actions className={`flex items-center gap-1 ${busy ? "" : reveal("item", { row: true })}`}>{children}</span>
-      <Facts parts={state} className="text-xs text-muted-foreground" />
+      <span data-device-actions data-busy={busy ? "" : undefined} className="flex items-center gap-1">
+        {children}
+      </span>
     </Row>
   );
 }

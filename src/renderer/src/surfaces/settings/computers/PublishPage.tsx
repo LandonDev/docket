@@ -2,8 +2,13 @@ import { useEffect, useState } from "react";
 import type { PublishStatus } from "@server/shared/contract-host";
 import { PageSection } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
-import { LOCAL_ENVIRONMENT_ID } from "../../../lib/connection";
-import { refreshPublishStatus, setReleaseCheckout, startPublish, usePublishStatus, watchJob } from "../../../lib/hostJobs";
+import { LOCAL_ENVIRONMENT_ID, registry } from "../../../lib/connection";
+import { useHostRead } from "../../../lib/connection/hostRead";
+import { confirmAction } from "../../../chrome/ConfirmDialog";
+import { Spinner } from "../../../components/ui/spinner";
+import { refusalWords } from "../../../lib/settingsHome";
+import { SectionRead } from "./read";
+import { refreshPublishStatus, startPublish, stopPublish, useHostJob, usePublishStatus, watchJob } from "../../../lib/hostJobs";
 import { IS_MAC } from "../../../lib/platform";
 import { isWebMode } from "../../../lib/nativeWeb";
 import { tellSettingsList } from "../../../lib/settings/useListWindow";
@@ -60,8 +65,9 @@ export function usePublishKnown(): void {
 export function newReleaseWords(p: PublishStatus | null): string | undefined {
   if (!p) return undefined;
   if (!p.readable) return p.refusal ?? `${p.checkout} is not a Docket checkout`;
-  const parts = [`${p.version ?? "HEAD"} from ${p.branch ?? "HEAD"}`];
-  if (p.publishedVersion) parts.push(`last ${p.publishedVersion}`);
+  const parts = [p.version ?? "A version not yet numbered"];
+  if (p.publishedVersion) parts.push(`last published ${p.publishedVersion}`);
+  if (p.branch && p.branch !== "master") parts.push("from a side branch");
   if (p.dirty) parts.push("with changes not committed");
   return parts.join(", ");
 }
@@ -69,41 +75,93 @@ export function newReleaseWords(p: PublishStatus | null): string | undefined {
 /**
  * Settings › Publish, "Ships a Docket release to everyone who runs it." (docs/agents/settings.md "The pages:
  * computers"): New release with Publish…, whose dialog is the confirm; the release folder it builds from; the job's
- * log, whose Stop… asks first. This Mac's own server alone.
+ * log. While it runs the row says so and its press is Stop…, which asks first. This Mac's own server alone.
  */
 export function PublishPage() {
-  const status = usePublishStatus();
+  const link = registry.primary();
+  // The page's own read: while it is out the rows stand in their shape; a failure is one line with Retry.
+  const read = useHostRead<PublishStatus>(link, () => link.request<PublishStatus>("host.publishStatus", {}));
+  const status = read.value;
   const folder = useSaved();
   const [dialog, setDialog] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
   const busy = status?.phase === "running" || status?.phase === "pending";
+  const log = useHostJob(LOCAL_ENVIRONMENT_ID, "publish")?.status.phase === "running";
+  const { retry } = read;
   useEffect(() => {
-    void refreshPublishStatus();
-    const timer = window.setInterval(() => void refreshPublishStatus(), 5_000);
+    const timer = window.setInterval(() => void retry(), 5_000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [retry]);
   useEffect(() => {
     if (busy) watchJob(LOCAL_ENVIRONMENT_ID, "publish");
   }, [busy]);
+  const stop = async (): Promise<void> => {
+    if (!(await confirmAction({ title: "Stop the publish?", body: "The release is left half made.", action: "Stop", danger: true }))) return;
+    setStopError(null);
+    try {
+      await stopPublish();
+      await retry();
+    } catch (err) {
+      setStopError(refusalWords(err));
+    }
+  };
   return (
     <PageSection>
-      <SettingRow id="publish.new" description={newReleaseWords(status)}>
-        <Button variant="secondary" size="sm" disabled={!status || !status.readable || busy} onClick={() => setDialog(true)}>
-          Publish…
-        </Button>
-      </SettingRow>
-      <SettingRow id="publish.folder" saved={folder} wide>
-        <CommitField
-          aria-label="Release folder"
-          value={status?.checkout ?? ""}
-          placeholder="~/IdeaProjects/temp-code"
-          className="w-64 @max-[30rem]/page:w-full"
-          onCommit={(checkout) => folder.run(() => setReleaseCheckout(checkout))}
-        />
-      </SettingRow>
-      <JobLog environmentId={LOCAL_ENVIRONMENT_ID} job="publish" hostName="This Mac" />
-      {dialog && status ? (
-        <PublishDialog notes={status.notes} line={[newReleaseWords(status), status.checkout].filter(Boolean).join(", ")} refusal={status.refusal} onClose={() => setDialog(false)} onPublish={startPublish} />
-      ) : null}
+      <SectionRead read={read} rows={[{ description: true, control: "button" }, { control: "field", wide: true }]}>
+        {(value) => (
+          <>
+            <SettingRow
+              id="publish.new"
+              description={
+                // Once the log is drawn below, its line says what runs; the row says it only until then.
+                busy && log ? undefined : busy ? (
+                  <span className="flex items-center gap-1.5">
+                    <Spinner className="size-3" aria-hidden />
+                    {`Publishing ${value.target ?? value.version ?? "the release"}…`}
+                  </span>
+                ) : (
+                  newReleaseWords(value)
+                )
+              }
+              error={stopError ?? undefined}
+            >
+              {busy ? (
+                value.stoppable ? (
+                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void stop()}>
+                    Stop…
+                  </Button>
+                ) : null
+              ) : (
+                <Button variant="secondary" size="sm" disabled={!value.readable} onClick={() => setDialog(true)}>
+                  Publish…
+                </Button>
+              )}
+            </SettingRow>
+            <SettingRow id="publish.folder" saved={folder} wide>
+              <CommitField
+                aria-label="Release folder"
+                value={value.checkout}
+                placeholder="~/IdeaProjects/temp-code"
+                className="w-64 @max-[30rem]/page:w-full"
+                onCommit={(checkout) => folder.run(async () => read.set(await link.request<PublishStatus>("host.releaseCheckout.set", { checkout })))}
+              />
+            </SettingRow>
+            <JobLog environmentId={LOCAL_ENVIRONMENT_ID} job="publish" hostName="This Mac" />
+            {dialog ? (
+              <PublishDialog
+                notes={value.notes}
+                line={[newReleaseWords(value), value.checkout].filter(Boolean).join(", ")}
+                refusal={value.refusal}
+                onClose={() => setDialog(false)}
+                onPublish={async (notes) => {
+                  await startPublish(notes);
+                  await retry();
+                }}
+              />
+            ) : null}
+          </>
+        )}
+      </SectionRead>
     </PageSection>
   );
 }

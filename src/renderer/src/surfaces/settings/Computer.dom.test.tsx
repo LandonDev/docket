@@ -110,14 +110,26 @@ describe("Settings › Computer use", () => {
     };
     render(<ComputerPage />);
     await settle();
-    expect(within(firstSection()).getByRole("alert").textContent).toBe("forbidden: computer.settings.get");
-    expect(within(section("Apps it has learned")).getByRole("alert")).toBeTruthy();
+    // One failed read, one line and one Retry: the apps it also feeds wait for it.
+    expect(screen.getAllByRole("alert").map((line) => line.textContent)).toEqual(["forbidden: computer.settings.get"]);
+    expect(screen.queryByRole("heading", { name: "Apps it has learned" })).toBeNull();
     refuse = false;
     fireEvent.click(within(firstSection()).getByRole("button", { name: "Retry" }));
     await settle();
     expect(calls("computer.settings.get")).toHaveLength(2);
     expect(screen.getByRole("textbox", { name: "Wait after my last input, in minutes" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(section("Apps it has learned")).toBeTruthy();
+  });
+
+  it("puts Forget all… last in its section, after the apps it forgets", async () => {
+    render(<ComputerPage />);
+    await settle();
+    const apps = section("Apps it has learned");
+    const forgetAll = within(apps).getByRole("button", { name: "Forget all…" });
+    const rows = apps.querySelectorAll("[data-slot=page-row]");
+    expect(rows[rows.length - 1]!.compareDocumentPosition(forgetAll) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(apps.querySelector("[data-slot=page-section-action], header button")).toBeNull();
   });
 
   it.each([
@@ -234,7 +246,7 @@ describe("Settings › Computer use", () => {
     render(<ComputerPage />);
     await settle();
     const rows = [...section("Apps it has learned").querySelectorAll<HTMLElement>("[data-slot=page-row]")];
-    expect(rows.map((r) => r.querySelector("[data-slot=item-title]")!.textContent)).toEqual(["Chrome", "dev.unnamed", "TextEdit"]);
+    expect(rows.map((r) => r.querySelector("[data-slot=item-title]")!.textContent)).toEqual(["Chrome", "An app with no name", "TextEdit"]);
     expect(rows[0].textContent).toContain("May take the screen to click and type");
     expect(rows[1].querySelector("[data-slot=item-description]")).toBeNull();
     expect(rows[2].querySelector("[data-slot=item-description]")).toBeNull();
@@ -425,6 +437,7 @@ describe("Who may use this Mac's apps", () => {
     expect(who.querySelector('[data-setting="computer.own"]')?.textContent).toContain("Always");
     expect(who.textContent).toContain("Allowed, 1 using it now");
     expect(who.textContent).toContain("Not allowed");
+    expect(who.querySelectorAll("[data-slot=open-cue]")).toHaveLength(2);
     fireEvent.click(within(who).getByRole("button", { name: "PURDUE-LT" }));
     expect(bridge.asked).toContainEqual(["env_pc"]);
   });

@@ -109,14 +109,12 @@ describe("Archive page", () => {
     expect(within(row).queryByRole("button", { name: /Delete/ })).toBeNull();
   });
 
-  it("a row's actions wait on the shared hover reveal and an open menu holds them, never a click", async () => {
+  it("shows Restore and ⋯ on every row at rest, never on a hover alone", async () => {
     state.metas = [meta("t1", "Fix the build", "p1")];
     render(<ArchivePage {...handlers()} />);
+    await settle();
     const wrapper = within(rowOf("Fix the build")).getByRole("button", { name: "Restore Fix the build" }).parentElement!.className;
-    expect(wrapper).toContain("group-hover/item:delay-(--delay-hover)");
-    expect(wrapper).toContain("has-[[data-popup-open]]:opacity-100");
-    expect(wrapper).toContain("group-has-focus-visible/item:opacity-100");
-    expect(wrapper).not.toContain("focus-within");
+    expect(wrapper).not.toMatch(/opacity-0|group-hover/);
   });
 
   it("restores a thread and opens it, and the row leaves at once", async () => {
@@ -198,6 +196,32 @@ describe("Archive asks each computer itself", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search archived threads" }), { target: { value: "venue" } });
     expect(screen.queryByText("Fix the build")).toBeNull();
     expect(screen.getByText("Venue for the spring LAN")).toBeTruthy();
+  });
+
+  it("names no computer while every thread is on the same one", async () => {
+    state.hosts = { local: [meta("t1", "Fix the build", "p1", 2), meta("t2", "Write docs", "p2", 1)] };
+    render(<ArchivePage {...handlers()} />);
+    await settle();
+    expect(rowOf("Fix the build").textContent).not.toContain("on this Mac");
+    expect(rowOf("Fix the build").textContent).toContain("Alpha");
+  });
+
+  it("keeps the search field while the lists are read and after a refusal", async () => {
+    state.hosts = { local: new Error("not connected") };
+    render(<ArchivePage {...handlers()} />);
+    await settle();
+    expect(screen.getByRole("searchbox", { name: "Search archived threads" })).toBeTruthy();
+  });
+
+  it("Retry asks only the computer it names, and the others' threads stay", async () => {
+    state.hosts = { local: [meta("t1", "Fix the build", "p1")], env_box: new Error("not connected") };
+    render(<ArchivePage {...handlers()} />);
+    await settle();
+    state.asked = [];
+    state.hosts.env_box = [];
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(state.asked).toEqual(["env_box"]);
+    expect(screen.getByText("Fix the build")).toBeTruthy();
   });
 
   it("holds the list's shape while a computer answers, never saying there are none", async () => {

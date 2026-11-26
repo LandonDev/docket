@@ -14,7 +14,7 @@ import { refreshMacBridgeHosts, useMacBridgeHosts } from "../../lib/macBridge";
 import { requestSettings } from "../../lib/monaco/debugTab";
 import { openMaySheet } from "../../lib/settings/maySheet";
 import { isWebMode } from "../../lib/nativeWeb";
-import { computerInLine, useComputerNames, type ComputerName as Name } from "../../lib/settings/computerName";
+import { computerInLine, useComputerNames, useOwnComputerNamed, type ComputerName as Name } from "../../lib/settings/computerName";
 import { jobDesktopName, refusalWords, refusesJob, type BridgePolicy, type JobDesktop } from "../../lib/settings/jobComputers";
 import { settingTitle } from "../../lib/settings/map";
 import { inWords } from "../../lib/settings/workWords";
@@ -72,12 +72,58 @@ export function WorkWorkspacePage({ workspaceId }: { workspaceId: string }) {
   return <JobPage workspace={workspace} />;
 }
 
+/** The job's settings as its computer answered them, the desktops it knows and this machine's own host id: the one
+ *  read the page hangs on (`useJobRead`). */
+type JobRead = { settings: WorkspaceWorkSettings; far: WorkDesktop[]; localHost: string | null };
+
+/**
+ * The page's one read: the job's settings and the desktops its computer knows. While it is out every section stands
+ * in its shape; refused, it is one red line with one Retry under the first heading, and the sections after it keep
+ * their shape, since each would only say the same failure again.
+ */
+function useJobRead(workspace: WorkspaceMeta) {
+  const env = workspace.environmentId;
+  const [read, setRead] = useState<JobRead | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  // His Retry keeps the failed line, spinning in place, until the answer replaces it.
+  const [retrying, setRetrying] = useState(false);
+  useEffect(() => {
+    let live = true;
+    Promise.all([workspaceSettings(workspace, { fresh: true }), hostDesktops(workspace), localHostId()]).then(
+      ([settings, far, localHost]) => {
+        if (!live) return;
+        setRead({ settings, far, localHost });
+        setError(null);
+        setRetrying(false);
+      },
+      (err: unknown) => {
+        if (!live) return;
+        setError(failureWords(err, registry.environment(env)?.name, "did not send this job's settings"));
+        setRetrying(false);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [workspace.id, env, attempt]);
+  const retry = (): void => {
+    setRetrying(true);
+    setAttempt((n) => n + 1);
+  };
+  return { read, error, retrying, retry, put: (settings: WorkspaceWorkSettings) => setRead((r) => (r ? { ...r, settings } : r)) };
+}
+
 export function JobPage({ workspace }: { workspace: WorkspaceMeta }) {
   const env = workspace.environmentId;
   const status = useLifeosStatus(env);
   const mayWrite = useLinkMay(env, "work.workspace.set");
   const mayDefaults = useLinkMay(env, "defaults.set");
   const computerLabel = useEnvironments().find((e) => e.id === env)?.name;
+  const job = useJobRead(workspace);
+  // This window's own computer is named by what it calls itself: its row waits for that, never a stand-in name.
+  const named = useOwnComputerNamed();
+  const ready = !!job.read && named;
   // A key that could not be made is said once, here: its waiting is the Writing and mail rows' state.
   const key = status?.lifeos.state === "connected" ? keyLine(status.keys.find((k) => k.workspaceId === workspace.id), computerLabel) : null;
   return (
@@ -87,12 +133,39 @@ export function JobPage({ workspace }: { workspace: WorkspaceMeta }) {
           <PageError>{key.line}</PageError>
         </PageSection>
       ) : null}
-      <ComputersSection workspace={workspace} mayWrite={mayWrite} />
+      <ComputersSection workspace={workspace} mayWrite={mayWrite} job={job} ready={ready} />
+      {ready ? (
+        <>
+          <SettingSection of="job.threads">
+            <StartSetRow id="job.threads" workspace={workspace} whose="job" may={mayDefaults} />
+          </SettingSection>
+          <HouseRules workspace={workspace} />
+          {workspace.sector ? <WritingSection workspace={workspace} mayVoice={mayWrite} /> : null}
+        </>
+      ) : (
+        <JobShapes workspace={workspace} mayDefaults={mayDefaults} />
+      )}
+    </>
+  );
+}
+
+/** The sections after the first while the page's read is out or refused: each heading, its rows in their shape. */
+function JobShapes({ workspace, mayDefaults }: { workspace: WorkspaceMeta; mayDefaults: boolean }) {
+  const mayWaiting = useLinkMay(workspace.environmentId, "work.mail.setWaiting");
+  const mayVoice = useLinkMay(workspace.environmentId, "work.workspace.set");
+  return (
+    <>
       <SettingSection of="job.threads">
-        <StartSetRow id="job.threads" workspace={workspace} whose="job" may={mayDefaults} />
+        <PageRowsSkeleton rows={[{ description: true, control: mayDefaults ? "button" : "none" }]} />
       </SettingSection>
-      <HouseRules workspace={workspace} />
-      {workspace.sector ? <WritingSection workspace={workspace} mayVoice={mayWrite} /> : null}
+      <SettingSection of="job.rules">
+        <PageRowsSkeleton rows={3} control="switch" />
+      </SettingSection>
+      {workspace.sector && (mayVoice || mayWaiting) ? (
+        <SettingSection of="job.voice">
+          <PageRowsSkeleton rows={[...(mayVoice ? [{ description: true, control: "switch" as const }] : []), ...(mayWaiting ? [{ control: "select" as const }, { description: true, control: "switch" as const }] : [])]} />
+        </SettingSection>
+      ) : null}
     </>
   );
 }
@@ -114,39 +187,15 @@ function WritingSection({ workspace, mayVoice }: { workspace: WorkspaceMeta; may
  * the job allows a computer that itself refuses the job's computer (its Files and commands for it are Off), an amber
  * line says which machine refuses and where that changes. Then the Windows VM and the Teams copy.
  */
-function ComputersSection({ workspace, mayWrite }: { workspace: WorkspaceMeta; mayWrite: boolean }) {
+function ComputersSection({ workspace, mayWrite, job, ready }: { workspace: WorkspaceMeta; mayWrite: boolean; job: ReturnType<typeof useJobRead>; ready: boolean }) {
   const env = workspace.environmentId;
   const environments = useEnvironments();
   const names = useComputerNames();
-  const [settings, setSettings] = useState<WorkspaceWorkSettings | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [attempt, setAttempt] = useState(0);
-  // His Retry keeps the failed line, spinning in place, until the answer replaces it.
-  const [retrying, setRetrying] = useState(false);
-  const [localHost, setLocalHost] = useState<string | null>(null);
-  // The desktops the job's computer knows that this window may have no link to (a PC registered with the box).
-  const [far, setFar] = useState<WorkDesktop[]>([]);
-  useEffect(() => void localHostId().then(setLocalHost), []);
-  useEffect(() => {
-    let live = true;
-    Promise.all([workspaceSettings(workspace, { fresh: true }), hostDesktops(workspace)]).then(
-      ([value, known]) => {
-        if (!live) return;
-        setSettings(value);
-        setFar(known);
-        setError(null);
-        setRetrying(false);
-      },
-      (err: unknown) => {
-        if (!live) return;
-        setError(failureWords(err, registry.environment(env)?.name, "did not send this job's settings"));
-        setRetrying(false);
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [workspace.id, env, attempt]);
+  const settings = ready ? (job.read?.settings ?? null) : null;
+  const far = job.read?.far ?? [];
+  const localHost = job.read?.localHost ?? null;
+  const error = job.error;
+  const setSettings = job.put;
   const desktops = desktopRows(environments, far, localHost);
   const jobComputer = names(env);
   const jobHost = hostIdOfLink(env, localHost);
@@ -181,7 +230,8 @@ function ComputersSection({ workspace, mayWrite }: { workspace: WorkspaceMeta; m
           })
         : error
           ? null
-          : <PageRowsSkeleton rows={Math.max(1, desktops.length)} control="switch" />}
+          : // Its desktops, then the Windows VM's and the Teams copy's rows where it has them: the shape that lands.
+            <PageRowsSkeleton rows={[...desktops.map(() => ({ control: "switch" as const })), { control: "switch" as const }]} />}
       {settings ? (
         <JobVmRow
           env={env}
@@ -194,16 +244,8 @@ function ComputersSection({ workspace, mayWrite }: { workspace: WorkspaceMeta; m
       {error ? (
         <PageError
           action={
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={retrying}
-              onClick={() => {
-                setRetrying(true);
-                setAttempt((n) => n + 1);
-              }}
-            >
-              <BusyLabel busy={retrying} label="Retry" />
+            <Button variant="ghost" size="sm" disabled={job.retrying} onClick={job.retry}>
+              <BusyLabel busy={job.retrying} label="Retry" />
             </Button>
           }
         >
@@ -241,14 +283,19 @@ function DesktopRow({
 }) {
   const saved = useSaved();
   const description = refusal ? (
-    <span data-refusal className="inline-flex flex-wrap items-center gap-x-2 text-warning">
+    // Two permissions disagree: the job's (this switch) and the computer's own. The first line is the switch's, the
+    // second the computer's refusal with where it changes, said together.
+    <>
+      <span className="block">Allowed for this job</span>
+      <span data-refusal className="block text-warning">
       {refusal}
       {/* This Mac's own refusal changes here, in Sharing; another computer's only on that computer. */}
+      {name.own ? " " : null}
       {name.own ? (
         <Button
           variant="ghost"
           size="xs"
-          className="-my-1"
+          className="h-auto px-0 align-baseline text-xs font-medium text-foreground underline underline-offset-2"
           onClick={() => {
             // Sharing, with what the job's computer may do on this Mac open over it: the rule that refuses.
             requestSettings("sharing", "sharing.may");
@@ -258,7 +305,8 @@ function DesktopRow({
           Open Sharing
         </Button>
       ) : null}
-    </span>
+      </span>
+    </>
   ) : may ? undefined : on ? "Allowed" : "Not allowed";
   return (
     <PageRow data-computer={desktop.host} title={<ComputerName computer={name} />} description={description} error={saved.error ?? undefined}>

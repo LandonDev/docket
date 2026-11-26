@@ -118,11 +118,13 @@
   dialog says nothing of an address's reach. Only where the host did not
   answer its status does the dialog show the host's own link, and say in one
   line when it is a loopback address that opens only there. The dialog is
-  "Sign a device in to <computer>": Name; For (a device, or a bot, whose key it
-  makes instead); It may (Look only `[]`, Run threads `[operate]`, Run threads
-  and approve `[operate, approve]`, Manage <computer> `[operate, approve,
-  admin]`, which asks first); then the code, its QR, Copy link, "One use. Ends
-  in 9:42." and Cancel the link (`remote.pairings.revoke`). It is made on the
+  "Sign a device in to <computer>": Name; For (a device, or a bot: then the
+  dialog is "A key for a bot", offers the two levels a bot may hold and says
+  why in one line, and makes a key instead); It may (Look only `[]`, Run
+  threads `[operate]`, Run threads and approve `[operate, approve]`, Manage
+  <computer> `[operate, approve, admin]`, which asks first); then the code,
+  its QR, Copy link, "One use. Ends in 10 minutes." (whole minutes, rounded
+  up) and Cancel the link (`remote.pairings.revoke`). It is made on the
   computer the title names, over that computer's own link (`hostRequest`), so a
   key here that holds `admin` on the box makes the box's sign-ins
   (`openAddComputer({ way: "device", computer })`).

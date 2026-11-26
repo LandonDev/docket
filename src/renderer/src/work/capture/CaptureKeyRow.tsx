@@ -1,6 +1,8 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { Button } from "../../components/ui/button";
-import { acceleratorHint, acceleratorOf, bareKey } from "../../lib/keys";
+import { Skeleton } from "../../components/ui/skeleton";
+import { acceleratorHint, acceleratorOf, bareKey, keyCaps } from "../../lib/keys";
+import { Keys } from "../../surfaces/settings/keys";
 import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
 import { useSaved } from "../../surfaces/settings/parts/useSaved";
 
@@ -29,15 +31,22 @@ export const captureKeyApi = (): CaptureKeyApi | null => (window as unknown as {
  */
 export function CaptureKeyRow({ api }: { api: CaptureKeyApi }) {
   const [state, setState] = useState<CaptureKeyState | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [asked, setAsked] = useState(0);
   const [recording, setRecording] = useState(false);
 
+  // Until main answers the key is unknown: the button's shape, never "Off". A failed read says why, with Retry.
   useEffect(() => {
     let live = true;
-    void api.get().then((s) => live && setState(s));
+    setFailed(null);
+    api.get().then(
+      (s) => live && setState(s),
+      (err: unknown) => live && setFailed(err instanceof Error ? err.message : String(err)),
+    );
     return () => {
       live = false;
     };
-  }, [api]);
+  }, [api, asked]);
 
   const saved = useSaved();
   const save = (key: string | null) => {
@@ -58,26 +67,48 @@ export function CaptureKeyRow({ api }: { api: CaptureKeyApi }) {
     if (key) save(key);
   };
 
-  const words = recording ? "Press the keys" : state?.key ? acceleratorHint(state.key) : "Off";
+  if (!state)
+    return (
+      <SettingRow id="keys.capture" error={failed}>
+        {failed ? (
+          <Button variant="ghost" size="sm" onClick={() => setAsked((n) => n + 1)}>
+            Retry
+          </Button>
+        ) : (
+          <Skeleton data-capture-key="loading" className="h-7 w-28 rounded-md" />
+        )}
+      </SettingRow>
+    );
+  const hint = state.key ? acceleratorHint(state.key) : "Off";
   return (
     <SettingRow
       id="keys.capture"
       saved={saved}
       description={recording ? "Escape to keep it, Delete to turn it off" : undefined}
-      error={saved.error ?? (!recording && state?.error ? state.error : undefined)}
+      error={saved.error ?? (!recording && state.error ? state.error : undefined)}
     >
       <Button
         variant="secondary"
         size="sm"
-        disabled={!state}
+        aria-label={recording ? "Press the keys" : hint}
         aria-pressed={recording}
         onClick={() => setRecording((r) => !r)}
         onKeyDown={onKeyDown}
         onBlur={() => setRecording(false)}
         className="min-w-28 tabular-nums"
       >
-        {words}
+        {/* The chord in the same key caps as every other shortcut on the page. */}
+        {recording ? "Press the keys" : state.key ? <Keys keys={keyCaps(chordOf(state.key))} className="" /> : "Off"}
       </Button>
     </SettingRow>
   );
+}
+
+/** An Electron accelerator ("Command+Shift+Space") as a chord `keyCaps` reads ("mod+shift+Space"). */
+export function chordOf(accelerator: string): string {
+  const names: Record<string, string> = { Command: "mod", CommandOrControl: "mod", Control: "ctrl", Alt: "alt", Option: "alt", Shift: "shift", Super: "Win" };
+  return accelerator
+    .split("+")
+    .map((part) => names[part] ?? part)
+    .join("+");
 }

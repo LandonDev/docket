@@ -3,13 +3,14 @@ import { PROVIDER_NAME } from "@server/shared/usageMeter";
 import { wordCount } from "@server/shared/preamble";
 import { ROUTED_PROVIDERS, type AccountPins } from "@server/shared/accounts";
 import { BuildEditor, takeRequestedBuildFocus } from "../../chrome/rail/buildSettings";
-import { TurnPassEditor } from "../../chrome/TurnPassFields";
+import { TurnPassEditor, useTurnPassRead } from "../../chrome/TurnPassFields";
 import { ProjectSettingsDialog } from "../../chrome/ProjectDialogs";
 import { PreambleDialog } from "../../chrome/PreambleDialog";
 import { HarnessIcon } from "../../chrome/HarnessIcon";
 import { OrchestrationRulesEditor } from "../../chrome/OrchestrationRules";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageRow, PageRowsSkeleton } from "../../components/page";
+import { PageError, PageRow, PageRowsSkeleton } from "../../components/page";
+import { requestSettings } from "../../lib/monaco/debugTab";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
 import { takeRequestedRulesFocus, useRulesScope } from "../../lib/tcserver/rules";
@@ -23,7 +24,7 @@ import { useComputerName } from "../../lib/settings/computerName";
 import { ListFilter, useListFilter } from "./parts/ListFilter";
 import { ManagedLine } from "./parts/ManagedLine";
 import { SaveMark } from "./parts/SaveMark";
-import { SettingRow, SettingSection } from "./parts/SettingRow";
+import { OpenCue, SettingRow, SettingSection } from "./parts/SettingRow";
 import { StartSetRow } from "./parts/StartSetRow";
 import { useSaved } from "./parts/useSaved";
 
@@ -46,11 +47,15 @@ export function WorkspacePage({ workspaceId, job }: { workspaceId: string; job?:
     target?.scrollIntoView({ block: "start" });
     target?.focus({ preventScroll: true });
   }, [asked]);
+  // The page's one read: After each turn's pass. Until it answers every section stands in its shape; refused, it is one
+  // red line with one Retry under the first heading, and the rest keep their shape rather than say it again.
+  const pass = useTurnPassRead(workspaceId);
   if (!workspace) return null;
+  if (!pass.read.value) return <WorkspaceShapes workspace={workspace} error={pass.read.error} retry={pass.read.retry} />;
   return (
     <>
       <NewThreadsSection workspace={workspace} />
-      <TurnPassEditor workspaceId={workspaceId} />
+      <TurnPassEditor workspaceId={workspaceId} pass={pass} />
       <AccountsSection workspace={workspace} />
       <div id="settings-build" ref={build} tabIndex={-1} className="outline-none">
         <BuildEditor workspaceId={workspaceId} />
@@ -60,6 +65,49 @@ export function WorkspacePage({ workspaceId, job }: { workspaceId: string; job?:
       </div>
       {job}
       <ProjectsSection workspace={workspace} />
+    </>
+  );
+}
+
+/** The page while its read is out, or once refused: each section's heading, its rows in their shape. */
+function WorkspaceShapes({ workspace, error, retry }: { workspace: WorkspaceMeta; error: string | null; retry: () => void }) {
+  const projects = useProjects().filter((p) => p.workspaceId === workspace.id && !p.archived).length;
+  const may = useLinkMay(workspace.environmentId, "turnpass.set");
+  const control = (kind: "button" | "switch" | "select" | "field") => (may ? kind : ("none" as const));
+  return (
+    <>
+      <SettingSection of="ws.threads">
+        {error ? (
+          <PageError
+            action={
+              <Button variant="ghost" size="sm" onClick={retry}>
+                <BusyLabel busy={false} label="Retry" />
+              </Button>
+            }
+          >
+            {error}
+          </PageError>
+        ) : (
+          <PageRowsSkeleton rows={[{ description: true, control: control("button") }, { description: true, control: control("button") }]} />
+        )}
+      </SettingSection>
+      <SettingSection of="ws.checks">
+        <PageRowsSkeleton rows={[{ control: control("switch") }, { control: control("switch") }, { control: control("select") }]} />
+      </SettingSection>
+      <SettingSection of="ws.accounts">
+        <PageRowsSkeleton rows={2} media control={control("select")} />
+      </SettingSection>
+      <SettingSection of="ws.command">
+        <PageRowsSkeleton rows={2} description control={control("field")} />
+      </SettingSection>
+      <SettingSection of="ws.agents">
+        <PageRowsSkeleton rows={[{ description: true, control: control("button") }]} />
+      </SettingSection>
+      {projects ? (
+        <SettingSection of="ws.projects">
+          <PageRowsSkeleton rows={Math.min(projects, 8)} control="none" />
+        </SettingSection>
+      ) : null}
     </>
   );
 }
@@ -107,7 +155,7 @@ function AccountsSection({ workspace }: { workspace: WorkspaceMeta }) {
   const rows = ROUTED_PROVIDERS.filter((provider) => pinRowShown(provider, snapshot.providers[provider].profiles, pins[provider] ?? ""));
   if (rows.length === 0) return null;
   return (
-    <SettingSection of="ws.accounts" description={may ? "Auto picks by model and moves a thread when its account runs out" : undefined}>
+    <SettingSection of="ws.accounts">
       {rows.map((provider) => (
         <AccountRow key={provider} workspace={workspace} provider={provider} profiles={snapshot.providers[provider].profiles} may={may} />
       ))}
@@ -124,6 +172,20 @@ function AccountRow({ workspace, provider, profiles, may }: { workspace: Workspa
   const current = pins[provider] ?? "";
   const pinned = profiles.find((p) => p.name === current);
   const known = current === "" || !!pinned;
+  // No account to pick: Auto is the value, said as words, and the row goes to AI accounts where one is added.
+  if (may && profiles.length === 0 && current === "") {
+    return (
+      <PageRow
+        media={<HarnessIcon harness={provider} className="size-4 shrink-0" />}
+        title={PROVIDER_NAME[provider]}
+        description="Auto, no other account to pick"
+        onOpen={() => requestSettings("accounts")}
+        openLabel={`${PROVIDER_NAME[provider]}: AI accounts`}
+      >
+        <OpenCue />
+      </PageRow>
+    );
+  }
   const choose = (next: string): void => {
     const updated: AccountPins = { ...pins };
     if (next) updated[provider] = next;
@@ -144,7 +206,6 @@ function AccountRow({ workspace, provider, profiles, may }: { workspace: Workspa
           <ChoiceSelect
             label={`${PROVIDER_NAME[provider]} account`}
             value={picked ?? current}
-            disabled={profiles.length === 0 && current === ""}
             onChange={choose}
             options={[
               { value: "", label: "Auto" },
@@ -215,7 +276,9 @@ function ProjectsSection({ workspace }: { workspace: WorkspaceMeta }) {
     <SettingSection of="ws.projects">
       <ListFilter filter={filter} label="Find a project" />
       {filter.shown.map((project) => (
-        <PageRow key={project.id} title={project.name} description={pinsLine({ ...workspace.accountPins, ...project.accountPins }, snapshot)} onOpen={() => setOpen(project)} openLabel={`${project.name} settings`} />
+        <PageRow key={project.id} title={project.name} description={pinsLine({ ...workspace.accountPins, ...project.accountPins }, snapshot)} onOpen={() => setOpen(project)} openLabel={`${project.name} settings`}>
+          <OpenCue />
+        </PageRow>
       ))}
       {open ? <ProjectSettingsDialog project={open} workspace={workspace} onClose={() => setOpen(null)} /> : null}
     </SettingSection>

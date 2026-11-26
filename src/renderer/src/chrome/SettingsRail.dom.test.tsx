@@ -42,16 +42,19 @@ describe("SettingsNav", () => {
     expect(onSelect).toHaveBeenCalledWith("appearance");
   });
 
-  it("lists Appshots in the desktop app and leaves it out at /ui", () => {
+  it("leaves a Mac's own pages out of a window that is not a Mac's desktop: no Appshots at /ui or on a PC", () => {
     hosts([env("local", "This Mac")]);
     workspaces.list = [];
+    // jsdom's window has no platform: it is no Mac (lib/settings.test.ts holds the Mac's list).
     render(<SettingsNav section="general" onSelect={() => {}} onClose={() => {}} />);
-    expect(screen.getByRole("button", { name: "Appshots" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Appshots" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Updates" })).toBeTruthy();
     cleanup();
     const restore = asWebPage();
     try {
       render(<SettingsNav section="general" onSelect={() => {}} onClose={() => {}} />);
       expect(screen.queryByRole("button", { name: "Appshots" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Updates" })).toBeNull();
       expect(screen.getByRole("button", { name: "Reviews" })).toBeTruthy();
     } finally {
       restore();
@@ -137,7 +140,7 @@ describe("SettingsNav", () => {
     const { container } = render(<SettingsNav section="general" onSelect={() => {}} onClose={() => {}} />);
     expect(headings(container)).toEqual(["This Mac", "Everywhere", "Other computers", "Work", "Code workspaces"]);
     const rows = (group: string) => [...container.querySelectorAll(`[aria-labelledby="settings-group-${group}"] [data-rail-row]`)].map((row) => row.textContent);
-    expect(rows("mac")).toEqual(["General", "Appearance", "Editor", "Shortcuts", "Updates", "Appshots", "Threads", "Sharing"]);
+    expect(rows("mac")).toEqual(["General", "Appearance", "Editor", "Shortcuts", "Updates", "Threads", "Sharing"]);
     expect(rows("every")).toEqual(["New threads", "Reviews", "Subagents", "Away", "Add-ons", "Skills", "Sync", "AI accounts"]);
     expect(rows("others")).toEqual(["The box"]);
     // Archive stands alone in the foot, over Back, under the one hairline: no workspace's neighbour.

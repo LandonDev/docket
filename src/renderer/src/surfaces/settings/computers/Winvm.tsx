@@ -229,7 +229,15 @@ export function WinvmHost({ env }: { env: string }) {
             {error}
           </PageError>
         ) : (
-          <PageRowsSkeleton rows={[{ description: true, control: "button" }, { control: "select" }, { control: "select" }, { description: true, control: "none" }]} />
+          // As many rows as will land: a key that may change it gets its screen size and picture quality too.
+          <PageRowsSkeleton
+            rows={[
+              { description: true, control: "button" },
+              { control: admin ? "select" : "none", description: !admin },
+              ...(admin ? ([{ control: "select" }, { control: "select" }] as const) : []),
+              { description: true, control: "none" },
+            ]}
+          />
         )}
       </PageSection>
     );

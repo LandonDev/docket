@@ -57,16 +57,8 @@ export function stepTitle(step: SetupStep, giverName: string): string {
   }
 }
 
-/**
- * A failed step's reason as the row under its title says it, beside the row's own Retry: no "Retry." in the sentence,
- * and the LifeOS installer's exit code left to the log ("The LifeOS installer did not finish.").
- */
-export function stepReasonWords(step: SetupStep, reason: string | null | undefined): string {
-  if (!reason) return "It did not finish.";
-  if (step === "lifeos" && /^The installer (stopped with code|did not finish)/.test(reason)) return "The LifeOS installer did not finish.";
-  const bare = reason.replace(/\s*Retry\.?$/, "").trim();
-  return /[.!?]$/.test(bare) ? bare : `${bare}.`;
-}
+/** A failed step's reason as the row under its title says it: the setup screen's own words. */
+export { stepReasonWords } from "../../setup/setupFlow";
 
 /** A step that moved, over the row on file; a step the host had not listed yet joins at its place in the order. */
 export function landStep(steps: readonly SetupStepRow[], row: SetupStepRow): SetupStepRow[] {

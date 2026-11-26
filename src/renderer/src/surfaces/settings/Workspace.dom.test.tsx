@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   rulesFocus: false,
   setAccounts: vi.fn(async () => {}),
   metaKeys: [] as { name: string; kind: "key"; static: true }[],
+  noClaude: false,
+  pass: { value: { verify: true, build: false, commit: "off" }, error: null, retry: () => {} } as { value: unknown; error: string | null; retry: () => void },
 }));
 
 const profile = (name: string) => ({ name, email: `${name}@example.com` });
@@ -21,7 +23,11 @@ vi.mock("../../lib/linkMay", async (original) => (await import("../../lib/linkMa
 vi.mock("./parts/StartSetRow", () => ({ StartSetRow: () => <div data-start-set /> }));
 vi.mock("../../chrome/PreambleDialog", () => ({ PreambleDialog: () => <div role="dialog">Rules read before the first message</div> }));
 vi.mock("../../lib/settings/computerName", () => ({ useComputerName: () => ({ name: "The box", own: false }) }));
-vi.mock("../../chrome/TurnPassFields", () => ({ TurnPassEditor: () => <h2>After each turn</h2> }));
+vi.mock("../../chrome/TurnPassFields", () => ({
+  TurnPassEditor: () => <h2>After each turn</h2>,
+  // The page's one read: answered, refused or out, as each test sets it.
+  useTurnPassRead: () => ({ read: state.pass, confirmed: { current: null } }),
+}));
 vi.mock("../../chrome/ProjectDialogs", () => ({
   ProjectSettingsDialog: ({ project }: { project: { name: string } }) => <div role="dialog">{project.name} settings</div>,
 }));
@@ -60,7 +66,7 @@ vi.mock("../../stores/accounts", () => ({
   useAccounts: () => ({
     snapshot: {
       providers: {
-        claude: { profiles: [profile("alice"), profile("bob")] },
+        claude: { profiles: state.noClaude ? [] : [profile("alice"), profile("bob")] },
         codex: { profiles: [profile("carol")] },
         cursor: { profiles: [] },
         meta: { profiles: state.metaKeys },
@@ -94,6 +100,8 @@ beforeEach(() => {
   state.rulesFocus = false;
   state.setAccounts.mockClear();
   state.metaKeys = [];
+  state.noClaude = false;
+  state.pass = { value: { verify: true, build: false, commit: "off" }, error: null, retry: () => {} };
 });
 afterEach(() => {
   cleanup();
@@ -242,5 +250,36 @@ describe("Workspace page", () => {
     render(<WorkspacePage workspaceId="w1" />);
     expect(screen.getByRole("combobox", { name: "Meta account" }).textContent).toContain("Gone key, not in AI accounts");
   });
-});
 
+  it("holds every section in its shape while its computer answers, and says a refusal once with one Retry", () => {
+    state.projects = [{ id: "p1", workspaceId: "w1", name: "App", archived: false }];
+    state.pass = { value: undefined, error: null, retry: () => {} };
+    render(<WorkspacePage workspaceId="w1" />);
+    expect(screen.getAllByRole("heading").map((h) => h.textContent)).toEqual(["New threads", "After each turn", "Accounts", "Build", "Subagents", "Projects"]);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    cleanup();
+    const retry = vi.fn();
+    state.pass = { value: undefined, error: "The box did not answer", retry };
+    render(<WorkspacePage workspaceId="w1" />);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalled();
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("says Auto as the value where no account can be picked, and goes to AI accounts", () => {
+    state.noClaude = true;
+    render(<WorkspacePage workspaceId="w1" />);
+    // Claude has no account to pick and no pin: Auto as words, the row opening AI accounts, no dead select.
+    expect(screen.queryByRole("combobox", { name: "Claude account" })).toBeNull();
+    const row = screen.getByText("Auto, no other account to pick").closest<HTMLElement>("[data-slot=page-row]")!;
+    expect(row.querySelector("[data-slot=open-cue]")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Codex account" })).toBeTruthy();
+  });
+
+  it("ends each project row in a chevron", () => {
+    state.projects = [{ id: "p1", workspaceId: "w1", name: "App", archived: false }];
+    render(<WorkspacePage workspaceId="w1" />);
+    expect(projectRows()[0].querySelector("[data-slot=open-cue]")).toBeTruthy();
+  });
+});

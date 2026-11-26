@@ -12,7 +12,9 @@ import { usePublishHome } from "../lib/settings/pageHome";
 import { homeNote } from "../lib/settingsHome";
 import { useWorkspaceCatalog } from "../lib/tcserver/workspaces";
 import type { ProjectMeta } from "../lib/tcserver/types";
-import { SettingRow } from "./settings/parts/SettingRow";
+import { OpenCue, SettingRow } from "./settings/parts/SettingRow";
+import { andList } from "@shared/addons";
+import { reviewerModel } from "../lib/reviewScope";
 import { useDraft } from "./settings/parts/useDraft";
 import { useSaved, type Saved } from "./settings/parts/useSaved";
 
@@ -55,15 +57,25 @@ export function ReviewsPage() {
   );
 }
 
+/** A code project that keeps a review set of its own, and that set. */
+export type OwnReview = { project: ProjectMeta; settings: ReviewSettings };
+
 /** The code projects that keep a review set of their own, each asked of the computer it lives on. */
-export function useOwnReviewProjects(): readonly ProjectMeta[] {
+export function useOwnReviewProjects(): readonly OwnReview[] {
   const { projects } = useWorkspaceCatalog();
-  const [own, setOwn] = useState<readonly ProjectMeta[]>([]);
+  const [own, setOwn] = useState<readonly OwnReview[]>([]);
   const ids = projects.map((p) => `${p.environmentId}|${p.id}`).join();
   useEffect(() => {
     let live = true;
-    void Promise.all(projects.map((p) => loadReviewScope(p.environmentId, p.id).then((s) => (s.source === "project" ? p : null), () => null))).then((found) => {
-      if (live) setOwn(found.filter((p): p is ProjectMeta => p !== null).sort((a, b) => a.name.localeCompare(b.name)));
+    void Promise.all(
+      projects.map((project) =>
+        loadReviewScope(project.environmentId, project.id).then(
+          (scope): OwnReview | null => (scope.source === "project" ? { project, settings: scope.override ?? scope.settings } : null),
+          () => null,
+        ),
+      ),
+    ).then((found) => {
+      if (live) setOwn(found.filter((p): p is OwnReview => p !== null).sort((a, b) => a.project.name.localeCompare(b.project.name)));
     });
     return () => {
       live = false;
@@ -74,7 +86,20 @@ export function useOwnReviewProjects(): readonly ProjectMeta[] {
   return own;
 }
 
-/** "Different in N projects": a dialog of the projects with their own set, each opening its sheet. */
+/** The open row's line: which projects have reviews off, then which keep a set of their own with reviews on. */
+export function differentWords(own: readonly OwnReview[]): string {
+  const off = own.filter((o) => !o.settings.beforeMerge).map((o) => o.project.name);
+  const on = own.filter((o) => o.settings.beforeMerge).map((o) => o.project.name);
+  return [
+    off.length ? `${andList(off)} ${off.length === 1 ? "has" : "have"} reviews off` : null,
+    on.length ? `${andList(on)} ${on.length === 1 ? "has its own review model" : "have their own review models"}` : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** "Different in N projects": a dialog of the projects with their own set, each saying how it differs and opening its
+ *  sheet. */
 function DifferentProjects() {
   const own = useOwnReviewProjects();
   const [open, setOpen] = useState(false);
@@ -84,28 +109,24 @@ function DifferentProjects() {
   return (
     <>
       {own.length ? (
-        <SettingRow
-          id="reviews.different"
-          vars={{ n: own.length }}
-          description={own.map((p) => p.name).join(", ")}
-          onOpen={() => setOpen(true)}
-          openLabel={settingTitle("reviews.different", { n: own.length })}
-        />
+        <SettingRow id="reviews.different" vars={{ n: own.length }} description={differentWords(own)} onOpen={() => setOpen(true)} openLabel={settingTitle("reviews.different", { n: own.length })} />
       ) : null}
       {open ? (
         <Modal title="Different from Reviews" size="sm" onClose={() => setOpen(false)}>
           <ModalBody className="gap-0">
-            {own.map((project) => (
+            {own.map(({ project, settings }) => (
               <PageRow
                 key={`${project.environmentId}|${project.id}`}
                 title={project.name}
-                description={workspaces.find((w) => w.id === project.workspaceId && w.environmentId === project.environmentId)?.name}
+                description={settings.beforeMerge ? `Reviews on, ${reviewerModel(settings, project.environmentId)?.name ?? "its own review model"}` : "Reviews off"}
                 openLabel={project.name}
                 onOpen={() => {
                   setOpen(false);
                   setSheet(project);
                 }}
-              />
+              >
+                <OpenCue />
+              </PageRow>
             ))}
           </ModalBody>
           <DialogFooter confirmLabel="Done" closeOnConfirm onConfirm={() => setOpen(false)} />

@@ -16,6 +16,11 @@ const state = vi.hoisted(() => ({
   startOn: undefined as "box" | "mac" | undefined,
   permission: "edits" as "safe" | "edits" | "auto",
   confirm: vi.fn(async (_request: unknown) => true),
+  plansFailed: false,
+  plansRetry: vi.fn(),
+}));
+vi.mock("../../lib/tcserver/plans", () => ({
+  usePlanSettingsError: () => (state.plansFailed ? { error: "The computer did not answer", retry: state.plansRetry } : null),
 }));
 
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
@@ -88,6 +93,8 @@ beforeEach(() => {
   state.confirm.mockReset();
   state.confirm.mockImplementation(async () => true);
   resetPageHomesForTests();
+  state.plansFailed = false;
+  state.plansRetry.mockClear();
 });
 afterEach(cleanup);
 
@@ -178,14 +185,19 @@ describe("New threads: Start with", () => {
     expect(state.save).toHaveBeenCalledWith("local", null, expect.objectContaining({ startOn: "mac" }));
   });
 
-  it("offers Use Docket's defaults… only while a set is stored, and asks first", async () => {
+  it("offers Docket's defaults only while a set is stored, last in Start with, and asks first", async () => {
     const { unmount } = render(<ThreadDefaultsPage />);
-    expect(screen.queryByRole("button", { name: "Use Docket's defaults…" })).toBeNull();
+    expect(document.querySelector("[data-setting='defaults.reset']")).toBeNull();
     unmount();
     state.overridden = true;
     render(<ThreadDefaultsPage />);
+    const section = screen.getByRole("region", { name: "Start with" });
+    const rows = section.querySelectorAll("[data-slot=page-row]");
+    expect(rows[rows.length - 1]!.getAttribute("data-setting")).toBe("defaults.reset");
+    // No act on the heading line.
+    expect(section.querySelector("h2")!.parentElement!.querySelector("button")).toBeNull();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Use Docket's defaults…" }));
+      fireEvent.click(within(rows[rows.length - 1] as HTMLElement).getByRole("button", { name: "Use…" }));
     });
     expect(state.confirm).toHaveBeenCalledWith(expect.objectContaining({ title: "Use Docket's defaults" }));
     expect(state.save).toHaveBeenCalledWith("local", null, null);
@@ -198,6 +210,21 @@ describe("New threads: Start with", () => {
     expect(screen.getByRole("alert").textContent).toBe("The computer did not answer");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(state.retry).toHaveBeenCalledOnce();
+  });
+
+  it("says once, with one Retry that asks both, when both of the page's reads fail", () => {
+    state.failed = true;
+    state.plansFailed = true;
+    render(<ThreadDefaultsPage />);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(state.retry).toHaveBeenCalledOnce();
+    expect(state.plansRetry).toHaveBeenCalledOnce();
+  });
+
+  it("says the set is the default for places without their own", () => {
+    render(<ThreadDefaultsPage />);
+    expect(screen.getByRole("region", { name: "Start with" }).textContent).toContain("For every job and workspace without a set of its own.");
   });
 
   it("has no settings.json hooks switch any more", () => {

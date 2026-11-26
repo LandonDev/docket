@@ -135,8 +135,10 @@ describe("Subagents", () => {
     render(<OrchestrationPage />);
     expect(screen.getByTestId("rules-skeleton")).toBeTruthy();
     expect(screen.getByRole("region", { name: "The lead thread" })).toBeTruthy();
-    const rows = [...document.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")];
-    expect(rows.map((r) => r.dataset.control)).toEqual(["select", "switch", "switch", "switch", "switch", "switch"]);
+    // Every section stands under its heading in its rows' shape, so nothing appears from nowhere on the answer.
+    for (const name of ["The lead thread", "Limits", "Models", "Which model gets which work"]) expect(screen.getByRole("region", { name })).toBeTruthy();
+    const lead = within(screen.getByRole("region", { name: "The lead thread" })).getAllByLabelText("Loading")[0]!;
+    expect([...lead.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")].map((r) => r.dataset.control)).toEqual(["select", "switch", "switch", "switch", "switch", "switch"]);
   });
 
   it("ends the skeleton when rules.get does not answer: the computer's words and Retry", () => {
@@ -144,7 +146,10 @@ describe("Subagents", () => {
     state.error = "The computer did not answer";
     render(<OrchestrationPage />);
     const lead = screen.getByRole("region", { name: "The lead thread" });
-    expect(screen.queryByTestId("rules-skeleton")).toBeNull();
+    // One line and one Retry for the one read; the other sections hold their shape.
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    expect(screen.getByRole("region", { name: "Limits" })).toBeTruthy();
     expect(within(lead).getByRole("alert").textContent).toBe("The computer did not answer");
     fireEvent.click(within(lead).getByRole("button", { name: "Retry" }));
     expect(state.retry).toHaveBeenCalledOnce();
@@ -181,22 +186,26 @@ describe("Subagents", () => {
     expect((document.querySelector("[data-setting='sub.edits']") as HTMLElement).textContent).toContain("Saved");
   });
 
-  it("says Agents at once is for each thread, and names no limit", () => {
+  it("says once that both limits are for each thread, tells them apart by name, and names no limit", () => {
     render(<OrchestrationPage />);
     const limits = screen.getByRole("region", { name: "Limits" });
-    expect(limits.textContent).toContain("For each thread");
-    expect(within(limits).getByRole("combobox", { name: "Agents per thread" }).textContent).toContain("No limit");
+    expect(limits.textContent?.split("For each thread").length).toBe(2);
+    expect(within(limits).getByRole("combobox", { name: "Agents at once" })).toBeTruthy();
+    expect(within(limits).getByRole("combobox", { name: "Agents in all" }).textContent).toContain("No limit");
   });
 
-  it("offers Use Docket's defaults… only while a set is stored", () => {
+  it("offers Docket's defaults only while a set is stored", () => {
     render(<OrchestrationPage />);
-    expect(screen.queryByRole("button", { name: "Use Docket's defaults…" })).toBeNull();
+    expect(document.querySelector("[data-setting='sub.reset']")).toBeNull();
   });
 
-  it("asks before Use Docket's defaults, which deletes every rule, and clears only on the verb", async () => {
+  it("puts Docket's defaults last on the page, asking before it deletes every rule, and clears only on the verb", async () => {
     state.scope = { rules: rules(), overridden: true };
     render(withConfirm());
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Use Docket's defaults…" })));
+    const row = document.querySelector<HTMLElement>("[data-setting='sub.reset']")!;
+    const sections = [...document.querySelectorAll("[data-slot=page-section]")];
+    expect(sections.at(-1)!.contains(row)).toBe(true);
+    await act(async () => fireEvent.click(within(row).getByRole("button", { name: "Use…" })));
     const confirm = await screen.findByRole("alertdialog");
     expect(confirm.textContent).toContain("every rule for which model gets which work is deleted");
     expect(state.clear).not.toHaveBeenCalled();
@@ -240,7 +249,9 @@ describe("Models agents may run on", () => {
     const sheet = await openModels();
     const table = within(sheet).getByRole("table");
     expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Model", "Who may start it", "Effort"]);
-    expect([...table.querySelectorAll("[data-slot=table-group-row]")].map((g) => g.textContent)).toEqual(["Claude", "Codex"]);
+    expect([...table.querySelectorAll("[data-slot=table-group-row]")].map((g) => g.textContent)).toEqual(["Claude Code", "Codex"]);
+    // The count is the row's: the sheet does not say it again.
+    expect(sheet.textContent).not.toContain("allowed");
   });
 
   it("saves who may start a model", async () => {
@@ -299,7 +310,7 @@ describe("Which model gets which work", () => {
     render(<OrchestrationPage />);
     const dialog = await openRule("Reviews");
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole("switch", { name: "On" }));
+      fireEvent.click(within(dialog).getByRole("switch", { name: "Use this rule" }));
     });
     await saveDialog(dialog);
     expect(saved().routing.find((r) => r.id === "r2")?.enabled).toBe(false);
@@ -338,7 +349,7 @@ describe("Which model gets which work", () => {
       fireEvent.click(screen.getByRole("button", { name: "Add rule…" }));
     });
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).queryByRole("switch", { name: "On" })).toBeNull();
+    expect(within(dialog).queryByRole("switch", { name: "Use this rule" })).toBeNull();
     const save = within(dialog).getByRole("button", { name: "Save" }) as HTMLButtonElement;
     expect(save.disabled).toBe(true);
     fireEvent.change(within(dialog).getByLabelText("When the task is"), { target: { value: "  Docs  " } });
@@ -380,8 +391,10 @@ describe("where the set is kept", () => {
     render(<OrchestrationPage />);
     expect((screen.getByRole("switch", { name: "May edit files itself" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("combobox", { name: "Gives its agents" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Use Docket's defaults…" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "Add rule…" }) as HTMLButtonElement).disabled).toBe(true);
+    // Nothing is offered that cannot work: no Docket's defaults, Add rule… or ⋯ while the box is out of reach.
+    expect(document.querySelector("[data-setting='sub.reset']")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add rule…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Bulk work actions" })).toBeNull();
   });
 
   it("a write the box refuses slides the switch back and says why under its row", async () => {
@@ -473,7 +486,7 @@ describe("every provider of the host's catalog", () => {
     render(<OrchestrationPage />);
     await openModels();
     const groups = [...screen.getByRole("dialog").querySelector("table")!.querySelectorAll("[data-slot=table-group-row]")];
-    expect(groups.map((g) => g.textContent)).toEqual(["Claude", "Codex", "Cursor", "Grok Build", "Muse Code"]);
+    expect(groups.map((g) => g.textContent)).toEqual(["Claude Code", "Codex", "Cursor", "Grok Build", "Muse Code"]);
     for (const g of groups) expect(g.querySelector("img, svg")).toBeTruthy();
   });
 
@@ -529,6 +542,6 @@ describe("every provider of the host's catalog", () => {
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("combobox", { name: "Agent app" }));
     });
-    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Claude", "Codex", "Cursor", "Muse Code"]);
+    expect((await screen.findAllByRole("option")).map((o) => o.textContent)).toEqual(["Claude Code", "Codex", "Cursor", "Muse Code"]);
   });
 });

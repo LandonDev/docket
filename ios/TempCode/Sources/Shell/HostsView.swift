@@ -2,8 +2,8 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// Every computer this phone is signed in to: name, connection dot and the
-/// abbreviated environment id, each row pushing its detail. Adding one is a
+/// Every computer this phone is signed in to: name, connection dot and its
+/// state, each row pushing its detail. Adding one is a
 /// sheet; signing in again and forgetting are on the detail, and also a
 /// swipe and a long press here.
 struct HostsView: View {
@@ -92,8 +92,9 @@ struct HostDetailRoute: Hashable {
     let environmentId: String
 }
 
-/// A computer: the dot, its name, the address while connected (else what
-/// is wrong, in two words), and the abbreviated environment id trailing dim.
+/// A computer: the dot, its name, and its state in a word or two under it;
+/// how far it runs behind trailing when it does. Its address and id are on
+/// its detail (the council's round 1: no raw id or address on the list).
 struct HostRow: View {
     let client: EnvironmentClient
 
@@ -122,21 +123,15 @@ struct HostRow: View {
             .layoutPriority(1)
             Spacer(minLength: Layout.rowGap)
             DriftMark(client: client)
-            // An id must stay legible: `caption` mono, not the stamp step's
-            // caption2, which falls under the floor for eight glyphs of mono.
-            Text(abbreviatedEnvironmentId(client.environment.id))
-                .font(.caption.monospaced())
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .truncationMode(.middle)
         }
         .padding(.vertical, 2)
         .animation(Motion.crossFade, value: line)
         .accessibilityElement(children: .combine)
     }
 
+    /// The state in its short word, "Connected" too: the address and the id are the detail's, never the list's.
     private func second(_ status: EnvironmentStatus) -> String {
-        status.transport == .open ? client.environment.host : ConnectionWord.text(for: status)
+        ConnectionWord.text(for: status)
     }
 }
 

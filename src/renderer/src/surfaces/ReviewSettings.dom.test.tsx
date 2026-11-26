@@ -123,6 +123,8 @@ describe("Reviews page", () => {
     state.get = () => new Promise(() => {});
     render(<ReviewsPage />);
     expect(screen.getByTestId("review-skeleton")).toBeTruthy();
+    // The page's five rows in their shape: the switch, three choices, the minutes field.
+    expect([...document.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")].map((r) => r.dataset.control)).toEqual(["switch", "select", "select", "select", "number"]);
   });
 
   it("asks with the link's retry, so a read before the socket opens lands once it does", async () => {
@@ -288,11 +290,14 @@ describe("Reviews page", () => {
     await act(async () => {});
     const row = document.querySelector("[data-setting='reviews.different']") as HTMLElement;
     expect(row.textContent).toContain("Different in 1 project");
+    expect(row.textContent).toContain("settings-2 has reviews off");
     expect(row.textContent).toContain("settings-2");
     await act(async () => {
       fireEvent.click(row.querySelector("[data-row-open]")!);
     });
     const list = await screen.findByRole("dialog");
+    expect(list.textContent).toContain("Reviews off");
+    expect(list.querySelector("[data-slot=open-cue]")).toBeTruthy();
     await act(async () => {
       fireEvent.click(list.querySelector("[data-row-open]")!);
     });

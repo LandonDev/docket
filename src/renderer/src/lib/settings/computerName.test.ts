@@ -40,9 +40,12 @@ describe("a computer's one name", () => {
     expect(computerNameOf(MAC, renamed).name).toBe("Desk Mac");
   });
 
-  it("falls back to its window's word before this computer has said its name, and to the id for one nobody named", () => {
+  it("falls back to its window's word before this computer has said its name, and never to an id", () => {
     expect(computerNameOf("local", { ...macWindow, own: { id: null, name: null } })).toEqual({ name: "This Mac", own: true });
-    expect(computerNameOf("env_x", macWindow).name).toBe("env_x");
+    // An id never goes on screen.
+    expect(computerNameOf("env_x", macWindow).name).toBe("Another computer");
+    // At the box's web page the page's own computer is the one saved under the page's id, whatever that id is.
+    expect(computerNameOf("local", { own: { id: null, name: null }, environments: [{ id: "local", name: "The box" }], web: true })).toEqual({ name: "The box", own: false });
   });
 
   it("reads mid-line: this Mac for the window's own, a common noun lowered", () => {

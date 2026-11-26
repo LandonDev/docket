@@ -41,35 +41,20 @@ describe("addonMark", () => {
     expect(addonMark(row(), status("ready", { tools: 1 }), null)).toEqual({ state: "done", word: "Connected", detail: "1 tool" });
     expect(addonMark(row(), status("ready", { tools: 24 }), null)).toEqual({ state: "done", word: "Connected", detail: "24 tools" });
     expect(addonMark(row(), status("ready", { tools: 12, detail: "12 of 300 tools listed" }), null).detail).toBe("12 of 300 tools listed");
-    expect(addonMark(row(), status("failed", { detail: "Exited (code 3): no such file" }), null)).toEqual({
-      state: "failed",
-      word: "Failed",
-      detail: "Exited (code 3): no such file",
-    });
+    // The server's reason is a builder's sentence: the row says the state alone.
+    expect(addonMark(row(), status("failed", { detail: "Exited (code 3): no such file" }), null)).toEqual({ state: "failed", word: "Not connected" });
     expect(addonMark(row({ spec: { ...stdio, platforms: ["darwin"] } }), status("other-platform"), null)).toEqual({ state: "idle", word: "Mac only" });
     expect(addonMark(row({ spec: { ...stdio, platforms: ["linux"] } }), status("other-platform"), null)).toEqual({ state: "idle", word: "Linux only" });
   });
 
-  it("says what a needs-grant row waits for, never repeating Needs", () => {
+  it("says what a needs-grant row waits for, naming no secret", () => {
     const needs = status("needs-grant", { detail: "Needs values for GITHUB_TOKEN" });
-    // Unread grants: the spec's auth decides, and the host's "Needs …" is not repeated.
     expect(addonMark(row(), needs, undefined)).toEqual({ state: "waiting", word: "Needs a key" });
     expect(addonMark(row({ spec: http }), status("needs-grant", { detail: "Needs a sign-in on the Mac" }), undefined)).toEqual({ state: "waiting", word: "Sign in needed" });
-    // Read with nothing saved: every value the spec names.
-    expect(addonMark(row(), needs, null)).toEqual({ state: "waiting", word: "Needs a key", detail: "GITHUB_TOKEN" });
-    // Read: the missing names.
-    expect(addonMark(row(), needs, grant({ fields: [{ name: "GITHUB_TOKEN", set: false }], gaps: ["GITHUB_TOKEN"] }))).toEqual({
-      state: "waiting",
-      word: "Needs a key",
-      detail: "GITHUB_TOKEN",
-    });
-    // A refused OAuth grant reads Sign in needed, with the host's own words.
+    expect(addonMark(row(), needs, null)).toEqual({ state: "waiting", word: "Needs a key" });
+    expect(addonMark(row(), needs, grant({ fields: [{ name: "GITHUB_TOKEN", set: false }], gaps: ["GITHUB_TOKEN"] }))).toEqual({ state: "waiting", word: "Needs a key" });
     const refused = grant({ oauth: { signedIn: true, expiresAt: null, refreshedBy: null, refused: true } });
-    expect(addonMark(row({ spec: http }), status("needs-grant", { detail: "The server refused the grant" }), refused)).toEqual({
-      state: "waiting",
-      word: "Sign in needed",
-      detail: "The server refused the grant",
-    });
+    expect(addonMark(row({ spec: http }), status("needs-grant", { detail: "The server refused the grant" }), refused)).toEqual({ state: "waiting", word: "Sign in needed" });
     expect(addonMark(row({ spec: http }), status("needs-grant"), grant({ gaps: ["sign-in"] })).word).toBe("Sign in needed");
   });
 });
@@ -81,32 +66,27 @@ describe("grantFact", () => {
     expect(grantFact(stdio, undefined)).toEqual([]);
   });
 
-  it("names the values held, all or some", () => {
-    expect(grantFact(stdio, grant({ fields: [{ name: "GITHUB_TOKEN", set: true }] }))).toEqual(["GITHUB_TOKEN saved"]);
+  it("says a key is saved, naming no secret", () => {
+    expect(grantFact(stdio, grant({ fields: [{ name: "GITHUB_TOKEN", set: true }] }))).toEqual(["key saved"]);
     const two: AddonSpec = { transport: "http", url: "https://x.example/mcp", headers: ["X-Api-Key", "X-Org", "X-Team"], auth: "fields" };
-    expect(grantFact(two, grant({ fields: [{ name: "X-Api-Key", set: true }, { name: "X-Org", set: true }, { name: "X-Team", set: false }] }))).toEqual(["X-Api-Key and X-Org saved"]);
+    expect(grantFact(two, grant({ fields: [{ name: "X-Api-Key", set: true }, { name: "X-Org", set: true }, { name: "X-Team", set: false }] }))).toEqual(["key saved"]);
     expect(grantFact(stdio, grant({ fields: [{ name: "GITHUB_TOKEN", set: false }] }))).toEqual([]);
   });
 
-  it("says signed in, and the host that refreshes it", () => {
+  it("says signed in, and no more", () => {
     expect(grantFact(http, grant({ oauth: { signedIn: true, expiresAt: null, refreshedBy: null, refused: false } }))).toEqual(["signed in"]);
-    expect(grantFact(http, grant({ oauth: { signedIn: true, expiresAt: null, refreshedBy: "box", refused: false } }))).toEqual(["signed in", "refreshed on box"]);
+    expect(grantFact(http, grant({ oauth: { signedIn: true, expiresAt: null, refreshedBy: "The box", refused: false } }))).toEqual(["signed in"]);
   });
 });
 
 describe("addonFacts", () => {
-  it("says the scope, the hosts unless line two does, the grant and a thread writer", () => {
+  it("says a workspace's own scope, the computers unless line two does, and the grant; never every workspace or the writer", () => {
     const r = row({ spec: { ...stdio, platforms: ["darwin"] }, writtenBy: { kind: "thread", sessionId: "s", environmentId: "e", title: "Fix the build" } });
     const g = grant({ fields: [{ name: "GITHUB_TOKEN", set: true }] });
-    expect(addonFacts(r, addonMark(r, status("ready", { tools: 2 }), g), g, null)).toEqual(["Every workspace", "Macs only", "GITHUB_TOKEN saved", "written by Fix the build"]);
-    expect(addonFacts(r, addonMark(r, status("other-platform"), g), g, "temp-code")).toEqual(["temp-code", "GITHUB_TOKEN saved", "written by Fix the build"]);
-  });
-
-  it("names no writer but a thread", () => {
-    const r = row({ writtenBy: { kind: "person", key: "Phone" } });
-    expect(addonFacts(r, addonMark(r, status("off"), null), null, null)).toEqual(["Every workspace"]);
-    const imported = row({ writtenBy: { kind: "import", from: "~/.claude.json" } });
-    expect(addonFacts(imported, addonMark(imported, status("off"), null), null, null)).toEqual(["Every workspace"]);
+    expect(addonFacts(r, addonMark(r, status("ready", { tools: 2 }), g), g, null)).toEqual(["Macs only", "key saved"]);
+    expect(addonFacts(r, addonMark(r, status("other-platform"), g), g, "temp-code")).toEqual(["temp-code", "key saved"]);
+    const plain = row({ writtenBy: { kind: "person", key: "Phone" } });
+    expect(addonFacts(plain, addonMark(plain, status("off"), null), null, null)).toEqual([]);
   });
 
   it("names a workspace this host lists, and one it no longer does", () => {

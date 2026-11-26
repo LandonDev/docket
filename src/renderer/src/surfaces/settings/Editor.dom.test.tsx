@@ -36,7 +36,15 @@ vi.mock("../../lib/connection", () => {
 });
 vi.mock("../../lib/tcserver/workspaces", () => ({ useProjects: () => [{ id: "p1", name: "Alpha" }] }));
 const chooseEditor = vi.hoisted(() => vi.fn(async () => null));
-vi.mock("../../lib/editorConfig", () => ({ useEditorConfig: () => host.editor, chooseEditorSetting: chooseEditor }));
+const editorRead = vi.hoisted(() => ({ answer: null as unknown, asks: 0 }));
+vi.mock("../../lib/editorConfig", () => ({
+  useEditorConfig: () => host.editor,
+  chooseEditorSetting: chooseEditor,
+  loadEditorConfig: () => {
+    editorRead.asks += 1;
+    return editorRead.answer === "pending" ? new Promise(() => {}) : Promise.resolve(editorRead.answer);
+  },
+}));
 vi.mock("../../components/choice-select", async () => await import("../../components/choice-select-body"));
 vi.mock("../../lib/monaco/lspGate", () => ({ retryBlockedEnsures: vi.fn() }));
 vi.mock("../../lib/sounds", () => ({ playCue: vi.fn() }));
@@ -50,16 +58,30 @@ beforeEach(() => {
   host.lsp = null;
   host.editor = null;
   host.doctorFails = false;
+  editorRead.answer = null;
+  editorRead.asks = 0;
 });
 afterEach(cleanup);
 
 const headings = () => screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
 
 describe("Editor", () => {
-  it("lays out its sections, the external editor only with a config", async () => {
+  it("lays out its sections, Other editors with its config, its shape while main answers and one line with Retry if not", async () => {
+    editorRead.answer = "pending";
     render(<EditorPage />);
     await act(async () => {});
-    expect(headings()).toEqual(["Saving", "Suggestions", "Java on this Mac"]);
+    expect(headings()).toEqual(["Saving", "Suggestions", "Other editors", "Java on this Mac"]);
+    expect(screen.getByRole("region", { name: "Other editors" }).querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(1);
+    cleanup();
+    editorRead.answer = null;
+    render(<EditorPage />);
+    await act(async () => {});
+    const others = screen.getByRole("region", { name: "Other editors" });
+    expect(within(others).getByRole("alert").textContent).toBe("Could not read the editors on this Mac");
+    editorRead.answer = { editor: "auto", effective: "code", installed: { idea: false, code: true, xed: false } };
+    await act(async () => fireEvent.click(within(others).getByRole("button", { name: "Retry" })));
+    expect(screen.getByText("Auto opens VS Code")).toBeTruthy();
+    cleanup();
     cleanup();
     host.editor = { editor: "auto", effective: "code", installed: { idea: false, code: true, xed: false } };
     render(<EditorPage />);
@@ -154,6 +176,7 @@ describe("Editor", () => {
     );
     const jdk = document.querySelector('[data-setting="editor.jdk"]') as HTMLElement;
     expect(jdk.textContent).toContain("21, language support ready, running for Alpha, 512 MB");
+    expect(jdk.textContent).not.toContain("p1");
     const engine = document.querySelector('[data-setting="editor.intellij"]') as HTMLElement;
     expect(engine.textContent).toContain("Build 263.1");
     expect(screen.getByText("Exited 1").className).toContain("text-destructive");
@@ -165,6 +188,10 @@ describe("Editor", () => {
     render(<EditorPage />);
     await act(async () => {});
     expect(screen.getByText("21, language support ready")).toBeTruthy();
+  });
+
+  it("never names a project by its id: one it cannot name is left out", () => {
+    expect(serverWords([{ state: "running", projectId: "p9", memoryBytes: 1024 ** 3, idleMs: 0 } as never], new Map()).line).toBe("running, 1.0 GB");
   });
 
   it("words what a kind of server is doing", () => {

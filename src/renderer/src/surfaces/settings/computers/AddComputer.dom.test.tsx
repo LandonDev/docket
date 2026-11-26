@@ -191,7 +191,7 @@ describe("signing a device in", () => {
     expect(await screen.findByText("ABCDE-12345")).toBeTruthy();
     expect(screen.getByAltText("Sign-in QR code")).toBeTruthy();
     expect(screen.getByText("box.example.com/pair").getAttribute("data-sign-in-link")).toBe("https://box.example.com/pair#ABCDE-12345");
-    expect(dialog().querySelector("[data-link-ends]")!.textContent).toMatch(/^One use\. Ends in 9:4\d\.$/);
+    expect(dialog().querySelector("[data-link-ends]")!.textContent).toBe("One use. Ends in 10 minutes.");
     await press("Copy link");
     expect(writeText).toHaveBeenCalledWith("https://box.example.com/pair#ABCDE-12345");
     expect(onChanged).toHaveBeenCalledOnce();
@@ -203,7 +203,10 @@ describe("signing a device in", () => {
   });
 
   it("says when a link has ended", () => {
-    expect(endsText(582)).toBe("One use. Ends in 9:42.");
+    // Whole minutes, rounded up: a clock-like 9:42 reads as a time of day.
+    expect(endsText(582)).toBe("One use. Ends in 10 minutes.");
+    expect(endsText(60)).toBe("One use. Ends in 1 minute.");
+    expect(endsText(42)).toBe("One use. Ends in under a minute.");
     expect(endsText(0)).toBe("This link has ended.");
     render(<AddComputerDialog ask={{ way: "device" }} onClose={() => {}} preview={{ made: { ...pairing(), pairing: { ...pairing().pairing, expiresAt: Date.now() - 1 } as never, qr: null } }} />);
     expect(dialog().querySelector("[data-link-ends]")!.textContent).toBe("This link has ended.");
@@ -271,11 +274,14 @@ describe("a key for a bot", () => {
     render(<AddComputerDialog ask={{ way: "device", computer: "env_box" }} onClose={onClose} />);
     fireEvent.click(screen.getByRole("radio", { name: "Run threads and approve" }));
     fireEvent.click(screen.getByRole("button", { name: "A bot" }));
-    expect(screen.getByText("A bot signs in with a key, shown once.")).toBeTruthy();
+    // A bot is not a device: its steps are titled for its key, the line naming the computer, and it says why two levels.
+    expect(title()).toBe("A key for a bot");
+    expect(screen.getByText("It signs in to the box with a key.")).toBeTruthy();
+    expect(screen.getByText("A bot never approves a thread's steps or manages the box.")).toBeTruthy();
     expect(screen.getAllByRole("radio").map((r) => r.getAttribute("aria-labelledby") && document.getElementById(r.getAttribute("aria-labelledby")!)!.textContent)).toEqual(["Look only", "Run threads"]);
     expect(screen.getByRole("radio", { name: "Run threads" }).getAttribute("aria-checked")).toBe("true");
     name("grok");
-    fireEvent.change(screen.getByLabelText("Webhook URL"), { target: { value: "https://bot.example.com/hook" } });
+    fireEvent.change(screen.getByLabelText("Address for notices"), { target: { value: "https://bot.example.com/hook" } });
     await press("Make the key");
     expect(made("remote.keys.create")).toEqual([
       { on: "env_box", method: "remote.keys.create", params: { name: "grok", audience: "mcp", caps: ["operate"], webhookUrl: "https://bot.example.com/hook" } },
@@ -283,7 +289,8 @@ describe("a key for a bot", () => {
     const key = (await screen.findByLabelText("Key")) as HTMLInputElement;
     expect(key.value).toBe("tc_k1.secret");
     expect(key.readOnly).toBe(true);
-    expect(screen.getByText("Shown once. Copy it now.")).toBeTruthy();
+    expect(title()).toBe("A key for a bot");
+    expect(screen.getByText("It signs in to the box. Copy the key now; it is not shown again.")).toBeTruthy();
     await press("Copy key");
     expect(writeText).toHaveBeenCalledWith("tc_k1.secret");
     expectModalShape(dialog(), { cancel: false });
@@ -327,7 +334,7 @@ describe("setting up a new computer", () => {
     });
     expect(((await screen.findByLabelText("Link")) as HTMLInputElement).value).toBe(LINK);
     expect(screen.getByRole("button", { name: "Copy link" })).toBeTruthy();
-    expect(dialog().querySelector("[data-link-ends]")!.textContent).toMatch(/^One use\. Ends in 1[45]:\d\d\.$/);
+    expect(dialog().querySelector("[data-link-ends]")!.textContent).toMatch(/^One use\. Ends in 1[45] minutes\.$/);
     await press("Cancel the link");
     await waitFor(() => expect(made("devices.setup.cancel")).toEqual([{ on: "local", method: "devices.setup.cancel", params: { pairingId: "p1" } }]));
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());

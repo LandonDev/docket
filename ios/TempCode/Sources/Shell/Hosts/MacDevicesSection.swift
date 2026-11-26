@@ -6,8 +6,8 @@ import TempCodeContract
 /// to it) reports them: a state dot, the runtime and state with a booted
 /// one's CPU rolling, and who holds each, pushing that thread when its host
 /// is paired here. Shut Down and Delete (confirmed, naming the holder) on a
-/// swipe and in the context menu, Open in Xcode on a phone's; an operate key
-/// acts, a lesser one reads why in the footer. The watch itself runs in
+/// swipe and in the context menu, Open in Xcode on a phone's; a key that may
+/// run threads acts, a lesser one reads why in the footer. The watch itself runs in
 /// `ActivityPollers`, so the section's rows can change freely.
 struct MacDevicesSection: View {
     let client: EnvironmentClient
@@ -160,20 +160,31 @@ struct DeviceRow: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                    .lineLimit(1)
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+                // At accessibility sizes each fact takes its own lines and wraps, never cut (the council's round 1);
+                // at the standard sizes the state and the platform share a line.
+                if typeSize.isAccessibilitySize {
                     Text(state.status)
                         .textStep(.meta)
                         .numeric(state.status)
-                        .layoutPriority(1)
                     Text(state.platform)
                         .font(TextStep.meta.font)
                         .foregroundStyle(.tertiary)
+                    holderText
+                } else {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(state.status)
+                            .textStep(.meta)
+                            .numeric(state.status)
+                            .layoutPriority(1)
+                        Text(state.platform)
+                            .font(TextStep.meta.font)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .lineLimit(1)
                 }
-                .lineLimit(1)
-                // Stacked at accessibility sizes: trailing, the holder was squeezed to a letter.
-                if typeSize.isAccessibilitySize { holderText }
             }
+            .fixedSize(horizontal: false, vertical: typeSize.isAccessibilitySize)
             .layoutPriority(1)
             Spacer(minLength: Layout.rowGap)
             if !typeSize.isAccessibilitySize { holderText }
@@ -187,7 +198,7 @@ struct DeviceRow: View {
         Text(holder.map(DeviceWords.holder) ?? "—")
             .font(.footnote)
             .foregroundStyle(.tertiary)
-            .lineLimit(1)
+            .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
             .truncationMode(.tail)
     }
 }

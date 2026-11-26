@@ -156,7 +156,8 @@ export function SkillDialog({ link, skill, workspaces, home, onClose, onSaved }:
                 <ChoiceSelect label="Where" size="sm" value={workspaceId ?? ""} onChange={(v) => setWorkspaceId(v || null)} options={where} />
               </FieldRow>
               <FieldRow label="Agent apps">
-                <div role="group" className="flex items-center gap-4">
+                {/* One app a line, so the three never crowd the dialog's edge at any width. */}
+                <div role="group" className="flex flex-col items-start gap-2">
                   {SKILL_HARNESSES.map((h) => (
                     <CheckRow
                       key={h}
@@ -174,7 +175,7 @@ export function SkillDialog({ link, skill, workspaces, home, onClose, onSaved }:
               {read.error && !loaded ? (
                 <div className="flex items-start gap-3">
                   <p role="alert" className="min-w-0 flex-1 text-xs text-destructive">
-                    {read.error}
+                    {refusalWords(read.error) || "The skill did not load."}
                   </p>
                   <Button type="button" variant="ghost" size="sm" className="-my-1.5" onClick={read.retry}>
                     Retry

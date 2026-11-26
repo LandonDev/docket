@@ -193,12 +193,12 @@ struct RelayedEnvironmentTests {
 @Suite("forgetCopy")
 struct ForgetCopyTests {
     @Test func `names the relayed hosts that go with the carrier`() {
-        let base = forgetCopy(carrier: "box", relayed: [])
-        #expect(base == "This phone drops its key and stops getting box’s notifications. Its threads stay there, and box still lets this phone in until the key is removed there.")
+        let base = forgetCopy(carrier: "The box", relayed: [])
+        #expect(base == "This phone drops its key and stops getting the box’s notifications. Its threads stay there, and the box still lets this phone in until the key is removed there.")
         #expect(!base.contains("with it"))
-        #expect(forgetCopy(carrier: "box", relayed: ["Studio Mac"]) == "\(base) Studio Mac goes with it.")
-        #expect(forgetCopy(carrier: "box", relayed: ["Studio Mac", "Office Mac"]) == "\(base) Studio Mac and Office Mac go with it.")
-        #expect(forgetCopy(carrier: "box", relayed: ["A", "B", "C"]).hasSuffix("A, B and C go with it."))
+        #expect(forgetCopy(carrier: "The box", relayed: ["Studio Mac"]) == "\(base) Studio Mac goes with it.")
+        #expect(forgetCopy(carrier: "The box", relayed: ["Studio Mac", "Office Mac"]) == "\(base) Studio Mac and Office Mac go with it.")
+        #expect(forgetCopy(carrier: "The box", relayed: ["A", "B", "C"]).hasSuffix("A, B and C go with it."))
     }
 
     @Test func `a relayed host has no fix of its own`() {

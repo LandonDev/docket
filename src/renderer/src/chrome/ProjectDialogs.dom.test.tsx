@@ -204,6 +204,8 @@ describe('ProjectSettingsDialog on a linked project', () => {
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
     expect(footerNote()).toBeNull()
     fireEvent.change(screen.getByDisplayValue('Solo'), { target: { value: 'Solo two' } })
+    // Save waits for every group to answer.
+    await waitFor(() => expect(saveButton().disabled).toBe(false))
     await act(async () => {
       fireEvent.click(saveButton())
     })
@@ -302,6 +304,7 @@ describe('ProjectSettingsDialog as a sheet', () => {
     writeFail = true
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Solo two' } })
+    await waitFor(() => expect(saveButton().disabled).toBe(false))
     await act(async () => {
       fireEvent.click(saveButton())
     })
@@ -320,7 +323,7 @@ describe('ProjectSettingsDialog as a sheet', () => {
   })
 })
 
-const section = (label: string) => [...screen.getByRole('dialog').querySelectorAll('h3')].find((h) => h.textContent === label)!.parentElement!
+const section = (label: string) => [...screen.getByRole('dialog').querySelectorAll('h3')].find((h) => h.textContent === label)!.closest('section')!
 
 describe('ProjectSettingsDialog: each field waits for its value', () => {
   it('holds After each turn and Build in their shape until the host answers, never a pass of nothing in their place', async () => {
@@ -399,7 +402,7 @@ describe('ProjectSettingsDialog: Cancel on a changed draft', () => {
 describe('ProjectSettingsDialog while the plans load', () => {
   it('holds the Plans section in the shape of its five rows', () => {
     render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
-    const plans = [...screen.getByRole('dialog').querySelectorAll('h3')].find((h) => h.textContent === 'Plans')!.parentElement!
+    const plans = [...screen.getByRole('dialog').querySelectorAll('h3')].find((h) => h.textContent === 'Plans')!.closest('section')!
     expect(plans.querySelectorAll('[data-slot=page-row-skeleton]')).toHaveLength(5)
   })
 })
@@ -597,3 +600,31 @@ describe('AccountPinFields', () => {
   })
 })
 
+describe('ProjectSettingsDialog: Save and the groups that did not load', () => {
+  it('holds Save while a group is still reading', async () => {
+    pendingOn = new Set(['turnpass.get'])
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Solo two' } })
+    await act(async () => {})
+    expect(saveButton().disabled).toBe(true)
+  })
+
+  it('says a group that did not load is not saved, says its failure once with Retry on the same line, and still saves the rest', async () => {
+    readFailOn = new Set(['build.get'])
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await waitFor(() => expect(footerNote()).toBe('Only what loaded is saved'))
+    const build = section('Build')
+    expect(build.querySelectorAll('[role=alert]')).toHaveLength(1)
+    expect(build.querySelector('[data-slot=page-error-line] button')?.textContent).toBe('Retry')
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Solo two' } })
+    await waitFor(() => expect(saveButton().disabled).toBe(false))
+  })
+
+  it('puts Use workspace setting at the end of its group\'s heading line', async () => {
+    render(<ProjectSettingsDialog project={SOLO} workspace={MAC_WS} onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByRole('switch', { name: 'Run the checks' })).toBeTruthy())
+    fireEvent.click(screen.getByRole('switch', { name: 'Run the checks' }))
+    const button = await screen.findByRole('button', { name: 'Use workspace setting' })
+    expect(button.parentElement?.querySelector('h3')?.textContent).toBe('After each turn')
+  })
+})

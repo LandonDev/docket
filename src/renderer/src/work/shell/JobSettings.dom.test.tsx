@@ -138,7 +138,7 @@ describe("a code workspace's LifeOS sector", () => {
     box();
     render(<CodeWorkspaceSector workspaceId="code" />);
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.getByRole("combobox", { name: "Its job" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Job" })).toBeTruthy();
   });
 
   it("shows a given computer the sector and who changes it, with no select the host would refuse", async () => {
@@ -147,7 +147,7 @@ describe("a code workspace's LifeOS sector", () => {
     box();
     render(<CodeWorkspaceSector workspaceId="code" />);
     await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
-    expect(screen.queryByRole("combobox", { name: "Its job" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Job" })).toBeNull();
     expect(screen.getByText("Purdue")).toBeTruthy();
     expect(screen.getByText("Changed from a computer that manages the box")).toBeTruthy();
   });
@@ -204,7 +204,7 @@ describe("a code workspace with no sector, LifeOS not signed out (Sol round 2 P1
         await new Promise((r) => setTimeout(r, 0));
       });
       expect(screen.queryByRole("alert")).toBeNull();
-      expect(screen.getByText("Its job", { selector: "[data-slot=item-title] *, [data-slot=item-title]" })).toBeTruthy();
+      expect(screen.getByText("Job", { selector: "[data-slot=item-title] *, [data-slot=item-title]" })).toBeTruthy();
       // The session the connected status opens lands before the reset, so nothing of it reaches the next test.
       await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
     } finally {

@@ -89,8 +89,9 @@ describe("settings sections", () => {
     expect(visibleSettingsSections(false, true).map((s) => s.id)).not.toContain("sync");
     expect(visibleSettingsSections(false, true, false, { others: true }).map((s) => s.id)).toContain("sync");
     expect(settingsSectionLabel("computer")).toBe("Computer use");
+    // Appshots and Computer use are a Mac's: a PC's list has neither.
     expect(ids(false, false)).not.toContain("computer");
-    expect(ids(false, false)).toContain("appshots");
+    expect(ids(false, false)).not.toContain("appshots");
   });
 
   it("shows a browser at /ui what a browser has: no page about a computer it is not", () => {

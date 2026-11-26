@@ -2071,9 +2071,9 @@ Settings is the one place the app is Apple's own: a pushed, inset grouped
 list, as Settings → Wi-Fi is, because the user already knows how to read it
 and nothing here is the product. Rows carry no glyphs (the desktop's
 settings rows carry none). Every row that needs explaining gets one sentence
-of footer, never a paragraph; the app's version and contract close the
-screen, dim and centred under the Diagnostics row, so a screenshot answers
-"which build". The words are the Settings 2 glossary's, the desktop's
+of footer, never a paragraph; the app's version is the Diagnostics row's
+value, the last row and clear of the tab bar, so a screenshot answers
+"which build" (the contract it speaks is on Diagnostics). The words are the Settings 2 glossary's, the desktop's
 (src/renderer/src/lib/settings/map.ts): a computer, never a host; Sign In
 Again, Forget, It may, Effort. Section
 headers are the system inset grouped headers, not `GroupHeader`: that one
@@ -2088,10 +2088,11 @@ where they have tests. A section whose first read is out holds its place in
 its rows' shape (`SettingsPlaceholderRows`, redacted), never arriving late.
 
 The root, in order: Computers, then Work and Away, Notifications,
-Appearance, then Diagnostics with the version under it.
+Appearance, then Diagnostics with the version as its value.
 
-- **Computers** pushes the list; the row's trailing half is one connection
-  dot per computer and the single computer's name, or the count (stacked
+- **Computers** pushes the list; the row's trailing half is the single
+  computer's name, or the count, never dots beside it (each state is the
+  list's to say, once) (stacked
   under the label at accessibility sizes).
 - **Work** pushes Settings → Work once a computer has answered `work.get`;
   while none has and one is still connecting it is a placeholder row
@@ -2107,19 +2108,18 @@ Appearance, then Diagnostics with the version under it.
   permission an "Allow in Settings" row opens the system Settings. The footer
   names what stands in the way.
 - **Appearance** is the inline picker with checkmarks: System, Light, Dark.
-- **Diagnostics** is a plain row that pushes `DiagnosticsScreen`.
+- **Diagnostics** is a plain row with the app's version as its value
+  ("1.0.401 (5)") that pushes `DiagnosticsScreen`.
   A theme flip snaps; nothing animates it.
 
 **Computers.** One row per computer this phone is signed in to: the connection dot leading in the mark
 column (`Layout.markWidth`; a host the box relays follows its relay state
 over an open lane: locked in the warning tint, asleep in the quiet gray,
-unreachable in destructive), the name, a second line in the meta step (the
-address while connected, else what is wrong in two words: "Connecting…",
-"Not answering", "Reconnecting…", "Offline", "Another computer", "Needs an
-update", "Refuses this key"), and the environment id abbreviated
-(`env_AbCd…StUv`) trailing in mono `caption`, `tertiary` (an id must stay
-legible; the stamp step's `caption2` is under the floor for eight glyphs of
-mono). The second line is destructive only when the state waits on the
+unreachable in destructive), the name, a second line in the meta step (its
+state in a word or two: "Connected", "Connecting…", "Not answering",
+"Reconnecting…", "Offline", "Another computer", "Needs an update", "Refuses
+this key"), and the `+N` drift mark trailing when it runs behind. No
+address and no id on the list: both are on the detail. The second line is destructive only when the state waits on the
 person: Refuses this key, Another computer, Needs an update
 (`HostFix.waitsOnUser`). Offline, Not answering, Connecting and
 Reconnecting are the phone's to fix
@@ -2162,7 +2162,7 @@ so the bar's title is the host's name on either path with no principal item.
 under its carrier's row (`RelayedHostRow`): the lane's dot in the mark
 column, the name, "through <carrier>, <presence>" in the meta step (the
 presence line's words above, nothing after the carrier's name when the host
-is up and unlocked), the abbreviated id trailing; no swipe and no menu,
+is up and unlocked); no id, no swipe and no menu,
 since nothing waits on the person. Its detail (`RelayedHostDetailView`) has
 two sections: Status (the dot, the lane's `ConnectionSentence`, the presence line
 under it, a spinner while connecting; the footer names the carrier and that
@@ -2188,18 +2188,20 @@ nothing of the kind, all in the same inset grouped grammar: system headers,
 no glyphs on rows except the status column (`Layout.markWidth`: a dot, a
 spinner, a check or a cross), footers of at most two lines.
 
-- **Build**: a Newest row with master's version, read by the phone itself
+- **Build**: an Updates row saying how the computer stands, once ("Up to
+  date", "3 behind"), against the newest release, read by the phone itself
   from GitHub (`MasterReleaseWatcher`: every ten minutes while a drift mark
   or a detail shows, and on foreground after fifteen; a failure keeps the
   last value). For a box, Update…, behind a confirm (red Update) naming both
   versions ("v1.0.270 → v1.0.273, 3 releases. …"), and once a run exists the
   job row: spinner, check or cross, the title swapping in place, the note or
-  ending under it, a chevron to the log sheet. The footer names the gap and
-  the fix ("3 releases behind master: v1.0.270 → v1.0.273. Update from
+  ending under it, a chevron to the log sheet. The footer, only while it is
+  behind, names both versions and the fix ("v1.0.270 → v1.0.273. Update from
   here.", "Publish from the Mac." on a Mac) or why it is out of reach (not
-  connected, not installed, an admin key). The host's own version stays in
+  connected, not installed, a key that may not manage it); nothing when up
+  to date. The host's own version stays in
   the Host section; nothing says it twice. The `+N` mark (`DriftMark`)
-  trails the Hosts row before the id and fills Home's `hostTrailing` slot
+  trails the Computers row and fills Home's `hostTrailing` slot
   (the status row and the host header), muted, tabular, never animated.
 - **The deploy log** is a medium/large sheet (`Radius.sheet`): the card's
   title, its note under it ("Cannot be stopped mid-way; the box rolls back
@@ -2223,6 +2225,8 @@ spinner, a check or a cross), footers of at most two lines.
   success, warning or tertiary that cross-fades in place, the state line
   with a booted simulator's CPU rolling (`.numeric`), the holder trailing in
   the footnote's tertiary, pushing its thread when that host is paired here.
+  At accessibility sizes the state, the platform and the holder each take
+  their own lines and wrap, never cut.
   Shut Down and Delete on a swipe and in the context menu (Delete confirmed
   by an alert naming the holder), Open in Xcode on a phone's; a spinner
   replaces the dot while one is out. The footer is the summary, then the
@@ -2235,9 +2239,10 @@ spinner, a check or a cross), footers of at most two lines.
 
 A key that lacks a capability sees the section and its rows with the
 control disabled and the reason in the footer: "Updating needs a key that
-may manage it.", "Reading the sync state needs an admin key." (one quiet row instead
-of the lines), "Shutting down or deleting a simulator needs an operate
-key.", "Stopping a command needs an operate key on the Mac." An action the
+may manage it.", "Reading the sync state needs a key that may manage it."
+(one quiet row instead of the lines), "Shutting down or deleting a
+simulator needs a key that may run threads.", "Stopping a command needs a
+key that may run threads on the Mac." An action the
 host refuses lands as the destructive footnote line under the section's
 rows (`RowErrorLine`), arriving like a needs-you row and leaving after four
 seconds. Motion: the first report paints still; rows that come and go after

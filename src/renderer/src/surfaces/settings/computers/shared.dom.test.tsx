@@ -143,7 +143,7 @@ describe("Threads on a computer", () => {
     expect(screen.getByText("StuckMinutes must be under a day")).toBeTruthy();
   });
 
-  it("shows read-only values and who can change them, with the admin-only stuck time marked Hidden", async () => {
+  it("shows read-only values and who can change them, and leaves out the stuck time such a key cannot read", async () => {
     answers = { "admission.get": admission({ running: 2, cap: 6, queued: 0 }), "attachment.settings": { maxBytes: 200 * 1024 * 1024 } };
     const { container } = render(<ThreadsRows host={hostOf("env_pc", "PURDUE-LT", false)} rows="pc" />);
     await flush();
@@ -151,10 +151,8 @@ describe("Threads on a computer", () => {
     expect(screen.getByText("2 of 6 running")).toBeTruthy();
     expect(screen.getByText("Changed from a computer that manages PURDUE-LT")).toBeTruthy();
     expect(requests.some((r) => r.method === "remote.status")).toBe(false);
-    const stuck = container.querySelector("[data-setting='pc.stuck']");
-    expect(stuck?.textContent).toContain("Tell me a thread is stuck after");
-    expect(stuck?.textContent).toContain("Hidden");
-    expect(stuck?.querySelector("input, button, [role='switch']")).toBeNull();
+    expect(container.querySelector("[data-setting='pc.stuck']")).toBeNull();
+    expect(container.textContent).not.toContain("Hidden");
   });
 
   it("is this Mac's page's first section under no heading", async () => {
@@ -167,14 +165,20 @@ describe("Threads on a computer", () => {
 });
 
 describe("Agent apps", () => {
-  it("says each app's version, the install line of a missing one, and offers Update only in the computer's own window", async () => {
+  it("says each app's version, opens the rest's install commands in a sheet, and offers Update only in the computer's own window", async () => {
     answers = { "doctor.get": { claude: { found: true, version: "2.1.263 (Claude Code)" }, codex: { found: true, version: "codex-cli 0.162.1" } } };
     const { container } = render(<AgentApps host={hostOf("env_box", "The box")} rows="pc" />);
     await flush();
     expect(screen.getByText("2.1.263")).toBeTruthy();
     expect(screen.getByText("0.162.1")).toBeTruthy();
     expect(screen.queryByText("Update")).toBeNull();
-    expect(container.querySelector("[data-agent-app=muse] [aria-label='Copy the install command']")).not.toBeNull();
+    // The apps it lacks are one row; their commands are in its sheet, each behind Copy.
+    expect(container.querySelector("[data-agent-app=muse]")).toBeNull();
+    expect(container.querySelector("[data-setting='pc.install']")?.textContent).toContain("7 more you can install");
+    fireEvent.click(screen.getByRole("button", { name: "Agent apps you can install" }));
+    await flush();
+    expect(document.querySelector("[data-install-sheet] [aria-label='Copy the command that installs Muse Code']")).not.toBeNull();
+    expect(document.querySelector("[data-install-sheet]")?.textContent).not.toContain("curl");
     cleanup();
     render(<AgentApps host={hostOf("local", "MacBook Pro")} rows="here" />);
     await flush();

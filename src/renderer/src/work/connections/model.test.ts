@@ -22,16 +22,16 @@ describe("sectionsOf", () => {
   });
 
   /** Council round 8 (Opus Settings 1, Sol Settings 2): the host's "this host" words, and "LifeOS answers" with no computer. */
-  it("names the computer on every LifeOS row once two hosts are listed: in the line it words, else in the title", () => {
+  it("names the computer on every LifeOS row's title once two hosts are listed, its line then the state alone", () => {
     const lifeos = (over: Partial<HealthRow>): HealthRow => row({ pillar: "lifeos", group: "LifeOS", title: "LifeOS", ...over });
     const sections = sectionsOf([
       ready("box", "the box", [lifeos({ id: "lifeos.signin", state: "needs-you", lifeos: "signed-out", line: "Not signed in to LifeOS" })]),
       ready("mac", "Mac", [lifeos({ id: "lifeos.signin", lifeos: "connected", line: "Signed in" }), lifeos({ id: "lifeos.answers", title: "LifeOS answers", state: "broken", lifeos: "unreachable", line: "LifeOS did not answer" }), lifeos({ id: "lifeos.keys:enrolled", title: "Agents' LifeOS keys", state: "broken", line: "x" })]),
     ]);
     expect(sections[0]!.rows.map((r) => [r.title, r.line ?? r.row.line])).toEqual([
-      ["LifeOS", "Not signed in to LifeOS on the box"],
+      ["LifeOS on the box", "Not signed in"],
       ["LifeOS on Mac", "Signed in"],
-      ["LifeOS answers", "LifeOS did not answer Mac"],
+      ["LifeOS answers on Mac", "LifeOS did not answer"],
       ["Agents' LifeOS keys on Mac", "x"],
     ]);
     // One host listed: the line still names its computer, the title stays plain.
@@ -146,6 +146,20 @@ describe("the rest of the page's words", () => {
   });
 });
 
+describe("a row's words", () => {
+  it("names this window's own computer as this Mac in a LifeOS row's title", () => {
+    const lifeos = (over: Partial<HealthRow>): HealthRow => row({ pillar: "lifeos", group: "LifeOS", title: "LifeOS", ...over });
+    const sections = sectionsOf([
+      { ...ready("box", "The box", [lifeos({ id: "lifeos.signin", lifeos: "connected", line: "Signed in" })]) },
+      { ...ready("local", "MacBook Pro", [lifeos({ id: "lifeos.signin", state: "needs-you", lifeos: "signed-out", line: "x" })]), inLine: "this Mac" },
+    ]);
+    expect(sections[0]!.rows.map((r) => [r.title, r.line ?? r.row.line])).toEqual([
+      ["LifeOS on the box", "Signed in"],
+      ["LifeOS on this Mac", "Not signed in"],
+    ]);
+  });
+});
+
 describe("a row's command and its sign-out", () => {
   it("takes a host's install command out of the line, the words left a sentence", async () => {
     const { commandOf } = await import("./model");
@@ -160,5 +174,18 @@ describe("a row's command and its sign-out", () => {
     expect(signsOut({ kind: "run", label: "Sign out", method: "work.office.live.signOut" })).toBe(true);
     expect(signsOut({ kind: "run", label: "Install", method: "work.formats.install" })).toBe(false);
     expect(signOutAsk("Office and Forms for the web, Purdue University", "the box").title).toBe("Sign out of Office and Forms for the web, Purdue University on the box?");
+  });
+});
+
+describe("a fix's words and a row's end date", () => {
+  it("ends a sign-in or sign-out's words in an ellipsis, once, and names what a date ends", async () => {
+    const { fixLabel, lapseWords } = await import("./ConnectionsPage");
+    expect(fixLabel({ kind: "page", label: "Sign in", page: "lifeos-sign-in" })).toBe("Sign in…");
+    expect(fixLabel({ kind: "page", label: "Sign in…", page: "windows-vm-sign-in" })).toBe("Sign in…");
+    expect(fixLabel({ kind: "run", label: "Sign out", method: "work.lifeos.signOut" })).toBe("Sign out…");
+    expect(fixLabel({ kind: "run", label: "Install", method: "work.formats.install" })).toBe("Install");
+    const now = Date.UTC(2026, 10, 20, 15);
+    expect(lapseWords({ id: "browser.vm", group: "Windows VM", until: now + 90 * 86_400_000 }, now)).toMatch(/^Licence ends /);
+    expect(lapseWords({ id: "frameio.signin", group: "Frame.io", until: now + 9 * 86_400_000 }, now)).toMatch(/^Sign-in ends /);
   });
 });

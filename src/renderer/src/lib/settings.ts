@@ -102,7 +102,7 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   { id: "editor", group: "mac", label: "Editor", description: "" },
   { id: "keybindings", group: "mac", label: "Shortcuts", description: "" },
   { id: "updates", group: "mac", label: "Updates", description: "Docket on {mac}.", desktopOnly: true },
-  { id: "appshots", group: "mac", label: "Appshots", description: "Double-tap ⌘ over another app to drop its window into a chat.", desktopOnly: true },
+  { id: "appshots", group: "mac", label: "Appshots", description: "Double-tap ⌘ over another app to drop its window into a chat.", desktopOnly: true, macOnly: true },
   { id: "computer", group: "mac", label: "Computer use", description: "How threads use this Mac's apps.", desktopOnly: true, macOnly: true },
   { id: "here", group: "mac", label: "Threads", title: "Threads on {mac}", description: "", desktopOnly: true },
   { id: "sharing", group: "mac", label: "Sharing", description: "Who and what may reach {mac}.", desktopOnly: true },

@@ -127,7 +127,8 @@ describe("Settings → Skills", () => {
     await show(seeded());
     expect([...document.querySelectorAll("[data-skill]")].map((r) => r.getAttribute("data-skill"))).toEqual(["impeccable", "tidy"]);
     expect(rowOf("impeccable")!.textContent).toContain("Claude Code, Codex and Muse Code");
-    expect(rowOf("impeccable")!.textContent).toContain("Every workspace");
+    // Every workspace is the list's rule, said on no row.
+    expect(rowOf("impeccable")!.textContent).not.toContain("Every workspace");
     expect(rowOf("impeccable")!.textContent).toContain("v3");
     expect(rowOf("impeccable")!.textContent).toContain("written by Polish the rail");
     expect(rowOf("tidy")!.textContent).toContain("Codex");
@@ -140,9 +141,10 @@ describe("Settings → Skills", () => {
     host.state.home = { name: "box", online: false };
     await show(host);
     expect((screen.getByRole("switch", { name: "tidy" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "tidy actions" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole("button", { name: "Edit tidy" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "New skill…" }) as HTMLButtonElement).disabled).toBe(true);
+    // Nothing is offered that cannot work: no ⋯ and no New skill… while the box is out of reach.
+    expect(screen.queryByRole("button", { name: "tidy actions" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "New skill…" })).toBeNull();
   });
 
   it("folds the skills push in", async () => {
@@ -174,11 +176,19 @@ describe("Settings → Skills", () => {
     expect(rowOf("tidy")!.textContent).toContain("Tidy changed since it was read");
   });
 
-  it("puts a cut description whole on the open control's tooltip, and no tooltip on one that fits", async () => {
-    h.cut.add(LONG);
+  it("gives a description two lines, then puts a cut one whole on the open control's tooltip, and no tooltip on one that fits", async () => {
+    // jsdom lays nothing out: the long description reads as taller than its two lines.
+    const height = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.textContent === LONG ? 64 : 0;
+      },
+    });
     await show(seeded());
+    if (height) Object.defineProperty(HTMLElement.prototype, "scrollHeight", height);
     const open = screen.getByRole("button", { name: "Edit impeccable" });
-    expect(open.closest("[data-slot=page-row]")!.querySelector("[data-skill-description]")!.className).toContain("truncate");
+    expect(open.closest("[data-slot=page-row]")!.querySelector("[data-skill-description]")!.className).toContain("line-clamp-2");
     expect(open.getAttribute("data-slot")).toBe("tooltip-trigger");
     fireEvent.pointerEnter(open);
     fireEvent.focus(open);

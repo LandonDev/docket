@@ -23,6 +23,8 @@ import { ListFilter, useListFilter } from "../../surfaces/settings/parts/ListFil
 import { SaveMark } from "../../surfaces/settings/parts/SaveMark";
 import { useSaved } from "../../surfaces/settings/parts/useSaved";
 import { useKeptRetry } from "./keptRetry";
+import { MoreHorizontal } from "../../chrome/icons";
+import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 
 /**
  * Settings → Files, a section a computer (docs/agents/work-teams-files.md "Settings", docs/agents/settings.md "The
@@ -78,6 +80,18 @@ const keepsVm = (value: Libraries): boolean => value.libraries.some((l) => l.vm)
 /** An off folder's section: on a computer that keeps a VM, a path with a drive letter is the guest's; else every off folder is its own. */
 const offIn = (folder: string, value: Libraries, vm: boolean): boolean => (keepsVm(value) && /^[A-Za-z]:[\\/]/.test(folder)) === vm;
 
+/** What a row's switch does, said once over the list. */
+const LISTED_LINE = "On means listed in Files.";
+/** A folder he added leaves the list from its menu: one press, nothing on disk changes, Add folder… brings it back. */
+const FOLDER_MENU: MenuRow[] = [{ kind: "item", id: "stop", label: "Stop listing" }];
+
+/** The way most libraries' Office files open; none when two ways tie with no majority. */
+export function mostOpens(modes: readonly OpensIn[]): OpensIn | undefined {
+  const live = modes.filter((m) => m === "live").length;
+  const here = modes.length - live;
+  return live === here ? undefined : live > here ? "live" : "here";
+}
+
 type FolderRowValue = { folder: string; title: string; library: TeamsLibrary | null; on: boolean };
 const rowWords = (row: FolderRowValue): string => `${row.title} ${row.folder}`;
 
@@ -114,6 +128,14 @@ export function TeamsFilesRow({
       ]
     : [];
   const filter = useListFilter(shown, rowWords);
+  // Where each listed library's Office files open, read together: the way most open is said once, in the heading's line.
+  const libraryIds = value ? value.libraries.filter((l) => !!l.vm === vm).map((l) => l.id) : [];
+  const modes = useHostRead(
+    libraryIds.length ? link : null,
+    () => Promise.all(libraryIds.map((libraryId) => link!.request<{ mode: OpensIn }>("work.office.live.libraryDefault", { libraryId }).then((a) => [libraryId, a.mode] as const))).then((pairs) => new Map(pairs)),
+    libraryIds.join(","),
+  );
+  const common = modes.value ? mostOpens([...modes.value.values()]) : undefined;
   if (!value)
     return (
       <PageSection title={title} data-setting={setting}>
@@ -128,7 +150,7 @@ export function TeamsFilesRow({
             {folderFailure(kept.error, host, "could not list its folders")}
           </PageError>
         ) : (
-          <PageRowsSkeleton rows={1} description control="switch" />
+          <PageRowsSkeleton rows={3} description control="switch" />
         )}
       </PageSection>
     );
@@ -163,16 +185,19 @@ export function TeamsFilesRow({
     setDialogError(null);
     // A save already holds the computer's answer; otherwise ask again, keeping what is shown meanwhile.
     if (!saved) read.retry();
+    void modes.retry();
   };
   return (
-    <PageSection title={title} action={add} data-setting={setting}>
+    <PageSection title={title} action={add} data-setting={setting} description={shown.length ? [LISTED_LINE, common ? `${OPENS_LINE[common]}.` : null].filter(Boolean).join(" ") : undefined}>
       <ListFilter filter={filter} label="Find a folder" />
       {shown.length ? null : <PageEmpty>{noneLine(value.places, vm)}</PageEmpty>}
       {filter.shown.map((row) => (
         <FolderRow
           key={row.folder}
           row={row}
-          link={link!}
+          // A library says where its files open only where it differs from the heading's line.
+          opens={row.library && row.on ? (modes.value?.get(row.library.id) ?? null) : null}
+          common={common ?? null}
           editable={editable}
           onSwitch={(on) => put(withRoot(value.roots, row.folder, { off: !on }))}
           onStop={() => put(withRoot(value.roots, row.folder, null))}
@@ -199,24 +224,25 @@ export function TeamsFilesRow({
 /** One folder: its name (a found library's path in a tip), where its Office files open, and its one control. */
 function FolderRow({
   row,
-  link,
+  opens,
+  common,
   editable,
   onSwitch,
   onStop,
   onOpen,
 }: {
   row: FolderRowValue;
-  link: Link;
+  opens: OpensIn | null;
+  common: OpensIn | null;
   editable: boolean;
   onSwitch: (on: boolean) => Promise<void>;
   onStop: () => Promise<void>;
   onOpen?: () => void;
 }) {
   const saved = useSaved();
-  const opens = useOpensIn(link, row.library && row.on ? row.library.id : null);
   // Each fact a line of its own, never joined to the next: the path of a folder he added, a slow folder's reason, and
-  // where its Office files open (the dialog changes it).
-  const lines = [added(row.library) ? row.folder : null, row.library?.slow ?? null, opens ? OPENS_LINE[opens] : null].filter((line): line is string => !!line);
+  // where its Office files open where that differs from the heading's line (the dialog changes it).
+  const lines = [added(row.library) ? row.folder : null, row.library?.slow ?? null, opens && opens !== common ? OPENS_LINE[opens] : null].filter((line): line is string => !!line);
   const busy = saved.state === "saving" || saved.state === "slow";
   return (
     <PageRow
@@ -249,14 +275,21 @@ function FolderRow({
       {editable ? (
         <>
           <SaveMark state={saved.state} />
+          {/* One control for listing on every row; a folder he added can also be taken off the list, in its menu. */}
+          <SettingSwitch label={row.title} on={row.on} disabled={busy} onChange={(on) => saved.run(() => onSwitch(on))} />
           {row.library && !row.library.found ? (
-            // Un-lists a folder he added: one press, nothing on disk changes, and Add folder… brings it back.
-            <Button variant="ghost" size="sm" disabled={busy} onClick={() => void saved.run(onStop)}>
-              Stop listing
-            </Button>
-          ) : (
-            <SettingSwitch label={row.title} on={row.on} onChange={(on) => saved.run(() => onSwitch(on))} />
-          )}
+            <RowsMenu
+              label={`${row.title} actions`}
+              trigger={
+                <Button variant="ghost" size="icon-sm" aria-label={`${row.title} actions`} disabled={busy} className="text-muted-foreground">
+                  <MoreHorizontal />
+                </Button>
+              }
+              rows={FOLDER_MENU}
+              onPick={() => void saved.run(onStop)}
+              align="end"
+            />
+          ) : null}
         </>
       ) : (
         <StatusMark state="idle" glyph={false} word={row.on ? "On" : "Off"} className="text-xs" />

@@ -98,10 +98,10 @@ asks the person for every act.
 
 These two onboarding keys have no webhook yet. Once a bot gives you its
 HTTPS callback URL, open the box's page in Settings (Other computers → the
-box), Who can sign in to the box → Add… → A key for a bot. Existing keys cannot
-be edited: create a replacement with the same bot name, It may: Run threads, its
-Webhook URL, and Signing secret
-(blank generates one); the default events are all four below. Give the bot
+box), Who can sign in to the box → Add… → For: A bot (the dialog is then "A key
+for a bot"). Existing keys cannot be edited: create a replacement with the same
+bot name, It may: Run threads, its Address for notices (the webhook URL), and
+Secret for notices (the signing secret; blank generates one); the default events are all four below. Give the bot
 both the replacement key and the `webhookSecret` shown once, update its Mac
 Keychain item, test delivery, then remove the old key in that same list.
 The bot needs `webhookSecret` to verify signatures; the API key is not the

@@ -25,7 +25,7 @@ export function AccountPinFields({
   environmentId: string;
   value: AccountPins;
   onChange: (next: AccountPins) => void;
-  /** What an unset provider falls back to, e.g. "Inherit (workspace: a@x)". */
+  /** What an unset provider falls back to, e.g. "Same as the workspace (a@x)". */
   inheritLabel: (provider: (typeof ROUTED_PROVIDERS)[number]) => string;
 }) {
   const { snapshot } = useAccounts(environmentId);
@@ -46,7 +46,7 @@ export function AccountPinFields({
               options={[
                 { value: "", label: inheritLabel(provider) },
                 ...profiles.map((p) => ({ value: p.name, label: shortName(p) })),
-                ...(known ? [] : [{ value: current, label: `${current} (not in Aliax)` }]),
+                ...(known ? [] : [{ value: current, label: `${current}, not in AI accounts` }]),
               ]}
               onChange={(name) => {
                 const next = { ...value };
@@ -65,12 +65,13 @@ export function AccountPinFields({
 /** The plan the pin names (Claude, Codex, Meta), never the harness. */
 const providerName = (provider: (typeof ROUTED_PROVIDERS)[number]) => PROVIDER_NAME[provider];
 
-/** "Inherit (workspace: a@x)" / "Inherit (auto)" for a project under `workspace`. */
+/** "Same as the workspace (a@x)" / "Same as the workspace (Auto)" for a project under `workspace`: the words the
+ *  workspace page uses for the same state. */
 export function projectInheritLabel(workspace: WorkspaceMeta, profiles: { name: string; email?: string; nickname?: string; createdAt: number; active: boolean }[]) {
   return (provider: (typeof ROUTED_PROVIDERS)[number]): string => {
     const name = workspace.accountPins?.[provider];
-    if (!name) return "Inherit (auto)";
+    if (!name) return "Same as the workspace (Auto)";
     const profile = profiles.find((p) => p.name === name);
-    return `Inherit (workspace: ${profile ? shortName(profile) : name})`;
+    return `Same as the workspace (${profile ? shortName(profile) : name})`;
   };
 }

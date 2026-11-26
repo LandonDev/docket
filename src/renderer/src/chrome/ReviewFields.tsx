@@ -10,12 +10,14 @@ import { useRulesScope } from "../lib/tcserver/rules";
 import { parseReviewScope, reviewerModel, reviewerModelOptions, type ReviewScope } from "../lib/reviewScope";
 
 export { type ReviewScope } from "../lib/reviewScope";
-import type { ReactNode } from "react";
 import { HARNESS_LABEL } from "../lib/session";
 import { settingEntry } from "../lib/settings/map";
 import { ChoiceCombobox } from "../components/choice-combobox";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageRow, PageRowsSkeleton } from "../components/page";
+import { FieldRow } from "./DialogField";
+
+type FieldControl = Parameters<typeof FieldRow>[0]["children"];
 import { SettingSwitch } from "../components/setting-switch";
 import { CommitField } from "../surfaces/settings/hosts/CommitField";
 import { SettingRow } from "../surfaces/settings/parts/SettingRow";
@@ -39,12 +41,12 @@ export type ReviewRow = "on" | "model" | "effort" | "stop" | "wait";
 const ROW_ID: Record<ReviewRow, string> = { on: "reviews.on", model: "reviews.model", effort: "reviews.effort", stop: "reviews.stop", wait: "reviews.wait" };
 const title = (row: ReviewRow): string => settingEntry(ROW_ID[row]).title;
 
-/** The fields' first row while `review.get` answers: the Before merge
- *  switch, alone until it is on (the built-in set has it off). */
+/** The page's rows in their shape while `review.get` answers: the switch, then the four rows it shows while on, so
+ *  the page holds its shape; with reviews off the answer only takes rows away. */
 export function ReviewSkeleton() {
   return (
     <div data-testid="review-skeleton">
-      <PageRowsSkeleton rows={1} control="switch" />
+      <PageRowsSkeleton rows={[{ control: "switch" }, {}, {}, {}, { description: true, control: "number" }]} />
     </div>
   );
 }
@@ -147,13 +149,18 @@ export function ReviewFields({
     }
     return onChange(next, row);
   };
-  const row = (id: ReviewRow, control: ReactNode, description?: string) =>
+  // A page's row with its save mark; in the project sheet (`compact`) a sheet's row, as its neighbours are.
+  const row = (id: ReviewRow, control: FieldControl, description?: string) =>
     saved ? (
       <SettingRow key={id} id={ROW_ID[id]} saved={saved[id]} description={description}>
         {control}
       </SettingRow>
+    ) : compact ? (
+      <FieldRow key={id} label={title(id)}>
+        {control}
+      </FieldRow>
     ) : (
-      <PageRow key={id} title={title(id)} description={compact ? undefined : description}>
+      <PageRow key={id} title={title(id)} description={description}>
         {control}
       </PageRow>
     );

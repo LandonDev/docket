@@ -95,14 +95,14 @@ function linkOrNull(workspaceId: string): Link | null {
  * the row's red line. No answer to the read is the section's error with Retry. A key that may not set it reads the
  * values as words.
  */
-export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
-  const link = linkOrNull(workspaceId);
-  const may = useLinkMay(link?.environmentId ?? "", "turnpass.set");
-  // The value the host last confirmed (its answer to the read, or a save it took), and the newest change.
+/**
+ * A workspace's pass as its computer answers it, with the value it last confirmed. The workspace page asks it once, as
+ * the read the whole page hangs on, and hands it to `TurnPassEditor`.
+ */
+export function useTurnPassRead(workspaceId: string) {
   const confirmed = useRef<TurnPass | null>(null);
-  const latest = useRef(0);
   const read = useHostRead(
-    link,
+    linkOrNull(workspaceId),
     async () => {
       const pass = (await loadTurnPass(workspaceId)) ?? TURN_PASS_OFF;
       confirmed.current = pass;
@@ -110,6 +110,18 @@ export function TurnPassEditor({ workspaceId }: { workspaceId: string }) {
     },
     workspaceId,
   );
+  return { read, confirmed };
+}
+
+export type TurnPassRead = ReturnType<typeof useTurnPassRead>;
+
+export function TurnPassEditor({ workspaceId, pass }: { workspaceId: string; pass?: TurnPassRead }) {
+  const own = useTurnPassRead(pass ? "" : workspaceId);
+  const { read, confirmed } = pass ?? own;
+  const link = linkOrNull(workspaceId);
+  const may = useLinkMay(link?.environmentId ?? "", "turnpass.set");
+  // The newest change: an older refusal puts nothing back while it is on its way.
+  const latest = useRef(0);
   const checks = useSaved();
   const build = useSaved();
   const commit = useSaved();

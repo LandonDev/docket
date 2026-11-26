@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
-import { reveal } from "../../components/ui/reveal";
-import { cn } from "../../lib/cn";
 import { registry } from "../../lib/connection";
 import { hostFailure } from "../../lib/hostFailure";
 import { Face } from "../mail/face";
 import { confirmReplace, confirmRevoke, MadeLinkDialog } from "./Share";
 import { guestsCall, isLive, linkFacts, shortDay, type GuestLinkRow } from "./api";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../components/ui/sheet";
+import { StatusMark } from "../../components/ui/status";
+import { MoreHorizontal } from "../../chrome/icons";
+import { RowsMenu, type MenuRow } from "../../chrome/menuRows";
 import { ListFilter, useListFilter } from "../../surfaces/settings/parts/ListFilter";
 import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
 
@@ -34,7 +35,14 @@ export function GuestLinksRow({ hosts, open: startOpen = false }: { hosts: reado
         error={guests.failed[0]}
         onOpen={() => setOpen(true)}
         openLabel="Shared with guests"
-      />
+      >
+        {/* A failed read is recovered where it is said: Retry on the row, as in the sheet. */}
+        {guests.failed.length ? (
+          <Button variant="ghost" size="sm" disabled={guests.retrying} onClick={guests.retry}>
+            <BusyLabel busy={guests.retrying} label="Retry" />
+          </Button>
+        ) : null}
+      </SettingRow>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent side="right" data-guests-sheet="">
           <SheetHeader>
@@ -67,6 +75,8 @@ export function GuestLinksSection({ hosts }: { hosts: readonly string[] }) {
 }
 
 type GuestLinks = ReturnType<typeof useGuestLinks>;
+
+const LINK_MENU: MenuRow[] = [{ kind: "item", id: "replace", label: "Replace address…" }, { kind: "sep" }, { kind: "item", id: "revoke", label: "Revoke…", danger: true }];
 
 function useGuestLinks(computers: readonly string[]) {
   const [rows, setRows] = useState<{ env: string; link: GuestLinkRow }[] | null>(null);
@@ -168,21 +178,24 @@ function GuestLinksList({ guests }: { guests: GuestLinks }) {
       {filter.shown.map(({ env, link }) => {
         const live = isLive(link);
         return (
-          <PageRow key={link.id} media={<Face name={link.name} size="row" />} title={link.name} description={linkFacts(link, { item: true })} className={cn("relative", live ? undefined : "opacity-60")}>
+          <PageRow key={link.id} data-guest-link={link.id} media={<Face name={link.name} size="row" />} title={link.name} description={linkFacts(link, { item: true })}>
             {live ? (
-              // The presses lie over the row's end on hover and keep no room at rest, so the facts take the row's width.
-              <div
-                data-guest-actions=""
-                className={cn("absolute end-0 top-1/2 flex -translate-y-1/2 items-center gap-1 bg-background ps-2", revoking?.endsWith(link.id) ? "opacity-100" : reveal("item", { row: true, overlay: true }))}
-              >
-                <Button variant="ghost" size="sm" disabled={revoking !== null} onClick={() => void replace(env, link)}>
-                  <BusyLabel busy={revoking === `copy:${link.id}`} label="Replace address…" />
-                </Button>
-                <Button variant="ghost" size="sm" disabled={revoking !== null} onClick={() => void revoke(env, link)}>
-                  <BusyLabel busy={revoking === link.id} label="Revoke…" />
-                </Button>
-              </div>
-            ) : null}
+              // Both acts ask first and sit in the row's menu, there at rest, never on hover alone.
+              <RowsMenu
+                label={`${link.name}'s link`}
+                trigger={
+                  <Button data-guest-actions="" variant="ghost" size="icon-sm" aria-label={`${link.name}'s link`} disabled={revoking !== null} className="text-muted-foreground">
+                    {revoking?.endsWith(link.id) ? <BusyLabel busy label="" /> : <MoreHorizontal />}
+                  </Button>
+                }
+                rows={LINK_MENU}
+                onPick={(id) => void (id === "replace" ? replace(env, link) : revoke(env, link))}
+                align="end"
+              />
+            ) : (
+              // A link that no longer opens says so in a word, at the row's end.
+              <StatusMark state="idle" glyph={false} word={link.revokedAt ? "Revoked" : "Ended"} className="text-xs" />
+            )}
           </PageRow>
         );
       })}

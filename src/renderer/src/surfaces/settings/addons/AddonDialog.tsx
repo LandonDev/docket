@@ -50,8 +50,8 @@ const RUNS: ToggleChoice<AddonForm["transport"]>[] = [
 ];
 const HOSTS: ToggleChoice<AddonHosts>[] = [
   { value: "all", label: "Every computer" },
-  { value: "darwin", label: "Macs only" },
-  { value: "linux", label: "Linux only" },
+  { value: "darwin", label: "Macs" },
+  { value: "linux", label: "Linux" },
 ];
 
 function AddonForm({ link, row, workspaces, home, onClose, onSaved, pending, setPending }: Props & { pending: boolean; setPending: (pending: boolean) => void }) {

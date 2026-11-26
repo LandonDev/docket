@@ -125,21 +125,65 @@ describe("another computer's page", () => {
     // Who can is said once, under the title; the sign-in list it may not read is not drawn.
     render(<ComputerLine environmentId="env_box" />);
     expect(document.querySelectorAll("[data-managed]")).toHaveLength(1);
-    expect(document.querySelector("[data-managed]")?.textContent).toBe(" Changed from a computer that manages the box.");
-    expect(container.querySelector("[data-setting='pc.signIns']")).toBeNull();
-    expect(requests.filter((r) => r.env === "env_box").map((r) => r.method).sort()).toEqual(["admission.get", "admission.get", "attachment.settings", "doctor.get"].sort());
+    expect(document.querySelector("[data-managed]")?.textContent).toBe(" Its settings are changed from a computer that manages the box.");
+    // The list it may not read stands as its heading and one line, never as nothing.
+    expect(container.querySelector("[data-setting='pc.signIns']")?.textContent).toContain("Listed on a computer that manages the box");
+    expect(screen.queryByText("Add…")).toBeNull();
+    expect(requests.filter((r) => r.env === "env_box").map((r) => r.method).sort()).toEqual(["admission.get", "admission.get", "admission.get", "attachment.settings", "doctor.get"].sort());
   });
 
   it("leads to the Work page's switch, and forgets the box after asking, on this Mac alone", async () => {
     render(<OtherComputerPage environmentId="env_box" />);
     await flush();
     expect(document.querySelector("[data-setting='pc.work']")?.textContent).toContain("Off");
-    fireEvent.click(screen.getByRole("button", { name: "Work" }));
+    fireEvent.click(screen.getByRole("button", { name: "Work on the box" }));
     expect(asked).toEqual([["work", "work.on"]]);
     fireEvent.click(screen.getByText("Forget…"));
     await flush();
-    expect(confirms[0]).toEqual(expect.objectContaining({ title: "Forget The box?", body: "This Mac drops its link. The box still lets this Mac in until you remove it there." }));
+    expect(confirms[0]).toEqual(expect.objectContaining({ title: "Forget the box?", body: "This Mac drops its link. The box still lets this Mac in until you remove it there." }));
     expect(requests.filter((r) => r.method === "remote.environments.remove")).toEqual([{ env: "local", method: "remote.environments.remove", params: { id: "env_box" } }]);
+  });
+});
+
+describe("a computer that did not answer", () => {
+  it("says so once with one Retry, claims no connection, and keeps this Mac's own record", async () => {
+    const was = ANSWERS.env_box["admission.get"];
+    delete ANSWERS.env_box["admission.get"];
+    try {
+      const { container } = render(
+        <>
+          <ComputerLine environmentId="env_box" />
+          <OtherComputerPage environmentId="env_box" />
+        </>,
+      );
+      await flush();
+      await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
+      expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+      expect(container.textContent).not.toContain("Connected");
+      expect(container.querySelector("[data-setting='pc.atOnce']")).toBeNull();
+      expect(container.querySelector("[data-setting='pc.work']")).toBeNull();
+      expect(container.querySelector("[data-setting='pc.forget']")).not.toBeNull();
+    } finally {
+      ANSWERS.env_box["admission.get"] = was;
+    }
+  });
+});
+
+describe("On this Mac's record", () => {
+  it("says a failed read of this Mac's record once with Retry, keeping What it may do and Forget…", async () => {
+    const was = ANSWERS.local["remote.environments.list"];
+    delete ANSWERS.local["remote.environments.list"];
+    try {
+      const { container } = render(<OtherComputerPage environmentId="env_box" />);
+      await flush();
+      const section = container.querySelector("[data-setting='pc.may']")!.closest("section")!;
+      expect(section.querySelector("[data-setting='pc.name']")).toBeNull();
+      expect(section.querySelectorAll("button")).not.toHaveLength(0);
+      expect(section.textContent).toContain("Retry");
+      expect(section.querySelector("[data-setting='pc.forget']")).not.toBeNull();
+    } finally {
+      ANSWERS.local["remote.environments.list"] = was;
+    }
   });
 });
 

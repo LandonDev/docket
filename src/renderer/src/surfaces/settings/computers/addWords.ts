@@ -30,10 +30,13 @@ export function allowChoices(computer: string): { value: Allow; label: string; d
   ];
 }
 
-/** "One use. Ends in 9:42.", or that it has ended. */
+/** "One use. Ends in 10 minutes.", in whole minutes rounded up (a clock-like 9:42 reads as a time of day), then
+ *  "under a minute", then that it has ended. */
 export function endsText(left: number): string {
   if (left <= 0) return "This link has ended.";
-  return `One use. Ends in ${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}.`;
+  if (left < 60) return "One use. Ends in under a minute.";
+  const minutes = Math.ceil(left / 60);
+  return `One use. Ends in ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
 }
 
 /** A sentence's first letter raised: "the box" starts a line as "The box". */

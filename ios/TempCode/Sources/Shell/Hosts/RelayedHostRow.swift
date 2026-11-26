@@ -2,9 +2,9 @@ import SwiftUI
 import TempCodeClient
 import TempCodeContract
 
-/// A host reached through another, under its carrier's row in Settings →
-/// Hosts: the lane's dot in the mark column, the name, "through <carrier>,
-/// <presence>" in the meta step, the abbreviated environment id trailing.
+/// A computer reached through another, under its carrier's row in Settings →
+/// Computers: the lane's dot in the mark column, the name, "through
+/// <carrier>, <presence>" in the meta step; its id is on its detail alone.
 /// Nothing here waits on the person: no swipe, no menu (there is nothing to
 /// pair again or forget; the carrier's Forget takes it along).
 struct RelayedHostRow: View {
@@ -31,11 +31,6 @@ struct RelayedHostRow: View {
             }
             .layoutPriority(1)
             Spacer(minLength: Layout.rowGap)
-            Text(abbreviatedEnvironmentId(client.environment.id))
-                .font(.caption.monospaced())
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .truncationMode(.middle)
         }
         .padding(.vertical, 2)
         .accessibilityElement(children: .combine)

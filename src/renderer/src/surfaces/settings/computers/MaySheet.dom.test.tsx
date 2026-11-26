@@ -9,6 +9,8 @@ import type { MacBridgeHostPolicy } from "@server/shared/contract-macbridge";
  */
 
 const calls: unknown[][] = [];
+/** What runs here now, as the list "Running now" draws it. */
+let running: { kind: string; status: string }[] = [];
 let fail: string | null = null;
 let hosts: MacBridgeHostPolicy[] = [];
 const act_ = (name: string) => async (...args: unknown[]) => {
@@ -23,9 +25,16 @@ vi.mock("../../../lib/macBridge", () => ({
   refreshMacBridgeHosts: async () => hosts,
   refreshMacBridgeLoad: async () => null,
   useMacBridgeHosts: () => hosts,
-  useMacBridgeRunning: () => [],
+  useMacBridgeRunning: () => running,
 }));
-vi.mock("../../../lib/macBridgeRules", () => ({ loadMacBridgeRules: async () => [], useMacBridgeRules: () => [] }));
+let rulesFail = false;
+vi.mock("../../../lib/macBridgeRules", () => ({
+  loadMacBridgeRules: async () => {
+    if (rulesFail) throw new Error("no answer");
+    return [];
+  },
+  useMacBridgeRules: () => [],
+}));
 vi.mock("../../../chrome/MacBridgeRunning", () => ({ MacBridgeRunningList: () => null }));
 vi.mock("../../../chrome/MacBridgeRemember", () => ({ MacBridgeRuleList: () => null }));
 vi.mock("../../../lib/portForwards", () => ({ useHostForwards: () => ({ enabled: true, forwards: [] }), setForwarding: act_("forwarding") }));
@@ -41,7 +50,7 @@ vi.mock("../../../chrome/ConfirmDialog", async (original) => ({
   },
 }));
 
-const { MayBody, MaySheetHost, mayHereWords } = await import("./MaySheet");
+const { MayBody, MaySheetHost, mayHereWords, nowWords } = await import("./MaySheet");
 const { openMaySheet } = await import("../../../lib/settings/maySheet");
 
 const host = (over: Partial<MacBridgeHostPolicy> = {}): MacBridgeHostPolicy => ({
@@ -66,10 +75,12 @@ const host = (over: Partial<MacBridgeHostPolicy> = {}): MacBridgeHostPolicy => (
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 3; i++) await act(async () => void (await new Promise((r) => setTimeout(r, 0))));
 };
-const draw = (over: Partial<MacBridgeHostPolicy> = {}) => render(<MayBody host={host(over)} name="The box" mac="this Mac" />);
+const draw = (over: Partial<MacBridgeHostPolicy> = {}) => render(<MayBody host={host(over)} name="the box" mac="this Mac" />);
 
 afterEach(() => {
   cleanup();
+  running = [];
+  rulesFail = false;
   calls.length = 0;
   confirms.length = 0;
   confirmAnswer = true;
@@ -90,10 +101,11 @@ describe("Files and commands", () => {
 
   it("asks before lowering it while its commands run, naming how many end", async () => {
     confirmAnswer = false;
-    draw({ policy: "full", running: 2, held: 1 });
+    running = [{ kind: "run", status: "running" }, { kind: "run", status: "running" }, { kind: "run", status: "held" }];
+    draw({ policy: "full" });
     fireEvent.click(screen.getByText("Read"));
     await flush();
-    expect(confirms).toEqual([expect.objectContaining({ title: "Lower what The box may do on this Mac?", body: "3 commands it runs here end." })]);
+    expect(confirms).toEqual([expect.objectContaining({ title: "Lower what the box may do on this Mac?", body: "3 commands it runs here end." })]);
     expect(calls).toEqual([]);
   });
 
@@ -116,23 +128,25 @@ describe("Use this Mac's apps", () => {
   it("asks before letting its threads use the apps, and turns nothing on when he declines", async () => {
     confirmAnswer = false;
     draw();
-    fireEvent.click(screen.getByLabelText("Let The box use this Mac's apps"));
+    fireEvent.click(screen.getByLabelText("Let the box use this Mac's apps"));
     await flush();
-    expect(confirms[0]).toEqual(expect.objectContaining({ title: "Let The box use this Mac's apps?" }));
+    expect(confirms[0]).toEqual(expect.objectContaining({ title: "Let the box use this Mac's apps?" }));
     expect(calls).toEqual([]);
-    expect((screen.getByLabelText("Let The box use this Mac's apps") as HTMLElement).getAttribute("aria-checked")).toBe("false");
+    expect((screen.getByLabelText("Let the box use this Mac's apps") as HTMLElement).getAttribute("aria-checked")).toBe("false");
   });
 
   it("asks before turning it off while sessions are live, and not otherwise", async () => {
-    draw({ computer: true, computerLive: 2 });
-    fireEvent.click(screen.getByLabelText("Let The box use this Mac's apps"));
+    running = [{ kind: "computer", status: "running" }, { kind: "computer", status: "running" }];
+    draw({ computer: true });
+    fireEvent.click(screen.getByLabelText("Let the box use this Mac's apps"));
     await flush();
     expect(confirms[0]).toEqual(expect.objectContaining({ body: "2 live sessions end." }));
     expect(calls).toEqual([["computer", "env_box", false]]);
     cleanup();
     confirms.length = 0;
+    running = [];
     draw({ computer: true });
-    fireEvent.click(screen.getByLabelText("Let The box use this Mac's apps"));
+    fireEvent.click(screen.getByLabelText("Let the box use this Mac's apps"));
     await flush();
     expect(confirms).toEqual([]);
   });
@@ -141,12 +155,14 @@ describe("Use this Mac's apps", () => {
 describe("the rest", () => {
   it("saves a limit, the dev sites and a folder, and removes a folder at once", async () => {
     draw({ computer: true });
-    const commands = screen.getByLabelText("Commands The box runs here at once") as HTMLInputElement;
+    const commands = screen.getByLabelText("Commands the box runs here at once") as HTMLInputElement;
     fireEvent.change(commands, { target: { value: "6" } });
     fireEvent.blur(commands);
     fireEvent.click(screen.getByLabelText("Its dev sites open here"));
-    fireEvent.change(screen.getByLabelText("A folder to read without asking"), { target: { value: "/tmp/a" } });
-    fireEvent.click(screen.getByText("Add"));
+    fireEvent.click(screen.getByText("Add folder…"));
+    expect(screen.getByText("A folder the box reads without asking")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/tmp/a" } });
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add" })));
     fireEvent.click(screen.getByText("Remove"));
     await flush();
     expect(calls).toEqual([
@@ -155,7 +171,7 @@ describe("the rest", () => {
       ["shared", "env_box", ["/Users/me/shared", "/tmp/a"]],
       ["shared", "env_box", []],
     ]);
-    expect(screen.getByLabelText("Apps The box drives here at once")).toBeTruthy();
+    expect(screen.getByLabelText("Apps the box drives here at once")).toBeTruthy();
   });
 
   it("opens for the computer one ask names, from anywhere", async () => {
@@ -166,6 +182,28 @@ describe("the rest", () => {
     await flush();
     expect(document.querySelector("[data-may-sheet='env_pc']")).not.toBeNull();
     expect(screen.getByText("What PURDUE-LT may do on this Mac")).toBeTruthy();
+  });
+
+  it("counts what runs from the one list it draws, in one form", () => {
+    running = [{ kind: "run", status: "running" }, { kind: "run", status: "held" }];
+    draw();
+    expect(document.querySelector("[data-setting='sharing.commands']")?.textContent).toContain("1 running now, 1 waiting");
+    expect(document.querySelector("[data-setting='sharing.threads']")?.textContent).toContain("None here now");
+    expect(nowWords(0)).toBe("None running now");
+  });
+
+  it("holds Allowed until Docket quits in its shape, and says a failed read once with Retry, never Nothing", async () => {
+    rulesFail = true;
+    draw();
+    const allowed = () => document.querySelector("[data-setting='sharing.allowed']")!;
+    expect(allowed().querySelector("[data-slot=page-row-skeleton]")).not.toBeNull();
+    await flush();
+    expect(allowed().textContent).toContain("This Mac did not answer.");
+    expect(allowed().textContent).not.toContain("Nothing");
+    rulesFail = false;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    await flush();
+    expect(allowed().textContent).toContain("Nothing");
   });
 
   it("sums up what a computer may do in a few words", () => {

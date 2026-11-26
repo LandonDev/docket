@@ -156,8 +156,15 @@ const RULES: { value: ToolRule; label: string }[] = [
   { value: "held", label: "Waits for you" },
   { value: "off", label: "Off" },
 ];
-const NOT_SET = "unset";
-export const ruleLabel = (rule: ToolRule | null): string => RULES.find((r) => r.value === rule)?.label ?? "Not set";
+/** A tool he has not chosen for waits for him, as one he set to wait does: the host holds it until he answers. */
+export const ruleLabel = (rule: ToolRule | null): string => RULES.find((r) => r.value === (rule ?? "held"))!.label;
+
+/** The row's line: a tool not chosen for yet says so, and a rule the add-on's change unseated says what changed. */
+export function toolLine(tool: Pick<ToolRuleRow, "rule" | "changed">): string | undefined {
+  if (tool.changed) return "The add-on changed this tool since you chose";
+  if (tool.rule === null) return "Not chosen yet";
+  return undefined;
+}
 
 export function ToolsRow() {
   const [open, setOpen] = useState(false);
@@ -282,18 +289,16 @@ function ToolRow({ environmentId, card, tool, mayWrite, onCard }: { environmentI
     setShown(null);
   };
   return (
-    <PageRow data-tool={tool.tool} title={tool.words} description={tool.changed ? "Changed since you set it" : undefined} error={saved.error}>
+    <PageRow data-tool={tool.tool} title={tool.words} description={toolLine({ rule: value, changed: tool.changed && shown === null })} error={saved.error}>
       {mayWrite ? (
         <>
           <SaveMark state={saved.state} />
           <ChoiceSelect
             size="sm"
             label={tool.words}
-            value={value ?? NOT_SET}
-            options={value ? RULES : [{ value: NOT_SET, label: "Not set" }, ...RULES]}
-            onChange={(next) => {
-              if (next !== NOT_SET) void change(next as ToolRule);
-            }}
+            value={value ?? "held"}
+            options={RULES}
+            onChange={(next) => void change(next as ToolRule)}
           />
         </>
       ) : (

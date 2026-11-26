@@ -2,7 +2,6 @@
 // every Settings page as its host answers it, then the pages that read a host while it is silent and once it refused.
 // SETTINGS_PREVIEW=editor,sharing keeps those pages' fixtures alone, so each page's shots stay readable.
 const PAGES = [
-  "general",
   "winvm",
   "updates",
   "away",
@@ -10,7 +9,6 @@ const PAGES = [
   "defaults-offline",
   "appearance",
   "appearance-work",
-  "editor",
   "keybindings",
   "addons",
   "skills",
@@ -37,14 +35,18 @@ const PAGES = [
   "workspace-work",
   "project",
   // A Mac's desktop window from here on (AsMac in the preview): keep these last.
-  "general-mac",
+  "general",
+  "editor",
+  "editor-licence",
   "keybindings-work",
   "appshots",
   "here",
   "sharing",
+  "sharing-advanced",
   "sharing-may",
   "computer-box",
   "computer-box-offline",
+  "computer-box-advanced",
   "computer-box-key",
   "computer-pc",
   "sync",
@@ -64,7 +66,11 @@ const PAGES = [
   "files",
   "files-guests",
   "mail",
+  "mail-loading",
+  "mail-down",
   "connections",
+  "connections-loading",
+  "connections-refused",
 ] as const;
 const READS = new Set<string>(["here", "sharing", "sync", "publish", "winvm", "computer-box", "general", "updates", "appshots", "defaults", "editor", "addons", "skills", "orchestration", "reviews", "workspace", "computer", "job", "project", "archive", "work", "digest", "files"]);
 const only = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.SETTINGS_PREVIEW?.split(",");

@@ -28,7 +28,7 @@ enum Appearance: String, CaseIterable {
 
 /// Settings, from the Home navigation bar, as Apple's own Settings lays it
 /// out: the computers, Work, Away, notifications and the appearance, then
-/// Diagnostics with the app's version under it. Inset grouped, one sentence
+/// Diagnostics with the app's version as its value. Inset grouped, one sentence
 /// of footer where a row needs explaining. The words are the Settings 2
 /// glossary's: a computer, never a host.
 struct SettingsView: View {
@@ -125,14 +125,18 @@ struct SettingsView: View {
             }
 
             Section {
+                // The app's version is the row's value, as Apple's About rows put it: the first thing to read off a
+                // screenshot when a computer says the app is too old, and clear of the tab bar (the council's round 1).
+                // The contract it speaks is on Diagnostics.
                 NavigationLink {
                     DiagnosticsScreen().sidebarButtonPage()
                 } label: {
-                    Text("Diagnostics")
+                    LabeledContent("Diagnostics") {
+                        Text(AppVersion.line)
+                            .monospacedDigit()
+                    }
                 }
                 .accessibilityIdentifier("diagnostics-row")
-            } footer: {
-                VersionFooter()
             }
         }
         .listStyle(.insetGrouped)
@@ -260,45 +264,25 @@ private struct AwayComputerSection: View {
     }
 }
 
-/// The trailing half of the Computers row: one connection dot per computer
-/// and the single computer's name, or the count.
+/// The trailing half of the Computers row: the single computer's name, or
+/// the count. Each one's state is on the Computers list, said once there.
 private struct HostsSummary: View {
     let clients: [EnvironmentClient]
 
     var body: some View {
-        HStack(spacing: 8) {
-            if !clients.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(clients, id: \.environment.id) { client in
-                        ConnectionDot(status: client.status, relay: client.relayState)
-                    }
-                }
-            }
-            Text(clients.isEmpty ? "None" : clients.count == 1 ? clients[0].environment.name : "\(clients.count)")
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .monospacedDigit()
-        }
+        Text(clients.isEmpty ? "None" : clients.count == 1 ? clients[0].environment.name : "\(clients.count)")
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .monospacedDigit()
     }
 }
 
-/// The app's version and the contract it speaks, centred and dim under
-/// Diagnostics, as Apple's Settings ends: the first thing to read off a
-/// screenshot when a computer says the app is too old.
-private struct VersionFooter: View {
-    var body: some View {
+/// The app's version and build, "1.0.401 (5)", read from the bundle.
+enum AppVersion {
+    static var line: String {
         let info = Bundle.main.infoDictionary
         let version = info?["CFBundleShortVersionString"] as? String ?? "0"
         let build = info?["CFBundleVersion"] as? String ?? "0"
-        VStack(spacing: 2) {
-            Text("Docket \(version) (\(build))")
-            Text("Contract \(contractVersion)")
-        }
-        .font(.footnote)
-        .foregroundStyle(.tertiary)
-        .monospacedDigit()
-        .frame(maxWidth: .infinity)
-        .padding(.top, 8)
-        .accessibilityElement(children: .combine)
+        return "\(version) (\(build))"
     }
 }

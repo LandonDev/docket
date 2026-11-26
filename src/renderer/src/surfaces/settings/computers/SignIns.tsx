@@ -29,7 +29,9 @@ export function SignIns({ host, rows, saysWhoCan = true }: { host: Host; rows: "
   const sessions = useComputerRead<RemoteSession[]>(host, "remote.sessions.list", { poll: true, skip: !manage });
   const pairings = useComputerRead<RemotePairing[]>(host, "remote.pairings.list", { poll: true, skip: !manage });
   const computer = computerInLine(host.name);
-  const add = host.may("remote.pairings.create") ? (
+  // Add… only once the list it adds to was read: a computer that did not answer is offered nothing that cannot work.
+  const listed = keys.value !== undefined && sessions.value !== undefined && pairings.value !== undefined;
+  const add = host.may("remote.pairings.create") && listed ? (
     <Button data-setting={`${rows}.add`} variant="ghost" size="sm" onClick={() => openAddComputer({ way: "device", computer: host.environmentId })}>
       Add…
     </Button>
@@ -44,16 +46,17 @@ export function SignIns({ host, rows, saysWhoCan = true }: { host: Host; rows: "
     }),
     [keys, sessions, pairings],
   );
-  // A page that says who can once has nothing to show here for a key that may not read the list.
-  if (!manage && !saysWhoCan) return null;
   return (
     <SettingSection of={`${rows}.signIns`} vars={{ computer }} action={add}>
       {manage ? (
         <SectionRead read={all} rows={2}>
           {(lists) => <SignInRows host={host} rows={signInsOf(lists, computer)} computer={computer} onChanged={all.retry} />}
         </SectionRead>
-      ) : (
+      ) : saysWhoCan ? (
         <ManagedLine computer={host.name.name} />
+      ) : (
+        // The page says who may change it once, under its title; the list itself is shown to such a computer alone.
+        <PageEmpty data-managed-list="">{`Listed on a computer that manages ${computer}`}</PageEmpty>
       )}
     </SettingSection>
   );

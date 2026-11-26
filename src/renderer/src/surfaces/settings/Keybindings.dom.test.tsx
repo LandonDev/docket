@@ -2,26 +2,28 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mac = vi.hoisted(() => ({ on: true }));
-vi.mock("../../lib/platform", () => ({
-  get IS_MAC() {
-    return mac.on;
-  },
-}));
+const mac = { on: true };
 
 const { KeybindingsPage } = await import("./Keybindings");
 const { asWebPage } = await import("../../test/webMode");
 const { setWorkOn, workSwitch } = await import("../../lib/workSwitch");
 
 /** The desktop's capture key as main answers it. */
-const capture = vi.hoisted(() => ({ set: vi.fn() }));
+const capture = vi.hoisted(() => ({ set: vi.fn(), get: async (): Promise<unknown> => null }));
 const state = { key: "Alt+Shift+Space", defaultKey: "Alt+Shift+Space", held: true, error: null as string | null, workOn: true };
 
 beforeEach(() => {
   mac.on = true;
   capture.set.mockReset();
   capture.set.mockImplementation(async (key: string | null) => ({ ...state, key }));
-  (window as unknown as { api: unknown }).api = { ...(window as unknown as { api?: object }).api, captureKey: { get: async () => state, set: capture.set } };
+  capture.get = async () => state;
+  (window as unknown as { api: unknown }).api = {
+    ...(window as unknown as { api?: object }).api,
+    get platform() {
+      return mac.on ? "darwin" : "win32";
+    },
+    captureKey: { get: () => capture.get(), set: capture.set },
+  };
 });
 afterEach(() => {
   cleanup();
@@ -69,6 +71,28 @@ describe("Shortcuts", () => {
     await act(async () => {});
     expect(capture.set).toHaveBeenCalledWith("Control+Alt+K");
     expect(row("Open capture")?.querySelector("[data-slot=save-mark]")?.getAttribute("data-state")).toBe("saved");
+  });
+
+  it("holds the capture key's shape until main answers, never Off, and says a failed read with Retry", async () => {
+    act(() => setWorkOn("local", true));
+    let refuse = true;
+    capture.get = () => (refuse ? Promise.reject(new Error("Main did not answer")) : Promise.resolve(state));
+    let answer: (s: typeof state) => void = () => {};
+    capture.get = () => new Promise((resolve) => (answer = resolve));
+    render(<KeybindingsPage />);
+    await act(async () => {});
+    expect(row("Open capture")?.querySelector("[data-capture-key=loading]")).toBeTruthy();
+    expect(row("Open capture")?.textContent).not.toContain("Off");
+    await act(async () => answer(state));
+    expect(row("Open capture")?.querySelector("kbd")).toBeTruthy();
+    cleanup();
+    capture.get = () => (refuse ? Promise.reject(new Error("Main did not answer")) : Promise.resolve(state));
+    render(<KeybindingsPage />);
+    await act(async () => {});
+    expect(row("Open capture")?.textContent).toContain("Main did not answer");
+    refuse = false;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    expect(row("Open capture")?.querySelector("kbd")).toBeTruthy();
   });
 
   it("says a refused capture key on its row", async () => {

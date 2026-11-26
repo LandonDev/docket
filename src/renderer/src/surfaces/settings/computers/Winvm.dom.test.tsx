@@ -288,6 +288,13 @@ describe("Settings › Windows VM", () => {
     expect(screen.queryByText("The box did not answer. Try again once it is connected.")).toBeNull();
   });
 
+  it("stands in as many rows as will land while its state is read", async () => {
+    vi.spyOn(registry, "linkOf").mockReturnValue({ request: () => new Promise(() => {}), onPush: () => () => undefined, onOpen: () => () => undefined } as never);
+    const { container } = render(<WinvmHost env="box" />);
+    await flush();
+    expect(container.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(5);
+  });
+
   it("holds the count's line with a bone while the points are read, then the count in its place", async () => {
     let land!: (v: unknown) => void;
     h.pointsHold = new Promise((r) => (land = r));

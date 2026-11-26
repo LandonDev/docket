@@ -60,7 +60,8 @@ describe("the Settings list", () => {
     expect(end("Purdue Esports")).toBeUndefined();
     expect(end("PURDUE-LT")).toBe("Offline");
     expect(end("The box")).toBeUndefined();
-    expect(end("Windows VM")).toBe("in the box");
+    // Right under the box: its place says where it is.
+    expect(end("Windows VM")).toBeUndefined();
   });
 
   it("keeps the Windows VM's row when its computer is not in the list", () => {
@@ -120,11 +121,11 @@ describe("search", () => {
   it("lists a per-computer setting once for each computer, which shows its scope", () => {
     const hits = find("threads at once").filter((result) => result.title === "Threads at once");
     // A computer is its own place: its rows say its name, not the heading it stands under.
-    expect(hits.map((result) => result.path)).toEqual(["This Mac, Threads", "The box, Threads on the box", "PURDUE-LT, Threads on PURDUE-LT"]);
+    expect(hits.map((result) => result.path)).toEqual(["This Mac, Threads", "Threads on the box", "Threads on PURDUE-LT"]);
     expect(hits.map((result) => result.page)).toEqual(["here", "computer:env_box", "computer:env_pc"]);
     // What another computer may do on this Mac is this Mac's rule: once per computer, on Sharing.
     expect(find("files and commands").map((result) => result.computer)).toEqual(["env_box", "env_pc"]);
-    expect(find("files and commands").map((result) => result.path)).toEqual(["This Mac, Sharing, What the box may do on this Mac", "This Mac, Sharing, What PURDUE-LT may do on this Mac"]);
+    expect(find("files and commands").map((result) => result.path)).toEqual(["What the box may do on this Mac", "What PURDUE-LT may do on this Mac"]);
   });
 
   it("lists a job's and a workspace's rows under that job and workspace", () => {
@@ -146,6 +147,18 @@ describe("search", () => {
 
   it("fills this window's words into a name", () => {
     expect(searchSettings("awake", settingsList({ ...MAC, platform: "win32" }), { mac: "this PC" })[0]?.title).toBe("Keep this PC awake");
+  });
+
+  it("lists a row only where its page draws it: nothing for the capture key with Work off, or in a browser", () => {
+    const groups = settingsList(MAC);
+    expect(searchSettings("open capture", groups, {}, [], { web: false, mac: true, work: true })[0]).toMatchObject({ page: "keybindings", row: "keys.capture" });
+    expect(searchSettings("open capture", groups, {}, [], { web: false, mac: true, work: false })).toEqual([]);
+    expect(searchSettings("open capture", settingsList(WEB), {}, [], { web: true, mac: false, work: true })).toEqual([]);
+    expect(searchSettings("appshot", groups, {}, [], { web: false, mac: false, work: true }).some((result) => result.row === "keys.appshot")).toBe(false);
+  });
+
+  it("says no old home for Away's switches: the rail's switch still stands", () => {
+    expect(find("code threads").find((result) => result.row === "away.code")?.was).toBeUndefined();
   });
 
   it("finds an add-on or a skill by its name", () => {

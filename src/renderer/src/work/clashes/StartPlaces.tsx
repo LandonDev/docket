@@ -20,7 +20,7 @@ import { lifeosHostName } from "../shell/lifeos";
 import { DownLine } from "../shell/DownLine";
 import { fieldsOf, formChanged, placeWords, rowLabel, sameField, savePatch, type JobStart, type StartPatch, type StartPlace, type StartPlaces, type StartTarget } from "./places";
 import { answered } from "./wait";
-import { SettingRow } from "../../surfaces/settings/parts/SettingRow";
+import { OpenCue, SettingRow } from "../../surfaces/settings/parts/SettingRow";
 
 /**
  * Settings → Work, Travel's "Start addresses" (docs/agents/work-clashes.md): an open row whose dialog lists where each
@@ -134,7 +134,11 @@ function PlaceRow({ title, label = "Home", place, target, onOpen }: { title: Rea
       // A pasted link has no spaces to break at: it wraps inside the row, never out of it.
       <span className="break-words">{words.description}</span>
     );
-  return <PageRow data-start={target} title={title} description={description} error={words.error} onOpen={onOpen} openLabel={rowLabel(label, words)} />;
+  return (
+    <PageRow data-start={target} title={title} description={description} error={words.error} onOpen={onOpen} openLabel={rowLabel(label, words)}>
+      <OpenCue />
+    </PageRow>
+  );
 }
 
 function StartPlaceDialog({

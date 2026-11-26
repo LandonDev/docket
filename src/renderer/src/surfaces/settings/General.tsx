@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { KeepAwakeStatusWire } from "@server/shared/contract-power";
 import { InboxProviderMark } from "../../chrome/InboxProviderMark";
 import { DialogFooter, confirmAction } from "../../chrome/ConfirmDialog";
@@ -176,20 +176,11 @@ function LinearSection() {
   const status = useHostRead(link, () => linearConnected(link.environmentId));
   const connected = status.value?.connected;
   const [error, setError] = useState<string | null>(null);
-  const [teams, setTeams] = useState<LinearTeam[]>([]);
+  // The teams, asked once Linear is connected: their shape while asked, one line with Retry if refused, never an
+  // empty list standing in for a failure.
+  const teamsRead = useHostRead(connected ? link : null, () => listLinearTeams(link.environmentId), connected ? "connected" : "");
+  const teams: LinearTeam[] = teamsRead.value ?? [];
   const [hidden, setHidden] = useState(loadHiddenLinearTeamIds);
-
-  const loadTeams = useCallback(async () => {
-    try {
-      setTeams(await listLinearTeams(registry.primary().environmentId));
-    } catch {
-      setTeams([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (connected) void loadTeams();
-  }, [connected, loadTeams]);
 
   // The dialog awaits this; a refusal stays in the dialog as its red line.
   const onConnect = async (token: string) => {
@@ -198,7 +189,6 @@ function LinearSection() {
     setConnecting(false);
     clearInboxCache();
     notifyLinearChange();
-    await loadTeams();
   };
 
   const onDisconnect = async () => {
@@ -213,7 +203,6 @@ function LinearSection() {
     try {
       await disconnectLinear(link.environmentId);
       status.set({ connected: false });
-      setTeams([]);
       clearInboxCache();
       notifyLinearChange();
     } catch (err: unknown) {
@@ -230,19 +219,18 @@ function LinearSection() {
   const shown = teams.filter((team) => !hidden.includes(team.id)).length;
 
   return (
-    <SettingSection
-      of="general.linear"
-      action={
-        connected === undefined && status.error ? (
-          <Button variant="ghost" size="sm" onClick={() => void status.retry()}>
-            Retry
-          </Button>
-        ) : null
-      }
-    >
+    <SettingSection of="general.linear">
       {connected === undefined ? (
         status.error ? (
-          <PageError>{status.error}</PageError>
+          <PageError
+            action={
+              <Button variant="ghost" size="sm" onClick={() => void status.retry()}>
+                Retry
+              </Button>
+            }
+          >
+            {status.error}
+          </PageError>
         ) : (
           <PageRowsSkeleton rows={1} media control="button" />
         )
@@ -264,8 +252,22 @@ function LinearSection() {
           )}
         </SettingRow>
       )}
-      {connected && teams.length > 0 ? (
-        <SettingRow id="general.linearTeams" description={`${shown} of ${teams.length}`} onOpen={() => setTeamsOpen(true)} openLabel="Linear teams in the inbox" />
+      {!connected ? null : teamsRead.value === undefined ? (
+        teamsRead.error ? (
+          <PageError
+            action={
+              <Button variant="ghost" size="sm" onClick={() => void teamsRead.retry()}>
+                Retry
+              </Button>
+            }
+          >
+            {teamsRead.error}
+          </PageError>
+        ) : (
+          <PageRowsSkeleton rows={1} description control="none" />
+        )
+      ) : teams.length > 0 ? (
+        <SettingRow id="general.linearTeams" description={`${shown} of ${teams.length} shown`} onOpen={() => setTeamsOpen(true)} openLabel="Linear teams in the inbox" />
       ) : null}
       <ConnectLinearDialog open={connecting} onClose={() => setConnecting(false)} onConnect={onConnect} />
       {teamsOpen ? (

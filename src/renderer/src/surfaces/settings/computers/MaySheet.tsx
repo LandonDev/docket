@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   MAC_BRIDGE_MAX_COMPUTER_CAP,
   MAC_BRIDGE_MAX_RUNNING_CAP,
@@ -6,13 +6,14 @@ import {
   type MacBridgeHostPolicy,
   type MacBridgePolicy,
 } from "@server/shared/contract-macbridge";
-import { PageEmpty, PageError, PageRow, PageSection } from "../../../components/page";
+import { PageEmpty, PageError, PageRow, PageRowsSkeleton, PageSection } from "../../../components/page";
 import { SettingSwitch } from "../../../components/setting-switch";
 import { Button } from "../../../components/ui/button";
-import { GroupInput, InputGroup } from "../../../components/ui/input";
+import { Input } from "../../../components/ui/input";
 import { RadioChoice, RadioGroup } from "../../../components/ui/radio-group";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../../../components/ui/sheet";
-import { confirmAction } from "../../../chrome/ConfirmDialog";
+import { DialogFooter, ErrorLine, confirmAction } from "../../../chrome/ConfirmDialog";
+import { Modal, ModalBody } from "../../../chrome/Modal";
 import { MacBridgeRunningList } from "../../../chrome/MacBridgeRunning";
 import { MacBridgeRuleList } from "../../../chrome/MacBridgeRemember";
 import { macUrl } from "@server/shared/contract-ports";
@@ -34,7 +35,7 @@ import { isWebMode } from "../../../lib/nativeWeb";
 import { setForwarding, useHostForwards } from "../../../lib/portForwards";
 import { MAY_SHEET_EVENT } from "../../../lib/settings/maySheet";
 import { settingTitle } from "../../../lib/settings/map";
-import { useComputerNames } from "../../../lib/settings/computerName";
+import { computerInLine, useComputerNames } from "../../../lib/settings/computerName";
 import { refusalWords } from "../../../lib/settingsHome";
 import { CommitField } from "../hosts/CommitField";
 import { SaveMark } from "../parts/SaveMark";
@@ -102,7 +103,8 @@ export function MaySheetHost() {
  * Mac's own (`macBridge.*` and `ports.*` on the local server).
  */
 export function MaySheet({ host, open, onOpenChange }: { host: MacBridgeHostPolicy; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const name = useComputerNames()(host.environmentId, host.name).name;
+  // Mid-sentence, as every line of the sheet says it: "What the box may do on this Mac".
+  const name = computerInLine(useComputerNames()(host.environmentId, host.name));
   const mac = thisDesktopInLine();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -125,8 +127,9 @@ export function MayBody({ host, name, mac }: { host: MacBridgeHostPolicy; name: 
   const files = useSaved();
   const [chosen, setChosen] = useState<MacBridgePolicy | null>(null);
   const policy = chosen ?? host.policy;
+  const now = useRunningNow(host.environmentId);
   const choose = async (next: MacBridgePolicy): Promise<void> => {
-    const ending = host.running + host.held;
+    const ending = now.commands + now.waiting;
     if (rank(next) < rank(host.policy) && ending > 0) {
       const ok = await confirmAction({
         title: `Lower what ${name} may do on ${mac}?`,
@@ -155,7 +158,7 @@ export function MayBody({ host, name, mac }: { host: MacBridgeHostPolicy; name: 
         </RadioGroup>
         {files.error ? <PageError>{files.error}</PageError> : null}
       </PageSection>
-      <LimitRows host={host} name={name} mac={mac} policy={policy} />
+      <LimitRows host={host} name={name} mac={mac} policy={policy} now={now} />
       {policy === "off" ? null : <Folders host={host} name={name} />}
       <Running host={host} name={name} />
       <Allowed environmentId={host.environmentId} />
@@ -163,7 +166,23 @@ export function MayBody({ host, name, mac }: { host: MacBridgeHostPolicy; name: 
   );
 }
 
-function LimitRows({ host, name, mac, policy }: { host: MacBridgeHostPolicy; name: string; mac: string; policy: MacBridgePolicy }) {
+/** What runs here for one computer now, read from the one list "Running now" draws, so the counts and the list agree. */
+function useRunningNow(environmentId: string): { commands: number; waiting: number; apps: number } {
+  const list = useMacBridgeRunning({ environmentId });
+  const commands = list.filter((r) => r.kind !== "computer");
+  return {
+    commands: commands.filter((r) => r.status === "running").length,
+    waiting: commands.filter((r) => r.status === "held").length,
+    apps: list.filter((r) => r.kind === "computer" && r.status === "running").length,
+  };
+}
+
+/** One form for every count of what Running now lists: "None running now", "2 running now", "2 running now, 1 waiting".
+ *  Its threads are not in that list, so their count says "here now". */
+export const nowWords = (running: number, waiting = 0): string =>
+  `${running === 0 ? "None running now" : `${running} running now`}${waiting > 0 ? `, ${waiting} waiting` : ""}`;
+
+function LimitRows({ host, name, mac, policy, now }: { host: MacBridgeHostPolicy; name: string; mac: string; policy: MacBridgePolicy; now: ReturnType<typeof useRunningNow> }) {
   const apps = useSaved();
   const sites = useSaved();
   const commands = useSaved();
@@ -179,10 +198,10 @@ function LimitRows({ host, name, mac, policy }: { host: MacBridgeHostPolicy; nam
         action: "Allow",
       });
       if (!ok) return false;
-    } else if (host.computerLive > 0) {
+    } else if (now.apps > 0) {
       const ok = await confirmAction({
         title: `Stop ${name} using ${mac}'s apps?`,
-        body: `${plural(host.computerLive, "live session ends", "live sessions end")}.`,
+        body: `${plural(now.apps, "live session ends", "live sessions end")}.`,
         action: "Stop",
         danger: true,
       });
@@ -227,15 +246,15 @@ function LimitRows({ host, name, mac, policy }: { host: MacBridgeHostPolicy; nam
           ))
         : null}
       {runs ? (
-        <SettingRow id="sharing.commands" saved={commands} description={host.held > 0 ? `${host.running} running, ${host.held} waiting` : `${host.running} running`}>
+        <SettingRow id="sharing.commands" saved={commands} description={nowWords(now.commands, now.waiting)}>
           <CommitField kind="int" aria-label={`Commands ${name} runs here at once`} value={host.maxRunning} min={1} max={MAC_BRIDGE_MAX_RUNNING_CAP} onCommit={limit(commands, "maxRunning")} />
         </SettingRow>
       ) : null}
-      <SettingRow id="sharing.threads" saved={threads} description={plural(host.threads, "thread here now", "threads here now")}>
+      <SettingRow id="sharing.threads" saved={threads} description={host.threads === 0 ? "None here now" : `${host.threads} here now`}>
         <CommitField kind="int" aria-label={`Threads ${name} starts here at once`} value={host.maxThreads} min={0} max={MAC_BRIDGE_MAX_THREADS_CAP} onCommit={limit(threads, "maxThreads")} />
       </SettingRow>
       {host.computer ? (
-        <SettingRow id="sharing.driven" saved={driven} description={`${host.computerLive} live now`}>
+        <SettingRow id="sharing.driven" saved={driven} description={nowWords(now.apps)}>
           <CommitField kind="int" aria-label={`Apps ${name} drives here at once`} value={host.maxComputer} min={1} max={MAC_BRIDGE_MAX_COMPUTER_CAP} onCommit={limit(driven, "maxComputer")} />
         </SettingRow>
       ) : null}
@@ -243,10 +262,10 @@ function LimitRows({ host, name, mac, policy }: { host: MacBridgeHostPolicy; nam
   );
 }
 
-/** The folders it reads with no approval: Remove acts at once (it only makes a read ask again); Add takes a path or
- *  Choose… a folder. */
+/** The folders it reads with no approval: Remove acts at once (it only makes a read ask again); Add folder… opens a
+ *  dialog naming the computer that will read it. */
 function Folders({ host, name }: { host: MacBridgeHostPolicy; name: string }) {
-  const [path, setPath] = useState("");
+  const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const save = async (folders: string[]): Promise<boolean> => {
     setError(null);
@@ -258,11 +277,16 @@ function Folders({ host, name }: { host: MacBridgeHostPolicy; name: string }) {
       return false;
     }
   };
-  const add = async (folder: string): Promise<void> => {
-    if (await save([...host.shared, folder])) setPath("");
-  };
   return (
-    <PageSection data-setting="sharing.folders" title={settingTitle("sharing.folders")}>
+    <PageSection
+      data-setting="sharing.folders"
+      title={settingTitle("sharing.folders")}
+      action={
+        <Button variant="ghost" size="sm" onClick={() => setAdding(true)}>
+          Add folder…
+        </Button>
+      }
+    >
       {host.shared.length === 0 ? <PageEmpty>None</PageEmpty> : null}
       {host.shared.map((folder) => (
         <PageRow key={folder} data-folder={folder} title={<span className="block truncate font-mono text-xs font-normal">{folder}</span>}>
@@ -271,32 +295,52 @@ function Folders({ host, name }: { host: MacBridgeHostPolicy; name: string }) {
           </Button>
         </PageRow>
       ))}
-      <form
-        className="flex items-center gap-2 pt-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (path.trim()) void add(path.trim());
-        }}
-      >
-        <InputGroup className="flex-1">
-          <GroupInput aria-label="A folder to read without asking" value={path} placeholder="/Users/you/Documents/shared" spellCheck={false} autoComplete="off" className="font-mono text-xs" onChange={(event) => setPath(event.target.value)} />
-        </InputGroup>
-        <Button type="submit" variant="secondary" size="sm" disabled={!path.trim()}>
-          Add
-        </Button>
-        {isWebMode() ? null : (
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => void pickFolder(`A folder ${name} reads without asking`).then((picked) => (picked ? add(picked) : undefined))}
-          >
-            Choose…
-          </Button>
-        )}
-      </form>
       {error ? <PageError>{error}</PageError> : null}
+      {adding ? <AddFolderDialog name={name} onClose={() => setAdding(false)} onAdd={(folder) => save([...host.shared, folder])} /> : null}
     </PageSection>
+  );
+}
+
+/** A folder for one computer to read without asking: a path typed or chosen; a refusal stays in the dialog. */
+export function AddFolderDialog({ name, onClose, onAdd }: { name: string; onClose: () => void; onAdd: (folder: string) => Promise<boolean> }) {
+  const [path, setPath] = useState("");
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const add = async (folder: string): Promise<void> => {
+    setPending(true);
+    setFailed(false);
+    const landed = await onAdd(folder);
+    setPending(false);
+    if (landed) onClose();
+    else setFailed(true);
+  };
+  return (
+    <Modal onClose={onClose} busy={pending} title={`A folder ${name} reads without asking`} size="sm" data-add-folder="">
+      <ModalBody>
+        <div className="flex items-center gap-2">
+          <Input
+            autoFocus
+            aria-label="Folder"
+            value={path}
+            placeholder="/Users/you/Documents/shared"
+            spellCheck={false}
+            autoComplete="off"
+            className="flex-1 font-mono text-xs"
+            onChange={(event) => setPath(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && path.trim()) void add(path.trim());
+            }}
+          />
+          {isWebMode() ? null : (
+            <Button variant="secondary" size="sm" onClick={() => void pickFolder(`A folder ${name} reads without asking`).then((picked) => (picked ? setPath(picked) : undefined))}>
+              Choose…
+            </Button>
+          )}
+        </div>
+        {failed ? <ErrorLine error="It was not added. Try again." /> : null}
+      </ModalBody>
+      <DialogFooter onCancel={onClose} confirmLabel="Add" pending={pending} disabled={!path.trim()} onConfirm={() => void add(path.trim())} />
+    </Modal>
   );
 }
 
@@ -309,18 +353,40 @@ function Running({ host, name }: { host: MacBridgeHostPolicy; name: string }) {
   );
 }
 
-/** What its threads were allowed until Docket quits, by thread. */
+/** What its threads were allowed until Docket quits, by thread: its rows wait in their shape, and a failed read is
+ *  one line with Retry, never "Nothing". */
 function Allowed({ environmentId }: { environmentId: string }) {
   const rules = useMacBridgeRules().filter((rule) => rule.environmentId === environmentId);
+  const [state, setState] = useState<"reading" | "read" | "failed">("reading");
+  const read = useCallback(
+    () =>
+      loadMacBridgeRules().then(
+        () => setState("read"),
+        () => setState("failed"),
+      ),
+    [],
+  );
   useEffect(() => {
-    void loadMacBridgeRules().catch(() => null);
-  }, []);
+    void read();
+  }, [read]);
   const threads = [...new Map(rules.map((rule) => [rule.sessionId, rule])).values()];
   return (
     <PageSection data-setting="sharing.allowed" title={settingTitle("sharing.allowed")}>
-      {threads.length === 0 ? <PageEmpty>Nothing</PageEmpty> : null}
+      {state === "reading" && threads.length === 0 ? <PageRowsSkeleton rows={1} control="none" /> : null}
+      {state === "failed" && threads.length === 0 ? (
+        <PageError
+          action={
+            <Button variant="ghost" size="sm" onClick={() => void read()}>
+              Retry
+            </Button>
+          }
+        >
+          {`${thisDesktopInLine().replace(/^t/, "T")} did not answer.`}
+        </PageError>
+      ) : null}
+      {state === "read" && threads.length === 0 ? <PageEmpty>Nothing</PageEmpty> : null}
       {threads.map((rule) => (
-        <MacBridgeRuleList key={rule.sessionId} sessionId={rule.sessionId} heading={<span className="min-w-0 truncate font-medium text-foreground">{rule.threadTitle || rule.sessionId}</span>} />
+        <MacBridgeRuleList key={rule.sessionId} sessionId={rule.sessionId} heading={<span className="min-w-0 truncate font-medium text-foreground">{rule.threadTitle || "A thread with no title"}</span>} />
       ))}
     </PageSection>
   );

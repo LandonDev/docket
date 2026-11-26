@@ -21,21 +21,22 @@ describe("hostJobCard", () => {
   it("shows nothing while idle", () => {
     expect(deploy({}).visible).toBe(false);
   });
-  it("pending: waiting for the trigger, no Stop", () => {
+  it("pending: waiting for the computer to start, no Stop, and never the branch's name", () => {
     const card = deploy({ phase: "pending", target: "master" }, "== deploy master requested\n");
-    expect(card).toMatchObject({ visible: true, title: "Deploying master to box", note: "Waiting for the trigger on the box", stoppable: false, ending: null });
+    expect(card).toMatchObject({ visible: true, title: "Updating box", note: "Waiting for box to start", stoppable: false, ending: null });
     expect(card.lines).toEqual(["== deploy master requested"]);
+    expect(card.title).not.toMatch(/master/);
   });
   it("running: says the box cannot be stopped, and that it is restarting when the link is down", () => {
-    expect(deploy({ phase: "running", target: "master" }).note).toBe("Cannot be stopped mid-way; the box rolls back on failure");
-    expect(deploy({ phase: "running", target: "master" }, "", { linkUp: false }).note).toBe("The box is restarting; the log continues when it is back");
-    expect(deploy({ phase: "running", target: "v1.0.273" }).title).toBe("Deploying v1.0.273 to box");
+    expect(deploy({ phase: "running", target: "master" }).note).toBe("Cannot be stopped part-way. box goes back to the build it had if this fails.");
+    expect(deploy({ phase: "running", target: "master" }, "", { linkUp: false }).note).toBe("box is restarting. The log goes on when it is back.");
+    expect(deploy({ phase: "running", target: "v1.0.273" }).title).toBe("Updating box to v1.0.273");
   });
   it("done: the deployed version and that the service is back, or the failure", () => {
-    expect(deploy({ phase: "done", target: "master", exit: 0 }, "", { deployedVersion: "1.0.273" }).ending).toEqual({ text: "Deployed v1.0.273, the service is back", failed: false });
-    expect(deploy({ phase: "done", target: "master", exit: 0 }).ending).toEqual({ text: "Deployed master, the service is back", failed: false });
-    expect(deploy({ phase: "done", target: "master", exit: 1 }, "ROLLBACK: restoring 1.0.270\n").ending).toEqual({ text: "Deploy failed (exit 1)", failed: true });
-    expect(deploy({ phase: "done", target: "master", exit: null }).ending).toEqual({ text: "Deploy did not start", failed: true });
+    expect(deploy({ phase: "done", target: "master", exit: 0 }, "", { deployedVersion: "1.0.273" }).ending).toEqual({ text: "box runs v1.0.273 and is back", failed: false });
+    expect(deploy({ phase: "done", target: "master", exit: 0 }).ending).toEqual({ text: "box is updated and back", failed: false });
+    expect(deploy({ phase: "done", target: "master", exit: 1 }, "ROLLBACK: restoring 1.0.270\n").ending).toEqual({ text: "The update failed (exit 1)", failed: true });
+    expect(deploy({ phase: "done", target: "master", exit: null }).ending).toEqual({ text: "The update did not start", failed: true });
   });
   it("publish: Stop while running, then published, stopped or failed", () => {
     const running = publish({ phase: "running", target: "v1.0.273" });
@@ -61,9 +62,9 @@ describe("deployConfirmText", () => {
     expect(deployConfirmText("box", "1.0.270", "1.0.273")).toMatch(/^v1\.0\.270 → v1\.0\.273, 3 releases\./);
     expect(deployConfirmText("box", "1.0.272", "1.0.273")).toMatch(/^v1\.0\.272 → v1\.0\.273, 1 release\./);
     expect(deployConfirmText("box", "1.0.273", "1.0.273")).toMatch(/already runs v1\.0\.273/);
-    expect(deployConfirmText("box", "1.0.274", "1.0.273")).toMatch(/master is behind/);
+    expect(deployConfirmText("box", "1.0.274", "1.0.273")).toMatch(/^box runs v1\.0\.274, which is newer than the newest release, v1\.0\.273\./);
     expect(deployConfirmText("box", "1.0.270", null)).toMatch(/^box runs v1\.0\.270\./);
-    expect(deployConfirmText("box", null, null)).toMatch(/^box rebuilds master/);
+    expect(deployConfirmText("box", null, null)).toMatch(/^box builds the newest release/);
   });
 });
 
@@ -72,11 +73,11 @@ describe("deployRowParts", () => {
     const at = (patch: Partial<Parameters<typeof deployRowParts>[0]>) =>
       deployRowParts({ installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: "idle", ...patch });
     expect(at({})).toEqual(["Runs v1.0.270"]);
-    expect(at({ version: "1.0.273" })).toEqual(["Runs v1.0.273", "up to date with master"]);
+    expect(at({ version: "1.0.273" })).toEqual(["Runs v1.0.273", "up to date"]);
     expect(at({ masterVersion: null })).toEqual(["Runs v1.0.270"]);
     expect(at({ version: null })).toEqual(["Runs an unknown version"]);
-    expect(at({ phase: "running" })).toEqual(["Runs v1.0.270", "deploying"]);
-    expect(at({ installed: false })).toEqual(["Deploy from the app is not installed on this host"]);
+    expect(at({ phase: "running" })).toEqual(["Runs v1.0.270", "updating"]);
+    expect(at({ installed: false })).toEqual(["This computer cannot be updated from here"]);
     expect(at({ connected: false })).toEqual([]);
   });
 });

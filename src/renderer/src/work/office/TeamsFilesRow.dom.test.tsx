@@ -45,7 +45,9 @@ describe("Folders in Settings", () => {
     const { link, calls, host } = fakeHost();
     host.opensIn = "live";
     await act(async () => void render(<TeamsFilesRow link={link} title="Folders" editable />));
-    expect(await screen.findByText("Office files open in Office for the web")).toBeTruthy();
+    // The way every library opens is said once, in the heading's line; no row repeats it.
+    expect(await screen.findByText(/Office files open in Office for the web\./)).toBeTruthy();
+    expect(screen.getByText(/On means listed in Files\./)).toBeTruthy();
     expect(calls).toContainEqual({ method: "work.office.live.libraryDefault", params: { libraryId: FOUND.id } });
     // The row's one control is its switch; where its files open and its web link are in its dialog.
     const row = screen.getByText("Purdue Esports").closest<HTMLElement>("[data-slot=page-row]")!;
@@ -178,7 +180,10 @@ describe("Folders in Settings", () => {
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add folder…" })));
     fireEvent.change(screen.getByLabelText("Folder"), { target: { value: "/c/S/Scrims" } });
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Add" })));
-    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Stop listing" })));
+    // One switch on every row; a folder he added leaves the list from its menu.
+    expect(screen.getByRole("switch", { name: "Scrims" })).toBeTruthy();
+    await act(async () => fireEvent.click(await screen.findByRole("button", { name: "Scrims actions" })));
+    await act(async () => fireEvent.click(await screen.findByRole("menuitem", { name: "Stop listing" })));
     expect(calls.filter((c) => c.method === "work.office.filesSetRoots").at(-1)!.params).toEqual({ roots: [] });
     await waitFor(() => expect(screen.queryByText("/c/S/Scrims")).toBeNull());
     for (let i = 0; i < 8; i++) {

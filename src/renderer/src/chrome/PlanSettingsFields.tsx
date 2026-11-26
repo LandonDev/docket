@@ -1,5 +1,4 @@
 import type { PlanSettings } from "@server/shared/plans";
-import type { ReactNode } from "react";
 import { registry } from "../lib/connection";
 import { HARNESS_LABEL } from "../lib/session";
 import { allModels, findModel, nativeModelId } from "../lib/models";
@@ -10,6 +9,9 @@ import { savePlanSettings, usePlanSettings, usePlanSettingsError } from "../lib/
 import { ChoiceCombobox } from "../components/choice-combobox";
 import { ChoiceSelect } from "../components/choice-select";
 import { PageError, PageRow, PageRowsSkeleton } from "../components/page";
+import { FieldRow } from "./DialogField";
+
+type FieldControl = Parameters<typeof FieldRow>[0]["children"];
 import { SettingSwitch } from "../components/setting-switch";
 import { Button } from "../components/ui/button";
 import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
@@ -27,6 +29,9 @@ type Row = "start" | "archive" | "model" | "effort" | "context";
 const ROW_ID: Record<Row, string> = { start: "plans.start", archive: "plans.archive", model: "plans.model", effort: "plans.effort", context: "plans.context" };
 
 const SAME = { value: "", label: "Same as the plan" };
+
+/** "Same as the plan" is a choice, not an empty field: it reads in the value's tone, as the model's list does. */
+const CHOSEN = "data-placeholder:text-foreground";
 
 export function PlanSettingsFields({
   value,
@@ -63,13 +68,18 @@ export function PlanSettingsFields({
   ];
   const size = compact ? "sm" : "default";
   const title = (row: Row) => settingEntry(ROW_ID[row]).title;
-  const row = (id: Row, control: ReactNode, description?: string) =>
+  // A page's row with its save mark; in the project sheet (`compact`) a sheet's row, as its neighbours are.
+  const row = (id: Row, control: FieldControl, description?: string) =>
     saved ? (
       <SettingRow key={id} id={ROW_ID[id]} saved={saved[id]} description={description}>
         {control}
       </SettingRow>
+    ) : compact ? (
+      <FieldRow key={id} label={title(id)}>
+        {control}
+      </FieldRow>
     ) : (
-      <PageRow key={id} title={title(id)} description={compact ? undefined : description}>
+      <PageRow key={id} title={title(id)} description={description}>
         {control}
       </PageRow>
     );
@@ -85,6 +95,7 @@ export function PlanSettingsFields({
         "effort",
         <ChoiceSelect
           label={title("effort")}
+          className={CHOSEN}
           size={size}
           disabled={disabled}
           value={value.implementReasoning}
@@ -96,6 +107,7 @@ export function PlanSettingsFields({
         "context",
         <ChoiceSelect
           label={title("context")}
+          className={CHOSEN}
           size={size}
           disabled={disabled}
           value={value.implementContext}
@@ -110,8 +122,9 @@ export function PlanSettingsFields({
 /** The rows in their shape while the set loads: two switches, three selects. */
 const PLANS_SKELETON = [{ control: "switch" as const }, { control: "switch" as const }, {}, {}, {}];
 
-/** New threads' "Builds from plans": the one set, saving on every change, each row with its mark. */
-export function PlanSettingsEditor() {
+/** New threads' "Builds from plans": the one set, saving on every change, each row with its mark. `quiet`: the page
+ *  already says this read failed (with the other's), so the section holds its rows' shape and no second red line. */
+export function PlanSettingsEditor({ quiet = false }: { quiet?: boolean }) {
   const environmentId = registry.primary().environmentId;
   const scope = usePlanSettings(environmentId, null);
   const failure = usePlanSettingsError(environmentId, null);
@@ -123,7 +136,7 @@ export function PlanSettingsEditor() {
     <SettingSection of="plans.start">
       {draft.value ? (
         <PlanSettingsFields value={draft.value} onChange={change} environmentId={environmentId} saved={saved} disabled={blocked} />
-      ) : failure ? (
+      ) : failure && !quiet ? (
         <PageError
           action={
             <Button variant="ghost" size="sm" onClick={failure.retry}>

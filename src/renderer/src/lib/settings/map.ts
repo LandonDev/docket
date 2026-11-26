@@ -54,6 +54,9 @@ export type SettingEntry = {
   scope: SettingScope;
   store: SettingStore;
   kind?: SettingKind;
+  /** What the row needs of the window beyond its page being listed: the desktop app, a Mac, Work on. Search lists it
+   *  only where the page draws it. */
+  needs?: readonly ("desktop" | "mac" | "work")[];
 };
 
 const e = (
@@ -122,6 +125,7 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
   e("here.stuck", "here", "", "Tell me a thread is stuck after", "here", "host", ["Hosts › This Mac › Stuck after"]),
   e("here.attachment", "here", "", "Largest attachment", "here", "host", ["Hosts › This Mac › Attachment limit"]),
   e("here.apps", "here", "Agent apps", "Agent apps", "here", "none", ["Providers"], "list"),
+  e("here.install", "here", "Agent apps", "{n} more you can install", "here", "none", ["Providers › Install command"], "open"),
   e("here.devices", "here", "Simulators and phones", "Simulators and phones", "here", "none", ["Hosts › Devices"], "list"),
 
   e("sharing.signIns", "sharing", "Who can sign in to {mac}", "Who can sign in to {mac}", "here", "host", ["Hosts › Clients"], "list"),
@@ -152,7 +156,7 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
   e("defaults.access", "defaults", "Start with", "Access", "every", "box", ["Thread defaults › New threads › Permission mode"]),
   e("defaults.startOn", "defaults", "Start with", "Linked projects start on", "every", "box", ["Thread defaults › New threads start on"]),
   e("defaults.different", "defaults", "Start with", "Different in {n} places", "workspace", "box", ["A workspace's Thread defaults dialog"], "open"),
-  e("defaults.reset", "defaults", "Start with", "Use Docket's defaults…", "every", "box", ["Thread defaults › Reset"], "act"),
+  e("defaults.reset", "defaults", "Start with", "Docket's defaults", "every", "box", ["Thread defaults › Reset", "New threads › Use Docket's defaults…"], "act"),
   e("plans.start", "defaults", "Builds from plans", "Start the build when a plan is done", "every", "box", ["Thread defaults › Plans › Auto-start"]),
   e("plans.archive", "defaults", "Builds from plans", "Archive the plan's thread once the build starts", "every", "box", ["Thread defaults › Plans › Plan archived on start"]),
   e("plans.model", "defaults", "Builds from plans", "Build model", "every", "box", ["Thread defaults › Plans › Build model"]),
@@ -173,14 +177,14 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
   e("sub.retries", "orchestration", "The lead thread", "Retries with a stronger model", "every", "box", ["Orchestration › Conduct › Escalation"]),
   e("sub.checkout", "orchestration", "The lead thread", "Gives each agent its own checkout", "every", "box", ["Orchestration › Conduct › Worktree isolation"]),
   e("sub.atOnce", "orchestration", "Limits", "Agents at once", "every", "box", ["Orchestration › Conduct › Parallel agents"]),
-  e("sub.perThread", "orchestration", "Limits", "Agents per thread", "every", "box", ["Orchestration › Conduct › Total per thread"]),
+  e("sub.perThread", "orchestration", "Limits", "Agents in all", "every", "box", ["Orchestration › Conduct › Total per thread", "Subagents › Limits › Agents per thread"]),
   e("sub.models", "orchestration", "Models", "Models agents may run on", "every", "box", ["Orchestration › Subagent models"], "open"),
   e("sub.routing", "orchestration", "Which model gets which work", "Which model gets which work", "every", "box", ["Orchestration › Routing"], "list"),
   e("sub.addRule", "orchestration", "Which model gets which work", "Add rule…", "every", "box", ["Orchestration › Routing › Add rule"], "act"),
-  e("sub.reset", "orchestration", "The lead thread", "Use Docket's defaults…", "every", "box", ["Orchestration › Reset"], "act"),
+  e("sub.reset", "orchestration", "", "Docket's defaults", "every", "box", ["Orchestration › Reset", "Subagents › Use Docket's defaults…"], "act"),
 
-  e("away.code", "away", "", "Code threads", "every", "host", ["The rail's Away switch", "Threads menu › Away"]),
-  e("away.work", "away", "", "Work threads", "every", "host", ["The rail's Away switch", "Threads menu › Away"]),
+  e("away.code", "away", "", "Code threads", "every", "host"),
+  e("away.work", "away", "", "Work threads", "every", "host"),
   e("away.last", "away", "", "Last time away", "every", "none", [], "open"),
 
   e("addons.list", "addons", "", "Add-ons", "every", "box", ["Add-ons", "MCP servers"], "list"),
@@ -200,10 +204,12 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
   e("pc.stuck", "computer:*", "Threads on {computer}", "Tell me a thread is stuck after", "computer", "host", ["Hosts › Stuck after (that host's own page only)"]),
   e("pc.attachment", "computer:*", "Threads on {computer}", "Largest attachment", "computer", "host", ["Hosts › Attachment limit (that host's own page only)"]),
   e("pc.apps", "computer:*", "Agent apps", "Agent apps", "computer", "none", ["Providers (that host's own page only)"], "list"),
+  e("pc.install", "computer:*", "Agent apps", "{n} more you can install", "computer", "none", ["Providers › Install command"], "open"),
   e("pc.signIns", "computer:*", "Who can sign in to {computer}", "Who can sign in to {computer}", "computer", "host", ["Hosts › Clients (that host's own page only)"], "list"),
   e("pc.add", "computer:*", "Who can sign in to {computer}", "Add…", "computer", "host", ["Hosts › a host › ⋯ › Pair a device…"], "act"),
-  e("pc.work", "computer:*", "", "Work", "computer", "none", ["Settings › Work › Work is on for"], "open"),
+  e("pc.work", "computer:*", "Work", "Work on {computer}", "computer", "none", ["Settings › Work › Work is on for"], "open"),
   e("pc.setup", "computer:*", "Set up from {mac}", "Accounts it was given", "computer", "box", ["Hosts › Computers"]),
+  e("pc.setupRemove", "computer:*", "Set up from {mac}", "Its setup", "computer", "box", ["Hosts › Computers › Remove"], "act"),
   e("pc.reach", "computer:*", "Advanced", "Let other devices reach {computer}", "computer", "host", ["Hosts › Remote access (that host's own page only)"]),
   e("pc.port", "computer:*", "Advanced", "Port", "computer", "host", ["Hosts › Port (that host's own page only)"]),
   e("pc.address", "computer:*", "Advanced", "Web address", "computer", "host", ["Hosts › Public origin (that host's own page only)"]),
@@ -211,7 +217,7 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
   e("pc.may", "computer:*", "On {mac}", "What {computer} may do on {mac}", "here", "none", ["Hosts › Mac bridge for a host"], "open"),
   e("pc.name", "computer:*", "On {mac}", "Name", "here", "host", ["Hosts › a host › ⋯ › Rename…"]),
   e("pc.addresses", "computer:*", "On {mac}", "Addresses {mac} tries", "here", "host", ["Hosts › a host › ⋯ › Routes…"], "open"),
-  e("pc.forget", "computer:*", "On {mac}", "Forget {computer}", "here", "host", ["Hosts › a host › ⋯ › Remove…"], "act"),
+  e("pc.forget", "computer:*", "On {mac}", "{mac}'s link to {computer}", "here", "host", ["Hosts › a host › ⋯ › Remove…", "Forget the computer"], "act"),
 
   e("winvm.windows", "winvm", "", "Windows", "computer", "host", ["Work › Windows VM"], "act"),
   e("winvm.sleeps", "winvm", "", "Sleeps after", "computer", "host", ["Work › Windows VM › Sleeps after"]),
@@ -274,13 +280,25 @@ export const SETTINGS_MAP: readonly SettingEntry[] = [
   e("ws.command", "workspace", "Build", "Command", "workspace", "host", ["A workspace › Build › Command"]),
   e("ws.makes", "workspace", "Build", "What it makes", "workspace", "host", ["A workspace › Build › Outputs"]),
   e("ws.agents", "workspace", "Subagents", "Rules for its agents", "workspace", "box", ["A workspace › Conduct", "A workspace › Subagent models", "A workspace › Routing"], "open"),
-  e("ws.job", "workspace", "Its job", "Its job", "workspace", "ws", ["A workspace › LifeOS › Sector"]),
+  e("ws.job", "workspace", "Its job", "Job", "workspace", "ws", ["A workspace › LifeOS › Sector"]),
   e("ws.projects", "workspace", "Projects", "Projects", "workspace", "ws", ["A workspace › Projects"], "list"),
 
   // ── Archive ──────────────────────────────────────────────────────────
   e("archive.projects", "archive", "Projects", "Projects", "every", "host", ["Archive › Projects"], "list"),
   e("archive.threads", "archive", "Threads", "Threads", "every", "host", ["Archive › Threads"], "list"),
 ];
+
+/** Rows a page draws only in some windows (the page's own gates, said once here for search). */
+const NEEDS: Record<string, readonly ("desktop" | "mac" | "work")[]> = {
+  "general.awake": ["desktop"],
+  "editor.openIn": ["desktop"],
+  "keys.capture": ["desktop", "work"],
+  "keys.appshot": ["desktop", "mac"],
+  "work.home": ["desktop"],
+  "files.word": ["desktop"],
+  "accounts.connections": ["work"],
+};
+for (const entry of SETTINGS_MAP as SettingEntry[]) if (NEEDS[entry.id]) entry.needs = NEEDS[entry.id];
 
 const BY_ID = new Map(SETTINGS_MAP.map((entry) => [entry.id, entry] as const));
 

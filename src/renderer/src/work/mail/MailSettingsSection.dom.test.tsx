@@ -90,6 +90,32 @@ describe("Settings → Mail", () => {
     expect(document.querySelector("[data-mail-settings]")).toBeNull();
   });
 
+  it("names an account's signatures in quotes, so a name never reads as a claim", async () => {
+    const { accountWords } = await import("./MailSettingsSection");
+    const sigs = [{ id: "s1", name: "Short", html: "Landon" }];
+    expect(accountWords({ address: "a@b.c", signatureDefaults: [{ address: "a@b.c", newMail: "s1", reply: "s1" }] }, sigs)).toBe("“Short” on new mail and replies, never notifies");
+    expect(accountWords({ address: "a@b.c", provider: "outlook-forwarded", notify: "all" }, sigs)).toBe("Outlook adds its own signature, notifies on all new mail");
+  });
+
+  it("holds all four sections' shape while LifeOS reads, and each open row ends in its chevron once read", async () => {
+    const { client } = watched();
+    const waiting = Object.assign(Object.create(client), { useMailSettings: () => undefined }) as typeof client;
+    render(
+      <MailClientProvider client={waiting}>
+        <MailSettingsBody />
+      </MailClientProvider>,
+    );
+    for (const group of ["Writing", "Reading", "Signatures", "Accounts"]) expect(screen.getByRole("region", { name: group }).querySelector("[data-slot=page-row-skeleton]")).toBeTruthy();
+    cleanup();
+    render(
+      <MailClientProvider client={client}>
+        <MailSettingsBody />
+      </MailClientProvider>,
+    );
+    const row = await waitFor(() => document.querySelector<HTMLElement>("[data-signature]")!);
+    expect(row.querySelector("[data-slot=open-cue]")).toBeTruthy();
+  });
+
   it("writes a change at once and puts it back with LifeOS's reason when refused", async () => {
     const { client, calls, box } = watched();
     render(

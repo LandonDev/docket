@@ -42,6 +42,9 @@ describe("Set up from this Mac", () => {
     render(<SetUpView row={row()} onAct={async (action) => void acts.push(action)} now={61_000} />);
     expect(screen.getByText("Set up from this Mac")).toBeTruthy();
     expect(document.querySelector("[data-setting='pc.setup']")?.textContent).toContain("synced 1m ago");
+    // One act a row: Remove… has its own, last.
+    expect(document.querySelector("[data-setting='pc.setup']")?.textContent).not.toContain("Remove…");
+    expect(document.querySelector("[data-setting='pc.setupRemove']")?.textContent).toContain("Remove…");
     fireEvent.click(screen.getByText("Stop…"));
     await flush();
     expect(confirms[0]).toEqual(expect.objectContaining({ title: "Stop PURDUE-LT?", body: "It is signed out of every account it was given until you start it again." }));

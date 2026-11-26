@@ -105,7 +105,7 @@ export function BuildEditor({ workspaceId }: { workspaceId: string }) {
               <CommitField aria-label="Build command" value={config.command} placeholder={detected?.command ?? "mvn -B package"} spellCheck={false} className="w-64 font-mono text-xs" onCommit={(value) => commit(command, { command: value })} />
             ) : null}
           </SettingRow>
-          <SettingRow id="ws.makes" saved={may ? makes : undefined} wide={may} description={may ? "Globs, comma-separated; ! leaves one out" : config.outputs || detected?.outputs || "None"}>
+          <SettingRow id="ws.makes" saved={may ? makes : undefined} wide={may} description={may ? "Like out/** or target/*.jar" : config.outputs || detected?.outputs || "None"}>
             {may ? (
               <CommitField aria-label="What it makes" value={config.outputs} placeholder={detected?.outputs || "target/*.jar"} spellCheck={false} className="w-64 font-mono text-xs" onCommit={(value) => commit(makes, { outputs: value })} />
             ) : null}

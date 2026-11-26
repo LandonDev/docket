@@ -124,8 +124,12 @@ describe("the line under an Everywhere page's title", () => {
   it("names the box that keeps the set, says when it is out of reach, and claims no home it was not given", async () => {
     const { everyLine } = await import("./settingsHome");
     expect(everyLine({ name: "The box", online: true }, "this Mac")).toBe("Saved on the box, for every computer.");
-    expect(everyLine({ name: "The box", online: false }, "this Mac")).toBe("The box is offline. These are as last saved, and changes wait for it.");
-    expect(everyLine({ name: "tempcode-box", online: false }, "this Mac")).toBe("Tempcode-box is offline. These are as last saved, and changes wait for it.");
+    expect(everyLine({ name: "The box", online: false }, "this Mac")).toBe("The box is offline. These are as last saved.");
+    expect(everyLine({ name: "tempcode-box", online: false }, "this Mac")).toBe("Tempcode-box is offline. These are as last saved.");
     expect(everyLine(null, "this Mac")).toBe("Saved on this Mac.");
+    // Before the store answers, and when it could not, the line says only what holds either way.
+    expect(everyLine(undefined, "this Mac")).toBe("For every computer.");
+    // The window's own name for that computer, when it knows it.
+    expect(everyLine({ name: "box", online: true }, "this Mac", "the box")).toBe("Saved on the box, for every computer.");
   });
 });

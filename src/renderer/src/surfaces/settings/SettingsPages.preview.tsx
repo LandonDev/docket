@@ -4,8 +4,9 @@ import { CATALOG } from "@server/shared/catalog";
 import { DEFAULT_PLAN_SETTINGS } from "@server/shared/plans";
 import { DEFAULT_REVIEW_SETTINGS } from "@server/shared/review";
 import { DEFAULT_RULES, withProbedDefaults } from "@server/shared/rules";
-import { Page } from "../../components/page";
+import { Page, PageEmpty } from "../../components/page";
 import { registry, type Link } from "../../lib/connection";
+import { noteSeen } from "../../lib/connection/lastSeen";
 import { IDLE_STATUS, type EnvironmentStatus } from "../../lib/connection/types";
 import { NO_ANSWER } from "../../lib/connection/openRead";
 import { bindServer } from "../../lib/native";
@@ -20,6 +21,7 @@ import { ReviewsPage } from "../ReviewSettings";
 import { EditorPage } from "./Editor";
 import { GeneralPage } from "./General";
 import { UpdatesPage } from "./Updates";
+import { updateStore } from "../../lib/updateStore";
 import { AppshotsPage } from "../AppshotsSettings";
 import { loadAppshotSettings, resetAppshotSettingsForTests } from "../../lib/appshots";
 import { setEditorConfigForTest } from "../../lib/editorConfig";
@@ -56,13 +58,15 @@ import { CodeWorkspaceSector, JobPage } from "../../work/shell/JobSettings";
 import type { WorkspaceMeta } from "../../lib/tcserver/types";
 import { WorkPage, workOffAsk, workPageChunk } from "./Work";
 import { resetOwnComputerForTests } from "../../lib/settings/computerName";
+import { resetOutboxStore } from "../../work/outbox/store";
 import { StoreGrantsSheet, ToolsSheet } from "../../work/shell/WorkPageSends";
 import { FilesPage } from "../../work/shell/WorkPageFiles";
 import { ConnectionsView } from "../../work/connections/ConnectionsPage";
 import type { HostView } from "../../work/connections/model";
 import type { HealthRow } from "@shared/work/health";
 import { GrantsRow } from "../../work/shell/WorkPageSends";
-import { MailSettingsBody } from "../../work/mail/MailSettingsSection";
+import { MailSettingsBody, Section as MailSection } from "../../work/mail/MailSettingsSection";
+import { setLifeosStatus } from "../../work/shell/lifeos";
 import { MailClientProvider } from "work-kit/mail";
 import { corpusSignatures, corpusThreads, createFixtureMailClient } from "work-kit/mail/fixtures";
 import { SettingSection } from "./parts/SettingRow";
@@ -122,13 +126,14 @@ const ANSWERS: Record<string, unknown> = {
   "project.list": [],
   "remote.status": {
     environmentId: "env_1gP-MhkVVRaMwHbVCysYow",
-    name: "This Mac",
+    name: "MacBook Pro",
     enabled: true,
     port: 7677,
     configuredPort: 7677,
     running: true,
     error: null,
-    origin: "http://127.0.0.1:7677",
+    // The base sign-in links start with: no address typed, so the one the tunnel taught.
+    origin: "https://tempcode.landonhale.com",
     publicOrigin: "",
     learnedOrigin: "https://tempcode.landonhale.com",
     contract: 1,
@@ -179,7 +184,7 @@ const ADDON_STATUS: Record<string, AddonStatus> = {
 };
 const GRANTS: AddonGrantView[] = [
   { addonId: "ad_github", fields: [{ name: "GITHUB_TOKEN", set: true }], oauth: null, signIn: null, gaps: [] },
-  { addonId: "ad_linear", fields: [], oauth: { signedIn: true, expiresAt: null, refreshedBy: "box", refused: false }, signIn: null, gaps: [] },
+  { addonId: "ad_linear", fields: [], oauth: { signedIn: true, expiresAt: null, refreshedBy: "The box", refused: false }, signIn: null, gaps: [] },
 ];
 const skill = (over: Partial<SkillMeta> & { name: string; description: string }): SkillMeta => ({
   id: `sk_${over.name}`,
@@ -207,9 +212,14 @@ const SKILLS: SkillMeta[] = [
   skill({ name: "swift-review", description: "Review Swift for data races and retain cycles", harnesses: ["codex"], enabled: false, version: 2 }),
 ];
 const STORE_ANSWERS = {
-  "addons.list": { addons: ADDONS, status: ADDON_STATUS, home: { name: "box", online: true } },
+  "addons.list": { addons: ADDONS, status: ADDON_STATUS, home: { name: "The box", online: true } },
   "addons.grant.list": { grants: GRANTS },
-  "skills.list": { skills: SKILLS, home: { name: "box", online: true } },
+  "skills.list": { skills: SKILLS, home: { name: "The box", online: true } },
+  // A skill's files, for its Edit… dialog.
+  "skills.get": (params: unknown) => {
+    const meta = SKILLS.find((one) => one.id === (params as { id?: string } | undefined)?.id) ?? SKILLS[1];
+    return { skill: { ...meta, files: [{ path: "SKILL.md", text: `---\nname: ${meta.name}\ndescription: ${meta.description}\n---\n\nRead the commit subjects since the last tag and group them by area.\n` }] } };
+  },
 };
 Object.assign(ANSWERS, STORE_ANSWERS);
 
@@ -239,7 +249,7 @@ const COMPUTER_DOWN: ComputerServiceState = {
   restarts: 5,
   permissions: null,
 };
-const OFFLINE = { name: "box", online: false };
+const OFFLINE = { name: "The box", online: false };
 
 // Settings › Threads and Sharing (this Mac), and each other computer's page: what each computer answers.
 const admission = (running: number, cap: number, queued: number) => ({
@@ -302,7 +312,7 @@ const helloOf = (caps: string[], release: number) =>
   ({ environmentId: "env", caps, key: { id: "k", name: "MacBook Pro" }, build: { version: `1.0.${release}`, release, platform: "linux" } }) as unknown as EnvironmentStatus["lastHello"];
 /** This Mac, the box and a PC set up from it. */
 const THREE_COMPUTERS = [
-  { id: "local", name: "This Mac", routes: [], credentialRef: "local" },
+  { id: "local", name: "MacBook Pro", routes: [], credentialRef: "local" },
   { id: "env_box", name: "The box", routes: [{ url: "wss://docket.landonhale.com/ws", kind: "tunnel" }], credentialRef: "env_box" },
   { id: "env_pc", name: "PURDUE-LT", routes: [], credentialRef: "env_pc" },
 ] as unknown as ReturnType<typeof registry.environmentsSnapshot>;
@@ -354,7 +364,7 @@ Object.assign(ANSWERS, {
     giver: null,
     box: null,
     computers: [
-      { envId: "env_pc", name: "PURDUE-LT", state: "active", holds: [{ service: "claude", account: "a" }, { service: "codex", account: "b" }], syncedAt: Date.now() - 60 * MINUTE, paused: false, waitingForContact: false, lastError: null },
+      { envId: "env_pc", name: "PURDUE-LT", state: "active", holds: [{ service: "claude-code", account: "a" }, { service: "codex", account: "b" }], syncedAt: Date.now() - 60 * MINUTE, paused: false, waitingForContact: false, lastError: null },
     ],
   },
   "env_pc:admission.get": admission(2, 6, 0),
@@ -395,7 +405,7 @@ const JOB_HOSTS = [
 const PROJECT = { id: "p1", workspaceId: "w1", name: "settings-2", mode: "worktree", branch: "tc/settings-2", cwd: "/srv/agents/work/temp-code/.claude/worktrees/settings-2", archived: false, createdAt: 1, environmentId: "local" } as ProjectMeta;
 const rule = (i: number, text: string, on = true) => ({ id: `r${i}`, workspaceId: JOB.id, text, on, proposalId: null, createdAt: i, updatedAt: i });
 const JOB_ANSWERS: Record<string, unknown> = {
-  "remote.status": { ...(ANSWERS["remote.status"] as object), name: "MacBook-Pro" },
+  "remote.status": { ...(ANSWERS["remote.status"] as object), name: "MacBook Pro" },
   "work.workspace.get": { mayUseDesktop: [MAC_ID, "env_pc"], windowsVm: true, model: null, reasoning: null, voice: true },
   "work.desktops": [],
   "work.winvm.state": { state: "asleep", step: null, error: null, cannot: null, sleepAfter: "30m", since: 0 },
@@ -525,8 +535,19 @@ function AsMac({ children }: { children: ReactNode }) {
       platform: "darwin",
       captureKey: { get: async () => key, set: async () => key },
       appshots: { permissions: async () => ({ available: true, screen: false, ax: true }), onCapture: () => () => {}, onError: () => () => {} },
+      // Main's editors, as the fixture's computer answers: never while silent, a refusal once it refused.
+      editor: {
+        config: () =>
+          mode === "silent" ? new Promise(() => {}) : mode === "refuses" ? Promise.reject(new Error(NO_ANSWER)) : Promise.resolve({ editor: "auto", effective: "idea", installed: { idea: true, code: true, xed: false } }),
+      },
     };
   });
+  return children;
+}
+
+/** A computer last seen some minutes ago, as the link notes it on every open. */
+function SeenAgo({ environmentId, minutes, children }: { environmentId: string; minutes: number; children: ReactNode }) {
+  useState(() => noteSeen(environmentId, Date.now() - minutes * MINUTE));
   return children;
 }
 
@@ -558,7 +579,12 @@ function Pressing({ press, children }: { press: string; children: ReactNode }) {
     }, 50);
     return () => window.clearInterval(timer);
   }, [press]);
-  return children;
+  // The page is the stage the open dialog is drawn over, tall enough for it from title to footer.
+  return (
+    <div data-preview-stage className="min-h-[72rem]">
+      {children}
+    </div>
+  );
 }
 
 /** The page as it reads once a host has Work on: a theme for each kind of place. */
@@ -673,6 +699,8 @@ function AsWorkComputers({ on, given = [], children }: { on: readonly string[]; 
       ]),
     );
     workBefore = { statusOf: registry.statusOf, statuses: registry.statuses, environment: registry.environment };
+    // Each computer answers whether Work is on there from `on` (the page reads it before a switch stands).
+    overrides = { ...overrides, ...Object.fromEntries(WORK_COMPUTERS.map((c) => [`${c.id}:work.get`, { enabled: on.includes(c.id) }])) };
     Object.assign(registry, {
       statusOf: (id: string) => statuses.get(id) ?? workBefore!.statusOf.call(registry, id),
       statuses: () => statuses,
@@ -681,6 +709,8 @@ function AsWorkComputers({ on, given = [], children }: { on: readonly string[]; 
     });
     for (const c of WORK_COMPUTERS) setWorkOn(c.id, on.includes(c.id));
     resetOwnComputerForTests("MacBook Pro");
+    // The Outbox's store holds what its last fixture read: each fixture starts from nothing read.
+    resetOutboxStore();
   });
   // A Mac's desktop window: "this Mac" after its own name, and its own On this Mac rows.
   useEffect(
@@ -733,12 +763,27 @@ const MAIL_CLIENT = (() => {
   const client = createFixtureMailClient({ write: async ({ run }) => run(), instant: true, threads: corpusThreads(), signatures: corpusSignatures, settings: { pictures: "ask" } });
   return Object.assign(Object.create(client), { useImageSenders: () => ["news@purdue.edu", "events@cosmicgames.com"] }) as typeof client;
 })();
-function MailFixture() {
+/** The same client before LifeOS has answered: the page holds its sections' shape. */
+const MAIL_WAITING = Object.assign(Object.create(MAIL_CLIENT), { useMailSettings: () => undefined }) as typeof MAIL_CLIENT;
+function MailFixture({ client = MAIL_CLIENT }: { client?: typeof MAIL_CLIENT }) {
   return (
     <>
-      <MailClientProvider client={MAIL_CLIENT}>
+      <MailClientProvider client={client}>
         <MailSettingsBody />
       </MailClientProvider>
+      <SettingSection of="mail.grants">
+        <GrantsRow id="mail.grants" />
+      </SettingSection>
+    </>
+  );
+}
+
+/** Mail with LifeOS not answering the box: the page's one line with Retry, where the sections would stand. */
+function MailDown() {
+  useState(() => setLifeosStatus("env_box", { lifeos: { state: "unreachable", since: Date.now() - 600_000, error: "fetch failed" }, keys: [] }));
+  return (
+    <>
+      <MailSection environmentId="env_box" />
       <SettingSection of="mail.grants">
         <GrantsRow id="mail.grants" />
       </SettingSection>
@@ -768,6 +813,7 @@ const CONNECTION_HOSTS: HostView[] = [
   {
     id: "local",
     name: "MacBook Pro",
+    inLine: "this Mac",
     status: "ready",
     report: {
       host: "local",
@@ -789,6 +835,15 @@ function FreshDigest() {
 
 const workPage = (over: Partial<(typeof PAGES)[string]> & { body: () => ReactNode }) => ({ title: "Work", description: settingsSectionDescription("work"), answers: WORK_ANSWERS, ...over });
 
+/** The project the Editor's language servers run for, by its name. */
+const EDITOR_PROJECT = { id: "p1", workspaceId: "w1", name: "CosmicPrisons", mode: "worktree", branch: "tc/cosmic", cwd: "/w", archived: false, createdAt: 1, environmentId: "local" };
+
+/** The updater having read the build this window runs (the store's own setter, as its watch would call it). */
+function WithVersion({ children }: { children: ReactNode }) {
+  useState(() => (updateStore as unknown as { set: (snapshot: { phase: "idle"; currentVersion: string; canApply: boolean }) => void }).set({ phase: "idle", currentVersion: "1.0.399", canApply: true }));
+  return children;
+}
+
 const PAGES: Record<
   string,
   {
@@ -800,6 +855,8 @@ const PAGES: Record<
     /** The computers this window is linked to, and each one's link as the fixture has it. */
     environments?: typeof THREE_COMPUTERS;
     statuses?: Record<string, Partial<EnvironmentStatus>>;
+    /** The body draws its own frame (a page that is not a `Page` column). */
+    bare?: boolean;
   }
 > = {
   "computer-box": {
@@ -814,7 +871,15 @@ const PAGES: Record<
     description: <ComputerLine environmentId="env_box" />,
     environments: THREE_COMPUTERS,
     statuses: { env_box: { transport: "offline", lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
-    body: () => <AsMac><OtherComputerPage environmentId="env_box" /></AsMac>,
+    // Seen two minutes ago, as the link notes on every open: the line says when.
+    body: () => <AsMac><SeenAgo environmentId="env_box" minutes={2}><OtherComputerPage environmentId="env_box" /></SeenAgo></AsMac>,
+  },
+  "computer-box-advanced": {
+    title: "The box",
+    description: <ComputerLine environmentId="env_box" />,
+    environments: THREE_COMPUTERS,
+    statuses: { env_box: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397) } },
+    body: () => <AsMac><OtherComputerPage environmentId="env_box" advancedOpen /></AsMac>,
   },
   "computer-box-key": {
     title: "The box",
@@ -830,25 +895,44 @@ const PAGES: Record<
     statuses: { env_pc: { lastHello: helloOf(["read", "operate"], 399) } },
     body: () => <AsMac><OtherComputerPage environmentId="env_pc" /></AsMac>,
   },
-  general: { title: "General", body: () => <GeneralPage /> },
+  general: { title: "General", body: () => <AsMac><GeneralPage /></AsMac> },
   here: { title: "Threads on this Mac", body: () => <AsMac><ThreadsPage /></AsMac> },
   sync: { title: "Sync", description: <SyncLine />, environments: THREE_COMPUTERS, body: () => <AsMac><SyncPage /></AsMac> },
   publish: { title: "Publish", description: settingsSectionDescription("publish"), body: () => <AsMac><PublishPage /></AsMac> },
   "publish-running": {
     title: "Publish",
     description: settingsSectionDescription("publish"),
-    answers: { "host.publishStatus": { ...PUBLISH, phase: "running", target: "1.0.400", startedAt: Date.now() - MINUTE, stoppable: true } },
+    answers: {
+      "host.publishStatus": { ...PUBLISH, phase: "running", target: "1.0.400", startedAt: Date.now() - MINUTE, stoppable: true },
+      // The job's log as the host keeps it: the page tails it while the publish runs.
+      "host.log": {
+        text: "Building 1.0.400 from ~/IdeaProjects/temp-code\nSigning Docket.app\nNotarizing (this takes a few minutes)\n",
+        status: { job: "publish", phase: "running", target: "1.0.400", startedAt: Date.now() - MINUTE, finishedAt: null, exit: null, stoppable: true },
+      },
+    },
     body: () => <AsMac><PublishPage /></AsMac>,
   },
   winvm: { title: "Windows VM", description: settingsSectionDescription("winvm"), environments: THREE_COMPUTERS, body: () => <WithVmOn environmentId="env_box"><WinvmPage /></WithVmOn> },
   sharing: { title: "Sharing", description: settingsSectionDescription("sharing"), environments: THREE_COMPUTERS, body: () => <AsMac><SharingPage /></AsMac> },
+  "sharing-advanced": {
+    title: "Sharing",
+    description: settingsSectionDescription("sharing"),
+    environments: THREE_COMPUTERS,
+    body: () => <AsMac><SharingPage advancedOpen /></AsMac>,
+  },
   "sharing-may": {
     // The sheet's body as its own page: a portal is not in a static shot (MaySheet.dom.test.tsx holds the sheet).
-    title: "What The box may do on this Mac",
+    title: "What the box may do on this Mac",
     environments: THREE_COMPUTERS,
-    body: () => <AsMac><MayBody host={BRIDGE[0] as MacBridgeHostPolicy} name="The box" mac="this Mac" /></AsMac>,
+    body: () => <AsMac><MayBody host={BRIDGE[0] as MacBridgeHostPolicy} name="the box" mac="this Mac" /></AsMac>,
   },
-  updates: { title: "Updates", description: settingsSectionDescription("updates"), body: () => <UpdatesPage onOpenWhatsNew={() => {}} /> },
+  updates: {
+    title: "Updates",
+    description: settingsSectionDescription("updates"),
+    environments: THREE_COMPUTERS,
+    statuses: { env_box: { lastHello: helloOf(["read", "operate", "approve", "admin"], 397) }, env_pc: { transport: "offline" } },
+    body: () => <WithVersion><UpdatesPage onOpenWhatsNew={() => {}} /></WithVersion>,
+  },
   away: { title: "Away", description: settingsSectionDescription("away"), body: () => <WithWorkOn><BackFromAway><AwayPage /></BackFromAway></WithWorkOn> },
   defaults: {
     title: "New threads",
@@ -864,11 +948,19 @@ const PAGES: Record<
   },
   appearance: { title: "Appearance", body: () => <AppearancePage /> },
   "appearance-work": { title: "Appearance", body: () => <WithWorkOn><AppearancePage /></WithWorkOn> },
-  editor: { title: "Editor", body: () => <EditorPage /> },
+  editor: { title: "Editor", body: () => <AsMac><EditorPage /></AsMac>, answers: { "project.list": [EDITOR_PROJECT] } },
+  // The IntelliJ engine downloaded, its licence not yet read: Read the licence… in the engine's row.
+  "editor-licence": {
+    title: "Editor",
+    body: () => <AsMac><EditorPage /></AsMac>,
+    answers: {
+      "project.list": [EDITOR_PROJECT],
+      "doctor.get": { ...(ANSWERS["doctor.get"] as object), java: { found: true, version: "21.0.4", jdtls: true, path: "/usr/lib/jvm/java-21", ideaServer: { dist: true, accepted: false, build: "263.2689" } } },
+    },
+  },
   keybindings: { title: "Shortcuts", body: () => <KeybindingsPage /> },
   "keybindings-work": { title: "Shortcuts", body: () => <AsMac><WithWorkOn><KeybindingsPage /></WithWorkOn></AsMac> },
   appshots: { title: "Appshots", description: settingsSectionDescription("appshots"), body: () => <AsMac><AppshotsPage /></AsMac> },
-  "general-mac": { title: "General", body: () => <AsMac><GeneralPage /></AsMac> },
   orchestration: {
     title: "Subagents",
     description: <HomeLine page="orchestration" />,
@@ -876,7 +968,20 @@ const PAGES: Record<
     answers: { "rules.get": { rules: { ...withProbedDefaults(DEFAULT_RULES), routing: ROUTING }, overridden: true, home: ON_THE_BOX } },
   },
   // AI accounts' own page is the Accounts page (DOCKET's, aliax/pages.tsx): the fixture is the one row Settings adds.
-  accounts: { title: "AI accounts", description: settingsSectionDescription("accounts"), body: () => <WithWorkOn><AccountsFoot /></WithWorkOn> },
+  // AI accounts is the Accounts page (DOCKET's, aliax/pages.tsx, with its own previews), then the one row Settings adds,
+  // at the Accounts page's own inset: the page stands here as its title and a line saying it is not drawn.
+  accounts: {
+    title: "AI accounts",
+    bare: true,
+    body: () => (
+      <WithWorkOn>
+        <Page title="AI accounts" description={settingsSectionDescription("accounts")} width="table">
+          <PageEmpty>The Accounts page's own rows draw here. This preview does not mount them.</PageEmpty>
+        </Page>
+        <AccountsFoot />
+      </WithWorkOn>
+    ),
+  },
   "orchestration-models": {
     title: "Subagents",
     description: <HomeLine page="orchestration" />,
@@ -1004,6 +1109,34 @@ const PAGES: Record<
     ),
   },
   mail: { title: "Mail", description: settingsSectionDescription("mail"), answers: WORK_ANSWERS, body: () => <AsWorkComputers on={["env_box"]}><MailFixture /></AsWorkComputers> },
+  "mail-loading": { title: "Mail", description: settingsSectionDescription("mail"), answers: WORK_ANSWERS, body: () => <AsWorkComputers on={["env_box"]}><MailFixture client={MAIL_WAITING} /></AsWorkComputers> },
+  "mail-down": { title: "Mail", description: settingsSectionDescription("mail"), answers: WORK_ANSWERS, body: () => <AsWorkComputers on={["env_box"]}><MailDown /></AsWorkComputers> },
+  "connections-loading": {
+    title: "Connections",
+    description: settingsSectionDescription("connections"),
+    answers: WORK_ANSWERS,
+    body: () => (
+      <AsWorkComputers on={["env_box", "local"]}>
+        <ConnectionsView hosts={[{ id: "env_box", name: "The box", status: "checking" }, { id: "local", name: "MacBook Pro", inLine: "this Mac", status: "checking" }]} onRecheck={() => {}} />
+      </AsWorkComputers>
+    ),
+  },
+  "connections-refused": {
+    title: "Connections",
+    description: settingsSectionDescription("connections"),
+    answers: WORK_ANSWERS,
+    body: () => (
+      <AsWorkComputers on={["env_box", "local"]}>
+        <ConnectionsView
+          hosts={[
+            { id: "env_box", name: "The box", status: "failed", silent: true },
+            { id: "local", name: "MacBook Pro", inLine: "this Mac", status: "failed", error: "Work is off on this Mac" },
+          ]}
+          onRecheck={() => {}}
+        />
+      </AsWorkComputers>
+    ),
+  },
   files: { title: "Files", answers: FILES_ANSWERS, body: () => <AsWorkComputers on={["env_box", "local"]}><FilesPage /></AsWorkComputers> },
   "files-guests": { title: "Files", answers: FILES_ANSWERS, body: () => <AsWorkComputers on={["env_box", "local"]}><OpenOver><FilesPage guestsOpen /></OpenOver></AsWorkComputers> },
   "skills-offline": {
@@ -1021,12 +1154,12 @@ const PAGES: Record<
  */
 export const GUARDED_PAGES: Partial<Record<SettingPage, { previews: (keyof typeof PAGES)[]; elsewhere?: string[] }>> = {
   away: { previews: ["away"] },
-  general: { previews: ["general", "general-mac"] },
+  general: { previews: ["general"] },
   updates: { previews: ["updates"] },
   appearance: { previews: ["appearance", "appearance-work"] },
-  editor: { previews: ["editor"] },
+  editor: { previews: ["editor", "editor-licence"] },
   // The Appshot's row is a Mac window's alone: Keybindings.dom.test.tsx holds it.
-  keybindings: { previews: ["keybindings", "keybindings-work"], elsewhere: ["keys.appshot"] },
+  keybindings: { previews: ["keybindings", "keybindings-work"] },
   appshots: { previews: ["appshots"] },
   computer: { previews: ["computer", "computer-down"] },
   here: { previews: ["here"] },
@@ -1053,8 +1186,8 @@ export const GUARDED_PAGES: Partial<Record<SettingPage, { previews: (keyof typeo
   work: { previews: ["work-off", "work", "work-given", "work-grants", "work-tools", "work-confirm"] },
   digest: { previews: ["digest", "digest-given"] },
   files: { previews: ["files", "files-guests"] },
-  mail: { previews: ["mail"] },
-  connections: { previews: ["connections"] },
+  mail: { previews: ["mail", "mail-loading", "mail-down"] },
+  connections: { previews: ["connections", "connections-loading", "connections-refused"] },
 };
 
 /** The sheet once the catalog knows its workspace, as it always does in the app before a project's row can open it. */
@@ -1063,7 +1196,7 @@ function ProjectSheet() {
   return workspace ? (
     <>
       {/* The preview lays a portal with a side in the flow, as a popover: a sheet is fixed to the window, so its box stands in for one. */}
-      <style>{".preview-portal:has([data-slot=sheet-content]) { min-height: 1100px; overflow: hidden; }"}</style>
+      <style>{".preview-portal:has([data-slot=sheet-content]) { min-height: 1480px; overflow: hidden; }"}</style>
       <ProjectSettingsDialog project={PROJECT} workspace={workspace} onClose={() => {}} />
     </>
   ) : null;
@@ -1072,7 +1205,7 @@ function ProjectSheet() {
 /** Thread defaults' "New threads start on" asks only once a second host is saved. */
 const TWO_HOSTS = [
   { id: "local", name: "This Mac", routes: [], credentialRef: "local" },
-  { id: "env_box", name: "box", routes: [], credentialRef: "env_box" },
+  { id: "env_box", name: "The box", routes: [], credentialRef: "env_box" },
 ];
 const ONE_HOST = TWO_HOSTS.slice(0, 1);
 const ownEnvironments = registry.environmentsSnapshot.bind(registry);
@@ -1090,7 +1223,8 @@ export function SettingsPagePreview({ page, host }: { page: keyof typeof PAGES; 
     // A job on the box: the store reads its start set over the box's own link.
     if (page === "job") workspaceStore.attach({ ...link, environmentId: "env_box" } as Link);
   });
-  const { title, description, body } = PAGES[page];
+  const { title, description, body, bare } = PAGES[page];
+  if (bare) return <>{body()}</>;
   return (
     <Page title={title} description={description}>
       {body()}

@@ -570,13 +570,11 @@ describe("the held request and the audit list", () => {
     expect(names).toEqual(["Sam Ortiz", "Maya Chen"]);
     expect(screen.getByText(/^Edit, Run of show, made \w{3} \d+, in it now, until \w{3} \d+$/)).toBeTruthy();
     expect(screen.getByText(/^Edit, Run of show, made \w{3} \d+, revoked \w{3} \d+$/)).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "Revoke…" })).toHaveLength(1);
-    // Copy new address and Revoke wait for the row's hover.
-    // They lie over the row's end and keep no room at rest, so the facts take the row's width.
-    const actions = document.querySelector("[data-guest-actions]")!;
-    expect(actions.className).toContain("group-hover/item:opacity-100");
-    expect(actions.className).toContain("absolute");
-    expect(actions.className).toContain("pointer-events-none");
+    // Replace address… and Revoke… sit in the live row's menu, there at rest; the revoked row says so in a word.
+    expect(screen.getAllByRole("button", { name: /'s link$/ })).toHaveLength(1);
+    expect(document.querySelector('[data-guest-link="old"]')!.textContent).toContain("Revoked");
+    await pickLink("Revoke…");
+    expect(confirm.asked.at(-1)).toMatchObject({ action: "Revoke" });
   });
 
   it("says a host's raw failure in his words, naming the computer", async () => {
@@ -631,11 +629,11 @@ describe("the held request and the audit list", () => {
     await screen.findByText("Sam Ortiz");
     expect((document.querySelector("[data-slot=avatar]") as HTMLElement).getAttribute("data-size")).toBe("24");
     confirm.answer = false;
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
+    await pickLink("Replace address…");
     expect(confirm.asked.at(-1)!.body).toBe("Sam Ortiz's current address stops opening. The new one shows here for you to copy.");
     expect(calls.list.some((c) => c.method === "work.guests.rekey")).toBe(false);
     confirm.answer = true;
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
+    await pickLink("Replace address…");
     expect(calls.list.filter((c) => c.method === "work.guests.rekey").map((c) => c.params)).toEqual([{ linkId: "abc" }]);
   });
 
@@ -644,7 +642,7 @@ describe("the held request and the audit list", () => {
     calls.links = [LINK];
     render(<GuestLinksSection hosts={["box"]} />);
     await screen.findByText("Sam Ortiz");
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Replace address…" })));
+    await pickLink("Replace address…");
     const dialog = await screen.findByRole("dialog");
     expect(dialog.textContent).toContain("https://tempcode.landonhale.com/g/new#k=secret");
     expect(dialog.textContent).toContain("shown only now");
@@ -664,11 +662,11 @@ describe("the held request and the audit list", () => {
     render(<GuestLinksSection hosts={["box"]} />);
     await screen.findByText("Sam Ortiz");
     confirm.answer = false;
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Revoke…" })));
+    await pickLink("Revoke…");
     expect(confirm.asked.at(-1)).toMatchObject({ title: "Revoke the link?", body: "Sam Ortiz's address stops opening for good.", action: "Revoke" });
     expect(calls.list.some((c) => c.method === "work.guests.revoke")).toBe(false);
     confirm.answer = true;
-    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Revoke…" })));
+    await pickLink("Revoke…");
     await waitFor(() => expect(calls.list.filter((c) => c.method === "work.guests.revoke").map((c) => c.params)).toEqual([{ linkId: "abc" }]));
   });
 
@@ -711,6 +709,13 @@ describe("the held request and the audit list", () => {
     expect(within(sheet).queryByText("Guest 1")).toBeNull();
   });
 });
+
+/** Opens Sam Ortiz's row menu in the list of every link and picks one of its acts. */
+async function pickLink(item: string) {
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Sam Ortiz's link" })));
+  const row = await screen.findByRole("menuitem", { name: item });
+  await act(async () => fireEvent.click(row));
+}
 
 // jsdom has neither; the editor's paste builds one of each, as a browser's paste event carries them.
 class TestDataTransfer {

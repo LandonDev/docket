@@ -3,11 +3,11 @@ import { PageEmpty, PageRow } from "../../../components/page";
 import { LOCAL_ENVIRONMENT_ID } from "../../../lib/connection";
 import { setMacBridgeLoadLimit, useMacBridgeHosts, useMacBridgeLoad } from "../../../lib/macBridge";
 import { openMaySheet } from "../../../lib/settings/maySheet";
-import { useComputerNames } from "../../../lib/settings/computerName";
+import { computerInLine, useComputerNames } from "../../../lib/settings/computerName";
 import { CommitField } from "../hosts/CommitField";
 import { ComputerName } from "../parts/ComputerName";
 import { useHost } from "../parts/hostRpc";
-import { SettingRow, SettingSection } from "../parts/SettingRow";
+import { OpenCue, SettingRow, SettingSection } from "../parts/SettingRow";
 import { useSaved } from "../parts/useSaved";
 import { Advanced } from "./Advanced";
 import { mayHereWords, useMacBridgePolling } from "./MaySheet";
@@ -19,14 +19,15 @@ import { SignIns } from "./SignIns";
  * Advanced, this Mac's listener, the load over which other computers' commands wait, and its ID. Every row asks this
  * window's own server.
  */
-export function SharingPage() {
+/** `advancedOpen`: the fold starts open (its picture). */
+export function SharingPage({ advancedOpen = false }: { advancedOpen?: boolean } = {}) {
   const host = useHost(LOCAL_ENVIRONMENT_ID);
   useMacBridgePolling();
   return (
     <>
       <SignIns host={host} rows="sharing" />
       <OtherComputers />
-      <Advanced host={host} rows="sharing">
+      <Advanced host={host} rows="sharing" open={advancedOpen}>
         <LoadRow />
       </Advanced>
     </>
@@ -49,8 +50,10 @@ function OtherComputers() {
             title={<ComputerName computer={name} />}
             description={mayHereWords(host)}
             onOpen={() => openMaySheet(host.environmentId)}
-            openLabel={`What ${name.name} may do on this Mac`}
-          />
+            openLabel={`What ${computerInLine(name)} may do on this Mac`}
+          >
+            <OpenCue />
+          </PageRow>
         );
       })}
     </SettingSection>

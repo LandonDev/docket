@@ -24,7 +24,8 @@ const Unit = ({ children }: { children: string }) => <span className="text-xs te
  * over its own link (docs/agents/settings.md "The pages: computers"). `rows` is the map's prefix: `here` on this
  * Mac's Threads page, `pc` on another computer's page, under "Threads on <computer>". A key that may only read sees
  * what it may read as words and one line saying who can change them (`saysWhoCan`; a computer's page says it once,
- * under its title). The stuck clock's value requires admin, so the row says Hidden for other keys.
+ * under its title). The stuck clock can be read only by a key that may change it, so for any other key it is left
+ * out: the line saying who can covers it.
  */
 export function ThreadsRows({ host, rows, saysWhoCan = true }: { host: Host; rows: "here" | "pc"; saysWhoCan?: boolean }) {
   const admission = useComputerRead<AdmissionState>(host, "admission.get", { poll: true });
@@ -41,11 +42,7 @@ export function ThreadsRows({ host, rows, saysWhoCan = true }: { host: Host; row
             <SectionRead read={status} rows={1}>
               {(value) => <StuckRow host={host} id={`${rows}.stuck`} status={value} onStatus={status.set} />}
             </SectionRead>
-          ) : (
-            <SettingRow id={`${rows}.stuck`}>
-              <span className="text-sm text-muted-foreground">Hidden</span>
-            </SettingRow>
-          )}
+          ) : null}
           <SectionRead read={attachments} rows={1}>
             {(value) => <AttachmentRow host={host} id={`${rows}.attachment`} settings={value} onSettings={attachments.set} manage={manage} />}
           </SectionRead>

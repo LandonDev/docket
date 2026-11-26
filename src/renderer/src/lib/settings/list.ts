@@ -62,7 +62,8 @@ export function settingsList(window: ListWindow): ListGroup[] {
   const holder = window.computers.find((computer) => computer.id === window.vmOn);
   others.rows = window.computers.flatMap((computer): ListRow[] => [
     { id: computerSettingsSection(computer.id), label: computer.name, kind: "computer", platform: computer.platform, ...(computer.offline ? { end: "Offline" } : {}) },
-    ...(vm && computer === holder ? [{ ...vm, end: `in ${nameInLine(computer.name)}` }] : []),
+    // Right under the computer that holds it: its place says where it is.
+    ...(vm && computer === holder ? [vm] : []),
   ]);
   if (vm && !holder) others.rows.push(vm);
   const own = (items: ListWindow["jobs"], kind: "job" | "workspace"): ListRow[] => {

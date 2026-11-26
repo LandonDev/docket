@@ -57,9 +57,10 @@ export function refusalWords(err: unknown): string {
  * controls are held); no `home`, so this computer keeps its own copy (`here`: "this Mac", or the box's own name at
  * /ui). A page never claims a home its store did not name.
  */
-export function everyLine(home: SettingsHome | null, here: string): string {
+export function everyLine(home: SettingsHome | null | undefined, here: string, name: string = home ? nameInLine(home.name) : ""): string {
+  // Until the store has answered, or when it could not, the line says only what holds either way.
+  if (home === undefined) return "For every computer.";
   if (!home) return `Saved on ${here}.`;
-  const name = nameInLine(home.name);
   if (home.online) return `Saved on ${name}, for every computer.`;
-  return `${name.charAt(0).toUpperCase()}${name.slice(1)} is offline. These are as last saved, and changes wait for it.`;
+  return `${name.charAt(0).toUpperCase()}${name.slice(1)} is offline. These are as last saved.`;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import type { ComputerAppVerdict, ComputerServiceState, ComputerSettings } from "@server/shared/contract-computer";
 import type { ActiveAppMode } from "@server/shared/computer/scheduleRules";
 import { verdictWords } from "@server/shared/computer/words";
@@ -19,7 +19,6 @@ import { thisDesktopInLine } from "../../lib/native";
 import { useComputerNames } from "../../lib/settings/computerName";
 import {
   IDLE_MINUTES,
-  appTitle,
   forgetComputerApps,
   idleMinutes,
   idleMs,
@@ -33,7 +32,7 @@ import {
 import { CommitField } from "./hosts/CommitField";
 import { ListFilter, useListFilter } from "./parts/ListFilter";
 import { Permissions } from "./parts/Permissions";
-import { SettingRow, SettingSection } from "./parts/SettingRow";
+import { OpenCue, SettingRow, SettingSection } from "./parts/SettingRow";
 import { useSaved, type Saved } from "./parts/useSaved";
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
@@ -100,7 +99,8 @@ export function ComputerPage() {
         )}
       </SettingSection>
 
-      <AppsSection link={link} apps={settings.value?.apps} error={settings.error} retry={retryRead} onForgot={set} />
+      {/* One failed read is one line, said once in the first section: the apps it also feeds wait for its Retry. */}
+      {settings.value === undefined && settings.error ? null : <AppsSection link={link} apps={settings.value?.apps} onForgot={set} />}
     </>
   );
 }
@@ -223,33 +223,34 @@ function WhoMayUse({ mac }: { mac: string }) {
             description={appsWords(host)}
             onOpen={() => openMaySheet(host.environmentId)}
             openLabel={name}
-          />
+          >
+            <OpenCue />
+          </PageRow>
         );
       })}
     </SettingSection>
   );
 }
 
+/** An app's name; one saved before names were kept is said as one, never as its bundle id. */
+export const appName = (app: Pick<ComputerAppVerdict, "name">): string => app.name ?? "An app with no name";
+
 /** Every app it learned, with Forget; the next call to a forgotten app learns it again, so one asks nothing. Forget
  *  all… asks first. */
 function AppsSection({
   link,
   apps,
-  error,
-  retry,
   onForgot,
 }: {
   link: Link;
   apps: ComputerAppVerdict[] | undefined;
-  error: string | null;
-  retry: ReactNode;
   onForgot: (settings: Awaited<ReturnType<typeof forgetComputerApps>>) => void;
 }) {
   // The app being forgotten ("" for all), and a refusal with the key it belongs to.
   const [forgetting, setForgetting] = useState<string | null>(null);
   const [refused, setRefused] = useState<{ key: string; line: string } | null>(null);
   const sorted = apps ? sortApps(apps) : [];
-  const filter = useListFilter(sorted, appTitle);
+  const filter = useListFilter(sorted, appName);
   const forget = async (bundleId: string | null) => {
     const key = bundleId ?? "";
     if (bundleId === null) {
@@ -272,23 +273,13 @@ function AppsSection({
     }
   };
   return (
-    <SettingSection
-      of="computer.apps"
-      action={
-        sorted.length >= 2 ? (
-          <Button data-setting="computer.forgetAll" variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" disabled={forgetting !== null} onClick={() => void forget(null)}>
-            <BusyLabel busy={forgetting === ""} label="Forget all…" />
-          </Button>
-        ) : null
-      }
-    >
-      {refused?.key === "" ? <PageError>{refused.line}</PageError> : null}
+    <SettingSection of="computer.apps">
       {apps ? (
         sorted.length ? (
           <>
             <ListFilter filter={filter} label="Find an app" />
             {filter.shown.map((app) => {
-              const name = appTitle(app);
+              const name = appName(app);
               return (
                 <PageRow
                   key={app.bundleId}
@@ -301,7 +292,7 @@ function AppsSection({
                     variant="ghost"
                     size="sm"
                     className="text-muted-foreground hover:text-destructive"
-                    aria-label={`Forget ${name}`}
+                    aria-label={`Forget ${app.name ?? "an app with no name"}`}
                     disabled={forgetting !== null}
                     onClick={() => void forget(app.bundleId)}
                   >
@@ -310,12 +301,26 @@ function AppsSection({
                 </PageRow>
               );
             })}
+            {/* It asks first and forgets them all: last in its section, after the apps it forgets, its refusal under it. */}
+            {sorted.length >= 2 ? (
+              <div className="pt-2">
+                <Button
+                  data-setting="computer.forgetAll"
+                  variant="ghost"
+                  size="sm"
+                  className="-ms-2.5 text-muted-foreground hover:text-destructive"
+                  disabled={forgetting !== null}
+                  onClick={() => void forget(null)}
+                >
+                  <BusyLabel busy={forgetting === ""} label="Forget all…" />
+                </Button>
+              </div>
+            ) : null}
+            {refused?.key === "" ? <PageError>{refused.line}</PageError> : null}
           </>
         ) : (
           <PageEmpty>No apps used yet</PageEmpty>
         )
-      ) : error ? (
-        <PageError action={retry}>{error}</PageError>
       ) : (
         <PageRowsSkeleton rows={[{ description: true, control: "button" }, { control: "button" }]} />
       )}

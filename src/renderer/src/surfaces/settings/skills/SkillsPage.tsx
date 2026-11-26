@@ -79,9 +79,11 @@ export function SkillsBody({ link }: { link: Link }) {
 
   return (
     <>
-      {readOnly ? null : (
+      {/* Nothing is offered that cannot work: no New skill… before the list has read, while the box is out of reach, or
+          for a key that may not write. */}
+      {readOnly || !data || blocked ? null : (
         <PageActions>
-          <Button variant="ghost" size="sm" disabled={!data || blocked} onClick={() => setEditing("new")}>
+          <Button variant="ghost" size="sm" onClick={() => setEditing("new")}>
             New skill…
           </Button>
         </PageActions>

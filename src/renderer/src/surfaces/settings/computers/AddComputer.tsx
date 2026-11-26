@@ -27,14 +27,22 @@ export type AddComputerProps = {
   /** Start the device way on a bot. */
   bot?: boolean;
   /** Where a way starts, for ui:preview's fixtures: a link or key already made, a setup view's own data. */
-  preview?: { inLine?: string; made?: MadeLink; madeKey?: MadeKey; setup?: Omit<SetupWayViewProps, "onClose">; useLink?: UseSetupLinkProps["phase"] };
+  preview?: {
+    inLine?: string;
+    made?: MadeLink;
+    madeKey?: MadeKey;
+    setup?: Omit<SetupWayViewProps, "onClose">;
+    useLink?: UseSetupLinkProps["phase"];
+    /** The height of the window ui:preview draws the dialog in, so a picture is no taller than its dialog needs. */
+    stage?: number;
+  };
 };
 
 export function AddComputerDialog({ ask = {}, onClose, onChanged = () => {}, bot, preview }: AddComputerProps) {
   const [way, setWay] = useState<Way | null>(ask.way ?? null);
   const [frame, setFrame] = useState<Frame>({ title: "Add a computer" });
   const setFrameOnce = useCallback((next: Frame) => setFrame((prev) => (sameFrame(prev, next) ? prev : next)), []);
-  return (
+  const dialog = (
     <Modal
       onClose={onClose}
       busy={frame.busy}
@@ -58,6 +66,15 @@ export function AddComputerDialog({ ask = {}, onClose, onChanged = () => {}, bot
       </FrameContext.Provider>
     </Modal>
   );
+  // ui:preview seats the dialog's portal in a `data-preview-stage` it finds in the render (scripts/ui-preview.ts).
+  return preview?.stage ? (
+    <>
+      <div data-preview-stage style={{ height: preview.stage }} />
+      {dialog}
+    </>
+  ) : (
+    dialog
+  );
 }
 
 const sameFrame = (a: Frame, b: Frame): boolean => a.title === b.title && a.description === b.description && a.endsAt === b.endsAt && !!a.busy === !!b.busy;
@@ -67,7 +84,7 @@ export function wayChoices(): { value: Way; label: string; description: string }
   const here = thisDesktopInLine();
   return [
     { value: "device", label: `Sign a device in to ${here}`, description: "A phone, a browser, or a computer that already runs Docket" },
-    { value: "setup", label: "Set up a new computer", description: "Give it the box, your accounts, LifeOS and your Work folders. You pick them before the link is made." },
+    { value: "setup", label: "Set up a new computer", description: "Link it to the box and hand it your accounts, LifeOS and Work folders. You pick before the link is made." },
     { value: "link", label: `Link ${here} to another computer`, description: "Paste the link, or the address and key, that computer made" },
     { value: "use-link", label: `Use a setup link on ${here}`, description: `Paste the link another computer made for ${here}` },
   ];

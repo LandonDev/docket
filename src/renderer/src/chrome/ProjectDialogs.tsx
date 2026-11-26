@@ -10,13 +10,12 @@ import { ModalBody, ModalPanel, useClosingDialog } from "./Modal";
 import { CheckRow, Field, FieldRow } from "./DialogField";
 import { Dialog } from "@renderer/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@renderer/components/ui/sheet";
-import { Skeleton } from "@renderer/components/ui/skeleton";
-import { PageRowsSkeleton } from "@renderer/components/page";
+import { PageError, PageRowsSkeleton } from "@renderer/components/page";
 import { DEFAULT_START_ON, type StartOn } from "@server/shared/defaults";
 import { START_ON_OPTIONS } from "../lib/tcserver/defaults";
 import { useThreadDefaults } from "../lib/tcserver/workspaces";
 import { ChoiceSelect } from "../components/choice-select";
-import { Button } from "@renderer/components/ui/button";
+import { BusyLabel, Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@renderer/components/ui/select";
 import { ChoiceToggle } from "../components/choice-toggle";
@@ -214,12 +213,39 @@ function BaseRefField({
 }
 
 /** A section of a form without a fold: the 12px muted heading over its fields. */
-function Section({ label, children }: { label: string; children: ReactNode }) {
+function Section({ label, action, children }: { label: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium text-muted-foreground">{label}</h3>
+      <div className="flex min-h-6 items-center justify-between gap-3">
+        <h3 className="text-xs font-medium text-muted-foreground">{label}</h3>
+        {action}
+      </div>
       {children}
     </section>
+  );
+}
+
+/** A group's read that failed: its words, and Retry at the end of the same line, as a page says it. */
+function GroupError({ error, retry }: { error: string; retry: () => void }) {
+  return (
+    <PageError
+      action={
+        <Button type="button" variant="ghost" size="sm" onClick={retry}>
+          <BusyLabel busy={false} label="Retry" />
+        </Button>
+      }
+    >
+      {error}
+    </PageError>
+  );
+}
+
+/** Back to the set a group follows: a quiet button at the end of its heading line. */
+function FollowButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <Button type="button" variant="ghost" size="xs" className="-me-2" onClick={onClick}>
+      {label}
+    </Button>
   );
 }
 
@@ -611,18 +637,17 @@ function ProjectSettingsBody({
     else setError(partialSaveWords(saved, refused));
   };
 
+  // Save waits until every group has answered: a group still reading has nothing of his to save yet, and one that did
+  // not answer is never written, which the footer says.
+  const loading = (!turnPass.error && (pass === undefined || inherited === undefined)) || (!buildError && savedBuild === undefined) || (!reviewLoad.error && !reviewScope) || (!plansFailure && !planScope);
+  const unloaded = !!(turnPass.error || buildError || reviewLoad.error || plansFailure);
+
   // Cancel, Escape, the backdrop and the close button: a changed draft asks before it is dropped.
   const cancel = async (): Promise<void> => {
     if (pending) return;
     if (dirty && !(await confirmAction({ title: "Discard your changes?", body: `What you changed in ${home.name}'s settings is not saved.`, action: "Discard", danger: true }))) return;
     closeThen(onClose);
   };
-
-  const linkButton = (label: string, onClick: () => void) => (
-    <Button type="button" variant="link" size="xs" className="h-auto self-start px-0 text-xs text-muted-foreground" onClick={onClick}>
-      {label}
-    </Button>
-  );
 
   return (
     <Sheet {...root} onOpenChange={(open) => (open ? root.onOpenChange(open) : void cancel())}>
@@ -655,7 +680,7 @@ function ProjectSettingsBody({
               </div>
               {managed ? <p data-managed className="text-xs text-muted-foreground">{managedElsewhere(hostName)}</p> : null}
               {linked ? (
-                <Section label="New threads">
+                <Section label="New threads" action={startOn && may.startOn ? <FollowButton label="Use global setting" onClick={() => setStartOn(null)} /> : undefined}>
                   <FieldRow label="Start on">
                     {may.startOn ? (
                       <ChoiceSelect
@@ -669,10 +694,9 @@ function ProjectSettingsBody({
                       <Value>{START_ON_OPTIONS.find((o) => o.value === (startOn ?? globalStartOn))?.label}</Value>
                     )}
                   </FieldRow>
-                  {startOn && may.startOn ? linkButton("Use global setting", () => setStartOn(null)) : null}
                 </Section>
               ) : null}
-              <Section label="After each turn">
+              <Section label="After each turn" action={pass && may.pass ? <FollowButton label="Use workspace setting" onClick={() => setPass(null)} /> : undefined}>
                 {pass !== undefined && inherited !== undefined ? (
                   may.pass ? (
                     <TurnPassFieldRows value={shownPass} onChange={setPass} />
@@ -680,16 +704,12 @@ function ProjectSettingsBody({
                     <TurnPassWords value={shownPass} />
                   )
                 ) : turnPass.error ? (
-                  <>
-                    <p className="text-xs text-destructive">{turnPass.error}</p>
-                    {linkButton("Retry", turnPass.retry)}
-                  </>
+                  <GroupError error={turnPass.error} retry={turnPass.retry} />
                 ) : (
                   <PageRowsSkeleton rows={[{ control: "switch" }, { control: "switch" }, { control: "select" }]} />
                 )}
-                {pass && may.pass ? linkButton("Use workspace setting", () => setPass(null)) : null}
               </Section>
-              <Section label="Reviews">
+              <Section label="Reviews" action={review && may.review ? <FollowButton label="Use global setting" onClick={() => setReview(null)} /> : undefined}>
                 {/* Editable once the project's scope answered, as Plans below. */}
                 {reviewScope && !may.review ? (
                   <FieldRow label="Review before merge">
@@ -698,14 +718,10 @@ function ProjectSettingsBody({
                 ) : reviewScope ? (
                   <ReviewFields value={shownReview} onChange={setReview} environmentId={home.environmentId} compact />
                 ) : reviewLoad.error ? (
-                  <>
-                    <p className="text-xs text-destructive">{reviewLoad.error}</p>
-                    {linkButton("Retry", reviewLoad.retry)}
-                  </>
+                  <GroupError error={reviewLoad.error} retry={reviewLoad.retry} />
                 ) : (
-                  <Skeleton className="h-16 w-full rounded-lg" />
+                  <PageRowsSkeleton rows={[{ control: "switch" }]} />
                 )}
-                {review && may.review ? linkButton("Use global setting", () => setReview(null)) : null}
               </Section>
               {mayPin ? (
                 <Section label="Accounts">
@@ -717,7 +733,7 @@ function ProjectSettingsBody({
                   />
                 </Section>
               ) : null}
-              <Section label="Plans">
+              <Section label="Plans" action={plans && may.plans ? <FollowButton label="Use global setting" onClick={() => setPlans(null)} /> : undefined}>
                 {/* Editable only once the project's own scope answered: a
                     change made on the inherited set alone would never save. */}
                 {planScope && shownPlans && !may.plans ? (
@@ -727,23 +743,16 @@ function ProjectSettingsBody({
                 ) : planScope && shownPlans ? (
                   <PlanSettingsFields value={shownPlans} onChange={setPlans} environmentId={home.environmentId} compact />
                 ) : plansFailure ? (
-                  <>
-                    <p className="text-xs text-destructive">{plansFailure.error}</p>
-                    {linkButton("Retry", plansFailure.retry)}
-                  </>
+                  <GroupError error={plansFailure.error} retry={plansFailure.retry} />
                 ) : (
                   // The five rows PlanSettingsFields draws, in their shape.
                   <PageRowsSkeleton rows={5} />
                 )}
-                {plans && may.plans ? linkButton("Use global setting", () => setPlans(null)) : null}
               </Section>
-              <Section label="Build">
+              <Section label="Build" action={buildOverride && may.build ? <FollowButton label="Use workspace setting" onClick={() => setBuildOverride(null)} /> : undefined}>
                 {savedBuild === undefined ? (
                   buildError ? (
-                    <>
-                      <p className="text-xs text-destructive">{buildError}</p>
-                      {linkButton("Retry", () => setBuildAttempt((n) => n + 1))}
-                    </>
+                    <GroupError error={buildError} retry={() => setBuildAttempt((n) => n + 1)} />
                   ) : (
                     <PageRowsSkeleton rows={2} control="none" />
                   )
@@ -759,7 +768,6 @@ function ProjectSettingsBody({
                     </FieldRow>
                   </>
                 )}
-                {buildOverride && may.build ? linkButton("Use workspace setting", () => setBuildOverride(null)) : null}
               </Section>
             </div>
           </div>
@@ -769,7 +777,7 @@ function ProjectSettingsBody({
               <ErrorLine error={error} />
             </div>
           ) : null}
-          <Footer onCancel={() => void cancel()} confirmLabel="Save" pending={pending} disabled={!dirty || !!blocked} note={note} />
+          <Footer onCancel={() => void cancel()} confirmLabel="Save" pending={pending} disabled={!dirty || !!blocked || loading} note={blocked ?? (unloaded ? "Only what loaded is saved" : note)} />
         </form>
       </SheetContent>
     </Sheet>

@@ -35,7 +35,7 @@ export function useSearchResults(): SearchResult[] {
   // Add-ons and skills by name: asked once, here, inside Settings.
   const addons = addonNames.useExtras();
   const skills = skillNames.useExtras();
-  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills]);
+  return searchSettings(query, settingsList(window), { mac: thisDesktopInLine() }, [...addons, ...skills], { web: window.web, mac: window.platform === "darwin", work: window.work });
 }
 
 /**

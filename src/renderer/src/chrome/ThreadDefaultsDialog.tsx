@@ -96,6 +96,8 @@ function DefaultsRows({ set, environmentId, startOn, layout }: { set: DefaultsSe
         "Model",
         <ChoiceSelect
           label="Model"
+          // "Default" is a choice, not an empty field: it reads in the value's tone.
+          className="data-placeholder:text-foreground"
           size={size}
           disabled={disabled}
           value={storedModelId(value)}
@@ -158,15 +160,22 @@ const DEFAULTS_SKELETON = [{}, {}, {}, { description: true }];
  * A scope's set on a page: `null` is New threads' "Start with" section; a workspace id is that workspace's own set
  * (its page's "New threads" section, until the job and workspace pages open `ThreadDefaultsDialog` instead).
  */
-export function ThreadDefaultsEditor({ workspaceId }: { workspaceId: string | null }) {
+export function ThreadDefaultsEditor({ workspaceId, alsoRetry }: { workspaceId: string | null; alsoRetry?: () => void }) {
   const workspace = useWorkspaceCatalog().workspaces.find((w) => w.id === workspaceId);
   // The one set is asked of this window's own computer, which forwards it to the box.
   const environmentId = workspaceId === null ? registry.primary().environmentId : workspace?.environmentId;
   if (!environmentId) return <PageRowsSkeleton rows={DEFAULTS_SKELETON} />;
-  return workspaceId === null ? <StartWith key={environmentId} environmentId={environmentId} /> : <WorkspaceSet key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
+  return workspaceId === null ? <StartWith key={environmentId} environmentId={environmentId} alsoRetry={alsoRetry} /> : <WorkspaceSet key={environmentId} environmentId={environmentId} workspaceId={workspaceId} />;
 }
 
-function StartWith({ environmentId }: { environmentId: string }) {
+/** Docket's own start set, said as its row says it. */
+const DOCKETS = "Claude Code, its default model, Medium effort, Auto-accept edits";
+
+/**
+ * "Start with": the one set. `alsoRetry` is the page's other read (Builds from plans) when it failed too: the page
+ * then says the failure once, here, and its Retry asks both.
+ */
+function StartWith({ environmentId, alsoRetry }: { environmentId: string; alsoRetry?: () => void }) {
   const set = useDefaultsSet(environmentId, null);
   usePublishHome("defaults", set.scope ? (set.scope.home ?? null) : undefined);
   // Which copy of a linked project a thread starts on is a question only with two computers.
@@ -174,31 +183,38 @@ function StartWith({ environmentId }: { environmentId: string }) {
   const reset = async () => {
     const ok = await confirmAction({
       title: "Use Docket's defaults",
-      body: "The set you saved is cleared. New threads start with Claude Code, its default model, Medium effort and Auto-accept edits.",
+      body: `The set saved for every computer is cleared. New threads start with ${DOCKETS}.`,
       action: "Use Docket's defaults",
     });
     if (ok) void set.clear();
   };
   return (
-    <SettingSection
-      of="defaults.app"
-      action={
-        set.scope?.overridden ? (
-          <Button variant="ghost" size="sm" data-setting="defaults.reset" disabled={set.blocked} onClick={() => void reset()}>
-            Use Docket's defaults…
-          </Button>
-        ) : null
-      }
-    >
+    // The set is the default for every place that keeps none of its own: said once, under the heading.
+    <SettingSection of="defaults.app" description="For every job and workspace without a set of its own.">
       {set.value ? (
         <>
           <DefaultsRows set={set} environmentId={environmentId} startOn={startOn} layout="setting" />
           <DifferentPlaces />
+          {/* Asks first, so last in its section; offered only while there is a set to clear and the box can take it. */}
+          {set.scope?.overridden && !set.blocked ? (
+            <SettingRow id="defaults.reset" description={DOCKETS} saved={set.cleared}>
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
+                Use…
+              </Button>
+            </SettingRow>
+          ) : null}
         </>
       ) : set.failure ? (
         <PageError
           action={
-            <Button variant="ghost" size="sm" onClick={set.failure.retry}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                set.failure?.retry();
+                alsoRetry?.();
+              }}
+            >
               Retry
             </Button>
           }
@@ -208,7 +224,6 @@ function StartWith({ environmentId }: { environmentId: string }) {
       ) : (
         <PageRowsSkeleton rows={startOn ? [...DEFAULTS_SKELETON, {}] : DEFAULTS_SKELETON} />
       )}
-      {set.cleared.error ? <PageError>{set.cleared.error}</PageError> : null}
     </SettingSection>
   );
 }

@@ -10,6 +10,8 @@ const state = vi.hoisted(() => ({
   calls: [] as { env: string; method: string; params: unknown }[],
   refuse: new Set<string>(),
   confirm: true,
+  unread: new Set<string>(),
+  readFails: new Set<string>(),
   asked: [] as { title: string; body?: string; action: string }[],
 }));
 const ENVS = [
@@ -23,13 +25,29 @@ vi.mock("../../lib/connection", async (original) => {
   const real = await original<typeof import("../../lib/connection")>();
   return { ...real, useEnvironments: () => ENVS, registry: Object.assign(Object.create(real.registry), { environment: (id: string) => ENVS.find((e) => e.id === id) }) };
 });
+// One link a computer, as the registry keeps: a new object each render would read again each render.
+const links = new Map<string, { connected: boolean; onOpen: () => () => void }>();
+const linkOf = (env: string, connected: boolean) => {
+  const was = links.get(env);
+  if (was && was.connected === connected) return was;
+  const link = { connected, onOpen: () => () => {} };
+  links.set(env, link);
+  return link;
+};
 vi.mock("./parts/hostRpc", () => ({
   useHost: (env: string) => ({
     environmentId: env,
     connected: !state.offline.has(env),
     name: { name: ENVS.find((e) => e.id === env)!.name, own: env === "local" },
     may: () => !state.cannot.has(env),
+    link: linkOf(env, !state.offline.has(env)),
     request: async (method: string, params: { enabled: boolean }) => {
+      // The row's own read of the switch: not a write.
+      if (method === "work.get") {
+        if (state.unread.has(env)) return new Promise(() => {});
+        if (state.readFails.has(env)) throw new Error("The host did not answer");
+        return { enabled: state.on.has(env) };
+      }
       state.calls.push({ env, method, params });
       if (state.refuse.has(env)) throw new Error("forbidden: work.set needs admin");
       return { enabled: params.enabled };
@@ -59,6 +77,7 @@ const { WorkPage, workOffAsk } = await import("./Work");
 
 afterEach(() => {
   cleanup();
+  links.clear();
   state.on = new Set(["env_box"]);
   state.cannot = new Set();
   state.offline = new Set();
@@ -66,14 +85,17 @@ afterEach(() => {
   state.refuse = new Set();
   state.confirm = true;
   state.asked = [];
+  state.unread = new Set();
+  state.readFails = new Set();
 });
 
 const rowOf = (env: string): HTMLElement => document.querySelector<HTMLElement>(`[data-work-on="${env}"]`)!;
 const settle = () => act(async () => void (await new Promise((done) => setTimeout(done, 0))));
 
 describe("Settings → Work: Work is on for", () => {
-  it("draws one row per computer by its one name, this Mac's with its mark, under the section the reveal lands on", () => {
+  it("draws one row per computer by its one name, this Mac's with its mark, under the section the reveal lands on", async () => {
     render(<WorkPage />);
+    await settle();
     expect(document.querySelector('section[data-setting="work.on"]')).toBeTruthy();
     expect(screen.getByText("Work is on for")).toBeTruthy();
     expect(rowOf("env_box").textContent).toContain("2 jobs");
@@ -83,6 +105,7 @@ describe("Settings → Work: Work is on for", () => {
 
   it("writes one computer per press: no handler on the page reaches a computer its row does not name", async () => {
     render(<WorkPage />);
+    await settle();
     for (const env of ENVS.map((e) => e.id)) {
       const before = state.calls.length;
       await act(async () => fireEvent.click(within(rowOf(env)).getByRole("switch")));
@@ -102,6 +125,7 @@ describe("Settings → Work: Work is on for", () => {
   it("asks before turning Work off, naming what leaves the list, and writes nothing on Cancel", async () => {
     state.confirm = false;
     render(<WorkPage />);
+    await settle();
     await act(async () => fireEvent.click(within(rowOf("env_box")).getByRole("switch")));
     await settle();
     expect(state.asked).toEqual([workOffAsk("the box", 2)]);
@@ -112,16 +136,18 @@ describe("Settings → Work: Work is on for", () => {
 
   it("turns Work on without asking", async () => {
     render(<WorkPage />);
+    await settle();
     await act(async () => fireEvent.click(within(rowOf("local")).getByRole("switch")));
     await settle();
     expect(state.asked).toEqual([]);
     expect(state.on.has("local")).toBe(true);
   });
 
-  it("shows a computer this key may not switch as its state in words and who can, with no switch to refuse", () => {
+  it("shows a computer this key may not switch as its state in words and who can, with no switch to refuse", async () => {
     state.cannot = new Set(["env_pc"]);
     state.on = new Set(["env_box", "env_pc"]);
     render(<WorkPage />);
+    await settle();
     const row = rowOf("env_pc");
     expect(within(row).queryByRole("switch")).toBeNull();
     expect(row.textContent).toContain("Changed from a computer that manages PURDUE-LT");
@@ -129,9 +155,24 @@ describe("Settings → Work: Work is on for", () => {
     expect(row.textContent).not.toContain("this Mac or");
   });
 
-  it("says an offline computer is offline, with no switch", () => {
+  it("holds a computer's switch as a bone until it says whether Work is on, and a failed read is its line with Retry", async () => {
+    state.unread = new Set(["env_box"]);
+    state.readFails = new Set(["env_pc"]);
+    render(<WorkPage />);
+    await settle();
+    expect(within(rowOf("env_box")).queryByRole("switch")).toBeNull();
+    expect(rowOf("env_box").querySelector("[data-slot=skeleton]")).toBeTruthy();
+    expect(within(rowOf("env_pc")).queryByRole("switch")).toBeNull();
+    // A failed read is one line over the rows with one Retry, never one a row.
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    expect(screen.getByRole("alert").textContent).toBe("PURDUE-LT did not say whether Work is on.");
+    expect(within(rowOf("local")).getByRole("switch")).toBeTruthy();
+  });
+
+  it("says an offline computer is offline, with no switch", async () => {
     state.offline = new Set(["env_pc"]);
     render(<WorkPage />);
+    await settle();
     expect(within(rowOf("env_pc")).queryByRole("switch")).toBeNull();
     expect(rowOf("env_pc").textContent).toContain("Offline");
   });
@@ -139,6 +180,7 @@ describe("Settings → Work: Work is on for", () => {
   it("puts a refused switch back and says why under its row, in the house's words", async () => {
     state.refuse = new Set(["local"]);
     render(<WorkPage />);
+    await settle();
     await act(async () => fireEvent.click(within(rowOf("local")).getByRole("switch")));
     await settle();
     expect(within(rowOf("local")).getByRole("switch").getAttribute("aria-checked")).toBe("false");

@@ -1,8 +1,9 @@
 import SwiftUI
 import TempCodeClient
+import TempCodeContract
 import UIKit
 
-/// Settings → a long press on the version line. Two checks run on the
+/// Settings → Diagnostics. Two checks run on the
 /// thread the person last opened, with the drivers the simulator's `perf`
 /// proof uses (Sources/Perf): the scroll check moves the transcript at
 /// 3,000 pt/s up and back twice, the typing check types 120 characters into
@@ -106,6 +107,12 @@ struct DiagnosticsScreen: View {
                 Text("From iOS")
             } footer: {
                 Text(iosFooter(hitch))
+            }
+
+            // The wire version this app speaks; the app's own version is Settings' Diagnostics row.
+            Section {
+                LabeledContent("Contract", value: "\(contractVersion)")
+                    .monospacedDigit()
             }
 
             if let shared {

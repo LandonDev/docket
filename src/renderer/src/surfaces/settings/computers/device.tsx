@@ -83,9 +83,11 @@ export function DeviceWay({ computer = registry.primaryEnvironmentId, onClose, o
   const [madeKey, setMadeKey] = useState<MadeKey | null>(keyAtFirst ?? null);
   const [pending, setPending] = useState(false);
   const [kind, setKind] = useState<Kind>(bot ? "bot" : "device");
+  // A bot is not a device: its steps are titled for its key, and the line names the computer it signs in to.
+  const forBot = kind === "bot" || !!madeKey;
   useFrame({
-    title: `Sign a device in to ${inLine}`,
-    description: madeKey ? "Shown once. Copy it now." : made ? undefined : kind === "bot" ? "A bot signs in with a key, shown once." : "A phone, a browser, or a computer that already runs Docket.",
+    title: forBot ? "A key for a bot" : `Sign a device in to ${inLine}`,
+    description: madeKey ? `It signs in to ${inLine}. Copy the key now; it is not shown again.` : made ? undefined : forBot ? `It signs in to ${inLine} with a key.` : "A phone, a browser, or a computer that already runs Docket.",
     endsAt: made && !madeKey ? made.pairing.expiresAt : undefined,
     busy: pending,
   });
@@ -199,7 +201,7 @@ function DeviceForm({
             ]}
           />
         </FieldRow>
-        <ChoiceField label="It may" id={allowId}>
+        <ChoiceField label="It may" id={allowId} hint={kind === "bot" ? `A bot never approves a thread's steps or manages ${inLine}.` : undefined}>
           <RadioGroup aria-labelledby={allowId} value={allow} onValueChange={(value) => setAllow(value as Allow)}>
             {choices.map((choice) => (
               <RadioChoice key={choice.value} value={choice.value} label={choice.label} description={choice.description} />
@@ -208,11 +210,11 @@ function DeviceForm({
         </ChoiceField>
         {kind === "bot" ? (
           <>
-            <Field label="Webhook URL" aside={<span className="text-xs text-muted-foreground">Optional</span>}>
+            <Field label="Address for notices" aside={<span className="text-xs text-muted-foreground">Optional</span>} hint="Docket posts here when a thread needs you, is done or fails.">
               <Input value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://bot.example.com/hook" spellCheck={false} autoComplete="off" />
             </Field>
             {webhookUrl.trim() ? (
-              <Field label="Signing secret">
+              <Field label="Secret for notices">
                 <Input value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder="Made for you when empty" spellCheck={false} autoComplete="off" />
               </Field>
             ) : null}
@@ -307,7 +309,7 @@ function KeyShown({ made, onClose }: { made: MadeKey; onClose: () => void }) {
     <>
       <ModalBody>
         <Secret label="Key" value={made.token} />
-        {made.webhookSecret ? <Secret label="Signing secret" value={made.webhookSecret} /> : null}
+        {made.webhookSecret ? <Secret label="Secret for notices" value={made.webhookSecret} /> : null}
       </ModalBody>
       <DialogFooter confirmLabel="Done" closeOnConfirm onConfirm={onClose} />
     </>

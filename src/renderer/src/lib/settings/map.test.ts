@@ -28,7 +28,8 @@ describe("the settings map", () => {
   });
 
   it("says where each moved setting was: a setting that is kept somewhere has an old home or is new by name", () => {
-    const NEW = new Set(["appearance.theme", "defaults.reset", "sub.reset"]);
+    // New in Settings 2, or a second door to a control that did not move (Away: the rail's switch stands).
+    const NEW = new Set(["appearance.theme", "defaults.reset", "sub.reset", "away.code", "away.work"]);
     for (const entry of SETTINGS_MAP) {
       if ((entry.kind ?? "setting") !== "setting" || NEW.has(entry.id)) continue;
       expect(entry.was.length, entry.id).toBeGreaterThan(0);

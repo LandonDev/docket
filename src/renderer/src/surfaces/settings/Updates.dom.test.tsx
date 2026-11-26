@@ -15,6 +15,7 @@ vi.mock("../../components/choice-select", async () => await import("../../compon
 const host = vi.hoisted(() => ({
   code: { host: "env_box", hosts: [{ id: "env_box", name: "The box" }], cannot: null } as Record<string, unknown>,
   refuse: null as string | null,
+  read: "answers" as "answers" | "pending" | "refused",
   calls: [] as { method: string; params: unknown }[],
 }));
 const link = vi.hoisted(() => ({
@@ -23,6 +24,8 @@ const link = vi.hoisted(() => ({
   onOpen: () => () => {},
   request: async (method: string, params: unknown) => {
     host.calls.push({ method, params });
+    if (method === "code.settings.get" && host.read === "pending") return new Promise(() => {});
+    if (method === "code.settings.get" && host.read === "refused") throw new Error("The computer did not answer");
     if (method === "code.settings.get") return host.code;
     if (method === "code.settings.set") {
       if (host.refuse) throw new Error(host.refuse);
@@ -77,6 +80,7 @@ beforeEach(() => {
   update.snapshot = { phase: "idle", currentVersion: "1.0.300", canApply: true };
   host.code = { host: "env_box", hosts: [{ id: "env_box", name: "The box" }], cannot: null };
   host.refuse = null;
+  host.read = "answers";
   host.calls = [];
   computers.list = [];
   computers.hello = {};
@@ -118,6 +122,15 @@ describe("Updates", () => {
     page();
     await flush();
     expect(screen.getByRole("button", { name: "Restart" }).dataset.variant).toBe("default");
+  });
+
+  it("claims nothing of the build until the updater has read its version: the row's shape", async () => {
+    update.snapshot = { phase: "idle", currentVersion: "…" };
+    page();
+    await flush();
+    expect(versionRow()).toBeNull();
+    expect(document.body.textContent).not.toContain("Up to date");
+    expect(document.querySelector('[data-slot=page-row-skeleton] [data-skeleton-control]')).toBeTruthy();
   });
 
   it("reserves the download label before Update starts", async () => {
@@ -193,6 +206,22 @@ describe("Updates", () => {
       expect(document.querySelector('[data-setting="updates.quick"] [class*=text-destructive]')).toBeTruthy();
     });
 
+    it("holds its shape while asked, and says a refused read once with Retry, never as a build that cannot", async () => {
+      host.read = "pending";
+      page();
+      await flush();
+      expect(document.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(1);
+      cleanup();
+      host.read = "refused";
+      page();
+      await flush();
+      expect(screen.getAllByRole("alert").map((line) => line.textContent)).toEqual(["The computer did not answer"]);
+      host.read = "answers";
+      await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+      await flush();
+      expect(document.querySelector('[data-setting="updates.quick"]')).toBeTruthy();
+    });
+
     it("draws no row where quick updates cannot come", async () => {
       for (const code of [{ host: "env_box", hosts: [{ id: "env_box", name: "The box" }], cannot: "a dev build" }, { host: null, hosts: [], cannot: null }]) {
         host.code = code;
@@ -218,6 +247,7 @@ describe("Updates", () => {
       expect(section.textContent).toContain("1.0.397, 2 releases behind");
       expect(section.textContent).toContain("PURDUE-LT");
       expect(section.textContent).toContain("Offline");
+      expect(section.querySelectorAll("[data-slot=open-cue]")).toHaveLength(2);
       fireEvent.click(screen.getByRole("button", { name: "The box" }));
       expect(asked.settings).toContainEqual(["computer:env_box", "pc.version"]);
     });

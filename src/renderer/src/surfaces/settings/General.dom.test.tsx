@@ -9,13 +9,17 @@ const linear = vi.hoisted(() => ({
   save: vi.fn(),
   disconnect: vi.fn(async () => ({ connected: false })),
   teams: [] as { id: string; name: string; key: string }[],
+  teamsFail: false,
 }));
 vi.mock("../../lib/linear", async (original) => ({
   ...(await original<typeof import("../../lib/linear")>()),
   linearConnected: () => linear.pending ?? Promise.resolve({ connected: linear.connected }),
   saveLinearToken: (...args: unknown[]) => linear.save(...args),
   disconnectLinear: () => linear.disconnect(),
-  listLinearTeams: async () => linear.teams,
+  listLinearTeams: async () => {
+    if (linear.teamsFail) throw new Error("Linear did not answer");
+    return linear.teams;
+  },
   notifyLinearChange: vi.fn(),
 }));
 
@@ -105,6 +109,7 @@ beforeEach(() => {
   linear.connected = false;
   linear.pending = null;
   linear.teams = [];
+  linear.teamsFail = false;
   linear.save.mockReset();
   linear.disconnect.mockClear();
   host.power = { mode: "while-working", supported: true, holding: false, onBattery: false };
@@ -167,26 +172,26 @@ describe("General", () => {
       expect(row.textContent).not.toContain("Claude Code");
     });
 
-    it("holds the dialog's rows in their shape until the computer answers", async () => {
+    it("holds the row in its shape until the computer answers", async () => {
       probe.answer = "pending";
       page();
       await flush();
-      fireEvent.click(screen.getByRole("button", { name: "Model picker shows" }));
-      const dialog = await screen.findByRole("dialog", { name: "Model picker shows" });
-      expect(within(dialog).queryAllByRole("switch")).toHaveLength(0);
-      expect([...dialog.querySelectorAll<HTMLElement>("[data-slot=page-row-skeleton]")].map((r) => r.dataset.control)).toEqual(["switch", "switch"]);
+      const section = screen.getByRole("region", { name: "Composer" });
+      expect(section.querySelectorAll("[data-slot=page-row-skeleton]")).toHaveLength(1);
+      expect(screen.queryByRole("button", { name: "Model picker shows" })).toBeNull();
     });
 
-    it("says a refused read with Retry in the dialog, never as if no agent app were installed", async () => {
+    it("says a refused read once in the row's place with Retry, never as if no agent app were installed", async () => {
       probe.answer = "refused";
       page();
       await flush();
-      fireEvent.click(screen.getByRole("button", { name: "Model picker shows" }));
-      const dialog = await screen.findByRole("dialog", { name: "Model picker shows" });
-      expect((await within(dialog).findByRole("alert")).textContent).toBe("doctor.get failed: no handler");
+      const section = screen.getByRole("region", { name: "Composer" });
+      expect(within(section).getAllByRole("alert").map((line) => line.textContent)).toEqual(["doctor.get failed: no handler"]);
+      expect(screen.queryByRole("button", { name: "Model picker shows" })).toBeNull();
       probe.answer = "installed";
-      fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }));
-      expect(await within(dialog).findAllByRole("switch")).toHaveLength(2);
+      await act(async () => fireEvent.click(within(section).getByRole("button", { name: "Retry" })));
+      await flush();
+      expect(document.querySelector('[data-setting="general.picker"]')?.textContent).toContain("Claude Code and Codex");
       expect(probe.reads).toBe(2);
     });
 
@@ -286,7 +291,7 @@ describe("General", () => {
       page();
       await flush();
       const row = document.querySelector('[data-setting="general.linearTeams"]') as HTMLElement;
-      expect(row.textContent).toContain("1 of 2");
+      expect(row.textContent).toContain("1 of 2 shown");
       fireEvent.click(within(row).getByRole("button", { name: "Linear teams in the inbox" }));
       const dialog = await screen.findByRole("dialog", { name: "Linear teams in the inbox" });
       expect(within(dialog).getByRole("switch", { name: "Core" }).getAttribute("aria-checked")).toBe("true");
@@ -294,7 +299,22 @@ describe("General", () => {
       expect(web.getAttribute("aria-checked")).toBe("false");
       fireEvent.click(web);
       expect(JSON.parse(localStorage.getItem("docket.linearHiddenTeams") ?? "[]")).toEqual([]);
-      expect(row.textContent).toContain("2 of 2");
+      expect(row.textContent).toContain("2 of 2 shown");
+    });
+
+    it("says a failed read of the teams once with Retry, never as no teams", async () => {
+      linear.connected = true;
+      linear.teams = [{ id: "t1", name: "Core", key: "COR" }];
+      linear.teamsFail = true;
+      page();
+      await flush();
+      const inbox = screen.getByRole("region", { name: "Inbox" });
+      expect(within(inbox).getByRole("alert").textContent).toBe("Linear did not answer");
+      expect(document.querySelector('[data-setting="general.linearTeams"]')).toBeNull();
+      linear.teamsFail = false;
+      await act(async () => fireEvent.click(within(inbox).getByRole("button", { name: "Retry" })));
+      await flush();
+      expect(document.querySelector('[data-setting="general.linearTeams"]')?.textContent).toContain("1 of 1 shown");
     });
 
     it("holds the row in its shape until the computer says whether it is connected", async () => {

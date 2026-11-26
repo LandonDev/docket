@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { HarnessSyncStatus } from "@server/shared/contract-harness";
-import type { MemorySyncStatus } from "@server/shared/contract-memory";
-import { PageEmpty, PageRow, PageSection } from "../../../components/page";
+import type { HarnessEnvironmentStatus, HarnessSyncStatus } from "@server/shared/contract-harness";
+import type { MemoryEnvironmentStatus, MemorySyncStatus } from "@server/shared/contract-memory";
+import { PageEmpty, PageRow, PageRowsSkeleton, PageSection } from "../../../components/page";
 import { SettingSwitch } from "../../../components/setting-switch";
 import { BusyLabel, Button } from "../../../components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../../../components/ui/tooltip";
@@ -13,8 +13,7 @@ import { revealPath } from "../../../lib/fs";
 import { thisDesktopInLine } from "../../../lib/native";
 import { useComputerNames, computerInLine } from "../../../lib/settings/computerName";
 import { refusalWords } from "../../../lib/settingsHome";
-import { ago, harnessParts } from "../../harnessLine";
-import { memoryParts } from "../../memoryLine";
+import { ago } from "../../harnessLine";
 import { ComputerName } from "../parts/ComputerName";
 import { SettingRow, SettingSection } from "../parts/SettingRow";
 import { useSaved } from "../parts/useSaved";
@@ -46,8 +45,35 @@ function useSyncedNames(harness: HarnessSyncStatus | undefined, memory: MemorySy
 export function SyncLine() {
   const { harness, memory } = useSync();
   const names = useSyncedNames(harness.value, memory.value);
+  // While the read is out the line holds its place, so the title block does not move when it lands.
+  if (harness.value === undefined && !harness.error) return <span data-slot="skeleton" aria-label="Loading" className="inline-block h-3 w-64 rounded-md bg-skeleton align-middle" />;
   if (!harness.value || names.length === 0) return null;
   return <>{`${capital(thisDesktopInLine())} keeps ${namesWords(names.map((n) => n.said))} the same as itself.`}</>;
+}
+
+/** "1 note differs. Both copies are kept.": the conflict copies in his words. */
+export const conflictWords = (count: number): string =>
+  count === 1 ? "1 note differs. Both copies are kept." : `${count} notes differ. Both copies of each are kept.`;
+
+const plural = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+/**
+ * One computer's last sync as one comma sentence ("212 agent settings files and 48 memory files, synced 2m ago"):
+ * the legs that are on, the newer of their times; a leg's failure is the row's red line.
+ */
+export function syncedWords(settings: HarnessEnvironmentStatus | null, memory: MemoryEnvironmentStatus | null, now = Date.now()): { words: string; error: string | null } {
+  const legs = [settings, memory].filter((leg): leg is HarnessEnvironmentStatus | MemoryEnvironmentStatus => leg !== null);
+  if (legs.length === 0) return { words: "Nothing syncs", error: null };
+  if (legs.some((leg) => leg.running)) return { words: "Syncing…", error: null };
+  const error = legs.find((leg) => leg.error)?.error ?? null;
+  const at = Math.max(...legs.map((leg) => leg.syncedAt ?? 0));
+  if (!at) return { words: "Never synced", error };
+  const files = [
+    settings?.files != null ? plural(settings.files, "agent settings file") : null,
+    memory?.files != null ? plural(memory.files, "memory file") : null,
+  ].filter(Boolean);
+  const what = files.length ? `${files.join(" and ")}, ` : "";
+  return { words: `${what}synced ${ago(at, now)}`, error };
 }
 
 const COUNTS = ["", "", "", "three", "four", "five", "six", "seven", "eight", "nine"];
@@ -66,8 +92,20 @@ const capital = (text: string): string => text.charAt(0).toUpperCase() + text.sl
 export function SyncPage() {
   const { harness, memory } = useSync();
   const names = useSyncedNames(harness.value, memory.value);
+  // While the first read is out the page stands in its shape: the two switches, and Last synced with its rows.
+  if (harness.value === undefined && !harness.error)
+    return (
+      <>
+        <PageSection>
+          <PageRowsSkeleton rows={[{ description: true, control: "switch" }, { description: true, control: "switch" }]} />
+        </PageSection>
+        <SettingSection of="sync.last">
+          <PageRowsSkeleton rows={2} description control="button" />
+        </SettingSection>
+      </>
+    );
   return (
-    <SectionRead read={harness} rows={[{ description: true, control: "switch" }, { description: true, control: "switch" }]}>
+    <SectionRead read={harness} rows={1}>
       {(value) => <SyncBody harness={value} memory={memory.value ?? null} names={names.map((n) => n.said)} onHarness={harness.set} onMemory={memory.set} />}
     </SectionRead>
   );
@@ -105,17 +143,17 @@ function SyncBody({
     return settings.run(async () => onHarness(await link.request<HarnessSyncStatus>("harness.settings.set", { enabled })));
   };
   // One row a computer, whichever leg names it.
-  const rows = new Map<string, { id: string; name: string; connected: boolean; running: boolean; harnessLine: string | null; memoryLine: string | null }>();
-  for (const env of harness.environments) rows.set(env.id, { id: env.id, name: env.name, connected: env.connected, running: env.running, harnessLine: harnessParts(env).join(", "), memoryLine: null });
+  const rows = new Map<string, { id: string; name: string; connected: boolean; harness: HarnessEnvironmentStatus | null; memory: MemoryEnvironmentStatus | null }>();
+  for (const env of harness.environments) rows.set(env.id, { id: env.id, name: env.name, connected: env.connected, harness: env, memory: null });
   for (const mem of memory?.environments ?? []) {
-    const row = rows.get(mem.id) ?? { id: mem.id, name: mem.name, connected: mem.connected, running: false, harnessLine: null, memoryLine: null };
-    rows.set(mem.id, { ...row, running: row.running || mem.running, memoryLine: memoryParts(mem).join(", ") });
+    const row = rows.get(mem.id) ?? { id: mem.id, name: mem.name, connected: mem.connected, harness: null, memory: null };
+    rows.set(mem.id, { ...row, memory: mem });
   }
   const count = memory?.conflicts.length ?? 0;
   return (
     <>
       <PageSection>
-        <SettingRow id="sync.settings" saved={settings} description={to ? `${mac}'s Claude Code and Codex settings go to ${to}.${stay}` : undefined}>
+        <SettingRow id="sync.settings" saved={settings} description={`${mac}'s Claude Code and Codex settings.${stay}`}>
           <SettingSwitch label="Agent settings" on={harness.enabled} onChange={setHarness} />
         </SettingRow>
         {memory ? (
@@ -128,7 +166,7 @@ function SyncBody({
           </SettingRow>
         ) : null}
         {count > 0 ? (
-          <SettingRow id="sync.conflicts" description={`${count} kept beside the notes they differ from`} onOpen={() => setConflicts(true)} openLabel="Conflict copies" />
+          <SettingRow id="sync.conflicts" description={conflictWords(count)} onOpen={() => setConflicts(true)} openLabel="Conflict copies" />
         ) : null}
       </PageSection>
       <SettingSection of="sync.last">
@@ -138,10 +176,9 @@ function SyncBody({
             key={row.id}
             id={row.id}
             name={row.name}
-            harnessLine={row.harnessLine}
-            memoryLine={row.memoryLine}
+            line={syncedWords(harness.enabled ? row.harness : null, memory?.enabled ? row.memory : null)}
             reachable={row.connected}
-            running={row.running}
+            running={row.harness?.running === true || row.memory?.running === true}
             harnessOn={harness.enabled}
             memoryOn={memory?.enabled ?? false}
             onSynced={(h, m) => {
@@ -159,8 +196,7 @@ function SyncBody({
 function LastSynced({
   id,
   name,
-  harnessLine,
-  memoryLine,
+  line,
   reachable,
   running,
   harnessOn,
@@ -169,8 +205,7 @@ function LastSynced({
 }: {
   id: string;
   name: string;
-  harnessLine: string | null;
-  memoryLine: string | null;
+  line: { words: string; error: string | null };
   reachable: boolean;
   running: boolean;
   harnessOn: boolean;
@@ -198,13 +233,8 @@ function LastSynced({
     <PageRow
       data-synced={id}
       title={<ComputerName computer={names(id, name)} />}
-      description={
-        <>
-          {harnessLine && harnessOn ? <span className="block">Agent settings: {harnessLine}</span> : null}
-          {memoryLine && memoryOn ? <span className="block">Memory: {memoryLine}</span> : null}
-        </>
-      }
-      error={error ?? undefined}
+      description={line.words}
+      error={error ?? line.error ?? undefined}
     >
       <Button variant="ghost" size="sm" disabled={(!harnessOn && !memoryOn) || !reachable || running || busy} onClick={() => void sync()}>
         <BusyLabel busy={busy || running} label="Sync now" />

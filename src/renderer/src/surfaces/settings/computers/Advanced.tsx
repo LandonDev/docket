@@ -34,7 +34,7 @@ export const travelsThrough = (environmentId: string): boolean => isWebMode() ||
  * from a page that reaches the computer through it asks first: the page loses the computer. `children` are rows only
  * this Mac's Sharing has (Pause other computers' commands above load), between the address and the ID.
  */
-export function Advanced({ host, rows, children, saysWhoCan = true }: { host: Host; rows: "sharing" | "pc"; children?: ReactNode; saysWhoCan?: boolean }) {
+export function Advanced({ host, rows, children, saysWhoCan = true, open = false }: { host: Host; rows: "sharing" | "pc"; children?: ReactNode; saysWhoCan?: boolean; open?: boolean }) {
   const manage = host.may("remote.settings.set", {});
   const status = useComputerRead<RemoteStatus>(host, "remote.status", { skip: !manage });
   const computer = computerInLine(host.name);
@@ -43,7 +43,7 @@ export function Advanced({ host, rows, children, saysWhoCan = true }: { host: Ho
   const fixed = host.environmentId === LOCAL_ENVIRONMENT_ID || host.environmentId === WEB_ENVIRONMENT_ID;
   const id = fixed ? (hello?.environmentId ?? status.value?.environmentId) : host.environmentId;
   return (
-    <Fold label="Advanced">
+    <Fold label="Advanced" defaultOpen={open}>
       <PageSection>
         {manage ? (
           <SectionRead read={status} rows={[{ control: "switch" }, { control: "number" }, { description: true, control: "field", wide: true }]}>
@@ -52,7 +52,8 @@ export function Advanced({ host, rows, children, saysWhoCan = true }: { host: Ho
         ) : null}
         {children}
         {id ? (
-          <SettingRow id={`${rows}.id`} description={<span className="font-mono">{id}</span>}>
+          // The id is for pasting, never for reading: it sits behind Copy.
+          <SettingRow id={`${rows}.id`}>
             <CopyButton text={id} label="Copy the computer ID" />
           </SettingRow>
         ) : null}

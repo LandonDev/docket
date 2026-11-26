@@ -4644,8 +4644,8 @@ answers the log so far and subscribes the socket to `host-log` pushes. A
 request nobody picks up within 15 s is withdrawn and reported as the trigger
 not running. The restart drops the Mac's link; the renderer asks for the log
 again on link-up and the card keeps tailing (`src/renderer/src/lib/hostJobs.ts`).
-The card says the box cannot be stopped mid-way (box-update rolls back on a
-failed trial) and ends with "Deployed v1.0.N, the service is back" or the
+The card says the box cannot be stopped part-way (box-update rolls back on a
+failed trial) and ends with "<name> runs v1.0.N and is back" or the
 failure's last lines. The confirm names the versions: what the box runs
 (its package.json) against origin/master's in the Mac's release checkout.
 Proof without root: `src/main/server/hostDeployRunner.test.ts` runs the

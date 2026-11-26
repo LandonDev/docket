@@ -15,6 +15,10 @@ vi.mock("../../chrome/ConfirmDialog", async (original) => ({
     return confirm.answer;
   },
 }));
+vi.mock("../../lib/settings/computerName", async (original) => ({
+  ...(await original<object>()),
+  useComputerNames: () => (id: string) => ({ name: id === "box" ? "The box" : "Mac", own: false }),
+}));
 vi.mock("../../lib/connection", async (original) => ({
   ...(await original<object>()),
   useEnvironments: () => [
@@ -108,7 +112,7 @@ describe("Connections", () => {
     expect(linkOf).not.toHaveBeenCalledWith("mac");
     expect(screen.getByText("Offline")).toBeTruthy();
     expect(screen.getByText("Broken")).toBeTruthy();
-    expect(screen.getByText("LifeOS is still connecting on the box")).toBeTruthy();
+    expect(screen.getByText("LifeOS is still connecting")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Sign out…" }));
     await settle();
     await settle();
@@ -116,7 +120,9 @@ describe("Connections", () => {
     expect(confirm.asked.at(-1)).toMatchObject({ title: "Sign out of LifeOS on the box?", body: "Work on the box stops reading and writing LifeOS until you sign in again." });
     expect(request.mock.calls.map((c) => c[0])).toEqual(["work.health", "work.lifeos.signOut", "work.health"]);
     expect(screen.getByText("Needs you")).toBeTruthy();
-    expect(screen.getByText("Not signed in to LifeOS on the box")).toBeTruthy();
+    // Two computers listed: the row's title names the box, its line the state alone.
+    expect(screen.getByText("LifeOS on the box", { selector: "[data-slot=item-title]" })).toBeTruthy();
+    expect(screen.getByText("Not signed in")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign out…" })).toBeNull();
   });
 
@@ -136,8 +142,8 @@ describe("Connections", () => {
     await settle();
     expect(screen.getByText("Signed in")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Sign out…" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Sign in to OneDrive" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Sign in…" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Sign in to OneDrive…" })).toBeTruthy();
   });
 
   /** Council round 7 (Sol, Settings 2): the sign-in's press went from a row that needs him with no line saying who can. */
@@ -155,7 +161,7 @@ describe("Connections", () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
     render(<ConnectionsPage />);
     await settle();
-    expect(screen.queryByRole("button", { name: "Sign in" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Sign in…" })).toBeNull();
     expect(document.querySelectorAll("[data-who-can]").length).toBe(1);
     expect(screen.getByText("Sign in from a computer that manages the box")).toBeTruthy();
   });
@@ -183,11 +189,11 @@ describe("Connections", () => {
     render(<ConnectionsPage />);
     await settle();
     // Two hosts listed: the line that words the state names its computer; the row whose line does not, its title.
-    expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
+    expect(screen.getByText("LifeOS did not answer")).toBeTruthy();
     expect(screen.getByText("LifeOS on the box", { selector: "[data-slot=item-title]" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Sign out…" })).toBeTruthy();
     // The long sentence keeps its room in a narrow window: its press takes a line of its own there.
-    expect(screen.getByText("LifeOS did not answer the box").closest("[data-slot=page-row]")!.hasAttribute("data-wide")).toBe(true);
+    expect(screen.getByText("LifeOS did not answer").closest("[data-slot=page-row]")!.hasAttribute("data-wide")).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
     expect(request.mock.calls.map((c) => (c as unknown[])[0])).toEqual(["work.health", "work.health"]);
@@ -256,8 +262,8 @@ describe("Connections", () => {
     const linkOf = vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
     render(<ConnectionsPage />);
     await settle();
-    expect(screen.getByText(/^LifeOS did not answer the box\. Still trying since/)).toBeTruthy();
-    const buttons = [...screen.getByText(/^LifeOS did not answer the box/).closest("[data-slot=page-row]")!.querySelectorAll("button")].map((b) => b.textContent);
+    expect(screen.getByText(/^LifeOS did not answer\. Still trying since/)).toBeTruthy();
+    const buttons = [...screen.getByText(/^LifeOS did not answer/).closest("[data-slot=page-row]")!.querySelectorAll("button")].map((b) => b.textContent);
     expect(buttons).toEqual(["Retry", "Sign out…"]);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
@@ -281,12 +287,12 @@ describe("Connections", () => {
     vi.spyOn(registry, "linkOf").mockReturnValue({ request } as never);
     render(<ConnectionsPage />);
     await settle();
-    expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
+    expect(screen.getByText("LifeOS did not answer")).toBeTruthy();
     silent = true;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
     expect(screen.getByText("Did not answer")).toBeTruthy();
-    expect(screen.queryByText("LifeOS did not answer the box")).toBeNull();
+    expect(screen.queryByText("LifeOS did not answer")).toBeNull();
     expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
     // Its other rows stay as the last check left them, Sign out with them.
     expect(screen.getByRole("button", { name: "Sign out…" })).toBeTruthy();
@@ -294,7 +300,7 @@ describe("Connections", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await settle();
     expect(screen.queryByText("Did not answer")).toBeNull();
-    expect(screen.getByText("LifeOS did not answer the box")).toBeTruthy();
+    expect(screen.getByText("LifeOS did not answer")).toBeTruthy();
   });
 
   it("a row whose fix is OneDrive's sign-in on the Windows VM brings it up on the row's host, spinning meanwhile, then checks again", async () => {
@@ -438,7 +444,7 @@ describe("Connections", () => {
     await settle();
     const row = (title: string) => screen.getByText(title, { selector: "[data-slot=item-title]" }).closest("[data-slot=page-row]")!;
     expect(row("Windows VM").hasAttribute("data-wide")).toBe(true);
-    expect(row("Windows VM").querySelector("[data-wide-control]")?.textContent).toMatch(/^Ends /);
+    expect(row("Windows VM").querySelector("[data-wide-control]")?.textContent).toMatch(/^Licence ends /);
     expect(row("Google").hasAttribute("data-wide")).toBe(false);
   });
 

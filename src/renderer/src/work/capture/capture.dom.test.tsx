@@ -441,7 +441,7 @@ describe("the capture key row", () => {
     fireEvent.keyDown(button, { key: "k", code: "KeyK", ctrlKey: true, altKey: true });
     await flush();
     expect(api.set).toHaveBeenCalledWith("Control+Alt+K");
-    expect(button.textContent).toBe("Ctrl+Alt+K");
+    expect(button.getAttribute("aria-label")).toBe("Ctrl+Alt+K");
     fireEvent.click(button);
     fireEvent.keyDown(button, { key: "Delete" });
     await flush();

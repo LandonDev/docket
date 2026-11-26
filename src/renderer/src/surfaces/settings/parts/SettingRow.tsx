@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
+import { ChevronRight } from "../../../chrome/icons";
 import { PageRow, PageSection } from "../../../components/page";
 import { cn } from "../../../lib/cn";
 import { settingEntry, settingWords, type SettingVars } from "../../../lib/settings/map";
@@ -9,11 +10,21 @@ import type { Saved } from "./useSaved";
 type RowProps = Omit<ComponentProps<typeof PageRow>, "title">;
 
 /**
+ * The cue at the end of a row that opens something and has no control of its own: a still chevron, muted. A row is
+ * "open" by this mark at rest, not only by its hover (docs/agents/settings.md "One home"). A list's own rows that
+ * open a page, a sheet or a dialog (a computer, a job, a project) draw it the same way.
+ */
+export function OpenCue() {
+  return <ChevronRight aria-hidden data-slot="open-cue" className="size-3.5 shrink-0 text-muted-foreground" />;
+}
+
+/**
  * One row of Settings: a `PageRow` named by the map (lib/settings/map.ts), so the page, the search and the landing
  * note's table say one name. `id` is the row's map id and its address (`requestSettings(page, id)` scrolls to it and
  * holds a fill on it); `vars` fills the name's "{mac}", "{computer}", "{n}" and "{version}"; `saved` is its
  * `useSaved`, drawn as the mark before the control and the red line under the row. `shown` marks a row that only
  * shows another page's setting (a permission still missing, a state with its way there): the same name, no second home.
+ * A row with `onOpen` and no control of its own ends in `OpenCue`.
  */
 export function SettingRow({
   id,
@@ -39,6 +50,8 @@ export function SettingRow({
           {saved ? <SaveMark state={saved.state} /> : null}
           {children}
         </>
+      ) : row.onOpen ? (
+        <OpenCue />
       ) : null}
     </PageRow>
   );

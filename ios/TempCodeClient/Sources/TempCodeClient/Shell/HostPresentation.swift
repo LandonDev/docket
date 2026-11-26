@@ -34,24 +34,26 @@ public enum ConnectionWord {
 /// never shows: the phone says what it knows, not what the socket printed.
 public enum ConnectionSentence {
     public static func text(name: String, status: EnvironmentStatus, now: Date) -> String {
+        let start = nameAtStart(name)
+        let inLine = nameInLine(name)
         let wait = status.nextRetryAt.map { max(0, Int(($0 / 1000 - now.timeIntervalSince1970).rounded())) } ?? 0
         switch status.transport {
         case .open:
             return "Connected"
         case .connecting:
-            return status.attempts > 0 && wait > 0 ? "\(name) did not answer; retrying in \(wait) s" : "Connecting to \(name)…"
+            return status.attempts > 0 && wait > 0 ? "\(start) did not answer; retrying in \(wait) s" : "Connecting to \(inLine)…"
         case .reconnecting:
-            return wait > 0 ? "\(name) dropped; retrying in \(wait) s" : "Reconnecting to \(name)…"
+            return wait > 0 ? "\(start) dropped; retrying in \(wait) s" : "Reconnecting to \(inLine)…"
         case .suspended:
-            return "Reconnecting to \(name)…"
+            return "Reconnecting to \(inLine)…"
         case .offline:
             switch status.halt {
-            case .identityChanged?: return "\(name)’s address answers as another computer"
-            case .contractMismatch(let app, let host)?: return host > app ? "\(name) is newer than this app" : "\(name) is older than this app"
-            case nil: return "\(name) is offline"
+            case .identityChanged?: return "\(start)’s address answers as another computer"
+            case .contractMismatch(let app, let host)?: return host > app ? "\(start) is newer than this app" : "\(start) is older than this app"
+            case nil: return "\(start) is offline"
             }
         case .unauthorized:
-            return "\(name) no longer accepts this key"
+            return "\(start) no longer accepts this key"
         }
     }
 
@@ -59,6 +61,19 @@ public enum ConnectionSentence {
     public static func ticks(_ status: EnvironmentStatus) -> Bool {
         (status.transport == .reconnecting || status.transport == .connecting) && status.nextRetryAt != nil
     }
+}
+
+/// A computer's name inside a sentence, as the desktop says it (src/renderer/src/lib/hostWords.ts `nameInLine`):
+/// "The box" reads "the box", "This Mac" reads "this Mac"; a name of its own ("Studio Mac") stays as it is.
+public func nameInLine(_ name: String) -> String {
+    let lowered = name.dropFirst(4).first.map(\.isLowercase) == true && name.hasPrefix("The ")
+    return lowered || name.hasPrefix("This ") ? "t" + name.dropFirst() : name
+}
+
+/// A computer's name opening a sentence: its first letter raised ("box" starts a line as "Box").
+public func nameAtStart(_ name: String) -> String {
+    guard let first = name.first else { return name }
+    return first.uppercased() + name.dropFirst()
 }
 
 /// `env_Ab3k…9xQz`: the id's prefix, its first four and last four characters.
@@ -202,7 +217,7 @@ public enum KeyRights: Int, CaseIterable, Sendable, Hashable {
         case .look: "Look only"
         case .run: "Run threads"
         case .approve: "Run threads and approve"
-        case .manage: "Manage \(computer)"
+        case .manage: "Manage \(nameInLine(computer))"
         }
     }
 
@@ -211,7 +226,7 @@ public enum KeyRights: Int, CaseIterable, Sendable, Hashable {
         case .look: "Read threads and files"
         case .run: "Start, steer and stop threads"
         case .approve: "Also answer when a thread asks before a risky step"
-        case .manage: "Everything above, and add devices and change every setting on \(computer)"
+        case .manage: "Everything above, and add devices and change every setting on \(nameInLine(computer))"
         }
     }
 }
@@ -257,7 +272,8 @@ public extension Capability {
 /// through it that go with it, by name ("Studio Mac goes with it.", "Studio
 /// Mac and Office Mac go with it.").
 public func forgetCopy(carrier: String, relayed: [String]) -> String {
-    let base = "This phone drops its key and stops getting \(carrier)’s notifications. Its threads stay there, and \(carrier) still lets this phone in until the key is removed there."
+    let inLine = nameInLine(carrier)
+    let base = "This phone drops its key and stops getting \(inLine)’s notifications. Its threads stay there, and \(inLine) still lets this phone in until the key is removed there."
     guard !relayed.isEmpty else { return base }
     let names: String
     if relayed.count == 1 {

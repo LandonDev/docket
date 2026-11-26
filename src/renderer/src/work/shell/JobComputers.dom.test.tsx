@@ -27,10 +27,13 @@ vi.mock("../../lib/tcserver/workspaces", async (original) => ({
   ...(await original<object>()),
   useWorkspaces: () => [{ id: "ws", name: "Purdue Esports", environmentId: "env_box", sector: "purdue", kind: "work", path: "/w" }],
 }));
-const job = vi.hoisted(() => ({ may: ["env_mac", "env_pc"] as string[], writes: [] as unknown[] }));
+const job = vi.hoisted(() => ({ may: ["env_mac", "env_pc"] as string[], writes: [] as unknown[], fail: false }));
 vi.mock("./actions", async (original) => ({
   ...(await original<object>()),
-  workspaceSettings: async () => ({ mayUseDesktop: job.may, model: null, reasoning: null, voice: false }),
+  workspaceSettings: async () => {
+    if (job.fail) throw new Error("The host did not answer");
+    return { mayUseDesktop: job.may, model: null, reasoning: null, voice: false };
+  },
   setWorkspaceSettings: async (_ws: unknown, patch: { mayUseDesktop?: string[] }) => {
     job.writes.push(patch);
     if (patch.mayUseDesktop) job.may = patch.mayUseDesktop;
@@ -68,9 +71,10 @@ const fakeLink = (id: string) =>
   }) as never;
 
 beforeEach(() => {
-  resetOwnComputerForTests("MacBook-Pro");
+  resetOwnComputerForTests("MacBook Pro");
   job.may = ["env_mac", "env_pc"];
   job.writes = [];
+  job.fail = false;
   bridge.policy = "off";
   pc.policy = "off";
   vi.spyOn(registry, "link").mockImplementation((id: string) => fakeLink(id));
@@ -91,14 +95,14 @@ describe("a job's computers", () => {
   it("names each computer once, this window's own with this Mac after it", async () => {
     render(<WorkWorkspacePage workspaceId="ws" />);
     await settle();
-    expect(rowOf("MacBook-Pro").textContent).toContain("MacBook-Prothis Mac");
+    expect(rowOf("MacBook Pro").textContent).toContain("MacBook Prothis Mac");
     expect(rowOf("PURDUE-LT")).toBeTruthy();
   });
 
   it("shows the amber line under a computer whose bridge is Off for the job's computer, and Open Sharing asks for that row", async () => {
     render(<WorkWorkspacePage workspaceId="ws" />);
     await settle();
-    const mac = rowOf("MacBook-Pro").querySelector("[data-refusal]");
+    const mac = rowOf("MacBook Pro").querySelector("[data-refusal]");
     expect(mac?.textContent).toContain("This Mac gives the box no access.");
     fireEvent.click(screen.getByRole("button", { name: "Open Sharing" }));
     // Sharing opens with what the box may do on this Mac over it: the rule that refuses, one press from its switch.
@@ -120,9 +124,45 @@ describe("a job's computers", () => {
   it("writes the job's list of host ids on a flip, this Mac by its host id", async () => {
     render(<WorkWorkspacePage workspaceId="ws" />);
     await settle();
-    fireEvent.click(screen.getByRole("switch", { name: "MacBook-Pro" }));
+    fireEvent.click(screen.getByRole("switch", { name: "MacBook Pro" }));
     await settle();
     expect(job.writes).toEqual([{ mayUseDesktop: ["env_pc"] }]);
-    expect(screen.getByRole("switch", { name: "MacBook-Pro" }).getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByRole("switch", { name: "MacBook Pro" }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("says the job's own permission and the computer's refusal on lines of their own", async () => {
+    render(<WorkWorkspacePage workspaceId="ws" />);
+    await settle();
+    const line = rowOf("MacBook Pro").querySelector("[data-refusal]")!;
+    expect(line.previousElementSibling?.textContent).toBe("Allowed for this job");
+    expect(line.className).toContain("block");
+  });
+});
+
+describe("a job's page when its computer does not answer", () => {
+  it("says it once with one Retry, and every other section keeps its heading and its rows' shape", async () => {
+    job.fail = true;
+    render(<WorkWorkspacePage workspaceId="ws" />);
+    await settle();
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    const headings = [...document.querySelectorAll("section h2, section [data-slot=page-section-title]")].map((h) => h.textContent);
+    expect(headings).toEqual(expect.arrayContaining(["Computers its threads may use", "New threads", "Rules", "Writing and mail"]));
+    expect(document.querySelector('[data-setting="job.rules"] [data-slot=page-row-skeleton]')).toBeTruthy();
+    expect(screen.queryByRole("switch")).toBeNull();
+    job.fail = false;
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
+    await settle();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("switch", { name: "PURDUE-LT" })).toBeTruthy();
+  });
+
+  it("draws no computer's row until this computer has said its name", async () => {
+    resetOwnComputerForTests(null);
+    vi.spyOn(registry, "primary").mockReturnValue({ environmentId: "local", request: () => new Promise(() => {}) } as never);
+    render(<WorkWorkspacePage workspaceId="ws" />);
+    await settle();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(document.querySelector('[data-setting="job.computers"] [data-slot=page-row-skeleton]')).toBeTruthy();
   });
 });

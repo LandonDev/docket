@@ -1,4 +1,4 @@
-import { andList, grantFieldNames, scopeWords } from "@shared/addons";
+import { grantFieldNames } from "@shared/addons";
 import { SIGNIN_STEP_WORDS } from "@shared/addonGrantWords";
 import type { AddonGrantView } from "@shared/contract-addonGrants";
 import type { AddonAuth, AddonInput, AddonPlatform, AddonRow, AddonSpec, AddonStatus } from "@shared/contract-addons";
@@ -54,30 +54,23 @@ export function addonMark(row: AddonRow, status: AddonStatus | undefined, grant:
       // The host's own words when it cut the list ("12 of 300 tools listed").
       return { state: "done", word: "Connected", detail: status.detail || tools(status.tools) };
     case "failed":
-      return status.detail ? { state: "failed", word: "Failed", detail: status.detail } : { state: "failed", word: "Failed" };
-    case "needs-grant": {
-      const word = needsSignIn(row.spec, grant) ? "Sign in needed" : "Needs a key";
-      const own = status.detail && !status.detail.startsWith("Needs ") ? status.detail : null;
-      // Read and absent from the list: nothing is saved, so every value it names is missing.
-      const missing = grant ? grant.fields.filter((f) => !f.set).map((f) => f.name) : grant === null ? grantFieldNames(row.spec) : [];
-      const detail = own ?? (missing.length ? andList(missing) : null);
-      return detail ? { state: "waiting", word, detail } : { state: "waiting", word };
-    }
+      // The server's own reason is a builder's sentence ("Disconnected: …"): the row says the state in the house's words.
+      return { state: "failed", word: "Not connected" };
+    case "needs-grant":
+      // Which values are missing is the key dialog's to show; the row names no secret.
+      return { state: "waiting", word: needsSignIn(row.spec, grant) ? "Sign in needed" : "Needs a key" };
     case "other-platform":
       return { state: "idle", word: onlyOn(row.spec.platforms, { darwin: "Mac only", linux: "Linux only" }) ?? "Not on this computer" };
   }
 }
 
-/** The grant's facts: the names holding a value ("GITHUB_TOKEN saved"), "signed in", who refreshes it. Nothing for an add-on with no grant, nothing saved, or grants unread. */
+/** The grant's facts: "key saved" once a value is, "signed in". No secret's name: those are the key dialog's. Nothing
+ *  for an add-on with no grant, nothing saved, or grants unread. */
 export function grantFact(spec: AddonSpec, grant: GrantKnown): string[] {
   if (spec.auth === "none" || !grant) return [];
-  const saved = grant.fields.filter((f) => f.set).map((f) => f.name);
   const out: string[] = [];
-  if (saved.length) out.push(`${andList(saved)} saved`);
-  if (grant.oauth?.signedIn) {
-    out.push("signed in");
-    if (grant.oauth.refreshedBy) out.push(`refreshed on ${grant.oauth.refreshedBy}`);
-  }
+  if (grant.fields.some((f) => f.set)) out.push("key saved");
+  if (grant.oauth?.signedIn) out.push("signed in");
   return out;
 }
 
@@ -92,16 +85,12 @@ export function scopeName(workspaceId: string | null, names: ReadonlyMap<string,
   return names.get(workspaceId) ?? "A removed workspace";
 }
 
-/** The row's third line: where it applies, the hosts it runs on (unless line two says so), its grant, the thread that wrote it. */
+/** The row's third line: the workspace it is for (every workspace is the list's rule, said on no row), the computers it
+ *  runs on (unless line two says so), and its grant. */
 export function addonFacts(row: AddonRow, mark: AddonMark, grant: GrantKnown, workspaceName: string | null): string[] {
   const platform = onlyOn(row.spec.platforms, { darwin: "Macs only", linux: "Linux computers only" });
   const saysPlatform = mark.word === "Mac only" || mark.word === "Linux only";
-  return [
-    scopeWords(workspaceName),
-    ...(platform && !saysPlatform ? [platform] : []),
-    ...grantFact(row.spec, grant),
-    ...(row.writtenBy.kind === "thread" ? [`written by ${row.writtenBy.title || "a thread"}`] : []),
-  ];
+  return [...(workspaceName ? [workspaceName] : []), ...(platform && !saysPlatform ? [platform] : []), ...grantFact(row.spec, grant)];
 }
 
 export type AddonMenuPick = "edit" | "key" | "signin" | "cancel-signin" | "signout" | "remove";

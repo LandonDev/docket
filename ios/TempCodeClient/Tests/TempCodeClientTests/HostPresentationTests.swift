@@ -39,19 +39,25 @@ struct ConnectionSentenceTests {
     @Test(arguments: [
         (status(.open), "Connected"),
         (status(.connecting), "Connecting to the box…"),
-        (status(.connecting, attempts: 2, retryAt: 1_005_000), "the box did not answer; retrying in 5 s"),
-        (status(.reconnecting, retryAt: 1_005_000), "the box dropped; retrying in 5 s"),
+        (status(.connecting, attempts: 2, retryAt: 1_005_000), "The box did not answer; retrying in 5 s"),
+        (status(.reconnecting, retryAt: 1_005_000), "The box dropped; retrying in 5 s"),
         (status(.reconnecting, retryAt: 999_000), "Reconnecting to the box…"),
         (status(.reconnecting), "Reconnecting to the box…"),
         (status(.suspended), "Reconnecting to the box…"),
-        (status(.offline), "the box is offline"),
-        (status(.offline, halt: identityChanged), "the box’s address answers as another computer"),
-        (status(.offline, halt: hostNewer), "the box is newer than this app"),
-        (status(.offline, halt: hostOlder), "the box is older than this app"),
-        (status(.unauthorized), "the box no longer accepts this key"),
+        (status(.offline), "The box is offline"),
+        (status(.offline, halt: identityChanged), "The box’s address answers as another computer"),
+        (status(.offline, halt: hostNewer), "The box is newer than this app"),
+        (status(.offline, halt: hostOlder), "The box is older than this app"),
+        (status(.unauthorized), "The box no longer accepts this key"),
     ])
     func `the desktop's sentence per state`(status: EnvironmentStatus, text: String) {
-        #expect(ConnectionSentence.text(name: "the box", status: status, now: now) == text)
+        #expect(ConnectionSentence.text(name: "The box", status: status, now: now) == text)
+    }
+
+    @Test func `a name opens a sentence raised and sits inside one lowered`() {
+        #expect(ConnectionSentence.text(name: "box", status: status(.offline), now: now) == "Box is offline")
+        #expect(ConnectionSentence.text(name: "The box", status: status(.connecting), now: now) == "Connecting to the box…")
+        #expect(ConnectionSentence.text(name: "Studio Mac", status: status(.reconnecting), now: now) == "Reconnecting to Studio Mac…")
     }
 
     @Test func `the host's own error never shows`() {
@@ -65,6 +71,19 @@ struct ConnectionSentenceTests {
         #expect(ConnectionSentence.ticks(status(.connecting, attempts: 1, retryAt: 1_005_000)))
         #expect(!ConnectionSentence.ticks(status(.reconnecting)))
         #expect(!ConnectionSentence.ticks(status(.offline)))
+    }
+}
+
+@Suite("nameInLine")
+struct NameInLineTests {
+    @Test func `the desktop's rule: The and This lowered, a name of its own kept`() {
+        #expect(nameInLine("The box") == "the box")
+        #expect(nameInLine("This Mac") == "this Mac")
+        #expect(nameInLine("Studio Mac") == "Studio Mac")
+        #expect(nameInLine("The Studio") == "The Studio")
+        #expect(nameInLine("") == "")
+        #expect(nameAtStart("box") == "Box")
+        #expect(nameAtStart("") == "")
     }
 }
 
@@ -204,7 +223,7 @@ struct KeyRightsTests {
     }
 
     @Test func `the desktop's It may words`() {
-        #expect(KeyRights.allCases.map { $0.title(computer: "the box") } == ["Look only", "Run threads", "Run threads and approve", "Manage the box"])
+        #expect(KeyRights.allCases.map { $0.title(computer: "The box") } == ["Look only", "Run threads", "Run threads and approve", "Manage the box"])
         #expect(KeyRights.look.detail(computer: "the box") == "Read threads and files")
         #expect(KeyRights.run.detail(computer: "the box") == "Start, steer and stop threads")
         #expect(KeyRights.approve.detail(computer: "the box") == "Also answer when a thread asks before a risky step")

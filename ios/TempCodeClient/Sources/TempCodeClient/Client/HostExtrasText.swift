@@ -53,24 +53,34 @@ public enum DriftLine {
         return "+\(behind)"
     }
 
-    /// "3 releases behind master".
+    /// "3 releases behind the newest".
     public static func accessibilityLabel(behind: Int) -> String {
-        "\(behind) \(behind == 1 ? "release" : "releases") behind master"
+        "\(behind) \(behind == 1 ? "release" : "releases") behind the newest"
     }
 
-    /// The Build section's footer. Behind: the count and both versions, then
-    /// what brings the host up: the Mac's publish, deploying from here, or
-    /// the admin key a lesser key lacks; nothing more when the box cannot
-    /// take a deploy right now (the row's own line says why). Current: one
-    /// sentence. Master unknown: a sentence only when a fetch failed and
-    /// nothing is held, so the footer is silent before the first fetch. No
-    /// build in the hello (an older host): nil.
+    /// The Build section's Updates row, the one place the section says how the
+    /// computer stands: "Up to date", "3 behind", the newest version while
+    /// the computer's own is unknown (an older host), or "—" before the first
+    /// read of the newest.
+    public static func value(build: BuildFacts?, master: MasterRelease?) -> String {
+        guard let master else { return "—" }
+        guard let build else { return "v\(master.version)" }
+        let behind = behind(master: master.release, running: build.release) ?? 0
+        return behind == 0 ? "Up to date" : "\(behind) behind"
+    }
+
+    /// The Build section's footer, only what the row does not say. Behind:
+    /// both versions, then what brings the computer up: the Mac's publish,
+    /// updating from here, or the key a lesser key lacks; nothing more when
+    /// the box cannot take an update right now (the row's own line says why).
+    /// Current, or no build in the hello: nil. The newest unknown: a sentence
+    /// only when a fetch failed and nothing is held.
     public static func footer(build: BuildFacts?, master: MasterRelease?, fetchFailed: Bool, canDeploy: Bool, isAdmin: Bool) -> String? {
         guard let build else { return nil }
-        guard let master else { return fetchFailed ? "Master's version could not be read." : nil }
+        guard let master else { return fetchFailed ? "The newest version could not be read." : nil }
         let behind = behind(master: master.release, running: build.release) ?? 0
-        if behind == 0 { return "Up to date with master (v\(master.version))." }
-        let count = "\(behind) \(behind == 1 ? "release" : "releases") behind master: v\(build.version) → v\(master.version)."
+        if behind == 0 { return nil }
+        let versions = "v\(build.version) → v\(master.version)."
         let fix: String = if build.platform == "darwin" {
             " Publish from the Mac."
         } else if !isAdmin {
@@ -80,7 +90,7 @@ public enum DriftLine {
         } else {
             ""
         }
-        return count + fix
+        return versions + fix
     }
 }
 
@@ -110,30 +120,30 @@ public enum DeployWords {
         if let from, let to, let a = releaseN(deployed), let b = releaseN(master) {
             let n = b - a
             if n > 0 {
-                return "\(from) → \(to), \(n) \(n == 1 ? "release" : "releases"). \(hostName) rebuilds master, trials it and restarts; it rolls back if the trial fails."
+                return "\(from) → \(to), \(n) \(n == 1 ? "release" : "releases"). \(hostName) builds the newest release, tries it and restarts. It goes back if the try fails."
             }
             if n == 0 {
-                return "\(hostName) already runs \(to). Deploying rebuilds master from GitHub and restarts the service anyway."
+                return "\(hostName) already runs \(to). Updating builds it again and restarts \(hostName) anyway."
             }
-            return "\(from) → \(to): master is behind what \(hostName) runs. Deploying rebuilds master and restarts the service."
+            return "\(hostName) runs \(from), which is newer than the newest release, \(to). Updating builds \(to) and restarts \(hostName)."
         }
         if let from {
-            return "\(hostName) runs \(from). Deploying rebuilds master from GitHub, trials it and restarts the service."
+            return "\(hostName) runs \(from). Updating builds the newest release, tries it and restarts \(hostName)."
         }
-        return "\(hostName) rebuilds master from GitHub, trials it and restarts the service; it rolls back if the trial fails."
+        return "\(hostName) builds the newest release, tries it and restarts. It goes back if the try fails."
     }
 
     /// The line under a box's row (hostJobCard.ts `deployRowLine`): "Runs
-    /// v1.0.270, deploying", "Runs v1.0.273, up to date with master".
+    /// v1.0.270, updating", "Runs v1.0.273, up to date".
     public static func rowLine(installed: Bool, version: String?, masterVersion: String?, connected: Bool, phase: HostJobPhase) -> String {
         if !connected { return "Not connected right now." }
-        if !installed { return "Deploy from the app is not installed on this host." }
+        if !installed { return "This computer cannot be updated from here." }
         let runs = versionText(version)
         let behind: Int? = if let a = releaseN(version), let b = releaseN(masterVersion) { b - a } else { nil }
-        if phase == .pending || phase == .running { return "Runs \(runs ?? "an unknown version"), deploying" }
+        if phase == .pending || phase == .running { return "Runs \(runs ?? "an unknown version"), updating" }
         guard let behind else { return "Runs \(runs ?? "an unknown version")." }
-        if behind <= 0 { return "Runs \(runs ?? "an unknown version"), up to date with master" }
-        return "Runs \(runs ?? "an unknown version"), \(behind) \(behind == 1 ? "release" : "releases") behind master"
+        if behind <= 0 { return "Runs \(runs ?? "an unknown version"), up to date" }
+        return "Runs \(runs ?? "an unknown version"), \(behind) \(behind == 1 ? "release" : "releases") behind"
     }
 }
 
@@ -165,29 +175,30 @@ public struct HostJobCard: Sendable, Hashable {
 
     public static func deploy(status: HostJobStatus, text: String, hostName: String, linkUp: Bool, deployedVersion: String?) -> HostJobCard {
         let lines = LogTail.tail(text)
-        let what = status.target ?? "master"
+        // The branch a deploy builds is the builder's word; he reads "Updating box".
+        let to = status.target.flatMap { $0 == "master" ? nil : " to \($0)" } ?? ""
         let base = HostJobCard(visible: true, phase: status.phase, title: "", note: nil, lines: lines, stoppable: false, ending: nil)
         switch status.phase {
         case .idle, .unknown:
             return HostJobCard(visible: false, phase: .idle, title: "", note: nil, lines: lines, stoppable: false, ending: nil)
         case .pending:
             var card = base
-            card.title = "Deploying \(what) to \(hostName)"
-            card.note = "Waiting for the trigger on the box"
+            card.title = "Updating \(hostName)\(to)"
+            card.note = "Waiting for \(hostName) to start"
             return card
         case .running:
             var card = base
-            card.title = "Deploying \(what) to \(hostName)"
-            card.note = linkUp ? "Cannot be stopped mid-way; the box rolls back on failure" : "The box is restarting; the log continues when it is back"
+            card.title = "Updating \(hostName)\(to)"
+            card.note = linkUp ? "Cannot be stopped part-way. \(hostName) goes back to the build it had if this fails." : "\(hostName) is restarting. The log goes on when it is back."
             return card
         case .done:
             var card = base
             if status.exit == 0 {
-                card.title = "Deployed \(what) to \(hostName)"
-                card.ending = Ending(text: "Deployed \(versionText(deployedVersion) ?? what), the service is back", failed: false)
+                card.title = "Updated \(hostName)\(to)"
+                card.ending = Ending(text: versionText(deployedVersion).map { "\(hostName) runs \($0) and is back" } ?? "\(hostName) is updated and back", failed: false)
             } else {
-                card.title = "Deploy of \(what) to \(hostName)"
-                card.ending = Ending(text: status.exit.map { "Deploy failed (exit \($0))" } ?? "Deploy did not start", failed: true)
+                card.title = "Update of \(hostName)\(to)"
+                card.ending = Ending(text: status.exit.map { "The update failed (exit \($0))" } ?? "The update did not start", failed: true)
             }
             return card
         }
@@ -509,9 +520,9 @@ public enum HostExtrasAccess: Sendable, Hashable, CaseIterable {
     public var reason: String {
         switch self {
         case .deploy: "Updating needs a key that may manage it."
-        case .sync: "Reading the sync state needs an admin key."
-        case .deviceActions: "Shutting down or deleting a simulator needs an operate key."
-        case .macStop: "Stopping a command needs an operate key on the Mac."
+        case .sync: "Reading the sync state needs a key that may manage it."
+        case .deviceActions: "Shutting down or deleting a simulator needs a key that may run threads."
+        case .macStop: "Stopping a command needs a key that may run threads on the Mac."
         }
     }
 

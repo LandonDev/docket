@@ -23,8 +23,8 @@ struct DriftMark: View {
     }
 }
 
-/// Build: master's version, and for a box the update that brings it up
-/// (the glossary's Update… for Deploy master). The computer's own version
+/// Build: how the computer stands against the newest release, and for a box
+/// the update that brings it up (the glossary's Update… for Deploy master). The computer's own version
 /// stays in the Computer section; the footer names the
 /// gap and the fix (or why it is out of reach) in at most two lines.
 struct HostBuildSection: View {
@@ -45,8 +45,9 @@ struct HostBuildSection: View {
         let installed = extras.deploy?.installed == true
         let canDeploy = !isMac && open && admin && installed && (phase == .idle || phase == .done)
         Section {
-            LabeledContent("Newest") {
-                Text(watcher.release.map { "v\($0.version)" } ?? "—")
+            // How the computer stands, said once: the footer adds only the versions and the fix when it is behind.
+            LabeledContent("Updates") {
+                Text(DriftLine.value(build: build, master: watcher.release))
                     .monospacedDigit()
             }
             .alert("Update \(client.environment.name)?", isPresented: $confirming) {

@@ -16,7 +16,7 @@ import { Button } from "../components/ui/button";
 import { Field, FieldRow } from "./DialogField";
 import { Modal, ModalBody, useClosingDialog, useModalClose } from "./Modal";
 import { Input } from "../components/ui/input";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { cn } from "../lib/cn";
 import { EFFORT_LABELS } from "../lib/tcserver/defaults";
@@ -39,9 +39,9 @@ import {
 } from "../lib/tcserver/rules";
 import { usePublishHome } from "../lib/settings/pageHome";
 import { homeNote } from "../lib/settingsHome";
-import type { HarnessId } from "../lib/session";
+import { HARNESS_TITLE, type HarnessId } from "../lib/session";
 import type { ModelInfo, ProviderId, Reasoning as Effort } from "../lib/tcserver/types";
-import { SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
+import { OpenCue, SettingRow, SettingSection } from "../surfaces/settings/parts/SettingRow";
 import { ListFilter, useListFilter } from "../surfaces/settings/parts/ListFilter";
 import { SaveMark } from "../surfaces/settings/parts/SaveMark";
 import { useSaved, type Saved } from "../surfaces/settings/parts/useSaved";
@@ -75,6 +75,9 @@ const APPROVAL_OPTIONS: Choice<Approval>[] = [
   { value: "off", label: "Off" },
 ];
 
+/** An agent app's name, as every other page says it ("Claude Code"), else the catalog's own word for it. */
+const appName = (catalog: RulesCatalog | null, provider: ProviderId): string => (HARNESS_TITLE as Record<string, string>)[provider] ?? catalog?.[provider]?.label ?? provider;
+
 /** Every agent app the computer's catalog lists, in its order. */
 const providersOf = (catalog: RulesCatalog | null): ProviderId[] => Object.keys(catalog ?? {}) as ProviderId[];
 
@@ -94,34 +97,50 @@ const SWITCHES: { row: ConductRow; id: string; key: SwitchKey }[] = [
   { row: "checkout", id: "sub.checkout", key: "useWorktrees" },
 ];
 
-/** The lead thread's rows in their shape: one select, five switches. */
+/** Each section's rows in their shape while the set loads: the lead thread's select and five switches, the two
+ *  limits, the models' open row, two rules. */
 const LEAD_SKELETON = [{}, { control: "switch" }, { control: "switch" }, { control: "switch" }, { control: "switch" }, { control: "switch" }] as const;
+const LIMITS_SKELETON = [{}, {}] as const;
+const MODELS_SKELETON = [{ description: true, control: "none" }] as const;
+const RULES_SKELETON = [{ description: true, media: true, control: "none" }, { description: true, media: true, control: "none" }] as const;
 
-/** The first section's rows while the set loads, under its real heading; once the computer failed to answer, its
- *  error with Retry. */
+/** The page while the set loads, every section under its real heading in its rows' shape; once the computer failed
+ *  to answer, one error with Retry in the first section's place, the others held in their shape. */
 export function RulesSkeleton({ error, onRetry }: { workspaceId?: string | null; error?: string | null; onRetry?: () => void }) {
   return (
-    <SettingSection of="sub.gives">
-      {error ? (
-        <PageError
-          action={
-            onRetry ? (
-              <Button variant="ghost" size="sm" onClick={onRetry}>
-                Retry
-              </Button>
-            ) : null
-          }
-        >
-          {error}
-        </PageError>
-      ) : (
-        <div data-testid="rules-skeleton">
+    <div data-testid="rules-skeleton" className="contents">
+      <SettingSection of="sub.gives">
+        {error ? (
+          <PageError
+            action={
+              onRetry ? (
+                <Button variant="ghost" size="sm" onClick={onRetry}>
+                  Retry
+                </Button>
+              ) : null
+            }
+          >
+            {error}
+          </PageError>
+        ) : (
           <PageRowsSkeleton rows={LEAD_SKELETON} />
-        </div>
-      )}
-    </SettingSection>
+        )}
+      </SettingSection>
+      <SettingSection of="sub.atOnce" description={LIMITS_LINE}>
+        <PageRowsSkeleton rows={LIMITS_SKELETON} />
+      </SettingSection>
+      <SettingSection of="sub.models">
+        <PageRowsSkeleton rows={MODELS_SKELETON} />
+      </SettingSection>
+      <SettingSection of="sub.routing">
+        <PageRowsSkeleton rows={RULES_SKELETON} />
+      </SettingSection>
+    </div>
   );
 }
+
+/** Both limits count for one lead thread: said once, under their heading. */
+const LIMITS_LINE = "For each thread.";
 
 export function OrchestrationRulesEditor({ workspaceId }: { workspaceId: string | null }) {
   const workspace = useWorkspaces().find((w) => w.id === workspaceId);
@@ -177,16 +196,7 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
 
   return (
     <>
-      <SettingSection
-        of="sub.gives"
-        action={
-          overridden ? (
-            <Button variant="ghost" size="sm" data-setting="sub.reset" disabled={blocked} onClick={() => void reset()}>
-              {workspaceId === null ? "Use Docket's defaults…" : "Use Subagents…"}
-            </Button>
-          ) : null
-        }
-      >
+      <SettingSection of="sub.gives">
         <SettingRow id="sub.gives" saved={saved.gives}>
           <ChoiceSelect
             label="Gives its agents"
@@ -201,15 +211,14 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
             <SettingSwitch label={TITLES[row]} on={rules.conduct[key]} disabled={blocked} onChange={(on) => patchConduct(row, { [key]: on } as Partial<OrchestrationRules["conduct"]>)} />
           </SettingRow>
         ))}
-        {cleared.error ? <PageError>{cleared.error}</PageError> : null}
       </SettingSection>
 
-      <SettingSection of="sub.atOnce">
-        <SettingRow id="sub.atOnce" description="For each thread" saved={saved.atOnce}>
+      <SettingSection of="sub.atOnce" description={LIMITS_LINE}>
+        <SettingRow id="sub.atOnce" saved={saved.atOnce}>
           <CapSelect label="Agents at once" value={rules.conduct.maxParallel} options={[0, 2, 4, 8, 16, 32, 64, 128]} disabled={blocked} onChange={(maxParallel) => void patchConduct("atOnce", { maxParallel })} />
         </SettingRow>
         <SettingRow id="sub.perThread" saved={saved.perThread}>
-          <CapSelect label="Agents per thread" value={rules.conduct.maxAgents} options={[0, 10, 20, 50]} disabled={blocked} onChange={(maxAgents) => void patchConduct("perThread", { maxAgents })} />
+          <CapSelect label="Agents in all" value={rules.conduct.maxAgents} options={[0, 10, 20, 50]} disabled={blocked} onChange={(maxAgents) => void patchConduct("perThread", { maxAgents })} />
         </SettingRow>
       </SettingSection>
 
@@ -220,9 +229,12 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
       <SettingSection
         of="sub.routing"
         action={
-          <Button variant="ghost" size="sm" data-setting="sub.addRule" onClick={() => setEditing("new")} disabled={blocked}>
-            Add rule…
-          </Button>
+          // Nothing is offered that cannot work: while the box is out of reach there is no Add rule….
+          blocked ? null : (
+            <Button variant="ghost" size="sm" data-setting="sub.addRule" onClick={() => setEditing("new")}>
+              Add rule…
+            </Button>
+          )
         }
       >
         {rules.routing.map((r, i) => (
@@ -231,6 +243,25 @@ export function RulesEditor({ environmentId, workspaceId }: { environmentId: str
         {rules.routing.length === 0 ? <PageEmpty>No rules</PageEmpty> : null}
         {moved.error ? <PageError>{moved.error}</PageError> : null}
       </SettingSection>
+
+      {/* Asks first, so last on the page; offered only while there is a set to clear and the box can take it. */}
+      {overridden && !blocked ? (
+        <SettingSection of="sub.reset">
+          {workspaceId === null ? (
+            <SettingRow id="sub.reset" description="Every row here goes back, and every rule is deleted" saved={cleared}>
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
+                Use…
+              </Button>
+            </SettingRow>
+          ) : (
+            <PageRow title="This workspace's own set" description="Its threads follow Subagents once it is gone" error={cleared.error ?? undefined}>
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void reset()}>
+                Use Subagents…
+              </Button>
+            </PageRow>
+          )}
+        </SettingSection>
+      ) : null}
 
       {modelsOpen ? <ModelsSheet rules={rules} catalog={catalog} disabled={blocked} write={write} onClose={() => setModelsOpen(false)} /> : null}
       {editing ? (
@@ -292,15 +323,13 @@ function ModelsSheet({
     ...(catalog?.[p]?.models ?? []).map((m) => ({ provider: p, id: m.id, model: m as ModelInfo | undefined, name: m.label })),
     ...stale.filter((m) => m.provider === p).map((m) => ({ provider: p, id: m.id, model: undefined, name: m.id })),
   ]);
-  const live = rows.filter((row) => row.model);
-  const filter = useListFilter(rows, (row) => `${row.name} ${catalog?.[row.provider]?.label ?? row.provider}`);
+  const filter = useListFilter(rows, (row) => `${row.name} ${appName(catalog, row.provider)}`);
   const shown = new Set(filter.shown);
   return (
     <Sheet {...root}>
       <SheetContent side="right" width={640}>
         <SheetHeader>
           <SheetTitle>Models agents may run on</SheetTitle>
-          <SheetDescription className="text-xs">{`${live.filter((r) => modelApproved(rules, r.provider, r.id, "orchestrator")).length} of ${live.length} allowed`}</SheetDescription>
         </SheetHeader>
         {/* The sheet's own column is the page container the model rows read their width from. */}
         <div className="@container/page min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-5 pb-5">
@@ -316,7 +345,7 @@ function ModelsSheet({
             <TableBody>
               {providersOf(catalog).map((p) => {
                 const info = catalog?.[p];
-                const label = info?.label ?? p;
+                const label = appName(catalog, p);
                 const mine = rows.filter((row) => row.provider === p && shown.has(row));
                 if (filter.query && mine.length === 0) return null;
                 return (
@@ -491,11 +520,14 @@ function RuleRow({
       openLabel={`Edit rule: ${rule.task}`}
       openDisabled={disabled}
     >
-      {first && last ? null : (
+      {/* The ⋯ only moves a rule, so a lone rule, or a set the box cannot take now, has none: the row ends in its cue. */}
+      {(first && last) || disabled ? (
+        <OpenCue />
+      ) : (
         <RowsMenu
           label={`${rule.task} actions`}
           trigger={
-            <Button variant="ghost" size="icon-sm" aria-label={`${rule.task} actions`} disabled={disabled} className="text-muted-foreground">
+            <Button variant="ghost" size="icon-sm" aria-label={`${rule.task} actions`} className="text-muted-foreground">
               <MoreHorizontal />
             </Button>
           }
@@ -587,7 +619,7 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
                 setProvider(v);
                 setModel("");
               }}
-              options={providers.map((p) => ({ value: p, label: catalog?.[p]?.label ?? p }))}
+              options={providers.map((p) => ({ value: p, label: appName(catalog, p) }))}
             />
           </FieldRow>
           <FieldRow label="Model">
@@ -599,8 +631,8 @@ function RuleForm({ rule, rules, catalog, onSave, onDelete, onClose }: RuleDialo
             </FieldRow>
           ) : null}
           {rule ? (
-            <FieldRow label="On">
-              <SettingSwitch label="On" on={enabled} onChange={setEnabled} />
+            <FieldRow label="Use this rule">
+              <SettingSwitch label="Use this rule" on={enabled} onChange={setEnabled} />
             </FieldRow>
           ) : null}
         </div>

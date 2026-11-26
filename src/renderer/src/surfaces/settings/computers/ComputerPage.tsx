@@ -1,14 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { AdmissionState } from "@server/shared/contract-admission";
 import type { SavedEnvironment } from "@server/shared/contract-remote";
-import { PageActions, PageRowsSkeleton, PageSection } from "../../../components/page";
+import { PageActions, PageError, PageSection } from "../../../components/page";
 import { BusyLabel, Button } from "../../../components/ui/button";
 import { confirmAction } from "../../../chrome/ConfirmDialog";
 import { LOCAL_ENVIRONMENT_ID, WEB_ENVIRONMENT_ID, forgetSeen, registry, useEnvironmentStatus, useLastSeenAt } from "../../../lib/connection";
 import { useHostRead } from "../../../lib/connection/hostRead";
 import { useDeployDrift } from "../../../lib/deployDrift";
 import { originText } from "../../../lib/hostConnection";
-import { managedElsewhere } from "../../../lib/linkMay";
 import { deployConfirmText } from "../../../lib/hostJobCard";
 import { refreshDeployStatus, startDeploy, useDeployStatuses, usePublishStatus, watchJob } from "../../../lib/hostJobs";
 import { useMacBridgeHosts } from "../../../lib/macBridge";
@@ -35,6 +34,25 @@ import { mayHereWords } from "./MaySheet";
 import { SetUpHere } from "./SetUpHere";
 import { SignIns } from "./SignIns";
 import { ThreadsRows } from "./ThreadsRows";
+import { SectionRead, useComputerRead } from "./read";
+
+/** The computers whose page asked and got no answer: their title line then claims no connection (round 1, rule 1). */
+const unanswered = new Set<string>();
+const unansweredListeners = new Set<() => void>();
+function markUnanswered(environmentId: string, failed: boolean): void {
+  if (unanswered.has(environmentId) === failed) return;
+  if (failed) unanswered.add(environmentId);
+  else unanswered.delete(environmentId);
+  for (const listener of unansweredListeners) listener();
+}
+const useUnanswered = (environmentId: string): boolean =>
+  useSyncExternalStore(
+    (listener) => {
+      unansweredListeners.add(listener);
+      return () => unansweredListeners.delete(listener);
+    },
+    () => unanswered.has(environmentId),
+  );
 
 /** The computer this page is about, as this window reaches it: the box's own page at /ui, else a linked computer. */
 const servedHere = (environmentId: string): boolean => environmentId === WEB_ENVIRONMENT_ID;
@@ -82,13 +100,16 @@ export function ComputerLine({ environmentId }: { environmentId: string }) {
   const host = useHost(environmentId);
   const web = servedHere(environmentId);
   const url = registry.link(environmentId)?.transport?.url ?? registry.environment(environmentId)?.routes[status.route ?? 0]?.url;
+  const silent = useUnanswered(environmentId);
   const words = computerLineWords({ transport: status.transport, url, lastSeen, name: host.name.name, web });
-  // A key that may not change it: the page's values are words, and who can is said once, here.
-  const managed = status.transport === "open" && !host.may("remote.settings.set", {});
+  // A key that may not change it: the page's values are words, and who can is said once, here, as a sentence.
+  const managed = status.transport === "open" && !silent && !host.may("remote.settings.set", {});
+  // A computer whose page got no answer: the page says so once, in its body; the line claims no connection.
+  if (silent && status.transport === "open") return null;
   return (
     <>
       <span data-computer-line={status.transport}>{words}</span>
-      {managed ? <span data-managed=""> {managedElsewhere(host.name.name)}.</span> : null}
+      {managed ? <span data-managed="">{` Its settings are changed from a computer that manages ${computerInLine(host.name)}.`}</span> : null}
       {web ? null : status.transport === "offline" || status.transport === "reconnecting" ? (
         <PageActions>
           <Button variant="ghost" size="sm" onClick={() => registry.retry(environmentId)}>
@@ -113,7 +134,7 @@ export function ComputerLine({ environmentId }: { environmentId: string }) {
  * computer out of reach shows what this Mac knows of it (its version, Work, On this Mac) and asks it nothing. At
  * /ui the one computer is the one serving the page: its sign-ins and Advanced, and no On this Mac.
  */
-export function OtherComputerPage({ environmentId }: { environmentId: string }) {
+export function OtherComputerPage({ environmentId, advancedOpen = false }: { environmentId: string; advancedOpen?: boolean }) {
   const host = useHost(environmentId);
   const web = isWebMode();
   const transport = useEnvironmentStatus(environmentId).transport;
@@ -127,6 +148,44 @@ export function OtherComputerPage({ environmentId }: { environmentId: string }) 
         <OnThisMac host={host} />
       </>
     );
+  return <InReach host={host} web={web} advancedOpen={advancedOpen} />;
+}
+
+/**
+ * A computer in reach. Its first read (`admission.get`, which any key may make) stands for the whole page: while it is
+ * out every section stands in its shape; when it fails the page says so once with Retry and draws nothing that hangs
+ * on the computer (round 1, rule 1), keeping only this Mac's own record of it.
+ */
+function InReach({ host, web, advancedOpen }: { host: Host; web: boolean; advancedOpen: boolean }) {
+  const environmentId = host.environmentId;
+  const reach = useComputerRead<AdmissionState>(host, "admission.get");
+  const [retrying, setRetrying] = useState(false);
+  const failed = reach.value === undefined && reach.error !== null;
+  useEffect(() => {
+    markUnanswered(environmentId, failed);
+    return () => markUnanswered(environmentId, false);
+  }, [environmentId, failed]);
+  if (failed)
+    return (
+      <>
+        <PageSection>
+          <PageError
+            data-unanswered=""
+            action={
+              <Button variant="ghost" size="sm" disabled={retrying} onClick={() => {
+                setRetrying(true);
+                void reach.retry().finally(() => setRetrying(false));
+              }}>
+                <BusyLabel busy={retrying} label="Retry" />
+              </Button>
+            }
+          >
+            {`${host.name.name} did not answer.`}
+          </PageError>
+        </PageSection>
+        {web ? null : <OnThisMac host={host} />}
+      </>
+    );
   return (
     <>
       {web ? null : <VersionSection host={host} />}
@@ -135,7 +194,7 @@ export function OtherComputerPage({ environmentId }: { environmentId: string }) 
       <SignIns host={host} rows="pc" saysWhoCan={false} />
       <WorkRow environmentId={environmentId} />
       {web ? null : <SetUpHere environmentId={environmentId} />}
-      <Advanced host={host} rows="pc" saysWhoCan={false} />
+      <Advanced host={host} rows="pc" saysWhoCan={false} open={advancedOpen} />
       {web ? null : <OnThisMac host={host} />}
     </>
   );
@@ -207,10 +266,11 @@ function VersionSection({ host }: { host: Host }) {
 /** Whether Work is on there, opening the Work page at its switch: the switch's one home. */
 function WorkRow({ environmentId }: { environmentId: string }) {
   const on = useWorkHosts().has(environmentId);
+  const computer = computerInLine(useHost(environmentId).name);
   return (
-    <PageSection>
-      <SettingRow id="pc.work" description={on ? "On" : "Off"} onOpen={() => requestSettings("work", "work.on")} openLabel="Work" />
-    </PageSection>
+    <SettingSection of="pc.work">
+      <SettingRow id="pc.work" vars={{ computer }} description={on ? "On" : "Off"} onOpen={() => requestSettings("work", "work.on")} openLabel={`Work on ${computer}`} />
+    </SettingSection>
   );
 }
 
@@ -233,7 +293,7 @@ function OnThisMac({ host }: { host: Host }) {
   };
   const forget = async (): Promise<void> => {
     const ok = await confirmAction({
-      title: `Forget ${host.name.name}?`,
+      title: `Forget ${computer}?`,
       body: `${mac.charAt(0).toUpperCase()}${mac.slice(1)} drops its link. ${host.name.name} still lets ${mac} in until you remove it there.`,
       action: "Forget",
       danger: true,
@@ -256,10 +316,12 @@ function OnThisMac({ host }: { host: Host }) {
         vars={{ computer, mac }}
         description={bridge ? mayHereWords(bridge) : "Nothing"}
         onOpen={() => openMaySheet(id)}
-        openLabel={`What ${host.name.name} may do on ${mac}`}
+        openLabel={`What ${computer} may do on ${mac}`}
       />
-      {/* This Mac's own record, read once: its two rows wait in their shape. */}
-      {!saved.value && !saved.error ? <PageRowsSkeleton rows={[{ control: "field" }, { description: true, control: "none" }]} /> : null}
+      {/* The record's two rows wait in their shape, or say once that this Mac did not answer, with Retry. */}
+      <SectionRead read={saved} rows={[{ control: "field" }, { description: true, control: "none" }]}>
+        {() => null}
+      </SectionRead>
       {env ? (
         <>
           <SettingRow id="pc.name" vars={{ mac }} saved={named}>
@@ -284,12 +346,8 @@ function OnThisMac({ host }: { host: Host }) {
           />
         </>
       ) : null}
-      <SettingRow
-        id="pc.forget"
-        vars={{ computer, mac }}
-        description={`${mac.charAt(0).toUpperCase()}${mac.slice(1)} drops its link. ${host.name.name} still lets ${mac} in until you remove it there.`}
-        error={forgetError ?? undefined}
-      >
+      {/* The record of the link, with its one act; what Forget… loses is the confirm's to say. */}
+      <SettingRow id="pc.forget" vars={{ computer, mac }} error={forgetError ?? undefined}>
         <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={() => void forget()}>
           Forget…
         </Button>

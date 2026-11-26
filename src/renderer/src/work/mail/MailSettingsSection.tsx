@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { ConvexProvider } from "convex/react";
-import { accountLine, MailClientProvider, MailEditor, MailKitProvider, signatureLine, useMailClient, type MailClient, type MailEditorProps } from "work-kit/mail";
+import { MailClientProvider, MailEditor, MailKitProvider, signatureLine, useMailClient, type MailClient, type MailEditorProps } from "work-kit/mail";
 import type { MailAccount, MailNotify, MailSignature, SignatureDefault } from "work-kit/mail";
 import { identitiesOf, isPurdue, type ComposeAccount } from "work-kit/mail/lib/compose";
 import { fromMailHtml, toMailHtml } from "work-kit/mail/lib/mail-html";
@@ -18,7 +18,7 @@ import { Input } from "../../components/ui/input";
 import { registry, useEnvironments } from "../../lib/connection";
 import { workErrorWords } from "../../lib/workErrorWords";
 import { useWorkHosts, workHome } from "../../lib/workSwitch";
-import { SettingRow, SettingSection } from "../../surfaces/settings/parts/SettingRow";
+import { OpenCue, SettingRow, SettingSection } from "../../surfaces/settings/parts/SettingRow";
 import { useSaved } from "../../surfaces/settings/parts/useSaved";
 import { settingTitle } from "../../lib/settings/map";
 import { LifeosLine } from "../connections/LifeosLine";
@@ -117,6 +117,36 @@ export function takesOwnSignature(account: Pick<MailAccount, "signatureDefaults"
   return identitiesOf(sends).some((i) => i.address.toLowerCase() === at && Boolean(i.signatureHtml));
 }
 
+const NOTIFY_LINE: Record<MailNotify, string> = { never: "never notifies", needsMe: "notifies when mail needs me", all: "notifies on all new mail" };
+
+/**
+ * What an account's row says under its address: its signatures, by name in quotes so a name never reads as a claim
+ * ("“Short” on new mail and replies"), and its notices (work-kit's `accountLine`, worded for the page).
+ */
+export function accountWords(account: Pick<MailAccount, "address" | "provider" | "signatureDefaults" | "notify">, signatures: readonly MailSignature[], own = false): string {
+  const notify = NOTIFY_LINE[account.notify ?? "never"];
+  if (account.provider === "outlook-forwarded") return `Outlook adds its own signature, ${notify}`;
+  const entry = account.signatureDefaults?.find((d) => d.address.toLowerCase() === account.address.toLowerCase());
+  const name = (id: string | undefined): string | undefined => {
+    const found = signatures.find((s) => s.id === id)?.name;
+    return found ? `“${found}”` : undefined;
+  };
+  const [fresh, reply] = [name(entry?.newMail), name(entry?.reply)];
+  const signature =
+    fresh && reply
+      ? fresh === reply
+        ? `${fresh} on new mail and replies`
+        : `${fresh} on new mail, ${reply} on replies`
+      : fresh
+        ? `${fresh} on new mail`
+        : reply
+          ? `${reply} on replies`
+          : !entry && own
+            ? "Its own signature"
+            : "No signature";
+  return `${signature}, ${notify}`;
+}
+
 /** The settings under whatever mail client is round them (the mail preview's fixture client draws them in a page). */
 export function MailSettingsBody() {
   const client = useMailClient();
@@ -138,7 +168,10 @@ export function MailSettingsBody() {
           <PageRowsSkeleton rows={3} control="select" />
         </SettingSection>
         <SettingSection of="mail.signatures">
-          <PageRowsSkeleton rows={2} description />
+          <PageRowsSkeleton rows={2} description control="none" />
+        </SettingSection>
+        <SettingSection of="mail.accounts">
+          <PageRowsSkeleton rows={2} description control="none" />
         </SettingSection>
       </>
     );
@@ -174,7 +207,11 @@ export function MailSettingsBody() {
         }
       >
         {signatures.length ? (
-          signatures.map((s) => <PageRow key={s.id} data-signature={s.id} title={s.name} description={signatureLine(s.html) || "Empty"} onOpen={() => setSignature(s)} openLabel={`Signature ${s.name}`} />)
+          signatures.map((s) => (
+            <PageRow key={s.id} data-signature={s.id} title={s.name} description={signatureLine(s.html) || "Empty"} onOpen={() => setSignature(s)} openLabel={`Signature ${s.name}`}>
+              <OpenCue />
+            </PageRow>
+          ))
         ) : (
           <PageEmpty>No signatures yet</PageEmpty>
         )}
@@ -186,10 +223,12 @@ export function MailSettingsBody() {
               key={a.id}
               data-account={a.id}
               title={a.address}
-              description={accountLine(a, signatures, takesOwnSignature(a, compose?.find((c) => c.id === a.id), a.address))}
+              description={accountWords(a, signatures, takesOwnSignature(a, compose?.find((c) => c.id === a.id), a.address))}
               onOpen={() => setAccount(a.id)}
               openLabel={a.address}
-            />
+            >
+              <OpenCue />
+            </PageRow>
           ))
         ) : (
           <PageEmpty>No mail account. Connect one in LifeOS.</PageEmpty>

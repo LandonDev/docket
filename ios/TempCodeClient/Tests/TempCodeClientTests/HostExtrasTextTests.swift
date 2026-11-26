@@ -65,24 +65,32 @@ struct DriftLineTests {
         #expect(DriftLine.mark(behind: 3) == "+3")
         #expect(DriftLine.mark(behind: 0) == nil)
         #expect(DriftLine.mark(behind: nil) == nil)
-        #expect(DriftLine.accessibilityLabel(behind: 1) == "1 release behind master")
+        #expect(DriftLine.accessibilityLabel(behind: 1) == "1 release behind the newest")
     }
 
     @Test(arguments: [
-        (build(release: 270), master(273), false, true, true, "3 releases behind master: v1.0.270 → v1.0.273. Update from here."),
-        (build(release: 272), master(273), false, true, false, "1 release behind master: v1.0.272 → v1.0.273. Updating needs a key that may manage it."),
-        (build(release: 270), master(273), false, false, true, "3 releases behind master: v1.0.270 → v1.0.273."),
-        (build(release: 270, platform: "darwin"), master(273), false, false, false, "3 releases behind master: v1.0.270 → v1.0.273. Publish from the Mac."),
-        (build(release: 273), master(273), false, true, true, "Up to date with master (v1.0.273)."),
-        (build(release: 275), master(273), false, true, true, "Up to date with master (v1.0.273)."),
-    ])
-    func `the footer names the count, both versions and the fix`(build: BuildFacts, master: MasterRelease, failed: Bool, canDeploy: Bool, admin: Bool, expected: String) {
+        (build(release: 270), master(273), false, true, true, "v1.0.270 → v1.0.273. Update from here."),
+        (build(release: 272), master(273), false, true, false, "v1.0.272 → v1.0.273. Updating needs a key that may manage it."),
+        (build(release: 270), master(273), false, false, true, "v1.0.270 → v1.0.273."),
+        (build(release: 270, platform: "darwin"), master(273), false, false, false, "v1.0.270 → v1.0.273. Publish from the Mac."),
+        (build(release: 273), master(273), false, true, true, nil),
+        (build(release: 275), master(273), false, true, true, nil),
+    ] as [(BuildFacts, MasterRelease, Bool, Bool, Bool, String?)])
+    func `the footer names both versions and the fix, and nothing when current`(build: BuildFacts, master: MasterRelease, failed: Bool, canDeploy: Bool, admin: Bool, expected: String?) {
         #expect(DriftLine.footer(build: build, master: master, fetchFailed: failed, canDeploy: canDeploy, isAdmin: admin) == expected)
+    }
+
+    @Test func `the row says how the computer stands, once`() {
+        #expect(DriftLine.value(build: build(release: 273), master: master(273)) == "Up to date")
+        #expect(DriftLine.value(build: build(release: 275), master: master(273)) == "Up to date")
+        #expect(DriftLine.value(build: build(release: 270), master: master(273)) == "3 behind")
+        #expect(DriftLine.value(build: nil, master: master(273)) == "v1.0.273")
+        #expect(DriftLine.value(build: build(release: 270), master: nil) == "—")
     }
 
     @Test func `master unknown: silent before the first fetch, a sentence after a failure, nothing without a build`() {
         #expect(DriftLine.footer(build: build(release: 270), master: nil, fetchFailed: false, canDeploy: true, isAdmin: true) == nil)
-        #expect(DriftLine.footer(build: build(release: 270), master: nil, fetchFailed: true, canDeploy: true, isAdmin: true) == "Master's version could not be read.")
+        #expect(DriftLine.footer(build: build(release: 270), master: nil, fetchFailed: true, canDeploy: true, isAdmin: true) == "The newest version could not be read.")
         #expect(DriftLine.footer(build: nil, master: master(273), fetchFailed: false, canDeploy: true, isAdmin: true) == nil)
     }
 }
@@ -90,23 +98,23 @@ struct DriftLineTests {
 @Suite("DeployWords")
 struct DeployWordsTests {
     @Test func `the confirm's four branches`() {
-        #expect(DeployWords.confirm(hostName: "box", deployed: "1.0.270", master: "1.0.273") == "v1.0.270 → v1.0.273, 3 releases. box rebuilds master, trials it and restarts; it rolls back if the trial fails.")
-        #expect(DeployWords.confirm(hostName: "box", deployed: "1.0.272", master: "v1.0.273") == "v1.0.272 → v1.0.273, 1 release. box rebuilds master, trials it and restarts; it rolls back if the trial fails.")
-        #expect(DeployWords.confirm(hostName: "box", deployed: "1.0.273", master: "1.0.273") == "box already runs v1.0.273. Deploying rebuilds master from GitHub and restarts the service anyway.")
-        #expect(DeployWords.confirm(hostName: "box", deployed: "1.0.275", master: "1.0.273") == "v1.0.275 → v1.0.273: master is behind what box runs. Deploying rebuilds master and restarts the service.")
-        #expect(DeployWords.confirm(hostName: "box", deployed: "1.0.270", master: nil) == "box runs v1.0.270. Deploying rebuilds master from GitHub, trials it and restarts the service.")
-        #expect(DeployWords.confirm(hostName: "box", deployed: nil, master: nil) == "box rebuilds master from GitHub, trials it and restarts the service; it rolls back if the trial fails.")
+        #expect(DeployWords.confirm(hostName: "box", deployed: "1.0.270", master: "1.0.273") == "v1.0.270 → v1.0.273, 3 releases. box builds the newest release, tries it and restarts. It goes back if the try fails.")
+        #expect(DeployWords.confirm(hostName: "box", deployed: "1.0.272", master: "v1.0.273") == "v1.0.272 → v1.0.273, 1 release. box builds the newest release, tries it and restarts. It goes back if the try fails.")
+        #expect(DeployWords.confirm(hostName: "box", deployed: "1.0.273", master: "1.0.273") == "box already runs v1.0.273. Updating builds it again and restarts box anyway.")
+        #expect(DeployWords.confirm(hostName: "box", deployed: "1.0.275", master: "1.0.273") == "box runs v1.0.275, which is newer than the newest release, v1.0.273. Updating builds v1.0.273 and restarts box.")
+        #expect(DeployWords.confirm(hostName: "box", deployed: "1.0.270", master: nil) == "box runs v1.0.270. Updating builds the newest release, tries it and restarts box.")
+        #expect(DeployWords.confirm(hostName: "box", deployed: nil, master: nil) == "box builds the newest release, tries it and restarts. It goes back if the try fails.")
     }
 
     @Test func `the row line's five branches`() {
         #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: false, phase: .idle) == "Not connected right now.")
-        #expect(DeployWords.rowLine(installed: false, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .idle) == "Deploy from the app is not installed on this host.")
-        #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .running) == "Runs v1.0.270, deploying")
+        #expect(DeployWords.rowLine(installed: false, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .idle) == "This computer cannot be updated from here.")
+        #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .running) == "Runs v1.0.270, updating")
         #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: nil, connected: true, phase: .idle) == "Runs v1.0.270.")
         #expect(DeployWords.rowLine(installed: true, version: nil, masterVersion: nil, connected: true, phase: .idle) == "Runs an unknown version.")
-        #expect(DeployWords.rowLine(installed: true, version: "1.0.273", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.273, up to date with master")
-        #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.270, 3 releases behind master")
-        #expect(DeployWords.rowLine(installed: true, version: "1.0.272", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.272, 1 release behind master")
+        #expect(DeployWords.rowLine(installed: true, version: "1.0.273", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.273, up to date")
+        #expect(DeployWords.rowLine(installed: true, version: "1.0.270", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.270, 3 releases behind")
+        #expect(DeployWords.rowLine(installed: true, version: "1.0.272", masterVersion: "1.0.273", connected: true, phase: .done) == "Runs v1.0.272, 1 release behind")
     }
 }
 
@@ -121,8 +129,8 @@ struct HostJobCardTests {
     @Test func `pending waits for the trigger`() {
         let card = HostJobCard.deploy(status: jobStatus(.pending), text: "a\nb\n", hostName: "box", linkUp: true, deployedVersion: nil)
         #expect(card.visible)
-        #expect(card.title == "Deploying master to box")
-        #expect(card.note == "Waiting for the trigger on the box")
+        #expect(card.title == "Updating box")
+        #expect(card.note == "Waiting for box to start")
         #expect(card.lines == ["a", "b"])
         #expect(card.stoppable == false)
         #expect(card.ending == nil)
@@ -130,26 +138,26 @@ struct HostJobCardTests {
 
     @Test func `running says it cannot be stopped, or that the box is restarting while the link is down`() {
         let up = HostJobCard.deploy(status: jobStatus(.running, target: "v1.0.273"), text: "", hostName: "box", linkUp: true, deployedVersion: nil)
-        #expect(up.title == "Deploying v1.0.273 to box")
-        #expect(up.note == "Cannot be stopped mid-way; the box rolls back on failure")
+        #expect(up.title == "Updating box to v1.0.273")
+        #expect(up.note == "Cannot be stopped part-way. box goes back to the build it had if this fails.")
         let down = HostJobCard.deploy(status: jobStatus(.running), text: "", hostName: "box", linkUp: false, deployedVersion: nil)
-        #expect(down.note == "The box is restarting; the log continues when it is back")
+        #expect(down.note == "box is restarting. The log goes on when it is back.")
     }
 
     @Test func `done with exit 0 names the deployed version, else the target`() {
         let named = HostJobCard.deploy(status: jobStatus(.done, exit: 0), text: "", hostName: "box", linkUp: true, deployedVersion: "1.0.273")
-        #expect(named.title == "Deployed master to box")
-        #expect(named.ending == HostJobCard.Ending(text: "Deployed v1.0.273, the service is back", failed: false))
+        #expect(named.title == "Updated box")
+        #expect(named.ending == HostJobCard.Ending(text: "box runs v1.0.273 and is back", failed: false))
         let plain = HostJobCard.deploy(status: jobStatus(.done, exit: 0), text: "", hostName: "box", linkUp: true, deployedVersion: nil)
-        #expect(plain.ending?.text == "Deployed master, the service is back")
+        #expect(plain.ending?.text == "box is updated and back")
     }
 
     @Test func `a failure and a run that never started`() {
         let failed = HostJobCard.deploy(status: jobStatus(.done, exit: 1), text: "", hostName: "box", linkUp: true, deployedVersion: nil)
-        #expect(failed.title == "Deploy of master to box")
-        #expect(failed.ending == HostJobCard.Ending(text: "Deploy failed (exit 1)", failed: true))
+        #expect(failed.title == "Update of box")
+        #expect(failed.ending == HostJobCard.Ending(text: "The update failed (exit 1)", failed: true))
         let never = HostJobCard.deploy(status: jobStatus(.done, exit: nil), text: "", hostName: "box", linkUp: true, deployedVersion: nil)
-        #expect(never.ending == HostJobCard.Ending(text: "Deploy did not start", failed: true))
+        #expect(never.ending == HostJobCard.Ending(text: "The update did not start", failed: true))
     }
 }
 
@@ -321,9 +329,9 @@ struct HostExtrasAccessTests {
         #expect(HostExtrasAccess.deviceActions.needs == .operate)
         #expect(HostExtrasAccess.macStop.needs == .operate)
         #expect(HostExtrasAccess.deploy.reason == "Updating needs a key that may manage it.")
-        #expect(HostExtrasAccess.sync.reason == "Reading the sync state needs an admin key.")
-        #expect(HostExtrasAccess.deviceActions.reason == "Shutting down or deleting a simulator needs an operate key.")
-        #expect(HostExtrasAccess.macStop.reason == "Stopping a command needs an operate key on the Mac.")
+        #expect(HostExtrasAccess.sync.reason == "Reading the sync state needs a key that may manage it.")
+        #expect(HostExtrasAccess.deviceActions.reason == "Shutting down or deleting a simulator needs a key that may run threads.")
+        #expect(HostExtrasAccess.macStop.reason == "Stopping a command needs a key that may run threads on the Mac.")
     }
 
     @Test func `allowed for a read, an operate and an admin key`() {

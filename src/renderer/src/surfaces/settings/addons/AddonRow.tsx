@@ -44,24 +44,29 @@ export function AddonRowView({
 }) {
   const mark = addonMark(row, status, grant);
   const facts = addonFacts(row, mark, grant, workspaceName);
+  // A row turned off says so with its switch; the words say it only where there is no switch to read.
+  const saysOff = !readOnly && !row.enabled && mark.word === "Off";
   return (
     <PageRow
       data-addon={row.name}
       title={row.name}
       description={
         <>
-          {/* A failure's reason is read whole: the detail wraps under itself instead of being cut. */}
-          <span className="flex min-w-0">
-            <StatusMark
-              state={mark.state}
-              word={mark.word}
-              detail={mark.detail}
-              className="min-w-0 **:data-[slot=status-detail]:break-words **:data-[slot=status-detail]:whitespace-normal"
-            />
-          </span>
-          <span className="mt-1 block">
-            <Facts parts={facts} />
-          </span>
+          {saysOff ? null : (
+            <span className="flex min-w-0">
+              <StatusMark
+                state={mark.state}
+                word={mark.word}
+                detail={mark.detail}
+                className="min-w-0 **:data-[slot=status-detail]:break-words **:data-[slot=status-detail]:whitespace-normal"
+              />
+            </span>
+          )}
+          {facts.length ? (
+            <span className={saysOff ? "block" : "mt-1 block"}>
+              <Facts parts={facts} />
+            </span>
+          ) : null}
         </>
       }
       error={error}
@@ -70,10 +75,12 @@ export function AddonRowView({
       {readOnly ? null : (
         <>
       <SettingSwitch label={row.name} on={row.enabled} disabled={blocked} onChange={onToggle} />
+      {/* Nothing is offered that cannot work: while the box is out of reach the row has no ⋯. */}
+      {blocked ? null : (
       <RowsMenu
         label={`${row.name} actions`}
         trigger={
-          <Button variant="ghost" size="icon-sm" aria-label={`${row.name} actions`} disabled={blocked} className="text-muted-foreground">
+          <Button variant="ghost" size="icon-sm" aria-label={`${row.name} actions`} className="text-muted-foreground">
             <MoreHorizontal />
           </Button>
         }
@@ -81,6 +88,7 @@ export function AddonRowView({
         onPick={(id) => onPick(id as AddonMenuPick)}
         align="end"
       />
+      )}
         </>
       )}
     </PageRow>

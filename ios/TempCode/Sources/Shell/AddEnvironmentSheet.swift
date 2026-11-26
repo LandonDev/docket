@@ -196,6 +196,7 @@ struct AddEnvironmentSheet: View {
         busy = true
         withAnimation(Motion.rowLeave) { error = nil }
         defer { busy = false }
+        let byLink = method == .link
         do {
             switch method {
             case .link:
@@ -209,7 +210,8 @@ struct AddEnvironmentSheet: View {
             dismiss()
         } catch {
             refusals += 1
-            withAnimation(Motion.rowAppear) { self.error = sentence(error.message) }
+            // The host's "invalid or expired pairing code" in the glossary's words, with the way forward.
+            withAnimation(Motion.rowAppear) { self.error = SignInWords.refusal(error, link: byLink) }
         }
     }
 }

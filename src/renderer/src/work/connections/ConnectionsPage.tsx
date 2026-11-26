@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import type { ClientRequest } from "@shared/contract";
-import type { HealthFix, HealthReport } from "@shared/work/health";
+import type { HealthFix, HealthReport, HealthRow } from "@shared/work/health";
 import { lapseLine } from "@shared/work/health";
 import { syncWhen } from "@shared/work/messages";
 import { PageActions, PageRow, PageSection } from "../../components/page";
@@ -22,6 +22,7 @@ import { signInOnVm } from "../winvm/signIn";
 import { FirstCheckBones } from "./FirstCheckBones";
 import { checkFailure, commandOf, fixVariant, markOf, sectionsOf, signOutAsk, signsOut, unchecked, usableFix, type HostView, type PlacedRow } from "./model";
 import { confirmAction } from "../../chrome/ConfirmDialog";
+import { computerInLine, useComputerNames } from "../../lib/settings/computerName";
 import { COPIED_MS, copyText } from "../../lib/clipboard";
 
 /**
@@ -50,7 +51,9 @@ export function ConnectionsPage() {
   const environments = useEnvironments();
   const statuses = useEnvironmentStatuses();
   const on = useWorkHosts();
-  const hosts = environments.filter((e) => on.has(e.id));
+  // Each computer by its one name, and this window's own as "this Mac" mid-sentence.
+  const names = useComputerNames();
+  const hosts = environments.filter((e) => on.has(e.id)).map((e) => ({ ...e, name: names(e.id).name, inLine: computerInLine(names(e.id)) }));
   const [views, setViews] = useState<Record<string, HostView>>(() =>
     Object.fromEntries(hosts.flatMap((h) => {
       const report = lastReports.get(h.id);
@@ -100,7 +103,7 @@ export function ConnectionsPage() {
     }
   });
 
-  const shown: HostView[] = hosts.map((h) => (linked(h.id) ? (views[h.id] ?? { id: h.id, name: h.name, status: "checking" }) : { id: h.id, name: h.name, status: "offline" }));
+  const shown: HostView[] = hosts.map((h) => ({ ...(linked(h.id) ? (views[h.id] ?? { id: h.id, name: h.name, status: "checking" }) : { id: h.id, name: h.name, status: "offline" }), inLine: h.inLine }) as HostView);
   const checking = shown.some((h) => h.status === "checking");
   useEffect(() => {
     if (!checking) setRound(false);
@@ -163,14 +166,17 @@ const STATE_LINE = "flex [&>[data-slot=status-detail]]:whitespace-normal [&>[dat
 
 /** The page as the hosts' answers leave it: what the preview and the test draw. */
 export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts: readonly HostView[]; onRecheck: (hostId: string, by?: string) => void; now?: number }) {
-  const sections = sectionsOf(hosts);
+  // The Windows VM is a computer: its row stands under Computers, with the computers that could not be checked.
+  const all = sectionsOf(hosts);
+  const machines = all.filter((section) => section.group === "Windows VM").flatMap((section) => section.rows);
+  const sections = all.filter((section) => section.group !== "Windows VM");
   const away = unchecked(hosts);
   const waiting = hosts.filter((h) => h.status === "checking" && !h.report);
   // Each host asked now, with the press that asked it (none for a round or a check of the page's own).
   const checking = new Map(hosts.flatMap((h) => (h.status === "checking" ? [[h.id, h.by ?? null] as const] : [])));
   return (
     <>
-      {away.length ? (
+      {away.length || machines.length ? (
         <PageSection title="Computers" data-setting="connections.list">
           {away.map((one) =>
             one.status === "offline" ? (
@@ -184,6 +190,9 @@ export function ConnectionsView({ hosts, onRecheck, now = Date.now() }: { hosts:
               </PageRow>
             ),
           )}
+          {machines.map((placed) => (
+            <ConnectionRow key={placed.key} placed={placed} now={now} checking={checking.has(placed.hostId)} spinning={checking.get(placed.hostId) === placed.key} onRetry={() => onRecheck(placed.hostId, placed.key)} onDone={() => onRecheck(placed.hostId)} />
+          ))}
         </PageSection>
       ) : null}
       {sections.map((section) => (
@@ -273,7 +282,7 @@ function FixRow({ placed, now, checking, spinning, onRetry, onDone }: { placed: 
         }
         error={error ?? undefined}
       >
-        {row.until ? <span className="text-xs tabular-nums text-muted-foreground">{lapseLine(row.until, now)}</span> : null}
+        {row.until ? <span className="text-xs tabular-nums text-muted-foreground">{lapseWords(row, now)}</span> : null}
         {retry ? (
           <Button variant={fixVariant(row.state)} size="sm" disabled={checking} onClick={onRetry}>
             <BusyLabel busy={spinning} label="Retry" />
@@ -282,13 +291,29 @@ function FixRow({ placed, now, checking, spinning, onRetry, onDone }: { placed: 
         {command ? <CopyFix command={command} /> : null}
         {fix ? (
           <Button variant={fixVariant(row.state)} size="sm" disabled={busy} onClick={() => void press(fix)}>
-            <BusyLabel busy={busy} label={signsOut(fix) ? `${fix.label}…` : fix.label} />
+            <BusyLabel busy={busy} label={fixLabel(fix)} />
           </Button>
         ) : null}
       </PageRow>
       {signingIn ? <LifeosSignIn environmentId={hostId} onClose={() => (setSigningIn(false), onDone())} /> : null}
     </>
   );
+}
+
+/**
+ * A fix's words on its button: one that opens a dialog or asks first ends in "…" (a sign-in, a sign-out), so the same
+ * verb never reads two ways on two rows.
+ */
+export function fixLabel(fix: HealthFix): string {
+  const asks = signsOut(fix) || fix.kind === "page";
+  return asks && !fix.label.endsWith("…") ? `${fix.label}…` : fix.label;
+}
+
+/** What a row's end date is: the Windows VM's is its licence's, a sign-in's is the sign-in's. */
+export function lapseWords(row: Pick<HealthRow, "until" | "group" | "id">, now: number): string {
+  const line = lapseLine(row.until!, now);
+  const what = row.group === "Windows VM" ? "Licence" : /sign/i.test(row.id) ? "Sign-in" : null;
+  return what ? `${what} ${line.charAt(0).toLowerCase()}${line.slice(1)}` : line;
 }
 
 /** The command a host put in a row's line, copied at a press: the word says Copied for a moment after. */

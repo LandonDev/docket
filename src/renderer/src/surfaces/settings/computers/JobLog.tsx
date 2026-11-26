@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { PageError } from "../../../components/page";
 import { Button } from "../../../components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../../../components/ui/collapsible";
 import { DISCLOSURE_CHEVRON } from "../../../components/ui/disclosure";
 import { Spinner } from "../../../components/ui/spinner";
 import { ChevronRight } from "../../../chrome/icons";
-import { confirmAction, errorText } from "../../../chrome/ConfirmDialog";
 import { useEnvironmentStatus } from "../../../lib/connection";
 import { hostJobCard, type HostJobCard } from "../../../lib/hostJobCard";
-import { dismissJob, stopPublish, useDeployStatuses, useHostJob } from "../../../lib/hostJobs";
+import { dismissJob, useDeployStatuses, useHostJob } from "../../../lib/hostJobs";
 import { cn } from "../../../lib/cn";
 import { CONSOLE } from "../../../components/ui/console";
 
@@ -18,14 +16,13 @@ export const openByDefault = (card: Pick<HostJobCard, "phase" | "ending">): bool
 /**
  * A deploy's or a publish's log under its row: one line that says what runs
  * (or how it ended) and folds open onto the console, the last 40 lines,
- * following the bottom unless the reader scrolled up. Stop… for a publish
- * that can be stopped (it asks first), Dismiss once done.
+ * following the bottom unless the reader scrolled up; Dismiss once done.
+ * A publish's Stop… is its row's own press (PublishPage), never a second one here.
  */
 export function JobLog({ environmentId, job, hostName }: { environmentId: string; job: "deploy" | "publish"; hostName: string }) {
   const entry = useHostJob(environmentId, job);
   const status = useEnvironmentStatus(environmentId);
   const deployed = useDeployStatuses()[environmentId]?.version ?? null;
-  const [error, setError] = useState<string | null>(null);
   const card = entry
     ? hostJobCard({ job, status: entry.status, text: entry.text, hostName, linkUp: status.transport === "open", deployedVersion: deployed })
     : null;
@@ -43,11 +40,6 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
     if (el && follow.current) el.scrollTop = el.scrollHeight;
   }, [text, open]);
 
-  /** A stopped publish leaves the release half made: it asks first. */
-  const stop = async (): Promise<void> => {
-    if (!(await confirmAction({ title: "Stop the publish?", body: "The release is left half made.", action: "Stop", danger: true }))) return;
-    await stopPublish().catch((e: unknown) => setError(errorText(e)));
-  };
   if (!card || !card.visible) return null;
   const running = card.phase === "pending" || card.phase === "running";
   const ending = card.ending;
@@ -68,11 +60,6 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
             </span>
           ) : null}
         </CollapsibleTrigger>
-        {card.stoppable ? (
-          <Button variant="ghost" className="text-muted-foreground hover:text-destructive" size="xs" onClick={() => void stop()}>
-            Stop…
-          </Button>
-        ) : null}
         {!running ? (
           <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => dismissJob(environmentId, job)}>
             Dismiss
@@ -92,7 +79,6 @@ export function JobLog({ environmentId, job, hostName }: { environmentId: string
           {card.lines.length ? card.lines.join("\n") : running ? "Waiting for output…" : ""}
         </pre>
       </CollapsibleContent>
-      {error ? <PageError>{error}</PageError> : null}
     </Collapsible>
   );
 }

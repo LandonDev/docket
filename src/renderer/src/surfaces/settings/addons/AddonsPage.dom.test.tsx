@@ -84,7 +84,8 @@ describe("Settings → Add-ons", () => {
     const skeleton = document.querySelectorAll("[data-slot=page-row-skeleton]");
     expect(skeleton).toHaveLength(3);
     expect(skeleton[0]!.getAttribute("data-control")).toBe("switch");
-    expect((screen.getByRole("button", { name: "Add…" }) as HTMLButtonElement).disabled).toBe(true);
+    // Nothing is offered before the list has read.
+    expect(screen.queryByRole("button", { name: "Add…" })).toBeNull();
   });
 
   it("says the host did not answer with Retry, and Retry lands the rows", async () => {
@@ -102,21 +103,25 @@ describe("Settings → Add-ons", () => {
     expect(screen.getByText("No add-ons")).toBeTruthy();
   });
 
-  it("says each row's state, scope, grant and writer, sorted by name", async () => {
+  it("says each row's state, its own workspace and its grant in plain words, sorted by name", async () => {
     await show(seeded());
     expect([...document.querySelectorAll("[data-addon]")].map((r) => r.getAttribute("data-addon"))).toEqual(["github", "local", "mobbin", "slack"]);
     expect(rowOf("github").textContent).toContain("Connected24 tools");
-    expect(rowOf("github").textContent).toContain("GITHUB_TOKEN saved");
-    expect(rowOf("github").textContent).toContain("written by Fix the build");
-    expect(rowOf("mobbin").textContent).toContain("FailedDisconnected: socket hang up");
-    // A failure's reason wraps rather than being cut.
-    expect(rowOf("mobbin").querySelector("[data-slot=status-mark]")!.className).toContain("**:data-[slot=status-detail]:whitespace-normal");
+    expect(rowOf("github").textContent).toContain("key saved");
+    // No secret's name, no builder's sentence, no thread named beside a key.
+    expect(rowOf("github").textContent).not.toContain("GITHUB_TOKEN");
+    expect(rowOf("github").textContent).not.toContain("written by");
+    expect(rowOf("mobbin").textContent).toContain("Not connected");
+    expect(rowOf("mobbin").textContent).not.toContain("socket hang up");
     expect(rowOf("mobbin").textContent).toContain("signed in");
-    expect(rowOf("mobbin").textContent).toContain("refreshed on box");
-    expect(rowOf("slack").textContent).toContain("Needs a keyX-Api-Key");
+    expect(rowOf("mobbin").textContent).not.toContain("refreshed on");
+    expect(rowOf("slack").textContent).toContain("Needs a key");
+    expect(rowOf("slack").textContent).not.toContain("X-Api-Key");
     expect(rowOf("slack").textContent).toContain("temp-code");
-    expect(rowOf("local").textContent).toContain("Off");
-    expect(rowOf("local").textContent).toContain("Every workspace");
+    // Off is the switch's to say; every workspace is the list's rule, said on no row.
+    expect(rowOf("local").textContent).not.toContain("Off");
+    expect(screen.getByRole("switch", { name: "local" }).getAttribute("aria-checked")).toBe("false");
+    expect(document.body.textContent).not.toContain("Every workspace");
   });
 
   it("tells the page's line where the one copy is kept", async () => {
@@ -140,14 +145,12 @@ describe("Settings → Add-ons", () => {
     await show(host);
     for (const name of ["github", "local", "mobbin", "slack"]) {
       const row = rowOf(name);
-      for (const control of [
-        within(row).getByRole("switch", { name }),
-        within(row).getByRole("button", { name: `${name} actions` }),
-        within(row).getByRole("button", { name: `Edit ${name}` }),
-      ])
+      for (const control of [within(row).getByRole("switch", { name }), within(row).getByRole("button", { name: `Edit ${name}` })])
         expect(control.hasAttribute("disabled") || control.getAttribute("aria-disabled") === "true").toBe(true);
+      // Nothing is offered that cannot work: no ⋯ while the box is out of reach.
+      expect(within(row).queryByRole("button", { name: `${name} actions` })).toBeNull();
     }
-    expect((screen.getByRole("button", { name: "Add…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: "Add…" })).toBeNull();
   });
 
   it("folds the pushes in, all of them when they land before a render", async () => {
@@ -198,7 +201,7 @@ describe("Settings → Add-ons", () => {
     await act(async () => fireEvent.keyDown(m, { key: "Escape" }));
     host.state.refuse.delete("addons.grant.list");
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
-    expect(rowOf("github").textContent).toContain("GITHUB_TOKEN saved");
+    expect(rowOf("github").textContent).toContain("key saved");
   });
 
   it("signs an OAuth add-on out with addons.grant.clear, once the confirm says so", async () => {
@@ -218,7 +221,7 @@ describe("Settings → Add-ons", () => {
     const sw = screen.getByRole("switch", { name: "github" });
     await act(async () => fireEvent.click(sw));
     expect(host.sent("addons.set")).toEqual([{ addon: { id: github.id, name: "github", workspaceId: null, description: "", spec: github.spec, enabled: false } }]);
-    expect(rowOf("github").textContent).toContain("Off");
+    expect(screen.getByRole("switch", { name: "github" }).getAttribute("aria-checked")).toBe("false");
     host.state.refuse.set("addons.set", "refused: addons of every workspace live on box; it is offline");
     await act(async () => fireEvent.click(screen.getByRole("switch", { name: "local" })));
     expect(screen.getByRole("switch", { name: "local" }).getAttribute("aria-checked")).toBe("false");

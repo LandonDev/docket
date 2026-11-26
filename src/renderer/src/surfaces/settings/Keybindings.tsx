@@ -2,7 +2,7 @@ import { Fragment, useMemo, useState } from "react";
 import { PageEmpty, PageRow, PageSection } from "../../components/page";
 import { Input } from "../../components/ui/input";
 import { LOCAL_ENVIRONMENT_ID } from "../../lib/connection";
-import { IS_MAC } from "../../lib/platform";
+import { nativePlatform } from "../../lib/native";
 import { filterKeybindings, KEYBINDING_SCOPE_LABEL, visibleKeybindingGroups } from "../../lib/settings";
 import { isWebMode } from "../../lib/nativeWeb";
 import { useWorkHosts, useWorkOn } from "../../lib/workSwitch";
@@ -13,8 +13,8 @@ import { SettingRow, SettingSection } from "./parts/SettingRow";
 // A lazy place lists its own keys: its table loads with this page, so the list is whole.
 import "../../work/files/bindings";
 
-// The Appshot is a Mac's alone, so its key is the Mac's command key.
-const [CMD] = keyCaps("mod");
+// The Appshot is a Mac's alone, so its key is the Mac's command key wherever the page is drawn.
+const [CMD] = keyCaps("mod", true);
 
 /**
  * Settings › Shortcuts: a find field, then the keys that work from any app (the capture key, which this page sets,
@@ -30,7 +30,8 @@ export function KeybindingsPage() {
   const groups = useMemo(() => filterKeybindings(visibleKeybindingGroups(web, work), query), [query, web, work]);
   // From any app: the capture key on a desktop with Work on for this computer, the Appshot on a Mac.
   const capture = !web && keyApi !== null && workHere;
-  const appshot = !web && IS_MAC;
+  // The window's own platform, as the list decides that Appshots is a Mac's page.
+  const appshot = !web && nativePlatform() === "darwin";
   const fromAnyApp = filterKeybindings(
     [{ title: "From any app", bindings: [...(capture ? [{ name: "Open capture", keys: [] }] : []), ...(appshot ? [{ name: "Appshot", keys: [[CMD, CMD]] }] : [])] }],
     query,

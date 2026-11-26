@@ -56,7 +56,13 @@ const pathOf = (...parts: (string | undefined)[]): string => parts.filter((part,
 /** The other computers a per-computer row on a shared page is drawn for. */
 const computersOf = (groups: readonly ListGroup[]): ListRow[] => listPages(groups).flatMap(({ row }) => (row.kind === "computer" ? [row] : []));
 
-function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly SearchExtra[]): Indexed[] {
+/** What this window is, for rows a page draws only in some windows (`SettingEntry.needs`). */
+export type SearchWindow = { web?: boolean; mac?: boolean; work?: boolean };
+
+const drawn = (entry: SettingEntry, window: SearchWindow): boolean =>
+  !entry.needs || entry.needs.every((need) => (need === "desktop" ? !window.web : need === "mac" ? window.mac !== false : window.work !== false));
+
+function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly SearchExtra[], window: SearchWindow): Indexed[] {
   const out: Indexed[] = [];
   const computers = computersOf(groups);
   for (const { row, group } of listPages(groups)) {
@@ -68,7 +74,7 @@ function index(groups: readonly ListGroup[], vars: SettingVars, extras: readonly
     const place = row.kind === "page" ? group.label : undefined;
     const own: SettingVars = row.kind === "computer" ? { ...vars, computer: nameInLine(row.label) } : vars;
     for (const entry of SETTINGS_MAP) {
-      if (entry.page !== kind) continue;
+      if (entry.page !== kind || !drawn(entry, window)) continue;
       // A row on a shared page that is drawn per computer ("The box on this Mac") lists once for each.
       const perComputer = row.kind !== "computer" && /\{computer\}/.test(entry.section + entry.title);
       if (!perComputer) out.push(rowResult(entry, row, place, own));
@@ -86,7 +92,8 @@ function rowResult(entry: SettingEntry, row: ListRow, place: string | undefined,
     key: `${row.id}:${entry.id}:${vars.computer ?? ""}`,
     title,
     // The group's own page (Work's Setup, titled Work) is said by the group alone.
-    path: pathOf(place, place && row.title === place ? undefined : row.label, section === title ? undefined : section),
+    // A computer's section that names it ("Threads on the box") says the name once.
+    path: named(section, vars.computer) ? section! : pathOf(place, place && row.title === place ? undefined : row.label, section === title ? undefined : section),
     page: row.id,
     row: entry.id,
     names: title,
@@ -94,6 +101,8 @@ function rowResult(entry: SettingEntry, row: ListRow, place: string | undefined,
     rank: 1,
   };
 }
+
+const named = (section: string | undefined, computer: string | undefined): boolean => !!section && !!computer && section.toLowerCase().includes(computer.toLowerCase());
 
 const has = (text: string, needles: readonly string[]): boolean => {
   const lower = text.toLowerCase();
@@ -116,12 +125,12 @@ function hadName(old: string, needles: readonly string[], row: boolean): boolean
  * comes first, then rows by name (a name that starts with what he typed before one that holds it), then what is found
  * by an old name alone. At most `SEARCH_LIMIT`.
  */
-export function searchSettings(query: string, groups: readonly ListGroup[], vars: SettingVars = {}, extras: readonly SearchExtra[] = []): SearchResult[] {
+export function searchSettings(query: string, groups: readonly ListGroup[], vars: SettingVars = {}, extras: readonly SearchExtra[] = [], window: SearchWindow = {}): SearchResult[] {
   const needles = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (!needles.length) return [];
   const typed = needles.join(" ");
   const scored: { result: SearchResult; score: number; at: number }[] = [];
-  index(groups, vars, extras).forEach((item, at) => {
+  index(groups, vars, extras, window).forEach((item, at) => {
     const { names, old, rank, ...result } = item;
     if (has(names, needles)) {
       scored.push({ result, score: rank * 2 + (names.toLowerCase().startsWith(typed) ? 0 : 1), at });

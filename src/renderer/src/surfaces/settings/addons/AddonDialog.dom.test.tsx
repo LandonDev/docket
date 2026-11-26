@@ -78,7 +78,7 @@ describe("AddonDialog", () => {
     press(dialog, "Address");
     type(dialog, "Address", "https://api.mobbin.com/mcp");
     press(dialog, "Sign in");
-    press(dialog, "Macs only");
+    press(dialog, "Macs");
     await act(async () => {
       fireEvent.click(within(dialog).getByRole("combobox", { name: "Where" }));
     });

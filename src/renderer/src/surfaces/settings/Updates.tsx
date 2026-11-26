@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { CodeSettings } from "@server/shared/contract-code";
 import { ChoiceSelect } from "../../components/choice-select";
-import { PageRow } from "../../components/page";
+import { PageError, PageRow, PageRowsSkeleton } from "../../components/page";
 import { BusyLabel, Button } from "../../components/ui/button";
 import { Progress } from "../../components/ui/progress";
 import { BUNDLED_RELEASE } from "../../lib/bundledRelease";
@@ -15,7 +15,7 @@ import { useComputerNames } from "../../lib/settings/computerName";
 import { updateStore, useUpdateSnapshot } from "../../lib/updateStore";
 import { MANUAL_DOWNLOAD_URL, canRetry } from "../../lib/updater";
 import { releaseNotesChunk } from "../chunks";
-import { SettingRow, SettingSection } from "./parts/SettingRow";
+import { OpenCue, SettingRow, SettingSection } from "./parts/SettingRow";
 import { useSaved } from "./parts/useSaved";
 
 /**
@@ -35,6 +35,9 @@ export function UpdatesPage({ onOpenWhatsNew }: { onOpenWhatsNew: (version: stri
     </>
   );
 }
+
+/** The updater's version before it has read one (lib/updateStore.ts). */
+const UNKNOWN_VERSION = "…";
 
 /** A line ends on its own stop: a subject cut short already ends on "…". */
 const sentence = (line: string) => (/[.!?…]$/.test(line) ? line : `${line}.`);
@@ -68,6 +71,8 @@ function VersionRow() {
   const retry = canRetry(snapshot);
   const actionable = (hasUpdate && canApply) || ready || retry;
   const failed = snapshot.phase === "error";
+  // Until the updater has said which build runs, nothing is claimed of it ("Up to date" included): the row's shape.
+  if (snapshot.currentVersion === UNKNOWN_VERSION) return <PageRowsSkeleton rows={[{ description: true, control: "button" }]} />;
   return (
     <SettingRow
       id="updates.version"
@@ -148,7 +153,22 @@ function QuickUpdatesRow() {
   const saved = useSaved();
   const [chosen, setChosen] = useState<string | null>(null);
   const settings = read.value;
-  if (!settings || settings.cannot !== null || settings.hosts.length === 0) return null;
+  // Its shape while asked and one line with Retry if refused: a failed read never looks like a build that cannot.
+  if (!settings)
+    return read.error ? (
+      <PageError
+        action={
+          <Button variant="ghost" size="sm" onClick={() => void read.retry()}>
+            Retry
+          </Button>
+        }
+      >
+        {read.error}
+      </PageError>
+    ) : (
+      <PageRowsSkeleton rows={[{ description: true, control: "select" }]} />
+    );
+  if (settings.cannot !== null || settings.hosts.length === 0) return null;
   const options = [{ value: QUICK_OFF, label: "Off" }, ...settings.hosts.map((host) => ({ value: host.id, label: host.name }))];
   return (
     <SettingRow id="updates.quick" saved={saved} description={notice || "Small updates between releases. Each runs after a restart."}>
@@ -201,6 +221,8 @@ function OtherComputerRow({ id, name }: { id: string; name: string }) {
       description={versionWords(drift.deployedVersion, drift.behind, online)}
       onOpen={() => requestSettings(computerSettingsSection(id), "pc.version")}
       openLabel={name}
-    />
+    >
+      <OpenCue />
+    </PageRow>
   );
 }

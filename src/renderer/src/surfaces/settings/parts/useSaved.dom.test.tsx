@@ -142,6 +142,19 @@ describe("SettingRow and SettingSection", () => {
     expect(document.querySelector('[data-setting="computer.screen"]')?.hasAttribute("data-shown")).toBe(true);
   });
 
+  it("ends a row that opens something in a chevron, unless it has a control of its own", () => {
+    const { rerender } = render(<SettingRow id="general.picker" onOpen={() => {}} openLabel="Model picker shows" />);
+    expect(document.querySelector('[data-setting="general.picker"] [data-slot=open-cue]')).not.toBeNull();
+    rerender(
+      <SettingRow id="general.picker" onOpen={() => {}} openLabel="Model picker shows">
+        <button type="button">Change…</button>
+      </SettingRow>,
+    );
+    expect(document.querySelector("[data-slot=open-cue]")).toBeNull();
+    rerender(<SettingRow id="general.sounds" />);
+    expect(document.querySelector("[data-slot=open-cue]")).toBeNull();
+  });
+
   it("refuses a row the map lacks", () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(() => render(<SettingRow id="nope" />)).toThrow(/No setting "nope"/);

@@ -5,8 +5,7 @@ import type { HostJobStatus } from "@server/shared/contract-host";
 
 /**
  * A job's log under its row: open while the job runs and after a failure,
- * folded to its line after a pass; Stop only for a publish that can be
- * stopped; Dismiss once the job is done.
+ * folded to its line after a pass; Dismiss once the job is done; never a Stop (a publish's is its row's).
  */
 
 let entry: { status: HostJobStatus; text: string } | undefined;
@@ -68,7 +67,7 @@ describe("JobLog", () => {
     expect(isOpen(container)).toBe(true);
     expect(container.querySelector("pre")?.textContent).toBe("== building\nok");
     expect(container.querySelector("[data-slot=spinner]")).not.toBeNull();
-    expect(screen.getByText("Deploying master to box")).toBeTruthy();
+    expect(screen.getByText("Updating box")).toBeTruthy();
     expect(screen.queryByText("Stop…")).toBeNull();
     expect(screen.queryByText("Dismiss")).toBeNull();
   });
@@ -77,7 +76,7 @@ describe("JobLog", () => {
     entry = { status: status({ phase: "done", target: "master", exit: 0 }), text: "done\n" };
     const { container } = render(<JobLog environmentId="env_box" job="deploy" hostName="box" />);
     expect(isOpen(container)).toBe(false);
-    expect(container.querySelector("[data-job-ending]")?.textContent).toBe("Deployed master, the service is back");
+    expect(container.querySelector("[data-job-ending]")?.textContent).toBe("box is updated and back");
     fireEvent.click(screen.getByText("Dismiss"));
     expect(dismissed).toEqual(["env_box:deploy"]);
   });
@@ -89,14 +88,11 @@ describe("JobLog", () => {
     expect(container.querySelector("[data-job-ending]")?.className).toContain("text-destructive");
   });
 
-  it("offers Stop… for a publish that can be stopped, asking first", async () => {
+  it("leaves a publish's Stop… to its row: the log offers none", () => {
     entry = { status: status({ job: "publish", phase: "running", target: "1.0.306", stoppable: true }), text: "" };
     render(<JobLog environmentId="local" job="publish" hostName="This Mac" />);
     expect(screen.getByText("Waiting for output…")).toBeTruthy();
-    fireEvent.click(screen.getByText("Stop…"));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(confirms).toEqual(["The release is left half made."]);
-    expect(stops).toBe(1);
+    expect(screen.queryByText("Stop…")).toBeNull();
   });
 
   it("takes its default open state from the phase and the ending", () => {

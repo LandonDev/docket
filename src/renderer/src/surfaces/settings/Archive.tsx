@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionMeta, WireSessionMeta } from "../../lib/tcserver/types";
 import type { SessionPage } from "@shared/wire";
 import { DeleteThreadDialog } from "../../chrome/DeleteThreadDialog";
@@ -9,7 +9,6 @@ import { PageEmpty, PageError, PageRow, PageRowsSkeleton } from "../../component
 import { BusyLabel, Button } from "../../components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../components/ui/dropdown-menu";
 import { Input } from "../../components/ui/input";
-import { reveal } from "../../components/ui/reveal";
 import { LOCAL_ENVIRONMENT_ID, registry, useEnvironments } from "../../lib/connection";
 import { prettyCwd, projectName } from "../../lib/paths";
 import { loadArchivedProjects, looksLikeProject, subscribeArchivedProjects, type ArchivedProject } from "../../lib/recents";
@@ -68,25 +67,28 @@ function useArchivedThreads(): { threads: SessionMeta[]; reads: Map<string, Read
   const environments = useEnvironments();
   const ids = environments.map((e) => e.id).join("\n");
   const [reads, setReads] = useState<Map<string, Read>>(new Map());
-  const [attempts, setAttempts] = useState<Record<string, number>>({});
   const metas = useSessionMetas();
+  // Each computer's newest ask: an answer to an older one changes nothing. Retry asks the one computer it names again,
+  // and every other computer's list stays as it was.
+  const asks = useRef(new Map<string, number>());
+  const load = useCallback((id: string): void => {
+    const mine = (asks.current.get(id) ?? 0) + 1;
+    asks.current.set(id, mine);
+    setReads((map) => new Map(map).set(id, { status: "loading" }));
+    archivedOn(id).then(
+      (list) => {
+        if (asks.current.get(id) !== mine) return;
+        setReads((map) => new Map(map).set(id, { status: "ready", metas: list }));
+        void sessionStore.ensureArchived(id);
+      },
+      (err: unknown) => asks.current.get(id) === mine && setReads((map) => new Map(map).set(id, { status: "failed", error: refusalWords(err) })),
+    );
+  }, []);
   useEffect(() => {
-    let live = true;
-    for (const id of ids ? ids.split("\n") : []) {
-      setReads((map) => new Map(map).set(id, { status: "loading" }));
-      archivedOn(id).then(
-        (list) => {
-          if (!live) return;
-          setReads((map) => new Map(map).set(id, { status: "ready", metas: list }));
-          void sessionStore.ensureArchived(id);
-        },
-        (err: unknown) => live && setReads((map) => new Map(map).set(id, { status: "failed", error: refusalWords(err) })),
-      );
-    }
-    return () => {
-      live = false;
-    };
-  }, [ids, attempts]);
+    for (const id of ids ? ids.split("\n") : []) load(id);
+    // Leaving the page drops every answer still out.
+    return () => asks.current.clear();
+  }, [ids, load]);
   const threads = useMemo(() => {
     const known = new Map(metas.map((meta) => [meta.id, meta] as const));
     const byId = new Map<string, SessionMeta>();
@@ -95,7 +97,7 @@ function useArchivedThreads(): { threads: SessionMeta[]; reads: Map<string, Read
     // The store's word wins: a thread restored in any window since it was listed reads archived false there.
     return [...byId.values()].filter((meta) => !meta.parentId && meta.archived).sort((a, b) => b.updatedAt - a.updatedAt);
   }, [reads, metas]);
-  return { threads, reads, retry: (id) => setAttempts((a) => ({ ...a, [id]: (a[id] ?? 0) + 1 })) };
+  return { threads, reads, retry: load };
 }
 
 export function ArchivePage({
@@ -125,11 +127,9 @@ export function ArchivePage({
   const projectNames = useMemo(() => new Map(projects.map((project) => [project.id, project.name])), [projects]);
   const nameOf = (meta: SessionMeta): string => (meta.projectId ? projectNames.get(meta.projectId) : undefined) ?? (looksLikeProject(meta.cwd) ? projectName(meta.cwd) : "");
   const archived = threads.filter((meta) => !gone.has(meta.id));
-  const where = (meta: SessionMeta): string => {
-    const computer = computerInLine(names(meta.environmentId || LOCAL_ENVIRONMENT_ID));
-    const project = nameOf(meta);
-    return [project ? `${project}, on ${computer}` : `On ${computer}`, formatDate(meta.updatedAt)].filter(Boolean).join(", ");
-  };
+  // A row names its computer only where the rows differ: with every thread on one computer, none says it.
+  const oneComputer = new Set(archived.map((meta) => meta.environmentId || LOCAL_ENVIRONMENT_ID)).size <= 1;
+  const where = (meta: SessionMeta): string => archivedWhere(nameOf(meta), oneComputer ? null : computerInLine(names(meta.environmentId || LOCAL_ENVIRONMENT_ID)), formatDate(meta.updatedAt));
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return archived;
@@ -164,7 +164,9 @@ export function ArchivePage({
       </SettingSection>
 
       <SettingSection of="archive.threads">
-        {archived.length > 0 ? (
+        {/* The field needs no answer: it stands while the lists are read and after a refusal, gone only when every
+            computer answered none. */}
+        {archived.length > 0 || waiting || failed.length > 0 ? (
           <Input
             type="search"
             value={query}
@@ -243,6 +245,12 @@ export function ArchivePage({
   );
 }
 
+/** A thread's line: its project, its computer where the rows differ, the day it was last active. */
+export function archivedWhere(project: string, computer: string | null, day: string): string {
+  const place = computer ? (project ? `${project}, on ${computer}` : `On ${computer}`) : project;
+  return [place, day].filter(Boolean).join(", ");
+}
+
 const capital = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
 /** A computer that did not send its list, named; its own reason after, unless that reason is only its silence. */
@@ -256,7 +264,8 @@ export function archivedFailure(computer: string, why: string): string {
  *  one verb on the row, the destructive one a step away. Shown on hover, on focus and while the menu is open. */
 function RowActions({ name, verb = "Delete", onRestore, onDelete }: { name: string; verb?: "Delete" | "Remove"; onRestore?: () => void; onDelete?: () => void }) {
   return (
-    <span className={`flex items-center gap-1 ${reveal("item", { row: true })}`}>
+    // Always shown: a row's acts never wait on a hover.
+    <span className="flex items-center gap-1">
       {onRestore ? (
         <Button variant="ghost" size="sm" aria-label={`Restore ${name}`} onClick={onRestore}>
           Restore
