@@ -58,21 +58,42 @@ export function reducedMotion(): boolean {
   return preference === "system" ? systemReduces() : preference === "reduced";
 }
 
+/** Everyone told when the answer may have changed; the window's three listeners are theirs to share. */
+const motionListeners = new Set<() => void>();
+let stopListening: (() => void) | null = null;
+
+function listen(): () => void {
+  const query = window.matchMedia?.(QUERY);
+  const tell = (): void => {
+    for (const listener of [...motionListeners]) listener();
+  };
+  const onStorage = (event: StorageEvent): void => {
+    if (event.key === null || isMotionKey(event.key)) tell();
+  };
+  window.addEventListener(CHANGE_EVENT, tell);
+  window.addEventListener("storage", onStorage);
+  query?.addEventListener?.("change", tell);
+  return () => {
+    window.removeEventListener(CHANGE_EVENT, tell);
+    window.removeEventListener("storage", onStorage);
+    query?.removeEventListener?.("change", tell);
+  };
+}
+
 /** Calls `listener` whenever the answer may have changed: a choice here or in
- *  another window, or the system's setting turning over. */
+ *  another window, or the system's setting turning over. One set of window
+ *  listeners serves every caller (a row that reads the rule once mounted
+ *  three of its own, and a jump mounts a window of rows at once). */
 export function onMotionChange(listener: () => void): () => void {
   if (typeof window === "undefined") return () => {};
-  const query = window.matchMedia?.(QUERY);
-  const onStorage = (event: StorageEvent): void => {
-    if (event.key === null || isMotionKey(event.key)) listener();
-  };
-  window.addEventListener(CHANGE_EVENT, listener);
-  window.addEventListener("storage", onStorage);
-  query?.addEventListener?.("change", listener);
+  // A caller may subscribe the same function twice (two components sharing one): each keeps its own place.
+  const own = (): void => listener();
+  motionListeners.add(own);
+  stopListening ??= listen();
   return () => {
-    window.removeEventListener(CHANGE_EVENT, listener);
-    window.removeEventListener("storage", onStorage);
-    query?.removeEventListener?.("change", listener);
+    if (!motionListeners.delete(own) || motionListeners.size > 0) return;
+    stopListening?.();
+    stopListening = null;
   };
 }
 
