@@ -242,9 +242,10 @@ knows the thread answers. `FakeFeed` is the feed the tests drive by hand.
 ## Delay and frame rate
 
 The worker sends a ping once a second on the video socket. With the Windows
-VM's local engine, the relay takes the median of the last 120 capture-to-relay
-samples on the host's monotonic clock, starting over with a new encoder
-generation. For a feed without a known common clock, the pong carries no
+VM's local engine and the box browser's (both stamp each frame on the
+kernel's monotonic clock, which the host's relay reads: the source opens
+with `captureClock`), the relay takes the median of the last 120
+capture-to-relay samples, starting over with a new encoder generation. For a feed without a known common clock, the pong carries no
 capture delay. The worker measures the socket round trip and takes the median
 of the last 120 arrival-to-draw samples from frames it drew. It also counts
 drawn frames over the last reporting interval, including zero on a still
@@ -528,6 +529,15 @@ first wanted; nothing of it is in the first paint.
   (`SHRINK_QUIET_MS`), so a pop-out left alone does not hold a 4K stream
   open. Either only when the edge is what held the picture down (a Mac's
   window; the box's page is 2560 wide whatever is asked).
+- **A hidden window watches nothing.** The Computers page, the Computer
+  section and the browser canvas (work/browser/BrowserCanvas.tsx) put their
+  place only while the document is visible (`useDocumentVisible`): a hidden
+  or minimized window closes the stream 1.5 seconds later, so the box's
+  engine stops encoding, the worker stops decoding, and the box browser no
+  longer counts the viewer as use. Shown again, the stream opens once, a
+  skeleton until its first frame. A held submit's still is the hold's own
+  picture, never a stream, hidden or not. The pop-out runs whatever the
+  main window does.
 - **The host's link comes back** (a box restart, his link to the box cut and
   mended): a stream that gave way to the picture or ended while it was down
   is asked for again at the link's open (`useComputerVideo`), as a place shown
@@ -1196,6 +1206,32 @@ own; the medians are judged and the load average is printed beside them. It
 needs the tools installed (`--data <userData>`) and touches nothing of the
 box's live service.
 
+Before its scenes it times the first frame, recorded and never judged:
+`video.open` through the host's own `VideoRpc` and `BoxVideo`, as a client
+key over the box's socket, to the keyframe at the viewer (which decodes
+nothing: decode and draw are e2e-video-viewer's). Cold is the browser
+starting for this open, its start and the page's load in the time; warm is
+an engine the last viewer left warm; engine cold is the browser up and no
+engine. After the cut scene it times how long an engine lives once its
+viewer has gone. Both are in report.json (`firstFrames`,
+`engineAfterViewerMs`).
+
+Measured 2026-11-26 on the box (32 cores, no GPU), cores 24 to 31, scale 2
+(2560×1600), load average 19.6 to 21.6 from other threads; one run, then the
+same once more after the M12 changes:
+
+| First frame, `video.open` to the keyframe at the viewer | Run 1 | Run 2 |
+|---|---|---|
+| Cold: the browser starts (up at 310 / 299 ms, the page loaded at 659 / 784 ms) | 738 ms | 951 ms |
+| Warm: an engine left warm, median of 3 | 27 ms (23, 30, 27) | 32 ms (60, 16, 32) |
+| Engine cold: the browser up, no engine, median of 3 | 55 ms (62, 55, 49) | 57 ms (57, 215, 54) |
+| An engine after its viewer went | gone after 60.25 s | gone after 60.25 s |
+
+The scroll scenes of those runs held 52.5 and 81.5 fps (medians, load 21 to
+32): under the 100 fps rule, and below the 119.6 fps of Nov 20 at load 3 to
+9. The cores the proof pins were shared with other threads' work; a run on a
+quiet box is still owed.
+
 Measured 2026-11-19 on the box (16 cores, no GPU), cores 24 to 31, load
 average 11 to 15 from other threads. Medians of five runs of 15 s:
 
@@ -1268,6 +1304,10 @@ Run `xvfb-run -a bun scripts/e2e-video-viewer.ts --latency <before-commit>`
 through `heavy` on the box. The script alternates the two viewer versions
 on an even loopback link and on one where the proxy delays every eighth
 frame by 60–100 ms. It replays the recorded box stream in isolated Electron
+(`scripts/fixtures/video/box-stream-2560.nsl1`, 180 frames of a calm page at
+the box's shipped 2560×1600, recorded with `bun scripts/e2e-box-video.ts
+--record <file> --frames 180 --scale 2`; until Nov 26 it replayed the phone's
+1280×800 fixture, which stays at that size for the Swift tests)
 and reports arrival-to-draw and pointer event-to-worker handoff times.
 The report records timing without thresholds.
 

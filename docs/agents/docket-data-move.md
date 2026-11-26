@@ -109,7 +109,9 @@ still a real file with the new name the same inode beside it.
   its files.
 - computer/policy.ts and appshots.ts needed nothing: they match the bundle
   and the process, not the data folder.
-- scripts/bench-boot.ts: its guard refuses `Docket` too.
+- scripts/bench-boot.ts: its guard refuses `Docket` too; since Nov 26 it,
+  bench-db-workers and measure-turn-index share scripts/lib/benchCopy.ts,
+  which also refuses the box's data folders and a copy in use.
 - Backups: scripts/mac/backup.sh resolves the folder (`cd -P`) and skips a
   database that is a link; the box's sqlite-snapshot.sh skips links, so each
   database is copied once, under its new name. The restore drill compares

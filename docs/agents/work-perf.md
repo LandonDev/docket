@@ -186,10 +186,13 @@ backoff): the 20 s after, the wire's bytes, the transcript asks by mounted, tab,
   it from a window (`mac.listDir is local-only`), so the driver asks box over loopback: one shaped leg, box to desk.
   `peer-call` (ten listings of a one-file folder a press), `far-folder` (one of 300), `peer-relink` (desk's hop
   cut 3 s: to registered again, then the first call). A sample says `legs: 1` when the box would not take the
-  call from the window and the driver asked it over loopback.
+  call from the window and the driver asked it over loopback. `search-hosts` (L11): the window saves desk as a
+  second host by a key minted on desk, behind a shaped hop of its own (the desktop window reaches no host through
+  the box, so desk's hop to box is not on its way); with Search open and "fold" typed, that hop is stalled 5 s and
+  the last key pressed: the key to the first rows, and to the settled state (no host still searching).
 
 `scripts/perf/lib/frames.ts` (`WireLog`) keeps every WebSocket event of the window with CDP's own times on the
-epoch clock, for the rows that need more than the probe's counts. L10 and L11 are `off` in budgets.ts, with why.
+epoch clock, for the rows that need more than the probe's counts. L10 is `off` in budgets.ts, with why.
 
 ## The pass's numbers
 

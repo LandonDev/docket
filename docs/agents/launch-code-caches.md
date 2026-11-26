@@ -109,4 +109,9 @@
   under xvfb-run with a window and reads `tc:ready` over CDP (it pre-sets
   the migration marker: on Linux with a display the migration's hidden
   window closing is window-all-closed, and the app quits before the first
-  real window opens).
+  real window opens). `--copy <dir>` boots it on a scrubbed copy of real
+  data (D01): the copy passes perf:host's `confirmedCopy` first, the launch
+  gets a stripped environment (scratch HOME, no remote port, a dead
+  provider, an empty WINVM_DIR), the copy's paths are moved aside and put
+  back, each launch also times the rail whole (`tc:rail-complete`), and only
+  counts, times and the `[boot]` marks' labels are printed.

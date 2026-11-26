@@ -125,7 +125,9 @@ The approved page is `.temp-code/prototypes/work-workspaces-2/browser.html`,
   no wider than the picture's own pixels, a skeleton until the first
   frame. It is video where the host has it (`video.open`, through
   `useLiveStream`; [live-video.md](live-video.md)) and the 4 fps picture
-  otherwise. A click on it opens the full view; at a held submit the values under it
+  otherwise, and only while the window is visible: a hidden or minimized
+  window closes the stream, as the Computers page does, and opens it once
+  when shown again (`BrowserCanvas.dom.test.tsx`). A click on it opens the full view; at a held submit the values under it
   (label, value, source; the values are the host's read of the page's
   fields from the held row's `mark`, password fields never in it, and only
   the source is the agent's word). With nothing held and no picture this
@@ -149,14 +151,17 @@ awake. The code is `src/main/server/work/browser/box/`; the protocol's
   for live video when the tools are installed and `work.browser.video` is
   not off ([live-video.md](live-video.md) "The box"); its own profile under
   `<userData>/work-browser/box/profile`, DevTools on 127.0.0.1 only, the
-  sandbox on, never root. Started on first use; stopped after ten idle
-  minutes, or when its whole process tree passes 2 GB (every 15 s: the tree is
+  sandbox on, never root. Started on first use; stopped ten minutes after
+  its last use (every call to it is a use; a fake clock in
+  `chromium.test.ts` holds that it is gone by eleven), or when its whole process tree passes 2 GB (every 15 s: the tree is
   found from its own threads' children lists and each member's
   `smaps_rollup` is read, two asynchronous reads at a time, `treePids` and
   `treeRssMb`; never a pass over every process on the box, which held the
   server's loop 1.2 s each time), or when Work is turned off. It is not stopped for idleness while a held
   step waits on one of its pages (for a day at most), or while a page asks
-  for him or he drives (two hours at most). A new start waits for the last
+  for him or he drives (two hours at most), or while a viewer of its video
+  is connected (two hours at most, `VIEWER_USE_MS`; a hidden window has no
+  viewer). A new start waits for the last
   browser to exit. The binary: `TEMP_CODE_BOX_CHROMIUM`, else `chromium` or
   `google-chrome` on PATH, else the newest Playwright download under
   `~/.cache/ms-playwright` (the box has `chromium-1248`).
