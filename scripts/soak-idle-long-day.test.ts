@@ -4,7 +4,7 @@ import { DAY_PROFILE, declaredRates, IDLE_PROFILE, liveTail, LONG_INDEX, LONG_PR
 import { gateBudgetMs, parseSoakArgs } from './lib/soakJudge'
 import { flushesBetween, IDLE_PHASES, IDLE_RULE, judgeIdle, summarizeIdlePhase, type Census, type FlushRecord, type IdlePhase } from './lib/soakIdle'
 import { frameMainMs, judgeLong, LONG_RULE, taskList, type LongResult } from './lib/soakLong'
-import { DAY_RULE, DAY_TIMING, judgeDay, rawRows, type DayResult, type StoreCensus } from './lib/soakDay'
+import { DAY_RULE, DAY_TIMING, extraLoaded, judgeDay, rawRows, type DayResult, type StoreCensus } from './lib/soakDay'
 import type { TraceEvent } from './lib/soakTrace'
 
 const flush = (at: number, ms: number, rendered = 0, names: Record<string, number> = {}): FlushRecord => ({ at, ms, meta: true, commits: rendered ? 1 : 0, rendered, names, settledMs: ms + 1 })
@@ -184,6 +184,19 @@ describe('the day scene', () => {
     loaded: Array.from({ length: loaded }, (_, i) => ({ id: `t${i}`, rows: i === 0 ? null : rows + i, blocks: 10, busy: true, mounted: i < mounted }))
   })
   const day = (o: Partial<DayResult>): DayResult => ({ heapStartMb: 40, heapEndMb: 44, opened: Array.from({ length: DAY_TIMING.opens }, (_, i) => `t${i}`), start: store(0, 1), end: store(7, 1), ...o })
+
+  it('names each transcript past the kept set and why it stays', () => {
+    const c = store(4, 1)
+    c.loaded[0]!.why = 'mounted'
+    c.loaded[1]!.why = 'recent'
+    c.loaded[2]!.why = 'refused: a load in flight'
+    c.loaded[3]!.why = 'no unload pass since it left the kept set'
+    expect(extraLoaded(c)).toEqual([
+      { id: 't2', why: 'refused: a load in flight' },
+      { id: 't3', why: 'no unload pass since it left the kept set' }
+    ])
+    expect(extraLoaded(store(3, 1))).toEqual([])
+  })
 
   it('counts the raw rows the loaded transcripts keep', () => {
     expect(rawRows(store(3, 1))).toEqual({ total: 301 + 302, max: 302, perLoaded: 201 })

@@ -8,7 +8,7 @@
  */
 import type { Verdict } from './soakJudge'
 
-export const DAY_TIMING = { windowMs: 50_000, opens: 10, warmMs: 5_000 }
+export const DAY_TIMING = { windowMs: 50_000, opens: 10, warmMs: 5_000, settleMs: 10_000 }
 
 /** D18: heap after GC no more than 6 MB up over the window (the soak's rule), and no more transcripts loaded
  *  than those mounted plus the six the store keeps for a switch back (KEEP_RECENT). */

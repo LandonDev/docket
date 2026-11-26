@@ -340,6 +340,11 @@ export async function recordDay(ctx: QuietCtx): Promise<boolean> {
   }
   while (Date.now() < w0 + DAY_TIMING.windowMs) await sleep(100)
   const cpuPct = round(((ctx.cpuSeconds(ctx.rendererPid) - cpu0) / ((Date.now() - w0) / 1000)) * 100)
+  // The last thread left is still in its grace: its tab parks 3 s after the switch (PARK_MS) and the store
+  // unloads 3 s after that (UNLOAD_MS). The census waits for that pass (DAY_TIMING.settleMs at most), or it
+  // counts a transcript on its way out as one kept.
+  const settleUntil = Date.now() + DAY_TIMING.settleMs
+  while (Date.now() < settleUntil && (await c.eval<boolean>('!!window.__docket.sessionStore.unloadTimer'))) await sleep(200)
   const heapEndMb = await heapAfterGc(c)
   const end = await c.eval<StoreCensus>(STORE_CENSUS)
   const result: DayResult = { heapStartMb, heapEndMb, opened, start, end }
