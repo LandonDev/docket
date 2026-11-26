@@ -30,7 +30,7 @@ export interface MoveTarget {
   name: string;
 }
 
-const VERB = { move: "Move", copy: "Copy", word: "Save" } as const;
+const VERB = { move: "Move", copy: "Copy" } as const;
 
 /** A place's glyph, as the sidebar draws it: his OneDrive a cloud, a team's library its people. */
 export const placeIcon = (row: Pick<PlaceRow, "kind">): ReactNode => (row.kind === "onedrive" ? <Cloud className="size-4" /> : <Users className="size-4" />);
@@ -86,7 +86,6 @@ export const ROW = "flex h-8 w-full min-w-0 cursor-default items-center gap-2 ro
 export function MoveDialog({
   verb,
   entries,
-  what: named,
   from,
   start,
   waiting = false,
@@ -95,12 +94,9 @@ export function MoveDialog({
   onPick,
   onClose,
 }: {
-  /** `word`: Save as Word to…, a new file made in the folder; `entries` is empty and `what` names the document */
-  verb: "move" | "copy" | "word";
+  verb: "move" | "copy";
   entries: readonly FileEntry[];
-  /** the name the title gives what goes, where no entry names it */
-  what?: string;
-  /** the place the things are in; absent for Save as Word */
+  /** the place the things are in */
   from?: PlaceCopy;
   /** the folder the dialog opens in: the one the things are in; null opens on the places */
   start: { at: FolderRef; name: string } | null;
@@ -122,13 +118,12 @@ export function MoveDialog({
   const [pending, setPending] = useState(false);
   // Why the last press carried nothing, for the folder it was pressed in.
   const [failed, setFailed] = useState<{ at: MoveTarget; why: string } | null>(null);
-  const what = named ?? (entries.length === 1 ? entries[0]!.name : `${entries.length} things`);
+  const what = entries.length === 1 ? entries[0]!.name : `${entries.length} things`;
   const places = placeItems(sidebar, workspace.name);
   // Move and Copy keep the folders he carried things to last, as Save As keeps its own.
-  const kind = verb === "word" ? null : "move";
-  const recent = kind ? recentFolders(kind, workspace, places) : [];
-  // The grammar's refusal for the folder shown, for any of the things; a Word file is a new thing made there.
-  const no = !at ? null : verb === "word" || !from ? refusal(at.copy.place, "make") : (entries.map((entry) => carryRefusal(from.place, verb, entry, at.copy.place)).find((r) => r !== null) ?? null);
+  const recent = recentFolders("move", workspace, places);
+  // The grammar's refusal for the folder shown, for any of the things.
+  const no = !at ? null : !from ? refusal(at.copy.place, "make") : (entries.map((entry) => carryRefusal(from.place, verb, entry, at.copy.place)).find((r) => r !== null) ?? null);
   // A thing cannot go into itself; one moved where it already is: Move Here is greyed, and no note says so (it opens there).
   const inside = !!at && entries.some((e) => e.folder && samePage(e.folder, at.at)) ? "A folder cannot go inside itself." : null;
   const stays = !!at && !!start && verb === "move" && samePage(at.at, start.at);
@@ -144,7 +139,7 @@ export function MoveDialog({
     if (made?.folder) setAt({ copy: at.copy, at: made.folder, name: made.name });
   };
   return (
-    <Modal onClose={onClose} title={verb === "word" ? `Save ${what} as Word` : `${VERB[verb]} ${what}`} size="sm" busy={pending} className="h-[440px]" data-files-move="">
+    <Modal onClose={onClose} title={`${VERB[verb]} ${what}`} size="sm" busy={pending} className="h-[440px]" data-files-move="">
       <div className="flex min-h-0 flex-1 flex-col px-3 pt-3">
         {at ? (
           <Folders
@@ -187,7 +182,7 @@ export function MoveDialog({
           void onPick(at, (said) => setFailed({ at, why: said }))
             .then((went) => {
               if (!went) return;
-              if (kind) keepRecentFolder(kind, workspace, { ...at, where: at.copy.place.name });
+              keepRecentFolder("move", workspace, { ...at, where: at.copy.place.name });
               onClose();
             })
             .finally(() => setPending(false));
@@ -230,7 +225,8 @@ export function Places({ places, recent = [], off = [], waiting, onInto }: { pla
             variant="ghost"
             role="option"
             aria-selected={false}
-            className={`${ROW} justify-start font-normal ${item.inTeam ? "ps-6" : ""} [&>svg:first-child]:text-muted-foreground`}
+            // One level in under its team: the button's own icon padding (`has-[>svg:first-child]:ps-2`) would win over a bare `ps-6`.
+            className={`${ROW} justify-start font-normal ${item.inTeam ? "ps-6 has-[>svg:first-child]:ps-6" : ""} [&>svg:first-child]:text-muted-foreground`}
             onClick={() => onInto(item.target)}
           >
             {item.icon}

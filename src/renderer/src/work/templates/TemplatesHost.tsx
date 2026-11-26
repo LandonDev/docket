@@ -18,7 +18,7 @@ const envOf = (workspaceId: string): string | null => workspaceStore.getSnapshot
 
 /**
  * Fills `workTemplatePort` while Work's shell is up (docs/agents/work-templates.md):
- * "New from a template" and "Save as template", each a dialog from the
+ * "New from a Template" and "Save as Template", each a dialog from the
  * `work-templates` chunk, on the workspace's own host. One at a time; a second
  * ask takes the first one's place.
  */

@@ -5,8 +5,8 @@ import { Button } from "../../components/ui/button";
 import { registry, type Link } from "../../lib/connection";
 import { workspaceStore } from "../../lib/tcserver/workspaces";
 import { FieldsForm } from "./FieldsForm";
-import { SaveForm } from "./SaveDialog";
-import { TemplateSteps } from "./TemplateDialog";
+import { SAVE_TITLE, SaveForm } from "./SaveDialog";
+import { NEW_TITLE, TemplateSteps } from "./TemplateDialog";
 import type { WorkViewProps } from "../views/registry";
 import { Head, View } from "./TemplatesView";
 
@@ -14,8 +14,8 @@ import { Head, View } from "./TemplatesView";
  * The Templates pillar's screens over one fixed host, for `bun run ui:preview
  * src/renderer/src/work/templates/Templates.preview.tsx#<Export> --props '{"width":560}'`:
  * the view under the frame's 40px header (`state`: shelf, hidden, loading,
- * empty, error), New from a template (`hidden`: no tile left), a template's fields
- * (`state`: rest, pending, error, made: made but not opened) and Save as template (its fields read from the host). A dialog draws in a portal a static page cannot
+ * empty, error), New from a Template (`hidden`: no tile left), a template's fields
+ * (`state`: rest, pending, error, made: made but not opened) and Save as Template (its fields read from the host). A dialog draws in a portal a static page cannot
  * hold, so each is drawn in the Modal's own box (chrome/Modal.tsx) around its
  * real body. `width` sets the box the screen stands in. Rendered by nothing in
  * the app.
@@ -117,7 +117,7 @@ export function TemplateDialogPreview({ width, kept = false, hidden = false }: {
   viewState = hidden ? "empty" : "shelf";
   return (
     <Box width={width}>
-      <ModalBox title="New from a template" size="md">
+      <ModalBox title={NEW_TITLE} size="md">
         <TemplateSteps
           env="local"
           workspaceId="ws"
@@ -160,7 +160,7 @@ export function SavePreview({ width, fields = true, long = false }: { width?: nu
   fileFields = !fields ? [] : long ? ["Home team and its conference", "Visiting team and its conference", "Site of the game and its address"] : ["Home", "Away", "Site"];
   return (
     <Box width={width}>
-      <ModalBox title="Save as template" size="sm">
+      <ModalBox title={SAVE_TITLE} size="sm">
         <SaveForm
           env="local"
           workspaceId="ws"

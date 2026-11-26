@@ -13,8 +13,11 @@ import { folderName, hiddenLine, sentence, shelfGroups, unfilledLine } from "./m
 import { openMade } from "./open";
 import { Shelf, ShelfSkeleton } from "./Shelf";
 
+/** The dialog's title: the words of New's press, From a Template…, with the menu it lives in. */
+export const NEW_TITLE = "New from a Template";
+
 /**
- * "New from a template" (docs/agents/work-templates.md "New from a template"):
+ * "New from a Template" (docs/agents/work-templates.md "New from a Template"):
  * the shelf's two groups as a three-column grid (two under 640px). A tile with
  * no fields makes its file, which opens in a Files tab, and the dialog closes;
  * one with fields turns this same dialog to them, with the way back. Opened on
@@ -49,7 +52,7 @@ export function TemplateDialog({
     // the title never moves when a step changes: the box only grows or shortens from the bottom. Opened on one template
     // (the shelf page's press) it has one step and no Back: a small dialog, centred, as Rename and Save are.
     <Modal
-      title={chosen ? chosen.name : "New from a template"}
+      title={chosen ? chosen.name : NEW_TITLE}
       size={template ? "sm" : "md"}
       busy={making !== null}
       onClose={onClose}

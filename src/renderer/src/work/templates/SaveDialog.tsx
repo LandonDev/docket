@@ -20,7 +20,7 @@ type SaveProps = {
 };
 
 /**
- * "Save as template" (docs/agents/work-templates.md "Save as template"): the
+ * "Save as Template" (docs/agents/work-templates.md "Save as Template"): the
  * name, filled with the file's stem and selected, and whether it is used in all
  * jobs. The footer's quiet note names the fields the template will ask for: the
  * caller's `fields` when it listed them, else the host's read of the file
@@ -30,10 +30,13 @@ type SaveProps = {
  * toast that says it was saved names the fields only when the dialog could not;
  * Show opens the shelf.
  */
+/** The dialog's title: the words of the press that opens it, Save as Template… in a file's ⋯. */
+export const SAVE_TITLE = "Save as Template";
+
 export function SaveDialog(props: SaveProps) {
   const [pending, setPending] = useState(false);
   return (
-    <Modal title="Save as template" size="sm" busy={pending} onClose={props.onClose} data-template-save="">
+    <Modal title={SAVE_TITLE} size="sm" busy={pending} onClose={props.onClose} data-template-save="">
       <SaveForm {...props} pending={pending} setPending={setPending} />
     </Modal>
   );

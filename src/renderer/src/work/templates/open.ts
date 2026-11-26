@@ -15,8 +15,8 @@ import { baseName } from "./model";
 
 /**
  * What the dialogs answer, filled by Work's shell while Work is on
- * (TemplatesHost.tsx): New from a template in a workspace (a folder to keep
- * the file in, or one template to ask the fields of), and Save as template on
+ * (TemplatesHost.tsx): New from a Template in a workspace (a folder to keep
+ * the file in, or one template to ask the fields of), and Save as Template on
  * a file. It lives here, in a file only lazy chunks import, so the first paint
  * carries nothing of this pillar.
  */
@@ -32,7 +32,7 @@ export const workTemplatePort = {
   },
 };
 
-/** "New from a template" for a workspace; the file is kept in `into` (named `intoName` in the footer), else the workspace's folder. False while Work's shell is not up. */
+/** "New from a Template" for a workspace; the file is kept in `into` (named `intoName` in the footer), else the workspace's folder. False while Work's shell is not up. */
 export function openTemplates(ask: { workspaceId: string; into?: FolderRef; intoName?: string }): boolean {
   const port = workTemplatePort.get();
   if (!port) return false;
@@ -48,7 +48,7 @@ export function askTemplateFields(ask: { workspaceId: string; template: Template
   return true;
 }
 
-/** "Save as template" for a file; `fields`, when the caller knows them (a listed template), are named in the dialog. */
+/** "Save as Template" for a file; `fields`, when the caller knows them (a listed template), are named in the dialog. */
 export function saveAsTemplate(ask: { workspaceId: string; source: CanvasSource; name?: string; fields?: readonly string[] }): boolean {
   const port = workTemplatePort.get();
   if (!port) return false;

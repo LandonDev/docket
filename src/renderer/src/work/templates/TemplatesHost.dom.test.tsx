@@ -60,10 +60,10 @@ describe("the templates port", () => {
     expect(workTemplatePort.get()).not.toBeNull();
     act(() => void openTemplates({ workspaceId: "ws" }));
     await settle();
-    expect(await screen.findByRole("heading", { name: "New from a template" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "New from a Template" })).toBeTruthy();
     expect(host.asked).toEqual([{ env: "box", method: "work.templates.list", params: { workspaceId: "ws" } }]);
     act(() => void saveAsTemplate({ workspaceId: "ws", source: { at: "file", host: "box", path: "/w/Dummy Esports/Brief.docx" } }));
-    expect(await screen.findByRole("heading", { name: "Save as template" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Save as Template" })).toBeTruthy();
     unmount();
     expect(workTemplatePort.get()).toBeNull();
   });

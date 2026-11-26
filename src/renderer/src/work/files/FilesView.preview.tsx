@@ -1,6 +1,6 @@
 // A preview page for `bun run ui:preview src/renderer/src/work/files/FilesView.preview.tsx#FilesBrowse` (and
 // #FilesNarrowSidebar, #FilesStates, #FilesGrid, #FilesColumns, #FilesGallery, #FilesBeside, #FilesDetails, #FilesSelection, #FilesHome,
-// #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile, #FilesMove, #FilesSaveAsWord, #FilesGoTo, #FilesNew,
+// #FilesSearch, #FilesQuickLook, #FilesQuickLookText, #FilesFile, #FilesMove, #FilesGoTo, #FilesNew,
 // #FilesNewLibrary, #FilesTrash, #FilesLifeosDown, #FilesWaits, #FilesSearchAcross, #FilesCopyLines, #FilesLongNames, #FilesSharedNames, #FilesSideTree, #FilesBesideConflict): the Files place's window with
 // stand-in places and rows, and its states. Rendered by nothing in the app.
 import type { CopyBack, FilePage, FilesHome, FileTab } from "@shared/contract-work-files";
@@ -597,20 +597,6 @@ export function FilesMove() {
           <PageView {...common} listing={listing()} drawn={{ picked: ["Sponsor deck.pptx"] }} />
         </Window>
         <MoveDialog verb="move" entries={[entries[1]!]} from={eventsCopy} start={eventsFolder} sidebar={sidebar} workspace={workspace} onPick={async () => false} onClose={noop} />
-      </OverFrame>
-    </div>
-  );
-}
-
-/** Save as Word to…: a document of LifeOS made a .docx in a folder he picks, opened on the places. */
-export function FilesSaveAsWord() {
-  return (
-    <div className="p-6">
-      <OverFrame maxWidth={900} height={620}>
-        <Window width={900} height={620}>
-          <PageView {...common} listing={listing()} />
-        </Window>
-        <MoveDialog verb="word" entries={[]} what="Spring LAN run of show" start={null} sidebar={sidebar} workspace={workspace} onPick={async () => false} onClose={noop} />
       </OverFrame>
     </div>
   );

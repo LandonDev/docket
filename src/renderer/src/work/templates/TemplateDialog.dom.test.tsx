@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * "New from a template": the title and the two groups; "Kept in" only when a
+ * "New from a Template": the title and the two groups; "Kept in" only when a
  * folder was given; a tile with no fields makes its file with the window's own
  * day, opens it in a Files tab (no thread) and closes; a tile with fields turns
  * the same dialog to them, the first focused, Return moving on and making from
@@ -73,12 +73,12 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("New from a template", () => {
+describe("New from a Template", () => {
   it("shows the two groups under its title, with no footer when no folder was given: × closes a picker of tiles", async () => {
     render(<TemplateDialog env="box" workspaceId="ws" onClose={() => {}} />);
     await settle();
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "New from a template" })).toBeTruthy();
+    expect(within(dialog).getByRole("heading", { name: "New from a Template" })).toBeTruthy();
     expect(within(dialog).getByRole("region", { name: "Dummy Esports" })).toBeTruthy();
     expect(dialog.querySelector("[data-footer-note]")).toBeNull();
     expect(within(dialog).queryByRole("button", { name: "Cancel" })).toBeNull();
@@ -195,7 +195,7 @@ describe("New from a template", () => {
     await settle();
     fireEvent.click(screen.getByRole("button", { name: "Back" }));
     await settle();
-    expect(screen.getByRole("heading", { name: "New from a template" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "New from a Template" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Crew memo" })).toBeTruthy();
   });
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * "Save as template": the name filled with the file's stem (a Microsoft file's
+ * "Save as Template": the name filled with the file's stem (a Microsoft file's
  * too) and selected, "Use in all jobs" sent as `everywhere`, the fields named
  * once in their own muted line under the check row (the caller's, else the
  * host's read of the file as the dialog opens; the toast says them only when
@@ -47,7 +47,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe("Save as template", () => {
+describe("Save as Template", () => {
   const saves = () => host.asked.filter((a) => a.method === "work.templates.save").map((a) => a.params);
 
   it("fills the name with the file's stem, selected, and offers Use in all jobs", async () => {

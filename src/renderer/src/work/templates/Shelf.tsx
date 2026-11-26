@@ -15,7 +15,7 @@ import { KIND_WORD, type ShelfGroup } from "./model";
 
 /**
  * The shelf's tiles (docs/agents/work-templates.md "The screens"), one part for
- * the Templates view and the "New from a template" dialog: two groups, each a
+ * the Templates view and the "New from a Template" dialog: two groups, each a
  * 12px muted label over a grid of tiles. A tile is the file's picture (the
  * kind's glyph large on the stage, as a Files tile with no picture), then the
  * name on one 13px line, cut to it, the whole name the press's tip while it is cut. It aligns to the grid's edge (6px of padding
