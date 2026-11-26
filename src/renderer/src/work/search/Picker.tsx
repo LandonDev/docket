@@ -131,6 +131,12 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
   const [jobKey, setJobKey] = useState<string | null>(() => jobOfWorkspace(jobs, seed.workspaceId)?.key ?? null);
   const job = jobs.find((j) => j.key === jobKey) ?? null;
   const [scopeOpen, setScopeOpen] = useState(false);
+  // Opened from the field (its key, ⌥↓): focus goes back to the field; opened by its button, to the button (Base UI's own).
+  const [scopeByKeys, setScopeByKeys] = useState(false);
+  const openScopeByKeys = (): void => {
+    setScopeByKeys(true);
+    setScopeOpen(true);
+  };
   // One kind, said to a reader that cannot see it stand in the field: on the way in and on the way out, never at the open.
   const [said, setSaid] = useState("");
   const kindWas = useRef(kind);
@@ -185,7 +191,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
     if (jobs.length < 2) return;
     if (jobKey !== null) setJobKey(null);
     else if (windowJob) setJobKey(windowJob.key);
-    else setScopeOpen(true);
+    else openScopeByKeys();
   };
   // The key reaches here through the door, whichever way it came (the field below, the menu's accelerator through App).
   // One press can arrive both ways at once: the second, within a press's length, is the same press.
@@ -260,7 +266,7 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
     // The scope by keys: the field's own menu, as a select opens.
     if (e.altKey && e.key === "ArrowDown" && jobs.length > 1) {
       e.preventDefault();
-      setScopeOpen(true);
+      openScopeByKeys();
       return;
     }
     // The kind stands before his words like a word of them: Backspace at the field's start takes it away.
@@ -294,9 +300,13 @@ export function WorkSearch({ seed, onClose }: { seed: WorkSearchSeed; onClose: (
           jobs={jobs}
           job={job}
           open={scopeOpen}
-          onOpenChange={setScopeOpen}
+          onOpenChange={(open) => {
+            // A press on the button opens it through here: Escape then gives the button its focus back.
+            if (open) setScopeByKeys(false);
+            setScopeOpen(open);
+          }}
           onPick={setJobKey}
-          finalFocus={search}
+          finalFocus={scopeByKeys ? search : undefined}
         />
       }
     >
@@ -350,6 +360,8 @@ export function FieldEnd({
     { kind: "sep" },
     ...jobs.map((j): MenuRow => ({ kind: "item", id: j.key, label: j.name, icon: dotIcon(j.sector), checked: j.key === job?.key })),
   ];
+  // Escape from a menu its button opened gives the button its focus back; a dialog would hand it to its first field.
+  const button = useRef<HTMLButtonElement>(null);
   return (
     <>
       {out ? <Spinner data-work-search-busy className="mr-1.5 size-3.5 text-muted-foreground" /> : null}
@@ -359,12 +371,12 @@ export function FieldEnd({
           align="end"
           open={open}
           onOpenChange={onOpenChange}
-          finalFocus={finalFocus as RefObject<HTMLElement | null> | undefined}
+          finalFocus={(finalFocus ?? button) as RefObject<HTMLElement | null>}
           rows={rows}
           onPick={(id) => onPick(id === ALL_JOBS ? null : id)}
           trigger={
             // 4px in from the field's end, so the scope ends over the rows' own end (their strip lies past it).
-            <Button variant="ghost" size="xs" data-work-search-scope aria-label={`Search in ${job?.name ?? "all jobs"}`} className="mr-1 gap-1 px-1.5 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground">
+            <Button ref={button} variant="ghost" size="xs" data-work-search-scope aria-label={`Search in ${job?.name ?? "all jobs"}`} className="mr-1 gap-1 px-1.5 font-normal text-muted-foreground hover:text-foreground aria-expanded:text-foreground">
               {job ? <SectorDot sector={job.sector} className="-mx-0.5" /> : null}
               <span className="max-w-32 truncate">{job?.name ?? "All jobs"}</span>
               <ChevronDown />
@@ -632,10 +644,10 @@ export function Results({
                   <span className="ml-auto flex shrink-0 items-center gap-2">
                     {mixed ? (
                       // In a window too narrow for the names the job is its dot alone, and the title keeps its words.
-                      <span data-job className="flex w-20 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-auto">
+                      <span data-job className="flex w-28 items-center gap-1 text-xs text-muted-foreground max-[480px]:w-auto">
                         {/* The dot at its own 8px, so the name keeps the column's room. */}
                         {job ? <SectorDot sector={job.sector} className="size-2" /> : <span aria-hidden className="size-2 shrink-0" />}
-                        {/* Cut in its 80px, the name is said whole on hover. */}
+                        {/* Cut in its 112px, the name is said whole on hover. */}
                         <TruncateTip text={job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}>
                           <span className="min-w-0 truncate max-[480px]:sr-only">{job ? job.name : hit.workspaceId === null ? "Work Chats" : ""}</span>
                         </TruncateTip>
